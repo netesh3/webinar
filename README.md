@@ -412,8 +412,9 @@ supports:
 
 Set repository secrets `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
 (or `LIVEKIT_PROJECTS`), plus `DATABASE_URL` (Supabase), `SESSION_SECRET`, and
-`GCP_SA_KEY` (deploy service-account JSON). Do not commit real values —
-placeholders only in `deploy/cloudrun.env.example`.
+`GCP_SA_KEY` (deploy service-account JSON). Optionally set `ADMIN_EMAILS` and
+`ADMIN_PASSWORD` (≥10 chars) so production boots an admin account on a fresh DB.
+Do not commit real values — placeholders only in `deploy/cloudrun.env.example`.
 
 ```bash
 gh secret set DATABASE_URL -R netesh3/webinar   # paste Supabase URI when prompted

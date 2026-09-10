@@ -16,6 +16,7 @@
 #
 # Optional:
 #   CORS_ORIGINS, WEB_BASE_URL, LIVEKIT_HTTP_URL, LIVEKIT_PROJECTS
+#   ADMIN_EMAILS / ADMIN_PASSWORD — bootstrap production admin on fresh DB (≥10 chars)
 #   CLOUD_SQL_INSTANCE — only if not using Supabase
 #   GCP_PROJECT / GCP_REGION as repo Variables (defaults in deploy/cloudrun-deploy.sh)
 
@@ -57,6 +58,8 @@ jobs:
       LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
       LIVEKIT_PROJECTS: ${{ secrets.LIVEKIT_PROJECTS }}
       LIVEKIT_HTTP_URL: ${{ secrets.LIVEKIT_HTTP_URL }}
+      ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       CLOUD_SQL_INSTANCE: ${{ secrets.CLOUD_SQL_INSTANCE }}

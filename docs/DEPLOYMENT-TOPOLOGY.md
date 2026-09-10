@@ -91,7 +91,7 @@ flowchart TD
 | `cd web && npm run deploy` (OpenNext) | Frontend → Cloudflare Workers (manual today) |
 
 Required GitHub **secrets**: `GCP_SA_KEY`, `DATABASE_URL`, `SESSION_SECRET`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (or `LIVEKIT_PROJECTS`).  
-Optional: `CORS_ORIGINS`, `WEB_BASE_URL`.  
+Optional: `CORS_ORIGINS`, `WEB_BASE_URL`, `ADMIN_EMAILS` / `ADMIN_PASSWORD` (bootstrap production admin on fresh DB).  
 Repo **variables**: `GCP_PROJECT`, `GCP_REGION`.
 
 Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env.example). Supabase notes: [`deploy/SUPABASE.md`](../deploy/SUPABASE.md). Frontend Worker notes: [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md).
@@ -120,8 +120,9 @@ Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env
 | `SESSION_SECRET` | ≥32 bytes |
 | `LIVEKIT_*` | Legacy trio → one LiveKit Cloud project |
 | `CORS_ORIGINS` / `WEB_BASE_URL` | Frontend origin (Workers URL today) |
+| `ADMIN_EMAILS` / `ADMIN_PASSWORD` | Bootstrap admin at API boot (≥10 chars); GitHub secrets → Cloud Run env |
 
-**Admin bootstrap:** set `ADMIN_EMAILS` + `ADMIN_PASSWORD` (≥10 chars) and redeploy. Production does not ship seeded `webcast-dev` accounts.
+**Admin bootstrap:** set `ADMIN_EMAILS` + `ADMIN_PASSWORD` (≥10 chars) as GitHub secrets (or in `deploy/cloudrun.env`) and redeploy so `EnsureAdminAccount` / `PromoteAdmins` run. Production does not ship seeded `webcast-dev` accounts.
 
 **Budget:** GCP project has a monthly billing budget (₹1,500 thresholds). No Cloud Run Monitoring alert policies yet.
 

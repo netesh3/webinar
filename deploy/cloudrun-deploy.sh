@@ -129,6 +129,9 @@ fi
 
 [[ -n "${CORS_ORIGINS:-}" ]] && ENV_VARS+=("CORS_ORIGINS=${CORS_ORIGINS}")
 [[ -n "${WEB_BASE_URL:-}" ]] && ENV_VARS+=("WEB_BASE_URL=${WEB_BASE_URL}")
+# Bootstrap admin on fresh DB (EnsureAdminAccount + PromoteAdmins at API boot).
+[[ -n "${ADMIN_EMAILS:-}" ]] && ENV_VARS+=("ADMIN_EMAILS=${ADMIN_EMAILS}")
+[[ -n "${ADMIN_PASSWORD:-}" ]] && ENV_VARS+=("ADMIN_PASSWORD=${ADMIN_PASSWORD}")
 
 # Join env vars with commas for gcloud (values must not contain commas).
 JOINED=$(IFS=,; echo "${ENV_VARS[*]}")
