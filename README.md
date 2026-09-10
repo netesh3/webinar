@@ -378,6 +378,9 @@ Three things that will bite you in production:
 
 ### Google Cloud Run (API only)
 
+Current managed topology (Cloudflare Workers + Cloud Run + Supabase + LiveKit
+Cloud): [`docs/DEPLOYMENT-TOPOLOGY.md`](docs/DEPLOYMENT-TOPOLOGY.md).
+
 Scaffolding lives under `deploy/`. Project default: `ai-project-490516`, region
 `us-central1`, Artifact Registry repo `webcast`.
 
