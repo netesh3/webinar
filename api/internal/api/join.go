@@ -481,6 +481,8 @@ func (s *Server) roomMetadata(ctx context.Context, wb types.Webinar) (string, er
 		Controls:  wb.Controls,
 		Status:    wb.Status,
 		Topic:     wb.Topic,
+		StartedAt: wb.StartedAt,
+		EndedAt:   wb.EndedAt,
 		Recording: recording,
 	})
 	if err != nil {
@@ -523,6 +525,8 @@ func (s *Server) issueToken(
 		CanPublish:  lk.CanPublish(spec.Role),
 		Controls:    wb.Controls,
 		Topic:       wb.Topic,
+		StartedAt:   wb.StartedAt,
+		EndedAt:     wb.EndedAt,
 		Hidden:      spec.Hidden,
 		CanRecord:   canRecord,
 		JoinKey:     joinKeyFromIdentity(spec.Identity),

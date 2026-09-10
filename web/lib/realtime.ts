@@ -484,6 +484,12 @@ export function useSessionControls(
   controls: SessionControls;
   topic: string | null;
   status: string | null;
+  /** When the host took the session live (RFC3339), from room metadata once
+   *  connected. Null until metadata arrives or if the stamp is absent. */
+  startedAt: string | null;
+  /** When the host ended the session (RFC3339). Present so the elapsed clock
+   *  can freeze on the final duration. */
+  endedAt: string | null;
   /** Whether the session is being recorded. From the server, not from whoever
    *  pressed the button, so every browser in the room agrees. */
   recording: boolean;
@@ -519,6 +525,8 @@ export function useSessionControls(
       controls: meta?.controls ?? fallback,
       topic: meta?.topic ?? null,
       status: meta?.status ?? null,
+      startedAt: meta?.startedAt || null,
+      endedAt: meta?.endedAt || null,
       recording: meta?.recording === true,
     }),
     [meta, fallback],

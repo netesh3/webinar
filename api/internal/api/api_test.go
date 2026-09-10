@@ -947,6 +947,9 @@ func TestManualApprovalBlocksJoinUntilApproved(t *testing.T) {
 	if join.CanPublish {
 		t.Error("attendee join response claims canPublish")
 	}
+	if join.StartedAt == "" {
+		t.Error("join response missing startedAt for a live webinar")
+	}
 }
 
 func TestJoinKeyIsScopedToOneWebinar(t *testing.T) {
@@ -1394,6 +1397,10 @@ func TestStartAndEndWebinar(t *testing.T) {
 	}
 	if meta := h.rooms.roomMeta(t, room); meta.Status != types.StatusLive {
 		t.Errorf("room metadata status = %q, want live", meta.Status)
+	} else if meta.StartedAt == "" {
+		t.Error("room metadata startedAt was not stamped")
+	} else if meta.StartedAt != started.StartedAt {
+		t.Errorf("room metadata startedAt = %q, want %q", meta.StartedAt, started.StartedAt)
 	}
 
 	// Ending has to tear the room down. Disconnecting the host alone would leave

@@ -536,6 +536,19 @@ export interface Webinar {
    */
   passcode?: string;
   passcodeRequired: boolean;
+  /**
+   *  SFUProject is which LiveKit project this webinar's room lives on, once chosen.
+   * 	 *
+   * 	 * Empty until the first join picks one. Operator information — it is what answers "which
+   * 	 * of my LiveKit accounts is this session billing against" and "what is still running on
+   * 	 * the project I want to retire" — so it reaches the host's own views and is stripped by
+   * 	 * publicWebinar, exactly like the passcode.
+   * 	 *
+   * 	 * Not stripped because it is a secret; a project id is not. Stripped because the audience
+   * 	 * has no use for it and every field that reaches an unauthenticated endpoint is a field
+   * 	 * somebody has to think about again later.
+   */
+  sfuProject?: string;
   report?: WebinarReport;
 }
 /**
@@ -647,6 +660,17 @@ export interface LoginRequest {
   email: string;
   password: string;
 }
+/**
+ *  SupabaseAuthRequest exchanges a verified Supabase Auth access token for this
+ *  * app's webcast_session cookie.
+ *  *
+ *  * The browser completes Google (or other) OAuth with Supabase JS; this body is
+ *  * what arrives after that redirect. The API never talks to Google directly —
+ *  * it only verifies Supabase's JWT and links or creates a local users row.
+ */
+export interface SupabaseAuthRequest {
+  accessToken: string;
+}
 export interface ProfilePatch {
   name?: string;
   title?: string;
@@ -755,6 +779,20 @@ export interface JoinResponse {
   controls: SessionControls;
   topic: string;
   /**
+   *  StartedAt is when the host took the webinar live (RFC3339).
+   * 	 *
+   * 	 * The room header clock counts from this, not from the browser's connect
+   * 	 * time — a late joiner must see the same elapsed time as everyone else.
+   * 	 * Empty only if the session has somehow not been stamped live yet.
+   */
+  startedAt?: string;
+  /**
+   *  EndedAt is when the host ended the session (RFC3339). Present so a client
+   * 	 * that still holds a connection can freeze the elapsed clock on the final
+   * 	 * duration rather than keep ticking.
+   */
+  endedAt?: string;
+  /**
    * Hidden reports that the SFU will keep this participant invisible to the
    * other participants. Shown to attendees so the privacy claim is legible.
    */
@@ -794,6 +832,12 @@ export interface RoomMeta {
   controls: SessionControls;
   status: WebinarStatus;
   topic: string;
+  /**
+   *  StartedAt / EndedAt mirror the webinar row so every connected client can
+   * 	 * drive the same elapsed clock without a second HTTP round trip.
+   */
+  startedAt?: string;
+  endedAt?: string;
   /**
    * Recording is broadcast to every client rather than known only to the person
    * who pressed the button. Being recorded without being told is the kind of
@@ -956,9 +1000,10 @@ export interface AppConfig {
   googleClientId?: string;
   googleApiKey?: string;
   /**
-   * Supabase Auth (Google sign-in). Public values only. When googleAuth is
-   * false the Continue with Google button is hidden. Distinct from
-   * googleClientId (Drive Picker).
+   *  Supabase Auth (Google sign-in). Public values only — the JWT secret stays
+   * 	 * on the API. When googleAuth is false the Continue with Google button is hidden.
+   * 	 *
+   * 	 * Distinct from GoogleClientID above: that pair is Drive Picker, not login.
    */
   supabaseUrl?: string;
   supabaseAnonKey?: string;

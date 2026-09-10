@@ -790,6 +790,17 @@ type JoinResponse struct {
 	// LiveKit room metadata rather than by polling this endpoint.
 	Controls SessionControls `json:"controls"`
 	Topic    string          `json:"topic"`
+	/* StartedAt is when the host took the webinar live (RFC3339).
+	 *
+	 * The room header clock counts from this, not from the browser's connect
+	 * time — a late joiner must see the same elapsed time as everyone else.
+	 * Empty only if the session has somehow not been stamped live yet.
+	 */
+	StartedAt string `json:"startedAt,omitempty"`
+	/* EndedAt is when the host ended the session (RFC3339). Present so a client
+	 * that still holds a connection can freeze the elapsed clock on the final
+	 * duration rather than keep ticking. */
+	EndedAt string `json:"endedAt,omitempty"`
 	// Hidden reports that the SFU will keep this participant invisible to the
 	// other participants. Shown to attendees so the privacy claim is legible.
 	Hidden bool `json:"hidden"`
@@ -826,6 +837,10 @@ type RoomMeta struct {
 	Controls SessionControls `json:"controls"`
 	Status   WebinarStatus   `json:"status"`
 	Topic    string          `json:"topic"`
+	/* StartedAt / EndedAt mirror the webinar row so every connected client can
+	 * drive the same elapsed clock without a second HTTP round trip. */
+	StartedAt string `json:"startedAt,omitempty"`
+	EndedAt   string `json:"endedAt,omitempty"`
 	// Recording is broadcast to every client rather than known only to the person
 	// who pressed the button. Being recorded without being told is the kind of
 	// thing people sue over, so the indicator has to come from the server and

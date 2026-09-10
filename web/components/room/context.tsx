@@ -39,6 +39,14 @@ export type RoomUI = {
   controls: SessionControls;
   /** Topic from room metadata when available, so a rename reaches everyone. */
   topic: string;
+  /** When the host took the session live (RFC3339). From room metadata once
+   *  connected, otherwise the join response. The header clock counts from this
+   *  — not from this browser's connect time — so a late joiner matches everyone. */
+  startedAt: string | null;
+  /** When the host ended the session (RFC3339). Freezes the elapsed clock. */
+  endedAt: string | null;
+  /** Live status from room metadata when available (scheduled | live | ended). */
+  status: string | null;
   /** Whether the session is being recorded, as announced by the server. Everyone
    *  in the room sees this, which is the whole point: being recorded without being
    *  told is not something to leave to the client that pressed the button. */

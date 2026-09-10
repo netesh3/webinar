@@ -335,7 +335,10 @@ function ConnectedRoom({
     [join.identity, join.displayName, join.role],
   );
 
-  const { controls, topic, recording } = useSessionControls(room, join.controls);
+  const { controls, topic, recording, startedAt, endedAt, status } = useSessionControls(
+    room,
+    join.controls,
+  );
   const { notify } = useToast();
 
   // The audience's route out. Their tokens carry canPublishData=false, so the SFU
@@ -759,6 +762,11 @@ function ConnectedRoom({
       joinKey,
       controls,
       topic: topic ?? initialTopic,
+      // Prefer live metadata so a stamp that arrives after connect is used; fall
+      // back to the join response so the clock is right before metadata lands.
+      startedAt: startedAt ?? join.startedAt ?? null,
+      endedAt: endedAt ?? join.endedAt ?? null,
+      status,
       recording,
       isHost,
       permissions,
@@ -793,6 +801,9 @@ function ConnectedRoom({
       controls,
       topic,
       initialTopic,
+      startedAt,
+      endedAt,
+      status,
       recording,
       isHost,
       permissions,
@@ -1025,19 +1036,36 @@ function NetworkIndicator() {
   );
 }
 
-/** How long the session has been running, from this client's connect time. */
+/** How long the webinar has been live, from the host's start time.
+ *
+ *  Counts from webinar.startedAt (server stamp when status became live), not
+ *  from this browser's connect / mount time — a late joiner must match the room. */
 function LiveClock() {
   const state = useConnectionState();
-  const [startedAt] = useState(() => Date.now());
-  const [now, setNow] = useState(startedAt);
+  const { startedAt, endedAt, status } = useRoomUI();
+  const [now, setNow] = useState(() => Date.now());
+
+  const ended = status === "ended" || Boolean(endedAt);
+  // Freeze on endedAt when we have it; otherwise hold the last tick so the
+  // display does not keep advancing after the session is over.
+  const clockNow = ended && endedAt ? new Date(endedAt).getTime() : now;
 
   useEffect(() => {
-    if (state !== ConnectionState.Connected) return;
+    if (state !== ConnectionState.Connected || ended) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [state]);
+  }, [state, ended]);
 
   if (state !== ConnectionState.Connected) return null;
+  // Not started yet — show a zero clock rather than inventing a local start.
+  if (!startedAt) {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-onair/15 px-2 py-0.5 text-[10.5px] font-semibold text-onair-soft">
+        <span className="size-1.5 rounded-full bg-onair" aria-hidden />
+        <span className="tabular-nums">0:00</span>
+      </span>
+    );
+  }
 
   return (
     // Green, not red. This says "the session is running", and the only red thing in
@@ -1045,10 +1073,11 @@ function LiveClock() {
     // recorded" everywhere else, so spending it on a healthy clock both dilutes that
     // signal and makes a working webinar look like it has a problem.
     <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-onair/15 px-2 py-0.5 text-[10.5px] font-semibold text-onair-soft">
-      <span className="size-1.5 animate-pulse rounded-full bg-onair" aria-hidden />
-      <span className="tabular-nums">
-        {formatElapsed(new Date(startedAt).toISOString(), now)}
-      </span>
+      <span
+        className={`size-1.5 rounded-full bg-onair ${ended ? "" : "animate-pulse"}`}
+        aria-hidden
+      />
+      <span className="tabular-nums">{formatElapsed(startedAt, clockNow)}</span>
     </span>
   );
 }

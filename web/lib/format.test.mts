@@ -10,6 +10,7 @@
 import {
   DEFAULT_TIME_ZONE,
   formatDay,
+  formatElapsed,
   formatTime,
   formatTimeRange,
   instantToZoned,
@@ -134,6 +135,31 @@ for (const [date, time, zone] of [
   is(`${date} ${time} ${zone} round-trips the date`, back.date, date);
   is(`${date} ${time} ${zone} round-trips the time`, back.time, time);
 }
+
+console.log("elapsed session clock");
+/* Counts from a server start stamp, not from "now when the component mounted".
+ * A late joiner and someone who was there from the start must agree. */
+const LIVE_START = "2026-09-11T10:00:00.000Z";
+is(
+  "twelve minutes after host start",
+  formatElapsed(LIVE_START, Date.parse("2026-09-11T10:12:07.000Z")),
+  "12:07",
+);
+is(
+  "past an hour",
+  formatElapsed(LIVE_START, Date.parse("2026-09-11T11:04:32.000Z")),
+  "1:04:32",
+);
+is(
+  "before start clamps to zero",
+  formatElapsed(LIVE_START, Date.parse("2026-09-11T09:59:00.000Z")),
+  "0:00",
+);
+is(
+  "endedAt freezes the final duration",
+  formatElapsed(LIVE_START, Date.parse("2026-09-11T10:45:00.000Z")),
+  "45:00",
+);
 
 console.log(
   `\n${failed === 0 ? "PASS" : "FAIL"}  ${passed}/${passed + failed} checks passed`,
