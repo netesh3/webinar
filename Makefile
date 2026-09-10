@@ -54,8 +54,8 @@ api: ## Run the Go API (terminal 2)
 	cd api && APP_ENV=development DATABASE_URL="$(DB_URL)" go run ./cmd/server
 
 .PHONY: migrate
-migrate: ## Apply embedded SQL migrations (set DATABASE_URL for Supabase; defaults to local DB_URL)
-	cd api && DATABASE_URL="$(or $(DATABASE_URL),$(DB_URL))" go run ./cmd/migrate
+migrate: ## Apply embedded SQL migrations (override: make migrate DB_URL='postgres://…?sslmode=require')
+	cd api && DATABASE_URL="$(DB_URL)" go run ./cmd/migrate
 
 .PHONY: web
 web: ## Run the Next.js frontend (terminal 3)

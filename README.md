@@ -381,8 +381,15 @@ Three things that will bite you in production:
 Scaffolding lives under `deploy/`. Project default: `ai-project-490516`, region
 `us-central1`, Artifact Registry repo `webcast`.
 
+**Postgres for production:** prefer **Supabase** (`deploy/SUPABASE.md`). Local
+`docker-compose` / Homebrew Postgres stays for offline development. Use a
+Supabase **direct** URI with `sslmode=require`. Transaction pooler is optional
+and needs `default_query_exec_mode=simple_protocol` for pgx.
+
 ```bash
 cp deploy/cloudrun.env.example deploy/cloudrun.env   # fill secrets (gitignored)
+# DATABASE_URL=postgres://postgres:…@db.<ref>.supabase.co:5432/postgres?sslmode=require
+make migrate DB_URL="$DATABASE_URL"                  # one-shot schema (also runs on API boot)
 ./deploy/cloudrun-deploy.sh --build-only             # image → Artifact Registry
 ./deploy/cloudrun-deploy.sh                          # build + Cloud Run deploy
 ```
@@ -392,15 +399,25 @@ and LiveKit via `LIVEKIT_PROJECTS` or legacy `LIVEKIT_URL` + `LIVEKIT_API_KEY` +
 `LIVEKIT_API_SECRET`. Set `RECORDINGS_ENABLED=false` on Cloud Run until you have
 writable storage. The API listens on Cloud Run's `PORT` when `ADDR` is unset.
 
-**GitHub Actions:** `.github/workflows/cloudrun-deploy.yml` is a manual
-`workflow_dispatch` deploy. Set repository secrets `LIVEKIT_URL`,
-`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, plus `DATABASE_URL`, `SESSION_SECRET`,
-and `GCP_SA_KEY` (deploy service-account JSON). Do not commit real values —
+**GitHub Actions:** `.github/workflows/cloudrun-deploy.yml` is the single Cloud
+Run API deploy workflow (the old `deploy-api.yml` duplicate was removed). It
+supports:
+
+- **Manual:** `workflow_dispatch` from the Actions tab
+- **Auto:** push to `main` when `api/**`, `deploy/cloudrun-deploy.sh`,
+  `deploy/cloudrun.env.example`, or the workflow file itself change
+
+Set repository secrets `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
+(or `LIVEKIT_PROJECTS`), plus `DATABASE_URL` (Supabase), `SESSION_SECRET`, and
+`GCP_SA_KEY` (deploy service-account JSON). Do not commit real values —
 placeholders only in `deploy/cloudrun.env.example`.
 
+```bash
+gh secret set DATABASE_URL -R netesh3/webinar   # paste Supabase URI when prompted
+```
+
 LiveKit media still needs UDP/TCP outside Cloud Run (self-hosted SFU or LiveKit
-Cloud). Postgres can be Cloud SQL (use `--add-cloudsql-instances`) or any reachable
-provider (e.g. Neon).
+Cloud). Leave `CLOUD_SQL_INSTANCE` unset when using Supabase.
 
 ## Scaling past 500
 

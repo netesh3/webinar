@@ -101,7 +101,7 @@ DATABASE_URL='postgres://webcast:webcast@localhost:5432/webcast?sslmode=disable'
 
    The script already passes `DATABASE_URL` into Cloud Run `--set-env-vars`.
    CI can export the same vars (GitHub Actions secrets) without a local
-   `cloudrun.env`; see `.github/workflows/deploy-api.yml`.
+   `cloudrun.env`; see `.github/workflows/cloudrun-deploy.yml`.
 
 3. Leave `CLOUD_SQL_INSTANCE` unset when using Supabase (no Cloud SQL sidecar).
 
@@ -121,9 +121,8 @@ admin on `netesh3/webinar` will get HTTP 403 — ask a maintainer.
 
 ```bash
 # Uses api/cmd/migrate — same embedded SQL as server boot
-export DATABASE_URL='postgres://postgres:SECRET@db.<PROJECT_REF>.supabase.co:5432/postgres?sslmode=require'
-make migrate
-# or: cd api && go run ./cmd/migrate
+make migrate DB_URL='postgres://postgres:SECRET@db.<PROJECT_REF>.supabase.co:5432/postgres?sslmode=require'
+# or: cd api && DATABASE_URL='…' go run ./cmd/migrate
 ```
 
 Idempotent: already-applied versions are skipped. The API will migrate again on

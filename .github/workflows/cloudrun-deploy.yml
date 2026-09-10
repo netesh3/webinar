@@ -1,28 +1,40 @@
 # Deploy the Go API to Google Cloud Run.
 # Secrets must be set on the repo (Settings → Secrets → Actions); never commit them.
 #
+# Triggers:
+#   - workflow_dispatch — manual deploy from the Actions tab
+#   - push to main — auto-deploy when API, Dockerfile, deploy script, or this workflow change
+#
 # Required repository secrets:
 #   GCP_SA_KEY           — JSON key for a deploy SA (Artifact Registry + Cloud Run + Cloud Build)
-#   DATABASE_URL
+#   DATABASE_URL         — prefer Supabase direct URI with sslmode=require (deploy/SUPABASE.md)
 #   SESSION_SECRET
 #   LIVEKIT_URL          — e.g. wss://YOUR_PROJECT.livekit.cloud
 #   LIVEKIT_API_KEY
 #   LIVEKIT_API_SECRET
+#     — or set LIVEKIT_PROJECTS (JSON) instead of the legacy trio
 #
 # Optional:
-#   CORS_ORIGINS, WEB_BASE_URL, CLOUD_SQL_INSTANCE, GCP_PROJECT, GCP_REGION
+#   CORS_ORIGINS, WEB_BASE_URL, LIVEKIT_HTTP_URL, LIVEKIT_PROJECTS
+#   CLOUD_SQL_INSTANCE — only if not using Supabase
+#   GCP_PROJECT / GCP_REGION as repo Variables (defaults in deploy/cloudrun-deploy.sh)
 
 name: Deploy API (Cloud Run)
 
 on:
   workflow_dispatch:
-  # Uncomment when ready for auto-deploy on main:
-  # push:
-  #   branches: [main]
-  #   paths:
-  #     - "api/**"
-  #     - "deploy/**"
-  #     - ".github/workflows/cloudrun-deploy.yml"
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "api/Dockerfile"
+      - "deploy/cloudrun-deploy.sh"
+      - "deploy/cloudrun.env.example"
+      - ".github/workflows/cloudrun-deploy.yml"
+
+concurrency:
+  group: deploy-api-cloudrun
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -43,6 +55,8 @@ jobs:
       LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
       LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
       LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+      LIVEKIT_PROJECTS: ${{ secrets.LIVEKIT_PROJECTS }}
+      LIVEKIT_HTTP_URL: ${{ secrets.LIVEKIT_HTTP_URL }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       CLOUD_SQL_INSTANCE: ${{ secrets.CLOUD_SQL_INSTANCE }}
@@ -51,6 +65,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Require DATABASE_URL (Supabase)
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "Set repository secret DATABASE_URL to a Supabase URI with sslmode=require (see deploy/SUPABASE.md)." >&2
+            exit 1
+          fi
+          if [ -z "${SESSION_SECRET}" ]; then
+            echo "Set repository secret SESSION_SECRET." >&2
+            exit 1
+          fi
 
       - id: auth
         uses: google-github-actions/auth@v2
