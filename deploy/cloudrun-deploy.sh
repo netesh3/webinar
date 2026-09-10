@@ -20,7 +20,7 @@ ENV_FILE="${ROOT}/deploy/cloudrun.env"
 EXAMPLE="${ROOT}/deploy/cloudrun.env.example"
 
 PROJECT="${GCP_PROJECT:-ai-project-490516}"
-REGION="${GCP_REGION:-us-central1}"
+REGION="${GCP_REGION:-asia-south1}"
 AR_REPO="${AR_REPO:-webcast}"
 SERVICE="${SERVICE_NAME:-webcast-api}"
 IMAGE_NAME="${IMAGE_NAME:-webcast-api}"

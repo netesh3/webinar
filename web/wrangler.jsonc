@@ -16,6 +16,6 @@
   ],
   // Server-side only. Browser API base is NEXT_PUBLIC_API_BASE (build-time).
   "vars": {
-    "API_INTERNAL_URL": "https://webcast-api-514730520122.us-central1.run.app"
+    "API_INTERNAL_URL": "https://webcast-api-514730520122.asia-south1.run.app"
   }
 }

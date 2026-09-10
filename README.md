@@ -382,7 +382,7 @@ Current managed topology (Cloudflare Workers + Cloud Run + Supabase + LiveKit
 Cloud): [`docs/DEPLOYMENT-TOPOLOGY.md`](docs/DEPLOYMENT-TOPOLOGY.md).
 
 Scaffolding lives under `deploy/`. Project default: `ai-project-490516`, region
-`us-central1`, Artifact Registry repo `webcast`.
+`asia-south1` (Mumbai), Artifact Registry repo `webcast`.
 
 **Postgres for production:** prefer **Supabase** (`deploy/SUPABASE.md`). Local
 `docker-compose` / Homebrew Postgres stays for offline development. Use a

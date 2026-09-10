@@ -2,16 +2,26 @@
 
 This is the **current production-shaped** deployment: managed frontend, API, database, and SFU. It is separate from the single-server Docker stack in [`DEPLOY.md`](../DEPLOY.md) / [`DEPLOY-ANYWHERE.md`](../DEPLOY-ANYWHERE.md) and from the path-mounted Kubernetes sketch in [`k8s/README.md`](../k8s/README.md).
 
+**Active topology is India-only** (API + images in GCP `asia-south1` / Mumbai; Postgres in Supabase `ap-south-1` / Mumbai).
+
 | Layer | Where it runs | Public URL / endpoint |
 |---|---|---|
 | Frontend (Next.js 16 via OpenNext) | Cloudflare Workers | https://webinar-web.ganesh-s-p006.workers.dev |
-| API (Go) | Google Cloud Run · `us-central1` | https://webcast-api-514730520122.us-central1.run.app |
-| Postgres | Supabase · project `webcast` (`qiakwcylllwwvjymgmtz`) · `us-east-1` | session pooler `:5432` + `sslmode=require` |
+| API (Go) | Google Cloud Run · `asia-south1` | https://webcast-api-514730520122.asia-south1.run.app |
+| Postgres | Supabase · project `webcast-in` (`odptebpbrrixhrzfqtqp`) · `ap-south-1` | session pooler `:5432` + `sslmode=require` |
 | Media SFU | LiveKit Cloud | `wss://webinar-34dvh60a.livekit.cloud` |
-| Images | Artifact Registry · `webcast` · `us-central1` | `us-central1-docker.pkg.dev/ai-project-490516/webcast/…` |
+| Images | Artifact Registry · `webcast` · `asia-south1` | `asia-south1-docker.pkg.dev/ai-project-490516/webcast/…` |
 | CI / deploy | GitHub Actions → Cloud Build → Cloud Run | [`.github/workflows/cloudrun-deploy.yml`](../.github/workflows/cloudrun-deploy.yml) |
 
-GCP project: **`ai-project-490516`**. Deploy SA: `webcast-deploy@ai-project-490516.iam.gserviceaccount.com` (JSON key stored as GitHub secret `GCP_SA_KEY`).
+GCP project: **`ai-project-490516`**. Deploy SA: `webcast-deploy@ai-project-490516.iam.gserviceaccount.com` (JSON key stored as GitHub secret `GCP_SA_KEY`). Repo variable **`GCP_REGION=asia-south1`**.
+
+### Deprecated (not active)
+
+| Resource | Status |
+|---|---|
+| Cloud Run `webcast-api` in `us-central1` | Removed after India service was healthy (avoid double cost) |
+| Artifact Registry `webcast` in `us-central1` | Left in place; unused — safe to delete later |
+| Supabase `webcast` (`qiakwcylllwwvjymgmtz`) · `us-east-1` | Left in place as deprecated; fresh India DB was bootstrapped (no data dump migrated) |
 
 ---
 
@@ -25,14 +35,14 @@ flowchart LR
     Web["Workers SSR\nwebinar-web"]
   end
 
-  subgraph gcp [GCP ai-project-490516]
+  subgraph gcp [GCP ai-project-490516 · asia-south1]
     Run["Cloud Run\nwebcast-api"]
     AR["Artifact Registry\nwebcast"]
     CB["Cloud Build"]
   end
 
   subgraph data [Data and media]
-    SB["Supabase Postgres\nsession pooler"]
+    SB["Supabase Postgres\nap-south-1 session pooler"]
     LK["LiveKit Cloud\nSFU / WebRTC"]
   end
 
@@ -65,8 +75,8 @@ flowchart TD
   WF["Actions: Deploy API Cloud Run"]
   SA["Secret GCP_SA_KEY\ndeploy SA"]
   Build["gcloud builds submit\napi/"]
-  Img["Artifact Registry image"]
-  Deploy["gcloud run deploy webcast-api"]
+  Img["Artifact Registry image\nasia-south1"]
+  Deploy["gcloud run deploy webcast-api\nasia-south1"]
   Secrets["Repo secrets\nDATABASE_URL SESSION_SECRET LIVEKIT CORS WEB"]
 
   Dev --> GH
@@ -92,7 +102,7 @@ flowchart TD
 
 Required GitHub **secrets**: `GCP_SA_KEY`, `DATABASE_URL`, `SESSION_SECRET`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (or `LIVEKIT_PROJECTS`).  
 Optional: `CORS_ORIGINS`, `WEB_BASE_URL`, `ADMIN_EMAILS` / `ADMIN_PASSWORD` (bootstrap production admin on fresh DB).  
-Repo **variables**: `GCP_PROJECT`, `GCP_REGION`.
+Repo **variables**: `GCP_PROJECT`, `GCP_REGION` (= `asia-south1`).
 
 Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env.example). Supabase notes: [`deploy/SUPABASE.md`](../deploy/SUPABASE.md). Frontend Worker notes: [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md).
 

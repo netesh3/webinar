@@ -27,11 +27,15 @@ Or set `SUPABASE_ACCESS_TOKEN` from https://supabase.com/dashboard/account/token
 supabase projects list
 
 # Create (interactive region/org prompts vary by CLI version)
-supabase projects create webcast --org-id <ORG_ID> --db-password <STRONG_PASSWORD> --region us-east-1
+# Prefer Mumbai for this repo's India topology (matches Cloud Run asia-south1).
+supabase projects create webcast-in --org-id <ORG_ID> --db-password <STRONG_PASSWORD> --region ap-south-1
 ```
 
-Dashboard alternative: https://supabase.com/dashboard → New project → name `webcast`
-(or `webinar`) → save the database password.
+Dashboard alternative: https://supabase.com/dashboard → New project → name `webcast-in`
+(or `webcast`) → region **Mumbai / ap-south-1** → save the database password.
+
+Active managed topology: project **`webcast-in`** (`odptebpbrrixhrzfqtqp`) in `ap-south-1`.  
+Deprecated: older `webcast` (`qiakwcylllwwvjymgmtz`) in `us-east-1` — leave until you no longer need a rollback copy.
 
 ## Connection strings
 
