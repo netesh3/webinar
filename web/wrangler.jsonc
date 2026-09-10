@@ -15,8 +15,7 @@
     }
   ],
   // Server-side only. Browser API base is NEXT_PUBLIC_API_BASE (build-time).
-  // Set to your Cloud Run / public API origin when available.
   "vars": {
-    "API_INTERNAL_URL": ""
+    "API_INTERNAL_URL": "https://webcast-api-514730520122.us-central1.run.app"
   }
 }
