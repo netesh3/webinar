@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "webinar-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-09-11",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "webinar-web"
+    }
+  ],
+  // Server-side only. Browser API base is NEXT_PUBLIC_API_BASE (build-time).
+  // Set to your Cloud Run / public API origin when available.
+  "vars": {
+    "API_INTERNAL_URL": ""
+  }
+}

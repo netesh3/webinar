@@ -31,3 +31,6 @@ __MACOSX/
 
 # Cloud Run local secrets (copy from deploy/cloudrun.env.example)
 deploy/cloudrun.env
+
+# Wrangler local cache (account id, etc.)
+.wrangler/

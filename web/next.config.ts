@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 /** Serve the whole app under a sub-path, e.g. "/platform/webcast".
  *
@@ -20,11 +21,13 @@ function basePath(): string | undefined {
 }
 
 const nextConfig: NextConfig = {
-  // Standalone output for the container image: Next traces the modules actually
-  // reached and emits a self-contained server, so the runtime image carries no
-  // node_modules tree and no build tooling. See web/Dockerfile.
-  output: "standalone",
+  // Standalone for the container image (web/Dockerfile). Skip when building for
+  // Cloudflare OpenNext — that adapter transforms the default Next output.
+  ...(process.env.OPEN_NEXT !== "1" ? { output: "standalone" as const } : {}),
   basePath: basePath(),
 };
 
 export default nextConfig;
+
+// Local `next dev` integration with Cloudflare bindings (no-op in production builds).
+initOpenNextCloudflareForDev();
