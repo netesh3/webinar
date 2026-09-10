@@ -194,7 +194,10 @@ Project **webcast-in** (`odptebpbrrixhrzfqtqp`) → Authentication:
    - Redirect URLs:
      - `https://webinar-web.ganesh-s-p006.workers.dev/auth/callback`
      - `http://localhost:3000/auth/callback` (local Next)
-3. **Settings → API**: copy Project URL, `anon` `public` key, and **JWT Secret**
+3. **Settings → API**: copy Project URL and `anon` `public` key. Access tokens are
+   verified via **JWKS** (`/auth/v1/.well-known/jwks.json`, typically ES256). The
+   legacy **JWT Secret** (`SUPABASE_JWT_SECRET`) is optional and only needed for
+   older HS256 projects.
    (legacy symmetric secret used to verify access tokens). Management API:
    `GET /v1/projects/<ref>/postgrest` → `jwt_secret`.
 
@@ -206,7 +209,7 @@ Set on Cloud Run (via `deploy/cloudrun.env`, GitHub secrets, or `gcloud`):
 |----------|---------|---------|
 | `SUPABASE_URL` | yes (via `/api/config`) | `https://<ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | yes (via `/api/config`) | anon/public key for browser OAuth |
-| `SUPABASE_JWT_SECRET` | **no** | verifies access tokens in `POST /api/auth/supabase` |
+| `SUPABASE_JWT_SECRET` | **no** | optional legacy HS256 secret; modern projects use JWKS/ES256 |
 
 When all three are set, `/api/config` returns `googleAuth: true` and the login /
 signup pages show **Continue with Google**.

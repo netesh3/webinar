@@ -285,10 +285,10 @@ func Load() (Config, error) {
 
 func (c Config) IsDev() bool { return c.Env == "development" }
 
-// GoogleAuthEnabled is true when Supabase Auth Google can be offered end-to-end:
-// public client config for the browser plus a JWT secret to verify exchanges.
+// GoogleAuthEnabled is true when Supabase Auth Google can be offered end-to-end.
+// Tokens are verified via JWKS (ES256) and/or the legacy HS256 JWT secret.
 func (c Config) GoogleAuthEnabled() bool {
-	return c.SupabaseURL != "" && c.SupabaseAnonKey != "" && c.SupabaseJWTSecret != ""
+	return c.SupabaseURL != "" && c.SupabaseAnonKey != ""
 }
 
 // passwordFloor is the shortest password a real deployment may accept. Ten

@@ -1,6 +1,14 @@
 package auth
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -110,4 +118,89 @@ func TestVerifySupabaseAccessToken(t *testing.T) {
 			t.Fatalf("name %q", id.Name)
 		}
 	})
+}
+
+func TestVerifySupabaseAccessTokenES256JWKS(t *testing.T) {
+	clearSupabaseJWKSCache()
+	t.Cleanup(clearSupabaseJWKSCache)
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kid := "test-es256-kid"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/auth/v1/.well-known/jwks.json" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(jwksDoc{Keys: []jwkKey{{
+			Kid: kid,
+			Kty: "EC",
+			Alg: "ES256",
+			Crv: "P-256",
+			X:   base64.RawURLEncoding.EncodeToString(padEC(priv.X)),
+			Y:   base64.RawURLEncoding.EncodeToString(padEC(priv.Y)),
+		}}})
+	}))
+	t.Cleanup(srv.Close)
+
+	prev := jwksHTTP
+	jwksHTTP = srv.Client()
+	t.Cleanup(func() { jwksHTTP = prev })
+
+	now := time.Now()
+	c := &supabaseClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "22222222-2222-2222-2222-222222222222",
+			Issuer:    srv.URL + "/auth/v1",
+			Audience:  jwt.ClaimStrings{"authenticated"},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+		},
+		Email: "es256@example.com",
+		Role:  "authenticated",
+		UserMetadata: map[string]any{
+			"name": "ES User",
+		},
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodES256, c)
+	tok.Header["kid"] = kid
+	signed, err := tok.SignedString(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id, err := VerifySupabaseAccessToken(signed, "", srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id.Email != "es256@example.com" || id.Name != "ES User" {
+		t.Fatalf("got %+v", id)
+	}
+
+	// Wrong key must fail.
+	other, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad, err := tok.SignedString(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clearSupabaseJWKSCache()
+	if _, err := VerifySupabaseAccessToken(bad, "", srv.URL); err == nil {
+		t.Fatal("expected signature failure")
+	}
+}
+
+func padEC(n *big.Int) []byte {
+	b := n.Bytes()
+	if len(b) >= 32 {
+		return b
+	}
+	out := make([]byte, 32)
+	copy(out[32-len(b):], b)
+	return out
 }
