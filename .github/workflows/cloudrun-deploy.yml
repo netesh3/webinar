@@ -1,0 +1,63 @@
+# Deploy the Go API to Google Cloud Run.
+# Secrets must be set on the repo (Settings → Secrets → Actions); never commit them.
+#
+# Required repository secrets:
+#   GCP_SA_KEY           — JSON key for a deploy SA (Artifact Registry + Cloud Run + Cloud Build)
+#   DATABASE_URL
+#   SESSION_SECRET
+#   LIVEKIT_URL          — e.g. wss://YOUR_PROJECT.livekit.cloud
+#   LIVEKIT_API_KEY
+#   LIVEKIT_API_SECRET
+#
+# Optional:
+#   CORS_ORIGINS, WEB_BASE_URL, CLOUD_SQL_INSTANCE, GCP_PROJECT, GCP_REGION
+
+name: Deploy API (Cloud Run)
+
+on:
+  workflow_dispatch:
+  # Uncomment when ready for auto-deploy on main:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "api/**"
+  #     - "deploy/**"
+  #     - ".github/workflows/cloudrun-deploy.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+
+    env:
+      # Defaults live in deploy/cloudrun-deploy.sh; override via repo variables/secrets if needed.
+      GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+      LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+      LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+      CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+      WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
+      CLOUD_SQL_INSTANCE: ${{ secrets.CLOUD_SQL_INSTANCE }}
+      RECORDINGS_ENABLED: "false"
+      SEED_DEV: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy
+        run: chmod +x deploy/cloudrun-deploy.sh && ./deploy/cloudrun-deploy.sh

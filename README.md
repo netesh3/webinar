@@ -376,6 +376,32 @@ Three things that will bite you in production:
   arrives from a single egress address, so a join limit sized for one person
   retrying locks out the building. Hence the boot-time floor.
 
+### Google Cloud Run (API only)
+
+Scaffolding lives under `deploy/`. Project default: `ai-project-490516`, region
+`us-central1`, Artifact Registry repo `webcast`.
+
+```bash
+cp deploy/cloudrun.env.example deploy/cloudrun.env   # fill secrets (gitignored)
+./deploy/cloudrun-deploy.sh --build-only             # image → Artifact Registry
+./deploy/cloudrun-deploy.sh                          # build + Cloud Run deploy
+```
+
+Required env for a live service: `DATABASE_URL`, `SESSION_SECRET` (≥32 bytes),
+and LiveKit via `LIVEKIT_PROJECTS` or legacy `LIVEKIT_URL` + `LIVEKIT_API_KEY` +
+`LIVEKIT_API_SECRET`. Set `RECORDINGS_ENABLED=false` on Cloud Run until you have
+writable storage. The API listens on Cloud Run's `PORT` when `ADDR` is unset.
+
+**GitHub Actions:** `.github/workflows/cloudrun-deploy.yml` is a manual
+`workflow_dispatch` deploy. Set repository secrets `LIVEKIT_URL`,
+`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, plus `DATABASE_URL`, `SESSION_SECRET`,
+and `GCP_SA_KEY` (deploy service-account JSON). Do not commit real values —
+placeholders only in `deploy/cloudrun.env.example`.
+
+LiveKit media still needs UDP/TCP outside Cloud Run (self-hosted SFU or LiveKit
+Cloud). Postgres can be Cloud SQL (use `--add-cloudsql-instances`) or any reachable
+provider (e.g. Neon).
+
 ## Scaling past 500
 
 500 concurrent attendees on pure WebRTC is ~1 Gbps of egress from one SFU node —

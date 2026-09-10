@@ -28,3 +28,6 @@ __MACOSX/
 
 # local editor / agent settings
 .claude/
+
+# Cloud Run local secrets (copy from deploy/cloudrun.env.example)
+deploy/cloudrun.env
