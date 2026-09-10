@@ -139,6 +139,36 @@ func TestLiveKitHTTPURLDefaultsToTheBrowserAddress(t *testing.T) {
 	})
 }
 
+func TestListenAddrHonorsCloudRunPORT(t *testing.T) {
+	t.Run("default when neither is set", func(t *testing.T) {
+		c := load(t, map[string]string{})
+		if c.Addr != ":8080" {
+			t.Errorf("Addr = %q, want :8080", c.Addr)
+		}
+	})
+
+	t.Run("PORT alone becomes a listen address", func(t *testing.T) {
+		c := load(t, map[string]string{"PORT": "8080"})
+		if c.Addr != ":8080" {
+			t.Errorf("Addr = %q, want :8080 from PORT", c.Addr)
+		}
+	})
+
+	t.Run("ADDR wins over PORT", func(t *testing.T) {
+		c := load(t, map[string]string{"ADDR": ":9090", "PORT": "8080"})
+		if c.Addr != ":9090" {
+			t.Errorf("Addr = %q, want ADDR to win", c.Addr)
+		}
+	})
+
+	t.Run("PORT may already include a colon", func(t *testing.T) {
+		c := load(t, map[string]string{"PORT": ":7777"})
+		if c.Addr != ":7777" {
+			t.Errorf("Addr = %q, want :7777", c.Addr)
+		}
+	})
+}
+
 // ------------------------------------------------------------------- helpers
 
 // productionEnv is the minimum a non-development config needs to be valid, so a
@@ -254,7 +284,7 @@ func TestSMTPFromFallsBackToSupportEmail(t *testing.T) {
 func setEnv(t *testing.T, env map[string]string) {
 	t.Helper()
 	for _, key := range []string{
-		"APP_ENV", "ADDR", "DATABASE_URL", "LIVEKIT_URL", "LIVEKIT_API_KEY",
+		"APP_ENV", "ADDR", "PORT", "DATABASE_URL", "LIVEKIT_URL", "LIVEKIT_API_KEY",
 		"LIVEKIT_API_SECRET", "SESSION_SECRET", "SESSION_TTL", "LIVEKIT_TOKEN_TTL",
 		"SHUTDOWN_GRACE", "MAX_ATTENDEES", "REGISTER_RATE_PER_MIN", "JOIN_RATE_PER_MIN",
 		"CORS_ORIGINS", "APP_NAME", "SUPPORT_EMAIL", "WEB_BASE_URL", "COOKIE_SECURE",
@@ -263,6 +293,7 @@ func setEnv(t *testing.T, env map[string]string) {
 		"ADMIN_EMAILS", "ADMIN_PASSWORD",
 		"DEFAULT_ATTENDEE_LIMIT",
 		"SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM",
+		"LIVEKIT_PROJECTS", "AUTH_BYPASS", "GOOGLE_CLIENT_ID", "GOOGLE_API_KEY",
 	} {
 		t.Setenv(key, "")
 	}

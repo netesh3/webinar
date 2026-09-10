@@ -1,11 +1,14 @@
 # Self-hosted stack. Every component is open source:
 #   Postgres (PostgreSQL licence) · Redis (BSD-3) · LiveKit (Apache-2.0) · coturn (BSD)
 #
-# This file is the deployment target. For local development on macOS see the
-# Makefile: Docker Hub was rate-limiting/refusing manifests when this was built,
-# so `make dev` uses Homebrew Postgres on :5432 and the natively-compiled
-# LiveKit binary in infra/bin/ (there is no darwin release tarball, so the
-# Makefile builds it from source). Same versions, same config shape.
+# Local / self-host Postgres stays here. Production Cloud Run prefers Supabase —
+# set DATABASE_URL to the Supabase URI (sslmode=require); see deploy/SUPABASE.md.
+#
+# This file is the deployment target for the full self-hosted stack. For local
+# development on macOS see the Makefile: Docker Hub was rate-limiting/refusing
+# manifests when this was built, so `make db` / Homebrew Postgres on :5432 and
+# the natively-compiled LiveKit binary in infra/bin/ are the usual path. Same
+# versions, same config shape.
 #
 # Sizing note: this file targets the 500-concurrent-attendee ceiling. Only the
 # host and panelists publish, so the SFU's load is dominated by *egress* —

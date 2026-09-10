@@ -199,7 +199,7 @@ func httpFromWS(u string) string {
 func Load() (Config, error) {
 	c := Config{
 		Env:  env("APP_ENV", "development"),
-		Addr: env("ADDR", ":8080"),
+		Addr: listenAddr(),
 		// 5432 to match start.sh and the Makefile. Both set DATABASE_URL
 		// explicitly, so this default only matters when running the binary by
 		// hand — which is exactly when a disagreeing port wastes ten minutes.
@@ -358,6 +358,20 @@ func (c Config) validate() error {
 	errs = append(errs, validateLiveKitProjects(c.LiveKitProjects, c.IsDev()))
 
 	return errors.Join(errs...)
+}
+
+// listenAddr prefers ADDR; if unset, honors Cloud Run's PORT (a bare number).
+func listenAddr() string {
+	if v := strings.TrimSpace(os.Getenv("ADDR")); v != "" {
+		return v
+	}
+	if p := strings.TrimSpace(os.Getenv("PORT")); p != "" {
+		if strings.HasPrefix(p, ":") {
+			return p
+		}
+		return ":" + p
+	}
+	return ":8080"
 }
 
 func env(key, def string) string {
