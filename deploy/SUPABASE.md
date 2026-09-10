@@ -39,15 +39,19 @@ Project → **Settings → Database → Connection string**.
 
 | Use | Host / port | Notes |
 |---|---|---|
-| **Migrations / preferred for this app** | Direct: `db.<PROJECT_REF>.supabase.co:5432` | Full Postgres session. Use for `make migrate` / first boot. |
-| **Cloud Run (optional pooler)** | Transaction pooler `:6543` | Add `sslmode=require` and `default_query_exec_mode=simple_protocol` (pgx prepared statements break under transaction pooling). |
+| **Preferred for this app (IPv4)** | Session pooler: `aws-0-<REGION>.pooler.supabase.com:5432` | Full Postgres session. User is `postgres.<PROJECT_REF>`. Use for `make migrate` and Cloud Run. |
+| Direct | `db.<PROJECT_REF>.supabase.co:5432` | Often **IPv6-only** on newer projects — fails on IPv4-only networks (many laptops / default Cloud Run egress). |
+| Transaction pooler | `:6543` | Add `sslmode=require` and `default_query_exec_mode=simple_protocol` (pgx prepared statements break under transaction pooling). |
 
 Always include **`sslmode=require`**. Supabase rejects non-TLS clients.
 
 Example shapes (passwords redacted — never commit real URLs):
 
 ```text
-# Direct (recommended starting point for Cloud Run + migrate)
+# Session pooler :5432 (recommended — IPv4 + full sessions for migrate/pgx)
+postgres://postgres.<PROJECT_REF>:SECRET@aws-0-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require
+
+# Direct (IPv6 on many projects — prefer only if your runtime has IPv6 egress)
 postgres://postgres:SECRET@db.<PROJECT_REF>.supabase.co:5432/postgres?sslmode=require
 
 # Transaction pooler (scale-out / many short-lived Cloud Run instances)
@@ -59,13 +63,12 @@ app creates its own tables via migrations.
 
 ### pgx / pool behaviour
 
-- `store.Open` uses a `pgxpool` (MaxConns=20). Direct Supabase is enough for
+- `store.Open` uses a `pgxpool` (MaxConns=20). Session pooler `:5432` is enough for
   Cloud Run `--max-instances 3`.
 - Migrations wrap each file in a transaction and record versions in
-  `schema_migrations`. Prefer the **direct** URL for one-shot migrate.
-- Boot migrate still runs on the URL you set for Cloud Run; if you use the
-  transaction pooler at runtime, either run migrate once with the direct URL
-  first, or keep using direct for both until you need pooling.
+  `schema_migrations`. Prefer the **session pooler** URL (or direct if IPv6 works).
+- Avoid the **transaction** pooler for migrate unless you also set
+  `default_query_exec_mode=simple_protocol` for runtime.
 
 ## Wire local env (optional)
 
@@ -73,7 +76,7 @@ Point the API at Supabase instead of Docker Postgres:
 
 ```bash
 # .env (gitignored) — do not commit
-DATABASE_URL='postgres://postgres:SECRET@db.<PROJECT_REF>.supabase.co:5432/postgres?sslmode=require'
+DATABASE_URL='postgres://postgres.<PROJECT_REF>:SECRET@aws-0-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require'
 ```
 
 Or keep local Postgres:
@@ -90,7 +93,7 @@ DATABASE_URL='postgres://webcast:webcast@localhost:5432/webcast?sslmode=disable'
 
    ```bash
    cp deploy/cloudrun.env.example deploy/cloudrun.env
-   # set DATABASE_URL to the Supabase direct URI (sslmode=require)
+   # set DATABASE_URL to the Supabase session-pooler URI (sslmode=require)
    ```
 
 2. Deploy:

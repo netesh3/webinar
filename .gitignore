@@ -32,5 +32,8 @@ __MACOSX/
 # Cloud Run local secrets (copy from deploy/cloudrun.env.example)
 deploy/cloudrun.env
 
+# Supabase CLI local temp (project link cache)
+supabase/.temp/
+
 # Wrangler local cache (account id, etc.)
 .wrangler/
