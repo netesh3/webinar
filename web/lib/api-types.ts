@@ -955,6 +955,14 @@ export interface AppConfig {
    */
   googleClientId?: string;
   googleApiKey?: string;
+  /**
+   * Supabase Auth (Google sign-in). Public values only. When googleAuth is
+   * false the Continue with Google button is hidden. Distinct from
+   * googleClientId (Drive Picker).
+   */
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+  googleAuth?: boolean;
 }
 export interface APIError {
   error: string;

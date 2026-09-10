@@ -667,6 +667,17 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+/* SupabaseAuthRequest exchanges a verified Supabase Auth access token for this
+ * app's webcast_session cookie.
+ *
+ * The browser completes Google (or other) OAuth with Supabase JS; this body is
+ * what arrives after that redirect. The API never talks to Google directly —
+ * it only verifies Supabase's JWT and links or creates a local users row.
+ */
+type SupabaseAuthRequest struct {
+	AccessToken string `json:"accessToken"`
+}
+
 type ProfilePatch struct {
 	Name  *string `json:"name,omitempty"`
 	Title *string `json:"title,omitempty"`
@@ -968,6 +979,14 @@ type AppConfig struct {
 	// configured" rather than failing on click.
 	GoogleClientID string `json:"googleClientId,omitempty"`
 	GoogleAPIKey   string `json:"googleApiKey,omitempty"`
+	/* Supabase Auth (Google sign-in). Public values only — the JWT secret stays
+	 * on the API. When googleAuth is false the Continue with Google button is hidden.
+	 *
+	 * Distinct from GoogleClientID above: that pair is Drive Picker, not login.
+	 */
+	SupabaseURL     string `json:"supabaseUrl,omitempty"`
+	SupabaseAnonKey string `json:"supabaseAnonKey,omitempty"`
+	GoogleAuth      bool   `json:"googleAuth,omitempty"`
 }
 
 type APIError struct {

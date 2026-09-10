@@ -294,6 +294,7 @@ func setEnv(t *testing.T, env map[string]string) {
 		"DEFAULT_ATTENDEE_LIMIT",
 		"SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM",
 		"LIVEKIT_PROJECTS", "AUTH_BYPASS", "GOOGLE_CLIENT_ID", "GOOGLE_API_KEY",
+		"SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_JWT_SECRET",
 	} {
 		t.Setenv(key, "")
 	}

@@ -130,6 +130,7 @@ Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env
 | `LIVEKIT_*` | Legacy trio → one LiveKit Cloud project |
 | `CORS_ORIGINS` / `WEB_BASE_URL` | Frontend origin (Workers URL today) |
 | `ADMIN_EMAILS` / `ADMIN_PASSWORD` | Bootstrap admin at API boot (≥10 chars); GitHub secrets → Cloud Run env |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_JWT_SECRET` | Google sign-in via Supabase Auth (optional; see `deploy/SUPABASE.md`) |
 
 **Admin bootstrap:** set `ADMIN_EMAILS` + `ADMIN_PASSWORD` (≥10 chars) as GitHub secrets (or in `deploy/cloudrun.env`) and redeploy so `EnsureAdminAccount` / `PromoteAdmins` run. Production does not ship seeded `webcast-dev` accounts.
 

@@ -138,8 +138,70 @@ boot if anything is pending.
 ## Checklist
 
 - [ ] `supabase login` (or Dashboard project exists)
-- [ ] Project created / reused (`webcast` / `webinar`)
-- [ ] `DATABASE_URL` with `sslmode=require` (direct for migrate)
+- [ ] Project created / reused (`webcast-in` / `webinar`)
+- [ ] `DATABASE_URL` with `sslmode=require` (session pooler for Cloud Run)
 - [ ] `make migrate` succeeds against Supabase
 - [ ] `deploy/cloudrun.env` or GitHub secret `DATABASE_URL` set
 - [ ] Cloud Run deploy; API healthy; tables visible in Supabase Table Editor
+- [ ] (Optional) Google sign-in: see **Auth — Google via Supabase** below
+
+## Auth — Google via Supabase
+
+The app keeps its own `webcast_session` cookie. Supabase Auth is only used for
+the Google OAuth dance; the API verifies the Supabase JWT and issues the same
+session password login uses.
+
+### 1. Google Cloud OAuth client
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services →
+   Credentials → Create credentials → **OAuth client ID** → Application type
+   **Web application**.
+2. Authorized JavaScript origins (optional for this flow): your Worker origin,
+   e.g. `https://webinar-web.<ACCOUNT>.workers.dev`.
+3. Authorized redirect URIs — **must** include Supabase’s callback:
+
+   ```text
+   https://odptebpbrrixhrzfqtqp.supabase.co/auth/v1/callback
+   ```
+
+   (Replace the project ref if you use another Supabase project.)
+4. Copy the **Client ID** and **Client secret**.
+
+This is separate from `GOOGLE_CLIENT_ID` / `GOOGLE_API_KEY` used for Drive Picker.
+
+### 2. Supabase Dashboard
+
+Project **webcast-in** (`odptebpbrrixhrzfqtqp`) → Authentication:
+
+1. **Providers → Google** → enable → paste Client ID and Client secret → Save.
+2. **URL configuration**:
+   - Site URL: `https://webinar-web.<ACCOUNT>.workers.dev` (production frontend)
+   - Redirect URLs (add all that apply):
+     - `https://webinar-web.<ACCOUNT>.workers.dev/auth/callback`
+     - `http://localhost:3000/auth/callback` (local Next)
+3. **Settings → API**: copy Project URL, `anon` `public` key, and **JWT Secret**
+   (legacy symmetric secret used to verify access tokens).
+
+### 3. API / Cloud Run env
+
+Set on Cloud Run (via `deploy/cloudrun.env`, GitHub secrets, or `gcloud`):
+
+| Variable | Public? | Purpose |
+|----------|---------|---------|
+| `SUPABASE_URL` | yes (via `/api/config`) | `https://<ref>.supabase.co` |
+| `SUPABASE_ANON_KEY` | yes (via `/api/config`) | anon/public key for browser OAuth |
+| `SUPABASE_JWT_SECRET` | **no** | verifies access tokens in `POST /api/auth/supabase` |
+
+When all three are set, `/api/config` returns `googleAuth: true` and the login /
+signup pages show **Continue with Google**.
+
+### 4. Flow
+
+1. Browser → Supabase `signInWithOAuth({ provider: "google" })`
+2. Google → Supabase → redirect to `/auth/callback?code=…`
+3. Frontend exchanges code → `POST /api/auth/supabase` with `accessToken`
+4. API verifies JWT → creates/links `users` row → sets `webcast_session`
+5. Host / Admin / My webinars middleware sees the first-party cookie on Workers
+
+Password login remains available. New Google users respect `SIGNUP_OPEN`; existing
+email accounts are linked by address.

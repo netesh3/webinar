@@ -448,6 +448,77 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "signed out"})
 }
 
+/* handleSupabaseAuth is POST /api/auth/supabase.
+ *
+ * Verifies a Supabase Auth access token (Google OAuth via Supabase JS), then
+ * creates or links a local users row and sets webcast_session — the same cookie
+ * password login uses. Password accounts keep working; this is an alternate door.
+ */
+func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.GoogleAuthEnabled() {
+		httpx.Error(w, http.StatusServiceUnavailable, "google_auth_unavailable",
+			"Google sign-in is not configured on this instance.")
+		return
+	}
+
+	var req types.SupabaseAuthRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+
+	identity, err := auth.VerifySupabaseAccessToken(
+		req.AccessToken, s.cfg.SupabaseJWTSecret, s.cfg.SupabaseURL)
+	if err != nil {
+		s.log.Warn("supabase auth rejected", "error", err, "ip", httpx.ClientIP(r))
+		httpx.Error(w, http.StatusUnauthorized, "invalid_token",
+			"That Google sign-in could not be verified. Try again.")
+		return
+	}
+
+	user, err := s.store.UserByEmail(r.Context(), identity.Email)
+	created := false
+	switch {
+	case err == nil:
+		// Existing password or prior OAuth account — link by email and sign in.
+	case errors.Is(err, store.ErrNotFound):
+		if !s.cfg.SignupOpen {
+			httpx.Error(w, http.StatusForbidden, "signup_closed",
+				"New accounts are closed on this instance.")
+			return
+		}
+		user, err = s.store.CreateUser(r.Context(), identity.Email, "",
+			identity.Name, "", "", false)
+		if errors.Is(err, store.ErrConflict) {
+			// Race with a parallel signup: look up again.
+			user, err = s.store.UserByEmail(r.Context(), identity.Email)
+		}
+		if err != nil {
+			s.fail(w, r, "supabase auth: create user", err)
+			return
+		}
+		created = true
+	default:
+		s.fail(w, r, "supabase auth: lookup", err)
+		return
+	}
+
+	token, exp, err := s.sessions.Issue(user.ID)
+	if err != nil {
+		s.fail(w, r, "supabase auth: issue session", err)
+		return
+	}
+	s.sessions.SetCookie(w, token, exp)
+	s.store.TouchLogin(r.Context(), user.ID)
+	s.log.Info("supabase auth", "user", user.ID, "created", created,
+		"email_domain", domainOf(user.Email))
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	httpx.JSON(w, status, user.Public())
+}
+
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, userFromContext(r.Context()).Public())
 }

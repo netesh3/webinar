@@ -273,6 +273,8 @@ func (s *Server) Routes() http.Handler {
 		// ---------------- auth ----------------
 		r.With(signupLimit.Middleware).Post("/auth/signup", s.handleSignup)
 		r.With(loginLimit.Middleware).Post("/auth/login", s.handleLogin)
+		// Same budget as login: exchanging a Google token is a sign-in attempt.
+		r.With(loginLimit.Middleware).Post("/auth/supabase", s.handleSupabaseAuth)
 		r.Post("/auth/logout", s.handleLogout)
 		r.With(s.requireUser).Get("/auth/me", s.handleMe)
 		r.With(s.requireUser).Patch("/auth/me", s.handleUpdateProfile)
@@ -436,5 +438,8 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Tracks:            tracks,
 		GoogleClientID:    s.cfg.GoogleClientID,
 		GoogleAPIKey:      s.cfg.GoogleAPIKey,
+		SupabaseURL:       s.cfg.SupabaseURL,
+		SupabaseAnonKey:   s.cfg.SupabaseAnonKey,
+		GoogleAuth:        s.cfg.GoogleAuthEnabled(),
 	})
 }

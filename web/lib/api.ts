@@ -280,6 +280,10 @@ export const api = {
   login: (email: string, password: string) =>
     post<Account>("/api/auth/login", { email, password }),
 
+  /** Exchange a Supabase Auth access token for the webcast_session cookie. */
+  supabaseAuth: (accessToken: string) =>
+    post<Account>("/api/auth/supabase", { accessToken }),
+
   logout: () => post<StatusResponse>("/api/auth/logout"),
 
   me: () => request<Account>("/api/auth/me", fresh),

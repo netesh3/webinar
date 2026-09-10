@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Alert, Spinner, Toggle } from "./controls";
+import { AuthDivider, GoogleContinueButton } from "./google-continue";
 import { useAppConfig, useSession } from "./providers";
 import { Button, Card } from "./ui";
 import { ApiError } from "@/lib/api";
@@ -26,7 +27,7 @@ export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const { signIn } = useSession();
-  const { appName } = useAppConfig();
+  const { appName, googleAuth } = useAppConfig();
   const next = safeNext(params.get("next"), "/");
 
   const [email, setEmail] = useState("");
@@ -59,7 +60,14 @@ export function LoginForm() {
         Welcome back to {appName}.
       </p>
 
-      <form onSubmit={submit} className="mt-5 grid gap-3">
+      {googleAuth && (
+        <div className="mt-5 grid gap-3">
+          <GoogleContinueButton next={next} />
+          <AuthDivider />
+        </div>
+      )}
+
+      <form onSubmit={submit} className={`grid gap-3 ${googleAuth ? "mt-3" : "mt-5"}`}>
         <Field
           id="email"
           label="Email"
@@ -115,6 +123,7 @@ export function SignupForm() {
     appName,
     signupOpen,
     minPasswordLength: minPassword,
+    googleAuth,
   } = useAppConfig();
   const next = safeNext(params.get("next"), "/");
 
@@ -179,7 +188,14 @@ export function SignupForm() {
         One account to attend webinars and to run them.
       </p>
 
-      <form onSubmit={submit} className="mt-5 grid gap-3">
+      {googleAuth && (
+        <div className="mt-5 grid gap-3">
+          <GoogleContinueButton next={next} label="Sign up with Google" />
+          <AuthDivider />
+        </div>
+      )}
+
+      <form onSubmit={submit} className={`grid gap-3 ${googleAuth ? "mt-3" : "mt-5"}`}>
         <Field
           id="name"
           label="Full name"

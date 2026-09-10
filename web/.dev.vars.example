@@ -1,0 +1,18 @@
+# Copy to web/.dev.vars (gitignored). Used by `wrangler` / OpenNext preview.
+#
+# Production Workers: set API_INTERNAL_URL in wrangler.jsonc vars (Cloud Run URL).
+# Supabase Auth public keys come from the API (/api/config), not from this file.
+
+NEXTJS_ENV=development
+
+# Empty = browser uses same-origin /api (preferred with the Worker proxy).
+# For plain `next dev` against a separate API port, set e.g. http://localhost:8080
+NEXT_PUBLIC_API_BASE=
+
+# SSR + middleware + /api proxy target
+API_INTERNAL_URL=http://localhost:8080
+
+# Optional overrides if you want the browser to talk to Supabase before /api/config
+# loads. Prefer setting SUPABASE_* on the API instead (see deploy/SUPABASE.md).
+# NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...anon

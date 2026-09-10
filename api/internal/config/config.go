@@ -144,6 +144,19 @@ type Config struct {
 	GoogleClientID string
 	GoogleAPIKey   string
 
+	/* Supabase Auth — Google sign-in / sign-up.
+	 *
+	 * The Postgres DATABASE_URL may already point at the same Supabase project;
+	 * these three are specifically for Auth. URL + anon key are public (served
+	 * to the browser via /api/config). JWT secret verifies access tokens server-side
+	 * and must never leave Cloud Run.
+	 *
+	 * Unset means Continue with Google is off; password login still works.
+	 */
+	SupabaseURL       string
+	SupabaseAnonKey   string
+	SupabaseJWTSecret string
+
 	// MinPasswordLength is a length floor rather than a character-class rule.
 	// Composition rules push people towards "Password1!" and measurably do not
 	// help; length is the property that does.
@@ -229,6 +242,9 @@ func Load() (Config, error) {
 		SMTPFrom:          env("SMTP_FROM", env("SUPPORT_EMAIL", "")),
 		GoogleClientID:    env("GOOGLE_CLIENT_ID", ""),
 		GoogleAPIKey:      env("GOOGLE_API_KEY", ""),
+		SupabaseURL:       strings.TrimRight(env("SUPABASE_URL", ""), "/"),
+		SupabaseAnonKey:   env("SUPABASE_ANON_KEY", ""),
+		SupabaseJWTSecret: env("SUPABASE_JWT_SECRET", ""),
 		RecordingsBackend: strings.ToLower(env("RECORDINGS_BACKEND", "disk")),
 		RecordingsDir:     env("RECORDINGS_DIR", "./.data/recordings"),
 		MaxRecordingMB:    envInt("MAX_RECORDING_MB", 4096),
@@ -268,6 +284,12 @@ func Load() (Config, error) {
 }
 
 func (c Config) IsDev() bool { return c.Env == "development" }
+
+// GoogleAuthEnabled is true when Supabase Auth Google can be offered end-to-end:
+// public client config for the browser plus a JWT secret to verify exchanges.
+func (c Config) GoogleAuthEnabled() bool {
+	return c.SupabaseURL != "" && c.SupabaseAnonKey != "" && c.SupabaseJWTSecret != ""
+}
 
 // passwordFloor is the shortest password a real deployment may accept. Ten
 // characters is the modern advice: long enough to matter, short enough that
@@ -426,7 +448,7 @@ func (c Config) String() string {
 	}
 	// authBypass is in the boot line because it is the one setting here that removes
 	// a security boundary rather than adjusting one.
-	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s seed=%v authBypass=%v cors=%v",
+	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s seed=%v authBypass=%v googleAuth=%v cors=%v",
 		c.Env, c.Addr, describeLiveKitProjects(c.LiveKitProjects), c.MaxAttendees, recordings,
-		c.SeedDev, c.AuthBypass, c.CORSOrigins)
+		c.SeedDev, c.AuthBypass, c.GoogleAuthEnabled(), c.CORSOrigins)
 }
