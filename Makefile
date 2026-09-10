@@ -55,7 +55,7 @@ api: ## Run the Go API (terminal 2)
 
 .PHONY: migrate
 migrate: ## Apply embedded SQL migrations (override: make migrate DB_URL='postgres://…?sslmode=require')
-	cd api && DATABASE_URL="$(DB_URL)" go run ./cmd/migrate
+	@cd api && DATABASE_URL="$(DB_URL)" go run ./cmd/migrate
 
 .PHONY: web
 web: ## Run the Next.js frontend (terminal 3)
