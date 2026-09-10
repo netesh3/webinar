@@ -143,7 +143,8 @@ boot if anything is pending.
 - [ ] `make migrate` succeeds against Supabase
 - [ ] `deploy/cloudrun.env` or GitHub secret `DATABASE_URL` set
 - [ ] Cloud Run deploy; API healthy; tables visible in Supabase Table Editor
-- [ ] (Optional) Google sign-in: see **Auth — Google via Supabase** below
+- [x] Google sign-in: OAuth client + Supabase Google provider + Auth URLs + Cloud Run
+      `SUPABASE_*` (incl. JWT secret); see **Auth — Google via Supabase** below
 
 ## Auth — Google via Supabase
 
@@ -153,11 +154,14 @@ session password login uses.
 
 ### 1. Google Cloud OAuth client
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services →
-   Credentials → Create credentials → **OAuth client ID** → Application type
-   **Web application**.
+1. [Google Cloud Console](https://console.cloud.google.com/) → **Google Auth Platform →
+   Clients** (or APIs & Services → Credentials) → Create credentials → **OAuth
+   client ID** → Application type **Web application**.
+   You can also reuse the Firebase “Web client (auto created by Google Service)”
+   if the project already has one — add the URIs below to that client.
 2. Authorized JavaScript origins (optional for this flow): your Worker origin,
-   e.g. `https://webinar-web.<ACCOUNT>.workers.dev`.
+   e.g. `https://webinar-web.ganesh-s-p006.workers.dev`, plus
+   `http://localhost:3000` for local Next.
 3. Authorized redirect URIs — **must** include Supabase’s callback:
 
    ```text
@@ -165,22 +169,34 @@ session password login uses.
    ```
 
    (Replace the project ref if you use another Supabase project.)
-4. Copy the **Client ID** and **Client secret**.
+4. Copy the **Client ID** and **Client secret** into Supabase only (never git).
+   Console may hide existing secrets (“Viewing and downloading client secrets is
+   no longer available”); use Firebase Identity Toolkit
+   `defaultSupportedIdpConfigs/google.com` or rotate/add a secret if needed.
 
 This is separate from `GOOGLE_CLIENT_ID` / `GOOGLE_API_KEY` used for Drive Picker.
 
-### 2. Supabase Dashboard
+**gcloud limits:** classic Web OAuth clients cannot be created via public gcloud for
+projects that are not in a Cloud Organization (IAP brand APIs require an org).
+Use the Console (or automate the Auth Platform Clients UI). IAM
+`gcloud alpha iam oauth-clients` is a different product and is not usable for
+Supabase Google sign-in.
+
+### 2. Supabase Dashboard / Management API
 
 Project **webcast-in** (`odptebpbrrixhrzfqtqp`) → Authentication:
 
 1. **Providers → Google** → enable → paste Client ID and Client secret → Save.
+   (Management API: `PATCH /v1/projects/<ref>/config/auth` with
+   `external_google_enabled`, `external_google_client_id`, `external_google_secret`.)
 2. **URL configuration**:
-   - Site URL: `https://webinar-web.<ACCOUNT>.workers.dev` (production frontend)
-   - Redirect URLs (add all that apply):
-     - `https://webinar-web.<ACCOUNT>.workers.dev/auth/callback`
+   - Site URL: `https://webinar-web.ganesh-s-p006.workers.dev`
+   - Redirect URLs:
+     - `https://webinar-web.ganesh-s-p006.workers.dev/auth/callback`
      - `http://localhost:3000/auth/callback` (local Next)
 3. **Settings → API**: copy Project URL, `anon` `public` key, and **JWT Secret**
-   (legacy symmetric secret used to verify access tokens).
+   (legacy symmetric secret used to verify access tokens). Management API:
+   `GET /v1/projects/<ref>/postgrest` → `jwt_secret`.
 
 ### 3. API / Cloud Run env
 
@@ -195,13 +211,39 @@ Set on Cloud Run (via `deploy/cloudrun.env`, GitHub secrets, or `gcloud`):
 When all three are set, `/api/config` returns `googleAuth: true` and the login /
 signup pages show **Continue with Google**.
 
+### Consent screen / verification (Google Cloud)
+
+Configured under **Google Auth Platform → Audience / Branding** for project
+`ai-project-490516`:
+
+| Setting | Typical value for Webcast |
+|---------|---------------------------|
+| User type | **External** |
+| Publishing status | **In production** (or Testing) |
+| Scopes used | `openid` `email` `profile` (non-sensitive) |
+
+- **Testing** mode: only allowlisted test users can complete sign-in; add each
+  Gmail under Audience → Test users. Cap is usually 100 test users.
+- **In production** with only basic scopes: any Google account can sign in; you
+  may still see Google’s “unverified app” interstitial until brand verification
+  if you later request sensitive/restricted scopes.
+- Lifetime **OAuth user cap** (shown as e.g. `0 / 100`) applies when requesting
+  *unapproved* sensitive/restricted scopes — not for the basic login scopes above.
+- Brand verification (logo, domain, privacy policy) is manual in Console if Google
+  prompts for it; it is not required to finish basic Google login for this app.
+
 ### 4. Flow
 
-1. Browser → Supabase `signInWithOAuth({ provider: "google" })`
+1. Browser → Supabase `signInWithOAuth({ provider: "google" })` via `@supabase/ssr`
+   (PKCE code verifier stored in **cookies**, not memory/localStorage)
 2. Google → Supabase → redirect to `/auth/callback?code=…`
-3. Frontend exchanges code → `POST /api/auth/supabase` with `accessToken`
+3. Frontend exchanges code with the same cookie storage → `POST /api/auth/supabase`
+   with `accessToken`
 4. API verifies JWT → creates/links `users` row → sets `webcast_session`
 5. Host / Admin / My webinars middleware sees the first-party cookie on Workers
+
+Do **not** use a plain `@supabase/supabase-js` client with `persistSession: false`
+for this flow — the PKCE verifier will not survive the Google redirect.
 
 Password login remains available. New Google users respect `SIGNUP_OPEN`; existing
 email accounts are linked by address.

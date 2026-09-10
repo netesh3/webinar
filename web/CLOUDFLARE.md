@@ -30,7 +30,9 @@ which middleware on `*.workers.dev` never sees — users bounce back to login.
 Google sign-in does **not** need `NEXT_PUBLIC_SUPABASE_*` on the Worker: the API
 serves `supabaseUrl` / `supabaseAnonKey` / `googleAuth` from `/api/config` once
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_JWT_SECRET` are set on Cloud Run
-(see [`deploy/SUPABASE.md`](../deploy/SUPABASE.md)).
+(see [`deploy/SUPABASE.md`](../deploy/SUPABASE.md)). The browser uses `@supabase/ssr`
+so the OAuth PKCE verifier is stored in first-party cookies on this Worker origin
+(path `/`, `SameSite=Lax`) — required for `/auth/callback` after Google redirects.
 
 No LiveKit or other secrets are required in the frontend Worker.
 
