@@ -18,8 +18,9 @@ import { decideAccess, type Viewer } from "@/lib/access";
  * a redirect to somewhere useful instead of a dashboard frame around an error.
  */
 
-/** Set by the API on the shared origin (see infra/Caddyfile), Path=/, httpOnly. Readable here
- *  because middleware is server-side; not readable from any script in the page. */
+/** Set by the API as httpOnly Path=/. On the managed Workers topology the Worker
+ *  proxies /api so this cookie is first-party on the Worker host and readable
+ *  here; middleware is server-side and never exposes it to page scripts. */
 const SESSION_COOKIE = "webcast_session";
 
 /* Where to ask who this is.

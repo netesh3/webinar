@@ -1,7 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "webinar-web",
-  "main": ".open-next/worker.js",
+  // Wraps OpenNext: proxies /api/* to API_INTERNAL_URL so session cookies are
+  // first-party on this Worker (see worker.ts). Build still writes .open-next/.
+  "main": "worker.ts",
   "compatibility_date": "2025-09-11",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
@@ -14,7 +16,8 @@
       "service": "webinar-web"
     }
   ],
-  // Server-side only. Browser API base is NEXT_PUBLIC_API_BASE (build-time).
+  // Runtime SSR + /api proxy target. Browser uses same-origin /api when
+  // NEXT_PUBLIC_API_BASE is empty at build time (see CLOUDFLARE.md).
   "vars": {
     "API_INTERNAL_URL": "https://webcast-api-514730520122.asia-south1.run.app"
   }

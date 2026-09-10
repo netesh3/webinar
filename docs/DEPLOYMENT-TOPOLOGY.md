@@ -46,10 +46,9 @@ flowchart LR
     LK["LiveKit Cloud\nSFU / WebRTC"]
   end
 
-  Browser -->|"HTTPS HTML/JS"| Web
-  Browser -->|"HTTPS NEXT_PUBLIC_API_BASE"| Run
+  Browser -->|"HTTPS HTML/JS + /api"| Web
   Browser -->|"WSS / WebRTC"| LK
-  Web -->|"API_INTERNAL_URL SSR"| Run
+  Web -->|"API_INTERNAL_URL SSR + /api proxy"| Run
   Run -->|"DATABASE_URL sslmode=require"| SB
   Run -->|"room APIs + tokens"| LK
   CB -->|"build api image"| AR
@@ -59,7 +58,7 @@ flowchart LR
 **Request paths**
 
 1. **Page load / SSR** — browser → Cloudflare Worker → (optional) Go API via `API_INTERNAL_URL`.
-2. **Browser API calls** — browser → Go API (`NEXT_PUBLIC_API_BASE` = Cloud Run URL). CORS allows the Workers origin.
+2. **Browser API calls** — browser → Worker `/api/*` (same origin; `NEXT_PUBLIC_API_BASE` empty) → proxied to Cloud Run (`API_INTERNAL_URL`). Session cookie is first-party on the Worker host so middleware can gate Host/Admin/My webinars. Direct browser→Cloud Run is not used in this topology (cookie would land on `*.run.app` and middleware would bounce authenticated routes to login).
 3. **Media** — browser ↔ LiveKit Cloud directly (API only mints JWTs and calls room APIs; media UDP/TCP never goes through Cloud Run).
 
 Health check on the API: **`GET /readyz`** (prefer this over `/healthz` on Cloud Run).

@@ -547,7 +547,7 @@ denies `getUserMedia` outright.
 ### 4.1 Host: schedule → start → join
 
 ```
-host    POST /api/auth/login                    → session cookie (HS256, SameSite=Lax)
+host    POST /api/auth/login                    → session cookie (HS256; SameSite=None+Secure in prod, Lax locally)
 host    POST /api/host/webinars                 → row, slug, webinarId
 host    POST /api/host/webinars/{slug}/start
           api → SFU  CreateRoom(max_participants, empty_timeout, metadata)

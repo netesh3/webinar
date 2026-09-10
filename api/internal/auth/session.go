@@ -14,9 +14,10 @@ var ErrInvalidSession = errors.New("invalid session")
 
 // Sessions issues and verifies host session cookies.
 //
-// HS256 with a server-side secret: this is a first-party cookie for our own API
-// only, so there is no key-distribution problem that would justify asymmetric
-// signing.
+// HS256 with a server-side secret: the cookie is scoped to the API origin. In
+// the managed topology the browser UI lives on another origin (Workers → Cloud
+// Run), so Secure cookies must use SameSite=None or the browser will not store
+// or send them on credentialed cross-origin fetches.
 type Sessions struct {
 	secret []byte
 	ttl    time.Duration
@@ -25,6 +26,15 @@ type Sessions struct {
 
 func NewSessions(secret string, ttl time.Duration, secure bool) *Sessions {
 	return &Sessions{secret: []byte(secret), ttl: ttl, secure: secure}
+}
+
+// sameSite returns None when the cookie is Secure (HTTPS production / Cloud Run),
+// otherwise Lax for local HTTP where None is forbidden by browsers.
+func (s *Sessions) sameSite() http.SameSite {
+	if s.secure {
+		return http.SameSiteNoneMode
+	}
+	return http.SameSiteLaxMode
 }
 
 type claims struct {
@@ -76,7 +86,7 @@ func (s *Sessions) SetCookie(w http.ResponseWriter, token string, expires time.T
 		Expires:  expires,
 		HttpOnly: true, // not readable from JS, so XSS can't exfiltrate it
 		Secure:   s.secure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: s.sameSite(),
 	})
 }
 
@@ -88,6 +98,6 @@ func (s *Sessions) ClearCookie(w http.ResponseWriter) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   s.secure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: s.sameSite(),
 	})
 }

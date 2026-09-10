@@ -10,12 +10,22 @@ it uses middleware (auth gate), Server Components that call the Go API, and
 to **Cloudflare Workers** (Cloudflare’s supported Next.js path; replaces
 `@cloudflare/next-on-pages`).
 
+## Same-origin `/api` proxy
+
+The Worker entry is [`worker.ts`](./worker.ts): it proxies `/api/*` to
+`API_INTERNAL_URL` (Cloud Run) and hands everything else to OpenNext.
+
+That keeps the `webcast_session` cookie **first-party on the Worker origin**, so
+Next middleware can gate `/host`, `/admin`, and `/my-webinars`. Pointing the
+browser at Cloud Run directly (cross-site) stores the cookie on `*.run.app`,
+which middleware on `*.workers.dev` never sees — users bounce back to login.
+
 ## Env vars
 
 | Variable | When | Notes |
 |----------|------|--------|
-| `NEXT_PUBLIC_API_BASE` | **Build time** | Public API origin, e.g. `https://….run.app`. Inlined into the browser bundle. |
-| `API_INTERNAL_URL` | Runtime (wrangler `vars`) | Absolute URL for SSR/middleware fetches. Defaults to `NEXT_PUBLIC_API_BASE` if unset. |
+| `NEXT_PUBLIC_API_BASE` | **Build time** | Leave **empty** for Workers so the browser calls same-origin `/api/...`. Only set an absolute URL for local `next dev` against a separate API port. |
+| `API_INTERNAL_URL` | Runtime (wrangler `vars`) | Absolute Cloud Run (or local API) URL. Used by SSR, middleware identity lookup, and the `/api` proxy. |
 
 No LiveKit or other secrets are required in the frontend Worker.
 
@@ -25,12 +35,9 @@ No LiveKit or other secrets are required in the frontend Worker.
 cd web
 npm ci
 
-# Point at your API (Cloud Run URL once it exists)
-export NEXT_PUBLIC_API_BASE="https://YOUR-API.example.com"
+# Same-origin API via Worker proxy (required for session + middleware)
+export NEXT_PUBLIC_API_BASE=""
 export OPEN_NEXT=1
-
-# Optional: set SSR/middleware target in wrangler.jsonc → vars.API_INTERNAL_URL
-# to the same origin (or an internal URL if you later add service bindings).
 
 npm run deploy
 ```
