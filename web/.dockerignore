@@ -1,0 +1,10 @@
+# Everything the build does not need. Keeping node_modules out matters most: the
+# host's tree is built for darwin and would shadow the linux one from `npm ci`.
+node_modules
+.next
+.git
+Dockerfile
+.dockerignore
+npm-debug.log*
+.env
+.env.local

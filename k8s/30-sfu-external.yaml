@@ -1,0 +1,74 @@
+# The SFU, deliberately outside the cluster.
+#
+# WebRTC media cannot work from a pod in this cluster. Every node is on a private
+# subnet with no public IP, so the only way in is a load balancer — and an NLB is
+# the one thing that breaks it:
+#
+#   * UDP target groups have `preserve_client_ip` forced on and AWS does not permit
+#     turning it off. The SFU then answers the browser's real address directly, that
+#     reply leaves via the NAT gateway, and the browser discards it for arriving from
+#     the wrong source. Measured: browser tx=751140 rx=0.
+#   * TCP fails too, for a related reason. The SFU sees clients at a SNAT'd address
+#     on an ephemeral port that nothing can open a connection to, so the connectivity
+#     checks it sends go nowhere. Measured: SFU requestsSent 10 / responsesReceived 0
+#     while it happily answered the browser's 2.
+#
+# So the media plane moves to one small EC2 instance in a *public* subnet, where an
+# internet gateway does symmetric 1:1 NAT and a browser can send UDP straight at it.
+# No load balancer in the media path at all. This is how every hosted SFU is
+# arranged, and it is why the single-VPS deployment never had this problem.
+#
+#   browser ──HTTPS──► ALB ─► Istio ─► webcast-web / webcast-api   (still in-cluster)
+#   browser ──wss────► ALB ─► Istio ─► this Service ─► EC2 :7880   (signalling)
+#   browser ──UDP──────────────────────► EC2 public IP :50000-60000 (media, direct)
+#   api     ──HTTP─────────────────────► this Service ─► EC2 :7880  (room API)
+#
+# Keeping the name `webcast-livekit` is what makes this a drop-in: the Istio routes
+# and the API's LIVEKIT_HTTP_URL already point at it, so neither has to change. A
+# Service with no selector plus a hand-written EndpointSlice is the standard way to
+# put an address outside the cluster behind a cluster name.
+#
+# Rendered by deploy.sh — __SFU_PRIVATE_IP__ is substituted.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: webcast-livekit
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/name: livekit
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  # No selector, on purpose. The endpoints below are managed by hand because they
+  # point at something Kubernetes does not run.
+  ports:
+    - name: signal
+      port: 7880
+      targetPort: 7880
+      protocol: TCP
+
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: webcast-livekit
+  namespace: __NS__
+  labels:
+    # This label is the link to the Service. Without it the Service has no endpoints
+    # and every signalling request gets a 503 with nothing to explain it.
+    kubernetes.io/service-name: webcast-livekit
+    app.kubernetes.io/name: livekit
+    app.kubernetes.io/part-of: webcast-temp
+addressType: IPv4
+ports:
+  - name: signal
+    port: 7880
+    protocol: TCP
+endpoints:
+  # The instance's *private* address: signalling and the room API stay inside the
+  # VPC. Only the media ports are exposed to the internet, and they are reached on
+  # the public address, which never appears in the cluster at all.
+  - addresses:
+      - __SFU_PRIVATE_IP__
+    conditions:
+      ready: true

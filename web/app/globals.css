@@ -1,0 +1,189 @@
+@import "tailwindcss";
+
+/* Zoom/Webex-style portal palette: light surfaces, one strong blue accent.
+   The live webinar room is dark (see mock-ui/live.html) — same split Zoom uses. */
+@theme {
+  --color-page: #f7f9fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f2f5f7;
+
+  --color-ink: #131619;
+  --color-ink-2: #5c6670;
+  --color-ink-3: #8a9199;
+
+  --color-line: #e5e9ec;
+  --color-line-2: #d3dae0;
+
+  --color-brand: #0b5cff;
+  --color-brand-hover: #0847cc;
+  --color-brand-soft: #ebf2ff;
+  --color-brand-line: #b8d0ff;
+
+  --color-ok: #0b8a4b;
+  --color-ok-soft: #e8f6ee;
+  --color-warn: #a15c00;
+  --color-warn-soft: #fdf3e2;
+  --color-live: #d93025;
+  --color-live-soft: #fdecea;
+
+  /* The live room is dark — the same split Zoom uses, and for the same reason:
+     a bright chrome around a video feed washes the video out and is unpleasant
+     to sit in front of for an hour. These three are only used inside the room. */
+  --color-stage: #0d0d11;
+  --color-stage-bar: #16161c;
+  --color-stage-tile: #202028;
+
+  /* "On air": the session is running. Green, and separate from --color-live for a
+     reason — that one is red and does triple duty for form errors, destructive
+     buttons and the recording indicator. Red on a recording dot is a convention
+     worth keeping; red on a session clock reads as a warning about a session that
+     is simply working.
+
+     Declared here with the other room-only tokens and deliberately NOT overridden
+     in the dark-scheme block below. The room chrome is dark whatever the operating
+     system says, so a token that flipped with prefers-color-scheme would leave this
+     label dark-on-dark for half the audience. */
+  --color-onair: #22c55e;
+  --color-onair-soft: #d6fbe4;
+
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+}
+
+/* The room's own dark surface, applied to the side panel and to the dialogs the
+   room opens.
+
+   It works by re-pointing the theme's colour variables for one subtree, so every
+   `text-ink` / `bg-surface` / `border-line` inside it flips together. That is why
+   the chat, Q&A and participants panels need no dark-mode classes of their own —
+   a second set of colour classes on every element is how two themes drift apart.
+
+   The values are not the light palette inverted: ink-2 and ink-3 are lifted so
+   they still clear 4.5:1 on this surface, and brand is lightened because #0b5cff
+   on near-black is unreadable. */
+/* Where toasts sit.
+ *
+ * Written as CSS rather than as utilities on the element because of the second
+ * rule: in a room the bottom-right corner is the Leave button, and a notification
+ * covering it for four seconds is the worst four seconds to cover it. The room
+ * marks itself with data-room and the stack lifts clear of the control bar —
+ * no JavaScript, and nothing for the room to remember to pass down. */
+@layer components {
+  .toast-viewport {
+    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  }
+
+  body:has([data-room]) .toast-viewport {
+    bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  }
+}
+
+@layer components {
+  .room-dark {
+    --color-page: #0d0d11;
+    --color-surface: #16161c;
+    --color-surface-2: #202028;
+
+    --color-ink: #f1f1f4;
+    --color-ink-2: #b0b0bd;
+    --color-ink-3: #8b8b99;
+
+    --color-line: #2b2b35;
+    --color-line-2: #3c3c48;
+
+    --color-brand: #7fb2ff;
+    --color-brand-hover: #a3c8ff;
+    --color-brand-soft: #1c2740;
+    --color-brand-line: #33486f;
+
+    --color-ok: #4ade80;
+    --color-ok-soft: #15301f;
+    --color-warn: #fbbf24;
+    --color-warn-soft: #332810;
+    --color-live: #fb8078;
+    --color-live-soft: #3a1917;
+
+    color: var(--color-ink);
+  }
+}
+
+/* Reactions rise the full height of the stage and fade, like a live stream.
+ *
+ * Declared here rather than inline so `motion-safe:` can gate it — a screen full of
+ * floating emoji is exactly what prefers-reduced-motion is asking about.
+ *
+ * The distance is in `cqh`, 1% of the overlay's own height, because a percentage in
+ * translateY resolves against the ELEMENT's box: `translateY(-100%)` on a 30px emoji
+ * moves it 30 pixels, which is what the previous version did and why the reactions
+ * hardly went anywhere. The overlay sets container-type: size to make cqh resolve.
+ *
+ * --drift is a signed pixel sway, set per emoji, so twenty of them fan out on the way
+ * up instead of travelling in twenty straight parallel lines. It reverses at the
+ * midpoint, which reads as being carried on air rather than blown sideways. */
+@keyframes reaction-rise {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.55);
+  }
+  8% {
+    opacity: 1;
+    transform: translate3d(calc(var(--drift) * 0.25), -10cqh, 0) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translate3d(calc(var(--drift) * -0.7), -55cqh, 0) scale(1);
+  }
+  85% {
+    opacity: 0.85;
+    transform: translate3d(var(--drift), -92cqh, 0) scale(0.98);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(calc(var(--drift) * 1.1), -108cqh, 0) scale(0.9);
+  }
+}
+
+/* The reduced-motion path: one emoji, no travel, just a fade near the bottom edge. */
+@keyframes reaction-fade {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.9);
+  }
+  15%,
+  70% {
+    opacity: 1;
+    transform: translate3d(0, -5rem, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -5rem, 0) scale(1);
+  }
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-ink);
+}
+
+/* Inputs are used on nearly every screen — style once here rather than
+   repeating a 12-class string on each field. */
+@layer components {
+  .field {
+    @apply w-full h-10 px-3 rounded-lg border border-line bg-surface text-[14px]
+           text-ink placeholder:text-ink-3 outline-none
+           focus:border-brand focus:ring-2 focus:ring-brand/20;
+  }
+  .field-lg {
+    @apply h-11;
+  }
+  textarea.field {
+    @apply h-auto py-2.5 leading-relaxed resize-y;
+  }
+  select.field {
+    @apply pr-8 appearance-none bg-no-repeat;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%238a9199' stroke-width='1.5' d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    background-position: right 10px center;
+  }
+  .label {
+    @apply block text-[12.5px] font-medium text-ink-2 mb-1.5;
+  }
+}

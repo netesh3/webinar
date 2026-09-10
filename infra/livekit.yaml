@@ -1,0 +1,30 @@
+# LiveKit SFU config for local development and a single-node 500-attendee deploy.
+# Docs: https://docs.livekit.io/home/self-hosting/deployment/
+
+port: 7880
+
+rtc:
+  # Must match the published UDP range in docker-compose.yml.
+  port_range_start: 50000
+  port_range_end: 50060
+  # TCP fallback for networks that block UDP outright (~15% of corporate users).
+  tcp_port: 7881
+  use_external_ip: false
+
+redis:
+  address: redis:6379
+
+# Dev keys. In production these come from the environment and never touch git.
+keys:
+  devkey: devsecretdevsecretdevsecretdevsecret
+
+logging:
+  level: info
+  json: false
+
+# Room defaults tuned for webinars: a handful of publishers, many subscribers.
+room:
+  auto_create: false # rooms are created by our API, so a stray token can't spawn one
+  empty_timeout: 300 # tear down 5 min after the last participant leaves
+  departure_timeout: 20
+  max_participants: 505 # 500 attendees + host + panelists, a hard backstop

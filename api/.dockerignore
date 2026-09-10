@@ -1,0 +1,5 @@
+# The build needs go.mod, go.sum and the source. Nothing else.
+Dockerfile
+.dockerignore
+.git
+*.md

@@ -1,0 +1,550 @@
+# Webcast, temporarily, in an existing cluster's shared namespace.
+#
+# Rendered by deploy.sh — the __TOKENS__ are substituted, so do not apply this file
+# directly. Everything carries `app.kubernetes.io/part-of: webcast-temp` and is
+# named `webcast-*`, which is what makes it deletable in one command and safe to
+# drop into a namespace that already runs other people's workloads.
+#
+# Temporary in one specific way worth being clear about: **storage is emptyDir**.
+# The database and any recordings live for as long as the pod does. A node drain or
+# an OOM kill loses the accounts and the webinars. That is the right trade for a
+# throwaway test and the wrong one for anything else — swap in a PVC per the note
+# on each volume if this stops being temporary.
+
+# ------------------------------------------------------------------ config
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webcast-livekit
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: livekit
+    app.kubernetes.io/part-of: webcast-temp
+data:
+  livekit.yaml: |
+    port: 7880
+
+    rtc:
+      # udp_port is still set even though the NLB no longer fronts UDP — see the
+      # long note in 00-media-lb.yaml for why UDP cannot work through it. Omitting
+      # this does not disable UDP, it falls back to LiveKit's default 50000-60000
+      # range, which would advertise ten thousand dead candidates instead of one.
+      udp_port: 7882
+      tcp_port: 7881
+      # STUN discovery is wrong here and silently so: these nodes egress through a
+      # NAT gateway, so `use_external_ip` would advertise the gateway's address,
+      # which accepts nothing inbound. Candidates would never pair and the symptom
+      # is a call that connects and then shows black video. The NLB's address is
+      # the only correct answer, and deploy.sh substitutes it.
+      node_ip: __MEDIA_IP__
+      use_external_ip: false
+
+      # STUN servers, which the SFU also hands to every browser as its ICE server
+      # list. Without them a browser cannot learn its own public address, so it
+      # offers only its LAN IPs and the SFU has to infer the real one from an inbound
+      # packet — which showed up in this deployment's logs as `type(prflx/)` on every
+      # candidate pair. That works only while the direction the browser opened stays
+      # open, and gives ICE nothing to retry with when it does not.
+      stun_servers:
+        - stun.l.google.com:19302
+        - stun1.l.google.com:19302
+
+      # ICE-lite: the SFU answers connectivity checks and never sends its own.
+      #
+      # I enabled this once before, on a different topology, and reverted it as
+      # treating a symptom. It is the right answer here, and the measurement says why.
+      # As a full ICE agent the SFU tries to check the address it sees the client at,
+      # which behind this load balancer is a SNAT address on an ephemeral port —
+      # 10.80.3.105:17875 — that nothing can open a connection to. Measured on both
+      # sides of one session:
+      #
+      #   SFU     : requestsSent 10 / responsesReceived 0, requestsReceived 2 / sent 2
+      #   browser : tx=698272  rx=0, pair stuck in-progress, dead at ICE's 15s
+      #             consent timeout
+      #
+      # The browser can always reach the SFU; the SFU can never initiate back. ICE-lite
+      # is exactly that asymmetry made explicit — the browser becomes the controlling
+      # agent and nominates a pair it has already proved, and the direction that cannot
+      # work is never attempted. It requires a single, stable, advertised address,
+      # which is what node_ip above now is.
+      use_ice_lite: true
+
+    # No redis: it is only needed to run more than one SFU node, and this is one.
+
+    logging:
+      level: info
+      json: true
+
+    room:
+      # Rooms are created by our API, which is what makes the attendee ceiling
+      # enforceable. With auto-create on, any valid token conjures a room.
+      auto_create: false
+      empty_timeout: 300
+      departure_timeout: 20
+      max_participants: 505
+
+    # TURN is off, reluctantly. A relay candidate is the right answer to a broken
+    # direct path — but LiveKit's TURN here would be UDP, through the same NLB, with
+    # the same forced client-IP preservation, so it would add a second candidate that
+    # fails the same way. TURN only helps once it can run over TCP or TLS, which
+    # needs a hostname and a certificate this deployment does not have.
+    turn:
+      enabled: false
+
+---
+# ------------------------------------------------------------------ database
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: webcast-postgres
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  selector:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: webcast-temp
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webcast-postgres
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: two Postgres processes must never hold the same
+  # data directory, and a rollout that starts the new pod first would try.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+      app.kubernetes.io/part-of: webcast-temp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/part-of: webcast-temp
+        sidecar.istio.io/inject: "false"
+      annotations:
+        # No sidecar, matching the SFU — see the note there for why that one has to
+        # stay out of the mesh, and 20-istio.yaml for the DestinationRule that tells
+        # the gateway to speak plaintext to a pod with nothing to terminate mTLS.
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+        # The official image's own uid. Running as it explicitly, rather than as
+        # root and dropping, is what lets this pod satisfy a `restricted` Pod
+        # Security admission policy — which a shared namespace is likely to have.
+        runAsUser: 999
+        runAsGroup: 999
+        runAsNonRoot: true
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: webcast
+            - name: POSTGRES_DB
+              value: webcast
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: webcast
+                  key: POSTGRES_PASSWORD
+            # A subdirectory, not the mount point. initdb refuses to run in a
+            # directory it did not create, and the mount root is not empty enough.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "webcast", "-d", "webcast"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+      volumes:
+        # Temporary. Replace with a PVC to keep accounts across a pod restart.
+        - name: data
+          emptyDir: {}
+
+---
+# ------------------------------------------------------------------ SFU
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: webcast-livekit
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: livekit
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  selector:
+    app.kubernetes.io/name: livekit
+    app.kubernetes.io/part-of: webcast-temp
+  ports:
+    # Signalling only. Media goes to the NLB in 00-media-lb.yaml, never here.
+    - name: signal
+      port: 7880
+      targetPort: 7880
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webcast-livekit
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: livekit
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  replicas: 1
+  # One node, and the media NLB advertises exactly one address, so never two.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: livekit
+      app.kubernetes.io/part-of: webcast-temp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: livekit
+        app.kubernetes.io/part-of: webcast-temp
+        sidecar.istio.io/inject: "false"
+      annotations:
+        # Out of the mesh, deliberately. Two reasons, and the second one is the
+        # blocking one:
+        #
+        #  - A sidecar would intercept inbound TCP 7881, which is ICE/TCP media
+        #    arriving straight from a browser via the NLB. If this namespace
+        #    enforces STRICT mTLS the sidecar would reject it, and the corporate
+        #    attendees who can only reach us over TCP would silently fail to
+        #    connect. UDP is never intercepted, so the symptom would be partial.
+        #  - Nothing here needs mesh telemetry or policy for a throwaway test.
+        #
+        # The DestinationRules in 20-istio.yaml are the other half of this: they
+        # tell the ingress gateway to speak plaintext to these services rather
+        # than attempting mTLS to a pod with no sidecar to terminate it.
+        sidecar.istio.io/inject: "false"
+        # Rolls the pod when the rendered node_ip changes. Without this, editing
+        # the ConfigMap leaves the running SFU advertising the old address.
+        webcast/config-hash: "__LIVEKIT_CONFIG_HASH__"
+    spec:
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+      containers:
+        - name: livekit
+          image: livekit/livekit-server:v1.9
+          args: ["--config", "/etc/livekit/livekit.yaml"]
+          env:
+            # Keys come from the environment so no secret is in the ConfigMap.
+            # Format is `key: secret`, which is why it is built rather than stored.
+            - name: LIVEKIT_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: webcast
+                  key: LIVEKIT_KEYS
+          ports:
+            - name: signal
+              containerPort: 7880
+            - name: ice-tcp
+              containerPort: 7881
+            - name: rtp-udp
+              containerPort: 7882
+              protocol: UDP
+          readinessProbe:
+            httpGet: { path: /, port: 7880 }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            # Media forwarding is the CPU cost here, and it scales with publishers,
+            # not subscribers. A handful of publishers is cheap.
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/livekit
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+      volumes:
+        - name: config
+          configMap:
+            name: webcast-livekit
+
+---
+# ------------------------------------------------------------------ API
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: webcast-api
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  selector:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: webcast-temp
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webcast-api
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  replicas: 1
+  # One replica, deliberately: rate limiting is in-memory, so two would double the
+  # effective limit, and recordings are written to this pod's own disk.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+      app.kubernetes.io/part-of: webcast-temp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+        app.kubernetes.io/part-of: webcast-temp
+        sidecar.istio.io/inject: "false"
+      annotations:
+        # No sidecar, matching the SFU — see the note there for why that one has to
+        # stay out of the mesh, and 20-istio.yaml for the DestinationRule that tells
+        # the gateway to speak plaintext to a pod with nothing to terminate mTLS.
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        # The recordings volume has to be writable by the distroless image's uid.
+        # NewDisk write-probes it at boot, so getting this wrong is a crash loop
+        # rather than a webinar that records nothing for forty minutes.
+        fsGroup: 65532
+      containers:
+        - name: api
+          image: __IMAGE_API__
+          env:
+            - name: APP_ENV
+              value: production
+            - name: ADDR
+              value: ":8080"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: webcast
+                  key: DATABASE_URL
+            # wss:// and a real hostname, both enforced at boot. Note the path: the
+            # SFU is mounted under the app's own prefix, and the client SDK appends
+            # /rtc/v1 to whatever pathname it is given.
+            - name: LIVEKIT_URL
+              value: wss://__HOST____BASE_PATH__/sfu
+            # The room API, as reached from inside the cluster. Without this the
+            # SFU's http address is derived from LIVEKIT_URL above, and every mute
+            # and permission change would hairpin out through the public load
+            # balancer to reach a pod two hops away.
+            - name: LIVEKIT_HTTP_URL
+              value: http://webcast-livekit:7880
+            - name: LIVEKIT_API_KEY
+              value: webcast
+            - name: LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: webcast
+                  key: LIVEKIT_API_SECRET
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: webcast
+                  key: SESSION_SECRET
+            - name: COOKIE_SECURE
+              value: "true"
+            # One origin, so CORS is only ever exercised by a stray client.
+            # WEB_BASE_URL is what share links are built from and must carry the
+            # mount path, or every link a host copies lands on the ingress's 404.
+            - name: CORS_ORIGINS
+              value: https://__HOST__
+            - name: WEB_BASE_URL
+              value: https://__HOST____BASE_PATH__
+            - name: APP_NAME
+              value: Webcast
+            - name: SIGNUP_OPEN
+              value: "true"
+            # No sign-in, no registration form: opening the URL provisions a
+            # host-capable account and sets its session cookie, so the app is usable
+            # from the first page load. Distinct per browser, so three laptops are
+            # three people rather than three copies of one LiveKit identity kicking
+            # each other out of the room.
+            #
+            # This hands start / end / mute / remove to anyone who finds the URL. It
+            # is a demo switch, it is off by default, and the API says so in its boot
+            # log. See the note on Config.AuthBypass.
+            - name: AUTH_BYPASS
+              value: "true"
+            - name: MAX_ATTENDEES
+              value: "500"
+            - name: JOIN_RATE_PER_MIN
+              value: "1200"
+            # Relaxed for testing, as asked. The floor outside development is 10;
+            # this deployment is marked production, so it cannot go below that.
+            - name: MIN_PASSWORD_LENGTH
+              value: "10"
+            - name: RECORDINGS_ENABLED
+              value: "true"
+            - name: RECORDINGS_DIR
+              value: /data/recordings
+            - name: MAX_RECORDING_MB
+              value: "2048"
+            # No demo accounts. Gated on development anyway, but say so.
+            - name: SEED_DEV
+              value: "false"
+          ports:
+            - containerPort: 8080
+          # Distroless: no shell, so these are the only probes available. Both
+          # endpoints exist for exactly this.
+          startupProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            # Migrations run at boot against a database that may still be initdb-ing.
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8080 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - name: recordings
+              mountPath: /data/recordings
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+      volumes:
+        # Temporary, and the sharper edge of the two: a recording is uploaded chunk
+        # by chunk to this disk, so losing the pod mid-webinar loses the recording.
+        # Download anything worth keeping before tearing down.
+        - name: recordings
+          emptyDir: {}
+
+---
+# ------------------------------------------------------------------ frontend
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: webcast-web
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  selector:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: webcast-temp
+  ports:
+    - port: 3000
+      targetPort: 3000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webcast-web
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/part-of: webcast-temp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/part-of: webcast-temp
+        sidecar.istio.io/inject: "false"
+      annotations:
+        # No sidecar, matching the SFU — see the note there for why that one has to
+        # stay out of the mesh, and 20-istio.yaml for the DestinationRule that tells
+        # the gateway to speak plaintext to a pod with nothing to terminate mTLS.
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+      containers:
+        - name: web
+          image: __IMAGE_WEB__
+          env:
+            # Server Components fetch during render, and a relative URL has no
+            # origin to resolve against on the server side. This is the in-cluster
+            # address; the browser keeps using the relative path baked into the
+            # bundle. See web/lib/api.ts.
+            - name: API_INTERNAL_URL
+              value: http://webcast-api:8080
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            # Under a basePath, `/` is a 404 — Next only answers below the mount.
+            # No trailing slash: that redirects (308), which passes a probe but
+            # reads like a misconfiguration every time somebody looks at it.
+            httpGet: { path: __BASE_PATH__, port: 3000 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            # Read-only root, with writable holes where Next actually writes: the
+            # incremental fetch cache, and /tmp. Nothing here needs to survive.
+            - name: cache
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

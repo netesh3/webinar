@@ -1,0 +1,151 @@
+# The three routes Webcast needs, as Istio VirtualService entries.
+#
+# These are NOT applied as an object of their own, and that is the whole problem
+# this file exists to solve. `dev.agentfabric.platformbmc.com` already has a
+# VirtualService whose last route is a catch-all `/` to the BMC platform SPA, and
+# Istio merges VirtualServices for one host in creation-timestamp order with
+# first-match-wins. A new, newer VirtualService would sit entirely behind that
+# catch-all and never match anything. So deploy.sh splices these into the existing
+# object, ahead of the catch-all, and `down` takes them back out again — see
+# istio.py, which keys off the `webcast-` name prefix to stay idempotent.
+#
+# Order matters here too: `/platform/webcast` is a prefix of the other two, so it
+# has to come last or it would swallow them.
+#
+# Destinations are fully qualified. The VirtualService being edited may live in
+# another namespace, and a short name would resolve against that one.
+
+# ---------------------------------------------------------------- SFU signalling
+#
+# Rewrite to `/`: LiveKit serves /rtc, /validate and /twirp at the root and knows
+# nothing about a prefix. The match keeps its trailing slash on purpose — matching
+# `/platform/webcast/sfu` instead would leave the remainder starting with `/`, and
+# Envoy's prefix_rewrite would produce `//rtc/v1`.
+# The bare path, with no trailing slash. `prepareConnection` warms the connection by
+# fetching exactly this URL, and the prefix rule below — which needs the trailing
+# slash so Envoy's rewrite cannot produce `//rtc/v1` — does not match it. Without
+# this route it falls through to the frontend and 404s, which silently disables the
+# pre-warm and logs an error in every browser console.
+#
+# An exact match rather than loosening the prefix, and rewritten rather than
+# redirected: a redirect is fine for a warmup fetch and fatal for a WebSocket.
+- name: webcast-sfu-root
+  match:
+    - uri:
+        exact: __BASE_PATH__/sfu
+  rewrite:
+    uri: /
+  route:
+    - destination:
+        host: webcast-livekit.__NS__.svc.cluster.local
+        port:
+          number: 7880
+
+- name: webcast-sfu
+  match:
+    - uri:
+        prefix: __BASE_PATH__/sfu/
+  rewrite:
+    uri: /
+  route:
+    - destination:
+        host: webcast-livekit.__NS__.svc.cluster.local
+        port:
+          number: 7880
+  # A day, explicitly, and the reason is a measured mistake rather than caution.
+  #
+  # Istio rejects `timeout: 0s` ("must be a valid duration greater than 1ms"), and I
+  # took that to mean an unset timeout meant no timeout. It does not: unset inherits
+  # Envoy's default of 15 seconds, which closes the signalling WebSocket. Measured in
+  # the browser — `connected` at 2s, then `signalReconnecting` at 15.6s, recovered,
+  # then again at 34s. A webinar that reconnects every fifteen seconds.
+  #
+  # Signalling is a long-lived socket that is idle whenever nobody is talking, so the
+  # ceiling has to be longer than any webinar rather than longer than any request.
+  timeout: 86400s
+
+# ---------------------------------------------------------------- API
+#
+# No trailing slashes on either side: the matched prefix is
+# `__BASE_PATH__/api`, the remainder already starts with `/`, and the
+# rewrite value must not add a second one.
+- name: webcast-api
+  match:
+    - uri:
+        prefix: __BASE_PATH__/api
+  rewrite:
+    uri: /api
+  route:
+    - destination:
+        host: webcast-api.__NS__.svc.cluster.local
+        port:
+          number: 8080
+  # Also explicit, for the same reason. 15 seconds is plenty for an ordinary API call
+  # and not for a recording: chunks upload while a webinar runs and the whole file is
+  # downloaded afterwards, and both would be cut off mid-transfer.
+  timeout: 3600s
+
+# ---------------------------------------------------------------- frontend
+#
+# Deliberately no rewrite. The image is built with Next's basePath set to this
+# prefix, so the app already serves these exact paths; stripping it would 404
+# every asset.
+- name: webcast-web
+  match:
+    - uri:
+        prefix: __BASE_PATH__
+  route:
+    - destination:
+        host: webcast-web.__NS__.svc.cluster.local
+        port:
+          number: 3000
+  headers:
+    response:
+      set:
+        # Both of these are defensive, and one of them is the difference between a
+        # working webinar and a dead one.
+        #
+        # Every response on this hostname currently carries
+        # `permissions-policy: geolocation=(), camera=(), microphone=()`. An empty
+        # allowlist does not mean "ask the user", it means the feature is denied to
+        # the document outright — getUserMedia would reject with NotAllowedError and
+        # nobody could ever speak. The evidence says that header comes from the SPA's
+        # own static server rather than the gateway (its sibling CSP whitelists
+        # exactly the Google Fonts that one page loads, which is not something a
+        # host-wide filter would do), in which case a different upstream never sees
+        # it. Setting it here costs nothing and removes the doubt.
+        permissions-policy: camera=(self), microphone=(self), display-capture=(self)
+        # Same reasoning. The inherited CSP is `script-src 'self'` with no
+        # 'unsafe-inline', which would block the inline hydration scripts Next emits
+        # on every page. This is that policy widened to exactly what the app uses:
+        # blob: for recording playback, wss: for signalling.
+        content-security-policy: >-
+          default-src 'self';
+          script-src 'self' 'unsafe-inline';
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data: blob:;
+          media-src 'self' blob:;
+          connect-src 'self' https: wss:;
+          font-src 'self' data:;
+          worker-src 'self' blob:;
+          frame-ancestors 'none';
+          base-uri 'self';
+          form-action 'self'
+
+# ---------------------------------------------------------------- the typo
+#
+# `/platfrom/webcast` — transposed "platform" — was the path in the original
+# request, so it is the one in bookmarks and in muscle memory. Unredirected it
+# matches nothing of ours, falls through to the catch-all, and serves the BMC
+# platform login page: a 200 with somebody else's login form, which looks exactly
+# like "the deployment is broken" and is impossible to tell apart from one.
+#
+# 302 rather than Istio's default 301: this whole deployment is temporary, and a
+# permanent redirect is cached by browsers long after the routes are gone.
+- name: webcast-misspelled-prefix
+  match:
+    - uri:
+        prefix: /platfrom/webcast
+  redirect:
+    uri: __BASE_PATH__
+    redirectCode: 302

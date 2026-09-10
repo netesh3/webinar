@@ -1,0 +1,58 @@
+# The mesh-side half of keeping these pods out of the mesh.
+#
+# The pods in 10-webcast.yaml carry `sidecar.istio.io/inject: "false"`, so there is
+# nothing in them to terminate mTLS. If this mesh has a broad DestinationRule
+# setting `ISTIO_MUTUAL` for `*.svc.cluster.local` — a very common way to turn mTLS
+# on everywhere — the ingress gateway would try to negotiate it against a plain HTTP
+# server and every request would fail at the TLS handshake, well before anything
+# logged a useful error.
+#
+# These say plaintext explicitly. If no such mesh-wide rule exists they change
+# nothing, which is the point: it costs one object to stop depending on a cluster
+# setting nobody wrote down.
+#
+# Rendered by deploy.sh. Not applied directly — __NS__ is substituted.
+
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: webcast-web
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  host: webcast-web.__NS__.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: webcast-api
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  host: webcast-api.__NS__.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: webcast-livekit
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/name: livekit
+    app.kubernetes.io/part-of: webcast-temp
+spec:
+  host: webcast-livekit.__NS__.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: DISABLE

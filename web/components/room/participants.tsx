@@ -1,0 +1,707 @@
+"use client";
+
+import {
+  useLocalParticipant,
+  useParticipants,
+  useRoomContext,
+} from "@livekit/components-react";
+import { Track, type Participant } from "livekit-client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api } from "@/lib/api";
+import type { LiveParticipant, LiveRoom, Role } from "@/lib/api-types";
+import { useToast } from "../providers";
+import { IconButton, Menu, Spinner } from "../controls";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  EyeOffIcon,
+  HandIcon,
+  MicIcon,
+  MicOffIcon,
+  MoreIcon,
+  SearchIcon,
+  TrashIcon,
+} from "../icons";
+import { useRoomUI } from "./context";
+
+/* The participants panel.
+ *
+ * Two different data sources, for one reason: when the host hides the audience,
+ * the SFU stops sending those participant records to every client — including the
+ * host's. So the host's roster is fetched from our API, which reads LiveKit's
+ * server-side list and does include hidden participants. Everyone else sees only
+ * what their own connection knows about, which is exactly the privacy guarantee.
+ */
+
+/** Reads the role we minted into the participant's token metadata.
+ *
+ *  Metadata rather than the identity prefix: a promoted attendee keeps their
+ *  att_ identity but is genuinely a panelist, and classifying on the prefix would
+ *  keep showing them as audience. */
+export function participantRole(p: Participant): Role {
+  if (p.metadata) {
+    try {
+      const parsed = JSON.parse(p.metadata) as { role?: string };
+      if (parsed.role === "host" || parsed.role === "panelist" || parsed.role === "attendee") {
+        return parsed.role;
+      }
+    } catch {
+      // Not ours, or truncated. Fall through to the permission check.
+    }
+  }
+  return p.permissions?.canPublish ? "panelist" : "attendee";
+}
+
+/** How often the host's roster is refreshed.
+ *
+ *  Polling rather than a socket: this is one request per host, not per attendee,
+ *  and it is the only way to see hidden participants at all. Five seconds is
+ *  responsive enough to moderate with and cheap enough to leave running. */
+const ROSTER_POLL_MS = 5000;
+
+export function useHostRoster(slug: string, enabled: boolean) {
+  const [live, setLive] = useState<LiveRoom | null>(null);
+  const [error, setError] = useState(false);
+  // Guards against a slow response overlapping the next tick, which on a bad
+  // connection would queue requests faster than they complete.
+  const inFlight = useRef(false);
+
+  const load = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      setLive(await api.participants(slug));
+      setError(false);
+    } catch {
+      setError(true);
+    } finally {
+      inFlight.current = false;
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    let active = true;
+    // A promise chain rather than a call to `load`, so the first read does not
+    // set state synchronously inside the effect.
+    const read = () => {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      api
+        .participants(slug)
+        .then((room) => {
+          if (!active) return;
+          setLive(room);
+          setError(false);
+        })
+        .catch(() => {
+          if (active) setError(true);
+        })
+        .finally(() => {
+          inFlight.current = false;
+        });
+    };
+
+    read();
+    const timer = setInterval(read, ROSTER_POLL_MS);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [enabled, slug]);
+
+  // Memoised because this value goes into the room context. A fresh object every
+  // render would bust that memo and re-render every panel, the stage and the control
+  // bar on each of them — the exact cost the context was arranged to avoid.
+  return useMemo(() => ({ live, error, reload: load }), [live, error, load]);
+}
+
+export function ParticipantsPanel() {
+  const { isHost } = useRoomUI();
+  return isHost ? <HostRoster /> : <AudienceRoster />;
+}
+
+// ---------------------------------------------------------------- host view
+
+function HostRoster() {
+  const { slug, join, realtime, controls, roster } = useRoomUI();
+  const { localParticipant } = useLocalParticipant();
+  const { notify } = useToast();
+  // From the context rather than a poll of its own: the control bar needs the same
+  // headcount for its badge whether or not this panel is open, and two five-second
+  // polls of the same endpoint is one too many.
+  const { live, error, reload } = roster;
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const handIdentities = useMemo(
+    () => new Set(realtime.hands.map((h) => h.identity)),
+    [realtime.hands],
+  );
+
+  // `label` is what usually gets said; an action that learns something more
+  // specific from the response returns its own string instead.
+  const act = useCallback(
+    async (identity: string, label: string, run: () => Promise<string | void>) => {
+      setBusy(identity);
+      try {
+        const outcome = await run();
+        notify(outcome ?? label, "ok");
+        await reload();
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "That didn't work.", "error");
+      } finally {
+        setBusy(null);
+      }
+    },
+    [notify, reload],
+  );
+
+  const filtered = useMemo(() => {
+    const rows = live?.participants ?? [];
+    const needle = query.trim().toLowerCase();
+    const matching = needle
+      ? rows.filter(
+          (p) =>
+            p.name.toLowerCase().includes(needle) ||
+            p.identity.toLowerCase().includes(needle),
+        )
+      : rows;
+
+    // Stage first, then raised hands, then everyone else. This is the order a
+    // host works down when they are looking for someone to bring on.
+    return [...matching].sort((a, b) => {
+      const rank = (p: LiveParticipant) =>
+        p.role === "host" ? 0 : p.role === "panelist" ? 1 : handIdentities.has(p.identity) ? 2 : 3;
+      const delta = rank(a) - rank(b);
+      return delta !== 0 ? delta : a.name.localeCompare(b.name);
+    });
+  }, [live, query, handIdentities]);
+
+  // The counts, the search box and the privacy chip render straight away and only
+  // the list waits. Replacing the whole panel with a spinner meant every open —
+  // and every one of the five-second refreshes — flashed the chrome away.
+  const loading = !live && !error;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 space-y-2.5 border-b border-line px-3 py-3">
+        <div className="flex items-center gap-2 text-[12px] text-ink-2">
+          <span className="font-medium text-ink">{live?.onStage ?? 0} on stage</span>
+          <span className="text-ink-3">·</span>
+          <span>{live?.attendees ?? 0} attending</span>
+          {controls.hideAttendees && (
+            <span
+              className="ml-auto inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-ink-2"
+              title="Attendees cannot see each other. You can, because this list comes from the server."
+            >
+              <EyeOffIcon className="size-3" />
+              Hidden
+            </span>
+          )}
+        </div>
+
+        {/* The queue, and the one action that clears it.
+            
+            Shown here rather than only per-row because a host who has finished taking
+            questions wants to move on, not to dismiss eleven people one at a time.
+            Each row still has its own "Dismiss request" for passing over one person. */}
+        {realtime.hands.length > 0 && (
+          <div className="flex items-center gap-2 rounded-lg bg-warn-soft px-2.5 py-1.5">
+            <HandIcon className="size-3.5 shrink-0 text-warn" />
+            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-warn">
+              {realtime.hands.length} {realtime.hands.length === 1 ? "hand" : "hands"} raised
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const count = realtime.hands.length;
+                void realtime.clearHands();
+                notify(`Lowered ${count} ${count === 1 ? "hand" : "hands"}.`, "ok");
+              }}
+              className="shrink-0 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium text-warn transition-colors hover:bg-warn/15 outline-none focus-visible:ring-2 focus-visible:ring-warn/40"
+            >
+              Lower all
+            </button>
+          </div>
+        )}
+
+        <div className="relative">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
+          <input
+            className="field h-8 pl-8 text-[12.5px]"
+            placeholder="Search participants"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search participants"
+          />
+        </div>
+
+        {error && (
+          <p className="text-[11.5px] text-live">
+            Couldn&apos;t refresh the list. Retrying…
+          </p>
+        )}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="grid place-items-center py-10">
+            <Spinner className="size-5 text-ink-3" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <p className="px-3 py-8 text-center text-[12.5px] text-ink-3">
+            {query ? "Nobody matches that." : "Nobody has joined yet."}
+          </p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {filtered.map((p) => (
+              <HostRosterRow
+                key={p.identity}
+                participant={p}
+                isMe={p.identity === join.identity}
+                handRaised={handIdentities.has(p.identity)}
+                busy={busy === p.identity}
+                onMute={(muted) =>
+                  p.identity === join.identity
+                    ? // Your own row. Toggled locally, because a microphone can
+                      // only be switched on by the browser it belongs to — and
+                      // that is this one.
+                      act(
+                        p.identity,
+                        muted ? "You're muted" : "You're unmuted",
+                        async () => {
+                          await localParticipant.setMicrophoneEnabled(!muted);
+                        },
+                      )
+                    : act(
+                        p.identity,
+                        muted
+                          ? `Muted ${p.name} — they can't unmute themselves`
+                          : `${p.name} can speak again`,
+                        async () => {
+                          const res = await api.muteParticipant(slug, p.identity, muted);
+                          // The permission is back, but only their own browser can
+                          // open a microphone, so say what still has to happen.
+                          if (res.status === "allowed") {
+                            return `${p.name} can speak again — they need to unmute themselves`;
+                          }
+                        },
+                      )
+                }
+                // A server cannot start somebody's microphone — only their own
+                // browser can. When they have permission but no live track, the
+                // honest action is to ask them.
+                onAskToUnmute={() =>
+                  act(p.identity, `Asked ${p.name} to unmute`, () =>
+                    realtime.askToUnmute(p.identity),
+                  )
+                }
+                onStage={(role, audioOnly) =>
+                  act(
+                    p.identity,
+                    role !== "panelist"
+                      ? `${p.name} is muted and back in the audience`
+                      : audioOnly
+                        ? `${p.name} can speak now`
+                        : `${p.name} is on the stage`,
+                    async () => {
+                      await api.setStage(slug, p.identity, role, audioOnly);
+                      // Their request has been answered either way, so it comes
+                      // out of the queue — on every client, including theirs.
+                      if (handIdentities.has(p.identity)) {
+                        await realtime.lowerHand(
+                          p.identity,
+                          role === "panelist" ? "granted" : "dismissed",
+                        );
+                      }
+                    },
+                  )
+                }
+                onDismissHand={() =>
+                  act(p.identity, `Dismissed ${p.name}'s request`, () =>
+                    realtime.lowerHand(p.identity, "dismissed"),
+                  )
+                }
+                onRemove={() =>
+                  act(p.identity, `Removed ${p.name}`, async () => {
+                    await api.removeParticipant(slug, p.identity);
+                  })
+                }
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One row of the host's roster, and the four states that matter.
+ *
+ *   audience          → "Allow to speak" (a microphone, nothing else) or a full
+ *                       stage seat; plus "Dismiss request" if their hand is up
+ *   allowed to speak  → mute, or ask them to unmute if they have not opened a
+ *                       microphone yet
+ *   muted by the host → "Allow to speak again", which is the only way back: the
+ *                       microphone is out of their grant, so they cannot undo it
+ *   on the stage      → the same, plus "Remove speaker permission"
+ *
+ * The mute control is deliberately keyed on `canSpeak` rather than on the role.
+ * Keying it on the role is what made "unmute the attendee" impossible: an
+ * ordinary attendee has no microphone track to unmute and never can, so the
+ * button either wasn't there or returned an error.
+ */
+function HostRosterRow({
+  participant: p,
+  isMe,
+  handRaised,
+  busy,
+  onMute,
+  onAskToUnmute,
+  onStage,
+  onDismissHand,
+  onRemove,
+}: {
+  participant: LiveParticipant;
+  isMe: boolean;
+  handRaised: boolean;
+  busy: boolean;
+  onMute: (muted: boolean) => void;
+  onAskToUnmute: () => void;
+  onStage: (role: Role, audioOnly: boolean) => void;
+  onDismissHand: () => void;
+  onRemove: () => void;
+}) {
+  const isHost = p.role === "host";
+  const sharing = p.publishing.some((t) => t.includes("SCREEN_SHARE"));
+  const hasMic = p.publishing.some((t) => t.includes("MICROPHONE"));
+  // Permission to speak, which an attendee the host allowed to speak now has even
+  // though their role is still shown as audience-adjacent.
+  const canSpeak = p.canSpeak;
+  // Silenced by the host, as opposed to never having been a speaker. Both have
+  // canSpeak false and they need opposite actions offered.
+  const silenced = p.mutedByHost && !isHost;
+  // The scope of the grant, as the host set it — not guessed from what they are
+  // publishing, which would call a panelist with their camera off "audio only".
+  const speakingOnly = p.role === "panelist" && !isHost && p.audioOnly;
+  const onStageNow = p.role === "panelist" && !isHost;
+
+  return (
+    <li className="flex items-center gap-2.5 px-3 py-2.5">
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[13px] font-medium text-ink">
+            {p.name || p.identity}
+          </span>
+          {isMe && <span className="text-[11px] text-ink-3">(you)</span>}
+          {handRaised && (
+            <HandIcon className="size-3.5 shrink-0 text-warn" aria-label="Hand raised" />
+          )}
+        </span>
+        <span className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-ink-3">
+          {isHost
+            ? "Host"
+            : p.role === "panelist"
+              ? speakingOnly
+                ? "Allowed to speak"
+                : "Panelist"
+              : "Attendee"}
+          {sharing && <span className="text-brand">· sharing screen</span>}
+          {silenced && <span className="text-warn">· muted by you</span>}
+          {canSpeak && hasMic && !p.audioMuted && <span className="text-ok">· live</span>}
+          {canSpeak && !hasMic && <span>· hasn&apos;t unmuted</span>}
+        </span>
+      </span>
+
+      {busy ? (
+        <Spinner className="size-4 text-ink-3" />
+      ) : (
+        <>
+          {silenced ? (
+            // The one-click way back. Nothing they can do restores it themselves,
+            // which is the point of the mute — so the host needs it in reach.
+            <IconButton
+              label={`Allow ${p.name} to speak again`}
+              onClick={() => onMute(false)}
+            >
+              <MicOffIcon className="size-4 text-warn" />
+            </IconButton>
+          ) : (
+            canSpeak &&
+            (isMe ? (
+              // Your own microphone, toggled in your own browser. The server route
+              // cannot switch a microphone back on — the SFU refuses that by
+              // design — and it does not need to for the person sitting here.
+              <IconButton
+                label={p.audioMuted ? `Unmute ${p.name}` : `Mute ${p.name}`}
+                onClick={() => onMute(!p.audioMuted)}
+              >
+                {p.audioMuted ? (
+                  <MicOffIcon className="size-4 text-ink-3" />
+                ) : (
+                  <MicIcon className="size-4 text-ok" />
+                )}
+              </IconButton>
+            ) : hasMic && !p.audioMuted ? (
+              <IconButton label={`Mute ${p.name}`} onClick={() => onMute(true)}>
+                <MicIcon className="size-4 text-ok" />
+              </IconButton>
+            ) : (
+              // Already silent. Only their own browser can open a microphone —
+              // whether there is no track yet or a muted one, the SFU will not
+              // switch it on from here, and that protection is worth having. So
+              // the button asks instead of pretending to do it.
+              <IconButton label={`Ask ${p.name} to unmute`} onClick={onAskToUnmute}>
+                <MicOffIcon className="size-4 text-warn" />
+              </IconButton>
+            ))
+          )}
+
+          <Menu
+            label={`Actions for ${p.name}`}
+            align="end"
+            trigger={
+              <span className="grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink">
+                <MoreIcon className="size-4" />
+              </span>
+            }
+            items={[
+              ...(p.role === "attendee"
+                ? [
+                    {
+                      kind: "action" as const,
+                      label: "Allow to speak",
+                      hint: "audio only",
+                      icon: <MicIcon className="size-4" />,
+                      onSelect: () => onStage("panelist", true),
+                    },
+                    {
+                      kind: "action" as const,
+                      label: "Bring on stage",
+                      hint: "camera and mic",
+                      icon: <ArrowUpIcon className="size-4" />,
+                      onSelect: () => onStage("panelist", false),
+                    },
+                  ]
+                : []),
+              // Answering a raised hand without granting anything. Broadcast, so
+              // their own hand comes down rather than staying up in a queue they
+              // have already been passed over in.
+              ...(handRaised
+                ? [
+                    {
+                      kind: "action" as const,
+                      label: "Dismiss request",
+                      hint: "lowers their hand",
+                      icon: <HandIcon className="size-4" />,
+                      onSelect: onDismissHand,
+                    },
+                  ]
+                : []),
+              ...(silenced
+                ? [
+                    {
+                      kind: "action" as const,
+                      label: "Allow to speak again",
+                      icon: <MicIcon className="size-4" />,
+                      onSelect: () => onMute(false),
+                    },
+                  ]
+                : []),
+              // A promoted attendee can be widened to a full seat, or narrowed
+              // back to just a microphone, without dropping them to the audience.
+              ...(onStageNow && speakingOnly
+                ? [
+                    {
+                      kind: "action" as const,
+                      label: "Also allow video",
+                      icon: <ArrowUpIcon className="size-4" />,
+                      onSelect: () => onStage("panelist", false),
+                    },
+                  ]
+                : []),
+              ...(onStageNow && !speakingOnly
+                ? [
+                    {
+                      kind: "action" as const,
+                      label: "Audio only",
+                      icon: <MicIcon className="size-4" />,
+                      onSelect: () => onStage("panelist", true),
+                    },
+                  ]
+                : []),
+              ...(onStageNow
+                ? [
+                    {
+                      kind: "action" as const,
+                      // Named for what it takes away. "Move to audience" reads as
+                      // a seating change; this mutes them and ends their turn.
+                      label: "Remove speaker permission",
+                      hint: "back to the audience",
+                      icon: <ArrowDownIcon className="size-4" />,
+                      onSelect: () => onStage("attendee", false),
+                    },
+                  ]
+                : []),
+              ...(isMe || isHost
+                ? []
+                : [
+                    { kind: "separator" as const },
+                    {
+                      kind: "action" as const,
+                      label: "Remove from webinar",
+                      icon: <TrashIcon className="size-4" />,
+                      danger: true,
+                      onSelect: onRemove,
+                    },
+                  ]),
+            ]}
+          />
+        </>
+      )}
+    </li>
+  );
+}
+
+// ------------------------------------------------------------ audience view
+
+/**
+ * What an attendee or panelist sees.
+ *
+ * Built from this client's own participant list, so it can only ever show people
+ * the SFU chose to tell us about. When the host hides the audience, that is the
+ * stage and nobody else — and the count comes from the host's own announcement
+ * rather than from anything we could enumerate.
+ */
+function AudienceRoster() {
+  const { controls, join } = useRoomUI();
+  const room = useRoomContext();
+  const participants = useParticipants();
+
+  const stage = useMemo(
+    () =>
+      participants
+        .filter((p) => participantRole(p) !== "attendee")
+        .sort((a, b) => {
+          const rank = (p: Participant) => (participantRole(p) === "host" ? 0 : 1);
+          return rank(a) - rank(b) || (a.name ?? "").localeCompare(b.name ?? "");
+        }),
+    [participants],
+  );
+
+  // Second layer of defence for the mid-session case. The SFU stops sending
+  // updates for a participant the moment they become hidden, which can leave a
+  // stale record in clients that already knew about them; filtering by role means
+  // the toggle applies instantly here too.
+  const audience = useMemo(
+    () =>
+      controls.hideAttendees
+        ? []
+        : participants.filter((p) => participantRole(p) === "attendee"),
+    [participants, controls.hideAttendees],
+  );
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <Group title={`On stage · ${stage.length}`}>
+        {stage.map((p) => (
+          <AudienceRow
+            key={p.identity}
+            name={p.name || p.identity}
+            role={participantRole(p)}
+            isMe={p.identity === join.identity}
+            muted={!p.getTrackPublication(Track.Source.Microphone) ||
+              !!p.getTrackPublication(Track.Source.Microphone)?.isMuted}
+          />
+        ))}
+        {stage.length === 0 && (
+          <li className="px-3 py-4 text-[12.5px] text-ink-3">
+            Nobody is presenting yet.
+          </li>
+        )}
+      </Group>
+
+      {controls.hideAttendees ? (
+        <div className="border-t border-line px-3 py-4">
+          <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
+            <EyeOffIcon className="size-3.5 text-ink-3" />
+            The audience is private
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-2">
+            The host has hidden attendees, so nobody can see who else is here —
+            including you. Your name is only visible to the host and panelists.
+          </p>
+        </div>
+      ) : (
+        <Group title={`Attendees · ${audience.length}`}>
+          {audience.map((p) => (
+            <AudienceRow
+              key={p.identity}
+              name={p.name || p.identity}
+              role="attendee"
+              isMe={p.identity === join.identity}
+              muted
+            />
+          ))}
+          {/* The local participant is not in `participants` when hidden, so a
+              hidden attendee would otherwise not see themselves listed. */}
+          {audience.length === 0 && (
+            <li className="px-3 py-4 text-[12.5px] text-ink-3">
+              {room.state === "connected"
+                ? "You're the first one here."
+                : "Connecting…"}
+            </li>
+          )}
+        </Group>
+      )}
+    </div>
+  );
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="sticky top-0 z-10 border-b border-line bg-surface/95 px-3 py-2 text-[10.5px] font-semibold tracking-[0.06em] text-ink-3 uppercase backdrop-blur">
+        {title}
+      </p>
+      <ul className="divide-y divide-line">{children}</ul>
+    </div>
+  );
+}
+
+function AudienceRow({
+  name,
+  role,
+  isMe,
+  muted,
+}: {
+  name: string;
+  role: Role;
+  isMe: boolean;
+  muted: boolean;
+}) {
+  return (
+    <li className="flex items-center gap-2.5 px-3 py-2.5">
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[13px] text-ink">{name}</span>
+          {isMe && <span className="text-[11px] text-ink-3">(you)</span>}
+        </span>
+        {role !== "attendee" && (
+          <span className="text-[11.5px] text-ink-3">
+            {role === "host" ? "Host" : "Panelist"}
+          </span>
+        )}
+      </span>
+      {role !== "attendee" &&
+        (muted ? (
+          <MicOffIcon className="size-4 shrink-0 text-ink-3" aria-label="Muted" />
+        ) : (
+          <MicIcon className="size-4 shrink-0 text-ok" aria-label="Unmuted" />
+        ))}
+    </li>
+  );
+}

@@ -1,0 +1,28 @@
+# Local single-node config for the natively-built binary (infra/bin/livekit-server).
+#
+# Differs from livekit.yaml in two ways:
+#   - no Redis: it is only needed to coordinate *multiple* SFU nodes, and one
+#     node is one fewer thing that can be down while you're testing.
+#   - auto_create stays false, matching production, so the API's room-creation
+#     path and its capacity ceiling are exercised locally too.
+
+port: 7880
+
+rtc:
+  port_range_start: 50000
+  port_range_end: 50060
+  tcp_port: 7881
+  use_external_ip: false
+
+keys:
+  devkey: devsecretdevsecretdevsecretdevsecret
+
+logging:
+  level: info
+  json: false
+
+room:
+  auto_create: false
+  empty_timeout: 300
+  departure_timeout: 20
+  max_participants: 505

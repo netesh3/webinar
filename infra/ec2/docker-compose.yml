@@ -1,0 +1,173 @@
+# Webcast on one host: web, API and Postgres. Media is LiveKit Cloud's problem now.
+#
+# This pulls prebuilt images instead of building from source, because the instance never
+# gets a copy of the repository.
+#
+# THE SFU IS GONE FROM THIS FILE. It used to run alongside these services on the host
+# network, and that was not a preference — WebRTC media could not be made to work through
+# the cluster's NLB, because UDP target groups force client-IP preservation on, so the SFU
+# answered browsers directly and its replies left via the NAT gateway with the wrong
+# source address, which browsers discard. Measured browser-side as tx=751140 rx=0. A host
+# with its own public address and symmetric 1:1 NAT had none of that.
+#
+# LiveKit Cloud has none of it either, and brings two things this host could not:
+#
+#   TURN over TLS/443. Self-hosted, clients were offered no relay candidate at all, so
+#   anybody behind a firewall that blocks UDP could not connect — and it looked like a
+#   hang rather than an error.
+#
+#   Nothing to patch, and no media ports at all. This host now serves HTTP and only HTTP.
+#
+# Ports this host must have open: 80 and 443. That is the whole list. 7881/tcp,
+# 50000-60060/udp and 3478/udp can all be closed.
+
+name: webcast
+
+services:
+  # ---------------------------------------------------------------- edge
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # 80 is not optional even though everything is HTTPS: the ACME HTTP challenge
+    # uses it, and Caddy redirects to 443 from it.
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates. Losing this means re-issuing them, and that is rate-limited.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web, api]
+
+  # ---------------------------------------------------------------- app
+  web:
+    image: ${WEB_IMAGE:?set WEB_IMAGE}
+    restart: unless-stopped
+    environment:
+      # Server Components render before there is an origin, so they call the API over
+      # this network rather than back out through Caddy.
+      API_INTERNAL_URL: http://api:8080
+    expose: ["3000"]
+
+  # One-shot: give the recordings volume to the uid the API runs as.
+  #
+  # A named volume is created root-owned, and the API image is distroless and runs as
+  # uid 65532, so it cannot write there. It refuses to boot rather than start and
+  # silently record nothing — which is the right behaviour and exactly how this was
+  # found. The Kubernetes manifests solve it with `fsGroup: 65532`; compose has no
+  # equivalent, so it takes an init container.
+  recordings-init:
+    image: alpine:3
+    user: "0:0"
+    command: ["chown", "-R", "65532:65532", "/data/recordings"]
+    volumes:
+      - recordings:/data/recordings
+
+  api:
+    image: ${API_IMAGE:?set API_IMAGE}
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      ADDR: ":8080"
+      DATABASE_URL: postgres://webcast:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/webcast?sslmode=disable
+      # Every LiveKit project this deployment may put rooms on, in priority order, as a
+      # JSON array. A LiveKit Cloud project has a monthly allowance, and running out of it
+      # has to be an edit to .env plus a restart — not a code change, not a migration:
+      #
+      #   LIVEKIT_PROJECTS=[{"id":"cloud-1","url":"wss://x.livekit.cloud","key":"API...",
+      #     "secret":"...","disabled":true},{"id":"cloud-2","url":"wss://y.livekit.cloud",
+      #     "key":"API...","secret":"..."}]
+      #
+      # New webinars go to the first entry that is not disabled. Every webinar records
+      # which project its room is on, so sessions already scheduled or running stay exactly
+      # where they are — which is why the "id" values are PERMANENT. Add and disable
+      # freely; never rename one, because the old name is in the database.
+      #
+      # Malformed content is a boot failure that says what is wrong, deliberately: the
+      # alternative is a process that starts, looks healthy, and hands the first attendee
+      # an authentication error from a service nobody has looked at.
+      LIVEKIT_PROJECTS: ${LIVEKIT_PROJECTS:?set LIVEKIT_PROJECTS}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      COOKIE_SECURE: "true"
+      CORS_ORIGINS: https://${DOMAIN}
+      WEB_BASE_URL: https://${DOMAIN}
+      APP_NAME: ${APP_NAME:-Webcast}
+      SIGNUP_OPEN: ${SIGNUP_OPEN:-true}
+      MAX_ATTENDEES: ${MAX_ATTENDEES:-500}
+      JOIN_RATE_PER_MIN: ${JOIN_RATE_PER_MIN:-1200}
+
+      # Every setting below has to be listed HERE, not merely put in .env.
+      #
+      # .env feeds compose's own variable interpolation; a container's environment is only
+      # what this block says it is. Adding ADMIN_EMAILS to .env and expecting the API to see
+      # it is the exact mistake this comment exists to stop — it deploys cleanly, the API logs
+      # "ADMIN_EMAILS is empty", and nothing looks broken until somebody tries to use it.
+
+      # Who may grant the hosting capability. Nobody, if unset: existing hosts keep working
+      # and no new ones can be made. The API warns loudly at boot when it is empty.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+
+      # Bootstraps a MISSING admin account on every boot, so a fresh or cleared database does
+      # not need somebody to sign up through the public form first. Only ever used to CREATE:
+      # an existing account keeps its own password, or this would be a permanent back door.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+
+      # Registration is per-IP, and a whole school or office shares one egress address, so a
+      # limit sized for one abuser also stops a class signing up. The join path already got
+      # this right; registration did not.
+      REGISTER_RATE_PER_MIN: ${REGISTER_RATE_PER_MIN:-300}
+
+      # Outbound email for approval invitations. Unset is a supported state: messages are
+      # recorded in the notifications outbox as 'skipped' and the in-app alert still works.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      MIN_PASSWORD_LENGTH: ${MIN_PASSWORD_LENGTH:-10}
+      # No sign-in and no registration form: opening the site provisions a
+      # host-capable account and sets its cookie. Anyone with the URL can host, which
+      # is the point and also the risk — see Config.AuthBypass.
+      AUTH_BYPASS: ${AUTH_BYPASS:-false}
+      RECORDINGS_ENABLED: "true"
+      RECORDINGS_DIR: /data/recordings
+      MAX_RECORDING_MB: ${MAX_RECORDING_MB:-4096}
+      SEED_DEV: "false"
+    volumes:
+      - recordings:/data/recordings
+    expose: ["8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      recordings-init: { condition: service_completed_successfully }
+
+  # ---------------------------------------------------------------- data
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: webcast
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: webcast
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webcast -d webcast"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ---------------------------------------------------------------- media
+  #
+  # Nothing here. The SFU is LiveKit Cloud, named in LIVEKIT_PROJECTS above — see the
+  # header for why it stopped being a container on this host.
+
+volumes:
+  pgdata:
+  recordings:
+  caddy_data:
+  caddy_config:

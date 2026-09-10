@@ -1,0 +1,88 @@
+# The one thing an HTTP ingress cannot carry: WebRTC media.
+#
+# Signalling is a WebSocket and goes through the cluster ingress like any other
+# HTTP traffic. Media is raw RTP over UDP, and the nodes here sit on private
+# subnets, so a browser on the internet has no route to a pod. This Service is
+# that route: an internet-facing NLB in front of the SFU's two media ports.
+#
+# It is applied *before* the workloads, on its own, because the SFU has to
+# advertise the address browsers reach it on (`node_ip`) and that address is
+# whatever AWS assigns to this load balancer. A Service can exist without pods, so
+# deploy.sh creates this first, reads the address, then renders the rest.
+#
+# Cost of leaving this behind: one NLB. `deploy.sh down` deletes it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: webcast-livekit-media
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: livekit
+    app.kubernetes.io/part-of: webcast-temp
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: external
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    # Straight to the pod IP, which keeps the browser's source address intact.
+    # ICE pairs addresses, so a rewritten source is a candidate that never matches.
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    # ONE subnet, and this is the whole ballgame. An NLB gets one address per
+    # subnet it is placed in, but `rtc.node_ip` can advertise only one — so a
+    # three-subnet NLB means the SFU names one address while the load balancer
+    # answers on three, and the reverse translation for a flow is only valid on the
+    # ENI that owns it. Packets from a browser get in; packets the SFU sends back
+    # are dropped.
+    #
+    # That is invisible for an attendee and fatal for a host. On the subscriber
+    # transport the SFU is the DTLS server and only ever answers, so an attendee
+    # connects. On the publisher transport the SFU is the DTLS client and has to
+    # send the first handshake packet — which is exactly the direction that does not
+    # work. Measured: ICE reports connected, then `connect timeout after ICE
+    # connected`, then LiveKit closes the signalling socket after ~11.8s, every time.
+    #
+    # Cross-zone load balancing does not fix this. It was here before and it only
+    # helps traffic *reaching* the pod, never the return path.
+    #
+    # NLB subnets are immutable, so changing this means deleting and recreating the
+    # Service, which yields a new address. deploy.sh re-renders node_ip from it.
+    service.beta.kubernetes.io/aws-load-balancer-subnets: __MEDIA_SUBNET__
+    # A UDP target group cannot be health-checked over UDP; point it at the TCP port.
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: tcp
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "7881"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: livekit
+    app.kubernetes.io/part-of: webcast-temp
+  ports:
+    # ICE over TCP. Not an optimisation — for the ~15% of corporate networks that
+    # block UDP outright this is the only way in, and it is the health-check target.
+    - name: ice-tcp
+      port: 7881
+      targetPort: 7881
+      protocol: TCP
+    # No UDP listeners, and this is the hard-won part.
+    #
+    # An NLB target group with UDP and IP targets has `preserve_client_ip` forced ON
+    # and AWS does not allow turning it off. So the SFU sees the browser's real
+    # address and replies straight to it — and that reply leaves the pod via the NAT
+    # gateway, arriving at the browser with the gateway's source address instead of
+    # this load balancer's. The browser discards it. Traffic in works, traffic out
+    # does not.
+    #
+    # Measured in the browser: `ice:checking -> pc:connecting -> ice:connected` and
+    # then nothing. ICE reports connected because the browser's own checks are
+    # answered, then DTLS never completes because on the publisher transport the SFU
+    # has to send first — into the direction that does not work.
+    #
+    # Publishing a UDP listener therefore makes things *worse* than not publishing
+    # one: a half-working path is a path ICE nominates and then dies on, where a path
+    # that does not answer at all is one ICE rejects in a second and moves past. So
+    # media runs over ICE/TCP on 7881, where `preserve_client_ip` is false, the NLB
+    # keeps the flow symmetric, and it demonstrably carries media.
+    #
+    # The cost is real: TCP-framed media has worse latency and jitter recovery than
+    # UDP. Getting UDP back needs one of
+    #   - nodes in public subnets with hostNetwork and use_external_ip, or
+    #   - TURN over TLS on a TCP listener, which needs a hostname and a certificate.
+    # Neither is available in this cluster today. The single-VPS deployment has no
+    # load balancer in the media path at all, which is why UDP simply works there.

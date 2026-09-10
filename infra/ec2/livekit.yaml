@@ -1,0 +1,166 @@
+# LiveKit SFU on a host with its own public address. __PUBLIC_IP__ is substituted at
+# provision time.
+#
+# The difference between this file and the cluster's version is the whole reason the
+# EC2 deployment exists: here the browser sends media straight at this host and the
+# host answers from the same address, because an internet gateway does symmetric 1:1
+# NAT. Through the cluster's network load balancer it could not — UDP target groups
+# force client-IP preservation on, so replies left via the NAT gateway with the wrong
+# source address and browsers discarded them.
+
+port: 7880 # signalling; Caddy terminates TLS in front of it
+
+rtc:
+  # A real port range. The cluster deployment had to mux everything onto one UDP port
+  # because each port cost a load balancer listener; there is nothing in the way here.
+  port_range_start: 50000
+  port_range_end: 60060
+  # ICE over TCP, for the networks that block UDP outright. Roughly 15% of corporate
+  # attendees need this to join at all. It is a fallback, not the path: UDP is what
+  # makes a call feel like a call.
+  tcp_port: 7881
+
+  # Exactly one advertised address, set explicitly.
+  #
+  # `use_external_ip: true` would also find the right address here, but with host
+  # networking it enumerates every interface and additionally offers docker0
+  # (172.17.0.1), which no browser can reach. Those junk candidates are not merely
+  # untidy — ICE spends real time failing them before reaching the one that works,
+  # and that time is the join delay the host sees.
+  node_ip: __PUBLIC_IP__
+  use_external_ip: false
+
+  # STUN, which the SFU also hands to every browser as its ICE server list. Without
+  # it a browser cannot learn its own public address, so it offers only LAN
+  # candidates and the SFU has to infer the real one from an inbound packet — which
+  # showed up as `type(prflx/)` on every pair in the cluster deployment. A
+  # server-reflexive candidate on both sides is what lets ICE pair addresses
+  # deliberately rather than by accident.
+  stun_servers:
+    - stun.l.google.com:19302
+    - stun1.l.google.com:19302
+
+  # ICE-lite is OFF, and the comment that used to be here argued for it convincingly.
+  #
+  # The argument was: this node has one fixed public address and nothing to discover, so it
+  # does not need to run its own connectivity checks — and not running them saves a check
+  # loop per participant, which at five hundred participants is five hundred of them.
+  #
+  # Every clause of that is true and the conclusion was still wrong, because an ICE-lite
+  # agent is PASSIVE: it answers checks and never sends any. On this deployment the
+  # browser's own checks never completed the UDP pair, so Chrome gave up and used the TCP
+  # fallback on 7881. Measured with e2e/probe-room.mjs, same client minutes apart:
+  #
+  #   use_ice_lite: true    udp pair in-progress, tx=0      all media on tcp/7881
+  #                         ice:connected -> ice:disconnected -> pc:disconnected
+  #   use_ice_lite: false   udp pair succeeded, tx=1854218  tcp unused
+  #                         ice:connected -> pc:connected  (and it stays there)
+  #
+  # The second line of each pair is the one that hurt. TCP media is reaped when idle, where
+  # UDP is held open by consent checks — so a viewer waiting in a quiet room lost their
+  # transport, the ICE restart that followed took about twenty seconds, and the SFU logged
+  # `could not restart participant`. Time to first frame for a waiting audience went from
+  # 24-27 s to ~3.1 s on this one line.
+  #
+  # The CPU cost is real and unmeasured at scale. Correctness first; see ARCHITECTURE.md §8d.
+  use_ice_lite: false
+
+  # NOT SET, and worth saying why, because it is the knob everyone reaches for when asked
+  # to reduce latency.
+  #
+  # `packet_buffer_size` — and in v1.9 its replacements `packet_buffer_size_video` and
+  # `packet_buffer_size_audio`, which deprecate it — size the SFU's retransmission
+  # history: how far back a subscriber's NACK can still be answered. They are a memory
+  # setting. LiveKit does not hold packets to reorder them before forwarding; it forwards
+  # and lets the receiving browser's jitter buffer do the ordering. So a bigger buffer
+  # costs RAM and buys NACK range, and a smaller one does not make anything arrive
+  # sooner.
+  #
+  # This file previously set `packet_buffer_size: 500` with a comment claiming it traded
+  # latency for smoothness. Both halves were wrong: 500 is the v1.9 default for video, so
+  # the line changed nothing, and the trade it described was not the one the setting makes.
+  #
+  # The latency a viewer actually feels is the receiver's playout buffer, which is
+  # 60–250ms against ~1ms here. That is a browser-side setting and it is made in
+  # web/lib/latency.ts.
+
+# Per-node capacity limits.
+#
+# Not a performance setting — a refusal setting. Without them an overloaded node degrades
+# for everybody already connected rather than turning away the participant who would have
+# tipped it over, which is the worse of the two failures: five hundred people watching a
+# stuttering stream instead of four hundred and ninety watching a clean one.
+#
+# num_cpus is the share of the host this SFU may use. Left at 0 (all of them) because
+# nothing else on this box is CPU-hungry; set it if the API and Postgres ever start
+# competing.
+limit:
+  # Bytes per second at which this node stops accepting new participants. See
+  # docs/CAPACITY.md for how the number was arrived at — on this instance the binding
+  # constraint is egress bandwidth, not CPU, and it is reached long before any
+  # participant ceiling.
+  bytes_per_sec: 0
+
+# No redis, and the reason matters more than the setting.
+#
+# Redis is what lets several SFU nodes coordinate, and coordination here means assigning a
+# ROOM to a NODE. One room lives entirely on one node: adding nodes buys more concurrent
+# SESSIONS, not a bigger single session. So a 500-person webinar is a vertical-scaling
+# problem and no number of nodes changes that — see docs/CAPACITY.md for the arithmetic and
+# the instance sizes it implies.
+#
+# When there are many concurrent sessions to spread, this is the whole change:
+#
+#   redis:
+#     address: <host>:6379
+#     db: 0
+#
+# with every node running this same file and its own node_ip. Two things must stay true.
+#
+# First, NO LOAD BALANCER IN THE MEDIA PATH. Each node advertises its own public address
+# and browsers connect straight to it. Media through an AWS NLB does not work and cannot be
+# made to: UDP target groups force preserve_client_ip on and it cannot be disabled, so the
+# SFU answers the browser directly while its replies leave via the NAT gateway with the
+# wrong source address, and the browser discards them. Measured browser-side as
+# tx=751140 rx=0 — a connection that looks established and carries nothing. A load balancer
+# in front of the /rtc signalling WebSocket is fine; in front of the RTC ports is not.
+#
+# Second, this container shares the host network, so it reaches Redis on a host address
+# rather than a compose service name.
+
+logging:
+  level: info
+  json: true
+
+room:
+  # Rooms are created by our API, which is what makes the attendee ceiling
+  # enforceable. With auto-create on, any valid token conjures a room.
+  auto_create: false
+  empty_timeout: 300
+  departure_timeout: 20
+  max_participants: 505
+
+turn:
+  # A relay for clients whose network blocks direct peer traffic. It works properly
+  # here — unlike in the cluster, where TURN would have run through the same load
+  # balancer and inherited the same broken return path.
+  enabled: true
+  domain: __TURN_DOMAIN__
+  udp_port: 3478
+  # Where relayed media actually goes, and it has to be open in the security group or the
+  # relay is useless: a client allocates fine on 3478 above and then every relayed packet is
+  # dropped. LiveKit's default is 30000-40000; this is deliberately narrow.
+  #
+  # Two reasons for the narrowness. It keeps the firewall surface to ten ports rather than
+  # ten thousand, and — less obviously — it stays BELOW 32768, which is where this host's
+  # ip_local_port_range begins. Ports above that line are also handed out by the kernel for
+  # its own outbound sockets, so a relay port allocated up there can collide with, say, a
+  # Postgres client connection. See the reserved-ports note in DEPLOY.md.
+  #
+  # Ten ports is roughly five relayed participants (each can use two). Raise it — and the
+  # matching security-group rule — before relying on relay for a real audience.
+  relay_range_start: 30000
+  relay_range_end: 30009
+  # TURN over TLS on 443 is the last resort for a network that allows nothing but
+  # HTTPS. Off because 443 is Caddy's and this would need the certificate Caddy
+  # manages; udp_port above plus rtc.tcp_port covers the common cases.

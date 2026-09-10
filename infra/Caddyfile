@@ -1,0 +1,55 @@
+# TLS, and the routing that makes the app a single origin.
+#
+# Caddy gets certificates from Let's Encrypt on its own and renews them. The only
+# requirements are that DOMAIN resolves to this server and that ports 80 and 443 are
+# reachable.
+#
+# There is no sfu.DOMAIN any more. The SFU used to be a container on this host and this
+# file terminated TLS for its signalling endpoint; it is LiveKit Cloud now, which the
+# browser reaches directly on its own hostname and its own certificate. Nothing about
+# media passes through here — see infra/ec2/docker-compose.yml.
+
+{
+	email {$ACME_EMAIL}
+	# Uncomment to test against the staging CA. Let's Encrypt rate-limits failed
+	# issuance for a real domain, and a typo in DNS burns attempts.
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# The API on the same origin as the app.
+	#
+	# This is a deliberate choice, not a shortcut. Two origins would mean CORS on
+	# every request and a cross-origin session cookie — which browsers are steadily
+	# tightening. One origin means the cookie is plainly first-party, SameSite=Lax
+	# does its job, and there is no preflight on the join path at the top of the
+	# hour when 500 people arrive at once.
+	handle /api/* {
+		reverse_proxy api:8080 {
+			# Recording downloads are large and slow. Caddy streams by default and
+			# sets no response deadline, which is what we want; flush_interval -1
+			# stops it buffering server-sent progress on anything that streams.
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	# Uploaded recording chunks are a couple of megabytes; the limit is generous
+	# enough for them and small enough to be a limit.
+	request_body {
+		max_size 64MB
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 20MB
+			roll_keep 5
+		}
+	}
+}
+

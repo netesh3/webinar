@@ -1,0 +1,30 @@
+# runtime state written by start.sh
+.run/
+
+# compiled binaries
+infra/bin/
+api/bin/
+
+# recordings, when the disk backend keeps them inside the repo (the default for
+# local development — RECORDINGS_DIR moves them anywhere else)
+.data/
+
+# secrets
+.env
+.env.prod
+
+# make deploy-backup writes here
+backups/
+
+# Temporary EKS deploy: generated secrets and rendered manifests.
+k8s/.secrets.env
+k8s/.rendered/
+k8s/.backup/
+k8s/.prev-context
+
+# OS / archive junk
+.DS_Store
+__MACOSX/
+
+# local editor / agent settings
+.claude/
