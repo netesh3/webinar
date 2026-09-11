@@ -1,0 +1,28 @@
+# LiveKit-only stack for Hetzner (host networking for WebRTC UDP).
+# Domain via sslip.io or a real DNS A record.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  livekit:
+    image: livekit/livekit-server:v1.9.1
+    network_mode: host
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    depends_on: [caddy]
+
+volumes:
+  caddy_data:
+  caddy_config:

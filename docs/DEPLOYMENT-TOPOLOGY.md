@@ -9,7 +9,7 @@ This is the **current production-shaped** deployment: managed frontend, API, dat
 | Frontend (Next.js 16 via OpenNext) | Cloudflare Workers | https://webinar-web.ganesh-s-p006.workers.dev |
 | API (Go) | Google Cloud Run · `asia-south1` | https://webcast-api-514730520122.asia-south1.run.app |
 | Postgres | Supabase · project `webcast-in` (`odptebpbrrixhrzfqtqp`) · `ap-south-1` | session pooler `:5432` + `sslmode=require` |
-| Media SFU | LiveKit Cloud | `wss://webinar-34dvh60a.livekit.cloud` |
+| Media SFU | Self-hosted LiveKit on Hetzner · `webcast-livekit` (CX33, fsn1) | `wss://88.198.141.104.sslip.io` |
 | Images | Artifact Registry · `webcast` · `asia-south1` | `asia-south1-docker.pkg.dev/ai-project-490516/webcast/…` |
 | CI / deploy | GitHub Actions → Cloud Build → Cloud Run | [`.github/workflows/cloudrun-deploy.yml`](../.github/workflows/cloudrun-deploy.yml) |
 
