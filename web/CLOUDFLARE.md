@@ -43,6 +43,21 @@ Copy [`.dev.vars.example`](./.dev.vars.example) → `.dev.vars` (gitignored). Po
 
 ## Deploy
 
+### CI (GitHub Actions)
+
+Push to `main` that touches `web/**` (or this workflow file) runs
+[`.github/workflows/cloudflare-workers-deploy.yml`](../.github/workflows/cloudflare-workers-deploy.yml).
+Manual runs: Actions → **Deploy Web (Cloudflare Workers)** → Run workflow.
+
+| Kind | Name | Notes |
+|------|------|--------|
+| Secret | `CLOUDFLARE_API_TOKEN` | Create at [API Tokens](https://dash.cloudflare.com/profile/api-tokens); use the **Edit Cloudflare Workers** template (or equivalent Workers Scripts Edit + Account read). |
+| Variable | `CLOUDFLARE_ACCOUNT_ID` | From `npx wrangler whoami` / dashboard. |
+
+Do **not** reuse a local `wrangler login` OAuth token for CI — create a dedicated API token.
+
+### Manual (local)
+
 ```bash
 cd web
 npm ci

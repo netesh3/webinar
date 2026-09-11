@@ -1,0 +1,79 @@
+# Deploy the Next.js frontend to Cloudflare Workers (OpenNext).
+# Secrets must be set on the repo (Settings → Secrets → Actions); never commit them.
+#
+# Path filters (push to main):
+#   - web/**                                      — Next.js app + wrangler / OpenNext config
+#   - .github/workflows/cloudflare-workers-deploy.yml
+#
+# Also: workflow_dispatch (manual) from the Actions tab.
+#
+# Required repository secrets:
+#   CLOUDFLARE_API_TOKEN — API token with Workers Scripts Edit (and Account read)
+#     Create at: https://dash.cloudflare.com/profile/api-tokens
+#     Template "Edit Cloudflare Workers" is sufficient.
+#
+# Required repository variables:
+#   CLOUDFLARE_ACCOUNT_ID — Cloudflare account ID (wrangler whoami / dashboard)
+#
+# Build env (set in this workflow; not secrets):
+#   NEXT_PUBLIC_API_BASE="" — same-origin /api via Worker proxy (see web/CLOUDFLARE.md)
+#   OPEN_NEXT=1
+#
+# Runtime API target stays in web/wrangler.jsonc vars (API_INTERNAL_URL).
+
+name: Deploy Web (Cloudflare Workers)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/cloudflare-workers-deploy.yml"
+
+concurrency:
+  group: deploy-web-cloudflare
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      NEXT_PUBLIC_API_BASE: ""
+      OPEN_NEXT: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require Cloudflare credentials
+        working-directory: .
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
+            echo "Set repository secret CLOUDFLARE_API_TOKEN (Workers Edit token from the Cloudflare dashboard)." >&2
+            exit 1
+          fi
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "Set repository variable CLOUDFLARE_ACCOUNT_ID (see: npx wrangler whoami)." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy
+        run: npm run deploy

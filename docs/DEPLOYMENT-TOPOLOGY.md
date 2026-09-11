@@ -11,7 +11,7 @@ This is the **current production-shaped** deployment: managed frontend, API, dat
 | Postgres | Supabase · project `webcast-in` (`odptebpbrrixhrzfqtqp`) · `ap-south-1` | session pooler `:5432` + `sslmode=require` |
 | Media SFU | Self-hosted LiveKit on Hetzner · `webcast-livekit` (CX33, fsn1) | `wss://88.198.141.104.sslip.io` |
 | Images | Artifact Registry · `webcast` · `asia-south1` | `asia-south1-docker.pkg.dev/ai-project-490516/webcast/…` |
-| CI / deploy | GitHub Actions → Cloud Run **and** Hetzner LiveKit | [cloudrun-deploy.yml](../.github/workflows/cloudrun-deploy.yml) · [livekit-hetzner-deploy.yml](../.github/workflows/livekit-hetzner-deploy.yml) |
+| CI / deploy | GitHub Actions → Cloud Run, Cloudflare Workers, Hetzner LiveKit | [cloudrun-deploy.yml](../.github/workflows/cloudrun-deploy.yml) · [cloudflare-workers-deploy.yml](../.github/workflows/cloudflare-workers-deploy.yml) · [livekit-hetzner-deploy.yml](../.github/workflows/livekit-hetzner-deploy.yml) |
 
 GCP project: **`ai-project-490516`**. Deploy SA: `webcast-deploy@ai-project-490516.iam.gserviceaccount.com` (JSON key stored as GitHub secret `GCP_SA_KEY`). Repo variable **`GCP_REGION=asia-south1`**.
 
@@ -72,17 +72,20 @@ flowchart TD
   Dev["Developer push / workflow_dispatch"]
   GH["GitHub netesh3/webinar"]
   WF["Actions: Deploy API Cloud Run"]
+  WFCF["Actions: Deploy Web Cloudflare"]
   WFLK["Actions: Deploy LiveKit Hetzner"]
   SA["Secret GCP_SA_KEY\ndeploy SA"]
   Build["gcloud builds submit\napi/"]
   Img["Artifact Registry image\nasia-south1"]
   Deploy["gcloud run deploy webcast-api\nasia-south1"]
   Secrets["Repo secrets\nDATABASE_URL SESSION_SECRET LIVEKIT CORS WEB"]
+  CFTok["Secret CLOUDFLARE_API_TOKEN\nvar CLOUDFLARE_ACCOUNT_ID"]
   SSH["Secrets HETZNER_SSH_*"]
   Opt["/opt/livekit\nrsync + redeploy.sh"]
 
   Dev --> GH
   GH --> WF
+  GH --> WFCF
   GH --> WFLK
   WF --> SA
   WF --> Secrets
@@ -90,27 +93,27 @@ flowchart TD
   Build --> Img
   Img --> Deploy
   Secrets --> Deploy
+  WFCF --> CFTok
+  CFTok --> Worker["Cloudflare Worker\nwebinar-web"]
   WFLK --> SSH
   SSH --> Opt
-
-  WebSrc["web/ OpenNext"]
-  Wrangler["wrangler deploy"]
-  Worker["Cloudflare Worker"]
-  WebSrc --> Wrangler --> Worker
 ```
 
 | Trigger | What deploys |
 |---|---|
 | Push to `main` changing `api/**`, `deploy/cloudrun-deploy.sh`, `deploy/cloudrun.env.example`, or `.github/workflows/cloudrun-deploy.yml` | API → Cloud Run (auto) |
 | Actions → **Deploy API (Cloud Run)** → Run workflow | API → Cloud Run (manual) |
+| Push to `main` changing `web/**` or `.github/workflows/cloudflare-workers-deploy.yml` | Frontend → Cloudflare Workers (auto) |
+| Actions → **Deploy Web (Cloudflare Workers)** → Run workflow | Frontend → Cloudflare Workers (manual) |
 | Push to `main` changing `deploy/livekit-hetzner/**` or `.github/workflows/livekit-hetzner-deploy.yml` | LiveKit → Hetzner `/opt/livekit` (auto; does **not** overwrite `.env.keys`) |
 | Actions → **Deploy LiveKit (Hetzner)** → Run workflow | LiveKit → Hetzner (manual) |
-| `cd web && npm run deploy` (OpenNext) | Frontend → Cloudflare Workers (manual today; CI follow-up) |
+| `cd web && npm run deploy` (OpenNext) | Frontend → Cloudflare Workers (local / fallback) |
 
 Required GitHub **secrets** (Cloud Run): `GCP_SA_KEY`, `DATABASE_URL`, `SESSION_SECRET`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (or `LIVEKIT_PROJECTS`).  
+Required (Cloudflare Workers): `CLOUDFLARE_API_TOKEN`.  
 Required (Hetzner LiveKit): `HETZNER_SSH_HOST`, `HETZNER_SSH_PRIVATE_KEY`. Optional: `HCLOUD_TOKEN` (future server poweron).  
 Optional: `CORS_ORIGINS`, `WEB_BASE_URL`, `ADMIN_EMAILS` / `ADMIN_PASSWORD` (bootstrap production admin on fresh DB).  
-Repo **variables**: `GCP_PROJECT`, `GCP_REGION` (= `asia-south1`).
+Repo **variables**: `GCP_PROJECT`, `GCP_REGION` (= `asia-south1`), `CLOUDFLARE_ACCOUNT_ID`.
 
 Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env.example). Supabase notes: [`deploy/SUPABASE.md`](../deploy/SUPABASE.md). LiveKit on Hetzner: [`deploy/livekit-hetzner/README.md`](../deploy/livekit-hetzner/README.md). Frontend Worker notes: [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md).
 
