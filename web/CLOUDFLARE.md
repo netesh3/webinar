@@ -52,12 +52,30 @@ Manual runs: Actions → **Deploy Web (Cloudflare Workers)** → Run workflow.
 
 | Kind | Name | Notes |
 |------|------|--------|
-| Secret | `CLOUDFLARE_API_TOKEN` | **Required to actually deploy.** Create at [API Tokens](https://dash.cloudflare.com/profile/api-tokens); use the **Edit Cloudflare Workers** template (or equivalent Workers Scripts Edit + Account read). |
-| Variable | `CLOUDFLARE_ACCOUNT_ID` | From `npx wrangler whoami` / dashboard. Already set on this repo when present. |
+| Secret | `CLOUDFLARE_API_TOKEN` | **Primary path.** Create at [API Tokens](https://dash.cloudflare.com/profile/api-tokens); **Edit Cloudflare Workers** template. |
+| Secret | `CLOUDFLARE_OAUTH_REFRESH_TOKEN` | Fragile fallback, from `npx wrangler login` (`refresh_token` in wrangler config). |
+| Secret | `GH_SECRETS_PAT` | Only used by the fallback, to save the rotated refresh token. |
+| Variable | `CLOUDFLARE_ACCOUNT_ID` | From `npx wrangler whoami` / dashboard. |
+| Variable | `CLOUDFLARE_OAUTH_CLIENT_ID` | Wrangler public OAuth client id (fallback only). |
 
-If `CLOUDFLARE_API_TOKEN` is missing, the workflow **skips deploy with a warning** (green check + annotation) instead of failing forever. Add the secret, then re-run **Deploy Web (Cloudflare Workers)** from the Actions tab.
+CI prefers `CLOUDFLARE_API_TOKEN` and verifies it against
+`/user/tokens/verify` before building, so a revoked token fails in seconds
+rather than after a full Next.js build. With no credential at all the job fails
+with an actionable error instead of silently skipping the deploy.
 
-Do **not** reuse a local `wrangler login` OAuth token for CI — create a dedicated API token.
+### Why the OAuth fallback keeps breaking
+
+Cloudflare OAuth refresh tokens are **single-use**: each exchange returns a new
+refresh token and invalidates the one you sent. CI therefore has to write the
+rotated value back into repo secrets, which makes CI stateful — and GitHub
+resolves `secrets.*` when a run is *created*, not when its job starts. So a run
+created before a sibling run's write-back carries a stale token and dies with
+`invalid_grant: The refresh token was already used`. Running `wrangler login`
+locally breaks the chain the same way.
+
+Setting `CLOUDFLARE_API_TOKEN` makes the fallback (and its secret write-back)
+dead code, because API tokens never rotate and are safe for concurrent runs.
+Delete the fallback branch once the token is in place.
 
 ### Manual (local)
 
@@ -184,13 +202,25 @@ you want a single session.
 
 ### GitHub Actions credentials
 
-Either:
+1. **`CLOUDFLARE_API_TOKEN`** (primary — do this) — the token cannot be minted
+   from a `wrangler login` OAuth session (the API rejects those with
+   `9109 Invalid access token`), so it is a one-time manual step:
 
-1. **`CLOUDFLARE_API_TOKEN`** (preferred) — create an **Edit Cloudflare Workers** token at
-   https://dash.cloudflare.com/profile/api-tokens and `gh secret set CLOUDFLARE_API_TOKEN`.
-2. **`CLOUDFLARE_OAUTH_REFRESH_TOKEN`** — from a local `npx wrangler login` session
+   ```bash
+   # 1. https://dash.cloudflare.com/profile/api-tokens → Create Token
+   #    → "Edit Cloudflare Workers" template → account 392a7c7123d4be470145452fcd3f6840
+   #    → include the webinarliv.com zone → Continue → Create → copy the token
+   # 2. Store it (reads from stdin, so it never lands in shell history):
+   gh secret set CLOUDFLARE_API_TOKEN -R netesh3/webinar
+   # 3. Optional: prove it works, then drop the now-unused fallback secrets
+   gh workflow run cloudflare-workers-deploy.yml -R netesh3/webinar
+   ```
+
+2. **`CLOUDFLARE_OAUTH_REFRESH_TOKEN`** (fallback, single-use — see above) — from a
+   local `npx wrangler login` session
    (`~/Library/Preferences/.wrangler/config/default.toml` → `refresh_token`), plus variable
-   `CLOUDFLARE_OAUTH_CLIENT_ID=54d11594-84e4-41aa-b438-e81b8fa78ee7`. CI mints a short-lived
-   access token before `npm run deploy`. If Cloudflare rotates the refresh token, update the secret.
+   `CLOUDFLARE_OAUTH_CLIENT_ID=54d11594-84e4-41aa-b438-e81b8fa78ee7` and secret
+   `GH_SECRETS_PAT` so CI can persist each rotation. Expect `invalid_grant` failures
+   whenever two deploys overlap or you re-login locally.
 
 Also set variable **`CLOUDFLARE_ACCOUNT_ID`**.
