@@ -60,7 +60,7 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
-	in, fields := s.normalizeWebinarInput(in)
+	in, fields := s.normalizeWebinarInput(in, true)
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
@@ -88,7 +88,7 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
-	in, fields := s.normalizeWebinarInput(in)
+	in, fields := s.normalizeWebinarInput(in, false)
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
@@ -318,12 +318,22 @@ func localTime(at time.Time, zone string) string {
 	return at.In(loc).Format("15:04 on 2 January 2006 MST")
 }
 
-// normalizeWebinarInput fills defaults, clamps limits and reports field errors.
-//
-// Clamping rather than rejecting where a value is merely out of range: a host
-// who types 5000 attendees means "as many as possible", and failing the whole
-// form over it teaches them nothing the clamped value doesn't.
-func (s *Server) normalizeWebinarInput(in types.WebinarInput) (types.WebinarInput, map[string]string) {
+/* normalizeWebinarInput fills defaults, clamps limits and reports field errors.
+ *
+ * Clamping rather than rejecting where a value is merely out of range: a host
+ * who types 5000 attendees means "as many as possible", and failing the whole
+ * form over it teaches them nothing the clamped value doesn't.
+ *
+ * `isCreate` gates the one check that must NOT apply to an edit: a brand new
+ * scheduled webinar starting in the past is always a mistake — a stale date left
+ * over from a copy-paste, or a timezone picked wrong — and there is no cost to
+ * refusing it before it exists. An EXISTING webinar can legitimately have a past
+ * startsAt (it ran, or it is a draft nobody has gotten back to), and a host
+ * fixing an unrelated typo on one must not be blocked by a date they did not
+ * touch. Drafts are exempt even on create: a draft is not a commitment to run at
+ * that instant, and it is normal to sketch one out before picking a real time.
+ */
+func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool) (types.WebinarInput, map[string]string) {
 	fields := map[string]string{}
 
 	in.Topic = strings.TrimSpace(in.Topic)
@@ -333,10 +343,13 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput) (types.WebinarInpu
 		fields["topic"] = "Keep the topic under 200 characters."
 	}
 
+	var startsAt time.Time
 	if strings.TrimSpace(in.StartsAt) == "" {
 		fields["startsAt"] = "Pick a date and time."
-	} else if _, err := time.Parse(time.RFC3339, in.StartsAt); err != nil {
+	} else if parsed, err := time.Parse(time.RFC3339, in.StartsAt); err != nil {
 		fields["startsAt"] = "That date and time couldn't be read."
+	} else {
+		startsAt = parsed
 	}
 
 	switch {
@@ -381,6 +394,26 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput) (types.WebinarInpu
 		// live/ended are reached through start and end, which have SFU side
 		// effects. Letting a form set them would leave a room behind.
 		fields["status"] = "A webinar can only be saved as scheduled or a draft."
+	}
+
+	/* A brand new scheduled webinar starting in the past is always a mistake — a
+	 * stale date left over from a copy-paste, or a timezone picked wrong — and
+	 * there is no cost to refusing it before it exists.
+	 *
+	 * isCreate: an EXISTING webinar can legitimately have a past startsAt (it
+	 * ran, or it is a draft nobody has gotten back to), and a host fixing an
+	 * unrelated typo on one must not be blocked by a date they did not touch.
+	 *
+	 * status == scheduled: a draft is not a commitment to run at that instant,
+	 * so it is normal to sketch one out before picking a real time — this only
+	 * bites the moment somebody actually schedules it.
+	 *
+	 * fields["startsAt"] == "": skipped when the date was already rejected above
+	 * (empty or unparsable) so this does not overwrite that message with a less
+	 * useful one about a zero time.Time being "in the past". */
+	if isCreate && in.Status == types.StatusScheduled &&
+		fields["startsAt"] == "" && startsAt.Before(time.Now()) {
+		fields["startsAt"] = "Pick a date and time that hasn't already passed."
 	}
 
 	switch in.Approval {

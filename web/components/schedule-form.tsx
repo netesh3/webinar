@@ -48,6 +48,16 @@ function defaultWhen(): { date: string; time: string } {
   return { date: instantToZoned(iso, "UTC").date, time: "10:00" };
 }
 
+/** "2026-09-12" in the BROWSER's own local time, for the date input's `min`.
+ *  `toLocaleDateString` with en-CA rather than `toISOString` because the latter
+ *  is UTC — past 6pm PT that is already tomorrow, which would let a host in
+ *  California pick a date the picker itself calls "today" and still get
+ *  refused by the server, which checks the same local "now" the picker is
+ *  built from. */
+function todayInputValue(): string {
+  return new Date().toLocaleDateString("en-CA");
+}
+
 type FormState = {
   topic: string;
   summary: string;
@@ -440,6 +450,13 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
               className="field"
               value={form.date}
               onChange={(e) => set("date", e.target.value)}
+              // Only on a NEW webinar — an existing one may legitimately show a
+              // past date (it already ran, or it's a draft nobody finished), and
+              // an edit that touches an unrelated field must not be blocked by a
+              // date the host never touched. The server enforces the real rule
+              // (see normalizeWebinarInput's isCreate); this is a nudge so the
+              // native picker does not even offer a date that will be refused.
+              min={editing ? undefined : todayInputValue()}
               required
             />
           </div>
