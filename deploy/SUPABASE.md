@@ -65,6 +65,57 @@ postgres://postgres.<PROJECT_REF>:SECRET@aws-0-<REGION>.pooler.supabase.com:6543
 Database name is usually `postgres`. That is fine for a dedicated project; the
 app creates its own tables via migrations.
 
+## PostgREST must stay locked (critical)
+
+The Go API owns **all** app data access via `DATABASE_URL` (postgres / session
+pooler). Supabase **PostgREST** (`/rest/v1/*`) must **not** expose public tables
+to the browser.
+
+The `SUPABASE_ANON_KEY` is intentionally public (returned by `GET /api/config`)
+so the web client can run **Supabase Auth** (Google OAuth). That key must never
+be enough to read or write app tables (`users` incl. `password_hash`,
+`registrations` / `join_key`, privilege flags, webinars, etc.).
+
+### Required lockdown
+
+Migration `api/internal/store/migrations/0014_lock_postgrest.sql` (already applied
+on `webcast-in`):
+
+1. `REVOKE ALL` on public tables/sequences/functions from `anon`, `authenticated`,
+   and `PUBLIC` (plus matching `ALTER DEFAULT PRIVILEGES` so new objects stay closed)
+2. `ENABLE ROW LEVEL SECURITY` on every public table with **no** permissive policies
+   (default deny for JWT roles). Do **not** `FORCE ROW LEVEL SECURITY` — the table
+   owner (`postgres` / Go pooler) must keep full access.
+
+Re-apply manually if needed:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f api/internal/store/migrations/0014_lock_postgrest.sql
+```
+
+### Verify (expect denial, not data)
+
+```bash
+# Anon key from /api/config is fine to use here — it is public by design
+ANON=…   # supabaseAnonKey
+curl -sS -D- "https://<PROJECT_REF>.supabase.co/rest/v1/users?select=*&limit=1" \
+  -H "apikey: $ANON" -H "Authorization: Bearer $ANON"
+# Expect HTTP 401 (or empty / permission denied) — never password_hash rows
+```
+
+Auth APIs must keep working:
+
+```bash
+curl -sS "https://<PROJECT_REF>.supabase.co/auth/v1/settings" -H "apikey: $ANON"
+# Expect HTTP 200; Google provider still listed when enabled
+```
+
+Go API (`/readyz`, password login, webinar CRUD) uses Postgres directly and is
+unaffected by PostgREST grants.
+
+After any incident where PostgREST was open, **rotate operator passwords**
+(`ADMIN_PASSWORD` / host accounts) even if hashes were not confirmed exfiltrated.
+
 ### pgx / pool behaviour
 
 - `store.Open` uses a `pgxpool` (MaxConns=20). Session pooler `:5432` is enough for
