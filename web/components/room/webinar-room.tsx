@@ -206,6 +206,21 @@ function RoomSession({
     void room.prepareConnection(join.url, join.token).catch(() => {});
   }, [room, join.url, join.token]);
 
+  /* Noise suppression cannot go through switchActiveDevice — it isn't a device,
+   * it's a capture constraint — so it is the one preference above that isn't
+   * self-updating. Settings only ever changed `prefs`; the room's own capture
+   * defaults, fixed at the `useState` initializer above, kept whatever value
+   * was live when it connected. The Settings copy promises "applies the next
+   * time your microphone starts," so the room's defaults have to track the
+   * preference for that promise to be true the next time the mic is toggled or
+   * switched, mid-session, with nobody having to leave and rejoin. */
+  useEffect(() => {
+    room.options.audioCaptureDefaults = {
+      ...room.options.audioCaptureDefaults,
+      noiseSuppression: prefs.noiseSuppression,
+    };
+  }, [room, prefs.noiseSuppression]);
+
   // A publisher checks their devices before anything is published, so this screen gates the
   // connection as well. See the note above for why that is deliberate rather than incidental.
   if (!checked) {
