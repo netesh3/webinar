@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { HomeLegalFooter } from "@/components/marketing/legal-page";
 import { useAppConfig, useSession } from "@/components/providers";
 
 /* Public marketing home for Webinar Liv.
@@ -188,6 +189,8 @@ export function HomePage() {
           </div>
         </div>
       </section>
+
+      <HomeLegalFooter />
     </div>
   );
 }

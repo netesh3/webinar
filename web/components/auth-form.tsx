@@ -109,6 +109,15 @@ export function LoginForm() {
         You don&apos;t need an account to attend — registering for a webinar
         sends you a personal join link.
       </p>
+      <p className="mt-3 text-center text-[11.5px] text-ink-3">
+        <Link href="/privacy" className="hover:underline">
+          Privacy
+        </Link>
+        {" · "}
+        <Link href="/terms" className="hover:underline">
+          Terms
+        </Link>
+      </p>
       <ContinueAsPreviewHost className="mt-4 border-t border-line pt-4 text-center" />
     </Card>
   );
@@ -261,6 +270,15 @@ export function SignupForm() {
           className="font-medium text-brand hover:underline"
         >
           Sign in
+        </Link>
+      </p>
+      <p className="mt-3 text-center text-[11.5px] text-ink-3">
+        <Link href="/privacy" className="hover:underline">
+          Privacy
+        </Link>
+        {" · "}
+        <Link href="/terms" className="hover:underline">
+          Terms
         </Link>
       </p>
     </Card>
