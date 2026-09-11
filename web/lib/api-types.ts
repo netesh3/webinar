@@ -490,6 +490,7 @@ export interface Webinar {
   summary: string;
   description: string;
   track: string;
+  imageUrl?: string;
   startsAt: string; // RFC3339
   durationMin: number /* int */;
   timeZone: string;

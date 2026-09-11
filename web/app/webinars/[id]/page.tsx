@@ -10,7 +10,7 @@ import {
   TopicStripe,
   kindLabel,
 } from "@/components/ui";
-import { ApiError, api } from "@/lib/api";
+import { API_BASE, ApiError, api } from "@/lib/api";
 import {
   formatCount,
   formatDay,
@@ -50,7 +50,21 @@ export default async function WebinarDetailPage({
           {/* ---------------- main column ---------------- */}
           <div>
             <Card className="mb-4 overflow-hidden">
-              <TopicStripe webinar={w} />
+              {/* The host's own cover image when there is one; the thin gradient
+                  accent otherwise — never both, and never a layout that leaves a
+                  visible gap for a webinar that has no image. */}
+              {w.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- a
+                // cross-origin API URL, not something next/image's loader
+                // can optimize.
+                <img
+                  src={`${API_BASE}${w.imageUrl}`}
+                  alt=""
+                  className="aspect-video w-full object-cover"
+                />
+              ) : (
+                <TopicStripe webinar={w} />
+              )}
               <div className="p-5">
                 <div className="mb-3 flex flex-wrap items-center gap-1.5">
                   <Badge tone={kind.tone} dot={w.status === "live"}>

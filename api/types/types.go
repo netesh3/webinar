@@ -499,6 +499,13 @@ type Webinar struct {
 	Summary   string        `json:"summary"`
 	Descript  string        `json:"description"`
 	Track     string        `json:"track"`
+	/* ImageURL is a path back to this API, never a bucket URL — same reasoning as
+	 * MediaKey on a chat image, so the backend can move where the bytes live without
+	 * breaking a link already on a registration page. Carries a `?v=` that changes
+	 * every time the image is replaced, so a cache never serves stale bytes under a
+	 * URL that looks unchanged. Empty when no image was uploaded; the frontend falls
+	 * back to its own generated cover in that case. */
+	ImageURL  string        `json:"imageUrl,omitempty"`
 	StartsAt  string        `json:"startsAt"` // RFC3339
 	Duration  int           `json:"durationMin"`
 	TimeZone  string        `json:"timeZone"`
