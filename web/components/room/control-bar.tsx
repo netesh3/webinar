@@ -30,6 +30,7 @@ import { RecordButton } from "./recording";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
 import { displayMediaOptions, SharePicker } from "./share-picker";
+import { HostLeaveDialog } from "./host-leave-dialog";
 import { useToolDrag } from "./tool-drag";
 import { tool } from "./tools";
 
@@ -131,6 +132,8 @@ export function ControlBar() {
   const [previewSharing, setPreviewSharing] = useState(false);
   /** The Layout popover, anchored to whichever slot holds it. */
   const [layoutOpen, setLayoutOpen] = useState(false);
+  /** Host-only Leave sheet: assign another host or end for everyone. */
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
@@ -549,18 +552,30 @@ export function ControlBar() {
           which either did nothing visible or produced a half-torn session. Disabled only
           while the FIRST connection is being established: during a reconnect it stays live,
           because somebody whose network has gone is exactly who needs a way out and trapping
-          them behind a spinner is worse than a slightly untidy disconnect. */}
+          them behind a spinner is worse than a slightly untidy disconnect.
+          Hosts get a choice: hand off or end. Everyone else just leaves. */}
       <button
         type="button"
-        onClick={leave}
+        onClick={() => {
+          if (isHost) setLeaveOpen(true);
+          else leave();
+        }}
         disabled={connecting}
-        aria-label="Leave the webinar"
+        aria-label={isHost ? "Leave or end the webinar" : "Leave the webinar"}
         title={connecting ? "Connecting…" : undefined}
         className="ml-1 inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-live sm:px-4"
       >
         <LeaveIcon className="size-4 sm:hidden" />
         <span className="hidden sm:inline">Leave</span>
       </button>
+
+      {isHost && (
+        <HostLeaveDialog
+          open={leaveOpen}
+          onClose={() => setLeaveOpen(false)}
+          onLeave={leave}
+        />
+      )}
 
       {/* Rendered here rather than at the room level so it is mounted only for
           somebody who may actually share. It is a Modal, so it portals out of the

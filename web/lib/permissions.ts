@@ -1,6 +1,6 @@
 "use client";
 
-import { RoomEvent, Track, type Room } from "livekit-client";
+import { RoomEvent, type Participant, type Room, Track } from "livekit-client";
 import { useEffect, useRef, useState } from "react";
 
 /* What this participant is allowed to publish, right now.
@@ -162,4 +162,49 @@ export function useMediaPermissions(
   }, [room]);
 
   return permissions;
+}
+
+/** Live session role from participant metadata, falling back to the join token.
+ *
+ * Host handoff updates metadata in place; reading only join.role would leave the
+ * new host stuck as a panelist in the UI until they rejoined. */
+export function useLiveRole(room: Room | null, joinRole: string): string {
+  const [role, setRole] = useState(joinRole);
+
+  useEffect(() => {
+    setRole(joinRole);
+  }, [joinRole]);
+
+  useEffect(() => {
+    if (!room) return;
+
+    const read = () => {
+      const raw = room.localParticipant?.metadata;
+      if (!raw) return;
+      try {
+        const meta = JSON.parse(raw) as { role?: unknown };
+        if (meta.role === "host" || meta.role === "panelist" || meta.role === "attendee") {
+          setRole(meta.role);
+        }
+      } catch {
+        /* ignore malformed metadata */
+      }
+    };
+
+    read();
+    const onMeta = (_metadata: string | undefined, participant?: Participant) => {
+      if (participant && !participant.isLocal) return;
+      read();
+    };
+    room.on(RoomEvent.ParticipantMetadataChanged, onMeta);
+    room.on(RoomEvent.Connected, read);
+    room.on(RoomEvent.Reconnected, read);
+    return () => {
+      room.off(RoomEvent.ParticipantMetadataChanged, onMeta);
+      room.off(RoomEvent.Connected, read);
+      room.off(RoomEvent.Reconnected, read);
+    };
+  }, [room]);
+
+  return role;
 }

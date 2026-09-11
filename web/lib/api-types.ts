@@ -970,6 +970,16 @@ export interface PanelistRequest {
   email: string;
 }
 /**
+ * TransferHostRequest hands the webinar to another panelist already in the room.
+ *
+ * Identity is their LiveKit identity (user_<id>). The caller remains a panelist so
+ * they can rejoin the stage later; the target becomes the owner for every host
+ * endpoint that checks ownership.
+ */
+export interface TransferHostRequest {
+  identity: string;
+}
+/**
  * AppConfig is public, unauthenticated, and read once by the frontend at boot.
  * It exists so the UI has no build-time constants for things an operator sets:
  * the product name, the public URL used to build share links, the attendee

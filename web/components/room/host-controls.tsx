@@ -310,7 +310,7 @@ export function HostControls() {
               End webinar for everyone
             </button>
             <p className="mt-1.5 text-center text-[11.5px] text-ink-3">
-              Leaving on your own keeps the webinar running.
+              Leave also offers ending or assigning another host.
             </p>
           </section>
         </div>

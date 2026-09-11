@@ -318,6 +318,10 @@ export const api = {
   endWebinar: (slug: string) =>
     post<Webinar>(`/api/host/webinars/${seg(slug)}/end`),
 
+  /** Hands ownership to another panelist already in the room, then the caller leaves. */
+  transferHost: (slug: string, identity: string) =>
+    post<Webinar>(`/api/host/webinars/${seg(slug)}/transfer-host`, { identity }),
+
   hostJoin: (slug: string) =>
     post<JoinResponse>(`/api/host/webinars/${seg(slug)}/join`),
 

@@ -626,6 +626,70 @@ func (s *Store) RemovePanelist(ctx context.Context, slug, userID string) error {
 	return err
 }
 
+// TransferHost moves ownership from fromID to toID.
+//
+// The new owner is removed from the panelist list (they are the host now), and the
+// previous owner is added as a panelist so leaving the room does not strand them
+// off-stage if they rejoin. toID must already be a scheduled panelist — transferring
+// to an audience identity is rejected here so the handler cannot paper over a bad
+// LiveKit roster with a silent ownership change.
+func (s *Store) TransferHost(ctx context.Context, slug, fromID, toID string) error {
+	if fromID == "" || toID == "" || fromID == toID {
+		return ErrInvalid
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var webinarID, hostID string
+	err = tx.QueryRow(ctx, `
+		SELECT id::text, host_id::text FROM webinars WHERE slug = $1 FOR UPDATE`, slug).
+		Scan(&webinarID, &hostID)
+	if noRows(err) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if hostID != fromID {
+		return ErrInvalid
+	}
+
+	var isPanelist bool
+	err = tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM webinar_panelists WHERE webinar_id = $1::uuid AND user_id = $2::uuid
+		)`, webinarID, toID).Scan(&isPanelist)
+	if err != nil {
+		return err
+	}
+	if !isPanelist {
+		return ErrInvalid
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE webinars SET host_id = $2::uuid WHERE id = $1::uuid`, webinarID, toID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM webinar_panelists WHERE webinar_id = $1::uuid AND user_id = $2::uuid`,
+		webinarID, toID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO webinar_panelists (webinar_id, user_id, position)
+		SELECT $1::uuid, $2::uuid, coalesce(
+			(SELECT max(position) + 1 FROM webinar_panelists WHERE webinar_id = $1::uuid), 0)
+		ON CONFLICT DO NOTHING`, webinarID, fromID); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 // --------------------------------------------------------------- stage grants
 
 // GrantStage records that a host promoted an attendee, so the promotion

@@ -357,6 +357,7 @@ func (s *Server) Routes() http.Handler {
 
 					r.Post("/start", s.handleStartWebinar)
 					r.Post("/end", s.handleEndWebinar)
+					r.Post("/transfer-host", s.handleTransferHost)
 					r.Patch("/controls", s.handleUpdateControls)
 
 					// ---- polls and quizzes ----

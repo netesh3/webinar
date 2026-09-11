@@ -377,6 +377,136 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, wb)
 }
 
+// handleTransferHost hands a live session to another panelist already in the room.
+//
+// Ownership moves in Postgres so host endpoints (end, mute-all, controls) keep
+// working for the new host; LiveKit roles move so everyone else sees the right
+// label without a reconnect. The previous host becomes a panelist and is expected
+// to leave from the client after this call succeeds.
+func (s *Server) handleTransferHost(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+	user := userFromContext(r.Context())
+
+	var body types.TransferHostRequest
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	identity := strings.TrimSpace(body.Identity)
+	toID, ok := strings.CutPrefix(identity, "user_")
+	if !ok || toID == "" {
+		httpx.Error(w, http.StatusUnprocessableEntity, "not_a_panelist",
+			"Pick a panelist who is signed in on the stage. Audience seats cannot take over as host.")
+		return
+	}
+	if toID == user.ID {
+		httpx.Error(w, http.StatusUnprocessableEntity, "same_host",
+			"You are already the host.")
+		return
+	}
+
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "transfer host: load webinar", err)
+		return
+	}
+	if wb.Status != types.StatusLive {
+		httpx.Error(w, http.StatusConflict, "not_live",
+			"Host can only be handed off while the webinar is live.")
+		return
+	}
+
+	sfu, err := s.sfuFor(r.Context(), wb)
+	if err != nil {
+		s.failSFU(w, r, wb, err)
+		return
+	}
+	room := lk.RoomName(slug)
+	list, err := sfu.Participants(r.Context(), room)
+	if err != nil {
+		s.fail(w, r, "transfer host: list participants", err)
+		return
+	}
+	var target *types.LiveParticipant
+	for i := range list {
+		p := &list[i]
+		if p.Identity != identity {
+			continue
+		}
+		target = p
+		break
+	}
+	if target == nil {
+		httpx.Error(w, http.StatusNotFound, "not_in_room",
+			"That person has left the webinar.")
+		return
+	}
+	if target.Role != types.RolePanelist || !target.CanPublish {
+		httpx.Error(w, http.StatusUnprocessableEntity, "not_on_stage",
+			"Only a panelist who can publish can take over as host.")
+		return
+	}
+
+	if _, err := s.store.UserByID(r.Context(), toID); errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "not_a_panelist",
+			"That account is no longer available.")
+		return
+	} else if err != nil {
+		s.fail(w, r, "transfer host: load target", err)
+		return
+	}
+
+	if err := s.store.TransferHost(r.Context(), slug, user.ID, toID); errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+		return
+	} else if errors.Is(err, store.ErrInvalid) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "not_a_panelist",
+			"Pick someone who is already a panelist on this webinar.")
+		return
+	} else if err != nil {
+		s.fail(w, r, "transfer host", err)
+		return
+	}
+
+	// Host endpoints require can_host. A guest speaker invited as a panelist often
+	// does not have it yet; granting it here is what makes mute-all / end work for
+	// them after they take over, without an admin round-trip mid-session.
+	if targetUser, err := s.store.UserByID(r.Context(), toID); err == nil && !targetUser.CanHost {
+		if _, err := s.store.SetHostCapability(r.Context(), toID, true); err != nil {
+			s.log.Warn("transfer host: could not grant hosting capability",
+				"slug", slug, "user", toID, "error", err)
+		}
+	}
+
+	fromIdentity := hostIdentity(user.ID)
+	if err := sfu.SetRole(r.Context(), lk.Spec{
+		Role:     types.RoleHost,
+		Room:     room,
+		Identity: identity,
+		Name:     target.Name,
+	}); err != nil && !errors.Is(err, lk.ErrNotInRoom) {
+		s.log.Warn("transfer host: could not promote new host in the room",
+			"slug", slug, "identity", identity, "error", err)
+	}
+	if err := sfu.SetRole(r.Context(), lk.Spec{
+		Role:     types.RolePanelist,
+		Room:     room,
+		Identity: fromIdentity,
+		Name:     user.Name,
+	}); err != nil && !errors.Is(err, lk.ErrNotInRoom) {
+		s.log.Warn("transfer host: could not demote previous host in the room",
+			"slug", slug, "identity", fromIdentity, "error", err)
+	}
+
+	wb, err = s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "transfer host: reload webinar", err)
+		return
+	}
+	s.log.Info("host transferred", "slug", slug, "from", user.ID, "to", toID)
+	httpx.JSON(w, http.StatusOK, wb)
+}
+
 // handleEndWebinar ends the session for everyone.
 //
 // Deleting the room is the point: disconnecting the host alone would leave the

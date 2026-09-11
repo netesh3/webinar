@@ -970,6 +970,15 @@ type PanelistRequest struct {
 	Email string `json:"email"`
 }
 
+// TransferHostRequest hands the webinar to another panelist already in the room.
+//
+// Identity is their LiveKit identity (user_<id>). The caller remains a panelist so
+// they can rejoin the stage later; the target becomes the owner for every host
+// endpoint that checks ownership.
+type TransferHostRequest struct {
+	Identity string `json:"identity"`
+}
+
 // ---------------------------------------------------------------- app config
 
 // AppConfig is public, unauthenticated, and read once by the frontend at boot.

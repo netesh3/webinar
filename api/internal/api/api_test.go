@@ -200,6 +200,17 @@ func (f *fakeRooms) SetRole(_ context.Context, spec lk.Spec) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.roleChanges = append(f.roleChanges, spec)
+	for i, p := range f.roster {
+		if p.Identity != spec.Identity {
+			continue
+		}
+		f.roster[i].Role = spec.Role
+		f.roster[i].CanPublish = lk.CanPublish(spec.Role)
+		f.roster[i].CanSpeak = lk.CanPublish(spec.Role) && !spec.MutedByHost
+		f.roster[i].AudioOnly = spec.AudioOnly
+		f.roster[i].MutedByHost = spec.MutedByHost
+		return nil
+	}
 	return nil
 }
 

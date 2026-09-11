@@ -21,7 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { roomOptions, useMediaPreferences } from "@/lib/media";
-import { useMediaPermissions, type MediaPermissions } from "@/lib/permissions";
+import { useMediaPermissions, useLiveRole, type MediaPermissions } from "@/lib/permissions";
 import {
   decodeBacklog,
   useRealtime,
@@ -328,14 +328,15 @@ function ConnectedRoom({
     entryTracks.current = { audio: entryAudio, video: entryVideo };
   }, [entryAudio, entryVideo]);
 
-  const isHost = join.role === "host";
+  const liveRole = useLiveRole(room, join.role);
+  const isHost = liveRole === "host";
   const me = useMemo<Sender>(
     () => ({
       identity: join.identity,
       name: join.displayName,
-      role: join.role,
+      role: liveRole === "host" || liveRole === "panelist" ? liveRole : join.role,
     }),
-    [join.identity, join.displayName, join.role],
+    [join.identity, join.displayName, join.role, liveRole],
   );
 
   const { controls, topic, recording, startedAt, endedAt, status } = useSessionControls(
