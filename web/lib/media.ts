@@ -13,7 +13,12 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { asBackgroundChoice, type BackgroundChoice } from "./backgrounds";
 // The share's layers and top encoding live with the ladder that budgets them, because the two
 // have to agree position for position. See SHARE_LAYERS in network.ts.
-import { SHARE_LAYERS, SHARE_TOP } from "./network";
+import {
+  SHARE_FLOOR_DESKTOP,
+  SHARE_FLOOR_MOBILE,
+  SHARE_LAYERS,
+  SHARE_TOP,
+} from "./network";
 
 /* Capture and publish quality.
  *
@@ -107,24 +112,25 @@ export const SCREEN_SHARE_OPTIONS: ScreenShareCaptureOptions = {
   },
   contentHint: "detail",
 
-  /* Capture at 1080p, 15fps.
+  /* Capture floors: desktop ≥720p (we ask 1080p), mobile ≥360p.
    *
-   * 1080p because slides and terminals are the whole point of a screen share and text is
-   * the first thing to suffer from a downscale — and because the ladder in network.ts can
-   * now take the BITRATE down without taking the resolution with it, so a weak uplink no
-   * longer has to mean blurry text. See SHARE_LADDER there.
+   * 1080p on desktop because slides/terminals are the point and text suffers first from a
+   * downscale — and because SHARE_LADDER can cut bitrate/fps without cutting below 720p.
+   * 15fps rather than 30: a deck does not need the duplicates; contentHint "detail" still
+   * tells the encoder to spend budget on pixels when motion appears.
    *
-   * 15fps rather than the SDK's default of 30, which is the part worth constraining. A deck
-   * does not move, so half the frames are duplicates that cost capture and encode work on
-   * the presenter's machine and buy nobody anything. Motion is protected by contentHint
-   * below, which tells the encoder to spend its budget on pixels and drop frames instead.
-   *
-   * Safari is deliberately left unconstrained. WebKit bug 263015 makes a constrained share
-   * come back at a LOW resolution instead of the requested one, and livekit-client distrusts
-   * it enough to skip its own default there — so this skips it too. Safari captures at its
-   * own default and the encoder does the rest.
+   * Safari is left unconstrained (WebKit bug 263015 returns a LOW resolution under
+   * constraints). Mobile asks for the 360p floor explicitly when not Safari.
    */
-  resolution: isSafari() ? undefined : ScreenSharePresets.h1080fps15.resolution,
+  resolution: isSafari()
+    ? undefined
+    : isMobilePublisher()
+      ? {
+          width: SHARE_FLOOR_MOBILE.width,
+          height: SHARE_FLOOR_MOBILE.height,
+          frameRate: 15,
+        }
+      : ScreenSharePresets.h1080fps15.resolution,
 
   // Offer a control to swap the shared window mid-share instead of stopping and
   // starting again — which, in a webinar, means a gap the audience sees.
@@ -152,7 +158,9 @@ export const SCREEN_SHARE_OPTIONS: ScreenShareCaptureOptions = {
  * do not restate them here or a drift with SHARE_LADDER is easy to miss.
  *
  * maintain-resolution: slides and terminals must not blur to hold a frame rate; contentHint
- * "detail" asks the same of the encoder, and this matches it on the sender.
+ * "detail" asks the same of the encoder, and this matches it on the sender. The network
+ * ladder for share (judgeShare) prefers cutting fps / turning off 1080p over dropping below
+ * SHARE_FLOOR_DESKTOP.
  */
 export const SCREEN_SHARE_PUBLISH: TrackPublishOptions = {
   audioPreset: AudioPresets.musicStereo,
@@ -192,6 +200,17 @@ function isMac(): boolean {
   return /mac/i.test(platform);
 }
 
+/** Coarse mobile check for capture floors — phones rarely share, but must not go below 360p. */
+function isMobilePublisher(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  if (/android|iphone|ipod|ipad/i.test(ua)) return true;
+  // iPadOS 13+ may report as Macintosh with a touchscreen.
+  const maxTouch =
+    typeof navigator.maxTouchPoints === "number" ? navigator.maxTouchPoints : 0;
+  return /macintosh/i.test(ua) && maxTouch > 1;
+}
+
 /* Real Safari, which is asked only so a screen share can avoid constraining it.
  *
  * The negative clauses are the whole test: Chrome, Edge, and every iOS browser put
@@ -210,6 +229,9 @@ function isSafari(): boolean {
     /safari/i.test(ua) && !/chrome|chromium|crios|fxios|edg|android/i.test(ua)
   );
 }
+
+/** Re-export floors so callers/tests do not reach into network for capture constants alone. */
+export { SHARE_FLOOR_DESKTOP, SHARE_FLOOR_MOBILE };
 
 export type DeviceChoices = {
   audioInput?: string;
@@ -288,17 +310,9 @@ export function roomOptions(
        * preset at 30fps has to throw away detail to hit its frame rate, and the first
        * thing to go is small text.
        *
-       * 1080p is the CEILING, not a fixed cost. This was pinned to 720p for a while purely
-       * to bound egress, which fixed the capacity problem by making every share worse for
-       * everybody — including the presenters on a good connection, who are most of them.
-       * SHARE_LADDER in network.ts now moves the top layer between 2 500 and 600 kbps on
-       * the same signals that already drive the camera, so a strong uplink gets full 1080p
-       * and a weak one degrades instead of everyone paying up front.
-       *
-       * The reason that works for a share and would not for a camera is contentHint:
-       * "detail" above. Under bitrate pressure the encoder holds the pixels and drops
-       * frames, so a squeezed 1080p share becomes a slower slideshow of legible text rather
-       * than a blurry one. A camera does the opposite by design — see degradationPreference.
+       * 1080p is the CEILING; SHARE_FLOOR_DESKTOP (720p) is the floor on desktop. The share
+       * ladder in network.ts (judgeShare) turns off 1080p and may cut fps before it ever
+       * starves the 720p layer — camera still uses the stricter judge() with sharing:true.
        *
        * Egress at scale is still linear in the audience: see docs/CAPACITY.md, and cap
        * MAX_ATTENDEES rather than the resolution if a single node has to carry hundreds.

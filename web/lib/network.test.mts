@@ -16,13 +16,20 @@
 import { ConnectionQuality } from "livekit-client";
 import {
   LADDER,
+  SHARE_720_MIN_BITRATE,
+  SHARE_FLOOR_DESKTOP,
+  SHARE_FLOOR_MOBILE,
   SHARE_LADDER,
   SHARE_LAYERS,
+  SHARE_TOP,
   describeQuality,
   floorFrom,
   judge,
+  judgeShare,
   needKbps,
   readPlayoutMs,
+  shareNeedKbps,
+  worseTier,
   type NetworkHealth,
   type PublishTier,
 } from "./network.ts";
@@ -607,12 +614,127 @@ console.log("\nshare layer gaps");
   // And the middle layer is 720p at a watchable frame rate — the point of building it by hand
   // rather than taking h720fps5, whose 5fps cap would pin a subscriber there.
   const middle = SHARE_LAYERS[1];
-  eq(middle.height, 720, "the middle share layer is 720p");
+  eq(middle.height, SHARE_FLOOR_DESKTOP.height, "the middle share layer is 720p");
+  eq(middle.width, SHARE_FLOOR_DESKTOP.width, "…at desktop floor width");
   ok(
     (middle.encoding.maxFramerate ?? 0) >= 10,
     "the middle share layer is not frame-rate capped into a slideshow",
     `${middle.encoding.maxFramerate}fps`,
   );
+
+  // Desktop content floor: every tier keeps a ≥720p layer live at ≥800 kbps.
+  for (const tier of tiers) {
+    const rung720 = SHARE_LADDER[tier][1];
+    ok(
+      rung720.maxBitrate >= SHARE_720_MIN_BITRATE,
+      `share ${tier}: 720p rung stays at or above the bitrate floor`,
+      `${rung720.maxBitrate}`,
+    );
+  }
+  eq(
+    SHARE_LADDER.minimal[1].maxFramerate,
+    8,
+    "minimal holds 720p pixels and cuts fps instead of bitrate",
+  );
+  eq(
+    SHARE_FLOOR_MOBILE.height,
+    360,
+    "mobile capture/encode floor is 360p",
+  );
+  ok(
+    SHARE_TOP.height >= SHARE_FLOOR_DESKTOP.height,
+    "top share layer is above the desktop floor",
+  );
+}
+
+/* Share degradation must not follow the camera's RTT ladder.
+ *
+ * The mid-session blur bug: EU SFU + IN ~200ms RTT, availableOutgoing often reports ~3 Mbps
+ * while sharing. Camera judge(sharing) correctly steps the face down; the old shared tier
+ * also starved the share to 720p@500k. judgeShare stays calm on that sample.
+ */
+console.log("\njudgeShare vs camera while sharing");
+{
+  const distant = {
+    lossPercent: 0,
+    rttMs: 250,
+    rttFloorMs: 245,
+  };
+
+  // ~3 Mbps: camera+share tooNarrow for judge(), but share-alone still fine for judgeShare.
+  eq(
+    judge({
+      tier: "full",
+      ...distant,
+      availableOutgoingKbps: 3000,
+      sharing: true,
+    }).bad,
+    true,
+    "camera judge still steps down when share saturates a 3 Mbps uplink",
+  );
+  eq(
+    judgeShare({
+      tier: "full",
+      ...distant,
+      availableOutgoingKbps: 3000,
+    }).bad,
+    false,
+    "…while judgeShare keeps 1080p share on that same 3 Mbps estimate",
+  );
+
+  // Mild loss that moves the camera must not blur slides.
+  eq(
+    judge({
+      tier: "full",
+      lossPercent: 2.5,
+      rttMs: 40,
+      rttFloorMs: 40,
+      availableOutgoingKbps: 20_000,
+    }).bad,
+    true,
+    "2.5% loss is enough for the camera ladder",
+  );
+  eq(
+    judgeShare({
+      tier: "full",
+      lossPercent: 2.5,
+      rttMs: 40,
+      rttFloorMs: 40,
+      availableOutgoingKbps: 20_000,
+    }).bad,
+    false,
+    "…but not for the share (needs severe loss)",
+  );
+
+  eq(
+    judgeShare({
+      tier: "full",
+      lossPercent: 6,
+      rttMs: 40,
+      rttFloorMs: 40,
+      availableOutgoingKbps: 20_000,
+    }).bad,
+    true,
+    "severe packet loss does step the share down",
+  );
+
+  // Critically thin for the share floor alone.
+  eq(
+    judgeShare({
+      tier: "full",
+      ...distant,
+      availableOutgoingKbps: Math.round(shareNeedKbps("full") * 0.4),
+    }).bad,
+    true,
+    "a link that cannot carry the share floor steps share down",
+  );
+
+  eq(
+    worseTier("full", "minimal"),
+    "minimal",
+    "worseTier picks the more degraded rung",
+  );
+  eq(worseTier("reduced", "full"), "reduced", "…from either argument order");
 }
 
 console.log("\nfloorFrom");

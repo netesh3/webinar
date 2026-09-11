@@ -234,106 +234,68 @@ export const LADDER: Record<
   ],
 };
 
-/* The same three tiers, for a SCREEN SHARE — three layers now, and the rungs mostly move
- * bitrate rather than resolution.
+/* The same three tiers, for a SCREEN SHARE — and a different policy from the camera.
  *
- * That inversion is why 1080p is affordable at all. The camera ladder above turns layers OFF
- * as things get worse, because a camera under bitrate pressure is told to maintain-framerate:
- * it blurs, and a blurry face at 15fps is worse than a small sharp one.
+ * Camera under pressure: maintain-framerate, drop layers, accept blur.
+ * Share under pressure: maintain-resolution / contentHint "detail", hold pixels, drop frames.
+ * Reading the slide IS the content; a sharp 720p at 8fps beats a soft 360p at 30.
  *
- * A share is the opposite. contentHint: "detail" (see media.ts) tells the encoder to hold the
- * pixels and drop frames, so squeezing a share turns it into a slower slideshow of legible
- * text. Dropping it to 360p makes the text unreadable at any framerate — which is the one
- * thing a screen share must never do, because reading it IS the content.
+ * Encode floors (publisher):
+ *   desktop  never scale share content below 1280×720
+ *   mobile   never below 640×360 (capture floor; getDisplayMedia is rare on phones)
  *
- * The rungs, per layer:
+ * The 360p simulcast layer stays published for tiny mobile *subscriber* tiles via
+ * adaptiveStream. It is not the presenter's fallback and must never become the only live
+ * layer a desktop viewer of a fullscreen share can land on when the ladder panics.
  *
- *            360p@3    720p@15   1080p@15   total
- *   full     200        800      2500      3500 kbps
- *   reduced  200        800      off       1000 kbps
- *   minimal  200        500      off        700 kbps
+ * The rungs, per layer (desktop floor = 720p always active at full bitrate):
  *
- * WHAT CHANGED AND WHY. There were two layers and the top one stayed 1080p at every rung. That
- * held the presenter's total down, and it left subscribers with a 12.5x gap to fall through —
- * see screenShareSimulcastLayers in media.ts for the complaint that produced. With a 720p layer
- * in the middle, a degraded tier is better spent turning the 1080p layer off and giving the
- * budget to 720p: 1200 kbps across 0.92 megapixels is visibly sharper than the same 1200 across
- * 2.07, and the totals at `reduced` and `minimal` are unchanged from before, so a struggling
- * uplink is asked for no more than it was.
+ *            360p@3    720p        1080p@15   total
+ *   full     200        800@15      2500      3500 kbps
+ *   reduced  200        800@15      off       1000 kbps
+ *   minimal  200        800@8       off       1000 kbps   ← fps down, not bitrate/resolution
  *
- * Only `full` costs more than it used to, by the 1500 kbps of the new layer, and only while the
- * uplink can carry it — which needKbps now tells judge() about, so the step down happens sooner
- * instead of the link quietly saturating.
+ * WHAT CHANGED (mid-session blur). Camera and share used to share ONE tier decision. Sharing
+ * triples needKbps; on EU SFU + IN RTT the browser's availableOutgoingBitrate is often
+ * pessimistic, so tooNarrow fired within seconds, both tracks stepped to minimal, and the
+ * share's 720p rung was starved to 500 kbps — soft slides for the rest of the session.
+ * Share now has its own judge (severe loss / extreme queueing / critically thin uplink only)
+ * and minimal holds 720p@800k while cutting maxFramerate.
  *
- * The low 360p layer is left active throughout. It is not the presenter's fallback; it is what
- * adaptiveStream hands a subscriber on a phone tethered to a bad signal, and turning it off to
- * save the presenter bandwidth would break exactly the people it exists for.
+ * Layers and ladder live HERE (not media.ts) so applyLadder's positional index cannot drift
+ * from the published encodings. SHARE_TOP is separate because the SDK takes top encoding
+ * apart from screenShareSimulcastLayers.
  */
-/* The share's published layers, and the top encoding, live HERE rather than in media.ts.
- *
- * They used to sit beside the other publish options, one file away from the ladder that
- * budgets them — and the two have to agree exactly. applyLadder walks the sender's encodings
- * and indexes SHARE_LADDER by position, so a layer added in media.ts without a matching rung
- * here silently inherits the last rung's bitrate. That is the quiet half of the bug that
- * produced the 12.5x gap in the first place.
- *
- * Resolutions and budgets in one place means a change to either is a change you can see
- * against the other. media.ts imports these; nothing here imports media.ts, which is also
- * what keeps this module loadable by the test.
- *
- * SHARE_TOP is separate because the SDK takes it separately: screenShareEncoding is the top
- * layer and screenShareSimulcastLayers are the ones below it. Total encodings is therefore
- * SHARE_LAYERS.length + 1, which is what SHARE_LADDER's rung count has to match.
- */
-/* THREE layers, not two, and the middle one is the fix for a real complaint.
- *
- * There used to be one fallback — h360fps3 — so the set on offer was:
- *
- *   640x360   @3fps    200 kbps
- *   1920x1080 @15fps  2500 kbps
- *
- * A 12.5x bitrate step with nothing in between. adaptiveStream picks per subscriber from what
- * is published, so anybody who could not sustain 2.5 Mbps did not step down — they fell all
- * the way to 360p at three frames a second. For a slide with text on it that is unreadable,
- * and "the screen share quality is poor" is exactly what it looks like from the other end.
- * Most domestic connections live in that gap.
- *
- * The middle layer is 1280x720 at 15fps and 800 kbps. Each of those three numbers is chosen
- * against a failure:
- *
- *   720p    enough pixels for text. 360p is not, at any bitrate.
- *   15fps   NOT the stock h720fps5 preset, whose maxFramerate is a hard cap — a subscriber on
- *           it would be pinned to five frames a second even with bandwidth to spare, which
- *           ruins a shared video clip. 15 matches the top layer so the two look alike.
- *   800k    reachable. 1500 kbps looked like the obvious middle and left a 7.5x step up from
- *           the 200 kbps floor, so everyone between roughly 300 kbps and 1.5 Mbps still fell
- *           to 360p@3. A test caught it; see network.test.mts. 800 makes the two steps 4x and
- *           3.1x, with nothing to fall through.
- *
- * The cost is the presenter's uplink, because simulcast pays for every ACTIVE layer — a
- * full-tier share went from ~2.7 to ~3.5 Mbps. needKbps accounts for it, so the ladder steps
- * down sooner on a thin uplink rather than overcommitting.
- *
- * EGRESS does not go up, and probably goes down: the SFU forwards one layer per subscriber,
- * and everybody who used to be handed 2500 kbps because it was the only real option can now be
- * served at 800.
- *
- * Deliberately not a fourth layer. Two 720p entries at different frame rates would be two
- * encoders producing the same pixel count, and the encode cost lands on the one machine that
- * can least afford it — the presenter's, which is already running a camera ladder beside this.
- */
+/** Desktop publisher must not encode share content below this. */
+export const SHARE_FLOOR_DESKTOP = { width: 1280, height: 720 } as const;
+/** Mobile publisher capture/encode floor (360p equivalent). */
+export const SHARE_FLOOR_MOBILE = { width: 640, height: 360 } as const;
+
+/** Bitrate floor for the 720p share layer — never starve it into blur. */
+export const SHARE_720_MIN_BITRATE = 800_000;
+
 export const SHARE_LAYERS = [
+  // Subscriber convenience for small phone tiles — not a desktop content floor.
   ScreenSharePresets.h360fps3,
-  // Constructed rather than picked from ScreenSharePresets, because none of them is 720p at a
-  // watchable frame rate for under a megabit: h720fps5 caps at 5fps and h720fps15 asks 1500.
-  new VideoPreset(1280, 720, 800_000, 15),
+  // Constructed: stock h720fps5 caps fps too hard; h720fps15 asks 1500 kbps.
+  new VideoPreset(
+    SHARE_FLOOR_DESKTOP.width,
+    SHARE_FLOOR_DESKTOP.height,
+    SHARE_720_MIN_BITRATE,
+    15,
+  ),
 ];
 
 export const SHARE_TOP = ScreenSharePresets.h1080fps15;
 
-export const SHARE_LADDER: Record<PublishTier, { maxBitrate: number }[]> = {
-  // Derived from SHARE_LAYERS wherever the value is the layer's own, so a change to a layer
-  // moves its rung too instead of leaving a stale number here.
+/** One share-ladder rung: bitrate, optional fps cap, never a resolution drop below the floor. */
+export type ShareRung = {
+  maxBitrate: number;
+  /** When set, prefer dropping frames over starving bitrate (detail / text). */
+  maxFramerate?: number;
+};
+
+export const SHARE_LADDER: Record<PublishTier, ShareRung[]> = {
   full: [
     { maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate },
     { maxBitrate: SHARE_LAYERS[1].encoding.maxBitrate },
@@ -344,9 +306,13 @@ export const SHARE_LADDER: Record<PublishTier, { maxBitrate: number }[]> = {
     { maxBitrate: SHARE_LAYERS[1].encoding.maxBitrate },
     { maxBitrate: 0 },
   ],
+  // Hold 720p bitrate; cut fps. Never drop the desktop floor layer or starve it below 800k.
   minimal: [
     { maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate },
-    { maxBitrate: 500_000 },
+    {
+      maxBitrate: SHARE_720_MIN_BITRATE,
+      maxFramerate: 8,
+    },
     { maxBitrate: 0 },
   ],
 };
@@ -371,12 +337,19 @@ const AUDIO_KBPS = 60;
 export function needKbps(tier: PublishTier, sharing = false): number {
   let bits = LADDER[tier].reduce((total, rung) => total + rung.maxBitrate, 0);
   if (sharing) {
-    bits += SHARE_LADDER[tier].reduce(
-      (total, rung) => total + rung.maxBitrate,
-      0,
-    );
+    bits += shareNeedBits(tier);
   }
   return Math.round(bits / 1000) + AUDIO_KBPS;
+}
+
+/** What the share alone costs at a tier, in bits/sec (no audio). */
+export function shareNeedBits(tier: PublishTier): number {
+  return SHARE_LADDER[tier].reduce((total, rung) => total + rung.maxBitrate, 0);
+}
+
+/** Share-only budget in kbps (includes the same audio allowance as needKbps). */
+export function shareNeedKbps(tier: PublishTier): number {
+  return Math.round(shareNeedBits(tier) / 1000) + AUDIO_KBPS;
 }
 
 /** What a sample says about whether the ladder should move. */
@@ -449,6 +422,64 @@ export function judge(sample: {
   };
 }
 
+/* Screen-share degradation is NOT the camera ladder.
+ *
+ * Same sample, different bar. Ordinary long-haul jitter and a mildly pessimistic
+ * availableOutgoingBitrate must not blur slides. Only severe loss, extreme queueing, or a
+ * link that cannot carry the share floor itself steps the share down — and recovery is
+ * willing once those clear. Camera still uses judge() with sharing:true so the face track
+ * absorbs bandwidth pressure first.
+ */
+const SHARE_BAD_LOSS_PERCENT = 5;
+const SHARE_RTT_EXCESS_BAD_MS = 400;
+const SHARE_NEED_MARGIN_DOWN = 0.55;
+const SHARE_NEED_MARGIN_UP = 1.25;
+const SHARE_GOOD_LOSS_PERCENT = 1;
+
+/**
+ * judgeShare: step the share ladder only on severe damage, not on camera-shaped RTT noise.
+ */
+export function judgeShare(sample: {
+  tier: PublishTier;
+  lossPercent: number;
+  rttMs: number;
+  rttFloorMs: number;
+  availableOutgoingKbps: number;
+}): Verdict {
+  const { tier, lossPercent, rttMs, rttFloorMs, availableOutgoingKbps } =
+    sample;
+  const at = TIERS.indexOf(tier);
+  const haveEstimate = availableOutgoingKbps > 0;
+  const measuredLatency = rttMs > 0 && rttFloorMs > 0;
+  const excessMs = measuredLatency ? rttMs - rttFloorMs : 0;
+
+  const tooNarrow =
+    haveEstimate &&
+    availableOutgoingKbps < shareNeedKbps(tier) * SHARE_NEED_MARGIN_DOWN;
+
+  const roomToGrow =
+    at > 0 &&
+    (!haveEstimate ||
+      availableOutgoingKbps >=
+        shareNeedKbps(TIERS[at - 1]) * SHARE_NEED_MARGIN_UP);
+
+  return {
+    bad:
+      lossPercent >= SHARE_BAD_LOSS_PERCENT ||
+      excessMs >= SHARE_RTT_EXCESS_BAD_MS ||
+      tooNarrow,
+    good:
+      lossPercent <= SHARE_GOOD_LOSS_PERCENT &&
+      excessMs <= RTT_EXCESS_GOOD_MS &&
+      roomToGrow,
+  };
+}
+
+/** Worse (more degraded) of two tiers — for the UI readout when camera and share differ. */
+export function worseTier(a: PublishTier, b: PublishTier): PublishTier {
+  return TIERS.indexOf(a) >= TIERS.indexOf(b) ? a : b;
+}
+
 /**
  * Raises the audio sender's network priority.
  *
@@ -500,6 +531,10 @@ export function useNetworkHealth(
   const badSamples = useRef(0);
   const goodSamples = useRef(0);
   const tier = useRef<PublishTier>("full");
+  // Share has its own counters and tier — same uplink, much higher bar to blur slides.
+  const shareBadSamples = useRef(0);
+  const shareGoodSamples = useRef(0);
+  const shareTier = useRef<PublishTier>("full");
   // Cumulative counters, so loss is measured over the window rather than for all time.
   const previous = useRef({ packets: 0, lost: 0 });
   /* jitterBufferDelay is cumulative seconds and jitterBufferEmittedCount cumulative
@@ -516,61 +551,94 @@ export function useNetworkHealth(
    * somebody's route genuinely changes — see RTT_WINDOW_SAMPLES. */
   const rttWindow = useRef<number[]>([]);
 
-  /* One tier decision, two ladders.
+  /* Two ladders, two apply paths.
    *
-   * The judgement is about the uplink, which both tracks share, so there is exactly one tier.
-   * What differs is what a tier MEANS for each: the camera drops layers, the share keeps 1080p
-   * and cuts its budget. Passing the ladder in rather than branching inside keeps that
-   * difference stated in one place — see SHARE_LADDER.
+   * Camera drops layers (and historically ignored scaleDown in the table — bitrate/active
+   * only). Share also sets maxFramerate so minimal can hold 720p pixels while cutting fps,
+   * and never raises scaleResolutionDownBy (that would violate the desktop floor).
    */
-  const applyLadder = useCallback(
-    async (
-      next: PublishTier,
-      track: LocalVideoTrack,
-      ladder: Record<PublishTier, { maxBitrate: number }[]>,
-    ) => {
+  const applyCameraLadder = useCallback(
+    async (next: PublishTier, track: LocalVideoTrack) => {
       const sender = track.sender;
       if (!sender) return;
       try {
         const params = sender.getParameters();
         if (!params.encodings?.length) return;
-        const wanted = ladder[next];
+        const wanted = LADDER[next];
         params.encodings.forEach((encoding, i) => {
           const rung = wanted[i] ?? wanted[wanted.length - 1];
-          // Zero means "off". active=false stops the layer being encoded at all, which
-          // is the point — a starved encoder producing broken frames is worse than no
-          // layer, because the SFU may still forward it.
           encoding.active = rung.maxBitrate > 0;
           if (rung.maxBitrate > 0) encoding.maxBitrate = rung.maxBitrate;
         });
         await sender.setParameters(params);
       } catch {
-        // A browser that refuses leaves the tier where it was, and the next sample
-        // tries again.
+        // A browser that refuses leaves the tier where it was; the next sample retries.
       }
     },
     [],
   );
 
-  /* applyTier moves BOTH tracks and is the only place tier.current is written.
-   *
-   * The camera is applied first and the share second, deliberately: if the share's
-   * setParameters throws — Safari has historically refused fields it does not know — the
-   * camera has already been stepped down, which is the half that protects the room's audio
-   * budget. Recording the tier regardless means the next sample will retry the share rather
-   * than concluding the step never happened and doing the camera twice.
+  const applyShareLadder = useCallback(
+    async (next: PublishTier, track: LocalVideoTrack) => {
+      const sender = track.sender;
+      if (!sender) return;
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings?.length) return;
+        const wanted = SHARE_LADDER[next];
+        params.encodings.forEach((encoding, i) => {
+          const rung = wanted[i] ?? wanted[wanted.length - 1];
+          encoding.active = rung.maxBitrate > 0;
+          if (rung.maxBitrate > 0) {
+            encoding.maxBitrate = rung.maxBitrate;
+            if (rung.maxFramerate != null) {
+              encoding.maxFramerate = rung.maxFramerate;
+            } else if (encoding.maxFramerate != null) {
+              // Restore the published default when climbing off a fps-capped rung.
+              const layer =
+                i < SHARE_LAYERS.length ? SHARE_LAYERS[i] : SHARE_TOP;
+              encoding.maxFramerate = layer.encoding.maxFramerate;
+            }
+          }
+          // Never increase scaleResolutionDownBy — that would drop below the floor.
+        });
+        await sender.setParameters(params);
+      } catch {
+        // Same as camera: leave tier recorded; retry next sample.
+      }
+    },
+    [],
+  );
+
+  /* applyCamera / applyShare write their own tier refs. Camera first when both move: if the
+   * share's setParameters throws, the camera has already freed uplink for audio.
    */
-  const applyTier = useCallback(
-    async (
-      next: PublishTier,
-      camera?: LocalVideoTrack,
-      share?: LocalVideoTrack,
-    ) => {
-      if (camera) await applyLadder(next, camera, LADDER);
-      if (share) await applyLadder(next, share, SHARE_LADDER);
+  const applyCameraTier = useCallback(
+    async (next: PublishTier, camera?: LocalVideoTrack) => {
+      if (camera) await applyCameraLadder(next, camera);
       tier.current = next;
     },
-    [applyLadder],
+    [applyCameraLadder],
+  );
+
+  const applyShareTier = useCallback(
+    async (next: PublishTier, share?: LocalVideoTrack) => {
+      if (share) await applyShareLadder(next, share);
+      shareTier.current = next;
+    },
+    [applyShareLadder],
+  );
+
+  const reassertTiers = useCallback(
+    async (camera?: LocalVideoTrack, share?: LocalVideoTrack) => {
+      if (camera && tier.current !== "full") {
+        await applyCameraTier(tier.current, camera);
+      }
+      if (share && shareTier.current !== "full") {
+        await applyShareTier(shareTier.current, share);
+      }
+    },
+    [applyCameraTier, applyShareTier],
   );
 
   useEffect(() => {
@@ -582,12 +650,8 @@ export function useNetworkHealth(
       const local = room.localParticipant;
       const camera = local?.getTrackPublication(Track.Source.Camera)
         ?.videoTrack as LocalVideoTrack | undefined;
-      /* The share is sampled and stepped on the same schedule as the camera.
-       *
-       * It is by far the more expensive of the two — a 1080p share is 2.5 Mbps against the
-       * camera's 2.3 for three layers — so a ladder that moved only the camera would be
-       * adjusting the cheaper half of the problem while the expensive half held the link
-       * saturated. */
+      /* The share is sampled on the same schedule, but judged and stepped separately —
+       * see judgeShare. */
       const share = local?.getTrackPublication(Track.Source.ScreenShare)
         ?.videoTrack as LocalVideoTrack | undefined;
 
@@ -684,41 +748,84 @@ export function useNetworkHealth(
       }
       const rttFloorMs = floorFrom(rttWindow.current);
 
-      const at = TIERS.indexOf(tier.current);
-      const { bad, good } = judge({
-        tier: tier.current,
+      const sampleBase = {
         lossPercent,
         rttMs,
         rttFloorMs,
         availableOutgoingKbps,
+      };
+
+      /* Camera still budgets for the share when one is up — the uplink is shared — so the
+       * face track absorbs pressure first. Share uses judgeShare and will often stay at
+       * full while the camera alone steps down. */
+      const cameraVerdict = judge({
+        tier: tier.current,
+        ...sampleBase,
         sharing: Boolean(share),
       });
 
-      if (bad) {
+      if (cameraVerdict.bad) {
         goodSamples.current = 0;
         badSamples.current += 1;
-      } else if (good) {
+      } else if (cameraVerdict.good) {
         badSamples.current = 0;
         goodSamples.current += 1;
       }
 
-      /* Only a publisher has a ladder to move — and `camera || share` rather than `camera`,
-       * because a presenter who shares their screen with the camera off is the common case in
-       * a webinar and used to get no adaptation at all. */
-      if (publishing && (camera || share)) {
+      if (publishing && camera) {
+        const at = TIERS.indexOf(tier.current);
         if (
           badSamples.current >= DEGRADE_AFTER_SAMPLES &&
           at < TIERS.length - 1
         ) {
           badSamples.current = 0;
-          await applyTier(TIERS[at + 1], camera, share);
+          await applyCameraTier(TIERS[at + 1], camera);
         } else if (goodSamples.current >= RECOVER_AFTER_SAMPLES && at > 0) {
           goodSamples.current = 0;
-          await applyTier(TIERS[at - 1], camera, share);
+          await applyCameraTier(TIERS[at - 1], camera);
         }
       }
 
+      if (share) {
+        const shareVerdict = judgeShare({
+          tier: shareTier.current,
+          ...sampleBase,
+        });
+        if (shareVerdict.bad) {
+          shareGoodSamples.current = 0;
+          shareBadSamples.current += 1;
+        } else if (shareVerdict.good) {
+          shareBadSamples.current = 0;
+          shareGoodSamples.current += 1;
+        }
+
+        if (publishing) {
+          const at = TIERS.indexOf(shareTier.current);
+          if (
+            shareBadSamples.current >= DEGRADE_AFTER_SAMPLES &&
+            at < TIERS.length - 1
+          ) {
+            shareBadSamples.current = 0;
+            await applyShareTier(TIERS[at + 1], share);
+          } else if (
+            shareGoodSamples.current >= RECOVER_AFTER_SAMPLES &&
+            at > 0
+          ) {
+            shareGoodSamples.current = 0;
+            await applyShareTier(TIERS[at - 1], share);
+          }
+        }
+      } else {
+        // Next share starts clean rather than inheriting a previous session's floor.
+        shareTier.current = "full";
+        shareBadSamples.current = 0;
+        shareGoodSamples.current = 0;
+      }
+
       if (cancelled) return;
+      const publishedTier = share
+        ? worseTier(tier.current, shareTier.current)
+        : tier.current;
       setHealth({
         quality: local?.connectionQuality ?? ConnectionQuality.Unknown,
         lossPercent: Math.round(lossPercent * 10) / 10,
@@ -727,8 +834,8 @@ export function useNetworkHealth(
         jitterMs: Math.round(jitterMs),
         playoutMs: Math.round(playoutMs),
         availableOutgoingKbps,
-        tier: tier.current,
-        degraded: tier.current !== "full",
+        tier: publishedTier,
+        degraded: publishedTier !== "full",
       });
     };
 
@@ -752,8 +859,8 @@ export function useNetworkHealth(
         ?.videoTrack as LocalVideoTrack | undefined;
       const share = local?.getTrackPublication(Track.Source.ScreenShare)
         ?.videoTrack as LocalVideoTrack | undefined;
-      if (publishing && (camera || share) && tier.current !== "full") {
-        void applyTier(tier.current, camera, share);
+      if (publishing && (camera || share)) {
+        void reassertTiers(camera, share);
       }
       void prioritiseAudio(room);
       /* And forget the old route's floor.
@@ -769,21 +876,18 @@ export function useNetworkHealth(
 
     /* A newly published track starts at the publish defaults, not at the current tier.
      *
-     * So a presenter already stepped down to `minimal` who then starts sharing would publish
-     * that share at the full 2 500 kbps — on the connection that caused the step down in the
-     * first place — and stay there until two more bad samples accumulated, four seconds later.
-     * Four seconds of a saturated uplink is exactly when the audience loses audio.
-     *
-     * Reasserting on publish rather than waiting for the next judgement closes that window.
-     * Cheap and idempotent: at `full` there is nothing to change, which is the common case. */
+     * So a presenter already stepped down who then starts sharing would publish that share
+     * at full 1080p on a connection that may still be fine for share (judgeShare) — or, if
+     * shareTier was somehow not full, reassert. Camera reassert closes the same window.
+     */
     const onLocalPublished = () => {
-      if (!publishing || tier.current === "full") return;
+      if (!publishing) return;
       const local = room.localParticipant;
       const camera = local?.getTrackPublication(Track.Source.Camera)
         ?.videoTrack as LocalVideoTrack | undefined;
       const share = local?.getTrackPublication(Track.Source.ScreenShare)
         ?.videoTrack as LocalVideoTrack | undefined;
-      if (camera || share) void applyTier(tier.current, camera, share);
+      if (camera || share) void reassertTiers(camera, share);
     };
     room.on(RoomEvent.LocalTrackPublished, onLocalPublished);
 
@@ -794,7 +898,7 @@ export function useNetworkHealth(
       room.off(RoomEvent.Reconnected, onReconnected);
       room.off(RoomEvent.LocalTrackPublished, onLocalPublished);
     };
-  }, [room, publishing, applyTier]);
+  }, [room, publishing, applyCameraTier, applyShareTier, reassertTiers]);
 
   return health;
 }
