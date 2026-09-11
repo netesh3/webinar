@@ -128,17 +128,17 @@
     opacity: 1;
     transform: translate3d(calc(var(--drift) * 0.25), -10cqh, 0) scale(1);
   }
-  50% {
+  70% {
     opacity: 1;
-    transform: translate3d(calc(var(--drift) * -0.7), -55cqh, 0) scale(1);
+    transform: translate3d(calc(var(--drift) * -0.7), -75cqh, 0) scale(1);
   }
-  85% {
-    opacity: 0.85;
-    transform: translate3d(var(--drift), -92cqh, 0) scale(0.98);
+  92% {
+    opacity: 0.9;
+    transform: translate3d(var(--drift), -98cqh, 0) scale(0.98);
   }
   100% {
     opacity: 0;
-    transform: translate3d(calc(var(--drift) * 1.1), -108cqh, 0) scale(0.9);
+    transform: translate3d(calc(var(--drift) * 1.1), -104cqh, 0) scale(0.9);
   }
 }
 
