@@ -8,6 +8,7 @@ import {
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CAPTURE, deviceLabel, useDevices, type MediaPreferences } from "@/lib/media";
+import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
 import { Alert, Select, Spinner } from "../controls";
 import { Button } from "../ui";
@@ -116,31 +117,46 @@ export function PreJoin({
     setMicGeneration((n) => n + 1);
   }, [prefs.audioInput, prefs.noiseSuppression, stopAudio]);
 
-  // Acquire whatever is switched on. Runs again when a device or the resolution
-  // changes, because capture constraints are fixed when a track is created.
+  // Acquire whatever is switched on. Camera and mic are independent — a blocked
+  // camera used to abort before the mic opened, which looked like "mic blocked"
+  // even when only the camera was denied for this origin.
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       setStarting(true);
       setError(null);
-      try {
-        if (cameraEnabled) await startVideo();
-        else stopVideo();
-        if (micEnabled) await startAudio();
-        else stopAudio();
-      } catch (err) {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : "";
-        setError(
-          /permission|denied|NotAllowed/i.test(message)
-            ? "Your browser blocked the camera or microphone. Allow them for this site, then reload."
-            : /NotFound|DevicesNotFound/i.test(message)
-              ? "No camera or microphone was found. You can still join and present with your screen."
-              : `Couldn't open your devices. ${message}`,
-        );
-      } finally {
-        if (!cancelled) setStarting(false);
+      const failures: string[] = [];
+
+      if (!cameraEnabled) stopVideo();
+      else {
+        try {
+          await startVideo();
+        } catch (err) {
+          if (!cancelled) {
+            stopVideo();
+            setCameraEnabled(false);
+            failures.push(describeMediaError(err, "camera"));
+          }
+        }
+      }
+
+      if (!micEnabled) stopAudio();
+      else {
+        try {
+          await startAudio();
+        } catch (err) {
+          if (!cancelled) {
+            stopAudio();
+            setMicEnabled(false);
+            failures.push(describeMediaError(err, "microphone"));
+          }
+        }
+      }
+
+      if (!cancelled) {
+        setError(failures.length > 0 ? failures.join(" ") : null);
+        setStarting(false);
       }
     })();
 

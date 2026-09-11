@@ -28,6 +28,7 @@ import { MoreButton, MoreGrid } from "./more-grid";
 import { ReactionPicker } from "./reactions";
 import { RecordButton } from "./recording";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
+import { describeMediaError } from "@/lib/media-errors";
 import { displayMediaOptions, SharePicker } from "./share-picker";
 import { useToolDrag } from "./tool-drag";
 import { tool } from "./tools";
@@ -167,18 +168,14 @@ export function ControlBar() {
   /** Wraps a device toggle so a refused permission becomes a readable message
    *  rather than an unhandled rejection in the console. */
   const toggle = useCallback(
-    async (key: string, label: string, run: () => Promise<unknown>) => {
+    async (key: string, _label: string, run: () => Promise<unknown>) => {
       setPending(key);
       try {
         await run();
       } catch (err) {
-        const message = err instanceof Error ? err.message : "";
-        notify(
-          /permission|denied|NotAllowed/i.test(message)
-            ? `${label} is blocked. Allow it in your browser's site settings and try again.`
-            : `Couldn't turn ${label.toLowerCase()} on. ${message}`,
-          "error",
-        );
+        const kind =
+          key === "mic" ? "microphone" : key === "cam" ? "camera" : "devices";
+        notify(describeMediaError(err, kind), "error");
       } finally {
         setPending(null);
       }
