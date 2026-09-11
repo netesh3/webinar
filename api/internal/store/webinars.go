@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/netkumar/webcast/api/types"
 )
@@ -63,17 +64,17 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		return types.Webinar{}, "", err
 	}
 	w.Host.ID = hostID
-	/* A path back to this API, not the storage key — see ImageURL's doc comment.
+	/* A path back to this API, not the image bytes — see ImageURL's doc comment.
 	 *
-	 * `v` is the storage key itself, which changes on every replace (see
-	 * SetWebinarImage: a fresh key every upload, never a reused one). Without it
+	 * `v` is image_key, an opaque token that changes on every replace (see
+	 * SetWebinarImage: a fresh one every upload, never a reused one). Without it
 	 * the URL is the same before and after a host replaces their cover image, and
 	 * a browser or a shared proxy that already cached the old bytes under that URL
 	 * would go on serving them — `v` changing is what makes a replace produce a
 	 * different URL and a genuine cache miss, which is what lets the response
 	 * below be marked immutable instead of merely "please revalidate". */
 	if imageKey != "" {
-		w.ImageURL = "/api/webinars/" + w.ID + "/image?v=" + imageKey[strings.LastIndex(imageKey, "/")+1:]
+		w.ImageURL = "/api/webinars/" + w.ID + "/image?v=" + imageKey
 	}
 	w.StartsAt = startsAt.Format(time.RFC3339)
 	w.Controls = c
@@ -493,9 +494,11 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
  *
  * Returned rather than logged so the handler can log one line and the tests can assert on
  * numbers instead of on "no error". "Delete everything belonging to this webinar" is a claim
- * about seven tables and three kinds of file — recordings, chat images and the webinar's own
- * cover image — and a delete that quietly missed one of them returns nil just as cheerfully as
- * one that worked.
+ * about seven tables and two kinds of file, and a delete that quietly missed one of them
+ * returns nil just as cheerfully as one that worked.
+ *
+ * The cover image is neither of the two: it lives in image_data on the webinar row itself
+ * (see migrations/0016), so the row's own DELETE removes it — nothing to collect here.
  */
 type Deleted struct {
 	Status        string
@@ -507,10 +510,10 @@ type Deleted struct {
 	Panelists     int
 	StageGrants   int
 	Questions     int
-	/* Object-storage keys that were pointed at by the rows above, plus the webinar's own cover
-	 * image (which is a column on the webinar row itself, not a child table). The rows cascade;
-	 * bytes do not, so these are the caller's to delete once the transaction has committed.
-	 * Recording files are by far the largest of the three and were being left behind entirely. */
+	/* Object-storage keys that were pointed at by the rows above. The rows cascade; bytes do
+	 * not, so these are the caller's to delete once the transaction has committed. Chat images
+	 * and recording files both live here — a recording is by far the larger of the two and was
+	 * being left behind entirely. */
 	BlobKeys []string
 }
 
@@ -541,17 +544,17 @@ func (s *Store) DeleteWebinar(ctx context.Context, slug string) (Deleted, error)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var id, imageKey string
-	err = tx.QueryRow(ctx, `SELECT id, status, image_key FROM webinars WHERE slug = $1`, slug).
-		Scan(&id, &out.Status, &imageKey)
+	// No image key to collect here: the cover image lives in image_data on this
+	// row (see migrations/0016), so deleting the row below removes it with
+	// everything else — there is no external blob left behind to clean up.
+	var id string
+	err = tx.QueryRow(ctx, `SELECT id, status FROM webinars WHERE slug = $1`, slug).
+		Scan(&id, &out.Status)
 	if noRows(err) {
 		return out, ErrNotFound
 	}
 	if err != nil {
 		return out, err
-	}
-	if imageKey != "" {
-		out.BlobKeys = append(out.BlobKeys, imageKey)
 	}
 
 	/* One round trip for every count, so the numbers are consistent with each other and with
@@ -1164,64 +1167,78 @@ func (s *Store) WebinarsOnSFUProject(ctx context.Context, projectID string) ([]s
 
 // ------------------------------------------------------------------- image
 
-/* SetWebinarImage stores the key and mime for a webinar's cover image, replacing
- * whichever one was there before.
+/* SetWebinarImage stores a webinar's cover image — bytes, mime and a fresh opaque
+ * version token — in the row itself, replacing whichever one was there before.
  *
- * Returns the PREVIOUS key, so the caller can delete those bytes once this
- * commits. Deleting the old bytes first and writing the new key second would
- * leave a webinar with no image at all if the write then failed; this way the
- * row always points at something that exists, even if an orphaned old blob
- * has to be cleaned up after.
+ * The bytes live in Postgres (image_data), not in the object store the rest of
+ * media.Store deals in. See migrations/0016: this deployment runs the API on
+ * Cloud Run with RECORDINGS_ENABLED=false, because Cloud Run's own disk is
+ * per-instance and gone on the next cold start — recording video can live
+ * without a persistent store, but a cover image feature that 503s on every
+ * upload cannot. Postgres (Supabase here) already IS this deployment's durable
+ * store, and a capped-at-1MB image is a trivial bytea.
  */
-func (s *Store) SetWebinarImage(ctx context.Context, slug, key, mime string) (previous string, err error) {
-	tx, err := s.pool.Begin(ctx)
+func (s *Store) SetWebinarImage(ctx context.Context, slug, mime string, data []byte) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE webinars SET image_key = $2, image_mime = $3, image_data = $4, updated_at = now()
+		  WHERE slug = $1`,
+		slug, newImageVersion(), mime, data,
+	)
 	if err != nil {
-		return "", err
+		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	err = tx.QueryRow(ctx,
-		`SELECT image_key FROM webinars WHERE slug = $1 FOR UPDATE`, slug).Scan(&previous)
-	if noRows(err) {
-		return "", ErrNotFound
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
 	}
-	if err != nil {
-		return "", err
-	}
-
-	if _, err := tx.Exec(ctx,
-		`UPDATE webinars SET image_key = $2, image_mime = $3, updated_at = now() WHERE slug = $1`,
-		slug, key, mime,
-	); err != nil {
-		return "", err
-	}
-	return previous, tx.Commit(ctx)
+	return nil
 }
 
-// ClearWebinarImage removes a webinar's cover image, returning the key that was
-// there so the caller can delete the bytes.
-func (s *Store) ClearWebinarImage(ctx context.Context, slug string) (previous string, err error) {
-	return s.SetWebinarImage(ctx, slug, "", "")
+/* ClearWebinarImage removes a webinar's cover image.
+ *
+ * Not SetWebinarImage(ctx, slug, "", nil): that would still mint a fresh,
+ * non-empty image_key, and "no image" has to mean image_key = '' specifically —
+ * it is the sentinel both scanWebinar (for ImageURL) and WebinarImageMedia check
+ * to tell "nothing uploaded" apart from "an image, empty by coincidence". */
+func (s *Store) ClearWebinarImage(ctx context.Context, slug string) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE webinars SET image_key = '', image_mime = '', image_data = '', updated_at = now()
+		  WHERE slug = $1`, slug)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
-/* WebinarImageMedia returns the storage key and mime for a webinar's cover image.
+/* WebinarImageMedia returns the bytes and mime for a webinar's cover image.
  *
  * Public, deliberately: unlike a chat image, a cover image is meant to be seen by
  * anyone who can reach the registration or browse page, signed in or not — the
  * handler that calls this does not check who is asking, only that the webinar
  * (and the image) exist.
  */
-func (s *Store) WebinarImageMedia(ctx context.Context, slug string) (key, mime string, err error) {
+func (s *Store) WebinarImageMedia(ctx context.Context, slug string) (data []byte, mime string, err error) {
+	var key string
 	err = s.pool.QueryRow(ctx,
-		`SELECT image_key, image_mime FROM webinars WHERE slug = $1`, slug).Scan(&key, &mime)
+		`SELECT image_key, image_mime, image_data FROM webinars WHERE slug = $1`, slug).
+		Scan(&key, &mime, &data)
 	if noRows(err) {
-		return "", "", ErrNotFound
+		return nil, "", ErrNotFound
 	}
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 	if key == "" {
-		return "", "", ErrNotFound
+		return nil, "", ErrNotFound
 	}
-	return key, mime, nil
+	return data, mime, nil
+}
+
+// newImageVersion is the opaque `?v=` cache-buster on a cover image's URL — see
+// ImageURL's doc comment. Just needs to differ from the last one; a UUID is the
+// simplest way to guarantee that without tracking any state.
+func newImageVersion() string {
+	return uuid.NewString()
 }

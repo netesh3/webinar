@@ -1,0 +1,18 @@
+-- Moves a webinar's cover image bytes into the database itself, rather than the
+-- object store 0015 originally pointed image_key at.
+--
+-- That store is internal/media.Store, and on THIS deployment (Cloud Run, see
+-- .github/workflows/cloudrun-deploy.yml) it is nil: RECORDINGS_ENABLED=false,
+-- because Cloud Run instances are stateless — a Disk-backed store written by one
+-- instance is invisible to the next, and there is no S3/GCS backend implemented
+-- yet (see RecordingsEnabled validation in internal/config). Recordings can
+-- afford to be off; a cover image feature that silently 503s on every upload
+-- cannot.
+--
+-- Postgres already is the durable, always-on store this deployment has — Supabase,
+-- per DATABASE_URL — and the image is capped at 1MB by the client before it is
+-- ever sent (see web/lib/webinar-image.ts) and 3MB by the server backstop, both
+-- trivial for a bytea column. image_key is kept: it still does its original job
+-- as an opaque version token for the `?v=` cache-buster on the served URL, it
+-- just no longer names an object-store key.
+ALTER TABLE webinars ADD COLUMN image_data bytea NOT NULL DEFAULT '';
