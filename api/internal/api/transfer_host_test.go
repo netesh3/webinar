@@ -105,3 +105,41 @@ func TestTransferHostRejectsAudienceAndMissingPanelist(t *testing.T) {
 		t.Fatalf("transfer to missing participant: status %d body %s", res.StatusCode, raw)
 	}
 }
+
+// A muted panelist must still be eligible: publish grants are restored when they
+// become host. Refusing CanPublish=false made Leave → Assign look empty.
+func TestTransferHostAllowsMutedPanelist(t *testing.T) {
+	h := newHarness(t)
+
+	owner := h.signup("Owner", "transfer-muted-owner@test.dev", true)
+	panelist := h.signup("Panelist", "transfer-muted-panelist@test.dev", false)
+
+	wb := h.newWebinar("Transfer muted", nil)
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/panelists",
+		types.PanelistRequest{Email: "transfer-muted-panelist@test.dev"}); res.StatusCode != http.StatusOK {
+		t.Fatalf("add panelist: status %d body %s", res.StatusCode, raw)
+	}
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("start: status %d body %s", res.StatusCode, raw)
+	}
+
+	panelIdentity := "user_" + panelist.ID
+	h.rooms.setRoster(
+		types.LiveParticipant{Identity: "user_" + owner.ID, Name: "Owner", Role: types.RoleHost, CanPublish: true},
+		types.LiveParticipant{
+			Identity: panelIdentity, Name: "Panelist", Role: types.RolePanelist,
+			CanPublish: false, CanSpeak: false, MutedByHost: true,
+		},
+	)
+
+	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/transfer-host",
+		types.TransferHostRequest{Identity: panelIdentity})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("transfer muted panelist: status %d body %s", res.StatusCode, raw)
+	}
+	var transferred types.Webinar
+	h.decode(raw, &transferred)
+	if transferred.Host.ID != panelist.ID {
+		t.Fatalf("host after transfer = %q, want %q", transferred.Host.ID, panelist.ID)
+	}
+}

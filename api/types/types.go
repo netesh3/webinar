@@ -974,7 +974,8 @@ type PanelistRequest struct {
 //
 // Identity is their LiveKit identity (user_<id>). The caller remains a panelist so
 // they can rejoin the stage later; the target becomes the owner for every host
-// endpoint that checks ownership.
+// endpoint that checks ownership. Publish grants are restored on handoff, so a
+// muted panelist (CanPublish false) is still a valid target.
 type TransferHostRequest struct {
 	Identity string `json:"identity"`
 }

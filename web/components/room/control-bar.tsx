@@ -31,7 +31,11 @@ import { RecordButton } from "./recording";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
 import { displayMediaOptions, SharePicker } from "./share-picker";
-import { HostLeaveDialog } from "./host-leave-dialog";
+import {
+  HostAssignDialog,
+  HostEndConfirm,
+  HostLeaveMenu,
+} from "./host-leave-dialog";
 import { useToolDrag } from "./tool-drag";
 import { tool } from "./tools";
 
@@ -135,8 +139,10 @@ export function ControlBar() {
   const [previewSharing, setPreviewSharing] = useState(false);
   /** The Layout popover, anchored to whichever slot holds it. */
   const [layoutOpen, setLayoutOpen] = useState(false);
-  /** Host-only Leave sheet: assign another host or end for everyone. */
-  const [leaveOpen, setLeaveOpen] = useState(false);
+  /** Host-only Leave menu (Zoom-style), then assign dialog or end confirm. */
+  const [leaveMenuOpen, setLeaveMenuOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [endConfirmOpen, setEndConfirmOpen] = useState(false);
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
@@ -567,28 +573,47 @@ export function ControlBar() {
           while the FIRST connection is being established: during a reconnect it stays live,
           because somebody whose network has gone is exactly who needs a way out and trapping
           them behind a spinner is worse than a slightly untidy disconnect.
-          Hosts get a choice: hand off or end. Everyone else just leaves. */}
-      <button
-        type="button"
-        onClick={() => {
-          if (isHost) setLeaveOpen(true);
-          else leave();
-        }}
-        disabled={connecting}
-        aria-label={isHost ? "Leave or end the webinar" : "Leave the webinar"}
-        title={connecting ? "Connecting…" : undefined}
-        className="ml-1 inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-live sm:px-4"
-      >
-        <LeaveIcon className="size-4 sm:hidden" />
-        <span className="hidden sm:inline">Leave</span>
-      </button>
+          Hosts get a Zoom-style menu: hand off or end. Everyone else just leaves. */}
+      <div className="relative ml-1">
+        <button
+          type="button"
+          data-host-leave-trigger={isHost ? "" : undefined}
+          onClick={() => {
+            if (isHost) setLeaveMenuOpen((v) => !v);
+            else leave();
+          }}
+          disabled={connecting}
+          aria-label={isHost ? "Leave or end the webinar" : "Leave the webinar"}
+          aria-haspopup={isHost ? "menu" : undefined}
+          aria-expanded={isHost ? leaveMenuOpen : undefined}
+          title={connecting ? "Connecting…" : undefined}
+          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-live sm:px-4"
+        >
+          <LeaveIcon className="size-4 sm:hidden" />
+          <span className="hidden sm:inline">Leave</span>
+        </button>
+        {isHost && (
+          <HostLeaveMenu
+            open={leaveMenuOpen}
+            onClose={() => setLeaveMenuOpen(false)}
+            onAssign={() => setAssignOpen(true)}
+            onEnd={() => setEndConfirmOpen(true)}
+          />
+        )}
+      </div>
 
       {isHost && (
-        <HostLeaveDialog
-          open={leaveOpen}
-          onClose={() => setLeaveOpen(false)}
-          onLeave={leave}
-        />
+        <>
+          <HostAssignDialog
+            open={assignOpen}
+            onClose={() => setAssignOpen(false)}
+            onLeave={leave}
+          />
+          <HostEndConfirm
+            open={endConfirmOpen}
+            onClose={() => setEndConfirmOpen(false)}
+          />
+        </>
       )}
 
       {/* Rendered here rather than at the room level so it is mounted only for

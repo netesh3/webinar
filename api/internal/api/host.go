@@ -441,9 +441,12 @@ func (s *Server) handleTransferHost(w http.ResponseWriter, r *http.Request) {
 			"That person has left the webinar.")
 		return
 	}
-	if target.Role != types.RolePanelist || !target.CanPublish {
+	// Role is enough: a muted panelist still owns a stage seat and can take over.
+	// Requiring CanPublish hid exactly those people from the Leave picker (and
+	// would 422 here after we listed them). SetRole below restores host grants.
+	if target.Role != types.RolePanelist {
 		httpx.Error(w, http.StatusUnprocessableEntity, "not_on_stage",
-			"Only a panelist who can publish can take over as host.")
+			"Only a panelist already on the stage can take over as host.")
 		return
 	}
 
