@@ -871,8 +871,15 @@ export function useRealtime(
   const toggleHand = useCallback(async () => {
     const raised = !handMapRef.current[meRef.current.identity];
     const msg: HandMessage = { kind: "hand", from: meRef.current, raised };
+    // Applied locally before the round trip, not just for the host/stage path
+    // that already gets this from `send`. An attendee without canPublishData
+    // goes through the relay, and waiting on that round trip before the button
+    // updates is what made a raised hand look like it hadn't registered, or a
+    // second tap look like it did nothing. `apply` for "hand" is idempotent, so
+    // the later echo re-applying the same state is a no-op.
+    apply(msg);
     await send(msg, { kind: "hand", raised });
-  }, [send]);
+  }, [apply, send]);
 
   /** Host-side dismissal, broadcast so the person's own hand comes down too.
    *
