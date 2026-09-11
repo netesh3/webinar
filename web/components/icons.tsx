@@ -422,6 +422,16 @@ export function RecordIcon(props: IconProps) {
   );
 }
 
+/* A laptop: screen, then the base beneath it as one wider stroke. */
+export function DeviceIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="4" y="4.5" width="16" height="11" rx="1.5" />
+      <path d="M2.5 19.5h19M9 19.5l1-2h4l1 2" />
+    </Icon>
+  );
+}
+
 export function StopIcon(props: IconProps) {
   return (
     <Icon {...props}>
