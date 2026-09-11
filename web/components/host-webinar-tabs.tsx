@@ -4,10 +4,16 @@ import { useEffect, useState } from "react";
 import { Alert, CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
-import { PlusIcon, TrashIcon } from "./icons";
+import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
 import { useShareOrigin, useToast } from "./providers";
 import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
-import { formatCount, formatDay, formatTimeRange, tzLabel } from "@/lib/format";
+import {
+  formatCount,
+  formatDay,
+  formatTimeRange,
+  googleCalendarInviteUrl,
+  tzLabel,
+} from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
 import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
@@ -310,6 +316,25 @@ function ShareTab({ webinar: w }: { webinar: Webinar }) {
               (w.passcode ? `\nPasscode: ${w.passcode}` : "")
             }
           />
+          <ButtonLink
+            href={googleCalendarInviteUrl({
+              topic: w.topic,
+              description: w.description,
+              startsAt: w.startsAt,
+              durationMin: w.durationMin,
+              timeZone: w.timeZone,
+              webinarId: w.webinarId,
+              registrationUrl: `${origin}/webinars/${w.id}`,
+            })}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="secondary"
+            size="sm"
+            className="justify-self-start"
+          >
+            <CalendarIcon className="size-4" />
+            Add to Google Calendar
+          </ButtonLink>
         </div>
       </Card>
 
