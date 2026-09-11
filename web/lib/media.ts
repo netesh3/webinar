@@ -19,7 +19,10 @@ import {
   SHARE_FLOOR_MOBILE,
   SHARE_LAYERS,
   SHARE_TOP,
+  cameraCapturePreset,
 } from "./network";
+
+export { canCaptureCamera1080, cameraCapturePreset } from "./network";
 
 /* Capture and publish quality.
  *
@@ -47,16 +50,21 @@ import {
  * arrives as 1080p or as a stuttering mess. The app measures it every two seconds and can
  * change its mind mid-sentence — see the ladder in network.ts — which no dropdown can.
  *
- * What is left is one capture resolution and one published ladder. 720p rather than 1080p
- * because it is the highest tier most laptop cameras genuinely deliver: asking for more
- * usually buys upscaled pixels and a hotter CPU. Bitrate is richer than LiveKit's stock
- * h720 (2.4 Mbps vs 1.7) so a featured speaker tile matches Zoom's common 720p band.
- * The ladder starts at the top and steps DOWN within four seconds of trouble, then back
- * up after a clear run, so a good connection is never punished for the possibility of a bad one.
+ * What is left is one capture resolution and one published ladder. 1080p@30 is the
+ * featured-speaker ceiling (Zoom Full HD is gated the same way — plan + CPU + large
+ * speaker view). Most laptop cams that can do 1080p deliver it; those that cannot
+ * negotiate down. Simulcast keeps 720p and 360p so grids and filmstrips do not pull
+ * 1080. The ladder starts at the top and steps DOWN within four seconds of trouble,
+ * then back up after a clear run, so a good connection is never punished for the
+ * possibility of a bad one.
  *
  * Capture is deliberately not part of the adaptation. Changing it means republishing the
  * track, which costs a keyframe and a visible cut for the audience — during the moment the
  * connection is already struggling. The ladder works on the live sender's encodings instead.
+ *
+ * Low-power / mobile publishers skip the 1080p capture ideal via `cameraCapturePreset()` —
+ * they still publish the same three-rung ladder shape so applyLadder indexing stays shared,
+ * but the top encoding is capped at 720p so we do not ask a phone to encode empty 1080.
  */
 export const CAPTURE = CAMERA_TOP;
 
@@ -67,9 +75,9 @@ export const CAPTURE = CAMERA_TOP;
  * hundred subscribers on wildly different connections, the ladder IS the adaptive bitrate
  * strategy — so it is written down.
  *
- * Three layers, and the lowest one is the important one. A subscriber on a train needs
- * something that fits in a couple of hundred kilobits, and if the smallest layer on offer is
- * 360p they get nothing at all rather than a small picture.
+ * Three layers: 360p (filmstrip / weak links), 720p (grids), 1080p (large speaker tile).
+ * Dropping the old 180p rung is deliberate — with a 1080 top, MEDIUM is 720p, so small
+ * grids no longer land on soft 360p-upscaled faces.
  *
  * Not SVC. VP9 and AV1 would give better quality per bit and let the SFU drop temporal
  * layers more finely, but decode cost lands on the SUBSCRIBER — and in an audience of five
@@ -267,13 +275,14 @@ export function roomOptions(
   prefs: MediaPreferences,
   canPublish: boolean,
 ): RoomOptions {
+  const capture = cameraCapturePreset();
   return {
     adaptiveStream: true,
     dynacast: true,
 
     videoCaptureDefaults: {
       deviceId: prefs.videoInput,
-      resolution: CAPTURE.resolution,
+      resolution: capture.resolution,
     },
 
     audioCaptureDefaults: {
@@ -288,7 +297,9 @@ export function roomOptions(
       // many subscribers on wildly different networks.
       simulcast: true,
       videoSimulcastLayers: SIMULCAST_LAYERS,
-      videoEncoding: CAPTURE.encoding,
+      // Top encoding is always the 1080 rung of the shared ladder. Low-power
+      // devices capture at 720 and keep this rung inactive (see canCaptureCamera1080).
+      videoEncoding: CAMERA_TOP.encoding,
 
       /* What to give up first when there is not enough upstream.
        *

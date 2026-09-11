@@ -467,9 +467,9 @@ the packet would broadcast one of them to a room containing both.
 ```
   publisher                          SFU                        subscribers
   ┌────────────────┐                                     ┌──────────────────┐
-  │ 720p  2.4 Mbps │──┐                                  │ laptop  → 720p   │
-  │ 360p  0.6 Mbps │──┼──► one upload, three layers ──────► phone   → 360p   │
-  │ 180p  0.2 Mbps │──┘    SFU picks per subscriber      │ train   → 180p   │
+  │1080p  3.2 Mbps │──┐                                  │ speaker → 1080p  │
+  │ 720p  2.0 Mbps │──┼──► one upload, three layers ──────► grid    → 720p   │
+  │ 360p  0.6 Mbps │──┘    SFU picks per subscriber      │ strip   → 360p   │
   └────────────────┘                                     └──────────────────┘
         ▲
         │ getStats every 2s: loss, RTT excess (not availableOutgoingBitrate)
@@ -483,8 +483,9 @@ the packet would broadcast one of them to a room containing both.
 
 Screen share is separate: 1080p@~5 Mbps / 720p floor@~3 Mbps / `contentHint: "text"`,
 `maintain-resolution`. Large speaker + fullscreen share tiles always request HIGH.
-A single EU SFU cannot match Zoom's nearby PoPs on India RTT — richer encode closes the
-bitrate gap, not the path.
+Camera 1080 is gated like Zoom Full HD (capable desktop; low-core/mobile stay on 720
+encode). A single EU SFU cannot match Zoom's nearby PoPs on India RTT — richer encode
+closes the bitrate gap, not the path.
 
 Asymmetric on purpose: stepping down late *is* the lag, and stepping up eagerly recreates
 the congestion that caused the step down — the audience watches the resolution pump.

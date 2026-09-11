@@ -7,7 +7,7 @@ import {
   type LocalVideoTrack,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CAPTURE, deviceLabel, useDevices, type MediaPreferences } from "@/lib/media";
+import { cameraCapturePreset, deviceLabel, useDevices, type MediaPreferences } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
 import { Alert, Select, Spinner } from "../controls";
@@ -88,12 +88,12 @@ export function PreJoin({
    *
    *  One resolution, the same one the room publishes at — there is nothing to choose here
    *  any more, because what actually goes out is decided by the measured uplink rather than
-   *  by a dropdown. See CAPTURE in lib/media.ts. */
+   *  by a dropdown. See cameraCapturePreset in lib/media.ts. */
   const startVideo = useCallback(async () => {
     stopVideo();
     const track = await createLocalVideoTrack({
       deviceId: prefs.videoInput,
-      resolution: CAPTURE.resolution,
+      resolution: cameraCapturePreset().resolution,
     });
     videoTrack.current = track;
     if (videoRef.current) track.attach(videoRef.current);

@@ -315,15 +315,16 @@ export function applyBudget(
  *
  *  Thresholds on the tile count rather than on pixels, because the count is what
  *  the layout knows and it is what decides how small each one ends up. Forty-nine
- *  tiles at 132px do not benefit from a 720p layer; they benefit from the tab not
+ *  tiles at 132px do not benefit from a 1080p layer; they benefit from the tab not
  *  falling over.
  *
- *  Small grids stay HIGH: 3–4 large tiles used to land on MEDIUM (360p) and look
- *  soft next to Zoom, which keeps featured faces on the top layer. Filmstrip /
- *  crowded galleries still drop. */
+ *  With a 1080p HIGH layer, only 1–2 large tiles should request it. Three-to-nine
+ *  equal tiles get MEDIUM (720p) — still sharp, without burning 1080 encode/egress
+ *  on faces that are a few hundred CSS pixels wide. Filmstrips stay LOW (360p).
+ *  Speaker/spotlight focus forces HIGH independently of this helper. */
 export function qualityFor(tileCount: number): VideoQuality {
-  if (tileCount <= 4) return VideoQuality.HIGH;
-  if (tileCount <= 12) return VideoQuality.MEDIUM;
+  if (tileCount <= 2) return VideoQuality.HIGH;
+  if (tileCount <= 9) return VideoQuality.MEDIUM;
   return VideoQuality.LOW;
 }
 

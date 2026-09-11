@@ -203,9 +203,10 @@ push the leave button off screen.
 `contentHint: "text"` and a ~5 Mbps top layer (720p floor ~3 Mbps), so under
 bitrate pressure the encoder drops frames and keeps pixels. A camera preset does
 the opposite, and the first thing it throws away is the small text somebody is
-trying to read. Cameras publish 720p@~2.4 Mbps (Zoom's common featured-speaker
-band) with VP8 simulcast; the large speaker tile always requests the HIGH layer.
-The presenter is never shown their own capture — sharing a whole screen means the
+trying to read. Cameras publish **1080p@~3.2 Mbps** on capable desktops (720p mid
+/ 360p low simulcast; mobile and low-core devices stay on 720p encode), matching
+Zoom's Full HD send band when the speaker tile is large — grids request 720p, not
+1080. The presenter is never shown their own capture — sharing a whole screen means the
 capture contains this window, and a window playing back its own capture is an
 infinite corridor that the audience receives too. They get "You're sharing your
 screen" instead, which is what Zoom and Meet do for the same reason.

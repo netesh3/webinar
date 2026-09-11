@@ -200,26 +200,57 @@ const IDLE: NetworkHealth = {
 /* Camera publish ladder — bitrates live HERE with the share ladder so applyLadder cannot
  * drift from what media.ts publishes.
  *
- * WHY richer than stock VideoPresets. LiveKit defaults are h180@160k / h360@450k /
- * h720@1.7 Mbps. Zoom's featured-speaker 720p commonly sits ~1.5–2.5 Mbps; at 1.7 Mbps
- * our large stage tile looked soft in side-by-side tests even on a clean link. We keep
- * 720p@30 capture (laptop cameras rarely deliver true 1080p) and spend the budget on a
- * sharper top layer instead of empty pixels.
+ * WHY 1080p top (not stock 720p). Zoom's *common* Group HD path is 720p for the active
+ * speaker; Full HD 1080p is gated (Business/Enterprise-class plans, often Support-enabled,
+ * i7-class CPU, fullscreen speaker mode — see Zoom KB "Enabling HD video for Zoom Meetings").
+ * Our speaker tile on a desktop stage regularly exceeds 720 CSS px (and more on retina), so
+ * a 1080p top layer is not empty pixels for the featured face. Grids and filmstrips stay on
+ * 720p / 360p via subscriber quality selection + dynacast.
  *
- *            180p     360p      720p@30    total
- *   full     200      600       2400       3200 kbps
- *   reduced  200      600       off        800 kbps
- *   minimal  200      off       off        200 kbps
+ *            360p     720p@30    1080p@30   total
+ *   full     600      2000        3200       5800 kbps
+ *   reduced  600      2000        off        2600 kbps   ← while sharing / mild congestion
+ *   minimal  600      off         off         600 kbps
+ *
+ * 1080p maxBitrate ~3.2 Mbps sits under Zoom's documented ~3.8 Mbps send requirement for
+ * Full HD; 720p mid stays in Zoom's common HD band. maintain-framerate still applies: faces
+ * prefer motion over a sharp slideshow.
  */
-/** Featured-speaker 720p — middle of Zoom's common 1.5–2.5 Mbps band. */
-export const CAMERA_720_BITRATE = 2_400_000;
+/** Mid simulcast rung — Zoom-comparable 720p when the tile is not large enough for 1080. */
+export const CAMERA_720_BITRATE = 2_000_000;
+/** Featured-speaker 1080p — under Zoom's ~3.8 Mbps Full HD send floor. */
+export const CAMERA_1080_BITRATE = 3_200_000;
 
 export const CAMERA_LAYERS = [
-  new VideoPreset(320, 180, 200_000, 20),
   new VideoPreset(640, 360, 600_000, 20),
+  new VideoPreset(1280, 720, CAMERA_720_BITRATE, 30),
 ];
 
-export const CAMERA_TOP = new VideoPreset(1280, 720, CAMERA_720_BITRATE, 30);
+export const CAMERA_TOP = new VideoPreset(1920, 1080, CAMERA_1080_BITRATE, 30);
+
+/**
+ * Coarse Zoom-like Full HD gate: phones skip 1080 capture; machines with fewer than
+ * eight logical cores (proxy for Zoom's i7 Quad Core send requirement) publish the same
+ * ladder but start with the 1080 rung off so they encode 360+720 only.
+ */
+export function canCaptureCamera1080(): boolean {
+  if (typeof navigator === "undefined") return true;
+  if (typeof navigator.userAgent === "string") {
+    const ua = navigator.userAgent;
+    if (/android|iphone|ipod|ipad/i.test(ua)) return false;
+    const maxTouch =
+      typeof navigator.maxTouchPoints === "number" ? navigator.maxTouchPoints : 0;
+    if (/macintosh/i.test(ua) && maxTouch > 1) return false;
+  }
+  const cores = navigator.hardwareConcurrency ?? 0;
+  if (cores > 0 && cores < 8) return false;
+  return true;
+}
+
+/** Capture resolution/encoding for getUserMedia — 1080 when allowed, else the 720 mid rung. */
+export function cameraCapturePreset(): VideoPreset {
+  return canCaptureCamera1080() ? CAMERA_TOP : CAMERA_LAYERS[1];
+}
 
 /* Exported for one test, which pins the property that matters and cannot be read off the
  * page: that no two adjacent layers are so far apart that a subscriber falls through the gap
@@ -230,21 +261,20 @@ export const LADDER: Record<
 > = {
   // Three layers as published. The SFU chooses between them per subscriber.
   full: [
-    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 4 },
+    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 3 },
     { maxBitrate: CAMERA_LAYERS[1].encoding.maxBitrate, scaleDown: 2 },
     { maxBitrate: CAMERA_TOP.encoding.maxBitrate, scaleDown: 1 },
   ],
-  // The top layer goes. Two layers at a quarter of the bitrate, which is what a
-  // struggling uplink can actually deliver — and the SFU still has a choice to make.
+  // The top (1080p) layer goes. 720p remains so a large tile does not fall to 360p.
   reduced: [
-    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 4 },
+    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 3 },
     { maxBitrate: CAMERA_LAYERS[1].encoding.maxBitrate, scaleDown: 2 },
     { maxBitrate: 0, scaleDown: 1 },
   ],
   // One small layer. Everything left goes to keeping a recognisable moving picture and
   // to protecting the audio, which is untouched at every rung.
   minimal: [
-    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 4 },
+    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 3 },
     { maxBitrate: 0, scaleDown: 2 },
     { maxBitrate: 0, scaleDown: 1 },
   ],
@@ -781,12 +811,12 @@ export function useNetworkHealth(
 
       if (publishing && camera) {
         const at = TIERS.indexOf(tier.current);
-        /* While screen-sharing, keep the camera off the 720p rung. The face thumbnail
-         * does not need it; the slides do, and both tracks share one uplink. Cap at
-         * `reduced` immediately when a share appears, and refuse to climb back to
-         * `full` until the share ends. */
-        const cameraBest = share ? 1 : 0;
-        if (share && at < cameraBest) {
+        /* While screen-sharing, or on a device that should not encode 1080, keep the
+         * camera off the top rung. Thumbnails do not need 1080; low-power machines
+         * should not encode it. Cap at `reduced` (360+720) and refuse to climb to
+         * `full` until the share ends / the device is allowed 1080. */
+        const cameraBest = share || !canCaptureCamera1080() ? 1 : 0;
+        if (at < cameraBest) {
           badSamples.current = 0;
           goodSamples.current = 0;
           await applyCameraTier(TIERS[cameraBest], camera);

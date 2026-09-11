@@ -15,6 +15,7 @@
 
 import { ConnectionQuality } from "livekit-client";
 import {
+  CAMERA_1080_BITRATE,
   CAMERA_720_BITRATE,
   CAMERA_TOP,
   LADDER,
@@ -586,24 +587,39 @@ console.log("\nshare layer gaps");
   );
 }
 
-/* Camera layers must sit in Zoom's featured-speaker band, not stock LiveKit 1.7 Mbps. */
+/* Camera layers: 1080p top under Zoom's Full HD send budget; 720p mid for grids. */
 console.log("\ncamera layer budgets");
 {
   ok(
-    CAMERA_TOP.encoding.maxBitrate >= 2_200_000 &&
-      CAMERA_TOP.encoding.maxBitrate <= 2_600_000,
-    "camera 720p is ~2.4 Mbps (Zoom featured-speaker band)",
+    CAMERA_TOP.height === 1080,
+    "camera top layer is 1080p",
+    `${CAMERA_TOP.width}x${CAMERA_TOP.height}`,
+  );
+  ok(
+    CAMERA_TOP.encoding.maxBitrate >= 3_000_000 &&
+      CAMERA_TOP.encoding.maxBitrate <= 3_800_000,
+    "camera 1080p is ~3.2 Mbps (under Zoom's ~3.8 Mbps Full HD send)",
     `${CAMERA_TOP.encoding.maxBitrate}`,
   );
   eq(
     LADDER.full[2].maxBitrate,
+    CAMERA_1080_BITRATE,
+    "camera ladder top matches the published 1080p bitrate",
+  );
+  eq(
+    LADDER.full[1].maxBitrate,
     CAMERA_720_BITRATE,
-    "camera ladder top matches the published 720p bitrate",
+    "camera mid rung is the 720p layer",
   );
   ok(
-    LADDER.full[1].maxBitrate >= 500_000,
-    "camera mid layer is rich enough not to look soft when briefly selected",
+    LADDER.full[1].maxBitrate >= 1_800_000,
+    "camera mid layer stays in Zoom's common 720p HD band",
     `${LADDER.full[1].maxBitrate}`,
+  );
+  eq(
+    LADDER.reduced[2].maxBitrate,
+    0,
+    "reduced turns off 1080p and keeps 720p for large-but-not-full tiles",
   );
 }
 
