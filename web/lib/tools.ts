@@ -185,19 +185,24 @@ export type ToolLayout = {
 
 /* What a first-time user gets.
  *
- * Chat and Participants open the side panel. Layout is pinned too — switching
- * speaker / grid / spotlight is a core action hosts ask for, and burying it
- * under More made it undiscoverable. Invite, host tools and the rest stay in
- * More so the bar stays short.
+ * Chat and Participants open the side panel. Layout is NOT a pin — it is a
+ * fixed control on the bar (see control-bar), so capacity / localStorage can
+ * never bury Speaker / Grid / Spotlight under More. Invite, host tools and the
+ * rest stay in More so the bar stays short.
  */
-const DEFAULT_PINNED: ToolId[] = ["chat", "participants", "layout"];
+const DEFAULT_PINNED: ToolId[] = ["chat", "participants"];
+
+/** Always rendered on the bar outside the capacity-limited pin slots. */
+export const FIXED_BAR_TOOLS: readonly ToolId[] = ["layout"];
 
 export const RECENT_LIMIT = 6;
 
 function emptyLayout(): ToolLayout {
   return {
     pinned: [...DEFAULT_PINNED],
-    overflow: TOOL_IDS.filter((id) => !DEFAULT_PINNED.includes(id)),
+    overflow: TOOL_IDS.filter(
+      (id) => !DEFAULT_PINNED.includes(id) && !FIXED_BAR_TOOLS.includes(id),
+    ),
     recent: [],
     windows: {},
     nextZ: 1,
@@ -216,6 +221,8 @@ export function pinTool(
   tool: ToolId,
   index: number,
 ): ToolLayout {
+  // Layout (and any other fixed-bar tool) already has a dedicated control.
+  if (FIXED_BAR_TOOLS.includes(tool)) return layout;
   const without = layout.pinned.filter((id) => id !== tool);
   const at = Math.min(Math.max(index, 0), without.length);
   return {
@@ -481,8 +488,9 @@ export function barSlots(
   available: readonly ToolId[],
 ): BarSlot[] {
   const allowed = new Set(available);
+  const fixed = new Set<ToolId>(FIXED_BAR_TOOLS);
   const slots: BarSlot[] = layout.pinned
-    .filter((id) => allowed.has(id))
+    .filter((id) => allowed.has(id) && !fixed.has(id))
     .slice(0, Math.max(0, capacity))
     .map((tool) => ({ tool, pinned: true }));
 
@@ -491,7 +499,7 @@ export function barSlots(
   const taken = new Set(slots.map((s) => s.tool));
   for (const tool of layout.recent) {
     if (slots.length >= capacity) break;
-    if (taken.has(tool) || !allowed.has(tool)) continue;
+    if (taken.has(tool) || !allowed.has(tool) || fixed.has(tool)) continue;
     slots.push({ tool, pinned: false });
     taken.add(tool);
   }
@@ -501,13 +509,15 @@ export function barSlots(
 /** What the More grid shows: everything not currently on the bar.
  *
  *  Computed from the bar rather than from `overflow` alone, so a tool surfaced
- *  into a vacant slot is not offered in both places at once. */
+ *  into a vacant slot is not offered in both places at once. Fixed-bar tools
+ *  (Layout) are omitted — they already have a dedicated control. */
 export function gridItems(
   layout: ToolLayout,
   slots: readonly BarSlot[],
   available: readonly ToolId[],
 ): ToolId[] {
   const onBar = new Set(slots.map((s) => s.tool));
+  for (const id of FIXED_BAR_TOOLS) onBar.add(id);
   const allowed = new Set(available);
   const ordered = [...layout.overflow, ...layout.pinned];
   const seen = new Set<ToolId>();
@@ -522,10 +532,9 @@ export function gridItems(
 
 // --------------------------------------------------------------- persistence
 
-/* v3: keep the simpler redesign pins, but put Layout back on the bar — users
- * could not find stage layout under More. Bumped so v2 localStorage (chat +
- * participants only) does not keep Layout buried after this ships. */
-const STORAGE_KEY = "webcast.toolbar.v3";
+/* v4: Layout is a fixed bar control, not a pin. Bumped so v3 localStorage that
+ * treated Layout as a capacity-limited pin cannot hide it on narrow bars. */
+const STORAGE_KEY = "webcast.toolbar.v4";
 
 /** Only the customisation is persisted, never the windows.
  *

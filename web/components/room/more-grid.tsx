@@ -208,7 +208,7 @@ export function MoreGrid({
 
       <p className="mt-2 flex items-center gap-1.5 border-t border-line px-1.5 pt-2 text-[11px] text-ink-3">
         <PinIcon className="size-3 shrink-0" />
-        Layout switches speaker / grid / spotlight. Drag tools onto the bar to pin.
+        Use Layout on the bar for speaker / grid / spotlight. Drag tools onto the bar to pin.
       </p>
     </div>
   );

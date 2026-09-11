@@ -155,7 +155,7 @@ export function PreviewRoom() {
 }
 
 function PreviewHeader() {
-  const { topic, tools } = useRoomUI();
+  const { topic } = useRoomUI();
   return (
     <header className="flex h-11 shrink-0 items-center gap-2 border-b border-white/10 bg-stage-bar px-3 text-white">
       <div className="min-w-0 flex-1">
@@ -169,13 +169,6 @@ function PreviewHeader() {
           Local UI only — no LiveKit connection
         </p>
       </div>
-      <button
-        type="button"
-        onClick={() => tools.open("chat")}
-        className="rounded-md bg-white/10 px-2.5 py-1 text-[12px] hover:bg-white/15"
-      >
-        Open panel
-      </button>
     </header>
   );
 }

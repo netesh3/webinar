@@ -504,6 +504,32 @@ export function ControlBar() {
         {dropIndex !== null && dropIndex >= slots.length && <DropMarker />}
       </div>
 
+      {/* Layout is fixed — never capacity-limited or buried under More. Narrow
+          bars used to drop it when only two pin slots fit. */}
+      {availableTools.includes("layout") && (
+        <div data-tool-slot="layout" className="relative">
+          <button
+            type="button"
+            aria-label={`Layout · ${LAYOUT_LABEL[stage.mode]}`}
+            aria-pressed={layoutOpen}
+            title={`Change layout — ${LAYOUT_LABEL[stage.mode]}`}
+            onClick={() => {
+              setLayoutOpen((v) => !v);
+              tools.used("layout");
+            }}
+            className="relative shrink-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+          >
+            <BarButtonShell label="Layout" active={layoutOpen}>
+              {(() => {
+                const Icon = tool("layout").icon;
+                return <Icon className="size-5" />;
+              })()}
+            </BarButtonShell>
+          </button>
+          {layoutOpen && <LayoutMenu onClose={() => setLayoutOpen(false)} />}
+        </div>
+      )}
+
       {/* ---- fixed right ---- */}
       <div className="relative">
         <MoreButton
