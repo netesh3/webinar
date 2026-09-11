@@ -208,6 +208,11 @@ func (s *Server) Routes() http.Handler {
 		 * the internet works. What it is not is enumerable, which the list was.
 		 */
 		r.Get("/webinars/{slug}", s.handleGetWebinar)
+		// The cover image, same reasoning as the slug lookup above: a registration or
+		// browse page has to render it for a caller with no session. Unlike chat media
+		// there is no credential to resolve — a cover image is public the moment the
+		// webinar is, which handleWebinarImage checks by loading the webinar itself.
+		r.Get("/webinars/{slug}/image", s.handleWebinarImage)
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
@@ -359,6 +364,12 @@ func (s *Server) Routes() http.Handler {
 					r.Post("/end", s.handleEndWebinar)
 					r.Post("/transfer-host", s.handleTransferHost)
 					r.Patch("/controls", s.handleUpdateControls)
+
+					// The cover image. Client-compressed and cropped before it gets here —
+					// see web/lib/webinar-image.ts — so this is a plain replace, not an
+					// edit-in-place: uploading again overwrites whatever was there.
+					r.Post("/image", s.handleUploadWebinarImage)
+					r.Delete("/image", s.handleDeleteWebinarImage)
 
 					// ---- polls and quizzes ----
 					//

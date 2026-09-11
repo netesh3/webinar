@@ -6,7 +6,8 @@ import { Alert, Disclosure, Select, Spinner, Toggle } from "./controls";
 import { useAppConfig, useToast } from "./providers";
 import { Button, Card, SectionTitle } from "./ui";
 import { PlusIcon, TrashIcon } from "./icons";
-import { ApiError, api } from "@/lib/api";
+import { WebinarImagePicker } from "./webinar-image-picker";
+import { API_BASE, ApiError, api } from "@/lib/api";
 import type {
   AgendaItem,
   CustomQuestion,
@@ -15,6 +16,7 @@ import type {
   WebinarInput,
   WebinarOptions,
 } from "@/lib/api-types";
+import type { PreparedWebinarImage } from "@/lib/webinar-image";
 import { useHydrated } from "@/lib/clock";
 import {
   instantToZoned,
@@ -197,6 +199,24 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"scheduled" | "draft" | null>(null);
 
+  /* The cover image.
+   *
+   * Cropped and compressed entirely client-side (see webinar-image-picker.tsx)
+   * the moment it is picked, but not uploaded until the webinar itself is saved
+   * — a webinar being scheduled for the first time has no slug yet to upload
+   * against, and uploading on pick for an EXISTING webinar while leaving the
+   * option to cancel the rest of the form would save half an edit. `imageUrl`
+   * mirrors what the preview shows: the persisted image to start with, a local
+   * object URL once a new one is picked, or null with nothing shown. */
+  const [imagePreview, setImagePreview] = useState<string | null>(
+    webinar?.imageUrl ? `${API_BASE}${webinar.imageUrl}` : null,
+  );
+  const [pendingImage, setPendingImage] = useState<PreparedWebinarImage | null>(null);
+  // True once the host removes a PERSISTED image with no replacement chosen —
+  // the thing submit() actually has to tell the server about. Picking a new
+  // image after removing one clears this; the upload itself is the replacement.
+  const [imageRemoved, setImageRemoved] = useState(false);
+
   // Built once per mount: the list is ~450 entries and re-sorting it on every
   // keystroke in the topic field is pure waste.
   const zones = useMemo(() => timeZoneNames(), []);
@@ -255,9 +275,34 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
     }
 
     try {
-      const saved = editing
+      let saved = editing
         ? await api.updateWebinar(webinar.id, input)
         : await api.createWebinar(input);
+
+      /* The image, once the webinar itself has a slug to attach it to.
+       *
+       * Best-effort and after the fact, deliberately: the webinar is already
+       * saved by this point, and failing the whole save over a cover image —
+       * the one field on this form that is purely decorative — would be the
+       * wrong trade. A failure here is a toast, not a blocked navigation. */
+      if (pendingImage) {
+        try {
+          saved = await api.uploadWebinarImage(
+            saved.id,
+            pendingImage.blob,
+            pendingImage.mime,
+          );
+        } catch {
+          notify("Saved, but the cover image didn't upload. Edit the webinar to try again.", "info");
+        }
+      } else if (imageRemoved) {
+        try {
+          saved = await api.deleteWebinarImage(saved.id);
+        } catch {
+          notify("Saved, but the cover image couldn't be removed. Edit the webinar to try again.", "info");
+        }
+      }
+
       notify(
         editing
           ? "Changes saved."
@@ -328,6 +373,23 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
               onChange={(e) => set("description", e.target.value)}
             />
           </div>
+
+          <WebinarImagePicker
+            previewUrl={imagePreview}
+            onChange={(prepared, preview) => {
+              setPendingImage(prepared);
+              setImageRemoved(false);
+              setImagePreview(preview);
+            }}
+            onRemove={() => {
+              setPendingImage(null);
+              setImagePreview(null);
+              // Only worth telling the server about if there was something
+              // persisted to remove — a pending, never-uploaded selection being
+              // cleared is not a change the webinar has ever seen.
+              setImageRemoved(Boolean(webinar?.imageUrl));
+            }}
+          />
 
           <div className="grid gap-3.5 sm:grid-cols-2">
             {/* Free text with suggestions from what already exists, rather than a

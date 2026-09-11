@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRegistrations } from "./registrations";
 import { CheckIcon, SearchIcon } from "./icons";
 import { Avatar, Badge, ButtonLink, Card, Empty, kindLabel } from "./ui";
+import { API_BASE } from "@/lib/api";
 import {
   formatCount,
   formatDayShort,
@@ -127,6 +128,21 @@ function WebinarRow({ webinar: w }: { webinar: Webinar }) {
   return (
     <Card className="overflow-hidden transition-shadow hover:shadow-[0_2px_10px_rgba(19,22,25,0.07)]">
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-stretch">
+        {/* cover thumbnail — only when the host uploaded one, so a webinar
+            without an image keeps exactly the row this card has always been */}
+        {w.imageUrl && (
+          <div className="w-full shrink-0 overflow-hidden rounded-lg sm:w-32">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a
+                cross-origin API URL, not something next/image's loader can
+                optimize. */}
+            <img
+              src={`${API_BASE}${w.imageUrl}`}
+              alt=""
+              className="aspect-video w-full object-cover"
+            />
+          </div>
+        )}
+
         {/* date block */}
         <div className="flex shrink-0 flex-row items-center gap-3 sm:w-[124px] sm:flex-col sm:items-start sm:justify-center sm:gap-1 sm:border-r sm:border-line sm:pr-4">
           <div className="text-[13px] font-semibold text-brand">

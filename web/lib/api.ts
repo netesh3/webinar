@@ -312,6 +312,21 @@ export const api = {
   deleteWebinar: (slug: string) =>
     del<StatusResponse>(`/api/host/webinars/${seg(slug)}/`),
 
+  /** Replaces the webinar's cover image. The body is the raw, already-compressed
+   *  image — see lib/webinar-image.ts, which crops to 16:9 and re-encodes to at
+   *  most 1MB in the browser before this is ever called. Returns the updated
+   *  webinar, whose `imageUrl` carries a fresh `?v=` so nothing caches the old
+   *  picture under the new URL. */
+  uploadWebinarImage: (slug: string, blob: Blob, mime: string) =>
+    request<Webinar>(`/api/host/webinars/${seg(slug)}/image`, {
+      method: "POST",
+      body: blob,
+      headers: { "Content-Type": mime },
+    }),
+
+  deleteWebinarImage: (slug: string) =>
+    del<Webinar>(`/api/host/webinars/${seg(slug)}/image`),
+
   startWebinar: (slug: string) =>
     post<Webinar>(`/api/host/webinars/${seg(slug)}/start`),
 

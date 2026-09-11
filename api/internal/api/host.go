@@ -4,12 +4,14 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/mail"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -115,6 +117,122 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 			"slug", wb.ID, "error", err)
 	} else {
 		s.pushRoomMetadata(r, sfu, wb)
+	}
+	httpx.JSON(w, http.StatusOK, wb)
+}
+
+// ------------------------------------------------------------------- image
+
+// maxWebinarImageBytes caps one upload of a cover image. The client compresses to
+// at most 1MB before it gets here — see web/lib/webinar-image.ts — so this is the
+// backstop for a client that skipped that step, not the working limit.
+const maxWebinarImageBytes = 3 << 20
+
+/* handleUploadWebinarImage stores a webinar's cover image and points the row at it.
+ *
+ * A fresh key every upload, never a reused one: object storage here has no
+ * in-place replace — Append only ever appends — so writing to the same key twice
+ * would concatenate the new bytes onto the old ones instead of replacing them.
+ * The previous key is deleted only once the new one is safely recorded —
+ * SetWebinarImage hands it back for exactly that — so a delete that fails leaves
+ * an orphaned blob rather than a webinar pointing at a corrupted image.
+ *
+ * The body is the raw, already-compressed image, same convention as chat images:
+ * one part, so multipart buys nothing here.
+ */
+func (s *Server) handleUploadWebinarImage(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+
+	if s.recordings == nil {
+		httpx.Error(w, http.StatusServiceUnavailable, "storage_disabled",
+			"Image uploads are turned off on this instance.")
+		return
+	}
+
+	// MaxBytesReader rather than checking Content-Length: a chunked upload has no
+	// length to check, and trusting one is how a size cap becomes a promise nobody
+	// enforced.
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebinarImageBytes+1))
+	if err != nil || len(body) > maxWebinarImageBytes {
+		httpx.Error(w, http.StatusRequestEntityTooLarge, "too_large",
+			fmt.Sprintf("Images must be under %dMB.", maxWebinarImageBytes>>20))
+		return
+	}
+	if len(body) == 0 {
+		httpx.Error(w, http.StatusBadRequest, "empty", "That upload was empty.")
+		return
+	}
+
+	// Sniffed rather than trusted from Content-Type: this is written to disk and
+	// served back to every visitor of a public page, so a mislabelled upload is
+	// refused here rather than becoming something a browser decides to treat as
+	// markup.
+	mime, sniffed := sniffImage(body)
+	if !sniffed {
+		httpx.Error(w, http.StatusUnsupportedMediaType, "bad_image",
+			"Images must be PNG, JPEG or WebP.")
+		return
+	}
+
+	key := "webinar-images/" + slug + "/" + uuid.NewString() + imageTypes[mime]
+	if _, err := s.recordings.Append(r.Context(), key, strings.NewReader(string(body))); err != nil {
+		s.fail(w, r, "webinar image: store", err)
+		return
+	}
+
+	previous, err := s.store.SetWebinarImage(r.Context(), slug, key, mime)
+	if errors.Is(err, store.ErrNotFound) {
+		_ = s.recordings.Delete(r.Context(), key)
+		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+		return
+	}
+	if err != nil {
+		// The bytes are stored and the row is not, so remove them rather than
+		// leaving an object nothing references.
+		_ = s.recordings.Delete(r.Context(), key)
+		s.fail(w, r, "webinar image: record", err)
+		return
+	}
+	if previous != "" {
+		if err := s.recordings.Delete(r.Context(), previous); err != nil {
+			s.log.Warn("webinar image: old file left behind",
+				"slug", slug, "key", previous, "error", err)
+		}
+	}
+
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "webinar image: reload", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, wb)
+}
+
+// handleDeleteWebinarImage removes a webinar's cover image, returning the webinar
+// to having none — the same state a webinar that never had one is in.
+func (s *Server) handleDeleteWebinarImage(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+
+	previous, err := s.store.ClearWebinarImage(r.Context(), slug)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "webinar image: clear", err)
+		return
+	}
+	if previous != "" && s.recordings != nil {
+		if err := s.recordings.Delete(r.Context(), previous); err != nil {
+			s.log.Warn("webinar image: file left behind",
+				"slug", slug, "key", previous, "error", err)
+		}
+	}
+
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "webinar image: reload", err)
+		return
 	}
 	httpx.JSON(w, http.StatusOK, wb)
 }
