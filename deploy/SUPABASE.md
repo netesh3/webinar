@@ -203,15 +203,19 @@ The app keeps its own `webcast_session` cookie. Supabase Auth is only used for
 the Google OAuth dance; the API verifies the Supabase JWT and issues the same
 session password login uses.
 
-### 1. Google Cloud OAuth client
+### 1. Google Cloud OAuth client (dedicated Webinar Liv project)
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → **Google Auth Platform →
-   Clients** (or APIs & Services → Credentials) → Create credentials → **OAuth
-   client ID** → Application type **Web application**.
-   You can also reuse the Firebase “Web client (auto created by Google Service)”
-   if the project already has one — add the URIs below to that client.
-2. Authorized JavaScript origins (optional for this flow): your Worker / site
-   origins, e.g. `https://webinarliv.com`, `https://www.webinarliv.com`,
+**Do not** reuse shared GCP project `ai-project-490516` (AI Studio / Firebase /
+other apps such as Sancharees). Consent-screen branding is **per GCP project**,
+so a shared client would show the wrong app name on Google sign-in.
+
+Use dedicated project **`selfreminder-rnix`** (display name **Webinar Liv**):
+
+1. [Google Cloud Console](https://console.cloud.google.com/auth/clients?project=selfreminder-rnix)
+   → **Google Auth Platform → Clients** → Create credentials → **OAuth client ID**
+   → Application type **Web application**.
+2. Authorized JavaScript origins: `https://webinarliv.com`,
+   `https://www.webinarliv.com`,
    `https://webinar-web.ganesh-s-p006.workers.dev`, plus
    `http://localhost:3000` for local Next.
 3. Authorized redirect URIs — **must** include Supabase’s callback:
@@ -223,10 +227,12 @@ session password login uses.
    (Replace the project ref if you use another Supabase project.)
 4. Copy the **Client ID** and **Client secret** into Supabase only (never git).
    Console may hide existing secrets (“Viewing and downloading client secrets is
-   no longer available”); use Firebase Identity Toolkit
-   `defaultSupportedIdpConfigs/google.com` or rotate/add a secret if needed.
+   no longer available”); rotate/add a secret on the client detail page if needed.
 
-This is separate from `GOOGLE_CLIENT_ID` / `GOOGLE_API_KEY` used for Drive Picker.
+This is separate from `GOOGLE_CLIENT_ID` / `GOOGLE_API_KEY` used for Drive Picker /
+One Tap — if those are enabled, point them at the **same** Webinar Liv web client
+(or another client in `selfreminder-rnix`), not the shared `ai-project-490516`
+client.
 
 **gcloud limits:** classic Web OAuth clients cannot be created via public gcloud for
 projects that are not in a Cloud Organization (IAP brand APIs require an org).
@@ -273,10 +279,12 @@ signup pages show **Continue with Google**.
 ### Consent screen / verification (Google Cloud)
 
 Configured under **Google Auth Platform → Audience / Branding** for project
-`ai-project-490516`:
+**`selfreminder-rnix`** (Webinar Liv) only — not `ai-project-490516`:
 
 | Setting | Typical value for Webinar Liv |
 |---------|---------------------------|
+| App name | **Webinar Liv** |
+| Home / Privacy / Terms | `https://webinarliv.com`, `/privacy`, `/terms` |
 | User type | **External** |
 | Publishing status | **In production** (or Testing) |
 | Scopes used | `openid` `email` `profile` (non-sensitive) |
@@ -288,8 +296,10 @@ Configured under **Google Auth Platform → Audience / Branding** for project
   if you later request sensitive/restricted scopes.
 - Lifetime **OAuth user cap** (shown as e.g. `0 / 100`) applies when requesting
   *unapproved* sensitive/restricted scopes — not for the basic login scopes above.
-- Brand verification (logo, domain, privacy policy) is manual in Console if Google
-  prompts for it; it is not required to finish basic Google login for this app.
+- **Domain ownership** for branding: verify `webinarliv.com` in
+  [Google Search Console](https://search.google.com/search-console) **for this
+  GCP project** (Verification Center / authorized domains). Do that only on
+  `selfreminder-rnix`, not on the shared AI project.
 
 ### 4. Flow
 
