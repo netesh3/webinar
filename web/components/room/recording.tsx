@@ -213,8 +213,9 @@ export function RecordButton() {
   // Which destinations this press could actually reach. Cloud needs the
   // instance to have storage configured (AppConfig.cloudRecordingEnabled) —
   // separate from join.canRecord, which is about the ACCOUNT, not the
-  // instance; an instance with RECORDINGS_ENABLED=false must not offer a
-  // button that always 503s. Local needs the browser's File System Access API.
+  // instance. Local needs the browser's File System Access API. The button
+  // stays visible even when both are false; see the click handler below for
+  // why hiding it was the wrong call.
   const cloudAvailable = cloudRecordingEnabled;
   const localAvailable = localSupported;
 
@@ -252,10 +253,6 @@ export function RecordButton() {
   // account on this webinar's stage roster, and requireStage wants the account.
   if (!join.canRecord) return null;
   if (!supported) return null;
-  // Neither destination can actually be reached — an instance with cloud
-  // storage off, in a browser without the File System Access API. Offering a
-  // button with nothing behind it is worse than not offering one.
-  if (!cloudAvailable && !localAvailable) return null;
 
   /* And not until there is a session to record.
    *
@@ -305,6 +302,20 @@ export function RecordButton() {
         onClick={() => {
           if (mine) {
             void stop();
+            return;
+          }
+          // Neither destination can actually be reached — an instance with
+          // cloud storage off, in a browser without the File System Access
+          // API (Firefox, Safari, and some Chromium forks — Brave among
+          // them — either lack it or keep it behind a flag). Said out loud
+          // rather than hiding the button: a button that vanished here once
+          // already read as "recording is broken", when the real answer was
+          // knowable and actionable.
+          if (!cloudAvailable && !localAvailable) {
+            notify(
+              "Can't record here: this browser can't save to your device, and cloud recording isn't turned on for this server. Try Chrome or Edge, or ask your admin to enable cloud recording.",
+              "error",
+            );
             return;
           }
           // Straight to whichever one destination is reachable — one-click,
