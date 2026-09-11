@@ -1495,9 +1495,12 @@ quiet and loud passages. All three are explicitly off.
 24 kbps mono, and DTX stops transmitting during silence. The SDK merges `publishDefaults` into
 every publish, so a shared soundtrack would have gone out as a phone call with its quiet
 passages cut. `setScreenShareEnabled` takes a third argument for exactly this, and
-`SCREEN_SHARE_PUBLISH` overrides **only the audio keys** — the video keys must keep coming from
-`publishDefaults` or a shared slide loses the settings that keep small text legible. Stereo is
-not forced: the SDK reads the capture's channel count, which is the honest answer.
+`SCREEN_SHARE_PUBLISH` overrides the audio keys plus the **video codec**: Chrome often encodes
+`getDisplayMedia` as H264 while the room default is VP8, and the SFU only attaches a receiver
+for codecs listed on `AddTrack` — H264-on-the-wire with VP8-only in `codecs` yields
+`could not find codec for webrtc receiver` / `isReceiverAdded: false`. Encoding bitrate and
+simulcast layers still come from `publishDefaults` (`screenShareEncoding` / `SHARE_LADDER`).
+Stereo is not forced: the SDK reads the capture's channel count, which is the honest answer.
 
 **Record it.** `AudioMixer` in `lib/recorder.ts` collected `Track.Source.Microphone` only, so a
 recording of a session where the host played a video preserved the same silence in the file —
@@ -1920,6 +1923,7 @@ provisioned. Recording enabled, disk-backed.
 | promoted person has a dead mic button | the `promoted` metadata flag vs `allowUnmute`, which *Mute everyone* latches off |
 | a shared video has no sound | on macOS, only a Chrome TAB can carry audio — not a window, not the whole screen. §9c |
 | shared audio sounds like a phone call | `SCREEN_SHARE_PUBLISH` is not being passed, so the speech preset applies. §9c |
+| host "is sharing" but attendees see no frames | SFU log `could not find codec for webrtc receiver` with mime H264 and codecs=[vp8]. `SCREEN_SHARE_PUBLISH` must register H264 (Chrome's getDisplayMedia path). §9c |
 | a recording has the video but not its sound | `AudioMixer` must collect `ScreenShareAudio`, not just `Microphone`. §9c |
 | a participant can see host navigation | the page is rendering `TopNav` instead of `ParticipantHeader`. §5b |
 | a panelist cannot reach the stage they were invited to | `/host/<slug>/room` must NOT require `canHost` — the API decides. §5b |

@@ -134,25 +134,32 @@ export const SCREEN_SHARE_OPTIONS: ScreenShareCaptureOptions = {
   selfBrowserSurface: "exclude",
 };
 
-/* How the shared audio is published, which is not how a voice is published.
+/* How a screen share is published, which is not how a camera is published.
  *
- * `publishDefaults` in roomOptions tunes audio for speech: AudioPresets.speech is 24 kbps mono
- * and DTX stops transmitting during silence. Both are right for a talking head and wrong for
- * everything else — 24 kbps mono makes music sound like a phone call, and DTX decides a quiet
- * passage is silence and cuts it. Those defaults would otherwise apply to this track too,
- * because the SDK merges publishDefaults into every publish.
+ * Audio: `publishDefaults` tunes for speech (AudioPresets.speech, DTX on). Both are wrong for a
+ * shared clip — 24 kbps mono sounds like a phone call, and DTX cuts quiet passages. Override
+ * those here. Stereo is not forced: the SDK reads the capture's channel count.
  *
- * Only audio keys here. `setScreenShareEnabled` passes these as publish options for the whole
- * share, and the video keys — screenShareEncoding, its simulcast layers, the codec — must keep
- * coming from publishDefaults or a shared slide loses the settings that keep text legible.
+ * Video codec: cameras go out as VP8 (publishDefaults.videoCodec). Chrome on macOS often
+ * encodes getDisplayMedia as H264 anyway — hardware screen encode — while AddTrack still
+ * lists only VP8. The SFU then logs `could not find codec for webrtc receiver` with
+ * `isReceiverAdded: false`, the share looks "on" for the host (OwnShareNotice), and
+ * attendees never get frames. File-share avoids this by publishing a canvas/element track
+ * as VP8 explicitly; desktop share has to match what the browser actually sends.
  *
- * Stereo is deliberately not forced: the SDK decides from the capture's channel count, which is
- * the honest answer, and forcing it would double the bitrate for a mono source that has nothing
- * to put in the second channel.
+ * Primary H264 matches the wire. VP8 stays as backup for subscribers that need it.
+ * screenShareEncoding / simulcast layers still come from publishDefaults via the merge —
+ * do not restate them here or a drift with SHARE_LADDER is easy to miss.
+ *
+ * maintain-resolution: slides and terminals must not blur to hold a frame rate; contentHint
+ * "detail" asks the same of the encoder, and this matches it on the sender.
  */
 export const SCREEN_SHARE_PUBLISH: TrackPublishOptions = {
   audioPreset: AudioPresets.musicStereo,
   dtx: false,
+  videoCodec: "h264",
+  backupCodec: { codec: "vp8" },
+  degradationPreference: "maintain-resolution",
 };
 
 /* Which shared surfaces can actually carry sound.
