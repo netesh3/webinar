@@ -33,7 +33,7 @@ import {
 /** Used only until the real config arrives — and as the fallback when the API is
  *  unreachable, so the shell still renders instead of blanking. */
 const CONFIG_FALLBACK: AppConfig = {
-  appName: "Webcast",
+  appName: "Webinar Liv",
   webBaseUrl: "",
   maxAttendees: 0,
   signupOpen: true,

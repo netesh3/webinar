@@ -1,4 +1,4 @@
-# Supabase for Webcast (production Postgres)
+# Supabase for Webinar Liv (production Postgres)
 
 Local development keeps self-hosted Postgres (`docker-compose.yml` / Homebrew via
 `make db`). **Production / Cloud Run** should use a Supabase Postgres project and
@@ -275,7 +275,7 @@ signup pages show **Continue with Google**.
 Configured under **Google Auth Platform → Audience / Branding** for project
 `ai-project-490516`:
 
-| Setting | Typical value for Webcast |
+| Setting | Typical value for Webinar Liv |
 |---------|---------------------------|
 | User type | **External** |
 | Publishing status | **In production** (or Testing) |

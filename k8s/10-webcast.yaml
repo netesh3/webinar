@@ -1,4 +1,4 @@
-# Webcast, temporarily, in an existing cluster's shared namespace.
+# Webinar Liv, temporarily, in an existing cluster's shared namespace.
 #
 # Rendered by deploy.sh — the __TOKENS__ are substituted, so do not apply this file
 # directly. Everything carries `app.kubernetes.io/part-of: webcast-temp` and is
@@ -401,7 +401,7 @@ spec:
             - name: WEB_BASE_URL
               value: https://__HOST____BASE_PATH__
             - name: APP_NAME
-              value: Webcast
+              value: Webinar Liv
             - name: SIGNUP_OPEN
               value: "true"
             # No sign-in, no registration form: opening the URL provisions a

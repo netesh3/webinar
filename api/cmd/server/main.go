@@ -1,4 +1,4 @@
-// Command server runs the Webcast API.
+// Command server runs the Webinar Liv API.
 package main
 
 import (

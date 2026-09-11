@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAppConfig, useSession } from "@/components/providers";
 
-/* Public marketing home for Webcast.
+/* Public marketing home for Webinar Liv.
  *
  * Only features that ship today. Signed-in visitors are redirected away (see
  * middleware + SignedInHomeRedirect); this page is for logged-out guests.

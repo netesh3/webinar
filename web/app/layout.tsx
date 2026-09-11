@@ -25,11 +25,20 @@ const homeSans = Outfit({
  *  request rather than baked into the build. */
 export async function generateMetadata(): Promise<Metadata> {
   const config = await api.config().catch(() => null);
-  const name = config?.appName ?? "Webcast";
+  const name = config?.appName ?? "Webinar Liv";
+  const title = `${name} — host webinars, self-hosted`;
+  const description =
+    "Schedule and host webinars with chat, Q&A, polls, screen share, and admit controls. Self-hosted on open-source infrastructure.";
   return {
-    title: `${name} — host webinars, self-hosted`,
-    description:
-      "Schedule and host webinars with chat, Q&A, polls, screen share, and admit controls. Self-hosted on open-source infrastructure.",
+    title,
+    description,
+    applicationName: name,
+    openGraph: {
+      title,
+      description,
+      siteName: name,
+      type: "website",
+    },
   };
 }
 

@@ -1,4 +1,4 @@
-# Webcast — design
+# Webinar Liv — design
 
 A self-hosted webinar product: one host, a few panelists, up to 500 attendees who
 watch and ask questions. Zoom Webinars' shape, not Zoom Meetings' — the asymmetry

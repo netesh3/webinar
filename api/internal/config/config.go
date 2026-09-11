@@ -228,7 +228,7 @@ func Load() (Config, error) {
 		JoinPerMin:           envInt("JOIN_RATE_PER_MIN", 1200),
 		DefaultAttendeeLimit: envInt("DEFAULT_ATTENDEE_LIMIT", 50),
 		CORSOrigins:          splitAndTrim(env("CORS_ORIGINS", "http://localhost:3000")),
-		AppName:              env("APP_NAME", "Webcast"),
+		AppName:              env("APP_NAME", "Webinar Liv"),
 		SupportEmail:         env("SUPPORT_EMAIL", ""),
 		AdminEmails:          splitAndTrim(env("ADMIN_EMAILS", "")),
 		AdminPassword:        env("ADMIN_PASSWORD", ""),

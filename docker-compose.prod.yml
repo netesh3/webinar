@@ -91,7 +91,7 @@ services:
       # is what share links are built from.
       CORS_ORIGINS: https://${DOMAIN}
       WEB_BASE_URL: https://${DOMAIN}
-      APP_NAME: ${APP_NAME:-Webcast}
+      APP_NAME: ${APP_NAME:-Webinar Liv}
       SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
       SIGNUP_OPEN: ${SIGNUP_OPEN:-true}
       MAX_ATTENDEES: ${MAX_ATTENDEES:-500}
