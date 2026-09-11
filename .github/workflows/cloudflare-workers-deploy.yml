@@ -7,13 +7,15 @@
 #
 # Also: workflow_dispatch (manual) from the Actions tab.
 #
-# Required repository secrets:
-#   CLOUDFLARE_API_TOKEN — API token with Workers Scripts Edit (and Account read)
-#     Create at: https://dash.cloudflare.com/profile/api-tokens
-#     Template "Edit Cloudflare Workers" is sufficient.
+# Credentials (either path works):
+#   A) CLOUDFLARE_API_TOKEN — API token with Workers Scripts Edit (preferred long-term)
+#      Create at: https://dash.cloudflare.com/profile/api-tokens
+#   B) CLOUDFLARE_OAUTH_REFRESH_TOKEN — wrangler OAuth refresh token (offline_access)
+#      CI exchanges it for a short-lived access token before deploy.
 #
 # Required repository variables:
 #   CLOUDFLARE_ACCOUNT_ID — Cloudflare account ID (wrangler whoami / dashboard)
+#   CLOUDFLARE_OAUTH_CLIENT_ID — wrangler public OAuth client id (only needed for path B)
 #
 # Build env (set in this workflow; not secrets):
 #   NEXT_PUBLIC_API_BASE="" — same-origin /api via Worker proxy (see web/CLOUDFLARE.md)
@@ -48,6 +50,8 @@ jobs:
 
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_OAUTH_REFRESH_TOKEN: ${{ secrets.CLOUDFLARE_OAUTH_REFRESH_TOKEN }}
+      CLOUDFLARE_OAUTH_CLIENT_ID: ${{ vars.CLOUDFLARE_OAUTH_CLIENT_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       NEXT_PUBLIC_API_BASE: ""
       NEXT_PUBLIC_UI_REDESIGN: "1"
@@ -56,22 +60,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check Cloudflare credentials
+      - name: Resolve Cloudflare credentials
         id: creds
         working-directory: .
         run: |
-          if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
-            echo "::warning::Skipping Cloudflare Workers deploy: repository secret CLOUDFLARE_API_TOKEN is not set."
-            echo "Create a Workers Edit token at https://dash.cloudflare.com/profile/api-tokens"
-            echo "then add it under Settings → Secrets and variables → Actions (see web/CLOUDFLARE.md)."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "::error::Set repository variable CLOUDFLARE_ACCOUNT_ID (npx wrangler whoami)."
+            exit 1
+          fi
+
+          if [ -n "${CLOUDFLARE_API_TOKEN}" ]; then
+            echo "Using CLOUDFLARE_API_TOKEN secret."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
-            echo "::warning::Skipping Cloudflare Workers deploy: repository variable CLOUDFLARE_ACCOUNT_ID is not set."
-            echo "Set it from: npx wrangler whoami (see web/CLOUDFLARE.md)."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
+
+          if [ -z "${CLOUDFLARE_OAUTH_REFRESH_TOKEN}" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN or CLOUDFLARE_OAUTH_REFRESH_TOKEN (see web/CLOUDFLARE.md)."
+            exit 1
+          fi
+          if [ -z "${CLOUDFLARE_OAUTH_CLIENT_ID}" ]; then
+            echo "::error::Set variable CLOUDFLARE_OAUTH_CLIENT_ID for OAuth refresh."
+            exit 1
+          fi
+
+          echo "Minting short-lived Cloudflare access token from OAuth refresh…"
+          RESP="$(curl -sS -X POST 'https://dash.cloudflare.com/oauth2/token' \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            -H 'User-Agent: wrangler-ci/webinar' \
+            --data-urlencode "grant_type=refresh_token" \
+            --data-urlencode "refresh_token=${CLOUDFLARE_OAUTH_REFRESH_TOKEN}" \
+            --data-urlencode "client_id=${CLOUDFLARE_OAUTH_CLIENT_ID}")"
+
+          ACCESS="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' <<<"$RESP")"
+          NEW_REFRESH="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("refresh_token",""))' <<<"$RESP")"
+          if [ -z "$ACCESS" ]; then
+            echo "::error::OAuth refresh failed. Re-login with wrangler locally and update CLOUDFLARE_OAUTH_REFRESH_TOKEN."
+            echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d)' 2>/dev/null || echo "$RESP"
+            exit 1
+          fi
+
+          # Expose for later steps (masked by Actions if it looks like a secret when set via ENV)
+          echo "::add-mask::$ACCESS"
+          echo "CLOUDFLARE_API_TOKEN=$ACCESS" >> "$GITHUB_ENV"
+          if [ -n "$NEW_REFRESH" ] && [ "$NEW_REFRESH" != "${CLOUDFLARE_OAUTH_REFRESH_TOKEN}" ]; then
+            echo "::warning::Cloudflare rotated the refresh token. Update CLOUDFLARE_OAUTH_REFRESH_TOKEN in repo secrets."
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
 

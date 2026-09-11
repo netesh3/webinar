@@ -180,3 +180,17 @@ you want a single session.
 - https://www.webinarliv.com/
 - https://webinarliv.com/auth/callback (after Google sign-in)
 - https://webinarliv.com/api/config (proxied API)
+
+
+### GitHub Actions credentials
+
+Either:
+
+1. **`CLOUDFLARE_API_TOKEN`** (preferred) — create an **Edit Cloudflare Workers** token at
+   https://dash.cloudflare.com/profile/api-tokens and `gh secret set CLOUDFLARE_API_TOKEN`.
+2. **`CLOUDFLARE_OAUTH_REFRESH_TOKEN`** — from a local `npx wrangler login` session
+   (`~/Library/Preferences/.wrangler/config/default.toml` → `refresh_token`), plus variable
+   `CLOUDFLARE_OAUTH_CLIENT_ID=54d11594-84e4-41aa-b438-e81b8fa78ee7`. CI mints a short-lived
+   access token before `npm run deploy`. If Cloudflare rotates the refresh token, update the secret.
+
+Also set variable **`CLOUDFLARE_ACCOUNT_ID`**.
