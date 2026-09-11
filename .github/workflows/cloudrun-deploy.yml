@@ -1,9 +1,13 @@
 # Deploy the Go API to Google Cloud Run.
 # Secrets must be set on the repo (Settings → Secrets → Actions); never commit them.
 #
-# Triggers:
-#   - workflow_dispatch — manual deploy from the Actions tab
-#   - push to main — auto-deploy when API, Dockerfile, deploy script, or this workflow change
+# Path filters (push to main):
+#   - api/**                      — Go service + Dockerfile under api/
+#   - deploy/cloudrun-deploy.sh   — deploy script
+#   - deploy/cloudrun.env.example — documented env shape
+#   - .github/workflows/cloudrun-deploy.yml
+#
+# Also: workflow_dispatch (manual) from the Actions tab.
 #
 # Required repository secrets:
 #   GCP_SA_KEY           — JSON key for a deploy SA (Artifact Registry + Cloud Run + Cloud Build)

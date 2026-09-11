@@ -31,7 +31,7 @@ cd "$TARGET"
 API_KEY="API$(openssl rand -hex 8)"
 API_SECRET="$(openssl rand -hex 32)"
 
-# Persist secrets once
+# Persist secrets once — never rotate on reinstall/redeploy
 if [[ -f "$TARGET/.env.keys" ]]; then
   # shellcheck disable=SC1091
   source "$TARGET/.env.keys"
@@ -46,18 +46,17 @@ fi
 # shellcheck disable=SC1091
 source "$TARGET/.env.keys"
 
-sed -e "s/__TURN_DOMAIN__/${DOMAIN}/g" \
-    -e "s/__API_KEY__/${API_KEY}/g" \
-    -e "s/__API_SECRET__/${API_SECRET}/g" \
-    livekit.yaml.template > livekit.yaml
-
-cat >.env <<EOF
+# .env holds Caddy ACME vars; keep existing email/domain on re-run if present
+if [[ ! -f .env ]]; then
+  cat >.env <<EOF
 DOMAIN=${DOMAIN}
 ACME_EMAIL=${ACME_EMAIL}
 EOF
+fi
 
-docker compose pull
-docker compose up -d
+# Render yaml (preserves node_ip / use_external_ip) and start stack
+chmod +x "$TARGET/redeploy.sh"
+"$TARGET/redeploy.sh"
 
 echo
 echo "LiveKit URL:  wss://${DOMAIN}"

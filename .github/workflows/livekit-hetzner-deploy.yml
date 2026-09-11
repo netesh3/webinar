@@ -1,0 +1,90 @@
+# Deploy self-hosted LiveKit on Hetzner (webcast-livekit).
+# Secrets must be set on the repo (Settings → Secrets → Actions); never commit them.
+#
+# Triggers:
+#   - workflow_dispatch — manual deploy from the Actions tab
+#   - push to main — auto-deploy when deploy/livekit-hetzner/** or this workflow change
+#
+# Required repository secrets:
+#   HETZNER_SSH_HOST         — e.g. root@88.198.141.104
+#   HETZNER_SSH_PRIVATE_KEY  — SSH private key (mac-sancharees / hetzner_sancharees)
+#
+# Optional (not required for compose redeploy):
+#   HCLOUD_TOKEN — Hetzner Cloud API token (future poweron / server ops)
+#
+# On the server: files live in /opt/livekit. .env.keys and .env are never overwritten.
+
+name: Deploy LiveKit (Hetzner)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/livekit-hetzner/**"
+      - ".github/workflows/livekit-hetzner-deploy.yml"
+
+concurrency:
+  group: deploy-livekit-hetzner
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require Hetzner SSH secrets
+        env:
+          HETZNER_SSH_HOST: ${{ secrets.HETZNER_SSH_HOST }}
+          HETZNER_SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "${HETZNER_SSH_HOST}" ]; then
+            echo "Set repository secret HETZNER_SSH_HOST (e.g. root@88.198.141.104)." >&2
+            exit 1
+          fi
+          if [ -z "${HETZNER_SSH_PRIVATE_KEY}" ]; then
+            echo "Set repository secret HETZNER_SSH_PRIVATE_KEY." >&2
+            exit 1
+          fi
+
+      - name: Configure SSH
+        env:
+          HETZNER_SSH_HOST: ${{ secrets.HETZNER_SSH_HOST }}
+          HETZNER_SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          # Write key without printing it
+          printf '%s\n' "$HETZNER_SSH_PRIVATE_KEY" > ~/.ssh/hetzner_deploy
+          chmod 600 ~/.ssh/hetzner_deploy
+          host_only="${HETZNER_SSH_HOST#*@}"
+          ssh-keyscan -H "$host_only" >> ~/.ssh/known_hosts 2>/dev/null
+          {
+            echo "Host livekit-hetzner"
+            echo "  HostName ${host_only}"
+            echo "  User ${HETZNER_SSH_HOST%%@*}"
+            echo "  IdentityFile ~/.ssh/hetzner_deploy"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking yes"
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: Sync deploy files (preserve secrets)
+        run: |
+          # Do not overwrite .env.keys, .env, or generated livekit.yaml on the server.
+          rsync -az \
+            --exclude '.env.keys' \
+            --exclude '.env' \
+            --exclude 'livekit.yaml' \
+            -e 'ssh -F ~/.ssh/config' \
+            deploy/livekit-hetzner/ \
+            livekit-hetzner:/opt/livekit/
+
+      - name: Regenerate config and restart compose
+        run: |
+          ssh -F ~/.ssh/config livekit-hetzner \
+            'chmod +x /opt/livekit/redeploy.sh /opt/livekit/install.sh && /opt/livekit/redeploy.sh'

@@ -378,8 +378,8 @@ Three things that will bite you in production:
 
 ### Google Cloud Run (API only)
 
-Current managed topology (Cloudflare Workers + Cloud Run + Supabase + LiveKit
-Cloud): [`docs/DEPLOYMENT-TOPOLOGY.md`](docs/DEPLOYMENT-TOPOLOGY.md).
+Current managed topology (Cloudflare Workers + Cloud Run + Supabase + Hetzner
+LiveKit): [`docs/DEPLOYMENT-TOPOLOGY.md`](docs/DEPLOYMENT-TOPOLOGY.md).
 
 Scaffolding lives under `deploy/`. Project default: `ai-project-490516`, region
 `asia-south1` (Mumbai), Artifact Registry repo `webcast`.
@@ -402,26 +402,28 @@ and LiveKit via `LIVEKIT_PROJECTS` or legacy `LIVEKIT_URL` + `LIVEKIT_API_KEY` +
 `LIVEKIT_API_SECRET`. Set `RECORDINGS_ENABLED=false` on Cloud Run until you have
 writable storage. The API listens on Cloud Run's `PORT` when `ADDR` is unset.
 
-**GitHub Actions:** `.github/workflows/cloudrun-deploy.yml` is the single Cloud
-Run API deploy workflow (the old `deploy-api.yml` duplicate was removed). It
-supports:
+**GitHub Actions — path → deploy**
 
-- **Manual:** `workflow_dispatch` from the Actions tab
-- **Auto:** push to `main` when `api/**`, `deploy/cloudrun-deploy.sh`,
-  `deploy/cloudrun.env.example`, or the workflow file itself change
+| Path changes on `main` | Workflow | Destination |
+|---|---|---|
+| `api/**`, `deploy/cloudrun-deploy.sh`, `deploy/cloudrun.env.example`, `.github/workflows/cloudrun-deploy.yml` | **Deploy API (Cloud Run)** | Cloud Run |
+| `deploy/livekit-hetzner/**`, `.github/workflows/livekit-hetzner-deploy.yml` | **Deploy LiveKit (Hetzner)** | `/opt/livekit` on `webcast-livekit` |
+| `web/**` | _(manual today)_ | Cloudflare Workers — `cd web && npm run deploy` |
 
-Set repository secrets `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
-(or `LIVEKIT_PROJECTS`), plus `DATABASE_URL` (Supabase), `SESSION_SECRET`, and
-`GCP_SA_KEY` (deploy service-account JSON). Optionally set `ADMIN_EMAILS` and
-`ADMIN_PASSWORD` (≥10 chars) so production boots an admin account on a fresh DB.
-Do not commit real values — placeholders only in `deploy/cloudrun.env.example`.
+Both Cloud Run and Hetzner workflows also support **Manual** `workflow_dispatch` from the Actions tab.
+
+Cloud Run secrets: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (or
+`LIVEKIT_PROJECTS`), `DATABASE_URL`, `SESSION_SECRET`, `GCP_SA_KEY`. Optional:
+`ADMIN_EMAILS` / `ADMIN_PASSWORD`. Hetzner redeploy secrets: `HETZNER_SSH_HOST`,
+`HETZNER_SSH_PRIVATE_KEY` (never overwrites `/opt/livekit/.env.keys`). Do not
+commit real values — placeholders only in `deploy/cloudrun.env.example`.
 
 ```bash
 gh secret set DATABASE_URL -R netesh3/webinar   # paste Supabase URI when prompted
 ```
 
-LiveKit media still needs UDP/TCP outside Cloud Run (self-hosted SFU or LiveKit
-Cloud). Leave `CLOUD_SQL_INSTANCE` unset when using Supabase.
+Leave `CLOUD_SQL_INSTANCE` unset when using Supabase. LiveKit install notes:
+[`deploy/livekit-hetzner/README.md`](deploy/livekit-hetzner/README.md).
 
 ## Scaling past 500
 

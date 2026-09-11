@@ -11,7 +11,7 @@ This is the **current production-shaped** deployment: managed frontend, API, dat
 | Postgres | Supabase · project `webcast-in` (`odptebpbrrixhrzfqtqp`) · `ap-south-1` | session pooler `:5432` + `sslmode=require` |
 | Media SFU | Self-hosted LiveKit on Hetzner · `webcast-livekit` (CX33, fsn1) | `wss://88.198.141.104.sslip.io` |
 | Images | Artifact Registry · `webcast` · `asia-south1` | `asia-south1-docker.pkg.dev/ai-project-490516/webcast/…` |
-| CI / deploy | GitHub Actions → Cloud Build → Cloud Run | [`.github/workflows/cloudrun-deploy.yml`](../.github/workflows/cloudrun-deploy.yml) |
+| CI / deploy | GitHub Actions → Cloud Run **and** Hetzner LiveKit | [cloudrun-deploy.yml](../.github/workflows/cloudrun-deploy.yml) · [livekit-hetzner-deploy.yml](../.github/workflows/livekit-hetzner-deploy.yml) |
 
 GCP project: **`ai-project-490516`**. Deploy SA: `webcast-deploy@ai-project-490516.iam.gserviceaccount.com` (JSON key stored as GitHub secret `GCP_SA_KEY`). Repo variable **`GCP_REGION=asia-south1`**.
 
@@ -43,7 +43,7 @@ flowchart LR
 
   subgraph data [Data and media]
     SB["Supabase Postgres\nap-south-1 session pooler"]
-    LK["LiveKit Cloud\nSFU / WebRTC"]
+    LK["Hetzner LiveKit\nwss://….sslip.io"]
   end
 
   Browser -->|"HTTPS HTML/JS + /api"| Web
@@ -59,7 +59,7 @@ flowchart LR
 
 1. **Page load / SSR** — browser → Cloudflare Worker → (optional) Go API via `API_INTERNAL_URL`.
 2. **Browser API calls** — browser → Worker `/api/*` (same origin; `NEXT_PUBLIC_API_BASE` empty) → proxied to Cloud Run (`API_INTERNAL_URL`). Session cookie is first-party on the Worker host so middleware can gate Host/Admin/My webinars. Direct browser→Cloud Run is not used in this topology (cookie would land on `*.run.app` and middleware would bounce authenticated routes to login).
-3. **Media** — browser ↔ LiveKit Cloud directly (API only mints JWTs and calls room APIs; media UDP/TCP never goes through Cloud Run).
+3. **Media** — browser ↔ Hetzner LiveKit directly (API only mints JWTs and calls room APIs; media UDP/TCP never goes through Cloud Run).
 
 Health check on the API: **`GET /readyz`** (prefer this over `/healthz` on Cloud Run).
 
@@ -72,20 +72,26 @@ flowchart TD
   Dev["Developer push / workflow_dispatch"]
   GH["GitHub netesh3/webinar"]
   WF["Actions: Deploy API Cloud Run"]
+  WFLK["Actions: Deploy LiveKit Hetzner"]
   SA["Secret GCP_SA_KEY\ndeploy SA"]
   Build["gcloud builds submit\napi/"]
   Img["Artifact Registry image\nasia-south1"]
   Deploy["gcloud run deploy webcast-api\nasia-south1"]
   Secrets["Repo secrets\nDATABASE_URL SESSION_SECRET LIVEKIT CORS WEB"]
+  SSH["Secrets HETZNER_SSH_*"]
+  Opt["/opt/livekit\nrsync + redeploy.sh"]
 
   Dev --> GH
   GH --> WF
+  GH --> WFLK
   WF --> SA
   WF --> Secrets
   SA --> Build
   Build --> Img
   Img --> Deploy
   Secrets --> Deploy
+  WFLK --> SSH
+  SSH --> Opt
 
   WebSrc["web/ OpenNext"]
   Wrangler["wrangler deploy"]
@@ -95,15 +101,18 @@ flowchart TD
 
 | Trigger | What deploys |
 |---|---|
-| Push to `main` changing `api/**`, deploy script, or the workflow | API → Cloud Run (auto) |
+| Push to `main` changing `api/**`, `deploy/cloudrun-deploy.sh`, `deploy/cloudrun.env.example`, or `.github/workflows/cloudrun-deploy.yml` | API → Cloud Run (auto) |
 | Actions → **Deploy API (Cloud Run)** → Run workflow | API → Cloud Run (manual) |
-| `cd web && npm run deploy` (OpenNext) | Frontend → Cloudflare Workers (manual today) |
+| Push to `main` changing `deploy/livekit-hetzner/**` or `.github/workflows/livekit-hetzner-deploy.yml` | LiveKit → Hetzner `/opt/livekit` (auto; does **not** overwrite `.env.keys`) |
+| Actions → **Deploy LiveKit (Hetzner)** → Run workflow | LiveKit → Hetzner (manual) |
+| `cd web && npm run deploy` (OpenNext) | Frontend → Cloudflare Workers (manual today; CI follow-up) |
 
-Required GitHub **secrets**: `GCP_SA_KEY`, `DATABASE_URL`, `SESSION_SECRET`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (or `LIVEKIT_PROJECTS`).  
+Required GitHub **secrets** (Cloud Run): `GCP_SA_KEY`, `DATABASE_URL`, `SESSION_SECRET`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (or `LIVEKIT_PROJECTS`).  
+Required (Hetzner LiveKit): `HETZNER_SSH_HOST`, `HETZNER_SSH_PRIVATE_KEY`. Optional: `HCLOUD_TOKEN` (future server poweron).  
 Optional: `CORS_ORIGINS`, `WEB_BASE_URL`, `ADMIN_EMAILS` / `ADMIN_PASSWORD` (bootstrap production admin on fresh DB).  
 Repo **variables**: `GCP_PROJECT`, `GCP_REGION` (= `asia-south1`).
 
-Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env.example). Supabase notes: [`deploy/SUPABASE.md`](../deploy/SUPABASE.md). Frontend Worker notes: [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md).
+Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env.example). Supabase notes: [`deploy/SUPABASE.md`](../deploy/SUPABASE.md). LiveKit on Hetzner: [`deploy/livekit-hetzner/README.md`](../deploy/livekit-hetzner/README.md). Frontend Worker notes: [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md).
 
 ---
 
@@ -114,7 +123,7 @@ Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env
 | Cloudflare Worker | HTML/SSR, static assets, edge routing | WebRTC media; durable DB |
 | Cloud Run API | Auth sessions, webinar state, LiveKit tokens, chat/polls APIs | Media forwarding; long-lived disk recordings (disabled: `RECORDINGS_ENABLED=false`) |
 | Supabase | Postgres schema + data; migrations applied on API boot / `make migrate` | Application logic |
-| LiveKit Cloud | Rooms, tracks, attendee `Hidden` / publish permissions | Business roles (those come from API JWTs + DB) |
+| Hetzner LiveKit | Rooms, tracks, attendee `Hidden` / publish permissions | Business roles (those come from API JWTs + DB) |
 
 ---
 
