@@ -137,13 +137,26 @@ fi
 [[ -n "${SUPABASE_ANON_KEY:-}" ]] && ENV_VARS+=("SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}")
 [[ -n "${SUPABASE_JWT_SECRET:-}" ]] && ENV_VARS+=("SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}")
 
-# Join env vars with commas for gcloud (values must not contain commas).
-JOINED=$(IFS=,; echo "${ENV_VARS[*]}")
+# Write YAML for --env-vars-file so values may contain commas (e.g. CORS_ORIGINS
+# with multiple origins). Comma-joined --set-env-vars breaks on those values.
+ENV_YAML="$(mktemp)"
+cleanup_env_yaml() { rm -f "$ENV_YAML"; }
+trap cleanup_env_yaml EXIT
 
-# IMPORTANT: --set-env-vars replaces the *entire* env map on the new revision.
-# Never run a one-off `gcloud run services update --set-env-vars CORS=…` for a
-# partial change — that wiped LIVEKIT_* / DATABASE_URL on revision 00014 and
-# crashed the container. Use this script (full set) or `--update-env-vars`.
+{
+  for entry in "${ENV_VARS[@]}"; do
+    key="${entry%%=*}"
+    val="${entry#*=}"
+    # JSON-encode the value so YAML stays valid for quotes, newlines, etc.
+    quoted="$(printf '%s' "$val" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+    printf '%s: %s\n' "$key" "$quoted"
+  done
+} >"$ENV_YAML"
+
+# IMPORTANT: --env-vars-file / --set-env-vars replaces the *entire* env map on
+# the new revision. Never run a one-off `gcloud run services update --set-env-vars
+# CORS=…` for a partial change — that wiped LIVEKIT_* / DATABASE_URL on revision
+# 00014 and crashed the container. Use this script (full set) or `--update-env-vars`.
 DEPLOY_ARGS=(
   gcloud run deploy "$SERVICE"
   --image "$IMAGE"
@@ -156,7 +169,7 @@ DEPLOY_ARGS=(
   --cpu 1
   --min-instances 0
   --max-instances 3
-  --set-env-vars "$JOINED"
+  --env-vars-file "$ENV_YAML"
 )
 
 if [[ -n "${CLOUD_SQL_INSTANCE:-}" ]]; then

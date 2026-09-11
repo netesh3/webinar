@@ -52,8 +52,10 @@ Manual runs: Actions → **Deploy Web (Cloudflare Workers)** → Run workflow.
 
 | Kind | Name | Notes |
 |------|------|--------|
-| Secret | `CLOUDFLARE_API_TOKEN` | Create at [API Tokens](https://dash.cloudflare.com/profile/api-tokens); use the **Edit Cloudflare Workers** template (or equivalent Workers Scripts Edit + Account read). |
-| Variable | `CLOUDFLARE_ACCOUNT_ID` | From `npx wrangler whoami` / dashboard. |
+| Secret | `CLOUDFLARE_API_TOKEN` | **Required to actually deploy.** Create at [API Tokens](https://dash.cloudflare.com/profile/api-tokens); use the **Edit Cloudflare Workers** template (or equivalent Workers Scripts Edit + Account read). |
+| Variable | `CLOUDFLARE_ACCOUNT_ID` | From `npx wrangler whoami` / dashboard. Already set on this repo when present. |
+
+If `CLOUDFLARE_API_TOKEN` is missing, the workflow **skips deploy with a warning** (green check + annotation) instead of failing forever. Add the secret, then re-run **Deploy Web (Cloudflare Workers)** from the Actions tab.
 
 Do **not** reuse a local `wrangler login` OAuth token for CI — create a dedicated API token.
 

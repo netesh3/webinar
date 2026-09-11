@@ -19,7 +19,8 @@
 #     — or set LIVEKIT_PROJECTS (JSON) instead of the legacy trio
 #
 # Optional:
-#   CORS_ORIGINS, WEB_BASE_URL, LIVEKIT_HTTP_URL, LIVEKIT_PROJECTS
+#   CORS_ORIGINS (comma-separated origins OK; script uses --env-vars-file),
+#   WEB_BASE_URL, LIVEKIT_HTTP_URL, LIVEKIT_PROJECTS
 #   ADMIN_EMAILS / ADMIN_PASSWORD — bootstrap production admin on fresh DB (≥10 chars)
 #   SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_JWT_SECRET — Google sign-in via Supabase Auth
 #   CLOUD_SQL_INSTANCE — only if not using Supabase

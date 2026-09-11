@@ -56,26 +56,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Require Cloudflare credentials
+      - name: Check Cloudflare credentials
+        id: creds
         working-directory: .
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
-            echo "Set repository secret CLOUDFLARE_API_TOKEN (Workers Edit token from the Cloudflare dashboard)." >&2
-            exit 1
+            echo "::warning::Skipping Cloudflare Workers deploy: repository secret CLOUDFLARE_API_TOKEN is not set."
+            echo "Create a Workers Edit token at https://dash.cloudflare.com/profile/api-tokens"
+            echo "then add it under Settings → Secrets and variables → Actions (see web/CLOUDFLARE.md)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           if [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
-            echo "Set repository variable CLOUDFLARE_ACCOUNT_ID (see: npx wrangler whoami)." >&2
-            exit 1
+            echo "::warning::Skipping Cloudflare Workers deploy: repository variable CLOUDFLARE_ACCOUNT_ID is not set."
+            echo "Set it from: npx wrangler whoami (see web/CLOUDFLARE.md)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
+        if: steps.creds.outputs.skip != 'true'
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
+        if: steps.creds.outputs.skip != 'true'
         run: npm ci
 
       - name: Deploy
+        if: steps.creds.outputs.skip != 'true'
         run: npm run deploy
