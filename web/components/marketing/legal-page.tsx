@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { TopNav } from "@/components/top-nav";
 
-const SUPPORT_EMAIL = "ganesh.s.p006@gmail.com";
+const SUPPORT_EMAIL = "support@webinarliv.com";
 
 export { SUPPORT_EMAIL };
 
