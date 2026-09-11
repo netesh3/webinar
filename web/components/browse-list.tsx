@@ -184,7 +184,13 @@ function WebinarRow({ webinar: w }: { webinar: Webinar }) {
           ) : registered ? (
             <>
               {w.status === "live" ? (
-                <ButtonLink href={`/webinars/${w.id}/room`}>Join now</ButtonLink>
+                <ButtonLink
+                  href={`/webinars/${w.id}/room`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Join now
+                </ButtonLink>
               ) : (
                 <div className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-ok-soft text-[13px] font-medium text-ok">
                   <CheckIcon className="size-4" />

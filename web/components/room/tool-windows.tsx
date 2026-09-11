@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ToolId } from "@/lib/tools";
+import { isPanelTool, type ToolId } from "@/lib/tools";
+import { DockIcon } from "../icons";
 import { ChatPanel } from "./chat-panel";
 import { useRoomUI } from "./context";
 import { DeviceSettings } from "./device-settings";
@@ -13,17 +14,11 @@ import { PollsPanel } from "./polls-panel";
 import { QAPanel } from "./qa-panel";
 import { tool } from "./tools";
 
-/* Every open tool window.
+/* Floating tool windows — Host tools, Settings, Invite, plus any engagement
+ * tool the user has popped out of the docked SidePanel.
  *
- * The old side panel could show exactly one of these at a time, and its tab bar
- * was the mechanism. Windows remove the mechanism: what is visible is now just
- * which windows are open, so this component has nothing to decide — it maps state
- * onto windows and gets out of the way.
- *
- * Below `md` the same state renders as one bottom sheet with the rest collapsed to
- * strips at the top. Deliberately the same components and the same state, because
- * two implementations of one behaviour is how the mobile layout ends up a version
- * behind the desktop one.
+ * Undocked Chat / Q&A / Polls / Participants use the same chrome so they can be
+ * dragged across the stage (and onto another monitor when the browser spans both).
  */
 
 /** `md`, matching the class the room's own layout switches at, so the sheet
@@ -61,11 +56,12 @@ function Content({ id }: { id: ToolId }) {
       return <DeviceSettings />;
     case "host":
       return <HostControls />;
-    // Reactions and raise-hand act immediately and never open a window. Listed
-    // rather than defaulted, so adding a tool without deciding this is a type
+    // Reactions, raise-hand, and layout act immediately and never open a window.
+    // Listed rather than defaulted, so adding a tool without deciding this is a type
     // error instead of a blank window.
     case "reactions":
     case "hand":
+    case "layout":
       return null;
   }
 }
@@ -100,6 +96,7 @@ export function ToolWindows() {
       {open.map((win, i) => {
         const t = tool(win.tool);
         const index = collapsed[i] ? stack++ : 0;
+        const canDock = isPanelTool(win.tool) && !compact;
         return (
           <FloatingWindow
             key={win.tool}
@@ -126,11 +123,33 @@ export function ToolWindows() {
             }
             onMaximize={() => tools.maximize(win.tool)}
             onClose={() => tools.close(win.tool)}
+            actions={
+              canDock ? (
+                <TitleDock
+                  title={t.title}
+                  onDock={() => tools.dock(win.tool)}
+                />
+              ) : undefined
+            }
           >
             <Content id={win.tool} />
           </FloatingWindow>
         );
       })}
     </>
+  );
+}
+
+function TitleDock({ title, onDock }: { title: string; onDock: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={`Dock ${title}`}
+      title="Dock in side panel"
+      onClick={onDock}
+      className="grid size-7 place-items-center rounded-md text-ink-3 transition-colors outline-none hover:bg-surface-3 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
+    >
+      <DockIcon className="size-3.5" />
+    </button>
   );
 }

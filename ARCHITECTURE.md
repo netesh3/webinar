@@ -1,4 +1,4 @@
-# Webcast — how it actually works
+# Webinar Liv — how it actually works
 
 The current state of the system, diagram-led. Written after several rounds of changes, so
 this is the document to trust when it disagrees with `DESIGN.md` — that one holds the

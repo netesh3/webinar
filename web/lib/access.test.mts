@@ -66,11 +66,27 @@ console.log("\nPARTICIPANT — the registration link is public");
     anonymous,
     "…and so does the participant room",
   );
-  allowed("/", anonymous, "the public catalogue is public");
+  allowed("/", anonymous, "the marketing homepage is public when signed out");
   allowed(
     "/webinars/redis-cache",
     participant,
     "…and still opens once they have an account",
+  );
+}
+
+console.log("\nSIGNED-IN — marketing home redirects into the app");
+{
+  redirectedTo(
+    "/",
+    host,
+    "/host",
+    "a host opening / lands on Hosting",
+  );
+  redirectedTo(
+    "/",
+    participant,
+    "/browse",
+    "a participant opening / lands on Browse",
   );
 }
 
@@ -267,6 +283,7 @@ console.log("\nEDGE CASES");
   const matcher = middleware.slice(middleware.indexOf("matcher:"));
 
   for (const [path, why] of [
+    ["/", "marketing home (signed-in redirect)"],
     ["/host", "the host portal"],
     ["/my-webinars", "an attendee's own list"],
     ["/account", "account settings"],

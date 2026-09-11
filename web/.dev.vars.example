@@ -16,3 +16,13 @@ API_INTERNAL_URL=http://localhost:8080
 # loads. Prefer setting SUPABASE_* on the API instead (see deploy/SUPABASE.md).
 # NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 # NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...anon
+
+# Optional: skip login for local UI redesign preview (next dev only).
+# NEVER set this in Cloudflare Worker / production builds.
+# When set, `/` redirects to `/host` (no marketing page). Unset to preview
+# the homepage and Google One Tap.
+# NEXT_PUBLIC_DEV_BYPASS_AUTH=1
+
+# Optional: Google OAuth Web client ID for One Tap on `/` and `/login`.
+# Same client as Supabase Auth → Google. Falls back to API googleClientId.
+# NEXT_PUBLIC_GOOGLE_CLIENT_ID=123456789-xxxx.apps.googleusercontent.com

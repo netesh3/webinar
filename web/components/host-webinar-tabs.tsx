@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
@@ -10,6 +10,7 @@ import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
 import { formatCount, formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
 import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
+import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
 /* Per-webinar management. Every tab here operates on real data — the share links
  * are built from the operator's configured public URL rather than a placeholder
@@ -17,7 +18,8 @@ import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
  */
 
 const TABS = [
-  "Registrants",
+  "Admit",
+  "Attendees",
   "Share",
   "Stage",
   "Recordings",
@@ -25,19 +27,47 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
+function tabFromQuery(raw: string | null | undefined): Tab | null {
+  if (!raw) return null;
+  const key = raw.toLowerCase();
+  if (key === "admit" || key === "registrants") return "Admit";
+  if (key === "attendees" || key === "attendance") return "Attendees";
+  if (key === "share") return "Share";
+  if (key === "stage") return "Stage";
+  if (key === "recordings") return "Recordings";
+  if (key === "settings") return "Settings";
+  return null;
+}
+
 export function HostWebinarTabs({
   webinar: w,
   registrants,
   recordings,
   onChanged,
+  initialTab,
 }: {
   webinar: Webinar;
   registrants: RegistrantRow[];
   recordings: Recording[];
   onChanged: () => void | Promise<void>;
+  /** Deep-link from Host list: admit | attendees | share | … */
+  initialTab?: string | null;
 }) {
-  const [tab, setTab] = useState<Tab>("Registrants");
   const pending = registrants.filter((r) => r.state === "pending");
+  const defaultTab: Tab =
+    tabFromQuery(initialTab) ??
+    (w.status === "ended"
+      ? "Attendees"
+      : pending.length > 0
+        ? "Admit"
+        : "Attendees");
+  const [tab, setTab] = useState<Tab>(defaultTab);
+
+  // Follow ?tab= when the host clicks Admit / Attendees from the list.
+  useEffect(() => {
+    const next = tabFromQuery(initialTab);
+    if (next) setTab(next);
+  }, [initialTab]);
 
   return (
     <>
@@ -46,21 +76,19 @@ export function HostWebinarTabs({
           tabs={TABS}
           value={tab}
           onChange={setTab}
-          // Two different meanings, both worth a badge: registrants counts what
-          // needs a decision, recordings counts what is there to watch.
           counts={{
-            Registrants: pending.length,
+            Admit: pending.length,
+            Attendees: registrants.length,
             Recordings: recordings.length,
           }}
         />
       </div>
 
-      {tab === "Registrants" && (
-        <RegistrantsTab
-          webinar={w}
-          registrants={registrants}
-          onChanged={onChanged}
-        />
+      {tab === "Admit" && (
+        <AdmitTab webinar={w} registrants={registrants} onChanged={onChanged} />
+      )}
+      {tab === "Attendees" && (
+        <AttendeesTab webinar={w} registrants={registrants} />
       )}
       {tab === "Share" && <ShareTab webinar={w} />}
       {tab === "Stage" && <StageTab webinar={w} onChanged={onChanged} />}
@@ -76,9 +104,9 @@ export function HostWebinarTabs({
   );
 }
 
-// ------------------------------------------------------------- registrants
+// ------------------------------------------------------------- admit / attendees
 
-function RegistrantsTab({
+function AdmitTab({
   webinar: w,
   registrants,
   onChanged,
@@ -87,14 +115,46 @@ function RegistrantsTab({
   registrants: RegistrantRow[];
   onChanged: () => void | Promise<void>;
 }) {
-  /* No local busy/notify state left here.
-   *
-   * Approving used to live in this component, which meant one `busy` flag was shared by the
-   * approval buttons and the roster below and they disabled each other. ApprovalQueue owns
-   * its own selection and request state now; this component only computes the queue and
-   * hands it over. api.approveAll and api.setRegistrationState are still exported for
-   * callers that want the older all-or-nothing and single-row shapes. */
   const pending = registrants.filter((r) => r.state === "pending");
+
+  if (w.approval !== "manual") {
+    return (
+      <Card className="p-6">
+        <h2 className="text-[15px] font-semibold">Automatic approval</h2>
+        <p className="mt-2 max-w-md text-[13.5px] leading-relaxed text-ink-2">
+          Registrants are admitted as soon as they sign up. Switch this webinar
+          to manual approval in Edit if you want a waiting queue here.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div>
+        <h2 className="text-[15px] font-semibold">Waiting to admit</h2>
+        <p className="mt-1 text-[13px] text-ink-2">
+          {pending.length === 0
+            ? "Nobody is waiting. New registrations will appear here."
+            : `${pending.length} ${pending.length === 1 ? "person needs" : "people need"} a decision before they can join.`}
+        </p>
+      </div>
+      <ApprovalQueue slug={w.id} pending={pending} onChanged={onChanged} />
+    </div>
+  );
+}
+
+function AttendeesTab({
+  webinar: w,
+  registrants,
+}: {
+  webinar: Webinar;
+  registrants: RegistrantRow[];
+}) {
+  const bypass = isDevAuthBypassActive();
+  const approved = registrants.filter((r) => r.state === "approved");
+  const declined = registrants.filter((r) => r.state === "declined");
+  const ended = w.status === "ended";
 
   return (
     <div className="grid gap-4">
@@ -105,43 +165,42 @@ function RegistrantsTab({
           note={`of ${formatCount(w.attendeeLimit)} seats`}
         />
         <Stat
-          label="Approval"
-          value={w.approval === "manual" ? "Manual" : "Automatic"}
+          label={ended ? "Attended" : "Approved"}
+          value={
+            ended && w.report
+              ? formatCount(w.report.attended)
+              : formatCount(approved.length)
+          }
           note={
-            w.approval === "manual" ? `${pending.length} waiting` : "No queue"
+            ended && w.report
+              ? `avg watch ${w.report.avgWatchMin} min`
+              : `${formatCount(declined.length)} declined`
           }
         />
-        {/* Contactable, not "with an account", because that is the number a host is
-            actually asking about: how many of these people can I email afterwards. A guest
-            gave a name and nothing else, so they are in the seat count and not in this one. */}
         <Stat
           label="Contactable"
           value={formatCount(registrants.filter((r) => !r.isGuest).length)}
           note={`${formatCount(
             registrants.filter((r) => r.isGuest).length,
-          )} joined as guests`}
+          )} guests`}
         />
       </div>
 
-      {/* The approval queue. Its own component because it owns selection state and a
-          batch request, and inlining that here made this file the place where two
-          different jobs — reviewing a queue and reading a roster — shared one set of
-          `busy` flags and fought over them. */}
-      <ApprovalQueue slug={w.id} pending={pending} onChanged={onChanged} />
-
       <Card className="p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <SectionTitle>Registrants</SectionTitle>
-          {/* A plain link, so the browser's own download machinery handles it and
-              the session cookie travels with the request. */}
-          <ButtonLink
-            href={api.registrantsCsvUrl(w.id)}
-            size="sm"
-            variant="secondary"
-            prefetch={false}
-          >
-            Export CSV
-          </ButtonLink>
+          <SectionTitle>
+            {ended ? "Who registered / attended" : "Registrants"}
+          </SectionTitle>
+          {!bypass && (
+            <ButtonLink
+              href={api.registrantsCsvUrl(w.id)}
+              size="sm"
+              variant="secondary"
+              prefetch={false}
+            >
+              Export CSV
+            </ButtonLink>
+          )}
         </div>
 
         {registrants.length === 0 ? (
@@ -149,8 +208,6 @@ function RegistrantsTab({
             Nobody has registered yet.
           </p>
         ) : (
-          // Scrolls horizontally on a phone rather than crushing four columns into
-          // 340 pixels.
           <div className="-mx-4 overflow-x-auto px-4">
             <table className="w-full min-w-[520px] text-[12.5px]">
               <thead>
@@ -169,9 +226,6 @@ function RegistrantsTab({
                         <span className="font-medium">{r.name}</span>
                         {r.isGuest && <Badge>Guest</Badge>}
                       </div>
-                      {/* An empty email cell reads as a bug. It is not — a guest was never
-                          asked for one — and saying so is the difference between "the export
-                          is broken" and "there is nothing to follow up here". */}
                       <div className="text-[11.5px] text-ink-3">
                         {r.isGuest ? "No email — joined as a guest" : r.email}
                       </div>
@@ -189,11 +243,6 @@ function RegistrantsTab({
                         day: "numeric",
                         month: "short",
                       })}
-                      {r.hasAccount && (
-                        <div className="text-[11px] text-ink-3">
-                          has an account
-                        </div>
-                      )}
                     </td>
                     <td className="py-2.5">
                       {r.state === "approved" ? (
@@ -209,12 +258,6 @@ function RegistrantsTab({
               </tbody>
             </table>
           </div>
-        )}
-
-        {registrants.length > 0 && (
-          <p className="mt-3 text-[12px] text-ink-3">
-            Showing {registrants.length} of {formatCount(w.registrantCount)}.
-          </p>
         )}
       </Card>
     </div>

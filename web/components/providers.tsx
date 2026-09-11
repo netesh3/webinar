@@ -13,6 +13,11 @@ import {
 } from "react";
 import { ApiError, api } from "@/lib/api";
 import type { Account, AppConfig, ProfilePatch } from "@/lib/api-types";
+import { DEV_BYPASS_ACCOUNT, isDevAuthBypass } from "@/lib/dev-bypass";
+import {
+  isDevAuthBypassActive,
+  setDevBypassOptedOut,
+} from "@/lib/dev-bypass-session";
 
 /* App-wide client state: who is signed in, what the operator named this
  * instance, and transient toasts.
@@ -28,7 +33,7 @@ import type { Account, AppConfig, ProfilePatch } from "@/lib/api-types";
 /** Used only until the real config arrives — and as the fallback when the API is
  *  unreachable, so the shell still renders instead of blanking. */
 const CONFIG_FALLBACK: AppConfig = {
-  appName: "Webcast",
+  appName: "Webinar Liv",
   webBaseUrl: "",
   maxAttendees: 0,
   signupOpen: true,
@@ -168,6 +173,16 @@ export function AppProviders({
   }, []);
 
   const refresh = useCallback(async () => {
+    if (isDevAuthBypass()) {
+      if (isDevAuthBypassActive()) {
+        setAccount(DEV_BYPASS_ACCOUNT);
+        setStatus("signed-in");
+      } else {
+        setAccount(null);
+        setStatus("anonymous");
+      }
+      return;
+    }
     try {
       const me = await api.me();
       setAccount(me);
@@ -186,6 +201,16 @@ export function AppProviders({
   // The promise chain is inline rather than a call to `refresh`, so every state
   // write happens in a callback instead of synchronously inside the effect.
   useEffect(() => {
+    if (isDevAuthBypass()) {
+      if (isDevAuthBypassActive()) {
+        setAccount(DEV_BYPASS_ACCOUNT);
+        setStatus("signed-in");
+      } else {
+        setAccount(null);
+        setStatus("anonymous");
+      }
+      return;
+    }
     let active = true;
     api
       .me()
@@ -238,6 +263,13 @@ export function AppProviders({
         return me;
       },
       signOut: async () => {
+        if (isDevAuthBypass()) {
+          // Opt out of the fake host session for this tab (sessionStorage + cookie).
+          setDevBypassOptedOut(true);
+          setAccount(null);
+          setStatus("anonymous");
+          return;
+        }
         try {
           await api.logout();
         } finally {
@@ -248,6 +280,11 @@ export function AppProviders({
         }
       },
       updateProfile: async (patch) => {
+        if (isDevAuthBypassActive()) {
+          const next = { ...DEV_BYPASS_ACCOUNT, ...patch } as Account;
+          setAccount(next);
+          return next;
+        }
         const me = await api.updateProfile(patch);
         setAccount(me);
         return me;

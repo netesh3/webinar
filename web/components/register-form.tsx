@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useJoinKeys, useRegistrations } from "./registrations";
 import { Alert, CopyField, Spinner } from "./controls";
@@ -13,6 +12,7 @@ import { formatDay, formatTime, formatTimeRange, tzLabel } from "@/lib/format";
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import { ApiError, api } from "@/lib/api";
 import type { Account, Registration, Webinar } from "@/lib/api-types";
+import { openRoomTab } from "@/lib/open-room";
 
 /* Registration.
  *
@@ -118,6 +118,8 @@ function JoinGate({ w }: { w: Webinar }) {
         href={`/webinars/${w.id}/room`}
         size="lg"
         className="mt-2 w-full"
+        target="_blank"
+        rel="noopener noreferrer"
       >
         {w.status === "live" ? "Join now — live" : "Join now"}
       </ButtonLink>
@@ -421,7 +423,6 @@ function GuestJoinFields({
   webinar: Webinar;
   onBack: () => void;
 }) {
-  const router = useRouter();
   const { add } = useJoinKeys();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -436,10 +437,10 @@ function GuestJoinFields({
 
     try {
       const join = await api.guestJoin(w.id, name);
-      // Stored before navigating, so a reload in the room finds the key rather than a
+      // Stored before opening the room, so a reload finds the key rather than a
       // stranger with no way in.
       if (join.joinKey) add(join.joinKey, w.id);
-      router.push(`/webinars/${w.id}/room`);
+      openRoomTab(`/webinars/${w.id}/room`);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.fields) setFieldErrors(err.fields);
@@ -449,8 +450,7 @@ function GuestJoinFields({
           "Could not reach the server. Check your connection and try again.",
         );
       }
-      // Deliberately not in a `finally`: on success this component is navigating away, and
-      // clearing the spinner first shows an idle button for the frame before it unmounts.
+    } finally {
       setBusy(false);
     }
   }

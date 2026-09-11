@@ -17,7 +17,6 @@ import {
   LeaveIcon,
   MicIcon,
   MicOffIcon,
-  PinIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
 } from "../icons";
@@ -43,12 +42,12 @@ import { tool } from "./tools";
  *                 drawer to find is a control you mute yourself too late with.
  *                 They are also per-role: an attendee has none of them.
  *
- *   slots         everything else, pinned by the user or surfaced from recent
- *                 use. Draggable in and out. Capacity depends on the width, so
- *                 the bar is one row on a phone and on a 4K monitor.
+ *   slots         optional extras (reactions, invite, …) pinned or recent —
+ *                 never Chat / Q&A / Polls / Participants (those are the right
+ *                 rail). Draggable. Capacity depends on width.
  *
- *   fixed right   More, and Leave. Leave last because it is the one button whose
- *                 position should never move under the cursor.
+ *   fixed right   Layout, More, and Leave. Leave last because its position
+ *                 should never move under the cursor.
  *
  * An attendee sees no publish controls at all. Their token forbids publishing, so
  * a microphone button would open a device prompt and then fail at the SFU.
@@ -109,6 +108,7 @@ export function ControlBar() {
     fileShare,
     stage,
     leave,
+    previewChrome,
   } = useRoomUI();
 
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
@@ -126,6 +126,8 @@ export function ControlBar() {
    *  being dragged off the bar mid-gesture. */
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  /** Preview-only share toggle — no LiveKit publish in `/preview/room`. */
+  const [previewSharing, setPreviewSharing] = useState(false);
   /** The Layout popover, anchored to whichever slot holds it. */
   const [layoutOpen, setLayoutOpen] = useState(false);
 
@@ -244,9 +246,16 @@ export function ControlBar() {
    * which it is. Calling setScreenShareEnabled(false) on a file share would
    * unpublish the track and leave the video element, the AudioContext and the object
    * URL behind, so the file keeps decoding in a tab nobody is watching. */
-  const sharing = isScreenShareEnabled || fileShare.active;
+  const sharing = previewChrome
+    ? previewSharing
+    : isScreenShareEnabled || fileShare.active;
 
   const stopSharing = useCallback(async () => {
+    if (previewChrome) {
+      setPreviewSharing(false);
+      notify("Stopped sharing (preview)", "info");
+      return;
+    }
     if (fileShare.active) {
       await fileShare.stop();
       return;
@@ -254,11 +263,17 @@ export function ControlBar() {
     await toggle("share", "Screen share", () =>
       localParticipant.setScreenShareEnabled(false),
     );
-  }, [fileShare, toggle, localParticipant]);
+  }, [previewChrome, fileShare, toggle, localParticipant, notify]);
 
   /** Hands off to the browser's own picker, with a hint at which pane to open on. */
   const startScreenShare = useCallback(
     (surface: "browser" | "window" | "monitor") => {
+      if (previewChrome) {
+        setPreviewSharing(true);
+        setShareOpen(false);
+        notify("Share screen (preview — not publishing)", "info");
+        return;
+      }
       void toggle("share", "Screen share", () =>
         // Third argument: publish options for the share's audio, so a shared video is not
         // encoded with the settings tuned for a voice. See SCREEN_SHARE_PUBLISH.
@@ -269,7 +284,7 @@ export function ControlBar() {
         ),
       );
     },
-    [toggle, localParticipant],
+    [previewChrome, toggle, localParticipant, notify],
   );
 
   /** Per-tool badge. Only two tools have a stream of things that arrive while you
@@ -296,6 +311,7 @@ export function ControlBar() {
     if (id === "hand") return realtime.myHandRaised;
     if (id === "reactions") return reactionsOpen;
     if (id === "layout") return layoutOpen;
+    if (tools.panelTab === id) return true;
     const win = tools.layout.windows[id];
     return !!win && !win.minimized;
   };
@@ -399,15 +415,20 @@ export function ControlBar() {
               }
             />
           )}
-          {canShare && permissions.canShareScreen && (
+          {/* Preview chrome always offers Share (mocked). Live rooms still need
+              getDisplayMedia support — mobile browsers typically do not. */}
+          {(previewChrome || canShare) && permissions.canShareScreen && (
             <BarButton
-              className="hidden sm:inline-flex"
-              label={sharing ? "Stop sharing" : "Share"}
+              label={sharing ? "Stop sharing" : "Share screen"}
               active={sharing}
               busy={pending === "share" || fileShare.starting}
               onClick={() => {
                 if (sharing) {
                   void stopSharing();
+                  return;
+                }
+                if (previewChrome) {
+                  startScreenShare("monitor");
                   return;
                 }
                 setShareOpen(true);
@@ -422,23 +443,7 @@ export function ControlBar() {
             />
           )}
         </>
-      ) : (
-        <span className="hidden items-center gap-1.5 rounded-lg bg-white/5 px-2.5 py-1.5 text-[11.5px] text-white/60 lg:inline-flex">
-          <MicOffIcon className="size-3.5" />
-          View only
-        </span>
-      )}
-      {permissions.mutedByHost ? (
-        <span className="hidden items-center gap-1.5 rounded-lg bg-warn/15 px-2.5 py-1.5 text-[11.5px] font-medium text-warn lg:inline-flex">
-          Muted by host
-        </span>
-      ) : (
-        permissions.audioOnly && (
-          <span className="hidden items-center gap-1.5 rounded-lg bg-ok/15 px-2.5 py-1.5 text-[11.5px] font-medium text-ok lg:inline-flex">
-            Allowed to speak
-          </span>
-        )
-      )}
+      ) : null}
 
       {/* Recording sits with the publish controls because that is what it is: a
           capture of what this stage is sending. It renders nothing for anyone the
@@ -465,13 +470,6 @@ export function ControlBar() {
             : ""
         }`}
       >
-        {slots.length === 0 && dropIndex === null && (
-          <span className="hidden items-center gap-1.5 rounded-lg border border-dashed border-white/20 px-2.5 py-1.5 text-[11px] text-white/45 md:inline-flex">
-            <PinIcon className="size-3" />
-            Drag tools here
-          </span>
-        )}
-
         {slots.map((slot, i) => (
           <div key={slot.tool} className="flex items-center">
             {dropIndex === i && <DropMarker />}
@@ -505,6 +503,32 @@ export function ControlBar() {
         {/* The tail marker, for a drop past the last slot. */}
         {dropIndex !== null && dropIndex >= slots.length && <DropMarker />}
       </div>
+
+      {/* Layout is fixed — never capacity-limited or buried under More. Narrow
+          bars used to drop it when only two pin slots fit. */}
+      {availableTools.includes("layout") && (
+        <div data-tool-slot="layout" className="relative">
+          <button
+            type="button"
+            aria-label={`Layout · ${LAYOUT_LABEL[stage.mode]}`}
+            aria-pressed={layoutOpen}
+            title={`Change layout — ${LAYOUT_LABEL[stage.mode]}`}
+            onClick={() => {
+              setLayoutOpen((v) => !v);
+              tools.used("layout");
+            }}
+            className="relative shrink-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+          >
+            <BarButtonShell label="Layout" active={layoutOpen}>
+              {(() => {
+                const Icon = tool("layout").icon;
+                return <Icon className="size-5" />;
+              })()}
+            </BarButtonShell>
+          </button>
+          {layoutOpen && <LayoutMenu onClose={() => setLayoutOpen(false)} />}
+        </div>
+      )}
 
       {/* ---- fixed right ---- */}
       <div className="relative">
@@ -544,7 +568,7 @@ export function ControlBar() {
       {/* Rendered here rather than at the room level so it is mounted only for
           somebody who may actually share. It is a Modal, so it portals out of the
           bar's stacking context on its own. */}
-      {canShare && permissions.canShareScreen && (
+      {!previewChrome && canShare && permissions.canShareScreen && (
         <SharePicker
           open={shareOpen}
           onClose={() => setShareOpen(false)}

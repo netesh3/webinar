@@ -25,6 +25,8 @@ const nextConfig: NextConfig = {
   // Cloudflare OpenNext — that adapter transforms the default Next output.
   ...(process.env.OPEN_NEXT !== "1" ? { output: "standalone" as const } : {}),
   basePath: basePath(),
+  // Local same-origin `/api` is handled by app/api/[...path]/route.ts (cookie
+  // softening for http://localhost). Production Workers use worker.ts instead.
 };
 
 export default nextConfig;

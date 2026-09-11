@@ -1,4 +1,4 @@
-# Webcast on one host: web, API and Postgres. Media is LiveKit Cloud's problem now.
+# Webinar Liv on one host: web, API and Postgres. Media is LiveKit Cloud's problem now.
 #
 # This pulls prebuilt images instead of building from source, because the instance never
 # gets a copy of the repository.
@@ -95,7 +95,7 @@ services:
       COOKIE_SECURE: "true"
       CORS_ORIGINS: https://${DOMAIN}
       WEB_BASE_URL: https://${DOMAIN}
-      APP_NAME: ${APP_NAME:-Webcast}
+      APP_NAME: ${APP_NAME:-Webinar Liv}
       SIGNUP_OPEN: ${SIGNUP_OPEN:-true}
       MAX_ATTENDEES: ${MAX_ATTENDEES:-500}
       JOIN_RATE_PER_MIN: ${JOIN_RATE_PER_MIN:-1200}

@@ -1,4 +1,4 @@
-# Supabase for Webcast (production Postgres)
+# Supabase for Webinar Liv (production Postgres)
 
 Local development keeps self-hosted Postgres (`docker-compose.yml` / Homebrew via
 `make db`). **Production / Cloud Run** should use a Supabase Postgres project and
@@ -210,8 +210,9 @@ session password login uses.
    client ID** → Application type **Web application**.
    You can also reuse the Firebase “Web client (auto created by Google Service)”
    if the project already has one — add the URIs below to that client.
-2. Authorized JavaScript origins (optional for this flow): your Worker origin,
-   e.g. `https://webinar-web.ganesh-s-p006.workers.dev`, plus
+2. Authorized JavaScript origins (optional for this flow): your Worker / site
+   origins, e.g. `https://webinarliv.com`, `https://www.webinarliv.com`,
+   `https://webinar-web.ganesh-s-p006.workers.dev`, plus
    `http://localhost:3000` for local Next.
 3. Authorized redirect URIs — **must** include Supabase’s callback:
 
@@ -241,10 +242,14 @@ Project **webcast-in** (`odptebpbrrixhrzfqtqp`) → Authentication:
    (Management API: `PATCH /v1/projects/<ref>/config/auth` with
    `external_google_enabled`, `external_google_client_id`, `external_google_secret`.)
 2. **URL configuration**:
-   - Site URL: `https://webinar-web.ganesh-s-p006.workers.dev`
+   - Site URL: `https://webinarliv.com` (canonical custom domain; keep workers.dev working)
    - Redirect URLs:
+     - `https://webinarliv.com/auth/callback`
+     - `https://www.webinarliv.com/auth/callback`
      - `https://webinar-web.ganesh-s-p006.workers.dev/auth/callback`
      - `http://localhost:3000/auth/callback` (local Next)
+
+   See [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md) § Custom domain for Spaceship → Cloudflare NS + Worker attach.
 3. **Settings → API**: copy Project URL and `anon` `public` key. Access tokens are
    verified via **JWKS** (`/auth/v1/.well-known/jwks.json`, typically ES256). The
    legacy **JWT Secret** (`SUPABASE_JWT_SECRET`) is optional and only needed for
@@ -270,7 +275,7 @@ signup pages show **Continue with Google**.
 Configured under **Google Auth Platform → Audience / Branding** for project
 `ai-project-490516`:
 
-| Setting | Typical value for Webcast |
+| Setting | Typical value for Webinar Liv |
 |---------|---------------------------|
 | User type | **External** |
 | Publishing status | **In production** (or Testing) |

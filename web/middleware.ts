@@ -1,5 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { decideAccess, type Viewer } from "@/lib/access";
+import {
+  DEV_BYPASS_OFF_COOKIE,
+  isDevAuthBypass,
+} from "@/lib/dev-bypass-flag";
+import {
+  UI_COOKIE,
+  parseUiMode,
+  resolveUiRedesign,
+} from "@/lib/ui-redesign-flag";
 
 /* Route protection, applied before a page renders.
  *
@@ -43,8 +52,75 @@ const API_BASE =
  */
 const LOOKUP_TIMEOUT_MS = 2_500;
 
+const UI_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const params = request.nextUrl.searchParams;
+
+  /* Persist ?ui=new|classic on the cookie, then strip the query so links stay clean. */
+  const uiParam = parseUiMode(params.get("ui"));
+  if (uiParam) {
+    const url = request.nextUrl.clone();
+    url.searchParams.delete("ui");
+    const res = NextResponse.redirect(url);
+    res.cookies.set(UI_COOKIE, uiParam, {
+      path: "/",
+      maxAge: UI_COOKIE_MAX_AGE,
+      sameSite: "lax",
+    });
+    return res;
+  }
+
+  const uiRedesign = resolveUiRedesign({
+    cookie: request.cookies.get(UI_COOKIE)?.value,
+  });
+
+  /* Local UI preview only. NODE_ENV=development + NEXT_PUBLIC_DEV_BYPASS_AUTH=1.
+   * Soft-allows host/admin routes so fixture screens can render without a cookie.
+   *
+   * Sign out under bypass sets cookie webcast_dev_bypass_off (mirrors sessionStorage
+   * webcast.devBypassOff) so this tab can see marketing without editing .env.
+   * Re-enable: ?bypass=1, /preview, or “Continue as Preview Host”.
+   * Force marketing while still “signed in”: /?marketing=1 or /home. */
+  if (isDevAuthBypass()) {
+    const wantBypass = params.get("bypass") === "1";
+    const wantMarketing = params.get("marketing") === "1";
+    const optedOut =
+      !wantBypass &&
+      request.cookies.get(DEV_BYPASS_OFF_COOKIE)?.value === "1";
+
+    if (wantBypass) {
+      const url = request.nextUrl.clone();
+      url.pathname = pathname === "/" || pathname === "" ? "/host" : pathname;
+      url.searchParams.delete("bypass");
+      const res = NextResponse.redirect(url);
+      res.cookies.set(DEV_BYPASS_OFF_COOKIE, "", {
+        path: "/",
+        maxAge: 0,
+        sameSite: "lax",
+      });
+      return res;
+    }
+
+    if (!optedOut) {
+      if (pathname === "/" || pathname === "") {
+        if (wantMarketing) {
+          return NextResponse.next();
+        }
+        /* Redesign: signed-in-style skip of marketing. Classic: `/` is browse. */
+        if (uiRedesign) {
+          const url = request.nextUrl.clone();
+          url.pathname = "/host";
+          url.search = "";
+          return NextResponse.redirect(url);
+        }
+        return NextResponse.next();
+      }
+      return NextResponse.next();
+    }
+    // Opted out — fall through to normal cookie/session checks.
+  }
 
   /* Anonymous until proven otherwise, and no network call unless there is a cookie to check.
    *
@@ -56,7 +132,18 @@ export async function middleware(request: NextRequest) {
     ? await identify(request)
     : { kind: "anonymous" };
 
-  const decision = decideAccess(pathname, viewer);
+  let decision = decideAccess(pathname, viewer);
+
+  /* Classic UI: `/` is the browse catalogue for everyone (including signed-in).
+   * Redesign access.ts redirects signed-in users off marketing — skip that when classic. */
+  if (
+    !uiRedesign &&
+    (pathname === "/" || pathname === "") &&
+    !decision.allow
+  ) {
+    decision = { allow: true };
+  }
+
   if (decision.allow) return NextResponse.next();
 
   const url = request.nextUrl.clone();
@@ -112,6 +199,9 @@ export const config = {
    * the hour. `/webinars/*` never reaches this file.
    */
   matcher: [
+    "/",
+    "/home",
+    "/preview",
     "/host",
     "/host/:path*",
     "/my-webinars",

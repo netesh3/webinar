@@ -6,7 +6,7 @@ This is the **current production-shaped** deployment: managed frontend, API, dat
 
 | Layer | Where it runs | Public URL / endpoint |
 |---|---|---|
-| Frontend (Next.js 16 via OpenNext) | Cloudflare Workers | https://webinar-web.ganesh-s-p006.workers.dev |
+| Frontend (Next.js 16 via OpenNext) | Cloudflare Workers | https://webinarliv.com (also https://webinar-web.ganesh-s-p006.workers.dev) |
 | API (Go) | Google Cloud Run · `asia-south1` | https://webcast-api-514730520122.asia-south1.run.app |
 | Postgres | Supabase · project `webcast-in` (`odptebpbrrixhrzfqtqp`) · `ap-south-1` | session pooler `:5432` + `sslmode=require` |
 | Media SFU | Self-hosted LiveKit on Hetzner · `webcast-livekit` (CX33, fsn1) | `wss://88.198.141.104.sslip.io` |
@@ -140,7 +140,7 @@ Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env
 | `DATABASE_URL` | Supabase **session pooler** URI (`sslmode=require`); direct `db.*` may be IPv6-only |
 | `SESSION_SECRET` | ≥32 bytes |
 | `LIVEKIT_*` | Legacy trio → one LiveKit Cloud project |
-| `CORS_ORIGINS` / `WEB_BASE_URL` | Frontend origin (Workers URL today) |
+| `CORS_ORIGINS` / `WEB_BASE_URL` | Frontend origins (`https://webinarliv.com` + workers.dev) |
 | `ADMIN_EMAILS` / `ADMIN_PASSWORD` | Bootstrap admin at API boot (≥10 chars); GitHub secrets → Cloud Run env |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_JWT_SECRET` | Google sign-in via Supabase Auth (optional; see `deploy/SUPABASE.md`) |
 

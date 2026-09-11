@@ -1,4 +1,4 @@
-# Webcast — self-hosted webinars
+# Webinar Liv — self-hosted webinars
 
 Zoom-Webinars-shaped platform on entirely open-source infrastructure. Webinars
 only; no meetings. Sized for **500 concurrent attendees** per session.

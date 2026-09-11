@@ -107,12 +107,8 @@ export type RoomUI = {
    *  in use. Sampled every two seconds — see lib/network.ts. */
   network: NetworkHealth;
 
-  /* The tool layout: what is on the bar, what is in the More grid, and which
-   * windows are open where. Owned by useToolLayout — see lib/tools.ts.
-   *
-   * This replaced `panel: PanelId | null`. The old field could hold one value, so
-   * one tool could be open at a time, and that was the docked side panel's whole
-   * limitation expressed as a type. */
+  /* The tool layout: bar pins, More grid, docked engagement panel, and floating
+   * windows for Host / Settings / Invite. Owned by useToolLayout. */
   tools: ToolApi;
   /** Which tools this person may use, from their role and the live controls.
    *  Recomputed rather than captured at join: a host turning polls on, or
@@ -142,6 +138,10 @@ export type RoomUI = {
   updatePrefs: (patch: Partial<MediaPreferences>) => void;
 
   leave: () => void;
+
+  /** Dev chrome preview (`/preview/room`): no LiveKit media. Share and similar
+   *  publish actions are mocked so the control bar still shows host affordances. */
+  previewChrome?: boolean;
 };
 
 const RoomUIContext = createContext<RoomUI | null>(null);

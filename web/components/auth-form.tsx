@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Alert, Spinner, Toggle } from "./controls";
 import { AuthDivider, GoogleContinueButton } from "./google-continue";
+import { ContinueAsPreviewHost } from "./continue-as-preview-host";
 import { useAppConfig, useSession } from "./providers";
 import { Button, Card } from "./ui";
 import { ApiError } from "@/lib/api";
@@ -108,6 +109,16 @@ export function LoginForm() {
         You don&apos;t need an account to attend — registering for a webinar
         sends you a personal join link.
       </p>
+      <p className="mt-3 text-center text-[11.5px] text-ink-3">
+        <Link href="/privacy" className="hover:underline">
+          Privacy
+        </Link>
+        {" · "}
+        <Link href="/terms" className="hover:underline">
+          Terms
+        </Link>
+      </p>
+      <ContinueAsPreviewHost className="mt-4 border-t border-line pt-4 text-center" />
     </Card>
   );
 }
@@ -152,7 +163,7 @@ export function SignupForm() {
           still register for a webinar without one.
         </p>
         <Link
-          href="/"
+          href="/browse"
           className="mt-4 inline-block text-[13px] font-medium text-brand hover:underline"
         >
           Browse webinars
@@ -259,6 +270,15 @@ export function SignupForm() {
           className="font-medium text-brand hover:underline"
         >
           Sign in
+        </Link>
+      </p>
+      <p className="mt-3 text-center text-[11.5px] text-ink-3">
+        <Link href="/privacy" className="hover:underline">
+          Privacy
+        </Link>
+        {" · "}
+        <Link href="/terms" className="hover:underline">
+          Terms
         </Link>
       </p>
     </Card>

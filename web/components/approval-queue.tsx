@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { RegistrantRow, RegistrationState } from "@/lib/api-types";
+import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { useToast } from "./providers";
 import { Button, Card, SectionTitle } from "./ui";
 import { Spinner } from "./controls";
@@ -79,6 +80,15 @@ export function ApprovalQueue({
     if (ids.length === 0) return;
     setBusy(ids.length === 1 ? ids[0] : "batch");
     try {
+      if (isDevAuthBypassActive()) {
+        notify(
+          `${label} ${ids.length} (preview — not saved).`,
+          "ok",
+        );
+        setChosen(new Set());
+        await onChanged();
+        return;
+      }
       const out = await api.decideApprovals(slug, ids, state);
       /* Report what CHANGED, not what was asked for.
        *

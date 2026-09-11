@@ -1,21 +1,31 @@
 import { HostSidebar } from "@/components/host-sidebar";
 import { TopNav } from "@/components/top-nav";
+import { cookies } from "next/headers";
+import { UI_COOKIE, resolveUiRedesign } from "@/lib/ui-redesign-flag";
 
-/* The host portal's chrome: top nav, sidebar, centred content column.
+/* The host portal's chrome.
  *
- * This lives in a (portal) route group rather than directly at app/host/ for one
- * reason: /host/[id]/room must NOT inherit it. Layouts nest, so with this file at
- * app/host/layout.tsx the live room rendered inside a max-w-6xl column with a nav
- * bar above it and a sidebar beside it — a 100dvh-tall room starting below a
- * 56px nav, with its control bar pushed off the bottom of the screen.
- *
- * The group changes nothing about the URLs: /host, /host/new and /host/[id] are
- * unaffected, and /host/[id]/room now gets only the root layout, which is what a
- * full-screen video call needs.
+ * Redesign: top nav only (Browse | My webinars | Hosting) — no second sidebar.
+ * Classic: top nav + host sidebar (Webinars / Schedule / Account).
  */
-export default function HostPortalLayout({
+
+export default async function HostPortalLayout({
   children,
 }: LayoutProps<"/host">) {
+  const jar = await cookies();
+  const redesign = resolveUiRedesign({ cookie: jar.get(UI_COOKIE)?.value });
+
+  if (redesign) {
+    return (
+      <>
+        <TopNav />
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-5">
+          {children}
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <TopNav />

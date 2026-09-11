@@ -55,7 +55,7 @@ export function icsFile(event: CalendarEvent, uid: string): string {
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Webcast//Webinar//EN",
+    "PRODID:-//Webinar Liv//Webinar//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",

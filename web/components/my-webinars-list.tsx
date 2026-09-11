@@ -75,7 +75,7 @@ export function MyWebinarsList() {
         <Empty
           title="You haven't registered for anything yet"
           hint="Open an invitation link to register for a session. Your personal join link will show up here."
-          action={<ButtonLink href="/">Go to your webinars</ButtonLink>}
+          action={<ButtonLink href="/browse">Browse webinars</ButtonLink>}
         />
       </>
     );
@@ -224,7 +224,12 @@ function RegisteredCard({
 
         <div className="flex shrink-0 flex-col justify-center gap-2 sm:w-[180px]">
           {joinable && (
-            <ButtonLink href={`/webinars/${w.id}/room`} size="sm">
+            <ButtonLink
+              href={`/webinars/${w.id}/room`}
+              size="sm"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               {live ? "Join now" : "Join the webinar"}
             </ButtonLink>
           )}

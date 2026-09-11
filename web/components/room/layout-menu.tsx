@@ -32,17 +32,26 @@ const ICON = {
   spotlight: PinIcon,
 } as const;
 
-export function LayoutMenu({ onClose }: { onClose: () => void }) {
+export function LayoutMenu({
+  onClose,
+  embedded = false,
+}: {
+  onClose: () => void;
+  /** When true, render inline under More (no floating chrome / absolute position). */
+  embedded?: boolean;
+}) {
   const { stage } = useRoomUI();
   const panel = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (embedded) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     const onDown = (e: PointerEvent) => {
       if (panel.current?.contains(e.target as Node)) return;
       if ((e.target as HTMLElement).closest?.("[data-tool-slot='layout']")) return;
+      if ((e.target as HTMLElement).closest?.("[data-tool-cell='layout']")) return;
       onClose();
     };
     window.addEventListener("keydown", onKey);
@@ -51,17 +60,12 @@ export function LayoutMenu({ onClose }: { onClose: () => void }) {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onDown);
     };
-  }, [onClose]);
+  }, [onClose, embedded]);
 
-  return (
-    <div
-      ref={panel}
-      role="dialog"
-      aria-label="Stage layout"
-      className="room-dark absolute bottom-full left-1/2 z-50 mb-2 w-[288px] max-w-[calc(100vw-1rem)] -translate-x-1/2 rounded-xl border border-line bg-surface p-2 shadow-2xl"
-    >
+  const body = (
+    <>
       <p className="px-1.5 pt-0.5 pb-1.5 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-        Layout
+        Change layout
       </p>
 
       <div className="space-y-0.5">
@@ -147,6 +151,21 @@ export function LayoutMenu({ onClose }: { onClose: () => void }) {
       <p className="mt-2 border-t border-line px-1.5 pt-2 text-[11px] leading-tight text-ink-3">
         Yours only — nobody else&apos;s view changes.
       </p>
+    </>
+  );
+
+  if (embedded) {
+    return <div ref={panel}>{body}</div>;
+  }
+
+  return (
+    <div
+      ref={panel}
+      role="dialog"
+      aria-label="Stage layout"
+      className="room-dark absolute bottom-full left-1/2 z-50 mb-2 w-[288px] max-w-[calc(100vw-1rem)] -translate-x-1/2 rounded-xl border border-line bg-surface p-2 shadow-2xl"
+    >
+      {body}
     </div>
   );
 }

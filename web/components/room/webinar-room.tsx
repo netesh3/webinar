@@ -31,8 +31,8 @@ import {
 } from "@/lib/realtime";
 import { describeQuality, prioritiseAudio, useNetworkHealth } from "@/lib/network";
 import { formatElapsed } from "@/lib/format";
-import { Alert, IconButton, Spinner } from "../controls";
-import { EyeOffIcon, LockIcon, SettingsIcon, SignalIcon, SlidersIcon } from "../icons";
+import { Alert, Spinner } from "../controls";
+import { EyeOffIcon, LockIcon, SignalIcon, SlidersIcon } from "../icons";
 import { useToast } from "../providers";
 import { Badge } from "../ui";
 import { ControlBar } from "./control-bar";
@@ -47,11 +47,13 @@ import { VirtualBackground } from "./background-picker";
 import { PollPopup } from "./poll-popup";
 import { FileShareBar } from "./file-share-bar";
 import { Stage } from "./stage";
+import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
 import { useAvailableTools } from "./tools";
 import { useToolLayout, type ToolId } from "@/lib/tools";
 import { useFileShare } from "@/lib/file-share";
+import { useUiRedesign } from "@/lib/ui-redesign";
 import { useStageLayout } from "@/lib/layout";
 
 /* The webinar room.
@@ -284,6 +286,7 @@ function ConnectedRoom({
   entryVideo: LocalVideoTrack | null;
 }) {
 
+  const redesign = useUiRedesign();
   const [failure, setFailure] = useState<string | null>(null);
   const [exit, setExit] = useState<ExitReason | null>(null);
   /* Whether room.connect() has resolved. Separate from `ready`, which is about the person:
@@ -621,27 +624,21 @@ function ConnectedRoom({
   /* A watermark of how much had arrived the last time each tool was looked at, so
    * a badge only ever means "this came in while you weren't looking".
    *
-   * Simpler than the version this replaces, and for a structural reason: with a
-   * single side panel, "looked at" had to be moved by the click that opened or
-   * closed it, because opening one panel implicitly closed another. Windows have
-   * no such coupling — a window is either in front of you or it is not — so the
-   * watermark can just follow the window state.
+   * Chat and Q&A are "visible" when their docked tab is open, or when they have
+   * been popped out into an un-minimised floating window.
    */
   const chatCount = realtime.chat.length;
   const questionCount = realtime.questions.length;
 
-  const chatWindow = tools.layout.windows.chat;
-  const qaWindow = tools.layout.windows.qa;
-  // Visible means open, not minimised, and not buried on a phone. Buried is not
-  // checked here: a window the user has in front of them on a laptop is the case
-  // this is for, and treating a covered window as unseen would badge Chat while
-  // the user is reading it.
-  const chatVisible = !!chatWindow && !chatWindow.minimized;
-  const qaVisible = !!qaWindow && !qaWindow.minimized;
+  const chatWin = tools.layout.windows.chat;
+  const qaWin = tools.layout.windows.qa;
+  const chatVisible =
+    tools.panelTab === "chat" || (!!chatWin && !chatWin.minimized);
+  const qaVisible = tools.panelTab === "qa" || (!!qaWin && !qaWin.minimized);
 
   const [seen, setSeen] = useState({ chat: 0, qa: 0 });
 
-  /* While a window is in front of you, everything arriving in it counts as read.
+  /* While a panel tab is in front of you, everything arriving in it counts as read.
    *
    * Adjusted during render rather than in an effect. This is the case React's own
    * guidance covers — state derived from a change since the last render — and it
@@ -863,21 +860,23 @@ function ConnectedRoom({
                 to survive the window being closed. */}
             <VirtualBackground />
 
-            {/* The stage is also the area windows are confined to, which is why it
-                reports its element: a window must not be able to hide behind the
-                header or under the control bar, since both are what somebody
-                reaches for to get rid of it. */}
-            <div
-              ref={setStageEl}
-              className="relative flex min-h-0 min-w-0 flex-1 flex-col"
-            >
-              <Stage />
-              {/* Playback controls for a shared video file. Host-only by
-                  construction — it lives in the presenter's own shell, and what the
-                  audience receives is captured from a hidden element elsewhere, so
-                  none of this can reach a subscriber. */}
-              <FileShareBar />
-              <ConnectionBanner />
+            {/* Stage + docked engagement panel. The panel is a sibling of the stage
+                so the video plane stays one primary surface (Zoom/Livestorm pattern)
+                rather than fighting a stack of floating windows. */}
+            <div className="relative flex min-h-0 min-w-0 flex-1">
+              <div
+                ref={setStageEl}
+                className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                <Stage />
+                {/* Playback controls for a shared video file. Host-only by
+                    construction — it lives in the presenter's own shell, and what the
+                    audience receives is captured from a hidden element elsewhere, so
+                    none of this can reach a subscriber. */}
+                <FileShareBar />
+                <ConnectionBanner />
+              </div>
+              {redesign ? <SidePanel /> : null}
             </div>
 
             <ControlBar />
@@ -907,7 +906,7 @@ function ConnectedRoom({
 // ------------------------------------------------------------------- header
 
 function RoomHeader() {
-  const { topic, join, controls, isHost, permissions, tools, availableTools } = useRoomUI();
+  const { topic, join, controls, isHost, permissions, tools } = useRoomUI();
 
   // From the live permissions, not from the role in the join response. An attendee
   // the host brought on stage is no longer "view only", and a badge still saying
@@ -921,10 +920,10 @@ function RoomHeader() {
         ? { label: "Allowed to speak", tone: "ok" as const }
         : permissions.canPublish
           ? { label: "Panelist", tone: "ok" as const }
-          : { label: "Attendee · view only", tone: "neutral" as const };
+          : { label: "Attendee", tone: "neutral" as const };
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 bg-stage-bar px-3 text-white">
+    <header className="flex h-11 shrink-0 items-center gap-2 border-b border-white/10 bg-stage-bar px-3 text-white">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h1 className="truncate text-[13px] font-semibold">{topic}</h1>
@@ -932,50 +931,43 @@ function RoomHeader() {
           {/* Everyone sees this, including the audience — consent is not something
               to leave to the browser that pressed the button. */}
           <RecordingIndicator />
-        </div>
-        <div className="flex items-center gap-2 text-[11px] text-white/45">
-          <span className="tabular-nums">
-            ID {join.room.replace(/^webinar_/, "")}
-          </span>
           <NetworkIndicator />
-          {controls.hideAttendees && (
-            <span
-              className="inline-flex items-center gap-1"
-              title="Attendees cannot see each other"
-            >
-              <EyeOffIcon className="size-3" />
-              Audience private
-            </span>
-          )}
-          {controls.locked && (
-            <span className="inline-flex items-center gap-1 text-warn">
-              <LockIcon className="size-3" />
-              Locked
-            </span>
-          )}
         </div>
+        {/* Only exceptional room state — not the room ID on every frame. */}
+        {(controls.hideAttendees || controls.locked) && (
+          <div className="flex items-center gap-2 text-[11px] text-white/45">
+            {controls.hideAttendees && (
+              <span
+                className="inline-flex items-center gap-1"
+                title="Attendees cannot see each other"
+              >
+                <EyeOffIcon className="size-3" />
+                Audience private
+              </span>
+            )}
+            {controls.locked && (
+              <span className="inline-flex items-center gap-1 text-warn">
+                <LockIcon className="size-3" />
+                Locked
+              </span>
+            )}
+          </div>
+        )}
       </div>
+
+      <span
+        title={`Room ID ${join.room.replace(/^webinar_/, "")}`}
+        className="hidden text-[10.5px] text-white/35 tabular-nums sm:inline"
+      >
+        ID {join.room.replace(/^webinar_/, "")}
+      </span>
 
       <span className="hidden sm:block">
         <Badge tone={standing.tone}>{standing.label}</Badge>
       </span>
 
-      {/* Both of these open the same windows the bar and the grid do, through the
-          same call. Kept in the header as well because they are where a host and a
-          presenter already look for them, and because a tool the user has dragged
-          off the bar should still have one fixed home. */}
-      {availableTools.includes("settings") && (
-        <IconButton
-          label="Audio and video settings"
-          onClick={() => tools.open("settings")}
-          className="text-white/70 hover:bg-white/10 hover:text-white"
-        >
-          <SettingsIcon className="size-4" />
-        </IconButton>
-      )}
-
-      {/* A direct button, not a one-item menu: the role is already stated by the
-          badge beside it, and two chips both reading "Host" was just confusing. */}
+      {/* Host controls stay in the header — that is where hosts look. Settings
+          live under More so the chrome is one primary action for hosts, not two. */}
       {isHost && (
         <button
           type="button"

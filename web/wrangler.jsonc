@@ -1,6 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "webinar-web",
+  // Keep the *.workers.dev URL alongside custom domains.
+  "workers_dev": true,
+  "preview_urls": true,
   // Wraps OpenNext: proxies /api/* to API_INTERNAL_URL so session cookies are
   // first-party on this Worker (see worker.ts). Build still writes .open-next/.
   "main": "worker.ts",
@@ -18,7 +21,16 @@
   ],
   // Runtime SSR + /api proxy target. Browser uses same-origin /api when
   // NEXT_PUBLIC_API_BASE is empty at build time (see CLOUDFLARE.md).
+  // NEXT_PUBLIC_UI_REDESIGN must also be set at *build* time (see package.json
+  // deploy script) so Server Components / middleware inline the same default.
   "vars": {
-    "API_INTERNAL_URL": "https://webcast-api-514730520122.asia-south1.run.app"
-  }
+    "API_INTERNAL_URL": "https://webcast-api-514730520122.asia-south1.run.app",
+    "NEXT_PUBLIC_UI_REDESIGN": "1"
+  },
+  // Apex + www on Cloudflare zone webinarliv.com (Workers custom domains).
+  // Keeps *.workers.dev URL working in parallel.
+  "routes": [
+    { "pattern": "webinarliv.com", "custom_domain": true },
+    { "pattern": "www.webinarliv.com", "custom_domain": true }
+  ]
 }
