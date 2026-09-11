@@ -115,9 +115,9 @@ export const SCREEN_SHARE_OPTIONS: ScreenShareCaptureOptions = {
   /* Capture floors: desktop ≥720p (we ask 1080p), mobile ≥360p.
    *
    * 1080p on desktop because slides/terminals are the point and text suffers first from a
-   * downscale — and because SHARE_LADDER can cut bitrate/fps without cutting below 720p.
-   * 15fps rather than 30: a deck does not need the duplicates; contentHint "detail" still
-   * tells the encoder to spend budget on pixels when motion appears.
+   * downscale — and because SHARE_LADDER can cut fps / turn off 1080p without cutting below
+   * 720p@~2 Mbps. 15fps rather than 30: a deck does not need the duplicates; contentHint
+   * "detail" still tells the encoder to spend budget on pixels when motion appears.
    *
    * Safari is left unconstrained (WebKit bug 263015 returns a LOW resolution under
    * constraints). Mobile asks for the 360p floor explicitly when not Safari.
@@ -312,7 +312,7 @@ export function roomOptions(
        *
        * 1080p is the CEILING; SHARE_FLOOR_DESKTOP (720p) is the floor on desktop. The share
        * ladder in network.ts (judgeShare) turns off 1080p and may cut fps before it ever
-       * starves the 720p layer — camera still uses the stricter judge() with sharing:true.
+       * starves the 720p@~2 Mbps layer — camera still uses the stricter judge() with sharing:true.
        *
        * Egress at scale is still linear in the audience: see docs/CAPACITY.md, and cap
        * MAX_ATTENDEES rather than the resolution if a single node has to carry hundreds.

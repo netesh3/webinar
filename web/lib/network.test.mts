@@ -598,7 +598,7 @@ console.log("\nshare layer gaps");
     }
   }
 
-  // The specific regression, named: 200 kbps straight to 2500 must not come back.
+  // The specific regression, named: a tiny low rung must not jump straight to the 1080p ceiling.
   const full = SHARE_LADDER.full.map((r) => r.maxBitrate);
   ok(
     full.length >= 3,
@@ -606,8 +606,8 @@ console.log("\nshare layer gaps");
     `rungs: ${full.join(", ")}`,
   );
   ok(
-    full[1] >= 500_000 && full[1] <= 1_200_000,
-    "the middle share rung is reachable on a domestic connection",
+    full[1] >= 1_500_000 && full[1] <= 2_500_000,
+    "the middle share rung is ~2 Mbps so 720p text stays sharp",
     `${full[1]} bps`,
   );
 
@@ -622,7 +622,7 @@ console.log("\nshare layer gaps");
     `${middle.encoding.maxFramerate}fps`,
   );
 
-  // Desktop content floor: every tier keeps a ≥720p layer live at ≥800 kbps.
+  // Desktop content floor: every tier keeps a ≥720p layer live at the bitrate floor (~2 Mbps).
   for (const tier of tiers) {
     const rung720 = SHARE_LADDER[tier][1];
     ok(
@@ -645,13 +645,19 @@ console.log("\nshare layer gaps");
     SHARE_TOP.height >= SHARE_FLOOR_DESKTOP.height,
     "top share layer is above the desktop floor",
   );
+  ok(
+    SHARE_TOP.encoding.maxBitrate >= 3_000_000,
+    "1080p share ceiling has headroom for fine text",
+    `${SHARE_TOP.encoding.maxBitrate}`,
+  );
 }
 
 /* Share degradation must not follow the camera's RTT ladder.
  *
  * The mid-session blur bug: EU SFU + IN ~200ms RTT, availableOutgoing often reports ~3 Mbps
  * while sharing. Camera judge(sharing) correctly steps the face down; the old shared tier
- * also starved the share to 720p@500k. judgeShare stays calm on that sample.
+ * also starved the share below a readable 720p. judgeShare stays calm when the share alone
+ * still fits, and only steps when the link cannot carry the share floor.
  */
 console.log("\njudgeShare vs camera while sharing");
 {
@@ -661,25 +667,30 @@ console.log("\njudgeShare vs camera while sharing");
     rttFloorMs: 245,
   };
 
-  // ~3 Mbps: camera+share tooNarrow for judge(), but share-alone still fine for judgeShare.
+  // Uplink that is too thin for camera+share together, but still clears the share-alone floor.
+  // Camera uses NEED_MARGIN_DOWN 0.8 on the combined budget; share uses 0.55 on share-only.
+  const camShareSqueezeKbps = Math.round(
+    (needKbps("full", true) * 0.8 + shareNeedKbps("full") * 0.55) / 2,
+  );
+
   eq(
     judge({
       tier: "full",
       ...distant,
-      availableOutgoingKbps: 3000,
+      availableOutgoingKbps: camShareSqueezeKbps,
       sharing: true,
     }).bad,
     true,
-    "camera judge still steps down when share saturates a 3 Mbps uplink",
+    "camera judge still steps down when share saturates the uplink budget",
   );
   eq(
     judgeShare({
       tier: "full",
       ...distant,
-      availableOutgoingKbps: 3000,
+      availableOutgoingKbps: camShareSqueezeKbps,
     }).bad,
     false,
-    "…while judgeShare keeps 1080p share on that same 3 Mbps estimate",
+    "…while judgeShare keeps 1080p share when the share floor itself fits",
   );
 
   // Mild loss that moves the camera must not blur slides.
@@ -727,6 +738,13 @@ console.log("\njudgeShare vs camera while sharing");
     }).bad,
     true,
     "a link that cannot carry the share floor steps share down",
+  );
+
+  // Even after stepping to reduced, the 720p rung stays at the readable floor.
+  eq(
+    SHARE_LADDER.reduced[1].maxBitrate,
+    SHARE_720_MIN_BITRATE,
+    "reduced still publishes 720p at the bitrate floor (turns off 1080p only)",
   );
 
   eq(

@@ -110,7 +110,9 @@ export function Stage() {
     const focusKey = page.items[0]?.key;
     for (const [i, tile] of page.items.entries()) {
       if (tile.source === Track.Source.ScreenShare) {
-        // Text at the low rung is unreadable, which is the whole point of a share.
+        // Always HIGH: MEDIUM/LOW land on the 720p/360p rungs, and even a sharp 720p
+        // publisher looks soft if the subscriber asked for the wrong layer. Text is why
+        // the share exists — never let adaptive tile-count logic demote it.
         map.set(tile.key, VideoQuality.HIGH);
       } else if (mode === "grid") {
         map.set(tile.key, qualityFor(page.items.length));

@@ -4,7 +4,6 @@ import {
   ConnectionQuality,
   RoomEvent,
   Track,
-  ScreenSharePresets,
   VideoPreset,
   VideoPresets,
   type LocalVideoTrack,
@@ -248,19 +247,24 @@ export const LADDER: Record<
  * adaptiveStream. It is not the presenter's fallback and must never become the only live
  * layer a desktop viewer of a fullscreen share can land on when the ladder panics.
  *
- * The rungs, per layer (desktop floor = 720p always active at full bitrate):
+ * The rungs, per layer (desktop floor = 720p always active at a text-readable bitrate):
  *
- *            360p@3    720p        1080p@15   total
- *   full     200        800@15      2500      3500 kbps
- *   reduced  200        800@15      off       1000 kbps
- *   minimal  200        800@8       off       1000 kbps   ← fps down, not bitrate/resolution
+ *            360p@3    720p         1080p@15   total
+ *   full     400       2000@15       3500      5900 kbps
+ *   reduced  400       2000@15       off       2400 kbps
+ *   minimal  400       2000@8        off       2400 kbps   ← fps down, not bitrate/resolution
+ *
+ * WHY 2 Mbps (not 800k). 800 kbps at 720p looks soft on slides/terminals — H.264 spends
+ * the budget on motion vectors and leaves text muddy. Stock ScreenSharePresets.h720fps15
+ * is already 1.5 Mbps; we go to 2 Mbps as the floor so reduced/minimal stay readable, and
+ * 1080p tops out at 3.5 Mbps so the HIGH subscriber layer has headroom for fine detail.
  *
  * WHAT CHANGED (mid-session blur). Camera and share used to share ONE tier decision. Sharing
  * triples needKbps; on EU SFU + IN RTT the browser's availableOutgoingBitrate is often
  * pessimistic, so tooNarrow fired within seconds, both tracks stepped to minimal, and the
- * share's 720p rung was starved to 500 kbps — soft slides for the rest of the session.
- * Share now has its own judge (severe loss / extreme queueing / critically thin uplink only)
- * and minimal holds 720p@800k while cutting maxFramerate.
+ * share's 720p rung was starved — soft slides for the rest of the session. Share now has
+ * its own judge (severe loss / extreme queueing / critically thin uplink only) and minimal
+ * holds 720p@2 Mbps while cutting maxFramerate.
  *
  * Layers and ladder live HERE (not media.ts) so applyLadder's positional index cannot drift
  * from the published encodings. SHARE_TOP is separate because the SDK takes top encoding
@@ -271,13 +275,19 @@ export const SHARE_FLOOR_DESKTOP = { width: 1280, height: 720 } as const;
 /** Mobile publisher capture/encode floor (360p equivalent). */
 export const SHARE_FLOOR_MOBILE = { width: 640, height: 360 } as const;
 
-/** Bitrate floor for the 720p share layer — never starve it into blur. */
-export const SHARE_720_MIN_BITRATE = 800_000;
+/** Bitrate floor for the 720p share layer — text needs ~2 Mbps, not a camera-like 800k. */
+export const SHARE_720_MIN_BITRATE = 2_000_000;
+
+/** Low share simulcast rung: enough that 360p→720p is not a 10× cliff for the SFU. */
+const SHARE_LOW_BITRATE = 400_000;
+
+/** Sharp 1080p ceiling for fullscreen desktop viewers. */
+const SHARE_1080_BITRATE = 3_500_000;
 
 export const SHARE_LAYERS = [
   // Subscriber convenience for small phone tiles — not a desktop content floor.
-  ScreenSharePresets.h360fps3,
-  // Constructed: stock h720fps5 caps fps too hard; h720fps15 asks 1500 kbps.
+  new VideoPreset(640, 360, SHARE_LOW_BITRATE, 3),
+  // Constructed: stock h720fps5 is 800k@5fps (soft + slideshow); we hold 2 Mbps@15.
   new VideoPreset(
     SHARE_FLOOR_DESKTOP.width,
     SHARE_FLOOR_DESKTOP.height,
@@ -286,7 +296,7 @@ export const SHARE_LAYERS = [
   ),
 ];
 
-export const SHARE_TOP = ScreenSharePresets.h1080fps15;
+export const SHARE_TOP = new VideoPreset(1920, 1080, SHARE_1080_BITRATE, 15);
 
 /** One share-ladder rung: bitrate, optional fps cap, never a resolution drop below the floor. */
 export type ShareRung = {
@@ -306,7 +316,7 @@ export const SHARE_LADDER: Record<PublishTier, ShareRung[]> = {
     { maxBitrate: SHARE_LAYERS[1].encoding.maxBitrate },
     { maxBitrate: 0 },
   ],
-  // Hold 720p bitrate; cut fps. Never drop the desktop floor layer or starve it below 800k.
+  // Hold 720p bitrate; cut fps. Never drop the desktop floor layer or starve it below 2 Mbps.
   minimal: [
     { maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate },
     {
@@ -586,6 +596,12 @@ export function useNetworkHealth(
         const params = sender.getParameters();
         if (!params.encodings?.length) return;
         const wanted = SHARE_LADDER[next];
+        /* Capture is typically 1080p; mid (720p) and high (1080p) layers must not keep a
+         * congestion-era scaleResolutionDownBy that left text soft. Low (360p) may stay
+         * scaled for tiny subscriber tiles. */
+        const sourceH =
+          track.mediaStreamTrack?.getSettings?.().height ||
+          SHARE_TOP.height;
         params.encodings.forEach((encoding, i) => {
           const rung = wanted[i] ?? wanted[wanted.length - 1];
           encoding.active = rung.maxBitrate > 0;
@@ -599,8 +615,19 @@ export function useNetworkHealth(
                 i < SHARE_LAYERS.length ? SHARE_LAYERS[i] : SHARE_TOP;
               encoding.maxFramerate = layer.encoding.maxFramerate;
             }
+            if (i >= 1) {
+              const targetH =
+                i < SHARE_LAYERS.length
+                  ? SHARE_LAYERS[i].height
+                  : SHARE_TOP.height;
+              const designed = Math.max(1, sourceH / targetH);
+              const current = encoding.scaleResolutionDownBy ?? designed;
+              // Clamp upscales-of-downscale only — never soft-blur past the designed rung.
+              if (current > designed + 0.05) {
+                encoding.scaleResolutionDownBy = designed;
+              }
+            }
           }
-          // Never increase scaleResolutionDownBy — that would drop below the floor.
         });
         await sender.setParameters(params);
       } catch {
