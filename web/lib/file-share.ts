@@ -207,10 +207,22 @@ export function useFileShare(room: Room | null): FileShareApi {
       const video = document.createElement("video");
       video.playsInline = true;
       video.preload = "auto";
-      // crossOrigin so a recording served from our own API can be captured. Without
-      // it a same-origin-but-CORS-fetched element taints the capture and
-      // captureStream yields nothing.
-      video.crossOrigin = "use-credentials";
+      /* crossOrigin only for a recording, and only because it is fetched from our
+       * own API with the session cookie. Without it there, the element's fetch is
+       * "no-cors", which taints anything drawn or captured from it — captureStream
+       * silently yields a track that never delivers a frame, rather than an error.
+       *
+       * "local" and "drive" are blob: URLs — bytes already in this tab, nothing to
+       * fetch, no origin to cross. Setting crossOrigin on one of those anyway used
+       * to be harmless in theory and was not in practice: on this constraint,
+       * Chrome treats a blob: video as tainted the same way, so a host sharing a
+       * file from their own computer — the common case — captured a track the
+       * audience never saw a frame of, while the host's own untainted preview
+       * player (a separate <video> in PreviewStep) played it back fine. That
+       * contrast was the tell. */
+      if (source.kind === "recording") {
+        video.crossOrigin = "use-credentials";
+      }
       video.src = source.url;
       host.appendChild(video);
       document.body.appendChild(host);
