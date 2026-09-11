@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { HostAlert } from "@/lib/api-types";
+import { isDevAuthBypass } from "@/lib/dev-bypass";
 import { useNow } from "@/lib/clock";
 import { formatRelative } from "@/lib/format";
 import { Button } from "./ui";
@@ -43,6 +44,7 @@ export function HostAlerts() {
    * rule accepts, and matches how useDevices in lib/media.ts solves the identical problem.
    */
   const load = useCallback(() => {
+    if (isDevAuthBypass()) return;
     api
       .hostAlerts()
       .then((out) => {

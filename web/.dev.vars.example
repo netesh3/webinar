@@ -16,3 +16,7 @@ API_INTERNAL_URL=http://localhost:8080
 # loads. Prefer setting SUPABASE_* on the API instead (see deploy/SUPABASE.md).
 # NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 # NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...anon
+
+# Optional: skip login for local UI redesign preview (next dev only).
+# NEVER set this in Cloudflare Worker / production builds.
+# NEXT_PUBLIC_DEV_BYPASS_AUTH=1

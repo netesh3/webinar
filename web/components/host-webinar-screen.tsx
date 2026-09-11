@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { HostWebinarTabs } from "./host-webinar-tabs";
 import { Alert, ConfirmModal, Spinner } from "./controls";
@@ -11,13 +11,19 @@ import { Badge, Button, ButtonLink, Card, kindLabel } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import { formatDay, formatDuration, formatTimeRange, tzLabel } from "@/lib/format";
 import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
+import {
+  bypassWebinar,
+  DEV_BYPASS_REGISTRANTS,
+  isDevAuthBypass,
+} from "@/lib/dev-bypass";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 
-/** Manage one webinar: its registrants, its share links, and the start/end
- *  controls. The room itself lives at /host/[id]/room. */
+/** Manage one webinar: Host it, admit people, see who registered / attended. */
 export function HostWebinarScreen({ slug }: { slug: string }) {
   const router = useRouter();
+  const search = useSearchParams();
   const { notify } = useToast();
+  const bypass = isDevAuthBypass();
 
   const [webinar, setWebinar] = useState<Webinar | null>(null);
   const [registrants, setRegistrants] = useState<RegistrantRow[]>([]);
@@ -28,39 +34,49 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Promise callbacks rather than an awaited call: every setState lands in a
-  // .then/.catch, so nothing runs synchronously inside the effect body.
-  const load = useCallback(
-    () =>
-      // Recordings are loaded here rather than inside their own tab, so the tab
-      // can carry a count: a tab that looks identical whether or not there is a
-      // recording behind it is a recording nobody finds. Its failure is tolerated
-      // — recording can be switched off for an instance, and that must not blank
-      // the page the host came for.
-      Promise.all([
-        api.hostWebinar(slug),
-        api.hostRegistrants(slug),
-        api.recordings(slug).catch(() => [] as Recording[]),
-      ])
-        .then(([w, rows, recs]) => {
-          setWebinar(w);
-          setRegistrants(rows);
-          setRecordings(recs);
-          setError(null);
-        })
-        .catch((e: unknown) => {
-          if (e instanceof ApiError && e.status === 401) setNeedsLogin(true);
-          else if (e instanceof ApiError && e.code === "not_a_host") setNeedsLogin(true);
-          else setError(e instanceof Error ? e.message : "Could not load this webinar.");
-        }),
-    [slug],
-  );
+  const load = useCallback(() => {
+    if (bypass) {
+      const w = bypassWebinar(slug);
+      if (!w) {
+        setError("Unknown preview webinar.");
+        return Promise.resolve();
+      }
+      setWebinar(w);
+      setRegistrants(
+        w.status === "draft" ? [] : DEV_BYPASS_REGISTRANTS,
+      );
+      setRecordings([]);
+      setError(null);
+      return Promise.resolve();
+    }
+
+    return Promise.all([
+      api.hostWebinar(slug),
+      api.hostRegistrants(slug),
+      api.recordings(slug).catch(() => [] as Recording[]),
+    ])
+      .then(([w, rows, recs]) => {
+        setWebinar(w);
+        setRegistrants(rows);
+        setRecordings(recs);
+        setError(null);
+      })
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 401) setNeedsLogin(true);
+        else if (e instanceof ApiError && e.code === "not_a_host") setNeedsLogin(true);
+        else setError(e instanceof Error ? e.message : "Could not load this webinar.");
+      });
+  }, [slug, bypass]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   async function start() {
+    if (bypass) {
+      router.push("/preview/room");
+      return;
+    }
     setBusy(true);
     try {
       await api.startWebinar(slug);
@@ -72,6 +88,11 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   }
 
   async function end() {
+    if (bypass) {
+      notify("End is mocked in local preview.", "info");
+      setConfirmEnd(false);
+      return;
+    }
     setBusy(true);
     try {
       await api.endWebinar(slug);
@@ -85,13 +106,13 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
     }
   }
 
-  /* Delete, then leave — in that order, and without reloading this page.
-   *
-   * `load()` on a webinar that no longer exists would set the error state and leave the host
-   * looking at "Couldn't load that" as the result of a successful action. The list is where
-   * they came from and where the outcome is visible, so the navigation IS the confirmation.
-   */
   async function remove() {
+    if (bypass) {
+      notify("Delete is mocked in local preview.", "info");
+      setConfirmDelete(false);
+      router.push("/host");
+      return;
+    }
     setBusy(true);
     try {
       await api.deleteWebinar(slug);
@@ -139,6 +160,8 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const isLive = webinar.status === "live";
   const isEnded = webinar.status === "ended";
   const isDraft = webinar.status === "draft";
+  const pending = registrants.filter((r) => r.state === "pending").length;
+  const initialTab = search.get("tab");
 
   return (
     <>
@@ -147,7 +170,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-brand"
       >
         <ArrowLeftIcon className="size-3.5" />
-        Webinars
+        Host
       </Link>
 
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -156,10 +179,11 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
             <Badge tone={kind.tone} dot={isLive}>
               {kind.text}
             </Badge>
-            {webinar.track && <Badge>{webinar.track}</Badge>}
-            {webinar.approval === "manual" && <Badge tone="warn">Manual approval</Badge>}
-            {webinar.controls.hideAttendees && <Badge>Audience private</Badge>}
-            {webinar.controls.locked && <Badge tone="warn">Locked</Badge>}
+            {webinar.approval === "manual" && !isEnded && (
+              <Badge tone="warn">
+                {pending > 0 ? `${pending} waiting to admit` : "Manual admit"}
+              </Badge>
+            )}
           </div>
           <h1 className="text-[20px] leading-snug font-semibold tracking-[-0.02em] sm:text-[22px]">
             {webinar.topic}
@@ -171,8 +195,17 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
             {formatDuration(webinar.durationMin)}
           </p>
           <p className="mt-1 text-[12px] text-ink-3">
-            Webinar ID <span className="tabular-nums">{webinar.webinarId}</span>
+            ID <span className="tabular-nums">{webinar.webinarId}</span>
             {webinar.passcode && <> · Passcode {webinar.passcode}</>}
+            {!isDraft && (
+              <>
+                {" "}
+                · {webinar.registrantCount} registered
+                {isEnded && webinar.report
+                  ? ` · ${webinar.report.attended} attended`
+                  : ""}
+              </>
+            )}
           </p>
         </div>
 
@@ -180,29 +213,32 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
           {isDraft ? (
             <ButtonLink href={`/host/${slug}/edit`}>Finish setup</ButtonLink>
           ) : isEnded ? (
-            <ButtonLink href={`/host/${slug}/edit`} variant="secondary">
-              Edit and reschedule
+            <ButtonLink href={`/host/${slug}?tab=attendees`}>
+              View attendance
             </ButtonLink>
           ) : (
             <>
               <Button onClick={() => void start()} disabled={busy}>
                 {busy && <Spinner className="size-4" />}
-                {isLive ? "Rejoin the room" : "Start webinar"}
+                {isLive ? "Rejoin room" : "Host webinar"}
               </Button>
+              {pending > 0 && (
+                <ButtonLink href={`/host/${slug}?tab=admit`} variant="secondary">
+                  Admit ({pending})
+                </ButtonLink>
+              )}
               {isLive && (
                 <Button variant="danger" onClick={() => setConfirmEnd(true)} disabled={busy}>
                   End for everyone
                 </Button>
               )}
-              <ButtonLink href={`/host/${slug}/edit`} variant="secondary">
-                Edit
-              </ButtonLink>
             </>
           )}
-          {/* Delete, on every status. Ghost rather than danger: it sits next to the primary
-              action a host actually came here for, and a red button beside "Start webinar" is
-              a mis-click waiting to happen. The dialog carries the weight instead, and it
-              names what goes — see lib/webinar-delete.ts. */}
+          {!isDraft && !isEnded && (
+            <ButtonLink href={`/host/${slug}/edit`} variant="ghost">
+              Edit
+            </ButtonLink>
+          )}
           <Button variant="ghost" onClick={() => setConfirmDelete(true)} disabled={busy}>
             Delete
           </Button>
@@ -212,8 +248,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
       {isDraft && (
         <div className="mb-4">
           <Alert tone="warn" title="This is a draft">
-            It has no public registration page yet. Finish setup and save it as
-            scheduled to open registration.
+            Finish setup and save as scheduled to open registration.
           </Alert>
         </div>
       )}
@@ -223,6 +258,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         registrants={registrants}
         recordings={recordings}
         onChanged={load}
+        initialTab={initialTab}
       />
 
       <ConfirmModal

@@ -7,30 +7,34 @@ import { useSession } from "./providers";
 import { ButtonLink, Card, Empty } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
+import { DEV_BYPASS_WEBINARS, isDevAuthBypass } from "@/lib/dev-bypass";
 
-/** The host portal's home: everything this account owns, plus the sessions it is
- *  booked to appear on as a panelist. */
+/** Host home: create, run upcoming sessions, review past attendance.
+ *
+ *  One job per section — primary CTA to create, then the webinar list split into
+ *  Upcoming / Past / Drafts. Deliberately not a metrics dashboard. */
 export function HostWebinarsScreen() {
   const { account, status } = useSession();
   const [mine, setMine] = useState<Webinar[] | null>(null);
   const [onStage, setOnStage] = useState<Webinar[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const bypass = isDevAuthBypass();
 
   const canHost = account?.canHost ?? false;
 
   const load = useCallback(() => {
-    // The stage list is loaded for every signed-in account, hosting or not. Being
-    // invited to speak on somebody else's webinar is a different thing from
-    // running your own, and for a guest speaker this list is the only way into the
-    // room they were invited to.
+    if (bypass) {
+      setMine(DEV_BYPASS_WEBINARS);
+      setOnStage([]);
+      setError(null);
+      return;
+    }
+
     api
       .stageWebinars()
       .then(setOnStage)
       .catch(() => setOnStage([]));
 
-    // `mine` stays null for an account that cannot host: the branch that reads it
-    // is unreachable for them, and setting it here would be a synchronous state
-    // change inside the effect that calls this.
     if (!canHost) return;
     api
       .hostWebinars()
@@ -40,12 +44,12 @@ export function HostWebinarsScreen() {
       })
       .catch((e: unknown) => {
         setMine([]);
-        if (e instanceof ApiError && e.code === "not_a_host") return; // handled below
+        if (e instanceof ApiError && e.code === "not_a_host") return;
         setError(
           e instanceof Error ? e.message : "Could not load your webinars.",
         );
       });
-  }, [canHost]);
+  }, [canHost, bypass]);
 
   useEffect(() => {
     if (status === "signed-in") load();
@@ -78,46 +82,28 @@ export function HostWebinarsScreen() {
     );
   }
 
-  // Signed in, but this account has never asked to host. Hosting is a capability
-  // checked server-side on every write, so it is turned on here rather than
-  // assumed.
   if (!canHost) {
     return (
       <>
-        {/* Shown first, because somebody who came here from an invitation is
-            looking for a room to join, not for a capability to turn on. */}
         {onStage.length > 0 && (
           <section className="mb-8">
             <h1 className="mb-1.5 text-[24px] font-semibold tracking-[-0.02em]">
               You&apos;re a panelist on
             </h1>
             <p className="mb-3 text-[13.5px] text-ink-2">
-              You can join the stage and present. Hosting your own webinars is a
-              separate thing, and it&apos;s below if you want it.
+              Join the stage when the host starts. Hosting your own sessions is
+              separate — ask an admin to enable it on your account.
             </p>
             <HostWebinarList webinars={onStage} readOnly />
           </section>
         )}
-        {/* Hosting is a GRANT, so this is a message rather than a button.
-         *
-         * It used to be a "Become a host" button calling updateProfile({wantsHost:true}),
-         * which is precisely the self-service promotion that had to stop — a public form
-         * that handed out the ability to create webinars and collect strangers' names,
-         * emails and phone numbers. The server ignores that field now, so leaving the
-         * button in place meant a spinner that ran and changed nothing: worse than no
-         * button, because it looks broken rather than restricted. */}
         <Card className="p-8 text-center">
           <h1 className="text-[18px] font-semibold">
             Hosting isn&apos;t enabled for this account
           </h1>
           <p className="mx-auto mt-2 max-w-md text-[13.5px] leading-relaxed text-ink-2">
-            Only an administrator can turn it on. Ask whoever runs this instance
-            to grant you hosting access — you keep the same account, and nothing
-            you&apos;ve registered for is affected.
-          </p>
-          <p className="mx-auto mt-3 max-w-md text-[12.5px] leading-relaxed text-ink-3">
-            You can still register for and attend any session you have a link
-            to.
+            Only an administrator can turn it on. You can still register for and
+            attend any session you have a link to.
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <ButtonLink href="/my-webinars" variant="secondary" size="sm">
@@ -132,19 +118,69 @@ export function HostWebinarsScreen() {
     );
   }
 
+  const upcoming =
+    mine?.filter((w) => w.status === "scheduled" || w.status === "live")
+      .length ?? 0;
+  const pendingAdmit =
+    mine?.find((w) => w.approval === "manual" && w.status !== "ended") ?? null;
+
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
+      {bypass && (
+        <div className="mb-4">
+          <Alert tone="info" title="Local UI preview">
+            Auth bypass is on — fixture webinars below. Room media is mocked at{" "}
+            <a className="underline" href="/preview/room">
+              /preview/room
+            </a>
+            .
+          </Alert>
+        </div>
+      )}
+
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
-            Webinars
+            Host
           </h1>
-          <p className="mt-1.5 text-[13.5px] text-ink-2">
-            Signed in as {account?.name}
-            {account?.org ? ` · ${account.org}` : ""}
+          <p className="mt-1.5 max-w-lg text-[13.5px] leading-relaxed text-ink-2">
+            Create a session, start it when you&apos;re ready, admit people who
+            need approval, then review who attended.
           </p>
         </div>
-        <ButtonLink href="/host/new">Schedule a webinar</ButtonLink>
+        <ButtonLink href="/host/new" className="shrink-0">
+          Create webinar
+        </ButtonLink>
+      </div>
+
+      {/* Three clear jobs — not a metrics strip. */}
+      <div className="mb-8 grid gap-3 sm:grid-cols-3">
+        <TaskHint
+          title="Create"
+          body="Schedule a new webinar and share the registration link."
+          href="/host/new"
+          cta="New webinar"
+        />
+        <TaskHint
+          title="Host"
+          body={
+            upcoming > 0
+              ? `${upcoming} upcoming — open one and press Host when live.`
+              : "Nothing scheduled yet. Create one to get a Host button."
+          }
+          href={upcoming > 0 ? undefined : "/host/new"}
+          cta={upcoming > 0 ? undefined : "Create first"}
+        />
+        <TaskHint
+          title="Admit"
+          body={
+            pendingAdmit
+              ? `Manual approval on “${pendingAdmit.topic}”. Open Manage → Admit.`
+              : "Only needed when a webinar uses manual approval."
+          }
+          href={pendingAdmit ? `/host/${pendingAdmit.id}?tab=admit` : undefined}
+          cta={pendingAdmit ? "Review queue" : undefined}
+        />
       </div>
 
       {error && (
@@ -160,22 +196,49 @@ export function HostWebinarsScreen() {
         </div>
       ) : mine.length === 0 && !error ? (
         <Empty
-          title="Nothing scheduled"
-          hint="Schedule your first webinar and share the registration page."
-          action={<ButtonLink href="/host/new">Schedule a webinar</ButtonLink>}
+          title="No webinars yet"
+          hint="Create one, share the link, then Host when it's time."
+          action={<ButtonLink href="/host/new">Create webinar</ButtonLink>}
         />
       ) : (
         <HostWebinarList webinars={mine} />
       )}
 
       {onStage.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-3 text-[13px] font-semibold text-ink">
-            You&apos;re a panelist on
-          </h2>
+        <section className="mt-10">
+          <h2 className="mb-1 text-[15px] font-semibold">On stage as panelist</h2>
+          <p className="mb-3 text-[13px] text-ink-2">
+            Sessions you were invited to present on — join when the host starts.
+          </p>
           <HostWebinarList webinars={onStage} readOnly />
         </section>
       )}
     </>
+  );
+}
+
+function TaskHint({
+  title,
+  body,
+  href,
+  cta,
+}: {
+  title: string;
+  body: string;
+  href?: string;
+  cta?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-line bg-surface px-4 py-3.5">
+      <div className="text-[12px] font-semibold tracking-wide text-ink-3 uppercase">
+        {title}
+      </div>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">{body}</p>
+      {href && cta && (
+        <ButtonLink href={href} variant="ghost" size="sm" className="mt-2 -ml-2">
+          {cta}
+        </ButtonLink>
+      )}
+    </div>
   );
 }

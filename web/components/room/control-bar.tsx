@@ -17,7 +17,6 @@ import {
   LeaveIcon,
   MicIcon,
   MicOffIcon,
-  PinIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
 } from "../icons";
@@ -296,6 +295,7 @@ export function ControlBar() {
     if (id === "hand") return realtime.myHandRaised;
     if (id === "reactions") return reactionsOpen;
     if (id === "layout") return layoutOpen;
+    if (tools.panelTab === id) return true;
     const win = tools.layout.windows[id];
     return !!win && !win.minimized;
   };
@@ -422,23 +422,7 @@ export function ControlBar() {
             />
           )}
         </>
-      ) : (
-        <span className="hidden items-center gap-1.5 rounded-lg bg-white/5 px-2.5 py-1.5 text-[11.5px] text-white/60 lg:inline-flex">
-          <MicOffIcon className="size-3.5" />
-          View only
-        </span>
-      )}
-      {permissions.mutedByHost ? (
-        <span className="hidden items-center gap-1.5 rounded-lg bg-warn/15 px-2.5 py-1.5 text-[11.5px] font-medium text-warn lg:inline-flex">
-          Muted by host
-        </span>
-      ) : (
-        permissions.audioOnly && (
-          <span className="hidden items-center gap-1.5 rounded-lg bg-ok/15 px-2.5 py-1.5 text-[11.5px] font-medium text-ok lg:inline-flex">
-            Allowed to speak
-          </span>
-        )
-      )}
+      ) : null}
 
       {/* Recording sits with the publish controls because that is what it is: a
           capture of what this stage is sending. It renders nothing for anyone the
@@ -465,13 +449,6 @@ export function ControlBar() {
             : ""
         }`}
       >
-        {slots.length === 0 && dropIndex === null && (
-          <span className="hidden items-center gap-1.5 rounded-lg border border-dashed border-white/20 px-2.5 py-1.5 text-[11px] text-white/45 md:inline-flex">
-            <PinIcon className="size-3" />
-            Drag tools here
-          </span>
-        )}
-
         {slots.map((slot, i) => (
           <div key={slot.tool} className="flex items-center">
             {dropIndex === i && <DropMarker />}

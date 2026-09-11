@@ -15,15 +15,16 @@ import {
 } from "@/lib/format";
 import { api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
+import { isDevAuthBypass } from "@/lib/dev-bypass";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 
-/** Zoom's host portal splits webinars across these tabs. */
-const TABS = ["Upcoming", "Previous", "Drafts"] as const;
+/** Zoom / Livestorm-style host list: Upcoming vs Past vs Drafts. */
+const TABS = ["Upcoming", "Past", "Drafts"] as const;
 type TabId = (typeof TABS)[number];
 
 function inTab(w: Webinar, tab: TabId): boolean {
   if (tab === "Drafts") return w.status === "draft";
-  if (tab === "Previous") return w.status === "ended";
+  if (tab === "Past") return w.status === "ended";
   return w.status === "scheduled" || w.status === "live";
 }
 
@@ -40,10 +41,8 @@ export function HostWebinarList({
   const [tab, setTab] = useState<TabId>("Upcoming");
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Webinar | null>(null);
+  const bypass = isDevAuthBypass();
 
-  // Panelist rows are somebody else's webinars: there is no draft to finish and
-  // no report to own, so the tab strip would offer two empty tabs and one real
-  // one. They get a plain list of what they are booked to appear on.
   const rows = readOnly
     ? webinars.filter((w) => w.status !== "ended")
     : webinars.filter((w) => inTab(w, tab));
@@ -52,9 +51,11 @@ export function HostWebinarList({
     TABS.map((t) => [t, webinars.filter((w) => inTab(w, t)).length]),
   ) as Record<TabId, number>;
 
-  /** Start moves the webinar live and creates the SFU room, then opens it.
-   *  Doing it in that order means the first attendee never races room creation. */
   async function start(w: Webinar) {
+    if (bypass) {
+      router.push("/preview/room");
+      return;
+    }
     setBusy(w.id);
     try {
       if (w.status !== "live") await api.startWebinar(w.id);
@@ -66,17 +67,21 @@ export function HostWebinarList({
   }
 
   async function remove(w: Webinar) {
+    if (bypass) {
+      notify("Delete is mocked in local preview.", "info");
+      setConfirmDelete(null);
+      return;
+    }
     setBusy(w.id);
     try {
       await api.deleteWebinar(w.id);
       notify(`Deleted “${w.topic}”.`, "ok");
       setConfirmDelete(null);
       router.refresh();
-      // The list is client-fetched, so a refresh of the Server Component tree is
-      // not enough on its own.
       location.reload();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Could not delete that.", "error");
+    } finally {
       setBusy(null);
     }
   }
@@ -96,25 +101,25 @@ export function HostWebinarList({
               ? "Nothing coming up"
               : tab === "Drafts"
                 ? "No drafts"
-                : tab === "Previous"
-                  ? "No previous webinars"
-                  : "Nothing scheduled"
+                : tab === "Past"
+                  ? "No past webinars"
+                  : "Nothing upcoming"
           }
           hint={
             tab === "Upcoming" && !readOnly
-              ? "Schedule your first webinar and share the registration page."
+              ? "Create a webinar, then Host it from this list when it's time."
               : undefined
           }
           action={
             tab === "Upcoming" && !readOnly ? (
-              <ButtonLink href="/host/new">Schedule a webinar</ButtonLink>
+              <ButtonLink href="/host/new">Create webinar</ButtonLink>
             ) : undefined
           }
         />
       ) : (
-        <Card className="divide-y divide-line">
+        <div className="grid gap-3">
           {rows.map((w) => (
-            <HostRow
+            <HostCard
               key={w.id}
               webinar={w}
               readOnly={readOnly}
@@ -123,7 +128,7 @@ export function HostWebinarList({
               onDelete={() => setConfirmDelete(w)}
             />
           ))}
-        </Card>
+        </div>
       )}
 
       <ConfirmModal
@@ -139,7 +144,7 @@ export function HostWebinarList({
   );
 }
 
-function HostRow({
+function HostCard({
   webinar: w,
   readOnly,
   busy,
@@ -156,114 +161,107 @@ function HostRow({
   const isDraft = w.status === "draft";
   const isEnded = w.status === "ended";
   const isLive = w.status === "live";
-  const fill = Math.min(100, (w.registrantCount / Math.max(1, w.attendeeLimit)) * 100);
+  const needsAdmit = w.approval === "manual" && !isEnded && !isDraft;
 
   return (
-    <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center">
-      {/* when */}
-      <div className="shrink-0 lg:w-[132px]">
-        <div className="text-[13px] font-medium">
-          {formatDayShort(w.startsAt, w.timeZone)}
-        </div>
-        <div className="mt-0.5 text-[12px] text-ink-2">
-          {formatTimeRange(w.startsAt, w.durationMin, w.timeZone)}
-        </div>
-        <div className="text-[11px] text-ink-3">
-          {tzLabel(w.startsAt, w.timeZone)} · {formatDuration(w.durationMin)}
-        </div>
-      </div>
+    <Card className="p-4 sm:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+            <Badge tone={kind.tone} dot={isLive}>
+              {kind.text}
+            </Badge>
+            {needsAdmit && <Badge tone="warn">Admit required</Badge>}
+            {w.priceUsd ? <Badge tone="brand">${w.priceUsd}</Badge> : null}
+          </div>
 
-      {/* topic */}
-      <div className="min-w-0 flex-1">
-        <div className="mb-1 flex flex-wrap items-center gap-1.5">
-          <Badge tone={kind.tone} dot={isLive}>
-            {kind.text}
-          </Badge>
-          {w.approval === "manual" && <Badge tone="warn">Manual approval</Badge>}
-          {w.priceUsd && <Badge tone="brand">${w.priceUsd}</Badge>}
-          {w.controls.hideAttendees && !isEnded && <Badge>Audience private</Badge>}
-        </div>
-        <h3 className="truncate text-[14.5px] font-medium">
-          {/* A panelist does not own this webinar, so the manage page would answer
-              404. The public page is the one they can actually read. */}
-          <Link
-            href={readOnly ? `/webinars/${w.id}` : `/host/${w.id}`}
-            className="hover:text-brand"
-          >
-            {w.topic}
-          </Link>
-        </h3>
-        <p className="mt-1 text-[12px] text-ink-3">
-          Webinar ID <span className="tabular-nums">{w.webinarId}</span>
-          {w.passcode && <> · Passcode {w.passcode}</>}
-        </p>
-      </div>
+          <h3 className="text-[15px] font-semibold tracking-[-0.01em]">
+            <Link
+              href={readOnly ? `/webinars/${w.id}` : `/host/${w.id}`}
+              className="hover:text-brand"
+            >
+              {w.topic}
+            </Link>
+          </h3>
 
-      {/* registrants */}
-      <div className="shrink-0 lg:w-[132px]">
-        {isDraft ? (
-          <span className="text-[12.5px] text-ink-3">Not published</span>
-        ) : isEnded ? (
-          <>
-            <div className="text-[13px] font-medium tabular-nums">
-              {formatCount(w.registrantCount)} registered
-            </div>
-            <div className="mt-0.5 text-[11.5px] text-ink-3">
-              {w.report ? `${formatCount(w.report.attended)} attended` : "Ended"}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="text-[13px] font-medium tabular-nums">
-              {formatCount(w.registrantCount)} registered
-            </div>
-            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-2">
-              <div className="h-full rounded-full bg-brand" style={{ width: `${fill}%` }} />
-            </div>
-            <div className="mt-1 text-[11px] text-ink-3">
-              {formatCount(w.attendeeLimit)} seat limit
-            </div>
-          </>
-        )}
-      </div>
+          <p className="mt-1.5 text-[13px] text-ink-2">
+            {formatDayShort(w.startsAt, w.timeZone)} ·{" "}
+            {formatTimeRange(w.startsAt, w.durationMin, w.timeZone)}{" "}
+            {tzLabel(w.startsAt, w.timeZone)} · {formatDuration(w.durationMin)}
+          </p>
 
-      {/* actions */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        {readOnly ? (
-          <ButtonLink href={`/host/${w.id}/room`} size="sm" variant="secondary">
-            Join the stage
-          </ButtonLink>
-        ) : (
-          <>
+          <p className="mt-1 text-[12px] text-ink-3">
             {isDraft ? (
-              <ButtonLink href={`/host/${w.id}/edit`} size="sm">
-                Finish setup
-              </ButtonLink>
+              "Draft — not published yet"
             ) : isEnded ? (
-              <ButtonLink href={`/host/${w.id}`} variant="secondary" size="sm">
-                View report
-              </ButtonLink>
+              <>
+                {formatCount(w.registrantCount)} registered
+                {w.report ? ` · ${formatCount(w.report.attended)} attended` : ""}
+              </>
             ) : (
               <>
-                <Button size="sm" onClick={onStart} disabled={busy}>
-                  {busy ? <Spinner className="size-3.5" /> : isLive ? "Rejoin" : "Start"}
-                </Button>
-                <ButtonLink href={`/host/${w.id}`} variant="secondary" size="sm">
-                  Manage
-                </ButtonLink>
+                {formatCount(w.registrantCount)} registered
+                {w.attendeeLimit > 0
+                  ? ` · ${formatCount(w.attendeeLimit)} seat limit`
+                  : ""}
               </>
             )}
-            {/* Delete on every row the host owns, not only on drafts.
-                It used to be draft-only, and the API refused anything that had run — so a
-                scheduled webinar could be deleted from nowhere and an ended one could not be
-                deleted at all. A host who wants their data gone had no way to say so. The
-                warning is in the dialog and it is specific per status; see lib/webinar-delete.ts. */}
+          </p>
+        </div>
+
+        {/* Primary actions — Host / Manage / Attendees (or Admit). */}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {readOnly ? (
+            <ButtonLink href={`/host/${w.id}/room`} size="sm">
+              Join stage
+            </ButtonLink>
+          ) : isDraft ? (
+            <ButtonLink href={`/host/${w.id}/edit`} size="sm">
+              Finish setup
+            </ButtonLink>
+          ) : isEnded ? (
+            <>
+              <ButtonLink href={`/host/${w.id}?tab=attendees`} size="sm">
+                View attendance
+              </ButtonLink>
+              <ButtonLink href={`/host/${w.id}`} variant="secondary" size="sm">
+                Manage
+              </ButtonLink>
+            </>
+          ) : (
+            <>
+              <Button size="sm" onClick={onStart} disabled={busy}>
+                {busy ? <Spinner className="size-3.5" /> : isLive ? "Rejoin" : "Host"}
+              </Button>
+              {needsAdmit ? (
+                <ButtonLink
+                  href={`/host/${w.id}?tab=admit`}
+                  variant="secondary"
+                  size="sm"
+                >
+                  Admit
+                </ButtonLink>
+              ) : (
+                <ButtonLink
+                  href={`/host/${w.id}?tab=attendees`}
+                  variant="secondary"
+                  size="sm"
+                >
+                  Attendees
+                </ButtonLink>
+              )}
+              <ButtonLink href={`/host/${w.id}`} variant="ghost" size="sm">
+                Manage
+              </ButtonLink>
+            </>
+          )}
+          {!readOnly && (
             <Button variant="ghost" size="sm" onClick={onDelete} disabled={busy}>
               Delete
             </Button>
-          </>
-        )}
+          )}
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }

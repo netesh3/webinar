@@ -30,7 +30,7 @@ import { HostAlerts } from "./host-alerts";
  */
 function linksFor(signedIn: boolean, canHost: boolean) {
   return [
-    { href: "/", label: "Browse webinars" },
+    { href: "/", label: "Browse" },
     ...(signedIn ? [{ href: "/my-webinars", label: "My webinars" }] : []),
     ...(canHost ? [{ href: "/host", label: "Host" }] : []),
   ];

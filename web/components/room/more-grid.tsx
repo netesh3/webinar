@@ -179,7 +179,7 @@ export function MoreGrid({
 
       <p className="mt-2 flex items-center gap-1.5 border-t border-line px-1.5 pt-2 text-[11px] text-ink-3">
         <PinIcon className="size-3 shrink-0" />
-        Drag any tool onto the bar to keep it there.
+        Drag onto the bar to pin. Chat opens the side panel.
       </p>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ToolId } from "@/lib/tools";
+import { isPanelTool } from "@/lib/tools";
 import { ChatPanel } from "./chat-panel";
 import { useRoomUI } from "./context";
 import { DeviceSettings } from "./device-settings";
@@ -13,18 +14,11 @@ import { PollsPanel } from "./polls-panel";
 import { QAPanel } from "./qa-panel";
 import { tool } from "./tools";
 
-/* Every open tool window.
+/* Floating tool windows — Host tools, Settings, Invite.
  *
- * The old side panel could show exactly one of these at a time, and its tab bar
- * was the mechanism. Windows remove the mechanism: what is visible is now just
- * which windows are open, so this component has nothing to decide — it maps state
- * onto windows and gets out of the way.
- *
- * Below `md` the same state renders as one bottom sheet with the rest collapsed to
- * strips at the top. Deliberately the same components and the same state, because
- * two implementations of one behaviour is how the mobile layout ends up a version
- * behind the desktop one.
- */
+ * Chat / Q&A / Polls / Participants live in the docked SidePanel instead. The
+ * Content switch still knows those ids so a stray window state from an older
+ * session can render if somehow present; ToolWindows filters them out. */
 
 /** `md`, matching the class the room's own layout switches at, so the sheet
  *  appears exactly when the stage stops having room beside it. */
@@ -80,7 +74,10 @@ export function ToolWindows() {
    * on top being announced last is a window nobody finds. Sorting by tool id
    * would have been stable across renders and wrong for exactly that reason. */
   const open = useMemo(
-    () => Object.values(tools.layout.windows).sort((a, b) => a.z - b.z),
+    () =>
+      Object.values(tools.layout.windows)
+        .filter((win) => !isPanelTool(win.tool))
+        .sort((a, b) => a.z - b.z),
     [tools.layout.windows],
   );
 

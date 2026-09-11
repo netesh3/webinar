@@ -52,6 +52,22 @@ export const TOOL_IDS: readonly ToolId[] = [
   "host",
 ];
 
+/** Engagement tools that live in the docked side panel (Zoom/Livestorm pattern).
+ *
+ *  One panel with tabs instead of a stack of floating windows — the main
+ *  simplification pass. Host tools, settings and invite stay as windows because
+ *  they are modal/workflow surfaces, not ongoing conversation streams. */
+export const PANEL_TOOL_IDS: readonly ToolId[] = [
+  "chat",
+  "qa",
+  "polls",
+  "participants",
+];
+
+export function isPanelTool(id: ToolId): boolean {
+  return (PANEL_TOOL_IDS as readonly string[]).includes(id);
+}
+
 export function isToolId(value: unknown): value is ToolId {
   return (
     typeof value === "string" && (TOOL_IDS as readonly string[]).includes(value)
@@ -169,12 +185,11 @@ export type ToolLayout = {
 
 /* What a first-time user gets.
  *
- * Chat and Participants on the bar because they are what people reach for, and
- * everything else one click away in the grid. Deliberately not "all of them
- * pinned": a bar with eight tools on it is the wrapping two-row bar this design
- * exists to avoid.
+ * Chat and Participants on the bar — they open the side panel. Layout, invite
+ * and the rest stay one click away in More. Fewer pins = less chrome to parse
+ * mid-session; the panel tabs carry the rest of the engagement surface.
  */
-const DEFAULT_PINNED: ToolId[] = ["layout", "participants", "invite", "chat"];
+const DEFAULT_PINNED: ToolId[] = ["chat", "participants"];
 
 export const RECENT_LIMIT = 6;
 
@@ -506,7 +521,9 @@ export function gridItems(
 
 // --------------------------------------------------------------- persistence
 
-const STORAGE_KEY = "webcast.toolbar.v1";
+/* v2: simpler default pins + docked side panel. Bumped so old layouts that
+ * pinned layout/invite/four tools do not fight the redesign on first load. */
+const STORAGE_KEY = "webcast.toolbar.v2";
 
 /** Only the customisation is persisted, never the windows.
  *
@@ -581,9 +598,13 @@ export function boundsFrom(el: HTMLElement | null): Bounds {
 
 export type ToolApi = {
   layout: ToolLayout;
-  /** Open (or raise) a tool's window, and record the use. */
+  /** Which engagement tab is open in the docked side panel, or null when closed. */
+  panelTab: ToolId | null;
+  /** Open (or raise) a tool — panel tools dock; the rest open a window. */
   open: (tool: ToolId) => void;
   close: (tool: ToolId) => void;
+  /** Close the side panel without touching floating windows. */
+  closePanel: () => void;
   /** Open if closed, close if already open and focused — what a toolbar button
    *  does. Anything else makes the button a one-way trip. */
   toggle: (tool: ToolId) => void;
@@ -620,6 +641,14 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
    */
   const [stored, setStored] = useState<ToolLayout>(load);
 
+  /* The engagement tab in the docked side panel.
+   *
+   * Separate from `windows` on purpose: panel tools are mutually exclusive (one
+   * tab at a time), not stacked floating frames. Not persisted — reopening the
+   * room with Chat already open would cover the stage before anyone asked.
+   */
+  const [panelTab, setPanelTab] = useState<ToolId | null>(null);
+
   /* The element windows are confined to, in state rather than a ref.
    *
    * A ref would be the obvious choice for "the DOM node I was handed", and it is
@@ -648,6 +677,11 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
     [stored, availableKey],
   );
 
+  // Drop a panel tab that is no longer available (host turned polls off, etc.).
+  useEffect(() => {
+    if (panelTab && !available.includes(panelTab)) setPanelTab(null);
+  }, [available, panelTab]);
+
   // The derived layout is what gets saved, so a tool that appeared mid-session
   // keeps the position it was given.
   useEffect(() => {
@@ -669,9 +703,29 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
   return useMemo<ToolApi>(
     () => ({
       layout,
-      open: (tool) => setLayout((c) => openWindow(c, tool, bounds())),
-      close: (tool) => setLayout((c) => closeWindow(c, tool)),
-      toggle: (tool) =>
+      panelTab,
+      open: (tool) => {
+        if (isPanelTool(tool)) {
+          setPanelTab(tool);
+          setLayout((c) => noteUse(c, tool));
+          return;
+        }
+        setLayout((c) => openWindow(c, tool, bounds()));
+      },
+      close: (tool) => {
+        if (isPanelTool(tool)) {
+          setPanelTab((current) => (current === tool ? null : current));
+          return;
+        }
+        setLayout((c) => closeWindow(c, tool));
+      },
+      closePanel: () => setPanelTab(null),
+      toggle: (tool) => {
+        if (isPanelTool(tool)) {
+          setPanelTab((current) => (current === tool ? null : tool));
+          setLayout((c) => noteUse(c, tool));
+          return;
+        }
         setLayout((c) => {
           const win = c.windows[tool];
           // Open, on top and visible means the button that opened it now closes
@@ -680,8 +734,15 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
           if (win && !win.minimized && win.z === c.nextZ - 1)
             return closeWindow(c, tool);
           return openWindow(c, tool, bounds());
-        }),
-      focus: (tool) => setLayout((c) => focusWindow(c, tool)),
+        });
+      },
+      focus: (tool) => {
+        if (isPanelTool(tool)) {
+          setPanelTab(tool);
+          return;
+        }
+        setLayout((c) => focusWindow(c, tool));
+      },
       move: (tool, rect) =>
         setLayout((c) => moveWindow(c, tool, rect, bounds())),
       minimize: (tool, minimized) =>
@@ -697,6 +758,6 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
         }),
       setStage,
     }),
-    [layout, bounds, setLayout],
+    [layout, panelTab, bounds, setLayout],
   );
 }

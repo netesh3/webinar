@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { decideAccess, type Viewer } from "@/lib/access";
+import { isDevAuthBypass } from "@/lib/dev-bypass";
 
 /* Route protection, applied before a page renders.
  *
@@ -45,6 +46,13 @@ const LOOKUP_TIMEOUT_MS = 2_500;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  /* Local UI preview only. NODE_ENV=development + NEXT_PUBLIC_DEV_BYPASS_AUTH=1.
+   * Soft-allows host/admin routes so fixture screens can render without a cookie.
+   * Production builds never hit this branch. */
+  if (isDevAuthBypass()) {
+    return NextResponse.next();
+  }
 
   /* Anonymous until proven otherwise, and no network call unless there is a cookie to check.
    *

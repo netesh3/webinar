@@ -13,6 +13,7 @@ import {
 } from "react";
 import { ApiError, api } from "@/lib/api";
 import type { Account, AppConfig, ProfilePatch } from "@/lib/api-types";
+import { DEV_BYPASS_ACCOUNT, isDevAuthBypass } from "@/lib/dev-bypass";
 
 /* App-wide client state: who is signed in, what the operator named this
  * instance, and transient toasts.
@@ -168,6 +169,11 @@ export function AppProviders({
   }, []);
 
   const refresh = useCallback(async () => {
+    if (isDevAuthBypass()) {
+      setAccount(DEV_BYPASS_ACCOUNT);
+      setStatus("signed-in");
+      return;
+    }
     try {
       const me = await api.me();
       setAccount(me);
@@ -186,6 +192,11 @@ export function AppProviders({
   // The promise chain is inline rather than a call to `refresh`, so every state
   // write happens in a callback instead of synchronously inside the effect.
   useEffect(() => {
+    if (isDevAuthBypass()) {
+      setAccount(DEV_BYPASS_ACCOUNT);
+      setStatus("signed-in");
+      return;
+    }
     let active = true;
     api
       .me()
@@ -238,6 +249,13 @@ export function AppProviders({
         return me;
       },
       signOut: async () => {
+        if (isDevAuthBypass()) {
+          // Bypass preview has no real cookie; keep the mock session so the UI
+          // review does not bounce to a login wall mid-demo.
+          setAccount(DEV_BYPASS_ACCOUNT);
+          setStatus("signed-in");
+          return;
+        }
         try {
           await api.logout();
         } finally {
@@ -248,6 +266,11 @@ export function AppProviders({
         }
       },
       updateProfile: async (patch) => {
+        if (isDevAuthBypass()) {
+          const next = { ...DEV_BYPASS_ACCOUNT, ...patch } as Account;
+          setAccount(next);
+          return next;
+        }
         const me = await api.updateProfile(patch);
         setAccount(me);
         return me;
