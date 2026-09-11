@@ -67,21 +67,3 @@ export function dialOptions(): DialOption[] {
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }
-
-/* The dial code to start on.
- *
- * From the browser's own locale region, so somebody in India opens the form on +91 and somebody
- * in Germany on +49 — nobody has to scroll a list of two hundred to find their own country
- * first. Falls back to India rather than to the top of the alphabet, matching DEFAULT_TIME_ZONE:
- * a default is only ever right for somebody, and being right for the expected audience beats
- * being arbitrary.
- */
-export function localDialIso(): string {
-  try {
-    const region = new Intl.Locale(Intl.DateTimeFormat().resolvedOptions().locale).region;
-    if (region && DIAL_CODES[region]) return region;
-  } catch {
-    // fall through
-  }
-  return "IN";
-}
