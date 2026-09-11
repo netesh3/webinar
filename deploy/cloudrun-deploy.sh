@@ -89,9 +89,12 @@ echo "project=$PROJECT region=$REGION image=$IMAGE"
 run gcloud config set project "$PROJECT" --quiet
 run gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
+# --suppress-logs: CI deploy SAs often lack permission to stream the default
+# Cloud Build log bucket; the build itself still runs. Status is returned either way.
 run gcloud builds submit "$ROOT/api" \
   --tag "$IMAGE" \
-  --project "$PROJECT"
+  --project "$PROJECT" \
+  --suppress-logs
 
 if [[ "$BUILD_ONLY" -eq 1 ]]; then
   echo "build-only: image pushed as $IMAGE"
