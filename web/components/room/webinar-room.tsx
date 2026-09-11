@@ -53,6 +53,7 @@ import { ToolWindows } from "./tool-windows";
 import { useAvailableTools } from "./tools";
 import { useToolLayout, type ToolId } from "@/lib/tools";
 import { useFileShare } from "@/lib/file-share";
+import { useUiRedesign } from "@/lib/ui-redesign";
 import { useStageLayout } from "@/lib/layout";
 
 /* The webinar room.
@@ -285,6 +286,7 @@ function ConnectedRoom({
   entryVideo: LocalVideoTrack | null;
 }) {
 
+  const redesign = useUiRedesign();
   const [failure, setFailure] = useState<string | null>(null);
   const [exit, setExit] = useState<ExitReason | null>(null);
   /* Whether room.connect() has resolved. Separate from `ready`, which is about the person:
@@ -874,7 +876,7 @@ function ConnectedRoom({
                 <FileShareBar />
                 <ConnectionBanner />
               </div>
-              <SidePanel />
+              {redesign ? <SidePanel /> : null}
             </div>
 
             <ControlBar />

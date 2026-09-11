@@ -7,7 +7,8 @@ import { useSession } from "./providers";
 import { ButtonLink, Card, Empty } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
-import { DEV_BYPASS_WEBINARS, isDevAuthBypass } from "@/lib/dev-bypass";
+import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
+import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
 /** Hosting home: create, run upcoming sessions, review past attendance.
  *
@@ -18,7 +19,7 @@ export function HostWebinarsScreen() {
   const [mine, setMine] = useState<Webinar[] | null>(null);
   const [onStage, setOnStage] = useState<Webinar[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const bypass = isDevAuthBypass();
+  const bypass = isDevAuthBypassActive();
 
   const canHost = account?.canHost ?? false;
 

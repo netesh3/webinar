@@ -9,21 +9,15 @@ import type {
 import type { ChatMessage, Question, Realtime, Sender } from "@/lib/realtime";
 import type { NetworkHealth } from "@/lib/network";
 import { ConnectionQuality } from "livekit-client";
+import { isDevAuthBypass } from "@/lib/dev-bypass-flag";
 
-/* Local UI-preview auth bypass.
+export { isDevAuthBypass };
+
+/* Local UI-preview fixtures + session mock.
  *
- * Gated on NODE_ENV === "development" AND an explicit env flag. Production
- * `next build` sets NODE_ENV to "production", so the client bundle never
- * activates this even if someone accidentally sets the flag at build time.
- * Never set NEXT_PUBLIC_DEV_BYPASS_AUTH in Cloudflare Worker / wrangler vars.
+ * Env flag: lib/dev-bypass-flag.ts (Edge-safe for middleware).
+ * Tab opt-out: lib/dev-bypass-session.ts (sessionStorage + cookie mirror).
  */
-
-export function isDevAuthBypass(): boolean {
-  return (
-    process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === "1"
-  );
-}
 
 export const DEV_BYPASS_ACCOUNT: Account = {
   id: "dev-bypass-host",

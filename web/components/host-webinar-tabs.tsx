@@ -10,7 +10,7 @@ import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
 import { formatCount, formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
 import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
-import { isDevAuthBypass } from "@/lib/dev-bypass";
+import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
 /* Per-webinar management. Every tab here operates on real data — the share links
  * are built from the operator's configured public URL rather than a placeholder
@@ -151,7 +151,7 @@ function AttendeesTab({
   webinar: Webinar;
   registrants: RegistrantRow[];
 }) {
-  const bypass = isDevAuthBypass();
+  const bypass = isDevAuthBypassActive();
   const approved = registrants.filter((r) => r.state === "approved");
   const declined = registrants.filter((r) => r.state === "declined");
   const ended = w.status === "ended";

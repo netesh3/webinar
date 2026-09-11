@@ -9,7 +9,7 @@ import {
 } from "react";
 import { api } from "@/lib/api";
 import type { Registration, Webinar } from "@/lib/api-types";
-import { isDevAuthBypass } from "@/lib/dev-bypass";
+import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { useSession } from "./providers";
 
 /* Which webinars is this person signed up for?
@@ -241,7 +241,7 @@ export function useRegistrations() {
 
     // Local UI preview: mock host has no API session cookie — skip the call
     // so the badge does not spin on 401 noise.
-    if (isDevAuthBypass()) {
+    if (isDevAuthBypassActive()) {
       setOwned({ accountId, rows: [] });
       return;
     }

@@ -9,26 +9,26 @@ import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
+import { setUiMode, useUiRedesign } from "@/lib/ui-redesign";
 
-/* The top bar — one primary product nav.
+/* The top bar — primary product nav.
  *
- * Product areas: Browse | My webinars | Hosting (when canHost). Hosting owns
- * create / upcoming / past / manage — there is no second host sidebar.
- *
- * Below `sm` the links collapse into a disclosure panel rather than shrinking.
+ * Redesign: Browse | My webinars | Hosting.
+ * Classic: Browse webinars (on `/`) | My webinars | Host.
  */
 
-/* The nav, built from what this visitor can actually open.
- *
- * This is NOT the access control. `middleware.ts` refuses the routes and the API
- * refuses the requests; removing a link only stops advertising locked doors.
- * Participants do not render this component — see ParticipantHeader.
- */
-function linksFor(signedIn: boolean, canHost: boolean) {
+function linksFor(signedIn: boolean, canHost: boolean, redesign: boolean) {
+  if (redesign) {
+    return [
+      { href: "/browse", label: "Browse" },
+      ...(signedIn ? [{ href: "/my-webinars", label: "My webinars" }] : []),
+      ...(canHost ? [{ href: "/host", label: "Hosting" }] : []),
+    ];
+  }
   return [
-    { href: "/browse", label: "Browse" },
+    { href: "/", label: "Browse webinars" },
     ...(signedIn ? [{ href: "/my-webinars", label: "My webinars" }] : []),
-    ...(canHost ? [{ href: "/host", label: "Hosting" }] : []),
+    ...(canHost ? [{ href: "/host", label: "Host" }] : []),
   ];
 }
 
@@ -38,17 +38,27 @@ export function TopNav() {
   const { appName } = useAppConfig();
   const { account, status, signOut } = useSession();
   const { registrations } = useRegistrations();
+  const redesign = useUiRedesign();
   const [open, setOpen] = useState(false);
-  const links = linksFor(Boolean(account), account?.canHost === true);
+  const links = linksFor(Boolean(account), account?.canHost === true, redesign);
 
-  // Guest registrations live in this browser; an account's live on the account.
-  // Either way the badge is "things you're signed up for".
   const count = registrations?.length ?? 0;
 
-  const isActive = (href: string) =>
-    href === "/browse"
-      ? pathname === "/browse" || pathname.startsWith("/browse/")
-      : pathname.startsWith(href);
+  const isActive = (href: string) => {
+    if (href === "/browse") {
+      return pathname === "/browse" || pathname.startsWith("/browse/");
+    }
+    if (href === "/") {
+      return pathname === "/";
+    }
+    return pathname.startsWith(href);
+  };
+
+  const uiToggleItem = {
+    kind: "action" as const,
+    label: redesign ? "Use classic UI" : "Try new UI",
+    onSelect: () => setUiMode(redesign ? "classic" : "new"),
+  };
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
@@ -82,8 +92,6 @@ export function TopNav() {
           <span className="size-7 animate-pulse rounded-full bg-surface-2" />
         ) : account ? (
           <>
-            {/* The bell, only for accounts that can host. An attendee has no approval
-                queue, so an empty bell would be a control that never does anything. */}
             {account.canHost && <HostAlerts />}
             <Menu
               label="Your account"
@@ -108,8 +116,6 @@ export function TopNav() {
               }
               items={[
                 { kind: "label", text: account.email },
-                /* Account-level only. Browse / My webinars / Hosting live in the
-                 * primary nav — repeating them here is a second sitemap. */
                 ...(account.isAdmin
                   ? [
                       {
@@ -124,6 +130,7 @@ export function TopNav() {
                   label: "Account settings",
                   onSelect: () => router.push("/account"),
                 },
+                uiToggleItem,
                 { kind: "separator" },
                 {
                   kind: "action",
@@ -138,6 +145,13 @@ export function TopNav() {
           </>
         ) : (
           <div className="hidden items-center gap-2 sm:flex">
+            <button
+              type="button"
+              onClick={() => setUiMode(redesign ? "classic" : "new")}
+              className="rounded-lg px-2 py-1 text-[12px] text-ink-3 hover:bg-surface-2 hover:text-ink"
+            >
+              {redesign ? "Classic UI" : "New UI"}
+            </button>
             <ButtonLink href="/login" variant="ghost" size="sm">
               Sign in
             </ButtonLink>
@@ -185,6 +199,13 @@ export function TopNav() {
                 )}
               </Link>
             ))}
+            <button
+              type="button"
+              onClick={() => setUiMode(redesign ? "classic" : "new")}
+              className="flex h-9 items-center rounded-lg px-3 text-left text-[14px] text-ink-2 hover:bg-surface-2"
+            >
+              {redesign ? "Use classic UI" : "Try new UI"}
+            </button>
           </nav>
 
           {!account && status !== "loading" && (

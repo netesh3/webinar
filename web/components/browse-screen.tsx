@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
-import {
-  DEV_BYPASS_WEBINARS,
-  isDevAuthBypass,
-} from "@/lib/dev-bypass";
+import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
+import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { BrowseList } from "./browse-list";
 import { useSession } from "./providers";
 import { Button, ButtonLink, Empty } from "./ui";
@@ -19,7 +17,7 @@ import { Button, ButtonLink, Empty } from "./ui";
 
 export function BrowseScreen() {
   const { account, status } = useSession();
-  const bypass = isDevAuthBypass();
+  const bypass = isDevAuthBypassActive();
   const [webinars, setWebinars] = useState<Webinar[] | null>(null);
   const [state, setState] = useState<
     "loading" | "ok" | "signed-out" | "unreachable"

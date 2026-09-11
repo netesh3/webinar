@@ -14,6 +14,10 @@ import {
 import { ApiError, api } from "@/lib/api";
 import type { Account, AppConfig, ProfilePatch } from "@/lib/api-types";
 import { DEV_BYPASS_ACCOUNT, isDevAuthBypass } from "@/lib/dev-bypass";
+import {
+  isDevAuthBypassActive,
+  setDevBypassOptedOut,
+} from "@/lib/dev-bypass-session";
 
 /* App-wide client state: who is signed in, what the operator named this
  * instance, and transient toasts.
@@ -170,8 +174,13 @@ export function AppProviders({
 
   const refresh = useCallback(async () => {
     if (isDevAuthBypass()) {
-      setAccount(DEV_BYPASS_ACCOUNT);
-      setStatus("signed-in");
+      if (isDevAuthBypassActive()) {
+        setAccount(DEV_BYPASS_ACCOUNT);
+        setStatus("signed-in");
+      } else {
+        setAccount(null);
+        setStatus("anonymous");
+      }
       return;
     }
     try {
@@ -193,8 +202,13 @@ export function AppProviders({
   // write happens in a callback instead of synchronously inside the effect.
   useEffect(() => {
     if (isDevAuthBypass()) {
-      setAccount(DEV_BYPASS_ACCOUNT);
-      setStatus("signed-in");
+      if (isDevAuthBypassActive()) {
+        setAccount(DEV_BYPASS_ACCOUNT);
+        setStatus("signed-in");
+      } else {
+        setAccount(null);
+        setStatus("anonymous");
+      }
       return;
     }
     let active = true;
@@ -250,10 +264,10 @@ export function AppProviders({
       },
       signOut: async () => {
         if (isDevAuthBypass()) {
-          // Bypass preview has no real cookie; keep the mock session so the UI
-          // review does not bounce to a login wall mid-demo.
-          setAccount(DEV_BYPASS_ACCOUNT);
-          setStatus("signed-in");
+          // Opt out of the fake host session for this tab (sessionStorage + cookie).
+          setDevBypassOptedOut(true);
+          setAccount(null);
+          setStatus("anonymous");
           return;
         }
         try {
@@ -266,7 +280,7 @@ export function AppProviders({
         }
       },
       updateProfile: async (patch) => {
-        if (isDevAuthBypass()) {
+        if (isDevAuthBypassActive()) {
           const next = { ...DEV_BYPASS_ACCOUNT, ...patch } as Account;
           setAccount(next);
           return next;

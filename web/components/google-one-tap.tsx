@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useAppConfig, useSession } from "@/components/providers";
 import { api } from "@/lib/api";
-import { isDevAuthBypass } from "@/lib/dev-bypass";
+import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { createSupabaseBrowser, safeAuthNext } from "@/lib/supabase";
 
 /**
@@ -99,7 +99,7 @@ export function GoogleOneTap({
   const busy = useRef(false);
 
   useEffect(() => {
-    if (isDevAuthBypass()) return;
+    if (isDevAuthBypassActive()) return;
     if (status !== "anonymous") return;
     if (!googleAuth || !supabaseUrl || !supabaseAnonKey) return;
 

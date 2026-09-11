@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { HostWebinarTabs } from "./host-webinar-tabs";
 import { Alert, ConfirmModal, Spinner } from "./controls";
 import { ArrowLeftIcon } from "./icons";
-import { useToast } from "./providers";
+import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, kindLabel } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import { formatDay, formatDuration, formatTimeRange, tzLabel } from "@/lib/format";
@@ -14,9 +14,10 @@ import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
 import {
   bypassWebinar,
   DEV_BYPASS_REGISTRANTS,
-  isDevAuthBypass,
 } from "@/lib/dev-bypass";
+import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { openRoomTab } from "@/lib/open-room";
+import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 
 /** Manage one webinar: Host it, admit people, see who registered / attended. */
@@ -24,7 +25,8 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const router = useRouter();
   const search = useSearchParams();
   const { notify } = useToast();
-  const bypass = isDevAuthBypass();
+  const origin = useShareOrigin();
+  const bypass = isDevAuthBypassActive();
 
   const [webinar, setWebinar] = useState<Webinar | null>(null);
   const [registrants, setRegistrants] = useState<RegistrantRow[]>([]);
@@ -246,6 +248,20 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
                 </Button>
               )}
             </>
+          )}
+          {!isDraft && (
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void shareAttendeeLink({
+                  url: `${origin}/webinars/${slug}`,
+                  topic: webinar.topic,
+                  notify,
+                })
+              }
+            >
+              Share
+            </Button>
           )}
           {!isDraft && !isEnded && (
             <ButtonLink href={`/host/${slug}/edit`} variant="ghost">

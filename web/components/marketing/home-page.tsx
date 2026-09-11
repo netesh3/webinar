@@ -11,13 +11,18 @@ import { useAppConfig, useSession } from "@/components/providers";
  * middleware + SignedInHomeRedirect); this page is for logged-out guests.
  */
 
-/** Client fallback when middleware did not see a session cookie yet. */
+/** Client fallback when middleware did not see a session cookie yet.
+ *  Skips redirect when `?marketing=1` so local preview can force the homepage. */
 export function SignedInHomeRedirect() {
   const router = useRouter();
   const { account, status } = useSession();
 
   useEffect(() => {
     if (status !== "signed-in" || !account) return;
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("marketing") === "1") return;
+    }
     router.replace(account.canHost ? "/host" : "/browse");
   }, [account, status, router]);
 

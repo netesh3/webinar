@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Alert, Spinner, Toggle } from "./controls";
 import { AuthDivider, GoogleContinueButton } from "./google-continue";
+import { ContinueAsPreviewHost } from "./continue-as-preview-host";
 import { useAppConfig, useSession } from "./providers";
 import { Button, Card } from "./ui";
 import { ApiError } from "@/lib/api";
@@ -108,6 +109,7 @@ export function LoginForm() {
         You don&apos;t need an account to attend — registering for a webinar
         sends you a personal join link.
       </p>
+      <ContinueAsPreviewHost className="mt-4 border-t border-line pt-4 text-center" />
     </Card>
   );
 }

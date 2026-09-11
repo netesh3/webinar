@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ConfirmModal, Spinner, Tabs } from "./controls";
-import { useToast } from "./providers";
+import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, kindLabel } from "./ui";
 import {
   formatCount,
@@ -15,8 +15,9 @@ import {
 } from "@/lib/format";
 import { api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
-import { isDevAuthBypass } from "@/lib/dev-bypass";
+import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { openRoomTab } from "@/lib/open-room";
+import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 
 /** Zoom / Livestorm-style host list: Upcoming vs Past vs Drafts. */
@@ -42,7 +43,7 @@ export function HostWebinarList({
   const [tab, setTab] = useState<TabId>("Upcoming");
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Webinar | null>(null);
-  const bypass = isDevAuthBypass();
+  const bypass = isDevAuthBypassActive();
 
   const rows = readOnly
     ? webinars.filter((w) => w.status !== "ended")
@@ -164,8 +165,11 @@ function HostCard({
   const isEnded = w.status === "ended";
   const isLive = w.status === "live";
   const needsAdmit = w.approval === "manual" && !isEnded && !isDraft;
-  const bypass = isDevAuthBypass();
+  const bypass = isDevAuthBypassActive();
+  const origin = useShareOrigin();
+  const { notify } = useToast();
   const roomHref = bypass ? "/preview/room" : `/host/${w.id}/room`;
+  const registerUrl = `${origin}/webinars/${w.id}`;
 
   return (
     <Card className="p-4 sm:p-5">
@@ -213,7 +217,7 @@ function HostCard({
           </p>
         </div>
 
-        {/* Primary actions — Host / Manage / Attendees (or Admit). */}
+        {/* Primary actions — Host / Share / Manage / Attendees (or Admit). */}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {readOnly ? (
             <ButtonLink
@@ -253,6 +257,19 @@ function HostCard({
                   {busy ? <Spinner className="size-3.5" /> : "Host"}
                 </Button>
               )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  void shareAttendeeLink({
+                    url: registerUrl,
+                    topic: w.topic,
+                    notify,
+                  })
+                }
+              >
+                Share
+              </Button>
               {needsAdmit ? (
                 <ButtonLink
                   href={`/host/${w.id}?tab=admit`}
