@@ -7,7 +7,7 @@ import { Alert, CopyField, Spinner } from "./controls";
 import { ArrowLeftIcon, CalendarIcon, CheckIcon, UserPlusIcon } from "./icons";
 import { useSession, useShareOrigin } from "./providers";
 import { Badge, Button, ButtonLink } from "./ui";
-import { DIAL_CODES, dialOptions, localDialIso } from "@/lib/dial-codes";
+import { DIAL_CODES, dialOptions } from "@/lib/dial-codes";
 import { formatDay, formatTime, formatTimeRange, tzLabel } from "@/lib/format";
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import { ApiError, api } from "@/lib/api";
@@ -38,23 +38,6 @@ function splitName(name: string): { firstName: string; lastName: string } {
     firstName: parts.slice(0, -1).join(" "),
     lastName: parts[parts.length - 1],
   };
-}
-
-/** The viewer's country, from their locale. A sensible starting value that they
- *  can correct, rather than a default that is wrong for everyone but one country. */
-function localCountry(): string {
-  try {
-    const locale = new Intl.Locale(
-      Intl.DateTimeFormat().resolvedOptions().locale,
-    );
-    const region = locale.region;
-    if (!region) return "";
-    return (
-      new Intl.DisplayNames(undefined, { type: "region" }).of(region) ?? ""
-    );
-  } catch {
-    return "";
-  }
 }
 
 /**
@@ -537,14 +520,20 @@ function RegisterFields({
     email: account?.email ?? "",
     company: account?.org ?? "",
     jobTitle: account?.title ?? "",
-    country: localCountry(),
+    // India rather than the viewer's own locale: both fields stay fully
+    // editable, this is only where they start.
+    country: "India",
   }));
   /* The number is two fields in the form and one value on the wire.
    *
    * Split here because that is how a person enters it — pick the country, type the number —
    * and joined on submit because E.164 is one string. Keeping the split all the way to the API
-   * would make every reader reassemble it and every writer agree on how. */
-  const [dialIso, setDialIso] = useState(() => localDialIso());
+   * would make every reader reassemble it and every writer agree on how.
+   *
+   * Starts on India (+91) rather than the viewer's own locale, same reasoning
+   * as `country` above — still just a starting value, changeable from the
+   * same 200-country list as everyone else. */
+  const [dialIso, setDialIso] = useState("IN");
   const [phoneNumber, setPhoneNumber] = useState("");
   const dials = useMemo(() => dialOptions(), []);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -652,7 +641,7 @@ function RegisterFields({
 
         <div>
           <label className="label" htmlFor="email">
-            Work email
+            Email Id
           </label>
           <input
             id="email"
