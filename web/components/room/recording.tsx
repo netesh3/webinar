@@ -6,7 +6,14 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { api, API_BASE } from "@/lib/api";
 import { formatBytes, formatClock } from "@/lib/format";
 import { canRecordLocally, localRecordingTransport } from "@/lib/local-recording";
-import { canRecord, SessionRecorder, type RecorderState, type RecordingTransport } from "@/lib/recorder";
+import {
+  canRecord,
+  SessionRecorder,
+  type RecorderCallbacks,
+  type RecorderState,
+  type RecordingTransport,
+} from "@/lib/recorder";
+import { canRecordScreen, ScreenRecorder } from "@/lib/screen-recorder";
 import { useAppConfig, useToast } from "../providers";
 import { DeviceIcon, RecordIcon, StopIcon } from "../icons";
 import { useRoomUI } from "./context";
@@ -19,13 +26,18 @@ import { useRoomUI } from "./context";
  * so an attendee is told they are being recorded even though nothing in their
  * browser is doing the recording.
  *
- * Two DESTINATIONS as of this file, not one. "Cloud" is the original path: bytes
- * go to the server, which is what makes the room-wide indicator and the
- * Recordings tab possible. "This device" (lib/local-recording.ts) is the same
- * capture pipeline writing straight to a file the host picked, with nothing
- * going over the network — for a host who does not want a copy sitting on the
- * server at all, or whose server has no recording storage configured. It is
- * deliberately NOT wired into the server-side "recording" indicator or the
+ * Two DESTINATIONS as of this file, not one, and they no longer share a
+ * capture pipeline either. "Cloud" (SessionRecorder, lib/recorder.ts) draws
+ * every participant onto a canvas and uploads the encoded result — that
+ * compositing is what makes a recording of "the webinar" rather than one
+ * person's screen, and it costs CPU the live call is already spending. "This
+ * device" (ScreenRecorder, lib/screen-recorder.ts) instead captures the
+ * host's screen directly via getDisplayMedia — no canvas, no per-frame
+ * compositing — and writes straight to a file the host picked
+ * (lib/local-recording.ts), with nothing going over the network. It trades
+ * the composited layout for materially less CPU contention with the live
+ * call, which is the point for a host who found the composited version
+ * laggy. It is deliberately NOT wired into the server-side "recording" indicator or the
  * Recordings list: there is no row for it to be, since nothing was told.
  * Attendees are not informed of a local recording by this app any more than
  * they would be if the host recorded their own screen with a separate tool —
@@ -35,7 +47,11 @@ import { useRoomUI } from "./context";
 const subscribeNothing = () => () => {};
 const readCanRecord = () => canRecord();
 const readCanRecordOnServer = () => false;
-const readCanRecordLocally = () => canRecordLocally();
+// Local recording needs BOTH: somewhere to write the file (canRecordLocally)
+// and something to capture (canRecordScreen, since it records the screen
+// directly rather than compositing the room onto a canvas — see
+// lib/screen-recorder.ts).
+const readCanRecordLocally = () => canRecordLocally() && canRecordScreen();
 const readCanRecordLocallyOnServer = () => false;
 
 /** A recording's suggested filename: the topic, filesystem-safe, plus the date
@@ -60,7 +76,10 @@ function useRecorder() {
   const [state, setState] = useState<RecorderState>("idle");
   const [bytes, setBytes] = useState(0);
   const [startedAt, setStartedAt] = useState<number | null>(null);
-  const recorder = useRef<SessionRecorder | null>(null);
+  // Local recording is a ScreenRecorder (lib/screen-recorder.ts), not a
+  // SessionRecorder — no canvas compositing, see recording.tsx's module
+  // comment for why that is the point.
+  const recorder = useRef<SessionRecorder | ScreenRecorder | null>(null);
   /** What is in flight, readable from an event handler that cannot wait for a
    *  render. Null when nothing is being recorded. `local: true` means there is
    *  no server-side row for the pagehide handler below to close. */
@@ -95,7 +114,7 @@ function useRecorder() {
             },
           };
 
-      const instance = new SessionRecorder(room, topic, transport, {
+      const callbacks: RecorderCallbacks = {
         onStarted: (id) => {
           const began = Date.now();
           recording.current = { id, startedAt: began, local };
@@ -104,7 +123,7 @@ function useRecorder() {
           setBytes(0);
           notifyRef.current(
             local
-              ? "Recording started — saving to the file you chose. Keep this tab open."
+              ? "Recording started — saving your screen straight to the file you chose. Keep this tab open."
               : "Recording started. Everyone can see it — keep this tab open.",
             "ok",
           );
@@ -129,7 +148,15 @@ function useRecorder() {
           notifyRef.current(message, "error");
         },
         onProgress: setBytes,
-      });
+      };
+
+      // Local recording captures the host's screen directly (ScreenRecorder) —
+      // no canvas, no compositing, no per-frame CPU competing with the live
+      // call. Cloud recording keeps the full composited stage (SessionRecorder)
+      // so everyone watching it back sees the webinar the way the room did.
+      const instance = local
+        ? new ScreenRecorder(room, transport, callbacks)
+        : new SessionRecorder(room, topic, transport, callbacks);
 
       recorder.current = instance;
       await instance.start();
@@ -366,7 +393,8 @@ export function RecordButton() {
             <span>
               <span className="block text-[13px] font-medium">This device</span>
               <span className="block text-[11.5px] leading-tight text-ink-3">
-                Saves straight to a file you choose. Never leaves this computer.
+                Records your screen, not the room layout — lighter on your CPU.
+                Saves straight to a file you choose and never leaves this computer.
               </span>
             </span>
           </button>
