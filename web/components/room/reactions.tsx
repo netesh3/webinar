@@ -5,8 +5,8 @@ import { useRoomUI } from "./context";
 
 /* Floating reactions.
  *
- * One tap sends one message and floats a handful of emoji up the RIGHT-HAND EDGE of the video
- * area, each with a small tally beside it — see REACTION_BURST in lib/realtime.ts.
+ * One tap sends one message and floats one emoji up the RIGHT-HAND EDGE of the video
+ * area.
  *
  * The right-hand column is the change that matters. They used to rise across the full width,
  * which puts emoji over the presenter's face and over shared slides — the two things the
@@ -41,7 +41,7 @@ export function ReactionOverlay() {
       {realtime.reactions.map((r) => (
         <span
           key={r.id}
-          className="absolute flex items-center gap-1 motion-safe:animate-[reaction-rise_var(--duration)_linear_var(--delay)_forwards] motion-reduce:animate-[reaction-fade_2.4s_ease-out_forwards]"
+          className="absolute drop-shadow-lg motion-safe:animate-[reaction-rise_var(--duration)_linear_forwards] motion-reduce:animate-[reaction-fade_2.4s_ease-out_forwards]"
           style={
             {
               // Below the bottom edge, so each one rises into view rather than
@@ -58,25 +58,13 @@ export function ReactionOverlay() {
               fontSize: `${r.size}px`,
               lineHeight: 1,
               "--duration": `${r.duration}ms`,
-              "--delay": `${r.delay}ms`,
               // Drift halved. The full sway was tuned for the open stage and would carry an
               // emoji out of a 5rem lane and off the edge.
               "--drift": `${Math.round(r.drift / 2)}px`,
-              // Nothing is painted until the animation's delay has elapsed.
-              opacity: 0,
             } as React.CSSProperties
           }
         >
-          <span className="drop-shadow-lg">{r.emoji}</span>
-          {/* The tally. Scaled off the emoji's own size so a big one does not get a tiny
-              badge, and mid-grey on translucent black so it reads over both a bright slide
-              and a dark camera feed without a border. */}
-          <span
-            className="rounded-full bg-black/55 px-1.5 font-semibold text-white tabular-nums backdrop-blur-sm"
-            style={{ fontSize: `${Math.round(r.size * 0.42)}px`, lineHeight: 1.6 }}
-          >
-            {r.count}
-          </span>
+          {r.emoji}
         </span>
       ))}
     </div>
