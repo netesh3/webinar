@@ -25,6 +25,7 @@ export default async function HomeRoute() {
   if (!redesign) {
     return (
       <>
+        <GoogleOneTap next="/browse" />
         <TopNav />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-5">
           <ContinueAsPreviewHost className="mb-4" />

@@ -272,9 +272,13 @@ Set on Cloud Run (via `deploy/cloudrun.env`, GitHub secrets, or `gcloud`):
 | `SUPABASE_URL` | yes (via `/api/config`) | `https://<ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | yes (via `/api/config`) | anon/public key for browser OAuth |
 | `SUPABASE_JWT_SECRET` | **no** | optional legacy HS256 secret; modern projects use JWKS/ES256 |
+| `GOOGLE_CLIENT_ID` | yes (via `/api/config` as `googleClientId`) | same Web OAuth client as Supabase Google; required for **Google One Tap** / FedCM and Drive Picker |
+| `GOOGLE_API_KEY` | yes (via `/api/config`) | optional; Drive Picker only |
 
-When all three are set, `/api/config` returns `googleAuth: true` and the login /
-signup pages show **Continue with Google**.
+When the Supabase trio is set, `/api/config` returns `googleAuth: true` and the
+login / signup pages show **Continue with Google**. Set `GOOGLE_CLIENT_ID` as
+well so logged-out `/`, `/home`, and `/login` can show the One Tap account
+picker (it no-ops when `googleClientId` is empty).
 
 ### Consent screen / verification (Google Cloud)
 

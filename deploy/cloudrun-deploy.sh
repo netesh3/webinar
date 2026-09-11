@@ -140,6 +140,9 @@ fi
 [[ -n "${SUPABASE_URL:-}" ]] && ENV_VARS+=("SUPABASE_URL=${SUPABASE_URL}")
 [[ -n "${SUPABASE_ANON_KEY:-}" ]] && ENV_VARS+=("SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}")
 [[ -n "${SUPABASE_JWT_SECRET:-}" ]] && ENV_VARS+=("SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}")
+# Public Web client ID → /api/config googleClientId (One Tap + Drive Picker).
+[[ -n "${GOOGLE_CLIENT_ID:-}" ]] && ENV_VARS+=("GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}")
+[[ -n "${GOOGLE_API_KEY:-}" ]] && ENV_VARS+=("GOOGLE_API_KEY=${GOOGLE_API_KEY}")
 
 # Write YAML for --env-vars-file so values may contain commas (e.g. CORS_ORIGINS
 # with multiple origins). Comma-joined --set-env-vars breaks on those values.

@@ -118,9 +118,10 @@ export function GoogleOneTap({
 
       const destination = safeAuthNext(next, "/browse");
 
+      // Desktop One Tap renders top-right by default (Canva-style corner prompt).
       window.google.accounts.id.initialize({
         client_id: clientId!,
-        auto_select: true,
+        auto_select: false,
         cancel_on_tap_outside: true,
         use_fedcm_for_prompt: true,
         context: "signin",
@@ -161,7 +162,19 @@ export function GoogleOneTap({
         },
       });
 
-      window.google.accounts.id.prompt();
+      window.google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed()) {
+          console.info(
+            "Google One Tap not displayed:",
+            notification.getNotDisplayedReason(),
+          );
+        } else if (notification.isSkippedMoment()) {
+          console.info(
+            "Google One Tap skipped:",
+            notification.getSkippedReason(),
+          );
+        }
+      });
     }
 
     void run();

@@ -23,6 +23,8 @@
 #   WEB_BASE_URL, LIVEKIT_HTTP_URL, LIVEKIT_PROJECTS
 #   ADMIN_EMAILS / ADMIN_PASSWORD — bootstrap production admin on fresh DB (≥10 chars)
 #   SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_JWT_SECRET — Google sign-in via Supabase Auth
+#   GOOGLE_CLIENT_ID — Web OAuth client (selfreminder-rnix); exposed as googleClientId for One Tap
+#   GOOGLE_API_KEY — optional; Drive Picker only
 #   CLOUD_SQL_INSTANCE — only if not using Supabase
 #   GCP_PROJECT / GCP_REGION as repo Variables (defaults in deploy/cloudrun-deploy.sh)
 
@@ -69,6 +71,8 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       APP_NAME: ${{ vars.APP_NAME }}
