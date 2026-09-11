@@ -12,6 +12,7 @@
 #      Create at: https://dash.cloudflare.com/profile/api-tokens
 #   B) CLOUDFLARE_OAUTH_REFRESH_TOKEN — wrangler OAuth refresh token (offline_access)
 #      CI exchanges it for a short-lived access token before deploy.
+#      Optional: GH_SECRETS_PAT (repo-scoped PAT) so CI can write back rotated refresh tokens.
 #
 # Required repository variables:
 #   CLOUDFLARE_ACCOUNT_ID — Cloudflare account ID (wrangler whoami / dashboard)
@@ -53,6 +54,7 @@ jobs:
       CLOUDFLARE_OAUTH_REFRESH_TOKEN: ${{ secrets.CLOUDFLARE_OAUTH_REFRESH_TOKEN }}
       CLOUDFLARE_OAUTH_CLIENT_ID: ${{ vars.CLOUDFLARE_OAUTH_CLIENT_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      GH_SECRETS_PAT: ${{ secrets.GH_SECRETS_PAT }}
       NEXT_PUBLIC_API_BASE: ""
       NEXT_PUBLIC_UI_REDESIGN: "1"
       OPEN_NEXT: "1"
@@ -105,7 +107,13 @@ jobs:
           echo "::add-mask::$ACCESS"
           echo "CLOUDFLARE_API_TOKEN=$ACCESS" >> "$GITHUB_ENV"
           if [ -n "$NEW_REFRESH" ] && [ "$NEW_REFRESH" != "${CLOUDFLARE_OAUTH_REFRESH_TOKEN}" ]; then
-            echo "::warning::Cloudflare rotated the refresh token. Update CLOUDFLARE_OAUTH_REFRESH_TOKEN in repo secrets."
+            echo "::add-mask::$NEW_REFRESH"
+            if [ -n "${GH_SECRETS_PAT}" ]; then
+              echo "Persisting rotated Cloudflare OAuth refresh token to repo secrets…"
+              printf '%s' "$NEW_REFRESH" | GH_TOKEN="${GH_SECRETS_PAT}" gh secret set CLOUDFLARE_OAUTH_REFRESH_TOKEN -R "${GITHUB_REPOSITORY}"
+            else
+              echo "::warning::Cloudflare rotated the refresh token and GH_SECRETS_PAT is unset; next CI run may fail until you update CLOUDFLARE_OAUTH_REFRESH_TOKEN."
+            fi
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
