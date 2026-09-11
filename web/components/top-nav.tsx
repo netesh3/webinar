@@ -106,31 +106,8 @@ export function TopNav() {
               }
               items={[
                 { kind: "label", text: account.email },
-                {
-                  kind: "action",
-                  label: "My webinars",
-                  onSelect: () => router.push("/my-webinars"),
-                },
-                /* No "Become a host" any more.
-                 *
-                 * It pointed at a toggle on /account that granted the capability on the
-                 * spot, which is what made hosting self-service. Hosting is an admin grant
-                 * now, so an entry inviting somebody to help themselves would lead to a
-                 * read-only badge and a dead end. An account without it simply sees no host
-                 * entry, which is honest. */
-                ...(account.canHost
-                  ? [
-                      {
-                        kind: "action" as const,
-                        label: "Hosting",
-                        onSelect: () => router.push("/host"),
-                      },
-                    ]
-                  : []),
-                /* The admin area, for the handful of accounts that can grant hosting.
-                 *
-                 * A hint, not the control: /api/admin/* refuses a non-admin regardless of
-                 * what the browser chose to render, and lib/access.ts redirects the page. */
+                /* Account-level only. Browse / My webinars / Hosting live in the
+                 * primary nav — repeating them here is a second sitemap. */
                 ...(account.isAdmin
                   ? [
                       {

@@ -16,6 +16,7 @@ import {
   DEV_BYPASS_REGISTRANTS,
   isDevAuthBypass,
 } from "@/lib/dev-bypass";
+import { openRoomTab } from "@/lib/open-room";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 
 /** Manage one webinar: Host it, admit people, see who registered / attended. */
@@ -74,15 +75,17 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
 
   async function start() {
     if (bypass) {
-      router.push("/preview/room");
+      openRoomTab("/preview/room");
       return;
     }
     setBusy(true);
     try {
       await api.startWebinar(slug);
-      router.push(`/host/${slug}/room`);
+      openRoomTab(`/host/${slug}/room`);
+      await load();
     } catch (e) {
       notify(e instanceof Error ? e.message : "Could not start the webinar.", "error");
+    } finally {
       setBusy(false);
     }
   }
@@ -218,10 +221,20 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
             </ButtonLink>
           ) : (
             <>
-              <Button onClick={() => void start()} disabled={busy}>
-                {busy && <Spinner className="size-4" />}
-                {isLive ? "Rejoin room" : "Host webinar"}
-              </Button>
+              {isLive ? (
+                <ButtonLink
+                  href={bypass ? "/preview/room" : `/host/${slug}/room`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Rejoin room
+                </ButtonLink>
+              ) : (
+                <Button onClick={() => void start()} disabled={busy}>
+                  {busy && <Spinner className="size-4" />}
+                  Host webinar
+                </Button>
+              )}
               {pending > 0 && (
                 <ButtonLink href={`/host/${slug}?tab=admit`} variant="secondary">
                   Admit ({pending})

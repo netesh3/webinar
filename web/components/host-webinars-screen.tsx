@@ -128,7 +128,12 @@ export function HostWebinarsScreen() {
         <div className="mb-4">
           <Alert tone="info" title="Local UI preview">
             Auth bypass is on — fixture webinars below. Room media is mocked at{" "}
-            <a className="underline" href="/preview/room">
+            <a
+              className="underline"
+              href="/preview/room"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               /preview/room
             </a>
             .

@@ -224,7 +224,12 @@ function RegisteredCard({
 
         <div className="flex shrink-0 flex-col justify-center gap-2 sm:w-[180px]">
           {joinable && (
-            <ButtonLink href={`/webinars/${w.id}/room`} size="sm">
+            <ButtonLink
+              href={`/webinars/${w.id}/room`}
+              size="sm"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               {live ? "Join now" : "Join the webinar"}
             </ButtonLink>
           )}

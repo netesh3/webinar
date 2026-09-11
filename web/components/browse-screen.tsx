@@ -79,7 +79,12 @@ export function BrowseScreen() {
       {bypass && !signedOut && (
         <p className="mb-6 text-[13px] text-ink-3">
           Local preview — room chrome at{" "}
-          <a className="underline hover:text-ink" href="/preview/room">
+          <a
+            className="underline hover:text-ink"
+            href="/preview/room"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             /preview/room
           </a>
           .

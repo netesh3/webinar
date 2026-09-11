@@ -16,6 +16,7 @@ import {
 import { api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
 import { isDevAuthBypass } from "@/lib/dev-bypass";
+import { openRoomTab } from "@/lib/open-room";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 
 /** Zoom / Livestorm-style host list: Upcoming vs Past vs Drafts. */
@@ -53,13 +54,14 @@ export function HostWebinarList({
 
   async function start(w: Webinar) {
     if (bypass) {
-      router.push("/preview/room");
+      openRoomTab("/preview/room");
       return;
     }
     setBusy(w.id);
     try {
       if (w.status !== "live") await api.startWebinar(w.id);
-      router.push(`/host/${w.id}/room`);
+      openRoomTab(`/host/${w.id}/room`);
+      location.reload();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Could not start the webinar.", "error");
       setBusy(null);
@@ -162,6 +164,8 @@ function HostCard({
   const isEnded = w.status === "ended";
   const isLive = w.status === "live";
   const needsAdmit = w.approval === "manual" && !isEnded && !isDraft;
+  const bypass = isDevAuthBypass();
+  const roomHref = bypass ? "/preview/room" : `/host/${w.id}/room`;
 
   return (
     <Card className="p-4 sm:p-5">
@@ -212,7 +216,12 @@ function HostCard({
         {/* Primary actions — Host / Manage / Attendees (or Admit). */}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {readOnly ? (
-            <ButtonLink href={`/host/${w.id}/room`} size="sm">
+            <ButtonLink
+              href={roomHref}
+              size="sm"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Join stage
             </ButtonLink>
           ) : isDraft ? (
@@ -230,9 +239,20 @@ function HostCard({
             </>
           ) : (
             <>
-              <Button size="sm" onClick={onStart} disabled={busy}>
-                {busy ? <Spinner className="size-3.5" /> : isLive ? "Rejoin" : "Host"}
-              </Button>
+              {isLive ? (
+                <ButtonLink
+                  href={roomHref}
+                  size="sm"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Rejoin
+                </ButtonLink>
+              ) : (
+                <Button size="sm" onClick={onStart} disabled={busy}>
+                  {busy ? <Spinner className="size-3.5" /> : "Host"}
+                </Button>
+              )}
               {needsAdmit ? (
                 <ButtonLink
                   href={`/host/${w.id}?tab=admit`}
