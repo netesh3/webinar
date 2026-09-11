@@ -343,16 +343,19 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Reaching here means stageRole returned host or panelist for a real account,
-	// which is the same check the recording endpoints make — so this is the one
-	// path that may record, subject to the instance having storage at all.
+	// Reaching here means stageRole returned host or panelist for a real
+	// account, which is the same check the recording endpoints make — so this
+	// is the one path that may record. Not gated on s.recordings any more: that
+	// only decides whether CLOUD recording works, and local, on-device
+	// recording needs no server storage — see AppConfig.CloudRecordingEnabled
+	// for the storage half of the question.
 	s.issueToken(w, r, wb, sfu, lk.Spec{
 		Role:        role,
 		Room:        room,
 		Identity:    identity,
 		Name:        user.Name,
 		MutedByHost: muted,
-	}, s.recordings != nil)
+	}, true)
 }
 
 // ensureRoom creates the room with the capacity ceiling and seeds its metadata

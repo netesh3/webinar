@@ -811,16 +811,23 @@ type JoinResponse struct {
 	// Hidden reports that the SFU will keep this participant invisible to the
 	// other participants. Shown to attendees so the privacy claim is legible.
 	Hidden bool `json:"hidden"`
-	// CanRecord answers exactly the question the record button asks, decided by
-	// the server rather than inferred from the role.
-	//
-	// It is NOT the same as CanPublish. The recording endpoints sit behind
-	// requireStage, which wants an ACCOUNT on this webinar's stage roster — the
-	// host, or a name on the panelist list. An attendee the host promoted
-	// publishes exactly like a panelist and has no account at all, so inferring
-	// this from publish permission offered them a button whose every request came
-	// back 401. It also covers recording being turned off for the instance, which
-	// the client otherwise learned from a 503 after the click.
+	/* CanRecord answers whether this ACCOUNT may see the record control at all,
+	 * decided by the server rather than inferred from the role.
+	 *
+	 * It is NOT the same as CanPublish. The recording endpoints sit behind
+	 * requireStage, which wants an ACCOUNT on this webinar's stage roster — the
+	 * host, or a name on the panelist list. An attendee the host promoted
+	 * publishes exactly like a panelist and has no account at all, so inferring
+	 * this from publish permission offered them a button whose every request came
+	 * back 401.
+	 *
+	 * Deliberately NOT gated on whether the instance has recording storage
+	 * configured any more — that used to fold into this field, which hid the
+	 * button outright on an instance with RECORDINGS_ENABLED=false, even though
+	 * local, on-device recording needs no server storage at all. See
+	 * AppConfig.CloudRecordingEnabled for that half of the question; the record
+	 * control combines both to decide which destinations to offer.
+	 */
 	CanRecord bool `json:"canRecord"`
 	/* JoinKey is the caller's own registration key, echoed back.
 	 *
@@ -1019,6 +1026,15 @@ type AppConfig struct {
 	SupabaseURL     string `json:"supabaseUrl,omitempty"`
 	SupabaseAnonKey string `json:"supabaseAnonKey,omitempty"`
 	GoogleAuth      bool   `json:"googleAuth,omitempty"`
+	/* CloudRecordingEnabled is whether this instance has object storage for
+	 * recordings at all (RECORDINGS_ENABLED). Separate from JoinResponse.CanRecord,
+	 * which is about the ACCOUNT (host or panelist); this is about the INSTANCE.
+	 * The record control uses it to decide whether to offer "the cloud" as a
+	 * destination at all, rather than offering a button that always 503s — local,
+	 * on-device recording (see web/lib/local-recording.ts) needs neither this nor
+	 * the server's storage, so it is unaffected by it either way.
+	 */
+	CloudRecordingEnabled bool `json:"cloudRecordingEnabled"`
 }
 
 type APIError struct {

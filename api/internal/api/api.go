@@ -441,17 +441,18 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		tracks = []string{}
 	}
 	httpx.JSON(w, http.StatusOK, types.AppConfig{
-		AppName:           s.cfg.AppName,
-		WebBaseURL:        s.cfg.WebBaseURL,
-		SupportEmail:      s.cfg.SupportEmail,
-		MaxAttendees:      s.cfg.MaxAttendees,
-		SignupOpen:        s.cfg.SignupOpen,
-		MinPasswordLength: s.cfg.MinPasswordLength,
-		Tracks:            tracks,
-		GoogleClientID:    s.cfg.GoogleClientID,
-		GoogleAPIKey:      s.cfg.GoogleAPIKey,
-		SupabaseURL:       s.cfg.SupabaseURL,
-		SupabaseAnonKey:   s.cfg.SupabaseAnonKey,
-		GoogleAuth:        s.cfg.GoogleAuthEnabled(),
+		AppName:               s.cfg.AppName,
+		WebBaseURL:            s.cfg.WebBaseURL,
+		SupportEmail:          s.cfg.SupportEmail,
+		MaxAttendees:          s.cfg.MaxAttendees,
+		SignupOpen:            s.cfg.SignupOpen,
+		MinPasswordLength:     s.cfg.MinPasswordLength,
+		Tracks:                tracks,
+		GoogleClientID:        s.cfg.GoogleClientID,
+		GoogleAPIKey:          s.cfg.GoogleAPIKey,
+		SupabaseURL:           s.cfg.SupabaseURL,
+		SupabaseAnonKey:       s.cfg.SupabaseAnonKey,
+		GoogleAuth:            s.cfg.GoogleAuthEnabled(),
+		CloudRecordingEnabled: s.recordings != nil,
 	})
 }
