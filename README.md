@@ -78,6 +78,25 @@ anything already healthy, so running it twice is safe. Logs go to
 | `./stop.sh --db` | also stop Postgres |
 | `./stop.sh --all` | also close the E2E's headless browsers |
 
+### Git worktrees (UI vs hotfixes)
+
+Do **not** stash uncommitted UI work to free `main` for a hotfix. Use separate checkouts:
+
+| Path | Branch | Use for |
+|---|---|---|
+| `/Users/ganeshsp/Projects/webinar` | `main` | Hotfixes, deploys, clean production baseline |
+| `/Users/ganeshsp/Projects/webinar-ui` | `feat/ui-simplify` | UI redesign + local auth-bypass preview |
+
+```bash
+git worktree list
+# Redesign preview (from the UI tree):
+cd /Users/ganeshsp/Projects/webinar-ui && ./start.sh
+# or, if API/SFU already running from main:
+cd /Users/ganeshsp/Projects/webinar-ui/web && npm run dev   # http://localhost:3000
+```
+
+Copy `web/.env.local` and `web/.dev.vars` from the main checkout into the UI tree if they are missing. Agents: see `.cursor/rules/git-worktrees.mdc`.
+
 Seeded host accounts (development only): `neeraj@acme.dev`, `priya@acme.dev`,
 `marco@streamline.io` — password `webcast-dev`.
 

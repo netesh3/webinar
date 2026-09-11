@@ -1,0 +1,45 @@
+---
+description: Use git worktrees for parallel UI vs hotfix work; never stash to context-switch
+alwaysApply: true
+---
+
+# Git worktrees (not stash)
+
+Parallel streams live in **separate checkouts**. Do not `git stash` as the primary way to switch between UI experiments and production hotfixes — stash is fragile and lossy.
+
+## Layout
+
+| Path | Branch | Purpose |
+|---|---|---|
+| `/Users/ganeshsp/Projects/webinar` | `main` | Clean production / hotfixes / deploys |
+| `/Users/ganeshsp/Projects/webinar-ui` | `feat/ui-simplify` | UI redesign, preview auth-bypass, experiments |
+
+```bash
+# List worktrees
+git worktree list
+
+# Add another stream (example)
+git worktree add -b feat/my-experiment /Users/ganeshsp/Projects/webinar-my-experiment main
+```
+
+## Agent rules
+
+- **Hotfixes / deploys:** work in `webinar` on `main` (or a short-lived hotfix branch off `main` in that tree).
+- **UI / experiments:** work in `webinar-ui` on `feat/ui-simplify` (or another feature worktree).
+- **Deploy** from the worktree that contains the change you intend to ship.
+- **Never** stash redesign work just to free `main` for a hotfix — use the other worktree.
+- One-time `stash` only to *move* dirty files into a new worktree, then drop it.
+- Do not force-push. Do not skip hooks.
+
+## Localhost (UI redesign)
+
+From the UI worktree (API/Postgres/LiveKit can already be up from `main`):
+
+```bash
+cd /Users/ganeshsp/Projects/webinar-ui
+./start.sh                 # full stack from this tree
+# or frontend only if API/SFU already healthy:
+cd web && npm run dev      # http://localhost:3000
+```
+
+Copy gitignored env if missing: `web/.env.local`, `web/.dev.vars` from the main checkout. Preview bypass routes live under `/preview` on this branch only.
