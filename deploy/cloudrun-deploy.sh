@@ -19,7 +19,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="${ROOT}/deploy/cloudrun.env"
 EXAMPLE="${ROOT}/deploy/cloudrun.env.example"
 
-PROJECT="${GCP_PROJECT:-ai-project-490516}"
+PROJECT="${GCP_PROJECT:-selfreminder-rnix}"
 REGION="${GCP_REGION:-asia-south1}"
 AR_REPO="${AR_REPO:-webcast}"
 SERVICE="${SERVICE_NAME:-webcast-api}"
@@ -129,6 +129,7 @@ fi
 
 [[ -n "${CORS_ORIGINS:-}" ]] && ENV_VARS+=("CORS_ORIGINS=${CORS_ORIGINS}")
 [[ -n "${WEB_BASE_URL:-}" ]] && ENV_VARS+=("WEB_BASE_URL=${WEB_BASE_URL}")
+[[ -n "${APP_NAME:-}" ]] && ENV_VARS+=("APP_NAME=${APP_NAME}")
 # Bootstrap admin on fresh DB (EnsureAdminAccount + PromoteAdmins at API boot).
 [[ -n "${ADMIN_EMAILS:-}" ]] && ENV_VARS+=("ADMIN_EMAILS=${ADMIN_EMAILS}")
 [[ -n "${ADMIN_PASSWORD:-}" ]] && ENV_VARS+=("ADMIN_PASSWORD=${ADMIN_PASSWORD}")

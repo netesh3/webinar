@@ -7,13 +7,13 @@ This is the **current production-shaped** deployment: managed frontend, API, dat
 | Layer | Where it runs | Public URL / endpoint |
 |---|---|---|
 | Frontend (Next.js 16 via OpenNext) | Cloudflare Workers | https://webinarliv.com (also https://webinar-web.ganesh-s-p006.workers.dev) |
-| API (Go) | Google Cloud Run · `asia-south1` | https://webcast-api-514730520122.asia-south1.run.app |
+| API (Go) | Google Cloud Run · `asia-south1` | https://webcast-api-65278594492.asia-south1.run.app |
 | Postgres | Supabase · project `webcast-in` (`odptebpbrrixhrzfqtqp`) · `ap-south-1` | session pooler `:5432` + `sslmode=require` |
 | Media SFU | Self-hosted LiveKit on Hetzner · `webcast-livekit` (CX33, fsn1) | `wss://88.198.141.104.sslip.io` |
-| Images | Artifact Registry · `webcast` · `asia-south1` | `asia-south1-docker.pkg.dev/ai-project-490516/webcast/…` |
+| Images | Artifact Registry · `webcast` · `asia-south1` | `asia-south1-docker.pkg.dev/selfreminder-rnix/webcast/…` |
 | CI / deploy | GitHub Actions → Cloud Run, Cloudflare Workers, Hetzner LiveKit | [cloudrun-deploy.yml](../.github/workflows/cloudrun-deploy.yml) · [cloudflare-workers-deploy.yml](../.github/workflows/cloudflare-workers-deploy.yml) · [livekit-hetzner-deploy.yml](../.github/workflows/livekit-hetzner-deploy.yml) |
 
-GCP project: **`ai-project-490516`**. Deploy SA: `webcast-deploy@ai-project-490516.iam.gserviceaccount.com` (JSON key stored as GitHub secret `GCP_SA_KEY`). Repo variable **`GCP_REGION=asia-south1`**.
+GCP project: **`selfreminder-rnix`** (display name **Webinar Liv**). Deploy SA: `webcast-deploy@selfreminder-rnix.iam.gserviceaccount.com` (JSON key stored as GitHub secret `GCP_SA_KEY`). Repo variables **`GCP_PROJECT=selfreminder-rnix`**, **`GCP_REGION=asia-south1`**. Do not deploy Webinar Liv API into shared `ai-project-490516` (Sancharees / AI Studio).
 
 ### Deprecated (not active)
 
@@ -35,7 +35,7 @@ flowchart LR
     Web["Workers SSR\nwebinar-web"]
   end
 
-  subgraph gcp [GCP ai-project-490516 · asia-south1]
+  subgraph gcp [GCP selfreminder-rnix · Webinar Liv · asia-south1]
     Run["Cloud Run\nwebcast-api"]
     AR["Artifact Registry\nwebcast"]
     CB["Cloud Build"]

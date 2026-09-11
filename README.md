@@ -400,7 +400,7 @@ Three things that will bite you in production:
 Current managed topology (Cloudflare Workers + Cloud Run + Supabase + Hetzner
 LiveKit): [`docs/DEPLOYMENT-TOPOLOGY.md`](docs/DEPLOYMENT-TOPOLOGY.md).
 
-Scaffolding lives under `deploy/`. Project default: `ai-project-490516`, region
+Scaffolding lives under `deploy/`. Project default: `selfreminder-rnix`, region
 `asia-south1` (Mumbai), Artifact Registry repo `webcast`.
 
 **Postgres for production:** prefer **Supabase** (`deploy/SUPABASE.md`). Local
