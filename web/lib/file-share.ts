@@ -207,22 +207,26 @@ export function useFileShare(room: Room | null): FileShareApi {
       const video = document.createElement("video");
       video.playsInline = true;
       video.preload = "auto";
-      /* crossOrigin only for a recording, and only because it is fetched from our
-       * own API with the session cookie. Without it there, the element's fetch is
-       * "no-cors", which taints anything drawn or captured from it — captureStream
-       * silently yields a track that never delivers a frame, rather than an error.
+      /* No crossOrigin, for ANY source kind — including a recording.
        *
-       * "local" and "drive" are blob: URLs — bytes already in this tab, nothing to
-       * fetch, no origin to cross. Setting crossOrigin on one of those anyway used
-       * to be harmless in theory and was not in practice: on this constraint,
-       * Chrome treats a blob: video as tainted the same way, so a host sharing a
-       * file from their own computer — the common case — captured a track the
-       * audience never saw a frame of, while the host's own untainted preview
-       * player (a separate <video> in PreviewStep) played it back fine. That
-       * contrast was the tell. */
-      if (source.kind === "recording") {
-        video.crossOrigin = "use-credentials";
-      }
+       * A recording is fetched from our own API, but this deployment always
+       * serves the app and the API from the same origin (the Cloudflare
+       * Worker proxies /api/* — see docs/DEPLOYMENT-TOPOLOGY.md), so it is a
+       * same-origin request and the session cookie travels with it regardless
+       * of crossOrigin: browsers attach cookies to a same-origin fetch by
+       * default, no CORS opt-in required. Setting crossOrigin anyway forces
+       * the browser into an explicit CORS-mode fetch it did not need — and
+       * the observed failure matched exactly what a CORS-tainted element does:
+       * the host's audience heard the file's audio but never saw a frame of
+       * it, because captureStream() refuses to hand over pixels from a
+       * tainted element far more strictly than Web Audio mutes one. Dropping
+       * crossOrigin makes this element behave exactly like the untainted
+       * preview player in PreviewStep, which already plays every source kind
+       * correctly.
+       *
+       * "local" and "drive" sources are blob: URLs — bytes already in this
+       * tab, nothing to fetch, no origin to cross — where crossOrigin was
+       * already confirmed to cause the identical symptom. */
       video.src = source.url;
       host.appendChild(video);
       document.body.appendChild(host);
