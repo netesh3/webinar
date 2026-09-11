@@ -3,7 +3,6 @@
 import {
   AudioPresets,
   ScreenSharePresets,
-  VideoPresets,
   type RoomOptions,
   type ScreenShareCaptureOptions,
   type TrackPublishOptions,
@@ -11,9 +10,11 @@ import {
 } from "livekit-client";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { asBackgroundChoice, type BackgroundChoice } from "./backgrounds";
-// The share's layers and top encoding live with the ladder that budgets them, because the two
-// have to agree position for position. See SHARE_LAYERS in network.ts.
+// Camera and share layers live with the ladders that budget them, so publish defaults and
+// applyLadder cannot drift. See CAMERA_* / SHARE_* in network.ts.
 import {
+  CAMERA_LAYERS,
+  CAMERA_TOP,
   SHARE_FLOOR_DESKTOP,
   SHARE_FLOOR_MOBILE,
   SHARE_LAYERS,
@@ -48,15 +49,16 @@ import {
  *
  * What is left is one capture resolution and one published ladder. 720p rather than 1080p
  * because it is the highest tier most laptop cameras genuinely deliver: asking for more
- * usually buys upscaled pixels and a hotter CPU. The ladder starts at the top and steps
- * DOWN within four seconds of trouble, then back up after a clear run, so a good connection
- * is never punished for the possibility of a bad one.
+ * usually buys upscaled pixels and a hotter CPU. Bitrate is richer than LiveKit's stock
+ * h720 (2.4 Mbps vs 1.7) so a featured speaker tile matches Zoom's common 720p band.
+ * The ladder starts at the top and steps DOWN within four seconds of trouble, then back
+ * up after a clear run, so a good connection is never punished for the possibility of a bad one.
  *
  * Capture is deliberately not part of the adaptation. Changing it means republishing the
  * track, which costs a keyframe and a visible cut for the audience — during the moment the
  * connection is already struggling. The ladder works on the live sender's encodings instead.
  */
-export const CAPTURE = VideoPresets.h720;
+export const CAPTURE = CAMERA_TOP;
 
 /* The simulcast ladder, stated rather than inferred.
  *
@@ -74,21 +76,18 @@ export const CAPTURE = VideoPresets.h720;
  * hundred there are always low-end Android phones and locked-down laptops that
  * software-decode VP9 at a crawl or not at all. VP8 simulcast wastes some upstream bandwidth
  * on the one publisher to guarantee the five hundred can watch, which is the right way round
- * for a webinar.
+ * for a webinar. H264 is reserved for screen share (Chrome's getDisplayMedia path).
  */
-export const SIMULCAST_LAYERS: VideoPreset[] = [
-  VideoPresets.h180,
-  VideoPresets.h360,
-];
+export const SIMULCAST_LAYERS: VideoPreset[] = CAMERA_LAYERS;
 
 /**
  * How a screen share is captured.
  *
- * `contentHint: "detail"` is the important one. Without it the browser encodes
+ * `contentHint: "text"` is the important one. Without it the browser encodes
  * captured screen content as if it were motion video, and under any bitrate
  * pressure it protects the frame rate by blurring — so the text on a slide goes
- * soft exactly when somebody is trying to read it. "detail" tells the encoder to
- * do the opposite: hold the pixels, drop frames.
+ * soft exactly when somebody is trying to read it. "text" tells the encoder to
+ * do the opposite: hold the pixels, drop frames (stronger than "detail" for decks).
  *
  * Audio IS captured, and it did not used to be. `audio: false` was defended here on the
  * grounds that presenters share slides and terminals more often than video — true, and
@@ -110,14 +109,14 @@ export const SCREEN_SHARE_OPTIONS: ScreenShareCaptureOptions = {
     noiseSuppression: false,
     autoGainControl: false,
   },
-  contentHint: "detail",
+  contentHint: "text",
 
   /* Capture floors: desktop ≥720p (we ask 1080p), mobile ≥360p.
    *
    * 1080p on desktop because slides/terminals are the point and text suffers first from a
    * downscale — and because SHARE_LADDER can cut fps / turn off 1080p without cutting below
-   * 720p@~2 Mbps. 15fps rather than 30: a deck does not need the duplicates; contentHint
-   * "detail" still tells the encoder to spend budget on pixels when motion appears.
+   * 720p@~3 Mbps. 15fps rather than 30: a deck does not need the duplicates; contentHint
+   * "text" still tells the encoder to spend budget on pixels when motion appears.
    *
    * Safari is left unconstrained (WebKit bug 263015 returns a LOW resolution under
    * constraints). Mobile asks for the 360p floor explicitly when not Safari.
@@ -158,7 +157,7 @@ export const SCREEN_SHARE_OPTIONS: ScreenShareCaptureOptions = {
  * do not restate them here or a drift with SHARE_LADDER is easy to miss.
  *
  * maintain-resolution: slides and terminals must not blur to hold a frame rate; contentHint
- * "detail" asks the same of the encoder, and this matches it on the sender. The network
+ * "text" asks the same of the encoder, and this matches it on the sender. The network
  * ladder for share (judgeShare) prefers cutting fps / turning off 1080p over dropping below
  * SHARE_FLOOR_DESKTOP.
  */
@@ -298,7 +297,7 @@ export function roomOptions(
        * connection and is unpleasant to watch. The browser's default is
        * "balanced", which splits the difference and gets neither.
        *
-       * A screen share wants the opposite and gets it from contentHint: "detail" below —
+       * A screen share wants the opposite and gets it from contentHint: "text" —
        * there, dropping frames to hold the pixels is what keeps a terminal legible.
        */
       degradationPreference: "maintain-framerate",
@@ -312,10 +311,14 @@ export function roomOptions(
        *
        * 1080p is the CEILING; SHARE_FLOOR_DESKTOP (720p) is the floor on desktop. The share
        * ladder in network.ts (judgeShare) turns off 1080p and may cut fps before it ever
-       * starves the 720p@~2 Mbps layer — camera still uses the stricter judge() with sharing:true.
+       * starves the 720p@~3 Mbps layer — camera still uses the stricter judge() with sharing:true,
+       * and is capped at `reduced` while a share is live so the two do not fight for uplink.
        *
        * Egress at scale is still linear in the audience: see docs/CAPACITY.md, and cap
        * MAX_ATTENDEES rather than the resolution if a single node has to carry hundreds.
+       *
+       * Geography: a single EU SFU cannot match Zoom's nearby PoPs on India RTT; richer
+       * encode closes the quality gap that bitrate left open, not the path itself.
        */
       screenShareEncoding: SHARE_TOP.encoding,
 

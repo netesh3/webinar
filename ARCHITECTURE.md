@@ -467,18 +467,24 @@ the packet would broadcast one of them to a room containing both.
 ```
   publisher                          SFU                        subscribers
   ┌────────────────┐                                     ┌──────────────────┐
-  │ 720p  1.7 Mbps │──┐                                  │ laptop  → 720p   │
-  │ 360p  0.5 Mbps │──┼──► one upload, three layers ──────► phone   → 360p   │
-  │ 180p  0.15Mbps │──┘    SFU picks per subscriber      │ train   → 180p   │
+  │ 720p  2.4 Mbps │──┐                                  │ laptop  → 720p   │
+  │ 360p  0.6 Mbps │──┼──► one upload, three layers ──────► phone   → 360p   │
+  │ 180p  0.2 Mbps │──┘    SFU picks per subscriber      │ train   → 180p   │
   └────────────────┘                                     └──────────────────┘
         ▲
-        │ getStats every 2s: loss, RTT, jitter, headroom
+        │ getStats every 2s: loss, RTT excess (not availableOutgoingBitrate)
         │
-   ┌────┴─────────────────────────────────────────┐
-   │ ≥2% loss or ≥300ms RTT, 2 samples → step DOWN │
-   │ ≤0.5% and ≤180ms,      6 samples → step UP    │
-   └───────────────────────────────────────────────┘
+   ┌────┴──────────────────────────────────────────────────┐
+   │ ≥2% loss or ≥200ms RTT *excess*, 2 samples → step DOWN │
+   │ ≤0.5% and ≤80ms excess, 6 samples → step UP            │
+   │ (share uses a higher bar; camera capped while sharing) │
+   └────────────────────────────────────────────────────────┘
 ```
+
+Screen share is separate: 1080p@~5 Mbps / 720p floor@~3 Mbps / `contentHint: "text"`,
+`maintain-resolution`. Large speaker + fullscreen share tiles always request HIGH.
+A single EU SFU cannot match Zoom's nearby PoPs on India RTT — richer encode closes the
+bitrate gap, not the path.
 
 Asymmetric on purpose: stepping down late *is* the lag, and stepping up eagerly recreates
 the congestion that caused the step down — the audience watches the resolution pump.

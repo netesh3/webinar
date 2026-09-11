@@ -15,6 +15,8 @@
 
 import { ConnectionQuality } from "livekit-client";
 import {
+  CAMERA_720_BITRATE,
+  CAMERA_TOP,
   LADDER,
   SHARE_720_MIN_BITRATE,
   SHARE_FLOOR_DESKTOP,
@@ -538,8 +540,8 @@ console.log("\nshare layer gaps");
     `rungs: ${full.join(", ")}`,
   );
   ok(
-    full[1] >= 1_500_000 && full[1] <= 2_500_000,
-    "the middle share rung is ~2 Mbps so 720p text stays sharp",
+    full[1] >= 2_500_000 && full[1] <= 3_500_000,
+    "the middle share rung is ~3 Mbps so 720p text stays sharp",
     `${full[1]} bps`,
   );
 
@@ -554,7 +556,7 @@ console.log("\nshare layer gaps");
     `${middle.encoding.maxFramerate}fps`,
   );
 
-  // Desktop content floor: every tier keeps a ≥720p layer live at the bitrate floor (~2 Mbps).
+  // Desktop content floor: every tier keeps a ≥720p layer live at the bitrate floor.
   for (const tier of tiers) {
     const rung720 = SHARE_LADDER[tier][1];
     ok(
@@ -578,9 +580,30 @@ console.log("\nshare layer gaps");
     "top share layer is above the desktop floor",
   );
   ok(
-    SHARE_TOP.encoding.maxBitrate >= 3_000_000,
-    "1080p share ceiling has headroom for fine text",
+    SHARE_TOP.encoding.maxBitrate >= 4_000_000,
+    "1080p share ceiling has Zoom-like headroom for fine text",
     `${SHARE_TOP.encoding.maxBitrate}`,
+  );
+}
+
+/* Camera layers must sit in Zoom's featured-speaker band, not stock LiveKit 1.7 Mbps. */
+console.log("\ncamera layer budgets");
+{
+  ok(
+    CAMERA_TOP.encoding.maxBitrate >= 2_200_000 &&
+      CAMERA_TOP.encoding.maxBitrate <= 2_600_000,
+    "camera 720p is ~2.4 Mbps (Zoom featured-speaker band)",
+    `${CAMERA_TOP.encoding.maxBitrate}`,
+  );
+  eq(
+    LADDER.full[2].maxBitrate,
+    CAMERA_720_BITRATE,
+    "camera ladder top matches the published 720p bitrate",
+  );
+  ok(
+    LADDER.full[1].maxBitrate >= 500_000,
+    "camera mid layer is rich enough not to look soft when briefly selected",
+    `${LADDER.full[1].maxBitrate}`,
   );
 }
 

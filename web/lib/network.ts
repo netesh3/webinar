@@ -5,7 +5,6 @@ import {
   RoomEvent,
   Track,
   VideoPreset,
-  VideoPresets,
   type LocalVideoTrack,
   type RemoteVideoTrack,
   type Room,
@@ -198,6 +197,30 @@ const IDLE: NetworkHealth = {
  * for half a second — during the moment the connection is already struggling. Changing
  * the parameters keeps the same sender and the same SSRCs.
  */
+/* Camera publish ladder — bitrates live HERE with the share ladder so applyLadder cannot
+ * drift from what media.ts publishes.
+ *
+ * WHY richer than stock VideoPresets. LiveKit defaults are h180@160k / h360@450k /
+ * h720@1.7 Mbps. Zoom's featured-speaker 720p commonly sits ~1.5–2.5 Mbps; at 1.7 Mbps
+ * our large stage tile looked soft in side-by-side tests even on a clean link. We keep
+ * 720p@30 capture (laptop cameras rarely deliver true 1080p) and spend the budget on a
+ * sharper top layer instead of empty pixels.
+ *
+ *            180p     360p      720p@30    total
+ *   full     200      600       2400       3200 kbps
+ *   reduced  200      600       off        800 kbps
+ *   minimal  200      off       off        200 kbps
+ */
+/** Featured-speaker 720p — middle of Zoom's common 1.5–2.5 Mbps band. */
+export const CAMERA_720_BITRATE = 2_400_000;
+
+export const CAMERA_LAYERS = [
+  new VideoPreset(320, 180, 200_000, 20),
+  new VideoPreset(640, 360, 600_000, 20),
+];
+
+export const CAMERA_TOP = new VideoPreset(1280, 720, CAMERA_720_BITRATE, 30);
+
 /* Exported for one test, which pins the property that matters and cannot be read off the
  * page: that no two adjacent layers are so far apart that a subscriber falls through the gap
  * between them. See network.test.mts. */
@@ -207,21 +230,21 @@ export const LADDER: Record<
 > = {
   // Three layers as published. The SFU chooses between them per subscriber.
   full: [
-    { maxBitrate: VideoPresets.h180.encoding.maxBitrate, scaleDown: 4 },
-    { maxBitrate: VideoPresets.h360.encoding.maxBitrate, scaleDown: 2 },
-    { maxBitrate: VideoPresets.h720.encoding.maxBitrate, scaleDown: 1 },
+    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 4 },
+    { maxBitrate: CAMERA_LAYERS[1].encoding.maxBitrate, scaleDown: 2 },
+    { maxBitrate: CAMERA_TOP.encoding.maxBitrate, scaleDown: 1 },
   ],
   // The top layer goes. Two layers at a quarter of the bitrate, which is what a
   // struggling uplink can actually deliver — and the SFU still has a choice to make.
   reduced: [
-    { maxBitrate: VideoPresets.h180.encoding.maxBitrate, scaleDown: 4 },
-    { maxBitrate: VideoPresets.h360.encoding.maxBitrate, scaleDown: 2 },
+    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 4 },
+    { maxBitrate: CAMERA_LAYERS[1].encoding.maxBitrate, scaleDown: 2 },
     { maxBitrate: 0, scaleDown: 1 },
   ],
   // One small layer. Everything left goes to keeping a recognisable moving picture and
   // to protecting the audio, which is untouched at every rung.
   minimal: [
-    { maxBitrate: VideoPresets.h180.encoding.maxBitrate, scaleDown: 4 },
+    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 4 },
     { maxBitrate: 0, scaleDown: 2 },
     { maxBitrate: 0, scaleDown: 1 },
   ],
@@ -230,7 +253,7 @@ export const LADDER: Record<
 /* The same three tiers, for a SCREEN SHARE — and a different policy from the camera.
  *
  * Camera under pressure: maintain-framerate, drop layers, accept blur.
- * Share under pressure: maintain-resolution / contentHint "detail", hold pixels, drop frames.
+ * Share under pressure: maintain-resolution / contentHint "text", hold pixels, drop frames.
  * Reading the slide IS the content; a sharp 720p at 8fps beats a soft 360p at 30.
  *
  * Encode floors (publisher):
@@ -244,21 +267,23 @@ export const LADDER: Record<
  * The rungs, per layer (desktop floor = 720p always active at a text-readable bitrate):
  *
  *            360p@3    720p         1080p@15   total
- *   full     400       2000@15       3500      5900 kbps
- *   reduced  400       2000@15       off       2400 kbps
- *   minimal  400       2000@8        off       2400 kbps   ← fps down, not bitrate/resolution
+ *   full     700       3000@15       5000      8700 kbps
+ *   reduced  700       3000@15       off       3700 kbps
+ *   minimal  700       3000@8        off       3700 kbps   ← fps down, not bitrate/resolution
  *
- * WHY 2 Mbps (not 800k). 800 kbps at 720p looks soft on slides/terminals — H.264 spends
- * the budget on motion vectors and leaves text muddy. Stock ScreenSharePresets.h720fps15
- * is already 1.5 Mbps; we go to 2 Mbps as the floor so reduced/minimal stay readable, and
- * 1080p tops out at 3.5 Mbps so the HIGH subscriber layer has headroom for fine detail.
+ * WHY ~3 Mbps / ~5 Mbps (not 2 / 3.5). Desktop content needs bitrate more than faces —
+ * H.264 spends a thin budget on motion and leaves text muddy. Zoom content share is
+ * typically several Mbps at high resolution and low fps; we close that encode gap while
+ * accepting we cannot erase India→EU path RTT vs Zoom's nearby PoPs.
  *
  * WHAT CHANGED (mid-session blur / false Reduced). Camera and share used to share ONE tier
  * decision driven partly by availableOutgoingBitrate. On EU SFU + IN that estimate is often
  * a few Mbps (or <1 Mbps) on fat ISP plans, so tooNarrow fired, both tracks stepped down,
  * and the share's 720p rung was starved. Share now has its own judge on severe loss /
- * extreme queueing only — never on the bitrate estimate. Minimal holds 720p@2 Mbps while
+ * extreme queueing only — never on the bitrate estimate. Minimal holds 720p@floor while
  * cutting maxFramerate. Camera uses the same loss/queueing policy (stricter thresholds).
+ * While sharing, the camera ladder is also capped at `reduced` so the face does not steal
+ * the uplink the slides need.
  *
  * Layers and ladder live HERE (not media.ts) so applyLadder's positional index cannot drift
  * from the published encodings. SHARE_TOP is separate because the SDK takes top encoding
@@ -269,19 +294,19 @@ export const SHARE_FLOOR_DESKTOP = { width: 1280, height: 720 } as const;
 /** Mobile publisher capture/encode floor (360p equivalent). */
 export const SHARE_FLOOR_MOBILE = { width: 640, height: 360 } as const;
 
-/** Bitrate floor for the 720p share layer — text needs ~2 Mbps, not a camera-like 800k. */
-export const SHARE_720_MIN_BITRATE = 2_000_000;
+/** Bitrate floor for the 720p share layer — text needs ~3 Mbps, not a camera-like 800k. */
+export const SHARE_720_MIN_BITRATE = 3_000_000;
 
-/** Low share simulcast rung: enough that 360p→720p is not a 10× cliff for the SFU. */
-const SHARE_LOW_BITRATE = 400_000;
+/** Low share simulcast rung: enough that 360p→720p stays under a 5× SFU cliff. */
+const SHARE_LOW_BITRATE = 700_000;
 
-/** Sharp 1080p ceiling for fullscreen desktop viewers. */
-const SHARE_1080_BITRATE = 3_500_000;
+/** Sharp 1080p ceiling for fullscreen desktop viewers (Zoom-like content bitrate). */
+const SHARE_1080_BITRATE = 5_000_000;
 
 export const SHARE_LAYERS = [
   // Subscriber convenience for small phone tiles — not a desktop content floor.
   new VideoPreset(640, 360, SHARE_LOW_BITRATE, 3),
-  // Constructed: stock h720fps5 is 800k@5fps (soft + slideshow); we hold 2 Mbps@15.
+  // Constructed: stock h720fps5 is 800k@5fps (soft + slideshow); we hold 3 Mbps@15.
   new VideoPreset(
     SHARE_FLOOR_DESKTOP.width,
     SHARE_FLOOR_DESKTOP.height,
@@ -756,13 +781,25 @@ export function useNetworkHealth(
 
       if (publishing && camera) {
         const at = TIERS.indexOf(tier.current);
-        if (
+        /* While screen-sharing, keep the camera off the 720p rung. The face thumbnail
+         * does not need it; the slides do, and both tracks share one uplink. Cap at
+         * `reduced` immediately when a share appears, and refuse to climb back to
+         * `full` until the share ends. */
+        const cameraBest = share ? 1 : 0;
+        if (share && at < cameraBest) {
+          badSamples.current = 0;
+          goodSamples.current = 0;
+          await applyCameraTier(TIERS[cameraBest], camera);
+        } else if (
           badSamples.current >= DEGRADE_AFTER_SAMPLES &&
           at < TIERS.length - 1
         ) {
           badSamples.current = 0;
           await applyCameraTier(TIERS[at + 1], camera);
-        } else if (goodSamples.current >= RECOVER_AFTER_SAMPLES && at > 0) {
+        } else if (
+          goodSamples.current >= RECOVER_AFTER_SAMPLES &&
+          at > cameraBest
+        ) {
           goodSamples.current = 0;
           await applyCameraTier(TIERS[at - 1], camera);
         }

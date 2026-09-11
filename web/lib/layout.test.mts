@@ -326,7 +326,10 @@ group("filterTiles", () => {
 group("qualityFor", () => {
   eq(qualityFor(1), VideoQuality.HIGH, "one tile gets the top layer");
   eq(qualityFor(2), VideoQuality.HIGH, "two tiles still do");
-  eq(qualityFor(9), VideoQuality.MEDIUM, "nine tiles drop to the middle layer");
+  eq(qualityFor(4), VideoQuality.HIGH, "four equal tiles stay on the top layer");
+  eq(qualityFor(5), VideoQuality.MEDIUM, "five tiles drop to the middle layer");
+  eq(qualityFor(12), VideoQuality.MEDIUM, "twelve tiles still use the middle");
+  eq(qualityFor(13), VideoQuality.LOW, "thirteen tiles ask for the low layer");
   eq(qualityFor(25), VideoQuality.LOW, "a full grid asks for the low layer");
   eq(qualityFor(300), VideoQuality.LOW, "and so does an absurd one");
 });

@@ -26,11 +26,11 @@ What one subscriber receives, in the common case of a screen share on stage with
 camera thumbnails floating over it:
 
 ```
-screen share, top layer (h1080fps15)   2 500 kbps   ← the CEILING, not a fixed cost
-3 camera thumbnails, 180p layer        3 × 150 =  450 kbps
+screen share, top layer (h1080fps15)   5 000 kbps   ← the CEILING, not a fixed cost
+3 camera thumbnails, 180p layer        3 × 200 =  600 kbps
 audio — DTX means only the speaker sends  ≈ 100 kbps
                                        ─────────────────
-                                          ≈ 3.05 Mbps  worst case
+                                          ≈ 5.7 Mbps  worst case
 ```
 
 **The share is 1080p and adaptive, which is not the same as 1080p and expensive.**
@@ -38,29 +38,39 @@ audio — DTX means only the speaker sends  ≈ 100 kbps
 It was pinned to 720p for a while to bound egress. That worked and was the wrong trade: it
 made every share worse for everybody, including the presenters on a good uplink, who are
 most of them. `SHARE_LADDER` in `lib/network.ts` now moves the top layer on the same signals
-that already drive the camera:
+that already drive the camera — but with a higher bar (`judgeShare`) and Zoom-like content
+bitrates (1080p ~5 Mbps, 720p floor ~3 Mbps):
 
 | tier | share top layer | what a subscriber sees |
 |---|---|---|
-| `full` | 2 500 kbps | 1080p at 15fps |
-| `reduced` | 1 200 kbps | 1080p at roughly 6–8fps |
-| `minimal` | 600 kbps | 1080p at a few frames a second |
+| `full` | 5 000 kbps | 1080p at 15fps |
+| `reduced` | off (720p @ 3 Mbps) | 720p at 15fps |
+| `minimal` | off (720p @ 3 Mbps, 8fps) | 720p, frames cut first |
 
-**The resolution never drops; only the framerate does.** That inversion is deliberate and it
-is specific to a screen share: `contentHint: "detail"` tells the encoder to hold pixels and
-drop frames, so a squeezed share becomes a slower slideshow of legible text. Dropping to 360p
-instead would make the text unreadable at any framerate, and reading it *is* the content. The
-camera ladder does the opposite — `maintain-framerate` — because a sharp face at 8fps reads as
-a broken connection.
+**The resolution never drops below the 720p desktop floor; only the framerate does on
+`minimal`.** That inversion is deliberate and it is specific to a screen share:
+`contentHint: "text"` tells the encoder to hold pixels and drop frames, so a squeezed
+share becomes a slower slideshow of legible text. Dropping to 360p instead would make the
+text unreadable at any framerate, and reading it *is* the content. The camera ladder does
+the opposite — `maintain-framerate` at 720p@~2.4 Mbps — because a sharp face at 8fps reads
+as a broken connection.
+
+Camera + share on one uplink: while a share is live the camera ladder is capped at
+`reduced` (no 720p face layer) so slides own the budget.
+
+**Geography remains a residual limit.** Zoom terminates near the client; this deployment's
+media path is a single EU SFU. India clients at ~140–200 ms RTT will still see more
+congestion sensitivity than a nearby PoP, even when encode budgets match.
 
 `needKbps(tier, sharing)` counts the share in the budget. It did not before, and that was a
 real bug rather than an omission: a presenter sharing at 1080p on a 3 Mbps link was judged
-against the camera's 2.3 Mbps need, so `tooNarrow` stayed false on a link that was already
-saturated and the ladder never moved.
+against the camera's need alone, so `tooNarrow` stayed false on a link that was already
+saturated and the ladder never moved. (The uplink *estimate* is no longer a ladder signal —
+see `judge` / `judgeShare`.)
 
-Cameras only, no share: ≈ 2.25 Mbps.
+Cameras only, no share: ≈ 3.2 Mbps at `full` (180+360+720).
 
-So 500 subscribers is **1.1–1.5 Gbps** at `full` and **0.65–0.8 Gbps** once the ladder has
+So 500 subscribers is **~2.5–2.9 Gbps** at `full` share and lower once the ladder has
 stepped a struggling presenter down. Size for the ceiling — a presenter on good wifi is the
 normal case, not the exception.
 
@@ -160,8 +170,9 @@ needed:
 | | where | why |
 |---|---|---|
 | Explicit 3-rung simulcast ladder | `lib/media.ts` | the ladder *is* the ABR strategy; leaving it to library defaults left it undocumented and free to change |
-| Screen share is 1080p and **adaptive** | `lib/media.ts`, `lib/network.ts` | Pinning it to 720p bounded egress by making every share worse for everybody. `SHARE_LADDER` moves the top layer 2500 → 1200 → 600 kbps on the signals that already drive the camera, holding 1080p and dropping frames instead — which is what contentHint "detail" is for |
-| `needKbps(tier, sharing)` counts the share | `lib/network.ts` | Without it a 1080p share on a 3 Mbps link was judged against the camera's 2.3 Mbps need, so the ladder saw headroom on a saturated uplink and never stepped down |
+| Screen share is 1080p and **adaptive** | `lib/media.ts`, `lib/network.ts` | Pinning it to 720p bounded egress by making every share worse for everybody. `SHARE_LADDER` holds 1080p@~5 Mbps / 720p@~3 Mbps floor and cuts fps before resolution — which is what contentHint "text" is for. Single EU SFU vs Zoom PoPs remains a path limit |
+| Camera 720p@~2.4 Mbps + grid HIGH≤4 | `lib/network.ts`, `lib/layout.ts` | Stock 1.7 Mbps and MEDIUM-at-3-tiles made featured faces look soft vs Zoom |
+| `needKbps(tier, sharing)` counts the share | `lib/network.ts` | Without it a 1080p share on a 3 Mbps link was judged against the camera's need alone, so the ladder saw headroom on a saturated uplink and never stepped down |
 | `degradationPreference: maintain-framerate` | `lib/media.ts` | the browser default splits the difference and gets neither; a face at lower resolution still reads as a person talking |
 | `AudioPresets.speech` | `lib/media.ts` | 24 kbps mono instead of 48 music. Doubled by RED that is ~48 vs ~96 kbps, multiplied by every publisher for every one of 500 subscribers |
 | RED + DTX | `lib/media.ts` | already present; RED reconstructs a lost packet, DTX stops sending silence |

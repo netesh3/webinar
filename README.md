@@ -199,14 +199,19 @@ push the leave button off screen.
   nothing and a preview would be a click between them and the webinar
 - Device switching mid-session, and a publish-resolution picker (360p–1080p)
 
-**Screen sharing** is encoded as a screen, not as a camera: `ScreenSharePresets`
-at 15fps and `contentHint: "detail"`, so under bitrate pressure the encoder drops
-frames and keeps pixels. A camera preset does the opposite, and the first thing it
-throws away is the small text somebody is trying to read. The presenter is never
-shown their own capture — sharing a whole screen means the capture contains this
-window, and a window playing back its own capture is an infinite corridor that the
-audience receives too. They get "You're sharing your screen" instead, which is what
-Zoom and Meet do for the same reason.
+**Screen sharing** is encoded as a screen, not as a camera: 1080p@15fps with
+`contentHint: "text"` and a ~5 Mbps top layer (720p floor ~3 Mbps), so under
+bitrate pressure the encoder drops frames and keeps pixels. A camera preset does
+the opposite, and the first thing it throws away is the small text somebody is
+trying to read. Cameras publish 720p@~2.4 Mbps (Zoom's common featured-speaker
+band) with VP8 simulcast; the large speaker tile always requests the HIGH layer.
+The presenter is never shown their own capture — sharing a whole screen means the
+capture contains this window, and a window playing back its own capture is an
+infinite corridor that the audience receives too. They get "You're sharing your
+screen" instead, which is what Zoom and Meet do for the same reason.
+
+A single EU SFU cannot match Zoom's nearby PoPs on India RTT (~140–200 ms); richer
+encode closes the bitrate gap, not the geography.
 
 **Quality**: `adaptiveStream` + `dynacast` + simulcast are on for every role.
 Adaptive stream means the SFU sends a layer no larger than the `<video>` element
