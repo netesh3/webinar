@@ -8,7 +8,6 @@ import { useRoomUI } from "./context";
 import { DeviceSettings } from "./device-settings";
 import { FloatingWindow } from "./floating-window";
 import { HostControls } from "./host-controls";
-import { InvitePanel } from "./invite-panel";
 import { ParticipantsPanel } from "./participants";
 import { PollsPanel } from "./polls-panel";
 import { QAPanel } from "./qa-panel";
@@ -50,18 +49,18 @@ function Content({ id }: { id: ToolId }) {
       return <PollsPanel />;
     case "participants":
       return <ParticipantsPanel />;
-    case "invite":
-      return <InvitePanel />;
     case "settings":
       return <DeviceSettings />;
     case "host":
       return <HostControls />;
-    // Reactions, raise-hand, and layout act immediately and never open a window.
-    // Listed rather than defaulted, so adding a tool without deciding this is a type
-    // error instead of a blank window.
+    // Reactions, raise-hand, layout and invite act immediately (or open their
+    // own anchored popover) and never open a floating window. Listed rather
+    // than defaulted, so adding a tool without deciding this is a type error
+    // instead of a blank window.
     case "reactions":
     case "hand":
     case "layout":
+    case "invite":
       return null;
   }
 }

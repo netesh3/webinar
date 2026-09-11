@@ -3,7 +3,7 @@
 /**
  * Share the public attendee registration / join landing URL
  * (`/webinars/<id>`). Uses the Web Share API when available; otherwise copies
- * to the clipboard. Same target as InvitePanel / Share tab.
+ * to the clipboard. Same target as InviteMenu / Share tab.
  */
 export async function shareAttendeeLink(opts: {
   url: string;

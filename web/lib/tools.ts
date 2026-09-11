@@ -121,15 +121,14 @@ const DEFAULT_SIZE: Record<ToolId, { w: number; h: number }> = {
   qa: { w: 384, h: 520 },
   polls: { w: 440, h: 560 },
   participants: { w: 372, h: 540 },
-  // Short: a link, two buttons and a sentence. Nothing scrolls, so height above this is
-  // empty space in front of the stage.
-  invite: { w: 396, h: 316 },
   settings: { w: 468, h: 580 },
   host: { w: 468, h: 600 },
-  // Neither of these opens a window — they act immediately. Sizes exist so the
-  // record is total and nothing has to handle an undefined.
+  // None of these opens a window — they act immediately, or open their own
+  // anchored popover. Sizes exist so the record is total and nothing has to
+  // handle an undefined.
   reactions: { w: 320, h: 200 },
   hand: { w: 320, h: 200 },
+  invite: { w: 320, h: 200 },
 };
 
 /** Keeps a rect inside the usable area, shrinking it if the area is smaller than
