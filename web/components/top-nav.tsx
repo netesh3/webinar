@@ -64,8 +64,9 @@ export function TopNav() {
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-5">
         <Link
-          href="/"
+          href={redesign ? "/" : "/home"}
           className="mr-1 flex shrink-0 items-center gap-2.5 sm:mr-3"
+          title={redesign ? undefined : "Marketing home"}
         >
           <span className="grid size-7 place-items-center rounded-lg bg-brand text-[12px] font-bold text-white">
             {appName.slice(0, 1).toUpperCase()}

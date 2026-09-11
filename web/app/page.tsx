@@ -11,10 +11,11 @@ import { UI_COOKIE, resolveUiRedesign } from "@/lib/ui-redesign-flag";
 
 /* Front door.
  *
- * Classic (default in production): browse catalogue — same as main before the
- * redesign. New UI: brand marketing homepage; signed-in users redirect away.
+ * New UI (Workers deploy default): brand marketing homepage; signed-in users
+ * redirect to /host or /browse. Classic: browse catalogue on `/` (pre-redesign).
  *
- * Switch: ?ui=new|classic, cookie webcast_ui, or NEXT_PUBLIC_UI_REDESIGN=1.
+ * Switch: ?ui=new|classic, cookie webcast_ui, or NEXT_PUBLIC_UI_REDESIGN.
+ * Always-on marketing alias: /home (even with classic cookie or signed in).
  */
 
 export default async function HomeRoute() {

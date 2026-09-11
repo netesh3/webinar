@@ -17,6 +17,7 @@
 #
 # Build env (set in this workflow; not secrets):
 #   NEXT_PUBLIC_API_BASE="" — same-origin /api via Worker proxy (see web/CLOUDFLARE.md)
+#   NEXT_PUBLIC_UI_REDESIGN=1 — marketing homepage on logged-out `/`
 #   OPEN_NEXT=1
 #
 # Runtime API target stays in web/wrangler.jsonc vars (API_INTERNAL_URL).
@@ -49,6 +50,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       NEXT_PUBLIC_API_BASE: ""
+      NEXT_PUBLIC_UI_REDESIGN: "1"
       OPEN_NEXT: "1"
 
     steps:

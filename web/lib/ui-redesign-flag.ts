@@ -5,8 +5,10 @@
  *   2. Cookie webcast_ui=new|classic
  *   3. Env    NEXT_PUBLIC_UI_REDESIGN=1 → default new, else classic
  *
- * Production default is classic (safe). Opt in with account menu “Try new UI”,
- * ?ui=new, or cookie webcast_ui=new.
+ * Workers deploy (`npm run deploy`) builds with NEXT_PUBLIC_UI_REDESIGN=1 so
+ * logged-out `/` is the marketing homepage. Opt out anytime with ?ui=classic,
+ * cookie webcast_ui=classic, or account menu “Use classic UI”.
+ * Marketing is always at `/home` (ignores classic cookie / signed-in skip of `/`).
  */
 
 export const UI_COOKIE = "webcast_ui";
