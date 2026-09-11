@@ -309,6 +309,16 @@ export function PollIcon(props: IconProps) {
   );
 }
 
+/* A page-a-day calendar: frame, two hanger tabs, one ruled line under the header. */
+export function CalendarIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="4.5" width="17" height="16" rx="2.5" />
+      <path d="M3.5 9.5h17M8 3v3M16 3v3" />
+    </Icon>
+  );
+}
+
 /* A picture: frame, horizon, sun. */
 export function ImageIcon(props: IconProps) {
   return (

@@ -314,3 +314,56 @@ export function instantToZoned(
     time: `${hour}:${value("minute")}`,
   };
 }
+
+/** A Google Calendar "quick add" link, pre-filled with this webinar's details.
+ *
+ * `dates` is written as the webinar's own wall clock, not UTC — Google reads
+ * `YYYYMMDDTHHMMSS` (no trailing `Z`) as local time in whatever zone `ctz`
+ * names, so this must NOT convert to the viewer's own zone the way every
+ * display formatter above does. `instantToZoned` already does exactly that
+ * conversion for the editor, so it is reused here rather than duplicated.
+ *
+ * No join link in `location`: for a registration-gated webinar there isn't
+ * one yet: the only address the API can offer before it exists is the
+ * registration page, and each attendee's personal join link is minted at
+ * registration and emailed to them, not handed out here. The event still
+ * needs a location, so this names what it is instead of pointing at a URL
+ * nobody holding this invite can use yet.
+ */
+export function googleCalendarInviteUrl(webinar: {
+  topic: string;
+  description: string;
+  startsAt: string;
+  durationMin: number;
+  timeZone: string;
+  webinarId: string;
+  registrationUrl: string;
+}): string {
+  const { topic, description, startsAt, durationMin, timeZone, webinarId, registrationUrl } =
+    webinar;
+
+  const stamp = (date: string, time: string) =>
+    `${date.replace(/-/g, "")}T${time.replace(":", "")}00`;
+
+  const start = instantToZoned(startsAt, timeZone);
+  const endsAt = new Date(new Date(startsAt).getTime() + durationMin * 60_000).toISOString();
+  const end = instantToZoned(endsAt, timeZone);
+
+  const details = [
+    description.trim() ? `${description.trim()}\n` : null,
+    `Register: ${registrationUrl}`,
+    `Webinar ID: ${webinarId}`,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+
+  const query =
+    `action=TEMPLATE` +
+    `&text=${encodeURIComponent(topic)}` +
+    `&dates=${stamp(start.date, start.time)}/${stamp(end.date, end.time)}` +
+    `&ctz=${encodeURIComponent(timeZone)}` +
+    `&details=${encodeURIComponent(details)}` +
+    `&location=${encodeURIComponent("Online Webinar")}`;
+
+  return `https://calendar.google.com/calendar/render?${query}`;
+}
