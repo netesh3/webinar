@@ -138,6 +138,10 @@ export type RoomUI = {
   updatePrefs: (patch: Partial<MediaPreferences>) => void;
 
   leave: () => void;
+
+  /** Dev chrome preview (`/preview/room`): no LiveKit media. Share and similar
+   *  publish actions are mocked so the control bar still shows host affordances. */
+  previewChrome?: boolean;
 };
 
 const RoomUIContext = createContext<RoomUI | null>(null);

@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ToolId } from "@/lib/tools";
+import { LAYOUT_LABEL } from "@/lib/layout";
 import { GridIcon, PinIcon } from "../icons";
 import { useRoomUI } from "./context";
+import { LayoutMenu } from "./layout-menu";
 import { ReactionPicker } from "./reactions";
 import { useToolDrag } from "./tool-drag";
 import { tool } from "./tools";
@@ -28,7 +30,7 @@ export function MoreGrid({
   items: readonly ToolId[];
   onClose: () => void;
 }) {
-  const { tools, unread, realtime } = useRoomUI();
+  const { tools, unread, realtime, stage } = useRoomUI();
   const drag = useToolDrag();
   const dragging = drag.drag !== null;
   const panel = useRef<HTMLDivElement | null>(null);
@@ -36,6 +38,8 @@ export function MoreGrid({
    *  not a window and not a single action — there are six of them — so it opens
    *  here rather than in a second popover stacked on this one. */
   const [showReactions, setShowReactions] = useState(false);
+  /** Layout picker when Layout lives in More (user unpinned it from the bar). */
+  const [showLayout, setShowLayout] = useState(false);
 
   /* Dismiss on Escape and on a press outside.
    *
@@ -122,7 +126,14 @@ export function MoreGrid({
             const t = tool(id);
             const Icon = t.icon;
             const badge = unread[id];
-            const active = id === "hand" ? realtime.myHandRaised : id === "reactions" ? showReactions : false;
+            const active =
+              id === "hand"
+                ? realtime.myHandRaised
+                : id === "reactions"
+                  ? showReactions
+                  : id === "layout"
+                    ? showLayout
+                    : false;
 
             return (
               <button
@@ -135,6 +146,13 @@ export function MoreGrid({
                 {...drag.bind(id, "grid", () => {
                   if (id === "reactions") {
                     setShowReactions((v) => !v);
+                    setShowLayout(false);
+                    return;
+                  }
+                  if (id === "layout") {
+                    setShowLayout((v) => !v);
+                    setShowReactions(false);
+                    tools.used("layout");
                     return;
                   }
                   if (id === "hand") {
@@ -152,7 +170,9 @@ export function MoreGrid({
                 } ${drag.drag?.tool === id ? "opacity-40" : ""}`}
               >
                 <Icon className="size-[22px]" />
-                <span className="text-[11px] leading-tight font-medium">{t.label}</span>
+                <span className="text-[11px] leading-tight font-medium">
+                  {id === "layout" ? `Layout · ${LAYOUT_LABEL[stage.mode]}` : t.label}
+                </span>
                 {badge !== undefined && badge > 0 && (
                   <span className="absolute top-1.5 right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
                     {badge > 99 ? "99+" : badge}
@@ -161,6 +181,15 @@ export function MoreGrid({
               </button>
             );
           })}
+        </div>
+      )}
+
+      {showLayout && (
+        <div className="relative mt-2 border-t border-line pt-2">
+          <LayoutMenu
+            onClose={() => setShowLayout(false)}
+            embedded
+          />
         </div>
       )}
 
@@ -179,7 +208,7 @@ export function MoreGrid({
 
       <p className="mt-2 flex items-center gap-1.5 border-t border-line px-1.5 pt-2 text-[11px] text-ink-3">
         <PinIcon className="size-3 shrink-0" />
-        Drag onto the bar to pin. Chat opens the side panel.
+        Layout switches speaker / grid / spotlight. Drag tools onto the bar to pin.
       </p>
     </div>
   );

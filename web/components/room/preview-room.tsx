@@ -28,9 +28,9 @@ const HOST_PERMS: MediaPermissions = {
   canPublish: true,
   canSpeak: true,
   canShareCamera: true,
-  // No LiveKit in the chrome preview — offering Share would open getDisplayMedia
-  // and then fail to publish, which looks like "screenshare is broken".
-  canShareScreen: false,
+  // Share is a core host control — show it in chrome preview. ControlBar mocks
+  // the action when previewChrome is set so we never call getDisplayMedia here.
+  canShareScreen: true,
   audioOnly: false,
   mutedByHost: false,
   promoted: false,
@@ -125,6 +125,7 @@ export function PreviewRoom() {
       leave: () => {
         window.location.href = "/host";
       },
+      previewChrome: true,
     }),
     [join, realtime, tools, availableTools, stage, prefs],
   );

@@ -125,7 +125,7 @@ const TOOLS: Record<ToolId, Tool> = {
     // a draggable window for it would be a window you close every time.
     kind: "action",
     label: "Layout",
-    title: "Stage layout",
+    title: "Change layout — speaker, grid, or spotlight",
     icon: SpeakerViewIcon,
     keepMounted: false,
   },

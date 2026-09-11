@@ -185,11 +185,12 @@ export type ToolLayout = {
 
 /* What a first-time user gets.
  *
- * Chat and Participants on the bar — they open the side panel. Layout, invite
- * and the rest stay one click away in More. Fewer pins = less chrome to parse
- * mid-session; the panel tabs carry the rest of the engagement surface.
+ * Chat and Participants open the side panel. Layout is pinned too — switching
+ * speaker / grid / spotlight is a core action hosts ask for, and burying it
+ * under More made it undiscoverable. Invite, host tools and the rest stay in
+ * More so the bar stays short.
  */
-const DEFAULT_PINNED: ToolId[] = ["chat", "participants"];
+const DEFAULT_PINNED: ToolId[] = ["chat", "participants", "layout"];
 
 export const RECENT_LIMIT = 6;
 
@@ -521,9 +522,10 @@ export function gridItems(
 
 // --------------------------------------------------------------- persistence
 
-/* v2: simpler default pins + docked side panel. Bumped so old layouts that
- * pinned layout/invite/four tools do not fight the redesign on first load. */
-const STORAGE_KEY = "webcast.toolbar.v2";
+/* v3: keep the simpler redesign pins, but put Layout back on the bar — users
+ * could not find stage layout under More. Bumped so v2 localStorage (chat +
+ * participants only) does not keep Layout buried after this ships. */
+const STORAGE_KEY = "webcast.toolbar.v3";
 
 /** Only the customisation is persisted, never the windows.
  *

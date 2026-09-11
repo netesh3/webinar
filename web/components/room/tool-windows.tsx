@@ -55,11 +55,12 @@ function Content({ id }: { id: ToolId }) {
       return <DeviceSettings />;
     case "host":
       return <HostControls />;
-    // Reactions and raise-hand act immediately and never open a window. Listed
-    // rather than defaulted, so adding a tool without deciding this is a type
+    // Reactions, raise-hand, and layout act immediately and never open a window.
+    // Listed rather than defaulted, so adding a tool without deciding this is a type
     // error instead of a blank window.
     case "reactions":
     case "hand":
+    case "layout":
       return null;
   }
 }

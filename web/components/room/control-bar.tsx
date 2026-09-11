@@ -108,6 +108,7 @@ export function ControlBar() {
     fileShare,
     stage,
     leave,
+    previewChrome,
   } = useRoomUI();
 
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
@@ -125,6 +126,8 @@ export function ControlBar() {
    *  being dragged off the bar mid-gesture. */
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  /** Preview-only share toggle — no LiveKit publish in `/preview/room`. */
+  const [previewSharing, setPreviewSharing] = useState(false);
   /** The Layout popover, anchored to whichever slot holds it. */
   const [layoutOpen, setLayoutOpen] = useState(false);
 
@@ -243,9 +246,16 @@ export function ControlBar() {
    * which it is. Calling setScreenShareEnabled(false) on a file share would
    * unpublish the track and leave the video element, the AudioContext and the object
    * URL behind, so the file keeps decoding in a tab nobody is watching. */
-  const sharing = isScreenShareEnabled || fileShare.active;
+  const sharing = previewChrome
+    ? previewSharing
+    : isScreenShareEnabled || fileShare.active;
 
   const stopSharing = useCallback(async () => {
+    if (previewChrome) {
+      setPreviewSharing(false);
+      notify("Stopped sharing (preview)", "info");
+      return;
+    }
     if (fileShare.active) {
       await fileShare.stop();
       return;
@@ -253,11 +263,17 @@ export function ControlBar() {
     await toggle("share", "Screen share", () =>
       localParticipant.setScreenShareEnabled(false),
     );
-  }, [fileShare, toggle, localParticipant]);
+  }, [previewChrome, fileShare, toggle, localParticipant, notify]);
 
   /** Hands off to the browser's own picker, with a hint at which pane to open on. */
   const startScreenShare = useCallback(
     (surface: "browser" | "window" | "monitor") => {
+      if (previewChrome) {
+        setPreviewSharing(true);
+        setShareOpen(false);
+        notify("Share screen (preview — not publishing)", "info");
+        return;
+      }
       void toggle("share", "Screen share", () =>
         // Third argument: publish options for the share's audio, so a shared video is not
         // encoded with the settings tuned for a voice. See SCREEN_SHARE_PUBLISH.
@@ -268,7 +284,7 @@ export function ControlBar() {
         ),
       );
     },
-    [toggle, localParticipant],
+    [previewChrome, toggle, localParticipant, notify],
   );
 
   /** Per-tool badge. Only two tools have a stream of things that arrive while you
@@ -399,15 +415,20 @@ export function ControlBar() {
               }
             />
           )}
-          {canShare && permissions.canShareScreen && (
+          {/* Preview chrome always offers Share (mocked). Live rooms still need
+              getDisplayMedia support — mobile browsers typically do not. */}
+          {(previewChrome || canShare) && permissions.canShareScreen && (
             <BarButton
-              className="hidden sm:inline-flex"
-              label={sharing ? "Stop sharing" : "Share"}
+              label={sharing ? "Stop sharing" : "Share screen"}
               active={sharing}
               busy={pending === "share" || fileShare.starting}
               onClick={() => {
                 if (sharing) {
                   void stopSharing();
+                  return;
+                }
+                if (previewChrome) {
+                  startScreenShare("monitor");
                   return;
                 }
                 setShareOpen(true);
@@ -521,7 +542,7 @@ export function ControlBar() {
       {/* Rendered here rather than at the room level so it is mounted only for
           somebody who may actually share. It is a Modal, so it portals out of the
           bar's stacking context on its own. */}
-      {canShare && permissions.canShareScreen && (
+      {!previewChrome && canShare && permissions.canShareScreen && (
         <SharePicker
           open={shareOpen}
           onClose={() => setShareOpen(false)}
