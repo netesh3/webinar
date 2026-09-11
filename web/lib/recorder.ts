@@ -30,7 +30,15 @@ import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
  *  that is also presenting. */
 const WIDTH = 1280;
 const HEIGHT = 720;
-const FPS = 25;
+/** 20 rather than 25 or 30. This machine is ALREADY spending CPU on the call
+ *  itself — decoding everyone else's video, encoding its own camera and,
+ *  often, a screen share — before the recorder draws a single frame. Every
+ *  tick here is a canvas repaint plus an encode, so this number is the
+ *  single biggest lever on how much the recording steals from the call it is
+ *  recording. 20fps is still smooth for the talking-head-plus-slides shape a
+ *  webinar recording actually is; a live sports broadcast needs 30, a Zoom
+ *  call being watched back for what was said does not. */
+const FPS = 20;
 
 /** How much video is buffered before a chunk is emitted. Five seconds is a
  *  compromise: shorter means more requests, longer means more lost if the tab
@@ -211,13 +219,24 @@ function drawInto(
   ctx.restore();
 }
 
+/** Text widths for `label`, keyed by the string. The font never changes, so a
+ *  width measured once stays correct — and it is worth caching, because
+ *  `measureText` runs inside the draw loop, once per visible tile, every
+ *  single frame. A session's set of names is small and stops growing once
+ *  everyone has joined, so this never needs eviction. */
+const labelWidths = new Map<string, number>();
+
 function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, w: number): void {
   if (!text) return;
   ctx.save();
   ctx.font = "500 15px system-ui, -apple-system, sans-serif";
-  const metrics = ctx.measureText(text);
+  let width = labelWidths.get(text);
+  if (width === undefined) {
+    width = ctx.measureText(text).width;
+    labelWidths.set(text, width);
+  }
   const padding = 8;
-  const boxWidth = Math.min(metrics.width + padding * 2, w - 8);
+  const boxWidth = Math.min(width + padding * 2, w - 8);
   ctx.fillStyle = "rgba(0,0,0,0.55)";
   ctx.fillRect(x + 4, y - 28, boxWidth, 24);
   ctx.fillStyle = "#fff";
