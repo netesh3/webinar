@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { isPanelTool, type ToolId } from "@/lib/tools";
+import { useCompact } from "@/lib/compact";
 import { DockIcon } from "../icons";
 import { ChatPanel } from "./chat-panel";
 import { useRoomUI } from "./context";
@@ -19,25 +20,6 @@ import { tool } from "./tools";
  * Undocked Chat / Q&A / Polls / Participants use the same chrome so they can be
  * dragged across the stage (and onto another monitor when the browser spans both).
  */
-
-/** `md`, matching the class the room's own layout switches at, so the sheet
- *  appears exactly when the stage stops having room beside it. */
-const COMPACT_QUERY = "(max-width: 767px)";
-
-function useCompact(): boolean {
-  // False for the server render and the first client render, then the truth.
-  // Sniffing a user agent would be wrong on a narrow desktop window, which is the
-  // case this actually has to get right.
-  const [compact, setCompact] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(COMPACT_QUERY);
-    const sync = () => setCompact(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-  return compact;
-}
 
 function Content({ id }: { id: ToolId }) {
   switch (id) {
