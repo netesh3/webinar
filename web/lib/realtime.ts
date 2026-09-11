@@ -45,41 +45,16 @@ const MAX_NAME_CHARS = 80;
 const MAX_CHAT_HISTORY = 500;
 const MAX_QUESTIONS = 300;
 
-/* Reactions: one tap, twenty emoji.
+/* Reactions: one tap, one emoji.
  *
- * The burst is a RENDERING decision, made on each client. One tap is still one
- * message on the wire — fanning out twenty packets to five hundred people to draw
- * something decorative would be the wrong trade by four orders of magnitude, and
- * every client can multiply a number by twenty on its own.
- *
- * The cap matters more than the burst. Five hundred people applauding at the end of
+ * The cap matters more than any one tap. Five hundred people applauding at the end of
  * a talk is the moment this feature is for and also the moment it could put ten
  * thousand animated spans on the stage, so the oldest are dropped once the screen is
  * already full of them — nobody can tell, and the tab stays alive. */
-const REACTION_BURST = 6;
-/* Six, down from twenty.
- *
- * Twenty was right when they were spread across the whole stage width. They are now confined
- * to a narrow column on the right (see ReactionOverlay), and twenty emoji in a 14% column
- * overlap into an unreadable pile rather than reading as a stream. Six with a tally beside
- * each is closer to what Zoom shows, and cheaper.
- */
 
-/** The tally beside each emoji runs 1..this. See FloatingReaction.count. */
-const REACTION_TALLY_MAX = 5;
 /** How long one emoji takes to cross the stage, before per-emoji variation. */
 const REACTION_MS = 4200;
-/** A burst is spread over this long, so it reads as a stream rather than a rank. */
-const REACTION_SPREAD_MS = 1500;
 const MAX_FLOATING = 240;
-
-/** Reduced motion gets one emoji instead of twenty. The setting is a request not to
- *  fill the screen with movement, and honouring it by drawing twenty static emoji
- *  in a pile would be the letter of it and the opposite of the point. */
-function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 export type Sender = {
   identity: string;
@@ -216,40 +191,23 @@ export type Question = QuestionMessage & {
   votedByMe: boolean;
 };
 
-/** One emoji in flight. Everything here exists so twenty of them do not look like
- *  twenty copies of one thing: they start at different moments, cross at different
- *  speeds, sway differently and are not all the same size.
+/** One emoji in flight, from one tap. Randomised so a stream of taps doesn't look
+ *  like copies of one thing: each crosses at a different speed, sways differently
+ *  and is not the same size as the last.
  *
  *  Deliberately no name, initials or identity. A reaction says the room is with you,
- *  not who in it — and twenty name badges per tap would bury the video. */
+ *  not who in it. */
 export type FloatingReaction = {
   id: string;
-  /** The tap this one came from, so the whole burst is cleaned up in one go. */
-  burst: string;
   emoji: string;
   /** 0..1 across the stage width. */
   offset: number;
-  /** Milliseconds before it sets off. */
-  delay: number;
   /** Milliseconds to cross. */
   duration: number;
   /** Signed horizontal sway, in pixels. */
   drift: number;
   /** Rendered size, in pixels. */
   size: number;
-  /** The little tally shown beside the emoji, 1-5.
-   *
-   * Zoom shows a count when several people send the same reaction at once, and it is what
-   * makes a stream of emoji read as a room responding rather than as one person spamming.
-   *
-   * RANDOM, not the real number of reactors, and that is a deliberate choice rather than an
-   * approximation nobody got round to fixing. The honest count is not available here: the
-   * server relays each reaction as its own message with no aggregation window, so counting
-   * would mean buffering reactions for a second or two before drawing any of them — which
-   * costs the immediacy that is the whole point of tapping one. See REACTION_TALLY_MAX; the
-   * swap to a real count is one line once the relay aggregates.
-   */
-  count: number;
 };
 
 export type RaisedHand = { identity: string; name: string; at: number };
@@ -626,41 +584,25 @@ export function useRealtime(
   }, [handlers]);
 
   const pushReaction = useCallback((emoji: string) => {
-    const burst = newId();
-    const count = prefersReducedMotion() ? 1 : REACTION_BURST;
+    const id = newId();
+    const duration = REACTION_MS + Math.round((Math.random() - 0.5) * 1400);
+    const item: FloatingReaction = {
+      id,
+      emoji,
+      // Kept off the very edges, where an emoji is half cut off by the overflow.
+      offset: Math.random(),
+      duration,
+      drift: Math.round((Math.random() - 0.5) * 90),
+      size: 22 + Math.round(Math.random() * 16),
+    };
 
-    const items: FloatingReaction[] = [];
-    let last = 0;
-    for (let i = 0; i < count; i++) {
-      // Evenly spaced with a little jitter: evenly spaced alone still arrives as a
-      // visible pulse, and pure randomness clumps.
-      const delay =
-        count === 1 ? 0 : Math.round((i / count) * REACTION_SPREAD_MS + Math.random() * 160);
-      const duration = REACTION_MS + Math.round((Math.random() - 0.5) * 1400);
-      last = Math.max(last, delay + duration);
-      items.push({
-        id: `${burst}:${i}`,
-        burst,
-        emoji,
-        // Kept off the very edges, where an emoji is half cut off by the overflow.
-        offset: Math.random(),
-        delay,
-        duration,
-        drift: Math.round((Math.random() - 0.5) * 90),
-        size: 22 + Math.round(Math.random() * 16),
-        count: 1 + Math.floor(Math.random() * REACTION_TALLY_MAX),
-      });
-    }
-
-    setReactions((current) => [...current, ...items].slice(-MAX_FLOATING));
-    // One timer per burst rather than per emoji: twenty timers a tap, times five
-    // hundred people reacting, is a lot of bookkeeping for no benefit.
+    setReactions((current) => [...current, item].slice(-MAX_FLOATING));
     reactionTimers.current.set(
-      burst,
+      id,
       setTimeout(() => {
-        setReactions((current) => current.filter((r) => r.burst !== burst));
-        reactionTimers.current.delete(burst);
-      }, last + 200),
+        setReactions((current) => current.filter((r) => r.id !== id));
+        reactionTimers.current.delete(id);
+      }, duration + 200),
     );
   }, []);
 
