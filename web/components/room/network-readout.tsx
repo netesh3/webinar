@@ -153,14 +153,18 @@ export function NetworkMetrics({
         <Metric
           label="Sending"
           value={tierLabel(network.tier)}
-          hint="Chosen automatically from your upload speed, loss and latency"
+          hint="Chosen automatically from packet loss and congestion (not browser upload estimate)"
         />
       )}
-      {canPublish && (
+      {/* Shown only in Settings, never on the Reduced Quality hover: the WebRTC
+          availableOutgoingBitrate figure is often a few Mbps (or <1) on a fat ISP plan
+          to the EU SFU, and it no longer drives the ladder — displaying it next to
+          "Reduced" made people chase a phantom speed problem. */}
+      {canPublish && !compact && (
         <Metric
-          label="Upload speed"
+          label="Browser estimate"
           value={uploadMbps(network.availableOutgoingKbps)}
-          hint="What the browser thinks it can send right now"
+          hint="WebRTC availableOutgoingBitrate — not a speedtest, not used for quality decisions"
         />
       )}
     </dl>

@@ -255,17 +255,21 @@ console.log("\njudge");
   // A clean sample: no loss, and a round trip sitting ON this route's floor — no queue.
   const clean = { lossPercent: 0, rttMs: 40, rttFloorMs: 40 };
 
-  // No estimate at all. This is a subscriber, or a publisher in its first seconds.
+  // availableOutgoingBitrate must never vote — India→EU often reports nonsense Mbps.
   {
     const v = judge({ tier: "full", ...clean, availableOutgoingKbps: 0 });
+    eq(v.bad, false, "a missing bandwidth estimate is not a reason to step down");
+  }
+  {
+    const v = judge({ tier: "full", ...clean, availableOutgoingKbps: 600 });
     eq(
       v.bad,
       false,
-      "a missing bandwidth estimate is not evidence of a narrow uplink",
+      "a tiny browser estimate (0.6 Mbps) with clean loss/RTT does not step down",
     );
   }
   {
-    const v = judge({ tier: "reduced", ...clean, availableOutgoingKbps: 0 });
+    const v = judge({ tier: "reduced", ...clean, availableOutgoingKbps: 600 });
     eq(
       v.good,
       true,
@@ -273,38 +277,14 @@ console.log("\njudge");
     );
   }
 
-  // The case loss and RTT both miss: narrow but clean.
-  {
-    const narrow = Math.round(needKbps("full") * 0.5);
-    const v = judge({ tier: "full", ...clean, availableOutgoingKbps: narrow });
-    eq(
-      v.bad,
-      true,
-      "a narrow uplink steps down even with zero loss and low RTT",
-    );
-    eq(v.good, false, "…and is certainly not a reason to step up");
-  }
-
-  // Plenty of room.
-  {
-    const wide = needKbps("full") * 4;
-    const v = judge({ tier: "reduced", ...clean, availableOutgoingKbps: wide });
-    eq(v.good, true, "a wide uplink on a reduced tier wants to climb");
-    eq(v.bad, false, "…and nothing about it is bad");
-  }
-
   // Already at the top: there is nowhere to grow, so `good` must be false or the
   // recovery counter fills up forever against a ceiling.
   {
-    const v = judge({
-      tier: "full",
-      ...clean,
-      availableOutgoingKbps: needKbps("full") * 4,
-    });
+    const v = judge({ tier: "full", ...clean });
     eq(v.good, false, "the top tier reports no room to grow");
   }
 
-  // Loss and RTT still work on their own.
+  // Loss and RTT are the only step-down signals.
   {
     eq(
       judge({
@@ -315,7 +295,7 @@ console.log("\njudge");
         availableOutgoingKbps: 99_999,
       }).bad,
       true,
-      "packet loss steps down however wide the pipe is",
+      "packet loss steps down however wide the browser estimate looks",
     );
     eq(
       judge({
@@ -330,64 +310,16 @@ console.log("\njudge");
     );
   }
 
-  /* Hysteresis, stated as the failure it prevents.
-   *
-   * The first version of this asserted that no bandwidth is both `bad` and `good` at once,
-   * and that was untestable-by-construction: the tiers differ by roughly 3x, so their
-   * budgets never overlap however badly the margins are chosen. It passed with the up-margin
-   * set to 0.5, which is exactly the value that pumps.
-   *
-   * The real property is about the step, not a single sample: if a bandwidth is enough to
-   * climb OFF a tier, it must also be enough to STAY on the tier above. Otherwise the ladder
-   * steps up, immediately finds itself too narrow, steps back down, and the audience watches
-   * the resolution oscillate — which is the whole reason the recovery counter is slow. */
+  /* Hysteresis on loss: between GOOD_LOSS (0.5) and BAD_LOSS (2) the ladder holds still. */
   {
-    const tiers: PublishTier[] = ["full", "reduced", "minimal"];
-    let checkedSteps = 0;
-    let quiet = 0;
-    for (let i = 1; i < tiers.length; i++) {
-      const here = tiers[i];
-      const above = tiers[i - 1];
-      for (let kbps = 25; kbps < needKbps("full") * 3; kbps += 25) {
-        const from = judge({
-          tier: here,
-          ...clean,
-          availableOutgoingKbps: kbps,
-        });
-        if (!from.good) continue;
-        const landed = judge({
-          tier: above,
-          ...clean,
-          availableOutgoingKbps: kbps,
-        });
-        checkedSteps++;
-        if (landed.bad) {
-          failures++;
-          checks++;
-          console.log(
-            `  FAIL  stepping up from ${here} at ${kbps}kbps lands on ${above} wanting to step straight back down`,
-          );
-          break;
-        }
-      }
-    }
-    ok(
-      checkedSteps > 0,
-      "the sweep actually found step-ups to check",
-      `${checkedSteps}`,
-    );
-    checks++; // the no-oscillation property itself, counted once
-    for (const tier of tiers) {
-      for (let kbps = 25; kbps < needKbps("full") * 3; kbps += 25) {
-        const v = judge({ tier, ...clean, availableOutgoingKbps: kbps });
-        if (!v.bad && !v.good) quiet++;
-      }
-    }
-    ok(
-      quiet > 0,
-      "there is a band where the ladder holds still",
-      `${quiet} samples`,
-    );
+    const mid = judge({
+      tier: "reduced",
+      lossPercent: 1,
+      rttMs: 40,
+      rttFloorMs: 40,
+    });
+    eq(mid.bad, false, "1% loss is not yet bad");
+    eq(mid.good, false, "…and not yet good enough to climb");
   }
 }
 
@@ -652,12 +584,8 @@ console.log("\nshare layer gaps");
   );
 }
 
-/* Share degradation must not follow the camera's RTT ladder.
- *
- * The mid-session blur bug: EU SFU + IN ~200ms RTT, availableOutgoing often reports ~3 Mbps
- * while sharing. Camera judge(sharing) correctly steps the face down; the old shared tier
- * also starved the share below a readable 720p. judgeShare stays calm when the share alone
- * still fits, and only steps when the link cannot carry the share floor.
+/* Share degradation must not follow the camera's RTT ladder, and must never use
+ * availableOutgoingBitrate — that figure falsely reduced healthy India→EU presenters.
  */
 console.log("\njudgeShare vs camera while sharing");
 {
@@ -667,30 +595,38 @@ console.log("\njudgeShare vs camera while sharing");
     rttFloorMs: 245,
   };
 
-  // Uplink that is too thin for camera+share together, but still clears the share-alone floor.
-  // Camera uses NEED_MARGIN_DOWN 0.8 on the combined budget; share uses 0.55 on share-only.
-  const camShareSqueezeKbps = Math.round(
-    (needKbps("full", true) * 0.8 + shareNeedKbps("full") * 0.55) / 2,
-  );
+  /* Screenshot + peer reports: 5.7 Mbps or 0.6 Mbps browser estimate on 100 Mbps+ ISP,
+   * clean loss/RTT. Must stay at full for both camera and share. */
+  for (const kbps of [5_700, 600, 0]) {
+    const sample = {
+      ...distant,
+      rttMs: 143,
+      rttFloorMs: 141,
+      availableOutgoingKbps: kbps,
+    };
+    eq(
+      judge({ tier: "full", ...sample, sharing: true }).bad,
+      false,
+      `${kbps || "missing"} kbps estimate does not step the camera down`,
+    );
+    eq(
+      judgeShare({ tier: "full", ...sample }).bad,
+      false,
+      `…nor the share (${kbps || "missing"} kbps)`,
+    );
+  }
 
   eq(
     judge({
-      tier: "full",
+      tier: "reduced",
       ...distant,
-      availableOutgoingKbps: camShareSqueezeKbps,
+      rttMs: 143,
+      rttFloorMs: 141,
+      availableOutgoingKbps: 600,
       sharing: true,
-    }).bad,
+    }).good,
     true,
-    "camera judge still steps down when share saturates the uplink budget",
-  );
-  eq(
-    judgeShare({
-      tier: "full",
-      ...distant,
-      availableOutgoingKbps: camShareSqueezeKbps,
-    }).bad,
-    false,
-    "…while judgeShare keeps 1080p share when the share floor itself fits",
+    "a camera already reduced on a clean link can climb back regardless of estimate",
   );
 
   // Mild loss that moves the camera must not blur slides.
@@ -700,7 +636,6 @@ console.log("\njudgeShare vs camera while sharing");
       lossPercent: 2.5,
       rttMs: 40,
       rttFloorMs: 40,
-      availableOutgoingKbps: 20_000,
     }).bad,
     true,
     "2.5% loss is enough for the camera ladder",
@@ -711,7 +646,6 @@ console.log("\njudgeShare vs camera while sharing");
       lossPercent: 2.5,
       rttMs: 40,
       rttFloorMs: 40,
-      availableOutgoingKbps: 20_000,
     }).bad,
     false,
     "…but not for the share (needs severe loss)",
@@ -723,21 +657,20 @@ console.log("\njudgeShare vs camera while sharing");
       lossPercent: 6,
       rttMs: 40,
       rttFloorMs: 40,
-      availableOutgoingKbps: 20_000,
     }).bad,
     true,
     "severe packet loss does step the share down",
   );
 
-  // Critically thin for the share floor alone.
   eq(
     judgeShare({
       tier: "full",
-      ...distant,
-      availableOutgoingKbps: Math.round(shareNeedKbps("full") * 0.4),
+      lossPercent: 0,
+      rttMs: 40 + 450,
+      rttFloorMs: 40,
     }).bad,
     true,
-    "a link that cannot carry the share floor steps share down",
+    "extreme queueing does step the share down",
   );
 
   // Even after stepping to reduced, the 720p rung stays at the readable floor.
@@ -784,64 +717,49 @@ console.log("\nfloorFrom");
   );
 }
 
-/* The SCREEN SHARE ladder, which is what makes 1080p safe to publish again.
- *
- * The share was pinned to 720p for a while purely to bound egress — a fix that made every
- * share worse for everybody, including the presenters on a good link, who are most of them.
- * It is 1080p again and adaptive instead, so these are the two claims that matter: the budget
- * knows a share costs extra, and a bad link steps the share down rather than blurring it.
- */
+/* Ladder cost tables (documentation only — not used by judge). Sharing still costs more. */
 {
-  // A camera alone against a camera plus a 1080p share. The gap is the whole point: judging a
-  // sharing presenter against the camera-only figure meant tooNarrow stayed false on a link
-  // that was already saturated, so the ladder never moved.
   const cameraOnly = needKbps("full");
   const withShare = needKbps("full", true);
   ok(
     withShare > cameraOnly * 2,
-    `sharing at least doubles the budget (${cameraOnly} -> ${withShare})`,
+    `sharing at least doubles the documented budget (${cameraOnly} -> ${withShare})`,
   );
-
-  // And the share's own cost falls as the tier drops, which is what the ladder does.
   ok(
     needKbps("full", true) > needKbps("reduced", true) &&
       needKbps("reduced", true) > needKbps("minimal", true),
     "the sharing budget shrinks monotonically down the ladder",
   );
+  ok(
+    shareNeedKbps("full") > shareNeedKbps("reduced"),
+    "share-alone full costs more than reduced (1080p off)",
+  );
 
-  /* The bug this guards. ~3 Mbps of headroom is comfortable for a camera and NOT enough for a
-   * camera plus a 1080p share, so the same sample has to be read differently depending on
-   * whether a share is up. Before `sharing` existed, the second of these came back false. */
+  // Clean loss/RTT must stay full even when the browser estimate looks tiny.
   const sample = {
     tier: "full" as PublishTier,
     lossPercent: 0,
     rttMs: 300,
     rttFloorMs: 295,
-    availableOutgoingKbps: 3000,
+    availableOutgoingKbps: 600,
   };
-  ok(!judge(sample).bad, "3 Mbps is plenty for the camera alone");
+  ok(!judge(sample).bad, "0.6 Mbps estimate does not degrade the camera");
   ok(
-    judge({ ...sample, sharing: true }).bad,
-    "…and not enough once a 1080p share is on top, so the ladder must step down",
+    !judge({ ...sample, sharing: true }).bad,
+    "…even while sharing",
   );
+  ok(!judgeShare(sample).bad, "…and does not degrade the share either");
 
-  // Recovery still has to work while sharing, or a share would be a one-way trip down.
   ok(
     judge({
       tier: "minimal",
       lossPercent: 0,
       rttMs: 300,
       rttFloorMs: 298,
-      availableOutgoingKbps: 20000,
+      availableOutgoingKbps: 600,
       sharing: true,
     }).good,
-    "a genuinely fat uplink steps a sharing presenter back up",
-  );
-
-  // A share must never be judged bad purely for existing on a link that can carry it.
-  ok(
-    !judge({ ...sample, availableOutgoingKbps: 20000, sharing: true }).bad,
-    "a 20 Mbps uplink carries camera and 1080p share without degrading",
+    "clean loss/RTT steps a sharing presenter back up regardless of estimate",
   );
 }
 

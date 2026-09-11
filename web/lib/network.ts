@@ -60,7 +60,7 @@ export type NetworkHealth = {
    * and this is the browser's answer. Zero means nothing is arriving yet, or that this
    * browser does not report the counters. */
   playoutMs: number;
-  /** What the browser thinks it can send, in kbps. Zero when unknown. */
+  /** Browser availableOutgoingBitrate in kbps. Display-only — never used by the ladder. */
   availableOutgoingKbps: number;
   /** Which rung of the ladder is being published, for the indicator. */
   tier: PublishTier;
@@ -119,10 +119,11 @@ const BAD_LOSS_PERCENT = 2;
  *
  * There is deliberately NO absolute ceiling that steps the ladder. A 400 ms route is a bad
  * seat, not a bad connection, and degrading video on it would cost picture while saving no
- * latency at all. The cases an absolute threshold was standing in for are covered better by
- * the other two signals: a saturated uplink shows up in `availableOutgoingBitrate`, and a
- * broken one loses packets. ~500 ms+ of *queueing* (excess) still degrades — see the bad
- * threshold below — which is the truly congested link, not the EU↔IN topology.
+ * latency at all. A saturated or broken uplink shows up as packet loss and/or queueing
+ * excess — not as the browser's `availableOutgoingBitrate`, which on India→EU paths often
+ * reports a few Mbps (or under 1 Mbps) on a 100 Mbps ISP plan and must not drive the ladder.
+ * ~500 ms+ of *queueing* (excess) still degrades — see the bad threshold below — which is
+ * the truly congested link, not the EU↔IN topology.
  *
  * Excess thresholds are deliberately loose for this topology: long-haul jitter of ~100–150 ms
  * on a 200–250 ms floor must not count as congestion.
@@ -162,24 +163,17 @@ export function floorFrom(window: readonly number[]): number {
   return floor;
 }
 
-/* And the third signal, which is the one the user actually meant by "internet speed".
+/* Bandwidth estimate is intentionally NOT a ladder signal.
  *
- * Loss and RTT catch a connection that is breaking. They do NOT catch one that is merely
- * small: when the uplink is narrow but clean, the browser's congestion control simply
- * starves the encoders and nothing is lost or delayed — the picture is just soft, the frame
- * rate sags, and every threshold above stays green. That was a real gap, because a narrow
- * uplink is the common case on domestic wifi and a phone hotspot.
+ * `availableOutgoingBitrate` is the browser's own guess of what it can send. On India→EU
+ * it routinely reports a few Mbps — or under 1 Mbps — on a 100 Mbps+ ISP plan (it tracks
+ * congestion-control headroom / current send rate, not a speedtest). Using it to step the
+ * ladder produced false "Reduced quality" with 0% loss and ~2 ms of queueing. The browser's
+ * own encoder backoff already handles a merely narrow clean uplink; we only step down on
+ * real damage: sustained loss or queueing excess.
  *
- * `availableOutgoingBitrate` is the browser's own estimate of what it can send. Comparing it
- * against what the current rung of the ladder actually asks for turns the ladder into a
- * bandwidth decision rather than only a damage-control one.
- *
- * The margins are asymmetric on purpose, and it is the same asymmetry as everywhere else
- * here: step down when the estimate falls below 80% of what the rung needs, step up only
- * when it clears 140% of the rung above. A single band would have the tier oscillating
- * around one number, and the audience watching the resolution pump. */
-const NEED_MARGIN_DOWN = 0.8;
-const NEED_MARGIN_UP = 1.4;
+ * The estimate is still sampled for the settings readout (labeled as unused) so support can
+ * see what the browser claimed — it must never feed judge / judgeShare. */
 /* And what counts as recovered. Lower than the trouble thresholds on purpose: a single
  * band would have the state flapping around one number. */
 const GOOD_LOSS_PERCENT = 0.5;
@@ -259,12 +253,12 @@ export const LADDER: Record<
  * is already 1.5 Mbps; we go to 2 Mbps as the floor so reduced/minimal stay readable, and
  * 1080p tops out at 3.5 Mbps so the HIGH subscriber layer has headroom for fine detail.
  *
- * WHAT CHANGED (mid-session blur). Camera and share used to share ONE tier decision. Sharing
- * triples needKbps; on EU SFU + IN RTT the browser's availableOutgoingBitrate is often
- * pessimistic, so tooNarrow fired within seconds, both tracks stepped to minimal, and the
- * share's 720p rung was starved — soft slides for the rest of the session. Share now has
- * its own judge (severe loss / extreme queueing / critically thin uplink only) and minimal
- * holds 720p@2 Mbps while cutting maxFramerate.
+ * WHAT CHANGED (mid-session blur / false Reduced). Camera and share used to share ONE tier
+ * decision driven partly by availableOutgoingBitrate. On EU SFU + IN that estimate is often
+ * a few Mbps (or <1 Mbps) on fat ISP plans, so tooNarrow fired, both tracks stepped down,
+ * and the share's 720p rung was starved. Share now has its own judge on severe loss /
+ * extreme queueing only — never on the bitrate estimate. Minimal holds 720p@2 Mbps while
+ * cutting maxFramerate. Camera uses the same loss/queueing policy (stricter thresholds).
  *
  * Layers and ladder live HERE (not media.ts) so applyLadder's positional index cannot drift
  * from the published encodings. SHARE_TOP is separate because the SDK takes top encoding
@@ -336,13 +330,10 @@ export const SHARE_LADDER: Record<PublishTier, ShareRung[]> = {
  */
 const AUDIO_KBPS = 60;
 
-/* `sharing` is not optional decoration: it roughly triples the answer.
+/* Ladder cost helpers — documentation and tests only. Not used by judge / judgeShare.
  *
- * A camera at `full` needs ~2.3 Mbps; a camera plus a 1080p share needs ~5. Judging a
- * presenter's uplink against the camera figure alone while they are sharing meant tooNarrow
- * stayed false on a link that was already saturated — the ladder saw plenty of headroom and
- * never stepped down, which is precisely the case a screen share creates. Defaults to false so
- * every existing caller keeps its old meaning.
+ * Kept so the rung tables stay honest (a preset change moves these rather than going stale)
+ * and so share floors can be asserted without hardcoding kbps in every test.
  */
 export function needKbps(tier: PublishTier, sharing = false): number {
   let bits = LADDER[tier].reduce((total, rung) => total + rung.maxBitrate, 0);
@@ -370,9 +361,10 @@ export type Verdict = { bad: boolean; good: boolean };
  *
  * Pure and exported so it can be tested, and it needs testing more than most things here:
  * removing the quality picker made this the ONLY thing deciding what a presenter sends, and
- * every way of getting it wrong is invisible in a browser. A missing bandwidth estimate read
- * as zero steps a healthy presenter to the floor; a margin pair that overlaps oscillates and
- * the audience watches the resolution pump. Neither shows up in a screenshot.
+ * every way of getting it wrong is invisible in a browser.
+ *
+ * Decisions use packet loss and RTT queueing excess only. `availableOutgoingKbps` is accepted
+ * for call-site compatibility and ignored — see the bandwidth comment above.
  *
  * `bad` and `good` are deliberately not opposites. Between them is a hysteresis band where
  * nothing happens, which is what stops a connection sitting on a threshold from thrashing.
@@ -384,16 +376,13 @@ export function judge(sample: {
   /** The best round trip seen recently on this route. Zero means unknown, which is read as
    *  "no opinion about latency" rather than as a floor of zero — see floorFrom. */
   rttFloorMs: number;
-  /** Zero means the browser did not tell us — NOT that there is no bandwidth. */
-  availableOutgoingKbps: number;
-  /** True while a screen share is being published, which roughly triples the budget. */
+  /** Ignored. Kept so callers can pass the sampled estimate without branching. */
+  availableOutgoingKbps?: number;
+  /** Ignored for decisions. Kept for call-site compatibility. */
   sharing?: boolean;
 }): Verdict {
-  const { tier, lossPercent, rttMs, rttFloorMs, availableOutgoingKbps } =
-    sample;
-  const sharing = sample.sharing === true;
+  const { tier, lossPercent, rttMs, rttFloorMs } = sample;
   const at = TIERS.indexOf(tier);
-  const haveEstimate = availableOutgoingKbps > 0;
 
   /* Queueing delay: how much worse than this route's best. Only meaningful once both numbers
    * exist, and until then latency has no vote — a presenter must not be stepped down by the
@@ -402,86 +391,53 @@ export function judge(sample: {
   const measuredLatency = rttMs > 0 && rttFloorMs > 0;
   const excessMs = measuredLatency ? rttMs - rttFloorMs : 0;
 
-  /* A narrow uplink, which is the case loss and RTT both miss: when there is not enough
-   * room, congestion control starves the encoders rather than dropping packets, so the
-   * picture goes soft while every other threshold stays green. */
-  const tooNarrow =
-    haveEstimate &&
-    availableOutgoingKbps < needKbps(tier, sharing) * NEED_MARGIN_DOWN;
-
-  /* Somewhere to grow, and something to grow into. Without an estimate this falls back to
-   * "the rest of the signals look clean", which is how it behaved before bandwidth was a
-   * signal at all — a subscriber-shaped sample must not be able to hold a presenter down. */
-  const roomToGrow =
-    at > 0 &&
-    (!haveEstimate ||
-      availableOutgoingKbps >=
-        needKbps(TIERS[at - 1], sharing) * NEED_MARGIN_UP);
-
   return {
     bad:
-      lossPercent >= BAD_LOSS_PERCENT ||
-      excessMs >= RTT_EXCESS_BAD_MS ||
-      tooNarrow,
+      lossPercent >= BAD_LOSS_PERCENT || excessMs >= RTT_EXCESS_BAD_MS,
     good:
       lossPercent <= GOOD_LOSS_PERCENT &&
       // Unknown latency does not block recovery. It used to be able to, and on a distant
       // route that meant the ladder could only ever go down.
       excessMs <= RTT_EXCESS_GOOD_MS &&
-      roomToGrow,
+      at > 0,
   };
 }
 
 /* Screen-share degradation is NOT the camera ladder.
  *
- * Same sample, different bar. Ordinary long-haul jitter and a mildly pessimistic
- * availableOutgoingBitrate must not blur slides. Only severe loss, extreme queueing, or a
- * link that cannot carry the share floor itself steps the share down — and recovery is
- * willing once those clear. Camera still uses judge() with sharing:true so the face track
- * absorbs bandwidth pressure first.
+ * Same sample, higher bar. Ordinary long-haul jitter must not blur slides. Only severe loss
+ * or extreme queueing steps the share down — never the browser bitrate estimate. Recovery
+ * is willing once those clear. Camera still uses the stricter loss/queueing thresholds.
  */
 const SHARE_BAD_LOSS_PERCENT = 5;
 const SHARE_RTT_EXCESS_BAD_MS = 400;
-const SHARE_NEED_MARGIN_DOWN = 0.55;
-const SHARE_NEED_MARGIN_UP = 1.25;
 const SHARE_GOOD_LOSS_PERCENT = 1;
 
 /**
- * judgeShare: step the share ladder only on severe damage, not on camera-shaped RTT noise.
+ * judgeShare: step the share ladder only on severe damage, not on camera-shaped RTT noise
+ * or unreliable availableOutgoingBitrate.
  */
 export function judgeShare(sample: {
   tier: PublishTier;
   lossPercent: number;
   rttMs: number;
   rttFloorMs: number;
-  availableOutgoingKbps: number;
+  /** Ignored. Kept so callers can pass the sampled estimate without branching. */
+  availableOutgoingKbps?: number;
 }): Verdict {
-  const { tier, lossPercent, rttMs, rttFloorMs, availableOutgoingKbps } =
-    sample;
+  const { tier, lossPercent, rttMs, rttFloorMs } = sample;
   const at = TIERS.indexOf(tier);
-  const haveEstimate = availableOutgoingKbps > 0;
   const measuredLatency = rttMs > 0 && rttFloorMs > 0;
   const excessMs = measuredLatency ? rttMs - rttFloorMs : 0;
-
-  const tooNarrow =
-    haveEstimate &&
-    availableOutgoingKbps < shareNeedKbps(tier) * SHARE_NEED_MARGIN_DOWN;
-
-  const roomToGrow =
-    at > 0 &&
-    (!haveEstimate ||
-      availableOutgoingKbps >=
-        shareNeedKbps(TIERS[at - 1]) * SHARE_NEED_MARGIN_UP);
 
   return {
     bad:
       lossPercent >= SHARE_BAD_LOSS_PERCENT ||
-      excessMs >= SHARE_RTT_EXCESS_BAD_MS ||
-      tooNarrow,
+      excessMs >= SHARE_RTT_EXCESS_BAD_MS,
     good:
       lossPercent <= SHARE_GOOD_LOSS_PERCENT &&
       excessMs <= RTT_EXCESS_GOOD_MS &&
-      roomToGrow,
+      at > 0,
   };
 }
 
@@ -782,9 +738,8 @@ export function useNetworkHealth(
         availableOutgoingKbps,
       };
 
-      /* Camera still budgets for the share when one is up — the uplink is shared — so the
-       * face track absorbs pressure first. Share uses judgeShare and will often stay at
-       * full while the camera alone steps down. */
+      /* Camera and share share the same loss/queueing sample but different bars —
+       * see judge vs judgeShare. Bitrate estimate is sampled for the readout only. */
       const cameraVerdict = judge({
         tier: tier.current,
         ...sampleBase,
