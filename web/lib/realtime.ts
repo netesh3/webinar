@@ -45,13 +45,20 @@ const MAX_NAME_CHARS = 80;
 const MAX_CHAT_HISTORY = 500;
 const MAX_QUESTIONS = 300;
 
-/* Reactions: one tap, one emoji.
+/* Reactions: one tap, one or two emoji.
+ *
+ * One tap is still one message on the wire — every client draws its own copy, so
+ * fanning out extra packets to do this would be the wrong trade. Drawing exactly
+ * one every time reads as mechanical; a little randomness between one and two
+ * copies of the same emoji is what makes a single tap look like it landed.
  *
  * The cap matters more than any one tap. Five hundred people applauding at the end of
  * a talk is the moment this feature is for and also the moment it could put ten
  * thousand animated spans on the stage, so the oldest are dropped once the screen is
  * already full of them — nobody can tell, and the tab stays alive. */
 
+/** One tap draws this many copies of the emoji, chosen fresh each time. */
+const REACTION_COPIES = [1, 2];
 /** How long one emoji takes to cross the stage, before per-emoji variation. */
 const REACTION_MS = 4200;
 const MAX_FLOATING = 240;
@@ -584,26 +591,27 @@ export function useRealtime(
   }, [handlers]);
 
   const pushReaction = useCallback((emoji: string) => {
-    const id = newId();
-    const duration = REACTION_MS + Math.round((Math.random() - 0.5) * 1400);
-    const item: FloatingReaction = {
-      id,
+    const copies = REACTION_COPIES[Math.floor(Math.random() * REACTION_COPIES.length)];
+    const items: FloatingReaction[] = Array.from({ length: copies }, () => ({
+      id: newId(),
       emoji,
       // Kept off the very edges, where an emoji is half cut off by the overflow.
       offset: Math.random(),
-      duration,
+      duration: REACTION_MS + Math.round((Math.random() - 0.5) * 1400),
       drift: Math.round((Math.random() - 0.5) * 90),
       size: 22 + Math.round(Math.random() * 16),
-    };
+    }));
 
-    setReactions((current) => [...current, item].slice(-MAX_FLOATING));
-    reactionTimers.current.set(
-      id,
-      setTimeout(() => {
-        setReactions((current) => current.filter((r) => r.id !== id));
-        reactionTimers.current.delete(id);
-      }, duration + 200),
-    );
+    setReactions((current) => [...current, ...items].slice(-MAX_FLOATING));
+    for (const item of items) {
+      reactionTimers.current.set(
+        item.id,
+        setTimeout(() => {
+          setReactions((current) => current.filter((r) => r.id !== item.id));
+          reactionTimers.current.delete(item.id);
+        }, item.duration + 200),
+      );
+    }
   }, []);
 
   useEffect(() => {
