@@ -17,7 +17,7 @@ API_INTERNAL_URL=http://localhost:8080
 # NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 # NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...anon
 
-# Optional: skip login for local UI redesign preview (next dev only).
+# Optional: skip login for local UI preview (next dev only).
 # NEVER set this in Cloudflare Worker / production builds.
 # When set, `/` redirects to `/host` (no marketing page). Unset to preview
 # the homepage and Google One Tap.

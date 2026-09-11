@@ -9,26 +9,14 @@ import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
-import { setUiMode, useUiRedesign } from "@/lib/ui-redesign";
 
-/* The top bar — primary product nav.
- *
- * Redesign: Browse | My webinars | Hosting.
- * Classic: Browse webinars (on `/`) | My webinars | Host.
- */
+/* The top bar — primary product nav: Browse | My webinars | Hosting. */
 
-function linksFor(signedIn: boolean, canHost: boolean, redesign: boolean) {
-  if (redesign) {
-    return [
-      { href: "/browse", label: "Browse" },
-      ...(signedIn ? [{ href: "/my-webinars", label: "My webinars" }] : []),
-      ...(canHost ? [{ href: "/host", label: "Hosting" }] : []),
-    ];
-  }
+function linksFor(signedIn: boolean, canHost: boolean) {
   return [
-    { href: "/", label: "Browse webinars" },
+    { href: "/browse", label: "Browse" },
     ...(signedIn ? [{ href: "/my-webinars", label: "My webinars" }] : []),
-    ...(canHost ? [{ href: "/host", label: "Host" }] : []),
+    ...(canHost ? [{ href: "/host", label: "Hosting" }] : []),
   ];
 }
 
@@ -38,9 +26,8 @@ export function TopNav() {
   const { appName } = useAppConfig();
   const { account, status, signOut } = useSession();
   const { registrations } = useRegistrations();
-  const redesign = useUiRedesign();
   const [open, setOpen] = useState(false);
-  const links = linksFor(Boolean(account), account?.canHost === true, redesign);
+  const links = linksFor(Boolean(account), account?.canHost === true);
 
   const count = registrations?.length ?? 0;
 
@@ -48,26 +35,13 @@ export function TopNav() {
     if (href === "/browse") {
       return pathname === "/browse" || pathname.startsWith("/browse/");
     }
-    if (href === "/") {
-      return pathname === "/";
-    }
     return pathname.startsWith(href);
-  };
-
-  const uiToggleItem = {
-    kind: "action" as const,
-    label: redesign ? "Use classic UI" : "Try new UI",
-    onSelect: () => setUiMode(redesign ? "classic" : "new"),
   };
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-5">
-        <Link
-          href={redesign ? "/" : "/home"}
-          className="mr-1 flex shrink-0 items-center gap-2.5 sm:mr-3"
-          title={redesign ? undefined : "Marketing home"}
-        >
+        <Link href="/" className="mr-1 flex shrink-0 items-center gap-2.5 sm:mr-3">
           <span className="grid size-7 place-items-center rounded-lg bg-brand text-[12px] font-bold text-white">
             {appName.slice(0, 1).toUpperCase()}
           </span>
@@ -131,7 +105,6 @@ export function TopNav() {
                   label: "Account settings",
                   onSelect: () => router.push("/account"),
                 },
-                uiToggleItem,
                 { kind: "separator" },
                 {
                   kind: "action",
@@ -146,13 +119,6 @@ export function TopNav() {
           </>
         ) : (
           <div className="hidden items-center gap-2 sm:flex">
-            <button
-              type="button"
-              onClick={() => setUiMode(redesign ? "classic" : "new")}
-              className="rounded-lg px-2 py-1 text-[12px] text-ink-3 hover:bg-surface-2 hover:text-ink"
-            >
-              {redesign ? "Classic UI" : "New UI"}
-            </button>
             <ButtonLink href="/login" variant="ghost" size="sm">
               Sign in
             </ButtonLink>
@@ -200,13 +166,6 @@ export function TopNav() {
                 )}
               </Link>
             ))}
-            <button
-              type="button"
-              onClick={() => setUiMode(redesign ? "classic" : "new")}
-              className="flex h-9 items-center rounded-lg px-3 text-left text-[14px] text-ink-2 hover:bg-surface-2"
-            >
-              {redesign ? "Use classic UI" : "Try new UI"}
-            </button>
           </nav>
 
           {!account && status !== "loading" && (

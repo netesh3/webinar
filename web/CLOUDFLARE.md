@@ -25,7 +25,6 @@ which middleware on `*.workers.dev` never sees — users bounce back to login.
 | Variable | When | Notes |
 |----------|------|--------|
 | `NEXT_PUBLIC_API_BASE` | **Build time** | Leave **empty** for Workers so the browser calls same-origin `/api/...`. Only set an absolute URL for local `next dev` against a separate API port. |
-| `NEXT_PUBLIC_UI_REDESIGN` | **Build time** (+ wrangler `vars`) | `1` on Workers deploy so logged-out `/` is the marketing homepage. Override per browser with `?ui=classic` / cookie `webcast_ui`. Marketing always at `/home`. |
 | `API_INTERNAL_URL` | Runtime (wrangler `vars`) | Absolute Cloud Run (or local API) URL. Used by SSR, middleware identity lookup, and the `/api` proxy. |
 
 Google sign-in does **not** need `NEXT_PUBLIC_SUPABASE_*` on the Worker: the API
@@ -82,10 +81,10 @@ Delete the fallback branch once the token is in place.
 ```bash
 cd web
 npm ci
-npm run deploy   # sets NEXT_PUBLIC_UI_REDESIGN=1, empty API base, OPEN_NEXT=1
+npm run deploy   # sets empty API base, OPEN_NEXT=1
 ```
 
-**Homepage on this Worker:** logged-out `/` → marketing (new UI default). Signed-in `/` → `/host` or `/browse`. Always: [`/home`](https://webinar-web.ganesh-s-p006.workers.dev/home). If you previously chose classic UI, clear `webcast_ui` or open `/?ui=new`.
+**Homepage on this Worker:** logged-out `/` → marketing. Signed-in `/` → `/host` or `/browse`. Marketing is always reachable at [`/home`](https://webinar-web.ganesh-s-p006.workers.dev/home).
 
 First-time login (if needed): `npx wrangler login`
 

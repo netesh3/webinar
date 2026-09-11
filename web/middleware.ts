@@ -4,11 +4,6 @@ import {
   DEV_BYPASS_OFF_COOKIE,
   isDevAuthBypass,
 } from "@/lib/dev-bypass-flag";
-import {
-  UI_COOKIE,
-  parseUiMode,
-  resolveUiRedesign,
-} from "@/lib/ui-redesign-flag";
 
 /* Route protection, applied before a page renders.
  *
@@ -52,29 +47,9 @@ const API_BASE =
  */
 const LOOKUP_TIMEOUT_MS = 2_500;
 
-const UI_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const params = request.nextUrl.searchParams;
-
-  /* Persist ?ui=new|classic on the cookie, then strip the query so links stay clean. */
-  const uiParam = parseUiMode(params.get("ui"));
-  if (uiParam) {
-    const url = request.nextUrl.clone();
-    url.searchParams.delete("ui");
-    const res = NextResponse.redirect(url);
-    res.cookies.set(UI_COOKIE, uiParam, {
-      path: "/",
-      maxAge: UI_COOKIE_MAX_AGE,
-      sameSite: "lax",
-    });
-    return res;
-  }
-
-  const uiRedesign = resolveUiRedesign({
-    cookie: request.cookies.get(UI_COOKIE)?.value,
-  });
 
   /* Local UI preview only. NODE_ENV=development + NEXT_PUBLIC_DEV_BYPASS_AUTH=1.
    * Soft-allows host/admin routes so fixture screens can render without a cookie.
@@ -108,14 +83,11 @@ export async function middleware(request: NextRequest) {
         if (wantMarketing) {
           return NextResponse.next();
         }
-        /* Redesign: signed-in-style skip of marketing. Classic: `/` is browse. */
-        if (uiRedesign) {
-          const url = request.nextUrl.clone();
-          url.pathname = "/host";
-          url.search = "";
-          return NextResponse.redirect(url);
-        }
-        return NextResponse.next();
+        /* Signed-in-style skip of marketing. */
+        const url = request.nextUrl.clone();
+        url.pathname = "/host";
+        url.search = "";
+        return NextResponse.redirect(url);
       }
       return NextResponse.next();
     }
@@ -132,17 +104,7 @@ export async function middleware(request: NextRequest) {
     ? await identify(request)
     : { kind: "anonymous" };
 
-  let decision = decideAccess(pathname, viewer);
-
-  /* Classic UI: `/` is the browse catalogue for everyone (including signed-in).
-   * Redesign access.ts redirects signed-in users off marketing — skip that when classic. */
-  if (
-    !uiRedesign &&
-    (pathname === "/" || pathname === "") &&
-    !decision.allow
-  ) {
-    decision = { allow: true };
-  }
+  const decision = decideAccess(pathname, viewer);
 
   if (decision.allow) return NextResponse.next();
 

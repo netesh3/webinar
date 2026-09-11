@@ -21,11 +21,8 @@
   ],
   // Runtime SSR + /api proxy target. Browser uses same-origin /api when
   // NEXT_PUBLIC_API_BASE is empty at build time (see CLOUDFLARE.md).
-  // NEXT_PUBLIC_UI_REDESIGN must also be set at *build* time (see package.json
-  // deploy script) so Server Components / middleware inline the same default.
   "vars": {
-    "API_INTERNAL_URL": "https://webcast-api-65278594492.asia-south1.run.app",
-    "NEXT_PUBLIC_UI_REDESIGN": "1"
+    "API_INTERNAL_URL": "https://webcast-api-65278594492.asia-south1.run.app"
   },
   // Apex + www on Cloudflare zone webinarliv.com (Workers custom domains).
   // Keeps *.workers.dev URL working in parallel.
