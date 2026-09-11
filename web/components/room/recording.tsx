@@ -7,7 +7,7 @@ import { api, API_BASE } from "@/lib/api";
 import { formatBytes, formatClock } from "@/lib/format";
 import { canRecordLocally, localRecordingTransport } from "@/lib/local-recording";
 import { canRecord, SessionRecorder, type RecorderState, type RecordingTransport } from "@/lib/recorder";
-import { useToast } from "../providers";
+import { useAppConfig, useToast } from "../providers";
 import { DeviceIcon, RecordIcon, StopIcon } from "../icons";
 import { useRoomUI } from "./context";
 
@@ -187,6 +187,7 @@ function useRecorder() {
 /** The control bar's record button. Rendered only for people who may record. */
 export function RecordButton() {
   const { join, recording } = useRoomUI();
+  const { cloudRecordingEnabled } = useAppConfig();
   const { notify } = useToast();
   const { state, bytes, startedAt, start, stop } = useRecorder();
   const connection = useConnectionState();
@@ -202,13 +203,20 @@ export function RecordButton() {
     readCanRecordOnServer,
   );
   // Same reasoning, for the File System Access API specifically — Chrome/Edge
-  // only. Where it is missing the button skips the choice below and goes
-  // straight to the cloud, which is the whole of what it used to do.
+  // only.
   const localSupported = useSyncExternalStore(
     subscribeNothing,
     readCanRecordLocally,
     readCanRecordLocallyOnServer,
   );
+
+  // Which destinations this press could actually reach. Cloud needs the
+  // instance to have storage configured (AppConfig.cloudRecordingEnabled) —
+  // separate from join.canRecord, which is about the ACCOUNT, not the
+  // instance; an instance with RECORDINGS_ENABLED=false must not offer a
+  // button that always 503s. Local needs the browser's File System Access API.
+  const cloudAvailable = cloudRecordingEnabled;
+  const localAvailable = localSupported;
 
   const go = useCallback(
     (destination: "cloud" | "local") => {
@@ -241,11 +249,13 @@ export function RecordButton() {
   // Reading publish permission instead was wrong in both directions. An attendee
   // the host promoted publishes exactly like a panelist, so they were offered a
   // button whose every request came back 401: they have a microphone, not an
-  // account on this webinar's stage roster, and requireStage wants the account. It
-  // also showed the button where recording is turned off for the instance, which
-  // was only discoverable by pressing it and reading a 503.
+  // account on this webinar's stage roster, and requireStage wants the account.
   if (!join.canRecord) return null;
   if (!supported) return null;
+  // Neither destination can actually be reached — an instance with cloud
+  // storage off, in a browser without the File System Access API. Offering a
+  // button with nothing behind it is worse than not offering one.
+  if (!cloudAvailable && !localAvailable) return null;
 
   /* And not until there is a session to record.
    *
@@ -297,10 +307,15 @@ export function RecordButton() {
             void stop();
             return;
           }
-          // Straight to cloud when there is no choice to offer — same one-click
-          // behaviour this button has always had.
-          if (!localSupported) {
+          // Straight to whichever one destination is reachable — one-click,
+          // same as this button has always been — and only pause to ask when
+          // there is an actual choice between the two.
+          if (cloudAvailable && !localAvailable) {
             go("cloud");
+            return;
+          }
+          if (localAvailable && !cloudAvailable) {
+            go("local");
             return;
           }
           setChoosing((v) => !v);

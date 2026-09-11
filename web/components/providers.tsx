@@ -41,6 +41,9 @@ const CONFIG_FALLBACK: AppConfig = {
   // form rendered against this fallback asks for more rather than less.
   minPasswordLength: 10,
   tracks: [],
+  // Unknown until the real config arrives, and false is the safe guess: it only
+  // hides "the cloud" as a record destination, never offers one that 503s.
+  cloudRecordingEnabled: false,
 };
 
 const ConfigContext = createContext<AppConfig>(CONFIG_FALLBACK);

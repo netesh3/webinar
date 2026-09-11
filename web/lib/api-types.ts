@@ -1020,6 +1020,14 @@ export interface AppConfig {
   supabaseUrl?: string;
   supabaseAnonKey?: string;
   googleAuth?: boolean;
+  /**
+   * Whether this instance has object storage for recordings at all
+   * (RECORDINGS_ENABLED). Separate from JoinResponse.canRecord, which is about
+   * the account; this is about the instance. The record control uses it to
+   * decide whether to offer "the cloud" as a destination — local, on-device
+   * recording needs neither this nor the server's storage.
+   */
+  cloudRecordingEnabled: boolean;
 }
 export interface APIError {
   error: string;
