@@ -99,12 +99,12 @@ const BAD_LOSS_PERCENT = 2;
  * number. This is the correction to a real bug, and the bug is worth writing down because the
  * absolute version looked completely reasonable.
  *
- * It was `bad: rtt >= 300` and `good: rtt <= 180`. On the deployment this runs on, the SFU is
- * in us-east-1 and the audience is in India: the measured round trip is 276-285 ms (see
- * e2e/probe-latency.mjs, which records exactly that). So:
+ * It was `bad: rtt >= 300` and `good: rtt <= 180`. The SFU is on Hetzner EU and the audience
+ * is in India: steady round trip is ~200–250 ms (was 276–285 ms on the older us-east-1 seat;
+ * see e2e/probe-latency.mjs). So:
  *
- *   - 280 ms sits 20 ms under the trigger. Any ordinary jitter spike crosses it, and two
- *     samples four seconds apart are enough to step the publisher down.
+ *   - 250 ms sat under an absolute 300 ms trigger. Ordinary long-haul jitter crossed it, and
+ *     two samples four seconds apart stepped the publisher down.
  *   - recovery required 180 ms, which on that route is PHYSICALLY IMPOSSIBLE. Light does not
  *     go that fast.
  *
@@ -118,16 +118,23 @@ const BAD_LOSS_PERCENT = 2;
  * does drain it. Delay-based congestion control has worked this way for thirty years — the
  * signal is the excess over the minimum, not the minimum itself.
  *
- * There is deliberately NO absolute ceiling left. A 400 ms route is a bad seat, not a bad
- * connection, and degrading video on it would cost picture while saving no latency at all.
- * The cases an absolute threshold was standing in for are covered better by the other two
- * signals: a saturated uplink shows up in `availableOutgoingBitrate`, and a broken one loses
- * packets.
+ * There is deliberately NO absolute ceiling that steps the ladder. A 400 ms route is a bad
+ * seat, not a bad connection, and degrading video on it would cost picture while saving no
+ * latency at all. The cases an absolute threshold was standing in for are covered better by
+ * the other two signals: a saturated uplink shows up in `availableOutgoingBitrate`, and a
+ * broken one loses packets. ~500 ms+ of *queueing* (excess) still degrades — see the bad
+ * threshold below — which is the truly congested link, not the EU↔IN topology.
+ *
+ * Excess thresholds are deliberately loose for this topology: long-haul jitter of ~100–150 ms
+ * on a 200–250 ms floor must not count as congestion.
  */
-const RTT_EXCESS_BAD_MS = 120;
+const RTT_EXCESS_BAD_MS = 200;
 /** And what counts as drained. Asymmetric like every other pair here, so a connection sitting
  *  on one number does not thrash. */
-const RTT_EXCESS_GOOD_MS = 50;
+const RTT_EXCESS_GOOD_MS = 80;
+/** Absolute RTT that is still a healthy seat here. EU SFU + India clients land ~200–250 ms;
+ *  the UI must treat that as good, not as LiveKit's middling/poor grade. */
+const RTT_OK_MS = 300;
 
 /* How many recent samples the floor is taken from — 30 at 2 s each, so a minute.
  *
@@ -853,20 +860,40 @@ export function describeQuality(health: NetworkHealth): {
   label: string;
   tone: "ok" | "warn" | "bad";
 } {
+  const excessMs =
+    health.rttMs > 0 && health.rttFloorMs > 0
+      ? health.rttMs - health.rttFloorMs
+      : 0;
+  /* Distance is not damage. A steady ~250 ms to Hetzner EU is the topology; LiveKit's own
+   * quality enum still grades that middling, and trusting Poor/Good alone put a permanent
+   * warn/bad banner on every India viewer whose route is fine. */
+  const expectedRoute =
+    health.rttMs > 0 &&
+    health.rttMs <= RTT_OK_MS &&
+    excessMs < RTT_EXCESS_BAD_MS &&
+    health.lossPercent < BAD_LOSS_PERCENT;
+
   if (
-    health.quality === ConnectionQuality.Poor ||
-    health.lossPercent >= BAD_LOSS_PERCENT * 2
+    health.lossPercent >= BAD_LOSS_PERCENT * 2 ||
+    (health.quality === ConnectionQuality.Poor && !expectedRoute)
   ) {
     return { label: "Poor connection", tone: "bad" };
   }
-  if (health.degraded || health.quality === ConnectionQuality.Good) {
-    return {
-      label: health.degraded ? "Reduced quality" : "Good connection",
-      tone: "warn",
-    };
+  if (health.degraded) {
+    return { label: "Reduced quality", tone: "warn" };
   }
-  if (health.quality === ConnectionQuality.Excellent) {
-    return { label: "Strong connection", tone: "ok" };
+  if (
+    health.quality === ConnectionQuality.Excellent ||
+    expectedRoute ||
+    health.quality === ConnectionQuality.Good
+  ) {
+    return {
+      label:
+        health.quality === ConnectionQuality.Excellent
+          ? "Strong connection"
+          : "Good connection",
+      tone: "ok",
+    };
   }
   return { label: "Checking connection", tone: "warn" };
 }

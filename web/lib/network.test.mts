@@ -13,14 +13,17 @@
  * conclusion would be built on an artefact.
  */
 
+import { ConnectionQuality } from "livekit-client";
 import {
   LADDER,
   SHARE_LADDER,
   SHARE_LAYERS,
+  describeQuality,
   floorFrom,
   judge,
   needKbps,
   readPlayoutMs,
+  type NetworkHealth,
   type PublishTier,
 } from "./network.ts";
 
@@ -384,21 +387,21 @@ console.log("\njudge");
 /* The bug this replaced, as tests.
  *
  * The thresholds used to be absolute: bad at rtt >= 300, good at rtt <= 180. This deployment's
- * SFU is in us-east-1 with an audience in India, and the measured round trip is 276-285 ms —
+ * SFU is on Hetzner EU with an audience in India, and the measured round trip is ~200–250 ms —
  * so a presenter was stepped down by ordinary jitter and could never climb back, because the
  * recovery condition required a latency the speed of light does not permit. Every case below
  * fails against those numbers and passes against a floor-relative excess.
  */
 console.log("\na distant SFU is not a bad connection");
 {
-  /* The exact route this runs on. 280 ms, stable, no loss, plenty of bandwidth: a perfectly
-   * healthy call that happens to be eight thousand kilometres long. */
-  const distant = { rttMs: 280, rttFloorMs: 278, lossPercent: 0 };
+  /* The exact route this runs on. ~250 ms, stable, no loss, plenty of bandwidth: a perfectly
+   * healthy call that happens to be several thousand kilometres long. */
+  const distant = { rttMs: 250, rttFloorMs: 245, lossPercent: 0 };
 
   eq(
     judge({ tier: "full", ...distant, availableOutgoingKbps: 6_000 }).bad,
     false,
-    "a stable 280ms route does not step a healthy presenter down",
+    "a stable 250ms EU↔IN route does not step a healthy presenter down",
   );
 
   // The part that made it permanent: recovery has to be reachable.
@@ -413,18 +416,31 @@ console.log("\na distant SFU is not a bad connection");
     "…from the bottom rung too",
   );
 
-  /* Jitter on a distant route. 300 ms against a 278 ms floor is 22 ms of queueing — nothing —
+  /* Jitter on a distant route. 300 ms against a 245 ms floor is 55 ms of queueing — nothing —
    * yet it is the exact reading the old absolute threshold fired on. */
   eq(
     judge({
       tier: "full",
-      rttMs: 305,
-      rttFloorMs: 278,
+      rttMs: 300,
+      rttFloorMs: 245,
       lossPercent: 0,
       availableOutgoingKbps: 6_000,
     }).bad,
     false,
-    "a 27ms wobble on a 278ms route is not congestion",
+    "a 55ms wobble on a 245ms route is not congestion",
+  );
+
+  /* Long-haul jitter that used to trip the tighter 120ms excess threshold. */
+  eq(
+    judge({
+      tier: "full",
+      rttMs: 245 + 150,
+      rttFloorMs: 245,
+      lossPercent: 0,
+      availableOutgoingKbps: 6_000,
+    }).bad,
+    false,
+    "150ms of long-haul jitter on a 245ms floor is still not congestion",
   );
 
   /* And the same excess on a NEARBY route must still be quiet, or the rule has just moved the
@@ -442,23 +458,24 @@ console.log("\na distant SFU is not a bad connection");
   );
 
   /* Real queueing, on both routes, at the same excess. This is the point of the change: the
-   * verdict depends on the queue and not on where the server is. */
-  for (const floor of [28, 278]) {
+   * verdict depends on the queue and not on where the server is. ~250ms+ of queueing still
+   * steps down so a truly bad link (500ms+ absolute on a distant floor) degrades. */
+  for (const floor of [28, 245]) {
     eq(
       judge({
         tier: "full",
-        rttMs: floor + 200,
+        rttMs: floor + 250,
         rttFloorMs: floor,
         lossPercent: 0,
         availableOutgoingKbps: 6_000,
       }).bad,
       true,
-      `200ms of queueing on a ${floor}ms route steps down`,
+      `250ms of queueing on a ${floor}ms route steps down`,
     );
     eq(
       judge({
         tier: "reduced",
-        rttMs: floor + 200,
+        rttMs: floor + 250,
         rttFloorMs: floor,
         lossPercent: 0,
         availableOutgoingKbps: 6_000,
@@ -685,6 +702,53 @@ console.log("\nfloorFrom");
   ok(
     !judge({ ...sample, availableOutgoingKbps: 20000, sharing: true }).bad,
     "a 20 Mbps uplink carries camera and 1080p share without degrading",
+  );
+}
+
+/* The banner: ~250 ms to Hetzner EU must not read as poor / reduced by default. */
+console.log("\ndescribeQuality for EU SFU + IN clients");
+{
+  const base: NetworkHealth = {
+    quality: ConnectionQuality.Good,
+    lossPercent: 0,
+    rttMs: 250,
+    rttFloorMs: 245,
+    jitterMs: 5,
+    playoutMs: 10,
+    availableOutgoingKbps: 6_000,
+    tier: "full",
+    degraded: false,
+  };
+
+  eq(
+    describeQuality(base),
+    { label: "Good connection", tone: "ok" },
+    "a stable 250ms route is good, not a warn banner",
+  );
+  eq(
+    describeQuality({ ...base, quality: ConnectionQuality.Poor }),
+    { label: "Good connection", tone: "ok" },
+    "LiveKit Poor on an expected EU↔IN route does not override healthy local stats",
+  );
+  eq(
+    describeQuality({ ...base, quality: ConnectionQuality.Excellent }),
+    { label: "Strong connection", tone: "ok" },
+    "Excellent stays strong",
+  );
+  eq(
+    describeQuality({ ...base, degraded: true, tier: "reduced" }),
+    { label: "Reduced quality", tone: "warn" },
+    "a real ladder step still shows reduced quality",
+  );
+  eq(
+    describeQuality({
+      ...base,
+      quality: ConnectionQuality.Poor,
+      rttMs: 520,
+      rttFloorMs: 245,
+    }),
+    { label: "Poor connection", tone: "bad" },
+    "500ms+ with real queueing still flags poor",
   );
 }
 
