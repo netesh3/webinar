@@ -218,9 +218,27 @@ export function ParticipantTile({
         <AvatarFallback participant={participant} size={size} />
       )}
 
-      {/* Bottom label. A gradient rather than a solid bar so it reads over both
-          a bright slide and a dark room. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end gap-1.5 bg-gradient-to-t from-black/70 to-transparent px-2 pt-6 pb-1.5">
+      {/* Mute stays glanceable without a bar. Nameplate chrome used to paint a
+          permanent black gradient across every tile — reveal that on hover/focus
+          instead. Name stays discoverable via sr-only when chrome is hidden. */}
+      <span className="sr-only">
+        {participant.name || participant.identity}
+        {isScreen ? "’s screen" : ""}
+        {role !== "attendee" ? `, ${roleLabel[role]}` : ""}
+        {!isScreen && micMuted ? ", muted" : ""}
+      </span>
+      {!isScreen && micMuted && (
+        <span
+          className="pointer-events-none absolute bottom-1.5 left-1.5 z-10 rounded-md bg-black/40 p-1 backdrop-blur transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+          aria-hidden
+        >
+          <MicOffIcon className="size-3.5 text-white/85" />
+        </span>
+      )}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end gap-1.5 bg-gradient-to-t from-black/45 to-transparent px-2 pt-5 pb-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        aria-hidden
+      >
         {!isScreen && micMuted && (
           <MicOffIcon className="size-3.5 shrink-0 text-white/80" />
         )}
