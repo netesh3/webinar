@@ -1,17 +1,16 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"errors"
 	"net/http"
 	"net/mail"
-	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/httpx"
-	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -107,11 +106,6 @@ func (s *Server) handleGetWebinar(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleWebinarImage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 
-	if s.recordings == nil {
-		httpx.Error(w, http.StatusServiceUnavailable, "storage_disabled", "Images are off.")
-		return
-	}
-
 	wb, err := s.store.WebinarBySlug(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
@@ -126,7 +120,7 @@ func (s *Server) handleWebinarImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key, mime, err := s.store.WebinarImageMedia(r.Context(), slug)
+	data, mime, err := s.store.WebinarImageMedia(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "This webinar has no image.")
 		return
@@ -136,26 +130,14 @@ func (s *Server) handleWebinarImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reader, size, err := s.recordings.Open(r.Context(), key)
-	if errors.Is(err, media.ErrNotFound) {
-		httpx.Error(w, http.StatusNotFound, "not_found", "That image is no longer stored.")
-		return
-	}
-	if err != nil {
-		s.fail(w, r, "webinar image: open", err)
-		return
-	}
-	defer func() { _ = reader.Close() }()
-
 	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	// Public and immutable: a fresh upload gets a fresh key (see
-	// handleUploadWebinarImage), so the bytes at this URL never change — a shared
+	// Public and immutable: a fresh upload gets a fresh `?v=` (see
+	// store.SetWebinarImage), so the bytes at this URL never change — a shared
 	// proxy or a browser cache can hold onto this as long as it likes.
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", "inline")
-	http.ServeContent(w, r, "", zeroTime, reader)
+	http.ServeContent(w, r, "", zeroTime, bytes.NewReader(data))
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
