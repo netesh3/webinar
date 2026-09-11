@@ -622,15 +622,17 @@ function ConnectedRoom({
   /* A watermark of how much had arrived the last time each tool was looked at, so
    * a badge only ever means "this came in while you weren't looking".
    *
-   * Chat and Q&A live in the docked side panel: "visible" means that tab is the
-   * open panel tab. Floating windows still use the same idea for any other tool
-   * that carries a stream (none today).
+   * Chat and Q&A are "visible" when their docked tab is open, or when they have
+   * been popped out into an un-minimised floating window.
    */
   const chatCount = realtime.chat.length;
   const questionCount = realtime.questions.length;
 
-  const chatVisible = tools.panelTab === "chat";
-  const qaVisible = tools.panelTab === "qa";
+  const chatWin = tools.layout.windows.chat;
+  const qaWin = tools.layout.windows.qa;
+  const chatVisible =
+    tools.panelTab === "chat" || (!!chatWin && !chatWin.minimized);
+  const qaVisible = tools.panelTab === "qa" || (!!qaWin && !qaWin.minimized);
 
   const [seen, setSeen] = useState({ chat: 0, qa: 0 });
 

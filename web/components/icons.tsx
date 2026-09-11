@@ -345,6 +345,26 @@ export function FitIcon(props: IconProps) {
   );
 }
 
+/* Square with an arrow out — undock a panel into a floating window. */
+export function PopOutIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="4" y="8" width="10" height="12" rx="1.5" />
+      <path d="M14 4h6v6M20 4l-7 7" />
+    </Icon>
+  );
+}
+
+/* Arrow into a side rail — dock a floating window back into the side panel. */
+export function DockIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="14" y="5" width="6" height="14" rx="1.5" />
+      <path d="M11 12H4M4 12l3-3M4 12l3 3" />
+    </Icon>
+  );
+}
+
 export function TrashIcon(props: IconProps) {
   return (
     <Icon {...props}>

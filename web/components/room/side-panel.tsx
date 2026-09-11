@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import { PANEL_TOOL_IDS, type ToolId } from "@/lib/tools";
-import { CloseIcon } from "../icons";
+import { CloseIcon, PopOutIcon } from "../icons";
 import { ChatPanel } from "./chat-panel";
 import { useRoomUI } from "./context";
 import { ParticipantsPanel } from "./participants";
@@ -12,9 +12,10 @@ import { tool } from "./tools";
 
 /* Docked engagement panel — one side surface with tabs.
  *
- * Replaces the floating-window stack for Chat / Q&A / Polls / Participants.
- * Zoom Webinars, Livestorm and Crowdcast all put conversation tools in a single
- * right rail; the floating windows remain for Host tools, Settings and Invite.
+ * Default home for Chat / Q&A / Polls / Participants (Zoom/Livestorm pattern).
+ * Pop out undocks the active tab into a floating window so it can sit beside the
+ * stage — or be dragged onto another monitor when the browser window spans both.
+ * Host tools, Settings and Invite stay windows-only.
  */
 
 function PanelBody({ id }: { id: ToolId }) {
@@ -37,8 +38,11 @@ export function SidePanel() {
   const tab = tools.panelTab;
 
   const tabs = useMemo(
-    () => PANEL_TOOL_IDS.filter((id) => availableTools.includes(id)),
-    [availableTools],
+    () =>
+      PANEL_TOOL_IDS.filter(
+        (id) => availableTools.includes(id) && !tools.layout.windows[id],
+      ),
+    [availableTools, tools.layout.windows],
   );
 
   // Escape closes the panel when no floating window is focused on top of it.
@@ -50,6 +54,15 @@ export function SidePanel() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [tab, tools]);
+
+  // If the active tab was undocked (or became unavailable), drop it so unread
+  // watermarks and the tab strip stay honest.
+  useEffect(() => {
+    if (!tab) return;
+    if (tabs.includes(tab)) return;
+    if (tabs.length === 0) tools.closePanel();
+    else tools.open(tabs[0]);
+  }, [tab, tabs, tools]);
 
   if (!tab || tabs.length === 0) return null;
 
@@ -105,6 +118,17 @@ export function SidePanel() {
               );
             })}
           </div>
+          {/* Desktop only: phone sheets already fill the viewport; undocking there
+              stacks another sheet on top of the rail with nowhere useful to go. */}
+          <button
+            type="button"
+            onClick={() => tools.undock(active)}
+            aria-label={`Pop out ${tool(active).title}`}
+            title="Pop out"
+            className="hidden size-8 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:grid"
+          >
+            <PopOutIcon className="size-4" />
+          </button>
           <button
             type="button"
             onClick={() => tools.closePanel()}

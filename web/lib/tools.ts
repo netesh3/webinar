@@ -52,11 +52,11 @@ export const TOOL_IDS: readonly ToolId[] = [
   "host",
 ];
 
-/** Engagement tools that live in the docked side panel (Zoom/Livestorm pattern).
+/** Engagement tools that default to the docked side panel (Zoom/Livestorm pattern).
  *
- *  One panel with tabs instead of a stack of floating windows — the main
- *  simplification pass. Host tools, settings and invite stay as windows because
- *  they are modal/workflow surfaces, not ongoing conversation streams. */
+ *  One panel with tabs is the default; each can be popped out into a floating
+ *  window. Host tools, settings and invite stay windows-only because they are
+ *  modal/workflow surfaces, not ongoing conversation streams. */
 export const PANEL_TOOL_IDS: readonly ToolId[] = [
   "chat",
   "qa",
@@ -602,7 +602,7 @@ export type ToolApi = {
   layout: ToolLayout;
   /** Which engagement tab is open in the docked side panel, or null when closed. */
   panelTab: ToolId | null;
-  /** Open (or raise) a tool — panel tools dock; the rest open a window. */
+  /** Open (or raise) a tool — panel tools dock unless already undocked. */
   open: (tool: ToolId) => void;
   close: (tool: ToolId) => void;
   /** Close the side panel without touching floating windows. */
@@ -610,6 +610,10 @@ export type ToolApi = {
   /** Open if closed, close if already open and focused — what a toolbar button
    *  does. Anything else makes the button a one-way trip. */
   toggle: (tool: ToolId) => void;
+  /** Move a docked engagement tool into a floating window (and drop its panel tab). */
+  undock: (tool: ToolId) => void;
+  /** Put an undocked engagement tool back into the side panel. */
+  dock: (tool: ToolId) => void;
   focus: (tool: ToolId) => void;
   move: (tool: ToolId, rect: Rect) => void;
   minimize: (tool: ToolId, minimized: boolean) => void;
@@ -707,7 +711,9 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
       layout,
       panelTab,
       open: (tool) => {
-        if (isPanelTool(tool)) {
+        // Undocked engagement tools stay windows — opening Chat must not yank
+        // a floating frame the host just positioned back into the rail.
+        if (isPanelTool(tool) && !layout.windows[tool]) {
           setPanelTab(tool);
           setLayout((c) => noteUse(c, tool));
           return;
@@ -717,13 +723,14 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
       close: (tool) => {
         if (isPanelTool(tool)) {
           setPanelTab((current) => (current === tool ? null : current));
+          setLayout((c) => closeWindow(c, tool));
           return;
         }
         setLayout((c) => closeWindow(c, tool));
       },
       closePanel: () => setPanelTab(null),
       toggle: (tool) => {
-        if (isPanelTool(tool)) {
+        if (isPanelTool(tool) && !layout.windows[tool]) {
           setPanelTab((current) => (current === tool ? null : tool));
           setLayout((c) => noteUse(c, tool));
           return;
@@ -738,8 +745,28 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
           return openWindow(c, tool, bounds());
         });
       },
+      undock: (tool) => {
+        if (!isPanelTool(tool)) return;
+        setPanelTab((current) => {
+          if (current !== tool) return current;
+          // Keep the rail useful: jump to another docked tab if one remains.
+          const next = PANEL_TOOL_IDS.find(
+            (id) =>
+              id !== tool &&
+              available.includes(id) &&
+              !layout.windows[id],
+          );
+          return next ?? null;
+        });
+        setLayout((c) => openWindow(c, tool, bounds()));
+      },
+      dock: (tool) => {
+        if (!isPanelTool(tool)) return;
+        setLayout((c) => closeWindow(c, tool));
+        setPanelTab(tool);
+      },
       focus: (tool) => {
-        if (isPanelTool(tool)) {
+        if (isPanelTool(tool) && !layout.windows[tool]) {
           setPanelTab(tool);
           return;
         }
@@ -760,6 +787,6 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
         }),
       setStage,
     }),
-    [layout, panelTab, bounds, setLayout],
+    [layout, panelTab, bounds, setLayout, available],
   );
 }

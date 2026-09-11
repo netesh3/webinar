@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ToolId } from "@/lib/tools";
-import { isPanelTool } from "@/lib/tools";
+import { isPanelTool, type ToolId } from "@/lib/tools";
+import { DockIcon } from "../icons";
 import { ChatPanel } from "./chat-panel";
 import { useRoomUI } from "./context";
 import { DeviceSettings } from "./device-settings";
@@ -14,11 +14,12 @@ import { PollsPanel } from "./polls-panel";
 import { QAPanel } from "./qa-panel";
 import { tool } from "./tools";
 
-/* Floating tool windows — Host tools, Settings, Invite.
+/* Floating tool windows — Host tools, Settings, Invite, plus any engagement
+ * tool the user has popped out of the docked SidePanel.
  *
- * Chat / Q&A / Polls / Participants live in the docked SidePanel instead. The
- * Content switch still knows those ids so a stray window state from an older
- * session can render if somehow present; ToolWindows filters them out. */
+ * Undocked Chat / Q&A / Polls / Participants use the same chrome so they can be
+ * dragged across the stage (and onto another monitor when the browser spans both).
+ */
 
 /** `md`, matching the class the room's own layout switches at, so the sheet
  *  appears exactly when the stage stops having room beside it. */
@@ -75,10 +76,7 @@ export function ToolWindows() {
    * on top being announced last is a window nobody finds. Sorting by tool id
    * would have been stable across renders and wrong for exactly that reason. */
   const open = useMemo(
-    () =>
-      Object.values(tools.layout.windows)
-        .filter((win) => !isPanelTool(win.tool))
-        .sort((a, b) => a.z - b.z),
+    () => Object.values(tools.layout.windows).sort((a, b) => a.z - b.z),
     [tools.layout.windows],
   );
 
@@ -98,6 +96,7 @@ export function ToolWindows() {
       {open.map((win, i) => {
         const t = tool(win.tool);
         const index = collapsed[i] ? stack++ : 0;
+        const canDock = isPanelTool(win.tool) && !compact;
         return (
           <FloatingWindow
             key={win.tool}
@@ -124,11 +123,33 @@ export function ToolWindows() {
             }
             onMaximize={() => tools.maximize(win.tool)}
             onClose={() => tools.close(win.tool)}
+            actions={
+              canDock ? (
+                <TitleDock
+                  title={t.title}
+                  onDock={() => tools.dock(win.tool)}
+                />
+              ) : undefined
+            }
           >
             <Content id={win.tool} />
           </FloatingWindow>
         );
       })}
     </>
+  );
+}
+
+function TitleDock({ title, onDock }: { title: string; onDock: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={`Dock ${title}`}
+      title="Dock in side panel"
+      onClick={onDock}
+      className="grid size-7 place-items-center rounded-md text-ink-3 transition-colors outline-none hover:bg-surface-3 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
+    >
+      <DockIcon className="size-3.5" />
+    </button>
   );
 }
