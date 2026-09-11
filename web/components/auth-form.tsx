@@ -152,7 +152,7 @@ export function SignupForm() {
           still register for a webinar without one.
         </p>
         <Link
-          href="/"
+          href="/browse"
           className="mt-4 inline-block text-[13px] font-medium text-brand hover:underline"
         >
           Browse webinars

@@ -26,7 +26,7 @@ import { HostAlerts } from "./host-alerts";
  */
 function linksFor(signedIn: boolean, canHost: boolean) {
   return [
-    { href: "/", label: "Browse" },
+    { href: "/browse", label: "Browse" },
     ...(signedIn ? [{ href: "/my-webinars", label: "My webinars" }] : []),
     ...(canHost ? [{ href: "/host", label: "Hosting" }] : []),
   ];
@@ -46,7 +46,9 @@ export function TopNav() {
   const count = registrations?.length ?? 0;
 
   const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+    href === "/browse"
+      ? pathname === "/browse" || pathname.startsWith("/browse/")
+      : pathname.startsWith(href);
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">

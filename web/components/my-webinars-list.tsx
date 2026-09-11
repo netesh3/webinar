@@ -75,7 +75,7 @@ export function MyWebinarsList() {
         <Empty
           title="You haven't registered for anything yet"
           hint="Open an invitation link to register for a session. Your personal join link will show up here."
-          action={<ButtonLink href="/">Go to your webinars</ButtonLink>}
+          action={<ButtonLink href="/browse">Browse webinars</ButtonLink>}
         />
       </>
     );
