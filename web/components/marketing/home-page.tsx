@@ -1,35 +1,31 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useAppConfig, useSession } from "@/components/providers";
 
 /* Public marketing home for Webcast.
  *
- * Only features that ship today. CTAs adapt to session so `/` stays the brand
- * home for signed-in hosts as well as visitors.
+ * Only features that ship today. Signed-in visitors are redirected away (see
+ * middleware + SignedInHomeRedirect); this page is for logged-out guests.
  */
+
+/** Client fallback when middleware did not see a session cookie yet. */
+export function SignedInHomeRedirect() {
+  const router = useRouter();
+  const { account, status } = useSession();
+
+  useEffect(() => {
+    if (status !== "signed-in" || !account) return;
+    router.replace(account.canHost ? "/host" : "/browse");
+  }, [account, status, router]);
+
+  return null;
+}
 
 export function HomePage() {
   const { appName } = useAppConfig();
-  const { account, status } = useSession();
-  const canHost = account?.canHost === true;
-  const signedIn = Boolean(account);
-
-  const primary =
-    status === "loading"
-      ? { href: "/signup", label: "Get started" }
-      : canHost
-        ? { href: "/host", label: "Go to Hosting" }
-        : signedIn
-          ? { href: "/browse", label: "Browse webinars" }
-          : { href: "/signup", label: "Get started" };
-
-  const secondary =
-    canHost
-      ? { href: "/browse", label: "Browse" }
-      : signedIn
-        ? { href: "/my-webinars", label: "My webinars" }
-        : { href: "/login?next=/host", label: "Host a webinar" };
 
   return (
     <div className="home">
@@ -48,17 +44,18 @@ export function HomePage() {
               polls — self-hosted on open infrastructure.
             </p>
             <div className="home-cta home-reveal home-reveal-delay-3">
-              <Link href={primary.href} className="home-btn home-btn-primary">
-                {primary.label}
+              <Link href="/signup" className="home-btn home-btn-primary">
+                Get started
               </Link>
-              <Link href={secondary.href} className="home-btn home-btn-ghost">
-                {secondary.label}
+              <Link
+                href="/login?next=/host"
+                className="home-btn home-btn-ghost"
+              >
+                Host a webinar
               </Link>
-              {!signedIn && (
-                <Link href="/browse" className="home-btn home-btn-text">
-                  Browse
-                </Link>
-              )}
+              <Link href="/browse" className="home-btn home-btn-text">
+                Browse
+              </Link>
             </div>
           </div>
           <div className="home-hero-visual home-reveal home-reveal-delay-2">
@@ -167,24 +164,6 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="home-section" aria-labelledby="home-livekit">
-        <div className="home-section-inner home-split">
-          <div>
-            <h2 id="home-livekit" className="home-h2">
-              Reliable live video on LiveKit
-            </h2>
-            <p className="home-body">
-              Real-time audio and video run on LiveKit with adaptive streaming,
-              so presenters stay clear and the audience stays in sync.
-            </p>
-          </div>
-          <p className="home-aside">
-            Designed for webinar audiences — not a meeting grid of everyone at
-            once.
-          </p>
-        </div>
-      </section>
-
       <section className="home-section home-cta-band" aria-labelledby="home-end">
         <div className="home-section-inner home-cta-band-inner">
           <h2 id="home-end" className="home-h2">
@@ -195,8 +174,8 @@ export function HomePage() {
             already run sessions here.
           </p>
           <div className="home-cta">
-            <Link href={primary.href} className="home-btn home-btn-primary">
-              {primary.label}
+            <Link href="/signup" className="home-btn home-btn-primary">
+              Get started
             </Link>
             <Link href="/browse" className="home-btn home-btn-ghost">
               Browse webinars
@@ -220,7 +199,11 @@ function Feature({ title, body }: { title: string; body: string }) {
 /** Full-bleed stage mock — visual anchor for the hero, not a marketing card. */
 function HeroStage() {
   return (
-    <div className="home-stage" role="img" aria-label="Illustration of a live webinar stage">
+    <div
+      className="home-stage"
+      role="img"
+      aria-label="Illustration of a live webinar stage"
+    >
       <div className="home-stage-bar">
         <span className="home-stage-live">
           <span className="home-stage-live-dot" />

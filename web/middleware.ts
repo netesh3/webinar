@@ -49,8 +49,17 @@ export async function middleware(request: NextRequest) {
 
   /* Local UI preview only. NODE_ENV=development + NEXT_PUBLIC_DEV_BYPASS_AUTH=1.
    * Soft-allows host/admin routes so fixture screens can render without a cookie.
-   * Production builds never hit this branch. */
+   * Production builds never hit this branch.
+   *
+   * Bypass fakes a signed-in host, so `/` must still skip marketing — same as a
+   * real session. Turn NEXT_PUBLIC_DEV_BYPASS_AUTH off to preview the homepage. */
   if (isDevAuthBypass()) {
+    if (pathname === "/" || pathname === "") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/host";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
     return NextResponse.next();
   }
 
@@ -120,6 +129,7 @@ export const config = {
    * the hour. `/webinars/*` never reaches this file.
    */
   matcher: [
+    "/",
     "/host",
     "/host/:path*",
     "/my-webinars",

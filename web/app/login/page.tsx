@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { LoginForm } from "@/components/auth-form";
+import { LoginGoogleOneTap } from "@/components/login-google-one-tap";
 import { TopNav } from "@/components/top-nav";
 import { Card } from "@/components/ui";
 
@@ -9,6 +10,9 @@ export default function LoginPage() {
   // failure `next dev` never surfaces.
   return (
     <>
+      <Suspense fallback={null}>
+        <LoginGoogleOneTap />
+      </Suspense>
       <TopNav />
       <main className="mx-auto flex w-full max-w-6xl flex-1 items-start justify-center px-4 py-10 sm:px-5">
         <Suspense

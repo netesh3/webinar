@@ -46,6 +46,19 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   const segments = path.split("/").filter(Boolean);
 
+  /* Marketing home is for visitors only. Signed-in users skip the brand page and
+   * land in the app — hosts on Hosting, everyone else on Browse. Matches the
+   * post-OAuth default when `next` is `/`. */
+  if (segments.length === 0) {
+    if (viewer.kind === "account") {
+      return {
+        allow: false,
+        redirectTo: viewer.canHost ? "/host" : "/browse",
+      };
+    }
+    return ALLOW;
+  }
+
   // The participant experience and the public catalogue are open to everyone, including
   // people with no account at all — that is the entire point of a registration link.
   if (segments[0] !== "host") {
