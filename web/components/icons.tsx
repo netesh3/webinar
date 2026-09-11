@@ -470,15 +470,6 @@ export function ArrowDownIcon(props: IconProps) {
   );
 }
 
-export function CalendarIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <rect x="3.5" y="5.5" width="17" height="15" rx="2" />
-      <path d="M3.5 10h17M8 3.5V7M16 3.5V7" />
-    </Icon>
-  );
-}
-
 /** An indeterminate spinner. `animate-spin` is applied by the caller so a static
  *  render (a screenshot, a print) still shows a sensible glyph. */
 export function SpinnerIcon(props: IconProps) {
