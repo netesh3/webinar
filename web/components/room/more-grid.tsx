@@ -10,17 +10,13 @@ import { ReactionPicker } from "./reactions";
 import { useToolDrag } from "./tool-drag";
 import { tool } from "./tools";
 
-/* The "More" overflow grid.
+/* The "More" overflow grid — media/session extras only.
  *
- * A grid rather than the vertical menu this replaced, because the items are peers
- * — Chat, Q&A, Polls, Participants are four of the same kind of thing — and a
- * vertical list of commands implies an order and a hierarchy that none of them
- * have. It is also the shape a finger can hit: 88px cells against the 32px rows
- * of a dropdown.
+ * Chat / Q&A / Polls / Participants are NOT here; they live on the right-edge
+ * engagement rail. This grid holds Invite, Reactions, Hand, Settings, Host tools
+ * and anything else the user unpinned from the bar.
  *
- * Every cell does double duty: click to open, drag to pin. That is the whole
- * customisation gesture, and it is discoverable because the thing you drag is the
- * thing you already clicked.
+ * Every cell does double duty: click to open, drag to pin.
  */
 
 export function MoreGrid({
@@ -208,7 +204,7 @@ export function MoreGrid({
 
       <p className="mt-2 flex items-center gap-1.5 border-t border-line px-1.5 pt-2 text-[11px] text-ink-3">
         <PinIcon className="size-3 shrink-0" />
-        Use Layout on the bar for speaker / grid / spotlight. Drag tools onto the bar to pin.
+        Chat, Q&amp;A, Polls, and Participants are on the right rail. Layout stays on the bar.
       </p>
     </div>
   );

@@ -185,24 +185,27 @@ export type ToolLayout = {
 
 /* What a first-time user gets.
  *
- * Chat and Participants open the side panel. Layout is NOT a pin — it is a
- * fixed control on the bar (see control-bar), so capacity / localStorage can
- * never bury Speaker / Grid / Spotlight under More. Invite, host tools and the
- * rest stay in More so the bar stays short.
+ * Engagement tools (Chat / Q&A / Polls / Participants) live on the right-edge
+ * rail only — never as bar pins or More cells. Layout is a fixed control on the
+ * bar (see control-bar), so capacity / localStorage can never bury Speaker /
+ * Grid / Spotlight under More. Invite, host tools and the rest stay in More.
  */
-const DEFAULT_PINNED: ToolId[] = ["chat", "participants"];
+const DEFAULT_PINNED: ToolId[] = [];
 
 /** Always rendered on the bar outside the capacity-limited pin slots. */
 export const FIXED_BAR_TOOLS: readonly ToolId[] = ["layout"];
+
+/** Tools that must not appear on the bottom bar or in More — right rail owns them. */
+function isBarExcluded(id: ToolId): boolean {
+  return FIXED_BAR_TOOLS.includes(id) || isPanelTool(id);
+}
 
 export const RECENT_LIMIT = 6;
 
 function emptyLayout(): ToolLayout {
   return {
     pinned: [...DEFAULT_PINNED],
-    overflow: TOOL_IDS.filter(
-      (id) => !DEFAULT_PINNED.includes(id) && !FIXED_BAR_TOOLS.includes(id),
-    ),
+    overflow: TOOL_IDS.filter((id) => !isBarExcluded(id)),
     recent: [],
     windows: {},
     nextZ: 1,
@@ -221,8 +224,8 @@ export function pinTool(
   tool: ToolId,
   index: number,
 ): ToolLayout {
-  // Layout (and any other fixed-bar tool) already has a dedicated control.
-  if (FIXED_BAR_TOOLS.includes(tool)) return layout;
+  // Layout is fixed on the bar; engagement tools belong on the right rail.
+  if (isBarExcluded(tool)) return layout;
   const without = layout.pinned.filter((id) => id !== tool);
   const at = Math.min(Math.max(index, 0), without.length);
   return {
@@ -248,8 +251,11 @@ export function unpinTool(layout: ToolLayout, tool: ToolId): ToolLayout {
   };
 }
 
-/** Records a use, most recent first, with no duplicates. */
+/** Records a use, most recent first, with no duplicates.
+ *
+ *  Engagement tools are excluded — they must not surface into vacant bar slots. */
 export function noteUse(layout: ToolLayout, tool: ToolId): ToolLayout {
+  if (isPanelTool(tool) || FIXED_BAR_TOOLS.includes(tool)) return layout;
   return {
     ...layout,
     recent: [tool, ...layout.recent.filter((id) => id !== tool)].slice(
@@ -444,10 +450,17 @@ export function reconcile(
   available: readonly ToolId[],
 ): ToolLayout {
   const allowed = new Set(available);
-  const pinned = layout.pinned.filter((id) => allowed.has(id));
-  const overflow = layout.overflow.filter((id) => allowed.has(id));
+  // Strip engagement tools from bar customisation — they moved to the right rail.
+  const pinned = layout.pinned.filter(
+    (id) => allowed.has(id) && !isBarExcluded(id),
+  );
+  const overflow = layout.overflow.filter(
+    (id) => allowed.has(id) && !isBarExcluded(id),
+  );
   const placed = new Set([...pinned, ...overflow]);
-  const added = available.filter((id) => !placed.has(id));
+  const added = available.filter(
+    (id) => !placed.has(id) && !isBarExcluded(id),
+  );
 
   // Windows for a tool that is no longer available have to close, or a demoted
   // panelist keeps a Host tools window whose every button 403s.
@@ -456,7 +469,9 @@ export function reconcile(
     if (allowed.has(win.tool)) windows[key] = win;
   }
 
-  const recent = layout.recent.filter((id) => allowed.has(id));
+  const recent = layout.recent.filter(
+    (id) => allowed.has(id) && !isPanelTool(id),
+  );
 
   const same =
     pinned.length === layout.pinned.length &&
@@ -488,9 +503,8 @@ export function barSlots(
   available: readonly ToolId[],
 ): BarSlot[] {
   const allowed = new Set(available);
-  const fixed = new Set<ToolId>(FIXED_BAR_TOOLS);
   const slots: BarSlot[] = layout.pinned
-    .filter((id) => allowed.has(id) && !fixed.has(id))
+    .filter((id) => allowed.has(id) && !isBarExcluded(id))
     .slice(0, Math.max(0, capacity))
     .map((tool) => ({ tool, pinned: true }));
 
@@ -499,7 +513,7 @@ export function barSlots(
   const taken = new Set(slots.map((s) => s.tool));
   for (const tool of layout.recent) {
     if (slots.length >= capacity) break;
-    if (taken.has(tool) || !allowed.has(tool) || fixed.has(tool)) continue;
+    if (taken.has(tool) || !allowed.has(tool) || isBarExcluded(tool)) continue;
     slots.push({ tool, pinned: false });
     taken.add(tool);
   }
@@ -509,8 +523,9 @@ export function barSlots(
 /** What the More grid shows: everything not currently on the bar.
  *
  *  Computed from the bar rather than from `overflow` alone, so a tool surfaced
- *  into a vacant slot is not offered in both places at once. Fixed-bar tools
- *  (Layout) are omitted — they already have a dedicated control. */
+ *  into a vacant slot is not offered in both places at once. Layout and
+ *  engagement tools are omitted — Layout is fixed on the bar; Chat / Q&A /
+ *  Polls / Participants live on the right rail. */
 export function gridItems(
   layout: ToolLayout,
   slots: readonly BarSlot[],
@@ -523,7 +538,13 @@ export function gridItems(
   const seen = new Set<ToolId>();
   const out: ToolId[] = [];
   for (const id of ordered) {
-    if (seen.has(id) || onBar.has(id) || !allowed.has(id)) continue;
+    if (
+      seen.has(id) ||
+      onBar.has(id) ||
+      !allowed.has(id) ||
+      isPanelTool(id)
+    )
+      continue;
     seen.add(id);
     out.push(id);
   }
@@ -532,9 +553,9 @@ export function gridItems(
 
 // --------------------------------------------------------------- persistence
 
-/* v4: Layout is a fixed bar control, not a pin. Bumped so v3 localStorage that
- * treated Layout as a capacity-limited pin cannot hide it on narrow bars. */
-const STORAGE_KEY = "webcast.toolbar.v4";
+/* v5: Engagement tools left the bar for the right rail. Bumped so v4
+ * localStorage that pinned Chat / Participants cannot resurrect them. */
+const STORAGE_KEY = "webcast.toolbar.v5";
 
 /** Only the customisation is persisted, never the windows.
  *
@@ -554,12 +575,16 @@ function load(): ToolLayout {
     const { pinned, overflow, recent } = parsed as Partial<Persisted>;
     const clean = (value: unknown): ToolId[] =>
       Array.isArray(value) ? [...new Set(value.filter(isToolId))] : [];
-    const nextPinned = clean(pinned);
+    const nextPinned = clean(pinned).filter((id) => !isBarExcluded(id));
     return {
       ...base,
       pinned: nextPinned,
-      overflow: clean(overflow).filter((id) => !nextPinned.includes(id)),
-      recent: clean(recent).slice(0, RECENT_LIMIT),
+      overflow: clean(overflow).filter(
+        (id) => !nextPinned.includes(id) && !isBarExcluded(id),
+      ),
+      recent: clean(recent)
+        .filter((id) => !isPanelTool(id))
+        .slice(0, RECENT_LIMIT),
     };
   } catch {
     // Corrupt or unreadable storage falls back to the default layout rather than
@@ -724,7 +749,6 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
         // a floating frame the host just positioned back into the rail.
         if (isPanelTool(tool) && !layout.windows[tool]) {
           setPanelTab(tool);
-          setLayout((c) => noteUse(c, tool));
           return;
         }
         setLayout((c) => openWindow(c, tool, bounds()));
@@ -741,7 +765,6 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
       toggle: (tool) => {
         if (isPanelTool(tool) && !layout.windows[tool]) {
           setPanelTab((current) => (current === tool ? null : tool));
-          setLayout((c) => noteUse(c, tool));
           return;
         }
         setLayout((c) => {

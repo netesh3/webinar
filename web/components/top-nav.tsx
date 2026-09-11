@@ -10,29 +10,25 @@ import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 
-/* The top bar.
+/* The top bar — one primary product nav.
  *
- * Below `sm` the links collapse into a disclosure panel rather than shrinking:
- * three nav items plus an account menu does not fit on a 360px screen, and a nav
- * that wraps to two rows pushes the page content below the fold.
+ * Product areas: Browse | My webinars | Hosting (when canHost). Hosting owns
+ * create / upcoming / past / manage — there is no second host sidebar.
+ *
+ * Below `sm` the links collapse into a disclosure panel rather than shrinking.
  */
 
 /* The nav, built from what this visitor can actually open.
  *
- * Previously a static list, so every visitor — including somebody who had just arrived on a
- * registration link — was shown Browse webinars, My webinars and Host. Two of those now
- * redirect for anyone who is not signed in or cannot host, and a link that bounces is worse
- * than no link.
- *
- * This is NOT the access control. `middleware.ts` refuses the routes and the API refuses the
- * requests; removing a link only stops the product advertising doors that are locked. The
- * participant experience does not render this component at all — see ParticipantHeader.
+ * This is NOT the access control. `middleware.ts` refuses the routes and the API
+ * refuses the requests; removing a link only stops advertising locked doors.
+ * Participants do not render this component — see ParticipantHeader.
  */
 function linksFor(signedIn: boolean, canHost: boolean) {
   return [
     { href: "/", label: "Browse" },
     ...(signedIn ? [{ href: "/my-webinars", label: "My webinars" }] : []),
-    ...(canHost ? [{ href: "/host", label: "Host" }] : []),
+    ...(canHost ? [{ href: "/host", label: "Hosting" }] : []),
   ];
 }
 
@@ -126,7 +122,7 @@ export function TopNav() {
                   ? [
                       {
                         kind: "action" as const,
-                        label: "Host portal",
+                        label: "Hosting",
                         onSelect: () => router.push("/host"),
                       },
                     ]

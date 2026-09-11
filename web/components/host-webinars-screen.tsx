@@ -9,10 +9,10 @@ import { ApiError, api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS, isDevAuthBypass } from "@/lib/dev-bypass";
 
-/** Host home: create, run upcoming sessions, review past attendance.
+/** Hosting home: create, run upcoming sessions, review past attendance.
  *
- *  One job per section — primary CTA to create, then the webinar list split into
- *  Upcoming / Past / Drafts. Deliberately not a metrics dashboard. */
+ *  One primary nav area (top: Hosting) + in-page segments (Upcoming / Past /
+ *  Drafts). No competing sidebar. */
 export function HostWebinarsScreen() {
   const { account, status } = useSession();
   const [mine, setMine] = useState<Webinar[] | null>(null);
@@ -121,8 +121,6 @@ export function HostWebinarsScreen() {
   const upcoming =
     mine?.filter((w) => w.status === "scheduled" || w.status === "live")
       .length ?? 0;
-  const pendingAdmit =
-    mine?.find((w) => w.approval === "manual" && w.status !== "ended") ?? null;
 
   return (
     <>
@@ -138,49 +136,20 @@ export function HostWebinarsScreen() {
         </div>
       )}
 
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
-            Host
+            Hosting
           </h1>
           <p className="mt-1.5 max-w-lg text-[13.5px] leading-relaxed text-ink-2">
             Create a session, start it when you&apos;re ready, admit people who
-            need approval, then review who attended.
+            need approval, then review who attended
+            {upcoming > 0 ? ` · ${upcoming} upcoming` : ""}.
           </p>
         </div>
         <ButtonLink href="/host/new" className="shrink-0">
           Create webinar
         </ButtonLink>
-      </div>
-
-      {/* Three clear jobs — not a metrics strip. */}
-      <div className="mb-8 grid gap-3 sm:grid-cols-3">
-        <TaskHint
-          title="Create"
-          body="Schedule a new webinar and share the registration link."
-          href="/host/new"
-          cta="New webinar"
-        />
-        <TaskHint
-          title="Host"
-          body={
-            upcoming > 0
-              ? `${upcoming} upcoming — open one and press Host when live.`
-              : "Nothing scheduled yet. Create one to get a Host button."
-          }
-          href={upcoming > 0 ? undefined : "/host/new"}
-          cta={upcoming > 0 ? undefined : "Create first"}
-        />
-        <TaskHint
-          title="Admit"
-          body={
-            pendingAdmit
-              ? `Manual approval on “${pendingAdmit.topic}”. Open Manage → Admit.`
-              : "Only needed when a webinar uses manual approval."
-          }
-          href={pendingAdmit ? `/host/${pendingAdmit.id}?tab=admit` : undefined}
-          cta={pendingAdmit ? "Review queue" : undefined}
-        />
       </div>
 
       {error && (
@@ -214,31 +183,5 @@ export function HostWebinarsScreen() {
         </section>
       )}
     </>
-  );
-}
-
-function TaskHint({
-  title,
-  body,
-  href,
-  cta,
-}: {
-  title: string;
-  body: string;
-  href?: string;
-  cta?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-line bg-surface px-4 py-3.5">
-      <div className="text-[12px] font-semibold tracking-wide text-ink-3 uppercase">
-        {title}
-      </div>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">{body}</p>
-      {href && cta && (
-        <ButtonLink href={href} variant="ghost" size="sm" className="mt-2 -ml-2">
-          {cta}
-        </ButtonLink>
-      )}
-    </div>
   );
 }

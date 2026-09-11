@@ -132,9 +132,10 @@ export function SidePanel() {
           </aside>
         )}
 
-        {/* Single engagement rail — the only switcher for these tools. */}
+        {/* Single engagement rail — only place for Chat / Q&A / Polls / Participants. */}
         <nav
-          aria-label="Session tools"
+          aria-label="Engagement"
+          title="Engagement — Chat, Q&A, Polls, Participants"
           className="room-dark flex w-12 shrink-0 flex-col items-center gap-1 border-l border-line bg-surface py-2"
         >
           {railTools.map((id) => {

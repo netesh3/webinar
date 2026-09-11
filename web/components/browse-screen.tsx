@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
 import {
@@ -11,7 +11,11 @@ import { BrowseList } from "./browse-list";
 import { useSession } from "./providers";
 import { Button, ButtonLink, Empty } from "./ui";
 
-/* Post-login home: for hosts, a simple task hub; for everyone else, their sessions. */
+/* Browse — sessions you're involved in (or the public catalogue when signed out).
+ *
+ * Hosting work (create / start / admit / past) lives under Hosting in the top
+ * nav, not as a second dashboard here. Keep this page a single list.
+ */
 
 export function BrowseScreen() {
   const { account, status } = useSession();
@@ -50,70 +54,36 @@ export function BrowseScreen() {
   const signedOut = state === "signed-out" || (state !== "loading" && !account);
   const canHost = account?.canHost === true;
 
-  const upcomingHost = useMemo(
-    () =>
-      (webinars ?? []).filter(
-        (w) =>
-          w.host.id === account?.id &&
-          (w.status === "scheduled" || w.status === "live"),
-      ),
-    [webinars, account?.id],
-  );
-
   return (
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-[24px] font-semibold tracking-[-0.02em] sm:text-[26px]">
-            {signedOut
-              ? "Webinars"
-              : canHost
-                ? "Home"
-                : "Your webinars"}
+            {signedOut ? "Webinars" : "Browse"}
           </h1>
           <p className="mt-1.5 max-w-xl text-[14px] leading-relaxed text-ink-2">
             {signedOut
               ? "Sign in to see sessions you're hosting, presenting at, or registered for."
               : canHost
-                ? "Create a webinar, host it when it's time, admit people who need approval, then review attendance."
+                ? "Sessions you're involved in. Create, start, and admit from Hosting."
                 : "Sessions you're presenting at or registered for. Join from here when one starts."}
           </p>
         </div>
         {canHost && !signedOut && (
-          <ButtonLink href="/host/new" className="shrink-0">
-            Create webinar
+          <ButtonLink href="/host" variant="secondary" className="shrink-0">
+            Open Hosting
           </ButtonLink>
         )}
       </div>
 
-      {canHost && !signedOut && state === "ok" && (
-        <div className="mb-8 grid gap-3 sm:grid-cols-2">
-          <HubCard
-            title="Host portal"
-            body={
-              upcomingHost.length > 0
-                ? `${upcomingHost.length} upcoming — Host, Admit, or view Past attendance.`
-                : "Schedule sessions, start the room, and manage registrants."
-            }
-            href="/host"
-            cta="Open host"
-          />
-          <HubCard
-            title="Room chrome preview"
-            body="Docked side panel, control bar, and stage layout without LiveKit."
-            href="/preview/room"
-            cta="Open room UI"
-            show={bypass}
-          />
-          {!bypass && (
-            <HubCard
-              title="My registrations"
-              body="Sessions you registered for as an attendee."
-              href="/my-webinars"
-              cta="My webinars"
-            />
-          )}
-        </div>
+      {bypass && !signedOut && (
+        <p className="mb-6 text-[13px] text-ink-3">
+          Local preview — room chrome at{" "}
+          <a className="underline hover:text-ink" href="/preview/room">
+            /preview/room
+          </a>
+          .
+        </p>
       )}
 
       {state === "loading" ? (
@@ -138,7 +108,7 @@ export function BrowseScreen() {
           title={canHost ? "Nothing scheduled yet" : "Nothing here yet"}
           hint={
             canHost
-              ? "Create a webinar to get Host, Admit, and attendance in one place."
+              ? "Create a webinar in Hosting to get started."
               : "Webinars you host, present at, or register for will appear here."
           }
           action={
@@ -148,45 +118,13 @@ export function BrowseScreen() {
           }
         />
       ) : (
-        <>
-          {canHost && (
-            <h2 className="mb-3 text-[13px] font-semibold text-ink-2">
-              Your sessions
-            </h2>
-          )}
-          <BrowseList
-            webinars={webinars ?? []}
-            tracks={[...new Set((webinars ?? []).map((w) => w.track))]
-              .filter(Boolean)
-              .sort()}
-          />
-        </>
+        <BrowseList
+          webinars={webinars ?? []}
+          tracks={[...new Set((webinars ?? []).map((w) => w.track))]
+            .filter(Boolean)
+            .sort()}
+        />
       )}
     </>
-  );
-}
-
-function HubCard({
-  title,
-  body,
-  href,
-  cta,
-  show = true,
-}: {
-  title: string;
-  body: string;
-  href: string;
-  cta: string;
-  show?: boolean;
-}) {
-  if (!show) return null;
-  return (
-    <div className="rounded-xl border border-line bg-surface px-4 py-4">
-      <h2 className="text-[14px] font-semibold">{title}</h2>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">{body}</p>
-      <ButtonLink href={href} variant="secondary" size="sm" className="mt-3">
-        {cta}
-      </ButtonLink>
-    </div>
   );
 }

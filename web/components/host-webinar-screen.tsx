@@ -142,7 +142,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         <h1 className="text-[17px] font-semibold">Couldn&apos;t load that</h1>
         <p className="mt-2 text-[13.5px] text-ink-2">{error}</p>
         <ButtonLink href="/host" variant="secondary" className="mt-5">
-          Back to webinars
+          Back to Hosting
         </ButtonLink>
       </Card>
     );
@@ -170,7 +170,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-brand"
       >
         <ArrowLeftIcon className="size-3.5" />
-        Host
+        Hosting
       </Link>
 
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">

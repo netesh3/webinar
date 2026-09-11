@@ -42,12 +42,12 @@ import { tool } from "./tools";
  *                 drawer to find is a control you mute yourself too late with.
  *                 They are also per-role: an attendee has none of them.
  *
- *   slots         everything else, pinned by the user or surfaced from recent
- *                 use. Draggable in and out. Capacity depends on the width, so
- *                 the bar is one row on a phone and on a 4K monitor.
+ *   slots         optional extras (reactions, invite, …) pinned or recent —
+ *                 never Chat / Q&A / Polls / Participants (those are the right
+ *                 rail). Draggable. Capacity depends on width.
  *
- *   fixed right   More, and Leave. Leave last because it is the one button whose
- *                 position should never move under the cursor.
+ *   fixed right   Layout, More, and Leave. Leave last because its position
+ *                 should never move under the cursor.
  *
  * An attendee sees no publish controls at all. Their token forbids publishing, so
  * a microphone button would open a device prompt and then fail at the SFU.
