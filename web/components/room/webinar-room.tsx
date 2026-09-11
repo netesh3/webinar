@@ -17,7 +17,7 @@ import {
   RoomEvent,
   Track,
 } from "livekit-client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { roomOptions, useMediaPreferences } from "@/lib/media";
@@ -46,6 +46,7 @@ import { useHostRoster } from "./participants";
 import { VirtualBackground } from "./background-picker";
 import { PollPopup } from "./poll-popup";
 import { FileShareBar } from "./file-share-bar";
+import { NetworkMetrics } from "./network-readout";
 import { Stage } from "./stage";
 import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
@@ -990,41 +991,45 @@ function RoomHeader() {
  * between "this app is broken" and "my wifi is bad", and it is the answer to the support
  * question that would otherwise arrive an hour later.
  *
- * The measurements are in the settings dialog for whoever wants them. Round trip time in
- * a header is a number that helps one person in a hundred and distracts the rest.
+ * The compact tag stays; hover / keyboard focus opens the same numbers as Settings →
+ * Connection (ping, loss, upload speed, congestion). A native title attribute was not
+ * enough — it is slow, not keyboard-reachable, and could not show a readable grid.
  */
-/** How much of the round trip is a queue rather than distance. Zero until both numbers are
- *  known, and never negative — a reading below the window's floor is a new floor, not a
- *  negative delay. */
-function queueingMs(network: { rttMs: number; rttFloorMs: number }): number {
-  if (!network.rttMs || !network.rttFloorMs) return 0;
-  return Math.max(0, Math.round(network.rttMs - network.rttFloorMs));
-}
-
 function NetworkIndicator() {
-  const { network } = useRoomUI();
+  const { network, permissions } = useRoomUI();
   const { label, tone } = describeQuality(network);
+  const tipId = useId();
   if (tone === "ok" || network.quality === ConnectionQuality.Unknown) return null;
 
   return (
-    <span
-      className={`inline-flex items-center gap-1 ${
-        tone === "bad" ? "text-live" : "text-warn"
-      }`}
-      /* The tooltip names the QUEUEING, not the round trip.
-       *
-       * A raw "285ms round trip" next to "reduced quality" reads as cause and effect, and on a
-       * distant server it is neither — the ladder is judged on how far the round trip is above
-       * this route's own floor. Quoting the raw number sent the reader after the wrong problem;
-       * quoting the excess says whether there is a queue at all. */
-      title={
-        network.degraded
-          ? `Video quality was reduced automatically — ${network.lossPercent}% packet loss, ${queueingMs(network)}ms of congestion delay. It will go back up on its own.`
-          : `${network.lossPercent}% packet loss, ${queueingMs(network)}ms of congestion delay on a ${network.rttFloorMs || network.rttMs}ms route`
-      }
-    >
-      <SignalIcon className="size-3" />
-      {label}
+    <span className="group relative inline-flex">
+      <span
+        tabIndex={0}
+        aria-describedby={tipId}
+        className={`inline-flex cursor-default items-center gap-1 rounded outline-none focus-visible:ring-2 focus-visible:ring-white/35 ${
+          tone === "bad" ? "text-live" : "text-warn"
+        }`}
+      >
+        <SignalIcon className="size-3" />
+        {label}
+      </span>
+      <span
+        id={tipId}
+        role="tooltip"
+        className="room-dark pointer-events-none absolute top-full left-0 z-50 mt-1.5 w-[15.5rem] origin-top-left scale-95 rounded-lg border border-line bg-surface px-3 py-2.5 opacity-0 shadow-xl transition duration-100 group-hover:scale-100 group-hover:opacity-100 group-focus-within:scale-100 group-focus-within:opacity-100"
+      >
+        <NetworkMetrics
+          network={network}
+          canPublish={permissions.canPublish}
+          compact
+        />
+        {permissions.canPublish && network.degraded && (
+          <p className="mt-2 text-[11px] leading-relaxed text-warn">
+            Reduced automatically to protect audio. Recovers on its own — no need to
+            reconnect.
+          </p>
+        )}
+      </span>
     </span>
   );
 }
