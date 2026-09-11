@@ -51,30 +51,26 @@ Manual runs: Actions → **Deploy Web (Cloudflare Workers)** → Run workflow.
 
 | Kind | Name | Notes |
 |------|------|--------|
-| Secret | `CLOUDFLARE_API_TOKEN` | **Primary path.** Create at [API Tokens](https://dash.cloudflare.com/profile/api-tokens); **Edit Cloudflare Workers** template. |
-| Secret | `CLOUDFLARE_OAUTH_REFRESH_TOKEN` | Fragile fallback, from `npx wrangler login` (`refresh_token` in wrangler config). |
-| Secret | `GH_SECRETS_PAT` | Only used by the fallback, to save the rotated refresh token. |
+| Secret | `CLOUDFLARE_API_TOKEN` | The only credential. **Edit Cloudflare Workers** template from [API Tokens](https://dash.cloudflare.com/profile/api-tokens), scoped to the account below and the `webinarliv.com` zone. |
 | Variable | `CLOUDFLARE_ACCOUNT_ID` | From `npx wrangler whoami` / dashboard. |
-| Variable | `CLOUDFLARE_OAUTH_CLIENT_ID` | Wrangler public OAuth client id (fallback only). |
 
-CI prefers `CLOUDFLARE_API_TOKEN` and verifies it against
-`/user/tokens/verify` before building, so a revoked token fails in seconds
-rather than after a full Next.js build. With no credential at all the job fails
-with an actionable error instead of silently skipping the deploy.
+Before building, CI checks the token against `/user/tokens/verify` and then
+lists Workers scripts in the target account, so a missing, revoked, or
+wrongly-scoped token fails in seconds with a message naming the permission or
+resource to fix — rather than after a full Next.js build. Cloudflare being
+unreachable only warns. With no token at all the job fails loudly instead of
+skipping the deploy behind a green check.
 
-### Why the OAuth fallback keeps breaking
+Auth is deliberately one stateless path: API tokens never rotate, CI writes
+nothing back to repo secrets, and concurrent runs cannot invalidate each other.
 
-Cloudflare OAuth refresh tokens are **single-use**: each exchange returns a new
-refresh token and invalidates the one you sent. CI therefore has to write the
-rotated value back into repo secrets, which makes CI stateful — and GitHub
-resolves `secrets.*` when a run is *created*, not when its job starts. So a run
-created before a sibling run's write-back carries a stale token and dies with
-`invalid_grant: The refresh token was already used`. Running `wrangler login`
-locally breaks the chain the same way.
-
-Setting `CLOUDFLARE_API_TOKEN` makes the fallback (and its secret write-back)
-dead code, because API tokens never rotate and are safe for concurrent runs.
-Delete the fallback branch once the token is in place.
+> **Historical note.** CI used to fall back to exchanging a `wrangler login`
+> OAuth refresh token. Those are single-use — each exchange invalidates the one
+> you sent — so CI had to write the rotated value back into repo secrets. Since
+> GitHub resolves `secrets.*` when a run is *created* rather than when its job
+> starts, any run created before a sibling run's write-back died with
+> `invalid_grant: The refresh token was already used`. Removed in favour of the
+> API token; don't reintroduce it.
 
 ### Manual (local)
 
@@ -201,25 +197,34 @@ you want a single session.
 
 ### GitHub Actions credentials
 
-1. **`CLOUDFLARE_API_TOKEN`** (primary — do this) — the token cannot be minted
-   from a `wrangler login` OAuth session (the API rejects those with
-   `9109 Invalid access token`), so it is a one-time manual step:
+CI needs secret **`CLOUDFLARE_API_TOKEN`** and variable
+**`CLOUDFLARE_ACCOUNT_ID`** — nothing else. The token cannot be minted from a
+`wrangler login` OAuth session (the API rejects those with
+`9109 Invalid access token`), so creating it is a one-time dashboard step:
 
-   ```bash
-   # 1. https://dash.cloudflare.com/profile/api-tokens → Create Token
-   #    → "Edit Cloudflare Workers" template → account 392a7c7123d4be470145452fcd3f6840
-   #    → include the webinarliv.com zone → Continue → Create → copy the token
-   # 2. Store it (reads from stdin, so it never lands in shell history):
-   gh secret set CLOUDFLARE_API_TOKEN -R netesh3/webinar
-   # 3. Optional: prove it works, then drop the now-unused fallback secrets
-   gh workflow run cloudflare-workers-deploy.yml -R netesh3/webinar
-   ```
+```bash
+# 1. https://dash.cloudflare.com/profile/api-tokens → Create Token
+#    → "Edit Cloudflare Workers" template
+#    → Account Resources: 392a7c7123d4be470145452fcd3f6840
+#    → Zone Resources: include webinarliv.com   (needed for the custom domains)
+#    → Continue → Create → copy the token
+# 2. Store it (reads stdin, so it never lands in shell history):
+gh secret set CLOUDFLARE_API_TOKEN -R netesh3/webinar
+# 3. Prove it works:
+gh workflow run cloudflare-workers-deploy.yml -R netesh3/webinar
+```
 
-2. **`CLOUDFLARE_OAUTH_REFRESH_TOKEN`** (fallback, single-use — see above) — from a
-   local `npx wrangler login` session
-   (`~/Library/Preferences/.wrangler/config/default.toml` → `refresh_token`), plus variable
-   `CLOUDFLARE_OAUTH_CLIENT_ID=54d11594-84e4-41aa-b438-e81b8fa78ee7` and secret
-   `GH_SECRETS_PAT` so CI can persist each rotation. Expect `invalid_grant` failures
-   whenever two deploys overlap or you re-login locally.
+### Rotating the token
 
-Also set variable **`CLOUDFLARE_ACCOUNT_ID`**.
+Overlap the new token with the old one so there is no window where deploys
+break:
+
+```bash
+# 1. Create a replacement token (same template/scopes as above).
+# 2. Point CI at it:
+gh secret set CLOUDFLARE_API_TOKEN -R netesh3/webinar
+# 3. Confirm a green deploy on the new token:
+gh workflow run cloudflare-workers-deploy.yml -R netesh3/webinar
+gh run watch -R netesh3/webinar
+# 4. Only then delete/roll the old token in the dashboard → API Tokens.
+```

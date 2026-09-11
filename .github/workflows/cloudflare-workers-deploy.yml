@@ -5,20 +5,19 @@
 #   - push to main touching web/** or this workflow file
 #   - workflow_dispatch (Actions tab)
 #
-# Credentials, in priority order:
-#   A) secret CLOUDFLARE_API_TOKEN — PRIMARY. A durable API token ("Edit Cloudflare
-#      Workers" template). Stateless: it never rotates, so concurrent runs, re-runs,
-#      and local `wrangler` use cannot invalidate each other.
-#   B) secret CLOUDFLARE_OAUTH_REFRESH_TOKEN — FALLBACK, fragile. Cloudflare OAuth
-#      refresh tokens are SINGLE-USE: every exchange returns a new one and kills the
-#      old one. CI therefore has to write the rotated value back into repo secrets
-#      (needs GH_SECRETS_PAT), which makes CI stateful — and a run whose secret
-#      snapshot predates a sibling run's write-back fails with `invalid_grant`.
-#      Set CLOUDFLARE_API_TOKEN and this whole path becomes dead code.
+# Required secret:
+#   CLOUDFLARE_API_TOKEN — "Edit Cloudflare Workers" template, scoped to the
+#     account in CLOUDFLARE_ACCOUNT_ID and to the webinarliv.com zone (the Worker
+#     claims apex + www as custom domains, see web/wrangler.jsonc routes).
 #
-# Required repository variables:
+# Required repository variable:
 #   CLOUDFLARE_ACCOUNT_ID — Cloudflare account id (`npx wrangler whoami` / dashboard)
-#   CLOUDFLARE_OAUTH_CLIENT_ID — wrangler public OAuth client id (path B only)
+#
+# Auth is intentionally a single stateless path: an API token never rotates, so
+# concurrent runs, re-runs of old runs, and local `wrangler` use cannot invalidate
+# each other. CI writes nothing back to repo secrets. (A previous version fell back
+# to exchanging a wrangler OAuth refresh token; those are single-use, so runs raced
+# each other into `invalid_grant` — see web/CLOUDFLARE.md.)
 #
 # Build env (plain config, not secrets):
 #   NEXT_PUBLIC_API_BASE="" — same-origin /api via the Worker proxy (web/CLOUDFLARE.md)
@@ -51,6 +50,7 @@ jobs:
         working-directory: web
 
     env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       NEXT_PUBLIC_API_BASE: ""
       OPEN_NEXT: "1"
@@ -58,106 +58,70 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve Cloudflare credentials
+      # Catch a missing, revoked, or wrongly-scoped token in seconds rather than
+      # after a full Next.js build. Network trouble only warns, so a Cloudflare
+      # blip cannot fail the job on its own.
+      - name: Verify Cloudflare credentials
         working-directory: .
-        env:
-          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          OAUTH_REFRESH_TOKEN: ${{ secrets.CLOUDFLARE_OAUTH_REFRESH_TOKEN }}
-          OAUTH_CLIENT_ID: ${{ vars.CLOUDFLARE_OAUTH_CLIENT_ID }}
-          GH_SECRETS_PAT: ${{ secrets.GH_SECRETS_PAT }}
         run: |
           set -euo pipefail
 
-          TOKEN_HELP="Create one with the 'Edit Cloudflare Workers' template at https://dash.cloudflare.com/profile/api-tokens then run: gh secret set CLOUDFLARE_API_TOKEN -R ${GITHUB_REPOSITORY}"
+          TOKEN_HELP="Re-create it at https://dash.cloudflare.com/profile/api-tokens with the 'Edit Cloudflare Workers' template (Account Resources must include ${CLOUDFLARE_ACCOUNT_ID}, Zone Resources must include webinarliv.com), then run: gh secret set CLOUDFLARE_API_TOKEN -R ${GITHUB_REPOSITORY}"
 
           if [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
             echo "::error::Repository variable CLOUDFLARE_ACCOUNT_ID is unset. Get it from 'npx wrangler whoami' and set it under Settings → Secrets and variables → Actions → Variables."
             exit 1
           fi
-
-          # ---- Path A: durable API token (preferred) --------------------------
-          if [ -n "${API_TOKEN}" ]; then
-            echo "Authenticating with the CLOUDFLARE_API_TOKEN secret."
-
-            # Preflight so an expired/revoked token fails in seconds instead of
-            # after a full Next.js build. A network blip must not fail the job,
-            # so only an explicit non-active verdict is fatal.
-            VERIFY="$(curl -sS --max-time 30 \
-              -H "Authorization: Bearer ${API_TOKEN}" \
-              'https://api.cloudflare.com/client/v4/user/tokens/verify' || true)"
-            STATUS="$(printf '%s' "$VERIFY" \
-              | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("result") or {}).get("status") or "invalid")' \
-              2>/dev/null || echo unreachable)"
-
-            case "$STATUS" in
-              active)
-                echo "Token verified (status: active)."
-                ;;
-              unreachable)
-                echo "::warning::Could not reach Cloudflare's token verify endpoint; continuing and letting wrangler validate the token."
-                ;;
-              *)
-                echo "::error::CLOUDFLARE_API_TOKEN is set but Cloudflare reports it as '${STATUS}'. ${TOKEN_HELP}"
-                exit 1
-                ;;
-            esac
-
-            echo "CLOUDFLARE_API_TOKEN=${API_TOKEN}" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          # ---- Path B: wrangler OAuth refresh token (fragile fallback) -------
-          if [ -z "${OAUTH_REFRESH_TOKEN}" ]; then
-            echo "::error::No Cloudflare credential available: neither CLOUDFLARE_API_TOKEN nor CLOUDFLARE_OAUTH_REFRESH_TOKEN is set, so this deploy cannot run. ${TOKEN_HELP}"
-            exit 1
-          fi
-          if [ -z "${OAUTH_CLIENT_ID}" ]; then
-            echo "::error::The OAuth fallback needs repository variable CLOUDFLARE_OAUTH_CLIENT_ID (wrangler's public OAuth client id). Prefer setting CLOUDFLARE_API_TOKEN instead. ${TOKEN_HELP}"
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
+            echo "::error::Secret CLOUDFLARE_API_TOKEN is unset, so this deploy cannot run. ${TOKEN_HELP}"
             exit 1
           fi
 
-          echo "::warning::CLOUDFLARE_API_TOKEN is not set, so this run is using the single-use OAuth refresh token fallback. Cloudflare rotates that token on every exchange, so overlapping runs, re-runs of old runs, and local wrangler commands can invalidate each other. ${TOKEN_HELP}"
+          STATUS="$(curl -sS --max-time 30 \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            'https://api.cloudflare.com/client/v4/user/tokens/verify' \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("result") or {}).get("status") or "invalid")' \
+            2>/dev/null || echo unreachable)"
 
-          RESP="$(curl -sS --max-time 30 -X POST 'https://dash.cloudflare.com/oauth2/token' \
-            -H 'Content-Type: application/x-www-form-urlencoded' \
-            -H 'User-Agent: wrangler-ci/webinar' \
-            --data-urlencode "grant_type=refresh_token" \
-            --data-urlencode "refresh_token=${OAUTH_REFRESH_TOKEN}" \
-            --data-urlencode "client_id=${OAUTH_CLIENT_ID}" || true)"
+          case "$STATUS" in
+            active)
+              echo "Token verified (status: active)."
+              ;;
+            unreachable)
+              echo "::warning::Could not reach Cloudflare's token verify endpoint; continuing and letting wrangler validate the token."
+              ;;
+            *)
+              echo "::error::CLOUDFLARE_API_TOKEN is set but Cloudflare reports it as '${STATUS}'. ${TOKEN_HELP}"
+              exit 1
+              ;;
+          esac
 
-          ACCESS="$(printf '%s' "$RESP" \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' \
-            2>/dev/null || true)"
-          NEW_REFRESH="$(printf '%s' "$RESP" \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("refresh_token",""))' \
-            2>/dev/null || true)"
+          # Confirm the token actually reaches Workers in the target account,
+          # which is the exact permission + resource pair `wrangler deploy` needs.
+          CODE="$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts" \
+            || echo 000)"
 
-          if [ -z "$ACCESS" ]; then
-            DETAIL="$(printf '%s' "$RESP" \
-              | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("error","unknown_error"), "-", d.get("error_description",""))' \
-              2>/dev/null || echo 'unparseable response from Cloudflare')"
-            echo "::error::Cloudflare OAuth refresh failed: ${DETAIL}"
-            echo "::error::CLOUDFLARE_OAUTH_REFRESH_TOKEN is single-use, so it was already spent by another run, a re-run, or a local wrangler command. Recover once with: npx wrangler login && gh secret set CLOUDFLARE_OAUTH_REFRESH_TOKEN -R ${GITHUB_REPOSITORY} (paste refresh_token from ~/Library/Preferences/.wrangler/config/default.toml). Fix permanently instead: ${TOKEN_HELP}"
-            exit 1
-          fi
-
-          echo "::add-mask::$ACCESS"
-          echo "CLOUDFLARE_API_TOKEN=$ACCESS" >> "$GITHUB_ENV"
-          echo "Minted a short-lived Cloudflare access token from the OAuth refresh token."
-
-          # Cloudflare invalidated the stored refresh token by handing us a new
-          # one, so CI must persist it or the next run has no credential at all.
-          # This is what makes the fallback stateful; it disappears with path A.
-          if [ -n "$NEW_REFRESH" ] && [ "$NEW_REFRESH" != "${OAUTH_REFRESH_TOKEN}" ]; then
-            echo "::add-mask::$NEW_REFRESH"
-            if [ -n "${GH_SECRETS_PAT}" ]; then
-              echo "Persisting the rotated refresh token back into repo secrets…"
-              printf '%s' "$NEW_REFRESH" \
-                | GH_TOKEN="${GH_SECRETS_PAT}" gh secret set CLOUDFLARE_OAUTH_REFRESH_TOKEN -R "${GITHUB_REPOSITORY}"
-            else
-              echo "::warning::Cloudflare rotated the refresh token but GH_SECRETS_PAT is unset, so it could not be saved. The next run will fail with invalid_grant until you update CLOUDFLARE_OAUTH_REFRESH_TOKEN. ${TOKEN_HELP}"
-            fi
-          fi
+          case "$CODE" in
+            200)
+              echo "Token can read Workers scripts in account ${CLOUDFLARE_ACCOUNT_ID}."
+              ;;
+            000)
+              echo "::warning::Could not reach the Cloudflare Workers API to check token scope; continuing."
+              ;;
+            401 | 403)
+              echo "::error::CLOUDFLARE_API_TOKEN is active but Cloudflare returned HTTP ${CODE} for Workers in account ${CLOUDFLARE_ACCOUNT_ID}, so it is missing the 'Workers Scripts: Edit' permission or that account is not in its Account Resources. ${TOKEN_HELP}"
+              exit 1
+              ;;
+            404)
+              echo "::error::Cloudflare returned HTTP 404 for account ${CLOUDFLARE_ACCOUNT_ID}: either the CLOUDFLARE_ACCOUNT_ID variable is wrong, or the token's Account Resources do not include that account. ${TOKEN_HELP}"
+              exit 1
+              ;;
+            *)
+              echo "::warning::Unexpected HTTP ${CODE} while checking token scope; continuing and letting wrangler decide."
+              ;;
+          esac
 
       - uses: actions/setup-node@v4
         with:
