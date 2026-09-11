@@ -140,6 +140,10 @@ fi
 # Join env vars with commas for gcloud (values must not contain commas).
 JOINED=$(IFS=,; echo "${ENV_VARS[*]}")
 
+# IMPORTANT: --set-env-vars replaces the *entire* env map on the new revision.
+# Never run a one-off `gcloud run services update --set-env-vars CORS=…` for a
+# partial change — that wiped LIVEKIT_* / DATABASE_URL on revision 00014 and
+# crashed the container. Use this script (full set) or `--update-env-vars`.
 DEPLOY_ARGS=(
   gcloud run deploy "$SERVICE"
   --image "$IMAGE"

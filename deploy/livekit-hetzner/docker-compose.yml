@@ -2,18 +2,6 @@
 # Domain via sslip.io or a real DNS A record.
 
 services:
-  caddy:
-    image: caddy:2-alpine
-    network_mode: host
-    restart: unless-stopped
-    environment:
-      DOMAIN: ${DOMAIN:?set DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-
   livekit:
     image: livekit/livekit-server:v1.9.1
     network_mode: host
@@ -21,7 +9,21 @@ services:
     command: ["--config", "/etc/livekit.yaml"]
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
-    depends_on: [caddy]
+
+  # Caddy proxies to 127.0.0.1:7880. Start LiveKit first so the first WSS
+  # clients after a reboot do not hit connection-refused during TLS obtain.
+  caddy:
+    image: caddy:2-alpine
+    network_mode: host
+    restart: unless-stopped
+    depends_on: [livekit]
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
 
 volumes:
   caddy_data:
