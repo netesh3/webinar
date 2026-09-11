@@ -88,19 +88,13 @@ const TOOLS: Record<ToolId, Tool> = {
   },
   invite: {
     id: "invite",
-    /* A window, not an action.
-     *
-     * An action would be a popover that closes on the next click, and copying a link into
-     * three different chats is exactly the task where that is wrong. It also means the bar
-     * slot and the More grid need no special case for it — both already know how to toggle
-     * a window, and every "action" tool in here needed its own branch in both.
-     */
-    kind: "window",
+    /* An action, not a window — Zoom's own Invite is a two-item popover, not a
+     * draggable panel, and a link plus a preview of what gets copied was more
+     * chrome than the task needed. */
+    kind: "action",
     label: "Invite",
     title: "Invite people",
     icon: UserPlusIcon,
-    // Nothing to lose when it is minimised: the content is derived from the webinar, not
-    // typed by the user.
     keepMounted: false,
   },
   reactions: {

@@ -23,6 +23,7 @@ import {
 import { useToast } from "../providers";
 import { useMicMeter } from "@/lib/mic-level";
 import { useRoomUI } from "./context";
+import { InviteMenu } from "./invite-panel";
 import { LayoutMenu } from "./layout-menu";
 import { MoreButton, MoreGrid } from "./more-grid";
 import { ReactionPicker } from "./reactions";
@@ -127,6 +128,8 @@ export function ControlBar() {
    *  closed; the tool id is not needed, but a boolean would not survive Reactions
    *  being dragged off the bar mid-gesture. */
   const [reactionsOpen, setReactionsOpen] = useState(false);
+  /** The Invite popover, anchored to whichever slot holds Invite. */
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   /** Preview-only share toggle — no LiveKit publish in `/preview/room`. */
   const [previewSharing, setPreviewSharing] = useState(false);
@@ -310,6 +313,7 @@ export function ControlBar() {
   const activeFor = (id: ToolId): boolean => {
     if (id === "hand") return realtime.myHandRaised;
     if (id === "reactions") return reactionsOpen;
+    if (id === "invite") return inviteOpen;
     if (id === "layout") return layoutOpen;
     if (tools.panelTab === id) return true;
     const win = tools.layout.windows[id];
@@ -319,6 +323,10 @@ export function ControlBar() {
   const activate = (id: ToolId) => {
     if (id === "reactions") {
       setReactionsOpen((v) => !v);
+      return;
+    }
+    if (id === "invite") {
+      setInviteOpen((v) => !v);
       return;
     }
     if (id === "hand") {
@@ -494,6 +502,12 @@ export function ControlBar() {
                     setReactionsOpen(false);
                   }}
                   onClose={() => setReactionsOpen(false)}
+                />
+              )}
+              {slot.tool === "invite" && inviteOpen && (
+                <InviteMenu
+                  onUsed={() => tools.used("invite")}
+                  onClose={() => setInviteOpen(false)}
                 />
               )}
             </div>

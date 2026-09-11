@@ -5,6 +5,7 @@ import type { ToolId } from "@/lib/tools";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { GridIcon, PinIcon } from "../icons";
 import { useRoomUI } from "./context";
+import { InviteMenu } from "./invite-panel";
 import { LayoutMenu } from "./layout-menu";
 import { ReactionPicker } from "./reactions";
 import { useToolDrag } from "./tool-drag";
@@ -36,6 +37,9 @@ export function MoreGrid({
   const [showReactions, setShowReactions] = useState(false);
   /** Layout picker when Layout lives in More (user unpinned it from the bar). */
   const [showLayout, setShowLayout] = useState(false);
+  /** Invite popover, revealed in place — same reasoning as Reactions: it opens
+   *  right here rather than in a second popover stacked on this one. */
+  const [showInvite, setShowInvite] = useState(false);
 
   /* Dismiss on Escape and on a press outside.
    *
@@ -129,7 +133,9 @@ export function MoreGrid({
                   ? showReactions
                   : id === "layout"
                     ? showLayout
-                    : false;
+                    : id === "invite"
+                      ? showInvite
+                      : false;
 
             return (
               <button
@@ -143,11 +149,19 @@ export function MoreGrid({
                   if (id === "reactions") {
                     setShowReactions((v) => !v);
                     setShowLayout(false);
+                    setShowInvite(false);
+                    return;
+                  }
+                  if (id === "invite") {
+                    setShowInvite((v) => !v);
+                    setShowReactions(false);
+                    setShowLayout(false);
                     return;
                   }
                   if (id === "layout") {
                     setShowLayout((v) => !v);
                     setShowReactions(false);
+                    setShowInvite(false);
                     tools.used("layout");
                     return;
                   }
@@ -196,6 +210,19 @@ export function MoreGrid({
               void realtime.react(emoji);
               tools.used("reactions");
               setShowReactions(false);
+              onClose();
+            }}
+          />
+        </div>
+      )}
+
+      {showInvite && (
+        <div className="relative mt-2 border-t border-line pt-2">
+          <InviteMenu
+            embedded
+            onUsed={() => tools.used("invite")}
+            onClose={() => {
+              setShowInvite(false);
               onClose();
             }}
           />
