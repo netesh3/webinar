@@ -211,13 +211,24 @@ function drawInto(
   ctx.restore();
 }
 
+/** Text widths for `label`, keyed by the string. The font never changes, so a
+ *  width measured once stays correct — and it is worth caching, because
+ *  `measureText` runs inside the draw loop, once per visible tile, every
+ *  single frame. A session's set of names is small and stops growing once
+ *  everyone has joined, so this never needs eviction. */
+const labelWidths = new Map<string, number>();
+
 function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, w: number): void {
   if (!text) return;
   ctx.save();
   ctx.font = "500 15px system-ui, -apple-system, sans-serif";
-  const metrics = ctx.measureText(text);
+  let width = labelWidths.get(text);
+  if (width === undefined) {
+    width = ctx.measureText(text).width;
+    labelWidths.set(text, width);
+  }
   const padding = 8;
-  const boxWidth = Math.min(metrics.width + padding * 2, w - 8);
+  const boxWidth = Math.min(width + padding * 2, w - 8);
   ctx.fillStyle = "rgba(0,0,0,0.55)";
   ctx.fillRect(x + 4, y - 28, boxWidth, 24);
   ctx.fillStyle = "#fff";
