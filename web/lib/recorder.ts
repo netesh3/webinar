@@ -30,15 +30,7 @@ import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
  *  that is also presenting. */
 const WIDTH = 1280;
 const HEIGHT = 720;
-/** 20 rather than 25 or 30. This machine is ALREADY spending CPU on the call
- *  itself — decoding everyone else's video, encoding its own camera and,
- *  often, a screen share — before the recorder draws a single frame. Every
- *  tick here is a canvas repaint plus an encode, so this number is the
- *  single biggest lever on how much the recording steals from the call it is
- *  recording. 20fps is still smooth for the talking-head-plus-slides shape a
- *  webinar recording actually is; a live sports broadcast needs 30, a Zoom
- *  call being watched back for what was said does not. */
-const FPS = 20;
+const FPS = 25;
 
 /** How much video is buffered before a chunk is emitted. Five seconds is a
  *  compromise: shorter means more requests, longer means more lost if the tab
