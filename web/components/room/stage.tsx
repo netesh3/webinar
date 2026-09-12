@@ -722,14 +722,38 @@ function WaitingForStage({
           with none renders pixel-identical to before this existed. */}
       {imageUrl && (
         <>
-          {/* eslint-disable-next-line @next/next/no-img-element -- a
-              cross-origin API URL, not something next/image's loader can
-              optimize. */}
+          {/* Two copies of the same image, same trick Spotify/YouTube use for
+           * art that does not match the frame it lands in.
+           *
+           * A host uploads one cover image and it has to fill everything from a
+           * square phone-in-hand crop to an ultrawide monitor — no single aspect
+           * ratio is right for all of them. object-cover alone (the previous
+           * version) picked "always fill the frame" and paid for it by cropping
+           * the image itself: a banner designed as a wide landscape strip, full
+           * of edge-to-edge text, lost most of that text off the top or sides on
+           * a tall phone screen. That is what was reported as broken.
+           *
+           * So the backdrop copy still covers and crops — full-bleed color with
+           * nothing legible on it, blurred so the crop is invisible — and the
+           * foreground copy uses object-contain, which never crops: the whole
+           * image is always visible, letterboxed on whichever axis does not
+           * match. That holds at every aspect ratio, not just the one this was
+           * tested at, which is the point of fixing it here instead of shipping
+           * a breakpoint tuned to today's screenshot. */}
+          {/* eslint-disable @next/next/no-img-element -- a cross-origin API
+              URL, not something next/image's loader can optimize. */}
           <img
             src={`${API_BASE}${imageUrl}`}
             alt=""
-            className="absolute inset-0 size-full object-cover"
+            aria-hidden
+            className="absolute inset-0 size-full scale-110 object-cover opacity-60 blur-2xl"
           />
+          <img
+            src={`${API_BASE}${imageUrl}`}
+            alt=""
+            className="absolute inset-0 size-full object-contain"
+          />
+          {/* eslint-enable @next/next/no-img-element */}
           <div
             aria-hidden
             className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/55 to-black/70"
