@@ -50,12 +50,12 @@ import { tool } from "./tools";
  *                 drawer to find is a control you mute yourself too late with.
  *                 They are also per-role: an attendee has none of them.
  *
- *   slots         optional extras (reactions, invite, …) pinned or recent —
- *                 never Chat / Q&A / Polls / Participants (those are the right
- *                 rail). Draggable. Capacity depends on width.
+ *   slots         optional extras (layout, reactions, invite, …) pinned or
+ *                 recent — never Chat / Q&A / Polls / Participants (those are
+ *                 the right rail). Draggable. Capacity depends on width.
  *
- *   fixed right   Layout, More, and Leave. Leave last because its position
- *                 should never move under the cursor.
+ *   fixed right   More and Leave. Leave last because its position should
+ *                 never move under the cursor.
  *
  * An attendee sees no publish controls at all. Their token forbids publishing, so
  * a microphone button would open a device prompt and then fail at the SFU.
@@ -535,32 +535,6 @@ export function ControlBar() {
         {/* The tail marker, for a drop past the last slot. */}
         {dropIndex !== null && dropIndex >= slots.length && <DropMarker />}
       </div>
-
-      {/* Layout is fixed — never capacity-limited or buried under More. Narrow
-          bars used to drop it when only two pin slots fit. */}
-      {availableTools.includes("layout") && (
-        <div data-tool-slot="layout" className="relative">
-          <button
-            type="button"
-            aria-label={`Layout · ${LAYOUT_LABEL[stage.mode]}`}
-            aria-pressed={layoutOpen}
-            title={`Change layout — ${LAYOUT_LABEL[stage.mode]}`}
-            onClick={() => {
-              setLayoutOpen((v) => !v);
-              tools.used("layout");
-            }}
-            className="relative shrink-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-          >
-            <BarButtonShell label="Layout" active={layoutOpen}>
-              {(() => {
-                const Icon = tool("layout").icon;
-                return <Icon className="size-5" />;
-              })()}
-            </BarButtonShell>
-          </button>
-          {layoutOpen && <LayoutMenu onClose={() => setLayoutOpen(false)} />}
-        </div>
-      )}
 
       {/* ---- fixed right ---- */}
       <div className="relative">
