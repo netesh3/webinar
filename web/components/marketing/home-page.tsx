@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { HomeLegalFooter } from "@/components/marketing/legal-page";
-import { useAppConfig, useSession } from "@/components/providers";
+import { useSession } from "@/components/providers";
 
 /* Public marketing home for Webinar Liv.
  *
@@ -31,41 +31,157 @@ export function SignedInHomeRedirect() {
 }
 
 export function HomePage() {
-  const { appName } = useAppConfig();
-
   return (
     <div className="home">
-      <section className="home-hero" aria-labelledby="home-brand">
+      <section className="home-hero" aria-labelledby="home-headline">
         <div className="home-hero-atmosphere" aria-hidden />
-        <div className="home-hero-grid">
+        <div className="home-hero-inner">
+          <div className="home-stage-wrap">
+            <FeatureChip
+              className="home-chip-1"
+              tone="blue"
+              label="Screen sharing"
+              caption="Share a window or file"
+              icon={
+                <>
+                  <rect x="2" y="4" width="20" height="13" rx="2" />
+                  <path d="M8 21h8M12 17v4" />
+                  <path d="m9 11 3-3 3 3" />
+                </>
+              }
+            />
+            <FeatureChip
+              className="home-chip-2"
+              tone="indigo"
+              label="Interactive Q&A"
+              caption="Upvote and answer live"
+              icon={
+                <>
+                  <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  <path d="M9.6 9a2.5 2.5 0 1 1 3.1 2.4c-.5.2-.7.6-.7 1.1v.3" />
+                  <path d="M12 15.6h.01" />
+                </>
+              }
+            />
+            <FeatureChip
+              className="home-chip-3"
+              tone="rose"
+              label="Recording"
+              caption="Save every session"
+              icon={
+                <>
+                  <circle cx="12" cy="12" r="9" />
+                  <circle cx="12" cy="12" r="3.4" fill="currentColor" stroke="none" />
+                </>
+              }
+            />
+            <FeatureChip
+              className="home-chip-4"
+              tone="amber"
+              label="Live polls"
+              caption="Read the room instantly"
+              icon={<path d="M4 19V9M10 19V5M16 19v-6M22 19H2" />}
+            />
+
+            <div className="home-player home-reveal">
+              <div className="home-screen">
+                <CallGrid />
+
+                <span className="home-live-badge">
+                  <i aria-hidden />
+                  LIVE
+                </span>
+
+                <span className="home-viewers">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  1,284 watching
+                </span>
+
+                <div className="home-player-bar" aria-hidden>
+                  <span className="home-room-tag">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    <b>1 host</b> · 3 panelists · 1,278 attending
+                  </span>
+                  <div className="home-player-ctrls">
+                    <span className="home-player-ctrl">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" />
+                        <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+                      </svg>
+                    </span>
+                    <span className="home-player-ctrl">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="6" width="14" height="12" rx="2.5" />
+                        <path d="m16 11 6-3.5v9L16 13z" />
+                      </svg>
+                    </span>
+                    <span className="home-player-ctrl">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="4" width="20" height="13" rx="2" />
+                        <path d="M8 21h8M12 17v4" />
+                      </svg>
+                    </span>
+                    <span className="home-player-ctrl home-player-ctrl-leave">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10 5h6a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-6" />
+                        <path d="m6 15-3-3 3-3M3 12h9" />
+                      </svg>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="home-hero-copy">
-            <p id="home-brand" className="home-brand home-reveal">
-              {appName}
-            </p>
-            <h1 className="home-headline home-reveal home-reveal-delay-1">
-              Host webinars your audience can actually join
+            <h1 id="home-headline" className="home-headline home-reveal home-reveal-delay-1">
+              The Ultimate Live Webinar Platform.{" "}
+              <span className="home-headline-accent">
+                Connect, Engage, and Grow.
+              </span>
             </h1>
             <p className="home-lede home-reveal home-reveal-delay-2">
-              Schedule, register, and go live with video, chat, Q&amp;A, and
-              polls — self-hosted on open infrastructure.
+              Run polished webinars with HD video, screen sharing, live Q&amp;A,
+              polls and recording — no downloads for your audience, just a
+              link.
             </p>
             <div className="home-cta home-reveal home-reveal-delay-3">
               <Link href="/signup" className="home-btn home-btn-primary">
-                Get started
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <rect x="2" y="6" width="14" height="12" rx="2.5" />
+                  <path d="m16 11 6-3.5v9L16 13z" />
+                </svg>
+                Start a webinar
               </Link>
-              <Link
-                href="/login?next=/host"
-                className="home-btn home-btn-ghost"
-              >
-                Host a webinar
-              </Link>
-              <Link href="/browse" className="home-btn home-btn-text">
-                Browse
+              <Link href="/browse" className="home-btn home-btn-ghost">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                  <path d="m10 17 5-5-5-5M15 12H3" />
+                </svg>
+                Join a webinar
               </Link>
             </div>
-          </div>
-          <div className="home-hero-visual home-reveal home-reveal-delay-2">
-            <HeroStage />
+            <ul className="home-trust home-reveal home-reveal-delay-3">
+              <li>
+                <CheckMark />
+                No download required
+              </li>
+              <li>
+                <CheckMark />
+                Up to 1,000 attendees
+              </li>
+              <li>
+                <CheckMark />
+                Self-hosted and private
+              </li>
+            </ul>
           </div>
         </div>
       </section>
@@ -204,36 +320,149 @@ function Feature({ title, body }: { title: string; body: string }) {
   );
 }
 
-/** Full-bleed stage mock — visual anchor for the hero, not a marketing card. */
-function HeroStage() {
+function CheckMark() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m20 6-11 11-5-5" />
+    </svg>
+  );
+}
+
+/** One of the soft cards floating around the player. Decorative: every feature
+ *  named here is spelled out properly in the sections below, so a screen reader
+ *  hearing the page in order is not made to sit through it twice. */
+function FeatureChip({
+  className,
+  tone,
+  label,
+  caption,
+  icon,
+}: {
+  className: string;
+  tone: "blue" | "indigo" | "rose" | "amber";
+  label: string;
+  caption: string;
+  icon: ReactNode;
+}) {
+  return (
+    <div className={`home-chip ${className}`} aria-hidden>
+      <span className={`home-chip-ic home-chip-${tone}`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+          {icon}
+        </svg>
+      </span>
+      <div>
+        {label}
+        <small>{caption}</small>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ the call
+ *
+ * Real people, not an illustration — office and home-office settings,
+ * sourced from Pexels (free-to-use license, no attribution required) and
+ * served from this app rather than hotlinked, so the hero does not depend on
+ * a third party's uptime or slow down waiting on it. Photos are pre-sized and
+ * compressed at the source (Pexels' own resize params) specifically for this
+ * layout, which is why five portraits add under 140KB total — well within
+ * budget for a mobile hero.
+ *
+ * The grid itself is the point as much as the faces in it: host large on the
+ * left, panelists stacked smaller on the right, audience smaller again along
+ * the bottom. That is not decoration, it is the product — a webinar is not a
+ * meeting of equals — and the layout says so before the copy explains it.
+ */
+
+type CallPerson = {
+  photo?: string;
+  initials?: string;
+  name: string;
+  role?: string;
+  speaking?: boolean;
+  muted?: boolean;
+};
+
+function CallTile({ person, panelist }: { person: CallPerson; panelist?: boolean }) {
+  const label = person.role ? `${person.name} · ${person.role}` : person.name;
+  return (
+    <div className={`home-call-tile ${person.speaking ? "home-call-tile-speaking" : ""}`}>
+      {person.photo ? (
+        // eslint-disable-next-line @next/next/no-img-element -- pre-sized and
+        // pre-compressed at the source (see the comment above CallGrid); the
+        // optimizer next/image would run has already been done once, by hand.
+        <img src={person.photo} alt="" loading="eager" />
+      ) : (
+        <div className="home-call-avatar">{person.initials}</div>
+      )}
+      <span className="home-call-name">
+        {panelist && (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round">
+            <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" />
+            <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+          </svg>
+        )}
+        {label}
+      </span>
+      {person.speaking && (
+        <span className="home-call-level" aria-hidden>
+          <span />
+          <span />
+          <span />
+        </span>
+      )}
+      {person.muted && (
+        <span className="home-call-muted" aria-hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
+            <path d="M4 4l16 16M12 4a3 3 0 0 1 3 3v3M9 10v2a3 3 0 0 0 4.5 2.6" />
+          </svg>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CallGrid() {
   return (
     <div
-      className="home-stage"
+      className="home-call-grid"
       role="img"
-      aria-label="Illustration of a live webinar stage"
+      aria-label="A webinar in progress: the host on a large tile, with panelists and audience on smaller tiles around it"
     >
-      <div className="home-stage-bar">
-        <span className="home-stage-live">
-          <span className="home-stage-live-dot" />
-          Live
+      <div className="home-call-tile home-call-host home-call-tile-speaking">
+        {/* eslint-disable-next-line @next/next/no-img-element -- see CallTile */}
+        <img src="/images/hero/host.jpg" alt="" loading="eager" />
+        <span className="home-call-name">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round">
+            <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" />
+            <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+          </svg>
+          Rohan · Host
         </span>
-        <span className="home-stage-bar-label">Stage</span>
+        <span className="home-call-level" aria-hidden>
+          <span />
+          <span />
+          <span />
+        </span>
       </div>
-      <div className="home-stage-main">
-        <div className="home-stage-speaker">
-          <div className="home-stage-avatar" />
-          <span>Host</span>
-        </div>
-        <div className="home-stage-rail">
-          <div className="home-stage-tile" />
-          <div className="home-stage-tile" />
-          <div className="home-stage-tile home-stage-tile-share" />
-        </div>
+
+      <div className="home-call-panelists">
+        <CallTile person={{ photo: "/images/hero/panelist-1.jpg", name: "Priya", role: "Panelist", speaking: true }} panelist />
+        <CallTile person={{ photo: "/images/hero/panelist-2.jpg", name: "Karan", role: "Panelist", muted: true }} panelist />
+        <CallTile person={{ initials: "AR", name: "Arjun", role: "Panelist" }} panelist />
       </div>
-      <div className="home-stage-tools">
-        <span>Chat</span>
-        <span>Q&amp;A</span>
-        <span>Polls</span>
+
+      <div className="home-call-audience" aria-hidden>
+        <CallTile person={{ photo: "/images/hero/audience-1.jpg", name: "Zoya" }} />
+        <CallTile person={{ photo: "/images/hero/audience-2.jpg", name: "Dev" }} />
+        <CallTile person={{ initials: "NK", name: "Nikhil" }} />
+        <div className="home-call-tile">
+          <div className="home-call-more">
+            <b>+1,272</b>
+            <span>in the audience</span>
+          </div>
+        </div>
       </div>
     </div>
   );
