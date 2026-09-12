@@ -341,8 +341,9 @@ function HostRoster() {
 /**
  * One row of the host's roster, and the four states that matter.
  *
- *   audience          → "Allow to speak" (a microphone, nothing else) or a full
- *                       stage seat; plus "Dismiss request" if their hand is up
+ *   audience          → "Allow to speak" (a microphone and a screen share, but
+ *                       no camera) or a full stage seat; plus "Dismiss
+ *                       request" if their hand is up
  *   allowed to speak  → mute, or ask them to unmute if they have not opened a
  *                       microphone yet
  *   muted by the host → "Allow to speak again", which is the only way back: the
@@ -474,14 +475,14 @@ function HostRosterRow({
                     {
                       kind: "action" as const,
                       label: "Allow to speak",
-                      hint: "audio only",
+                      hint: "mic and screen share",
                       icon: <MicIcon className="size-4" />,
                       onSelect: () => onStage("panelist", true),
                     },
                     {
                       kind: "action" as const,
                       label: "Bring on stage",
-                      hint: "camera and mic",
+                      hint: "camera, mic, and screen share",
                       icon: <ArrowUpIcon className="size-4" />,
                       onSelect: () => onStage("panelist", false),
                     },
