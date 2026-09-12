@@ -88,9 +88,9 @@ type Spec struct {
 	// Hidden keeps this participant out of every other client's roster. Only ever
 	// set for attendees — see HiddenFor.
 	Hidden bool
-	// AudioOnly restricts a stage grant to the microphone and a screen share: the
-	// host's "allow to speak", where an attendee gets to talk and present without
-	// also getting a camera they did not ask for. See stageSources.
+	// AudioOnly restricts a stage grant to the microphone and the camera: the
+	// host's "allow to speak", where an attendee gets to talk and be seen without
+	// also getting a screen share they did not ask for. See stageSources.
 	AudioOnly bool
 	// MutedByHost takes the microphone out of a stage grant. This is what makes a
 	// host mute stick: the participant is still on the stage, but the SFU will not
@@ -126,17 +126,16 @@ func stageSources(spec Spec) (sources []livekit.TrackSource, canPublish bool) {
 	case spec.AudioOnly && spec.MutedByHost:
 		return nil, false
 	case spec.AudioOnly:
-		// "Allow to speak" is a microphone plus a screen share — not just a
-		// microphone. A speaker walking through a document or a slide while
-		// talking is an ordinary case, and it should not need the host to widen
-		// them to a full stage seat (which would also hand them a camera nobody
-		// asked for) just to click Share. Camera stays withheld; that is what
-		// still separates this from "Bring on stage" below, where sources is
-		// nil and every source — including the camera — is allowed.
+		// "Allow to speak" is a microphone plus a camera — not just a microphone.
+		// A speaker being heard and seen while they talk is the ordinary case,
+		// and it should not need the host to widen them to a full stage seat
+		// (which would also hand them a screen share nobody asked for) just to
+		// turn their camera on. Screen share stays withheld; that is what still
+		// separates this from "Bring on stage" below, where sources is nil and
+		// every source — including screen share — is allowed.
 		return []livekit.TrackSource{
 			livekit.TrackSource_MICROPHONE,
-			livekit.TrackSource_SCREEN_SHARE,
-			livekit.TrackSource_SCREEN_SHARE_AUDIO,
+			livekit.TrackSource_CAMERA,
 		}, true
 	case spec.MutedByHost:
 		// Everything except audio. Listed explicitly, because the alternative —
@@ -687,9 +686,9 @@ func (c *Client) BlockSpeakingAll(ctx context.Context, room string, keep map[str
 }
 
 // AllowAllToSpeak grants every attendee currently in the room the same thing
-// "Allow to speak" grants one at a time — a microphone and a screen share, no
-// camera — in a single pass, for a host who wants the whole room able to
-// jump in rather than promoting people one by one.
+// "Allow to speak" grants one at a time — a microphone and a camera, no
+// screen share — in a single pass, for a host who wants the whole room able
+// to jump in rather than promoting people one by one.
 //
 // Only the audience moves. The host and anyone already a panelist — whether
 // scheduled or already promoted — are left exactly as they are: widening an

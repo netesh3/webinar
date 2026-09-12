@@ -957,6 +957,8 @@ export interface MutePatch {
 export interface StageRequest {
   role: Role; // panelist | attendee
   /**
+   * AudioOnly is "allow to speak": the attendee gets a microphone and a
+   * camera, but no screen share.
    * AudioOnly is "allow to speak": the attendee gets a microphone and a screen
    * share, but no camera.
    * This is the common case by far. A host taking a question wants to hear one

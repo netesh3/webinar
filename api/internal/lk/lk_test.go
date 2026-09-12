@@ -189,13 +189,13 @@ func TestGrantForHidden(t *testing.T) {
 	}
 }
 
-// "Allow to talk" narrows a stage grant to the microphone plus a screen share —
-// not the microphone alone, so a speaker can walk through a document without
-// the host having to widen them to a full stage seat (and hand them a camera
-// nobody asked for) just to click Share. The trap is that LiveKit reads an
-// EMPTY CanPublishSources as "every source", so a grant that forgets to name
-// its sources explicitly hands over the camera as well — which is the one
-// thing that still has to stay withheld here.
+// "Allow to talk" narrows a stage grant to the microphone plus the camera —
+// not the microphone alone, so a speaker can be seen while they talk without
+// the host having to widen them to a full stage seat (and hand them a screen
+// share nobody asked for) just to turn their camera on. The trap is that
+// LiveKit reads an EMPTY CanPublishSources as "every source", so a grant that
+// forgets to name its sources explicitly hands over screen share as well —
+// which is the one thing that still has to stay withheld here.
 func TestGrantForAudioOnly(t *testing.T) {
 	g, err := GrantFor(Spec{Role: types.RolePanelist, Room: "room", AudioOnly: true})
 	if err != nil {
@@ -205,15 +205,15 @@ func TestGrantForAudioOnly(t *testing.T) {
 		t.Fatal("an audio-only grant still has to allow publishing — CanPublishSources is what narrows it")
 	}
 	if len(g.CanPublishSources) == 0 {
-		t.Fatal("CanPublishSources is empty, which LiveKit reads as ALL SOURCES — camera included")
+		t.Fatal("CanPublishSources is empty, which LiveKit reads as ALL SOURCES — screen share included")
 	}
-	for _, want := range []string{MicrophoneSource, "screen_share", "screen_share_audio"} {
+	for _, want := range []string{MicrophoneSource, "camera"} {
 		if !slices.Contains(g.CanPublishSources, want) {
 			t.Errorf("CanPublishSources = %v, want it to contain %q", g.CanPublishSources, want)
 		}
 	}
-	if slices.Contains(g.CanPublishSources, "camera") {
-		t.Error("audio-only grant permits \"camera\" — that is what still distinguishes it from a full stage seat")
+	if slices.Contains(g.CanPublishSources, "screen_share") {
+		t.Error("audio-only grant permits \"screen_share\" — that is what still distinguishes it from a full stage seat")
 	}
 
 	// A full stage grant must stay unrestricted, not accidentally inherit a
