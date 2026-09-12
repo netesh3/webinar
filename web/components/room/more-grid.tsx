@@ -14,9 +14,13 @@ import { tool } from "./tools";
 
 /* The "More" overflow grid — media/session extras only.
  *
- * Chat / Q&A / Polls / Participants are NOT here; they live on the right-edge
- * engagement rail. This grid holds Invite, Reactions, Hand, Settings, Host tools
- * and anything else the user unpinned from the bar.
+ * Chat / Q&A / Polls / Participants live on the right-edge engagement rail —
+ * except on a phone-width room, where there is no room for a second vertical
+ * rail beside the stage and the rail is hidden entirely (see side-panel.tsx).
+ * There, control-bar.tsx passes them in as `panelItems` so they are still
+ * reachable, just from here instead. This grid otherwise holds Invite,
+ * Reactions, Hand, Settings, Host tools and anything else the user unpinned
+ * from the bar.
  *
  * Every cell does double duty: click to open, drag to pin.
  *
@@ -30,9 +34,16 @@ import { tool } from "./tools";
 
 export function MoreGrid({
   items,
+  panelItems,
   onClose,
 }: {
   items: readonly ToolId[];
+  /** Chat / Q&A / Polls / Participants, passed only on a phone-width room —
+   *  see the compact branch in control-bar.tsx. They open the same docked
+   *  panel the right-edge rail does; unlike `items` they are never pinnable,
+   *  so they render as plain buttons with no drag binding and sit in their
+   *  own row above the rest of the grid. */
+  panelItems?: readonly ToolId[];
   onClose: () => void;
 }) {
   const { tools, unread, realtime, stage } = useRoomUI();
@@ -164,6 +175,37 @@ export function MoreGrid({
           )}
         </div>
 
+        {panelItems && panelItems.length > 0 && (
+          <div className="mb-2 grid grid-cols-3 gap-1 border-b border-line pb-2">
+            {panelItems.map((id) => {
+              const t = tool(id);
+              const Icon = t.icon;
+              const badge = unread[id];
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-label={t.title}
+                  title={t.title}
+                  onClick={() => {
+                    tools.open(id);
+                    onClose();
+                  }}
+                  className="relative flex h-[76px] flex-col items-center justify-center gap-1.5 rounded-lg px-1 text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
+                >
+                  <Icon className="size-[22px]" />
+                  <span className="text-[11px] leading-tight font-medium">{t.label}</span>
+                  {badge !== undefined && badge > 0 && (
+                    <span className="absolute top-1.5 right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {items.length === 0 ? (
           <p className="px-1.5 py-6 text-center text-[12.5px] text-ink-3">
             Everything is on the bar. Drag an item off it to put it back here.
@@ -274,10 +316,12 @@ export function MoreGrid({
           </div>
         )}
 
-        <p className="mt-2 flex items-center gap-1.5 border-t border-line px-1.5 pt-2 text-[11px] text-ink-3">
-          <PinIcon className="size-3 shrink-0" />
-          Chat, Q&amp;A, Polls, and Participants are on the right rail. Layout stays on the bar.
-        </p>
+        {!panelItems && (
+          <p className="mt-2 flex items-center gap-1.5 border-t border-line px-1.5 pt-2 text-[11px] text-ink-3">
+            <PinIcon className="size-3 shrink-0" />
+            Chat, Q&amp;A, Polls, and Participants are on the right rail. Layout stays on the bar.
+          </p>
+        )}
       </div>
     </>
   );

@@ -9,7 +9,8 @@ import { ConnectionState, Track } from "livekit-client";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
-import { barSlots, gridItems, type ToolId } from "@/lib/tools";
+import { barSlots, gridItems, PANEL_TOOL_IDS, type ToolId } from "@/lib/tools";
+import { useCompact } from "@/lib/compact";
 import { Spinner } from "../controls";
 import {
   CameraIcon,
@@ -148,6 +149,14 @@ export function ControlBar() {
   const capacity = useSlotCapacity();
   const slots = barSlots(tools.layout, capacity, availableTools);
   const grid = gridItems(tools.layout, slots, availableTools);
+  /* Below `md` the stage has no room for a second vertical rail beside it, so
+   * side-panel.tsx hides the engagement rail entirely there. Chat / Q&A / Polls
+   * / Participants still have to be reachable from somewhere, so on a phone
+   * they ride along in the "More" grid instead — see MoreGrid's `panelItems`. */
+  const compact = useCompact();
+  const panelItems = compact
+    ? PANEL_TOOL_IDS.filter((id) => availableTools.includes(id))
+    : undefined;
 
   /* The bar reports itself as a drop zone through state and an effect.
    *
@@ -349,8 +358,11 @@ export function ControlBar() {
   };
 
   // Everything in the grid that has something waiting, so unpinning Chat does not
-  // hide the fact that people are talking in it.
-  const gridBadge = grid.reduce((sum, id) => sum + (badgeFor(id) ?? 0), 0);
+  // hide the fact that people are talking in it. Includes panelItems: on a phone
+  // those badges would otherwise vanish along with the rail that used to show them.
+  const gridBadge =
+    grid.reduce((sum, id) => sum + (badgeFor(id) ?? 0), 0) +
+    (panelItems?.reduce((sum, id) => sum + (badgeFor(id) ?? 0), 0) ?? 0);
 
   const dropIndex = drag.drag?.over === "bar" ? drag.drag.index : null;
 
@@ -560,6 +572,7 @@ export function ControlBar() {
         {gridVisible && (
           <MoreGrid
             items={grid}
+            panelItems={panelItems}
             // While the grid is only open because a drag is in flight, dismissing
             // it is not something the user can ask for — the drag owns it.
             onClose={() => setMoreOpen(false)}

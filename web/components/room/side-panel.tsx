@@ -136,7 +136,11 @@ export function SidePanel() {
         <nav
           aria-label="Engagement"
           title="Engagement — Chat, Q&A, Polls, Participants"
-          className="room-dark flex w-12 shrink-0 flex-col items-center gap-1 border-l border-line bg-surface py-2"
+          /* Hidden below `md`: a phone has no room for the stage plus a second
+           * vertical rail, and the tools it launches are reachable from the
+           * bottom bar's More grid there instead — see MoreGrid's `panelItems`
+           * and control-bar.tsx. Desktop keeps the always-visible rail. */
+          className="room-dark hidden w-12 shrink-0 flex-col items-center gap-1 border-l border-line bg-surface py-2 md:flex"
         >
           {railTools.map((id) => {
             const t = tool(id);
