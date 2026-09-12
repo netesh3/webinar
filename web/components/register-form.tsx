@@ -96,14 +96,22 @@ function JoinGate({ w }: { w: Webinar }) {
   const { open, remaining } = useDoorsOpen(w);
 
   if (open) {
+    /* Same tab, deliberately — this used to open in a new one.
+     *
+     * A tab opened with window.open()/target="_blank" starts with no user-gesture
+     * history of its own: the click that opened it happened in the tab that is
+     * still sitting there, not in the one that just appeared. Browsers withhold
+     * autoplay-with-sound until a page has been directly interacted with, so
+     * every attendee joining that way landed in a room that had to ask them to
+     * click a "Click to enable sound" button before they could hear anything.
+     * A same-tab navigation is a continuation of the very click that triggered
+     * it, which is exactly the case autoplay policies are designed to allow —
+     * so for the common path (clicking this button) the room's audio just
+     * starts. The confirmation page's join key is not lost by leaving: it was
+     * already saved to this browser and is recoverable from the webinar's own
+     * page besides. */
     return (
-      <ButtonLink
-        href={`/webinars/${w.id}/room`}
-        size="lg"
-        className="mt-2 w-full"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
+      <ButtonLink href={`/webinars/${w.id}/room`} size="lg" className="mt-2 w-full">
         {w.status === "live" ? "Join now — live" : "Join now"}
       </ButtonLink>
     );
