@@ -448,9 +448,9 @@ function CallGrid() {
       </div>
 
       <div className="home-call-panelists">
-        <CallTile person={{ photo: "/images/hero/panelist-1.jpg", name: "Netesh Kumar", role: "Panelist", speaking: true }} panelist />
+        <CallTile person={{ photo: "/images/hero/panelist-1.jpg", name: "Shweta Gupta", role: "Panelist", speaking: true }} panelist />
         <CallTile person={{ photo: "/images/hero/panelist-2.jpg", name: "Amlesh Kumar", role: "Panelist", muted: true }} panelist />
-        <CallTile person={{ initials: "SG", name: "Shweta Gupta", role: "Panelist" }} panelist />
+        <CallTile person={{ initials: "NK", name: "Netesh Kumar", role: "Panelist" }} panelist />
       </div>
 
       <div className="home-call-audience" aria-hidden>
