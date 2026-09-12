@@ -185,14 +185,21 @@ export type ToolLayout = {
 /* What a first-time user gets.
  *
  * Engagement tools (Chat / Q&A / Polls / Participants) live on the right-edge
- * rail only — never as bar pins or More cells. Layout is a fixed control on the
- * bar (see control-bar), so capacity / localStorage can never bury Speaker /
- * Grid / Spotlight under More. Invite, host tools and the rest stay in More.
+ * rail only — never as bar pins or More cells. Layout used to be pinned here
+ * too, permanently, so a narrow bar could never bury it under More — that
+ * requirement was dropped in favour of keeping the bar shorter, so Layout now
+ * starts in the grid like Invite and Settings and can be dragged onto the bar
+ * the same way they can. Host tools and the rest stay in More by default.
  */
 const DEFAULT_PINNED: ToolId[] = [];
 
-/** Always rendered on the bar outside the capacity-limited pin slots. */
-export const FIXED_BAR_TOOLS: readonly ToolId[] = ["layout"];
+/** Always rendered on the bar outside the capacity-limited pin slots.
+ *
+ *  Empty, but kept (rather than deleted along with every reference to it) as
+ *  the one place a future tool would go if something ever again needs to be
+ *  guaranteed visible regardless of capacity or customisation — see the note
+ *  above on why Layout no longer needs to be that tool. */
+export const FIXED_BAR_TOOLS: readonly ToolId[] = [];
 
 /** Tools that must not appear on the bottom bar or in More — right rail owns them. */
 function isBarExcluded(id: ToolId): boolean {
@@ -522,9 +529,8 @@ export function barSlots(
 /** What the More grid shows: everything not currently on the bar.
  *
  *  Computed from the bar rather than from `overflow` alone, so a tool surfaced
- *  into a vacant slot is not offered in both places at once. Layout and
- *  engagement tools are omitted — Layout is fixed on the bar; Chat / Q&A /
- *  Polls / Participants live on the right rail. */
+ *  into a vacant slot is not offered in both places at once. Engagement tools
+ *  are omitted — Chat / Q&A / Polls / Participants live on the right rail. */
 export function gridItems(
   layout: ToolLayout,
   slots: readonly BarSlot[],
@@ -552,9 +558,15 @@ export function gridItems(
 
 // --------------------------------------------------------------- persistence
 
-/* v5: Engagement tools left the bar for the right rail. Bumped so v4
- * localStorage that pinned Chat / Participants cannot resurrect them. */
-const STORAGE_KEY = "webcast.toolbar.v5";
+/* v6: Layout left its permanent bar slot and became a normal grid tool,
+ * starting in More like everything else. Bumped so v5 localStorage — which
+ * never had "layout" in its overflow, because it used to be excluded from
+ * that set entirely — does not load and permanently lose the tool: `load`
+ * below replaces `overflow` wholesale with what it parses from storage, so a
+ * stale v5 record would silently drop Layout from every surface rather than
+ * placing it in the grid the way a first-time user gets it. See v5's own note
+ * just below for the same reasoning applied to Chat / Participants earlier. */
+const STORAGE_KEY = "webcast.toolbar.v6";
 
 /** Only the customisation is persisted, never the windows.
  *
