@@ -19,7 +19,8 @@ export default function AdminPage() {
           Administration
         </h1>
         <p className="mb-6 text-[14px] text-ink-2">
-          Who can host webinars on this instance.
+          Who can host webinars, every webinar on this instance, and
+          accounts.
         </p>
         <AdminScreen />
       </main>

@@ -225,26 +225,7 @@ func (s *Server) handleDeleteWebinarImage(w http.ResponseWriter, r *http.Request
 func (s *Server) handleDeleteWebinar(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
 
-	/* Close the room first, and only for a webinar that is actually live.
-	 *
-	 * DeleteRoom on a room that does not exist is not an error worth failing the request
-	 * over — the common case by far is a scheduled webinar nobody has opened — so the status
-	 * check is a way to keep the log honest rather than a correctness requirement. */
-	if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil && wb.Status == types.StatusLive {
-		if sfu, err := s.sfuFor(r.Context(), wb); err != nil {
-			s.log.Warn("delete webinar: could not resolve the livekit project",
-				"slug", slug, "error", err)
-		} else {
-			if err := sfu.DeleteRoom(r.Context(), lk.RoomName(slug)); err != nil {
-				// Logged, not fatal. The alternative is refusing to delete a webinar because
-				// the SFU is unreachable, which leaves the host unable to do the one thing
-				// they asked for.
-				s.log.Warn("delete webinar: could not close the room", "slug", slug, "error", err)
-			}
-		}
-	}
-
-	deleted, err := s.store.DeleteWebinar(r.Context(), slug)
+	deleted, err := s.deleteWebinarBySlug(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return
@@ -254,35 +235,73 @@ func (s *Server) handleDeleteWebinar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	/* The bytes. Every failure is logged individually and none of them fails the request: the
-	 * rows are already gone, so the webinar IS deleted from every point of view the caller
-	 * has, and answering 500 would tell them otherwise. What is left is a disk-space problem
-	 * for whoever reads the logs. */
-	orphaned := 0
+	s.logWebinarDeleted(slug, deleted)
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
+}
+
+/* deleteWebinarBySlug is handleDeleteWebinar's body, factored out so the admin
+ * panel's "delete any webinar" can do exactly the same three-step teardown
+ * (room, then rows, then bytes — see the comment above handleDeleteWebinar for
+ * why that order) without a second copy of it to keep in sync. Logging and the
+ * HTTP response stay with each caller, since an admin deletion is worth
+ * recording as an admin action rather than folding into the same log line a
+ * host's own delete produces.
+ */
+func (s *Server) deleteWebinarBySlug(ctx context.Context, slug string) (store.Deleted, error) {
+	/* Close the room first, and only for a webinar that is actually live.
+	 *
+	 * DeleteRoom on a room that does not exist is not an error worth failing the request
+	 * over — the common case by far is a scheduled webinar nobody has opened — so the status
+	 * check is a way to keep the log honest rather than a correctness requirement. */
+	if wb, err := s.store.WebinarBySlug(ctx, slug); err == nil && wb.Status == types.StatusLive {
+		if sfu, err := s.sfuFor(ctx, wb); err != nil {
+			s.log.Warn("delete webinar: could not resolve the livekit project",
+				"slug", slug, "error", err)
+		} else {
+			if err := sfu.DeleteRoom(ctx, lk.RoomName(slug)); err != nil {
+				// Logged, not fatal. The alternative is refusing to delete a webinar because
+				// the SFU is unreachable, which leaves the caller unable to do the one thing
+				// they asked for.
+				s.log.Warn("delete webinar: could not close the room", "slug", slug, "error", err)
+			}
+		}
+	}
+
+	deleted, err := s.store.DeleteWebinar(ctx, slug)
+	if err != nil {
+		return deleted, err
+	}
+
+	/* The bytes. Every failure is logged individually and none of them fails the caller: the
+	 * rows are already gone, so the webinar IS deleted from every point of view that matters,
+	 * and returning an error would say otherwise. What is left is a disk-space problem for
+	 * whoever reads the logs. */
 	if s.recordings != nil {
 		for _, key := range deleted.BlobKeys {
-			if err := s.recordings.Delete(r.Context(), key); err != nil {
-				orphaned++
+			if err := s.recordings.Delete(ctx, key); err != nil {
+				deleted.FilesLeftBehind++
 				s.log.Warn("delete webinar: file left behind",
 					"slug", slug, "key", key, "error", err)
 			}
 		}
 	} else if len(deleted.BlobKeys) > 0 {
 		// No storage configured but rows referenced keys. Worth saying out loud.
-		orphaned = len(deleted.BlobKeys)
+		deleted.FilesLeftBehind = len(deleted.BlobKeys)
 		s.log.Warn("delete webinar: no storage backend, files not removed",
 			"slug", slug, "files", len(deleted.BlobKeys))
 	}
 
+	return deleted, nil
+}
+
+func (s *Server) logWebinarDeleted(slug string, deleted store.Deleted) {
 	s.log.Info("webinar deleted",
 		"slug", slug, "was", deleted.Status,
 		"registrations", deleted.Registrations, "chat_messages", deleted.ChatMessages,
 		"polls", deleted.Polls, "poll_votes", deleted.PollVotes,
 		"recordings", deleted.Recordings, "panelists", deleted.Panelists,
 		"stage_grants", deleted.StageGrants, "questions", deleted.Questions,
-		"files", len(deleted.BlobKeys), "files_left_behind", orphaned)
-
-	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
+		"files", len(deleted.BlobKeys), "files_left_behind", deleted.FilesLeftBehind)
 }
 
 /* The display zone a webinar gets when nobody chose one.

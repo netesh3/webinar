@@ -66,6 +66,15 @@ type fakeRooms struct {
 	lastSpec lk.Spec
 
 	roster []types.LiveParticipant
+	// promoted tracks, per identity, whether their stage seat came from the
+	// host lifting them out of the audience rather than a scheduled panelist
+	// slot — the real SFU carries this in the participant's own metadata
+	// (lk.Metadata.Promoted); types.LiveParticipant has no such field, so the
+	// fake keeps it alongside the roster instead. AllowAllToSpeak/
+	// RevokeAllSpeaking are exactly the pair of bulk actions that need this
+	// distinction to behave like the real thing: a scheduled panelist must
+	// never be swept up in "revoke everyone I promoted".
+	promoted map[string]bool
 
 	// Recorded moderation calls, so a test can assert what reached the SFU
 	// rather than only what the endpoint returned.
@@ -105,6 +114,7 @@ func newFakeProject(id string) *fakeRooms {
 		project:  id,
 		created:  map[string]uint32{},
 		metadata: map[string]string{},
+		promoted: map[string]bool{},
 	}
 }
 
@@ -200,6 +210,14 @@ func (f *fakeRooms) SetRole(_ context.Context, spec lk.Spec) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.roleChanges = append(f.roleChanges, spec)
+	// Mirrors the real metadata: a promotion is recorded only alongside a
+	// panelist role, and sending someone back to the audience always clears
+	// it — the same narrowing lk.metadataFor applies to Metadata.Promoted.
+	if spec.Role == types.RolePanelist && spec.Promoted {
+		f.promoted[spec.Identity] = true
+	} else {
+		delete(f.promoted, spec.Identity)
+	}
 	for i, p := range f.roster {
 		if p.Identity != spec.Identity {
 			continue
@@ -212,6 +230,53 @@ func (f *fakeRooms) SetRole(_ context.Context, spec lk.Spec) error {
 		return nil
 	}
 	return nil
+}
+
+// AllowAllToSpeak models the same narrowing the real SFU applies: only
+// current attendees move, to the audio-only grant, and it is recorded as a
+// promotion. A scheduled or already-promoted panelist is left alone.
+func (f *fakeRooms) AllowAllToSpeak(_ context.Context, _ string, hideAttendees bool) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var granted []string
+	for i, p := range f.roster {
+		if p.Role != types.RoleAttendee {
+			continue
+		}
+		f.roster[i].Role = types.RolePanelist
+		f.roster[i].CanPublish = true
+		f.roster[i].CanSpeak = true
+		f.roster[i].AudioOnly = true
+		f.roster[i].MutedByHost = false
+		f.roster[i].Hidden = false // panelists are never hidden, regardless of hideAttendees
+		f.promoted[p.Identity] = true
+		granted = append(granted, p.Identity)
+	}
+	return granted, nil
+}
+
+// RevokeAllSpeaking only moves identities the fake's own SetRole recorded as
+// promoted — never a scheduled panelist — the same restriction the real
+// RevokeAllSpeaking enforces via specOf.
+func (f *fakeRooms) RevokeAllSpeaking(_ context.Context, _ string, hideAttendees bool) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var revoked []string
+	for i, p := range f.roster {
+		if !f.promoted[p.Identity] {
+			continue
+		}
+		f.muted = append(f.muted, fmt.Sprintf("%s=true", p.Identity))
+		f.roster[i].Role = types.RoleAttendee
+		f.roster[i].CanPublish = false
+		f.roster[i].CanSpeak = false
+		f.roster[i].AudioOnly = false
+		f.roster[i].MutedByHost = false
+		f.roster[i].Hidden = hideAttendees
+		delete(f.promoted, p.Identity)
+		revoked = append(revoked, p.Identity)
+	}
+	return revoked, nil
 }
 
 // SetSpeaking models the real thing closely enough to be worth asserting against:
