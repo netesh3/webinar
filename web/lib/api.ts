@@ -27,6 +27,7 @@ import type {
   Role,
   SendMessageRequest,
   SendMessageResponse,
+  StageAllResponse,
   StatusResponse,
   Webinar,
   WebinarInput,
@@ -353,6 +354,18 @@ export const api = {
 
   muteAll: (slug: string) =>
     post<MuteAllResponse>(`/api/host/webinars/${seg(slug)}/mute-all`),
+
+  /** "Allow to speak" — mic and screen share, no camera — granted to every
+   *  attendee in the room at once. Anyone already a panelist, scheduled or
+   *  previously promoted, is left alone; see the API handler. */
+  allowAllToSpeak: (slug: string) =>
+    post<StageAllResponse>(`/api/host/webinars/${seg(slug)}/participants/allow-all`),
+
+  /** Sends every attendee the host had promoted back to the audience in one
+   *  pass — the bulk mirror of "Remove speaker permission". Scheduled
+   *  panelists are not touched. */
+  revokeAllSpeaking: (slug: string) =>
+    post<StageAllResponse>(`/api/host/webinars/${seg(slug)}/participants/revoke-all`),
 
   /** Mutes one participant, or lets them speak again.
    *

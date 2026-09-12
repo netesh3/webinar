@@ -961,6 +961,15 @@ type MuteAllResponse struct {
 	Muted int `json:"muted"`
 }
 
+// StageAllResponse reports a bulk allow-all-to-speak or revoke-all-speaking
+// action — how many attendees it actually applied to, the same shape as
+// MuteAllResponse and for the same reason: a host clicking a bulk action on
+// an empty or already-settled room needs to see that nothing silently
+// failed, not just a bare 200.
+type StageAllResponse struct {
+	Count int `json:"count"`
+}
+
 type RegistrantRow struct {
 	ID         string            `json:"id"`
 	Name       string            `json:"name"`

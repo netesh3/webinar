@@ -408,6 +408,8 @@ func (s *Server) Routes() http.Handler {
 					// ---- in-session moderation ----
 					r.Get("/participants", s.handleParticipants)
 					r.Post("/mute-all", s.handleMuteAll)
+					r.Post("/participants/allow-all", s.handleAllowAllToSpeak)
+					r.Post("/participants/revoke-all", s.handleRevokeAllSpeaking)
 					r.Patch("/participants/{identity}/mute", s.handleMuteOne)
 					r.Post("/participants/{identity}/stage", s.handleSetStage)
 					r.Delete("/participants/{identity}", s.handleRemoveParticipant)

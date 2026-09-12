@@ -948,6 +948,16 @@ export interface StageRequest {
 export interface MuteAllResponse {
   muted: number /* int */;
 }
+/**
+ * StageAllResponse reports a bulk allow-all-to-speak or revoke-all-speaking
+ * action — how many attendees it actually applied to, the same shape as
+ * MuteAllResponse and for the same reason: a host clicking a bulk action on
+ * an empty or already-settled room needs to see that nothing silently
+ * failed, not just a bare 200.
+ */
+export interface StageAllResponse {
+  count: number /* int */;
+}
 export interface RegistrantRow {
   id: string;
   name: string;
