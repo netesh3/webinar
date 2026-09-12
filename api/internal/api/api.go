@@ -38,6 +38,8 @@ type RoomManager interface {
 	SetRole(ctx context.Context, spec lk.Spec) error
 	SetSpeaking(ctx context.Context, room, identity string, blocked bool) error
 	BlockSpeakingAll(ctx context.Context, room string, keep map[string]bool) (int, error)
+	AllowAllToSpeak(ctx context.Context, room string, hideAttendees bool) ([]string, error)
+	RevokeAllSpeaking(ctx context.Context, room string, hideAttendees bool) ([]string, error)
 	HideAll(ctx context.Context, room string, role types.Role, hidden bool) (int, error)
 	RemoveParticipant(ctx context.Context, room, identity string) error
 	DeleteRoom(ctx context.Context, room string) error
