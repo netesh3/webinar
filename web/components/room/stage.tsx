@@ -13,6 +13,7 @@ import {
   type LayoutMode,
 } from "@/lib/layout";
 import { isHighlighted } from "@/lib/speaker";
+import { API_BASE } from "@/lib/api";
 import { ArrowLeftIcon, ChevronDownIcon } from "../icons";
 import { useActiveSpeaker } from "./active-speaker";
 import { useRoomUI } from "./context";
@@ -40,7 +41,7 @@ import { ParticipantTile, type Tile, type TileSource } from "./tile";
 export type ViewMode = LayoutMode;
 
 export function Stage() {
-  const { topic, controls, permissions, join, stage, entryVideo } = useRoomUI();
+  const { topic, controls, permissions, join, stage, entryVideo, coverImageUrl } = useRoomUI();
 
   // onlySubscribed: a track we have not subscribed to has no stream to render,
   // and with adaptiveStream the subscription follows what is actually on screen.
@@ -161,6 +162,7 @@ export function Stage() {
       <WaitingForStage
         locked={controls.locked}
         topic={topic}
+        imageUrl={coverImageUrl}
         // The pre-join camera, for the gap before the published track arrives.
         preview={entryVideo}
         // A presenter is not waiting for anyone — they are the one everybody else is
@@ -670,11 +672,16 @@ function PreviewTile({ track }: { track: LocalVideoTrack }) {
 function WaitingForStage({
   locked,
   topic,
+  imageUrl,
   canPresent,
   preview,
 }: {
   locked: boolean;
   topic: string;
+  /** The webinar's own cover image, or null when the host never set one.
+   *  Only ever shown on the attendee side of this screen — a presenter sees
+   *  their own camera preview instead, see `canPresent` below. */
+  imageUrl: string | null;
   canPresent: boolean;
   preview: LocalVideoTrack | null;
 }) {
@@ -704,8 +711,32 @@ function WaitingForStage({
   }
 
   return (
-    <div className="relative grid size-full place-items-center p-8 text-center">
-      <div className="max-w-sm">
+    <div className="relative grid size-full place-items-center overflow-hidden p-8 text-center">
+      {/* The host's own cover image, full-bleed behind the waiting card —
+          exactly what they picked when scheduling this webinar, so an
+          attendee arriving early sees something deliberate rather than a
+          blank stage. A gradient over it, not a flat dim, because the card
+          sits in the middle where the stage is otherwise brightest; the top
+          and bottom edges are left more of the image to look at. Absent
+          entirely — not even the div — when there is no image, so a webinar
+          with none renders pixel-identical to before this existed. */}
+      {imageUrl && (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element -- a
+              cross-origin API URL, not something next/image's loader can
+              optimize. */}
+          <img
+            src={`${API_BASE}${imageUrl}`}
+            alt=""
+            className="absolute inset-0 size-full object-cover"
+          />
+          <div
+            aria-hidden
+            className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/55 to-black/70"
+          />
+        </>
+      )}
+      <div className="relative max-w-sm">
         <div className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-white/10">
           {/* A slow pulse, not a spinner: nothing is loading, we are waiting for
               a person, and a spinner would suggest something is stuck. */}

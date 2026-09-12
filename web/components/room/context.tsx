@@ -39,6 +39,11 @@ export type RoomUI = {
   controls: SessionControls;
   /** Topic from room metadata when available, so a rename reaches everyone. */
   topic: string;
+  /** The webinar's own cover image, from the schedule form — see
+   *  stage.tsx's WaitingForStage, which shows it to an attendee before the
+   *  host has published anything. Null when the host never uploaded one, or
+   *  for the host/panelist's own session, which never reaches that screen. */
+  coverImageUrl: string | null;
   /** When the host took the session live (RFC3339). From room metadata once
    *  connected, otherwise the join response. The header clock counts from this
    *  — not from this browser's connect time — so a late joiner matches everyone. */

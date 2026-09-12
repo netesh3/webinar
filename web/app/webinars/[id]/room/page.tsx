@@ -18,5 +18,7 @@ export default async function AttendeeRoomPage({
     throw err;
   }
 
-  return <AttendeeRoomGate slug={id} topic={webinar.topic} />;
+  return (
+    <AttendeeRoomGate slug={id} topic={webinar.topic} imageUrl={webinar.imageUrl} />
+  );
 }

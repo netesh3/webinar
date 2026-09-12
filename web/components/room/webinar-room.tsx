@@ -74,12 +74,17 @@ export function WebinarRoom({
   join,
   slug,
   topic: initialTopic,
+  imageUrl: initialImageUrl,
   joinKey,
   onLeave,
 }: {
   join: JoinResponse;
   slug: string;
   topic: string;
+  /** The webinar's own cover image (see stage.tsx's WaitingForStage). Only
+   *  ever passed by the attendee path — a host or panelist always has
+   *  something to present and never reaches the screen that shows it. */
+  imageUrl?: string;
   /** An attendee's credential for the realtime relay. Absent for the host and the
    *  panelists, who publish on the data channel directly, and for an attendee who
    *  joined on their session alone. */
@@ -107,6 +112,7 @@ export function WebinarRoom({
       join={join}
       slug={slug}
       initialTopic={initialTopic}
+      initialImageUrl={initialImageUrl}
       joinKey={joinKey}
       onLeave={onLeave}
     />
@@ -153,12 +159,14 @@ function RoomSession({
   join,
   slug,
   initialTopic,
+  initialImageUrl,
   joinKey,
   onLeave,
 }: {
   join: JoinResponse;
   slug: string;
   initialTopic: string;
+  initialImageUrl?: string;
   joinKey?: string;
   onLeave: () => void;
 }) {
@@ -244,6 +252,7 @@ function RoomSession({
       join={join}
       slug={slug}
       initialTopic={initialTopic}
+      initialImageUrl={initialImageUrl}
       joinKey={joinKey}
       onLeave={onLeave}
       prefs={prefs}
@@ -277,6 +286,7 @@ function ConnectedRoom({
   join,
   slug,
   initialTopic,
+  initialImageUrl,
   joinKey,
   onLeave,
   prefs,
@@ -290,6 +300,7 @@ function ConnectedRoom({
   join: JoinResponse;
   slug: string;
   initialTopic: string;
+  initialImageUrl?: string;
   joinKey?: string;
   onLeave: () => void;
   prefs: ReturnType<typeof useMediaPreferences>["prefs"];
@@ -774,6 +785,10 @@ function ConnectedRoom({
       joinKey,
       controls,
       topic: topic ?? initialTopic,
+      // Never arrives over room metadata — a cover image is fixed at schedule
+      // time, unlike the topic, which a host can rename mid-session — so
+      // there is nothing to prefer this over.
+      coverImageUrl: initialImageUrl ?? null,
       // Prefer live metadata so a stamp that arrives after connect is used; fall
       // back to the join response so the clock is right before metadata lands.
       startedAt: startedAt ?? join.startedAt ?? null,
@@ -813,6 +828,7 @@ function ConnectedRoom({
       controls,
       topic,
       initialTopic,
+      initialImageUrl,
       startedAt,
       endedAt,
       status,

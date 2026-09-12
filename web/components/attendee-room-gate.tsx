@@ -17,7 +17,18 @@ import type { JoinResponse } from "@/lib/api-types";
  *  Two credentials work here: a join key held in this browser, or the session
  *  cookie of an account that registered. Every authorization decision is the
  *  server's — this component only reports what it was told. */
-export function AttendeeRoomGate({ slug, topic }: { slug: string; topic: string }) {
+export function AttendeeRoomGate({
+  slug,
+  topic,
+  imageUrl,
+}: {
+  slug: string;
+  topic: string;
+  /** The webinar's own cover image, shown on the "waiting for the host"
+   *  screen in place of the generic placeholder — see stage.tsx's
+   *  WaitingForStage. Undefined when the host never uploaded one. */
+  imageUrl?: string;
+}) {
   const router = useRouter();
   const {
     registrations,
@@ -98,6 +109,7 @@ export function AttendeeRoomGate({ slug, topic }: { slug: string; topic: string 
         join={join}
         slug={slug}
         topic={join.topic || topic}
+        imageUrl={imageUrl}
         // The credential the room needs to send chat: an attendee publishes nothing
         // on the data channel, so every message they send is a request to our API.
         // Undefined for somebody who joined on their session alone, which the API
