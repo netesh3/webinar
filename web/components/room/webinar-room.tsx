@@ -3,7 +3,6 @@
 import {
   RoomAudioRenderer,
   RoomContext,
-  StartAudio,
   useConnectionState,
   useSequentialRoomConnectDisconnect,
 } from "@livekit/components-react";
@@ -922,16 +921,63 @@ function ConnectedRoom({
         {/* Renders every subscribed audio track. Without this you get video and
             silence, which is a genuinely confusing bug to chase. */}
         <RoomAudioRenderer />
-        {/* Browsers block autoplaying audio until the page has been interacted
-            with. This surfaces the one click that unblocks it. */}
-        <StartAudio
-          label="Click to enable sound"
-          className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full bg-brand px-4 py-2 text-[13px] font-medium text-white shadow-lg"
-        />
+        {/* No visible "click to enable sound" button any more — see
+            AutoStartAudio below for why one is rarely needed now, and what
+            it does instead of showing one. */}
+        <AutoStartAudio room={room} />
         </ActiveSpeakerProvider>
       </RoomUIProvider>
     </RoomContext.Provider>
   );
+}
+
+/* Unblocks audio the moment there is any interaction at all, without asking for one.
+ *
+ * Browsers withhold autoplay-with-sound until a page has had a genuine user gesture —
+ * that is a platform policy this app cannot switch off, and working around it with a
+ * trick (a synthetic click, a silent audio priming hack) is exactly the kind of thing
+ * browsers have since closed off. What used to sit here was a floating "Click to
+ * enable sound" pill that made that restriction visible and asked the viewer to clear
+ * it themselves.
+ *
+ * The button is gone because the gesture it needed almost never has to be a deliberate
+ * click on THAT pill. `register-form.tsx`'s JoinGate now opens the room in the SAME tab
+ * it was clicked from, which is itself the gesture and starts audio immediately for the
+ * common path. For everyone else — a guest link opened cold, a bookmarked room, Safari's
+ * stricter policy — this listens for the FIRST interaction anywhere on the page (a
+ * click, a tap, a key) and starts audio then, silently. Reacting to chat, pressing
+ * mute, choosing a layout — any of the things somebody does within a few seconds of
+ * landing on a live room — clears it without them ever knowing there was something to
+ * clear.
+ *
+ * What this does not solve, and cannot: somebody who joins and genuinely never
+ * interacts with the page at all stays silent, because no code running in the page can
+ * manufacture the gesture the browser is withholding. That was already true with the
+ * button showing — the difference is only that nothing asks them to fix it. Given how
+ * rarely a viewer does nothing at all for the length of a webinar, that trade is the
+ * right one against a floating pill everybody else saw on every single join.
+ */
+function AutoStartAudio({ room }: { room: Room }) {
+  useEffect(() => {
+    // One-shot: the first interaction removes both listeners, whether or not
+    // startAudio actually succeeded. A failure here means the browser refused
+    // this attempt outright, and retrying on every subsequent click would be
+    // noise rather than a real second chance — the room itself already
+    // retries on reconnect, which mounts this effect fresh.
+    const start = () => {
+      void room.startAudio().catch(() => {});
+      window.removeEventListener("pointerdown", start);
+      window.removeEventListener("keydown", start);
+    };
+    window.addEventListener("pointerdown", start);
+    window.addEventListener("keydown", start);
+    return () => {
+      window.removeEventListener("pointerdown", start);
+      window.removeEventListener("keydown", start);
+    };
+  }, [room]);
+
+  return null;
 }
 
 // ------------------------------------------------------------------- header
