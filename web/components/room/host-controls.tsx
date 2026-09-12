@@ -5,7 +5,14 @@ import { api } from "@/lib/api";
 import type { ControlsPatch } from "@/lib/api-types";
 import { chatDestination, type ChatDestination } from "@/lib/realtime";
 import { Alert, ConfirmModal, Spinner, Toggle } from "../controls";
-import { ChevronDownIcon, EyeOffIcon, LockIcon, MicOffIcon } from "../icons";
+import {
+  ArrowDownIcon,
+  ChevronDownIcon,
+  EyeOffIcon,
+  LockIcon,
+  MicIcon,
+  MicOffIcon,
+} from "../icons";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 
@@ -23,6 +30,8 @@ export function HostControls() {
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [confirmAllowAll, setConfirmAllowAll] = useState(false);
+  const [allowingAll, setAllowingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -71,6 +80,49 @@ export function HostControls() {
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not mute everyone.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Confirmed separately from the rest of `busy`, the same way ending the
+  // webinar is: this hands every attendee a microphone and a screen share at
+  // once, which is the kind of click a host wants a second before committing
+  // to, not the quick undo "mute everyone" is.
+  async function allowEveryoneToSpeak() {
+    setAllowingAll(true);
+    setError(null);
+    try {
+      const { count } = await api.allowAllToSpeak(slug);
+      setConfirmAllowAll(false);
+      notify(
+        count === 0
+          ? "Everyone already has the stage, or nobody's in the audience."
+          : `${count} ${count === 1 ? "attendee" : "attendees"} can now speak and share their screen.`,
+        "ok",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not allow everyone to speak.");
+    } finally {
+      setAllowingAll(false);
+    }
+  }
+
+  // No confirmation: this only takes something away, the same reason "mute
+  // everyone" does not ask first either.
+  async function revokeEveryonesSpeaking() {
+    setBusy("revokeAll");
+    setError(null);
+    try {
+      const { count } = await api.revokeAllSpeaking(slug);
+      notify(
+        count === 0
+          ? "Nobody had been given the stage."
+          : `Sent ${count} ${count === 1 ? "person" : "people"} back to the audience.`,
+        "ok",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not revoke everyone's speaking permission.");
     } finally {
       setBusy(null);
     }
@@ -138,6 +190,51 @@ export function HostControls() {
                 description="Nobody new can join. People already here stay."
               />
             </div>
+          </section>
+
+          <section className="space-y-1">
+            <button
+              type="button"
+              onClick={() => setConfirmAllowAll(true)}
+              disabled={busy !== null}
+              className="flex w-full items-center gap-3 rounded-lg border border-line-2 px-3.5 py-3 text-left transition-colors hover:bg-surface-2 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-ink-2">
+                <MicIcon className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium text-ink">
+                  Allow everyone to speak
+                </span>
+                <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-2">
+                  Gives every attendee a microphone and a screen share, no camera.
+                </span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void revokeEveryonesSpeaking()}
+              disabled={busy !== null}
+              className="flex w-full items-center gap-3 rounded-lg border border-line-2 px-3.5 py-3 text-left transition-colors hover:bg-surface-2 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-ink-2">
+                {busy === "revokeAll" ? (
+                  <Spinner className="size-4" />
+                ) : (
+                  <ArrowDownIcon className="size-4" />
+                )}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium text-ink">
+                  Remove everyone&apos;s speaking permission
+                </span>
+                <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-2">
+                  Sends everyone you promoted back to the audience. Scheduled
+                  panelists keep their seats.
+                </span>
+              </span>
+            </button>
           </section>
 
           <section>
@@ -325,6 +422,17 @@ export function HostControls() {
         title="End this webinar for everyone?"
         body="Everyone is disconnected and the webinar is marked as ended. Registrations and the attendance record are kept, but nobody can rejoin."
         confirmLabel="End for everyone"
+      />
+
+      <ConfirmModal
+        dark
+        open={confirmAllowAll}
+        busy={allowingAll}
+        onClose={() => setConfirmAllowAll(false)}
+        onConfirm={() => void allowEveryoneToSpeak()}
+        title="Allow everyone to speak?"
+        body="Every attendee gets a microphone and a screen share, no camera — the same grant as Allow to speak, given to the whole audience at once. You can take it back for everyone with one click too."
+        confirmLabel="Allow everyone"
       />
     </>
   );

@@ -875,6 +875,84 @@ func (s *Server) handleMuteAll(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, types.MuteAllResponse{Muted: muted})
 }
 
+// handleAllowAllToSpeak is handleSetStage's "allow to speak" grant (mic and
+// screen share, no camera) applied to every attendee in the room at once,
+// for a host who wants the whole audience able to jump in rather than
+// promoting people one at a time. Anyone already a panelist — scheduled or
+// previously promoted — is left untouched; see AllowAllToSpeak.
+func (s *Server) handleAllowAllToSpeak(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "allow all: load webinar", err)
+		return
+	}
+
+	sfu, err := s.sfuFor(r.Context(), wb)
+	if err != nil {
+		s.failSFU(w, r, wb, err)
+		return
+	}
+
+	granted, err := sfu.AllowAllToSpeak(r.Context(), lk.RoomName(slug), wb.Controls.HideAttendees)
+	if err != nil {
+		// A partial result is still worth reporting — see handleMuteAll's own
+		// reasoning: some attendees may have left mid-loop, and the ones already
+		// granted stay granted.
+		s.log.Warn("allow all partially applied", "slug", slug, "granted", len(granted), "error", err)
+	}
+
+	// Persisted so each promotion survives a reconnect, same as a single "allow
+	// to speak" does. Best-effort per identity, same reasoning as handleSetStage:
+	// the live grant already landed and is not worth failing the host's click
+	// over.
+	for _, identity := range granted {
+		if err := s.store.GrantStage(r.Context(), slug, identity, "", true); err != nil {
+			s.log.Warn("allow all: could not record grant",
+				"slug", slug, "identity", identity, "error", err)
+		}
+	}
+
+	s.log.Info("allow all to speak", "slug", slug, "granted", len(granted))
+	httpx.JSON(w, http.StatusOK, types.StageAllResponse{Count: len(granted)})
+}
+
+// handleRevokeAllSpeaking sends every attendee the host had promoted back to
+// the audience in one pass — the bulk mirror of "Remove speaker permission".
+// Scheduled panelists are not touched; see RevokeAllSpeaking.
+func (s *Server) handleRevokeAllSpeaking(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "revoke all: load webinar", err)
+		return
+	}
+
+	sfu, err := s.sfuFor(r.Context(), wb)
+	if err != nil {
+		s.failSFU(w, r, wb, err)
+		return
+	}
+
+	revoked, err := sfu.RevokeAllSpeaking(r.Context(), lk.RoomName(slug), wb.Controls.HideAttendees)
+	if err != nil {
+		s.log.Warn("revoke all partially applied", "slug", slug, "revoked", len(revoked), "error", err)
+	}
+
+	// Every row in webinar_stage_grants for this slug IS a host-granted
+	// promotion — a scheduled panelist has no row there at all — so clearing
+	// the whole table is the bulk equivalent of RevokeStage per identity, not
+	// an approximation of it.
+	if err := s.store.ClearStageGrants(r.Context(), slug); err != nil {
+		s.log.Warn("revoke all: could not clear grants", "slug", slug, "error", err)
+	}
+
+	s.log.Info("revoke all speaking", "slug", slug, "revoked", len(revoked))
+	httpx.JSON(w, http.StatusOK, types.StageAllResponse{Count: len(revoked)})
+}
+
 // handleMuteOne mutes one participant, or lets them speak again.
 //
 // Muting is two operations, and both are needed. MuteTrack silences the audio

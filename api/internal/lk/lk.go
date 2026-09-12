@@ -660,6 +660,108 @@ func (c *Client) BlockSpeakingAll(ctx context.Context, room string, keep map[str
 	return blocked, errors.Join(errs...)
 }
 
+// AllowAllToSpeak grants every attendee currently in the room the same thing
+// "Allow to speak" grants one at a time — a microphone and a screen share, no
+// camera — in a single pass, for a host who wants the whole room able to
+// jump in rather than promoting people one by one.
+//
+// Only the audience moves. The host and anyone already a panelist — whether
+// scheduled or already promoted — are left exactly as they are: widening an
+// existing full stage seat down to audio-only would be a real demotion
+// dressed up as a bulk grant, not what a host asking for this expects.
+//
+// Returns how many attendees it actually promoted, for the same reason
+// MuteAll does — a host bulk-granting an empty or already-promoted room
+// needs to see that nothing silently failed, not just a bare success.
+func (c *Client) AllowAllToSpeak(ctx context.Context, room string, hideAttendees bool) ([]string, error) {
+	res, err := c.rooms.ListParticipants(ctx, &livekit.ListParticipantsRequest{Room: room})
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var granted []string
+	var errs []error
+	for _, p := range res.Participants {
+		if roleOf(p) != types.RoleAttendee {
+			continue
+		}
+		spec := Spec{
+			Role:      types.RolePanelist,
+			Room:      room,
+			Identity:  p.Identity,
+			Name:      p.Name,
+			Hidden:    HiddenFor(types.RolePanelist, hideAttendees),
+			AudioOnly: true,
+			Promoted:  true,
+		}
+		if err := c.SetRole(ctx, spec); err != nil {
+			if !errors.Is(err, ErrNotInRoom) {
+				errs = append(errs, fmt.Errorf("%s: %w", p.Identity, err))
+			}
+			continue
+		}
+		granted = append(granted, p.Identity)
+	}
+	return granted, errors.Join(errs...)
+}
+
+// RevokeAllSpeaking sends every attendee the host had promoted — via "Allow
+// to speak" or "Bring on stage", one at a time or through AllowAllToSpeak —
+// back to the audience in one pass, muting them on the way out the same as a
+// single revoke does.
+//
+// A scheduled panelist is not "speaking permission the host granted" — they
+// are on the bill — so unlike AllowAllToSpeak's mirror image, this does not
+// touch them; only identities specOf reports as Promoted move. That is the
+// same distinction the room already draws for "mute everyone" (see
+// BlockSpeakingAll's own keep-scheduled-panelists reasoning) applied to the
+// wider grant instead of just the microphone.
+func (c *Client) RevokeAllSpeaking(ctx context.Context, room string, hideAttendees bool) ([]string, error) {
+	res, err := c.rooms.ListParticipants(ctx, &livekit.ListParticipantsRequest{Room: room})
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var revoked []string
+	var errs []error
+	for _, p := range res.Participants {
+		spec, ok := specOf(p)
+		if !ok || !spec.Promoted {
+			continue
+		}
+		// Muting the track first, same reasoning as handleSetStage: the audience
+		// stops hearing them at the moment the host clicks rather than whenever
+		// the permission-driven unpublish lands.
+		if source, ok := SourceFor("microphone"); ok {
+			if err := c.MuteTrack(ctx, room, p.Identity, source, true); err != nil &&
+				!errors.Is(err, ErrNotInRoom) && !errors.Is(err, ErrNoTrack) {
+				errs = append(errs, fmt.Errorf("%s: mute on the way out: %w", p.Identity, err))
+			}
+		}
+		down := Spec{
+			Role:     types.RoleAttendee,
+			Room:     room,
+			Identity: p.Identity,
+			Name:     p.Name,
+			Hidden:   HiddenFor(types.RoleAttendee, hideAttendees),
+		}
+		if err := c.SetRole(ctx, down); err != nil {
+			if !errors.Is(err, ErrNotInRoom) {
+				errs = append(errs, fmt.Errorf("%s: %w", p.Identity, err))
+			}
+			continue
+		}
+		revoked = append(revoked, p.Identity)
+	}
+	return revoked, errors.Join(errs...)
+}
+
 // specOf reconstructs the Spec behind a live participant, so a permission change
 // can be expressed as a change to one field rather than as a fresh grant built
 // from assumptions. Reports false for anyone whose speaking is not the host's to
