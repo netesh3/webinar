@@ -329,6 +329,21 @@ function HostRoster() {
                     await api.removeParticipant(slug, p.identity);
                   })
                 }
+                onSetCoHost={(coHost) =>
+                  act(
+                    p.identity,
+                    coHost
+                      ? `${p.name} can now control the webinar like you can.`
+                      : `${p.name} is back to an ordinary panelist.`,
+                    async () => {
+                      // A panelist's identity is "user_<id>" — see hostIdentity on
+                      // the API side — so this is the one place the id has to be
+                      // recovered from it, for the endpoint that takes it plain.
+                      const userID = p.identity.replace(/^user_/, "");
+                      await api.setCoHost(slug, userID, coHost);
+                    },
+                  )
+                }
               />
             ))}
           </ul>
@@ -365,6 +380,7 @@ function HostRosterRow({
   onStage,
   onDismissHand,
   onRemove,
+  onSetCoHost,
 }: {
   participant: LiveParticipant;
   isMe: boolean;
@@ -375,6 +391,7 @@ function HostRosterRow({
   onStage: (role: Role, audioOnly: boolean) => void;
   onDismissHand: () => void;
   onRemove: () => void;
+  onSetCoHost: (coHost: boolean) => void;
 }) {
   const isHost = p.role === "host";
   const sharing = p.publishing.some((t) => t.includes("SCREEN_SHARE"));
@@ -405,11 +422,13 @@ function HostRosterRow({
         <span className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-ink-3">
           {isHost
             ? "Host"
-            : p.role === "panelist"
-              ? speakingOnly
-                ? "Allowed to speak"
-                : "Panelist"
-              : "Attendee"}
+            : p.coHost
+              ? "Co-host"
+              : p.role === "panelist"
+                ? speakingOnly
+                  ? "Allowed to speak"
+                  : "Panelist"
+                : "Attendee"}
           {sharing && <span className="text-brand">· sharing screen</span>}
           {silenced && <span className="text-warn">· muted by you</span>}
           {canSpeak && hasMic && !p.audioMuted && <span className="text-ok">· live</span>}
@@ -544,6 +563,25 @@ function HostRosterRow({
                       hint: "back to the audience",
                       icon: <ArrowDownIcon className="size-4" />,
                       onSelect: () => onStage("attendee", false),
+                    },
+                  ]
+                : []),
+              // Full parity with the host, for this one webinar. Offered on any
+              // panelist row rather than only a confirmed scheduled one, because
+              // the roster here cannot tell a scheduled panelist apart from a
+              // promoted attendee — the server can, and refuses the rare
+              // mis-click with a clear "only a panelist can be made co-host"
+              // rather than a silent no-op.
+              ...(onStageNow
+                ? [
+                    {
+                      kind: "action" as const,
+                      label: p.coHost ? "Remove co-host" : "Make co-host",
+                      hint: p.coHost
+                        ? "back to an ordinary panelist"
+                        : "full control, same as you",
+                      icon: <ArrowUpIcon className="size-4" />,
+                      onSelect: () => onSetCoHost(!p.coHost),
                     },
                   ]
                 : []),

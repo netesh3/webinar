@@ -329,17 +329,21 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 
 	identity := hostIdentity(user.ID)
 
-	// A panelist the host muted comes back muted. Only the latch is read here —
-	// the right to be on this stage comes from the panelist list, not from a
-	// grant — and it is ignored for the host, who cannot be muted by anyone.
+	// A panelist the host muted comes back muted, and a panelist the host made
+	// co-host comes back co-host — a dropped connection must not be a way to
+	// lose either. Only the latch/flag is read here — the right to be on this
+	// stage comes from the panelist list, not from a grant — and both are
+	// ignored for the host, who is neither mutable nor promotable by anyone.
 	muted := false
+	coHost := false
 	if role == types.RolePanelist {
 		grant, err := s.store.StageGrant(r.Context(), slug, identity)
 		if err != nil {
-			s.log.Warn("host join: mute latch lookup failed, treating as unmuted",
+			s.log.Warn("host join: grant lookup failed, treating as an ordinary panelist",
 				"error", err, "identity", identity)
 		} else {
 			muted = grant.MutedByHost
+			coHost = grant.CoHost
 		}
 	}
 
@@ -355,6 +359,7 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		Identity:    identity,
 		Name:        user.Name,
 		MutedByHost: muted,
+		CoHost:      coHost,
 	}, true)
 }
 

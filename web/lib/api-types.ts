@@ -934,6 +934,11 @@ export interface LiveParticipant {
    * audience.
    */
   mutedByHost: boolean;
+  /**
+   * CoHost is a panelist the host made their equal: full moderation rights,
+   * not just a stage seat. See lk.Spec.CoHost.
+   */
+  coHost: boolean;
 }
 export interface LiveRoom {
   room: string;
@@ -954,6 +959,8 @@ export interface StageRequest {
   /**
    * AudioOnly is "allow to speak": the attendee gets a microphone and a
    * camera, but no screen share.
+   * AudioOnly is "allow to speak": the attendee gets a microphone and a screen
+   * share, but no camera.
    * This is the common case by far. A host taking a question wants to hear one
    * person, not hand them the stage, and a full promotion means an unprepared
    * attendee's camera and desktop are one click from 500 people.
@@ -994,6 +1001,14 @@ export interface RegistrantRow {
 }
 export interface PanelistRequest {
   email: string;
+}
+/**
+ * CoHostPatch turns a panelist into a second, equal moderator for this run of
+ * the webinar, or turns them back into an ordinary panelist. See
+ * lk.Spec.CoHost for exactly what that grants and withholds.
+ */
+export interface CoHostPatch {
+  coHost: boolean;
 }
 /**
  * TransferHostRequest hands the webinar to another panelist already in the room.

@@ -294,6 +294,7 @@ export const DEV_BYPASS_LIVE: LiveRoom = {
       canSpeak: true,
       audioOnly: false,
       mutedByHost: false,
+      coHost: false,
     },
     {
       identity: "panel-1",
@@ -307,6 +308,7 @@ export const DEV_BYPASS_LIVE: LiveRoom = {
       canSpeak: true,
       audioOnly: false,
       mutedByHost: false,
+      coHost: false,
     },
     {
       identity: "att-1",
@@ -320,6 +322,7 @@ export const DEV_BYPASS_LIVE: LiveRoom = {
       canSpeak: false,
       audioOnly: false,
       mutedByHost: false,
+      coHost: false,
     },
   ],
 };

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/mail"
+	"slices"
 	"strings"
 	"time"
 
@@ -1375,12 +1376,121 @@ func (s *Server) handleRemovePanelist(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "remove panelist", err)
 		return
 	}
+	// Taking someone off the bill takes back anything laid on top of their seat
+	// too — a mute latch, or co-host — rather than leaving it to reattach if
+	// they are ever re-invited. RevokeStage errors are logged, not fatal: the
+	// panelist is already gone, which is the part that has to succeed.
+	if err := s.store.RevokeStage(r.Context(), slug, hostIdentity(userID)); err != nil {
+		s.log.Warn("remove panelist: could not clear stage grant",
+			"slug", slug, "user", userID, "error", err)
+	}
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "removed"})
+}
+
+/* handleSetCoHost makes a panelist the host's equal for this run of the
+ * webinar, or takes that back.
+ *
+ * Restricted to existing panelists, not any attendee: a co-host needs the
+ * REST-API authorization requireOwnership grants, which is decided by account
+ * id, and only a panelist's LiveKit identity is derived from one (see
+ * hostIdentity) — a promoted attendee's is derived from their join key and has
+ * no account behind it at all, the same gap that keeps recording host-and-
+ * panelist-only. Refusing here is what keeps that assumption from becoming a
+ * confusing 404 deeper in the stack instead of a clear answer at the click.
+ *
+ * A co-host may call this on anyone but the host themselves (see the check
+ * below) — including granting or revoking another co-host — since "control
+ * anything the host can" was not meant to stop at this one lever.
+ */
+func (s *Server) handleSetCoHost(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+	userID := chi.URLParam(r, "userID")
+
+	var body types.CoHostPatch
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "set co-host: load webinar", err)
+		return
+	}
+	// The host is already everything a co-host would be, and letting this
+	// through would mean a co-host could later "revoke" the actual host's
+	// standing — which is exactly what a co-host may not do.
+	if userID == wb.Host.ID {
+		httpx.Error(w, http.StatusUnprocessableEntity, "is_the_host",
+			"The host already has every permission a co-host would.")
+		return
+	}
+
+	panelists, err := s.store.PanelistIDs(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "set co-host: panelists", err)
+		return
+	}
+	if !slices.Contains(panelists, userID) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "not_a_panelist",
+			"Only a panelist can be made co-host.")
+		return
+	}
+
+	target, err := s.store.UserByID(r.Context(), userID)
+	if err != nil {
+		s.fail(w, r, "set co-host: load user", err)
+		return
+	}
+	identity := hostIdentity(userID)
+
+	// Read before the write below, so the live grant this issues can carry the
+	// mute state forward instead of silently lifting (or losing) a host mute
+	// that predates this call.
+	grant, err := s.store.StageGrant(r.Context(), slug, identity)
+	if err != nil {
+		s.fail(w, r, "set co-host: load grant", err)
+		return
+	}
+
+	if err := s.store.SetCoHost(r.Context(), slug, identity, target.Name, body.CoHost); err != nil {
+		s.fail(w, r, "set co-host", err)
+		return
+	}
+
+	// Applied live if they are actually in the room right now. Best-effort: the
+	// persisted grant above is what a reconnect reads, so a failure here is
+	// only a delay until the next one, not a lost change.
+	if sfu, err := s.sfuFor(r.Context(), wb); err != nil {
+		s.log.Warn("set co-host: could not resolve the livekit project",
+			"slug", slug, "user", userID, "error", err)
+	} else {
+		spec := lk.Spec{
+			Role:        types.RolePanelist,
+			Room:        lk.RoomName(slug),
+			Identity:    identity,
+			Name:        target.Name,
+			CoHost:      body.CoHost,
+			MutedByHost: grant.MutedByHost,
+			Hidden:      lk.HiddenFor(types.RolePanelist, wb.Controls.HideAttendees),
+		}
+		if err := sfu.SetRole(r.Context(), spec); err != nil && !errors.Is(err, lk.ErrNotInRoom) {
+			s.log.Warn("set co-host: apply live", "slug", slug, "user", userID, "error", err)
+		}
+	}
+
+	s.log.Info("co-host set", "slug", slug, "user", userID, "co_host", body.CoHost)
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "updated"})
 }
 
 // ownsWebinar writes the error response itself and reports whether to continue.
 // Used by the handlers that are not under requireOwnership because their URL
 // does not carry a slug.
+//
+// A co-host passes this too, the same as requireOwnership — see its comment.
+// There is no "true owner only" variant of this helper because nothing reached
+// through it (currently just approving or declining one registration) is on
+// the host-only list.
 func (s *Server) ownsWebinar(w http.ResponseWriter, r *http.Request, slug string) bool {
 	user := userFromContext(r.Context())
 	hostID, err := s.store.HostIDFor(r.Context(), slug)
@@ -1392,7 +1502,15 @@ func (s *Server) ownsWebinar(w http.ResponseWriter, r *http.Request, slug string
 		s.fail(w, r, "ownership check", err)
 		return false
 	}
-	if hostID != user.ID {
+	if hostID == user.ID {
+		return true
+	}
+	grant, err := s.store.StageGrant(r.Context(), slug, hostIdentity(user.ID))
+	if err != nil {
+		s.fail(w, r, "co-host check", err)
+		return false
+	}
+	if !grant.CoHost {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return false
 	}

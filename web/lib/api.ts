@@ -9,6 +9,7 @@ import type {
   ChatImageResponse,
   ChatStats,
   ChatMessage as ChatTranscriptMessage,
+  CoHostPatch,
   ControlsPatch,
   JoinResponse,
   LiveRoom,
@@ -567,6 +568,14 @@ export const api = {
   removePanelist: (slug: string, userId: string) =>
     del<StatusResponse>(
       `/api/host/webinars/${seg(slug)}/panelists/${seg(userId)}`,
+    ),
+
+  /** Makes a panelist the host's equal for this run of the webinar, or turns
+   *  them back into an ordinary panelist. See CoHostPatch. */
+  setCoHost: (slug: string, userId: string, coHost: boolean) =>
+    patch<StatusResponse>(
+      `/api/host/webinars/${seg(slug)}/panelists/${seg(userId)}/co-host`,
+      { coHost } satisfies CoHostPatch,
     ),
 };
 

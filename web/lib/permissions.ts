@@ -212,3 +212,42 @@ export function useLiveRole(room: Room | null, joinRole: string): string {
 
   return role;
 }
+
+/** Whether the local participant is a co-host right now, read the same way
+ *  useLiveRole reads the role — live, off the participant's own metadata, so
+ *  a host handing someone full moderation rights mid-session takes effect
+ *  without a reconnect, and taking it back does too. */
+export function useLiveCoHost(room: Room | null): boolean {
+  const [coHost, setCoHost] = useState(false);
+
+  useEffect(() => {
+    if (!room) return;
+
+    const read = () => {
+      const raw = room.localParticipant?.metadata;
+      if (!raw) return;
+      try {
+        const meta = JSON.parse(raw) as { coHost?: unknown };
+        setCoHost(meta.coHost === true);
+      } catch {
+        /* ignore malformed metadata */
+      }
+    };
+
+    read();
+    const onMeta = (_metadata: string | undefined, participant?: Participant) => {
+      if (participant && !participant.isLocal) return;
+      read();
+    };
+    room.on(RoomEvent.ParticipantMetadataChanged, onMeta);
+    room.on(RoomEvent.Connected, read);
+    room.on(RoomEvent.Reconnected, read);
+    return () => {
+      room.off(RoomEvent.ParticipantMetadataChanged, onMeta);
+      room.off(RoomEvent.Connected, read);
+      room.off(RoomEvent.Reconnected, read);
+    };
+  }, [room]);
+
+  return coHost;
+}

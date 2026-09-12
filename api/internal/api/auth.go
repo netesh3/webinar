@@ -24,6 +24,10 @@ const (
 	// roleCtxKey carries how the caller is entitled to this webinar's stage —
 	// host or panelist. Set by requireStage.
 	roleCtxKey ctxKey = "stageRole"
+	// trueOwnerCtxKey records whether requireOwnership admitted this caller as
+	// the actual account in webinars.host_id, or as a co-host let in as a
+	// courtesy. Read by requireTrueOwner.
+	trueOwnerCtxKey ctxKey = "trueOwner"
 )
 
 func userFromContext(ctx context.Context) store.User {
@@ -199,9 +203,16 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	})
 }
 
-// requireOwnership resolves {slug} and confirms the caller hosts it, so every
-// per-webinar host route is authorized in one place rather than each handler
-// remembering to check.
+/* requireOwnership resolves {slug} and confirms the caller hosts it, so every
+ * per-webinar host route is authorized in one place rather than each handler
+ * remembering to check.
+ *
+ * A co-host passes this too — see store.SetCoHost — because a co-host is meant
+ * to control anything the host can, in-session. The two things that stay
+ * host-only regardless (deleting the webinar, transferring it away) are not
+ * enforced here: they sit behind the extra requireTrueOwner, which reads the
+ * flag this middleware leaves in the context.
+ */
 func (s *Server) requireOwnership(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
@@ -216,13 +227,45 @@ func (s *Server) requireOwnership(next http.Handler) http.Handler {
 			s.fail(w, r, "ownership check", err)
 			return
 		}
-		if hostID != user.ID {
-			// 404 rather than 403: don't confirm the webinar exists to someone
-			// who has no business knowing.
-			httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+		trueOwner := hostID == user.ID
+		if !trueOwner {
+			grant, err := s.store.StageGrant(r.Context(), slug, hostIdentity(user.ID))
+			if err != nil {
+				s.fail(w, r, "co-host check", err)
+				return
+			}
+			if !grant.CoHost {
+				// 404 rather than 403: don't confirm the webinar exists to
+				// someone who has no business knowing.
+				httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+				return
+			}
+		}
+		ctx := context.WithValue(r.Context(), slugCtxKey, slug)
+		ctx = context.WithValue(ctx, trueOwnerCtxKey, trueOwner)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+/* requireTrueOwner narrows the door back down to the account actually listed in
+ * webinars.host_id, for the handful of actions a co-host may not take: deleting
+ * the webinar, and transferring it away. Both would otherwise let someone the
+ * host merely made equal to themselves either destroy the webinar outright or
+ * hand it to a third party — neither of which "control anything the host can,
+ * for this session" was meant to include.
+ *
+ * Must run after requireOwnership, which is what puts trueOwnerCtxKey in the
+ * context; on its own this refuses everyone.
+ */
+func (s *Server) requireTrueOwner(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		trueOwner, _ := r.Context().Value(trueOwnerCtxKey).(bool)
+		if !trueOwner {
+			httpx.Error(w, http.StatusForbidden, "host_only",
+				"Only the webinar's host can do that.")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), slugCtxKey, slug)))
+		next.ServeHTTP(w, r)
 	})
 }
 
