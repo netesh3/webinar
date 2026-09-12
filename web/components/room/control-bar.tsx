@@ -799,23 +799,40 @@ function BarButton({
       disabled={busy}
       className={`relative shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-white/50 rounded-lg ${className}`}
     >
-      {/* The live level, as a strip across the bottom of the button.
-          A strip rather than a fill behind the glyph: the shell above it draws a translucent
-          background when the button is active, so a fill would be washed out to a tint and I
-          could not verify the contrast from here. A strip sits above everything and is
-          unmistakably a meter.
-          `scaleX` from a left origin rather than a width, because a transform is composited —
-          this moves sixty times a second without laying out or repainting the bar around it. */}
-      {meterRef && (
-        <span
-          ref={meterRef}
-          aria-hidden
-          className="pointer-events-none absolute inset-x-1.5 bottom-0.5 z-10 h-[3px] origin-left rounded-full bg-ok"
-          style={{ transform: "scaleX(var(--mic-level, 0))" }}
-        />
-      )}
       <BarButtonShell label={label} active={active} danger={danger} dimmed={dimmed}>
-        {busy ? <Spinner className="size-5" /> : icon}
+        {busy ? (
+          <Spinner className="size-5" />
+        ) : meterRef ? (
+          /* The live level, as the mic glyph itself tinting green while speaking —
+           * what Zoom and Teams do — rather than a separate meter bar under the
+           * button, which read as an unrelated second indicator nobody asked for.
+           *
+           * Two copies of the same icon stacked in one grid cell: the ordinary one
+           * underneath, and a green one on top whose opacity is the level. Fading
+           * the top copy in and out is indistinguishable from the glyph itself
+           * changing color, and it is the only way to do that without touching
+           * `color` every frame — `opacity` is compositable, `color` is not, and
+           * repainting an SVG's fill sixty times a second in a tab that is also
+           * decoding video is exactly the cost this whole module exists to avoid.
+           *
+           * The opacity comes from the same `--mic-level` custom property the old
+           * strip read, written straight to this node's inline style every frame
+           * by useMicMeter (mic-level.ts) — nothing here re-renders when it
+           * changes, which is the point: speaking must not re-render the bar. */
+          <span className="relative inline-grid size-5 place-items-center">
+            <span className="[grid-area:1/1]">{icon}</span>
+            <span
+              ref={meterRef}
+              aria-hidden
+              className="[grid-area:1/1] text-ok"
+              style={{ opacity: "var(--mic-level, 0)" }}
+            >
+              {icon}
+            </span>
+          </span>
+        ) : (
+          icon
+        )}
       </BarButtonShell>
       {badge !== undefined && badge > 0 && (
         <span className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
