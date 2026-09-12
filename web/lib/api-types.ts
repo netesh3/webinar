@@ -490,6 +490,14 @@ export interface Webinar {
   summary: string;
   description: string;
   track: string;
+  /**
+   *  ImageURL is a path back to this API, never a bucket URL — same reasoning as
+   * 	 * MediaKey on a chat image, so the backend can move where the bytes live without
+   * 	 * breaking a link already on a registration page. Carries a `?v=` that changes
+   * 	 * every time the image is replaced, so a cache never serves stale bytes under a
+   * 	 * URL that looks unchanged. Empty when no image was uploaded; the frontend falls
+   * 	 * back to its own generated cover in that case.
+   */
   imageUrl?: string;
   startsAt: string; // RFC3339
   durationMin: number /* int */;
@@ -799,15 +807,22 @@ export interface JoinResponse {
    */
   hidden: boolean;
   /**
-   * CanRecord answers exactly the question the record button asks, decided by
-   * the server rather than inferred from the role.
-   * It is NOT the same as CanPublish. The recording endpoints sit behind
-   * requireStage, which wants an ACCOUNT on this webinar's stage roster — the
-   * host, or a name on the panelist list. An attendee the host promoted
-   * publishes exactly like a panelist and has no account at all, so inferring
-   * this from publish permission offered them a button whose every request came
-   * back 401. It also covers recording being turned off for the instance, which
-   * the client otherwise learned from a 503 after the click.
+   *  CanRecord answers whether this ACCOUNT may see the record control at all,
+   * 	 * decided by the server rather than inferred from the role.
+   * 	 *
+   * 	 * It is NOT the same as CanPublish. The recording endpoints sit behind
+   * 	 * requireStage, which wants an ACCOUNT on this webinar's stage roster — the
+   * 	 * host, or a name on the panelist list. An attendee the host promoted
+   * 	 * publishes exactly like a panelist and has no account at all, so inferring
+   * 	 * this from publish permission offered them a button whose every request came
+   * 	 * back 401.
+   * 	 *
+   * 	 * Deliberately NOT gated on whether the instance has recording storage
+   * 	 * configured any more — that used to fold into this field, which hid the
+   * 	 * button outright on an instance with RECORDINGS_ENABLED=false, even though
+   * 	 * local, on-device recording needs no server storage at all. See
+   * 	 * AppConfig.CloudRecordingEnabled for that half of the question; the record
+   * 	 * control combines both to decide which destinations to offer.
    */
   canRecord: boolean;
   /**
@@ -937,8 +952,8 @@ export interface MutePatch {
 export interface StageRequest {
   role: Role; // panelist | attendee
   /**
-   * AudioOnly is "allow to speak": the attendee gets a microphone and nothing
-   * else — no camera, no screen share.
+   * AudioOnly is "allow to speak": the attendee gets a microphone and a
+   * camera, but no screen share.
    * This is the common case by far. A host taking a question wants to hear one
    * person, not hand them the stage, and a full promotion means an unprepared
    * attendee's camera and desktop are one click from 500 people.
@@ -982,11 +997,10 @@ export interface PanelistRequest {
 }
 /**
  * TransferHostRequest hands the webinar to another panelist already in the room.
- *
  * Identity is their LiveKit identity (user_<id>). The caller remains a panelist so
  * they can rejoin the stage later; the target becomes the owner for every host
  * endpoint that checks ownership. Publish grants are restored on handoff, so a
- * muted panelist is still a valid target.
+ * muted panelist (CanPublish false) is still a valid target.
  */
 export interface TransferHostRequest {
   identity: string;
@@ -1031,11 +1045,13 @@ export interface AppConfig {
   supabaseAnonKey?: string;
   googleAuth?: boolean;
   /**
-   * Whether this instance has object storage for recordings at all
-   * (RECORDINGS_ENABLED). Separate from JoinResponse.canRecord, which is about
-   * the account; this is about the instance. The record control uses it to
-   * decide whether to offer "the cloud" as a destination — local, on-device
-   * recording needs neither this nor the server's storage.
+   *  CloudRecordingEnabled is whether this instance has object storage for
+   * 	 * recordings at all (RECORDINGS_ENABLED). Separate from JoinResponse.CanRecord,
+   * 	 * which is about the ACCOUNT (host or panelist); this is about the INSTANCE.
+   * 	 * The record control uses it to decide whether to offer "the cloud" as a
+   * 	 * destination at all, rather than offering a button that always 503s — local,
+   * 	 * on-device recording (see web/lib/local-recording.ts) needs neither this nor
+   * 	 * the server's storage, so it is unaffected by it either way.
    */
   cloudRecordingEnabled: boolean;
 }

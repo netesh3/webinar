@@ -896,7 +896,7 @@ func (s *Server) handleMuteAll(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAllowAllToSpeak is handleSetStage's "allow to speak" grant (mic and
-// screen share, no camera) applied to every attendee in the room at once,
+// camera, no screen share) applied to every attendee in the room at once,
 // for a host who wants the whole audience able to jump in rather than
 // promoting people one at a time. Anyone already a panelist — scheduled or
 // previously promoted — is left untouched; see AllowAllToSpeak.

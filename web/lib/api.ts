@@ -355,7 +355,7 @@ export const api = {
   muteAll: (slug: string) =>
     post<MuteAllResponse>(`/api/host/webinars/${seg(slug)}/mute-all`),
 
-  /** "Allow to speak" — mic and screen share, no camera — granted to every
+  /** "Allow to speak" — mic and camera, no screen share — granted to every
    *  attendee in the room at once. Anyone already a panelist, scheduled or
    *  previously promoted, is left alone; see the API handler. */
   allowAllToSpeak: (slug: string) =>
