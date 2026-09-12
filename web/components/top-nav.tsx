@@ -48,6 +48,12 @@ export function TopNav() {
           <span className="text-[14.5px] font-semibold tracking-[-0.01em]">
             {appName}
           </span>
+          {/* Sets expectations before anybody signs up, rather than after
+              something surprises them. Deliberately quiet — a label, not a
+              banner — so it reads as honest rather than as an apology. */}
+          <span className="rounded-md border border-brand/25 bg-brand-soft px-1.5 py-0.5 text-[9.5px] font-semibold tracking-[0.09em] text-brand uppercase">
+            Beta
+          </span>
         </Link>
 
         <nav className="hidden items-center gap-1 sm:flex">
