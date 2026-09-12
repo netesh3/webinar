@@ -141,7 +141,7 @@ export function HostWebinarList({
         onConfirm={() => confirmDelete && void remove(confirmDelete)}
         title={confirmDelete ? deleteTitle(confirmDelete) : "Delete this webinar?"}
         body={confirmDelete ? deleteWarning(confirmDelete) : ""}
-        confirmLabel="Delete everything"
+        confirmLabel="Delete this webinar"
       />
     </>
   );

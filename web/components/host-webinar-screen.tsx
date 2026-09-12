@@ -307,7 +307,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         onConfirm={() => void remove()}
         title={deleteTitle(webinar)}
         body={deleteWarning(webinar)}
-        confirmLabel="Delete everything"
+        confirmLabel="Delete this webinar"
       />
     </>
   );

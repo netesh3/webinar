@@ -34,6 +34,11 @@ import { useRoomUI } from "./context";
 
 const MAX_CHARS = 2000;
 
+/** The host's segmented control offers one more choice than `ChatDestination`
+ *  carries: turning attendee chat off is a separate flag (`chatEnabled`), not
+ *  a third destination, but the picker presents all three as one choice. */
+type AudienceChatOption = ChatDestination | "disabled";
+
 export function ChatPanel() {
   const { slug, joinKey, realtime, controls, permissions, isHost, me } = useRoomUI();
   const [draft, setDraft] = useState("");
@@ -47,7 +52,7 @@ export function ChatPanel() {
   const [stageTo, setStageTo] = useState<ChatDestination>("everyone");
   // Which switch the host is currently flipping, so the segmented control can show
   // it landing rather than appearing to do nothing for a round trip.
-  const [switching, setSwitching] = useState<ChatDestination | null>(null);
+  const [switching, setSwitching] = useState<AudienceChatOption | null>(null);
 
   const [uploading, setUploading] = useState(false);
 
@@ -71,6 +76,10 @@ export function ChatPanel() {
   // The room's setting, as the host last left it. Narrowed here because the
   // generated type is a bare string.
   const roomTo = chatDestination(controls.chatDestination);
+  // What the segmented control below shows as selected: "disabled" swallows
+  // whatever destination was last chosen, so switching chat back on returns to
+  // it rather than defaulting to "everyone" every time.
+  const roomOption: AudienceChatOption = controls.chatEnabled ? roomTo : "disabled";
   // A publisher chooses; the audience is told. `permissions.canPublish` rather than
   // the joined role, so an attendee the host promotes gains the choice without a
   // rejoin — and loses it again if they are sent back.
@@ -148,12 +157,16 @@ export function ChatPanel() {
    *  it reaches every browser in the room at once and still applies to somebody who
    *  joins ten minutes later. Nothing local is updated: this tab reacts to the same
    *  broadcast as everyone else, which is what keeps them in agreement. */
-  async function setRoomDestination(to: ChatDestination) {
-    if (to === roomTo || switching) return;
+  async function setRoomDestination(to: AudienceChatOption) {
+    if (to === roomOption || switching) return;
     setSwitching(to);
     setError(null);
     try {
-      await api.updateControls(slug, { chatDestination: to } satisfies ControlsPatch);
+      const patch: ControlsPatch =
+        to === "disabled"
+          ? { chatEnabled: false }
+          : { chatEnabled: true, chatDestination: to };
+      await api.updateControls(slug, patch);
     } catch (err) {
       setError(err instanceof Error ? err.message : "That didn't apply.");
     } finally {
@@ -170,28 +183,30 @@ export function ChatPanel() {
             Attendees can chat with
           </p>
           <div className="mt-1.5 flex items-center gap-1">
-            {(["everyone", "panelists"] as const).map((to) => (
+            {(["everyone", "panelists", "disabled"] as const).map((to) => (
               <button
                 key={to}
                 type="button"
                 onClick={() => void setRoomDestination(to)}
                 disabled={switching !== null}
-                aria-pressed={roomTo === to}
+                aria-pressed={roomOption === to}
                 className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                  roomTo === to
+                  roomOption === to
                     ? "bg-brand-soft text-brand"
                     : "text-ink-2 hover:bg-surface-2"
                 }`}
               >
                 {switching === to && <Spinner className="size-3" />}
-                {to === "everyone" ? "Everyone" : "Panelists"}
+                {to === "everyone" ? "Everyone" : to === "panelists" ? "Panelists" : "Disabled"}
               </button>
             ))}
           </div>
           <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-3">
-            {roomTo === "panelists"
-              ? "Attendees' messages reach you and the panelists only. They cannot see each other's."
-              : "Attendees' messages are visible to the whole room."}
+            {roomOption === "disabled"
+              ? "Attendees can't send messages. Turn it back on anytime."
+              : roomOption === "panelists"
+                ? "Attendees' messages reach you and the panelists only. They cannot see each other's."
+                : "Attendees' messages are visible to the whole room."}
           </p>
         </div>
       )}
