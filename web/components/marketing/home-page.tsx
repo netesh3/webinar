@@ -361,358 +361,110 @@ function FeatureChip({
 
 /* ------------------------------------------------------------------ the call
  *
- * A drawn webinar rather than a photograph or a stock video, for three
- * reasons that all point the same way: nobody has to be asked for their
- * likeness, it weighs a few kilobytes instead of a few megabytes on a
- * connection that has not loaded the app yet, and it can say something a
- * photograph cannot — that the host gets the big tile and everyone else does
- * not. That layout IS the product: a webinar is not a meeting of equals, and
- * the hero should show the difference before the copy explains it.
+ * Real people, not an illustration — office and home-office settings,
+ * sourced from Pexels (free-to-use license, no attribution required) and
+ * served from this app rather than hotlinked, so the hero does not depend on
+ * a third party's uptime or slow down waiting on it. Photos are pre-sized and
+ * compressed at the source (Pexels' own resize params) specifically for this
+ * layout, which is why five portraits add under 140KB total — well within
+ * budget for a mobile hero.
  *
- * The mouths, eyes and level meter animate; nothing here plays audio, and
- * `prefers-reduced-motion` stops all of it (see globals.css).
+ * The grid itself is the point as much as the faces in it: host large on the
+ * left, panelists stacked smaller on the right, audience smaller again along
+ * the bottom. That is not decoration, it is the product — a webinar is not a
+ * meeting of equals — and the layout says so before the copy explains it.
  */
 
-/* Hair shapes, over a head drawn at cx 80 / cy 32 / r 19.
- *
- * Each is an arc across the top of the skull and a fringe curve back under it,
- * so the filled region is the cap between them. Closing the shape the other way
- * round — arc out, arc back — encloses a sliver a couple of units tall instead,
- * which renders as a bald head with a dark outline. */
-const HAIR_CROP = "M61 32 A19 19 0 0 1 99 32 C99 26 91 21 80 21 C69 21 61 26 61 32 Z";
-const HAIR_SHORT = "M61 32 A19 19 0 0 1 99 32 C99 24 92 18 80 18 C68 18 61 24 61 32 Z";
-const HAIR_WAVY = "M59 33 A21 21 0 0 1 101 33 C101 22 92 16 80 16 C68 16 59 22 59 33 Z";
-const HAIR_LONG = "M58 34 A22 22 0 0 1 102 34 C102 21 92 14 80 14 C68 14 58 21 58 34 Z";
-
-/** The locks that fall past the jaw on a longer style. */
-const HAIR_SIDES = (
-  <>
-    <path d="M58 34c-2 10-1 18 2 24-6-9-5-18-2-24z" fill="currentColor" />
-    <path d="M102 34c2 10 1 18-2 24 6-9 5-18 2-24z" fill="currentColor" />
-  </>
-);
-
-/** A name plate sized to its text, for the small tiles where a bare label
- *  would sit unreadably on somebody's shirt. */
-function TileName({ name, onDark }: { name: string; onDark?: boolean }) {
-  return (
-    <g transform="translate(7,42)">
-      <rect
-        width={26 + name.length * 5}
-        height="14"
-        rx="5"
-        fill={onDark ? "rgba(255,255,255,.16)" : "rgba(9,18,32,.58)"}
-      />
-      <text x="6" y="10" fill="#fff" fontSize="8.5" fontWeight={500}>
-        {name}
-      </text>
-    </g>
-  );
-}
-
-/** One person, framed like a webcam: head and shoulders on a 160×92 grid, so
- *  every tile can scale the same drawing to its own size. */
-function Bust({
-  cloth,
-  skin,
-  neck,
-  hair,
-  hairPath,
-  talk,
-  blink = "home-blink",
-  extra,
-}: {
-  cloth: string;
-  skin: string;
-  neck: string;
-  hair: string;
-  hairPath: string;
-  /** Animation class for an open mouth, or nothing for a closed smile. */
-  talk?: string;
-  blink?: string;
-  extra?: ReactNode;
-}) {
-  return (
-    <>
-      <path d="M27 92c0-25 23-40 53-40s53 15 53 40z" fill={cloth} />
-      <rect x="72" y="42" width="16" height="16" rx="7" fill={neck} />
-      <circle cx="80" cy="32" r="19" fill={skin} />
-      <path d={hairPath} fill={hair} />
-      {extra}
-      <circle className={blink} cx="73" cy="31" r="2.2" fill="#241811" />
-      <circle className={blink} cx="87" cy="31" r="2.2" fill="#241811" />
-      {talk ? (
-        <ellipse className={talk} cx="80" cy="41" rx="4.3" ry="2.7" fill="#8c4033" />
-      ) : (
-        <path d="M76 41a6 6 0 0 0 8 0" stroke="#8c4033" strokeWidth={2} fill="none" strokeLinecap="round" />
-      )}
-    </>
-  );
-}
-
-/** A tile for somebody whose camera is off — initials, the way the room shows
- *  them. Worth drawing: a grid where everyone is on camera is not a webinar
- *  anybody has been in. */
-function AvatarTile({
-  x,
-  y,
-  w,
-  h,
-  initials,
-  name,
-  small,
-}: {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  initials: string;
+type CallPerson = {
+  photo?: string;
+  initials?: string;
   name: string;
-  small?: boolean;
-}) {
+  role?: string;
+  speaking?: boolean;
+  muted?: boolean;
+};
+
+function CallTile({ person, panelist }: { person: CallPerson; panelist?: boolean }) {
+  const label = person.role ? `${person.name} · ${person.role}` : person.name;
   return (
-    <g transform={`translate(${x},${y})`}>
-      <rect width={w} height={h} rx={small ? 9 : 10} fill="#1e2a44" />
-      <circle cx={w / 2} cy={small ? 27 : 46} r={small ? 15 : 26} fill="#33456b" />
-      <text
-        x={w / 2}
-        y={small ? 32 : 53}
-        fill="#c7d6f3"
-        fontSize={small ? 11 : 19}
-        fontWeight={600}
-        textAnchor="middle"
-      >
-        {initials}
-      </text>
-      {small ? (
-        <TileName name={name} onDark />
+    <div className={`home-call-tile ${person.speaking ? "home-call-tile-speaking" : ""}`}>
+      {person.photo ? (
+        // eslint-disable-next-line @next/next/no-img-element -- pre-sized and
+        // pre-compressed at the source (see the comment above CallGrid); the
+        // optimizer next/image would run has already been done once, by hand.
+        <img src={person.photo} alt="" loading="eager" />
       ) : (
-        <g transform={`translate(10,${h - 27})`}>
-          <rect width="116" height="19" rx="6" fill="rgba(255,255,255,.14)" />
-          <text x="9" y="13.5" fill="#fff" fontSize="10" fontWeight={500}>
-            {name}
-          </text>
-        </g>
+        <div className="home-call-avatar">{person.initials}</div>
       )}
-    </g>
+      <span className="home-call-name">
+        {panelist && (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round">
+            <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" />
+            <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+          </svg>
+        )}
+        {label}
+      </span>
+      {person.speaking && (
+        <span className="home-call-level" aria-hidden>
+          <span />
+          <span />
+          <span />
+        </span>
+      )}
+      {person.muted && (
+        <span className="home-call-muted" aria-hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
+            <path d="M4 4l16 16M12 4a3 3 0 0 1 3 3v3M9 10v2a3 3 0 0 0 4.5 2.6" />
+          </svg>
+        </span>
+      )}
+    </div>
   );
 }
 
 function CallGrid() {
   return (
-    <svg
-      viewBox="0 0 960 540"
-      preserveAspectRatio="xMidYMid meet"
-      className="home-call"
+    <div
+      className="home-call-grid"
       role="img"
       aria-label="A webinar in progress: the host on a large tile, with panelists and audience on smaller tiles around it"
     >
-      <defs>
-        <clipPath id="home-clip-host">
-          <rect x="0" y="0" width="592" height="333" rx="13" />
-        </clipPath>
-        <clipPath id="home-clip-panel">
-          <rect x="0" y="0" width="312" height="103" rx="10" />
-        </clipPath>
-        <clipPath id="home-clip-aud">
-          <rect x="0" y="0" width="118" height="62" rx="9" />
-        </clipPath>
-        <linearGradient id="home-room-a" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#dbeafe" />
-          <stop offset="1" stopColor="#f4f8ff" />
-        </linearGradient>
-        <linearGradient id="home-room-b" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#e0f2fe" />
-          <stop offset="1" stopColor="#f2fbff" />
-        </linearGradient>
-        <linearGradient id="home-room-c" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ede9fe" />
-          <stop offset="1" stopColor="#f7f5ff" />
-        </linearGradient>
-        <linearGradient id="home-room-d" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ccfbf1" />
-          <stop offset="1" stopColor="#f0fdfa" />
-        </linearGradient>
-        <linearGradient id="home-room-e" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fef3c7" />
-          <stop offset="1" stopColor="#fffcf0" />
-        </linearGradient>
-        <linearGradient id="home-room-f" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fce7f3" />
-          <stop offset="1" stopColor="#fef6fb" />
-        </linearGradient>
-        <linearGradient id="home-room-g" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#e2e8f0" />
-          <stop offset="1" stopColor="#f6f9fc" />
-        </linearGradient>
-      </defs>
+      <div className="home-call-tile home-call-host home-call-tile-speaking">
+        {/* eslint-disable-next-line @next/next/no-img-element -- see CallTile */}
+        <img src="/images/hero/host.jpg" alt="" loading="eager" />
+        <span className="home-call-name">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round">
+            <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" />
+            <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+          </svg>
+          Rohan · Host
+        </span>
+        <span className="home-call-level" aria-hidden>
+          <span />
+          <span />
+          <span />
+        </span>
+      </div>
 
-      {/* ---------------- host: the big tile ---------------- */}
-      <g transform="translate(20,52)">
-        <rect width="592" height="333" rx="13" fill="url(#home-room-a)" />
-        <g clipPath="url(#home-clip-host)">
-          {/* a wall behind them, so the tile is a room and not a backdrop */}
-          <rect x="392" y="40" width="168" height="112" rx="9" fill="#fff" opacity="0.55" />
-          <rect x="410" y="60" width="62" height="7" rx="3.5" fill="#c3d6f2" />
-          <rect x="410" y="76" width="110" height="7" rx="3.5" fill="#dce7f7" />
-          <rect x="410" y="92" width="86" height="7" rx="3.5" fill="#dce7f7" />
-          <circle cx="86" cy="92" r="42" fill="#fff" opacity="0.4" />
-          {/* Scaled to webcam framing — head about a third of the tile, with
-              headroom — and anchored to the bottom edge, rather than stretched
-              to fill the tile, which crops the top of the head off. */}
-          <g transform="translate(56,57) scale(3)">
-            <g className="home-nod">
-              <Bust
-                cloth="#2563eb"
-                skin="#e4a877"
-                neck="#c98f66"
-                hair="#2f2016"
-                hairPath={HAIR_SHORT}
-                talk="home-talk"
-                extra={<path d="M64 52h32l-16 15z" fill="#fff" opacity="0.85" />}
-              />
-            </g>
-          </g>
-          <rect className="home-ring" x="2" y="2" width="588" height="329" rx="12" fill="none" stroke="#22c55e" strokeWidth={3} />
-        </g>
-        <g transform="translate(16,295)">
-          <rect width="152" height="26" rx="8" fill="rgba(9,18,32,.62)" />
-          <g transform="translate(11,8)">
-            <path d="M5 0a3 3 0 0 1 3 3v4a3 3 0 0 1-6 0V3a3 3 0 0 1 3-3Z" fill="#4ade80" />
-            <path d="M0 7a5 5 0 0 0 10 0M5 12v2" stroke="#4ade80" strokeWidth={1.6} fill="none" strokeLinecap="round" />
-          </g>
-          <text x="32" y="17.5" fill="#fff" fontSize="12" fontWeight={500}>
-            Ananya · Host
-          </text>
-        </g>
-        <g transform="translate(552,300)">
-          <rect className="home-lv home-lv-1" x="0" y="0" width="4" height="16" rx="2" fill="#4ade80" />
-          <rect className="home-lv home-lv-2" x="7" y="0" width="4" height="16" rx="2" fill="#4ade80" />
-          <rect className="home-lv home-lv-3" x="14" y="0" width="4" height="16" rx="2" fill="#4ade80" />
-        </g>
-      </g>
+      <div className="home-call-panelists">
+        <CallTile person={{ photo: "/images/hero/panelist-1.jpg", name: "Priya", role: "Panelist", speaking: true }} panelist />
+        <CallTile person={{ photo: "/images/hero/panelist-2.jpg", name: "Karan", role: "Panelist", muted: true }} panelist />
+        <CallTile person={{ initials: "AR", name: "Arjun", role: "Panelist" }} panelist />
+      </div>
 
-      {/* ---------------- panelists: the column ---------------- */}
-      <g transform="translate(624,52)">
-        <rect width="312" height="103" rx="10" fill="url(#home-room-d)" />
-        <g clipPath="url(#home-clip-panel)">
-          <g transform="translate(66,0) scale(1.12)">
-            <g className="home-nod">
-              <Bust
-                cloth="#0d9488"
-                skin="#8d5524"
-                neck="#b97a53"
-                hair="#1b1410"
-                hairPath={HAIR_WAVY}
-                talk="home-talk-b"
-                blink="home-blink-b"
-                extra={<path d="M66 40c3 9 8 13 14 13s11-4 14-13c-4 5-9 7-14 7s-10-2-14-7z" fill="#1b1410" />}
-              />
-            </g>
-          </g>
-          <rect className="home-ring" x="1.5" y="1.5" width="309" height="100" rx="9" fill="none" stroke="#22c55e" strokeWidth={3} />
-        </g>
-        <g transform="translate(10,76)">
-          <rect width="108" height="19" rx="6" fill="rgba(9,18,32,.6)" />
-          <text x="9" y="13.5" fill="#fff" fontSize="10" fontWeight={500}>
-            Rahul · Panelist
-          </text>
-        </g>
-      </g>
-
-      <g transform="translate(624,167)">
-        <rect width="312" height="103" rx="10" fill="url(#home-room-c)" />
-        <g clipPath="url(#home-clip-panel)">
-          <g transform="translate(66,0) scale(1.12)">
-            <Bust
-              cloth="#7c3aed"
-              skin="#f3c095"
-              neck="#dfa87e"
-              hair="#3f2d23"
-              hairPath={HAIR_LONG}
-              extra={<g style={{ color: "#3f2d23" }}>{HAIR_SIDES}</g>}
-            />
-          </g>
-        </g>
-        <g transform="translate(10,76)">
-          <rect width="112" height="19" rx="6" fill="rgba(9,18,32,.6)" />
-          <text x="9" y="13.5" fill="#fff" fontSize="10" fontWeight={500}>
-            Meera · Panelist
-          </text>
-        </g>
-        <g transform="translate(286,12)">
-          <rect x="-6" y="-6" width="24" height="24" rx="7" fill="rgba(9,18,32,.55)" />
-          <path d="M0 0l12 12M6 0a3 3 0 0 1 3 3v2M3 5v2a3 3 0 0 0 4.4 2.6" stroke="#fb7185" strokeWidth={1.8} fill="none" strokeLinecap="round" />
-        </g>
-      </g>
-
-      <AvatarTile x={624} y={282} w={312} h={103} initials="AR" name="Arjun · Panelist" />
-
-      {/* ---------------- audience: the strip ---------------- */}
-      <g transform="translate(20,397)">
-        <g transform="translate(0,0)">
-          <rect width="118" height="62" rx="9" fill="url(#home-room-b)" />
-          <g clipPath="url(#home-clip-aud)">
-            <g transform="translate(2,0) scale(.674)">
-              <Bust cloth="#0284c7" skin="#e4a877" neck="#c98f66" hair="#20160f" hairPath={HAIR_CROP} />
-            </g>
-          </g>
-          <TileName name="Dev" />
-        </g>
-
-        <g transform="translate(130,0)">
-          <rect width="118" height="62" rx="9" fill="url(#home-room-f)" />
-          <g clipPath="url(#home-clip-aud)">
-            <g transform="translate(2,0) scale(.674)">
-              <Bust cloth="#db2777" skin="#f3c095" neck="#dfa87e" hair="#6b3f1d" hairPath={HAIR_LONG} blink="home-blink-b" />
-            </g>
-          </g>
-          <TileName name="Sana" />
-        </g>
-
-        <g transform="translate(260,0)">
-          <rect width="118" height="62" rx="9" fill="url(#home-room-e)" />
-          <g clipPath="url(#home-clip-aud)">
-            <g transform="translate(2,0) scale(.674)">
-              <Bust cloth="#ea580c" skin="#c98f66" neck="#a86b45" hair="#141010" hairPath={HAIR_CROP} talk="home-talk" />
-            </g>
-          </g>
-          <TileName name="Karan" />
-        </g>
-
-        <g transform="translate(390,0)">
-          <rect width="118" height="62" rx="9" fill="url(#home-room-d)" />
-          <g clipPath="url(#home-clip-aud)">
-            <g transform="translate(2,0) scale(.674)">
-              <Bust cloth="#0f766e" skin="#8d5524" neck="#b97a53" hair="#171210" hairPath={HAIR_WAVY} blink="home-blink-b" />
-            </g>
-          </g>
-          <TileName name="Zoya" />
-        </g>
-
-        <g transform="translate(520,0)">
-          <rect width="118" height="62" rx="9" fill="url(#home-room-g)" />
-          <g clipPath="url(#home-clip-aud)">
-            <g transform="translate(2,0) scale(.674)">
-              <Bust cloth="#475569" skin="#f3c095" neck="#dfa87e" hair="#8a6f4e" hairPath={HAIR_SHORT} />
-            </g>
-          </g>
-          <TileName name="Liam" />
-        </g>
-
-        <AvatarTile x={650} y={0} w={118} h={62} initials="NK" name="Nikhil" small />
-
-        <g transform="translate(780,0)">
-          <rect width="118" height="62" rx="9" fill="rgba(255,255,255,.09)" stroke="rgba(255,255,255,.16)" strokeWidth={1.4} />
-          <text x="59" y="29" fill="#fff" fontSize="16" fontWeight={600} textAnchor="middle">
-            +1,272
-          </text>
-          <text x="59" y="45" fill="rgba(255,255,255,.62)" fontSize="9" textAnchor="middle">
-            in the audience
-          </text>
-        </g>
-      </g>
-    </svg>
+      <div className="home-call-audience" aria-hidden>
+        <CallTile person={{ photo: "/images/hero/audience-1.jpg", name: "Zoya" }} />
+        <CallTile person={{ photo: "/images/hero/audience-2.jpg", name: "Dev" }} />
+        <CallTile person={{ initials: "NK", name: "Nikhil" }} />
+        <div className="home-call-tile">
+          <div className="home-call-more">
+            <b>+1,272</b>
+            <span>in the audience</span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
