@@ -22,11 +22,10 @@ export type MediaPermissions = {
   canSpeak: boolean;
   canShareCamera: boolean;
   canShareScreen: boolean;
-  /** The host's "allow to speak": a microphone and a camera, but never a
-   *  screen share. That is what tells this apart from a full stage seat, so
-   *  it is keyed on the screen-share grant rather than on the camera one —
-   *  see stageSources on the API side, which grants both mic and camera
-   *  together. */
+  /** The host's "allow to speak": a microphone, and a screen share if they start
+   *  one, but never a camera. That is what tells this apart from a full stage
+   *  seat, so it is keyed on the camera grant rather than on the screen share
+   *  one — see stageSources on the API side, which grants both together. */
   audioOnly: boolean;
   /** The host took the microphone away. `canSpeak` is false either way, and this
    *  is what separates "you were muted" from "you are in the audience" — a
@@ -91,7 +90,7 @@ function read(room: Room | null): MediaPermissions {
     canSpeak,
     canShareCamera,
     canShareScreen,
-    audioOnly: canSpeak && !canShareScreen,
+    audioOnly: canSpeak && !canShareCamera,
     mutedByHost,
     promoted,
   };

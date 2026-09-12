@@ -88,9 +88,9 @@ type Spec struct {
 	// Hidden keeps this participant out of every other client's roster. Only ever
 	// set for attendees — see HiddenFor.
 	Hidden bool
-	// AudioOnly restricts a stage grant to the microphone and the camera: the
-	// host's "allow to speak", where an attendee gets to talk and be seen without
-	// also getting a screen share they did not ask for. See stageSources.
+	// AudioOnly restricts a stage grant to the microphone and a screen share: the
+	// host's "allow to speak", where an attendee gets to talk and present without
+	// also getting a camera they did not ask for. See stageSources.
 	AudioOnly bool
 	// MutedByHost takes the microphone out of a stage grant. This is what makes a
 	// host mute stick: the participant is still on the stage, but the SFU will not
@@ -126,16 +126,17 @@ func stageSources(spec Spec) (sources []livekit.TrackSource, canPublish bool) {
 	case spec.AudioOnly && spec.MutedByHost:
 		return nil, false
 	case spec.AudioOnly:
-		// "Allow to speak" is a microphone plus a camera — not just a microphone.
-		// A speaker being heard and seen while they talk is the ordinary case,
-		// and it should not need the host to widen them to a full stage seat
-		// (which would also hand them a screen share nobody asked for) just to
-		// turn their camera on. Screen share stays withheld; that is what still
-		// separates this from "Bring on stage" below, where sources is nil and
-		// every source — including screen share — is allowed.
+		// "Allow to speak" is a microphone plus a screen share — not just a
+		// microphone. A speaker walking through a document or a slide while
+		// talking is an ordinary case, and it should not need the host to widen
+		// them to a full stage seat (which would also hand them a camera nobody
+		// asked for) just to click Share. Camera stays withheld; that is what
+		// still separates this from "Bring on stage" below, where sources is
+		// nil and every source — including the camera — is allowed.
 		return []livekit.TrackSource{
 			livekit.TrackSource_MICROPHONE,
-			livekit.TrackSource_CAMERA,
+			livekit.TrackSource_SCREEN_SHARE,
+			livekit.TrackSource_SCREEN_SHARE_AUDIO,
 		}, true
 	case spec.MutedByHost:
 		// Everything except audio. Listed explicitly, because the alternative —
@@ -568,10 +569,24 @@ func (c *Client) SetRole(ctx context.Context, spec Spec) error {
 	return err
 }
 
-// permissionFor is the live-connection counterpart of GrantFor: the same decision,
-// expressed as a ParticipantPermission instead of a token grant. Both read
-// stageSources, so promoting someone mid-session and minting them a fresh token
-// cannot disagree about what they are allowed to publish.
+/* permissionFor is the live-connection counterpart of GrantFor: the same
+ * decision, expressed as a ParticipantPermission instead of a token grant.
+ * Both read stageSources, so promoting someone mid-session and minting them
+ * a fresh token cannot disagree about what they are allowed to publish.
+ *
+ * One thing GrantFor decides that this cannot echo: RoomAdmin. LiveKit's
+ * ParticipantPermission proto has no admin field at all — RoomAdmin lives
+ * only in the JWT a token carries, so it is set once at mint time and stays
+ * fixed for the life of that connection. A co-host granted while already in
+ * the room gets everything below live — publish rights, metadata, the "you
+ * are equal to the host now" the UI reads — but not RoomAdmin itself until
+ * their next reconnect. Nothing in this app currently depends on a
+ * participant's own RoomAdmin grant for moderation — every host and co-host
+ * action goes through our own server API key, not the participant's token —
+ * so this gap has no functional effect today; it is called out here so it
+ * stays a known, deliberate limit rather than a surprise the next time
+ * RoomAdmin is reached for.
+ */
 func permissionFor(spec Spec) *livekit.ParticipantPermission {
 	perm := &livekit.ParticipantPermission{
 		CanSubscribe: true,
@@ -587,6 +602,13 @@ func permissionFor(spec Spec) *livekit.ParticipantPermission {
 		perm.CanPublish = true
 		perm.CanUpdateMetadata = true
 	case types.RolePanelist:
+		if spec.CoHost {
+			// Mirrors GrantFor's CoHost branch exactly — see the comment there for
+			// why this bypasses stageSources rather than narrowing through it.
+			perm.CanPublish = true
+			perm.CanUpdateMetadata = true
+			break
+		}
 		sources, canPublish := stageSources(spec)
 		perm.CanPublish = canPublish
 		perm.CanUpdateMetadata = canPublish
@@ -631,6 +653,16 @@ func (c *Client) SetSpeaking(ctx context.Context, room, identity string, blocked
 	spec, ok := specOf(p)
 	if !ok {
 		return ErrNotSpeaking
+	}
+	// A co-host is the host's equal, and MutedByHost applies to them no more
+	// than it applies to the host — see GrantFor's CoHost branch, which grants
+	// them a full connection regardless of this latch. Refusing here rather
+	// than letting the call through and having permissionFor silently ignore
+	// it: applying a latch that never takes effect would write mutedByHost:true
+	// into their own metadata, which is what would show a co-host as "muted by
+	// you" in the host's roster despite their microphone actually working.
+	if spec.CoHost {
+		return ErrIsHost
 	}
 	spec.Room = room
 	spec.Identity = identity
@@ -686,9 +718,9 @@ func (c *Client) BlockSpeakingAll(ctx context.Context, room string, keep map[str
 }
 
 // AllowAllToSpeak grants every attendee currently in the room the same thing
-// "Allow to speak" grants one at a time — a microphone and a camera, no
-// screen share — in a single pass, for a host who wants the whole room able
-// to jump in rather than promoting people one by one.
+// "Allow to speak" grants one at a time — a microphone and a screen share, no
+// camera — in a single pass, for a host who wants the whole room able to
+// jump in rather than promoting people one by one.
 //
 // Only the audience moves. The host and anyone already a panelist — whether
 // scheduled or already promoted — are left exactly as they are: widening an
@@ -812,6 +844,15 @@ func specOf(p *livekit.ParticipantInfo) (Spec, bool) {
 			// them speak again would quietly turn them into a scheduled panelist and
 			// subject them to the room-wide unmute switch.
 			spec.Promoted = m.Promoted
+			// Carried through for the same reason: this Spec is round-tripped
+			// straight back into metadataFor and permissionFor by every caller
+			// (SetSpeaking, BlockSpeakingAll's mute-everyone). Missing this field
+			// once wrote CoHost:false back into a co-host's own metadata the very
+			// first time anyone muted them — silently revoking their standing on
+			// the live connection while the database, unaffected, still granted
+			// them every REST action a co-host may take. The two disagreeing is
+			// exactly what "co-host isn't working" looks like from the room.
+			spec.CoHost = m.CoHost
 		}
 	}
 	return spec, true

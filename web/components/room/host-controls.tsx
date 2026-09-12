@@ -86,7 +86,7 @@ export function HostControls() {
   }
 
   // Confirmed separately from the rest of `busy`, the same way ending the
-  // webinar is: this hands every attendee a microphone and a camera at
+  // webinar is: this hands every attendee a microphone and a screen share at
   // once, which is the kind of click a host wants a second before committing
   // to, not the quick undo "mute everyone" is.
   async function allowEveryoneToSpeak() {
@@ -207,7 +207,7 @@ export function HostControls() {
                   Allow everyone to speak
                 </span>
                 <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-2">
-                  Gives every attendee a microphone and a camera, no screen share.
+                  Gives every attendee a microphone and a screen share, no camera.
                 </span>
               </span>
             </button>
@@ -431,7 +431,7 @@ export function HostControls() {
         onClose={() => setConfirmAllowAll(false)}
         onConfirm={() => void allowEveryoneToSpeak()}
         title="Allow everyone to speak?"
-        body="Every attendee gets a microphone and a camera, no screen share — the same grant as Allow to speak, given to the whole audience at once. You can take it back for everyone with one click too."
+        body="Every attendee gets a microphone and a screen share, no camera — the same grant as Allow to speak, given to the whole audience at once. You can take it back for everyone with one click too."
         confirmLabel="Allow everyone"
       />
     </>
