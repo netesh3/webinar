@@ -107,7 +107,9 @@ export function HomePage() {
                       <circle cx="9" cy="7" r="4" />
                       <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
                     </svg>
-                    <b>1 host</b> · 3 panelists · 1,278 attending
+                    <span className="home-room-tag-text">
+                      <b>1 host</b> · 3 panelists · 1,278 attending
+                    </span>
                   </span>
                   <div className="home-player-ctrls">
                     <span className="home-player-ctrl">
