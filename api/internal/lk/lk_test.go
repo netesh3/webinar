@@ -145,6 +145,36 @@ func TestMetadataMarksAPromotion(t *testing.T) {
 			t.Error("AudioOnly was dropped")
 		}
 	})
+
+	/* The bug this pins: specOf used to drop CoHost on the way back through, so the
+	 * very first mute-latch call against a co-host (an individual mute, or "mute
+	 * everyone", which goes through the same SetSpeaking path) rebuilt their Spec
+	 * with CoHost false and wrote that straight back into their own metadata —
+	 * silently revoking their standing on the live connection while the database
+	 * still granted them every REST action a co-host may take. Two sources of
+	 * truth disagreeing is exactly what "co-host stopped working" looks like from
+	 * the room. */
+	t.Run("CoHost survives a round trip through specOf", func(t *testing.T) {
+		raw, err := json.Marshal(metadataFor(Spec{
+			Role: types.RolePanelist, Identity: "user_co", CoHost: true,
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		spec, ok := specOf(&livekit.ParticipantInfo{
+			Identity: "user_co",
+			Metadata: string(raw),
+			Permission: &livekit.ParticipantPermission{
+				CanPublish: true, CanSubscribe: true,
+			},
+		})
+		if !ok {
+			t.Fatal("specOf refused a co-host")
+		}
+		if !spec.CoHost {
+			t.Error("CoHost was dropped; a mute-latch call would revoke their standing")
+		}
+	})
 }
 
 // TestGrantForHidden is the second half of the "attendees cannot see each other"
@@ -189,13 +219,13 @@ func TestGrantForHidden(t *testing.T) {
 	}
 }
 
-// "Allow to talk" narrows a stage grant to the microphone plus the camera —
-// not the microphone alone, so a speaker can be seen while they talk without
-// the host having to widen them to a full stage seat (and hand them a screen
-// share nobody asked for) just to turn their camera on. The trap is that
-// LiveKit reads an EMPTY CanPublishSources as "every source", so a grant that
-// forgets to name its sources explicitly hands over screen share as well —
-// which is the one thing that still has to stay withheld here.
+// "Allow to talk" narrows a stage grant to the microphone plus a screen share —
+// not the microphone alone, so a speaker can walk through a document without
+// the host having to widen them to a full stage seat (and hand them a camera
+// nobody asked for) just to click Share. The trap is that LiveKit reads an
+// EMPTY CanPublishSources as "every source", so a grant that forgets to name
+// its sources explicitly hands over the camera as well — which is the one
+// thing that still has to stay withheld here.
 func TestGrantForAudioOnly(t *testing.T) {
 	g, err := GrantFor(Spec{Role: types.RolePanelist, Room: "room", AudioOnly: true})
 	if err != nil {
@@ -205,15 +235,15 @@ func TestGrantForAudioOnly(t *testing.T) {
 		t.Fatal("an audio-only grant still has to allow publishing — CanPublishSources is what narrows it")
 	}
 	if len(g.CanPublishSources) == 0 {
-		t.Fatal("CanPublishSources is empty, which LiveKit reads as ALL SOURCES — screen share included")
+		t.Fatal("CanPublishSources is empty, which LiveKit reads as ALL SOURCES — camera included")
 	}
-	for _, want := range []string{MicrophoneSource, "camera"} {
+	for _, want := range []string{MicrophoneSource, "screen_share", "screen_share_audio"} {
 		if !slices.Contains(g.CanPublishSources, want) {
 			t.Errorf("CanPublishSources = %v, want it to contain %q", g.CanPublishSources, want)
 		}
 	}
-	if slices.Contains(g.CanPublishSources, "screen_share") {
-		t.Error("audio-only grant permits \"screen_share\" — that is what still distinguishes it from a full stage seat")
+	if slices.Contains(g.CanPublishSources, "camera") {
+		t.Error("audio-only grant permits \"camera\" — that is what still distinguishes it from a full stage seat")
 	}
 
 	// A full stage grant must stay unrestricted, not accidentally inherit a
@@ -235,6 +265,60 @@ func TestGrantForAudioOnly(t *testing.T) {
 	if att.CanPublish == nil || *att.CanPublish {
 		t.Error("AudioOnly gave an attendee publish permission")
 	}
+}
+
+/* A co-host is the host's equal, on both the mint-time grant (GrantFor, used
+ * for a fresh token) and the live-connection grant (permissionFor, used for
+ * UpdateParticipant on someone already in the room). The two used to disagree:
+ * GrantFor had a CoHost branch and permissionFor did not, so a co-host granted
+ * mid-session got the metadata flag but not the widened publish grant to go
+ * with it — the exact "co-host looks granted but does not act like one" bug
+ * this pins against regressing.
+ */
+func TestGrantForCoHost(t *testing.T) {
+	t.Run("GrantFor: unrestricted, ignoring MutedByHost", func(t *testing.T) {
+		g, err := GrantFor(Spec{
+			Role: types.RolePanelist, Room: "room", CoHost: true, MutedByHost: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g.CanPublish == nil || !*g.CanPublish {
+			t.Fatal("a co-host grant has to allow publishing")
+		}
+		if len(g.CanPublishSources) != 0 {
+			t.Errorf("a co-host grant restricted sources to %v; co-host is meant to be unrestricted, like the host", g.CanPublishSources)
+		}
+		if !g.RoomAdmin {
+			t.Error("a co-host grant lacks RoomAdmin")
+		}
+	})
+
+	t.Run("permissionFor: the live-connection counterpart agrees", func(t *testing.T) {
+		perm := permissionFor(Spec{
+			Role: types.RolePanelist, Room: "room", Identity: "user_co",
+			CoHost: true, MutedByHost: true,
+		})
+		if !perm.CanPublish {
+			t.Fatal("a co-host's live permission does not allow publishing")
+		}
+		if len(perm.CanPublishSources) != 0 {
+			t.Errorf("a co-host's live permission restricted sources to %v", perm.CanPublishSources)
+		}
+		if !perm.CanUpdateMetadata {
+			t.Error("a co-host cannot update their own metadata live")
+		}
+	})
+
+	t.Run("an ordinary panelist grant stays unaffected", func(t *testing.T) {
+		g, err := GrantFor(Spec{Role: types.RolePanelist, Room: "room"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(g.CanPublishSources) != 0 {
+			t.Errorf("CoHost false leaked into an ordinary panelist's sources: %v", g.CanPublishSources)
+		}
+	})
 }
 
 // A host mute is enforced by taking the microphone out of the grant, and that is
