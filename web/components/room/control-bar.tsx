@@ -441,14 +441,31 @@ export function ControlBar() {
               }
             />
           )}
-          {/* Preview chrome always offers Share (mocked). Live rooms still need
-              getDisplayMedia support — mobile browsers typically do not. */}
-          {(previewChrome || canShare) && permissions.canShareScreen && (
+          {/* Preview chrome always offers Share (mocked). A live room still needs
+              getDisplayMedia support — most mobile browsers do not expose it, and
+              some in-app/WebView browsers (a link opened from another app) do not
+              either even when the OS's own browser would.
+              The button used to simply disappear when `canShare` was false, which
+              read as the permission itself missing — "I was told I could share
+              and there's no button" is indistinguishable from a bug from where
+              the person holding the phone is standing. It stays, dimmed, and a
+              tap explains why via a toast rather than doing nothing — a hover
+              title would have said the same thing but there is no hover on the
+              phones this actually happens on. */}
+          {permissions.canShareScreen && (
             <BarButton
               label={sharing ? "Stop sharing" : "Share screen"}
               active={sharing}
+              dimmed={!previewChrome && !canShare}
               busy={pending === "share" || fileShare.starting}
               onClick={() => {
+                if (!previewChrome && !canShare) {
+                  notify(
+                    "This browser can't share a screen. Try opening the room in Chrome or Safari instead of an in-app browser.",
+                    "info",
+                  );
+                  return;
+                }
                 if (sharing) {
                   void stopSharing();
                   return;

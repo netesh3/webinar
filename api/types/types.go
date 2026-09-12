@@ -948,8 +948,8 @@ type MutePatch struct {
 // StageRequest promotes an attendee onto the stage or sends them back.
 type StageRequest struct {
 	Role Role `json:"role"` // panelist | attendee
-	// AudioOnly is "allow to speak": the attendee gets a microphone and nothing
-	// else — no camera, no screen share.
+	// AudioOnly is "allow to speak": the attendee gets a microphone and a screen
+	// share, but no camera.
 	//
 	// This is the common case by far. A host taking a question wants to hear one
 	// person, not hand them the stage, and a full promotion means an unprepared
