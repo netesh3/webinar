@@ -520,6 +520,37 @@ export const api = {
   setHostCapability: (userId: string, canHost: boolean) =>
     patch<Account>(`/api/admin/users/${seg(userId)}/host`, { canHost }),
 
+  /** Deletes an account outright. Refused by the server for the caller's own
+   *  account, and for one that still hosts webinars — those have to be
+   *  deleted first, as their own explicit action. */
+  adminDeleteUser: (userId: string) =>
+    del<StatusResponse>(`/api/admin/users/${seg(userId)}`),
+
+  /** Every webinar on the instance, across every host — unlike every other
+   *  listing in this file, which is scoped to the signed-in account. `status`
+   *  is "scheduled" | "live" | "ended"; `from`/`to` are plain YYYY-MM-DD dates,
+   *  inclusive on both ends; `q` matches the topic. All optional. */
+  adminWebinars: (filter: {
+    status?: "draft" | "scheduled" | "live" | "ended";
+    from?: string;
+    to?: string;
+    q?: string;
+  } = {}) => {
+    const params = new URLSearchParams();
+    if (filter.status) params.set("status", filter.status);
+    if (filter.from) params.set("from", filter.from);
+    if (filter.to) params.set("to", filter.to);
+    if (filter.q) params.set("q", filter.q);
+    const qs = params.toString();
+    return request<Webinar[]>(`/api/admin/webinars${qs ? `?${qs}` : ""}`, fresh);
+  },
+
+  /** Deletes any webinar on the instance, regardless of who hosts it — the
+   *  same teardown the host's own delete performs (room closed if live, every
+   *  row and file removed), just reachable without owning it. */
+  adminDeleteWebinar: (slug: string) =>
+    del<StatusResponse>(`/api/admin/webinars/${seg(slug)}`),
+
   // ---------------------------------------------------------- host alerts
 
   /** The notification bell. Not scoped to a webinar: an alert's job is to tell a host

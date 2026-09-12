@@ -303,6 +303,10 @@ func (s *Server) Routes() http.Handler {
 
 			r.Get("/users", s.handleAdminUsers)
 			r.Patch("/users/{id}/host", s.handleSetHostCapability)
+			r.Delete("/users/{id}", s.handleAdminDeleteUser)
+
+			r.Get("/webinars", s.handleAdminWebinars)
+			r.Delete("/webinars/{slug}", s.handleAdminDeleteWebinar)
 		})
 
 		r.Route("/host", func(r chi.Router) {

@@ -181,6 +181,57 @@ func (s *Store) ByHost(ctx context.Context, hostID string) ([]types.Webinar, err
 		` WHERE w.host_id = $1 ORDER BY w.starts_at ASC`, hostID)
 }
 
+// AdminWebinarFilter narrows AdminWebinars. Every field is optional and zero
+// means "no restriction" — an admin browsing everything passes an empty
+// filter rather than the caller having to know a sentinel value per field.
+type AdminWebinarFilter struct {
+	// Status restricts to one lifecycle state ("scheduled", "live", "ended"),
+	// or every state when empty. Unlike VisibleTo/ByHost, an admin explicitly
+	// wants to separate "completed" from "upcoming" rather than seeing a
+	// personal timeline, so this is a filter here in a way it isn't there.
+	Status types.WebinarStatus
+	// From/To bound starts_at on either side, inclusive. Zero time on either
+	// end means unbounded in that direction, so a host picking only an end
+	// date gets "everything up to here" rather than an empty result.
+	From, To time.Time
+	// Search matches the topic, case-insensitively — the one thing an admin
+	// scanning hundreds of sessions actually remembers about one of them.
+	Search string
+}
+
+/* AdminWebinars lists every webinar on the instance regardless of host, for
+ * the admin panel — VisibleTo and ByHost both scope to one account by design,
+ * and an admin's whole reason for being here is to see across that boundary.
+ *
+ * Ordered starts_at DESC: an admin reviewing what happened wants the most
+ * recent session first, the opposite of VisibleTo/ByHost's ASC "what's coming
+ * up next" ordering for a host looking at their own schedule.
+ */
+func (s *Store) AdminWebinars(ctx context.Context, f AdminWebinarFilter) ([]types.Webinar, error) {
+	where := " WHERE true"
+	args := []any{}
+	arg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	if f.Status != "" {
+		where += " AND w.status = " + arg(f.Status)
+	}
+	if !f.From.IsZero() {
+		where += " AND w.starts_at >= " + arg(f.From)
+	}
+	if !f.To.IsZero() {
+		where += " AND w.starts_at <= " + arg(f.To)
+	}
+	if q := strings.TrimSpace(f.Search); q != "" {
+		where += " AND w.topic ILIKE " + arg("%"+q+"%")
+	}
+	where += " ORDER BY w.starts_at DESC"
+
+	return s.queryWebinars(ctx, where, args...)
+}
+
 // OnStageFor returns webinars where this account is a panelist rather than the
 // host, so the host portal can show sessions they are expected to appear on.
 func (s *Store) OnStageFor(ctx context.Context, userID string) ([]types.Webinar, error) {
@@ -515,6 +566,10 @@ type Deleted struct {
 	 * and recording files both live here — a recording is by far the larger of the two and was
 	 * being left behind entirely. */
 	BlobKeys []string
+	// FilesLeftBehind is set by the caller (not this function — DeleteWebinar
+	// runs before any blob is actually deleted) to how many of BlobKeys could
+	// not be removed from object storage, for the deletion log line.
+	FilesLeftBehind int
 }
 
 /* DeleteWebinar removes a webinar and everything hanging off it.

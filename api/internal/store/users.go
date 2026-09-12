@@ -168,6 +168,35 @@ func (s *Store) UpdateProfile(ctx context.Context, id string, p types.ProfilePat
 	return u, err
 }
 
+/* DeleteUser removes an account, for the admin panel.
+ *
+ * Refuses with ErrHasWebinars while the account still hosts any webinar —
+ * webinars.host_id is ON DELETE RESTRICT on purpose (see the error's own
+ * comment), so this checks first and returns a message an admin can act on,
+ * rather than letting the query fail and surfacing a raw constraint
+ * violation. Everything else the account owns — registrations, panelist
+ * seats, notifications — cascades at the schema level and needs no help here.
+ */
+func (s *Store) DeleteUser(ctx context.Context, id string) error {
+	var owned int
+	if err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM webinars WHERE host_id = $1`, id).Scan(&owned); err != nil {
+		return err
+	}
+	if owned > 0 {
+		return ErrHasWebinars
+	}
+
+	tag, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // TouchLogin records a successful sign-in. Best-effort by design: failing to
 // write a timestamp must not fail the login itself.
 func (s *Store) TouchLogin(ctx context.Context, id string) {

@@ -2,21 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import type { AdminUser } from "@/lib/api-types";
+import type { AdminUser, Webinar } from "@/lib/api-types";
+import { formatDay } from "@/lib/format";
 import { useSession, useToast } from "./providers";
-import { Alert, Spinner, Toggle } from "./controls";
+import { Alert, ConfirmModal, Spinner, Toggle } from "./controls";
 import { Avatar, Badge, Card, Empty, SectionTitle } from "./ui";
 
-/* The admin panel: who may host.
+/* The admin panel: who may host, every webinar on the instance, and the two
+ * things only an admin can do to either — delete an account, delete a
+ * webinar that isn't theirs.
  *
- * One privilege, so one screen. It exists because hosting used to be self-service — a checkbox
- * on the signup form and a toggle on the profile page — which meant anybody who found the URL
- * could create webinars and start collecting strangers' names, emails and phone numbers.
- *
- * There is no control here for making somebody an admin, and that is the design rather than a
- * missing feature. A privilege that can be granted through the UI can be granted by whoever
- * takes over one admin account, and then the boundary has bought nothing. Admins come from
- * ADMIN_EMAILS on the server, which needs access to the machine to change.
+ * There is still no control here for making somebody an admin, and that is
+ * the design rather than a missing feature. A privilege that can be granted
+ * through the UI can be granted by whoever takes over one admin account, and
+ * then the boundary has bought nothing. Admins come from ADMIN_EMAILS on the
+ * server, which needs access to the machine to change.
  */
 
 export function AdminScreen() {
@@ -26,6 +26,8 @@ export function AdminScreen() {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   /* Not async, and the state writes are inside .then().
    *
@@ -83,6 +85,23 @@ export function AdminScreen() {
       notify(e instanceof Error ? e.message : "That didn't work.", "error");
     } finally {
       setBusy(null);
+    }
+  }
+
+  /* Refused server-side too — for the caller's own account, and for one that
+   * still owns webinars — this only saves the round trip and gives the error
+   * a place to land next to the button that caused it. */
+  async function deleteAccount(u: AdminUser) {
+    setDeleting(true);
+    try {
+      await api.adminDeleteUser(u.id);
+      setUsers((prev) => (prev ?? []).filter((row) => row.id !== u.id));
+      setConfirmDelete(null);
+      notify(`Deleted ${u.name || u.email}.`, "ok");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Could not delete that account.", "error");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -172,12 +191,24 @@ export function AdminScreen() {
                       label="Can host"
                     />
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(u)}
+                    disabled={isSelf}
+                    title={isSelf ? "You can't delete your own account" : "Delete account"}
+                    className="rounded-lg px-2 py-1.5 text-[12px] font-medium text-live transition-colors hover:bg-live-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-live/40"
+                  >
+                    Delete
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
       </Card>
+
+      <AdminWebinars />
 
       <Card className="p-4">
         <SectionTitle>Administrators</SectionTitle>
@@ -194,6 +225,215 @@ export function AdminScreen() {
           restart, so the variable always describes who the admins <em>are</em>.
         </p>
       </Card>
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        busy={deleting}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && void deleteAccount(confirmDelete)}
+        title={`Delete ${confirmDelete?.name || confirmDelete?.email || "this account"}?`}
+        body="This removes the account entirely. Registrations, panelist seats and notifications tied to it go with it. Refused if it still hosts any webinar — delete those first."
+        confirmLabel="Delete account"
+      />
+    </div>
+  );
+}
+
+/* Every webinar on the instance — completed and upcoming, filterable by
+ * status and by date — with the one action an admin has here that a host
+ * does not: deleting a webinar that isn't theirs.
+ *
+ * A separate component, and a separate fetch, from the accounts list above:
+ * the two lists have nothing in common and a host running a hundred webinars
+ * must not make the accounts table (used every time an admin checks a single
+ * person) wait on it.
+ */
+const STATUSES = [
+  { value: "", label: "All" },
+  { value: "scheduled", label: "Upcoming" },
+  { value: "live", label: "Live" },
+  { value: "ended", label: "Completed" },
+  { value: "draft", label: "Draft" },
+] as const;
+
+function statusTone(status: string): "neutral" | "brand" | "ok" | "live" {
+  switch (status) {
+    case "live":
+      return "live";
+    case "scheduled":
+      return "brand";
+    case "ended":
+      return "ok";
+    default:
+      return "neutral";
+  }
+}
+
+function AdminWebinars() {
+  const { notify } = useToast();
+  const [rows, setRows] = useState<Webinar[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<(typeof STATUSES)[number]["value"]>("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [query, setQuery] = useState("");
+  const [confirmSlug, setConfirmSlug] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = useCallback(() => {
+    api
+      .adminWebinars({
+        status: status || undefined,
+        from: from || undefined,
+        to: to || undefined,
+        q: query || undefined,
+      })
+      .then((list) => {
+        setRows(list);
+        setError(null);
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : "Could not load webinars.");
+      });
+  }, [status, from, to, query]);
+
+  useEffect(load, [load]);
+
+  async function remove(slug: string) {
+    setDeleting(true);
+    try {
+      await api.adminDeleteWebinar(slug);
+      setRows((prev) => (prev ?? []).filter((w) => w.id !== slug));
+      setConfirmSlug(null);
+      notify("Webinar deleted.", "ok");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Could not delete that webinar.", "error");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const target = rows?.find((w) => w.id === confirmSlug) ?? null;
+
+  return (
+    <div>
+      <div className="mb-3">
+        <SectionTitle>Webinars</SectionTitle>
+        <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
+          Every webinar on this instance, across every host. Filter by status
+          or by date to find completed sessions or what&apos;s coming up.
+        </p>
+      </div>
+
+      <Card className="p-4">
+        <div className="mb-3 flex flex-wrap items-end gap-3">
+          <div className="flex flex-1 flex-wrap gap-1.5">
+            {STATUSES.map((s) => (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => setStatus(s.value)}
+                aria-pressed={status === s.value}
+                className={`rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                  status === s.value
+                    ? "bg-brand-soft text-brand"
+                    : "text-ink-2 hover:bg-surface-2"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <label className="text-[12px] text-ink-3">
+            From
+            <input
+              type="date"
+              className="field mt-0.5 block"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </label>
+          <label className="text-[12px] text-ink-3">
+            To
+            <input
+              type="date"
+              className="field mt-0.5 block"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </label>
+        </div>
+
+        <input
+          className="field mb-3 w-full max-w-sm"
+          placeholder="Search by topic…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search webinars"
+        />
+
+        {error && <Alert tone="error">{error}</Alert>}
+
+        {rows === null ? (
+          <div className="grid gap-2">
+            <div className="h-14 animate-pulse rounded-lg bg-surface-2" />
+            <div className="h-14 animate-pulse rounded-lg bg-surface-2" />
+          </div>
+        ) : rows.length === 0 ? (
+          <Empty
+            title="No webinars match"
+            hint="Try a wider date range or a different status."
+          />
+        ) : (
+          <div className="grid gap-2">
+            {rows.map((w) => (
+              <div
+                key={w.id}
+                className="flex flex-wrap items-center gap-3 rounded-lg border border-line px-3 py-2.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-[13px] font-medium">
+                      {w.topic}
+                    </span>
+                    <Badge tone={statusTone(w.status)} dot={w.status === "live"}>
+                      {w.status}
+                    </Badge>
+                  </div>
+                  <div className="truncate text-[12px] text-ink-3">
+                    {formatDay(w.startsAt, w.timeZone)} · hosted by{" "}
+                    {w.host.name || "—"}
+                    {w.registrantCount > 0 &&
+                      ` · ${w.registrantCount} registrant${w.registrantCount === 1 ? "" : "s"}`}
+                  </div>
+                </div>
+
+                {deleting && confirmSlug === w.id ? (
+                  <Spinner className="size-4" />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmSlug(w.id)}
+                    className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-live transition-colors hover:bg-live-soft outline-none focus-visible:ring-2 focus-visible:ring-live/40"
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <ConfirmModal
+        open={confirmSlug !== null}
+        busy={deleting}
+        onClose={() => setConfirmSlug(null)}
+        onConfirm={() => confirmSlug && void remove(confirmSlug)}
+        title={`Delete "${target?.topic ?? "this webinar"}"?`}
+        body="This permanently removes the webinar, every registration, chat message, poll, recording and question attached to it. If it's live right now, the room is closed too."
+        confirmLabel="Delete webinar"
+      />
     </div>
   );
 }

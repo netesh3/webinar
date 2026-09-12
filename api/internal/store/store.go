@@ -32,6 +32,12 @@ var (
 	// an unparseable timestamp, a status transition that makes no sense. It
 	// maps to a 422 rather than the 500 an unexpected error would produce.
 	ErrInvalid = errors.New("invalid input")
+	// ErrHasWebinars means an account cannot be deleted because it still
+	// hosts at least one webinar — webinars.host_id is ON DELETE RESTRICT,
+	// deliberately: an admin deleting an account should not be how a whole
+	// webinar's registrations, chat history and recordings quietly vanish.
+	// The webinars have to go first, on purpose, as their own visible action.
+	ErrHasWebinars = errors.New("account owns webinars")
 )
 
 type Store struct {
