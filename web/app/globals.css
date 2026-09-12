@@ -712,7 +712,18 @@ body {
   text-overflow: ellipsis;
 }
 
+/* This icon (JSX has no width/height of its own — every other icon on this
+ * page is sized this same way, by its parent selector) never actually had a
+ * sizing rule targeting it: `.home-room-tag` set layout but not icon size,
+ * and no other selector matched it either. An SVG with neither an explicit
+ * size nor a constraining rule does not shrink to fit a flex row — Chromium's
+ * default intrinsic size for one is 300x150, width-capped here by the row but
+ * still rendering many times too large, which is the giant pale ring and
+ * hooks that got reported as "broken images". flex: none was necessary but
+ * not sufficient; the missing piece was an actual width and height. */
 .home-room-tag svg {
+  width: 0.8rem;
+  height: 0.8rem;
   flex: none;
 }
 
