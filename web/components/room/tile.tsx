@@ -347,6 +347,30 @@ function ZoomableVideo({
   } | null>(null);
   const [dragging, setDragging] = useState(false);
 
+  /* The zoom toolbar is revealed on hover — see the div below — and hover does
+   * not exist on a touchscreen. A phone or tablet tapping the shared screen got
+   * every gesture (wheel-pinch, drag-to-pan) except the one thing that told
+   * them any of this was there, which is what was reported: the buttons had
+   * not moved, they were only ever visible to a mouse.
+   *
+   * So a tap also reveals the toolbar directly, independent of hover, for a
+   * few seconds — long enough to find and press a button, short enough that
+   * it gets out of the way of the slide again on its own rather than needing
+   * a second tap to dismiss. Each further tap resets the timer. */
+  const [touchRevealed, setTouchRevealed] = useState(false);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealForTouch = useCallback(() => {
+    setTouchRevealed(true);
+    if (revealTimer.current) clearTimeout(revealTimer.current);
+    revealTimer.current = setTimeout(() => setTouchRevealed(false), 3000);
+  }, []);
+  useEffect(
+    () => () => {
+      if (revealTimer.current) clearTimeout(revealTimer.current);
+    },
+    [],
+  );
+
   /** Rescales about a point, so the thing under the cursor stays under it.
    *  Zooming about the centre instead makes the gesture feel like the picture is
    *  sliding away from wherever you are trying to look. */
@@ -421,6 +445,9 @@ function ZoomableVideo({
         else setFill((f) => !f);
       }}
       onPointerDown={(e) => {
+        // Mouse already has hover; touch and pen do not, so a tap is what
+        // stands in for it here.
+        if (e.pointerType !== "mouse") revealForTouch();
         if (!zoomed || e.button !== 0) return;
         drag.current = {
           pointer: e.pointerId,
@@ -471,8 +498,14 @@ function ZoomableVideo({
 
       {/* Top-left, clear of the pin button and the layout switcher on the right.
           Revealed on hover or keyboard focus, like the pin — a permanent toolbar
-          over somebody's slides is in the way of the thing you came to read. */}
-      <div className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-lg bg-black/55 p-0.5 opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          over somebody's slides is in the way of the thing you came to read.
+          Also revealed by a tap for the devices hover does not reach — see
+          touchRevealed above. */}
+      <div
+        className={`absolute top-1.5 left-1.5 flex items-center gap-1 rounded-lg bg-black/55 p-0.5 backdrop-blur transition-opacity group-hover:opacity-100 focus-within:opacity-100 ${
+          touchRevealed ? "opacity-100" : "opacity-0"
+        }`}
+      >
         <ZoomButton
           label="Zoom out"
           disabled={view.scale <= MIN_ZOOM}
