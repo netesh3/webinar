@@ -176,7 +176,7 @@ export function MoreGrid({
         </div>
 
         {panelItems && panelItems.length > 0 && (
-          <div className="mb-2 flex flex-wrap justify-center gap-2 border-b border-line pb-2">
+          <div className="mb-2 flex flex-wrap justify-center gap-1 border-b border-line pb-2">
             {panelItems.map((id) => {
               const t = tool(id);
               const Icon = t.icon;
@@ -191,9 +191,9 @@ export function MoreGrid({
                     tools.open(id);
                     onClose();
                   }}
-                  className="relative flex h-[76px] w-[92px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-lg px-1 text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
+                  className="relative flex h-[64px] w-[72px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
                 >
-                  <Icon className="size-[22px]" />
+                  <Icon className="size-[18px]" />
                   <span className="text-[11px] leading-tight font-medium">{t.label}</span>
                   {badge !== undefined && badge > 0 && (
                     <span className="absolute top-1.5 right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
@@ -219,7 +219,7 @@ export function MoreGrid({
            * row is the standard fix for a wrapped grid that doesn't divide
            * evenly, and it holds regardless of how many tools a given role
            * ends up seeing. */
-          <div className="flex flex-wrap justify-center gap-2">
+          <div className="flex flex-wrap justify-center gap-1">
             {items.map((id) => {
               const t = tool(id);
               const Icon = t.icon;
@@ -271,13 +271,13 @@ export function MoreGrid({
                     tools.toggle(id);
                     onClose();
                   })}
-                  className={`relative flex h-[76px] w-[92px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-lg px-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                  className={`relative flex h-[64px] w-[72px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
                     active
                       ? "bg-brand/15 text-brand"
                       : "text-ink-2 hover:bg-surface-2 hover:text-ink"
                   } ${drag.drag?.tool === id ? "opacity-40" : ""}`}
                 >
-                  <Icon className="size-[22px]" />
+                  <Icon className="size-[18px]" />
                   <span className="text-[11px] leading-tight font-medium">
                     {id === "layout" ? `Layout · ${LAYOUT_LABEL[stage.mode]}` : t.label}
                   </span>
