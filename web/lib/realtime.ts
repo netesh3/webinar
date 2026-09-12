@@ -154,6 +154,15 @@ type LowerHandMessage = {
  * make other clients re-read a list they are already entitled to. */
 type PollsChangedMessage = { kind: "polls-changed" };
 
+/* "Someone from the audience just joined."
+ *
+ * Sent only by the SERVER, addressed to the host alone (see announceAttendeeJoined
+ * in join.go) — not broadcast to the room, the way the join itself is not something
+ * the audience needs to hear about one another. A host's own client never receives
+ * this for anyone but the audience: the host and panelists connecting are visible
+ * on screen the moment they do, so there is nothing this would add for them. */
+type AttendeeJoinedMessage = { kind: "joined"; from: Sender };
+
 /* The host clearing the whole queue at once.
  *
  * One packet rather than one per raised hand. A well-attended session can have fifty
@@ -185,7 +194,8 @@ export type RoomMessage =
   | HandsClearedMessage
   | PollsChangedMessage
   | ReactionMessage
-  | UnmuteRequestMessage;
+  | UnmuteRequestMessage
+  | AttendeeJoinedMessage;
 
 /** The reactions a client may send. Anything else is dropped on receipt, so one
  *  patched client cannot push arbitrary strings into everyone's UI. */
@@ -360,6 +370,11 @@ function decode(bytes: Uint8Array): RoomMessage | null {
       // room with prompts that look like they came from the host.
       if (!from || from.role === "attendee") return null;
       return { kind: "unmute-request", from };
+    }
+    case "joined": {
+      const from = sender(msg.from);
+      if (!from) return null;
+      return { kind: "joined", from };
     }
     default:
       return null;
@@ -559,6 +574,9 @@ export function useRealtime(
     onHandRaised?: (from: Sender) => void;
     /** Fires on the local participant's own hand being lowered by the host. */
     onHandLowered?: (reason: "granted" | "dismissed") => void;
+    /** Fires when an attendee joins. Only ever delivered to the host — see
+     *  AttendeeJoinedMessage — so a caller need not check the role itself. */
+    onAttendeeJoined?: (from: Sender) => void;
   },
 ): Realtime {
   const [chat, setChat] = useState<ChatMessage[]>([]);
@@ -690,6 +708,9 @@ export function useRealtime(
           break;
         case "unmute-request":
           notify.current?.onUnmuteRequested?.(msg.from);
+          break;
+        case "joined":
+          notify.current?.onAttendeeJoined?.(msg.from);
           break;
       }
     },

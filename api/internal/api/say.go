@@ -51,6 +51,12 @@ const dataTopic = "webcast"
 // the audience's copy of a poll differs from the host's — see announcePolls.
 const pollsChangedKind types.RoomMessageKind = "polls-changed"
 
+// attendeeJoinedKind tells the host someone from the audience just joined. Not in
+// RoomMessageKind for the same reason as pollsChangedKind: it is the server
+// announcing an event only it can observe (the join endpoint), addressed to the
+// host alone — see announceAttendeeJoined in join.go.
+const attendeeJoinedKind types.RoomMessageKind = "joined"
+
 // Limits mirrored from web/lib/realtime.ts. Enforced here as well because that
 // file runs on the sender's machine.
 const (
