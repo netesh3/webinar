@@ -92,6 +92,15 @@ export function WebinarRoom({
 }) {
   const { ready: prefsReady } = useMediaPreferences();
 
+  // Every path below assumes WebRTC. That's true of every evergreen browser —
+  // Chrome, Firefox, Safari, Edge, and every Chromium-based browser — but not
+  // of a browser old or unusual enough to lack it, which would otherwise fail
+  // deep inside livekit-client with a confusing error instead of a plain one.
+  // Checked after the hook, not before it, so hook order never depends on it.
+  if (typeof window !== "undefined" && !("RTCPeerConnection" in window)) {
+    return <UnsupportedBrowser />;
+  }
+
   // Wait for the stored preferences before creating the Room: it opens devices
   // from them, and joining with the defaults first would grab the wrong camera and
   // then visibly swap.
@@ -115,6 +124,23 @@ export function WebinarRoom({
       joinKey={joinKey}
       onLeave={onLeave}
     />
+  );
+}
+
+function UnsupportedBrowser() {
+  return (
+    <main className="grid min-h-dvh place-items-center px-5">
+      <div className="max-w-sm text-center">
+        <h1 className="mb-2 text-[18px] font-semibold">
+          This browser can&apos;t join video calls
+        </h1>
+        <p className="text-[14px] text-ink-2">
+          Your browser doesn&apos;t support the technology webinars run on.
+          Please open this link in a recent version of Chrome, Safari,
+          Firefox, or Edge.
+        </p>
+      </div>
+    </main>
   );
 }
 
