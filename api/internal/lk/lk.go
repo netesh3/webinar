@@ -69,6 +69,10 @@ type Metadata struct {
 	// host made AFTER that switch, and it would otherwise hand the person a dead
 	// microphone button — which is what "bring on stage" did after a mute-all.
 	Promoted bool `json:"promoted,omitempty"`
+	// CoHost marks a panelist the host made equal to themselves: full moderation
+	// rights over the room, not just the stage. See GrantFor's RolePanelist case
+	// for what that actually grants, and Spec.CoHost for where it comes from.
+	CoHost bool `json:"coHost,omitempty"`
 }
 
 // Spec is everything that shapes one participant's permissions.
@@ -96,6 +100,10 @@ type Spec struct {
 	// Promoted says this stage seat was granted to one person by the host, rather
 	// than being a scheduled panelist's. See Metadata.Promoted.
 	Promoted bool
+	// CoHost makes a panelist the host's equal: RoomAdmin, and an unrestricted
+	// publish grant regardless of MutedByHost. Only meaningful with Role ==
+	// RolePanelist — see GrantFor and metadataFor, which both narrow it there.
+	CoHost bool
 }
 
 // MicrophoneSource is LiveKit's name for the microphone in a grant's source list.
@@ -168,6 +176,22 @@ func GrantFor(spec Spec) (*auth.VideoGrant, error) {
 		base.CanPublishData = ptr(true)
 		base.CanUpdateOwnMetadata = ptr(true)
 	case types.RolePanelist:
+		if spec.CoHost {
+			// Full parity with the host, not an unusually wide panelist grant — a
+			// co-host is the room's other moderator. RoomAdmin lets them mute,
+			// remove and moderate exactly as the host can, and the grant is
+			// unrestricted the same way the host's is. Deliberately NOT routed
+			// through stageSources: MutedByHost does not apply here, the same as
+			// it does not apply to the host — the whole point of making someone
+			// equal to the host is that nobody, including a previous host mute
+			// that predates the promotion, can silence them but themselves.
+			base.RoomAdmin = true
+			base.CanPublish = ptr(true)
+			base.CanSubscribe = ptr(true)
+			base.CanPublishData = ptr(true)
+			base.CanUpdateOwnMetadata = ptr(true)
+			break
+		}
 		sources, canPublish := stageSources(spec)
 		base.CanPublish = ptr(canPublish)
 		base.CanSubscribe = ptr(true)
@@ -243,6 +267,7 @@ func metadataFor(spec Spec) Metadata {
 		MutedByHost: spec.MutedByHost && spec.Role == types.RolePanelist,
 		// Same narrowing: somebody back in the audience is not a promoted anybody.
 		Promoted: spec.Promoted && spec.Role == types.RolePanelist,
+		CoHost:   spec.CoHost && spec.Role == types.RolePanelist,
 	}
 }
 
@@ -409,6 +434,7 @@ func describe(p *livekit.ParticipantInfo) types.LiveParticipant {
 		if err := json.Unmarshal([]byte(p.Metadata), &m); err == nil {
 			lp.MutedByHost = m.MutedByHost
 			lp.AudioOnly = m.AudioOnly
+			lp.CoHost = m.CoHost
 		}
 	}
 	for _, t := range p.Tracks {

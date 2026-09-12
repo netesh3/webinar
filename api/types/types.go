@@ -930,6 +930,9 @@ type LiveParticipant struct {
 	// "allow to speak again" for the second one rather than treating them as
 	// audience.
 	MutedByHost bool `json:"mutedByHost"`
+	// CoHost is a panelist the host made their equal: full moderation rights,
+	// not just a stage seat. See lk.Spec.CoHost.
+	CoHost bool `json:"coHost"`
 }
 
 type LiveRoom struct {
@@ -991,6 +994,13 @@ type RegistrantRow struct {
 
 type PanelistRequest struct {
 	Email string `json:"email"`
+}
+
+// CoHostPatch turns a panelist into a second, equal moderator for this run of
+// the webinar, or turns them back into an ordinary panelist. See
+// lk.Spec.CoHost for exactly what that grants and withholds.
+type CoHostPatch struct {
+	CoHost bool `json:"coHost"`
 }
 
 // TransferHostRequest hands the webinar to another panelist already in the room.

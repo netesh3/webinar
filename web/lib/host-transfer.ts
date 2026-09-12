@@ -56,6 +56,10 @@ export function eligibleHostCandidates(
       canSpeak: true,
       audioOnly: false,
       mutedByHost: false,
+      // A co-host is still eligible to take over as host outright — being the
+      // host's equal is not the same as being the host — but this picker has
+      // no use for the distinction, so it is not threaded through here.
+      coHost: false,
     });
   }
   return out;
