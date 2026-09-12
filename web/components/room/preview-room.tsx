@@ -94,6 +94,9 @@ export function PreviewRoom() {
       join,
       controls: join.controls,
       topic: join.topic,
+      // Preview mode is always the host's own session, which never reaches
+      // the attendee-only "waiting for the host" screen this would feed.
+      coverImageUrl: null,
       startedAt: join.startedAt ?? null,
       endedAt: null,
       status: "live",
