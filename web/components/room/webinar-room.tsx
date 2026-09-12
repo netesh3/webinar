@@ -20,7 +20,12 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { roomOptions, useMediaPreferences } from "@/lib/media";
-import { useMediaPermissions, useLiveRole, type MediaPermissions } from "@/lib/permissions";
+import {
+  useMediaPermissions,
+  useLiveRole,
+  useLiveCoHost,
+  type MediaPermissions,
+} from "@/lib/permissions";
 import {
   decodeBacklog,
   useRealtime,
@@ -379,7 +384,12 @@ function ConnectedRoom({
   }, [entryAudio, entryVideo]);
 
   const liveRole = useLiveRole(room, join.role);
-  const isHost = liveRole === "host";
+  // A co-host is a panelist the host made their equal — everywhere in this
+  // component tree that reads `isHost` to decide what to show or allow, a
+  // co-host should get exactly the same answer the real host does. See
+  // useLiveCoHost and lk.Spec.CoHost on the API side for what that grants.
+  const isCoHost = useLiveCoHost(room);
+  const isHost = liveRole === "host" || isCoHost;
   const me = useMemo<Sender>(
     () => ({
       identity: join.identity,

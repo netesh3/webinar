@@ -364,11 +364,18 @@ func (s *Server) Routes() http.Handler {
 
 					r.Get("/", s.handleHostWebinar)
 					r.Patch("/", s.handleUpdateWebinar)
-					r.Delete("/", s.handleDeleteWebinar)
+
+					// Deleting the webinar and handing it to someone else stay with the
+					// account actually listed as its host — see requireTrueOwner. Every
+					// other host action in this subtree, a co-host may also take.
+					r.Group(func(r chi.Router) {
+						r.Use(s.requireTrueOwner)
+						r.Delete("/", s.handleDeleteWebinar)
+						r.Post("/transfer-host", s.handleTransferHost)
+					})
 
 					r.Post("/start", s.handleStartWebinar)
 					r.Post("/end", s.handleEndWebinar)
-					r.Post("/transfer-host", s.handleTransferHost)
 					r.Patch("/controls", s.handleUpdateControls)
 
 					// The cover image. Client-compressed and cropped before it gets here —
@@ -410,6 +417,7 @@ func (s *Server) Routes() http.Handler {
 
 					r.Post("/panelists", s.handleAddPanelist)
 					r.Delete("/panelists/{userID}", s.handleRemovePanelist)
+					r.Patch("/panelists/{userID}/co-host", s.handleSetCoHost)
 
 					// ---- in-session moderation ----
 					r.Get("/participants", s.handleParticipants)

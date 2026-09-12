@@ -807,15 +807,18 @@ type StageGrant struct {
 	// MutedByHost survives a reconnect on purpose: a reload must not be a way to
 	// undo a host mute.
 	MutedByHost bool
+	// CoHost survives a reconnect for the same reason: a dropped wifi must not
+	// be a way to lose (or, for anyone else, gain) full moderation rights.
+	CoHost bool
 }
 
 func (s *Store) StageGrant(ctx context.Context, slug, identity string) (StageGrant, error) {
 	var g StageGrant
 	err := s.pool.QueryRow(ctx, `
-		SELECT g.audio_only, g.muted_by_host FROM webinar_stage_grants g
+		SELECT g.audio_only, g.muted_by_host, g.co_host FROM webinar_stage_grants g
 		  JOIN webinars w ON w.id = g.webinar_id
 		 WHERE w.slug = $1 AND g.identity = $2`, slug, identity).
-		Scan(&g.AudioOnly, &g.MutedByHost)
+		Scan(&g.AudioOnly, &g.MutedByHost, &g.CoHost)
 	if noRows(err) {
 		return StageGrant{}, nil
 	}
@@ -852,6 +855,36 @@ func (s *Store) SetGrantMuted(ctx context.Context, slug, identity string, muted 
 		SELECT w.id, $2, '', true, true FROM webinars w WHERE w.slug = $1
 		ON CONFLICT (webinar_id, identity) DO UPDATE SET muted_by_host = true`,
 		slug, identity)
+	return err
+}
+
+/* SetCoHost makes one identity the host's equal, or takes that back.
+ *
+ * Same insert-if-missing shape as SetGrantMuted, for the same reason: a
+ * scheduled panelist has no grant row to hang this on until the host actually
+ * uses it. display and audio_only on that insert are placeholders a panelist's
+ * own grant never reads — their permission comes from the panelist list, not
+ * from this table, except for the two flags (muted_by_host, co_host) a host
+ * can lay on top of it.
+ */
+func (s *Store) SetCoHost(ctx context.Context, slug, identity, display string, coHost bool) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE webinar_stage_grants g SET co_host = $3
+		  FROM webinars w
+		 WHERE w.id = g.webinar_id AND w.slug = $1 AND g.identity = $2`,
+		slug, identity, coHost)
+	if err != nil || tag.RowsAffected() > 0 {
+		return err
+	}
+	// Nothing to take co-host status away from, so there is nothing to record.
+	if !coHost {
+		return nil
+	}
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO webinar_stage_grants (webinar_id, identity, display, audio_only, co_host)
+		SELECT w.id, $2, $3, true, true FROM webinars w WHERE w.slug = $1
+		ON CONFLICT (webinar_id, identity) DO UPDATE SET co_host = true`,
+		slug, identity, display)
 	return err
 }
 
