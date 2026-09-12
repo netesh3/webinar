@@ -155,7 +155,7 @@ func (s *Server) joinAsAttendee(
 	// someone the host promoted. A promotion is a microphone and a camera; it is
 	// not an account on the stage roster, which is what the recording endpoints
 	// require, and a button that 401s on every press is worse than no button.
-	s.issueToken(w, r, wb, sfu, lk.Spec{
+	ok := s.issueToken(w, r, wb, sfu, lk.Spec{
 		Role:        role,
 		Room:        room,
 		Identity:    identity,
@@ -166,6 +166,41 @@ func (s *Server) joinAsAttendee(
 		// along with its scope — see Metadata.Promoted.
 		Promoted: grant.Granted,
 	}, false)
+	if ok {
+		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
+	}
+}
+
+/* announceAttendeeJoined tells the host someone from the audience just joined,
+ * so they don't have to watch the participant count to notice.
+ *
+ * Sent to the host alone, by identity — not broadcast to the room — for the same
+ * reason chat destinations are chosen server-side rather than left to a filter on
+ * the receiving end: a well-attended session can have people joining every few
+ * seconds, and turning that into a toast for the whole audience would be a
+ * notification storm for everyone but the one person it is actually for.
+ *
+ * A reconnect (a dropped wifi, a reloaded tab) announces itself again — this endpoint
+ * has no memory of who already joined once, and adding one to suppress a rare double
+ * toast is not worth the state.
+ *
+ * Best-effort, like announcePolls: a missed notification costs nothing beyond the
+ * toast itself, since the host's own roster poll (see useHostRoster) finds the
+ * new attendee within a few seconds regardless.
+ */
+func (s *Server) announceAttendeeJoined(r *http.Request, sfu RoomManager, wb types.Webinar, room, identity, name string) {
+	body, err := json.Marshal(wirePacket{
+		Kind: attendeeJoinedKind,
+		From: wireSender{Identity: identity, Name: name, Role: types.RoleAttendee},
+		At:   time.Now().UnixMilli(),
+	})
+	if err != nil {
+		s.log.Warn("announce attendee joined: marshal", "slug", wb.ID, "error", err)
+		return
+	}
+	if err := sfu.SendData(r.Context(), room, dataTopic, body, []string{hostIdentity(wb.Host.ID)}); err != nil {
+		s.log.Warn("announce attendee joined: send", "slug", wb.ID, "error", err)
+	}
 }
 
 /* barrier is a refusal the audience is allowed to see: a status, a code the client switches
@@ -501,16 +536,20 @@ func (s *Server) roomMetadata(ctx context.Context, wb types.Webinar) (string, er
 // the role cannot express it: a promoted attendee and an invited panelist both
 // arrive here as RolePanelist, and only one of them has an account the recording
 // endpoints will accept. The caller knows which; this function cannot.
+//
+// Reports whether a token was actually issued, so a caller that wants to act
+// on a successful join — announceAttendeeJoined, below — does not fire for a
+// request that ends in an error response.
 func (s *Server) issueToken(
 	w http.ResponseWriter, r *http.Request, wb types.Webinar, sfu RoomManager,
 	spec lk.Spec, canRecord bool,
-) {
+) bool {
 	spec.Hidden = lk.HiddenFor(spec.Role, wb.Controls.HideAttendees)
 
 	tok, err := sfu.Token(spec)
 	if err != nil {
 		s.fail(w, r, "mint token", err)
-		return
+		return false
 	}
 	s.log.Info("token issued",
 		"room", spec.Room, "role", spec.Role, "identity", spec.Identity,
@@ -534,6 +573,7 @@ func (s *Server) issueToken(
 		CanRecord:   canRecord,
 		JoinKey:     joinKeyFromIdentity(spec.Identity),
 	})
+	return true
 }
 
 // Identities are prefixed by kind so a log line or an SFU dashboard reads

@@ -439,6 +439,13 @@ function ConnectedRoom({
             notify("The host dismissed your request to speak for now.", "info");
           }
         },
+        // The server addresses this to the host alone, but the check is kept
+        // here anyway — the same defensive habit as onHandRaised — rather than
+        // trusting that nothing else could ever deliver this packet.
+        onAttendeeJoined: (from: Sender) => {
+          if (!isHost) return;
+          notify(`${from.name} joined.`, "info");
+        },
       }),
       [notify, isHost],
     ),
