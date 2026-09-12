@@ -84,9 +84,9 @@ type Spec struct {
 	// Hidden keeps this participant out of every other client's roster. Only ever
 	// set for attendees — see HiddenFor.
 	Hidden bool
-	// AudioOnly restricts a stage grant to the microphone: the host's "allow to
-	// speak", where an attendee gets to speak without also getting a camera and a
-	// screen share they did not ask for.
+	// AudioOnly restricts a stage grant to the microphone and a screen share: the
+	// host's "allow to speak", where an attendee gets to talk and present without
+	// also getting a camera they did not ask for. See stageSources.
 	AudioOnly bool
 	// MutedByHost takes the microphone out of a stage grant. This is what makes a
 	// host mute stick: the participant is still on the stage, but the SFU will not
@@ -118,7 +118,18 @@ func stageSources(spec Spec) (sources []livekit.TrackSource, canPublish bool) {
 	case spec.AudioOnly && spec.MutedByHost:
 		return nil, false
 	case spec.AudioOnly:
-		return []livekit.TrackSource{livekit.TrackSource_MICROPHONE}, true
+		// "Allow to speak" is a microphone plus a screen share — not just a
+		// microphone. A speaker walking through a document or a slide while
+		// talking is an ordinary case, and it should not need the host to widen
+		// them to a full stage seat (which would also hand them a camera nobody
+		// asked for) just to click Share. Camera stays withheld; that is what
+		// still separates this from "Bring on stage" below, where sources is
+		// nil and every source — including the camera — is allowed.
+		return []livekit.TrackSource{
+			livekit.TrackSource_MICROPHONE,
+			livekit.TrackSource_SCREEN_SHARE,
+			livekit.TrackSource_SCREEN_SHARE_AUDIO,
+		}, true
 	case spec.MutedByHost:
 		// Everything except audio. Listed explicitly, because the alternative —
 		// an empty list — means every source including the microphone.
