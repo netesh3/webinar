@@ -103,7 +103,7 @@ export function measureMicLevel(
  * `enabled` false parks the meter at zero rather than leaving it wherever it stopped — a muted
  * microphone showing a frozen half-full bar is a lie about whether anybody can hear you.
  */
-export function useMicMeter<T extends HTMLElement>(
+export function useMicMeter<T extends HTMLElement | SVGElement>(
   track: MediaStreamTrack | null | undefined,
   enabled: boolean,
 ): React.RefObject<T | null> {

@@ -6,7 +6,7 @@ import {
   useRemoteParticipants,
 } from "@livekit/components-react";
 import { ConnectionState, Track } from "livekit-client";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { barSlots, gridItems, PANEL_TOOL_IDS, type ToolId } from "@/lib/tools";
@@ -16,6 +16,7 @@ import {
   CameraIcon,
   CameraOffIcon,
   LeaveIcon,
+  MIC_CAPSULE_PATH,
   MicIcon,
   MicOffIcon,
   ScreenShareIcon,
@@ -232,7 +233,7 @@ export function ControlBar() {
   const micTrack = localParticipant
     ?.getTrackPublication(Track.Source.Microphone)
     ?.audioTrack?.mediaStreamTrack;
-  const meterRef = useMicMeter<HTMLSpanElement>(micTrack, isMicrophoneEnabled);
+  const meterRef = useMicMeter<SVGRectElement>(micTrack, isMicrophoneEnabled);
 
   // Someone who may not unmute should hear why once, rather than clicking a dead
   // button and concluding the app is broken.
@@ -786,7 +787,7 @@ function BarButton({
   badge?: number;
   /** Attach a live audio meter to this button. The element's `--mic-level` is written every
    *  frame by useMicMeter; only the microphone passes this. */
-  meterRef?: React.RefObject<HTMLSpanElement | null>;
+  meterRef?: React.RefObject<SVGRectElement | null>;
   className?: string;
 }) {
   return (
@@ -803,33 +804,7 @@ function BarButton({
         {busy ? (
           <Spinner className="size-5" />
         ) : meterRef ? (
-          /* The live level, as the mic glyph itself tinting green while speaking —
-           * what Zoom and Teams do — rather than a separate meter bar under the
-           * button, which read as an unrelated second indicator nobody asked for.
-           *
-           * Two copies of the same icon stacked in one grid cell: the ordinary one
-           * underneath, and a green one on top whose opacity is the level. Fading
-           * the top copy in and out is indistinguishable from the glyph itself
-           * changing color, and it is the only way to do that without touching
-           * `color` every frame — `opacity` is compositable, `color` is not, and
-           * repainting an SVG's fill sixty times a second in a tab that is also
-           * decoding video is exactly the cost this whole module exists to avoid.
-           *
-           * The opacity comes from the same `--mic-level` custom property the old
-           * strip read, written straight to this node's inline style every frame
-           * by useMicMeter (mic-level.ts) — nothing here re-renders when it
-           * changes, which is the point: speaking must not re-render the bar. */
-          <span className="relative inline-grid size-5 place-items-center">
-            <span className="[grid-area:1/1]">{icon}</span>
-            <span
-              ref={meterRef}
-              aria-hidden
-              className="[grid-area:1/1] text-ok"
-              style={{ opacity: "var(--mic-level, 0)" }}
-            >
-              {icon}
-            </span>
-          </span>
+          <MicLevelIcon meterRef={meterRef} />
         ) : (
           icon
         )}
@@ -840,6 +815,76 @@ function BarButton({
         </span>
       )}
     </button>
+  );
+}
+
+/**
+ * The mic icon with the live level rising inside it, like a tiny liquid gauge —
+ * green filling the capsule from the bottom up as the level climbs, not the
+ * icon fading to a different color, which read as tinting rather than a meter.
+ *
+ * The capsule outline draws once, in the button's ordinary color. A second copy
+ * of the exact same capsule path is the clip region for a green rect tall enough
+ * to cover it at full level; `scaleY` (anchored to the bottom edge via
+ * `transformOrigin` + `transformBox: "fill-box"`, so it does not care about the
+ * path's actual coordinates) is what rises and falls with speech. Everything
+ * below the stand-and-stem strokes, which stay a plain outline throughout —
+ * only the capsule fills, the way a real level meter is a needle inside a
+ * housing, not the housing itself changing shape.
+ *
+ * `--mic-level` is written straight to the rect's inline style every frame by
+ * useMicMeter (mic-level.ts), same as before this existed; nothing here
+ * re-renders while somebody talks, which is the entire reason that hook does
+ * not use React state.
+ */
+function MicLevelIcon({
+  meterRef,
+}: {
+  meterRef: React.RefObject<SVGRectElement | null>;
+}) {
+  const clipId = useId();
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <defs>
+        <clipPath id={clipId}>
+          <path d={MIC_CAPSULE_PATH} />
+        </clipPath>
+      </defs>
+      <path d={MIC_CAPSULE_PATH} />
+      <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+      <g clipPath={`url(#${clipId})`}>
+        <rect
+          ref={meterRef}
+          /* The capsule's own bounding box, not a padded guess — matched exactly
+           * so `scaleY` from this rect's bottom edge lines up with the capsule's
+           * true bottom (y=12). A padded rect still LOOKS right at empty and full
+           * (both ends are clipped to the same place either way) but makes the
+           * fill rise nonlinearly in between, which is the kind of thing a level
+           * meter cannot afford to get slightly wrong without looking broken. */
+          x="9"
+          y="4"
+          width="6"
+          height="8"
+          fill="currentColor"
+          className="text-ok"
+          style={{
+            transform: "scaleY(var(--mic-level, 0))",
+            transformOrigin: "50% 100%",
+            transformBox: "fill-box",
+          }}
+        />
+      </g>
+    </svg>
   );
 }
 
