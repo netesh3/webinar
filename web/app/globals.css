@@ -674,6 +674,14 @@ body {
   inset: auto 0 0;
   z-index: 3;
   display: flex;
+  /* Never wrap: this bar's height is exactly what home-call-grid's bottom
+   * padding leaves clear (see the comment there). The room-tag text used to
+   * be free to wrap onto a second line at some widths, which grew the bar
+   * taller than that reserved gap and pushed it up over the audience row —
+   * the "gap after Live" that got reported. Truncating the text instead
+   * (below) keeps this bar's height constant no matter how the numbers in
+   * it change length. */
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.6rem;
   padding: 0.85rem 1rem 0.8rem;
@@ -689,8 +697,23 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.42rem;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
   color: rgba(255, 255, 255, 0.85);
   font-size: 0.72rem;
+}
+
+.home-room-tag-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.home-room-tag svg {
+  flex: none;
 }
 
 .home-room-tag b {
@@ -699,6 +722,7 @@ body {
 }
 
 .home-player-ctrls {
+  flex: none;
   margin-left: auto;
   display: flex;
   gap: 0.42rem;
