@@ -11,6 +11,11 @@
 #
 # Optional (not required for compose redeploy):
 #   HCLOUD_TOKEN — Hetzner Cloud API token (future poweron / server ops)
+#   GRAFANA_ADMIN_PASSWORD — Grafana (https://<domain>/grafana/, user "admin")
+#     login. Set this yourself in Settings → Secrets → Actions so you know
+#     the password without ever needing SSH access to the server. If unset,
+#     redeploy.sh generates a random one on the server instead (readable only
+#     via SSH: /opt/livekit/.env.keys).
 #
 # On the server: files live in /opt/livekit. .env.keys and .env are never overwritten.
 
@@ -90,6 +95,12 @@ jobs:
             livekit-hetzner:/opt/livekit/
 
       - name: Regenerate config and restart compose
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
-          ssh -F "${SSH_CONFIG}" livekit-hetzner \
-            'chmod +x /opt/livekit/redeploy.sh /opt/livekit/install.sh && /opt/livekit/redeploy.sh'
+          # Pipe the secret over stdin rather than splicing it into the
+          # remote command string — sidesteps shell-quoting entirely (a
+          # password with '$', quotes, spaces, etc. would otherwise need
+          # escaping that differs by the remote user's default shell).
+          printf '%s' "${GRAFANA_ADMIN_PASSWORD}" | ssh -F "${SSH_CONFIG}" livekit-hetzner \
+            'chmod +x /opt/livekit/redeploy.sh /opt/livekit/install.sh && GRAFANA_ADMIN_PASSWORD="$(cat)" /opt/livekit/redeploy.sh'

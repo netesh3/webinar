@@ -56,9 +56,17 @@ The compose stack runs Prometheus (scraping LiveKit's `/metrics` on
 through Caddy — same allow-list-firewall reasoning as everywhere else in this
 directory, so no new `ufw allow` rules are needed:
 
-- **Dashboard:** `https://<domain>/grafana/` — user `admin`, password in
-  `/opt/livekit/.env.keys` (`GRAFANA_ADMIN_PASSWORD`, generated once by
-  `install.sh`; existing hosts get it added on the next `install.sh` run).
+- **Dashboard:** `https://<domain>/grafana/` — user `admin`.
+- **Password — no SSH needed:** set repo secret `GRAFANA_ADMIN_PASSWORD`
+  (GitHub → repo → Settings → Secrets and variables → Actions → New
+  repository secret) to whatever password you want, then trigger a deploy
+  (push to `deploy/livekit-hetzner/**`, or Actions → **Deploy LiveKit
+  (Hetzner)** → Run workflow). `redeploy.sh` picks it up over SSH and writes
+  it into the server's `.env.keys`, overwriting any previous value — so this
+  also works to rotate the password later. Leave the secret unset and
+  `redeploy.sh` self-heals with a random one instead, but then the only way
+  to read it back is `ssh root@<ip> 'grep GRAFANA_ADMIN_PASSWORD
+  /opt/livekit/.env.keys'`.
 - **Provisioned dashboard:** "LiveKit SFU" — active rooms/participants
   (concurrency), published/subscribed track counts, CPU/memory, session join
   latency (p50/p95), track publish/subscribe outcomes, room duration
