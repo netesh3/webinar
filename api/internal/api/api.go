@@ -39,6 +39,7 @@ type RoomManager interface {
 	SetSpeaking(ctx context.Context, room, identity string, blocked bool) error
 	BlockSpeakingAll(ctx context.Context, room string, keep map[string]bool) (int, error)
 	AllowAllToSpeak(ctx context.Context, room string, hideAttendees bool) ([]string, error)
+	BringAllOnStage(ctx context.Context, room string, hideAttendees bool) ([]string, error)
 	RevokeAllSpeaking(ctx context.Context, room string, hideAttendees bool) ([]string, error)
 	HideAll(ctx context.Context, room string, role types.Role, hidden bool) (int, error)
 	RemoveParticipant(ctx context.Context, room, identity string) error
@@ -433,6 +434,7 @@ func (s *Server) Routes() http.Handler {
 					r.Get("/participants", s.handleParticipants)
 					r.Post("/mute-all", s.handleMuteAll)
 					r.Post("/participants/allow-all", s.handleAllowAllToSpeak)
+					r.Post("/participants/stage-all", s.handleBringAllOnStage)
 					r.Post("/participants/revoke-all", s.handleRevokeAllSpeaking)
 					r.Patch("/participants/{identity}/mute", s.handleMuteOne)
 					r.Post("/participants/{identity}/stage", s.handleSetStage)

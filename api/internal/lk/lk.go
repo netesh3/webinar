@@ -765,10 +765,58 @@ func (c *Client) AllowAllToSpeak(ctx context.Context, room string, hideAttendees
 	return granted, errors.Join(errs...)
 }
 
+// BringAllOnStage is AllowAllToSpeak's wider sibling: every attendee gets a
+// full stage seat — camera, microphone and screen share, the same grant
+// "Bring on stage" gives one at a time — rather than the microphone-and-
+// screen-share-only "Allow to speak" scope. Same shape otherwise: only the
+// audience moves, an existing panelist (scheduled or already promoted) is
+// left exactly as they are, and the count returned is what a host bulk-
+// granting an empty or already-promoted room needs to see that nothing
+// silently failed.
+func (c *Client) BringAllOnStage(ctx context.Context, room string, hideAttendees bool) ([]string, error) {
+	res, err := c.rooms.ListParticipants(ctx, &livekit.ListParticipantsRequest{Room: room})
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var granted []string
+	var errs []error
+	for _, p := range res.Participants {
+		if roleOf(p) != types.RoleAttendee {
+			continue
+		}
+		spec := Spec{
+			Role:     types.RolePanelist,
+			Room:     room,
+			Identity: p.Identity,
+			Name:     p.Name,
+			Hidden:   HiddenFor(types.RolePanelist, hideAttendees),
+			Promoted: true,
+			// AudioOnly deliberately omitted (false): the whole difference from
+			// AllowAllToSpeak is that this is the unrestricted, "Bring on stage"
+			// grant — see stageSources' default case.
+		}
+		if err := c.SetRole(ctx, spec); err != nil {
+			if !errors.Is(err, ErrNotInRoom) {
+				errs = append(errs, fmt.Errorf("%s: %w", p.Identity, err))
+			}
+			continue
+		}
+		granted = append(granted, p.Identity)
+	}
+	return granted, errors.Join(errs...)
+}
+
 // RevokeAllSpeaking sends every attendee the host had promoted — via "Allow
-// to speak" or "Bring on stage", one at a time or through AllowAllToSpeak —
-// back to the audience in one pass, muting them on the way out the same as a
-// single revoke does.
+// to speak" or "Bring on stage", one at a time or through AllowAllToSpeak or
+// BringAllOnStage — back to the audience in one pass, muting them on the way
+// out the same as a single revoke does. This is the one-click "take back
+// permission" that undoes either bulk grant above, or any mix of individual
+// promotions: it does not distinguish how someone came to be promoted, only
+// that they were.
 //
 // A scheduled panelist is not "speaking permission the host granted" — they
 // are on the bill — so unlike AllowAllToSpeak's mirror image, this does not

@@ -939,6 +939,55 @@ func (s *Server) handleAllowAllToSpeak(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, types.StageAllResponse{Count: len(granted)})
 }
 
+/* handleBringAllOnStage is handleSetStage's full "bring on stage" grant —
+ * camera, microphone and screen share — applied to every attendee in the
+ * room at once, for a host who wants everyone visible and speaking rather
+ * than promoting people one at a time. Anyone already a panelist — scheduled
+ * or previously promoted — is left untouched, the same as AllowAllToSpeak;
+ * see BringAllOnStage.
+ *
+ * The one-click way back is handleRevokeAllSpeaking, unchanged: it already
+ * revokes any promotion regardless of how it was granted.
+ */
+func (s *Server) handleBringAllOnStage(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "bring all on stage: load webinar", err)
+		return
+	}
+
+	sfu, err := s.sfuFor(r.Context(), wb)
+	if err != nil {
+		s.failSFU(w, r, wb, err)
+		return
+	}
+
+	granted, err := sfu.BringAllOnStage(r.Context(), lk.RoomName(slug), wb.Controls.HideAttendees)
+	if err != nil {
+		// A partial result is still worth reporting — see handleMuteAll's own
+		// reasoning: some attendees may have left mid-loop, and the ones already
+		// granted stay granted.
+		s.log.Warn("bring all on stage partially applied", "slug", slug, "granted", len(granted), "error", err)
+	}
+
+	// Persisted so each promotion survives a reconnect, same as a single
+	// "bring on stage" does. audioOnly false, unlike handleAllowAllToSpeak's
+	// own persistence call — that is the entire difference between the two
+	// grants, and getting it backwards here would mean a reconnect quietly
+	// narrowed everyone back down to audio-only.
+	for _, identity := range granted {
+		if err := s.store.GrantStage(r.Context(), slug, identity, "", false); err != nil {
+			s.log.Warn("bring all on stage: could not record grant",
+				"slug", slug, "identity", identity, "error", err)
+		}
+	}
+
+	s.log.Info("bring all on stage", "slug", slug, "granted", len(granted))
+	httpx.JSON(w, http.StatusOK, types.StageAllResponse{Count: len(granted)})
+}
+
 // handleRevokeAllSpeaking sends every attendee the host had promoted back to
 // the audience in one pass — the bulk mirror of "Remove speaker permission".
 // Scheduled panelists are not touched; see RevokeAllSpeaking.

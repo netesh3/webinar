@@ -369,6 +369,12 @@ export const api = {
   allowAllToSpeak: (slug: string) =>
     post<StageAllResponse>(`/api/host/webinars/${seg(slug)}/participants/allow-all`),
 
+  /** "Bring on stage" — camera, mic and screen share, the full grant — given
+   *  to every attendee in the room at once. Anyone already a panelist,
+   *  scheduled or previously promoted, is left alone; see the API handler. */
+  bringAllOnStage: (slug: string) =>
+    post<StageAllResponse>(`/api/host/webinars/${seg(slug)}/participants/stage-all`),
+
   /** Sends every attendee the host had promoted back to the audience in one
    *  pass — the bulk mirror of "Remove speaker permission". Scheduled
    *  panelists are not touched. */
