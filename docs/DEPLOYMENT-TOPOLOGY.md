@@ -1,6 +1,6 @@
 # Deployment topology (managed cloud)
 
-This is the **current production-shaped** deployment: managed frontend, API, database, and SFU. It is separate from the single-server Docker stack in [`DEPLOY.md`](../DEPLOY.md) / [`DEPLOY-ANYWHERE.md`](../DEPLOY-ANYWHERE.md) and from the path-mounted Kubernetes sketch in [`k8s/README.md`](../k8s/README.md).
+This is the **current production-shaped** deployment: managed frontend, API, database, and SFU. It is separate from the path-mounted Kubernetes sketch in [`k8s/README.md`](../k8s/README.md). (The single-server Docker stack this document used to also distinguish itself from — `DEPLOY.md` / `DEPLOY-ANYWHERE.md` — was removed; it was only ever used for the earlier AWS setup.)
 
 **Active topology is India-only** (API + images in GCP `asia-south1` / Mumbai; Postgres in Supabase `ap-south-1` / Mumbai).
 
@@ -22,6 +22,7 @@ GCP project: **`selfreminder-rnix`** (display name **Webinar Liv**). Deploy SA: 
 | Cloud Run `webcast-api` in `us-central1` | Removed after India service was healthy (avoid double cost) |
 | Artifact Registry `webcast` in `us-central1` | Left in place; unused — safe to delete later |
 | Supabase `webcast` (`qiakwcylllwwvjymgmtz`) · `us-east-1` | Left in place as deprecated; fresh India DB was bootstrapped (no data dump migrated) |
+| Single-VM `docker-compose.prod.yml` stack (`DEPLOY.md`, `DEPLOY-ANYWHERE.md`, `infra/ec2/`, `infra/portable/`) | Removed. Used only for the earlier AWS setup; production has run the managed topology above since |
 
 ---
 
@@ -155,7 +156,6 @@ Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env
 | Doc | Scope |
 |---|---|
 | [`ARCHITECTURE.md`](../ARCHITECTURE.md) | Product/runtime behaviour (roles, SFU, API) |
-| [`DEPLOY.md`](../DEPLOY.md) / [`DEPLOY-ANYWHERE.md`](../DEPLOY-ANYWHERE.md) | Self-hosted single VM + LiveKit on the box |
 | [`docs/CAPACITY.md`](CAPACITY.md) | Sizing / 500-attendee assumptions |
 | [`deploy/SUPABASE.md`](../deploy/SUPABASE.md) | Managed Postgres for this topology |
 | [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md) | OpenNext / Workers deploy |
