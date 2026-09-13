@@ -1,7 +1,7 @@
 "use client";
 
-import { Track, type Room } from "livekit-client";
-import { canRecord, pickRecordingMime } from "./recorder";
+import type { Room } from "livekit-client";
+import { AudioMixer, canRecord, pickRecordingMime } from "./recorder";
 import type { RecorderCallbacks, RecorderState, RecordingTransport } from "./recorder";
 
 /* Recording the host's screen directly, instead of compositing the whole stage.
@@ -16,11 +16,19 @@ import type { RecorderCallbacks, RecorderState, RecordingTransport } from "./rec
  * thumbnails overlaid — which is the trade a host asking for "no lag" is
  * making on purpose.
  *
+ * Audio, though, still goes through the same AudioMixer SessionRecorder uses
+ * (room.ts's AudioMixer, exported for this) rather than grabbing only the
+ * host's own mic: a screen recording with just the host's voice and silence
+ * where every question and reaction was is a materially broken recording,
+ * and mixing every participant's mic costs nothing extra CPU-wise — it is one
+ * Web Audio graph, unrelated to the canvas repaint loop this class exists to
+ * avoid. mixerTicker below keeps it current as people join, leave, or mute.
+ *
  * A second file, not a mode flag on SessionRecorder: the two have almost
- * nothing in common past the RecordingTransport they both write to, and
- * forcing one class to do both would make the composited path — the one every
- * cloud recording still uses — harder to read for a feature that only ever
- * runs locally.
+ * nothing in common past the RecordingTransport and AudioMixer they share,
+ * and forcing one class to do both would make the composited path — the one
+ * every cloud recording still uses — harder to read for a feature that only
+ * ever runs locally.
  *
  * Two permission prompts, one click. getDisplayMedia (the screen picker) and,
  * for local saving, showSaveFilePicker (see local-recording.ts) both require
@@ -32,11 +40,17 @@ import type { RecorderCallbacks, RecorderState, RecordingTransport } from "./rec
 const CHUNK_MS = 5000;
 const VIDEO_BITS = 2_000_000;
 const AUDIO_BITS = 128_000;
+/** How often the mixer re-scans room participants for new/left/muted mics —
+ *  same idea as SessionRecorder's per-frame mixer.sync(), just far less
+ *  often since there is no canvas draw loop here to piggyback on and audio
+ *  roster changes don't need frame-rate responsiveness. */
+const MIXER_SYNC_MS = 2000;
 
 export class ScreenRecorder {
   private state: RecorderState = "idle";
   private display: MediaStream | null = null;
-  private micTrack: MediaStreamTrack | null;
+  private mixer: AudioMixer | null = null;
+  private mixerTicker: ReturnType<typeof setInterval> | null = null;
   private audioCtx: AudioContext | null = null;
   private recorder: MediaRecorder | null = null;
   private id: string | null = null;
@@ -48,18 +62,10 @@ export class ScreenRecorder {
   private failed = false;
 
   constructor(
-    room: Room,
+    private room: Room,
     private transport: RecordingTransport,
     private callbacks: RecorderCallbacks,
-  ) {
-    // Read once, at construction, not tracked live: the mic can be muted or
-    // swapped mid-recording, and this is a best-effort narration track for a
-    // screen capture, not something that needs to track every change the way
-    // the live call's own audio does.
-    this.micTrack =
-      room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track
-        ?.mediaStreamTrack ?? null;
-  }
+  ) {}
 
   getState(): RecorderState {
     return this.state;
@@ -105,7 +111,7 @@ export class ScreenRecorder {
       this.id = id;
 
       const outStream = new MediaStream([videoTrack]);
-      const audio = this.mixedAudio();
+      const audio = await this.mixedAudio();
       if (audio) outStream.addTrack(audio);
 
       this.recorder = new MediaRecorder(outStream, {
@@ -136,16 +142,23 @@ export class ScreenRecorder {
     }
   }
 
-  /** Mixes the host's own microphone with whatever audio the shared screen
-   *  itself carries (a shared browser tab's sound, if "share audio" was
-   *  ticked). Both, one or neither may exist — a screen with no shared audio
-   *  and a muted host is a silent recording, which is still a valid choice
-   *  rather than an error. */
-  private mixedAudio(): MediaStreamTrack | null {
+  /** Mixes every participant's mic/screen-share audio (via AudioMixer — the
+   *  same source of truth SessionRecorder mixes for cloud recordings) with
+   *  whatever audio the shared screen itself carries (a shared browser tab's
+   *  sound, if "share audio" was ticked). Either source, or neither, may be
+   *  silent — a screen with no shared audio and an empty room is a silent
+   *  recording, which is still a valid state rather than an error. */
+  private async mixedAudio(): Promise<MediaStreamTrack | null> {
+    this.mixer = new AudioMixer(this.room);
+    await this.mixer.resume();
+    this.mixer.sync();
+    this.mixerTicker = setInterval(() => this.mixer?.sync(), MIXER_SYNC_MS);
+
     const sources: MediaStreamTrack[] = [];
     const shared = this.display?.getAudioTracks()[0];
     if (shared) sources.push(shared);
-    if (this.micTrack) sources.push(this.micTrack);
+    const roomTrack = this.mixer.track;
+    if (roomTrack) sources.push(roomTrack);
 
     if (sources.length === 0) return null;
     if (sources.length === 1) return sources[0];
@@ -242,6 +255,14 @@ export class ScreenRecorder {
     this.recorder = null;
     this.display?.getTracks().forEach((t) => t.stop());
     this.display = null;
+    if (this.mixerTicker) {
+      clearInterval(this.mixerTicker);
+      this.mixerTicker = null;
+    }
+    if (this.mixer) {
+      await this.mixer.dispose();
+      this.mixer = null;
+    }
     if (this.audioCtx) {
       await this.audioCtx.close().catch(() => {});
       this.audioCtx = null;
