@@ -26,6 +26,12 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+# If the caller already exported GRAFANA_ADMIN_PASSWORD (CI passes the repo
+# secret of that name — see the workflow), that's the password to use and to
+# persist. Capture it before `source .env.keys` below, since that would
+# otherwise silently overwrite it with whatever's on disk.
+REQUESTED_GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-}"
+
 # shellcheck disable=SC1091
 source .env.keys
 
@@ -33,10 +39,20 @@ source .env.keys
 : "${API_SECRET:?API_SECRET missing in .env.keys}"
 : "${DOMAIN:?DOMAIN missing in .env.keys}"
 
-# Backfill for hosts installed before Grafana was added — redeploy.sh (not
-# install.sh) is what CI actually runs, so this has to self-heal here too,
-# or every existing host's next auto-deploy hard-fails on the line below.
-if [[ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
+if [[ -n "$REQUESTED_GRAFANA_ADMIN_PASSWORD" && "$REQUESTED_GRAFANA_ADMIN_PASSWORD" != "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
+  # A password the caller chose (the GitHub secret) always wins over whatever
+  # is on disk, so the person who set the secret gets the password they
+  # actually typed rather than one they'd need SSH to go read.
+  GRAFANA_ADMIN_PASSWORD="$REQUESTED_GRAFANA_ADMIN_PASSWORD"
+  keys_tmp="$(mktemp)"
+  grep -v '^GRAFANA_ADMIN_PASSWORD=' .env.keys >"$keys_tmp" || :
+  echo "GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD" >>"$keys_tmp"
+  umask 077
+  mv "$keys_tmp" .env.keys
+elif [[ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
+  # No secret set and nothing on disk yet (host installed before Grafana was
+  # added) — self-heal with a random one rather than hard-failing the whole
+  # LiveKit redeploy. See README for how to switch to a chosen password.
   GRAFANA_ADMIN_PASSWORD="$(openssl rand -hex 16)"
   echo "GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD" >>.env.keys
 fi
