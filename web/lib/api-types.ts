@@ -1092,6 +1092,24 @@ export interface AppConfig {
    * operator has not turned this on.
    */
   demoMode?: boolean;
+  /**
+   * TelemetryEnabled mirrors config.Config.TelemetryEnabled: whether POST
+   * /telemetry accepts anything. The frontend's telemetry poller checks this
+   * before attaching a single listener or sampling a single stat, so turning
+   * the flag off also turns off the client-side work, not just the endpoint.
+   */
+  telemetryEnabled?: boolean;
+}
+/**
+ *  TelemetryEvent is one entry in a POST /telemetry batch — the shape is
+ *  * intentionally loose (Payload is a bag of whatever the client measured)
+ *  * because this is a temporary diagnostic path for one test window, not a
+ *  * contract anything else in the app depends on. See handleTelemetry.
+ */
+export interface TelemetryEvent {
+  event: string;
+  timestamp: number /* int64 */; // epoch ms, client clock
+  payload?: { [key: string]: any};
 }
 export interface APIError {
   error: string;

@@ -209,6 +209,14 @@ type Config struct {
 	 * do — so this is its own flag rather than reusing that one.
 	 */
 	DemoMode bool
+
+	/* TelemetryEnabled turns on POST /api/telemetry and the token-issuance
+	 * timing log in issueToken. Off by default: for a specific performance-test
+	 * window, not a standing feature. The frontend's own poller (see
+	 * web/lib/telemetry.ts) is gated on this same flag, round-tripped through
+	 * AppConfig — one switch turns the whole path on or off, front and back.
+	 */
+	TelemetryEnabled bool
 }
 
 // httpFromWS converts the browser-facing ws(s) URL into the http(s) form the
@@ -270,6 +278,7 @@ func Load() (Config, error) {
 	c.SeedDev = envBool("SEED_DEV", true)
 	c.AuthBypass = envBool("AUTH_BYPASS", false)
 	c.DemoMode = envBool("DEMO_MODE", false)
+	c.TelemetryEnabled = envBool("TELEMETRY_ENABLED", false)
 	c.MinPasswordLength = envInt("MIN_PASSWORD_LENGTH", passwordFloorFor(c.Env))
 
 	/* The SFU list, parsed before validate() so a malformed one is a boot error.
@@ -463,8 +472,10 @@ func (c Config) String() string {
 		recordings = fmt.Sprintf("%s(max %dMB)", c.RecordingsBackend, c.MaxRecordingMB)
 	}
 	// authBypass and demoMode are in the boot line because they are the settings
-	// here that remove a security boundary rather than adjusting one.
-	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s seed=%v authBypass=%v demoMode=%v googleAuth=%v cors=%v",
+	// here that remove a security boundary rather than adjusting one. telemetryEnabled
+	// doesn't, but it's worth seeing at boot too — it's easy to flip on for a test
+	// window and forget, and the boot log is the cheapest place to notice that.
+	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s seed=%v authBypass=%v demoMode=%v telemetryEnabled=%v googleAuth=%v cors=%v",
 		c.Env, c.Addr, describeLiveKitProjects(c.LiveKitProjects), c.MaxAttendees, recordings,
-		c.SeedDev, c.AuthBypass, c.DemoMode, c.GoogleAuthEnabled(), c.CORSOrigins)
+		c.SeedDev, c.AuthBypass, c.DemoMode, c.TelemetryEnabled, c.GoogleAuthEnabled(), c.CORSOrigins)
 }
