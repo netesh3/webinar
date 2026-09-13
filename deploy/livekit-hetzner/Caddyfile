@@ -1,7 +1,12 @@
 {$DOMAIN} {
 	encode gzip
 
-	handle_path /grafana/* {
+	# `handle` (not `handle_path`) — Grafana's GF_SERVER_SERVE_FROM_SUB_PATH
+	# expects the /grafana prefix to still be in the request it receives and
+	# does its own subpath routing. handle_path strips that prefix, so
+	# Grafana's internal redirect (via its own root_url) sends the client
+	# back to /grafana/, which gets stripped again — an infinite 301 loop.
+	handle /grafana/* {
 		reverse_proxy 127.0.0.1:3000
 	}
 
