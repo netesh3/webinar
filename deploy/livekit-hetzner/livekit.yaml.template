@@ -21,6 +21,12 @@ logging:
 # rules are an allow-list (deny-by-default) and 7801 is not on it, so this
 # stays unreachable from the internet as long as nobody adds a
 # `ufw allow 7801` rule for it.
+#
+# NOTE: bumping this file forces redeploy.sh's content-diff check to fire a
+# one-time `docker compose restart livekit` — needed because prometheus_port
+# was added to this template in an earlier redeploy that never actually
+# restarted the (bind-mounted-config, restart-only-reads-at-startup) livekit
+# container, so it's been silently not listening on 7801 ever since.
 prometheus_port: 7801
 
 room:

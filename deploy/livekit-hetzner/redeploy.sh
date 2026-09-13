@@ -94,12 +94,26 @@ if [[ -n "${PRESERVE_NODE_IP}" || -n "${PRESERVE_USE_EXTERNAL_IP}" ]]; then
   mv "${tmp}.out" "$tmp"
 fi
 
+livekit_config_changed=0
+if [[ ! -f livekit.yaml ]] || ! cmp -s "$tmp" livekit.yaml; then
+  livekit_config_changed=1
+fi
+
 umask 077
 mv "$tmp" livekit.yaml
 trap - EXIT
 
 docker compose pull
 docker compose up -d
+if [[ "$livekit_config_changed" -eq 1 ]]; then
+  # Same bind-mount issue as Caddy below, but livekit.yaml carries live
+  # WebRTC session state on this container, so — unlike Caddy — only
+  # restart it when the generated config actually changed, not on every
+  # redeploy (e.g. an unrelated Grafana/Prometheus-only change shouldn't
+  # drop anyone's call).
+  echo "livekit.yaml changed — restarting livekit to pick it up"
+  docker compose restart livekit
+fi
 # Caddyfile is bind-mounted, so `up -d` alone does not make Caddy pick up
 # edits to it — the config-hash docker compose diffs against is the compose
 # service definition, not the mounted file's content, and Caddy itself only
