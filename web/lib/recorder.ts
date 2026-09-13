@@ -353,7 +353,7 @@ function paint(
  * microphone loses the question that was asked, which is usually the part worth
  * keeping. Sources are reconciled as people speak and leave.
  */
-class AudioMixer {
+export class AudioMixer {
   private ctx: AudioContext;
   private dest: MediaStreamAudioDestinationNode;
   private nodes = new Map<string, MediaStreamAudioSourceNode>();
