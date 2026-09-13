@@ -89,9 +89,9 @@ jobs:
       # Turn back off by flipping this to "false" and redeploying — no code change needed.
       DEMO_MODE: "true"
       # Temporary, for a performance-test window: POST /telemetry (see
-      # api/internal/api/telemetry.go). Off until you're ready to run the test —
-      # flip to "true" and redeploy, then back to "false" when done.
-      TELEMETRY_ENABLED: "false"
+      # api/internal/api/telemetry.go). Flip back to "false" and redeploy when
+      # the test is done — no code change needed either direction.
+      TELEMETRY_ENABLED: "true"
 
     steps:
       - uses: actions/checkout@v4
