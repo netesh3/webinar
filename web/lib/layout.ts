@@ -57,6 +57,33 @@ export const LAYOUT_HINT: Record<LayoutMode, string> = {
 export const PAGE_SIZES = [16, 25, 49] as const;
 export type PageSize = (typeof PAGE_SIZES)[number];
 
+/* A hard ceiling on top of the chosen PageSize, for a screen too small to
+ * make 16 tiles meaningful regardless of what the viewer picked. 767px
+ * matches useCompact's own boundary in lib/compact.ts — the same width the
+ * rest of the room goes phone-shaped at — and 1023px is Tailwind's `lg`,
+ * used nowhere else in this file but the natural tablet/laptop line.
+ *
+ * Only ever narrows the page size, never widens it: a viewer who picked 16
+ * on a desktop and then narrows the window to tablet width gets 8, not a
+ * surprise jump to more tiles than they asked for.
+ */
+export function useResponsiveGridCap(): number | null {
+  const [cap, setCap] = useState<number | null>(null);
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 767px)");
+    const tablet = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setCap(mobile.matches ? 4 : tablet.matches ? 8 : null);
+    sync();
+    mobile.addEventListener("change", sync);
+    tablet.addEventListener("change", sync);
+    return () => {
+      mobile.removeEventListener("change", sync);
+      tablet.removeEventListener("change", sync);
+    };
+  }, []);
+  return cap;
+}
+
 export type LayoutPreferences = {
   /** Drop participants whose camera is off. In a large webinar most tiles are an
    *  avatar on a dark square, and a viewer looking for faces would rather have
@@ -87,7 +114,12 @@ const DEFAULTS: StageLayoutState = {
   preferences: {
     hideNonVideo: false,
     onlySpeakers: false,
-    pageSize: 25,
+    // 16 (4×4) rather than 25: the common case for a page that fills is a
+    // laptop screen, and 4×4 is what reads as "everyone" there without the
+    // tiles shrinking to the point a face is a dozen pixels wide. Still one
+    // of PAGE_SIZES, so a viewer with a genuinely big monitor and a big
+    // audience can still ask for 25 or 49.
+    pageSize: 16,
     currentPage: 0,
   },
   pinnedParticipantId: null,

@@ -9,11 +9,13 @@ import {
   paginate,
   qualityFor,
   sortTiles,
+  useResponsiveGridCap,
   VideoQuality,
   type LayoutMode,
 } from "@/lib/layout";
 import { isHighlighted } from "@/lib/speaker";
 import { API_BASE } from "@/lib/api";
+import { useCompact } from "@/lib/compact";
 import { ArrowLeftIcon, ChevronDownIcon } from "../icons";
 import { useActiveSpeaker } from "./active-speaker";
 import { useRoomUI } from "./context";
@@ -73,25 +75,43 @@ export function Stage() {
     [tiles, stage.preferences, stage.pinnedParticipantId],
   );
 
-  /* The mode is exactly what the viewer chose. Nothing overrides it.
+  /* The mode is exactly what the viewer chose — with one deliberate exception below.
    *
-   * An earlier version quietly promoted a viewer sitting in the grid to spotlight
-   * when a share started, on the reasoning that slides in a small tile are slides
-   * nobody can read. It had to go, because it could only be driven from the toggle
-   * on the stage: choosing Grid from the footer menu during a share left the label
-   * reading "Layout · Grid" over a stage rendering spotlight. Two controls for one
-   * setting must not be able to disagree, and the auto-switch was the only thing
-   * making that possible.
+   * An earlier version quietly RENDERED a viewer sitting in the grid as spotlight
+   * when a share started, without telling `stage.mode` about it. That had to go,
+   * because the toggle on the stage reads `stage.mode` directly: choosing Grid from
+   * the footer menu during a share left the label reading "Layout · Grid" over a
+   * stage rendering spotlight. Two controls for one setting must not be able to
+   * disagree.
    *
-   * The concern it was addressing is handled where it belongs instead — the sort in
-   * lib/layout.ts puts screen shares first, so a share is the first grid tile, and
-   * the budget below asks for its HIGH layer whatever else is on the page. A viewer
-   * who wants it big has Spotlight one click away in either control. */
+   * This version does not repeat that mistake, because it does not create a second
+   * source of truth — the effect below calls stage.setMode, the same setter the
+   * toggle calls, so the toggle and the stage can never disagree about what is
+   * selected. It also only fires once per share STARTING while the viewer happens
+   * to be in Grid, not a standing override: switching back to Grid mid-share is
+   * respected, and the switch does not repeat itself while the same share continues. */
   const mode: LayoutMode = stage.mode;
+  const { setMode } = stage;
+  const isSharing = !!screenShare;
+
+  const wasSharing = useRef(false);
+  useEffect(() => {
+    if (isSharing && !wasSharing.current && mode === "grid") {
+      setMode("speaker");
+    }
+    wasSharing.current = isSharing;
+  }, [isSharing, mode, setMode]);
 
   // Paged only in the grid. The other two modes are one tile plus a strip, and the
   // strip is bounded by what fits.
-  const pageSize = mode === "grid" ? stage.preferences.pageSize : ordered.length || 1;
+  //
+  // gridCap narrows the viewer's own pageSize preference on a small screen — 4 on a
+  // phone, 8 on a tablet — never widens it. See useResponsiveGridCap.
+  const gridCap = useResponsiveGridCap();
+  const pageSize =
+    mode === "grid"
+      ? Math.min(stage.preferences.pageSize, gridCap ?? stage.preferences.pageSize)
+      : ordered.length || 1;
   const page = paginate(ordered, pageSize, stage.preferences.currentPage);
 
   /* What this browser asks the SFU for: which tracks, at which layer.
@@ -518,6 +538,88 @@ function FloatingCameras({
   );
 }
 
+// Matches the grid's own `gap-2` (0.5rem). Kept as a constant rather than
+// read from the DOM because it never changes and reading it would mean a
+// second measurement pass before the first useful layout.
+const GRID_GAP_PX = 8;
+const TILE_ASPECT = 16 / 9;
+
+/** How many columns, and how wide each tile is, to make `count` fixed-aspect
+ *  tiles as large as possible inside a W×H box — the Zoom/Meet "gallery"
+ *  packing. Tries every column count from 1 to `count` and keeps whichever
+ *  produces the largest tile; there is no closed-form shortcut once both a
+ *  width and a height constraint are in play; count rarely exceeds 49 (see
+ *  PAGE_SIZES), so the brute force is a few dozen iterations, not a
+ *  performance concern next to the video decoders sitting beside it. */
+function bestGridPacking(
+  count: number,
+  width: number,
+  height: number,
+  minCols = 1,
+): { cols: number; tileWidth: number } {
+  if (count <= 0 || width <= 0 || height <= 0) return { cols: 1, tileWidth: 0 };
+
+  /* Pure "which column count makes tiles biggest" picks a single scrolling
+   * column for a narrow, tall box — a phone in portrait — because one wide
+   * 16:9 tile genuinely IS the biggest any single tile gets there, even
+   * though it leaves visible margins on both sides unused. That is correct
+   * by the metric and wrong by the eye: nobody expects a phone's video grid
+   * to be a vertical scroll of one-per-row. minCols is the floor that keeps
+   * the search from reaching that answer — see useResponsiveGridCap's
+   * caller, which sets it to 2 on a phone, 1 (no floor) everywhere else. */
+  const start = Math.max(1, Math.min(minCols, count));
+
+  let bestCols = start;
+  let bestWidth = 0;
+  for (let cols = start; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols);
+    const widthLimited = (width - GRID_GAP_PX * (cols - 1)) / cols;
+    const heightLimited =
+      ((height - GRID_GAP_PX * (rows - 1)) / rows) * TILE_ASPECT;
+    const tileWidth = Math.max(0, Math.min(widthLimited, heightLimited));
+    if (tileWidth > bestWidth) {
+      bestWidth = tileWidth;
+      bestCols = cols;
+    }
+  }
+  return { cols: bestCols, tileWidth: Math.floor(bestWidth) };
+}
+
+/** Measures the grid's own container and returns the packing that fills it.
+ *  A resize observer, deliberately — see the comment on GridLayout for why
+ *  the CSS-only approach this replaces got the wrong picture. */
+function useGridPacking(
+  count: number,
+  minCols: number,
+): {
+  setBox: (el: HTMLDivElement | null) => void;
+  cols: number;
+  tileWidth: number;
+} {
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!box) return;
+    const observer = new ResizeObserver(() => {
+      const rect = box.getBoundingClientRect();
+      setSize({ width: rect.width, height: rect.height });
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [box]);
+
+  const { cols, tileWidth } = useMemo(
+    () => bestGridPacking(count, size.width, size.height, minCols),
+    [count, size.width, size.height, minCols],
+  );
+  // Before the first measurement, or in a box with no area yet (a brand new
+  // tab mid-layout): one column at zero width rather than a NaN/Infinity
+  // that would otherwise reach a CSS custom property. The observer fires
+  // within a frame either way.
+  return { setBox, cols: cols || 1, tileWidth: tileWidth || 0 };
+}
+
 /**
  * The grid, paged.
  *
@@ -530,9 +632,15 @@ function FloatingCameras({
  * both: 49 elements, 49 subscriptions, and everything else switched off (see
  * applyBudget).
  *
- * The column count comes from a CSS minimum tile width rather than from measuring
- * the container in JavaScript: correct on the first paint, survives a window
- * opening beside it, and needs no resize observer.
+ * The column count used to come from a CSS minimum tile width (auto-fit/minmax)
+ * rather than from measuring the container, specifically to avoid a resize
+ * observer. That traded away the wrong thing: minmax picks the NARROWEST width
+ * that satisfies the constraint, so five tiles in a wide container sat in one row
+ * at their minimum size with most of the container's height sitting empty below
+ * them — correct CSS, wrong picture, and the gap only grows with a shorter,
+ * wider window. Zoom's own grid fills both axes: it is really "pick the column
+ * count that makes tiles as large as possible without any one of them taller
+ * than the box," which needs the box's actual pixel size. Hence the observer.
  */
 function GridLayout({
   page,
@@ -546,18 +654,30 @@ function GridLayout({
   onPage: (page: number) => void;
 }) {
   const count = page.items.length;
-  const minWidth =
-    count <= 1 ? "100%" : count <= 4 ? "320px" : count <= 9 ? "240px" : count <= 25 ? "176px" : "132px";
+  // Same 767px boundary useCompact uses everywhere else in the room — see
+  // its own comment in lib/compact.ts. Two columns minimum on a phone, so
+  // four tiles reads as the familiar 2×2 rather than a scroll of four rows;
+  // no floor otherwise, where the packing already fills the space well.
+  const compact = useCompact();
+  const { setBox, cols, tileWidth } = useGridPacking(count, compact ? 2 : 1);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div ref={setBox} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2">
         <div
-          className="grid h-full content-center gap-2"
-          style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minWidth}), 1fr))` }}
+          className="grid gap-2"
+          style={{
+            gridTemplateColumns: `repeat(${cols}, ${tileWidth}px)`,
+            // auto-rows sized from the same tile width keeps every row the same
+            // height as the columns are wide, at the fixed 16:9 tiles use — a grid
+            // with an EXPLICIT column count (unlike auto-fit) does not do this on
+            // its own, and a ragged row height is exactly the "ordinary CSS grid"
+            // look this is meant to replace.
+            gridAutoRows: `${Math.round((tileWidth * 9) / 16)}px`,
+          }}
         >
           {page.items.map((tile) => (
-            <div key={tile.key} className="aspect-video max-h-full">
+            <div key={tile.key} style={{ width: tileWidth }} className="aspect-video">
               <ParticipantTile
                 tile={tile}
                 size={count > 9 ? "sm" : "md"}
