@@ -32,7 +32,14 @@ source .env.keys
 : "${API_KEY:?API_KEY missing in .env.keys}"
 : "${API_SECRET:?API_SECRET missing in .env.keys}"
 : "${DOMAIN:?DOMAIN missing in .env.keys}"
-: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD missing in .env.keys — rerun install.sh to add it}"
+
+# Backfill for hosts installed before Grafana was added — redeploy.sh (not
+# install.sh) is what CI actually runs, so this has to self-heal here too,
+# or every existing host's next auto-deploy hard-fails on the line below.
+if [[ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
+  GRAFANA_ADMIN_PASSWORD="$(openssl rand -hex 16)"
+  echo "GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD" >>.env.keys
+fi
 export GRAFANA_ADMIN_PASSWORD
 
 PRESERVE_NODE_IP=""
@@ -79,3 +86,4 @@ docker compose pull
 docker compose up -d
 
 echo "LiveKit redeployed at wss://${DOMAIN} (keys unchanged in ${TARGET}/.env.keys)"
+echo "Grafana: https://${DOMAIN}/grafana/ (user: admin, password in ${TARGET}/.env.keys)"
