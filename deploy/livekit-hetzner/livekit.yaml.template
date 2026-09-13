@@ -16,11 +16,11 @@ logging:
   level: info
   json: true
 
-# Temporary, for a performance-test window: exposes /metrics on this port.
-# install.sh's ufw rules are an allow-list (deny-by-default) and 7801 is not
-# on it, so this stays unreachable from the internet as long as nobody adds a
-# `ufw allow 7801` rule for it — reach it over the SSH tunnel below instead.
-# Remove this block (and redeploy) once the test is done.
+# Exposes /metrics on this port for the local Prometheus container (same
+# docker-compose stack, scraped over the host network). install.sh's ufw
+# rules are an allow-list (deny-by-default) and 7801 is not on it, so this
+# stays unreachable from the internet as long as nobody adds a
+# `ufw allow 7801` rule for it.
 prometheus_port: 7801
 
 room:

@@ -167,11 +167,58 @@ function round1(v: number | undefined): number | undefined {
   return v === undefined ? undefined : Math.round(v * 10) / 10;
 }
 
+let lastConnectionType: string | null = null;
+
+/** Reports whether the active ICE path is going direct (host/srflx) or
+ *  through the TURN relay (candidateType "relay") — the thing item #2 of
+ *  the scaling checklist asks for. LiveKit's own Prometheus metrics don't
+ *  expose this (verified against pkg/telemetry/prometheus in livekit/livekit
+ *  — room/participant/track/session counters only, nothing ICE-path-level),
+ *  so this reads it the only place it actually exists: the selected
+ *  candidate-pair report on one active sender's own getStats(). Read by
+ *  report id here (not by `.type` like sampleLocalTrack) because multiple
+ *  local-candidate reports exist per connection and only the id the
+ *  nominated pair points at is the right one. Only pushed on change, since
+ *  the path is effectively static per connection and doesn't need a event
+ *  every 10s. */
+async function sampleConnectionType(track: LocalTrack): Promise<void> {
+  const sender = track.sender;
+  if (!sender) return;
+  try {
+    const report = await sender.getStats();
+    let pair: Record<string, unknown> | undefined;
+    report.forEach((r) => {
+      const rec = r as Record<string, unknown>;
+      if (rec.type === "candidate-pair" && (rec.nominated === true || rec.state === "succeeded")) {
+        pair = rec;
+      }
+    });
+    if (!pair) return;
+    const localId = pair.localCandidateId as string | undefined;
+    const local = localId ? (report.get(localId) as Record<string, unknown> | undefined) : undefined;
+    const candidateType = local?.candidateType as string | undefined;
+    if (!candidateType || candidateType === lastConnectionType) return;
+    lastConnectionType = candidateType;
+    push("connection_type", {
+      candidateType,
+      relayProtocol: local?.relayProtocol ?? null,
+    });
+  } catch {
+    // Best-effort — see the file comment on why telemetry never throws.
+  }
+}
+
 async function sampleQuality(room: Room): Promise<void> {
   const local = room.localParticipant;
+  let typeSampled = false;
   for (const pub of local.trackPublications.values()) {
     const track = pub.track;
-    if (track) await sampleLocalTrack(track as LocalTrack);
+    if (!track) continue;
+    await sampleLocalTrack(track as LocalTrack);
+    if (!typeSampled) {
+      typeSampled = true;
+      await sampleConnectionType(track as LocalTrack);
+    }
   }
   for (const participant of room.remoteParticipants.values()) {
     for (const pub of participant.trackPublications.values()) {
@@ -207,6 +254,7 @@ export function useTelemetry(room: Room | null, ctx: Ctx): void {
     joinStartedAt.current = Date.now();
     reportedJoin.current = false;
     attempts.current = 0;
+    lastConnectionType = null;
     // Mounting this hook is the closest observable proxy for "the room
     // screen started trying to join" available from outside the connect
     // effect in webinar-room.tsx — see the file comment on why this stays
