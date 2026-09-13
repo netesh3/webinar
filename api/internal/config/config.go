@@ -194,6 +194,21 @@ type Config struct {
 	// anyone who finds the URL, so it is off unless explicitly set, and the boot log
 	// says so loudly when it is on.
 	AuthBypass bool
+
+	/* DemoMode turns on one specific public door: POST /api/demo/launch, and the
+	 * "Launch a webinar" button on the marketing page that calls it.
+	 *
+	 * Deliberately narrower than AuthBypass. AuthBypass hands every request on the
+	 * server a free host account with no sign-in page anywhere — it is a switch
+	 * for running this whole instance as a local fixture. DemoMode changes nothing
+	 * about how the rest of the site behaves; it opens exactly one endpoint that
+	 * mints a throwaway host account (flagged, so it is never mistaken for a real
+	 * one) for whoever fills in a name and an email, and starts them a two-hour
+	 * webinar with no registration or approval gate. Meant for running publicly on
+	 * a real deployment for a while, which is not something AuthBypass is safe to
+	 * do — so this is its own flag rather than reusing that one.
+	 */
+	DemoMode bool
 }
 
 // httpFromWS converts the browser-facing ws(s) URL into the http(s) form the
@@ -254,6 +269,7 @@ func Load() (Config, error) {
 	c.RecordingsEnabled = envBool("RECORDINGS_ENABLED", true)
 	c.SeedDev = envBool("SEED_DEV", true)
 	c.AuthBypass = envBool("AUTH_BYPASS", false)
+	c.DemoMode = envBool("DEMO_MODE", false)
 	c.MinPasswordLength = envInt("MIN_PASSWORD_LENGTH", passwordFloorFor(c.Env))
 
 	/* The SFU list, parsed before validate() so a malformed one is a boot error.
@@ -446,9 +462,9 @@ func (c Config) String() string {
 	if c.RecordingsEnabled {
 		recordings = fmt.Sprintf("%s(max %dMB)", c.RecordingsBackend, c.MaxRecordingMB)
 	}
-	// authBypass is in the boot line because it is the one setting here that removes
-	// a security boundary rather than adjusting one.
-	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s seed=%v authBypass=%v googleAuth=%v cors=%v",
+	// authBypass and demoMode are in the boot line because they are the settings
+	// here that remove a security boundary rather than adjusting one.
+	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s seed=%v authBypass=%v demoMode=%v googleAuth=%v cors=%v",
 		c.Env, c.Addr, describeLiveKitProjects(c.LiveKitProjects), c.MaxAttendees, recordings,
-		c.SeedDev, c.AuthBypass, c.GoogleAuthEnabled(), c.CORSOrigins)
+		c.SeedDev, c.AuthBypass, c.DemoMode, c.GoogleAuthEnabled(), c.CORSOrigins)
 }

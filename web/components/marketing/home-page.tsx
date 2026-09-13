@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { HomeLegalFooter } from "@/components/marketing/legal-page";
+import { LaunchDemoButton } from "@/components/marketing/launch-demo";
 import { useSession } from "@/components/providers";
 
 /* Public marketing home for Webinar Liv.
@@ -169,6 +170,7 @@ export function HomePage() {
                 </svg>
                 Join a webinar
               </Link>
+              <LaunchDemoButton className="home-btn home-btn-ghost" />
             </div>
             <ul className="home-trust home-reveal home-reveal-delay-3">
               <li>

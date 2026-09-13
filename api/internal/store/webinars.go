@@ -26,6 +26,7 @@ const webinarColumns = `
 	w.chat_destination,
 	w.qa_enabled, w.raise_hand_enabled, w.reactions_enabled,
 	w.polls_enabled, w.locked, w.sfu_project, w.image_key,
+	w.is_demo, w.demo_expires_at,
 	h.id, h.name, h.title, h.org, h.initials, h.hue,
 	(SELECT count(*) FROM registrations r
 	  WHERE r.webinar_id = w.id AND r.state <> 'declined') AS registrant_count`
@@ -34,18 +35,19 @@ const webinarFrom = ` FROM webinars w JOIN users h ON h.id = w.host_id `
 
 func scanWebinar(row scanner) (types.Webinar, string, error) {
 	var (
-		w          types.Webinar
-		startsAt   time.Time
-		startedAt  *time.Time
-		endedAt    *time.Time
-		priceCents *int
-		agenda     []byte
-		takeaways  []byte
-		options    []byte
-		report     []byte
-		hostID     string
-		imageKey   string
-		c          types.SessionControls
+		w             types.Webinar
+		startsAt      time.Time
+		startedAt     *time.Time
+		endedAt       *time.Time
+		priceCents    *int
+		agenda        []byte
+		takeaways     []byte
+		options       []byte
+		report        []byte
+		hostID        string
+		imageKey      string
+		demoExpiresAt *time.Time
+		c             types.SessionControls
 	)
 	err := row.Scan(
 		&w.ID, &w.WebinarID, &w.Topic, &w.Summary, &w.Descript, &w.Track,
@@ -57,6 +59,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.ChatDestination,
 		&c.QAEnabled, &c.RaiseHandEnabled, &c.ReactionsEnabled,
 		&c.PollsEnabled, &c.Locked, &w.SFUProject, &imageKey,
+		&w.IsDemo, &demoExpiresAt,
 		&hostID, &w.Host.Name, &w.Host.Title, &w.Host.Org, &w.Host.Initials, &w.Host.Hue,
 		&w.RegistrantCount,
 	)
@@ -83,6 +86,9 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	}
 	if endedAt != nil {
 		w.EndedAt = endedAt.Format(time.RFC3339)
+	}
+	if demoExpiresAt != nil {
+		w.DemoExpiresAt = demoExpiresAt.Format(time.RFC3339)
 	}
 
 	if priceCents != nil {
@@ -252,11 +258,45 @@ func (s *Store) WebinarBySlug(ctx context.Context, slug string) (types.Webinar, 
 	if err != nil {
 		return types.Webinar{}, err
 	}
+	if w, err = s.expireDemo(ctx, w); err != nil {
+		return types.Webinar{}, err
+	}
 	list, err := s.attachChildren(ctx, []types.Webinar{w})
 	if err != nil {
 		return types.Webinar{}, err
 	}
 	return list[0], nil
+}
+
+/* expireDemo lazily ends a demo webinar once its two-hour window has passed —
+ * no cron, no background job: the app already treats "this webinar has ended"
+ * as an ordinary state everywhere a webinar is read (the join gates, the host
+ * dashboard, the room itself), so reaching that state through the every-day
+ * "load this webinar" path needs no new handling anywhere else.
+ *
+ * Only here on the single-webinar read, not in scanWebinar itself, which also
+ * backs list queries — a host's dashboard listing fifty webinars must not turn
+ * into fifty writes because a couple of old demos are past their window. Those
+ * rows self-correct the next time anyone actually opens one, which callers
+ * that only ever list webinars never need.
+ *
+ * Only demo webinars still marked live are touched; an ended or draft demo, or
+ * one with no expiry set (should not happen, but a nil pointer is not a reason
+ * to fail a webinar load), passes through untouched.
+ */
+func (s *Store) expireDemo(ctx context.Context, w types.Webinar) (types.Webinar, error) {
+	if !w.IsDemo || w.Status != types.StatusLive || w.DemoExpiresAt == "" {
+		return w, nil
+	}
+	expires, err := time.Parse(time.RFC3339, w.DemoExpiresAt)
+	if err != nil || time.Now().Before(expires) {
+		return w, nil
+	}
+	ended, err := s.SetStatus(ctx, w.ID, types.StatusEnded)
+	if err != nil {
+		return types.Webinar{}, fmt.Errorf("expire demo: %w", err)
+	}
+	return ended, nil
 }
 
 // HostIDFor is used by authorization checks — cheaper than loading the webinar.
@@ -498,6 +538,27 @@ func (s *Store) SetStatus(ctx context.Context, slug string, status types.Webinar
 		return types.Webinar{}, ErrNotFound
 	}
 	return s.WebinarBySlug(ctx, slug)
+}
+
+/* SetDemo flags a freshly created webinar as a demo and gives it its two-hour
+ * window, read back by WebinarBySlug's expireDemo. A separate call from
+ * CreateWebinar rather than a param threaded all the way through it: the
+ * ordinary create path (the schedule form, every real webinar) has no notion
+ * of a demo at all, and adding one there for a single caller would mean every
+ * other caller passing false forever.
+ */
+func (s *Store) SetDemo(ctx context.Context, slug string, expiresAt time.Time) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE webinars SET is_demo = true, demo_expires_at = $2, updated_at = now()
+		  WHERE slug = $1`,
+		slug, expiresAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // UpdateControls applies a partial change to the in-session controls and

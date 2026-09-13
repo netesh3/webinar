@@ -191,6 +191,9 @@ func (s *Server) Routes() http.Handler {
 	// Signup is cheaper to abuse than login and creates rows, so it gets its own
 	// tighter bucket rather than sharing the login one.
 	signupLimit := httpx.NewRateLimiter(5, time.Minute)
+	// Same budget as signup: launching a demo mints an account too, just without
+	// a password to slow down a script.
+	demoLimit := httpx.NewRateLimiter(5, time.Minute)
 
 	r.Route("/api", func(r chi.Router) {
 		// ---------------- public ----------------
@@ -285,6 +288,13 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/auth/logout", s.handleLogout)
 		r.With(s.requireUser).Get("/auth/me", s.handleMe)
 		r.With(s.requireUser).Patch("/auth/me", s.handleUpdateProfile)
+
+		// ---------------- demo (off unless DemoMode is set; see handleLaunchDemo) ----------------
+		//
+		// Tighter than signup's own budget: this creates an account AND a webinar
+		// in one unauthenticated call, so it is the cheapest thing on this server
+		// to abuse after guest-join.
+		r.With(demoLimit.Middleware).Post("/demo/launch", s.handleLaunchDemo)
 
 		// ---------------- signed-in account ----------------
 		r.Route("/me", func(r chi.Router) {
@@ -470,5 +480,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		SupabaseAnonKey:       s.cfg.SupabaseAnonKey,
 		GoogleAuth:            s.cfg.GoogleAuthEnabled(),
 		CloudRecordingEnabled: s.recordings != nil,
+		DemoMode:              s.cfg.DemoMode,
 	})
 }
