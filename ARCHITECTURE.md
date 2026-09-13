@@ -9,7 +9,7 @@ original design rationale and two sections still worth reading in full:
 - `DESIGN.md` §4.5b — the latency budget and the six things that were wrong with it.
 
 Capacity numbers and instance sizing live in [`docs/CAPACITY.md`](docs/CAPACITY.md).
-Deployment mechanics are in [`DEPLOY.md`](DEPLOY.md).
+Deployment mechanics are in [`docs/DEPLOYMENT-TOPOLOGY.md`](docs/DEPLOYMENT-TOPOLOGY.md).
 
 ---
 

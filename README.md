@@ -365,24 +365,12 @@ Integration tests need `TEST_DATABASE_URL` and skip without it.
 
 ## Deploying
 
-One server, six containers, automatic TLS — **[DEPLOY.md](DEPLOY.md)** is the
-runbook.
-
-```bash
-cp .env.prod.example .env.prod   # DOMAIN, ACME_EMAIL and three generated secrets
-make deploy                      # build and start the whole stack
-```
-
-Caddy terminates TLS and routes `/api/*` to the API and everything else to Next, so
-the app is a single origin: the session cookie is first-party and there is no CORS
-preflight on the join path. The SFU's signalling sits at `sfu.$DOMAIN`; its media
-ports bypass the proxy entirely, because RTP is UDP and a reverse proxy cannot carry
-it.
-
-```bash
-make build    # static linux/amd64 binary
-make docker   # distroless image, no shell, runs as nonroot
-```
+Current managed topology (Cloudflare Workers + Cloud Run + Supabase + Hetzner
+LiveKit): [`docs/DEPLOYMENT-TOPOLOGY.md`](docs/DEPLOYMENT-TOPOLOGY.md). The
+single-VM `docker-compose.prod.yml` stack this section used to document
+(DEPLOY.md / DEPLOY-ANYWHERE.md, and the `make deploy*` targets) was removed —
+it was only ever used for the earlier AWS setup and production has run the
+managed topology below since.
 
 Copy `.env.example` to `.env` and fill it in. The API **refuses to start** with
 `APP_ENV=production` if `SESSION_SECRET` or `LIVEKIT_API_SECRET` are still the
@@ -402,9 +390,6 @@ Three things that will bite you in production:
   retrying locks out the building. Hence the boot-time floor.
 
 ### Google Cloud Run (API only)
-
-Current managed topology (Cloudflare Workers + Cloud Run + Supabase + Hetzner
-LiveKit): [`docs/DEPLOYMENT-TOPOLOGY.md`](docs/DEPLOYMENT-TOPOLOGY.md).
 
 Scaffolding lives under `deploy/`. Project default: `selfreminder-rnix`, region
 `asia-south1` (Mumbai), Artifact Registry repo `webcast`.

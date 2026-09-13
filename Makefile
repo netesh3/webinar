@@ -150,36 +150,11 @@ build: ## Compile the API for linux/amd64
 docker: ## Build the API container image
 	docker build -t webcast-api:latest ./api
 
-# ---------------------------------------------------------------- deploy
-# The production stack. See DEPLOY.md. COMPOSE is spelled out in each target
-# rather than exported, so copying one line into a terminal still works.
-COMPOSE = docker compose -f docker-compose.prod.yml --env-file .env.prod
-
-.PHONY: deploy
-deploy: ## Build and start the production stack (needs .env.prod)
-	@test -f .env.prod || { echo "no .env.prod — cp .env.prod.example .env.prod and fill it in"; exit 1; }
-	$(COMPOSE) up -d --build
-	@echo "up. logs: make deploy-logs"
-
-.PHONY: deploy-logs
-deploy-logs: ## Follow the production logs
-	$(COMPOSE) logs -f --tail=50
-
-.PHONY: deploy-ps
-deploy-ps: ## What is running in production
-	$(COMPOSE) ps
-
-.PHONY: deploy-down
-deploy-down: ## Stop the production stack (volumes survive)
-	$(COMPOSE) down
-
-.PHONY: deploy-backup
-deploy-backup: ## Dump the database and the recordings to ./backups
-	@mkdir -p backups
-	$(COMPOSE) exec -T postgres pg_dump -U webcast webcast | gzip > backups/db-$$(date +%F-%H%M).sql.gz
-	docker run --rm -v webcast_recordings:/data -v "$(CURDIR)/backups:/out" alpine \
-	  tar czf /out/recordings-$$(date +%F-%H%M).tar.gz -C /data .
-	@ls -lh backups | tail -3
+# The single-VM docker-compose.prod.yml stack (DEPLOY.md / DEPLOY-ANYWHERE.md)
+# and its `make deploy*` targets were removed here: production runs the
+# managed topology instead (Cloudflare Workers + Cloud Run + Supabase +
+# Hetzner LiveKit — see docs/DEPLOYMENT-TOPOLOGY.md, and deploy/cloudrun-deploy.sh
+# / deploy/livekit-hetzner/ below). That stack was only ever used for AWS.
 
 .PHONY: clean
 clean:
