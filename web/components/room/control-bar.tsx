@@ -749,7 +749,15 @@ function BarButtonShell({
   const tone = dimmed
     ? "text-white/35"
     : danger
-      ? "bg-live/15 text-live-soft"
+      ? // Every other "soft" badge in the room uses bg-X-soft text-X — a pale
+        // tint behind a fully saturated icon. This one had it backwards:
+        // bg-live/15 text-live-soft put the FAINT maroon (--color-live-soft,
+        // #3a1917 in the room's dark theme) on the icon itself, over a
+        // near-black bar — the icon all but disappeared, so muted read as
+        // "the button turned faintly red" rather than "that mic has a slash
+        // through it." bg-live-soft text-live matches the convention and
+        // makes the crossed icon the thing that's actually legible.
+        "bg-live-soft text-live"
       : active
         ? "bg-white/20 text-white"
         : "text-white/75 hover:bg-white/10 hover:text-white";
