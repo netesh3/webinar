@@ -7,6 +7,7 @@ import { chatDestination, type ChatDestination } from "@/lib/realtime";
 import { Alert, ConfirmModal, Spinner, Toggle } from "../controls";
 import {
   ArrowDownIcon,
+  ArrowUpIcon,
   ChevronDownIcon,
   EyeOffIcon,
   LockIcon,
@@ -32,6 +33,8 @@ export function HostControls() {
   const [ending, setEnding] = useState(false);
   const [confirmAllowAll, setConfirmAllowAll] = useState(false);
   const [allowingAll, setAllowingAll] = useState(false);
+  const [confirmStageAll, setConfirmStageAll] = useState(false);
+  const [stagingAll, setStagingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -108,8 +111,32 @@ export function HostControls() {
     }
   }
 
+  // Same reasoning as allowEveryoneToSpeak's own confirm, and a step further:
+  // this hands every attendee a camera as well, so it gets its own dialog
+  // rather than folding into that one — a host meaning "everyone can talk"
+  // must not land on "everyone's face is now visible" by mis-click.
+  async function bringEveryoneOnStage() {
+    setStagingAll(true);
+    setError(null);
+    try {
+      const { count } = await api.bringAllOnStage(slug);
+      setConfirmStageAll(false);
+      notify(
+        count === 0
+          ? "Everyone already has the stage, or nobody's in the audience."
+          : `${count} ${count === 1 ? "attendee is" : "attendees are"} now on camera and mic.`,
+        "ok",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not bring everyone on stage.");
+    } finally {
+      setStagingAll(false);
+    }
+  }
+
   // No confirmation: this only takes something away, the same reason "mute
-  // everyone" does not ask first either.
+  // everyone" does not ask first either. Takes back either bulk grant above —
+  // it does not distinguish how someone came to be on stage.
   async function revokeEveryonesSpeaking() {
     setBusy("revokeAll");
     setError(null);
@@ -208,6 +235,25 @@ export function HostControls() {
                 </span>
                 <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-2">
                   Gives every attendee a microphone and a screen share, no camera.
+                </span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setConfirmStageAll(true)}
+              disabled={busy !== null}
+              className="flex w-full items-center gap-3 rounded-lg border border-line-2 px-3.5 py-3 text-left transition-colors hover:bg-surface-2 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-ink-2">
+                <ArrowUpIcon className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium text-ink">
+                  Bring everyone on stage
+                </span>
+                <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-2">
+                  Gives every attendee a camera, a microphone and a screen share.
                 </span>
               </span>
             </button>
@@ -433,6 +479,17 @@ export function HostControls() {
         title="Allow everyone to speak?"
         body="Every attendee gets a microphone and a screen share, no camera — the same grant as Allow to speak, given to the whole audience at once. You can take it back for everyone with one click too."
         confirmLabel="Allow everyone"
+      />
+
+      <ConfirmModal
+        dark
+        open={confirmStageAll}
+        busy={stagingAll}
+        onClose={() => setConfirmStageAll(false)}
+        onConfirm={() => void bringEveryoneOnStage()}
+        title="Bring everyone on stage?"
+        body="Every attendee gets a camera, a microphone and a screen share — the same grant as Bring on stage, given to the whole audience at once. Everyone becomes visible and audible the moment they turn their camera or mic on. You can take it back for everyone with one click too."
+        confirmLabel="Bring everyone on stage"
       />
     </>
   );

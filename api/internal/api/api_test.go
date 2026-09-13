@@ -255,6 +255,29 @@ func (f *fakeRooms) AllowAllToSpeak(_ context.Context, _ string, hideAttendees b
 	return granted, nil
 }
 
+// BringAllOnStage is AllowAllToSpeak's fake counterpart, widened to the full
+// grant — AudioOnly false — the same way the real BringAllOnStage differs
+// from the real AllowAllToSpeak and nothing else.
+func (f *fakeRooms) BringAllOnStage(_ context.Context, _ string, hideAttendees bool) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var granted []string
+	for i, p := range f.roster {
+		if p.Role != types.RoleAttendee {
+			continue
+		}
+		f.roster[i].Role = types.RolePanelist
+		f.roster[i].CanPublish = true
+		f.roster[i].CanSpeak = true
+		f.roster[i].AudioOnly = false
+		f.roster[i].MutedByHost = false
+		f.roster[i].Hidden = false // panelists are never hidden, regardless of hideAttendees
+		f.promoted[p.Identity] = true
+		granted = append(granted, p.Identity)
+	}
+	return granted, nil
+}
+
 // RevokeAllSpeaking only moves identities the fake's own SetRole recorded as
 // promoted — never a scheduled panelist — the same restriction the real
 // RevokeAllSpeaking enforces via specOf.
