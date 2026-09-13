@@ -236,7 +236,15 @@ export function ParticipantTile({
         </span>
       )}
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end gap-1.5 bg-gradient-to-t from-black/45 to-transparent px-2 pt-5 pb-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        className={`pointer-events-none absolute inset-x-0 bottom-0 flex items-end gap-1.5 bg-gradient-to-t from-black/45 to-transparent px-2 pt-5 pb-1.5 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 ${
+          // Hover-to-reveal exists so a name bar does not sit permanently over
+          // somebody's face. There is no face here — just initials on a plain
+          // colour — so nothing is decluttered by hiding it, and a viewer
+          // scanning a strip of camera-off tiles (see SpotlightLayout) would
+          // otherwise have to hover each one, which a touch screen cannot even
+          // do, just to find out who they are looking at.
+          hasVideo ? "opacity-0" : "opacity-100"
+        }`}
         aria-hidden
       >
         {!isScreen && micMuted && (

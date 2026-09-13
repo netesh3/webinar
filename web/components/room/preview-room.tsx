@@ -309,7 +309,11 @@ function PreviewStage() {
             className="flex shrink-0 gap-2 overflow-auto lg:flex-col [scrollbar-width:thin]"
             style={{ ["--spot" as string]: "clamp(180px, 20vw, 300px)" }}
           >
-            {rest.slice(0, 2).map((p) => (
+            {/* Every presenter, scrollable — matches Stage's own SpotlightLayout,
+                which dropped the old two-tile-plus-a-static-count cap for the
+                same reason: a count nobody could click, scroll past, or expand
+                hid people rather than showing them. */}
+            {rest.map((p) => (
               <div
                 key={p.id}
                 className="aspect-video shrink-0 lg:w-[var(--spot)]"
@@ -318,11 +322,6 @@ function PreviewStage() {
                 <MockTile person={p} size="md" />
               </div>
             ))}
-            {rest.length > 2 && (
-              <span className="grid shrink-0 place-items-center rounded-lg bg-white/10 px-3 text-[12px] font-medium text-white/75 lg:w-[var(--spot)] lg:py-2">
-                +{rest.length - 2} more
-              </span>
-            )}
           </div>
         </div>
       ) : (

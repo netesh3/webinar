@@ -339,11 +339,13 @@ function SpotlightLayout({
   pinned: string | null;
   onTogglePin: (key: string) => void;
 }) {
-  // Two beside the content. A third makes each one a thumbnail again, which is
-  // speaker view — and speaker view is one click away.
-  const beside = rest.slice(0, 2);
-  const hidden = rest.length - beside.length;
-
+  // Every presenter beside the content, scrollable rather than capped at two
+  // with a static "+N more" label. The cap used to exist so nobody was
+  // reduced to a thumbnail-behind-a-count they could not do anything with —
+  // but a count that cannot be clicked, scrolled past, or expanded is worse
+  // than a thumbnail: it hides people entirely. Scrolling is the same
+  // affordance the strip already offered for the two it did show, just no
+  // longer cut off before a third person.
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 lg:flex-row">
       <div className="min-h-0 flex-1">
@@ -356,14 +358,14 @@ function SpotlightLayout({
         />
       </div>
 
-      {beside.length > 0 && (
+      {rest.length > 0 && (
         <div
           className="flex shrink-0 gap-2 overflow-auto lg:flex-col [scrollbar-width:thin]"
           // A width on wide screens, a height on narrow ones. Sized in vw/vh so it
           // stays proportionate rather than jumping between fixed steps.
           style={{ ["--spot" as string]: "clamp(180px, 20vw, 300px)" }}
         >
-          {beside.map((tile) => (
+          {rest.map((tile) => (
             <div
               key={tile.key}
               className="aspect-video shrink-0 lg:w-[var(--spot)]"
@@ -377,11 +379,6 @@ function SpotlightLayout({
               />
             </div>
           ))}
-          {hidden > 0 && (
-            <span className="grid shrink-0 place-items-center rounded-lg bg-white/10 px-3 text-[12px] font-medium text-white/75 lg:w-[var(--spot)] lg:py-2">
-              +{hidden} more
-            </span>
-          )}
         </div>
       )}
     </div>
