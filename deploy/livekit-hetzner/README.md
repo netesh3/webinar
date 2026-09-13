@@ -49,21 +49,66 @@ Keys live in `/opt/livekit/.env.keys` (not in git). Point Cloud Run at:
 - `LIVEKIT_URL=wss://IP.sslip.io`
 - `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` from `.env.keys`
 
-## Prometheus metrics (temporary, for a performance-test window)
+## Metrics: Prometheus + Grafana (always on)
 
-`livekit.yaml.template` sets `prometheus_port: 7801` — not reachable from the
-internet (`install.sh`'s ufw is an allow-list and 7801 is not on it), so reach
-it over an SSH tunnel instead of opening a firewall rule for it:
+The compose stack runs Prometheus (scraping LiveKit's `/metrics` on
+`127.0.0.1:7801`) and Grafana, both bound to localhost and reached only
+through Caddy — same allow-list-firewall reasoning as everywhere else in this
+directory, so no new `ufw allow` rules are needed:
 
-```bash
-ssh -i ~/.ssh/hetzner_sancharees -L 7801:localhost:7801 root@88.198.141.104
-```
+- **Dashboard:** `https://<domain>/grafana/` — user `admin`, password in
+  `/opt/livekit/.env.keys` (`GRAFANA_ADMIN_PASSWORD`, generated once by
+  `install.sh`; existing hosts get it added on the next `install.sh` run).
+- **Provisioned dashboard:** "LiveKit SFU" — active rooms/participants
+  (concurrency), published/subscribed track counts, CPU/memory, session join
+  latency (p50/p95), track publish/subscribe outcomes, room duration
+  (p50/p95). Source: `grafana-provisioning/dashboards/json/livekit.json`.
+  Metric names were sourced from `livekit/livekit`'s
+  `pkg/telemetry/prometheus` package plus the standard Prometheus Go client
+  process collector (`process_cpu_seconds_total`,
+  `process_resident_memory_bytes`) — spot-check panel 7's `state` label
+  against the live `/metrics` output after first deploy, since it was sourced
+  from a doc/source lookup rather than a live scrape.
+- **Ad-hoc PromQL / raw scrape:** either through Grafana's Explore tab, or
+  still over an SSH tunnel if you want it outside Grafana:
+  `ssh -L 7801:localhost:7801 root@<ip>` then `curl -s localhost:7801/metrics`.
+- **Retention:** 15 days (`prometheus.yml` + the `--storage.tsdb.retention.time`
+  flag in `docker-compose.yml`).
 
-Then `curl -s localhost:7801/metrics` (or point a local Prometheus at it) on
-the machine you ran the tunnel from. Remove the `prometheus_port` line from
-`livekit.yaml.template` and redeploy once the test is done — it costs nothing
-left in place, but a port only used for one afternoon is one less thing to
-remember is there.
+### TURN relay vs. direct (item #2 — not a LiveKit Prometheus metric)
+
+LiveKit's own Prometheus metrics don't expose per-connection ICE path
+(direct vs. relayed through TURN) — confirmed by reading
+`pkg/telemetry/prometheus`, which only covers room/participant/track/session
+counters. That data only exists client-side, on the browser's own
+`RTCPeerConnection` stats, so it's reported through the existing (flag-gated)
+telemetry pipe instead: `web/lib/telemetry.ts` now samples the nominated
+`candidate-pair`'s local `candidateType` (`host` / `srflx` / `relay`) once per
+quality-poll cycle and pushes a `connection_type` event on change. It lands
+in the same Cloud Logging JSON as the rest of `/telemetry` — filter on
+`jsonPayload.event="connection_type"` and `jsonPayload.metrics.candidateType`
+to see the relay ratio.
+
+### Database and Cloud Run (items #3 / #4 — no new code)
+
+Both already have first-party dashboards; wiring a second, weaker copy of
+either isn't worth it:
+
+- **Supabase/Postgres:** Project → Database → Reports for connection-pool
+  usage, and Database → Query Performance for slow queries. Watch pool
+  exhaustion first — it's the metric most likely to bite before raw CPU does
+  at this scale.
+- **Cloud Run:** the service's Metrics tab in Cloud Console (or `gcloud
+  monitoring` / the Cloud Monitoring dashboard) already covers request count,
+  latency, container CPU/memory, and instance count — all free, no
+  instrumentation needed.
+
+### Concurrency over time (item #5 — comes free with the dashboard above)
+
+Prometheus is already a time-series store, so "peak concurrent participants
+over days/weeks" is just the existing `livekit_participant_total` panel with
+a wider time range / a `max_over_time(...)` query in Grafana — no separate
+tracking needed once the dashboard above is live.
 
 ## Stop paying
 

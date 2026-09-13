@@ -10,13 +10,52 @@ services:
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
 
-  # Caddy proxies to 127.0.0.1:7880. Start LiveKit first so the first WSS
-  # clients after a reboot do not hit connection-refused during TLS obtain.
+  # Scrapes LiveKit's /metrics (127.0.0.1:7801, not internet-reachable — see
+  # livekit.yaml.template). Own port 9090 is likewise not in install.sh's ufw
+  # allow-list, so it's only reachable on the host itself / via Grafana.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    network_mode: host
+    restart: unless-stopped
+    depends_on: [livekit]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.listen-address=127.0.0.1:9090"
+
+  # Dashboards at https://${DOMAIN}/grafana/ (proxied by Caddy). Admin
+  # password is generated once by install.sh into .env.keys, never rotated
+  # on redeploy.
+  grafana:
+    image: grafana/grafana:11.3.1
+    network_mode: host
+    restart: unless-stopped
+    depends_on: [prometheus]
+    environment:
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_HTTP_PORT: "3000"
+      GF_SERVER_ROOT_URL: "https://${DOMAIN}/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+
+  # Caddy proxies to 127.0.0.1:7880 and 127.0.0.1:3000 (Grafana). Start
+  # LiveKit first so the first WSS clients after a reboot do not hit
+  # connection-refused during TLS obtain.
   caddy:
     image: caddy:2-alpine
     network_mode: host
     restart: unless-stopped
-    depends_on: [livekit]
+    depends_on: [livekit, grafana]
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
@@ -28,3 +67,5 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  prometheus_data:
+  grafana_data:

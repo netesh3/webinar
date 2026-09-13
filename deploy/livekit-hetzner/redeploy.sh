@@ -32,6 +32,8 @@ source .env.keys
 : "${API_KEY:?API_KEY missing in .env.keys}"
 : "${API_SECRET:?API_SECRET missing in .env.keys}"
 : "${DOMAIN:?DOMAIN missing in .env.keys}"
+: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD missing in .env.keys — rerun install.sh to add it}"
+export GRAFANA_ADMIN_PASSWORD
 
 PRESERVE_NODE_IP=""
 PRESERVE_USE_EXTERNAL_IP=""
