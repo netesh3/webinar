@@ -25,6 +25,9 @@
 #   SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_JWT_SECRET — Google sign-in via Supabase Auth
 #   GOOGLE_CLIENT_ID — Web OAuth client (selfreminder-rnix); exposed as googleClientId for One Tap
 #   GOOGLE_API_KEY — optional; Drive Picker only
+#   DEMO_MODE — hardcoded below (not a secret): "true" turns on the no-signup
+#     "Launch a webinar" demo door, temporary for testing/demos. Flip to "false"
+#     and redeploy to turn it back off.
 #   CLOUD_SQL_INSTANCE — only if not using Supabase
 #   GCP_PROJECT / GCP_REGION as repo Variables (defaults in deploy/cloudrun-deploy.sh)
 
@@ -79,6 +82,9 @@ jobs:
       CLOUD_SQL_INSTANCE: ${{ secrets.CLOUD_SQL_INSTANCE }}
       RECORDINGS_ENABLED: "false"
       SEED_DEV: "false"
+      # Temporary: the no-signup "Launch a webinar" demo door (see api/internal/api/demo.go).
+      # Turn back off by flipping this to "false" and redeploying — no code change needed.
+      DEMO_MODE: "true"
 
     steps:
       - uses: actions/checkout@v4
