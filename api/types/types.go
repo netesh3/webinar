@@ -1075,6 +1075,22 @@ type AppConfig struct {
 	// marketing page at all — hidden rather than shown-then-erroring when the
 	// operator has not turned this on.
 	DemoMode bool `json:"demoMode,omitempty"`
+	// TelemetryEnabled mirrors config.Config.TelemetryEnabled: whether POST
+	// /telemetry accepts anything. The frontend's telemetry poller checks this
+	// before attaching a single listener or sampling a single stat, so turning
+	// the flag off also turns off the client-side work, not just the endpoint.
+	TelemetryEnabled bool `json:"telemetryEnabled,omitempty"`
+}
+
+/* TelemetryEvent is one entry in a POST /telemetry batch — the shape is
+ * intentionally loose (Payload is a bag of whatever the client measured)
+ * because this is a temporary diagnostic path for one test window, not a
+ * contract anything else in the app depends on. See handleTelemetry.
+ */
+type TelemetryEvent struct {
+	Event     string         `json:"event"`
+	Timestamp int64          `json:"timestamp"` // epoch ms, client clock
+	Payload   map[string]any `json:"payload,omitempty"`
 }
 
 type APIError struct {

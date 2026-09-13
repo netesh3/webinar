@@ -195,6 +195,11 @@ func (s *Server) Routes() http.Handler {
 	// Same budget as signup: launching a demo mints an account too, just without
 	// a password to slow down a script.
 	demoLimit := httpx.NewRateLimiter(5, time.Minute)
+	// Sized like joinLimit, not like demoLimit: this creates no rows and every
+	// participant in a live performance test polls it every ~10s, from what may
+	// be a shared corporate IP the same way a join burst is. A backstop against
+	// a flood, not the reason this endpoint is safe — TelemetryEnabled is.
+	telemetryLimit := httpx.NewRateLimiter(600, time.Minute)
 
 	r.Route("/api", func(r chi.Router) {
 		// ---------------- public ----------------
@@ -296,6 +301,9 @@ func (s *Server) Routes() http.Handler {
 		// in one unauthenticated call, so it is the cheapest thing on this server
 		// to abuse after guest-join.
 		r.With(demoLimit.Middleware).Post("/demo/launch", s.handleLaunchDemo)
+
+		// ---------------- telemetry (off unless TelemetryEnabled; see handleTelemetry) ----------------
+		r.With(telemetryLimit.Middleware).Post("/telemetry", s.handleTelemetry)
 
 		// ---------------- signed-in account ----------------
 		r.Route("/me", func(r chi.Router) {
@@ -483,5 +491,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		GoogleAuth:            s.cfg.GoogleAuthEnabled(),
 		CloudRecordingEnabled: s.recordings != nil,
 		DemoMode:              s.cfg.DemoMode,
+		TelemetryEnabled:      s.cfg.TelemetryEnabled,
 	})
 }

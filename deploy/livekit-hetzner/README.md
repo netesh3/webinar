@@ -49,6 +49,22 @@ Keys live in `/opt/livekit/.env.keys` (not in git). Point Cloud Run at:
 - `LIVEKIT_URL=wss://IP.sslip.io`
 - `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` from `.env.keys`
 
+## Prometheus metrics (temporary, for a performance-test window)
+
+`livekit.yaml.template` sets `prometheus_port: 7801` — not reachable from the
+internet (`install.sh`'s ufw is an allow-list and 7801 is not on it), so reach
+it over an SSH tunnel instead of opening a firewall rule for it:
+
+```bash
+ssh -i ~/.ssh/hetzner_sancharees -L 7801:localhost:7801 root@88.198.141.104
+```
+
+Then `curl -s localhost:7801/metrics` (or point a local Prometheus at it) on
+the machine you ran the tunnel from. Remove the `prometheus_port` line from
+`livekit.yaml.template` and redeploy once the test is done — it costs nothing
+left in place, but a port only used for one afternoon is one less thing to
+remember is there.
+
 ## Stop paying
 
 ```bash

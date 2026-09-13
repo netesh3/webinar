@@ -37,7 +37,7 @@ import { describeQuality, prioritiseAudio, useNetworkHealth } from "@/lib/networ
 import { formatElapsed } from "@/lib/format";
 import { Alert, Spinner } from "../controls";
 import { EyeOffIcon, LockIcon, SignalIcon, SlidersIcon } from "../icons";
-import { useToast } from "../providers";
+import { useAppConfig, useToast } from "../providers";
 import { Badge } from "../ui";
 import { ControlBar } from "./control-bar";
 import { planRecovery, RECOVERY_BACKOFF_MS } from "@/lib/recovery";
@@ -59,6 +59,7 @@ import { useAvailableTools } from "./tools";
 import { useToolLayout, type ToolId } from "@/lib/tools";
 import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
+import { useTelemetry } from "@/lib/telemetry";
 
 /* The webinar room.
  *
@@ -404,6 +405,16 @@ function ConnectedRoom({
     join.controls,
   );
   const { notify } = useToast();
+
+  // Temporary, for one performance-test window — see lib/telemetry.ts. `room`
+  // is passed as null rather than skipping the call when the flag is off, so
+  // this stays a real hook call every render (rules of hooks) while still
+  // attaching zero listeners and sampling nothing when telemetry is disabled.
+  const { telemetryEnabled } = useAppConfig();
+  useTelemetry(telemetryEnabled ? room : null, {
+    userId: join.identity,
+    roomName: slug,
+  });
 
   // The audience's route out. Their tokens carry canPublishData=false, so the SFU
   // refuses a packet they publish themselves and this is how their chat, questions,

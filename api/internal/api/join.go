@@ -551,7 +551,26 @@ func (s *Server) issueToken(
 ) bool {
 	spec.Hidden = lk.HiddenFor(spec.Role, wb.Controls.HideAttendees)
 
+	// Timed and logged only behind TelemetryEnabled: minting a token is on the
+	// hot path of every join, and this is a temporary instrument for one test
+	// window, not a standing per-request log line.
+	started := time.Now()
 	tok, err := sfu.Token(spec)
+	if s.cfg.TelemetryEnabled {
+		event := "token_issuance"
+		if err != nil {
+			event = "token_issuance_error"
+		}
+		logTelemetryEvent(types.TelemetryEvent{
+			Event:     event,
+			Timestamp: started.UnixMilli(),
+			Payload: map[string]any{
+				"durationMs": float64(time.Since(started).Milliseconds()),
+				"roomName":   spec.Room,
+				"role":       string(spec.Role),
+			},
+		})
+	}
 	if err != nil {
 		s.fail(w, r, "mint token", err)
 		return false
