@@ -100,6 +100,13 @@ trap - EXIT
 
 docker compose pull
 docker compose up -d
+# Caddyfile is bind-mounted, so `up -d` alone does not make Caddy pick up
+# edits to it — the config-hash docker compose diffs against is the compose
+# service definition, not the mounted file's content, and Caddy itself only
+# reads Caddyfile at process start (no live-reload without an explicit
+# `caddy reload`). Restart it unconditionally on every redeploy instead of
+# depending on that heuristic to happen to also recreate the container.
+docker compose restart caddy
 
 echo "LiveKit redeployed at wss://${DOMAIN} (keys unchanged in ${TARGET}/.env.keys)"
 echo "Grafana: https://${DOMAIN}/grafana/ (user: admin, password in ${TARGET}/.env.keys)"
