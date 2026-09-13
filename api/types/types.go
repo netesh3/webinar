@@ -493,12 +493,12 @@ type WebinarReport struct {
 }
 
 type Webinar struct {
-	ID        string        `json:"id"` // slug, used in URLs
-	WebinarID string        `json:"webinarId"`
-	Topic     string        `json:"topic"`
-	Summary   string        `json:"summary"`
-	Descript  string        `json:"description"`
-	Track     string        `json:"track"`
+	ID        string `json:"id"` // slug, used in URLs
+	WebinarID string `json:"webinarId"`
+	Topic     string `json:"topic"`
+	Summary   string `json:"summary"`
+	Descript  string `json:"description"`
+	Track     string `json:"track"`
 	/* ImageURL is a path back to this API, never a bucket URL — same reasoning as
 	 * MediaKey on a chat image, so the backend can move where the bytes live without
 	 * breaking a link already on a registration page. Carries a `?v=` that changes
@@ -569,6 +569,15 @@ type Webinar struct {
 	SFUProject string `json:"sfuProject,omitempty"`
 
 	Report *WebinarReport `json:"report,omitempty"`
+
+	/* IsDemo and DemoExpiresAt mark a webinar started through "Launch a webinar"
+	 * rather than the ordinary schedule form. Read-only from the API's point of
+	 * view — there is no field on WebinarInput to set these, the same way
+	 * GuestJoinAllowed above has none; both are decided by the server, not
+	 * requested by a caller. DemoExpiresAt is what WebinarBySlug checks to
+	 * lazily end a demo session once its window has passed — see there. */
+	IsDemo        bool   `json:"isDemo,omitempty"`
+	DemoExpiresAt string `json:"demoExpiresAt,omitempty"` // RFC3339
 }
 
 // WebinarInput creates or replaces a webinar. PATCH has replace semantics
@@ -639,6 +648,13 @@ type SignupRequest struct {
 	 * anything. See handleSignup, which records when somebody asked.
 	 */
 	WantsHost bool `json:"wantsHost"`
+}
+
+// DemoLaunchRequest is POST /demo/launch: a name and an email, and nothing
+// else — no password, no webinar details. See handleLaunchDemo.
+type DemoLaunchRequest struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 // HostGrant is an admin's decision about one account's hosting capability.
@@ -1054,6 +1070,11 @@ type AppConfig struct {
 	 * the server's storage, so it is unaffected by it either way.
 	 */
 	CloudRecordingEnabled bool `json:"cloudRecordingEnabled"`
+	// DemoMode mirrors config.Config.DemoMode: whether POST /demo/launch is open.
+	// The frontend uses it to decide whether "Launch a webinar" appears on the
+	// marketing page at all — hidden rather than shown-then-erroring when the
+	// operator has not turned this on.
+	DemoMode bool `json:"demoMode,omitempty"`
 }
 
 type APIError struct {
