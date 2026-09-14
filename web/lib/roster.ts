@@ -75,3 +75,31 @@ export function partitionHostRoster(
 
   return { raised, panelists, attendees };
 }
+
+/** The host is in the room the moment they open this panel, but the first SFU
+ *  poll can still come back without them. Without this they would stare at
+ *  "Nobody on the stage" in their own webinar. */
+export function withLocalOnRoster(
+  rows: readonly LiveParticipant[],
+  self: { identity: string; name: string; role: LiveParticipant["role"] },
+): LiveParticipant[] {
+  if (rows.some((p) => p.identity === self.identity)) return [...rows];
+  const onStage = self.role === "host" || self.role === "panelist";
+  return [
+    {
+      identity: self.identity,
+      name: self.name,
+      role: onStage ? self.role : "attendee",
+      joinedAt: new Date().toISOString(),
+      publishing: [],
+      audioMuted: true,
+      hidden: false,
+      canPublish: onStage,
+      canSpeak: onStage,
+      audioOnly: false,
+      mutedByHost: false,
+      coHost: false,
+    },
+    ...rows,
+  ];
+}

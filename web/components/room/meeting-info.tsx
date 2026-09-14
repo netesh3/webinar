@@ -41,7 +41,7 @@ export function MeetingInfo() {
   const hostName = isHost
     ? join.displayName || me.name
     : (() => {
-        const host = participants.find((p) => participantRole(p) === "host");
+        const host = participants.find((p) => participantRole(p, join) === "host");
         return host?.name || host?.identity || null;
       })();
 

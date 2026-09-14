@@ -275,55 +275,47 @@ export const DEV_BYPASS_JOIN: JoinResponse = {
   canRecord: true,
 };
 
+function livePerson(
+  identity: string,
+  name: string,
+  role: "host" | "panelist" | "attendee",
+  extra: Partial<LiveRoom["participants"][number]> = {},
+): LiveRoom["participants"][number] {
+  const onStage = role !== "attendee";
+  return {
+    identity,
+    name,
+    role,
+    joinedAt: new Date().toISOString(),
+    publishing: onStage ? ["VIDEO/CAMERA"] : [],
+    audioMuted: role !== "host",
+    hidden: false,
+    canPublish: onStage,
+    canSpeak: onStage,
+    audioOnly: false,
+    mutedByHost: false,
+    coHost: false,
+    ...extra,
+  };
+}
+
 export const DEV_BYPASS_LIVE: LiveRoom = {
   room: "preview-room",
   status: "live",
   controls: CONTROLS,
-  attendees: 3,
-  onStage: 2,
+  attendees: 2,
+  onStage: 5,
   participants: [
-    {
-      identity: DEV_BYPASS_ME.identity,
-      name: DEV_BYPASS_ME.name,
-      role: "host",
-      joinedAt: new Date().toISOString(),
-      publishing: ["camera", "microphone"],
+    livePerson(DEV_BYPASS_ME.identity, DEV_BYPASS_ME.name, "host", {
+      publishing: ["VIDEO/CAMERA", "AUDIO/MICROPHONE"],
       audioMuted: false,
-      hidden: false,
-      canPublish: true,
-      canSpeak: true,
-      audioOnly: false,
-      mutedByHost: false,
-      coHost: false,
-    },
-    {
-      identity: "panel-1",
-      name: "Alex Chen",
-      role: "panelist",
-      joinedAt: new Date().toISOString(),
-      publishing: ["camera"],
-      audioMuted: true,
-      hidden: false,
-      canPublish: true,
-      canSpeak: true,
-      audioOnly: false,
-      mutedByHost: false,
-      coHost: false,
-    },
-    {
-      identity: "att-1",
-      name: "Asha Mehta",
-      role: "attendee",
-      joinedAt: new Date().toISOString(),
-      publishing: [],
-      audioMuted: true,
-      hidden: false,
-      canPublish: false,
-      canSpeak: false,
-      audioOnly: false,
-      mutedByHost: false,
-      coHost: false,
-    },
+    }),
+    livePerson("panel-1", "Alex Chen", "panelist"),
+    livePerson("panel-2", "Sam Ortiz", "panelist"),
+    livePerson("panel-3", "Asha Mehta", "panelist"),
+    livePerson("panel-4", "Jordan Lee", "panelist"),
+    livePerson("att-1", "Priya Shah", "attendee"),
+    livePerson("att-2", "Guest visitor", "attendee"),
   ],
 };
 
@@ -334,7 +326,7 @@ export function bypassRealtime(): Realtime {
     {
       kind: "chat",
       id: "c1",
-      from: { identity: "att-1", name: "Asha Mehta", role: "attendee" },
+      from: { identity: "att-1", name: "Priya Shah", role: "attendee" },
       destination: "everyone",
       text: "Looking forward to the walkthrough!",
       at: Date.now() - 120_000,
@@ -354,7 +346,7 @@ export function bypassRealtime(): Realtime {
     {
       kind: "question",
       id: "q1",
-      from: { identity: "att-1", name: "Asha Mehta", role: "attendee" },
+      from: { identity: "att-1", name: "Priya Shah", role: "attendee" },
       text: "Will recordings be available afterward?",
       anonymous: false,
       at: Date.now() - 90_000,
@@ -367,7 +359,7 @@ export function bypassRealtime(): Realtime {
   return {
     chat,
     questions,
-    hands: [{ identity: "att-1", name: "Asha Mehta", at: Date.now() - 30_000 }],
+    hands: [{ identity: "att-1", name: "Priya Shah", at: Date.now() - 30_000 }],
     reactions: [],
     myHandRaised: false,
     sendChat: async () => ({ delivered: true }),

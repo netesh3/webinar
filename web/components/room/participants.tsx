@@ -13,6 +13,7 @@ import {
   matchRosterQuery,
   partitionHostRoster,
   shouldShowRosterSearch,
+  withLocalOnRoster,
 } from "@/lib/roster";
 import { useToast } from "../providers";
 import { IconButton, Menu, Spinner } from "../controls";
@@ -42,8 +43,23 @@ import { useRoomUI } from "./context";
  *
  *  Metadata rather than the identity prefix: a promoted attendee keeps their
  *  att_ identity but is genuinely a panelist, and classifying on the prefix would
- *  keep showing them as audience. */
-export function participantRole(p: Participant): Role {
+ *  keep showing them as audience.
+ *
+ *  `self` is the join record for this browser. The local LiveKit participant
+ *  often has empty metadata for a few beats after connect, and the permission
+ *  fallback then files a panelist as an attendee — so they vanish from
+ *  Panelists, and disappear entirely when the host has hidden the audience. */
+export function participantRole(
+  p: Participant,
+  self?: { identity: string; role: Role },
+): Role {
+  if (
+    self &&
+    (p.isLocal || p.identity === self.identity) &&
+    (self.role === "host" || self.role === "panelist" || self.role === "attendee")
+  ) {
+    return self.role;
+  }
   if (p.metadata) {
     try {
       const parsed = JSON.parse(p.metadata) as { role?: string };
@@ -164,9 +180,13 @@ function HostRoster() {
   );
 
   const matching = useMemo(() => {
-    const rows = live?.participants ?? [];
+    const rows = withLocalOnRoster(live?.participants ?? [], {
+      identity: join.identity,
+      name: join.displayName,
+      role: join.role,
+    });
     return rows.filter((p) => matchRosterQuery(p, query));
-  }, [live, query]);
+  }, [live, query, join.identity, join.displayName, join.role]);
 
   const sections = useMemo(
     () => partitionHostRoster(matching, realtime.hands),
@@ -476,7 +496,7 @@ function HostRosterRow({
           <span className="truncate text-[13px] font-medium text-ink">
             {p.name || p.identity}
           </span>
-          {isMe && <span className="text-[11px] text-ink-3">(you)</span>}
+          {isMe && <span className="text-[11px] text-ink-3">(Me)</span>}
           {handRaised && (
             <HandIcon className="size-3.5 shrink-0 text-warn" aria-label="Hand raised" />
           )}
@@ -688,35 +708,43 @@ function AudienceRoster() {
   const room = useRoomContext();
   const participants = useParticipants();
   const [query, setQuery] = useState("");
+  const self = { identity: join.identity, role: join.role };
+  const roleOf = (p: Participant) => participantRole(p, self);
 
   const stage = useMemo(
     () =>
       participants
-        .filter((p) => participantRole(p) !== "attendee")
+        .filter((p) => roleOf(p) !== "attendee")
         .filter((p) =>
           matchRosterQuery({ name: p.name || p.identity, identity: p.identity }, query),
         )
         .sort((a, b) => {
-          const rank = (p: Participant) => (participantRole(p) === "host" ? 0 : 1);
+          const rank = (p: Participant) => {
+            if (roleOf(p) === "host") return 0;
+            if (p.identity === join.identity || p.isLocal) return 1;
+            return 2;
+          };
           return rank(a) - rank(b) || (a.name ?? "").localeCompare(b.name ?? "");
         }),
-    [participants, query],
+    [participants, query, join.identity, join.role],
   );
 
-  // Second layer of defence for the mid-session case. The SFU stops sending
-  // updates for a participant the moment they become hidden, which can leave a
-  // stale record in clients that already knew about them; filtering by role means
-  // the toggle applies instantly here too.
+  // Other attendees are withheld when the host hid the audience. You still see
+  // yourself: Zoom lists (Me) even then, and a panel that hides the person
+  // looking at it is a panel that looks broken.
   const audience = useMemo(
     () =>
-      controls.hideAttendees
-        ? []
-        : participants
-            .filter((p) => participantRole(p) === "attendee")
-            .filter((p) =>
-              matchRosterQuery({ name: p.name || p.identity, identity: p.identity }, query),
-            ),
-    [participants, controls.hideAttendees, query],
+      participants
+        .filter((p) => roleOf(p) === "attendee")
+        .filter((p) => {
+          const mine = p.identity === join.identity || p.isLocal;
+          if (controls.hideAttendees && !mine) return false;
+          return true;
+        })
+        .filter((p) =>
+          matchRosterQuery({ name: p.name || p.identity, identity: p.identity }, query),
+        ),
+    [participants, controls.hideAttendees, query, join.identity, join.role],
   );
 
   const showSearch = shouldShowRosterSearch(participants.length, query);
@@ -741,13 +769,13 @@ function AudienceRoster() {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto">
-      <Group title={`On stage · ${stage.length}`}>
+      <Group title={`Panelists · ${stage.length}`}>
         {stage.map((p) => (
           <AudienceRow
             key={p.identity}
             name={p.name || p.identity}
-            role={participantRole(p)}
-            isMe={p.identity === join.identity}
+            role={roleOf(p)}
+            isMe={p.identity === join.identity || p.isLocal}
             muted={!p.getTrackPublication(Track.Source.Microphone) ||
               !!p.getTrackPublication(Track.Source.Microphone)?.isMuted}
           />
@@ -759,15 +787,15 @@ function AudienceRoster() {
         )}
       </Group>
 
-      {controls.hideAttendees ? (
+      {controls.hideAttendees && join.role !== "attendee" ? (
         <div className="border-t border-line px-3 py-4">
           <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
             <EyeOffIcon className="size-3.5 text-ink-3" />
             The audience is private
           </p>
           <p className="mt-1 text-[12px] leading-relaxed text-ink-2">
-            The host has hidden attendees, so nobody can see who else is here —
-            including you. Your name is only visible to the host and panelists.
+            The host has hidden attendees. You can still see the panelists —
+            including yourself — but not the rest of the audience.
           </p>
         </div>
       ) : (
@@ -777,13 +805,16 @@ function AudienceRoster() {
               key={p.identity}
               name={p.name || p.identity}
               role="attendee"
-              isMe={p.identity === join.identity}
+              isMe={p.identity === join.identity || p.isLocal}
               muted
             />
           ))}
-          {/* The local participant is not in `participants` when hidden, so a
-              hidden attendee would otherwise not see themselves listed. */}
-          {audience.length === 0 && (
+          {controls.hideAttendees && (
+            <li className="px-3 py-2 text-[12px] leading-relaxed text-ink-3">
+              Other attendees are hidden. You can still see yourself.
+            </li>
+          )}
+          {audience.length === 0 && !controls.hideAttendees && (
             <li className="px-3 py-4 text-[12.5px] text-ink-3">
               {room.state === "connected"
                 ? "You're the first one here."
@@ -824,7 +855,7 @@ function AudienceRow({
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className="truncate text-[13px] text-ink">{name}</span>
-          {isMe && <span className="text-[11px] text-ink-3">(you)</span>}
+          {isMe && <span className="text-[11px] text-ink-3">(Me)</span>}
         </span>
         {role !== "attendee" && (
           <span className="text-[11.5px] text-ink-3">

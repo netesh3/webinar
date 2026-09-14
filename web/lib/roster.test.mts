@@ -11,6 +11,7 @@ import type { RaisedHand } from "./realtime.ts";
 import {
   matchRosterQuery,
   partitionHostRoster,
+  withLocalOnRoster,
   ROSTER_SEARCH_AFTER,
   shouldShowRosterSearch,
 } from "./roster.ts";
@@ -129,6 +130,40 @@ console.log("\npartitionHostRoster");
     partitionHostRoster([ana], [ghost]).raised.map((p) => p.identity),
     [],
     "a hand whose owner is not in this list (search, or they left) is dropped",
+  );
+}
+
+console.log("\nwithLocalOnRoster");
+
+{
+  const ana = person("att_a", "Ana");
+  const injected = withLocalOnRoster([ana], {
+    identity: "user_h",
+    name: "Host",
+    role: "host",
+  });
+  eq(
+    injected.map((p) => p.identity),
+    ["user_h", "att_a"],
+    "the host is prepended when the SFU list has not caught up",
+  );
+  ok(
+    injected[0].role === "host",
+    "the injected row is a host, so they land in Panelists",
+  );
+}
+
+{
+  const host = person("user_h", "Host", { role: "host", canPublish: true, canSpeak: true });
+  const again = withLocalOnRoster([host], {
+    identity: "user_h",
+    name: "Host",
+    role: "host",
+  });
+  eq(
+    again.map((p) => p.identity),
+    ["user_h"],
+    "an already-listed host is not duplicated",
   );
 }
 

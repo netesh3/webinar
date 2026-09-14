@@ -101,8 +101,8 @@ export function ParticipantTile({
   zoomable?: boolean;
 }) {
   const { participant, source, publication } = tile;
-  const role = participantRole(participant);
-  const { fileShare } = useRoomUI();
+  const { fileShare, join } = useRoomUI();
+  const role = participantRole(participant, join);
 
   const isScreen = source === Track.Source.ScreenShare;
 
