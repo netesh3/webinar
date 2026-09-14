@@ -405,7 +405,7 @@ export function Menu({
                   close();
                   item.onSelect();
                 }}
-                className={`flex w-full items-start gap-2.5 px-3 py-2 text-left text-[13px] transition-colors disabled:opacity-40 ${
+                className={`flex w-full min-h-11 items-start gap-2.5 px-3 py-2.5 text-left text-[13px] transition-colors disabled:opacity-40 ${
                   item.danger
                     ? "text-live hover:bg-live-soft"
                     : "text-ink hover:bg-surface-2"

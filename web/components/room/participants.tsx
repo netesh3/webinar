@@ -9,6 +9,11 @@ import { Track, type Participant } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { LiveParticipant, LiveRoom, Role } from "@/lib/api-types";
+import {
+  matchRosterQuery,
+  partitionHostRoster,
+  shouldShowRosterSearch,
+} from "@/lib/roster";
 import { useToast } from "../providers";
 import { IconButton, Menu, Spinner } from "../controls";
 import {
@@ -158,31 +163,116 @@ function HostRoster() {
     [notify, reload],
   );
 
-  const filtered = useMemo(() => {
+  const matching = useMemo(() => {
     const rows = live?.participants ?? [];
-    const needle = query.trim().toLowerCase();
-    const matching = needle
-      ? rows.filter(
-          (p) =>
-            p.name.toLowerCase().includes(needle) ||
-            p.identity.toLowerCase().includes(needle),
-        )
-      : rows;
+    return rows.filter((p) => matchRosterQuery(p, query));
+  }, [live, query]);
 
-    // Stage first, then raised hands, then everyone else. This is the order a
-    // host works down when they are looking for someone to bring on.
-    return [...matching].sort((a, b) => {
-      const rank = (p: LiveParticipant) =>
-        p.role === "host" ? 0 : p.role === "panelist" ? 1 : handIdentities.has(p.identity) ? 2 : 3;
-      const delta = rank(a) - rank(b);
-      return delta !== 0 ? delta : a.name.localeCompare(b.name);
-    });
-  }, [live, query, handIdentities]);
+  const sections = useMemo(
+    () => partitionHostRoster(matching, realtime.hands),
+    [matching, realtime.hands],
+  );
+
+  const showSearch = shouldShowRosterSearch(live?.participants.length ?? 0, query);
+
+  const empty =
+    sections.raised.length + sections.panelists.length + sections.attendees.length === 0;
 
   // The counts, the search box and the privacy chip render straight away and only
   // the list waits. Replacing the whole panel with a spinner meant every open —
   // and every one of the five-second refreshes — flashed the chrome away.
   const loading = !live && !error;
+
+  const row = (p: LiveParticipant) => (
+    <HostRosterRow
+      key={p.identity}
+      participant={p}
+      isMe={p.identity === join.identity}
+      handRaised={handIdentities.has(p.identity)}
+      busy={busy === p.identity}
+      onMute={(muted) =>
+        p.identity === join.identity
+          ? // Your own row. Toggled locally, because a microphone can
+            // only be switched on by the browser it belongs to — and
+            // that is this one.
+            act(
+              p.identity,
+              muted ? "You're muted" : "You're unmuted",
+              async () => {
+                await localParticipant.setMicrophoneEnabled(!muted);
+              },
+            )
+          : act(
+              p.identity,
+              muted
+                ? `Muted ${p.name} — they can't unmute themselves`
+                : `${p.name} can speak again`,
+              async () => {
+                const res = await api.muteParticipant(slug, p.identity, muted);
+                // The permission is back, but only their own browser can
+                // open a microphone, so say what still has to happen.
+                if (res.status === "allowed") {
+                  return `${p.name} can speak again — they need to unmute themselves`;
+                }
+              },
+            )
+      }
+      // A server cannot start somebody's microphone — only their own
+      // browser can. When they have permission but no live track, the
+      // honest action is to ask them.
+      onAskToUnmute={() =>
+        act(p.identity, `Asked ${p.name} to unmute`, () =>
+          realtime.askToUnmute(p.identity),
+        )
+      }
+      onStage={(role, audioOnly) =>
+        act(
+          p.identity,
+          role !== "panelist"
+            ? `${p.name} is muted and back in the audience`
+            : audioOnly
+              ? `${p.name} can speak now`
+              : `${p.name} is on the stage`,
+          async () => {
+            await api.setStage(slug, p.identity, role, audioOnly);
+            // Their request has been answered either way, so it comes
+            // out of the queue — on every client, including theirs.
+            if (handIdentities.has(p.identity)) {
+              await realtime.lowerHand(
+                p.identity,
+                role === "panelist" ? "granted" : "dismissed",
+              );
+            }
+          },
+        )
+      }
+      onDismissHand={() =>
+        act(p.identity, `Dismissed ${p.name}'s request`, () =>
+          realtime.lowerHand(p.identity, "dismissed"),
+        )
+      }
+      onRemove={() =>
+        act(p.identity, `Removed ${p.name}`, async () => {
+          await api.removeParticipant(slug, p.identity);
+        })
+      }
+      onSetCoHost={(coHost) =>
+        act(
+          p.identity,
+          coHost
+            ? `${p.name} can now control the webinar like you can.`
+            : `${p.name} is back to an ordinary panelist.`,
+          async () => {
+            // A panelist's identity is "user_<id>" — see hostIdentity on
+            // the API side — so this is the one place the id has to be
+            // recovered from it, for the endpoint that takes it plain.
+            const userID = p.identity.replace(/^user_/, "");
+            await api.setCoHost(slug, userID, coHost);
+          },
+        )
+      }
+    />
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -220,23 +310,62 @@ function HostRoster() {
                 void realtime.clearHands();
                 notify(`Lowered ${count} ${count === 1 ? "hand" : "hands"}.`, "ok");
               }}
-              className="shrink-0 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium text-warn transition-colors hover:bg-warn/15 outline-none focus-visible:ring-2 focus-visible:ring-warn/40"
+              className="shrink-0 min-h-11 rounded-md px-2.5 text-[11.5px] font-medium text-warn transition-colors hover:bg-warn/15 outline-none focus-visible:ring-2 focus-visible:ring-warn/40 md:min-h-0 md:py-0.5"
             >
               Lower all
             </button>
           </div>
         )}
 
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
-          <input
-            className="field h-8 pl-8 text-[12.5px]"
-            placeholder="Search participants"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search participants"
-          />
-        </div>
+        {showSearch && (
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
+            {/* text-base on a phone so iOS does not zoom the field to 16px and
+                cover the list with the on-screen keyboard's chrome. */}
+            <input
+              className="field h-11 pl-8 text-base md:h-8 md:text-[12.5px]"
+              placeholder="Search participants"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search participants"
+              enterKeyHint="search"
+              autoComplete="off"
+              autoCorrect="off"
+            />
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => {
+            void (async () => {
+              setBusy("mute-all");
+              try {
+                const { muted } = await api.muteAll(slug);
+                notify(
+                  muted === 0
+                    ? "Nobody had an open microphone."
+                    : `Muted ${muted} ${muted === 1 ? "microphone" : "microphones"}.`,
+                  "ok",
+                );
+                await reload();
+              } catch (err) {
+                notify(err instanceof Error ? err.message : "That didn't work.", "error");
+              } finally {
+                setBusy(null);
+              }
+            })();
+          }}
+          disabled={busy !== null}
+          className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-line px-3 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-surface-2 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-8"
+        >
+          {busy === "mute-all" ? (
+            <Spinner className="size-3.5" />
+          ) : (
+            <MicOffIcon className="size-3.5" />
+          )}
+          Mute everyone except you
+        </button>
 
         {error && (
           <p className="text-[11.5px] text-live">
@@ -250,103 +379,36 @@ function HostRoster() {
           <div className="grid place-items-center py-10">
             <Spinner className="size-5 text-ink-3" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : empty ? (
           <p className="px-3 py-8 text-center text-[12.5px] text-ink-3">
             {query ? "Nobody matches that." : "Nobody has joined yet."}
           </p>
         ) : (
-          <ul className="divide-y divide-line">
-            {filtered.map((p) => (
-              <HostRosterRow
-                key={p.identity}
-                participant={p}
-                isMe={p.identity === join.identity}
-                handRaised={handIdentities.has(p.identity)}
-                busy={busy === p.identity}
-                onMute={(muted) =>
-                  p.identity === join.identity
-                    ? // Your own row. Toggled locally, because a microphone can
-                      // only be switched on by the browser it belongs to — and
-                      // that is this one.
-                      act(
-                        p.identity,
-                        muted ? "You're muted" : "You're unmuted",
-                        async () => {
-                          await localParticipant.setMicrophoneEnabled(!muted);
-                        },
-                      )
-                    : act(
-                        p.identity,
-                        muted
-                          ? `Muted ${p.name} — they can't unmute themselves`
-                          : `${p.name} can speak again`,
-                        async () => {
-                          const res = await api.muteParticipant(slug, p.identity, muted);
-                          // The permission is back, but only their own browser can
-                          // open a microphone, so say what still has to happen.
-                          if (res.status === "allowed") {
-                            return `${p.name} can speak again — they need to unmute themselves`;
-                          }
-                        },
-                      )
-                }
-                // A server cannot start somebody's microphone — only their own
-                // browser can. When they have permission but no live track, the
-                // honest action is to ask them.
-                onAskToUnmute={() =>
-                  act(p.identity, `Asked ${p.name} to unmute`, () =>
-                    realtime.askToUnmute(p.identity),
-                  )
-                }
-                onStage={(role, audioOnly) =>
-                  act(
-                    p.identity,
-                    role !== "panelist"
-                      ? `${p.name} is muted and back in the audience`
-                      : audioOnly
-                        ? `${p.name} can speak now`
-                        : `${p.name} is on the stage`,
-                    async () => {
-                      await api.setStage(slug, p.identity, role, audioOnly);
-                      // Their request has been answered either way, so it comes
-                      // out of the queue — on every client, including theirs.
-                      if (handIdentities.has(p.identity)) {
-                        await realtime.lowerHand(
-                          p.identity,
-                          role === "panelist" ? "granted" : "dismissed",
-                        );
-                      }
-                    },
-                  )
-                }
-                onDismissHand={() =>
-                  act(p.identity, `Dismissed ${p.name}'s request`, () =>
-                    realtime.lowerHand(p.identity, "dismissed"),
-                  )
-                }
-                onRemove={() =>
-                  act(p.identity, `Removed ${p.name}`, async () => {
-                    await api.removeParticipant(slug, p.identity);
-                  })
-                }
-                onSetCoHost={(coHost) =>
-                  act(
-                    p.identity,
-                    coHost
-                      ? `${p.name} can now control the webinar like you can.`
-                      : `${p.name} is back to an ordinary panelist.`,
-                    async () => {
-                      // A panelist's identity is "user_<id>" — see hostIdentity on
-                      // the API side — so this is the one place the id has to be
-                      // recovered from it, for the endpoint that takes it plain.
-                      const userID = p.identity.replace(/^user_/, "");
-                      await api.setCoHost(slug, userID, coHost);
-                    },
-                  )
-                }
-              />
-            ))}
-          </ul>
+          <>
+            {sections.raised.length > 0 && (
+              <Group title={`Raised hands · ${sections.raised.length}`}>
+                {sections.raised.map(row)}
+              </Group>
+            )}
+            <Group title={`Panelists · ${sections.panelists.length}`}>
+              {sections.panelists.length === 0 ? (
+                <li className="px-3 py-4 text-[12.5px] text-ink-3">
+                  Nobody on the stage.
+                </li>
+              ) : (
+                sections.panelists.map(row)
+              )}
+            </Group>
+            <Group title={`Attendees · ${sections.attendees.length}`}>
+              {sections.attendees.length === 0 ? (
+                <li className="px-3 py-4 text-[12.5px] text-ink-3">
+                  {query ? "No attendees match that." : "No attendees yet."}
+                </li>
+              ) : (
+                sections.attendees.map(row)
+              )}
+            </Group>
+          </>
         )}
       </div>
     </div>
@@ -408,7 +470,7 @@ function HostRosterRow({
   const onStageNow = p.role === "panelist" && !isHost;
 
   return (
-    <li className="flex items-center gap-2.5 px-3 py-2.5">
+    <li className="flex min-h-12 items-center gap-2.5 px-3 py-2">
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-medium text-ink">
@@ -445,6 +507,7 @@ function HostRosterRow({
             // which is the point of the mute — so the host needs it in reach.
             <IconButton
               label={`Allow ${p.name} to speak again`}
+              className="size-11 md:size-8"
               onClick={() => onMute(false)}
             >
               <MicOffIcon className="size-4 text-warn" />
@@ -457,6 +520,7 @@ function HostRosterRow({
               // design — and it does not need to for the person sitting here.
               <IconButton
                 label={p.audioMuted ? `Unmute ${p.name}` : `Mute ${p.name}`}
+                className="size-11 md:size-8"
                 onClick={() => onMute(!p.audioMuted)}
               >
                 {p.audioMuted ? (
@@ -466,7 +530,7 @@ function HostRosterRow({
                 )}
               </IconButton>
             ) : hasMic && !p.audioMuted ? (
-              <IconButton label={`Mute ${p.name}`} onClick={() => onMute(true)}>
+              <IconButton label={`Mute ${p.name}`} className="size-11 md:size-8" onClick={() => onMute(true)}>
                 <MicIcon className="size-4 text-ok" />
               </IconButton>
             ) : (
@@ -474,7 +538,11 @@ function HostRosterRow({
               // whether there is no track yet or a muted one, the SFU will not
               // switch it on from here, and that protection is worth having. So
               // the button asks instead of pretending to do it.
-              <IconButton label={`Ask ${p.name} to unmute`} onClick={onAskToUnmute}>
+              <IconButton
+                label={`Ask ${p.name} to unmute`}
+                className="size-11 md:size-8"
+                onClick={onAskToUnmute}
+              >
                 <MicOffIcon className="size-4 text-warn" />
               </IconButton>
             ))
@@ -484,7 +552,7 @@ function HostRosterRow({
             label={`Actions for ${p.name}`}
             align="end"
             trigger={
-              <span className="grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink">
+              <span className="grid size-11 place-items-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink md:size-8">
                 <MoreIcon className="size-4" />
               </span>
             }
@@ -619,16 +687,20 @@ function AudienceRoster() {
   const { controls, join } = useRoomUI();
   const room = useRoomContext();
   const participants = useParticipants();
+  const [query, setQuery] = useState("");
 
   const stage = useMemo(
     () =>
       participants
         .filter((p) => participantRole(p) !== "attendee")
+        .filter((p) =>
+          matchRosterQuery({ name: p.name || p.identity, identity: p.identity }, query),
+        )
         .sort((a, b) => {
           const rank = (p: Participant) => (participantRole(p) === "host" ? 0 : 1);
           return rank(a) - rank(b) || (a.name ?? "").localeCompare(b.name ?? "");
         }),
-    [participants],
+    [participants, query],
   );
 
   // Second layer of defence for the mid-session case. The SFU stops sending
@@ -639,12 +711,36 @@ function AudienceRoster() {
     () =>
       controls.hideAttendees
         ? []
-        : participants.filter((p) => participantRole(p) === "attendee"),
-    [participants, controls.hideAttendees],
+        : participants
+            .filter((p) => participantRole(p) === "attendee")
+            .filter((p) =>
+              matchRosterQuery({ name: p.name || p.identity, identity: p.identity }, query),
+            ),
+    [participants, controls.hideAttendees, query],
   );
 
+  const showSearch = shouldShowRosterSearch(participants.length, query);
+
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {showSearch && (
+        <div className="shrink-0 border-b border-line px-3 py-2.5">
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
+            <input
+              className="field h-11 pl-8 text-base md:h-8 md:text-[12.5px]"
+              placeholder="Search participants"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search participants"
+              enterKeyHint="search"
+              autoComplete="off"
+              autoCorrect="off"
+            />
+          </div>
+        </div>
+      )}
+      <div className="min-h-0 flex-1 overflow-y-auto">
       <Group title={`On stage · ${stage.length}`}>
         {stage.map((p) => (
           <AudienceRow
@@ -696,6 +792,7 @@ function AudienceRoster() {
           )}
         </Group>
       )}
+      </div>
     </div>
   );
 }
