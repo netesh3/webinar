@@ -980,8 +980,13 @@ function MicLevelIcon({
           y="4"
           width="6"
           height="8"
-          fill="currentColor"
-          className="text-ok"
+          fill="#4ade80"
+          /* Literal green, not currentColor and not --color-ok.
+           *
+           * The bar is not `.room-dark`, so --color-ok is the light-theme forest
+           * green — invisible on this near-black strip. currentColor inherits the
+           * button's white, so a working meter looked like the capsule getting
+           * slightly thicker, not like "I am being heard". */
           style={{
             transform: "scaleY(var(--mic-level, 0))",
             transformOrigin: "50% 100%",

@@ -1,17 +1,28 @@
 "use client";
 
+import { useRoomContext } from "@livekit/components-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { deviceLabel, useDevices } from "@/lib/media";
-import { ChevronDownIcon } from "../icons";
+import { backgroundsSupported } from "@/lib/backgrounds";
+import {
+  deviceLabel,
+  supportsOutputSelection,
+  useDevices,
+} from "@/lib/media";
+import { describeMediaError } from "@/lib/media-errors";
+import { CheckIcon, ChevronDownIcon } from "../icons";
 import { Spinner } from "../controls";
+import { useToast } from "../providers";
+import { useRoomUI } from "./context";
 
 /* Mic / camera on the control bar.
  *
- * The main face is the toggle: a red slash and a flipped label when it is off,
- * so muted is not a colour you have to remember. The caret is a separate
- * control because choosing a headset mid-sentence is not the same action as
- * going silent, and burying the picker behind a long-press is how phones lose
- * it.
+ * Split the way Zoom does: the face toggles the track, the caret opens a menu of
+ * devices and the few extras we actually have. Choosing a headset is not the same
+ * action as going silent, and burying it behind a long-press is how phones lose it.
+ *
+ * The menu is honest about what this product can do. Blur and noise suppression
+ * are real prefs. Auto-frame, phone audio, and a speaker-test wizard are not, so
+ * they are not offered.
  */
 
 export function MediaToggle({
@@ -45,9 +56,14 @@ export function MediaToggle({
   const wrap = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const { devices } = useDevices(open);
-  const list =
-    deviceKind === "audioinput" ? devices.audioInput : devices.videoInput;
-  const kindLabel = deviceKind === "audioinput" ? "Microphone" : "Camera";
+  const { prefs, updatePrefs, tools } = useRoomUI();
+  const room = useRoomContext();
+  const { notify } = useToast();
+  const canPickOutput = supportsOutputSelection();
+
+  const isAudio = deviceKind === "audioinput";
+  const inputs = isAudio ? devices.audioInput : devices.videoInput;
+  const kindLabel = isAudio ? "microphone" : "camera";
 
   useEffect(() => {
     if (!open) return;
@@ -65,95 +81,6 @@ export function MediaToggle({
     };
   }, [open]);
 
-  return (
-    <div ref={wrap} className="relative flex items-stretch">
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={shortcut ? `${label} (${shortcut})` : label}
-        aria-keyshortcuts={shortcut}
-        aria-pressed={active}
-        disabled={busy}
-        className="relative shrink-0 rounded-lg rounded-r-none outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-      >
-        <BarFace label={label} active={active} danger={danger} dimmed={dimmed}>
-          {busy ? <Spinner className="size-5" /> : (meter ?? icon)}
-        </BarFace>
-      </button>
-      <button
-        type="button"
-        aria-label={`Choose ${kindLabel.toLowerCase()}`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((v) => !v)}
-        className="grid w-11 shrink-0 place-items-center rounded-lg rounded-l-none border-l border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/50 sm:w-8"
-      >
-        <BarFace
-          label=""
-          active={active}
-          danger={danger}
-          dimmed={dimmed}
-          className="min-w-0 px-0 sm:min-w-0"
-        >
-          <ChevronDownIcon className="size-3.5" />
-        </BarFace>
-      </button>
-      {open && (
-        <div
-          id={menuId}
-          role="listbox"
-          aria-label={`${kindLabel} devices`}
-          className="room-dark absolute bottom-full left-0 z-50 mb-2 min-w-[14rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl"
-        >
-          {list.length === 0 ? (
-            <p className="px-3 py-2.5 text-[12.5px] text-ink-3">
-              No {kindLabel.toLowerCase()}s listed yet. Allow access if the
-              browser asks.
-            </p>
-          ) : (
-            list.map((d, i) => {
-              const selected = d.deviceId === currentDeviceId;
-              return (
-                <button
-                  key={d.deviceId}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => {
-                    onSelectDevice?.(d.deviceId);
-                    setOpen(false);
-                  }}
-                  className="flex min-h-11 w-full items-center px-3 py-2 text-left text-[13px] text-ink transition-colors hover:bg-surface-2"
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    {deviceLabel(d, i, kindLabel)}
-                  </span>
-                </button>
-              );
-            })
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BarFace({
-  label,
-  active = false,
-  danger = false,
-  dimmed = false,
-  className = "",
-  children,
-}: {
-  label: string;
-  active?: boolean;
-  danger?: boolean;
-  dimmed?: boolean;
-  className?: string;
-  children: React.ReactNode;
-}) {
   const tone = dimmed
     ? "text-white/35"
     : danger
@@ -162,16 +89,218 @@ function BarFace({
         ? "bg-white/20 text-white"
         : "text-white/75 hover:bg-white/10 hover:text-white";
 
+  async function selectOutput(deviceId: string) {
+    try {
+      await room.switchActiveDevice("audiooutput", deviceId);
+      updatePrefs({ audioOutput: deviceId });
+    } catch (err) {
+      notify(describeMediaError(err, "devices"), "error");
+    }
+  }
+
   return (
-    <span
-      className={`inline-flex h-10 min-w-10 flex-col items-center justify-center gap-0.5 rounded-lg px-2 transition-colors sm:min-w-14 ${tone} ${className}`}
-    >
-      {children}
-      {label ? (
-        <span className="hidden text-[9.5px] leading-none font-medium sm:block">
-          {label}
-        </span>
-      ) : null}
-    </span>
+    <div ref={wrap} className="relative">
+      <div className={`flex items-stretch overflow-hidden rounded-lg ${tone}`}>
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label={shortcut ? `${label} (${shortcut})` : label}
+          aria-keyshortcuts={shortcut}
+          aria-pressed={active}
+          disabled={busy}
+          className="relative flex min-w-10 flex-col items-center justify-center gap-0.5 px-2 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:min-w-14"
+        >
+          <span className="flex h-10 flex-col items-center justify-center gap-0.5">
+            {busy ? <Spinner className="size-5" /> : (meter ?? icon)}
+            <span className="hidden text-[9.5px] leading-none font-medium sm:block">
+              {label}
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          aria-label={`Choose ${kindLabel}`}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          onClick={() => setOpen((v) => !v)}
+          className="grid w-11 shrink-0 place-items-center border-l border-white/15 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:w-7"
+        >
+          <ChevronDownIcon className="size-3.5 rotate-180" />
+        </button>
+      </div>
+
+      {open && (
+        <div
+          id={menuId}
+          role="menu"
+          aria-label={isAudio ? "Audio devices" : "Video devices"}
+          className="room-dark absolute bottom-full left-0 z-50 mb-2 w-[18.5rem] max-w-[calc(100vw-1rem)] max-h-[min(24rem,calc(100dvh-6rem))] overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-xl"
+        >
+          <p className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-[0.04em] text-ink-3">
+            {isAudio ? "Select a microphone" : "Select a camera"}
+          </p>
+          <DeviceList
+            devices={inputs}
+            kind={isAudio ? "Microphone" : "Camera"}
+            currentId={currentDeviceId}
+            onPick={(id) => {
+              onSelectDevice?.(id);
+              setOpen(false);
+            }}
+          />
+
+          {isAudio && canPickOutput && (
+            <>
+              <div className="my-1 h-px bg-line" />
+              <p className="px-3 pt-1.5 pb-1 text-[11px] font-semibold tracking-[0.04em] text-ink-3">
+                Select a speaker
+              </p>
+              <DeviceList
+                devices={devices.audioOutput}
+                kind="Speaker"
+                currentId={prefs.audioOutput}
+                onPick={(id) => {
+                  void selectOutput(id);
+                  setOpen(false);
+                }}
+              />
+            </>
+          )}
+
+          {isAudio && (
+            <>
+              <div className="my-1 h-px bg-line" />
+              <MenuToggle
+                checked={prefs.noiseSuppression}
+                onChange={(on) => updatePrefs({ noiseSuppression: on })}
+                label="Noise suppression"
+              />
+            </>
+          )}
+
+          {!isAudio && backgroundsSupported() && (
+            <>
+              <div className="my-1 h-px bg-line" />
+              <MenuToggle
+                checked={prefs.background.mode === "blur"}
+                onChange={(on) =>
+                  updatePrefs({ background: { mode: on ? "blur" : "none" } })
+                }
+                label="Blur my background"
+              />
+            </>
+          )}
+
+          <div className="my-1 h-px bg-line" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              tools.open("settings");
+            }}
+            className="flex min-h-11 w-full items-center px-3 text-left text-[13px] text-ink transition-colors hover:bg-surface-2 outline-none focus-visible:bg-surface-2"
+          >
+            {isAudio ? "Audio settings" : "Video settings"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeviceList({
+  devices,
+  kind,
+  currentId,
+  onPick,
+}: {
+  devices: MediaDeviceInfo[];
+  kind: string;
+  currentId?: string;
+  onPick: (id: string) => void;
+}) {
+  if (devices.length === 0) {
+    return (
+      <p className="px-3 py-2 text-[12.5px] text-ink-3">
+        No {kind.toLowerCase()}s listed yet. Allow access if the browser asks.
+      </p>
+    );
+  }
+
+  const selected =
+    currentId && devices.some((d) => d.deviceId === currentId)
+      ? currentId
+      : devices.find((d) => d.deviceId === "default")?.deviceId ?? devices[0]?.deviceId;
+
+  return (
+    <>
+      {devices.map((d, i) => {
+        const active = d.deviceId === selected;
+        return (
+          <button
+            key={d.deviceId}
+            type="button"
+            role="menuitemradio"
+            aria-checked={active}
+            onClick={() => onPick(d.deviceId)}
+            className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-[13px] text-ink transition-colors hover:bg-surface-2 outline-none focus-visible:bg-surface-2"
+          >
+            <span className="grid size-4 shrink-0 place-items-center">
+              {active && <CheckIcon className="size-3.5 text-brand" />}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{menuLabel(d, i, kind)}</span>
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+/** "Same as system" only when the browser actually exposes a default device id.
+ *  Inventing that row for a list that is only named devices would be a lie. */
+function menuLabel(device: MediaDeviceInfo, index: number, kind: string): string {
+  const base = deviceLabel(device, index, kind);
+  if (device.deviceId !== "default") return base;
+  const named = base.replace(/^Default\s*[-–—]\s*/i, "").trim();
+  return named && named.toLowerCase() !== "default" && named !== kind
+    ? `Same as system (${named})`
+    : "Same as system";
+}
+
+function MenuToggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 px-3 hover:bg-surface-2">
+      <span className="text-[13px] text-ink">{label}</span>
+      <span className="relative inline-flex shrink-0">
+        <input
+          type="checkbox"
+          className="peer size-0 opacity-0"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <span
+          aria-hidden
+          className={`block h-[18px] w-[32px] rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand/40 ${
+            checked ? "bg-brand" : "bg-line-2"
+          }`}
+        />
+        <span
+          aria-hidden
+          className={`pointer-events-none absolute top-[2px] left-[2px] size-[14px] rounded-full bg-white transition-transform ${
+            checked ? "translate-x-[14px]" : ""
+          }`}
+        />
+      </span>
+    </label>
   );
 }

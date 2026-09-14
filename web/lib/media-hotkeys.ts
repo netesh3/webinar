@@ -3,7 +3,7 @@
  *  M, V and Space are also characters. Without this, muting while composing a
  *  chat message is the first thing a host would hit, and it is not recoverable
  *  in the sentence they were in the middle of. */
-export function isTypingTarget(target: EventTarget | null): boolean {
+export function isTypingTarget(target: unknown): boolean {
   if (target == null) return false;
   // Duck-typed so the same function is testable under Node, where HTMLElement
   // is not defined, and still correct in the browser.

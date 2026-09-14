@@ -24,11 +24,11 @@ console.log("\nisTypingTarget");
 {
   ok(!isTypingTarget(null), "nothing focused is not typing");
   ok(
-    isTypingTarget({ tagName: "TEXTAREA" } as EventTarget),
+    isTypingTarget({ tagName: "TEXTAREA" }),
     "a chat box is typing",
   );
   ok(
-    !isTypingTarget({ tagName: "BUTTON" } as EventTarget),
+    !isTypingTarget({ tagName: "BUTTON" }),
     "a button is not typing",
   );
 }
