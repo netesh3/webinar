@@ -460,7 +460,7 @@ function CallGrid() {
       <div className="home-call-audience" aria-hidden>
         <CallTile person={{ photo: "/images/hero/audience-1.jpg", name: "Zoya" }} />
         <CallTile person={{ photo: "/images/hero/audience-2.jpg", name: "Dev" }} />
-        <CallTile person={{ initials: "NK", name: "Nikhil" }} />
+        <CallTile person={{ initials: "V", name: "Vishal" }} />
         <div className="home-call-tile">
           <div className="home-call-more">
             <b>+1,272</b>
