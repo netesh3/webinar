@@ -52,11 +52,11 @@ export const TOOL_IDS: readonly ToolId[] = [
   "host",
 ];
 
-/** Engagement tools that default to the docked side panel (Zoom/Livestorm pattern).
+/** Engagement tools that open as an overlay panel (Zoom's Chat / Q&A / Participants).
  *
- *  One panel with tabs is the default; each can be popped out into a floating
- *  window. Host tools, settings and invite stay windows-only because they are
- *  modal/workflow surfaces, not ongoing conversation streams. */
+ *  They live on the bottom bar, not a right-edge icon rail. Opening one overlays
+ *  the stage instead of shrinking it — Zoom's video stays full-bleed; ours should
+ *  too. Each can still be popped out into a floating window. */
 export const PANEL_TOOL_IDS: readonly ToolId[] = [
   "chat",
   "qa",
@@ -66,6 +66,47 @@ export const PANEL_TOOL_IDS: readonly ToolId[] = [
 
 export function isPanelTool(id: ToolId): boolean {
   return (PANEL_TOOL_IDS as readonly string[]).includes(id);
+}
+
+/** Always in the middle of the control bar, Zoom-style: media on the left,
+ *  engagement in the centre, Leave on the right.
+ *
+ *  Not customisable pins. A host who accidentally unpinned Chat would lose the
+ *  one control Zoom never lets you lose. Invite / Layout / Host stay in More
+ *  (or as pins) because they are not in Zoom's standing toolbar. */
+export const CENTER_BAR_TOOLS: readonly ToolId[] = [
+  "chat",
+  "qa",
+  "polls",
+  "participants",
+  "hand",
+  "reactions",
+  "settings",
+];
+
+/** On a phone the bar only has room for the two people actually reach for
+ *  mid-session. The rest of CENTER_BAR_TOOLS go in More. */
+const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "participants"];
+
+export function centerBarTools(
+  available: readonly ToolId[],
+  compact: boolean,
+): ToolId[] {
+  const want = compact ? CENTER_BAR_COMPACT : CENTER_BAR_TOOLS;
+  return want.filter((id) => available.includes(id));
+}
+
+/** Engagement tools that did not fit the compact bar, for More's extra row. */
+export function morePanelTools(
+  available: readonly ToolId[],
+  compact: boolean,
+): ToolId[] | undefined {
+  if (!compact) return undefined;
+  const onBar = new Set(centerBarTools(available, true));
+  const rest = CENTER_BAR_TOOLS.filter(
+    (id) => available.includes(id) && !onBar.has(id),
+  );
+  return rest.length > 0 ? rest : undefined;
 }
 
 /** Whether a panel tool is actually in front of the person: its docked tab is open, or it
@@ -199,26 +240,26 @@ export type ToolLayout = {
 
 /* What a first-time user gets.
  *
- * Engagement tools (Chat / Q&A / Polls / Participants) live on the right-edge
- * rail only — never as bar pins or More cells. Layout used to be pinned here
- * too, permanently, so a narrow bar could never bury it under More — that
- * requirement was dropped in favour of keeping the bar shorter, so Layout now
- * starts in the grid like Invite and Settings and can be dragged onto the bar
- * the same way they can. Host tools and the rest stay in More by default.
+ * Chat / Q&A / Polls / Participants / Hand / Reactions / Settings are the
+ * centre cluster (CENTER_BAR_TOOLS), not pins. Layout, Invite and Host start
+ * in More and can be dragged onto the bar the same way they always could.
  */
 const DEFAULT_PINNED: ToolId[] = [];
 
 /** Always rendered on the bar outside the capacity-limited pin slots.
  *
- *  Empty, but kept (rather than deleted along with every reference to it) as
- *  the one place a future tool would go if something ever again needs to be
- *  guaranteed visible regardless of capacity or customisation — see the note
- *  above on why Layout no longer needs to be that tool. */
+ *  Empty, but kept as the one place a future tool would go if something ever
+ *  again needs to be guaranteed visible regardless of capacity. The centre
+ *  cluster is CENTER_BAR_TOOLS, not this list — that cluster is not a pin. */
 export const FIXED_BAR_TOOLS: readonly ToolId[] = [];
 
-/** Tools that must not appear on the bottom bar or in More — right rail owns them. */
+/** Tools that must not appear as customisable pins — they already have a
+ *  standing place (centre cluster, or a reserved slot). */
 function isBarExcluded(id: ToolId): boolean {
-  return FIXED_BAR_TOOLS.includes(id) || isPanelTool(id);
+  return (
+    FIXED_BAR_TOOLS.includes(id) ||
+    (CENTER_BAR_TOOLS as readonly string[]).includes(id)
+  );
 }
 
 export const RECENT_LIMIT = 6;
@@ -245,7 +286,7 @@ export function pinTool(
   tool: ToolId,
   index: number,
 ): ToolLayout {
-  // Layout is fixed on the bar; engagement tools belong on the right rail.
+  // Centre-cluster tools already have a standing place on the bar.
   if (isBarExcluded(tool)) return layout;
   const without = layout.pinned.filter((id) => id !== tool);
   const at = Math.min(Math.max(index, 0), without.length);
@@ -471,7 +512,7 @@ export function reconcile(
   available: readonly ToolId[],
 ): ToolLayout {
   const allowed = new Set(available);
-  // Strip engagement tools from bar customisation — they moved to the right rail.
+  // Strip standing-toolbar tools from pins — they already have a centre slot.
   const pinned = layout.pinned.filter(
     (id) => allowed.has(id) && !isBarExcluded(id),
   );
@@ -544,8 +585,9 @@ export function barSlots(
 /** What the More grid shows: everything not currently on the bar.
  *
  *  Computed from the bar rather than from `overflow` alone, so a tool surfaced
- *  into a vacant slot is not offered in both places at once. Engagement tools
- *  are omitted — Chat / Q&A / Polls / Participants live on the right rail. */
+ *  into a vacant slot is not offered in both places at once. Centre-cluster
+ *  tools are omitted — they already sit in the middle of the bar (or, on a
+ *  phone, in More's extra row via morePanelTools). */
 export function gridItems(
   layout: ToolLayout,
   slots: readonly BarSlot[],
@@ -562,7 +604,7 @@ export function gridItems(
       seen.has(id) ||
       onBar.has(id) ||
       !allowed.has(id) ||
-      isPanelTool(id)
+      isBarExcluded(id)
     )
       continue;
     seen.add(id);

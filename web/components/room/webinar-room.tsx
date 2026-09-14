@@ -932,27 +932,15 @@ function ConnectedRoom({
               data-room is read by globals.css to lift the toast stack above the
               control bar, so a notification never sits on the Leave button. */}
           <div data-room className="flex h-dvh flex-col overflow-hidden bg-stage">
-            <RoomHeader />
-
-            {/* A poll the host just launched, brought to the attendee rather than left
-                behind a button. Renders nothing for the stage and nothing when there is
-                no open poll they have yet to answer. */}
-            <PollPopup />
-
-            {/* Applies the stored virtual background to whatever camera track is
-                published, and re-applies it when the track is replaced. Renders nothing;
-                it is here rather than in the settings window because the background has
-                to survive the window being closed. */}
-            <VirtualBackground />
-
-            {/* Stage + docked engagement panel. The panel is a sibling of the stage
-                so the video plane stays one primary surface (Zoom/Livestorm pattern)
-                rather than fighting a stack of floating windows. */}
-            <div className="relative flex min-h-0 min-w-0 flex-1">
+            {/* Zoom chrome: video fills the column; header and Chat overlay it;
+                only the bottom bar takes layout space. A reserved header + a
+                shrinking side rail was the thing that made this feel unlike a
+                webinar client. */}
+            <div className="relative min-h-0 min-w-0 flex-1">
               <div
                 ref={setStageEl}
                 data-stage
-                className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+                className="absolute inset-0 flex flex-col"
               >
                 <Stage />
                 {/* Playback controls for a shared video file. Host-only by
@@ -967,6 +955,19 @@ function ConnectedRoom({
                     the two cannot disagree about whether you are looking at it. */}
                 <ChatNotifications chatVisible={chatVisible} />
               </div>
+
+              {/* A poll the host just launched, brought to the attendee rather than left
+                  behind a button. Renders nothing for the stage and nothing when there is
+                  no open poll they have yet to answer. */}
+              <PollPopup />
+
+              {/* Applies the stored virtual background to whatever camera track is
+                  published, and re-applies it when the track is replaced. Renders nothing;
+                  it is here rather than in the settings window because the background has
+                  to survive the window being closed. */}
+              <VirtualBackground />
+
+              <RoomHeader />
               <SidePanel />
             </div>
 
@@ -1045,6 +1046,7 @@ function AutoStartAudio({ room }: { room: Room }) {
 
 function RoomHeader() {
   const { controls, isHost, permissions, tools } = useRoomUI();
+  const panelOpen = Boolean(tools.panelTab);
 
   // From the live permissions, not from the role in the join response. An attendee
   // the host brought on stage is no longer "view only", and a badge still saying
@@ -1061,8 +1063,12 @@ function RoomHeader() {
           : { label: "Attendee", tone: "neutral" as const };
 
   return (
-    <header className="flex min-h-11 shrink-0 items-center gap-2 border-b border-white/10 bg-stage-bar px-3 py-0.5 text-white sm:h-11 sm:py-0">
-      <div className="min-w-0 flex-1">
+    <header
+      className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start gap-2 bg-gradient-to-b from-black/70 to-transparent px-3 pt-2 pb-10 text-white ${
+        panelOpen ? "md:pr-[24rem]" : ""
+      }`}
+    >
+      <div className="pointer-events-auto min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <MeetingInfo />
           <LiveClock />
@@ -1093,24 +1099,26 @@ function RoomHeader() {
         )}
       </div>
 
-      <ViewsMenu />
+      <div className="pointer-events-auto flex shrink-0 items-center gap-1">
+        <ViewsMenu />
 
-      <span className="hidden sm:block">
-        <Badge tone={standing.tone}>{standing.label}</Badge>
-      </span>
+        <span className="hidden sm:block">
+          <Badge tone={standing.tone}>{standing.label}</Badge>
+        </span>
 
-      {/* Host controls stay in the header — that is where hosts look. Settings
-          live under More so the chrome is one primary action for hosts, not two. */}
-      {isHost && (
-        <button
-          type="button"
-          onClick={() => tools.open("host")}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-white/10 px-2.5 text-[12px] font-medium text-white transition-colors hover:bg-white/20 outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-        >
-          <SlidersIcon className="size-3.5" />
-          <span className="hidden sm:inline">Controls</span>
-        </button>
-      )}
+        {/* Host controls stay in the header — that is where hosts look. Settings
+            live under More so the chrome is one primary action for hosts, not two. */}
+        {isHost && (
+          <button
+            type="button"
+            onClick={() => tools.open("host")}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-white/10 px-2.5 text-[12px] font-medium text-white transition-colors hover:bg-white/20 outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+          >
+            <SlidersIcon className="size-3.5" />
+            <span className="hidden sm:inline">Controls</span>
+          </button>
+        )}
+      </div>
     </header>
   );
 }

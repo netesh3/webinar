@@ -1,7 +1,7 @@
 "use client";
 
 import { useRoomContext } from "@livekit/components-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { backgroundsSupported } from "@/lib/backgrounds";
 import {
   deviceLabel,
@@ -24,6 +24,8 @@ import { useRoomUI } from "./context";
  * are real prefs. Auto-frame, phone audio, and a speaker-test wizard are not, so
  * they are not offered.
  */
+
+const subscribeNothing = () => () => {};
 
 export function MediaToggle({
   label,
@@ -59,7 +61,11 @@ export function MediaToggle({
   const { prefs, updatePrefs, tools } = useRoomUI();
   const room = useRoomContext();
   const { notify } = useToast();
-  const canPickOutput = supportsOutputSelection();
+  const canPickOutput = useSyncExternalStore(
+    subscribeNothing,
+    supportsOutputSelection,
+    () => false,
+  );
 
   const isAudio = deviceKind === "audioinput";
   const inputs = isAudio ? devices.audioInput : devices.videoInput;

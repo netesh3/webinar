@@ -85,11 +85,6 @@ export function PreviewRoom() {
     tools.setStage(stageEl);
   }, [tools, stageEl]);
 
-  useEffect(() => {
-    tools.open("chat");
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- open panel once for review
-  }, []);
-
   const ui = useMemo<RoomUI>(
     () => ({
       slug: "preview",
@@ -140,14 +135,15 @@ export function PreviewRoom() {
       <RoomUIProvider value={ui}>
         <ToolDragProvider onPin={tools.pin} onUnpin={tools.unpin}>
           <div data-room className="flex h-dvh flex-col overflow-hidden bg-stage">
-            <PreviewHeader />
-            <div className="relative flex min-h-0 min-w-0 flex-1">
+            <div className="relative min-h-0 min-w-0 flex-1">
               <div
                 ref={setStageEl}
-                className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+                data-stage
+                className="absolute inset-0 flex flex-col"
               >
                 <PreviewStage />
               </div>
+              <PreviewHeader />
               <SidePanel />
             </div>
             <ControlBar />
@@ -160,9 +156,15 @@ export function PreviewRoom() {
 }
 
 function PreviewHeader() {
+  const { tools } = useRoomUI();
+  const panelOpen = Boolean(tools.panelTab);
   return (
-    <header className="flex min-h-11 shrink-0 items-center gap-2 border-b border-white/10 bg-stage-bar px-3 py-0.5 text-white sm:h-11 sm:py-0">
-      <div className="min-w-0 flex-1">
+    <header
+      className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start gap-2 bg-gradient-to-b from-black/70 to-transparent px-3 pt-2 pb-10 text-white ${
+        panelOpen ? "md:pr-[24rem]" : ""
+      }`}
+    >
+      <div className="pointer-events-auto min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <MeetingInfo />
           <span className="rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase">
@@ -173,7 +175,9 @@ function PreviewHeader() {
           Local UI only — no LiveKit connection
         </p>
       </div>
-      <ViewsMenu />
+      <div className="pointer-events-auto">
+        <ViewsMenu />
+      </div>
     </header>
   );
 }

@@ -10,7 +10,7 @@ import { ConnectionState, Track } from "livekit-client";
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
-import { barSlots, gridItems, PANEL_TOOL_IDS, type ToolId } from "@/lib/tools";
+import { barSlots, centerBarTools, gridItems, morePanelTools, type ToolId } from "@/lib/tools";
 import { useCompact } from "@/lib/compact";
 import { isTypingTarget, mediaHotkey } from "@/lib/media-hotkeys";
 import { Spinner } from "../controls";
@@ -54,9 +54,13 @@ import { tool } from "./tools";
  *                 drawer to find is a control you mute yourself too late with.
  *                 They are also per-role: an attendee has none of them.
  *
- *   slots         optional extras (layout, reactions, invite, …) pinned or
- *                 recent — never Chat / Q&A / Polls / Participants (those are
- *                 the right rail). Draggable. Capacity depends on width.
+ *   slots         optional extras (invite, layout, …) pinned or recent.
+ *                 Chat / Q&A / Polls / Participants / Hand / Reactions /
+ *                 Settings sit in the centre cluster, not here — Zoom keeps
+ *                 those standing, not customisable.
+ *
+ *   centre        engagement tools, always. The right-edge icon rail is gone;
+ *                 these buttons are how you open those overlays.
  *
  *   fixed right   More and Leave. Leave last because its position should
  *                 never move under the cursor.
@@ -157,14 +161,9 @@ export function ControlBar() {
   const capacity = useSlotCapacity();
   const slots = barSlots(tools.layout, capacity, availableTools);
   const grid = gridItems(tools.layout, slots, availableTools);
-  /* Below `md` the stage has no room for a second vertical rail beside it, so
-   * side-panel.tsx hides the engagement rail entirely there. Chat / Q&A / Polls
-   * / Participants still have to be reachable from somewhere, so on a phone
-   * they ride along in the "More" grid instead — see MoreGrid's `panelItems`. */
   const compact = useCompact();
-  const panelItems = compact
-    ? PANEL_TOOL_IDS.filter((id) => availableTools.includes(id))
-    : undefined;
+  const centerTools = centerBarTools(availableTools, compact);
+  const panelItems = morePanelTools(availableTools, compact);
 
   /* The bar reports itself as a drop zone through state and an effect.
    *
@@ -592,9 +591,41 @@ export function ControlBar() {
           cannot encode video. */}
       <RecordButton />
 
+      {/* ---- centre: Zoom's standing engagement cluster ----
+          Two flex-1 spacers pin this to the middle so Leave stays on the
+          far right even when the left cluster is empty (an attendee). */}
       <div className="flex-1" />
 
-      {/* ---- the customisable middle ---- */}
+      <div className="flex min-w-0 items-center justify-center gap-0.5 sm:gap-1">
+        {centerTools.map((id) => {
+          const Icon = tool(id).icon;
+          return (
+            <div key={id} className="relative" data-tool-slot={id}>
+              <BarButton
+                label={tool(id).label}
+                active={activeFor(id)}
+                badge={badgeFor(id)}
+                onClick={() => activate(id)}
+                icon={<Icon className="size-5" />}
+              />
+              {id === "reactions" && reactionsOpen && (
+                <ReactionTray
+                  onPick={(emoji) => {
+                    void realtime.react(emoji);
+                    tools.used("reactions");
+                    setReactionsOpen(false);
+                  }}
+                  onClose={() => setReactionsOpen(false)}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex-1" />
+
+      {/* ---- the customisable extras (Invite, Layout, Host, …) ---- */}
       {/* Outlined while a tool is in flight, so both drop targets are visible for
           the whole gesture rather than only the one the pointer happens to be
           over. The two states are distinct on purpose: dashed means "you may drop

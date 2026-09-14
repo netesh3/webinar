@@ -143,21 +143,16 @@ export function ChatNotifications({
 
   const many = preview.count > 1;
 
-  /* Desktop: top-right of the stage, next to the Chat rail button. Compact: the
-   * rail is gone (More sheet owns Chat) and the speaker fills the middle of the
-   * stage, so the card sits at the top edge instead — above the face, and still
-   * inside the stage, which is the reason it cannot cover the control bar. A
-   * `fixed` bottom toast would land on that bar the way the poll pop-up used to.
-   *
-   * tools.open("chat") is the same call the More grid uses, so a tap docks the
-   * panel as a phone overlay rather than inventing a right-rail on a width that
-   * has none. */
+  /* Desktop: just under the overlay header, on the right of the stage. Compact:
+   * below the title pill so it cannot cover the (i) or Views control. The
+   * control bar is a sibling of the stage, so a card inside the stage cannot
+   * land on Leave. */
   return (
     <div
       className={
         compact
-          ? "pointer-events-none absolute top-2 right-2 left-2 z-40 flex justify-center"
-          : "pointer-events-none absolute top-12 right-2 z-40 flex justify-end"
+          ? "pointer-events-none absolute top-14 right-2 left-2 z-40 flex justify-center"
+          : "pointer-events-none absolute top-14 right-2 z-40 flex justify-end"
       }
     >
       <div

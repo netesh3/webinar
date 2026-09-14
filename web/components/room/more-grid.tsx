@@ -12,15 +12,12 @@ import { ReactionPicker } from "./reactions";
 import { useToolDrag } from "./tool-drag";
 import { tool } from "./tools";
 
-/* The "More" overflow grid — media/session extras only.
+/* The "More" overflow grid — extras that are not on the standing toolbar.
  *
- * Chat / Q&A / Polls / Participants live on the right-edge engagement rail —
- * except on a phone-width room, where there is no room for a second vertical
- * rail beside the stage and the rail is hidden entirely (see side-panel.tsx).
- * There, control-bar.tsx passes them in as `panelItems` so they are still
- * reachable, just from here instead. This grid otherwise holds Invite,
- * Reactions, Hand, Settings, Host tools and anything else the user unpinned
- * from the bar.
+ * Chat / Q&A / Polls / Participants / Hand / Reactions / Settings sit in the
+ * centre of the control bar on a desktop (Zoom's cluster). On a phone-width
+ * room only Chat and Participants stay on the bar, and control-bar.tsx passes
+ * the rest in as `panelItems` so they remain reachable from here.
  *
  * Every cell does double duty: click to open, drag to pin.
  *
@@ -38,11 +35,9 @@ export function MoreGrid({
   onClose,
 }: {
   items: readonly ToolId[];
-  /** Chat / Q&A / Polls / Participants, passed only on a phone-width room —
-   *  see the compact branch in control-bar.tsx. They open the same docked
-   *  panel the right-edge rail does; unlike `items` they are never pinnable,
-   *  so they render as plain buttons with no drag binding and sit in their
-   *  own row above the rest of the grid. */
+  /** Standing-toolbar leftovers on a phone (Q&A, Polls, Hand, …). Unlike
+   *  `items` they are never pinnable — they already have a place on a
+   *  desktop bar. */
   panelItems?: readonly ToolId[];
   onClose: () => void;
 }) {
@@ -327,7 +322,7 @@ export function MoreGrid({
         {!panelItems && (
           <p className="mt-2 flex items-center gap-1.5 border-t border-line px-1.5 pt-2 text-[11px] text-ink-3">
             <PinIcon className="size-3 shrink-0" />
-            Chat, Q&amp;A, Polls, and Participants are on the right rail. Drag anything here onto the bar to pin it.
+            Chat, Q&amp;A, Polls, and Participants are on the bar. Drag anything here onto the bar to pin it.
           </p>
         )}
       </div>
