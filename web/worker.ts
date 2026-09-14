@@ -27,7 +27,8 @@ export default {
     if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
       return proxyApi(request, env);
     }
-    return handler.fetch(request, env, ctx);
+    const res = await handler.fetch(request, env, ctx);
+    return withFedcmPermission(res);
   },
 };
 
@@ -38,6 +39,21 @@ export {
   DOShardedTagCache,
   BucketCachePurge,
 } from "./.open-next/worker.js";
+
+const FEDCM_PERMISSION =
+  'identity-credentials-get=(self "https://accounts.google.com")';
+
+/** Chrome One Tap (FedCM) is a no-op unless this permission is granted. */
+function withFedcmPermission(res: Response): Response {
+  if (res.headers.has("Permissions-Policy")) return res;
+  const headers = new Headers(res.headers);
+  headers.set("Permissions-Policy", FEDCM_PERMISSION);
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
+}
 
 const HOP_BY_HOP = new Set([
   "connection",

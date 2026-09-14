@@ -30,13 +30,17 @@ declare global {
             cancel_on_tap_outside?: boolean;
             use_fedcm_for_prompt?: boolean;
             context?: string;
+            nonce?: string;
+            itp_support?: boolean;
           }) => void;
           prompt: (
             momentListener?: (notification: {
               isNotDisplayed: () => boolean;
               isSkippedMoment: () => boolean;
+              isDismissedMoment?: () => boolean;
               getNotDisplayedReason: () => string;
               getSkippedReason: () => string;
+              getDismissedReason?: () => string;
             }) => void,
           ) => void;
           cancel: () => void;
@@ -58,7 +62,33 @@ function loadGsi(): Promise<void> {
       `script[src="${GSI_SRC}"]`,
     );
     if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
+      if (window.google?.accounts?.id) {
+        resolve();
+        return;
+      }
+      // A script tag left over from a previous load may already be complete, in
+      // which case `load` will never fire again and waiting for it hangs forever.
+      if (existing.getAttribute("data-gsi-ready") === "1") {
+        resolve();
+        return;
+      }
+      // `load` already fired before we attached a listener (HMR, a previous
+      // mount that created the tag). readyState is complete in that case.
+      const readyState = (existing as HTMLScriptElement & { readyState?: string })
+        .readyState;
+      if (readyState === "complete" || readyState === "loaded") {
+        existing.setAttribute("data-gsi-ready", "1");
+        resolve();
+        return;
+      }
+      existing.addEventListener(
+        "load",
+        () => {
+          existing.setAttribute("data-gsi-ready", "1");
+          resolve();
+        },
+        { once: true },
+      );
       existing.addEventListener(
         "error",
         () => reject(new Error("GIS script failed")),
@@ -69,7 +99,10 @@ function loadGsi(): Promise<void> {
     const el = document.createElement("script");
     el.src = GSI_SRC;
     el.async = true;
-    el.onload = () => resolve();
+    el.onload = () => {
+      el.setAttribute("data-gsi-ready", "1");
+      resolve();
+    };
     el.onerror = () => reject(new Error("GIS script failed"));
     document.head.appendChild(el);
   }).catch((err) => {
@@ -84,6 +117,23 @@ function resolveGoogleClientId(fromConfig?: string): string | undefined {
   if (fromEnv) return fromEnv;
   const fromApi = fromConfig?.trim();
   return fromApi || undefined;
+}
+
+/** Nonce pair Google One Tap + Supabase `signInWithIdToken` both require.
+ *
+ *  GIS gets the SHA-256 hex; Supabase gets the raw value and checks it against
+ *  the JWT. Skipping this is why One Tap often "works" (prompt shows) then
+ *  fails at session creation with a nonce error. */
+async function googleIdNonce(): Promise<{ raw: string; hashed: string }> {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  const raw = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  const hashed = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return { raw, hashed };
 }
 
 export function GoogleOneTap({
@@ -117,14 +167,23 @@ export function GoogleOneTap({
       if (cancelled || !window.google?.accounts?.id) return;
 
       const destination = safeAuthNext(next, "/browse");
+      const { raw: nonce, hashed: hashedNonce } = await googleIdNonce();
+      if (cancelled) return;
 
       // Desktop One Tap renders top-right by default (Canva-style corner prompt).
       window.google.accounts.id.initialize({
         client_id: clientId!,
+        nonce: hashedNonce,
         auto_select: false,
-        cancel_on_tap_outside: true,
-        use_fedcm_for_prompt: true,
+        // Outside clicks must not count as a dismiss: GIS then suppresses the
+        // prompt for a cooling-off period, which looks like "One Tap is broken".
+        cancel_on_tap_outside: false,
+        // FedCM is required in Chrome once third-party cookies are gone. It is
+        // also a no-op on browsers that do not implement it (Safari, Firefox),
+        // where forcing it skips the prompt entirely. Detect rather than assume.
+        use_fedcm_for_prompt: "IdentityCredential" in window,
         context: "signin",
+        itp_support: true,
         callback: (response) => {
           const credential = response.credential;
           if (!credential || busy.current) return;
@@ -138,6 +197,7 @@ export function GoogleOneTap({
               const { data, error } = await supabase.auth.signInWithIdToken({
                 provider: "google",
                 token: credential,
+                nonce,
               });
               if (error) throw error;
               const accessToken = data.session?.access_token;
@@ -181,11 +241,10 @@ export function GoogleOneTap({
 
     return () => {
       cancelled = true;
-      try {
-        window.google?.accounts?.id?.cancel();
-      } catch {
-        // GIS may be unavailable; ignore.
-      }
+      // Do not call google.accounts.id.cancel() here. React Strict Mode (and a
+      // config refresh) remounts this effect; cancel() is treated as a user
+      // dismiss and GIS then hides One Tap for hours. The prompt tears down
+      // with the page on its own.
     };
   }, [
     status,
