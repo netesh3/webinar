@@ -133,6 +133,12 @@ export function DeviceSettings() {
           />
         </div>
 
+        {(permissions.canSpeak || permissions.canShareCamera) && (
+          <p className="text-[12px] leading-relaxed text-ink-3">
+            Keyboard: M mutes, V toggles the camera, hold Space to talk while muted.
+          </p>
+        )}
+
         {permissions.canShareCamera && (
           <>
             {/* What used to be a "Send video at" picker.

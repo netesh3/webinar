@@ -122,6 +122,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the host roster sections: oldest-first hands and a search box that stays
 	# away until the list is too long to scan are not things a three-person room shows.
 	cd web && node --experimental-strip-types --no-warnings lib/roster.test.mts
+	# And the media shortcuts: M/V/Space are also typing keys, so the guard that they
+	# do not fire in a chat box is the whole reason this file exists.
+	cd web && node --experimental-strip-types --no-warnings lib/media-hotkeys.test.mts
 
 .PHONY: test-mask
 test-mask: ## Virtual-background mask check: make test-mask PHOTO=~/some-photo-of-a-person.jpg

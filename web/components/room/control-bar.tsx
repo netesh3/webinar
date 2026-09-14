@@ -4,13 +4,15 @@ import {
   useConnectionState,
   useLocalParticipant,
   useRemoteParticipants,
+  useRoomContext,
 } from "@livekit/components-react";
 import { ConnectionState, Track } from "livekit-client";
-import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { barSlots, gridItems, PANEL_TOOL_IDS, type ToolId } from "@/lib/tools";
 import { useCompact } from "@/lib/compact";
+import { isTypingTarget, mediaHotkey } from "@/lib/media-hotkeys";
 import { Spinner } from "../controls";
 import {
   CameraIcon,
@@ -32,6 +34,7 @@ import { ReactionPicker } from "./reactions";
 import { RecordButton } from "./recording";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
+import { MediaToggle } from "./media-toggle";
 import { displayMediaOptions, SharePicker } from "./share-picker";
 import {
   HostAssignDialog,
@@ -118,7 +121,11 @@ export function ControlBar() {
     stage,
     leave,
     previewChrome,
+    prefs,
+    updatePrefs,
   } = useRoomUI();
+
+  const room = useRoomContext();
 
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
     useLocalParticipant();
@@ -196,7 +203,7 @@ export function ControlBar() {
         await run();
       } catch (err) {
         const kind =
-          key === "mic" ? "microphone" : key === "cam" ? "camera" : "devices";
+          key === "mic" ? "microphone" : key === "camera" ? "camera" : "devices";
         notify(describeMediaError(err, kind), "error");
       } finally {
         setPending(null);
@@ -236,8 +243,9 @@ export function ControlBar() {
   const meterRef = useMicMeter<SVGRectElement>(micTrack, isMicrophoneEnabled);
 
   // Someone who may not unmute should hear why once, rather than clicking a dead
-  // button and concluding the app is broken.
-  const onMicClick = () => {
+  // button and concluding the app is broken. A toast rather than a hover title,
+  // because the phones this actually happens on have no hover.
+  const onMicClick = useCallback(() => {
     if (permissions.mutedByHost) {
       notify("The host muted you. They'll let you know when you can speak again.", "info");
       return;
@@ -249,7 +257,92 @@ export function ControlBar() {
     void toggle("mic", "Microphone", () =>
       localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled),
     );
-  };
+  }, [
+    permissions.mutedByHost,
+    micBlocked,
+    notify,
+    toggle,
+    localParticipant,
+    isMicrophoneEnabled,
+  ]);
+
+  const onCameraClick = useCallback(() => {
+    void toggle("camera", "Camera", () =>
+      localParticipant.setCameraEnabled(!isCameraEnabled),
+    );
+  }, [toggle, localParticipant, isCameraEnabled]);
+
+  const switchCapture = useCallback(
+    async (kind: "audioinput" | "videoinput", deviceId: string) => {
+      try {
+        await room.switchActiveDevice(kind, deviceId);
+        updatePrefs(
+          kind === "audioinput" ? { audioInput: deviceId } : { videoInput: deviceId },
+        );
+      } catch (err) {
+        notify(
+          describeMediaError(err, kind === "audioinput" ? "microphone" : "camera"),
+          "error",
+        );
+      }
+    },
+    [room, updatePrefs, notify],
+  );
+
+  /* M / V / hold-Space. Typed into a field they are not — see isTypingTarget.
+   *
+   * Space is push-to-talk only while already muted: holding it to talk, releasing
+   * to go quiet again. Unmuting an already-live mic with Space would make the
+   * release mute them mid-sentence, which is the opposite of what they asked for. */
+  const pttHeld = useRef(false);
+  useEffect(() => {
+    const onDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      const action = mediaHotkey(e, "down");
+      if (!action) return;
+      if (action === "mute") {
+        e.preventDefault();
+        onMicClick();
+        return;
+      }
+      if (action === "camera" && permissions.canShareCamera) {
+        e.preventDefault();
+        onCameraClick();
+        return;
+      }
+      if (action !== "ptt-down") return;
+      if (
+        pttHeld.current ||
+        isMicrophoneEnabled ||
+        permissions.mutedByHost ||
+        !mayUnmute
+      ) {
+        return;
+      }
+      e.preventDefault();
+      pttHeld.current = true;
+      void localParticipant.setMicrophoneEnabled(true);
+    };
+    const onUp = (e: KeyboardEvent) => {
+      if (mediaHotkey(e, "up") !== "ptt-up" || !pttHeld.current) return;
+      pttHeld.current = false;
+      void localParticipant.setMicrophoneEnabled(false);
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+    };
+  }, [
+    onMicClick,
+    onCameraClick,
+    permissions.canShareCamera,
+    permissions.mutedByHost,
+    isMicrophoneEnabled,
+    mayUnmute,
+    localParticipant,
+  ]);
 
   // Screen share is not something any mobile browser supports, so the button is
   // hidden rather than offered and then failing. Read through useSyncExternalStore
@@ -397,7 +490,7 @@ export function ControlBar() {
       {permissions.canPublish || permissions.mutedByHost ? (
         <>
           {(permissions.canSpeak || permissions.mutedByHost) && (
-            <BarButton
+            <MediaToggle
               label={
                 isMicrophoneEnabled
                   ? "Mute"
@@ -407,12 +500,16 @@ export function ControlBar() {
                       ? "Unmute disabled by host"
                       : "Unmute"
               }
+              shortcut="M"
               active={isMicrophoneEnabled}
               danger={!isMicrophoneEnabled}
               dimmed={micBlocked}
               busy={pending === "mic"}
               onClick={onMicClick}
-              meterRef={meterRef}
+              deviceKind="audioinput"
+              currentDeviceId={prefs.audioInput}
+              onSelectDevice={(id) => void switchCapture("audioinput", id)}
+              meter={<MicLevelIcon meterRef={meterRef} />}
               icon={
                 isMicrophoneEnabled ? (
                   <MicIcon className="size-5" />
@@ -423,16 +520,16 @@ export function ControlBar() {
             />
           )}
           {permissions.canShareCamera && (
-            <BarButton
+            <MediaToggle
               label={isCameraEnabled ? "Stop video" : "Start video"}
+              shortcut="V"
               active={isCameraEnabled}
               danger={!isCameraEnabled}
               busy={pending === "camera"}
-              onClick={() =>
-                void toggle("camera", "Camera", () =>
-                  localParticipant.setCameraEnabled(!isCameraEnabled),
-                )
-              }
+              onClick={onCameraClick}
+              deviceKind="videoinput"
+              currentDeviceId={prefs.videoInput}
+              onSelectDevice={(id) => void switchCapture("videoinput", id)}
               icon={
                 isCameraEnabled ? (
                   <CameraIcon className="size-5" />
