@@ -442,7 +442,7 @@ function CallGrid() {
             <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" />
             <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
           </svg>
-          Ganesh SP · Host
+          Amlesh Kumar · Host
         </span>
         <span className="home-call-level" aria-hidden>
           <span />
@@ -453,8 +453,8 @@ function CallGrid() {
 
       <div className="home-call-panelists">
         <CallTile person={{ photo: "/images/hero/panelist-1.jpg", name: "Shweta Gupta", role: "Panelist", speaking: true }} panelist />
-        <CallTile person={{ photo: "/images/hero/panelist-2.jpg", name: "Amlesh Kumar", role: "Panelist", muted: true }} panelist />
-        <CallTile person={{ initials: "NK", name: "Netesh Kumar", role: "Panelist" }} panelist />
+        <CallTile person={{ photo: "/images/hero/panelist-2.jpg", name: "Anil Meru", role: "Panelist", muted: true }} panelist />
+        <CallTile person={{ initials: "SS", name: "Sunil SP", role: "Panelist" }} panelist />
       </div>
 
       <div className="home-call-audience" aria-hidden>
