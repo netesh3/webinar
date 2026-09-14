@@ -200,6 +200,18 @@ export function MoreIcon(props: IconProps) {
   );
 }
 
+/** Zoom meetings' More glyph: three dots in a circle, not a 2×2 grid. */
+export function MoreCircleIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.25" />
+      <circle cx="12" cy="8.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="8.85" cy="14.15" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="15.15" cy="14.15" r="1.15" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
 export function LeaveIcon(props: IconProps) {
   return (
     <Icon {...props}>

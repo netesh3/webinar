@@ -46,27 +46,21 @@ import { tool } from "./tools";
 
 /* The control bar.
  *
- * Three zones, and the split is the whole design:
+ * Three Zoom zones:
  *
- *   fixed left    microphone, camera, screen share, record. Never customisable
- *                 and never in the More grid — they are the controls somebody
- *                 reaches for mid-sentence, and a control you have to open a
- *                 drawer to find is a control you mute yourself too late with.
- *                 They are also per-role: an attendee has none of them.
+ *   fixed left    microphone and camera. Never customisable — they are the
+ *                 controls somebody reaches for mid-sentence. An attendee has
+ *                 neither; their token forbids publishing.
  *
- *   slots         optional extras (invite, layout, …) pinned or recent.
- *                 Chat / Q&A / Polls / Participants / Hand / Reactions /
- *                 Settings sit in the centre cluster, not here — Zoom keeps
- *                 those standing, not customisable.
+ *   centre        one strip, centred: Share, Record, Chat / Q&A / Polls /
+ *                 Participants / Hand / React / Settings, then pinned extras,
+ *                 then More. More is the overflow for this strip, not a sibling
+ *                 of Leave.
  *
- *   centre        engagement tools, always. The right-edge icon rail is gone;
- *                 these buttons are how you open those overlays.
+ *   fixed right   Leave. Isolated so its position never moves under the cursor.
  *
- *   fixed right   More and Leave. Leave last because its position should
- *                 never move under the cursor.
- *
- * An attendee sees no publish controls at all. Their token forbids publishing, so
- * a microphone button would open a device prompt and then fail at the SFU.
+ * Mic / video and Leave are out of flow so the centre strip stays actually
+ * centred rather than sliding toward whichever side is emptier.
  */
 
 const subscribeNothing = () => () => {};
@@ -474,20 +468,19 @@ export function ControlBar() {
   return (
     <div
       ref={setBarEl}
-      className="relative flex min-h-14 shrink-0 items-center gap-1.5 border-t border-white/10 bg-stage-bar px-2 sm:gap-2 sm:px-3"
+      className="relative flex min-h-14 shrink-0 items-center justify-center border-t border-white/10 bg-stage-bar px-24 sm:px-56"
       // Clears the iOS home indicator; without it the leave button sits under
       // the system gesture area and is genuinely hard to hit.
       style={{ paddingBottom: "max(0px, env(safe-area-inset-bottom))" }}
     >
-      {/* ---- fixed left: publish controls ----
-          Gated per source, not on "can publish at all": somebody the host allowed
-          to speak gets a microphone and must NOT get a camera and a screen share
-          they were never granted. */}
-      {/* A silenced speaker belongs on this side of the bar. Their microphone is
-          gone, but labelling them "view only" would say they lost their seat on
-          the stage, which is the host's other, separate decision. */}
+      {/* Mic + camera park on the left, out of flow, so they don't shove the
+          centre cluster sideways. Gated per source: somebody the host allowed
+          to speak gets a microphone and must NOT get a camera they were never
+          granted. A silenced speaker still belongs here — their microphone is
+          gone, but labelling them "view only" would say they lost their seat
+          on the stage, which is the host's other, separate decision. */}
       {permissions.canPublish || permissions.mutedByHost ? (
-        <>
+        <div className="absolute top-0 left-2 flex h-14 items-center gap-1 sm:left-3 sm:gap-2">
           {(permissions.canSpeak || permissions.mutedByHost) && (
             <MediaToggle
               label={
@@ -538,6 +531,11 @@ export function ControlBar() {
               }
             />
           )}
+        </div>
+      ) : null}
+
+      {/* Centre strip: Share / Record / standing tools / pins / More. */}
+      <div className="flex min-w-0 items-center gap-1 sm:gap-2">
           {/* Preview chrome always offers Share (mocked). A live room still needs
               getDisplayMedia support — most mobile browsers do not expose it, and
               some in-app/WebView browsers (a link opened from another app) do not
@@ -551,7 +549,7 @@ export function ControlBar() {
               phones this actually happens on. */}
           {permissions.canShareScreen && (
             <BarButton
-              label={sharing ? "Stop sharing" : "Share screen"}
+              label={sharing ? "Stop sharing" : "Share"}
               active={sharing}
               dimmed={!previewChrome && !canShare}
               busy={pending === "share" || fileShare.starting}
@@ -582,21 +580,12 @@ export function ControlBar() {
               }
             />
           )}
-        </>
-      ) : null}
 
-      {/* Recording sits with the publish controls because that is what it is: a
-          capture of what this stage is sending. It renders nothing for anyone the
-          server has not told they may record, and nothing in a browser that
-          cannot encode video. */}
-      <RecordButton />
+          {/* Recording sits with the centre tools the way Zoom parks Record —
+              a capture control, not a mute/video twin. It renders nothing for
+              anyone the server has not told they may record. */}
+          <RecordButton />
 
-      {/* ---- centre: Zoom's standing engagement cluster ----
-          Two flex-1 spacers pin this to the middle so Leave stays on the
-          far right even when the left cluster is empty (an attendee). */}
-      <div className="flex-1" />
-
-      <div className="flex min-w-0 items-center justify-center gap-0.5 sm:gap-1">
         {centerTools.map((id) => {
           const Icon = tool(id).icon;
           return (
@@ -621,118 +610,104 @@ export function ControlBar() {
             </div>
           );
         })}
-      </div>
 
-      <div className="flex-1" />
-
-      {/* ---- the customisable extras (Invite, Layout, Host, …) ---- */}
-      {/* Outlined while a tool is in flight, so both drop targets are visible for
-          the whole gesture rather than only the one the pointer happens to be
-          over. The two states are distinct on purpose: dashed means "you may drop
-          here", solid means "release now and this is what happens". */}
-      {/* Outline rather than ring or border: dashed is available on outlines in
-          Tailwind v4 and not on rings, and an outline takes no space so the bar
-          does not shift by two pixels the moment a drag starts. */}
-      <div
-        className={`flex items-center gap-1.5 rounded-xl px-1 transition-colors sm:gap-2 ${
-          drag.drag
-            ? dropIndex !== null
-              ? "bg-brand/15 outline-2 outline-brand outline-offset-2"
-              : "outline-1 outline-dashed outline-white/30 outline-offset-2"
-            : ""
-        }`}
-      >
-        {slots.map((slot, i) => (
-          <div key={slot.tool} className="flex items-center">
-            {dropIndex === i && <DropMarker />}
-            <div data-tool-slot={slot.tool} className="relative">
-              <ToolSlotButton
-                id={slot.tool}
-                label={labelFor(slot.tool)}
-                active={activeFor(slot.tool)}
-                badge={badgeFor(slot.tool)}
-                pinned={slot.pinned}
-                dragging={drag.drag?.tool === slot.tool}
-                onActivate={() => activate(slot.tool)}
-              />
-              {slot.tool === "layout" && layoutOpen && (
-                <LayoutMenu onClose={() => setLayoutOpen(false)} />
-              )}
-              {slot.tool === "reactions" && reactionsOpen && (
-                <ReactionTray
-                  onPick={(emoji) => {
-                    void realtime.react(emoji);
-                    tools.used("reactions");
-                    setReactionsOpen(false);
-                  }}
-                  onClose={() => setReactionsOpen(false)}
-                />
-              )}
-              {slot.tool === "invite" && inviteOpen && (
-                <InviteMenu
-                  onUsed={() => tools.used("invite")}
-                  onClose={() => setInviteOpen(false)}
-                />
-              )}
-            </div>
-          </div>
-        ))}
-
-        {/* The tail marker, for a drop past the last slot. */}
-        {dropIndex !== null && dropIndex >= slots.length && <DropMarker />}
-      </div>
-
-      {/* ---- fixed right ---- */}
-      <div className="relative">
-        <MoreButton
-          open={gridVisible}
-          count={gridVisible ? 0 : gridBadge}
-          onToggle={() => setMoreOpen((v) => !v)}
-        />
-        {gridVisible && (
-          <MoreGrid
-            items={grid}
-            panelItems={panelItems}
-            // While the grid is only open because a drag is in flight, dismissing
-            // it is not something the user can ask for — the drag owns it.
-            onClose={() => setMoreOpen(false)}
-          />
-        )}
-      </div>
-
-      {/* Leave, disabled until there is something to leave.
-          Pressing it mid-connect used to tear down a connection that was still being built,
-          which either did nothing visible or produced a half-torn session. Disabled only
-          while the FIRST connection is being established: during a reconnect it stays live,
-          because somebody whose network has gone is exactly who needs a way out and trapping
-          them behind a spinner is worse than a slightly untidy disconnect.
-          Hosts get a Zoom-style menu: hand off or end. Everyone else just leaves. */}
-      <div className="relative ml-1">
-        <button
-          type="button"
-          data-host-leave-trigger={isHost ? "" : undefined}
-          onClick={() => {
-            if (isHost) setLeaveMenuOpen((v) => !v);
-            else leave();
-          }}
-          disabled={connecting}
-          aria-label={isHost ? "Leave or end the webinar" : "Leave the webinar"}
-          aria-haspopup={isHost ? "menu" : undefined}
-          aria-expanded={isHost ? leaveMenuOpen : undefined}
-          title={connecting ? "Connecting…" : undefined}
-          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-live sm:px-4"
+        {/* Customisable extras (Invite, Layout, Host, …) sit in the same strip
+            they overflow from, not across the bar next to Leave. */}
+        <div
+          className={`flex items-center gap-1 rounded-xl px-0.5 transition-colors sm:gap-2 ${
+            drag.drag
+              ? dropIndex !== null
+                ? "bg-brand/15 outline-2 outline-brand outline-offset-2"
+                : "outline-1 outline-dashed outline-white/30 outline-offset-2"
+              : ""
+          }`}
         >
-          <LeaveIcon className="size-4 sm:hidden" />
-          <span className="hidden sm:inline">Leave</span>
-        </button>
-        {isHost && (
-          <HostLeaveMenu
-            open={leaveMenuOpen}
-            onClose={() => setLeaveMenuOpen(false)}
-            onAssign={() => setAssignOpen(true)}
-            onEnd={() => setEndConfirmOpen(true)}
+          {slots.map((slot, i) => (
+            <div key={slot.tool} className="flex items-center">
+              {dropIndex === i && <DropMarker />}
+              <div data-tool-slot={slot.tool} className="relative">
+                <ToolSlotButton
+                  id={slot.tool}
+                  label={labelFor(slot.tool)}
+                  active={activeFor(slot.tool)}
+                  badge={badgeFor(slot.tool)}
+                  pinned={slot.pinned}
+                  dragging={drag.drag?.tool === slot.tool}
+                  onActivate={() => activate(slot.tool)}
+                />
+                {slot.tool === "layout" && layoutOpen && (
+                  <LayoutMenu onClose={() => setLayoutOpen(false)} />
+                )}
+                {slot.tool === "reactions" && reactionsOpen && (
+                  <ReactionTray
+                    onPick={(emoji) => {
+                      void realtime.react(emoji);
+                      tools.used("reactions");
+                      setReactionsOpen(false);
+                    }}
+                    onClose={() => setReactionsOpen(false)}
+                  />
+                )}
+                {slot.tool === "invite" && inviteOpen && (
+                  <InviteMenu
+                    onUsed={() => tools.used("invite")}
+                    onClose={() => setInviteOpen(false)}
+                  />
+                )}
+              </div>
+            </div>
+          ))}
+          {dropIndex !== null && dropIndex >= slots.length && <DropMarker />}
+        </div>
+
+        <div className="relative">
+          <MoreButton
+            open={gridVisible}
+            count={gridVisible ? 0 : gridBadge}
+            onToggle={() => setMoreOpen((v) => !v)}
           />
-        )}
+          {gridVisible && (
+            <MoreGrid
+              items={grid}
+              panelItems={panelItems}
+              // While the grid is only open because a drag is in flight, dismissing
+              // it is not something the user can ask for — the drag owns it.
+              onClose={() => setMoreOpen(false)}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Leave stays on the far right, alone, the way Zoom parks End/Leave.
+          Out of flow so it does not pull the centred strip toward the left. */}
+      <div className="absolute top-0 right-2 flex h-14 items-center sm:right-3">
+        <div className="relative">
+          <button
+            type="button"
+            data-host-leave-trigger={isHost ? "" : undefined}
+            onClick={() => {
+              if (isHost) setLeaveMenuOpen((v) => !v);
+              else leave();
+            }}
+            disabled={connecting}
+            aria-label={isHost ? "Leave or end the webinar" : "Leave the webinar"}
+            aria-haspopup={isHost ? "menu" : undefined}
+            aria-expanded={isHost ? leaveMenuOpen : undefined}
+            title={connecting ? "Connecting…" : undefined}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-live sm:px-4"
+          >
+            <LeaveIcon className="size-4 sm:hidden" />
+            <span className="hidden sm:inline">Leave</span>
+          </button>
+          {isHost && (
+            <HostLeaveMenu
+              open={leaveMenuOpen}
+              onClose={() => setLeaveMenuOpen(false)}
+              onAssign={() => setAssignOpen(true)}
+              onEnd={() => setEndConfirmOpen(true)}
+            />
+          )}
+        </div>
       </div>
 
       {isHost && (

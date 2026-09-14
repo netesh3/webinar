@@ -68,8 +68,9 @@ export function isPanelTool(id: ToolId): boolean {
   return (PANEL_TOOL_IDS as readonly string[]).includes(id);
 }
 
-/** Always in the middle of the control bar, Zoom-style: media on the left,
- *  engagement in the centre, Leave on the right.
+/** Always in the centred strip, Zoom-style: mic / camera on the left, these
+ *  in the middle, Leave on the right. More is the overflow at the end of this
+ *  strip.
  *
  *  Not customisable pins. A host who accidentally unpinned Chat would lose the
  *  one control Zoom never lets you lose. Invite / Layout / Host stay in More
@@ -241,7 +242,7 @@ export type ToolLayout = {
 /* What a first-time user gets.
  *
  * Chat / Q&A / Polls / Participants / Hand / Reactions / Settings are the
- * centre cluster (CENTER_BAR_TOOLS), not pins. Layout, Invite and Host start
+ * standing strip (CENTER_BAR_TOOLS), not pins. Layout, Invite and Host start
  * in More and can be dragged onto the bar the same way they always could.
  */
 const DEFAULT_PINNED: ToolId[] = [];
@@ -249,12 +250,12 @@ const DEFAULT_PINNED: ToolId[] = [];
 /** Always rendered on the bar outside the capacity-limited pin slots.
  *
  *  Empty, but kept as the one place a future tool would go if something ever
- *  again needs to be guaranteed visible regardless of capacity. The centre
- *  cluster is CENTER_BAR_TOOLS, not this list — that cluster is not a pin. */
+ *  again needs to be guaranteed visible regardless of capacity. The standing
+ *  strip is CENTER_BAR_TOOLS, not this list — that strip is not a pin. */
 export const FIXED_BAR_TOOLS: readonly ToolId[] = [];
 
 /** Tools that must not appear as customisable pins — they already have a
- *  standing place (centre cluster, or a reserved slot). */
+ *  standing place (the strip, or a reserved slot). */
 function isBarExcluded(id: ToolId): boolean {
   return (
     FIXED_BAR_TOOLS.includes(id) ||

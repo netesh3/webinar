@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ToolId } from "@/lib/tools";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { useCompact } from "@/lib/compact";
-import { GridIcon, PinIcon } from "../icons";
+import { MoreCircleIcon } from "../icons";
 import { useRoomUI } from "./context";
 import { InviteMenu } from "./invite-panel";
 import { LayoutMenu } from "./layout-menu";
@@ -14,10 +14,11 @@ import { tool } from "./tools";
 
 /* The "More" overflow grid — extras that are not on the standing toolbar.
  *
- * Chat / Q&A / Polls / Participants / Hand / Reactions / Settings sit in the
- * centre of the control bar on a desktop (Zoom's cluster). On a phone-width
- * room only Chat and Participants stay on the bar, and control-bar.tsx passes
- * the rest in as `panelItems` so they remain reachable from here.
+ * Zoom meetings: a 3-column card that floats off the ••• at the end of the
+ * tool strip, with "Drag to pin or remove from toolbar" and Reset along the
+ * bottom. Chat / Q&A / Polls / Participants / Hand / Reactions / Settings sit
+ * on that strip on a desktop. On a phone-width room only Chat and Participants
+ * stay on the bar, and control-bar.tsx passes the rest in as `panelItems`.
  *
  * Every cell does double duty: click to open, drag to pin.
  *
@@ -117,7 +118,7 @@ export function MoreGrid({
                     ? "border-dashed border-live/60"
                     : "border-line"
               }`
-            : `room-dark absolute right-0 bottom-full z-50 mb-2 w-[336px] max-w-[calc(100vw-1rem)] rounded-xl border bg-surface p-2 shadow-2xl transition-colors ${
+            : `room-dark absolute right-0 bottom-full z-50 mb-3 w-[320px] max-w-[calc(100vw-1rem)] rounded-2xl border bg-surface p-2.5 shadow-2xl transition-colors ${
                 dropping
                   ? "border-live ring-2 ring-live/40"
                   : // While a bar tool is in flight this grid is a live target, so it
@@ -146,32 +147,8 @@ export function MoreGrid({
           </div>
         )}
 
-        <div className="flex items-center justify-between px-1.5 pt-0.5 pb-1.5">
-          <span
-            className={`text-[11px] font-semibold tracking-[0.06em] uppercase ${
-              dropping || inviting ? "text-live" : "text-ink-3"
-            }`}
-          >
-            {dropping ? "Release to remove it" : inviting ? "Drop here to remove" : "Tools"}
-          </span>
-          {/* Hidden mid-drag: a destructive-looking button under the cursor at the
-              moment of a drop is a mis-click waiting to happen. */}
-          {!dragging && (
-            <button
-              type="button"
-              onClick={() => {
-                tools.reset();
-                onClose();
-              }}
-              className="rounded-md px-1.5 py-0.5 text-[11px] font-medium text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-            >
-              Reset layout
-            </button>
-          )}
-        </div>
-
         {panelItems && panelItems.length > 0 && (
-          <div className="mb-2 flex flex-wrap justify-center gap-1 border-b border-line pb-2">
+          <div className="mb-1 grid grid-cols-3 border-b border-line pb-1">
             {panelItems.map((id) => {
               const t = tool(id);
               const Icon = t.icon;
@@ -186,9 +163,9 @@ export function MoreGrid({
                     tools.open(id);
                     onClose();
                   }}
-                  className="relative flex h-[64px] w-[72px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
+                  className="relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
                 >
-                  <Icon className="size-[18px]" />
+                  <Icon className="size-5" />
                   <span className="text-[11px] leading-tight font-medium">{t.label}</span>
                   {badge !== undefined && badge > 0 && (
                     <span className="absolute top-1.5 right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
@@ -206,15 +183,7 @@ export function MoreGrid({
             Everything is on the bar. Drag an item off it to put it back here.
           </p>
         ) : (
-          /* flex-wrap + justify-center rather than a 3-column grid: a grid's
-           * trailing row of 1-2 cells stays pinned to the left track, which is
-           * exactly the lopsided "one tile stranded under a wall of empty
-           * space" layout this replaced — five tools in three columns left a
-           * single Host tools cell alone on its own row. Centering the last
-           * row is the standard fix for a wrapped grid that doesn't divide
-           * evenly, and it holds regardless of how many tools a given role
-           * ends up seeing. */
-          <div className="flex flex-wrap justify-center gap-1">
+          <div className="grid grid-cols-3">
             {items.map((id) => {
               const t = tool(id);
               const Icon = t.icon;
@@ -266,13 +235,13 @@ export function MoreGrid({
                     tools.toggle(id);
                     onClose();
                   })}
-                  className={`relative flex h-[64px] w-[72px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                  className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
                     active
-                      ? "bg-brand/15 text-brand"
+                      ? "text-ink ring-2 ring-brand ring-inset"
                       : "text-ink-2 hover:bg-surface-2 hover:text-ink"
                   } ${drag.drag?.tool === id ? "opacity-40" : ""}`}
                 >
-                  <Icon className="size-[18px]" />
+                  <Icon className="size-5" />
                   <span className="text-[11px] leading-tight font-medium">
                     {id === "layout" ? `Layout · ${LAYOUT_LABEL[stage.mode]}` : t.label}
                   </span>
@@ -319,19 +288,34 @@ export function MoreGrid({
           </div>
         )}
 
-        {!panelItems && (
-          <p className="mt-2 flex items-center gap-1.5 border-t border-line px-1.5 pt-2 text-[11px] text-ink-3">
-            <PinIcon className="size-3 shrink-0" />
-            Chat, Q&amp;A, Polls, and Participants are on the bar. Drag anything here onto the bar to pin it.
+        {dragging ? (
+          <p className="mt-1 border-t border-line px-2 pt-2 text-[11px] text-live">
+            {dropping ? "Release to remove it from the bar" : "Drop here to remove from the toolbar"}
           </p>
+        ) : (
+          <div className="mt-1 flex items-center justify-between gap-3 border-t border-line px-2 pt-2">
+            <p className="text-[11px] leading-snug text-ink-3">
+              Drag to pin or remove from toolbar
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                tools.reset();
+                onClose();
+              }}
+              className="shrink-0 rounded-md text-[12px] font-medium text-brand transition-colors hover:text-brand/80 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              Reset
+            </button>
+          </div>
         )}
       </div>
     </>
   );
 }
 
-/** The trigger. Separate so the bar can render it in its fixed tail alongside
- *  Leave, and so the grid's outside-click handler has something to recognise. */
+/** The trigger. Separate so the bar can render it at the end of the tool strip,
+ *  and so the grid's outside-click handler has something to recognise. */
 export function MoreButton({
   open,
   count,
@@ -357,7 +341,7 @@ export function MoreButton({
           open ? "bg-white/20 text-white" : "text-white/75 hover:bg-white/10 hover:text-white"
         }`}
       >
-        <GridIcon className="size-5" />
+        <MoreCircleIcon className="size-5" />
         <span className="hidden text-[9.5px] leading-none font-medium sm:block">More</span>
       </span>
       {count > 0 && (
