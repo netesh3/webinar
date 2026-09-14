@@ -156,6 +156,18 @@ export function QuestionIcon(props: IconProps) {
   );
 }
 
+/** Circle-i. Meeting information in the room header — the title is truncated
+ *  there, so this is how a phone ever learns the webinar ID. */
+export function InfoIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11.2V17" />
+      <path d="M12 7.5h.01" strokeWidth={2.25} />
+    </Icon>
+  );
+}
+
 /** Gear / cog — device and account settings. Replaces the old sun-with-rays
  *  glyph, which at control-bar size read as brightness, not settings. */
 export function SettingsIcon(props: IconProps) {

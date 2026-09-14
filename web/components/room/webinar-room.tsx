@@ -51,6 +51,7 @@ import { useHostRoster } from "./participants";
 import { VirtualBackground } from "./background-picker";
 import { PollPopup } from "./poll-popup";
 import { FileShareBar } from "./file-share-bar";
+import { MeetingInfo } from "./meeting-info";
 import { ShareStopBar } from "./share-stop-bar";
 import { NetworkMetrics } from "./network-readout";
 import { Stage } from "./stage";
@@ -1042,7 +1043,7 @@ function AutoStartAudio({ room }: { room: Room }) {
 // ------------------------------------------------------------------- header
 
 function RoomHeader() {
-  const { topic, join, controls, isHost, permissions, tools } = useRoomUI();
+  const { controls, isHost, permissions, tools } = useRoomUI();
 
   // From the live permissions, not from the role in the join response. An attendee
   // the host brought on stage is no longer "view only", and a badge still saying
@@ -1062,7 +1063,7 @@ function RoomHeader() {
     <header className="flex h-11 shrink-0 items-center gap-2 border-b border-white/10 bg-stage-bar px-3 text-white">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <h1 className="truncate text-[13px] font-semibold">{topic}</h1>
+          <MeetingInfo />
           <LiveClock />
           {/* Everyone sees this, including the audience — consent is not something
               to leave to the browser that pressed the button. */}
@@ -1090,13 +1091,6 @@ function RoomHeader() {
           </div>
         )}
       </div>
-
-      <span
-        title={`Room ID ${join.room.replace(/^webinar_/, "")}`}
-        className="hidden text-[10.5px] text-white/35 tabular-nums sm:inline"
-      >
-        ID {join.room.replace(/^webinar_/, "")}
-      </span>
 
       <span className="hidden sm:block">
         <Badge tone={standing.tone}>{standing.label}</Badge>
