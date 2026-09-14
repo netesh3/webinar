@@ -63,16 +63,27 @@ export function Stage() {
   );
 
   const screenShare = tiles.find((t) => t.source === Track.Source.ScreenShare);
+  const mode: LayoutMode = stage.mode;
+  const speaking = useActiveSpeaker();
 
   /* The viewer's own filters and sort, applied before anything is laid out.
    *
    * Sorted here rather than inside each layout, because the order is what decides
    * which tiles land on the current page — and therefore which video this browser
    * pays for. A layout that sorted its own tiles could unsubscribe from the person
-   * who is talking. */
+   * who is talking.
+   *
+   * Speaker-mode is the one place the large tile follows the talker. Grid and
+   * spotlight pass null, so a conversation cannot reshuffle a gallery or a deck.
+   * Pin and a screen share still outrank the talker — see sortTiles. */
   const ordered = useMemo(
-    () => sortTiles(filterTiles(tiles, stage.preferences), stage.pinnedParticipantId),
-    [tiles, stage.preferences, stage.pinnedParticipantId],
+    () =>
+      sortTiles(
+        filterTiles(tiles, stage.preferences),
+        stage.pinnedParticipantId,
+        mode === "speaker" ? speaking : null,
+      ),
+    [tiles, stage.preferences, stage.pinnedParticipantId, mode, speaking],
   );
 
   /* The mode is exactly what the viewer chose — with one deliberate exception below.
@@ -90,7 +101,6 @@ export function Stage() {
    * selected. It also only fires once per share STARTING while the viewer happens
    * to be in Grid, not a standing override: switching back to Grid mid-share is
    * respected, and the switch does not repeat itself while the same share continues. */
-  const mode: LayoutMode = stage.mode;
   const { setMode } = stage;
   const isSharing = !!screenShare;
 
@@ -125,7 +135,6 @@ export function Stage() {
    * tidiness: the first setEnabled call takes the decision away from adaptiveStream
    * permanently, so a tile the viewer's filters removed has to be switched off here
    * or it downloads forever with nothing rendering it. See applyBudget. */
-  const speaking = useActiveSpeaker();
   const wanted = useMemo(() => {
     const map = new Map<string, VideoQuality>();
     const focusKey = page.items[0]?.key;

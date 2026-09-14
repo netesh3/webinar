@@ -89,6 +89,9 @@ export type LayoutPreferences = {
    *  avatar on a dark square, and a viewer looking for faces would rather have
    *  fewer, bigger ones. */
   hideNonVideo: boolean;
+  /** Hide your own camera tile. A screen share you are sending stays — that is
+   *  the content, not a self-view. */
+  hideSelf: boolean;
   /** Only the host and the panelists — nobody the host promoted for one question. */
   onlySpeakers: boolean;
   pageSize: PageSize;
@@ -113,6 +116,7 @@ const DEFAULTS: StageLayoutState = {
   mode: "speaker",
   preferences: {
     hideNonVideo: false,
+    hideSelf: false,
     onlySpeakers: false,
     // 16 (4×4) rather than 25: the common case for a page that fills is a
     // laptop screen, and 4×4 is what reads as "everyone" there without the
@@ -166,33 +170,23 @@ function hasLiveVideo(tile: Sortable): boolean {
  *
  *   1. whatever the viewer pinned. Their explicit choice outranks every heuristic.
  *   2. screen shares. Somebody sharing is presenting; that is the content.
- *   3. host, then panelists, then promoted attendees.
- *   4. cameras on before cameras off.
- *   5. identity, so the order is stable.
+ *   3. in speaker-mode only, the active speaker's camera. Grid and spotlight pass
+ *      null here, so a conversation does not reshuffle a gallery or a slide deck.
+ *   4. host, then panelists, then promoted attendees.
+ *   5. cameras on before cameras off.
+ *   6. identity, so the order is stable.
  *
- * WHO IS TALKING IS NOT IN THIS LIST, and that is the point.
- *
- * It used to be, ranked third, and it made the stage move constantly. Every time
- * the loudest person changed — which during a normal conversation is several times
- * a minute, and during a noisy call several times a second — their tile jumped to
- * the front and everybody after it slid down one. Three consequences, and only the
- * first is cosmetic:
- *
- *   - during a screen share the strip beside the slides reshuffled under the
- *     viewer's cursor, so clicking a face was a guess;
- *   - position drives quality, so a tile promoted to the front was re-requested at
- *     a higher layer and demoted a second later — a visible resolution flip on
- *     somebody who had merely said "yes";
- *   - and reordering moves DOM nodes, which is the one kind of re-render that can
- *     make a <video> flash black.
- *
- * So the order now changes only on a deliberate act: pinning, sharing a screen,
- * turning a camera on or off, joining, leaving. Who is speaking is shown by a
- * border instead — see lib/speaker.ts — which changes a colour and moves nothing.
+ * Who is talking is NOT in the default order, and used to be ranked third for every
+ * mode. That made the stage move constantly: every handover jumped a tile to the
+ * front, re-requested a video layer, and could flash a <video> black. Speaker view
+ * is the one place Zoom puts the talker on the large tile, so that mode opts in
+ * through `speakingIdentity`. Pin still wins. A share still wins over a camera.
+ * The green outline (lib/speaker.ts) still marks the talker in every mode.
  */
 export function sortTiles<T extends Sortable>(
   tiles: readonly T[],
   pinnedKey: string | null,
+  speakingIdentity: string | null = null,
 ): T[] {
   return [...tiles].sort((a, b) => {
     const pin = Number(b.key === pinnedKey) - Number(a.key === pinnedKey);
@@ -202,6 +196,19 @@ export function sortTiles<T extends Sortable>(
       Number(b.source === Track.Source.ScreenShare) -
       Number(a.source === Track.Source.ScreenShare);
     if (share !== 0) return share;
+
+    if (speakingIdentity) {
+      const speak =
+        Number(
+          b.source !== Track.Source.ScreenShare &&
+            b.participant.identity === speakingIdentity,
+        ) -
+        Number(
+          a.source !== Track.Source.ScreenShare &&
+            a.participant.identity === speakingIdentity,
+        );
+      if (speak !== 0) return speak;
+    }
 
     const role = roleRank(a.participant) - roleRank(b.participant);
     if (role !== 0) return role;
@@ -232,14 +239,22 @@ export function sortTiles<T extends Sortable>(
   });
 }
 
-/** Applies the viewer's filters. Their own tile is never filtered out — a viewer
- *  hiding cameras-off should not lose sight of themselves. */
+/** Applies the viewer's filters.
+ *
+ *  hideNonVideo never drops your own camera — a viewer hiding avatars should not
+ *  lose the one tile that tells them they are on air. hideSelf is the explicit
+ *  opposite, and still keeps a local screen share. */
 export function filterTiles<T extends Sortable>(
   tiles: readonly T[],
   preferences: LayoutPreferences,
 ): T[] {
   return tiles.filter((tile) => {
-    if (tile.participant.isLocal) return true;
+    if (tile.participant.isLocal) {
+      if (preferences.hideSelf && tile.source !== Track.Source.ScreenShare) {
+        return false;
+      }
+      return true;
+    }
     if (tile.source === Track.Source.ScreenShare) return true;
     if (preferences.onlySpeakers && roleRank(tile.participant) === 2)
       return false;
@@ -373,6 +388,7 @@ const STORAGE_KEY = "webcast.stage-layout.v1";
 type Persisted = {
   mode: LayoutMode;
   hideNonVideo: boolean;
+  hideSelf: boolean;
   onlySpeakers: boolean;
   pageSize: PageSize;
 };
@@ -391,6 +407,7 @@ function load(): StageLayoutState {
       preferences: {
         ...DEFAULTS.preferences,
         hideNonVideo: parsed.hideNonVideo === true,
+        hideSelf: parsed.hideSelf === true,
         onlySpeakers: parsed.onlySpeakers === true,
         pageSize: (PAGE_SIZES as readonly number[]).includes(
           parsed.pageSize as number,
@@ -427,6 +444,7 @@ export function useStageLayout(): StageLayoutApi {
       const persisted: Persisted = {
         mode: state.mode,
         hideNonVideo: state.preferences.hideNonVideo,
+        hideSelf: state.preferences.hideSelf,
         onlySpeakers: state.preferences.onlySpeakers,
         pageSize: state.preferences.pageSize,
       };
@@ -437,6 +455,7 @@ export function useStageLayout(): StageLayoutApi {
   }, [
     state.mode,
     state.preferences.hideNonVideo,
+    state.preferences.hideSelf,
     state.preferences.onlySpeakers,
     state.preferences.pageSize,
   ]);
@@ -458,6 +477,7 @@ export function useStageLayout(): StageLayoutApi {
       // Any filter or size change invalidates the page index, for the same reason.
       const resets =
         "hideNonVideo" in patch ||
+        "hideSelf" in patch ||
         "onlySpeakers" in patch ||
         "pageSize" in patch;
       return { ...c, preferences: resets ? { ...next, currentPage: 0 } : next };

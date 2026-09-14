@@ -181,7 +181,11 @@ export function ParticipantTile({
          * because `outline-width` going 0 → 2 cannot be transitioned: the border would snap
          * on and off. Fading the colour is what makes a handover read as one border moving
          * rather than two tiles blinking. Nothing animates except the colour. */
-        highlighted ? "outline-ok" : "outline-transparent"
+        highlighted
+          ? size === "lg"
+            ? "outline-[3px] outline-ok"
+            : "outline-ok"
+          : "outline-transparent"
       }`}
     >
       {hasVideo ? (

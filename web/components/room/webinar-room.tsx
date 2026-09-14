@@ -52,6 +52,7 @@ import { VirtualBackground } from "./background-picker";
 import { PollPopup } from "./poll-popup";
 import { FileShareBar } from "./file-share-bar";
 import { MeetingInfo } from "./meeting-info";
+import { ViewsMenu } from "./views-menu";
 import { ShareStopBar } from "./share-stop-bar";
 import { NetworkMetrics } from "./network-readout";
 import { Stage } from "./stage";
@@ -1060,7 +1061,7 @@ function RoomHeader() {
           : { label: "Attendee", tone: "neutral" as const };
 
   return (
-    <header className="flex h-11 shrink-0 items-center gap-2 border-b border-white/10 bg-stage-bar px-3 text-white">
+    <header className="flex min-h-11 shrink-0 items-center gap-2 border-b border-white/10 bg-stage-bar px-3 py-0.5 text-white sm:h-11 sm:py-0">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <MeetingInfo />
@@ -1091,6 +1092,8 @@ function RoomHeader() {
           </div>
         )}
       </div>
+
+      <ViewsMenu />
 
       <span className="hidden sm:block">
         <Badge tone={standing.tone}>{standing.label}</Badge>

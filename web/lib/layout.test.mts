@@ -103,6 +103,7 @@ function tile(
 
 const PREFS: LayoutPreferences = {
   hideNonVideo: false,
+  hideSelf: false,
   onlySpeakers: false,
   pageSize: 25,
   currentPage: 0,
@@ -227,6 +228,34 @@ group("sortTiles", () => {
   // Left as the fixture declared it, so nothing after this depends on the loop above.
   for (const t of tiles) setSpeaking(t, t.key === "cat");
 
+  /* Speaker-mode opts into chasing the talker. Grid and spotlight keep passing
+   * null, so this block is the only place the order may move with audio. */
+  eq(
+    sortTiles(tiles, null, "cat")[0].key,
+    "dan",
+    "a screen share still outranks the talker",
+  );
+  eq(
+    sortTiles(tiles, null, "cat")[1].key,
+    "cat",
+    "unpinned speaker-mode puts the talker on the large tile, ahead of the host",
+  );
+  eq(
+    sortTiles(tiles, "bob", "cat")[0].key,
+    "bob",
+    "a pin outranks the talker",
+  );
+  eq(
+    sortTiles(tiles, null, "cat").map((t) => t.key),
+    sortTiles(tiles, null, "cat").map((t) => t.key),
+    "passing the same speaker twice is stable",
+  );
+  eq(
+    sortTiles(tiles, null).map((t) => t.key),
+    baseline,
+    "grid (no speakingIdentity) is unchanged by who is talking",
+  );
+
   /* Your own camera goes last among equals, so it does not take the main stage.
    *
    * The host is role 0, and the host is usually also the local participant — so the focus tile
@@ -298,6 +327,7 @@ group("sortTiles", () => {
 group("filterTiles", () => {
   const tiles = [
     tile("me", { local: true, muted: true, role: "host" }),
+    tile("myshare", { local: true, role: "host", share: true }),
     tile("live", { role: "panelist" }),
     tile("dark", { role: "panelist", muted: true }),
     tile("guest", { role: "attendee" }),
@@ -311,6 +341,10 @@ group("filterTiles", () => {
   ok(hidden.includes("me"), "…but never your own tile, muted or not");
   ok(hidden.includes("deck"), "…and never a screen share");
 
+  const noSelf = filterTiles(tiles, { ...PREFS, hideSelf: true }).map((t) => t.key);
+  ok(!noSelf.includes("me"), "hideSelf drops your own camera");
+  ok(noSelf.includes("myshare"), "…but keeps a local screen share");
+
   const speakers = filterTiles(tiles, { ...PREFS, onlySpeakers: true }).map(
     (t) => t.key,
   );
@@ -318,7 +352,7 @@ group("filterTiles", () => {
   ok(speakers.includes("live"), "…keeps panelists");
   ok(speakers.includes("deck"), "…and keeps a share whoever owns it");
 
-  eq(filterTiles(tiles, PREFS).length, 5, "no filters means no filtering");
+  eq(filterTiles(tiles, PREFS).length, 6, "no filters means no filtering");
 });
 
 // ------------------------------------------------------------------- budget
