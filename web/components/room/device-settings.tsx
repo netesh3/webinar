@@ -2,6 +2,7 @@
 
 import { useRoomContext } from "@livekit/components-react";
 import { useEffect, useState } from "react";
+import { useChatSound } from "@/lib/chat-notify";
 import { deviceLabel, supportsOutputSelection, useDevices } from "@/lib/media";
 import { Alert, Select, Toggle } from "../controls";
 import { BackgroundPicker } from "./background-picker";
@@ -26,6 +27,7 @@ export function DeviceSettings() {
   const room = useRoomContext();
   const { prefs, updatePrefs, permissions } = useRoomUI();
   const { devices, refresh } = useDevices(true);
+  const chatSound = useChatSound();
   const [error, setError] = useState<string | null>(null);
 
   // Labels are hidden until the page holds a media permission, so re-enumerate
@@ -117,6 +119,19 @@ export function DeviceSettings() {
             device in your operating system&apos;s sound settings.
           </Alert>
         )}
+
+        {/* Not a device, and deliberately not gated on being able to publish — an
+            attendee following a busy chat has the same reason to want this as a host. Off
+            unless it is switched on here, and silent while this browser is sharing a
+            screen: see lib/chat-notify.ts. */}
+        <div className="border-t border-line pt-1">
+          <Toggle
+            checked={chatSound.enabled}
+            onChange={chatSound.setEnabled}
+            label="Sound for new chat messages"
+            description="A short cue when chat arrives while the panel is closed. Never plays while you are sharing your screen, because a share usually publishes its audio to the room."
+          />
+        </div>
 
         {permissions.canShareCamera && (
           <>

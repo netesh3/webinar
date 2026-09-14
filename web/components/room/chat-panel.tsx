@@ -10,9 +10,10 @@ import {
   ImageError,
 } from "@/lib/chat-images";
 import { textRuns } from "@/lib/chat-text";
+import { FOCUS_TTL_MS, useChatFocus } from "@/lib/chat-notify";
 import { chatDestination, type ChatDestination, type ChatMessage } from "@/lib/realtime";
 import { Alert, Spinner } from "../controls";
-import { ImageIcon, SendIcon } from "../icons";
+import { ArrowDownIcon, ImageIcon, SendIcon } from "../icons";
 import { useRoomUI } from "./context";
 
 /* Chat.
@@ -60,14 +61,64 @@ export function ChatPanel() {
   const pinnedToBottom = useRef(true);
   const filePicker = useRef<HTMLInputElement>(null);
 
+  /* The same fact as `pinnedToBottom`, in state.
+   *
+   * The ref is what the follow effect below reads during a commit; this is what the
+   * catch-up pill renders from. Two copies of one fact is usually a bug waiting to
+   * happen, and here the alternative is worse: a ref alone cannot re-render, and state
+   * alone would make every scroll event a render of the whole conversation. */
+  const [atBottom, setAtBottom] = useState(true);
+  /** How much has arrived since they scrolled up. Cleared by getting back to the bottom. */
+  const [behind, setBehind] = useState(0);
+  const known = useRef(realtime.chat.length);
+
   // Follow new messages, but only while the reader is already at the bottom.
   // Yanking someone back down while they scroll up to re-read something is the
   // single most annoying thing a chat panel can do.
   useEffect(() => {
+    const grew = realtime.chat.length - known.current;
+    known.current = realtime.chat.length;
     if (pinnedToBottom.current) {
       list.current?.scrollTo({ top: list.current.scrollHeight });
+      return;
     }
+    // Not followed, so it is offered instead. A conversation carrying on silently below
+    // the fold is one somebody scrolls down to twenty messages later and finds they
+    // missed a question addressed to them.
+    if (grew > 0) setBehind((n) => n + grew);
   }, [realtime.chat]);
+
+  function scrollToLatest() {
+    const el = list.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    pinnedToBottom.current = true;
+    setAtBottom(true);
+    setBehind(0);
+  }
+
+  /* "Open chat at this message", asked for by the notification card on the stage.
+   *
+   * Both copies of this panel — docked and popped out — see the same request, and only
+   * the one that is mounted can act on it. A request older than its TTL is ignored, so a
+   * panel opened by hand ten minutes later still starts where it always did rather than
+   * jumping to whatever the last card was about. */
+  const focus = useChatFocus();
+  const [flash, setFlash] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focus || Date.now() - focus.at > FOCUS_TTL_MS) return;
+    const row = list.current?.querySelector(
+      `[data-chat-message="${CSS.escape(focus.id)}"]`,
+    );
+    if (!row) return;
+    row.scrollIntoView({ block: "center" });
+    pinnedToBottom.current = false;
+    // Scrolled to is not the same as found: in a wall of similar-looking lines, the
+    // message the card was about needs to be pointed at for a moment.
+    setFlash(focus.id);
+    const timer = setTimeout(() => setFlash(null), 1800);
+    return () => clearTimeout(timer);
+  }, [focus]);
 
   // Attendee chat can be switched off by the host mid-session. The stage keeps
   // talking either way, so this is scoped to the audience.
@@ -190,7 +241,7 @@ export function ChatPanel() {
                 onClick={() => void setRoomDestination(to)}
                 disabled={switching !== null}
                 aria-pressed={roomOption === to}
-                className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-7 md:px-2.5 ${
                   roomOption === to
                     ? "bg-brand-soft text-brand"
                     : "text-ink-2 hover:bg-surface-2"
@@ -211,12 +262,17 @@ export function ChatPanel() {
         </div>
       )}
 
+      {/* Relative so the catch-up pill can sit over the foot of the conversation
+          rather than in the composer, where it would push the box around. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={list}
         onScroll={(e) => {
           const el = e.currentTarget;
-          pinnedToBottom.current =
-            el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+          const pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+          pinnedToBottom.current = pinned;
+          setAtBottom(pinned);
+          if (pinned) setBehind(0);
         }}
         className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
         aria-live="polite"
@@ -232,7 +288,18 @@ export function ChatPanel() {
           realtime.chat.map((m) => {
             const mine = m.from.identity === me.identity;
             return (
-              <div key={m.id} className="text-[13px]">
+              <div
+                key={m.id}
+                // The anchor the notification card scrolls to. Read out of the DOM rather
+                // than held as a list of element refs: the row may not exist yet when the
+                // request arrives, and a query answers that honestly.
+                data-chat-message={m.id}
+                // The negative margin pays for the padding, so a highlighted row lines up
+                // with every other one instead of shifting when it flashes.
+                className={`-mx-1 rounded-md px-1 text-[13px] transition-colors ${
+                  flash === m.id ? "bg-brand-soft/60 ring-1 ring-brand/40" : ""
+                }`}
+              >
                 <div className="flex items-baseline gap-1.5">
                   <span
                     className={`truncate text-[12px] font-semibold ${
@@ -268,6 +335,22 @@ export function ChatPanel() {
         )}
       </div>
 
+        {/* Shown only when there is something to catch up ON — scrolled up with nothing
+            new is not a state worth a button, because the scrollbar already says it. */}
+        {!atBottom && behind > 0 && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
+            <button
+              type="button"
+              onClick={scrollToLatest}
+              className="pointer-events-auto inline-flex min-h-11 items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-[11.5px] font-semibold text-white shadow-lg transition-colors hover:bg-brand-hover outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              <ArrowDownIcon className="size-3.5" />
+              {behind === 1 ? "1 new message" : `${behind} new messages`}
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="shrink-0 border-t border-line p-2.5">
         {muted ? (
           <Alert tone="warn">The host has turned off chat for attendees.</Alert>
@@ -285,35 +368,59 @@ export function ChatPanel() {
             )}
 
             {canChoose ? (
-              // A publisher picks their own audience per message. Sending to the
-              // panelists is addressed to the people already in that conversation,
-              // so there is no boundary being crossed.
-              <div className="mb-2 flex items-center gap-1 text-[11.5px]">
-                <span className="text-ink-3">To</span>
-                {(["everyone", "panelists"] as const).map((to) => (
-                  <button
-                    key={to}
-                    type="button"
-                    onClick={() => setStageTo(to)}
-                    aria-pressed={stageTo === to}
-                    className={`rounded-md px-2 py-0.5 font-medium transition-colors ${
-                      stageTo === to
-                        ? "bg-brand-soft text-brand"
-                        : "text-ink-2 hover:bg-surface-2"
-                    }`}
-                  >
-                    {to === "everyone" ? "Everyone" : "Panelists"}
-                  </button>
-                ))}
+              /* A publisher picks their own audience per message. Sending to the
+               * panelists is addressed to the people already in that conversation,
+               * so there is no boundary being crossed.
+               *
+               * The line beneath the picker is not decoration. A recipient name is not a
+               * disclosure: "Panelists" does not tell a host whether the four hundred
+               * people watching are about to read this, and that is precisely the
+               * question somebody asks in the half second before pressing Enter. */
+              <div className="mb-2">
+                <div className="flex items-center gap-1 text-[11.5px]">
+                  <span className="text-ink-3">To</span>
+                  {(["everyone", "panelists"] as const).map((to) => (
+                    <button
+                      key={to}
+                      type="button"
+                      onClick={() => setStageTo(to)}
+                      aria-pressed={stageTo === to}
+                      className={`min-h-11 rounded-md px-3 py-2 font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-0 md:px-2 md:py-0.5 ${
+                        stageTo === to
+                          ? "bg-brand-soft text-brand"
+                          : "text-ink-2 hover:bg-surface-2"
+                      }`}
+                    >
+                      {to === "everyone" ? "Everyone" : "Panelists"}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
+                  {stageTo === "panelists"
+                    ? "Only the host and panelists will see this. Attendees will not."
+                    : "Everyone in the webinar, attendees included, will see this."}
+                </p>
               </div>
             ) : (
-              // Told, not asked. Saying who will read this before it is written is
-              // the difference between a private question and an accident.
-              <p className="mb-2 text-[11.5px] text-ink-3">
-                {destination === "panelists"
-                  ? "Your messages go to the host and panelists only."
-                  : "Your messages are visible to everyone."}
-              </p>
+              /* Told, not asked. Where an attendee's message goes is the host's setting
+               * and the server applies it — the recipient list is chosen in say.go, not
+               * here — so offering a choice would be offering something this composer
+               * cannot deliver. The destination is still named explicitly rather than
+               * left implied: a private question sent to the whole room is not a mistake
+               * anybody makes twice, and it is not one they should be able to make once. */
+              <div className="mb-2 text-[11.5px]">
+                <p className="flex items-center gap-1">
+                  <span className="text-ink-3">To</span>
+                  <span className="rounded-md bg-surface-2 px-2 py-0.5 font-medium text-ink-2">
+                    {destination === "panelists" ? "Host and panelists" : "Everyone"}
+                  </span>
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
+                  {destination === "panelists"
+                    ? "Only the host and panelists will see this. Other attendees will not."
+                    : "Everyone in the webinar will see this."}
+                </p>
+              </div>
             )}
 
             <form

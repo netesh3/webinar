@@ -68,6 +68,21 @@ export function isPanelTool(id: ToolId): boolean {
   return (PANEL_TOOL_IDS as readonly string[]).includes(id);
 }
 
+/** Whether a panel tool is actually in front of the person: its docked tab is open, or it
+ *  has been popped out into a window that is not minimised.
+ *
+ *  One definition, because three surfaces read it — the unread watermark, the badge and
+ *  the chat notification card — and a room where the badge and the card disagree about
+ *  whether you are looking at chat is a room that notifies you about what is on screen. */
+export function isToolVisible(
+  layout: ToolLayout,
+  panelTab: ToolId | null,
+  tool: ToolId,
+): boolean {
+  const win = layout.windows[tool];
+  return panelTab === tool || (!!win && !win.minimized);
+}
+
 export function isToolId(value: unknown): value is ToolId {
   return (
     typeof value === "string" && (TOOL_IDS as readonly string[]).includes(value)

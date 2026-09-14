@@ -116,6 +116,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the delete warning, because the delete is irreversible and the previous copy told a
 	# host deleting a finished webinar that they were tidying up a page.
 	cd web && node --experimental-strip-types --no-warnings lib/webinar-delete.test.mts
+	# And the chat preview card: a burst of arrivals, a reconnect merging history, and
+	# your own echo coming back off the wire cannot be produced by hand in a live room.
+	cd web && node --experimental-strip-types --no-warnings lib/chat-notify.test.mts
 
 .PHONY: test-mask
 test-mask: ## Virtual-background mask check: make test-mask PHOTO=~/some-photo-of-a-person.jpg

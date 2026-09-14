@@ -42,6 +42,7 @@ import { Badge } from "../ui";
 import { ControlBar } from "./control-bar";
 import { planRecovery, RECOVERY_BACKOFF_MS } from "@/lib/recovery";
 import { ActiveSpeakerProvider } from "./active-speaker";
+import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
 import { PreJoin } from "./prejoin";
 import { RecordingIndicator } from "./recording";
@@ -56,7 +57,7 @@ import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
 import { useAvailableTools } from "./tools";
-import { useToolLayout, type ToolId } from "@/lib/tools";
+import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
 import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
 import { useTelemetry } from "@/lib/telemetry";
@@ -709,11 +710,8 @@ function ConnectedRoom({
   const chatCount = realtime.chat.length;
   const questionCount = realtime.questions.length;
 
-  const chatWin = tools.layout.windows.chat;
-  const qaWin = tools.layout.windows.qa;
-  const chatVisible =
-    tools.panelTab === "chat" || (!!chatWin && !chatWin.minimized);
-  const qaVisible = tools.panelTab === "qa" || (!!qaWin && !qaWin.minimized);
+  const chatVisible = isToolVisible(tools.layout, tools.panelTab, "chat");
+  const qaVisible = isToolVisible(tools.layout, tools.panelTab, "qa");
 
   const [seen, setSeen] = useState({ chat: 0, qa: 0 });
 
@@ -959,6 +957,10 @@ function ConnectedRoom({
                     none of this can reach a subscriber. */}
                 <FileShareBar />
                 <ConnectionBanner />
+                {/* Chat that arrived while the panel was shut, said once rather than
+                    left as a number. Given the same `chatVisible` the badge uses, so
+                    the two cannot disagree about whether you are looking at it. */}
+                <ChatNotifications chatVisible={chatVisible} />
               </div>
               <SidePanel />
             </div>
