@@ -37,6 +37,10 @@ export async function generateMetadata(): Promise<Metadata> {
     title,
     description,
     applicationName: name,
+    // Google Search Console / Auth Platform homepage ownership verification
+    verification: {
+      google: "xjAAcbLTS2AMiLjfZuvIt8FZ8UUMaxRzlll7U9_3lQE",
+    },
     openGraph: {
       title,
       description,

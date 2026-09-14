@@ -37,3 +37,6 @@ supabase/.temp/
 
 # Wrangler local cache (account id, etc.)
 .wrangler/
+
+# Firebase CLI debug output
+firebase-debug.log
