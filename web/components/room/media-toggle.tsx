@@ -224,7 +224,7 @@ function DeviceList({
   if (devices.length === 0) {
     return (
       <p className="px-3 py-2 text-[12.5px] text-ink-3">
-        No {kind.toLowerCase()}s listed yet. Allow access if the browser asks.
+        No {kind.toLowerCase()} devices listed yet. Allow access if the browser asks.
       </p>
     );
   }

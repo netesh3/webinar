@@ -17,7 +17,9 @@ import type { MediaPermissions } from "@/lib/permissions";
 import type { FileShareApi } from "@/lib/file-share";
 import { ControlBar } from "./control-bar";
 import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
+import { MeetingInfo } from "./meeting-info";
 import { SidePanel } from "./side-panel";
+import { ViewsMenu } from "./views-menu";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
 import { useAvailableTools } from "./tools";
@@ -158,12 +160,11 @@ export function PreviewRoom() {
 }
 
 function PreviewHeader() {
-  const { topic } = useRoomUI();
   return (
-    <header className="flex h-11 shrink-0 items-center gap-2 border-b border-white/10 bg-stage-bar px-3 text-white">
+    <header className="flex min-h-11 shrink-0 items-center gap-2 border-b border-white/10 bg-stage-bar px-3 py-0.5 text-white sm:h-11 sm:py-0">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <h1 className="truncate text-[13px] font-semibold">{topic}</h1>
+          <MeetingInfo />
           <span className="rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase">
             Preview
           </span>
@@ -172,6 +173,7 @@ function PreviewHeader() {
           Local UI only — no LiveKit connection
         </p>
       </div>
+      <ViewsMenu />
     </header>
   );
 }
@@ -266,23 +268,6 @@ function PreviewStage() {
 
   return (
     <div className="relative flex size-full min-h-0 flex-col">
-      <div className="absolute top-2 right-2 z-20 flex items-center gap-1 rounded-lg bg-black/55 p-0.5 backdrop-blur">
-        {(["speaker", "grid", "spotlight"] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            aria-pressed={mode === option}
-            title={`${option[0].toUpperCase()}${option.slice(1)} view`}
-            onClick={() => stage.setMode(option)}
-            className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
-              mode === option ? "bg-white/25 text-white" : "text-white/70 hover:text-white"
-            }`}
-          >
-            {option === "speaker" ? "Speaker" : option === "grid" ? "Grid" : "Spotlight"}
-          </button>
-        ))}
-      </div>
-
       {mode === "grid" ? (
         <div className="flex min-h-0 flex-1 flex-col p-2">
           <div
