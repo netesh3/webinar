@@ -5,6 +5,7 @@ import { useLocalParticipant } from "@livekit/components-react";
 import {
   backgroundsSupported,
   useVirtualBackground,
+  VIRTUAL_BACKGROUNDS,
   type BackgroundChoice,
 } from "@/lib/backgrounds";
 import { Alert } from "../controls";
@@ -21,7 +22,7 @@ import { useRoomUI } from "./context";
  *                       nothing, and re-applies when the track is replaced — stopping
  *                       and starting the camera republishes it, and without this the
  *                       background would come off along with it.
- *   BackgroundPicker    two tiles: Off, and Blur.
+ *   BackgroundPicker    Off, Blur, and a row of stills.
  *
  * The picker writes to the same persisted preference the applier reads, so there is
  * one source of truth and no message to pass between them.
@@ -87,7 +88,7 @@ export function BackgroundPicker() {
             </p>
           )}
 
-          <div className="grid grid-cols-2 gap-1.5 sm:max-w-[13rem]">
+          <div className="grid grid-cols-4 gap-1.5 sm:max-w-[22rem]">
             <Tile
               label="Off"
               active={isActive({ mode: "none" })}
@@ -112,6 +113,22 @@ export function BackgroundPicker() {
               </span>
             </Tile>
 
+            {VIRTUAL_BACKGROUNDS.map((bg) => (
+              <Tile
+                key={bg.id}
+                label={bg.label}
+                active={isActive({ mode: "image", id: bg.id })}
+                onClick={() => set({ mode: "image", id: bg.id })}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={bg.src}
+                  alt=""
+                  className="size-full object-cover"
+                  draggable={false}
+                />
+              </Tile>
+            ))}
           </div>
 
           <p className="mt-2 text-[11.5px] leading-relaxed text-ink-3">

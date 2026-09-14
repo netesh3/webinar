@@ -43,7 +43,10 @@ import { VideoTransformer } from "@livekit/track-processors";
  */
 
 /** What to put behind the person. */
-export type Background = { kind: "none" } | { kind: "blur"; radius: number };
+export type Background =
+  | { kind: "none" }
+  | { kind: "blur"; radius: number }
+  | { kind: "image"; src: string };
 
 export type SegmenterOptions = {
   background: Background;
@@ -185,16 +188,29 @@ const float MASK_LO = ${MASK_LO.toFixed(3)};
 const float MASK_HI = ${MASK_HI.toFixed(3)};
 in vec2 uv;
 uniform sampler2D frame;
-uniform sampler2D background;   // the blurred frame
+uniform sampler2D background;   // blurred frame, or a still
 uniform sampler2D mask;
-uniform int mode;               // 0 = passthrough, 1 = blur
+uniform int mode;               // 0 = passthrough, 1 = blur, 2 = image
+uniform vec2 frameSize;
+uniform vec2 imageSize;
 out vec4 color;
+
+/* object-fit: cover. A 16:9 still behind a 4:3 webcam must crop, not squash. */
+vec2 coverUv(vec2 p) {
+  float frameAspect = frameSize.x / max(frameSize.y, 1.0);
+  float imageAspect = imageSize.x / max(imageSize.y, 1.0);
+  vec2 scale = imageAspect > frameAspect
+    ? vec2(frameAspect / imageAspect, 1.0)
+    : vec2(1.0, imageAspect / frameAspect);
+  return (p - 0.5) * scale + 0.5;
+}
 
 void main() {
   vec3 fg = texture(frame, uv).rgb;
   if (mode == 0) { color = vec4(fg, 1.0); return; }
 
-  vec3 bg = texture(background, uv).rgb;
+  vec2 bgUv = mode == 2 ? coverUv(uv) : uv;
+  vec3 bg = texture(background, bgUv).rgb;
 
   /* The mask is a confidence, not a decision — and it is the PERSON's confidence.
    *
@@ -271,6 +287,15 @@ function target(gl: WebGL2RenderingContext, w: number, h: number): Target {
   return { texture, framebuffer, w, h };
 }
 
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`background image failed to load: ${src}`));
+    img.src = src;
+  });
+}
 
 // ---------------------------------------------------------------- the transformer
 
@@ -315,6 +340,12 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   private blurA: Target | null = null;
   private blurB: Target | null = null;
 
+  /** The still behind the person, uploaded once and reused until the choice changes. */
+  private imageTexture: WebGLTexture | null = null;
+  private imageSrc: string | null = null;
+  private imageW = 1;
+  private imageH = 1;
+
   /** So a persistent per-frame fault is reported once rather than 30 times a second. */
   private reportedFailure = false;
   /** The frame size the render targets were built for. Zero means nothing is built. */
@@ -333,8 +364,12 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   }
 
   /** Changes the background without rebuilding anything. Republishing the track to
-   *  change a colour would drop a frame for the audience. */
+   *  change a colour would drop a frame for the audience. Image loads finish before
+   *  the mode switches, so the previous background stays up rather than a black flash. */
   async setBackground(background: Background): Promise<void> {
+    if (background.kind === "image") {
+      await this.loadImageTexture(background.src);
+    }
     this.options = { ...this.options, background };
   }
 
@@ -400,6 +435,10 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       canvas,
     })) as unknown as Segmenter;
 
+    if (this.options.background.kind === "image") {
+      await this.loadImageTexture(this.options.background.src);
+    }
+
     // One line, at info level. Whether the processor attached at all is the first
     // question anybody asks when a background looks wrong, and it was previously
     // unanswerable from outside the tab.
@@ -417,6 +456,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     if (gl) {
       for (const p of [this.compositeProgram, this.blurProgram]) if (p) gl.deleteProgram(p);
       if (this.frameTexture) gl.deleteTexture(this.frameTexture);
+      if (this.imageTexture) gl.deleteTexture(this.imageTexture);
       for (const t of [this.maskA, this.maskB, this.maskScratch, this.blurA, this.blurB]) {
         if (!t) continue;
         gl.deleteTexture(t.texture);
@@ -431,6 +471,8 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     this.maskScratch = null;
     this.blurA = null;
     this.blurB = null;
+    this.imageTexture = null;
+    this.imageSrc = null;
     // Or a restart would think the targets it just deleted are still there.
     this.allocatedW = 0;
     this.allocatedH = 0;
@@ -659,6 +701,14 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       this.blurInto(gl, this.frameTexture!, this.blurA!, this.blurB!, background.radius);
     }
 
+    const mode = background.kind === "blur" ? 1 : background.kind === "image" ? 2 : 0;
+    const bgTexture =
+      background.kind === "blur"
+        ? this.blurB!.texture
+        : background.kind === "image" && this.imageTexture
+          ? this.imageTexture
+          : this.frameTexture;
+
     const p = this.compositeProgram!;
     gl.useProgram(p);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -669,10 +719,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     gl.uniform1i(gl.getUniformLocation(p, "frame"), 0);
 
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(
-      gl.TEXTURE_2D,
-      background.kind === "blur" ? this.blurB!.texture : this.frameTexture,
-    );
+    gl.bindTexture(gl.TEXTURE_2D, bgTexture);
     gl.uniform1i(gl.getUniformLocation(p, "background"), 1);
 
     gl.activeTexture(gl.TEXTURE2);
@@ -680,12 +727,36 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     gl.bindTexture(gl.TEXTURE_2D, mask.texture);
     gl.uniform1i(gl.getUniformLocation(p, "mask"), 2);
 
-    gl.uniform1i(gl.getUniformLocation(p, "mode"), background.kind === "blur" ? 1 : 0);
-
-    /* No cover-crop maths any more: the only background is the blurred frame itself, which
-     * is the same size as the frame by construction. It was needed when a 1920x1080 image had
-     * to be cropped rather than squashed behind a 640x480 camera. */
+    gl.uniform1i(gl.getUniformLocation(p, "mode"), mode);
+    gl.uniform2f(gl.getUniformLocation(p, "frameSize"), w, h);
+    gl.uniform2f(gl.getUniformLocation(p, "imageSize"), this.imageW, this.imageH);
 
     this.drawQuad(gl, p, w, h);
+  }
+
+  /** Uploads a still into `imageTexture`. Same src is a no-op so switching away
+   *  and back does not re-fetch. */
+  private async loadImageTexture(src: string): Promise<void> {
+    if (this.imageSrc === src && this.imageTexture) return;
+    const gl = this.ctx;
+    if (!gl) return;
+
+    const img = await loadImage(src);
+    if (!this.ctx) return;
+
+    if (!this.imageTexture) {
+      this.imageTexture = gl.createTexture();
+      if (!this.imageTexture) throw new Error("could not allocate a background texture");
+      gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    this.imageW = img.naturalWidth || img.width;
+    this.imageH = img.naturalHeight || img.height;
+    this.imageSrc = src;
   }
 }

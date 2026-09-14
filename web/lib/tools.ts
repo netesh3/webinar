@@ -178,7 +178,7 @@ const DEFAULT_SIZE: Record<ToolId, { w: number; h: number }> = {
   qa: { w: 384, h: 520 },
   polls: { w: 440, h: 560 },
   participants: { w: 372, h: 540 },
-  settings: { w: 468, h: 580 },
+  settings: { w: 468, h: 680 },
   host: { w: 468, h: 600 },
   // None of these opens a window — they act immediately, or open their own
   // anchored popover. Sizes exist so the record is total and nothing has to

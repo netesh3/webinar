@@ -189,11 +189,21 @@ export function MediaToggle({
             <>
               <div className="my-1 h-px bg-line" />
               <MenuToggle
-                checked={prefs.background.mode === "blur"}
+                checked={prefs.background.mode !== "none"}
                 onChange={(on) =>
-                  updatePrefs({ background: { mode: on ? "blur" : "none" } })
+                  updatePrefs({
+                    background: on
+                      ? prefs.background.mode === "none"
+                        ? { mode: "blur" }
+                        : prefs.background
+                      : { mode: "none" },
+                  })
                 }
-                label="Blur my background"
+                label={
+                  prefs.background.mode === "image"
+                    ? "Virtual background"
+                    : "Blur my background"
+                }
               />
             </>
           )}

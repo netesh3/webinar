@@ -4,7 +4,7 @@ import type { LocalVideoTrack } from "livekit-client";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Background } from "./segmenter";
 
-/* Virtual backgrounds: blur, or off. Nothing else — see the note on BackgroundMode.
+/* Virtual backgrounds: off, blur, or a bundled image.
  *
  * The pipeline is MediaPipe's selfie segmenter behind @livekit/track-processors: every
  * frame goes camera → segmentation → alpha matte → composite over the chosen
@@ -29,27 +29,35 @@ import type { Background } from "./segmenter";
 
 // ------------------------------------------------------------------ the catalogue
 
-/* Two choices: off, or blurred.
- *
- * There were four. Solid colours and ten bundled images have been removed at the operator's
- * request — a webinar wants one presenter looking like a presenter, and a menu of gradients is
- * a decision nobody benefits from making.
- *
- * What this does NOT do is make anything faster, and it is worth being exact because the
- * request was made in the name of latency. The expensive part of a virtual background is the
- * segmentation — MediaPipe running per frame to decide which pixels are the person — and it
- * runs identically whichever mode is chosen. What differs afterwards is trivial by comparison,
- * and blur is the MORE expensive of the two that remain: a separable Gaussian over two
- * half-resolution targets, against a single texture lookup for an image. So removing images
- * and keeping blur cannot reduce cost; if anything it removes the cheaper option.
- *
- * The lever that does reduce cost is `{ mode: "none" }`, which skips segmentation altogether.
- * The per-frame cost is measured and shown in the settings window — see FrameCost below — so
- * this is checkable rather than a claim.
- */
-export type BackgroundMode = "none" | "blur";
+export type BackgroundMode = "none" | "blur" | "image";
 
-export type BackgroundChoice = { mode: "none" } | { mode: "blur" };
+export type VirtualBackgroundId =
+  | "office"
+  | "library"
+  | "horizon"
+  | "conference"
+  | "studio"
+  | "sage";
+
+export type BackgroundChoice =
+  | { mode: "none" }
+  | { mode: "blur" }
+  | { mode: "image"; id: VirtualBackgroundId };
+
+export const VIRTUAL_BACKGROUNDS: readonly {
+  id: VirtualBackgroundId;
+  label: string;
+  src: string;
+}[] = [
+  { id: "office", label: "Office", src: "/backgrounds/office.jpg" },
+  { id: "library", label: "Library", src: "/backgrounds/library.jpg" },
+  { id: "horizon", label: "Horizon", src: "/backgrounds/horizon.jpg" },
+  { id: "conference", label: "Conference", src: "/backgrounds/conference.jpg" },
+  { id: "studio", label: "Studio", src: "/backgrounds/studio.jpg" },
+  { id: "sage", label: "Sage", src: "/backgrounds/sage.jpg" },
+];
+
+const BACKGROUND_IDS = new Set<string>(VIRTUAL_BACKGROUNDS.map((b) => b.id));
 
 export const NO_BACKGROUND: BackgroundChoice = { mode: "none" };
 
@@ -65,20 +73,33 @@ const BLUR_RADIUS = 12;
  * that value would reach the segmenter, match no branch, and leave a presenter with a black or
  * unprocessed frame and nothing in the UI to explain it.
  *
- * An unrecognised mode becomes "blur" rather than "none": somebody who had chosen a background
- * wanted their room hidden, and silently revealing it is the worse of the two failures.
+ * An unrecognised image id becomes "blur" rather than "none": somebody who had chosen a
+ * background wanted their room hidden, and silently revealing it is the worse of the two
+ * failures.
  */
 export function asBackgroundChoice(value: unknown): BackgroundChoice {
-  const mode = (value as { mode?: unknown } | null | undefined)?.mode;
+  const rec = value as { mode?: unknown; id?: unknown } | null | undefined;
+  const mode = rec?.mode;
   if (mode === "none") return { mode: "none" };
   if (mode === "blur") return { mode: "blur" };
+  if (mode === "image") {
+    const id = rec?.id;
+    if (typeof id === "string" && BACKGROUND_IDS.has(id)) {
+      return { mode: "image", id: id as VirtualBackgroundId };
+    }
+    return { mode: "blur" };
+  }
   if (typeof mode === "string") return { mode: "blur" };
   return NO_BACKGROUND;
 }
 
 /** A one-line description of the current choice, for a settings row. */
 export function describeBackground(choice: BackgroundChoice): string {
-  return choice.mode === "blur" ? "Blurred" : "Off";
+  if (choice.mode === "blur") return "Blurred";
+  if (choice.mode === "image") {
+    return VIRTUAL_BACKGROUNDS.find((b) => b.id === choice.id)?.label ?? "Background";
+  }
+  return "Off";
 }
 
 /* What a frame costs, published for the settings window to read.
@@ -141,7 +162,14 @@ type Processor = {
 /* Turns a choice into what the compositor needs.
  */
 function backgroundFor(choice: BackgroundChoice): Background {
-  return choice.mode === "blur" ? { kind: "blur", radius: BLUR_RADIUS } : { kind: "none" };
+  if (choice.mode === "blur") return { kind: "blur", radius: BLUR_RADIUS };
+  if (choice.mode === "image") {
+    const item = VIRTUAL_BACKGROUNDS.find((b) => b.id === choice.id);
+    return item
+      ? { kind: "image", src: item.src }
+      : { kind: "blur", radius: BLUR_RADIUS };
+  }
+  return { kind: "none" };
 }
 
 /** Whether this browser can do it at all. WebGL2 and the WASM loader; an old Safari
@@ -189,7 +217,8 @@ export function useVirtualBackground(
   }, [onDegraded]);
 
   const sid = track?.sid ?? track?.mediaStreamID;
-  const key = choice.mode;
+  const key =
+    choice.mode === "image" ? `image:${choice.id}` : choice.mode;
 
   /* Fetch the model before there is a track to apply it to.
    *
