@@ -559,16 +559,6 @@ export interface Webinar {
    */
   sfuProject?: string;
   report?: WebinarReport;
-  /**
-   *  IsDemo and DemoExpiresAt mark a webinar started through "Launch a webinar"
-   * 	 * rather than the ordinary schedule form. Read-only from the API's point of
-   * 	 * view — there is no field on WebinarInput to set these, the same way
-   * 	 * GuestJoinAllowed above has none; both are decided by the server, not
-   * 	 * requested by a caller. DemoExpiresAt is what WebinarBySlug checks to
-   * 	 * lazily end a demo session once its window has passed — see there.
-   */
-  isDemo?: boolean;
-  demoExpiresAt?: string; // RFC3339
 }
 /**
  * WebinarInput creates or replaces a webinar. PATCH has replace semantics
@@ -636,24 +626,16 @@ export interface SignupRequest {
   /**
    *  WantsHost is ACCEPTED AND IGNORED, and the field is kept for exactly that reason.
    * 	 *
-   * 	 * It used to grant the hosting capability, which made "can create webinars and collect
-   * 	 * strangers' contact details" a checkbox anybody could tick. Removing the field outright
-   * 	 * would make an older cached bundle's signup fail on an unknown-field error — this API
-   * 	 * rejects unknown fields — so the request still parses and the value no longer does
-   * 	 * anything. See handleSignup, which records when somebody asked.
+   * 	 * Every new account gets hosting automatically now (see handleSignup) — nothing left to
+   * 	 * ask for. Removing the field outright would make an older cached bundle's signup fail
+   * 	 * on an unknown-field error, since this API rejects unknown fields, so the request still
+   * 	 * parses and the value no longer does anything either way.
    */
   wantsHost: boolean;
 }
 /**
- * DemoLaunchRequest is POST /demo/launch: a name and an email, and nothing
- * else — no password, no webinar details. See handleLaunchDemo.
- */
-export interface DemoLaunchRequest {
-  name: string;
-  email: string;
-}
-/**
- * HostGrant is an admin's decision about one account's hosting capability.
+ * HostGrant is an admin's decision about one account's hosting capability —
+ * still the only way to take it away from an account after signup.
  */
 export interface HostGrant {
   canHost: boolean;
@@ -1085,13 +1067,6 @@ export interface AppConfig {
    * 	 * the server's storage, so it is unaffected by it either way.
    */
   cloudRecordingEnabled: boolean;
-  /**
-   * DemoMode mirrors config.Config.DemoMode: whether POST /demo/launch is open.
-   * The frontend uses it to decide whether "Launch a webinar" appears on the
-   * marketing page at all — hidden rather than shown-then-erroring when the
-   * operator has not turned this on.
-   */
-  demoMode?: boolean;
   /**
    * TelemetryEnabled mirrors config.Config.TelemetryEnabled: whether POST
    * /telemetry accepts anything. The frontend's telemetry poller checks this

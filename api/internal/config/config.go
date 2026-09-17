@@ -195,21 +195,6 @@ type Config struct {
 	// says so loudly when it is on.
 	AuthBypass bool
 
-	/* DemoMode turns on one specific public door: POST /api/demo/launch, and the
-	 * "Launch a webinar" button on the marketing page that calls it.
-	 *
-	 * Deliberately narrower than AuthBypass. AuthBypass hands every request on the
-	 * server a free host account with no sign-in page anywhere — it is a switch
-	 * for running this whole instance as a local fixture. DemoMode changes nothing
-	 * about how the rest of the site behaves; it opens exactly one endpoint that
-	 * mints a throwaway host account (flagged, so it is never mistaken for a real
-	 * one) for whoever fills in a name and an email, and starts them a two-hour
-	 * webinar with no registration or approval gate. Meant for running publicly on
-	 * a real deployment for a while, which is not something AuthBypass is safe to
-	 * do — so this is its own flag rather than reusing that one.
-	 */
-	DemoMode bool
-
 	/* TelemetryEnabled turns on POST /api/telemetry and the token-issuance
 	 * timing log in issueToken. Off by default: for a specific performance-test
 	 * window, not a standing feature. The frontend's own poller (see
@@ -277,7 +262,6 @@ func Load() (Config, error) {
 	c.RecordingsEnabled = envBool("RECORDINGS_ENABLED", true)
 	c.SeedDev = envBool("SEED_DEV", true)
 	c.AuthBypass = envBool("AUTH_BYPASS", false)
-	c.DemoMode = envBool("DEMO_MODE", false)
 	c.TelemetryEnabled = envBool("TELEMETRY_ENABLED", false)
 	c.MinPasswordLength = envInt("MIN_PASSWORD_LENGTH", passwordFloorFor(c.Env))
 
@@ -471,11 +455,11 @@ func (c Config) String() string {
 	if c.RecordingsEnabled {
 		recordings = fmt.Sprintf("%s(max %dMB)", c.RecordingsBackend, c.MaxRecordingMB)
 	}
-	// authBypass and demoMode are in the boot line because they are the settings
-	// here that remove a security boundary rather than adjusting one. telemetryEnabled
-	// doesn't, but it's worth seeing at boot too — it's easy to flip on for a test
-	// window and forget, and the boot log is the cheapest place to notice that.
-	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s seed=%v authBypass=%v demoMode=%v telemetryEnabled=%v googleAuth=%v cors=%v",
+	// authBypass is in the boot line because it is the setting here that removes
+	// a security boundary rather than adjusting one. telemetryEnabled doesn't,
+	// but it's worth seeing at boot too — it's easy to flip on for a test window
+	// and forget, and the boot log is the cheapest place to notice that.
+	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s seed=%v authBypass=%v telemetryEnabled=%v googleAuth=%v cors=%v",
 		c.Env, c.Addr, describeLiveKitProjects(c.LiveKitProjects), c.MaxAttendees, recordings,
-		c.SeedDev, c.AuthBypass, c.DemoMode, c.TelemetryEnabled, c.GoogleAuthEnabled(), c.CORSOrigins)
+		c.SeedDev, c.AuthBypass, c.TelemetryEnabled, c.GoogleAuthEnabled(), c.CORSOrigins)
 }

@@ -366,13 +366,13 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	/* Always created WITHOUT the hosting capability, whatever the request asked for.
-	 *
-	 * req.WantsHost used to be passed straight through here, which made "may create webinars
-	 * and collect strangers' contact details" a checkbox on a public signup form. Only an
-	 * admin grants it now; see store.SetHostCapability. */
+	/* Always created WITH the hosting capability now — every new account can host from
+	 * the moment it exists, whatever req.WantsHost says (see its own doc comment: kept
+	 * on the wire but no longer meaningful either way, since the answer is always yes).
+	 * An admin can still take it away afterward with SetHostCapability; that stays the
+	 * only way hosting is ever revoked. */
 	user, err := s.store.CreateUser(r.Context(), req.Email, hash,
-		req.Name, req.Title, req.Org, false)
+		req.Name, req.Title, req.Org, true)
 	if errors.Is(err, store.ErrConflict) {
 		// Naming the conflict is the right call here. The address is already
 		// discoverable by trying to sign in, and hiding it only produces
@@ -393,9 +393,9 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.sessions.SetCookie(w, token, exp)
-	// Logged rather than acted on. Somebody ticking "I want to host" is a useful signal for
-	// whoever grants it, and the alternative — dropping it silently — leaves an admin with no
-	// way to know anybody is waiting.
+	// can_host is logged mainly as a sanity check — it should always read true for a
+	// fresh signup now — and requested_host is kept for the historical record even
+	// though it no longer changes the outcome either way.
 	s.log.Info("signup", "user", user.ID, "can_host", user.CanHost,
 		"requested_host", req.WantsHost, "email_domain", domainOf(user.Email))
 	httpx.JSON(w, http.StatusCreated, user.Public())
@@ -530,8 +530,10 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 				"New accounts are closed on this instance.")
 			return
 		}
+		// Same policy as handleSignup: every new account can host from the
+		// moment it exists, whichever door they signed up through.
 		user, err = s.store.CreateUser(r.Context(), identity.Email, "",
-			identity.Name, "", "", false)
+			identity.Name, "", "", true)
 		if errors.Is(err, store.ErrConflict) {
 			// Race with a parallel signup: look up again.
 			user, err = s.store.UserByEmail(r.Context(), identity.Email)

@@ -24,10 +24,6 @@ type User struct {
 	// IsAdmin may grant CanHost to other accounts. Never settable in-band: see
 	// PromoteAdmins and migrations/0011.
 	IsAdmin bool
-	// IsDemo marks an account minted by the "Launch a webinar" demo door
-	// (CreateDemoUser) rather than real signup. Never settable in-band from
-	// CreateUser's own path — see CreateDemoUser.
-	IsDemo bool
 }
 
 func (u User) Public() types.Account {
@@ -58,12 +54,12 @@ func (u User) Person() types.Person {
 }
 
 const userColumns = `id::text, email, coalesce(password_hash,''), name, title, org,
-	initials, hue, can_host, is_admin, is_demo`
+	initials, hue, can_host, is_admin`
 
 func scanUser(row scanner) (User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Title, &u.Org,
-		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.IsDemo)
+		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin)
 	return u, err
 }
 
@@ -86,36 +82,20 @@ func (s *Store) UserByID(ctx context.Context, id string) (User, error) {
 	return u, err
 }
 
-// CreateUser registers an account. ErrConflict means the email is taken.
-//
-// Initials and the avatar colour are derived rather than asked for: one less
-// field on the signup form, and it means every account has an avatar without a
-// hardcoded palette anywhere in the codebase.
-func (s *Store) CreateUser(ctx context.Context, email, hashedPassword, name, title, org string, canHost bool) (User, error) {
-	return s.createUser(ctx, email, hashedPassword, name, title, org, canHost, false)
-}
-
-/* CreateDemoUser mints the throwaway host account behind "Launch a webinar".
+/* CreateUser registers an account. ErrConflict means the email is taken.
  *
- * canHost is always true and isDemo is always true — unlike CreateUser, there is
- * no caller-supplied canHost, because the entire point of this door is granting
- * hosting without an admin, and only for an account this flag marks as not a
- * real one. There is no password: the demo endpoint signs the caller straight
- * in on success, the same way it would after a login, and a demo account that
- * nobody can otherwise sign into is one less password to leak.
+ * Initials and the avatar colour are derived rather than asked for: one less
+ * field on the signup form, and it means every account has an avatar without a
+ * hardcoded palette anywhere in the codebase.
  *
- * ErrConflict means the email already has an account — real or an earlier demo
- * — and the caller should refuse rather than silently reuse it: this must never
- * become a way to hand an existing account hosting rights it does not already
- * have.
+ * canHost is a parameter rather than always true because not every caller
+ * wants it granted — AuthBypass's dev fixture and the admin-invite path both
+ * make their own choice — but handleSignup and handleSupabaseAuth, the two
+ * real account-creation paths, both pass true: every new account can host from
+ * the moment it exists. An admin can still take it away with SetHostCapability
+ * (see admin.go) — that stays the only way hosting is ever revoked.
  */
-func (s *Store) CreateDemoUser(ctx context.Context, email, name string) (User, error) {
-	return s.createUser(ctx, email, "", name, "", "", true, true)
-}
-
-func (s *Store) createUser(
-	ctx context.Context, email, hashedPassword, name, title, org string, canHost, isDemo bool,
-) (User, error) {
+func (s *Store) CreateUser(ctx context.Context, email, hashedPassword, name, title, org string, canHost bool) (User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	name = strings.TrimSpace(name)
 
@@ -128,14 +108,13 @@ func (s *Store) createUser(
 		Initials:     InitialsOf(name),
 		Hue:          HueFor(email),
 		CanHost:      canHost,
-		IsDemo:       isDemo,
 	}
 
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, name, title, org, initials, hue, can_host, is_demo)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		INSERT INTO users (email, password_hash, name, title, org, initials, hue, can_host)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		RETURNING id::text`,
-		u.Email, u.PasswordHash, u.Name, u.Title, u.Org, u.Initials, u.Hue, u.CanHost, u.IsDemo,
+		u.Email, u.PasswordHash, u.Name, u.Title, u.Org, u.Initials, u.Hue, u.CanHost,
 	).Scan(&u.ID)
 	if isUniqueViolation(err) {
 		return User{}, ErrConflict
