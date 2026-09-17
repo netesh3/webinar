@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
-import { CalendarIcon, PlayIcon } from "./icons";
+import { CalendarIcon, ChevronDownIcon, PlayIcon } from "./icons";
 import { DEFAULT_ATTENDEE_LIMIT } from "./schedule-form";
 import { useAppConfig, useSession, useToast } from "./providers";
 import { ButtonLink, Card, Empty } from "./ui";
@@ -234,44 +234,49 @@ export function HostWebinarsScreen() {
         </p>
       </div>
 
-      {/* Two distinct tiles rather than two same-weight buttons: which one to
+      {/* Two distinct rows rather than two same-weight buttons: which one to
           click should be obvious without reading closely, the way Zoom's own
-          "New Meeting" vs "Schedule" tiles are. */}
-      <div className="mb-8 grid gap-3 sm:grid-cols-2">
+          "New Meeting" vs "Schedule" tiles are. Compact and horizontal, not a
+          tall card — the whole row is one action, so there is nothing to say
+          twice (a title plus a "Do the thing →" link under it repeats
+          itself). */}
+      <div className="mb-8 grid gap-2.5 sm:grid-cols-2">
         <button
           type="button"
           onClick={startInstantWebinar}
           disabled={startingInstant}
-          className="group flex flex-col items-start gap-2.5 rounded-xl border border-line bg-surface p-5 text-left transition-colors hover:border-brand-line disabled:opacity-60"
+          className="group flex items-center gap-3 rounded-xl border border-line bg-surface p-3.5 text-left transition-colors hover:border-brand-line disabled:opacity-60"
         >
-          <span className="grid size-10 place-items-center rounded-lg bg-brand-soft text-brand">
-            {startingInstant ? <Spinner className="size-5" /> : <PlayIcon className="size-5" />}
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
+            {startingInstant ? <Spinner className="size-4.5" /> : <PlayIcon className="size-4.5" />}
           </span>
-          <span className="text-[15px] font-semibold">Instant webinar</span>
-          <span className="text-[12.5px] leading-relaxed text-ink-2">
-            Go live immediately. No form, no waiting — share the link once
-            you&apos;re in.
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13.5px] font-semibold">
+              {startingInstant ? "Starting…" : "Instant webinar"}
+            </span>
+            <span className="block truncate text-[12px] text-ink-2">
+              Go live immediately, no form
+            </span>
           </span>
-          <span className="mt-0.5 text-[12.5px] font-medium text-brand">
-            {startingInstant ? "Starting…" : "Instant Webinar →"}
-          </span>
+          <ChevronDownIcon className="size-4 shrink-0 -rotate-90 text-ink-3 transition-transform group-hover:translate-x-0.5" />
         </button>
 
         <ButtonLink
           href="/host/new"
-          className="group flex h-auto flex-col items-start gap-2.5 whitespace-normal rounded-xl border border-line bg-surface p-5 text-left font-normal text-ink transition-colors hover:border-brand-line"
+          className="group flex h-auto items-center gap-3 whitespace-normal rounded-xl border border-line bg-surface p-3.5 text-left font-normal text-ink transition-colors hover:border-brand-line"
         >
-          <span className="grid size-10 place-items-center rounded-lg bg-brand-soft text-brand">
-            <CalendarIcon className="size-5" />
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
+            <CalendarIcon className="size-4.5" />
           </span>
-          <span className="text-[15px] font-semibold">Schedule a webinar</span>
-          <span className="text-[12.5px] leading-relaxed text-ink-2">
-            Pick a date, set up registration, and invite people ahead of
-            time.
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13.5px] font-semibold">
+              Schedule a webinar
+            </span>
+            <span className="block truncate text-[12px] text-ink-2">
+              Pick a date and invite people
+            </span>
           </span>
-          <span className="mt-0.5 text-[12.5px] font-medium text-brand">
-            Schedule Webinar →
-          </span>
+          <ChevronDownIcon className="size-4 shrink-0 -rotate-90 text-ink-3 transition-transform group-hover:translate-x-0.5" />
         </ButtonLink>
       </div>
 
@@ -287,10 +292,12 @@ export function HostWebinarsScreen() {
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
         </div>
       ) : mine.length === 0 && !error ? (
+        // No action button here on purpose — the two rows above already are
+        // the actions, and repeating "Create webinar" a third time (nav
+        // label, tile, empty-state button) says nothing new.
         <Empty
           title="No webinars yet"
-          hint="Create one, share the link, then Host when it's time."
-          action={<ButtonLink href="/host/new">Create webinar</ButtonLink>}
+          hint="Start one instantly, or schedule one above — then share the link."
         />
       ) : (
         <HostWebinarList webinars={mine} />
