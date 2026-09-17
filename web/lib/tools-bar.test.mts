@@ -35,10 +35,13 @@ console.log("\ncenterBarTools");
 
 {
   const phone = centerBarTools(ALL, true);
-  ok(phone.join() === "chat,participants", "a phone bar keeps Chat and Participants");
+  ok(phone.join() === "chat,hand", "a phone bar keeps only Chat and Raise hand");
   const more = morePanelTools(ALL, true) ?? [];
-  ok(more.includes("qa") && more.includes("settings"), "the rest of the cluster land in More");
-  ok(!more.includes("chat"), "Chat is not duplicated into More");
+  ok(
+    more.includes("qa") && more.includes("settings") && more.includes("participants"),
+    "the rest of the cluster, including Participants, lands in More",
+  );
+  ok(!more.includes("chat") && !more.includes("hand"), "Chat and Raise hand are not duplicated into More");
 }
 
 {
