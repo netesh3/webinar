@@ -1,6 +1,6 @@
 import { TopNav } from "@/components/top-nav";
 
-/* The host portal's chrome: top nav only (Browse | My webinars | Hosting). */
+/* The host portal's chrome: top nav only (Browse | Attending | Hosting). */
 
 export default function HostPortalLayout({ children }: LayoutProps<"/host">) {
   return (

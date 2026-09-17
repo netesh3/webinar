@@ -3,12 +3,67 @@
 import { useCallback, useEffect, useState } from "react";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
-import { useSession } from "./providers";
-import { ButtonLink, Card, Empty } from "./ui";
+import { DEFAULT_ATTENDEE_LIMIT } from "./schedule-form";
+import { useAppConfig, useSession, useToast } from "./providers";
+import { Button, ButtonLink, Card, Empty } from "./ui";
 import { ApiError, api } from "@/lib/api";
-import type { Webinar } from "@/lib/api-types";
+import type { Webinar, WebinarInput } from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
+import { localTimeZone } from "@/lib/format";
+import { openRoomTab } from "@/lib/open-room";
+
+/* An instant webinar is the same request a normal Create submits, just with
+ * the form skipped: a topic that says what it is, starting now, and every
+ * other field set to the same defaults schedule-form.tsx's blank form would
+ * have sent. It is not a different kind of webinar — a host can rename it or
+ * change its settings afterwards exactly like any other. */
+function instantWebinarInput(maxAttendees: number): WebinarInput {
+  return {
+    topic: "Instant webinar",
+    summary: "",
+    description: "",
+    track: "",
+    startsAt: new Date().toISOString(),
+    durationMin: 60,
+    timeZone: localTimeZone(),
+    kind: "live",
+    status: "scheduled",
+    registrationRequired: true,
+    approval: "automatic",
+    attendeeLimit:
+      maxAttendees > 0
+        ? Math.min(DEFAULT_ATTENDEE_LIMIT, maxAttendees)
+        : DEFAULT_ATTENDEE_LIMIT,
+    passcode: "",
+    agenda: [],
+    takeaways: [],
+    customQuestions: [],
+    panelistEmails: [],
+    options: {
+      practiceSession: true,
+      autoRecord: false,
+      qAndA: true,
+      attendeeChat: true,
+      raiseHand: true,
+      captions: false,
+      multistream: false,
+      postWebinarSurvey: false,
+    },
+    controls: {
+      hideAttendees: true,
+      muteOnEntry: true,
+      allowUnmute: true,
+      chatEnabled: true,
+      chatDestination: "everyone",
+      pollsEnabled: true,
+      qaEnabled: true,
+      raiseHandEnabled: true,
+      reactionsEnabled: true,
+      locked: false,
+    },
+  };
+}
 
 /** Hosting home: create, run upcoming sessions, review past attendance.
  *
@@ -16,12 +71,36 @@ import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
  *  Drafts). No competing sidebar. */
 export function HostWebinarsScreen() {
   const { account, status } = useSession();
+  const { maxAttendees } = useAppConfig();
+  const { notify } = useToast();
   const [mine, setMine] = useState<Webinar[] | null>(null);
   const [onStage, setOnStage] = useState<Webinar[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [startingInstant, setStartingInstant] = useState(false);
   const bypass = isDevAuthBypassActive();
 
   const canHost = account?.canHost ?? false;
+
+  async function startInstantWebinar() {
+    if (bypass) {
+      openRoomTab("/preview/room");
+      return;
+    }
+    setStartingInstant(true);
+    try {
+      const created = await api.createWebinar(instantWebinarInput(maxAttendees));
+      await api.startWebinar(created.id);
+      openRoomTab(`/host/${created.id}/room`);
+      load();
+    } catch (err) {
+      notify(
+        err instanceof Error ? err.message : "Could not start the webinar.",
+        "error",
+      );
+    } finally {
+      setStartingInstant(false);
+    }
+  }
 
   const load = useCallback(() => {
     if (bypass) {
@@ -108,7 +187,7 @@ export function HostWebinarsScreen() {
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <ButtonLink href="/my-webinars" variant="secondary" size="sm">
-              My webinars
+              Attending
             </ButtonLink>
             <ButtonLink href="/account" variant="ghost" size="sm">
               Account settings
@@ -153,9 +232,17 @@ export function HostWebinarsScreen() {
             {upcoming > 0 ? ` · ${upcoming} upcoming` : ""}.
           </p>
         </div>
-        <ButtonLink href="/host/new" className="shrink-0">
-          Create webinar
-        </ButtonLink>
+        <div className="flex shrink-0 gap-2">
+          <Button
+            variant="secondary"
+            onClick={startInstantWebinar}
+            disabled={startingInstant}
+          >
+            {startingInstant && <Spinner className="size-4" />}
+            Instant webinar
+          </Button>
+          <ButtonLink href="/host/new">Create webinar</ButtonLink>
+        </div>
       </div>
 
       {error && (

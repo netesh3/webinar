@@ -19,7 +19,7 @@ export default function MyWebinarsPage() {
       <main className="mx-auto w-full max-w-4xl flex-1 px-5 py-8">
         <div className="mb-6">
           <h1 className="text-[26px] font-semibold tracking-[-0.02em]">
-            My webinars
+            Attending
           </h1>
           <p className="mt-1.5 text-[14px] text-ink-2">
             Everything you&apos;ve registered for, with your personal join key.
