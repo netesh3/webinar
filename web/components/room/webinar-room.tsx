@@ -411,6 +411,10 @@ function ConnectedRoom({
     join.controls,
   );
   const { notify } = useToast();
+  // Attendee identities already announced to the host this room session —
+  // see onAttendeeJoined below. A ref, not state: recording who has already
+  // been announced must never itself trigger a re-render.
+  const seenJoins = useRef(new Set<string>());
 
   // Temporary, for one performance-test window — see lib/telemetry.ts. `room`
   // is passed as null rather than skipping the call when the flag is off, so
@@ -477,8 +481,16 @@ function ConnectedRoom({
         // The server addresses this to the host alone, but the check is kept
         // here anyway — the same defensive habit as onHandRaised — rather than
         // trusting that nothing else could ever deliver this packet.
+        //
+        // seenJoins (below) is what keeps this to one toast per attendee: the
+        // server fires this on every joinAsAttendee call, including a
+        // reconnect (dropped wifi, a reloaded tab) for someone already in the
+        // room, which is a real join as far as the API is concerned but not
+        // news to the host a second time.
         onAttendeeJoined: (from: Sender) => {
           if (!isHost) return;
+          if (seenJoins.current.has(from.identity)) return;
+          seenJoins.current.add(from.identity);
           notify(`${from.name} joined.`, "info");
         },
       }),
