@@ -558,16 +558,20 @@ export function ControlBar() {
       ) : null}
 
       {/* Centre strip: Share / Record / standing tools / pins / More.
-          overflow-x-auto rather than shrinking or clipping: on a phone, Share
-          + Chat + Reactions + Raise hand + Polls + More is six buttons in a
-          strip that also has to leave room for mic+camera on the left and
-          Leave on the right — arithmetically tighter than the available
-          width allows even with correct padding. Scrolling means a packed
-          bar is reachable with a swipe; the alternative (this row's own
-          items silently overlapping or getting clipped) is the exact bug
-          this whole layout pass exists to fix, and no fixed reservation is
-          safe against a longer locale's labels or a wider dynamic-type
-          setting doing the same thing again later. */}
+          overflow-x-auto rather than shrinking or clipping: CENTER_BAR_COMPACT
+          only keeps Chat and Raise hand always visible on a phone precisely
+          so this fits without scrolling in the common case — but Share is a
+          separate always-rendered button, not part of that list, and an
+          attendee brought fully onto the stage gets it too. Share + Chat +
+          Raise hand + More is still four buttons in a strip that also has to
+          leave room for mic+camera on the left and Leave on the right —
+          tighter than the available width even with correct padding in that
+          one case. Scrolling means a packed bar stays reachable with a
+          swipe; the alternative (this row's own items silently overlapping
+          or getting clipped) is the exact bug this whole layout pass exists
+          to fix, and no fixed reservation is safe against a longer locale's
+          labels or a wider dynamic-type setting doing the same thing again
+          later regardless of how few tools are on the list. */}
       <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:thin] sm:gap-2">
           {/* Preview chrome always offers Share (mocked). A live room still needs
               getDisplayMedia support — most mobile browsers do not expose it, and
