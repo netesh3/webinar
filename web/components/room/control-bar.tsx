@@ -82,7 +82,16 @@ const CAPACITY: readonly [query: string, slots: number][] = [
   ["(min-width: 768px)", 4],
   ["(min-width: 640px)", 3],
 ];
-const NARROW_SLOTS = 2;
+// 0, not a small positive number: a phone this narrow (<640px, i.e. every
+// real phone) has no room to spare even for CENTER_BAR_COMPACT's own two
+// fixed items (Chat, Raise hand) once mic+camera are both showing — see the
+// bar's own dynamic left-padding comment. A pinned or "recently used" tool
+// surfacing an extra slot here would silently reopen the exact overflow this
+// whole layout pass exists to close. Pinning still works below 640px — it's
+// just not auto-surfaced onto a bar that doesn't have room for it; the pin
+// takes effect the moment the viewport actually does (≥640px, this file's
+// own next CAPACITY tier).
+const NARROW_SLOTS = 0;
 
 function useSlotCapacity(): number {
   // Starts at the narrow figure: the server render cannot know the width, and
@@ -474,27 +483,72 @@ export function ControlBar() {
    * and `moreOpen` — the user's own choice — is what remains. */
   const gridVisible = moreOpen || drag.drag?.from === "bar";
 
+  // The centred strip's own left padding is what keeps it clear of mic+camera
+  // below — they're out of flow so they don't push it, meaning this has to
+  // reserve their actual width itself. Computed from the same conditions
+  // those buttons render on (not duplicated as a second source of truth that
+  // could drift) rather than a flat guess sized for the worst case: a plain
+  // attendee with neither needs none of this reserved at all, and even a
+  // single MediaToggle (~84px: a ~40px main button plus a ~44px
+  // device-picker chevron) is half of what two together need. Reserving for
+  // two unconditionally was what left no room for the centre strip's own
+  // content the one time both actually show — a full "Bring on stage" grant
+  // — since that's also exactly when Share and RecordButton newly appear
+  // there too. Desktop doesn't need this: MediaToggle is wider there
+  // (min-w-14 vs min-w-10) but `sm:` has enough room to spare either way.
+  const micToggleShown =
+    (permissions.canPublish || permissions.mutedByHost) &&
+    (permissions.canSpeak || permissions.mutedByHost);
+  const cameraToggleShown =
+    (permissions.canPublish || permissions.mutedByHost) &&
+    permissions.canShareCamera;
+  const leftClusterCount = (micToggleShown ? 1 : 0) + (cameraToggleShown ? 1 : 0);
+  // left-2 offset (8px) + N toggles (~84px each on mobile) + gaps between them.
+  const leftReservePx =
+    leftClusterCount === 0 ? 0 : 8 + leftClusterCount * 84 + (leftClusterCount - 1) * 4;
+  // The one case dynamic padding alone doesn't resolve: both toggles showing
+  // is also the only time Share can't fit next to Chat + Raise hand + More
+  // on a phone. Same condition, reused rather than re-derived, so this can
+  // never disagree with how much room was actually reserved above it.
+  const shareOnBar = !compact || !cameraToggleShown;
+
+  const onShareClick = useCallback(() => {
+    if (!previewChrome && !canShare) {
+      notify(
+        "This browser can't share a screen. Try opening the room in Chrome or Safari instead of an in-app browser.",
+        "info",
+      );
+      return;
+    }
+    if (sharing) {
+      void stopSharing();
+      return;
+    }
+    if (previewChrome) {
+      startScreenShare("monitor");
+      return;
+    }
+    setShareOpen(true);
+  }, [previewChrome, canShare, sharing, stopSharing, startScreenShare, notify]);
+
   return (
     <div
       ref={setBarEl}
-      // The centred strip's own padding is what keeps it clear of the two
-      // out-of-flow clusters below (mic+camera on the left, Leave on the
-      // right) — they don't push it, so this has to reserve their width
-      // itself. On mobile that's asymmetric: two MediaToggles (mic + camera,
-      // each ~84px: a ~40px main button plus a ~44px device-picker chevron)
-      // plus their left-2 offset is ~180px, while Leave is icon-only and
-      // needs under half that. `px-24` (96px each side) was sized for one
-      // toggle, not two — a plain attendee granted audio-only ("Allow to
-      // speak") barely fit; a full "Bring on stage" grant (mic AND camera)
-      // did not, and the centred strip's own leftmost items — Chat, Share —
-      // rendered right underneath the now-wider mic/camera cluster instead
-      // of being pushed clear of it. Desktop's toggles are wider individually
-      // but its existing `sm:px-56` (224px) already has room to spare either
-      // way, which is why this only ever showed up on a phone.
+      // pl-48 (192px) is the class-level fallback for the one render before
+      // useCompact's effect fires — useEffect runs after paint, so `compact`
+      // is briefly false even on a phone. Sized for the worst case (both
+      // toggles) rather than 0, so that one frame is over-reserved rather
+      // than under — a flash of extra padding is invisible; a flash of Chat
+      // rendering under a mic button that appears a moment later is the
+      // exact bug this is fixing. The inline style below only ever refines
+      // it down once real data is in, never up past this floor.
       className="relative flex min-h-14 shrink-0 items-center justify-center border-t border-white/10 bg-stage-bar pl-48 pr-16 sm:px-56"
-      // Clears the iOS home indicator; without it the leave button sits under
-      // the system gesture area and is genuinely hard to hit.
-      style={{ paddingBottom: "max(0px, env(safe-area-inset-bottom))" }}
+      style={{
+        // Clears the iOS home indicator; without it the leave button sits
+        // under the system gesture area and is genuinely hard to hit.
+        paddingBottom: "max(0px, env(safe-area-inset-bottom))",
+        ...(compact ? { paddingLeft: leftReservePx } : undefined),
+      }}
     >
       {/* Mic + camera park on the left, out of flow, so they don't shove the
           centre cluster sideways. Gated per source: somebody the host allowed
@@ -558,21 +612,15 @@ export function ControlBar() {
       ) : null}
 
       {/* Centre strip: Share / Record / standing tools / pins / More.
-          overflow-x-auto rather than shrinking or clipping: CENTER_BAR_COMPACT
-          only keeps Chat and Raise hand always visible on a phone precisely
-          so this fits without scrolling in the common case — but Share is a
-          separate always-rendered button, not part of that list, and an
-          attendee brought fully onto the stage gets it too. Share + Chat +
-          Raise hand + More is still four buttons in a strip that also has to
-          leave room for mic+camera on the left and Leave on the right —
-          tighter than the available width even with correct padding in that
-          one case. Scrolling means a packed bar stays reachable with a
-          swipe; the alternative (this row's own items silently overlapping
-          or getting clipped) is the exact bug this whole layout pass exists
-          to fix, and no fixed reservation is safe against a longer locale's
-          labels or a wider dynamic-type setting doing the same thing again
-          later regardless of how few tools are on the list. */}
-      <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:thin] sm:gap-2">
+          No horizontal scroll: CENTER_BAR_COMPACT keeps only Chat and Raise
+          hand always visible on a phone, and the bar's own left padding
+          (above) now reserves exactly mic+camera's real width instead of a
+          worst-case guess — between them, Share + Chat + Raise hand + More
+          fits without scrolling in every case except one: a full "Bring on
+          stage" grant, where mic AND camera both show, leaving no room for
+          Share too. shareOnBar below is that one condition — Share moves
+          into More instead of overflowing there, not shown twice. */}
+      <div className="flex min-w-0 items-center gap-1 sm:gap-2">
           {/* Preview chrome always offers Share (mocked). A live room still needs
               getDisplayMedia support — most mobile browsers do not expose it, and
               some in-app/WebView browsers (a link opened from another app) do not
@@ -584,30 +632,13 @@ export function ControlBar() {
               tap explains why via a toast rather than doing nothing — a hover
               title would have said the same thing but there is no hover on the
               phones this actually happens on. */}
-          {permissions.canShareScreen && (
+          {permissions.canShareScreen && shareOnBar && (
             <BarButton
               label={sharing ? "Stop sharing" : "Share"}
               active={sharing}
               dimmed={!previewChrome && !canShare}
               busy={pending === "share" || fileShare.starting}
-              onClick={() => {
-                if (!previewChrome && !canShare) {
-                  notify(
-                    "This browser can't share a screen. Try opening the room in Chrome or Safari instead of an in-app browser.",
-                    "info",
-                  );
-                  return;
-                }
-                if (sharing) {
-                  void stopSharing();
-                  return;
-                }
-                if (previewChrome) {
-                  startScreenShare("monitor");
-                  return;
-                }
-                setShareOpen(true);
-              }}
+              onClick={onShareClick}
               icon={
                 sharing ? (
                   <ScreenShareOffIcon className="size-5" />
@@ -707,6 +738,22 @@ export function ControlBar() {
             <MoreGrid
               items={grid}
               panelItems={panelItems}
+              shareAction={
+                permissions.canShareScreen && !shareOnBar
+                  ? {
+                      label: sharing ? "Stop sharing" : "Share",
+                      icon: sharing ? (
+                        <ScreenShareOffIcon className="size-5" />
+                      ) : (
+                        <ScreenShareIcon className="size-5" />
+                      ),
+                      active: sharing,
+                      dimmed: !previewChrome && !canShare,
+                      busy: pending === "share" || fileShare.starting,
+                      onClick: onShareClick,
+                    }
+                  : undefined
+              }
               // While the grid is only open because a drag is in flight, dismissing
               // it is not something the user can ask for — the drag owns it.
               onClose={() => setMoreOpen(false)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ToolId } from "@/lib/tools";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { useCompact } from "@/lib/compact";
@@ -34,6 +34,7 @@ import { tool } from "./tools";
 export function MoreGrid({
   items,
   panelItems,
+  shareAction,
   onClose,
 }: {
   items: readonly ToolId[];
@@ -41,6 +42,20 @@ export function MoreGrid({
    *  `items` they are never pinnable — they already have a place on a
    *  desktop bar. */
   panelItems?: readonly ToolId[];
+  /** Share, on the rare phone width where mic+camera both showing leaves no
+   *  room for it on the bar itself (see control-bar.tsx's shareOnBar). Not a
+   *  ToolId — Share has always lived outside that system (its own dimmed/
+   *  busy states, its own click behaviour) — so it's passed in fully formed
+   *  rather than forcing it through a system built for a different kind of
+   *  button. */
+  shareAction?: {
+    label: string;
+    icon: React.ReactNode;
+    active: boolean;
+    dimmed: boolean;
+    busy: boolean;
+    onClick: () => void;
+  };
   onClose: () => void;
 }) {
   const { tools, unread, realtime, stage } = useRoomUI();
@@ -58,6 +73,56 @@ export function MoreGrid({
   /** Invite popover, revealed in place — same reasoning as Reactions: it opens
    *  right here rather than in a second popover stacked on this one. */
   const [showInvite, setShowInvite] = useState(false);
+
+  /** What tapping a tool in this grid actually does — shared by both rows
+   *  (panelItems and items) rather than each carrying its own copy. That
+   *  duplication is exactly how this broke once already: panelItems' own
+   *  inline handler called the generic tools.open(id) for everything,
+   *  which is correct for a real dockable panel (Chat, Q&A, Polls,
+   *  Participants) but wrong for Reactions/Layout/Invite/Raise hand — none
+   *  of those dock, so tools.open() fell through to opening an empty
+   *  floating window for them instead, and tapping Reactions visibly did
+   *  nothing. One function, used everywhere a tool can be tapped from this
+   *  grid, so the two rows can't drift apart like that again. */
+  const tapTool = useCallback(
+    (id: ToolId) => {
+      if (id === "reactions") {
+        setShowReactions((v) => !v);
+        setShowLayout(false);
+        setShowInvite(false);
+        return;
+      }
+      if (id === "invite") {
+        setShowInvite((v) => !v);
+        setShowReactions(false);
+        setShowLayout(false);
+        return;
+      }
+      if (id === "layout") {
+        setShowLayout((v) => !v);
+        setShowReactions(false);
+        setShowInvite(false);
+        tools.used("layout");
+        return;
+      }
+      if (id === "hand") {
+        // A rejection (e.g. the host has raise-hand off) was a silent
+        // unhandled-promise-rejection before this — same fix as
+        // control-bar.tsx's identical call.
+        void realtime.toggleHand().catch((err) => {
+          notify(
+            err instanceof Error ? err.message : "Couldn't raise your hand.",
+            "error",
+          );
+        });
+        onClose();
+        return;
+      }
+      tools.toggle(id);
+      onClose();
+    },
+    [tools, realtime, notify, onClose],
+  );
 
   /* Dismiss on Escape and on a press outside.
    *
@@ -149,23 +214,58 @@ export function MoreGrid({
           </div>
         )}
 
+        {shareAction && (
+          <div className="mb-1 grid grid-cols-3 border-b border-line pb-1">
+            <button
+              type="button"
+              aria-label={shareAction.label}
+              title={shareAction.label}
+              disabled={shareAction.busy}
+              onClick={() => {
+                shareAction.onClick();
+                onClose();
+              }}
+              className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 ${
+                shareAction.active
+                  ? "text-brand"
+                  : shareAction.dimmed
+                    ? "text-ink-3"
+                    : "text-ink-2 hover:text-ink"
+              }`}
+            >
+              {shareAction.icon}
+              <span className="text-[11px] leading-tight font-medium">
+                {shareAction.label}
+              </span>
+            </button>
+          </div>
+        )}
+
         {panelItems && panelItems.length > 0 && (
           <div className="mb-1 grid grid-cols-3 border-b border-line pb-1">
             {panelItems.map((id) => {
               const t = tool(id);
               const Icon = t.icon;
               const badge = unread[id];
+              const active =
+                id === "hand"
+                  ? realtime.myHandRaised
+                  : id === "reactions"
+                    ? showReactions
+                    : false;
               return (
                 <button
                   key={id}
                   type="button"
                   aria-label={t.title}
+                  aria-pressed={active}
                   title={t.title}
-                  onClick={() => {
-                    tools.open(id);
-                    onClose();
-                  }}
-                  className="relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
+                  onClick={() => tapTool(id)}
+                  className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                    active
+                      ? "text-ink ring-2 ring-brand ring-inset"
+                      : "text-ink-2 hover:bg-surface-2 hover:text-ink"
+                  }`}
                 >
                   <Icon className="size-5" />
                   <span className="text-[11px] leading-tight font-medium">{t.label}</span>
@@ -209,42 +309,7 @@ export function MoreGrid({
                   aria-label={t.title}
                   aria-pressed={active}
                   title={`${t.title} — drag to the bar to pin it`}
-                  {...drag.bind(id, "grid", () => {
-                    if (id === "reactions") {
-                      setShowReactions((v) => !v);
-                      setShowLayout(false);
-                      setShowInvite(false);
-                      return;
-                    }
-                    if (id === "invite") {
-                      setShowInvite((v) => !v);
-                      setShowReactions(false);
-                      setShowLayout(false);
-                      return;
-                    }
-                    if (id === "layout") {
-                      setShowLayout((v) => !v);
-                      setShowReactions(false);
-                      setShowInvite(false);
-                      tools.used("layout");
-                      return;
-                    }
-                    if (id === "hand") {
-                      // Same fix as control-bar.tsx's identical call: a
-                      // rejection (e.g. the host has raise-hand off) was a
-                      // silent unhandled-promise-rejection before this.
-                      void realtime.toggleHand().catch((err) => {
-                        notify(
-                          err instanceof Error ? err.message : "Couldn't raise your hand.",
-                          "error",
-                        );
-                      });
-                      onClose();
-                      return;
-                    }
-                    tools.toggle(id);
-                    onClose();
-                  })}
+                  {...drag.bind(id, "grid", () => tapTool(id))}
                   className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
                     active
                       ? "text-ink ring-2 ring-brand ring-inset"
