@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import { PANEL_TOOL_IDS, type ToolId } from "@/lib/tools";
-import { useCompact } from "@/lib/compact";
+import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
 import { CloseIcon, PopOutIcon } from "../icons";
 import { ChatPanel } from "./chat-panel";
 import { useRoomUI } from "./context";
@@ -11,12 +11,17 @@ import { PollsPanel } from "./polls-panel";
 import { QAPanel } from "./qa-panel";
 import { tool } from "./tools";
 
-/* Engagement overlay — Zoom's Chat / Q&A / Participants card.
+/* Engagement panel — Zoom's Chat / Q&A / Participants card.
  *
  * Opening a tool used to shrink the video and grow a permanent icon rail down
- * the right edge. Zoom does neither: the stage stays full-bleed and the panel
- * sits on top of it, opened from the bottom bar. Pop out still undocks into a
- * floating window. There is no rail — those buttons live in the control bar.
+ * the right edge. Zoom does neither: on desktop the stage stays full-bleed
+ * and this sits over it as a right-hand overlay, opened from the bottom bar.
+ * On a phone-shaped viewport it docks instead of overlaying — the video
+ * keeps a fixed strip at the top (see COMPACT_STAGE_HEIGHT / webinar-room.tsx)
+ * and this panel takes the remaining space below it, because a full-screen
+ * takeover on a screen that small reads as "the video is gone", not "there's
+ * a panel over the video". Pop out still undocks into a floating window on
+ * either size. There is no rail — those buttons live in the control bar.
  */
 
 function PanelBody({ id }: { id: ToolId }) {
@@ -68,21 +73,19 @@ export function SidePanel() {
 
   return (
     <>
-      {compact && (
-        <button
-          type="button"
-          aria-label="Close panel"
-          onClick={() => tools.closePanel()}
-          className="absolute inset-0 z-30 bg-black/50"
-        />
-      )}
-
+      {/* No backdrop on compact: the panel used to float over the whole
+          screen with the video darkened behind it, and tapping the dimmed
+          video was how you closed it. Now the video keeps its own visible
+          strip at the top and the panel only occupies the space below —
+          nothing left to dim, and nothing "outside" the panel to tap; the
+          panel's own close button (below) is the way out. */}
       <aside
         className={`room-dark z-40 flex flex-col bg-surface shadow-2xl ${
           compact
-            ? "absolute inset-x-0 bottom-0 top-0"
+            ? "absolute inset-x-0 bottom-0"
             : "absolute inset-y-0 right-0 w-[22.5rem] max-w-full overflow-hidden border-l border-line"
         }`}
+        style={compact ? { top: COMPACT_STAGE_HEIGHT } : undefined}
         role="complementary"
         aria-label={tool(active).title}
       >

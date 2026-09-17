@@ -13,6 +13,7 @@ import {
 import { DEFAULT_PREFERENCES } from "@/lib/media";
 import { useStageLayout } from "@/lib/layout";
 import { useToolLayout, type ToolId } from "@/lib/tools";
+import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
 import type { MediaPermissions } from "@/lib/permissions";
 import type { FileShareApi } from "@/lib/file-share";
 import { ControlBar } from "./control-bar";
@@ -80,6 +81,12 @@ export function PreviewRoom() {
   const realtime = useMemo(() => bypassRealtime(), []);
   const [prefs, setPrefs] = useState(DEFAULT_PREFERENCES);
   const [stageEl, setStageEl] = useState<HTMLDivElement | null>(null);
+  // Mirrors the same compact-panel sizing ConnectedRoom uses in
+  // webinar-room.tsx — this is a separate mock component tree (see its own
+  // module comment), so it doesn't inherit that logic automatically and has
+  // to repeat it to preview the real behavior rather than the old one.
+  const compact = useCompact();
+  const stagePanelOpen = compact && Boolean(tools.panelTab);
 
   useEffect(() => {
     tools.setStage(stageEl);
@@ -139,7 +146,8 @@ export function PreviewRoom() {
               <div
                 ref={setStageEl}
                 data-stage
-                className="absolute inset-0 flex flex-col"
+                className="absolute inset-x-0 top-0 flex flex-col"
+                style={stagePanelOpen ? { height: COMPACT_STAGE_HEIGHT } : { bottom: 0 }}
               >
                 <PreviewStage />
               </div>
