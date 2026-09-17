@@ -11,7 +11,6 @@ import type {
   ChatMessage as ChatTranscriptMessage,
   CoHostPatch,
   ControlsPatch,
-  DemoLaunchRequest,
   JoinResponse,
   LiveRoom,
   MuteAllResponse,
@@ -275,9 +274,9 @@ export const api = {
     name: string;
     email: string;
     password: string;
+    phone?: string;
     org?: string;
     title?: string;
-    wantsHost: boolean;
   }) => post<Account>("/api/auth/signup", body),
 
   login: (email: string, password: string) =>
@@ -288,12 +287,6 @@ export const api = {
     post<Account>("/api/auth/supabase", { accessToken }),
 
   logout: () => post<StatusResponse>("/api/auth/logout"),
-
-  /** "Launch a webinar": name and email only, no signup. Signs the caller in
-   *  as the new demo host and returns the webinar, already live. Only exists
-   *  when AppConfig.demoMode is on — the button that calls this checks that
-   *  first, and the endpoint 404s regardless if it isn't. */
-  launchDemo: (body: DemoLaunchRequest) => post<Webinar>("/api/demo/launch", body),
 
   me: () => request<Account>("/api/auth/me", fresh),
 

@@ -192,13 +192,10 @@ func (s *Server) Routes() http.Handler {
 	// Signup is cheaper to abuse than login and creates rows, so it gets its own
 	// tighter bucket rather than sharing the login one.
 	signupLimit := httpx.NewRateLimiter(5, time.Minute)
-	// Same budget as signup: launching a demo mints an account too, just without
-	// a password to slow down a script.
-	demoLimit := httpx.NewRateLimiter(5, time.Minute)
-	// Sized like joinLimit, not like demoLimit: this creates no rows and every
-	// participant in a live performance test polls it every ~10s, from what may
-	// be a shared corporate IP the same way a join burst is. A backstop against
-	// a flood, not the reason this endpoint is safe — TelemetryEnabled is.
+	// Sized like joinLimit: this creates no rows and every participant in a
+	// live performance test polls it every ~10s, from what may be a shared
+	// corporate IP the same way a join burst is. A backstop against a flood,
+	// not the reason this endpoint is safe — TelemetryEnabled is.
 	telemetryLimit := httpx.NewRateLimiter(600, time.Minute)
 
 	r.Route("/api", func(r chi.Router) {
@@ -294,13 +291,6 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/auth/logout", s.handleLogout)
 		r.With(s.requireUser).Get("/auth/me", s.handleMe)
 		r.With(s.requireUser).Patch("/auth/me", s.handleUpdateProfile)
-
-		// ---------------- demo (off unless DemoMode is set; see handleLaunchDemo) ----------------
-		//
-		// Tighter than signup's own budget: this creates an account AND a webinar
-		// in one unauthenticated call, so it is the cheapest thing on this server
-		// to abuse after guest-join.
-		r.With(demoLimit.Middleware).Post("/demo/launch", s.handleLaunchDemo)
 
 		// ---------------- telemetry (off unless TelemetryEnabled; see handleTelemetry) ----------------
 		r.With(telemetryLimit.Middleware).Post("/telemetry", s.handleTelemetry)
@@ -482,7 +472,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		SupportEmail:          s.cfg.SupportEmail,
 		MaxAttendees:          s.cfg.MaxAttendees,
 		SignupOpen:            s.cfg.SignupOpen,
-		MinPasswordLength:     s.cfg.MinPasswordLength,
 		Tracks:                tracks,
 		GoogleClientID:        s.cfg.GoogleClientID,
 		GoogleAPIKey:          s.cfg.GoogleAPIKey,
@@ -490,7 +479,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		SupabaseAnonKey:       s.cfg.SupabaseAnonKey,
 		GoogleAuth:            s.cfg.GoogleAuthEnabled(),
 		CloudRecordingEnabled: s.recordings != nil,
-		DemoMode:              s.cfg.DemoMode,
 		TelemetryEnabled:      s.cfg.TelemetryEnabled,
 	})
 }

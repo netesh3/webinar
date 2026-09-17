@@ -18,16 +18,17 @@ type User struct {
 	Name         string
 	Title        string
 	Org          string
-	Initials     string
-	Hue          string
-	CanHost      bool
+	// Phone is E.164 shape (see normalisePhone) — the account holder's own
+	// number. Deliberately NOT on Person: that's what other attendees and
+	// panelists see about someone, and Org is fine to show there in a way a
+	// phone number is not.
+	Phone    string
+	Initials string
+	Hue      string
+	CanHost  bool
 	// IsAdmin may grant CanHost to other accounts. Never settable in-band: see
 	// PromoteAdmins and migrations/0011.
 	IsAdmin bool
-	// IsDemo marks an account minted by the "Launch a webinar" demo door
-	// (CreateDemoUser) rather than real signup. Never settable in-band from
-	// CreateUser's own path — see CreateDemoUser.
-	IsDemo bool
 }
 
 func (u User) Public() types.Account {
@@ -37,6 +38,7 @@ func (u User) Public() types.Account {
 		Name:     u.Name,
 		Title:    u.Title,
 		Org:      u.Org,
+		Phone:    u.Phone,
 		Initials: u.Initials,
 		Hue:      u.Hue,
 		CanHost:  u.CanHost,
@@ -45,7 +47,8 @@ func (u User) Public() types.Account {
 }
 
 // Person is the public projection used inside webinar records: everything the
-// UI needs to render someone, and nothing that identifies them further.
+// UI needs to render someone, and nothing that identifies them further. No
+// Phone here — see the field's own doc comment on User.
 func (u User) Person() types.Person {
 	return types.Person{
 		ID:       u.ID,
@@ -57,13 +60,13 @@ func (u User) Person() types.Person {
 	}
 }
 
-const userColumns = `id::text, email, coalesce(password_hash,''), name, title, org,
-	initials, hue, can_host, is_admin, is_demo`
+const userColumns = `id::text, email, coalesce(password_hash,''), name, title, org, phone,
+	initials, hue, can_host, is_admin`
 
 func scanUser(row scanner) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Title, &u.Org,
-		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.IsDemo)
+	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Title, &u.Org, &u.Phone,
+		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin)
 	return u, err
 }
 
@@ -86,36 +89,20 @@ func (s *Store) UserByID(ctx context.Context, id string) (User, error) {
 	return u, err
 }
 
-// CreateUser registers an account. ErrConflict means the email is taken.
-//
-// Initials and the avatar colour are derived rather than asked for: one less
-// field on the signup form, and it means every account has an avatar without a
-// hardcoded palette anywhere in the codebase.
-func (s *Store) CreateUser(ctx context.Context, email, hashedPassword, name, title, org string, canHost bool) (User, error) {
-	return s.createUser(ctx, email, hashedPassword, name, title, org, canHost, false)
-}
-
-/* CreateDemoUser mints the throwaway host account behind "Launch a webinar".
+/* CreateUser registers an account. ErrConflict means the email is taken.
  *
- * canHost is always true and isDemo is always true — unlike CreateUser, there is
- * no caller-supplied canHost, because the entire point of this door is granting
- * hosting without an admin, and only for an account this flag marks as not a
- * real one. There is no password: the demo endpoint signs the caller straight
- * in on success, the same way it would after a login, and a demo account that
- * nobody can otherwise sign into is one less password to leak.
+ * Initials and the avatar colour are derived rather than asked for: one less
+ * field on the signup form, and it means every account has an avatar without a
+ * hardcoded palette anywhere in the codebase.
  *
- * ErrConflict means the email already has an account — real or an earlier demo
- * — and the caller should refuse rather than silently reuse it: this must never
- * become a way to hand an existing account hosting rights it does not already
- * have.
+ * canHost is a parameter rather than always true because not every caller
+ * wants it granted — AuthBypass's dev fixture and the admin-invite path both
+ * make their own choice — but handleSignup and handleSupabaseAuth, the two
+ * real account-creation paths, both pass true: every new account can host from
+ * the moment it exists. An admin can still take it away with SetHostCapability
+ * (see admin.go) — that stays the only way hosting is ever revoked.
  */
-func (s *Store) CreateDemoUser(ctx context.Context, email, name string) (User, error) {
-	return s.createUser(ctx, email, "", name, "", "", true, true)
-}
-
-func (s *Store) createUser(
-	ctx context.Context, email, hashedPassword, name, title, org string, canHost, isDemo bool,
-) (User, error) {
+func (s *Store) CreateUser(ctx context.Context, email, hashedPassword, name, title, org, phone string, canHost bool) (User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	name = strings.TrimSpace(name)
 
@@ -125,17 +112,19 @@ func (s *Store) createUser(
 		Name:         name,
 		Title:        strings.TrimSpace(title),
 		Org:          strings.TrimSpace(org),
-		Initials:     InitialsOf(name),
-		Hue:          HueFor(email),
-		CanHost:      canHost,
-		IsDemo:       isDemo,
+		// Same normaliser registrations.phone already uses — see its doc
+		// comment for why this is one text column in E.164 shape.
+		Phone:    normalisePhone(phone),
+		Initials: InitialsOf(name),
+		Hue:      HueFor(email),
+		CanHost:  canHost,
 	}
 
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, name, title, org, initials, hue, can_host, is_demo)
+		INSERT INTO users (email, password_hash, name, title, org, phone, initials, hue, can_host)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		RETURNING id::text`,
-		u.Email, u.PasswordHash, u.Name, u.Title, u.Org, u.Initials, u.Hue, u.CanHost, u.IsDemo,
+		u.Email, u.PasswordHash, u.Name, u.Title, u.Org, u.Phone, u.Initials, u.Hue, u.CanHost,
 	).Scan(&u.ID)
 	if isUniqueViolation(err) {
 		return User{}, ErrConflict
@@ -175,6 +164,10 @@ func (s *Store) UpdateProfile(ctx context.Context, id string, p types.ProfilePat
 	if p.Org != nil {
 		org = strings.TrimSpace(*p.Org)
 	}
+	phone := current.Phone
+	if p.Phone != nil {
+		phone = normalisePhone(*p.Phone)
+	}
 	/* can_host is deliberately NOT in this statement.
 	 *
 	 * It used to be, driven by p.WantsHost, which meant PATCH /api/me was a self-service
@@ -187,10 +180,10 @@ func (s *Store) UpdateProfile(ctx context.Context, id string, p types.ProfilePat
 	 */
 	u, err := scanUser(s.pool.QueryRow(ctx, `
 		UPDATE users
-		   SET name = $2, title = $3, org = $4, initials = $5
+		   SET name = $2, title = $3, org = $4, phone = $5, initials = $6
 		 WHERE id = $1
 		RETURNING `+userColumns,
-		id, name, title, org, InitialsOf(name)))
+		id, name, title, org, phone, InitialsOf(name)))
 	if noRows(err) {
 		return User{}, ErrNotFound
 	}

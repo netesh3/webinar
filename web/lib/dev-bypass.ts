@@ -25,6 +25,7 @@ export const DEV_BYPASS_ACCOUNT: Account = {
   name: "Preview Host",
   title: "Product",
   org: "Local Preview",
+  phone: "",
   initials: "PH",
   hue: "#3B6EA5",
   canHost: true,

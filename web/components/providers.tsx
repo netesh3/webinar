@@ -37,9 +37,6 @@ const CONFIG_FALLBACK: AppConfig = {
   webBaseUrl: "",
   maxAttendees: 0,
   signupOpen: true,
-  // Only used before the real config arrives. Ten is the production floor, so a
-  // form rendered against this fallback asks for more rather than less.
-  minPasswordLength: 10,
   tracks: [],
   // Unknown until the real config arrives, and false is the safe guess: it only
   // hides "the cloud" as a record destination, never offers one that 503s.
@@ -86,9 +83,9 @@ type SessionValue = {
     name: string;
     email: string;
     password: string;
+    phone?: string;
     org?: string;
     title?: string;
-    wantsHost: boolean;
   }) => Promise<Account>;
   signOut: () => Promise<void>;
   updateProfile: (patch: ProfilePatch) => Promise<Account>;

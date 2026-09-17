@@ -143,7 +143,7 @@ func (s *Server) bypassUser(w http.ResponseWriter, r *http.Request) (store.User,
 	name := "Guest " + strings.ToUpper(suffix[:4])
 	user, err := s.store.CreateUser(r.Context(),
 		fmt.Sprintf("guest-%s@bypass.invalid", strings.ToLower(suffix)),
-		hash, name, "", "", true)
+		hash, name, "", "", "", true)
 	if err != nil {
 		s.fail(w, r, "auth bypass: create user", err)
 		return store.User{}, false
@@ -355,7 +355,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if fields := validateSignup(req, s.cfg.MinPasswordLength); len(fields) > 0 {
+	if fields := validateSignup(req); len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
 	}
@@ -366,13 +366,13 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	/* Always created WITHOUT the hosting capability, whatever the request asked for.
-	 *
-	 * req.WantsHost used to be passed straight through here, which made "may create webinars
-	 * and collect strangers' contact details" a checkbox on a public signup form. Only an
-	 * admin grants it now; see store.SetHostCapability. */
+	/* Always created WITH the hosting capability now — every new account can host from
+	 * the moment it exists, whatever req.WantsHost says (see its own doc comment: kept
+	 * on the wire but no longer meaningful either way, since the answer is always yes).
+	 * An admin can still take it away afterward with SetHostCapability; that stays the
+	 * only way hosting is ever revoked. */
 	user, err := s.store.CreateUser(r.Context(), req.Email, hash,
-		req.Name, req.Title, req.Org, false)
+		req.Name, req.Title, req.Org, req.Phone, true)
 	if errors.Is(err, store.ErrConflict) {
 		// Naming the conflict is the right call here. The address is already
 		// discoverable by trying to sign in, and hiding it only produces
@@ -393,17 +393,22 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.sessions.SetCookie(w, token, exp)
-	// Logged rather than acted on. Somebody ticking "I want to host" is a useful signal for
-	// whoever grants it, and the alternative — dropping it silently — leaves an admin with no
-	// way to know anybody is waiting.
+	// can_host is logged mainly as a sanity check — it should always read true for a
+	// fresh signup now — and requested_host is kept for the historical record even
+	// though it no longer changes the outcome either way.
 	s.log.Info("signup", "user", user.ID, "can_host", user.CanHost,
 		"requested_host", req.WantsHost, "email_domain", domainOf(user.Email))
 	httpx.JSON(w, http.StatusCreated, user.Public())
 }
 
-// minPassword is the configured floor; see config.MinPasswordLength for why it is
-// a setting rather than a constant.
-func validateSignup(req types.SignupRequest, minPassword int) map[string]string {
+/* validateSignup. Password has no length floor here on purpose — the
+ * server-wide MinPasswordLength setting now governs only the bootstrap
+ * AdminPassword (config.go), not this form. A real product with coaches and
+ * students signing up should ask for one; this instance doesn't yet, and
+ * asking is a one-line change (add minPassword back as a parameter and a
+ * case in the switch below) rather than a redesign when it's wanted.
+ */
+func validateSignup(req types.SignupRequest) map[string]string {
 	fields := map[string]string{}
 
 	if strings.TrimSpace(req.Name) == "" {
@@ -427,16 +432,49 @@ func validateSignup(req types.SignupRequest, minPassword int) map[string]string 
 	switch {
 	case req.Password == "":
 		fields["password"] = "Required."
-	case utf8.RuneCountInString(req.Password) < minPassword:
-		// The number comes from the same place the rule does, so the message can
-		// never tell somebody a length the server does not enforce.
-		fields["password"] = fmt.Sprintf("Use at least %d characters.", minPassword)
 	case len(req.Password) > 1024:
-		// argon2id will happily hash a megabyte and burn a core doing it.
+		// Not a strength rule — argon2id will happily hash a megabyte and burn
+		// a core doing it. This bound stays regardless of the length floor.
 		fields["password"] = "That password is too long."
 	}
 
+	if msg := phoneFieldError(req.Phone); msg != "" {
+		fields["phone"] = msg
+	}
+
 	return fields
+}
+
+/* phoneFieldError shape-checks an OPTIONAL mobile number — empty is fine,
+ * present-and-malformed is not. Shared with handleRegister's identical
+ * check (webinars.go), which this was extracted from verbatim rather than
+ * reimplemented, so the two forms can never quietly disagree about what a
+ * valid number looks like.
+ *
+ * Validated on shape rather than by a phone-number library, and that is a
+ * deliberate limit: knowing that +91 98765 43210 is a real Indian mobile and
+ * +91 12345 67890 is not needs a per-country numbering plan that goes stale,
+ * and getting it wrong turns away a real person. E.164 bounds are the part
+ * that is stable — a country code is 1 to 3 digits and the whole number is
+ * at most 15 — so that is what is checked.
+ */
+func phoneFieldError(phone string) string {
+	if strings.TrimSpace(phone) == "" {
+		return ""
+	}
+	digits := 0
+	for _, r := range phone {
+		if r >= '0' && r <= '9' {
+			digits++
+		}
+	}
+	switch {
+	case digits < 8:
+		return "That number looks too short — include the country code."
+	case digits > 15:
+		return "That number is too long."
+	}
+	return ""
 }
 
 // -------------------------------------------------------------------- login
@@ -530,8 +568,11 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 				"New accounts are closed on this instance.")
 			return
 		}
+		// Same policy as handleSignup: every new account can host from the
+		// moment it exists, whichever door they signed up through. No phone
+		// either way — Google sign-in doesn't collect one.
 		user, err = s.store.CreateUser(r.Context(), identity.Email, "",
-			identity.Name, "", "", false)
+			identity.Name, "", "", "", true)
 		if errors.Is(err, store.ErrConflict) {
 			// Race with a parallel signup: look up again.
 			user, err = s.store.UserByEmail(r.Context(), identity.Email)

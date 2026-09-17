@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
-import { Alert, Spinner, Toggle } from "./controls";
+import { useMemo, useState } from "react";
+import { Alert, Spinner } from "./controls";
 import { AuthDivider, GoogleContinueButton } from "./google-continue";
 import { ContinueAsPreviewHost } from "./continue-as-preview-host";
 import { useAppConfig, useSession } from "./providers";
 import { Button, Card } from "./ui";
 import { ApiError } from "@/lib/api";
+import { DIAL_CODES, dialOptions } from "@/lib/dial-codes";
 
 /* Sign in and sign up.
  *
@@ -127,29 +128,15 @@ export function SignupForm() {
   const router = useRouter();
   const params = useSearchParams();
   const { signUp } = useSession();
-  // The password rule comes from the server, so this form cannot promise a length
-  // the API does not enforce — and a relaxed floor for local testing shows up here
-  // without a second value to change.
-  const {
-    appName,
-    signupOpen,
-    minPasswordLength: minPassword,
-    googleAuth,
-  } = useAppConfig();
+  const { appName, signupOpen, googleAuth } = useAppConfig();
   const next = safeNext(params.get("next"), "/");
 
-  /* ?host=1 pre-ticks the "I'd like to host" box for somebody who arrived by asking.
-   *
-   * The box no longer GRANTS anything — the server ignores wantsHost and only an admin can
-   * write can_host. It is kept as a request, and the copy below says so, because the signal
-   * is useful: it is logged at signup, so whoever administers the instance has a reason to
-   * look. Silently dropping the intent would leave an admin with no way to know anybody is
-   * waiting to be granted access. */
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [dialIso, setDialIso] = useState("IN");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const dials = useMemo(() => dialOptions(), []);
   const [password, setPassword] = useState("");
-  const [org, setOrg] = useState("");
-  const [wantsHost, setWantsHost] = useState(params.get("host") === "1");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -178,7 +165,9 @@ export function SignupForm() {
     setError(null);
     setFields({});
     try {
-      const account = await signUp({ name, email, password, org, wantsHost });
+      const digits = phoneNumber.replace(/\D/g, "");
+      const phone = digits ? `+${DIAL_CODES[dialIso] ?? ""}${digits}` : "";
+      const account = await signUp({ name, email, password, phone });
       router.push(account.canHost ? "/host" : next);
       router.refresh();
     } catch (err) {
@@ -226,6 +215,41 @@ export function SignupForm() {
           error={fields.email}
           required
         />
+
+        <div>
+          <label className="label" htmlFor="phone">
+            Mobile number <span className="text-ink-3">(optional)</span>
+          </label>
+          <div className="flex gap-2">
+            <select
+              aria-label="Country calling code"
+              className="field w-32 shrink-0"
+              value={dialIso}
+              onChange={(e) => setDialIso(e.target.value)}
+            >
+              {dials.map((d) => (
+                <option key={d.iso} value={d.iso}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+            <input
+              id="phone"
+              className={`field min-w-0 flex-1 ${fields.phone ? "border-live" : ""}`}
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel-national"
+              placeholder="98765 43210"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              aria-invalid={Boolean(fields.phone)}
+            />
+          </div>
+          {fields.phone && (
+            <p className="mt-1 text-[12px] font-medium text-live">{fields.phone}</p>
+          )}
+        </div>
+
         <Field
           id="password"
           label="Password"
@@ -234,26 +258,8 @@ export function SignupForm() {
           value={password}
           onChange={setPassword}
           error={fields.password}
-          hint={`At least ${minPassword} characters. Length beats punctuation.`}
-          minLength={minPassword}
           required
         />
-        <Field
-          id="org"
-          label="Organisation (optional)"
-          autoComplete="organization"
-          value={org}
-          onChange={setOrg}
-        />
-
-        <div className="rounded-lg border border-line p-1.5">
-          <Toggle
-            checked={wantsHost}
-            onChange={setWantsHost}
-            label="I'd like to host webinars"
-            description="This asks an administrator for access — it isn't granted automatically. You can still register for and attend any session in the meantime."
-          />
-        </div>
 
         {error && <Alert tone="error">{error}</Alert>}
 
@@ -294,8 +300,6 @@ function Field({
   autoComplete,
   required,
   error,
-  hint,
-  minLength,
 }: {
   id: string;
   label: string;
@@ -305,10 +309,6 @@ function Field({
   autoComplete?: string;
   required?: boolean;
   error?: string;
-  hint?: string;
-  /** Mirrors the server's rule so the browser can catch a short password before a
-   *  round trip. The server is still the one that decides. */
-  minLength?: number;
 }) {
   return (
     <div>
@@ -321,21 +321,16 @@ function Field({
         className={`field ${error ? "border-live" : ""}`}
         autoComplete={autoComplete}
         required={required}
-        minLength={minLength}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error || hint ? `${id}-help` : undefined}
+        aria-describedby={error ? `${id}-help` : undefined}
       />
-      {error ? (
+      {error && (
         <p id={`${id}-help`} className="mt-1 text-[12px] font-medium text-live">
           {error}
         </p>
-      ) : hint ? (
-        <p id={`${id}-help`} className="mt-1 text-[11.5px] text-ink-3">
-          {hint}
-        </p>
-      ) : null}
+      )}
     </div>
   );
 }

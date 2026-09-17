@@ -1,19 +1,22 @@
 package api_test
 
-/* Hosting is granted, never taken.
+/* Hosting is granted automatically at signup now, and only an admin takes it away.
  *
- * Before this, two requests made anybody a host:
+ * This used to be the other way around — hosting was an admin-only grant, and neither
+ * of these requests could produce one:
  *
  *   POST /api/auth/signup  {"wantsHost": true}
  *   PATCH /api/auth/me          {"wantsHost": true}
  *
- * Both are still accepted — an older cached bundle has to be able to sign up and to save a name
- * change — and neither does anything any more. These tests exist because "the field is ignored"
- * is invisible: nothing about the response shape says so, and a refactor that wires it back up
- * would look like a tidy-up rather than a privilege escalation.
+ * Signup grants hosting unconditionally now, whatever wantsHost says — see handleSignup.
+ * PATCH /api/auth/me still cannot grant it after the fact, which is the one piece of the
+ * old policy that stayed: an admin's SetHostCapability is still the only way hosting is
+ * ever taken away, and self-service can't hand it back once it's gone. wantsHost is kept
+ * on the wire, accepted and ignored either way, so an older cached bundle keeps working.
  */
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -23,15 +26,16 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-// TestSignupCannotGrantHosting: the checkbox on the public form is inert.
-func TestSignupCannotGrantHosting(t *testing.T) {
+// TestSignupGrantsHosting: every new account can host immediately, whatever
+// wantsHost said — the field is accepted and ignored, not honoured.
+func TestSignupGrantsHosting(t *testing.T) {
 	h := newHarness(t)
 
 	res, raw := h.do(http.MethodPost, "/api/auth/signup", map[string]any{
-		"name":      "Ambitious Newcomer",
-		"email":     "ambitious@test.dev",
+		"name":      "New Host",
+		"email":     "newhost@test.dev",
 		"password":  "a-long-enough-password",
-		"wantsHost": true,
+		"wantsHost": false,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("signup: status %d body %s", res.StatusCode, raw)
@@ -39,20 +43,44 @@ func TestSignupCannotGrantHosting(t *testing.T) {
 	var acct types.Account
 	h.decode(raw, &acct)
 
-	if acct.CanHost {
-		t.Error("signup with wantsHost:true granted the hosting capability")
+	if !acct.CanHost {
+		t.Error("signup did not grant the hosting capability")
 	}
 	if acct.IsAdmin {
 		t.Error("signup produced an admin")
 	}
 
-	// And the capability is enforced, not merely absent from the response.
+	// And the capability actually works, not merely present in the response.
 	res, raw = h.do(http.MethodPost, "/api/host/webinars", map[string]any{
+		"topic": "A brand new host's first webinar", "startsAt": soon(), "durationMin": 30,
+		"status": "scheduled",
+	})
+	if res.StatusCode != http.StatusCreated {
+		t.Errorf("creating a webinar: status %d body %s, want 201", res.StatusCode, raw)
+	}
+}
+
+// TestAdminCanRevokeHostingAfterSignup: the safety valve signup's automatic
+// grant needs, now that it can't be withheld in the first place.
+func TestAdminCanRevokeHostingAfterSignup(t *testing.T) {
+	h := newHarness(t)
+	acct := h.signup("Revocable Host", "revocable@test.dev", true)
+	if !acct.CanHost {
+		t.Fatal("fixture setup: signup did not grant hosting")
+	}
+
+	if _, err := h.store.SetHostCapability(context.Background(), acct.ID, false); err != nil {
+		t.Fatalf("revoke hosting: %v", err)
+	}
+
+	// authenticate() re-reads the account on every request, so the very next
+	// call already sees the revoked capability with no re-login needed.
+	res, raw := h.do(http.MethodPost, "/api/host/webinars", map[string]any{
 		"topic": "Should not exist", "startsAt": soon(), "durationMin": 30,
 		"status": "scheduled",
 	})
 	if res.StatusCode != http.StatusForbidden {
-		t.Errorf("creating a webinar: status %d body %s, want 403", res.StatusCode, raw)
+		t.Errorf("creating a webinar after revoke: status %d body %s, want 403", res.StatusCode, raw)
 	}
 }
 
