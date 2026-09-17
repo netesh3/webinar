@@ -46,7 +46,7 @@ func (s *Store) EnsureAdminAccount(ctx context.Context, email, name, passwordHas
 
 	// can_host false here: PromoteAdmins sets both is_admin and can_host immediately after, and
 	// having one writer for those two columns is what keeps them from disagreeing.
-	_, err := s.CreateUser(ctx, email, passwordHash, name, "", "", false)
+	_, err := s.CreateUser(ctx, email, passwordHash, name, "", "", "", false)
 	switch {
 	case err == nil:
 		return true, nil

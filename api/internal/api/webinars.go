@@ -308,22 +308,11 @@ func validateRegistration(req types.RegisterRequest, wb types.Webinar) map[strin
 	 *
 	 * A number that IS supplied and is malformed is still refused. Storing "9876543210" with
 	 * no country code gives the host something nobody can dial, which is worse than a blank.
+	 * The actual shape check is phoneFieldError (auth.go) — shared with signup's identical
+	 * field, extracted there so the two forms can't quietly disagree about what's valid.
 	 */
-	digits := 0
-	for _, r := range req.Phone {
-		if r >= '0' && r <= '9' {
-			digits++
-		}
-	}
-	switch {
-	case strings.TrimSpace(req.Phone) == "":
-		// Nothing to check.
-	case digits < 8:
-		// Below eight digits there is no country in which this is a reachable mobile.
-		fields["phone"] = "That number looks too short — include the country code."
-	case digits > 15:
-		// E.164 caps the whole number, country code included, at fifteen digits.
-		fields["phone"] = "That number is too long."
+	if msg := phoneFieldError(req.Phone); msg != "" {
+		fields["phone"] = msg
 	}
 	for _, q := range wb.CustomQuestions {
 		if q.Required && strings.TrimSpace(req.Answers[q.ID]) == "" {

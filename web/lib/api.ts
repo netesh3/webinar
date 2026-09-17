@@ -274,9 +274,9 @@ export const api = {
     name: string;
     email: string;
     password: string;
+    phone?: string;
     org?: string;
     title?: string;
-    wantsHost: boolean;
   }) => post<Account>("/api/auth/signup", body),
 
   login: (email: string, password: string) =>

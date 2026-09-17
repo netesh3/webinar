@@ -1,0 +1,19 @@
+-- A phone number on the account itself, collected at signup — replaces
+-- Organisation there (still a real field, still editable from account
+-- settings; just no longer asked for on the signup form).
+--
+-- Same shape and same reasoning as registrations.phone (migrations/0009):
+-- stored as ONE text column in E.164 shape (`+<country><subscriber>`), not
+-- as a dial code and a national number in two columns — the split is a
+-- property of the form, not of the number.
+--
+-- NOT NULL DEFAULT '' rather than nullable, matching every other optional
+-- profile field on this table (title, org): an absent number is an empty
+-- string, so no reader has to handle NULL, and existing accounts are
+-- backfilled by the default without a rewrite.
+--
+-- Not added to `Person` (the type shown to other attendees/panelists on a
+-- webinar page) — only to Account, the caller's own private view. Org is
+-- shown publicly there; a phone number should not be, and never will be
+-- just by following the same pattern Org used.
+ALTER TABLE users ADD COLUMN phone text NOT NULL DEFAULT '';

@@ -107,9 +107,10 @@ type Config struct {
 	 * next deploy, and this value would be a permanent back door into a live account rather
 	 * than a bootstrap.
 	 *
-	 * Unset means no account is created — a warning, not an invented password. Held to the same
-	 * MinPasswordLength floor as a human's, because a short one here is worse: it is on the
-	 * account that grants every other privilege.
+	 * Unset means no account is created — a warning, not an invented password. Held to the
+	 * MinPasswordLength floor (see its own doc comment) even though regular signup no longer
+	 * is, because a short one here is worse: it is on the account that grants every other
+	 * privilege.
 	 */
 	AdminPassword string
 
@@ -157,15 +158,15 @@ type Config struct {
 	SupabaseAnonKey   string
 	SupabaseJWTSecret string
 
-	// MinPasswordLength is a length floor rather than a character-class rule.
-	// Composition rules push people towards "Password1!" and measurably do not
-	// help; length is the property that does.
+	// MinPasswordLength now governs AdminPassword only — regular signup no
+	// longer enforces a floor (see validateSignup). Kept for the bootstrap
+	// admin account specifically: that one password grants every other
+	// privilege, and a low bar there is worth guarding even while the
+	// ordinary signup form asks for none.
 	//
-	// Configurable because testing an app is not the same activity as using it —
-	// typing a fourteen-character password a hundred times a day is a real tax on
-	// whoever is building this. Development defaults low; outside development the
-	// floor is enforced at boot, so a value chosen for convenience cannot follow
-	// the deployment into production.
+	// Development defaults low; outside development the floor is enforced at
+	// boot, so a value chosen for convenience cannot follow the deployment
+	// into production.
 	MinPasswordLength int
 
 	// SeedDev fills an empty development database with demo hosts and webinars.

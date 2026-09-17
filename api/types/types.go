@@ -608,11 +608,15 @@ type WebinarInput struct {
 // account, not a separate kind of account: the same person registers for other
 // people's webinars and runs their own.
 type Account struct {
-	ID       string `json:"id"`
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Title    string `json:"title"`
-	Org      string `json:"org"`
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Title string `json:"title"`
+	Org   string `json:"org"`
+	// Phone is E.164 shape (`+` then digits), same convention as
+	// Registration.Phone — the caller's own number, never shown to anyone
+	// else (not on Person, the type other attendees/panelists see).
+	Phone    string `json:"phone"`
 	Initials string `json:"initials"`
 	Hue      string `json:"hue"`
 	// CanHost is GRANTED by an admin. It was once a checkbox on the signup form; see
@@ -630,6 +634,9 @@ type SignupRequest struct {
 	Password string `json:"password"`
 	Org      string `json:"org,omitempty"`
 	Title    string `json:"title,omitempty"`
+	// Phone is E.164 shape, same as Registration.Phone — see validateSignup
+	// for the shape check and store.normalisePhone for how it's stored.
+	Phone string `json:"phone,omitempty"`
 	/* WantsHost is ACCEPTED AND IGNORED, and the field is kept for exactly that reason.
 	 *
 	 * Every new account gets hosting automatically now (see handleSignup) — nothing left to
@@ -689,6 +696,7 @@ type ProfilePatch struct {
 	Name  *string `json:"name,omitempty"`
 	Title *string `json:"title,omitempty"`
 	Org   *string `json:"org,omitempty"`
+	Phone *string `json:"phone,omitempty"`
 	// WantsHost is accepted and ignored, for the same reason as on SignupRequest: an older
 	// bundle still submitting the old profile form must be able to save the name change it
 	// was really for. store.UpdateProfile no longer touches can_host.
@@ -1025,9 +1033,6 @@ type AppConfig struct {
 	SupportEmail string `json:"supportEmail,omitempty"`
 	MaxAttendees int    `json:"maxAttendees"`
 	SignupOpen   bool   `json:"signupOpen"`
-	// MinPasswordLength is served rather than duplicated in the bundle, so the
-	// hint on the signup form can never promise a rule the server does not apply.
-	MinPasswordLength int `json:"minPasswordLength"`
 	// Tracks are the topic tags already in use, offered as suggestions rather
 	// than a fixed enum so an operator never has to edit a list in the bundle.
 	Tracks []string `json:"tracks"`

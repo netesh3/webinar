@@ -603,6 +603,12 @@ export interface Account {
   name: string;
   title: string;
   org: string;
+  /**
+   * Phone is E.164 shape (`+` then digits), same convention as
+   * Registration.Phone — the caller's own number, never shown to anyone
+   * else (not on Person, the type other attendees/panelists see).
+   */
+  phone: string;
   initials: string;
   hue: string;
   /**
@@ -623,6 +629,11 @@ export interface SignupRequest {
   password: string;
   org?: string;
   title?: string;
+  /**
+   * Phone is E.164 shape, same as Registration.Phone — see validateSignup
+   * for the shape check and store.normalisePhone for how it's stored.
+   */
+  phone?: string;
   /**
    *  WantsHost is ACCEPTED AND IGNORED, and the field is kept for exactly that reason.
    * 	 *
@@ -684,6 +695,7 @@ export interface ProfilePatch {
   name?: string;
   title?: string;
   org?: string;
+  phone?: string;
   /**
    * WantsHost is accepted and ignored, for the same reason as on SignupRequest: an older
    * bundle still submitting the old profile form must be able to save the name change it
@@ -1030,11 +1042,6 @@ export interface AppConfig {
   supportEmail?: string;
   maxAttendees: number /* int */;
   signupOpen: boolean;
-  /**
-   * MinPasswordLength is served rather than duplicated in the bundle, so the
-   * hint on the signup form can never promise a rule the server does not apply.
-   */
-  minPasswordLength: number /* int */;
   /**
    * Tracks are the topic tags already in use, offered as suggestions rather
    * than a fixed enum so an operator never has to edit a list in the bundle.

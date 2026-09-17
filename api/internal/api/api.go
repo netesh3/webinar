@@ -472,7 +472,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		SupportEmail:          s.cfg.SupportEmail,
 		MaxAttendees:          s.cfg.MaxAttendees,
 		SignupOpen:            s.cfg.SignupOpen,
-		MinPasswordLength:     s.cfg.MinPasswordLength,
 		Tracks:                tracks,
 		GoogleClientID:        s.cfg.GoogleClientID,
 		GoogleAPIKey:          s.cfg.GoogleAPIKey,
