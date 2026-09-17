@@ -10,13 +10,13 @@ import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 
-/* The top bar — primary product nav: Browse | Attending | Hosting. */
+/* The top bar — primary product nav: Browse | My Webinar | Host Webinar. */
 
 function linksFor(signedIn: boolean, canHost: boolean) {
   return [
     { href: "/browse", label: "Browse" },
-    ...(signedIn ? [{ href: "/my-webinars", label: "Attending" }] : []),
-    ...(canHost ? [{ href: "/host", label: "Hosting" }] : []),
+    ...(signedIn ? [{ href: "/my-webinars", label: "My Webinar" }] : []),
+    ...(canHost ? [{ href: "/host", label: "Host Webinar" }] : []),
   ];
 }
 

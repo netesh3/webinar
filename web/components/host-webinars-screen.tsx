@@ -187,7 +187,7 @@ export function HostWebinarsScreen() {
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <ButtonLink href="/my-webinars" variant="secondary" size="sm">
-              Attending
+              My Webinar
             </ButtonLink>
             <ButtonLink href="/account" variant="ghost" size="sm">
               Account settings
@@ -224,7 +224,7 @@ export function HostWebinarsScreen() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
-            Hosting
+            Host Webinar
           </h1>
           <p className="mt-1.5 max-w-lg text-[13.5px] leading-relaxed text-ink-2">
             Create a session, start it when you&apos;re ready, admit people who
