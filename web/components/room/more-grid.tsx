@@ -5,6 +5,7 @@ import type { ToolId } from "@/lib/tools";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { useCompact } from "@/lib/compact";
 import { MoreCircleIcon } from "../icons";
+import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { InviteMenu } from "./invite-panel";
 import { LayoutMenu } from "./layout-menu";
@@ -43,6 +44,7 @@ export function MoreGrid({
   onClose: () => void;
 }) {
   const { tools, unread, realtime, stage } = useRoomUI();
+  const { notify } = useToast();
   const drag = useToolDrag();
   const dragging = drag.drag !== null;
   const compact = useCompact();
@@ -228,7 +230,15 @@ export function MoreGrid({
                       return;
                     }
                     if (id === "hand") {
-                      void realtime.toggleHand();
+                      // Same fix as control-bar.tsx's identical call: a
+                      // rejection (e.g. the host has raise-hand off) was a
+                      // silent unhandled-promise-rejection before this.
+                      void realtime.toggleHand().catch((err) => {
+                        notify(
+                          err instanceof Error ? err.message : "Couldn't raise your hand.",
+                          "error",
+                        );
+                      });
                       onClose();
                       return;
                     }
