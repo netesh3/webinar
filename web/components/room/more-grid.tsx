@@ -34,6 +34,7 @@ import { tool } from "./tools";
 export function MoreGrid({
   items,
   panelItems,
+  shareAction,
   onClose,
 }: {
   items: readonly ToolId[];
@@ -41,6 +42,20 @@ export function MoreGrid({
    *  `items` they are never pinnable — they already have a place on a
    *  desktop bar. */
   panelItems?: readonly ToolId[];
+  /** Share, on the rare phone width where mic+camera both showing leaves no
+   *  room for it on the bar itself (see control-bar.tsx's shareOnBar). Not a
+   *  ToolId — Share has always lived outside that system (its own dimmed/
+   *  busy states, its own click behaviour) — so it's passed in fully formed
+   *  rather than forcing it through a system built for a different kind of
+   *  button. */
+  shareAction?: {
+    label: string;
+    icon: React.ReactNode;
+    active: boolean;
+    dimmed: boolean;
+    busy: boolean;
+    onClick: () => void;
+  };
   onClose: () => void;
 }) {
   const { tools, unread, realtime, stage } = useRoomUI();
@@ -146,6 +161,33 @@ export function MoreGrid({
         {compact && (
           <div className="mb-1 flex justify-center">
             <span className="h-1 w-9 rounded-full bg-line-2" aria-hidden />
+          </div>
+        )}
+
+        {shareAction && (
+          <div className="mb-1 grid grid-cols-3 border-b border-line pb-1">
+            <button
+              type="button"
+              aria-label={shareAction.label}
+              title={shareAction.label}
+              disabled={shareAction.busy}
+              onClick={() => {
+                shareAction.onClick();
+                onClose();
+              }}
+              className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 ${
+                shareAction.active
+                  ? "text-brand"
+                  : shareAction.dimmed
+                    ? "text-ink-3"
+                    : "text-ink-2 hover:text-ink"
+              }`}
+            >
+              {shareAction.icon}
+              <span className="text-[11px] leading-tight font-medium">
+                {shareAction.label}
+              </span>
+            </button>
           </div>
         )}
 
