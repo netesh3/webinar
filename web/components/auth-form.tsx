@@ -164,8 +164,13 @@ export function SignupForm() {
     setBusy(true);
     setError(null);
     setFields({});
+    const digits = phoneNumber.replace(/\D/g, "");
+    if (digits && digits.length !== 10) {
+      setBusy(false);
+      setFields({ phone: "Enter a 10-digit mobile number." });
+      return;
+    }
     try {
-      const digits = phoneNumber.replace(/\D/g, "");
       const phone = digits ? `+${DIAL_CODES[dialIso] ?? ""}${digits}` : "";
       const account = await signUp({ name, email, password, phone });
       router.push(account.canHost ? "/host" : next);
@@ -240,8 +245,9 @@ export function SignupForm() {
               inputMode="tel"
               autoComplete="tel-national"
               placeholder="98765 43210"
+              maxLength={10}
               value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
+              onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
               aria-invalid={Boolean(fields.phone)}
             />
           </div>
