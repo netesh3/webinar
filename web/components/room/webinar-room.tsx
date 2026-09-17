@@ -1047,20 +1047,20 @@ function ConnectedRoom({
  */
 function AutoStartAudio({ room }: { room: Room }) {
   useEffect(() => {
-    if (room.canPlaybackAudio) return;
-
+    // Deliberately NOT gated on room.canPlaybackAudio here. That flag starts
+    // out true in livekit-client's own Room constructor — it means "nothing
+    // has failed YET", not "playback is confirmed working" — and the real
+    // subscribed audio track this depends on doesn't exist until well after
+    // this effect has already run once on mount. Bailing out here on that
+    // optimistic default skipped attaching the listeners below in the
+    // ordinary case, so the retry mechanism was never armed before the
+    // actual autoplay failure happened a moment later — it fired into a
+    // room with nothing listening. That was the mobile-listener-never-hears-
+    // the-host bug: the previous version of this fix looked identical below
+    // but never ran, because of this one early return.
+    //
     // Keeps retrying on every interaction until playback is actually
     // confirmed unlocked, instead of giving up after one attempt.
-    //
-    // The one-shot version this replaced removed its listeners after the
-    // FIRST gesture regardless of whether startAudio() succeeded — so a
-    // gesture that landed before any audio track had been subscribed yet
-    // (a tap that lands the instant the room opens, before the host's
-    // track has arrived) consumed the only try and left the tab silent for
-    // the rest of the session, with no further gesture ever retried. That
-    // is the mobile-listener-never-hears-the-host bug: the fix is to keep
-    // trying on each subsequent interaction until room.canPlaybackAudio
-    // actually reports true, not to assume one attempt is enough.
     const start = () => {
       if (room.canPlaybackAudio) {
         stop();
