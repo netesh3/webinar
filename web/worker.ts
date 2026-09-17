@@ -24,6 +24,18 @@ export default {
     ctx: ExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
+    // http://webinarliv.com served a plain 200 with no redirect — confirmed live,
+    // not a hypothetical. That's not just a padlock/trust issue: getUserMedia and
+    // every other media API are restricted to secure contexts, so a browser that
+    // landed here over http had `navigator.mediaDevices` come back `undefined`,
+    // which is exactly the "Couldn't open your microphone" a granted-to-speak
+    // attendee hit. Enforced here, in the Worker itself, rather than relying only
+    // on Cloudflare's dashboard-level "Always Use HTTPS" toggle — that setting
+    // should also be on, but this doesn't depend on remembering it's still set.
+    if (url.protocol === "http:") {
+      url.protocol = "https:";
+      return Response.redirect(url.toString(), 301);
+    }
     if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
       return proxyApi(request, env);
     }
