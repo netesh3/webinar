@@ -25,7 +25,15 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
     summary: "",
     description: "",
     track: "",
-    startsAt: new Date().toISOString(),
+    /* NOT literally now: the server rejects a create whose startsAt is
+     * already in the past (host.go, isCreate + status "scheduled"), with no
+     * grace period — and "now" computed here is, by the time this request
+     * reaches the server, already a little in the past. A few minutes of
+     * slack clears that race with room to spare. The exact value barely
+     * matters anyway: startWebinar (called right after this resolves) has no
+     * precondition on startsAt at all, so the room goes live immediately
+     * regardless of what this says. */
+    startsAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     durationMin: 60,
     timeZone: localTimeZone(),
     kind: "live",
@@ -109,10 +117,13 @@ export function HostWebinarsScreen() {
       }
       load();
     } catch (err) {
-      notify(
-        err instanceof Error ? err.message : "Could not start the webinar.",
-        "error",
-      );
+      const message =
+        err instanceof ApiError
+          ? (Object.values(err.fields ?? {})[0] ?? err.message)
+          : err instanceof Error
+            ? err.message
+            : "Could not start the webinar.";
+      notify(message || "Could not start the webinar.", "error");
     } finally {
       setStartingInstant(false);
     }
