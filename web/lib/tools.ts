@@ -85,9 +85,13 @@ export const CENTER_BAR_TOOLS: readonly ToolId[] = [
   "settings",
 ];
 
-/** On a phone the bar only has room for the two people actually reach for
- *  mid-session. The rest of CENTER_BAR_TOOLS go in More. */
-const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "participants"];
+/** On a phone the bar only has room for the ones people reach for mid-session
+ *  without a detour through More: the two-way conversation (Chat), and the
+ *  three ways to respond to what's happening live (Reactions, Raise hand,
+ *  Polls) — the things that are dead if they arrive a tap late. Participants
+ *  and Settings move into More on a phone; they're moderation and
+ *  configuration, not something answered in the moment. */
+const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "reactions", "hand", "polls"];
 
 export function centerBarTools(
   available: readonly ToolId[],

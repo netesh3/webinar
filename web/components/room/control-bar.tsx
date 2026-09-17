@@ -477,7 +477,21 @@ export function ControlBar() {
   return (
     <div
       ref={setBarEl}
-      className="relative flex min-h-14 shrink-0 items-center justify-center border-t border-white/10 bg-stage-bar px-24 sm:px-56"
+      // The centred strip's own padding is what keeps it clear of the two
+      // out-of-flow clusters below (mic+camera on the left, Leave on the
+      // right) — they don't push it, so this has to reserve their width
+      // itself. On mobile that's asymmetric: two MediaToggles (mic + camera,
+      // each ~84px: a ~40px main button plus a ~44px device-picker chevron)
+      // plus their left-2 offset is ~180px, while Leave is icon-only and
+      // needs under half that. `px-24` (96px each side) was sized for one
+      // toggle, not two — a plain attendee granted audio-only ("Allow to
+      // speak") barely fit; a full "Bring on stage" grant (mic AND camera)
+      // did not, and the centred strip's own leftmost items — Chat, Share —
+      // rendered right underneath the now-wider mic/camera cluster instead
+      // of being pushed clear of it. Desktop's toggles are wider individually
+      // but its existing `sm:px-56` (224px) already has room to spare either
+      // way, which is why this only ever showed up on a phone.
+      className="relative flex min-h-14 shrink-0 items-center justify-center border-t border-white/10 bg-stage-bar pl-48 pr-16 sm:px-56"
       // Clears the iOS home indicator; without it the leave button sits under
       // the system gesture area and is genuinely hard to hit.
       style={{ paddingBottom: "max(0px, env(safe-area-inset-bottom))" }}
@@ -543,8 +557,18 @@ export function ControlBar() {
         </div>
       ) : null}
 
-      {/* Centre strip: Share / Record / standing tools / pins / More. */}
-      <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+      {/* Centre strip: Share / Record / standing tools / pins / More.
+          overflow-x-auto rather than shrinking or clipping: on a phone, Share
+          + Chat + Reactions + Raise hand + Polls + More is six buttons in a
+          strip that also has to leave room for mic+camera on the left and
+          Leave on the right — arithmetically tighter than the available
+          width allows even with correct padding. Scrolling means a packed
+          bar is reachable with a swipe; the alternative (this row's own
+          items silently overlapping or getting clipped) is the exact bug
+          this whole layout pass exists to fix, and no fixed reservation is
+          safe against a longer locale's labels or a wider dynamic-type
+          setting doing the same thing again later. */}
+      <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:thin] sm:gap-2">
           {/* Preview chrome always offers Share (mocked). A live room still needs
               getDisplayMedia support — most mobile browsers do not expose it, and
               some in-app/WebView browsers (a link opened from another app) do not
