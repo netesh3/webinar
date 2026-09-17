@@ -258,7 +258,7 @@ export function HostWebinarsScreen() {
           type="button"
           onClick={startInstantWebinar}
           disabled={startingInstant}
-          className="group flex items-center gap-3 rounded-xl border border-line bg-surface p-3.5 text-left transition-colors hover:border-brand-line disabled:opacity-60"
+          className="group flex items-center gap-3 rounded-xl border border-line bg-surface p-3.5 text-left transition-colors hover:border-brand-line hover:bg-surface-2 disabled:opacity-60"
         >
           <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
             {startingInstant ? <Spinner className="size-4.5" /> : <PlayIcon className="size-4.5" />}
