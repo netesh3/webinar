@@ -61,6 +61,7 @@ import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
 import { useAvailableTools } from "./tools";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
+import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
 import { useTelemetry } from "@/lib/telemetry";
@@ -679,6 +680,13 @@ function ConnectedRoom({
   // mid-session has to reach a bar that was laid out before they did.
   const availableTools = useAvailableTools({ isHost, controls });
   const tools = useToolLayout(availableTools);
+  // Whether a docked panel (Chat, Participants, …) should be sharing the
+  // screen with the video right now, rather than overlaying it — only true
+  // on a phone-shaped viewport with a panel actually open. A floating/popped-
+  // out window doesn't count: that already has its own space via
+  // ToolWindows, so the stage stays full-bleed underneath it.
+  const compact = useCompact();
+  const panelOpen = compact && Boolean(tools.panelTab);
 
   /* Playing a recorded video into the session as the presenter's screen share.
    *
@@ -943,12 +951,20 @@ function ConnectedRoom({
             {/* Zoom chrome: video fills the column; header and Chat overlay it;
                 only the bottom bar takes layout space. A reserved header + a
                 shrinking side rail was the thing that made this feel unlike a
-                webinar client. */}
+                webinar client.
+
+                On a phone with a panel open, this inverts for the video only:
+                full-bleed-and-covered reads as "the video vanished" on a
+                screen too small to make the overlay read as an overlay, so
+                the video instead keeps a fixed strip at the top and the
+                panel is sized to the remaining space below it (SidePanel),
+                rather than either one overlaying the other. */}
             <div className="relative min-h-0 min-w-0 flex-1">
               <div
                 ref={setStageEl}
                 data-stage
-                className="absolute inset-0 flex flex-col"
+                className="absolute inset-x-0 top-0 flex flex-col"
+                style={panelOpen ? { height: COMPACT_STAGE_HEIGHT } : { bottom: 0 }}
               >
                 <Stage />
                 {/* Playback controls for a shared video file. Host-only by

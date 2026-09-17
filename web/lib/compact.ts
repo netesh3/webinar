@@ -18,6 +18,15 @@ export const COMPACT_QUERY = "(max-width: 767px)";
  * the case this actually has to get right — a resized browser window is as
  * "compact" as a phone, and a phone in landscape is not.
  */
+/** How tall the video/stage area stays at the top of the screen when a panel
+ *  (Chat, Participants, …) is open on a phone-shaped viewport — the panel
+ *  itself starts exactly here (see side-panel.tsx), via this same constant,
+ *  so the two can never drift out of sync with each other. Clamped rather
+ *  than a flat vh: a flat percentage left the video uncomfortably short on a
+ *  small phone and needlessly tall on a big one — this keeps a real video at
+ *  the top and real room for the panel below it across phone sizes. */
+export const COMPACT_STAGE_HEIGHT = "clamp(180px, 38vh, 320px)";
+
 export function useCompact(): boolean {
   const [compact, setCompact] = useState(false);
   useEffect(() => {
