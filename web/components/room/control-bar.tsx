@@ -403,13 +403,26 @@ export function ControlBar() {
 
   /** Per-tool badge. Only two tools have a stream of things that arrive while you
    *  are not looking; the raised-hand queue is the third and belongs on
-   *  Participants, because that is where the host acts on it. */
+   *  Participants, because that is where the host acts on it.
+   *
+   *  Deliberately NOT where the headcount lives (see countFor below): this
+   *  feeds gridBadge's "something needs your attention" total on the More
+   *  button, and a passive headcount is not that — a room of twenty people
+   *  with nothing unread must not read as twenty unread things. */
   const badgeFor = (id: ToolId): number | undefined => {
     if (id === "participants") {
       return isHost && realtime.hands.length > 0 ? realtime.hands.length : undefined;
     }
     return unread[id] || undefined;
   };
+
+  /** What the button itself shows, which is badgeFor's "needs attention"
+   *  count for everything except Participants — where, idle, it falls back
+   *  to the plain headcount (Zoom shows this next to the people icon).
+   *  Raised hands still win when there are any: that is the one that needs
+   *  a click, not just a look. */
+  const countFor = (id: ToolId): number | undefined =>
+    id === "participants" ? (badgeFor(id) ?? headcount) : badgeFor(id);
 
   const labelFor = (id: ToolId): string => {
     const t = tool(id);
@@ -661,7 +674,7 @@ export function ControlBar() {
               <BarButton
                 label={tool(id).label}
                 active={activeFor(id)}
-                badge={badgeFor(id)}
+                badge={countFor(id)}
                 onClick={() => activate(id)}
                 icon={<Icon className="size-5" />}
               />
@@ -698,7 +711,7 @@ export function ControlBar() {
                   id={slot.tool}
                   label={labelFor(slot.tool)}
                   active={activeFor(slot.tool)}
-                  badge={badgeFor(slot.tool)}
+                  badge={countFor(slot.tool)}
                   pinned={slot.pinned}
                   dragging={drag.drag?.tool === slot.tool}
                   onActivate={() => activate(slot.tool)}
