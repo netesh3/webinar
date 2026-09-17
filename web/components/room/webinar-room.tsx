@@ -3,6 +3,7 @@
 import {
   RoomAudioRenderer,
   RoomContext,
+  StartAudio,
   useConnectionState,
   useSequentialRoomConnectDisconnect,
 } from "@livekit/components-react";
@@ -1007,9 +1008,20 @@ function ConnectedRoom({
         {/* Renders every subscribed audio track. Without this you get video and
             silence, which is a genuinely confusing bug to chase. */}
         <RoomAudioRenderer />
-        {/* No visible "click to enable sound" button any more — see
-            AutoStartAudio below for why one is rarely needed now, and what
-            it does instead of showing one. */}
+        {/* AutoStartAudio (below) clears the browser's autoplay block silently
+            on the first ordinary interaction, for the common case. But which
+            gesture that ends up being — and how long it takes for a track to
+            exist to unlock in the first place — varies per device and
+            network, which is exactly what made audio "sometimes there,
+            sometimes not" once the button below was removed on its own.
+            StartAudio is LiveKit's own component for this: it renders nothing
+            at all once canPlaybackAudio is true, and a real, tappable pill
+            whenever it is not — so nobody is ever left with silence and no
+            way to fix it themselves. */}
+        <StartAudio
+          label="Tap to enable sound"
+          className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full bg-brand px-4 py-2 text-[13px] font-medium text-white shadow-lg"
+        />
         <AutoStartAudio room={room} />
         </ActiveSpeakerProvider>
       </RoomUIProvider>
@@ -1017,33 +1029,28 @@ function ConnectedRoom({
   );
 }
 
-/* Unblocks audio the moment there is any interaction at all, without asking for one.
+/* Unblocks audio the moment there is any interaction at all, without asking for one —
+ * the quiet half of unblocking audio. StartAudio, rendered alongside this in
+ * ConnectedRoom, is the visible half and the one with a hard guarantee.
  *
  * Browsers withhold autoplay-with-sound until a page has had a genuine user gesture —
  * that is a platform policy this app cannot switch off, and working around it with a
  * trick (a synthetic click, a silent audio priming hack) is exactly the kind of thing
- * browsers have since closed off. What used to sit here was a floating "Click to
- * enable sound" pill that made that restriction visible and asked the viewer to clear
- * it themselves.
+ * browsers have since closed off.
  *
- * The button is gone because the gesture it needed almost never has to be a deliberate
- * click on THAT pill. `register-form.tsx`'s JoinGate now opens the room in the SAME tab
- * it was clicked from, which is itself the gesture and starts audio immediately for the
- * common path. For everyone else — a guest link opened cold, a bookmarked room, Safari's
- * stricter policy — this listens for the FIRST interaction anywhere on the page (a
- * click, a tap, a key) and starts audio then, silently — and keeps listening across
- * every interaction after that until room.canPlaybackAudio actually reports true, since
- * a gesture that lands before any track has been subscribed yet can fail even though
- * the viewer did everything right. Reacting to chat, pressing mute, choosing a layout —
- * any of the things somebody does within a few seconds of landing on a live room —
- * clears it without them ever knowing there was something to clear.
- *
- * What this does not solve, and cannot: somebody who joins and genuinely never
- * interacts with the page at all stays silent, because no code running in the page can
- * manufacture the gesture the browser is withholding. That was already true with the
- * button showing — the difference is only that nothing asks them to fix it. Given how
- * rarely a viewer does nothing at all for the length of a webinar, that trade is the
- * right one against a floating pill everybody else saw on every single join.
+ * This used to be the ONLY mechanism, with no visible fallback — the original "Click to
+ * enable sound" pill was removed on the theory that `register-form.tsx`'s JoinGate
+ * opening the room in the same tab (itself a gesture) plus this listener would catch
+ * nearly everyone silently. It does not catch everyone reliably: which of chat, mute, a
+ * layout change ends up being the first qualifying interaction — and whether a track
+ * even exists to unlock by the time it fires — varies by device, network and browser,
+ * which is what turned into attendees hearing audio on some joins and not others with no
+ * pattern a person could see. StartAudio is what makes the outcome no longer a coin
+ * flip: it renders nothing while canPlaybackAudio is true, and a real, tappable pill
+ * the moment it is not, so this silent path only ever saves someone a tap — it is never
+ * the only way out. Reacting to chat, pressing mute, choosing a layout — any of the
+ * things somebody does within a few seconds of landing on a live room — still clears it
+ * before StartAudio's pill would even have had reason to appear.
  */
 function AutoStartAudio({ room }: { room: Room }) {
   useEffect(() => {
