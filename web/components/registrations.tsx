@@ -178,7 +178,7 @@ export function useRegistrations() {
   /* The webinars behind those registrations, keyed by slug.
    *
    * These arrive free with both responses now, and collecting them is what let the
-   * "My webinars" page stop fetching the whole catalogue and filtering it in the
+   * "Attending" page stop fetching the whole catalogue and filtering it in the
    * browser. That page used to be handed every scheduled webinar on the server —
    * including other hosts' — and render only the caller's. The rows never showed,
    * but the data was in the payload. */

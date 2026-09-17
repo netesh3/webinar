@@ -7,7 +7,7 @@ import { useAppConfig } from "./providers";
  *
  * Deliberately not a navigation bar. Somebody arriving on a registration link is here for one
  * webinar; they did not come from a catalogue and there is nowhere for them to go. What the
- * shared TopNav offers — Browse webinars, My webinars, Host, sign-in, an account menu — is the
+ * shared TopNav offers — Browse webinars, Attending, Hosting, sign-in, an account menu — is the
  * host product's navigation, and putting it above a registration form makes the link feel like
  * the front door of an application the participant has no business in.
  *
