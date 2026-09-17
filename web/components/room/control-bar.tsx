@@ -432,7 +432,16 @@ export function ControlBar() {
       return;
     }
     if (id === "hand") {
-      void realtime.toggleHand();
+      // A rejection here (e.g. the host has raise-hand turned off) used to be
+      // a genuinely silent failure: an unhandled promise rejection nobody
+      // saw, with the optimistic local toggle already applied so even the
+      // person who clicked couldn't tell it hadn't actually reached anyone.
+      void realtime.toggleHand().catch((err) => {
+        notify(
+          err instanceof Error ? err.message : "Couldn't raise your hand.",
+          "error",
+        );
+      });
       tools.used("hand");
       return;
     }
