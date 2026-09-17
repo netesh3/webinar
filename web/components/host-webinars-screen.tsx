@@ -12,7 +12,7 @@ import type { Webinar, WebinarInput } from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { localTimeZone } from "@/lib/format";
-import { openRoomTab } from "@/lib/open-room";
+import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 
 /* An instant webinar is the same request a normal Create submits, just with
  * the form skipped: a topic that says what it is, starting now, and every
@@ -98,11 +98,15 @@ export function HostWebinarsScreen() {
       openRoomTab("/preview/room");
       return;
     }
+    // Opened NOW, synchronously, before the awaits below — see
+    // openPendingRoomTab's own doc comment for why that order is load-
+    // bearing and not just tidiness.
+    const pendingTab = openPendingRoomTab();
     setStartingInstant(true);
     try {
       const created = await api.createWebinar(instantWebinarInput(maxAttendees));
       await api.startWebinar(created.id);
-      openRoomTab(`/host/${created.id}/room`);
+      pendingTab.open(`/host/${created.id}/room`);
       // The whole point of "instant" is joining people who aren't in this
       // browser tab — so the join link goes straight to the clipboard rather
       // than making the host hunt for Share after the fact.
@@ -117,6 +121,7 @@ export function HostWebinarsScreen() {
       }
       load();
     } catch (err) {
+      pendingTab.cancel();
       const message =
         err instanceof ApiError
           ? (Object.values(err.fields ?? {})[0] ?? err.message)

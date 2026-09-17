@@ -16,7 +16,7 @@ import {
 import { api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
-import { openRoomTab } from "@/lib/open-room";
+import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 
@@ -58,12 +58,25 @@ export function HostWebinarList({
       openRoomTab("/preview/room");
       return;
     }
-    setBusy(w.id);
-    try {
-      if (w.status !== "live") await api.startWebinar(w.id);
+    // A webinar that is already live has nothing to await, so opening it
+    // stays inside the click's own call stack and a plain openRoomTab is
+    // never at risk of the popup blocker. One that still needs starting
+    // does have an await in front of it — see openPendingRoomTab's doc
+    // comment for why that turns a same-tick window.open() into one Safari
+    // silently blocks.
+    if (w.status === "live") {
       openRoomTab(`/host/${w.id}/room`);
       location.reload();
+      return;
+    }
+    const pendingTab = openPendingRoomTab();
+    setBusy(w.id);
+    try {
+      await api.startWebinar(w.id);
+      pendingTab.open(`/host/${w.id}/room`);
+      location.reload();
     } catch (err) {
+      pendingTab.cancel();
       notify(err instanceof Error ? err.message : "Could not start the webinar.", "error");
       setBusy(null);
     }
