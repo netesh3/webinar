@@ -24,7 +24,16 @@ export function openPendingRoomTab(): {
   open: (url: string) => void;
   cancel: () => void;
 } {
-  const tab = window.open("", "_blank", "noopener,noreferrer");
+  /* No "noopener" in the feature string here, deliberately — per spec,
+   * window.open() returns null when noopener is set (there is nothing to
+   * return a handle to), and Safari follows that strictly. openRoomTab
+   * above doesn't need the handle for anything but nulling .opener, so it
+   * can afford noopener; this function's entire point is navigating the tab
+   * later, so a null handle breaks it outright — silently, in Safari only,
+   * which is exactly the "stuck on about:blank" symptom this fixes. Nulling
+   * .opener by hand below gets the same tabnabbing protection without that
+   * trade-off. */
+  const tab = window.open("", "_blank", "noreferrer");
   if (tab) tab.opener = null;
   return {
     open: (url: string) => {
