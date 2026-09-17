@@ -5,7 +5,7 @@ import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
 import { CalendarIcon, ChevronDownIcon, PlayIcon } from "./icons";
 import { DEFAULT_ATTENDEE_LIMIT } from "./schedule-form";
-import { useAppConfig, useSession, useToast } from "./providers";
+import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
 import { ButtonLink, Card, Empty } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar, WebinarInput } from "@/lib/api-types";
@@ -76,6 +76,7 @@ export function HostWebinarsScreen() {
   const { account, status } = useSession();
   const { maxAttendees } = useAppConfig();
   const { notify } = useToast();
+  const origin = useShareOrigin();
   const [mine, setMine] = useState<Webinar[] | null>(null);
   const [onStage, setOnStage] = useState<Webinar[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +95,18 @@ export function HostWebinarsScreen() {
       const created = await api.createWebinar(instantWebinarInput(maxAttendees));
       await api.startWebinar(created.id);
       openRoomTab(`/host/${created.id}/room`);
+      // The whole point of "instant" is joining people who aren't in this
+      // browser tab — so the join link goes straight to the clipboard rather
+      // than making the host hunt for Share after the fact.
+      try {
+        await navigator.clipboard.writeText(`${origin}/webinars/${created.id}`);
+        notify("Instant webinar started — join link copied to share.", "ok");
+      } catch {
+        notify(
+          "Instant webinar started. Open Share from the room to copy the join link.",
+          "info",
+        );
+      }
       load();
     } catch (err) {
       notify(
@@ -263,7 +276,8 @@ export function HostWebinarsScreen() {
 
         <ButtonLink
           href="/host/new"
-          className="group flex h-auto items-center gap-3 whitespace-normal rounded-xl border border-line bg-surface p-3.5 text-left font-normal text-ink transition-colors hover:border-brand-line"
+          variant="secondary"
+          className="group h-auto items-center gap-3 whitespace-normal rounded-xl border-line p-3.5 text-left font-normal hover:border-brand-line"
         >
           <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
             <CalendarIcon className="size-4.5" />
