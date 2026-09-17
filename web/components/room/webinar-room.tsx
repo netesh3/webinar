@@ -1031,10 +1031,12 @@ function ConnectedRoom({
  * it was clicked from, which is itself the gesture and starts audio immediately for the
  * common path. For everyone else — a guest link opened cold, a bookmarked room, Safari's
  * stricter policy — this listens for the FIRST interaction anywhere on the page (a
- * click, a tap, a key) and starts audio then, silently. Reacting to chat, pressing
- * mute, choosing a layout — any of the things somebody does within a few seconds of
- * landing on a live room — clears it without them ever knowing there was something to
- * clear.
+ * click, a tap, a key) and starts audio then, silently — and keeps listening across
+ * every interaction after that until room.canPlaybackAudio actually reports true, since
+ * a gesture that lands before any track has been subscribed yet can fail even though
+ * the viewer did everything right. Reacting to chat, pressing mute, choosing a layout —
+ * any of the things somebody does within a few seconds of landing on a live room —
+ * clears it without them ever knowing there was something to clear.
  *
  * What this does not solve, and cannot: somebody who joins and genuinely never
  * interacts with the page at all stays silent, because no code running in the page can
@@ -1045,22 +1047,40 @@ function ConnectedRoom({
  */
 function AutoStartAudio({ room }: { room: Room }) {
   useEffect(() => {
-    // One-shot: the first interaction removes both listeners, whether or not
-    // startAudio actually succeeded. A failure here means the browser refused
-    // this attempt outright, and retrying on every subsequent click would be
-    // noise rather than a real second chance — the room itself already
-    // retries on reconnect, which mounts this effect fresh.
+    if (room.canPlaybackAudio) return;
+
+    // Keeps retrying on every interaction until playback is actually
+    // confirmed unlocked, instead of giving up after one attempt.
+    //
+    // The one-shot version this replaced removed its listeners after the
+    // FIRST gesture regardless of whether startAudio() succeeded — so a
+    // gesture that landed before any audio track had been subscribed yet
+    // (a tap that lands the instant the room opens, before the host's
+    // track has arrived) consumed the only try and left the tab silent for
+    // the rest of the session, with no further gesture ever retried. That
+    // is the mobile-listener-never-hears-the-host bug: the fix is to keep
+    // trying on each subsequent interaction until room.canPlaybackAudio
+    // actually reports true, not to assume one attempt is enough.
     const start = () => {
+      if (room.canPlaybackAudio) {
+        stop();
+        return;
+      }
       void room.startAudio().catch(() => {});
+    };
+    const stop = () => {
       window.removeEventListener("pointerdown", start);
       window.removeEventListener("keydown", start);
+      room.off(RoomEvent.AudioPlaybackStatusChanged, onStatusChange);
     };
+    const onStatusChange = () => {
+      if (room.canPlaybackAudio) stop();
+    };
+
     window.addEventListener("pointerdown", start);
     window.addEventListener("keydown", start);
-    return () => {
-      window.removeEventListener("pointerdown", start);
-      window.removeEventListener("keydown", start);
-    };
+    room.on(RoomEvent.AudioPlaybackStatusChanged, onStatusChange);
+    return stop;
   }, [room]);
 
   return null;
