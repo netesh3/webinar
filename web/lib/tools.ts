@@ -85,13 +85,21 @@ export const CENTER_BAR_TOOLS: readonly ToolId[] = [
   "settings",
 ];
 
-/** On a phone the bar only has room for the ones people reach for mid-session
- *  without a detour through More: the two-way conversation (Chat), and the
- *  three ways to respond to what's happening live (Reactions, Raise hand,
- *  Polls) — the things that are dead if they arrive a tap late. Participants
- *  and Settings move into More on a phone; they're moderation and
- *  configuration, not something answered in the moment. */
-const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "reactions", "hand", "polls"];
+/** On a phone the bar only has room for the two things that are dead if they
+ *  arrive a tap late: the two-way conversation (Chat), and asking to speak
+ *  (Raise hand) — the one engagement action with someone on the other end
+ *  actively waiting on it. Everything else (Reactions, Polls, Participants,
+ *  Settings) moves into More, which is already a bottom sheet on a phone —
+ *  see more-grid.tsx — so nothing here becomes harder to reach, it is one
+ *  tap deeper instead of fighting mic+camera for the same strip of screen.
+ *
+ *  Tried keeping five things visible first (this list plus Reactions and
+ *  Polls) — the arithmetic doesn't work even with correct padding: six
+ *  buttons want ~260px and a phone with mic+camera showing leaves ~119px.
+ *  Two fits with room to spare; five needed the centre strip to scroll,
+ *  which is a worse default than just not asking a 375px screen to hold
+ *  that much at once. */
+const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "hand"];
 
 export function centerBarTools(
   available: readonly ToolId[],
