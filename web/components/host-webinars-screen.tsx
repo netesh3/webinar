@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
+import { CalendarIcon, PlayIcon } from "./icons";
 import { DEFAULT_ATTENDEE_LIMIT } from "./schedule-form";
 import { useAppConfig, useSession, useToast } from "./providers";
-import { Button, ButtonLink, Card, Empty } from "./ui";
+import { ButtonLink, Card, Empty } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar, WebinarInput } from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
@@ -65,10 +66,12 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
   };
 }
 
-/** Hosting home: create, run upcoming sessions, review past attendance.
+/** Host Webinar home: create, run upcoming sessions, review past attendance.
  *
- *  One primary nav area (top: Hosting) + in-page segments (Upcoming / Past /
- *  Drafts). No competing sidebar. */
+ *  One primary nav area (top: Host Webinar) + in-page segments (Upcoming /
+ *  Past / Drafts). No competing sidebar — two action tiles up top (Instant /
+ *  Schedule) instead of a pair of same-weight buttons, so which one to click
+ *  is obvious without reading closely. */
 export function HostWebinarsScreen() {
   const { account, status } = useSession();
   const { maxAttendees } = useAppConfig();
@@ -187,7 +190,7 @@ export function HostWebinarsScreen() {
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <ButtonLink href="/my-webinars" variant="secondary" size="sm">
-              Attending
+              My Webinar
             </ButtonLink>
             <ButtonLink href="/account" variant="ghost" size="sm">
               Account settings
@@ -221,28 +224,55 @@ export function HostWebinarsScreen() {
         </div>
       )}
 
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
-            Hosting
-          </h1>
-          <p className="mt-1.5 max-w-lg text-[13.5px] leading-relaxed text-ink-2">
-            Create a session, start it when you&apos;re ready, admit people who
-            need approval, then review who attended
-            {upcoming > 0 ? ` · ${upcoming} upcoming` : ""}.
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <Button
-            variant="secondary"
-            onClick={startInstantWebinar}
-            disabled={startingInstant}
-          >
-            {startingInstant && <Spinner className="size-4" />}
-            Instant webinar
-          </Button>
-          <ButtonLink href="/host/new">Create webinar</ButtonLink>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
+          Host Webinar
+        </h1>
+        <p className="mt-1.5 max-w-lg text-[13.5px] leading-relaxed text-ink-2">
+          Start a webinar right now, or schedule one for later
+          {upcoming > 0 ? ` · ${upcoming} upcoming` : ""}.
+        </p>
+      </div>
+
+      {/* Two distinct tiles rather than two same-weight buttons: which one to
+          click should be obvious without reading closely, the way Zoom's own
+          "New Meeting" vs "Schedule" tiles are. */}
+      <div className="mb-8 grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={startInstantWebinar}
+          disabled={startingInstant}
+          className="group flex flex-col items-start gap-2.5 rounded-xl border border-line bg-surface p-5 text-left transition-colors hover:border-brand-line disabled:opacity-60"
+        >
+          <span className="grid size-10 place-items-center rounded-lg bg-brand-soft text-brand">
+            {startingInstant ? <Spinner className="size-5" /> : <PlayIcon className="size-5" />}
+          </span>
+          <span className="text-[15px] font-semibold">Instant webinar</span>
+          <span className="text-[12.5px] leading-relaxed text-ink-2">
+            Go live immediately. No form, no waiting — share the link once
+            you&apos;re in.
+          </span>
+          <span className="mt-0.5 text-[12.5px] font-medium text-brand">
+            {startingInstant ? "Starting…" : "Instant Webinar →"}
+          </span>
+        </button>
+
+        <ButtonLink
+          href="/host/new"
+          className="group flex h-auto flex-col items-start gap-2.5 whitespace-normal rounded-xl border border-line bg-surface p-5 text-left font-normal text-ink transition-colors hover:border-brand-line"
+        >
+          <span className="grid size-10 place-items-center rounded-lg bg-brand-soft text-brand">
+            <CalendarIcon className="size-5" />
+          </span>
+          <span className="text-[15px] font-semibold">Schedule a webinar</span>
+          <span className="text-[12.5px] leading-relaxed text-ink-2">
+            Pick a date, set up registration, and invite people ahead of
+            time.
+          </span>
+          <span className="mt-0.5 text-[12.5px] font-medium text-brand">
+            Schedule Webinar →
+          </span>
+        </ButtonLink>
       </div>
 
       {error && (
