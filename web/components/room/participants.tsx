@@ -313,10 +313,10 @@ function HostRoster() {
         </div>
 
         {/* The queue, and the one action that clears it.
-            
+
             Shown here rather than only per-row because a host who has finished taking
             questions wants to move on, not to dismiss eleven people one at a time.
-            Each row still has its own "Dismiss request" for passing over one person. */}
+            Each row still has its own "Lower Hand" for passing over one person. */}
         {realtime.hands.length > 0 && (
           <div className="flex items-center gap-2 rounded-lg bg-warn-soft px-2.5 py-1.5">
             <HandIcon className="size-3.5 shrink-0 text-warn" />
@@ -332,7 +332,7 @@ function HostRoster() {
               }}
               className="shrink-0 min-h-11 rounded-md px-2.5 text-[11.5px] font-medium text-warn transition-colors hover:bg-warn/15 outline-none focus-visible:ring-2 focus-visible:ring-warn/40 md:min-h-0 md:py-0.5"
             >
-              Lower all
+              Lower All Hands
             </button>
           </div>
         )}
@@ -522,6 +522,30 @@ function HostRosterRow({
         <Spinner className="size-4 text-ink-3" />
       ) : (
         <>
+          {/* A raised hand is time-sensitive — one click each, not buried behind
+              the overflow menu everything else lives in. Attendee-only: a
+              panelist/co-host raising a hand (rare, but the control isn't
+              role-gated) still gets "Lower Hand" from the menu below, since
+              "Allow to speak" makes no sense for someone already on stage. */}
+          {handRaised && p.role === "attendee" && (
+            <>
+              <button
+                type="button"
+                onClick={() => onStage("panelist", true)}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-brand px-3 text-[12.5px] font-medium text-white transition-colors hover:bg-brand-hover outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-8 md:py-0"
+              >
+                Allow to Speak
+              </button>
+              <button
+                type="button"
+                onClick={onDismissHand}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-line-2 px-3 text-[12.5px] font-medium text-ink transition-colors hover:bg-surface-2 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-8 md:py-0"
+              >
+                Lower Hand
+              </button>
+            </>
+          )}
+
           {silenced ? (
             // The one-click way back. Nothing they can do restores it themselves,
             // which is the point of the mute — so the host needs it in reach.
@@ -579,13 +603,20 @@ function HostRosterRow({
             items={[
               ...(p.role === "attendee"
                 ? [
-                    {
-                      kind: "action" as const,
-                      label: "Allow to speak",
-                      hint: "mic and screen share",
-                      icon: <MicIcon className="size-4" />,
-                      onSelect: () => onStage("panelist", true),
-                    },
+                    // Suppressed when handRaised: the row already has this as a
+                    // prominent button above, and offering the same action twice
+                    // on one row is clutter, not a second path anyone needs.
+                    ...(handRaised
+                      ? []
+                      : [
+                          {
+                            kind: "action" as const,
+                            label: "Allow to speak",
+                            hint: "mic and screen share",
+                            icon: <MicIcon className="size-4" />,
+                            onSelect: () => onStage("panelist", true),
+                          },
+                        ]),
                     {
                       kind: "action" as const,
                       label: "Bring on stage",
@@ -597,12 +628,15 @@ function HostRosterRow({
                 : []),
               // Answering a raised hand without granting anything. Broadcast, so
               // their own hand comes down rather than staying up in a queue they
-              // have already been passed over in.
-              ...(handRaised
+              // have already been passed over in. Attendee rows get this as a
+              // prominent "Lower Hand" button above instead — this menu item is
+              // the fallback for the rare non-attendee hand-raise (role isn't
+              // gated on the control), so it isn't offered twice for the same row.
+              ...(handRaised && p.role !== "attendee"
                 ? [
                     {
                       kind: "action" as const,
-                      label: "Dismiss request",
+                      label: "Lower Hand",
                       hint: "lowers their hand",
                       icon: <HandIcon className="size-4" />,
                       onSelect: onDismissHand,

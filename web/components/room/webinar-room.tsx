@@ -447,15 +447,23 @@ function ConnectedRoom({
             `${from.name} would like you to unmute. Use the microphone button when you're ready.`,
             "info",
           ),
-        // Only the stage is asked to notice. A badge alone means a host watching
-        // the video misses the person waiting to speak, which is the whole point
-        // of raising a hand.
+        // Host, co-host, AND ordinary panelists are asked to notice — a badge
+        // alone means someone watching the video misses the person waiting to
+        // speak, which is the whole point of raising a hand. Panelists get a
+        // plain heads-up rather than the host's "open Participants to let them
+        // in" instruction: ParticipantsPanel gates its action buttons on isHost,
+        // not role, so an ordinary panelist has no roster action to take here —
+        // telling them to go act on it would be pointing at a button that isn't
+        // there.
         onHandRaised: (from: Sender) => {
-          if (!isHost) return;
-          notify(
-            `${from.name} wants to speak — open Participants to let them in or dismiss it.`,
-            "info",
-          );
+          if (isHost) {
+            notify(
+              `${from.name} wants to speak — open Participants to let them in or dismiss it.`,
+              "info",
+            );
+          } else if (liveRole === "panelist") {
+            notify(`${from.name} raised their hand.`, "info");
+          }
         },
         onHandLowered: (reason: "granted" | "dismissed") => {
           // Being granted the microphone announces itself through the permission
@@ -472,7 +480,7 @@ function ConnectedRoom({
           notify(`${from.name} joined.`, "info");
         },
       }),
-      [notify, isHost],
+      [notify, isHost, liveRole],
     ),
   );
 
