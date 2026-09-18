@@ -8,7 +8,6 @@ import {
   useSequentialRoomConnectDisconnect,
 } from "@livekit/components-react";
 import {
-  ConnectionQuality,
   ConnectionState,
   DisconnectReason,
   type LocalAudioTrack,
@@ -17,7 +16,7 @@ import {
   RoomEvent,
   Track,
 } from "livekit-client";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { roomOptions, useMediaPreferences } from "@/lib/media";
@@ -34,7 +33,7 @@ import {
   type Relay,
   type Sender,
 } from "@/lib/realtime";
-import { describeQuality, prioritiseAudio, useNetworkHealth } from "@/lib/network";
+import { prioritiseAudio, useNetworkHealth } from "@/lib/network";
 import { formatElapsed } from "@/lib/format";
 import { Alert, Spinner } from "../controls";
 import { LockIcon, SignalIcon, SlidersIcon } from "../icons";
@@ -55,7 +54,6 @@ import { PollPopup } from "./poll-popup";
 import { FileShareBar } from "./file-share-bar";
 import { MeetingInfo } from "./meeting-info";
 import { ViewsMenu } from "./views-menu";
-import { NetworkMetrics } from "./network-readout";
 import { Stage } from "./stage";
 import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
@@ -1137,7 +1135,6 @@ function RoomHeader() {
           {/* Everyone sees this, including the audience — consent is not something
               to leave to the browser that pressed the button. */}
           <RecordingIndicator />
-          <NetworkIndicator />
         </div>
         {/* Only exceptional room state — not the room ID on every frame. */}
         {controls.locked && (
@@ -1171,56 +1168,6 @@ function RoomHeader() {
         )}
       </div>
     </header>
-  );
-}
-
-/* The connection, in the header.
- *
- * Shown only when it is worth saying something. A permanent green tick is furniture
- * nobody reads; a line that appears when the picture has been reduced is the difference
- * between "this app is broken" and "my wifi is bad", and it is the answer to the support
- * question that would otherwise arrive an hour later.
- *
- * The compact tag stays; hover / keyboard focus opens the same numbers as Settings →
- * Connection (ping, loss, upload speed, congestion). A native title attribute was not
- * enough — it is slow, not keyboard-reachable, and could not show a readable grid.
- */
-function NetworkIndicator() {
-  const { network, permissions } = useRoomUI();
-  const { label, tone } = describeQuality(network);
-  const tipId = useId();
-  if (tone === "ok" || network.quality === ConnectionQuality.Unknown) return null;
-
-  return (
-    <span className="group relative inline-flex">
-      <span
-        tabIndex={0}
-        aria-describedby={tipId}
-        className={`inline-flex cursor-default items-center gap-1 rounded outline-none focus-visible:ring-2 focus-visible:ring-white/35 ${
-          tone === "bad" ? "text-live" : "text-warn"
-        }`}
-      >
-        <SignalIcon className="size-3" />
-        {label}
-      </span>
-      <span
-        id={tipId}
-        role="tooltip"
-        className="room-dark pointer-events-none absolute top-full left-0 z-50 mt-1.5 w-[15.5rem] origin-top-left scale-95 rounded-lg border border-line bg-surface px-3 py-2.5 opacity-0 shadow-xl transition duration-100 group-hover:scale-100 group-hover:opacity-100 group-focus-within:scale-100 group-focus-within:opacity-100"
-      >
-        <NetworkMetrics
-          network={network}
-          canPublish={permissions.canPublish}
-          compact
-        />
-        {permissions.canPublish && network.degraded && (
-          <p className="mt-2 text-[11px] leading-relaxed text-warn">
-            Reduced automatically to protect audio. Recovers on its own — no need to
-            reconnect.
-          </p>
-        )}
-      </span>
-    </span>
   );
 }
 
