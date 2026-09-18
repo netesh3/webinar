@@ -40,14 +40,15 @@ const AUDIO_BITS = 192_000; // 192 kbps high-fidelity stereo/mixed audio
 
 /** Containers in order of preference.
  *
- *  VP9 and H.264 High Profile first for optimal text sharpness and clarity. */
+ *  Hardware-accelerated VP8 and H.264 first for smooth 30 FPS recording with near-zero CPU.
+ *  Software-only VP9 is kept as fallback. */
 const CANDIDATE_MIMES = [
-  'video/webm;codecs="vp9,opus"',
-  'video/mp4;codecs="avc1.640028,mp4a.40.2"',
-  'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
-  "video/mp4",
   'video/webm;codecs="vp8,opus"',
+  'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+  'video/mp4;codecs="avc1.640028,mp4a.40.2"',
+  "video/mp4",
   "video/webm",
+  'video/webm;codecs="vp9,opus"',
 ];
 
 export function pickRecordingMime(): string | null {
@@ -212,7 +213,7 @@ function drawInto(
 
   ctx.save();
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingQuality = "medium";
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();
