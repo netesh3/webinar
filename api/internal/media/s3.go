@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 )
 
 /* S3 stores recordings in an S3-compatible bucket — Backblaze B2 in practice,
@@ -119,7 +120,10 @@ func (o *S3) Open(ctx context.Context, key string) (io.ReadSeekCloser, int64, er
 	})
 	if err != nil {
 		var nsk *types.NoSuchKey
-		if errors.As(err, &nsk) {
+		var nf *types.NotFound
+		var apiErr smithy.APIError
+		if errors.As(err, &nsk) || errors.As(err, &nf) ||
+			(errors.As(err, &apiErr) && (apiErr.ErrorCode() == "NoSuchKey" || apiErr.ErrorCode() == "NotFound" || apiErr.ErrorCode() == "404" || apiErr.ErrorCode() == "ResourceNotFoundException")) {
 			return nil, 0, ErrNotFound
 		}
 		return nil, 0, err

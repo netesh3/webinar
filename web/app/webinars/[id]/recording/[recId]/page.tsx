@@ -168,15 +168,21 @@ export default function RecordingReplayPage({
           /* Unlocked Video Replay Page */
           <div className="space-y-6">
             <Card className="overflow-hidden shadow-lg">
-              <video
-                key={recId}
-                src={streamUrl}
-                controls
-                playsInline
-                autoPlay={false}
-                controlsList="nodownload"
-                className="aspect-video w-full bg-black"
-              />
+              <div className="relative aspect-video w-full bg-black">
+                <video
+                  key={recId}
+                  src={streamUrl}
+                  controls
+                  playsInline
+                  autoPlay={false}
+                  preload="metadata"
+                  controlsList="nodownload"
+                  onError={() => {
+                    setError("The video file is unavailable or could not be loaded from storage.");
+                  }}
+                  className="size-full"
+                />
+              </div>
 
               <div className="border-t border-line p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

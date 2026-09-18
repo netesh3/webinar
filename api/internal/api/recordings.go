@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -329,7 +330,9 @@ func (s *Server) finalizeRecording(
 	if s.recordings == nil || lookupErr != nil {
 		return
 	}
-	if err := s.recordings.Finalize(r.Context(), rec.StorageKey); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	if err := s.recordings.Finalize(ctx, rec.StorageKey); err != nil {
 		s.log.Warn("complete recording: finalize storage",
 			"slug", slug, "recording", id, "error", err)
 	}
