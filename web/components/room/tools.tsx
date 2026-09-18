@@ -174,8 +174,6 @@ export function availableTools(input: {
    * moment after the join response, so the tool appeared, vanished and came back
    * at the end of the grid instead of in its own place.
    */
-  // Layout is unconditional: it is how a viewer decides what to look at, and an
-  // attendee watching a room of forty needs it more than the host does.
   /* Invite is unconditional, including for the audience.
    *
    * It shares the LANDING page link, not a credential: whoever opens it still has to
@@ -183,14 +181,14 @@ export function availableTools(input: {
    * the shareable part — that is what a "you're invited" link is — so an attendee handing
    * it to a colleague can only offer them the same front door they came through.
    */
-  const allowed = new Set<ToolId>([
-    "chat",
-    "qa",
-    "participants",
-    "invite",
-    "layout",
-    "settings",
-  ]);
+  // Layout is deliberately absent from this bar/More-grid system — it lives only
+  // in the header's ViewsMenu now (webinar-room.tsx), which renders the same
+  // LayoutMenu directly rather than going through a pinnable ToolId. Removing it
+  // here does not touch that: ViewsMenu doesn't read this list at all. "layout"
+  // stays a valid ToolId (lib/tools.ts) so any already-pinned/overflow-persisted
+  // copy from before this change is simply filtered out below, same as when
+  // raiseHandEnabled/reactionsEnabled toggle a tool off for someone mid-session.
+  const allowed = new Set<ToolId>(["chat", "qa", "participants", "invite", "settings"]);
 
   // The host always has Polls — writing the questions is what you do before
   // turning it on — and everyone else only once the control is on.
