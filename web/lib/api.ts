@@ -16,6 +16,7 @@ import type {
   MuteAllResponse,
   Person,
   ProfilePatch,
+  PublicRecording,
   RegisteredWebinar,
   RegisterRequest,
   Registration,
@@ -28,6 +29,7 @@ import type {
   Role,
   SendMessageRequest,
   SendMessageResponse,
+  ShareRecordingRequest,
   StageAllResponse,
   StatusResponse,
   Webinar,
@@ -471,6 +473,16 @@ export const api = {
       `/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/complete?durationMs=${Math.round(durationMs)}`,
     ),
 
+  updateRecordingShare: (
+    slug: string,
+    id: string,
+    body: ShareRecordingRequest,
+  ) =>
+    patch<Recording>(
+      `/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/share`,
+      body,
+    ),
+
   deleteRecording: (slug: string, id: string) =>
     del<StatusResponse>(
       `/api/host/webinars/${seg(slug)}/recordings/${seg(id)}`,
@@ -481,6 +493,19 @@ export const api = {
    *  travels with it. */
   recordingFileURL: (slug: string, id: string) =>
     `${API_BASE}/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/file`,
+
+  publicRecording: (slug: string, id: string, passcode?: string) => {
+    const qs = passcode ? `?passcode=${encodeURIComponent(passcode)}` : "";
+    return request<PublicRecording>(
+      `/api/webinars/${seg(slug)}/recordings/${seg(id)}/public${qs}`,
+      fresh,
+    );
+  },
+
+  publicRecordingStreamURL: (slug: string, id: string, passcode?: string) => {
+    const qs = passcode ? `?passcode=${encodeURIComponent(passcode)}` : "";
+    return `${API_BASE}/api/webinars/${seg(slug)}/recordings/${seg(id)}/stream${qs}`;
+  },
 
   // ------------------------------------------------------------ registrants
 
@@ -604,9 +629,11 @@ export type {
   AppConfig,
   JoinResponse,
   LiveRoom,
+  PublicRecording,
   RegisteredWebinar,
   Registration,
   RegistrantRow,
+  ShareRecordingRequest,
   Webinar,
   WebinarInput,
 };

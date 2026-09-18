@@ -228,6 +228,8 @@ func (s *Server) Routes() http.Handler {
 		// there is no credential to resolve — a cover image is public the moment the
 		// webinar is, which handleWebinarImage checks by loading the webinar itself.
 		r.Get("/webinars/{slug}/image", s.handleWebinarImage)
+		r.Get("/webinars/{slug}/recordings/{id}/public", s.handlePublicRecording)
+		r.Get("/webinars/{slug}/recordings/{id}/stream", s.handlePublicStreamRecording)
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
@@ -360,6 +362,7 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/webinars/{slug}/recordings/{id}/chunks", s.handleRecordingChunk)
 				r.Post("/webinars/{slug}/recordings/{id}/complete", s.handleCompleteRecording)
 				r.Get("/webinars/{slug}/recordings/{id}/file", s.handleDownloadRecording)
+				r.Patch("/webinars/{slug}/recordings/{id}/share", s.handleUpdateRecordingShare)
 				r.Delete("/webinars/{slug}/recordings/{id}", s.handleDeleteRecording)
 			})
 

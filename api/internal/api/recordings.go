@@ -481,6 +481,156 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// handleUpdateRecordingShare updates the sharing settings (isPublic, passcode) for a recording.
+func (s *Server) handleUpdateRecordingShare(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+
+	if stageRoleFromContext(r.Context()) != types.RoleHost {
+		httpx.Error(w, http.StatusForbidden, "host_only",
+			"Only the host can update recording share settings.")
+		return
+	}
+
+	var body types.ShareRecordingRequest
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		return
+	}
+
+	rec, err := s.store.UpdateRecordingShareSettings(r.Context(), slug, id, body.IsPublic, body.Passcode)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such recording.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "update recording share settings", err)
+		return
+	}
+
+	s.log.Info("recording share settings updated", "slug", slug, "recording", id, "isPublic", rec.IsPublic, "hasPasscode", rec.Passcode != "")
+	httpx.JSON(w, http.StatusOK, rec)
+}
+
+// handlePublicRecording returns public metadata about a recording.
+func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id := chi.URLParam(r, "id")
+
+	rec, err := s.store.RecordingFor(r.Context(), slug, id)
+	if errors.Is(err, store.ErrNotFound) || !rec.IsPublic || rec.Status != types.RecordingReady {
+		httpx.Error(w, http.StatusNotFound, "not_found", "This recording is not publicly available.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "public recording lookup", err)
+		return
+	}
+
+	effectivePasscode := strings.TrimSpace(rec.Passcode)
+	if effectivePasscode == "" {
+		effectivePasscode = strings.TrimSpace(rec.WebinarPasscode)
+	}
+
+	providedPasscode := strings.TrimSpace(r.URL.Query().Get("passcode"))
+	if providedPasscode == "" {
+		providedPasscode = strings.TrimSpace(r.Header.Get("X-Passcode"))
+	}
+
+	unlocked := true
+	if effectivePasscode != "" {
+		unlocked = (providedPasscode == effectivePasscode)
+	}
+
+	res := types.PublicRecording{
+		ID:               rec.ID,
+		Webinar:          rec.Webinar,
+		Topic:            rec.Topic,
+		HostName:         rec.HostName,
+		DurationMs:       rec.DurationMs,
+		SizeBytes:        rec.SizeBytes,
+		CreatedAt:        rec.CreatedAt.Format(time.RFC3339),
+		Ext:              store.ExtForMime(rec.Mime),
+		PasscodeRequired: effectivePasscode != "",
+		Unlocked:         unlocked,
+	}
+
+	httpx.JSON(w, http.StatusOK, res)
+}
+
+// handlePublicStreamRecording streams the recording video to public viewers after passcode check.
+func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id := chi.URLParam(r, "id")
+
+	if s.recordings == nil {
+		httpx.Error(w, http.StatusServiceUnavailable, "recording_disabled",
+			"Recording is turned off on this instance.")
+		return
+	}
+
+	rec, err := s.store.RecordingFor(r.Context(), slug, id)
+	if errors.Is(err, store.ErrNotFound) || !rec.IsPublic || rec.Status != types.RecordingReady {
+		httpx.Error(w, http.StatusNotFound, "not_found", "This recording is not publicly available.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "public stream recording: lookup", err)
+		return
+	}
+
+	effectivePasscode := strings.TrimSpace(rec.Passcode)
+	if effectivePasscode == "" {
+		effectivePasscode = strings.TrimSpace(rec.WebinarPasscode)
+	}
+
+	if effectivePasscode != "" {
+		providedPasscode := strings.TrimSpace(r.URL.Query().Get("passcode"))
+		if providedPasscode == "" {
+			providedPasscode = strings.TrimSpace(r.Header.Get("X-Passcode"))
+		}
+		if providedPasscode != effectivePasscode {
+			httpx.Error(w, http.StatusUnauthorized, "passcode_required", "Passcode is incorrect or required.")
+			return
+		}
+	}
+
+	// When Cloudflare CDN is configured, redirect directly to the CDN edge.
+	if s.cfg.RecordingsCDNBaseURL != "" && rec.Status == types.RecordingReady {
+		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
+		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	file, size, err := s.recordings.Open(r.Context(), rec.StorageKey)
+	if errors.Is(err, media.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "no_file",
+			"The file for that recording is missing.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "public stream recording: open", err)
+		return
+	}
+	defer file.Close()
+
+	if rc := http.NewResponseController(w); rc != nil {
+		if err := rc.SetWriteDeadline(time.Now().Add(downloadWindow)); err != nil {
+			s.log.Debug("public stream recording: could not extend the write deadline",
+				"error", err)
+		}
+	}
+
+	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
+	w.Header().Set("Content-Type", rec.Mime)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", name))
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if size > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	}
+	http.ServeContent(w, r, name, rec.CreatedAt, file)
+}
+
 // handleDeleteRecording is host-only, unlike the rest of this file: a panelist may
 // record their own section and take the file, but throwing away the record of a
 // session belongs to whoever owns the session.

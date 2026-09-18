@@ -913,8 +913,11 @@ type Recording struct {
 	StoppedAt  string `json:"stoppedAt,omitempty"`
 	// Ext is the file extension for the download name, derived from Mime by the
 	// server so no client has to parse codec strings.
-	Ext      string `json:"ext"`
-	EgressID string `json:"egressId,omitempty"`
+	Ext              string `json:"ext"`
+	EgressID         string `json:"egressId,omitempty"`
+	IsPublic         bool   `json:"isPublic"`
+	Passcode         string `json:"passcode,omitempty"`
+	PasscodeRequired bool   `json:"passcodeRequired"`
 }
 
 // StartRecordingRequest is sent by the browser that will do the capturing. It
@@ -922,6 +925,26 @@ type Recording struct {
 // server has to store what it is actually given.
 type StartRecordingRequest struct {
 	Mime string `json:"mime"`
+}
+
+// ShareRecordingRequest is sent by the host to configure public access and passcode.
+type ShareRecordingRequest struct {
+	IsPublic *bool   `json:"isPublic,omitempty"`
+	Passcode *string `json:"passcode,omitempty"`
+}
+
+// PublicRecording is the sanitized recording metadata returned to anonymous viewers.
+type PublicRecording struct {
+	ID               string `json:"id"`
+	Webinar          string `json:"webinar"`
+	Topic            string `json:"topic"`
+	HostName         string `json:"hostName"`
+	DurationMs       int64  `json:"durationMs"`
+	SizeBytes        int64  `json:"sizeBytes"`
+	CreatedAt        string `json:"createdAt"`
+	Ext              string `json:"ext"`
+	PasscodeRequired bool   `json:"passcodeRequired"`
+	Unlocked         bool   `json:"unlocked"`
 }
 
 // ------------------------------------------------------------ host: in-session

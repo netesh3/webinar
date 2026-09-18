@@ -913,6 +913,9 @@ export interface Recording {
    */
   ext: string;
   egressId?: string;
+  isPublic: boolean;
+  passcode?: string;
+  passcodeRequired: boolean;
 }
 /**
  * StartRecordingRequest is sent by the browser that will do the capturing. It
@@ -921,6 +924,28 @@ export interface Recording {
  */
 export interface StartRecordingRequest {
   mime: string;
+}
+/**
+ * ShareRecordingRequest is sent by the host to configure public access and passcode.
+ */
+export interface ShareRecordingRequest {
+  isPublic?: boolean;
+  passcode?: string;
+}
+/**
+ * PublicRecording is the sanitized recording metadata returned to anonymous viewers.
+ */
+export interface PublicRecording {
+  id: string;
+  webinar: string;
+  topic: string;
+  hostName: string;
+  durationMs: number /* int64 */;
+  sizeBytes: number /* int64 */;
+  createdAt: string;
+  ext: string;
+  passcodeRequired: boolean;
+  unlocked: boolean;
 }
 /**
  * LiveParticipant is one row of the host's participant panel.

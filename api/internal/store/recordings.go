@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -75,22 +76,28 @@ func (s *Store) StartRecording(
 	}
 	rec.Webinar = slug
 	rec.CreatedAt = createdAt.Format(time.RFC3339)
+	rec.IsPublic = true
 	return rec, nil
 }
 
 // RecordingFile is the little that a chunk upload or a download needs: where the
 // bytes go, whether this recording is still open, and how big it already is.
 type RecordingFile struct {
-	ID         string
-	StorageKey string
-	Mime       string
-	Status     types.RecordingStatus
-	SizeBytes  int64
-	StartedBy  string
-	Topic      string
-	CreatedAt  time.Time
-	EgressID   string
-	Webinar    string
+	ID              string
+	StorageKey      string
+	Mime            string
+	Status          types.RecordingStatus
+	SizeBytes       int64
+	DurationMs      int64
+	StartedBy       string
+	Topic           string
+	CreatedAt       time.Time
+	EgressID        string
+	Webinar         string
+	IsPublic        bool
+	Passcode        string
+	WebinarPasscode string
+	HostName        string
 }
 
 // RecordingFor loads one recording, scoped to the webinar in the URL.
@@ -101,13 +108,17 @@ type RecordingFile struct {
 func (s *Store) RecordingFor(ctx context.Context, slug, id string) (RecordingFile, error) {
 	var f RecordingFile
 	err := s.pool.QueryRow(ctx, `
-		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes,
-		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug
+		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
+		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
+		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(u.name, 'Host')
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
+		  LEFT JOIN users u ON u.id = w.host_id
 		 WHERE w.slug = $1 AND r.id = $2::uuid`, slug, id,
-	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes,
-		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar)
+	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes, &f.DurationMs,
+		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar,
+		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName)
 	if noRows(err) {
 		return RecordingFile{}, ErrNotFound
 	}
@@ -156,13 +167,17 @@ func (s *Store) SetEgressID(ctx context.Context, id, egressID string) error {
 func (s *Store) RecordingByEgressID(ctx context.Context, egressID string) (RecordingFile, error) {
 	var f RecordingFile
 	err := s.pool.QueryRow(ctx, `
-		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes,
-		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug
+		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
+		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
+		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(u.name, 'Host')
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
+		  LEFT JOIN users u ON u.id = w.host_id
 		 WHERE r.egress_id = $1`, egressID,
-	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes,
-		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar)
+	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes, &f.DurationMs,
+		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar,
+		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName)
 	if noRows(err) {
 		return RecordingFile{}, ErrNotFound
 	}
@@ -225,7 +240,8 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, w.slug, w.topic, r.status, r.mime, r.size_bytes,
 		       r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
-		       COALESCE(r.egress_id, '')
+		       COALESCE(r.egress_id, ''), COALESCE(r.is_public, true),
+		       COALESCE(r.passcode, ''), COALESCE(w.passcode, '')
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
 		 WHERE w.slug = $1
@@ -239,12 +255,14 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 	out := []types.Recording{}
 	for rows.Next() {
 		var (
-			rec       types.Recording
-			createdAt time.Time
-			stoppedAt *time.Time
+			rec             types.Recording
+			createdAt       time.Time
+			stoppedAt       *time.Time
+			webinarPasscode string
 		)
 		if err := rows.Scan(&rec.ID, &rec.Webinar, &rec.Topic, &rec.Status, &rec.Mime,
-			&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt, &rec.EgressID); err != nil {
+			&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt,
+			&rec.EgressID, &rec.IsPublic, &rec.Passcode, &webinarPasscode); err != nil {
 			return nil, err
 		}
 		rec.CreatedAt = createdAt.Format(time.RFC3339)
@@ -252,9 +270,81 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 			rec.StoppedAt = stoppedAt.Format(time.RFC3339)
 		}
 		rec.Ext = ExtForMime(rec.Mime)
+		effectivePass := strings.TrimSpace(rec.Passcode)
+		if effectivePass == "" {
+			effectivePass = strings.TrimSpace(webinarPasscode)
+		}
+		rec.PasscodeRequired = effectivePass != ""
 		out = append(out, rec)
 	}
 	return out, rows.Err()
+}
+
+// UpdateRecordingShareSettings updates public access and optional passcode for a recording.
+func (s *Store) UpdateRecordingShareSettings(ctx context.Context, slug, id string, isPublic *bool, passcode *string) (types.Recording, error) {
+	setClauses := []string{}
+	args := []any{slug, id}
+
+	if isPublic != nil {
+		args = append(args, *isPublic)
+		setClauses = append(setClauses, "is_public = $"+strconv.Itoa(len(args)))
+	}
+	if passcode != nil {
+		args = append(args, strings.TrimSpace(*passcode))
+		setClauses = append(setClauses, "passcode = $"+strconv.Itoa(len(args)))
+	}
+
+	if len(setClauses) == 0 {
+		list, err := s.Recordings(ctx, slug)
+		if err != nil {
+			return types.Recording{}, err
+		}
+		for _, r := range list {
+			if r.ID == id {
+				return r, nil
+			}
+		}
+		return types.Recording{}, ErrNotFound
+	}
+
+	query := `
+		UPDATE recordings r
+		   SET ` + strings.Join(setClauses, ", ") + `
+		  FROM webinars w
+		 WHERE w.id = r.webinar_id AND w.slug = $1 AND r.id = $2::uuid
+		 RETURNING r.id::text, w.slug, w.topic, r.status, r.mime, r.size_bytes,
+		           r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
+		           COALESCE(r.egress_id, ''), COALESCE(r.is_public, true),
+		           COALESCE(r.passcode, ''), COALESCE(w.passcode, '')`
+
+	var (
+		rec             types.Recording
+		createdAt       time.Time
+		stoppedAt       *time.Time
+		webinarPasscode string
+	)
+	err := s.pool.QueryRow(ctx, query, args...).Scan(
+		&rec.ID, &rec.Webinar, &rec.Topic, &rec.Status, &rec.Mime,
+		&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt,
+		&rec.EgressID, &rec.IsPublic, &rec.Passcode, &webinarPasscode,
+	)
+	if noRows(err) {
+		return types.Recording{}, ErrNotFound
+	}
+	if err != nil {
+		return types.Recording{}, err
+	}
+	rec.CreatedAt = createdAt.Format(time.RFC3339)
+	if stoppedAt != nil {
+		rec.StoppedAt = stoppedAt.Format(time.RFC3339)
+	}
+	rec.Ext = ExtForMime(rec.Mime)
+	effectivePass := strings.TrimSpace(rec.Passcode)
+	if effectivePass == "" {
+		effectivePass = strings.TrimSpace(webinarPasscode)
+	}
+	rec.PasscodeRequired = effectivePass != ""
+	return rec, nil
 }
 
 // DeleteRecording removes the row and reports the storage key, so the caller can
