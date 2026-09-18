@@ -37,7 +37,7 @@ import {
 import { describeQuality, prioritiseAudio, useNetworkHealth } from "@/lib/network";
 import { formatElapsed } from "@/lib/format";
 import { Alert, Spinner } from "../controls";
-import { EyeOffIcon, LockIcon, SignalIcon, SlidersIcon } from "../icons";
+import { LockIcon, SignalIcon, SlidersIcon } from "../icons";
 import { useAppConfig, useToast } from "../providers";
 import { Badge } from "../ui";
 import { ControlBar } from "./control-bar";
@@ -1141,23 +1141,12 @@ function RoomHeader() {
           <NetworkIndicator />
         </div>
         {/* Only exceptional room state — not the room ID on every frame. */}
-        {(controls.hideAttendees || controls.locked) && (
+        {controls.locked && (
           <div className="flex items-center gap-2 text-[11px] text-white/45">
-            {controls.hideAttendees && (
-              <span
-                className="inline-flex items-center gap-1"
-                title="Attendees cannot see each other"
-              >
-                <EyeOffIcon className="size-3" />
-                Audience private
-              </span>
-            )}
-            {controls.locked && (
-              <span className="inline-flex items-center gap-1 text-warn">
-                <LockIcon className="size-3" />
-                Locked
-              </span>
-            )}
+            <span className="inline-flex items-center gap-1 text-warn">
+              <LockIcon className="size-3" />
+              Locked
+            </span>
           </div>
         )}
       </div>
