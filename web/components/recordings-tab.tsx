@@ -9,6 +9,7 @@ import { ConfirmModal, CopyField, Modal, Spinner, Toggle } from "./controls";
 import { LockIcon, PlayIcon, ShareIcon, TrashIcon } from "./icons";
 import { useToast } from "./providers";
 import { Badge, Button, Card, Empty } from "./ui";
+import { VideoPlayer } from "./video-player";
 
 /* Recordings of one webinar.
  *
@@ -68,14 +69,10 @@ export function RecordingsTab({
 
       {playing && (
         <Card className="overflow-hidden">
-          {/* key on the id so switching recordings reloads the element rather than
-              seeking the old stream. */}
-          <video
+          <VideoPlayer
             key={playing.id}
             src={api.recordingFileURL(w.id, playing.id)}
-            controls
-            playsInline
-            className="aspect-video w-full bg-black"
+            durationMs={playing.durationMs}
           />
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-3">
             <p className="text-[12.5px] text-ink-2">
