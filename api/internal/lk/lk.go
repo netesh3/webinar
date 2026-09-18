@@ -1084,6 +1084,11 @@ func (c *Client) StartRoomCompositeEgress(
 		return nil, errors.New("egress is not configured on this client")
 	}
 
+	endpoint := strings.TrimSpace(s3Opts.Endpoint)
+	if endpoint != "" && !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		endpoint = "https://" + endpoint
+	}
+
 	req := &livekit.RoomCompositeEgressRequest{
 		RoomName: roomName,
 		FileOutputs: []*livekit.EncodedFileOutput{
@@ -1092,11 +1097,11 @@ func (c *Client) StartRoomCompositeEgress(
 				Filepath: storageKey,
 				Output: &livekit.EncodedFileOutput_S3{
 					S3: &livekit.S3Upload{
-						Endpoint:       s3Opts.Endpoint,
-						Bucket:         s3Opts.Bucket,
-						Region:         s3Opts.Region,
-						AccessKey:      s3Opts.AccessKey,
-						Secret:         s3Opts.SecretKey,
+						Endpoint:       endpoint,
+						Bucket:         strings.TrimSpace(s3Opts.Bucket),
+						Region:         strings.TrimSpace(s3Opts.Region),
+						AccessKey:      strings.TrimSpace(s3Opts.AccessKey),
+						Secret:         strings.TrimSpace(s3Opts.SecretKey),
 						ForcePathStyle: true, // Backblaze B2 uses path-style addressing
 					},
 				},
