@@ -427,6 +427,27 @@ export class AudioMixer {
 
   /** Browsers start an AudioContext suspended until a gesture; pressing record is
    *  that gesture, so this is safe to call here and required for audio to flow. */
+  createClock(onTick: () => void): () => void {
+    try {
+      const scriptNode = this.ctx.createScriptProcessor(1024, 1, 1);
+      scriptNode.onaudioprocess = () => {
+        onTick();
+      };
+      const dummyGain = this.ctx.createGain();
+      dummyGain.gain.value = 0;
+      scriptNode.connect(dummyGain);
+      dummyGain.connect(this.ctx.destination);
+      return () => {
+        try {
+          scriptNode.disconnect();
+          dummyGain.disconnect();
+        } catch {}
+      };
+    } catch {
+      return () => {};
+    }
+  }
+
   async resume(): Promise<void> {
     if (this.ctx.state === "suspended") {
       await this.ctx.resume().catch(() => {});
@@ -454,35 +475,43 @@ export class AudioMixer {
  */
 class PrecisionTicker {
   private worker: Worker | null = null;
-  private fallbackTimer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private blobUrl: string | null = null;
 
   constructor(intervalMs: number, onTick: () => void) {
+    this.timer = setInterval(onTick, intervalMs);
     if (typeof Worker !== "undefined" && typeof Blob !== "undefined" && typeof URL !== "undefined") {
       try {
         const blob = new Blob(
           [`setInterval(function(){postMessage(0);}, ${Math.round(intervalMs)});`],
           { type: "application/javascript" },
         );
-        const url = URL.createObjectURL(blob);
-        this.worker = new Worker(url);
-        this.worker.onmessage = () => onTick();
-        URL.revokeObjectURL(url);
+        this.blobUrl = URL.createObjectURL(blob);
+        const w = new Worker(this.blobUrl);
+        w.onmessage = () => onTick();
+        w.onerror = () => {
+          try { w.terminate(); } catch {}
+          this.worker = null;
+        };
+        this.worker = w;
       } catch {
-        this.fallbackTimer = setInterval(onTick, intervalMs);
+        // Fallback already running
       }
-    } else {
-      this.fallbackTimer = setInterval(onTick, intervalMs);
     }
   }
 
   stop(): void {
     if (this.worker) {
-      this.worker.terminate();
+      try { this.worker.terminate(); } catch {}
       this.worker = null;
     }
-    if (this.fallbackTimer !== null) {
-      clearInterval(this.fallbackTimer);
-      this.fallbackTimer = null;
+    if (this.blobUrl) {
+      try { URL.revokeObjectURL(this.blobUrl); } catch {}
+      this.blobUrl = null;
+    }
+    if (this.timer !== null) {
+      clearInterval(this.timer);
+      this.timer = null;
     }
   }
 }
@@ -520,6 +549,7 @@ export class SessionRecorder {
   private state: RecorderState = "idle";
   private canvas: HTMLCanvasElement | null = null;
   private ticker: PrecisionTicker | null = null;
+  private stopAudioClock: (() => void) | null = null;
   private animationFrameId: number | null = null;
   private active = false;
   private sources: VideoSources | null = null;
@@ -593,9 +623,16 @@ export class SessionRecorder {
       draw();
       this.animationFrameId = requestAnimationFrame(renderLoop);
 
-      // 2. Precision Web Worker ticker: guarantees steady 30 FPS even when
-      // the tab is hidden/minimized while presenter watches YouTube in another tab
+      // 2. Web Worker + interval clock for background tab rendering
       this.ticker = new PrecisionTicker(Math.round(1000 / FPS), () => {
+        const now = performance.now();
+        if (now - lastDraw >= minInterval) {
+          draw(now);
+        }
+      });
+
+      // 3. Web Audio real-time hardware clock (audio thread is never throttled)
+      this.stopAudioClock = this.mixer.createClock(() => {
         const now = performance.now();
         if (now - lastDraw >= minInterval) {
           draw(now);
@@ -728,6 +765,10 @@ export class SessionRecorder {
     if (this.ticker !== null) {
       this.ticker.stop();
       this.ticker = null;
+    }
+    if (this.stopAudioClock) {
+      this.stopAudioClock();
+      this.stopAudioClock = null;
     }
     this.recorder = null;
     this.sources?.dispose();
