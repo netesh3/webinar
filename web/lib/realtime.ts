@@ -49,16 +49,17 @@ const MAX_QUESTIONS = 300;
  *
  * One tap is still one message on the wire — every client draws its own copy, so
  * fanning out extra packets to do this would be the wrong trade. Drawing exactly
- * one every time reads as mechanical; a little randomness between one and two
- * copies of the same emoji is what makes a single tap look like it landed.
+ * one every time reads as mechanical; a burst of five to ten copies of the same
+ * emoji is what makes a single tap look like it landed with some weight behind it.
  *
  * The cap matters more than any one tap. Five hundred people applauding at the end of
  * a talk is the moment this feature is for and also the moment it could put ten
  * thousand animated spans on the stage, so the oldest are dropped once the screen is
  * already full of them — nobody can tell, and the tab stays alive. */
 
-/** One tap draws this many copies of the emoji, chosen fresh each time. */
-const REACTION_COPIES = [1, 2];
+/** One tap draws a random count in this range, chosen fresh each time. */
+const REACTION_COPIES_MIN = 5;
+const REACTION_COPIES_MAX = 10;
 /** How long one emoji takes to cross the stage, before per-emoji variation. */
 const REACTION_MS = 4200;
 const MAX_FLOATING = 240;
@@ -630,7 +631,9 @@ export function useRealtime(
   }, [handlers]);
 
   const pushReaction = useCallback((emoji: string) => {
-    const copies = REACTION_COPIES[Math.floor(Math.random() * REACTION_COPIES.length)];
+    const copies =
+      REACTION_COPIES_MIN +
+      Math.floor(Math.random() * (REACTION_COPIES_MAX - REACTION_COPIES_MIN + 1));
     const items: FloatingReaction[] = Array.from({ length: copies }, () => ({
       id: newId(),
       emoji,
