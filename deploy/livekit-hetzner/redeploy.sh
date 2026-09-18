@@ -103,8 +103,21 @@ umask 077
 mv "$tmp" livekit.yaml
 trap - EXIT
 
-docker compose pull
-docker compose up -d
+# Generate egress.yaml if template is present
+if [[ -f egress.yaml.template ]]; then
+  sed -e "s/__API_KEY__/${API_KEY}/g" \
+      -e "s/__API_SECRET__/${API_SECRET}/g" \
+      egress.yaml.template > egress.yaml
+  chmod 644 egress.yaml
+fi
+
+COMPOSE_ARGS=("-f" "docker-compose.yml")
+if [[ -f docker-compose.egress.yml && -f egress.yaml ]]; then
+  COMPOSE_ARGS+=("-f" "docker-compose.egress.yml")
+fi
+
+docker compose "${COMPOSE_ARGS[@]}" pull
+docker compose "${COMPOSE_ARGS[@]}" up -d
 if [[ "$livekit_config_changed" -eq 1 ]]; then
   # Same bind-mount issue as Caddy below, but livekit.yaml carries live
   # WebRTC session state on this container, so — unlike Caddy — only
@@ -112,7 +125,7 @@ if [[ "$livekit_config_changed" -eq 1 ]]; then
   # redeploy (e.g. an unrelated Grafana/Prometheus-only change shouldn't
   # drop anyone's call).
   echo "livekit.yaml changed — restarting livekit to pick it up"
-  docker compose restart livekit
+  docker compose "${COMPOSE_ARGS[@]}" restart livekit
 fi
 # Caddyfile is bind-mounted, so `up -d` alone does not make Caddy pick up
 # edits to it — the config-hash docker compose diffs against is the compose
@@ -120,7 +133,7 @@ fi
 # reads Caddyfile at process start (no live-reload without an explicit
 # `caddy reload`). Restart it unconditionally on every redeploy instead of
 # depending on that heuristic to happen to also recreate the container.
-docker compose restart caddy
+docker compose "${COMPOSE_ARGS[@]}" restart caddy
 
 echo "LiveKit redeployed at wss://${DOMAIN} (keys unchanged in ${TARGET}/.env.keys)"
 echo "Grafana: https://${DOMAIN}/grafana/ (user: admin, password in ${TARGET}/.env.keys)"

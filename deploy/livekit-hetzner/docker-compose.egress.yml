@@ -16,7 +16,7 @@ services:
   # LiveKit Egress worker: runs headless Chromium to render the Zoom-style template,
   # captures audio & video streams, encodes to H.264/MP4, and uploads directly to Backblaze B2.
   egress:
-    image: livekit/egress:v1.8.8
+    image: livekit/egress:v1.14.1
     network_mode: host
     restart: unless-stopped
     depends_on:
