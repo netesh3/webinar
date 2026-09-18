@@ -172,13 +172,14 @@ export function ControlBar() {
   // those buttons render on (not duplicated as a second source of truth that
   // could drift) rather than a flat guess sized for the worst case: a plain
   // attendee with neither needs none of this reserved at all, and even a
-  // single MediaToggle (~84px: a ~40px main button plus a ~44px
-  // device-picker chevron) is half of what two together need. Reserving for
-  // two unconditionally was what left no room for the centre strip's own
+  // single MediaToggle (~61px on mobile: a min-w-8 main button, a border, a
+  // w-7 device-picker chevron — see media-toggle.tsx's own comment on that
+  // sizing) is half of what two together need. Reserving for two
+  // unconditionally was what left no room for the centre strip's own
   // content the one time both actually show — a full "Bring on stage" grant
   // — since that's also exactly when Share and RecordButton newly appear
   // there too. Desktop doesn't need this: MediaToggle is wider there
-  // (min-w-14 vs min-w-10) but `sm:` has enough room to spare either way.
+  // (min-w-14 vs min-w-8) but `sm:` has enough room to spare either way.
   const micToggleShown =
     (permissions.canPublish || permissions.mutedByHost) &&
     (permissions.canSpeak || permissions.mutedByHost);
@@ -186,9 +187,9 @@ export function ControlBar() {
     (permissions.canPublish || permissions.mutedByHost) &&
     permissions.canShareCamera;
   const leftClusterCount = (micToggleShown ? 1 : 0) + (cameraToggleShown ? 1 : 0);
-  // left-2 offset (8px) + N toggles (~84px each on mobile) + gaps between them.
+  // left-2 offset (8px) + N toggles (~61px each on mobile) + gaps between them.
   const leftReservePx =
-    leftClusterCount === 0 ? 0 : 8 + leftClusterCount * 84 + (leftClusterCount - 1) * 4;
+    leftClusterCount === 0 ? 0 : 8 + leftClusterCount * 61 + (leftClusterCount - 1) * 4;
   // The one case dynamic padding alone doesn't resolve: both toggles showing
   // is also the only time Share can't fit next to Chat + Raise hand + More
   // on a phone. Same condition, reused rather than re-derived, so this can
@@ -201,13 +202,13 @@ export function ControlBar() {
    * treats a person differently from a panelist keys off this, not off
    * canPublish alone. */
   const isAttendee = !isHost && (!permissions.canPublish || permissions.promoted);
-  // Reactions only joins the compact bar while the left cluster (mic/camera)
-  // isn't eating the width it needs — see CENTER_BAR_COMPACT_ATTENDEE's own
-  // comment for the measured reason a promoted attendee falls back to the
-  // plain two-item bar instead.
-  const attendeeCompact = isAttendee && leftClusterCount === 0;
-  const centerTools = centerBarTools(availableTools, compact, attendeeCompact);
-  const panelItems = morePanelTools(availableTools, compact, attendeeCompact);
+  // Reactions is always on an attendee's compact bar, promoted or not — see
+  // CENTER_BAR_COMPACT_ATTENDEE's own comment: with MediaToggle's mobile
+  // sizing (media-toggle.tsx), Chat + Raise hand + Reactions + More measure
+  // out to fit next to two toggles with room to spare, so there is no case
+  // left where it needs to fall back into More.
+  const centerTools = centerBarTools(availableTools, compact, isAttendee);
+  const panelItems = morePanelTools(availableTools, compact, isAttendee);
   // Once the host brings an attendee on stage, mic+camera claim the left —
   // and Chat / Raise hand / More move to hug the right edge instead of
   // staying centred, so the strip reads as two clear halves (yours, on the

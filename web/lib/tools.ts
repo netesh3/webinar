@@ -85,31 +85,42 @@ export const CENTER_BAR_TOOLS: readonly ToolId[] = [
   "settings",
 ];
 
-/** On a phone the bar only has room for the two things that are dead if they
- *  arrive a tap late: the two-way conversation (Chat), and asking to speak
- *  (Raise hand) — the one engagement action with someone on the other end
- *  actively waiting on it. Everything else (Reactions, Polls, Participants,
- *  Settings) moves into More, which is already a bottom sheet on a phone —
- *  see more-grid.tsx — so nothing here becomes harder to reach, it is one
- *  tap deeper instead of fighting mic+camera for the same strip of screen.
+/** On a phone the standing bar (host and panelist — see
+ *  CENTER_BAR_COMPACT_ATTENDEE below for attendees) only has room for the two
+ *  things that are dead if they arrive a tap late: the two-way conversation
+ *  (Chat), and asking to speak (Raise hand) — the one engagement action with
+ *  someone on the other end actively waiting on it. Everything else
+ *  (Reactions, Polls, Participants, Settings) moves into More, which is
+ *  already a bottom sheet on a phone — see more-grid.tsx — so nothing here
+ *  becomes harder to reach, it is one tap deeper instead of fighting
+ *  mic+camera for the same strip of screen.
  *
  *  Tried keeping five things visible first (this list plus Reactions and
- *  Polls) — the arithmetic doesn't work even with correct padding: six
- *  buttons want ~260px and a phone with mic+camera showing leaves ~119px.
- *  Two fits with room to spare; five needed the centre strip to scroll,
- *  which is a worse default than just not asking a 375px screen to hold
- *  that much at once. */
+ *  Polls) at MediaToggle's ORIGINAL mobile size (min-w-10 main + w-11
+ *  chevron) — the arithmetic didn't work even with correct padding: six
+ *  buttons want ~260px and a phone with mic+camera showing left ~119px. Two
+ *  fit with room to spare there; five needed the centre strip to scroll.
+ *  media-toggle.tsx's mobile sizing has since shrunk (min-w-8 + w-7,
+ *  measured) specifically so a FOUR-item attendee bar fits instead — see
+ *  CENTER_BAR_COMPACT_ATTENDEE — but this two-item host/panelist bar was
+ *  never the one that needed the room, so it stays as-is. */
 const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "hand"];
 
-/** Attendee-only, and only while the full width is actually free — no
- *  mic+camera cluster reserved on the left (control-bar.tsx passes
- *  `attendee` as true only when its own leftClusterCount is 0). The moment
- *  that cluster claims part of a ~375px phone, this drops straight back to
- *  CENTER_BAR_COMPACT: the same measured arithmetic above that ruled out
- *  five things fitting already rules out Chat + Raise hand + Reactions +
- *  More there too — even Share alone doesn't fit that case (see
- *  control-bar.tsx's shareOnBar). Host and panelist never pass `attendee`
- *  at all, so their compact bar is untouched either way. */
+/** Attendee-only (control-bar.tsx passes `attendee` as true only for a
+ *  genuine attendee — not host, not a scheduled panelist — via
+ *  permissions.promoted). Reactions joins Chat + Raise hand on the bar
+ *  itself instead of staying in More.
+ *
+ *  Measured, not guessed, including the case that matters most: a promoted
+ *  attendee, with BOTH mic and camera toggles showing on the left. At
+ *  MediaToggle's mobile sizing (min-w-8 main + w-7 chevron, shrunk
+ *  specifically for this), those two toggles plus this four-item bar
+ *  measure out to fit with room to spare on a 375px phone next to Leave —
+ *  nothing here has to fall back to CENTER_BAR_COMPACT or hide anything.
+ *  Before that shrink, at the original mic+camera sizing, this genuinely
+ *  didn't fit — the buttons kept their own min-width and visibly overflowed
+ *  rather than being silently omitted, which is the bug this shrink and this
+ *  list together fix. */
 const CENTER_BAR_COMPACT_ATTENDEE: readonly ToolId[] = ["chat", "hand", "reactions"];
 
 export function centerBarTools(

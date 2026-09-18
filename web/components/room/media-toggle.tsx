@@ -23,7 +23,18 @@ import { useRoomUI } from "./context";
  * The menu is honest about what this product can do. Blur and noise suppression
  * are real prefs. Auto-frame, phone audio, and a speaker-test wizard are not, so
  * they are not offered.
- */
+ *
+ * Mobile only (no `sm:` prefix — desktop keeps min-w-14 and its w-7 caret
+ * unchanged): the main button is min-w-8 and the caret is w-7, both down from
+ * min-w-10 / w-11. Measured, not guessed — a promoted attendee's bar needs
+ * Chat + Raise hand + Reactions + More to fit next to two of these at once,
+ * and at the old sizes they genuinely overflowed (each button still its own
+ * min-w-10, just spilling past its flex container's edge) rather than
+ * visibly failing, which is why it looked fine until someone counted pixels.
+ * See control-bar.tsx's leftReservePx, which reserves this exact width and
+ * has to be kept in sync with it by hand — there is no single source of
+ * truth between an out-of-flow absolute cluster and the padding that
+ * reserves room for it. */
 
 const subscribeNothing = () => () => {};
 
@@ -114,7 +125,7 @@ export function MediaToggle({
           aria-keyshortcuts={shortcut}
           aria-pressed={active}
           disabled={busy}
-          className="relative flex min-w-10 flex-col items-center justify-center gap-0.5 px-2 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:min-w-14"
+          className="relative flex min-w-8 flex-col items-center justify-center gap-0.5 px-1 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:min-w-14 sm:px-2"
         >
           <span className="flex h-10 flex-col items-center justify-center gap-0.5">
             {busy ? <Spinner className="size-5" /> : (meter ?? icon)}
@@ -130,7 +141,7 @@ export function MediaToggle({
           aria-expanded={open}
           aria-controls={open ? menuId : undefined}
           onClick={() => setOpen((v) => !v)}
-          className="grid w-11 shrink-0 place-items-center border-l border-white/15 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:w-7"
+          className="grid w-7 shrink-0 place-items-center border-l border-white/15 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50"
         >
           <ChevronDownIcon className="size-3.5 rotate-180" />
         </button>
