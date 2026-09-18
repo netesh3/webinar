@@ -144,6 +144,16 @@ fi
 # Public Web client ID → /api/config googleClientId (One Tap + Drive Picker).
 [[ -n "${GOOGLE_CLIENT_ID:-}" ]] && ENV_VARS+=("GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}")
 [[ -n "${GOOGLE_API_KEY:-}" ]] && ENV_VARS+=("GOOGLE_API_KEY=${GOOGLE_API_KEY}")
+# Recording storage. "disk" needs nothing further; "s3" (an S3-compatible
+# bucket — Backblaze B2 in practice) needs all five below. config.go refuses
+# to boot with RECORDINGS_ENABLED=true and RECORDINGS_BACKEND=s3 if any are
+# missing, so an incomplete set here fails at container start, not silently.
+[[ -n "${RECORDINGS_BACKEND:-}" ]] && ENV_VARS+=("RECORDINGS_BACKEND=${RECORDINGS_BACKEND}")
+[[ -n "${RECORDINGS_S3_BUCKET:-}" ]] && ENV_VARS+=("RECORDINGS_S3_BUCKET=${RECORDINGS_S3_BUCKET}")
+[[ -n "${RECORDINGS_S3_ENDPOINT:-}" ]] && ENV_VARS+=("RECORDINGS_S3_ENDPOINT=${RECORDINGS_S3_ENDPOINT}")
+[[ -n "${RECORDINGS_S3_REGION:-}" ]] && ENV_VARS+=("RECORDINGS_S3_REGION=${RECORDINGS_S3_REGION}")
+[[ -n "${RECORDINGS_S3_ACCESS_KEY:-}" ]] && ENV_VARS+=("RECORDINGS_S3_ACCESS_KEY=${RECORDINGS_S3_ACCESS_KEY}")
+[[ -n "${RECORDINGS_S3_SECRET_KEY:-}" ]] && ENV_VARS+=("RECORDINGS_S3_SECRET_KEY=${RECORDINGS_S3_SECRET_KEY}")
 
 # Write YAML for --env-vars-file so values may contain commas (e.g. CORS_ORIGINS
 # with multiple origins). Comma-joined --set-env-vars breaks on those values.
