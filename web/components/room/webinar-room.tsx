@@ -54,7 +54,6 @@ import { PollPopup } from "./poll-popup";
 import { FileShareBar } from "./file-share-bar";
 import { MeetingInfo } from "./meeting-info";
 import { ViewsMenu } from "./views-menu";
-import { ShareStopBar } from "./share-stop-bar";
 import { NetworkMetrics } from "./network-readout";
 import { Stage } from "./stage";
 import { SidePanel } from "./side-panel";
@@ -986,7 +985,6 @@ function ConnectedRoom({
                       audience receives is captured from a hidden element elsewhere, so
                       none of this can reach a subscriber. */}
                   <FileShareBar />
-                  <ShareStopBar />
                   <ConnectionBanner />
                   <RecordingBanner />
                   {/* Chat that arrived while the panel was shut, said once rather than
