@@ -443,6 +443,50 @@ export class AudioMixer {
   }
 }
 
+/**
+ * A clock that does not get throttled when the tab is hidden / in the background.
+ *
+ * Browsers throttle window.setInterval down to 1000ms (1 FPS) in hidden tabs,
+ * and requestAnimationFrame stops completely. A Web Worker runs on an independent
+ * thread and is not throttled to 1s by Chrome's background timer limits, keeping
+ * the 30 FPS draw loop rock-solid when the presenter is watching YouTube or slides
+ * in another tab/window.
+ */
+class PrecisionTicker {
+  private worker: Worker | null = null;
+  private fallbackTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor(intervalMs: number, onTick: () => void) {
+    if (typeof Worker !== "undefined" && typeof Blob !== "undefined" && typeof URL !== "undefined") {
+      try {
+        const blob = new Blob(
+          [`setInterval(function(){postMessage(0);}, ${Math.round(intervalMs)});`],
+          { type: "application/javascript" },
+        );
+        const url = URL.createObjectURL(blob);
+        this.worker = new Worker(url);
+        this.worker.onmessage = () => onTick();
+        URL.revokeObjectURL(url);
+      } catch {
+        this.fallbackTimer = setInterval(onTick, intervalMs);
+      }
+    } else {
+      this.fallbackTimer = setInterval(onTick, intervalMs);
+    }
+  }
+
+  stop(): void {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+    if (this.fallbackTimer !== null) {
+      clearInterval(this.fallbackTimer);
+      this.fallbackTimer = null;
+    }
+  }
+}
+
 // ------------------------------------------------------------------ recorder
 
 export type RecorderState = "idle" | "starting" | "recording" | "stopping";
@@ -475,7 +519,7 @@ export type RecordingTransport = {
 export class SessionRecorder {
   private state: RecorderState = "idle";
   private canvas: HTMLCanvasElement | null = null;
-  private ticker: ReturnType<typeof setInterval> | null = null;
+  private ticker: PrecisionTicker | null = null;
   private animationFrameId: number | null = null;
   private active = false;
   private sources: VideoSources | null = null;
@@ -528,7 +572,7 @@ export class SessionRecorder {
 
       this.active = true;
       let lastDraw = 0;
-      const minInterval = 1000 / (FPS + 2); // ~31ms for 30fps
+      const minInterval = 1000 / (FPS + 5); // ~28ms for 30fps
 
       const draw = (nowMs = performance.now()) => {
         if (!this.active || !ctx) return;
@@ -537,9 +581,7 @@ export class SessionRecorder {
         lastDraw = nowMs;
       };
 
-      // Hybrid render loop: requestAnimationFrame for smooth VSync-aligned frames
-      // when tab is visible, plus a background interval fallback so the recording
-      // does not freeze when the tab is hidden/minimized.
+      // 1. requestAnimationFrame for foreground VSync-aligned frames
       const renderLoop = (nowMs: number) => {
         if (!this.active) return;
         if (nowMs - lastDraw >= minInterval) {
@@ -551,13 +593,14 @@ export class SessionRecorder {
       draw();
       this.animationFrameId = requestAnimationFrame(renderLoop);
 
-      // Background fallback ticker: keeps drawing even if tab is backgrounded
-      this.ticker = setInterval(() => {
+      // 2. Precision Web Worker ticker: guarantees steady 30 FPS even when
+      // the tab is hidden/minimized while presenter watches YouTube in another tab
+      this.ticker = new PrecisionTicker(Math.round(1000 / FPS), () => {
         const now = performance.now();
-        if (now - lastDraw >= 30) {
+        if (now - lastDraw >= minInterval) {
           draw(now);
         }
-      }, Math.round(1000 / FPS));
+      });
 
       const stream = this.canvas.captureStream(FPS);
       const audio = this.mixer.track;
@@ -683,7 +726,7 @@ export class SessionRecorder {
       this.animationFrameId = null;
     }
     if (this.ticker !== null) {
-      clearInterval(this.ticker);
+      this.ticker.stop();
       this.ticker = null;
     }
     this.recorder = null;
