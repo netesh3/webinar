@@ -370,7 +370,7 @@ export const SHARE_LADDER: Record<PublishTier, ShareRung[]> = {
     { maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate },
     {
       maxBitrate: SHARE_720_MIN_BITRATE,
-      maxFramerate: 8,
+      maxFramerate: 20,
     },
     { maxBitrate: 0 },
   ],

@@ -95,8 +95,12 @@ class VideoSources {
   constructor(private room: Room) {
     this.host = document.createElement("div");
     this.host.setAttribute("aria-hidden", "true");
+    // Place in DOM with non-zero dimensions and tiny opacity rather than -9999px / 1px
+    // so Chrome and Safari compositors classify the video elements as active on-screen
+    // surfaces and decode frames at full 30/60 fps without dropping or throttling.
     this.host.style.cssText =
-      "position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none";
+      "position:fixed;left:0;top:0;width:320px;height:180px;opacity:0.001;pointer-events:none;z-index:-9999;overflow:hidden;";
+    document.body.appendChild(this.host);
     this.sync();
     for (const ev of RECORDER_EVENTS) {
       this.room.on(ev, this.onRoomChange);
@@ -148,6 +152,7 @@ class VideoSources {
       el.muted = true;
       el.playsInline = true;
       el.autoplay = true;
+      el.style.cssText = "width:320px;height:180px;object-fit:contain;";
       el.srcObject = new MediaStream([want.track]);
       this.host.appendChild(el);
       void el.play().catch(() => {});

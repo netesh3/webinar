@@ -165,7 +165,7 @@ export const SCREEN_SHARE_PUBLISH: TrackPublishOptions = {
   dtx: false,
   videoCodec: "h264",
   backupCodec: { codec: "vp8" },
-  degradationPreference: "maintain-resolution",
+  degradationPreference: "maintain-framerate",
 };
 
 /* Which shared surfaces can actually carry sound.
