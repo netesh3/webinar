@@ -30,6 +30,13 @@
 #     redeploy when the test is done.
 #   CLOUD_SQL_INSTANCE — only if not using Supabase
 #   GCP_PROJECT / GCP_REGION as repo Variables (defaults in deploy/cloudrun-deploy.sh)
+#   RECORDINGS_ENABLED — unset/false by default; set "true" to turn recording on
+#   RECORDINGS_BACKEND — "disk" or "s3" (api/internal/media). Required with
+#     RECORDINGS_ENABLED=true; "s3" also needs the five RECORDINGS_S3_* below.
+#   RECORDINGS_S3_BUCKET / RECORDINGS_S3_ENDPOINT / RECORDINGS_S3_REGION /
+#     RECORDINGS_S3_ACCESS_KEY / RECORDINGS_S3_SECRET_KEY — an S3-compatible
+#     bucket (Backblaze B2 in practice). Use a key SCOPED to this one bucket
+#     (listFiles/readFiles/writeFiles/deleteFiles) — never an account master key.
 
 name: Deploy API (Cloud Run)
 
@@ -80,7 +87,17 @@ jobs:
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       APP_NAME: ${{ vars.APP_NAME }}
       CLOUD_SQL_INSTANCE: ${{ secrets.CLOUD_SQL_INSTANCE }}
-      RECORDINGS_ENABLED: "false"
+      # Was hardcoded "false" — now off unless RECORDINGS_ENABLED is set as a
+      # repository secret, so turning recording on is a secret you set, not a
+      # line you edit here. deploy/cloudrun-deploy.sh still falls back to
+      # "false" if it is unset, same safe default as before.
+      RECORDINGS_ENABLED: ${{ secrets.RECORDINGS_ENABLED }}
+      RECORDINGS_BACKEND: ${{ secrets.RECORDINGS_BACKEND }}
+      RECORDINGS_S3_BUCKET: ${{ secrets.RECORDINGS_S3_BUCKET }}
+      RECORDINGS_S3_ENDPOINT: ${{ secrets.RECORDINGS_S3_ENDPOINT }}
+      RECORDINGS_S3_REGION: ${{ secrets.RECORDINGS_S3_REGION }}
+      RECORDINGS_S3_ACCESS_KEY: ${{ secrets.RECORDINGS_S3_ACCESS_KEY }}
+      RECORDINGS_S3_SECRET_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
       SEED_DEV: "false"
       # Temporary, for a performance-test window: POST /telemetry (see
       # api/internal/api/telemetry.go). Flip back to "false" and redeploy when
