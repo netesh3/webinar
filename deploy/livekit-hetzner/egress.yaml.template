@@ -1,0 +1,15 @@
+# LiveKit Egress configuration template for Hetzner
+# Generated at install/redeploy time by substituting __API_KEY__ and __API_SECRET__
+
+api_key: __API_KEY__
+api_secret: __API_SECRET__
+ws_url: ws://127.0.0.1:7880
+
+redis:
+  address: 127.0.0.1:6379
+
+log_level: info
+prom_port: 8088
+
+# Template session settings
+in_proc_session: false

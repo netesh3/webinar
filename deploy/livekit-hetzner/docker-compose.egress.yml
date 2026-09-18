@@ -1,0 +1,29 @@
+# LiveKit Egress & Redis compose stack for Hetzner
+# Extends the base livekit-hetzner deployment with server-side recording.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.egress.yml up -d
+
+services:
+  # Ephemeral in-memory Redis for LiveKit <-> Egress psrpc protocol buffers RPC queue.
+  # Bound strictly to 127.0.0.1 with protected mode on (never exposed to the internet).
+  redis:
+    image: redis:7-alpine
+    network_mode: host
+    restart: unless-stopped
+    command: ["redis-server", "--bind", "127.0.0.1", "--protected-mode", "yes", "--save", "", "--appendonly", "no"]
+
+  # LiveKit Egress worker: runs headless Chromium to render the Zoom-style template,
+  # captures audio & video streams, encodes to H.264/MP4, and uploads directly to Backblaze B2.
+  egress:
+    image: livekit/egress:v1.8.8
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - livekit
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    volumes:
+      - ./egress.yaml:/etc/egress.yaml:ro
+      - /dev/shm:/dev/shm

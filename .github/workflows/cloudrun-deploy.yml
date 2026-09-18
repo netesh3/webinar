@@ -98,6 +98,10 @@ jobs:
       RECORDINGS_S3_REGION: ${{ secrets.RECORDINGS_S3_REGION }}
       RECORDINGS_S3_ACCESS_KEY: ${{ secrets.RECORDINGS_S3_ACCESS_KEY }}
       RECORDINGS_S3_SECRET_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
+      RECORDINGS_MODE: ${{ secrets.RECORDINGS_MODE }}
+      RECORDINGS_EGRESS_TEMPLATE_URL: ${{ secrets.RECORDINGS_EGRESS_TEMPLATE_URL }}
+      RECORDINGS_EGRESS_PRESET: ${{ secrets.RECORDINGS_EGRESS_PRESET }}
+      RECORDINGS_CDN_BASE_URL: ${{ secrets.RECORDINGS_CDN_BASE_URL }}
       SEED_DEV: "false"
       # Temporary, for a performance-test window: POST /telemetry (see
       # api/internal/api/telemetry.go). Flip back to "false" and redeploy when

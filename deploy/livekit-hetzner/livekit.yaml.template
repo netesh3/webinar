@@ -43,3 +43,14 @@ turn:
 
 keys:
   __API_KEY__: __API_SECRET__
+
+# Redis for LiveKit Egress (protocol buffers RPC over Redis pub/sub).
+# Required when running docker-compose.egress.yml.
+# redis:
+#   address: 127.0.0.1:6379
+
+# Webhook configuration: sends EGRESS_ENDED to Go API so recording row is finalized.
+# webhook:
+#   api_key: __API_KEY__
+#   urls:
+#     - https://api.webinarliv.com/api/webhooks/livekit
