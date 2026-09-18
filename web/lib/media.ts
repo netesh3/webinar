@@ -288,7 +288,12 @@ export function roomOptions(
     audioCaptureDefaults: {
       deviceId: prefs.audioInput,
       echoCancellation: true,
-      noiseSuppression: prefs.noiseSuppression,
+      // Always off here, even when prefs.noiseSuppression is true: that preference
+      // now drives an RNNoise TrackProcessor instead (see
+      // components/room/noise-suppression.tsx), which wants the rawest signal it
+      // can get rather than the browser's own — much weaker — spectral one on top
+      // of it. See lib/noise-suppression.ts for the reasoning in full.
+      noiseSuppression: false,
       autoGainControl: true,
     },
 

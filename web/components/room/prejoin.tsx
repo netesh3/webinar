@@ -110,12 +110,16 @@ export function PreJoin({
     const track = await createLocalAudioTrack({
       deviceId: prefs.audioInput,
       echoCancellation: true,
-      noiseSuppression: prefs.noiseSuppression,
+      // Off here too — see lib/media.ts's roomOptions for why. This track is
+      // handed straight to the room on join (see join() below) and becomes the
+      // published one, so it has to make the same choice roomOptions makes for
+      // any track the room captures itself later.
+      noiseSuppression: false,
     });
     audioTrack.current = track;
     setPermitted(true);
     setMicGeneration((n) => n + 1);
-  }, [prefs.audioInput, prefs.noiseSuppression, stopAudio]);
+  }, [prefs.audioInput, stopAudio]);
 
   // Acquire whatever is switched on. Camera and mic are independent — a blocked
   // camera used to abort before the mic opened, which looked like "mic blocked"
