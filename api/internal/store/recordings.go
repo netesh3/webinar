@@ -43,7 +43,9 @@ func (s *Store) StartRecording(
 		UPDATE recordings r SET status = 'failed', stopped_at = now()
 		  FROM webinars w
 		 WHERE w.id = r.webinar_id AND w.slug = $1
-		   AND r.status = 'recording' AND r.last_chunk_at < now() - $2::interval`,
+		   AND r.status = 'recording'
+		   AND (r.egress_id IS NULL OR r.egress_id = '')
+		   AND r.last_chunk_at < now() - $2::interval`,
 		slug, staleAfter.String()); err != nil {
 		return types.Recording{}, err
 	}
