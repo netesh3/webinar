@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { AdminUser, Webinar } from "@/lib/api-types";
-import { formatDay } from "@/lib/format";
+import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { useSession, useToast } from "./providers";
 import { Alert, ConfirmModal, Spinner, Toggle } from "./controls";
 import { Avatar, Badge, Card, Empty, SectionTitle } from "./ui";
@@ -401,7 +401,9 @@ function AdminWebinars() {
                     </Badge>
                   </div>
                   <div className="truncate text-[12px] text-ink-3">
-                    {formatDay(w.startsAt, w.timeZone)} · hosted by{" "}
+                    {formatDay(w.startsAt, w.timeZone)} ·{" "}
+                    {formatTimeRange(w.startsAt, w.durationMin, w.timeZone)}{" "}
+                    {tzLabel(w.startsAt, w.timeZone)} · hosted by{" "}
                     {w.host.name || "—"}
                     {w.registrantCount > 0 &&
                       ` · ${w.registrantCount} registrant${w.registrantCount === 1 ? "" : "s"}`}
