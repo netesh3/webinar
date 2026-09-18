@@ -229,7 +229,7 @@ function isMobilePublisher(): boolean {
  * presenter some CPU while being wrong in the other direction sends 250 people a
  * low-resolution slide. False on the server, where the answer is never used.
  */
-function isSafari(): boolean {
+export function isSafari(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
   return (

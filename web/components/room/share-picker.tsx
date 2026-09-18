@@ -12,7 +12,7 @@ import {
   type FileSource,
 } from "@/lib/file-share";
 import { formatBytes } from "@/lib/format";
-import { SCREEN_SHARE_OPTIONS, SHARE_AUDIO_SURFACES } from "@/lib/media";
+import { isSafari, SCREEN_SHARE_OPTIONS, SHARE_AUDIO_SURFACES } from "@/lib/media";
 import type { ScreenShareCaptureOptions } from "livekit-client";
 import { Alert, Modal, Spinner } from "../controls";
 import {
@@ -568,7 +568,18 @@ function PreviewStep({
  *  `displaySurface` is a hint, not a filter: Chrome opens its own picker on the
  *  matching pane and the host can still switch tabs inside it. That is as close as
  *  a page can get to choosing a tab in a dialog it does not own — and it is why
- *  this dialog can offer the same four choices honestly. */
+ *  this dialog can offer the same four choices honestly.
+ *
+ *  "browser" is the one value in that hint Safari does not recognise — WebKit has
+ *  no per-tab capture at all, so there is no pane for it to focus. Reported live:
+ *  asking Safari for it did not fail and did not fall back to a normal picker
+ *  either — it skipped the interactive chooser entirely and just started sharing
+ *  something, which is the platform's own behaviour for a `getDisplayMedia`
+ *  constraint it cannot satisfy, not a bug in this dialog. Dropping the hint
+ *  outright on Safari — rather than substituting "monitor" or "window" — is what
+ *  lets Safari's own native picker (which does list both) come up normally,
+ *  which omitting `displaySurface` altogether is documented to do. */
 export function displayMediaOptions(surface: Surface): ScreenShareCaptureOptions {
-  return { ...SCREEN_SHARE_OPTIONS, video: { displaySurface: surface } };
+  const video = surface === "browser" && isSafari() ? true : { displaySurface: surface };
+  return { ...SCREEN_SHARE_OPTIONS, video };
 }
