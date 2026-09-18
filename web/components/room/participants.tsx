@@ -5,7 +5,7 @@ import {
   useParticipants,
   useRoomContext,
 } from "@livekit/components-react";
-import { Track, type Participant } from "livekit-client";
+import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { LiveParticipant, LiveRoom, Role } from "@/lib/api-types";
@@ -73,14 +73,27 @@ export function participantRole(
   return p.permissions?.canPublish ? "panelist" : "attendee";
 }
 
-/** How often the host's roster is refreshed.
+/** The baseline refresh, when nothing has told us to look sooner.
  *
  *  Polling rather than a socket: this is one request per host, not per attendee,
- *  and it is the only way to see hidden participants at all. Five seconds is
- *  responsive enough to moderate with and cheap enough to leave running. */
+ *  and it is the only way to see hidden participants at all — a host's own LiveKit
+ *  connection never learns about somebody the room is hiding from them, so no
+ *  client-side event can stand in for this fully. Five seconds is the fallback
+ *  cadence for that hidden-only case; anything a host's own connection DOES see
+ *  (below) reads far sooner than this. */
 const ROSTER_POLL_MS = 5000;
 
-export function useHostRoster(slug: string, enabled: boolean) {
+/** How soon to look again after a request failed. Short enough that "couldn't
+ *  refresh" is a blip rather than a five-second stretch of a stale headcount,
+ *  long enough that a genuinely down SFU is not hammered every tick. */
+const ROSTER_RETRY_MS = 1500;
+
+/** How long to wait for a burst of LiveKit events to settle before reading. A join
+ *  fires ParticipantConnected and then a TrackPublished per track moments later —
+ *  one read for the whole burst, not one per event. */
+const ROSTER_DEBOUNCE_MS = 400;
+
+export function useHostRoster(slug: string, enabled: boolean, room: Room | null) {
   const [live, setLive] = useState<LiveRoom | null>(null);
   const [error, setError] = useState(false);
   // Guards against a slow response overlapping the next tick, which on a bad
@@ -104,33 +117,67 @@ export function useHostRoster(slug: string, enabled: boolean) {
     if (!enabled) return;
 
     let active = true;
-    // A promise chain rather than a call to `load`, so the first read does not
-    // set state synchronously inside the effect.
+    let timer: ReturnType<typeof setTimeout>;
+
+    // Self-rescheduling rather than setInterval, so a failure can come back sooner
+    // than a success does, and an event below can pull the next read forward
+    // instead of waiting out whatever is left of the baseline five seconds.
     const read = () => {
       if (inFlight.current) return;
       inFlight.current = true;
       api
         .participants(slug)
-        .then((room) => {
+        .then((snapshot) => {
           if (!active) return;
-          setLive(room);
+          setLive(snapshot);
           setError(false);
+          schedule(ROSTER_POLL_MS);
         })
         .catch(() => {
-          if (active) setError(true);
+          if (!active) return;
+          setError(true);
+          schedule(ROSTER_RETRY_MS);
         })
         .finally(() => {
           inFlight.current = false;
         });
     };
 
+    const schedule = (delayMs: number) => {
+      clearTimeout(timer);
+      timer = setTimeout(read, delayMs);
+    };
+
+    // Pulls the next read forward to right after the debounce window, rather than
+    // however much of the baseline interval happens to be left — a join a moment
+    // after a successful read used to wait up to five seconds for the count to
+    // catch up, which is what read like a wrong number rather than a stale one.
+    const soon = () => schedule(ROSTER_DEBOUNCE_MS);
+
     read();
-    const timer = setInterval(read, ROSTER_POLL_MS);
+
+    // Everything a host's own LiveKit connection already learns in real time:
+    // somebody joining or leaving, a mic/camera track starting or stopping (moved
+    // to/from the stage, or just published a moment after connecting), and a
+    // permission change (promoted, muted, made co-host). All of it still has to
+    // go through the server for the actual row data — this only decides when to
+    // ask again instead of waiting for the next scheduled tick.
+    const events = [
+      RoomEvent.ParticipantConnected,
+      RoomEvent.ParticipantDisconnected,
+      RoomEvent.TrackPublished,
+      RoomEvent.TrackUnpublished,
+      RoomEvent.ParticipantPermissionsChanged,
+      RoomEvent.ParticipantMetadataChanged,
+    ] as const;
+    for (const event of events) room?.on(event, soon);
+
     return () => {
       active = false;
-      clearInterval(timer);
+      clearTimeout(timer);
+      for (const event of events) room?.off(event, soon);
     };
-  }, [enabled, slug]);
+  }, [enabled, slug, room]);
 
   // Memoised because this value goes into the room context. A fresh object every
   // render would bust that memo and re-render every panel, the stage and the control

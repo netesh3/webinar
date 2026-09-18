@@ -779,7 +779,7 @@ function ConnectedRoom({
   // includes hidden attendees, so it is both the only honest headcount and the only
   // list a host can moderate from. Polled here rather than in the participants panel
   // so the control bar's badge is right whether or not the panel is open.
-  const roster = useHostRoster(slug, isHost);
+  const roster = useHostRoster(slug, isHost, room);
 
   // The audience's polls, for everyone who is not the host. Read here rather than in
   // the panel because a launched poll has to reach somebody who is not looking at the

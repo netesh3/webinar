@@ -31,7 +31,7 @@ import { useRoomUI } from "./context";
  */
 
 export function PollPopup() {
-  const { isHost, controls, polls, permissions } = useRoomUI();
+  const { isHost, controls, polls } = useRoomUI();
   // Dismissals are per poll id and last for this page: the host launching the same
   // question again is a fresh ask and should reach somebody who waved the first one
   // away.
@@ -43,7 +43,13 @@ export function PollPopup() {
   const open = activePoll(polls.list);
   const showing = recorded ?? (open && !dismissed.has(open.id) ? open : null);
 
-  const canSee = !isHost && !permissions.canPublish && controls.pollsEnabled;
+  // isHost already covers a co-host (see webinar-room.tsx, where it is derived as
+  // liveRole === "host" || isCoHost) — a co-host runs polls from the same panel a
+  // host does and should not have it fight for their attention either. An ordinary
+  // panelist has no such panel: they are staged to speak, not to run the session,
+  // and are exactly the audience this popup exists for. Gating on canPublish
+  // instead used to exclude them too, along with anyone else on stage.
+  const canSee = !isHost && controls.pollsEnabled;
 
   // One chime per poll, the moment it first has somebody to reach — not on every
   // render this effect happens to run. See lib/polls.ts for why this plays
