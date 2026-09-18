@@ -30,8 +30,26 @@ export default function RecorderTemplatePage() {
 
 function RecorderTemplateInner() {
   const searchParams = useSearchParams();
-  const url = searchParams.get("url") || "";
-  const token = searchParams.get("token") || "";
+  const [params, setParams] = useState<{ url: string; token: string }>({ url: "", token: "" });
+
+  useEffect(() => {
+    let url = searchParams.get("url") || "";
+    let token = searchParams.get("token") || "";
+
+    if (!url || !token) {
+      if (typeof window !== "undefined") {
+        const sp = new URLSearchParams(window.location.search);
+        url = url || sp.get("url") || "";
+        token = token || sp.get("token") || "";
+      }
+    }
+
+    if (url && token) {
+      setParams({ url, token });
+    }
+  }, [searchParams]);
+
+  const { url, token } = params;
 
   if (!url || !token) {
     return (
