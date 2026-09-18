@@ -359,7 +359,7 @@ function useRecorder(): RecorderContextValue {
 /** The control bar's record button. Rendered as a split button with dropdown chevron arrow. */
 export function RecordButton() {
   const { join, recording: serverRecording, isHost } = useRoomUI();
-  const { cloudRecordingEnabled, recordingMode } = useAppConfig();
+  const { recordingMode } = useAppConfig();
   const isEgress = recordingMode === "egress";
   const { notify } = useToast();
   const { state, bytes, startedAt, destination, start, stop, mine } = useRoomRecorder();
@@ -381,9 +381,6 @@ export function RecordButton() {
     readCanRecordLocally,
     readCanRecordLocallyOnServer,
   );
-
-  const cloudAvailable = cloudRecordingEnabled;
-  const localAvailable = localSupported;
 
   const go = useCallback(
     (dest: "cloud" | "local") => {
@@ -431,23 +428,7 @@ export function RecordButton() {
       void stop();
       return;
     }
-    if (!cloudAvailable && !localAvailable) {
-      notify(
-        "Can't record here: this browser can't save to your device, and cloud recording isn't turned on for this server. Try Chrome or Edge, or ask your admin to enable cloud recording.",
-        "error",
-      );
-      return;
-    }
-    // Clicking the main button defaults to Cloud (no screen share needed!) if available, otherwise local.
-    if (cloudAvailable) {
-      go("cloud");
-      return;
-    }
-    if (localAvailable) {
-      go("local");
-      return;
-    }
-    setChoosing((v) => !v);
+    go("cloud");
   };
 
   return (
@@ -464,7 +445,7 @@ export function RecordButton() {
           type="button"
           aria-label={label}
           aria-pressed={isRecording}
-          title={isRecording ? "Stop recording" : "Record this session (Cloud)"}
+          title={isRecording ? "Stop recording" : "Record to the Cloud"}
           disabled={busy}
           onClick={onMainClick}
           className="relative inline-flex h-10 shrink-0 flex-col items-center justify-center gap-0.5 px-2 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:min-w-14"
@@ -507,78 +488,40 @@ export function RecordButton() {
         </button>
       </div>
 
-      {/* Options Popover Menu */}
+      {/* Options Popover Menu: clean & minimal */}
       {choosing && (
         <div
           role="menu"
           aria-label="Recording options"
-          className="room-dark absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-line bg-surface p-2 text-ink shadow-2xl backdrop-blur-xl"
+          className="room-dark absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-line bg-surface p-1.5 text-ink shadow-2xl backdrop-blur-xl"
         >
-          <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
-            Choose recording type
-          </div>
-
           {/* Option 1: Record to the Cloud */}
           <button
             type="button"
             role="menuitem"
-            disabled={!cloudAvailable || busy}
+            disabled={busy}
             onClick={() => go("cloud")}
-            className={`flex w-full items-start gap-2.5 rounded-lg p-2 text-left transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 ${
-              !cloudAvailable ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
-            }`}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
           >
-            <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg bg-live/15 text-live">
-              <RecordIcon className="size-4" />
-            </div>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center justify-between gap-1">
-                <span className="block text-[13px] font-medium text-ink">Record to the Cloud</span>
-                <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9.5px] font-semibold text-emerald-400">
-                  {isEgress ? "Server Egress" : "Cloud"}
-                </span>
-              </span>
-              <span className="mt-0.5 block text-[11.5px] leading-tight text-ink-3">
-                Zero client CPU or upload bandwidth. Captures full presentation and speakers directly to cloud storage. No screen share needed.
-              </span>
-            </span>
+            <RecordIcon className="size-4 text-live" />
+            <span className="text-[13px] font-medium text-ink">Record to the Cloud</span>
           </button>
 
           {/* Option 2: Record on this Computer */}
           <button
             type="button"
             role="menuitem"
-            disabled={!localAvailable || busy}
+            disabled={busy}
             onClick={() => go("local")}
-            className={`mt-1 flex w-full items-start gap-2.5 rounded-lg p-2 text-left transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 ${
-              !localAvailable ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
-            }`}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
           >
-            <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg bg-brand/15 text-brand">
-              <DeviceIcon className="size-4" />
-            </div>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center justify-between gap-1">
-                <span className="block text-[13px] font-medium text-ink">Record on this Computer</span>
-                <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[9.5px] font-semibold text-blue-400">
-                  Screen Share
-                </span>
-              </span>
-              <span className="mt-0.5 block text-[11.5px] leading-tight text-ink-3">
-                Prompts you to select a screen to share. Captures and saves the video directly to a local file on this computer.
-              </span>
-            </span>
+            <DeviceIcon className="size-4 text-brand" />
+            <span className="text-[13px] font-medium text-ink">Record on this Computer</span>
           </button>
 
-          {/* If currently recording, show active status & direct Stop button */}
+          {/* If currently recording, show direct Stop button */}
           {isRecording && (
-            <div className="mt-2 border-t border-line/60 pt-2">
-              <div className="flex items-center justify-between px-2 py-1 text-[11px] text-ink-3">
-                <span>Status:</span>
-                <span className="font-medium text-live">
-                  {destination === "local" ? "Recording to Computer" : "Recording to Cloud"}
-                </span>
-              </div>
+            <div className="mt-1 border-t border-line/60 pt-1">
               <button
                 type="button"
                 role="menuitem"
@@ -587,10 +530,10 @@ export function RecordButton() {
                   setChoosing(false);
                   void stop();
                 }}
-                className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-live px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 cursor-pointer"
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-live transition-colors outline-none hover:bg-live/10 focus-visible:ring-2 focus-visible:ring-live/50 cursor-pointer font-medium text-[13px]"
               >
-                <StopIcon className="size-3.5" />
-                Stop Recording
+                <StopIcon className="size-4" />
+                Stop recording
               </button>
             </div>
           )}
@@ -603,7 +546,7 @@ export function RecordButton() {
 /** Top recording banner displayed prominently when recording is active. */
 export function RecordingBanner() {
   const { recording: serverRecording, isHost, join } = useRoomUI();
-  const { state, startedAt, destination, stop, mine, isEgress } = useRoomRecorder();
+  const { state, startedAt, destination, stop, mine } = useRoomRecorder();
   const [minimized, setMinimized] = useState(false);
 
   const isRecordingActive =
@@ -651,11 +594,6 @@ export function RecordingBanner() {
             {isLocal ? "Recording to this Computer" : "Recording to Cloud"}
           </span>
         </div>
-
-        {/* Badge describing mode */}
-        <span className="hidden sm:inline-flex rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/70">
-          {isLocal ? "Screen Share" : isEgress ? "Server Egress" : "Cloud"}
-        </span>
 
         {/* Monospace elapsed duration */}
         <div className="flex items-center gap-1 font-mono text-[11.5px] sm:text-[12.5px] font-medium text-white/90 tabular-nums">
