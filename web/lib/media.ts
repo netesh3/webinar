@@ -259,10 +259,11 @@ export type MediaPreferences = DeviceChoices & {
 export const DEFAULT_PREFERENCES: MediaPreferences = {
   micEnabled: true,
   cameraEnabled: true,
-  // Off by default, same reasoning as background below: RNNoise costs a WASM
-  // download and a per-frame AudioWorklet pass (lib/noise-suppression.ts), and
-  // nobody should pay that on every join without asking for it first.
-  noiseSuppression: false,
+  // On by default: a laptop fan getting through is the more common complaint than
+  // the WASM download / per-frame AudioWorklet cost (lib/noise-suppression.ts) is
+  // worth optimising away for. Still a per-browser preference, so anyone who
+  // turns it off from Settings stays off.
+  noiseSuppression: true,
   // Off by default. It costs a WASM download and a GPU pass per frame, and nobody
   // should pay either without asking for it.
   background: { mode: "none" },
