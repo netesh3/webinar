@@ -44,7 +44,6 @@ import { useRoomUI } from "./context";
 type Surface = "browser" | "window" | "monitor";
 
 type Step =
-  | { at: "choose" }
   | { at: "source" }
   | { at: "preview"; source: FileSource }
   | { at: "loading"; label: string; progress: number | null };
@@ -60,6 +59,10 @@ export function SharePicker({
    *  already has the error handling and the busy state for it. */
   onScreenShare: (surface: Surface) => void;
 }) {
+  // The only door into this dialog now is "Share a video file" (control-bar.tsx) —
+  // Share itself hands straight off to the browser's own picker — so it opens
+  // directly on that pane. The tab row stays, letting somebody switch to a live
+  // share from here too without closing this and finding the Share button again.
   return (
     <Modal
       open={open}
@@ -88,7 +91,10 @@ function ShareSteps({
   onScreenShare: (surface: Surface) => void;
 }) {
   const { fileShare } = useRoomUI();
-  const [step, setStep] = useState<Step>({ at: "choose" });
+  // "source", not "choose": the only door in is the "Share a video file" button
+  // now, so land on the file picker rather than making that click do the tab row
+  // did before this dialog had a single, file-only purpose.
+  const [step, setStep] = useState<Step>({ at: "source" });
   const [error, setError] = useState<string | null>(null);
 
   const supported = canShareFile();
@@ -107,62 +113,56 @@ function ShareSteps({
     <>
       <div className="space-y-4">
         {error && <Alert tone="error">{error}</Alert>}
-        {fileShare.error && step.at === "choose" && (
+        {fileShare.error && step.at === "source" && (
           <Alert tone="error">{fileShare.error}</Alert>
         )}
 
         {/* The tab row, in the browser picker's own order. `Share by file` last,
-            after `Entire screen`, which is where it sits in Chrome's version. */}
-        {(step.at === "choose" || step.at === "source") && (
-          <div
-            role="tablist"
-            aria-label="What to share"
-            className="flex items-stretch gap-1 border-b border-line-2 pb-0"
-          >
-            <SurfaceTab
-              label="Chrome tab"
-              icon={<GridIcon className="size-4" />}
-              onClick={() => {
-                onScreenShare("browser");
-                onClose();
-              }}
-            />
-            <SurfaceTab
-              label="Window"
-              icon={<UsersIcon className="size-4" />}
-              onClick={() => {
-                onScreenShare("window");
-                onClose();
-              }}
-            />
-            <SurfaceTab
-              label="Entire screen"
-              icon={<ScreenShareIcon className="size-4" />}
-              onClick={() => {
-                onScreenShare("monitor");
-                onClose();
-              }}
-            />
-            <SurfaceTab
-              label="Share by file"
-              icon={<PlayIcon className="size-4" />}
-              selected={step.at === "source"}
-              disabled={!supported}
-              title={supported ? undefined : "This browser can't capture a video file"}
-              onClick={() => setStep({ at: "source" })}
-            />
-          </div>
-        )}
-
-        {step.at === "choose" && (
-          <div className="rounded-xl border border-dashed border-line-2 px-4 py-8 text-center">
-            <p className="text-[13px] font-medium text-ink">Pick what to share</p>
-            <p className="mx-auto mt-1.5 max-w-xs text-[11.5px] leading-relaxed text-ink-3">
-              The first three tabs open your browser&apos;s own picker.{" "}
-              <strong className="font-medium text-ink-2">Share by file</strong> plays a
-              recorded video into the session as your shared content — the room sees it as
-              a live share.
-            </p>
+            after `Entire screen`, which is where it sits in Chrome's version. Only
+            an escape hatch now — Share itself hands straight off to the browser's
+            picker for the first three — so somebody who opened this meaning to
+            share their screen instead does not have to close it and go find
+            Share again. */}
+        {step.at === "source" && (
+          <>
+            <div
+              role="tablist"
+              aria-label="What to share"
+              className="flex items-stretch gap-1 border-b border-line-2 pb-0"
+            >
+              <SurfaceTab
+                label="Chrome tab"
+                icon={<GridIcon className="size-4" />}
+                onClick={() => {
+                  onScreenShare("browser");
+                  onClose();
+                }}
+              />
+              <SurfaceTab
+                label="Window"
+                icon={<UsersIcon className="size-4" />}
+                onClick={() => {
+                  onScreenShare("window");
+                  onClose();
+                }}
+              />
+              <SurfaceTab
+                label="Entire screen"
+                icon={<ScreenShareIcon className="size-4" />}
+                onClick={() => {
+                  onScreenShare("monitor");
+                  onClose();
+                }}
+              />
+              <SurfaceTab
+                label="Share by file"
+                icon={<PlayIcon className="size-4" />}
+                selected
+                disabled={!supported}
+                title={supported ? undefined : "This browser can't capture a video file"}
+                onClick={() => setStep({ at: "source" })}
+              />
+            </div>
 
             {/* Where the sound goes, said before the choice rather than discovered after it.
                 This is the one thing about screen sharing the app cannot fix by trying
@@ -170,15 +170,15 @@ function ShareSteps({
                 only of a tab. Somebody sharing their whole desktop to play a video is
                 inaudible, and there is no error to tell them so — the share simply works
                 and is silent. */}
-            <p className="mx-auto mt-3 max-w-xs rounded-lg bg-surface-2 px-3 py-2 text-[11.5px] leading-relaxed text-ink-2">
+            <p className="mx-auto max-w-xs rounded-lg bg-surface-2 px-3 py-2 text-center text-[11.5px] leading-relaxed text-ink-2">
               <strong className="font-medium text-ink">Playing a video with sound?</strong>{" "}
-              Use <strong className="font-medium text-ink">Chrome tab</strong> and tick
+              Use <strong className="font-medium text-ink">Chrome tab</strong> above and tick
               &ldquo;Also share tab audio&rdquo; in the picker.{" "}
               {SHARE_AUDIO_SURFACES.systemAudio
                 ? "Window and Entire screen can carry sound too, but a tab is the reliable one."
                 : "On macOS a window or the whole screen cannot carry sound at all — only a tab can."}
             </p>
-          </div>
+          </>
         )}
 
         {step.at === "source" && (
