@@ -46,7 +46,7 @@ import { ActiveSpeakerProvider } from "./active-speaker";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
 import { PreJoin } from "./prejoin";
-import { RecordingIndicator } from "./recording";
+import { RecorderProvider, RecordingBanner, RecordingIndicator } from "./recording";
 import { useAudiencePolls } from "@/lib/polls";
 import { useHostRoster } from "./participants";
 import { VirtualBackground } from "./background-picker";
@@ -945,97 +945,100 @@ function ConnectedRoom({
   return (
     <RoomContext.Provider value={room}>
       <RoomUIProvider value={ui}>
-        {/* The one subscription to voice activity in the app, publishing a single debounced
-            identity for the green border. Wraps the tree rather than sitting inside the stage
-            because `children` passes through untouched — so when the highlight moves, React
-            re-renders the tiles that read it and nothing else. See active-speaker.tsx. */}
-        <ActiveSpeakerProvider>
-        {/* The drag layer wraps everything, because the two ends of the gesture are
-            in different subtrees: the More grid is inside the control bar and the
-            bar's slots are its siblings, and a drop that starts in one has to be
-            resolved against the other. */}
-        <ToolDragProvider onPin={tools.pin} onUnpin={tools.unpin}>
-          {/* dvh, not vh: on mobile Safari a vh-tall column puts the control bar
-              underneath the browser's own toolbar.
+        <RecorderProvider>
+          {/* The one subscription to voice activity in the app, publishing a single debounced
+              identity for the green border. Wraps the tree rather than sitting inside the stage
+              because `children` passes through untouched — so when the highlight moves, React
+              re-renders the tiles that read it and nothing else. See active-speaker.tsx. */}
+          <ActiveSpeakerProvider>
+          {/* The drag layer wraps everything, because the two ends of the gesture are
+              in different subtrees: the More grid is inside the control bar and the
+              bar's slots are its siblings, and a drop that starts in one has to be
+              resolved against the other. */}
+          <ToolDragProvider onPin={tools.pin} onUnpin={tools.unpin}>
+            {/* dvh, not vh: on mobile Safari a vh-tall column puts the control bar
+                underneath the browser's own toolbar.
 
-              data-room is read by globals.css to lift the toast stack above the
-              control bar, so a notification never sits on the Leave button. */}
-          <div data-room className="flex h-dvh flex-col overflow-hidden bg-stage">
-            {/* Zoom chrome: video fills the column; header and Chat overlay it;
-                only the bottom bar takes layout space. A reserved header + a
-                shrinking side rail was the thing that made this feel unlike a
-                webinar client.
+                data-room is read by globals.css to lift the toast stack above the
+                control bar, so a notification never sits on the Leave button. */}
+            <div data-room className="flex h-dvh flex-col overflow-hidden bg-stage">
+              {/* Zoom chrome: video fills the column; header and Chat overlay it;
+                  only the bottom bar takes layout space. A reserved header + a
+                  shrinking side rail was the thing that made this feel unlike a
+                  webinar client.
 
-                On a phone with a panel open, this inverts for the video only:
-                full-bleed-and-covered reads as "the video vanished" on a
-                screen too small to make the overlay read as an overlay, so
-                the video instead keeps a fixed strip at the top and the
-                panel is sized to the remaining space below it (SidePanel),
-                rather than either one overlaying the other. */}
-            <div className="relative min-h-0 min-w-0 flex-1">
-              <div
-                ref={setStageEl}
-                data-stage
-                className="absolute inset-x-0 top-0 flex flex-col"
-                style={panelOpen ? { height: COMPACT_STAGE_HEIGHT } : { bottom: 0 }}
-              >
-                <Stage />
-                {/* Playback controls for a shared video file. Host-only by
-                    construction — it lives in the presenter's own shell, and what the
-                    audience receives is captured from a hidden element elsewhere, so
-                    none of this can reach a subscriber. */}
-                <FileShareBar />
-                <ShareStopBar />
-                <ConnectionBanner />
-                {/* Chat that arrived while the panel was shut, said once rather than
-                    left as a number. Given the same `chatVisible` the badge uses, so
-                    the two cannot disagree about whether you are looking at it. */}
-                <ChatNotifications chatVisible={chatVisible} />
+                  On a phone with a panel open, this inverts for the video only:
+                  full-bleed-and-covered reads as "the video vanished" on a
+                  screen too small to make the overlay read as an overlay, so
+                  the video instead keeps a fixed strip at the top and the
+                  panel is sized to the remaining space below it (SidePanel),
+                  rather than either one overlaying the other. */}
+              <div className="relative min-h-0 min-w-0 flex-1">
+                <div
+                  ref={setStageEl}
+                  data-stage
+                  className="absolute inset-x-0 top-0 flex flex-col"
+                  style={panelOpen ? { height: COMPACT_STAGE_HEIGHT } : { bottom: 0 }}
+                >
+                  <Stage />
+                  {/* Playback controls for a shared video file. Host-only by
+                      construction — it lives in the presenter's own shell, and what the
+                      audience receives is captured from a hidden element elsewhere, so
+                      none of this can reach a subscriber. */}
+                  <FileShareBar />
+                  <ShareStopBar />
+                  <ConnectionBanner />
+                  <RecordingBanner />
+                  {/* Chat that arrived while the panel was shut, said once rather than
+                      left as a number. Given the same `chatVisible` the badge uses, so
+                      the two cannot disagree about whether you are looking at it. */}
+                  <ChatNotifications chatVisible={chatVisible} />
+                </div>
+
+                {/* A poll the host just launched, brought to the attendee rather than left
+                    behind a button. Renders nothing for the stage and nothing when there is
+                    no open poll they have yet to answer. */}
+                <PollPopup />
+
+                {/* Applies the stored virtual background to whatever camera track is
+                    published, and re-applies it when the track is replaced. Renders nothing;
+                    it is here rather than in the settings window because the background has
+                    to survive the window being closed. */}
+                <VirtualBackground />
+
+                <RoomHeader />
+                <SidePanel />
               </div>
 
-              {/* A poll the host just launched, brought to the attendee rather than left
-                  behind a button. Renders nothing for the stage and nothing when there is
-                  no open poll they have yet to answer. */}
-              <PollPopup />
-
-              {/* Applies the stored virtual background to whatever camera track is
-                  published, and re-applies it when the track is replaced. Renders nothing;
-                  it is here rather than in the settings window because the background has
-                  to survive the window being closed. */}
-              <VirtualBackground />
-
-              <RoomHeader />
-              <SidePanel />
+              <ControlBar />
             </div>
 
-            <ControlBar />
-          </div>
+            {/* Outside the stage element on purpose. They are position-fixed and
+                clamped to the stage's rect, so nesting them inside it would put them
+                in its overflow-hidden subtree and clip a window being dragged. */}
+            <ToolWindows />
+          </ToolDragProvider>
 
-          {/* Outside the stage element on purpose. They are position-fixed and
-              clamped to the stage's rect, so nesting them inside it would put them
-              in its overflow-hidden subtree and clip a window being dragged. */}
-          <ToolWindows />
-        </ToolDragProvider>
-
-        {/* Renders every subscribed audio track. Without this you get video and
-            silence, which is a genuinely confusing bug to chase. */}
-        <RoomAudioRenderer />
-        {/* AutoStartAudio (below) clears the browser's autoplay block silently
-            on the first ordinary interaction, for the common case. But which
-            gesture that ends up being — and how long it takes for a track to
-            exist to unlock in the first place — varies per device and
-            network, which is exactly what made audio "sometimes there,
-            sometimes not" once the button below was removed on its own.
-            StartAudio is LiveKit's own component for this: it renders nothing
-            at all once canPlaybackAudio is true, and a real, tappable pill
-            whenever it is not — so nobody is ever left with silence and no
-            way to fix it themselves. */}
-        <StartAudio
-          label="Tap to enable sound"
-          className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full bg-brand px-4 py-2 text-[13px] font-medium text-white shadow-lg"
-        />
-        <AutoStartAudio room={room} />
-        </ActiveSpeakerProvider>
+          {/* Renders every subscribed audio track. Without this you get video and
+              silence, which is a genuinely confusing bug to chase. */}
+          <RoomAudioRenderer />
+          {/* AutoStartAudio (below) clears the browser's autoplay block silently
+              on the first ordinary interaction, for the common case. But which
+              gesture that ends up being — and how long it takes for a track to
+              exist to unlock in the first place — varies per device and
+              network, which is exactly what made audio "sometimes there,
+              sometimes not" once the button below was removed on its own.
+              StartAudio is LiveKit's own component for this: it renders nothing
+              at all once canPlaybackAudio is true, and a real, tappable pill
+              whenever it is not — so nobody is ever left with silence and no
+              way to fix it themselves. */}
+          <StartAudio
+            label="Tap to enable sound"
+            className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full bg-brand px-4 py-2 text-[13px] font-medium text-white shadow-lg"
+          />
+          <AutoStartAudio room={room} />
+          </ActiveSpeakerProvider>
+        </RecorderProvider>
       </RoomUIProvider>
     </RoomContext.Provider>
   );
