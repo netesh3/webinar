@@ -108,19 +108,22 @@ const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "hand"];
 
 /** Attendee-only (control-bar.tsx passes `attendee` as true only for a
  *  genuine attendee — not host, not a scheduled panelist — via
- *  permissions.promoted). Reactions joins Chat + Raise hand on the bar
- *  itself instead of staying in More.
+ *  permissions.promoted, AND only once useMediaToggleSize's tier has room
+ *  for it — see attendeeHasRoomForReactions there). Reactions joins Chat +
+ *  Raise hand on the bar itself instead of staying in More.
  *
  *  Measured, not guessed, including the case that matters most: a promoted
- *  attendee, with BOTH mic and camera toggles showing on the left. At
- *  MediaToggle's mobile sizing (min-w-8 main + w-7 chevron, shrunk
- *  specifically for this), those two toggles plus this four-item bar
- *  measure out to fit with room to spare on a 375px phone next to Leave —
- *  nothing here has to fall back to CENTER_BAR_COMPACT or hide anything.
- *  Before that shrink, at the original mic+camera sizing, this genuinely
- *  didn't fit — the buttons kept their own min-width and visibly overflowed
- *  rather than being silently omitted, which is the bug this shrink and this
- *  list together fix. */
+ *  attendee, with BOTH mic and camera toggles showing on the left, at each
+ *  of MediaToggle's three mobile size tiers (lib/compact.ts's
+ *  MEDIA_TOGGLE_TIERS). At the middle and large tiers (360px+ phones — most
+ *  of them), this four-item bar measures out to fit next to two toggles
+ *  with room to spare. Only the narrowest tier (MEDIA_TOGGLE_SMALL, the
+ *  smallest phones still sold) still doesn't have room for a promoted
+ *  attendee specifically — shrinking the toggles further there would make
+ *  them smaller than the icon they hold, so control-bar.tsx falls back to
+ *  CENTER_BAR_COMPACT for that one case instead. Every other combination —
+ *  including a not-yet-promoted attendee on the smallest phone, where
+ *  nothing is claiming the left yet — gets the full four. */
 const CENTER_BAR_COMPACT_ATTENDEE: readonly ToolId[] = ["chat", "hand", "reactions"];
 
 export function centerBarTools(

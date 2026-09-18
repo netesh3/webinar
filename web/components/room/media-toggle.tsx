@@ -3,6 +3,7 @@
 import { useRoomContext } from "@livekit/components-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { backgroundsSupported } from "@/lib/backgrounds";
+import { useCompact, useMediaToggleSize } from "@/lib/compact";
 import {
   deviceLabel,
   supportsOutputSelection,
@@ -24,17 +25,18 @@ import { useRoomUI } from "./context";
  * are real prefs. Auto-frame, phone audio, and a speaker-test wizard are not, so
  * they are not offered.
  *
- * Mobile only (no `sm:` prefix — desktop keeps min-w-14 and its w-7 caret
- * unchanged): the main button is min-w-8 and the caret is w-7, both down from
- * min-w-10 / w-11. Measured, not guessed — a promoted attendee's bar needs
- * Chat + Raise hand + Reactions + More to fit next to two of these at once,
- * and at the old sizes they genuinely overflowed (each button still its own
- * min-w-10, just spilling past its flex container's edge) rather than
- * visibly failing, which is why it looked fine until someone counted pixels.
- * See control-bar.tsx's leftReservePx, which reserves this exact width and
- * has to be kept in sync with it by hand — there is no single source of
- * truth between an out-of-flow absolute cluster and the padding that
- * reserves room for it. */
+ * Mobile sizing (desktop keeps a flat min-w-14 main button and w-7 caret —
+ * `sm:` has room to spare regardless of phone width) comes from
+ * useMediaToggleSize's three tiers, not one flat guess: a 320px phone and a
+ * 430px one differ by more than this button's whole width, and a size fixed
+ * for either end either overflows the small one or wastes the room the big
+ * one has. Applied as an inline width, not a Tailwind class, because the
+ * tier is a JS-computed number (from matchMedia, re-evaluated on resize),
+ * not a static breakpoint. Every tier's numbers are measured against this
+ * exact markup — see MEDIA_TOGGLE_TIERS' own comment in lib/compact.ts —
+ * and control-bar.tsx's leftReservePx has to reserve exactly what this
+ * renders, by hand; there is no single source of truth between an
+ * out-of-flow absolute cluster and the padding that reserves room for it. */
 
 const subscribeNothing = () => () => {};
 
@@ -72,6 +74,8 @@ export function MediaToggle({
   const { prefs, updatePrefs, tools } = useRoomUI();
   const room = useRoomContext();
   const { notify } = useToast();
+  const compact = useCompact();
+  const { mainPx, chevPx } = useMediaToggleSize();
   const canPickOutput = useSyncExternalStore(
     subscribeNothing,
     supportsOutputSelection,
@@ -125,7 +129,8 @@ export function MediaToggle({
           aria-keyshortcuts={shortcut}
           aria-pressed={active}
           disabled={busy}
-          className="relative flex min-w-8 flex-col items-center justify-center gap-0.5 px-1 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:min-w-14 sm:px-2"
+          style={compact ? { width: mainPx } : undefined}
+          className="relative flex flex-col items-center justify-center gap-0.5 px-1 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:min-w-14 sm:px-2"
         >
           <span className="flex h-10 flex-col items-center justify-center gap-0.5">
             {busy ? <Spinner className="size-5" /> : (meter ?? icon)}
@@ -141,7 +146,8 @@ export function MediaToggle({
           aria-expanded={open}
           aria-controls={open ? menuId : undefined}
           onClick={() => setOpen((v) => !v)}
-          className="grid w-7 shrink-0 place-items-center border-l border-white/15 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50"
+          style={compact ? { width: chevPx } : undefined}
+          className="grid shrink-0 place-items-center border-l border-white/15 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:w-7"
         >
           <ChevronDownIcon className="size-3.5 rotate-180" />
         </button>
