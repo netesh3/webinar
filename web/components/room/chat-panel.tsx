@@ -570,14 +570,28 @@ export function ChatPanel() {
  * why emphasis is not supported and why only http and https become links.
  */
 function MessageBody({ message }: { message: ChatMessage }) {
+  const { joinKey } = useRoomUI();
+  // handleChatMedia (api/internal/api/chat.go) needs the same credential as every
+  // other room endpoint — a join key, for whoever registered without an account —
+  // but message.media.url is the bare, credential-less path the server stores
+  // (it can't bake in a viewer-specific key). A signed-in host or panelist's
+  // session cookie rides along with the request either way, so this is a no-op
+  // for them; an attendee on a join-key link has no cookie at all, and without
+  // this the request 401s with "no_join_key" — on the <img>, silently, as a
+  // broken thumbnail; on the link, as raw JSON in the tab it opens, which is
+  // what actually got reported.
+  const mediaUrl = message.media
+    ? message.media.url +
+      (joinKey ? `?joinKey=${encodeURIComponent(joinKey)}` : "")
+    : undefined;
   return (
     <>
-      {message.media && (
+      {message.media && mediaUrl && (
         // Sized from the stored dimensions so the panel reserves the right space before
         // the bytes arrive. A chat log that reflows as each thumbnail loads is a chat log
         // that jumps under the cursor while you are reading it.
         <a
-          href={message.media.url}
+          href={mediaUrl}
           target="_blank"
           rel="noreferrer noopener"
           className="mt-1 block w-fit max-w-full overflow-hidden rounded-lg border border-line outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
@@ -585,7 +599,7 @@ function MessageBody({ message }: { message: ChatMessage }) {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={message.media.url}
+            src={mediaUrl}
             alt={`Image from ${message.from.name}`}
             width={message.media.width || undefined}
             height={message.media.height || undefined}
