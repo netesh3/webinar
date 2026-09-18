@@ -17,6 +17,7 @@ import {
   useMediaToggleSize,
 } from "@/lib/compact";
 import { isTypingTarget, mediaHotkey } from "@/lib/media-hotkeys";
+import { canShareFile } from "@/lib/file-share";
 import { Spinner } from "../controls";
 import {
   CameraIcon,
@@ -25,6 +26,7 @@ import {
   MIC_CAPSULE_PATH,
   MicIcon,
   MicOffIcon,
+  PlayIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
 } from "../icons";
@@ -154,7 +156,9 @@ export function ControlBar() {
   const [reactionsOpen, setReactionsOpen] = useState(false);
   /** The Invite popover, anchored to whichever slot holds Invite. */
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
+  /** "Share a video file" — its own dialog now that Share itself jumps straight
+   *  to the browser's picker. See onShareClick. */
+  const [shareFileOpen, setShareFileOpen] = useState(false);
   /** Preview-only share toggle — no LiveKit publish in `/preview/room`. */
   const [previewSharing, setPreviewSharing] = useState(false);
   /** The Layout popover, anchored to whichever slot holds it. */
@@ -454,7 +458,7 @@ export function ControlBar() {
     (surface: "browser" | "window" | "monitor") => {
       if (previewChrome) {
         setPreviewSharing(true);
-        setShareOpen(false);
+        setShareFileOpen(false);
         notify("Share screen (preview — not publishing)", "info");
         return;
       }
@@ -582,7 +586,11 @@ export function ControlBar() {
       startScreenShare("monitor");
       return;
     }
-    setShareOpen(true);
+    // Straight to the browser's own picker, pre-focused on its Chrome-tab pane —
+    // the common case, and the one Chrome, Meet and Zoom all default to. Sharing a
+    // recorded file instead is a rarer, deliberate choice with its own flow now;
+    // see shareFileAction below and ShareVideoFileButton.
+    startScreenShare("browser");
   }, [previewChrome, canShare, sharing, stopSharing, startScreenShare, notify]);
 
   return (
@@ -808,6 +816,22 @@ export function ControlBar() {
                     }
                   : undefined
               }
+              // A deliberate, rarer choice than Share itself (which now hands
+              // straight off to the browser's own picker) — always tucked away
+              // here rather than sat on the bar next to it, whether or not Share
+              // itself is on the bar. Hidden outright where the browser cannot
+              // capture a video file at all, same gate the picker's own tab used.
+              shareFileAction={
+                !previewChrome && permissions.canShareScreen && canShareFile()
+                  ? {
+                      label: "Share a video file",
+                      icon: <PlayIcon className="size-5" />,
+                      active: fileShare.active,
+                      busy: fileShare.starting,
+                      onClick: () => setShareFileOpen(true),
+                    }
+                  : undefined
+              }
               // While the grid is only open because a drag is in flight, dismissing
               // it is not something the user can ask for — the drag owns it.
               onClose={() => setMoreOpen(false)}
@@ -867,8 +891,8 @@ export function ControlBar() {
           bar's stacking context on its own. */}
       {!previewChrome && canShare && permissions.canShareScreen && (
         <SharePicker
-          open={shareOpen}
-          onClose={() => setShareOpen(false)}
+          open={shareFileOpen}
+          onClose={() => setShareFileOpen(false)}
           onScreenShare={startScreenShare}
         />
       )}

@@ -35,6 +35,7 @@ export function MoreGrid({
   items,
   panelItems,
   shareAction,
+  shareFileAction,
   onClose,
 }: {
   items: readonly ToolId[];
@@ -53,6 +54,18 @@ export function MoreGrid({
     icon: React.ReactNode;
     active: boolean;
     dimmed: boolean;
+    busy: boolean;
+    onClick: () => void;
+  };
+  /** "Share a video file" — always tucked in here, never on the bar itself,
+   *  same reasoning as shareAction: not a ToolId, passed in fully formed.
+   *  Rarer than a live share, so it does not need shareAction's `dimmed`
+   *  (browsers that cannot do it at all are simply not offered it — see
+   *  control-bar.tsx's canShareFile() gate). */
+  shareFileAction?: {
+    label: string;
+    icon: React.ReactNode;
+    active: boolean;
     busy: boolean;
     onClick: () => void;
   };
@@ -214,30 +227,52 @@ export function MoreGrid({
           </div>
         )}
 
-        {shareAction && (
+        {(shareAction || shareFileAction) && (
           <div className="mb-1 grid grid-cols-3 border-b border-line pb-1">
-            <button
-              type="button"
-              aria-label={shareAction.label}
-              title={shareAction.label}
-              disabled={shareAction.busy}
-              onClick={() => {
-                shareAction.onClick();
-                onClose();
-              }}
-              className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 ${
-                shareAction.active
-                  ? "text-brand"
-                  : shareAction.dimmed
-                    ? "text-ink-3"
-                    : "text-ink-2 hover:text-ink"
-              }`}
-            >
-              {shareAction.icon}
-              <span className="text-[11px] leading-tight font-medium">
-                {shareAction.label}
-              </span>
-            </button>
+            {shareAction && (
+              <button
+                type="button"
+                aria-label={shareAction.label}
+                title={shareAction.label}
+                disabled={shareAction.busy}
+                onClick={() => {
+                  shareAction.onClick();
+                  onClose();
+                }}
+                className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 ${
+                  shareAction.active
+                    ? "text-brand"
+                    : shareAction.dimmed
+                      ? "text-ink-3"
+                      : "text-ink-2 hover:text-ink"
+                }`}
+              >
+                {shareAction.icon}
+                <span className="text-[11px] leading-tight font-medium">
+                  {shareAction.label}
+                </span>
+              </button>
+            )}
+            {shareFileAction && (
+              <button
+                type="button"
+                aria-label={shareFileAction.label}
+                title={shareFileAction.label}
+                disabled={shareFileAction.busy}
+                onClick={() => {
+                  shareFileAction.onClick();
+                  onClose();
+                }}
+                className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 ${
+                  shareFileAction.active ? "text-brand" : "text-ink-2 hover:text-ink"
+                }`}
+              >
+                {shareFileAction.icon}
+                <span className="text-[11px] leading-tight font-medium">
+                  {shareFileAction.label}
+                </span>
+              </button>
+            )}
           </div>
         )}
 
