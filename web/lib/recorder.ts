@@ -25,36 +25,27 @@ import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
  * use, so moving this to LiveKit Egress later changes nothing a host sees.
  */
 
-/** Canvas size. 720p rather than 1080p: it is the resolution a composited
- *  recording actually benefits from, and it halves the encode cost on the machine
- *  that is also presenting. */
-const WIDTH = 1280;
-const HEIGHT = 720;
-const FPS = 25;
+/** Canvas size: 1080p Full HD for razor-sharp presentation text & video. */
+const WIDTH = 1920;
+const HEIGHT = 1080;
+const FPS = 30;
 
 /** How much video is buffered before a chunk is emitted. Five seconds is a
  *  compromise: shorter means more requests, longer means more lost if the tab
- *  dies.
- *
- *  This is a request, not a guarantee. Chrome's MP4 muxer emits a small
- *  initialisation segment quickly and then holds media data in much larger
- *  batches, so the uploaded size climbs in jumps rather than smoothly. Nothing
- *  downstream may assume an even trickle. */
+ *  dies. */
 const CHUNK_MS = 5000;
 
-const VIDEO_BITS = 2_500_000;
-const AUDIO_BITS = 128_000;
+const VIDEO_BITS = 6_000_000; // 6.0 Mbps for crisp 1080p screenshare & camera
+const AUDIO_BITS = 192_000; // 192 kbps high-fidelity stereo/mixed audio
 
 /** Containers in order of preference.
  *
- *  MP4 first because it plays everywhere without a conversion step — Safari only
- *  records MP4, and recent Chrome can too. WebM is the fallback that has been
- *  supported for a decade. The first one this browser reports it can produce wins,
- *  and the server is told which it is. */
+ *  VP9 and H.264 High Profile first for optimal text sharpness and clarity. */
 const CANDIDATE_MIMES = [
+  'video/webm;codecs="vp9,opus"',
+  'video/mp4;codecs="avc1.640028,mp4a.40.2"',
   'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
   "video/mp4",
-  'video/webm;codecs="vp9,opus"',
   'video/webm;codecs="vp8,opus"',
   "video/webm",
 ];
@@ -204,6 +195,8 @@ function drawInto(
   const dh = vh * scale;
 
   ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();

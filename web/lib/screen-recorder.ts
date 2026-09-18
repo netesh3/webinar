@@ -39,8 +39,8 @@ import type { RecorderCallbacks, RecorderState, RecordingTransport } from "./rec
  */
 
 const CHUNK_MS = 5000;
-const VIDEO_BITS = 2_000_000;
-const AUDIO_BITS = 128_000;
+const VIDEO_BITS = 6_000_000; // 6.0 Mbps for crisp screenshare recording
+const AUDIO_BITS = 192_000; // 192 kbps high quality audio
 /** How often the mixer re-scans room participants for new/left/muted mics —
  *  same idea as SessionRecorder's per-frame mixer.sync(), just far less
  *  often since there is no canvas draw loop here to piggyback on and audio
