@@ -101,11 +101,27 @@ export const CENTER_BAR_TOOLS: readonly ToolId[] = [
  *  that much at once. */
 const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "hand"];
 
+/** Attendee-only, and only while the full width is actually free — no
+ *  mic+camera cluster reserved on the left (control-bar.tsx passes
+ *  `attendee` as true only when its own leftClusterCount is 0). The moment
+ *  that cluster claims part of a ~375px phone, this drops straight back to
+ *  CENTER_BAR_COMPACT: the same measured arithmetic above that ruled out
+ *  five things fitting already rules out Chat + Raise hand + Reactions +
+ *  More there too — even Share alone doesn't fit that case (see
+ *  control-bar.tsx's shareOnBar). Host and panelist never pass `attendee`
+ *  at all, so their compact bar is untouched either way. */
+const CENTER_BAR_COMPACT_ATTENDEE: readonly ToolId[] = ["chat", "hand", "reactions"];
+
 export function centerBarTools(
   available: readonly ToolId[],
   compact: boolean,
+  attendee = false,
 ): ToolId[] {
-  const want = compact ? CENTER_BAR_COMPACT : CENTER_BAR_TOOLS;
+  const want = compact
+    ? attendee
+      ? CENTER_BAR_COMPACT_ATTENDEE
+      : CENTER_BAR_COMPACT
+    : CENTER_BAR_TOOLS;
   return want.filter((id) => available.includes(id));
 }
 
@@ -113,9 +129,10 @@ export function centerBarTools(
 export function morePanelTools(
   available: readonly ToolId[],
   compact: boolean,
+  attendee = false,
 ): ToolId[] | undefined {
   if (!compact) return undefined;
-  const onBar = new Set(centerBarTools(available, true));
+  const onBar = new Set(centerBarTools(available, true, attendee));
   const rest = CENTER_BAR_TOOLS.filter(
     (id) => available.includes(id) && !onBar.has(id),
   );

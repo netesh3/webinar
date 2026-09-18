@@ -165,8 +165,57 @@ export function ControlBar() {
   const slots = barSlots(tools.layout, capacity, availableTools);
   const grid = gridItems(tools.layout, slots, availableTools);
   const compact = useCompact();
-  const centerTools = centerBarTools(availableTools, compact);
-  const panelItems = morePanelTools(availableTools, compact);
+
+  // The centred strip's own left padding is what keeps it clear of mic+camera
+  // below — they're out of flow so they don't push it, meaning this has to
+  // reserve their actual width itself. Computed from the same conditions
+  // those buttons render on (not duplicated as a second source of truth that
+  // could drift) rather than a flat guess sized for the worst case: a plain
+  // attendee with neither needs none of this reserved at all, and even a
+  // single MediaToggle (~84px: a ~40px main button plus a ~44px
+  // device-picker chevron) is half of what two together need. Reserving for
+  // two unconditionally was what left no room for the centre strip's own
+  // content the one time both actually show — a full "Bring on stage" grant
+  // — since that's also exactly when Share and RecordButton newly appear
+  // there too. Desktop doesn't need this: MediaToggle is wider there
+  // (min-w-14 vs min-w-10) but `sm:` has enough room to spare either way.
+  const micToggleShown =
+    (permissions.canPublish || permissions.mutedByHost) &&
+    (permissions.canSpeak || permissions.mutedByHost);
+  const cameraToggleShown =
+    (permissions.canPublish || permissions.mutedByHost) &&
+    permissions.canShareCamera;
+  const leftClusterCount = (micToggleShown ? 1 : 0) + (cameraToggleShown ? 1 : 0);
+  // left-2 offset (8px) + N toggles (~84px each on mobile) + gaps between them.
+  const leftReservePx =
+    leftClusterCount === 0 ? 0 : 8 + leftClusterCount * 84 + (leftClusterCount - 1) * 4;
+  // The one case dynamic padding alone doesn't resolve: both toggles showing
+  // is also the only time Share can't fit next to Chat + Raise hand + More
+  // on a phone. Same condition, reused rather than re-derived, so this can
+  // never disagree with how much room was actually reserved above it.
+  const shareOnBar = !compact || !cameraToggleShown;
+
+  /* Attendee, not host or a scheduled panelist. `promoted` is exactly this:
+   * "lifted out of the audience" — a scheduled panelist has canPublish
+   * without it, and the host is excluded outright. Everything below that
+   * treats a person differently from a panelist keys off this, not off
+   * canPublish alone. */
+  const isAttendee = !isHost && (!permissions.canPublish || permissions.promoted);
+  // Reactions only joins the compact bar while the left cluster (mic/camera)
+  // isn't eating the width it needs — see CENTER_BAR_COMPACT_ATTENDEE's own
+  // comment for the measured reason a promoted attendee falls back to the
+  // plain two-item bar instead.
+  const attendeeCompact = isAttendee && leftClusterCount === 0;
+  const centerTools = centerBarTools(availableTools, compact, attendeeCompact);
+  const panelItems = morePanelTools(availableTools, compact, attendeeCompact);
+  // Once the host brings an attendee on stage, mic+camera claim the left —
+  // and Chat / Raise hand / More move to hug the right edge instead of
+  // staying centred, so the strip reads as two clear halves (yours, on the
+  // left; everyone else's tools, on the right) rather than mic and camera
+  // crowding into a centred cluster's space. Host and panelist keep the
+  // centred strip they've always had — isAttendee is false for both, by
+  // construction above.
+  const shiftToolsRight = compact && isAttendee && leftClusterCount > 0;
 
   /* The bar reports itself as a drop zone through state and an effect.
    *
@@ -496,35 +545,6 @@ export function ControlBar() {
    * and `moreOpen` — the user's own choice — is what remains. */
   const gridVisible = moreOpen || drag.drag?.from === "bar";
 
-  // The centred strip's own left padding is what keeps it clear of mic+camera
-  // below — they're out of flow so they don't push it, meaning this has to
-  // reserve their actual width itself. Computed from the same conditions
-  // those buttons render on (not duplicated as a second source of truth that
-  // could drift) rather than a flat guess sized for the worst case: a plain
-  // attendee with neither needs none of this reserved at all, and even a
-  // single MediaToggle (~84px: a ~40px main button plus a ~44px
-  // device-picker chevron) is half of what two together need. Reserving for
-  // two unconditionally was what left no room for the centre strip's own
-  // content the one time both actually show — a full "Bring on stage" grant
-  // — since that's also exactly when Share and RecordButton newly appear
-  // there too. Desktop doesn't need this: MediaToggle is wider there
-  // (min-w-14 vs min-w-10) but `sm:` has enough room to spare either way.
-  const micToggleShown =
-    (permissions.canPublish || permissions.mutedByHost) &&
-    (permissions.canSpeak || permissions.mutedByHost);
-  const cameraToggleShown =
-    (permissions.canPublish || permissions.mutedByHost) &&
-    permissions.canShareCamera;
-  const leftClusterCount = (micToggleShown ? 1 : 0) + (cameraToggleShown ? 1 : 0);
-  // left-2 offset (8px) + N toggles (~84px each on mobile) + gaps between them.
-  const leftReservePx =
-    leftClusterCount === 0 ? 0 : 8 + leftClusterCount * 84 + (leftClusterCount - 1) * 4;
-  // The one case dynamic padding alone doesn't resolve: both toggles showing
-  // is also the only time Share can't fit next to Chat + Raise hand + More
-  // on a phone. Same condition, reused rather than re-derived, so this can
-  // never disagree with how much room was actually reserved above it.
-  const shareOnBar = !compact || !cameraToggleShown;
-
   const onShareClick = useCallback(() => {
     if (!previewChrome && !canShare) {
       notify(
@@ -555,7 +575,7 @@ export function ControlBar() {
       // rendering under a mic button that appears a moment later is the
       // exact bug this is fixing. The inline style below only ever refines
       // it down once real data is in, never up past this floor.
-      className="relative flex min-h-14 shrink-0 items-center justify-center border-t border-white/10 bg-stage-bar pl-48 pr-16 sm:px-56"
+      className={`relative flex min-h-14 shrink-0 items-center ${shiftToolsRight ? "justify-end" : "justify-center"} border-t border-white/10 bg-stage-bar pl-48 pr-16 sm:px-56`}
       style={{
         // Clears the iOS home indicator; without it the leave button sits
         // under the system gesture area and is genuinely hard to hit.
