@@ -377,8 +377,12 @@ function SpotlightLayout({
           {rest.map((tile) => (
             <div
               key={tile.key}
-              className="aspect-video shrink-0 lg:w-[var(--spot)]"
-              style={{ height: "clamp(96px, 18vh, 170px)" }}
+              // A width on wide screens, a height on narrow ones — never both, or
+              // `aspect-video` has no effect (CSS only sizes from aspect-ratio when
+              // one axis is otherwise unconstrained) and the box stops actually
+              // being 16:9. That mismatch is what fed a camera's frame into
+              // `object-cover` at the wrong ratio and read as a bad crop.
+              className="aspect-video h-[clamp(96px,18vh,170px)] shrink-0 lg:h-auto lg:w-[var(--spot)]"
             >
               <ParticipantTile
                 tile={tile}
