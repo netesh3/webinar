@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { Poll } from "@/lib/api-types";
-import { activePoll } from "@/lib/polls";
+import { activePoll, playPollCue } from "@/lib/polls";
 import { Alert, Spinner } from "../controls";
 import { CheckIcon, CloseIcon, PollIcon } from "../icons";
 import { useRoomUI } from "./context";
@@ -43,18 +43,30 @@ export function PollPopup() {
   const open = activePoll(polls.list);
   const showing = recorded ?? (open && !dismissed.has(open.id) ? open : null);
 
-  // The confirmation clears itself. Long enough to read, short enough not to sit over
-  // the stage — and the Polls panel keeps it if they want another look.
+  const canSee = !isHost && !permissions.canPublish && controls.pollsEnabled;
+
+  // One chime per poll, the moment it first has somebody to reach — not on every
+  // render this effect happens to run. See lib/polls.ts for why this plays
+  // unconditionally rather than behind chat's opt-in sound preference.
+  const cuedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!canSee || !open || dismissed.has(open.id) || cuedFor.current === open.id) return;
+    cuedFor.current = open.id;
+    playPollCue();
+  }, [canSee, open, dismissed]);
+
+  // The confirmation clears itself, quickly: it is three words and a checkmark, not
+  // the question — there is nothing left to read past the first second. The Polls
+  // panel keeps the answer if they want another look.
   useEffect(() => {
     if (!recorded) return;
-    const timer = setTimeout(() => setRecorded(null), 4200);
+    const timer = setTimeout(() => setRecorded(null), 1400);
     return () => clearTimeout(timer);
   }, [recorded]);
 
   // The host runs the polls from their own panel, where the tally is. A modal over
   // their own stage would be in the way of the thing they are presenting.
-  if (isHost || permissions.canPublish) return null;
-  if (!controls.pollsEnabled || !showing) return null;
+  if (!canSee || !showing) return null;
 
   return (
     <PollCard
