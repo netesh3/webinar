@@ -18,6 +18,10 @@ const eslintConfig = defineConfig([
     // third-party CDN at runtime. Emscripten-generated: not ours to lint, and not
     // ours to fix.
     "public/mediapipe/**",
+    // RNNoise's AudioWorklet processor, vendored from @sapphi-red/web-noise-suppressor
+    // for the same reason — served from this origin, not a CDN. Also bundled/minified
+    // output: not ours to lint.
+    "public/rnnoise/**",
   ]),
 ]);
 

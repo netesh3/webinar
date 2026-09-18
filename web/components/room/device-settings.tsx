@@ -165,7 +165,7 @@ export function DeviceSettings() {
                 checked={prefs.noiseSuppression}
                 onChange={(v) => updatePrefs({ noiseSuppression: v })}
                 label="Noise suppression"
-                description="Applies the next time your microphone starts. Turn it off if you're playing music through it."
+                description="Applies immediately. Turn it off if you're playing music through your microphone."
               />
             </div>
           </>
