@@ -104,12 +104,13 @@ export function coalesce(
 
 // ------------------------------------------------------------------ the sound cue
 
-/* Off until somebody asks for it, and remembered once they have.
+/* On by default, and remembered once somebody changes it.
  *
- * A host running a session does not want their laptop making a noise they did not
- * arrange, and the audience hears everything a shared screen's audio track picks up. So
- * the default is silence, the preference is per-browser rather than per-session, and the
- * caller is responsible for not asking during a share — see ChatNotifications.
+ * The risk this was originally off for — a host's laptop making a noise they did not
+ * arrange, picked up and broadcast by a shared screen's audio track — is handled
+ * independently: the cue is suppressed for whoever is sharing regardless of this
+ * preference (see ChatNotifications' `sharing` check), so defaulting to on here does
+ * not reopen it. The preference is per-browser rather than per-session.
  */
 const SOUND_KEY = "webcast.chatSound.v1";
 
@@ -120,10 +121,10 @@ let soundEnabled: boolean | null = null;
 function readSoundPreference(): boolean {
   if (soundEnabled !== null) return soundEnabled;
   try {
-    soundEnabled = window.localStorage.getItem(SOUND_KEY) === "on";
+    soundEnabled = window.localStorage.getItem(SOUND_KEY) !== "off";
   } catch {
     // Private browsing. The preference lasts the session.
-    soundEnabled = false;
+    soundEnabled = true;
   }
   return soundEnabled;
 }
