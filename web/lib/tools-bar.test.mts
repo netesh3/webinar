@@ -53,6 +53,38 @@ console.log("\ncenterBarTools");
   ok(none.length === 0, "an attendee with no engagement tools gets an empty cluster");
 }
 
+{
+  const phoneAttendee = centerBarTools(ALL, true, true);
+  ok(
+    phoneAttendee.join() === "chat,hand,reactions",
+    "an attendee with room to spare also gets Reactions on the bar",
+  );
+  const more = morePanelTools(ALL, true, true) ?? [];
+  ok(!more.includes("reactions"), "Reactions is not duplicated into More once it's on the bar");
+  ok(
+    more.includes("qa") && more.includes("settings") && more.includes("participants"),
+    "everything else still lands in More",
+  );
+}
+
+{
+  // Promoted (mic+camera showing): falls back to the plain two-item bar —
+  // see CENTER_BAR_COMPACT_ATTENDEE's own comment for the measured reason.
+  const phonePromoted = centerBarTools(ALL, true, false);
+  ok(
+    phonePromoted.join() === "chat,hand",
+    "attendee=false (e.g. mic+camera claiming the width) keeps the plain bar",
+  );
+  const more = morePanelTools(ALL, true, false) ?? [];
+  ok(more.includes("reactions"), "Reactions falls back into More when there's no room for it on the bar");
+}
+
+{
+  // Host/panelist never pass `attendee` — same two-item bar as always.
+  const phoneHost = centerBarTools(ALL, true);
+  ok(phoneHost.join() === "chat,hand", "host/panelist compact bar is unaffected by the attendee variant");
+}
+
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`,
 );
