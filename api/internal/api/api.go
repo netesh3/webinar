@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	lkauth "github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/config"
@@ -44,6 +45,8 @@ type RoomManager interface {
 	HideAll(ctx context.Context, room string, role types.Role, hidden bool) (int, error)
 	RemoveParticipant(ctx context.Context, room, identity string) error
 	DeleteRoom(ctx context.Context, room string) error
+	StartRoomCompositeEgress(ctx context.Context, roomName string, storageKey string, s3Opts lk.EgressS3Options, templateURL string, preset livekit.EncodingOptionsPreset) (*livekit.EgressInfo, error)
+	StopEgress(ctx context.Context, egressID string) (*livekit.EgressInfo, error)
 }
 
 // Compile-time proof the real client satisfies it.
@@ -63,6 +66,8 @@ type SFUPool interface {
 	Candidates() []string
 	// IDs is every configured project, for logs and diagnostics.
 	IDs() []string
+	// KeyProvider provides API keys/secrets for webhook verification.
+	KeyProvider() lkauth.KeyProvider
 }
 
 /* sfuPool adapts *lk.Pool to SFUPool.
@@ -84,8 +89,9 @@ func (a sfuPool) Get(id string) (RoomManager, error) {
 	return c, nil
 }
 
-func (a sfuPool) Candidates() []string { return a.pool.Candidates() }
-func (a sfuPool) IDs() []string        { return a.pool.IDs() }
+func (a sfuPool) Candidates() []string           { return a.pool.Candidates() }
+func (a sfuPool) IDs() []string                  { return a.pool.IDs() }
+func (a sfuPool) KeyProvider() lkauth.KeyProvider { return a.pool }
 
 // NewSFUPool wraps the real pool for NewServer.
 func NewSFUPool(p *lk.Pool) SFUPool { return sfuPool{pool: p} }
@@ -201,6 +207,7 @@ func (s *Server) Routes() http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		// ---------------- public ----------------
 		r.Get("/config", s.handleConfig)
+		r.Post("/webhooks/livekit", s.handleLiveKitWebhook)
 
 		/* One webinar BY SLUG stays public; the LIST does not.
 		 *
@@ -483,6 +490,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		SupabaseAnonKey:       s.cfg.SupabaseAnonKey,
 		GoogleAuth:            s.cfg.GoogleAuthEnabled(),
 		CloudRecordingEnabled: s.recordings != nil,
+		RecordingMode:         s.cfg.RecordingsMode,
 		TelemetryEnabled:      s.cfg.TelemetryEnabled,
 	})
 }

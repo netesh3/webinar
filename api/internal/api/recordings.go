@@ -12,7 +12,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/livekit/protocol/livekit"
+	"github.com/livekit/protocol/webhook"
 	"github.com/netkumar/webcast/api/internal/httpx"
+	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -79,15 +82,21 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body types.StartRecordingRequest
-	if err := httpx.DecodeJSON(w, r, &body); err != nil {
-		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
-		return
-	}
-	mime, ok := normalizeMime(body.Mime)
-	if !ok {
-		httpx.Error(w, http.StatusUnprocessableEntity, "bad_mime",
-			"That recording format isn't supported. Try a current version of Chrome, Edge or Safari.")
-		return
+	_ = httpx.DecodeJSON(w, r, &body)
+
+	mime := "video/mp4"
+	if s.cfg.RecordingsMode == "client" {
+		var ok bool
+		mime, ok = normalizeMime(body.Mime)
+		if !ok {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_mime",
+				"That recording format isn't supported. Try a current version of Chrome, Edge or Safari.")
+			return
+		}
+	} else if body.Mime != "" {
+		if m, ok := normalizeMime(body.Mime); ok {
+			mime = m
+		}
 	}
 
 	// The same rule the join path uses: anything but ended or draft. Deliberately
@@ -127,21 +136,50 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 	rec.Topic = wb.Topic
 	rec.Ext = store.ExtForMime(mime)
 
+	sfu, sfuErr := s.sfuFor(r.Context(), wb)
+
+	if s.cfg.RecordingsMode == "egress" {
+		if sfuErr != nil {
+			_, _ = s.store.FinishRecording(r.Context(), id, 0)
+			s.fail(w, r, "start egress: sfu lookup", sfuErr)
+			return
+		}
+		preset := livekit.EncodingOptionsPreset_H264_1080P_30
+		if s.cfg.RecordingsEgressPreset == "720p" {
+			preset = livekit.EncodingOptionsPreset_H264_720P_30
+		}
+		s3Opts := lk.EgressS3Options{
+			Endpoint:  s.cfg.RecordingsS3Endpoint,
+			Bucket:    s.cfg.RecordingsS3Bucket,
+			Region:    s.cfg.RecordingsS3Region,
+			AccessKey: s.cfg.RecordingsS3AccessKey,
+			SecretKey: s.cfg.RecordingsS3SecretKey,
+		}
+		roomName := lk.RoomName(slug)
+		info, err := sfu.StartRoomCompositeEgress(r.Context(), roomName, key, s3Opts, s.cfg.RecordingsEgressTemplateURL, preset)
+		if err != nil {
+			_, _ = s.store.FinishRecording(r.Context(), id, 0)
+			s.fail(w, r, "start egress", err)
+			return
+		}
+		if err := s.store.SetEgressID(r.Context(), id, info.EgressId); err != nil {
+			s.log.Warn("start egress: record egress id", "id", id, "egress", info.EgressId, "error", err)
+		}
+		rec.EgressID = info.EgressId
+	}
+
 	// Tell the room. Being recorded without being told is not acceptable, and the
 	// indicator has to come from the server so it reaches every browser rather
 	// than only the one that pressed the button.
-	//
-	// Best-effort, the project lookup included: the recording is already open and the bytes
-	// are already coming, so failing the request here would leave a row nobody closes.
-	if sfu, err := s.sfuFor(r.Context(), wb); err != nil {
+	if sfuErr != nil {
 		s.log.Warn("recording started but the indicator could not be broadcast",
-			"slug", slug, "error", err)
+			"slug", slug, "error", sfuErr)
 	} else {
 		s.pushRoomMetadata(r, sfu, wb)
 	}
 
 	s.log.Info("recording started", "slug", slug, "recording", rec.ID,
-		"by", user.ID, "mime", mime)
+		"by", user.ID, "mime", mime, "mode", s.cfg.RecordingsMode)
 	httpx.JSON(w, http.StatusCreated, rec)
 }
 
@@ -232,6 +270,19 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 	// did (the size cap, in handleRecordingChunk) — a still-staged S3 upload
 	// does not care which of those closed it, only that it is closed now.
 	rec, lookupErr := s.store.RecordingFor(r.Context(), slug, id)
+	if lookupErr == nil && rec.EgressID != "" {
+		if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+			if sfu, err := s.sfuFor(r.Context(), wb); err == nil {
+				if _, err := sfu.StopEgress(r.Context(), rec.EgressID); err != nil {
+					s.log.Warn("stop egress: request failed", "egress", rec.EgressID, "error", err)
+				}
+				s.pushRoomMetadata(r, sfu, wb)
+			}
+		}
+		s.log.Info("egress recording stopping", "slug", slug, "recording", id, "egress", rec.EgressID)
+		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "stopping"})
+		return
+	}
 
 	status, err := s.store.FinishRecording(r.Context(), id, durationMs)
 	if errors.Is(err, store.ErrNotFound) {
@@ -293,7 +344,7 @@ func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, list)
 }
 
-// handleDownloadRecording streams the file.
+// handleDownloadRecording streams the file or redirects to Cloudflare CDN.
 //
 // http.ServeContent rather than io.Copy, for one reason that matters to anyone
 // watching: range requests. Without them a browser cannot seek, so a 40-minute
@@ -315,6 +366,14 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 	}
 	if err != nil {
 		s.fail(w, r, "download recording: lookup", err)
+		return
+	}
+
+	// When Cloudflare CDN is configured and the recording is finalized, redirect
+	// directly to the CDN edge. Free egress via Bandwidth Alliance and instant caching.
+	if s.cfg.RecordingsCDNBaseURL != "" && rec.Status == types.RecordingReady {
+		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
+		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
 		return
 	}
 
@@ -353,6 +412,62 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	}
 	http.ServeContent(w, r, name, rec.CreatedAt, file)
+}
+
+// handleLiveKitWebhook receives events from LiveKit, including EGRESS_ENDED.
+func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
+	event, err := webhook.ReceiveWebhookEvent(r, s.sfu.KeyProvider())
+	if err != nil {
+		s.log.Warn("livekit webhook: auth failed", "error", err)
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid webhook signature.")
+		return
+	}
+
+	switch event.Event {
+	case webhook.EventEgressEnded:
+		info := event.EgressInfo
+		if info == nil {
+			break
+		}
+		s.log.Info("livekit webhook: egress ended",
+			"egress", info.EgressId, "status", info.Status.String(),
+			"room", info.RoomName)
+
+		rec, err := s.store.RecordingByEgressID(r.Context(), info.EgressId)
+		if err != nil {
+			s.log.Warn("livekit webhook: no recording found for egress", "egress", info.EgressId, "error", err)
+			break
+		}
+
+		var sizeBytes int64
+		var durationMs int64
+		for _, file := range info.GetFileResults() {
+			if file.Size > sizeBytes {
+				sizeBytes = file.Size
+			}
+			if file.Duration > 0 {
+				durationMs = file.Duration / int64(time.Millisecond)
+			}
+		}
+
+		if info.Status == livekit.EgressStatus_EGRESS_COMPLETE {
+			if _, err := s.store.FinishRecordingWithStats(r.Context(), rec.ID, sizeBytes, durationMs); err != nil {
+				s.log.Error("livekit webhook: finish recording failed", "id", rec.ID, "error", err)
+			}
+		} else {
+			if _, err := s.store.FinishRecording(r.Context(), rec.ID, 0); err != nil {
+				s.log.Error("livekit webhook: mark failed error", "id", rec.ID, "error", err)
+			}
+		}
+
+		if wb, err := s.store.WebinarBySlug(r.Context(), rec.Webinar); err == nil {
+			if sfu, err := s.sfuFor(r.Context(), wb); err == nil {
+				s.pushRoomMetadata(r, sfu, wb)
+			}
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 // handleDeleteRecording is host-only, unlike the rest of this file: a panelist may

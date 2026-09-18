@@ -28,6 +28,7 @@ type Client struct {
 	apiSecret string
 	tokenTTL  time.Duration
 	rooms     *lksdk.RoomServiceClient
+	egress    *lksdk.EgressClient
 }
 
 // New builds a client. httpURL is the http(s) form used for the server-side
@@ -39,10 +40,13 @@ func New(wsURL, httpURL, apiKey, apiSecret string, tokenTTL time.Duration) *Clie
 		apiSecret: apiSecret,
 		tokenTTL:  tokenTTL,
 		rooms:     lksdk.NewRoomServiceClient(httpURL, apiKey, apiSecret),
+		egress:    lksdk.NewEgressClient(httpURL, apiKey, apiSecret),
 	}
 }
 
-func (c *Client) URL() string { return c.url }
+func (c *Client) URL() string       { return c.url }
+func (c *Client) APIKey() string    { return c.apiKey }
+func (c *Client) APISecret() string { return c.apiSecret }
 
 // ptr is needed because VideoGrant's permission fields are *bool.
 func ptr(b bool) *bool { return &b }
@@ -1053,7 +1057,74 @@ var (
 	// ErrIsHost is not a failure at either call site: muting the host's track is
 	// allowed, latching it is neither possible nor wanted.
 	ErrIsHost = errors.New("participant is the host")
-	// ErrRemoteUnmute means the SFU will not switch a live microphone back on from
+// ErrRemoteUnmute means the SFU will not switch a live microphone back on from
 	// the server. See isRemoteUnmuteDisabled — this is a protection, not a fault.
 	ErrRemoteUnmute = errors.New("the media server does not allow remote unmute")
 )
+
+// EgressS3Options configures Backblaze B2 or any S3-compatible destination for Egress.
+type EgressS3Options struct {
+	Endpoint  string
+	Bucket    string
+	Region    string
+	AccessKey string
+	SecretKey string
+}
+
+// StartRoomCompositeEgress launches server-side recording with LiveKit Egress.
+func (c *Client) StartRoomCompositeEgress(
+	ctx context.Context,
+	roomName string,
+	storageKey string,
+	s3Opts EgressS3Options,
+	templateURL string,
+	preset livekit.EncodingOptionsPreset,
+) (*livekit.EgressInfo, error) {
+	if c.egress == nil {
+		return nil, errors.New("egress is not configured on this client")
+	}
+
+	req := &livekit.RoomCompositeEgressRequest{
+		RoomName: roomName,
+		FileOutputs: []*livekit.EncodedFileOutput{
+			{
+				FileType: livekit.EncodedFileType_MP4,
+				Filepath: storageKey,
+				Output: &livekit.EncodedFileOutput_S3{
+					S3: &livekit.S3Upload{
+						Endpoint:       s3Opts.Endpoint,
+						Bucket:         s3Opts.Bucket,
+						Region:         s3Opts.Region,
+						AccessKey:      s3Opts.AccessKey,
+						Secret:         s3Opts.SecretKey,
+						ForcePathStyle: true, // Backblaze B2 uses path-style addressing
+					},
+				},
+			},
+		},
+	}
+
+	if templateURL != "" {
+		req.CustomBaseUrl = templateURL
+		req.Layout = "custom"
+	} else {
+		req.Layout = "speaker"
+	}
+
+	req.Options = &livekit.RoomCompositeEgressRequest_Preset{
+		Preset: preset,
+	}
+
+	return c.egress.StartRoomCompositeEgress(ctx, req)
+}
+
+// StopEgress requests LiveKit Egress to finalize recording and upload the file.
+func (c *Client) StopEgress(ctx context.Context, egressID string) (*livekit.EgressInfo, error) {
+	if c.egress == nil {
+		return nil, errors.New("egress is not configured on this client")
+	}
+	return c.egress.StopEgress(ctx, &livekit.StopEgressRequest{
+		EgressId: egressID,
+	})
+}
+

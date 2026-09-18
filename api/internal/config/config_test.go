@@ -70,8 +70,8 @@ func TestSeedIsDevelopmentOnly(t *testing.T) {
 
 func TestRecordingBackendMustExist(t *testing.T) {
 	setEnv(t, map[string]string{"RECORDINGS_BACKEND": "s3"})
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "not implemented") {
-		t.Errorf("RECORDINGS_BACKEND=s3 error = %v, want a refusal that says so", err)
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "RECORDINGS_S3_BUCKET is required") {
+		t.Errorf("RECORDINGS_BACKEND=s3 without credentials error = %v, want missing bucket error", err)
 	}
 
 	setEnv(t, map[string]string{"RECORDINGS_BACKEND": "gcs"})

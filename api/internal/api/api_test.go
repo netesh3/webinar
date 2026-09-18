@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	lkauth "github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
 	"github.com/netkumar/webcast/api/internal/api"
 	"github.com/netkumar/webcast/api/internal/auth"
@@ -85,6 +86,9 @@ type fakeRooms struct {
 	roleChanges   []lk.Spec
 	removed       []string
 	deleted       []string
+	egressCalls   []string
+	stoppedEgress []string
+	egressErr     error
 	// sent records every realtime packet the API handed to the SFU, with the
 	// recipient list. The list is the thing worth asserting: it is what decides who
 	// a panelist-only message actually reaches.
@@ -363,6 +367,29 @@ func (f *fakeRooms) DeleteRoom(_ context.Context, room string) error {
 	return nil
 }
 
+func (f *fakeRooms) StartRoomCompositeEgress(_ context.Context, roomName, storageKey string, _ lk.EgressS3Options, _ string, _ livekit.EncodingOptionsPreset) (*livekit.EgressInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.egressErr != nil {
+		return nil, f.egressErr
+	}
+	f.egressCalls = append(f.egressCalls, roomName+":"+storageKey)
+	return &livekit.EgressInfo{
+		EgressId: "EG_fake_" + roomName,
+		Status:   livekit.EgressStatus_EGRESS_STARTING,
+	}, nil
+}
+
+func (f *fakeRooms) StopEgress(_ context.Context, egressID string) (*livekit.EgressInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stoppedEgress = append(f.stoppedEgress, egressID)
+	return &livekit.EgressInfo{
+		EgressId: egressID,
+		Status:   livekit.EgressStatus_EGRESS_ENDING,
+	}, nil
+}
+
 func (f *fakeRooms) setRoster(list ...types.LiveParticipant) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -473,6 +500,15 @@ func (p *fakePool) Candidates() []string {
 }
 
 func (p *fakePool) IDs() []string { return append([]string{}, p.ids...) }
+
+func (p *fakePool) KeyProvider() lkauth.KeyProvider {
+	return fakeKeyProvider{}
+}
+
+type fakeKeyProvider struct{}
+
+func (fakeKeyProvider) GetSecret(key string) string { return "secret_" + key }
+func (fakeKeyProvider) NumKeys() int               { return 1 }
 
 // forget removes a project entirely, which is what an operator deleting it from
 // LIVEKIT_PROJECTS does. Distinct from disabling: a forgotten project cannot serve even the

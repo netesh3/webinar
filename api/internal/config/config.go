@@ -96,6 +96,15 @@ type Config struct {
 	RecordingsS3AccessKey string
 	RecordingsS3SecretKey string
 
+	// RecordingsMode: "egress" (server-side via LiveKit Egress) or "client" (browser composite).
+	RecordingsMode string
+	// RecordingsEgressTemplateURL is the web template URL loaded by LiveKit Egress.
+	RecordingsEgressTemplateURL string
+	// RecordingsEgressPreset: "1080p" (default) or "720p".
+	RecordingsEgressPreset string
+	// RecordingsCDNBaseURL: Cloudflare CDN URL for serving recordings (e.g. https://recordings.webinarliv.com).
+	RecordingsCDNBaseURL string
+
 	// Branding and public URLs are served to the frontend over /api/config so
 	// the bundle carries no build-time constants for things an operator sets.
 	// Share links in particular must not be baked in: a link that points at
@@ -285,9 +294,20 @@ func Load() (Config, error) {
 		// s3.eu-central-003.backblazeb2.com) is documented well enough that
 		// an operator setting RECORDINGS_S3_ENDPOINT is expected to set this
 		// to match.
-		RecordingsS3Region:    env("RECORDINGS_S3_REGION", "us-east-1"),
-		RecordingsS3AccessKey: env("RECORDINGS_S3_ACCESS_KEY", ""),
-		RecordingsS3SecretKey: env("RECORDINGS_S3_SECRET_KEY", ""),
+		RecordingsS3Region:          env("RECORDINGS_S3_REGION", "us-east-1"),
+		RecordingsS3AccessKey:       env("RECORDINGS_S3_ACCESS_KEY", ""),
+		RecordingsS3SecretKey:       env("RECORDINGS_S3_SECRET_KEY", ""),
+		RecordingsMode:              strings.ToLower(env("RECORDINGS_MODE", "")),
+		RecordingsEgressTemplateURL: strings.TrimRight(env("RECORDINGS_EGRESS_TEMPLATE_URL", ""), "/"),
+		RecordingsEgressPreset:      strings.ToLower(env("RECORDINGS_EGRESS_PRESET", "1080p")),
+		RecordingsCDNBaseURL:        strings.TrimRight(env("RECORDINGS_CDN_BASE_URL", ""), "/"),
+	}
+	if c.RecordingsMode == "" {
+		if c.RecordingsBackend == "s3" {
+			c.RecordingsMode = "egress"
+		} else {
+			c.RecordingsMode = "client"
+		}
 	}
 	c.CookieSecure = envBool("COOKIE_SECURE", c.Env != "development")
 	c.SignupOpen = envBool("SIGNUP_OPEN", true)
@@ -404,6 +424,15 @@ func (c Config) validate() error {
 		}
 		if c.MaxRecordingMB < 1 {
 			errs = append(errs, errors.New("MAX_RECORDING_MB must be >= 1"))
+		}
+		if c.RecordingsMode != "egress" && c.RecordingsMode != "client" {
+			errs = append(errs, fmt.Errorf("RECORDINGS_MODE=%q is not a known mode (egress, client)", c.RecordingsMode))
+		}
+		if c.RecordingsMode == "egress" && c.RecordingsBackend != "s3" {
+			errs = append(errs, errors.New("RECORDINGS_BACKEND must be 's3' when RECORDINGS_MODE is 'egress'"))
+		}
+		if c.RecordingsCDNBaseURL != "" && !strings.HasPrefix(c.RecordingsCDNBaseURL, "http://") && !strings.HasPrefix(c.RecordingsCDNBaseURL, "https://") {
+			errs = append(errs, fmt.Errorf("RECORDINGS_CDN_BASE_URL must begin with http:// or https://: %q", c.RecordingsCDNBaseURL))
 		}
 	}
 

@@ -899,7 +899,8 @@ type Recording struct {
 	StoppedAt  string `json:"stoppedAt,omitempty"`
 	// Ext is the file extension for the download name, derived from Mime by the
 	// server so no client has to parse codec strings.
-	Ext string `json:"ext"`
+	Ext      string `json:"ext"`
+	EgressID string `json:"egressId,omitempty"`
 }
 
 // StartRecordingRequest is sent by the browser that will do the capturing. It
@@ -1058,7 +1059,8 @@ type AppConfig struct {
 	 * on-device recording (see web/lib/local-recording.ts) needs neither this nor
 	 * the server's storage, so it is unaffected by it either way.
 	 */
-	CloudRecordingEnabled bool `json:"cloudRecordingEnabled"`
+	CloudRecordingEnabled bool   `json:"cloudRecordingEnabled"`
+	RecordingMode         string `json:"recordingMode,omitempty"`
 	// TelemetryEnabled mirrors config.Config.TelemetryEnabled: whether POST
 	// /telemetry accepts anything. The frontend's telemetry poller checks this
 	// before attaching a single listener or sampling a single stat, so turning

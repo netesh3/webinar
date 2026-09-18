@@ -101,3 +101,19 @@ func (p *Pool) IDs() []string {
 	copy(out, p.all)
 	return out
 }
+
+// GetSecret implements auth.KeyProvider for webhook verification.
+func (p *Pool) GetSecret(key string) string {
+	for _, c := range p.byID {
+		if c.APIKey() == key {
+			return c.APISecret()
+		}
+	}
+	return ""
+}
+
+// NumKeys implements auth.KeyProvider for webhook verification.
+func (p *Pool) NumKeys() int {
+	return len(p.byID)
+}
+

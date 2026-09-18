@@ -87,6 +87,8 @@ type RecordingFile struct {
 	StartedBy  string
 	Topic      string
 	CreatedAt  time.Time
+	EgressID   string
+	Webinar    string
 }
 
 // RecordingFor loads one recording, scoped to the webinar in the URL.
@@ -98,12 +100,12 @@ func (s *Store) RecordingFor(ctx context.Context, slug, id string) (RecordingFil
 	var f RecordingFile
 	err := s.pool.QueryRow(ctx, `
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes,
-		       r.started_by_name, w.topic, r.created_at
+		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
 		 WHERE w.slug = $1 AND r.id = $2::uuid`, slug, id,
 	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes,
-		&f.StartedBy, &f.Topic, &f.CreatedAt)
+		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar)
 	if noRows(err) {
 		return RecordingFile{}, ErrNotFound
 	}
@@ -139,6 +141,52 @@ func (s *Store) FinishRecording(ctx context.Context, id string, durationMs int64
 	return status, err
 }
 
+// SetEgressID associates a server-side LiveKit Egress ID with a recording.
+func (s *Store) SetEgressID(ctx context.Context, id, egressID string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE recordings
+		   SET egress_id = $2
+		 WHERE id = $1::uuid`, id, egressID)
+	return err
+}
+
+// RecordingByEgressID loads one recording by its LiveKit Egress ID.
+func (s *Store) RecordingByEgressID(ctx context.Context, egressID string) (RecordingFile, error) {
+	var f RecordingFile
+	err := s.pool.QueryRow(ctx, `
+		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes,
+		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug
+		  FROM recordings r
+		  JOIN webinars w ON w.id = r.webinar_id
+		 WHERE r.egress_id = $1`, egressID,
+	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes,
+		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar)
+	if noRows(err) {
+		return RecordingFile{}, ErrNotFound
+	}
+	if err != nil {
+		return RecordingFile{}, err
+	}
+	return f, nil
+}
+
+// FinishRecordingWithStats closes a recording with explicit size and duration from Egress.
+func (s *Store) FinishRecordingWithStats(ctx context.Context, id string, sizeBytes, durationMs int64) (types.RecordingStatus, error) {
+	var status types.RecordingStatus
+	err := s.pool.QueryRow(ctx, `
+		UPDATE recordings
+		   SET status = CASE WHEN $2 > 0 OR size_bytes > 0 THEN 'ready' ELSE 'failed' END,
+		       size_bytes = GREATEST(size_bytes, $2),
+		       duration_ms = GREATEST(duration_ms, $3),
+		       stopped_at = now()
+		 WHERE id = $1::uuid AND status = 'recording'
+		 RETURNING status`, id, sizeBytes, durationMs).Scan(&status)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
+	return status, err
+}
+
 // FinishActiveRecordings closes whatever is still open on a webinar. Called when
 // the session ends: the room is about to be deleted, so nothing more is coming.
 func (s *Store) FinishActiveRecordings(ctx context.Context, slug string) error {
@@ -162,7 +210,7 @@ func (s *Store) ActiveRecording(ctx context.Context, slug string) (bool, error) 
 		SELECT EXISTS (
 		  SELECT 1 FROM recordings r JOIN webinars w ON w.id = r.webinar_id
 		   WHERE w.slug = $1 AND r.status = 'recording'
-		     AND r.last_chunk_at > now() - $2::interval)`,
+		     AND (r.egress_id IS NOT NULL OR r.last_chunk_at > now() - $2::interval))`,
 		slug, staleAfter.String()).Scan(&live)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return false, err
@@ -174,7 +222,8 @@ func (s *Store) ActiveRecording(ctx context.Context, slug string) (bool, error) 
 func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, w.slug, w.topic, r.status, r.mime, r.size_bytes,
-		       r.duration_ms, r.started_by_name, r.created_at, r.stopped_at
+		       r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
+		       COALESCE(r.egress_id, '')
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
 		 WHERE w.slug = $1
@@ -193,7 +242,7 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 			stoppedAt *time.Time
 		)
 		if err := rows.Scan(&rec.ID, &rec.Webinar, &rec.Topic, &rec.Status, &rec.Mime,
-			&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt); err != nil {
+			&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt, &rec.EgressID); err != nil {
 			return nil, err
 		}
 		rec.CreatedAt = createdAt.Format(time.RFC3339)
