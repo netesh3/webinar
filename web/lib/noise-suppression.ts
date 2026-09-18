@@ -24,11 +24,25 @@ import { useEffect, useRef, useState } from "react";
  * AudioWorkletNode with no server or account involved. See public/rnnoise/README.md
  * for where the WASM comes from.
  *
- * The graph: MediaStreamAudioSourceNode(mic) → RnnoiseWorkletNode → Media-
- * StreamAudioDestinationNode, and the destination's track is what gets published.
- * AudioWorkletNode runs on the render thread's own high-priority worklet thread, not
- * the main thread — same reason the video segmenter stays off the main thread, just a
- * browser-native mechanism instead of a hand-rolled one.
+ * The graph: MediaStreamAudioSourceNode(mic) → RnnoiseWorkletNode → GainNode
+ * (MAKEUP_GAIN) → MediaStreamAudioDestinationNode, and the destination's track is
+ * what gets published. AudioWorkletNode runs on the render thread's own
+ * high-priority worklet thread, not the main thread — same reason the video
+ * segmenter stays off the main thread, just a browser-native mechanism instead of
+ * a hand-rolled one.
+ *
+ * The gain stage exists because RNNoise is not level-preserving. Its output is a
+ * per-frame spectral mask applied to the input, and that mask does not settle at
+ * unity gain even on frames it correctly recognises as speech — reported directly
+ * as "when noise suppression is on, audio volume is also getting reduced," and a
+ * well-known property of this exact model family (the same makeup-gain fix is
+ * standard practice in, for example, the RNNoise plugin for OBS). MAKEUP_GAIN is a
+ * fixed heuristic rather than a measured one: comparing input and output RMS in
+ * real time to correct it exactly would need its own AnalyserNode pass every frame
+ * for a gain a fixed constant already gets close enough to, and a wrong measurement
+ * pumping the level up and down under someone's own voice would be worse than a
+ * fixed boost that undershoots on a quiet speaker or overshoots slightly on a loud
+ * one.
  *
  * This replaces the constraint entirely rather than layering under it: two noise
  * suppressors in series (the browser's spectral one, then RNNoise) fight each other
@@ -43,6 +57,8 @@ import { useEffect, useRef, useState } from "react";
  * capture's lifetime. setProcessor/stopProcessor apply to the track that is already
  * live, so the toggle now takes effect immediately.
  */
+
+const MAKEUP_GAIN = 1.5;
 
 const RNNOISE_WORKLET_PATH = "/rnnoise/workletProcessor.js";
 const RNNOISE_WASM_PATH = "/rnnoise/rnnoise.wasm";
@@ -91,6 +107,7 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
 
   private source?: MediaStreamAudioSourceNode;
   private node?: AudioWorkletNode & { destroy(): void };
+  private gain?: GainNode;
   private destination?: MediaStreamAudioDestinationNode;
 
   async init(opts: AudioProcessorOptions): Promise<void> {
@@ -105,13 +122,17 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
     // Mono: what a microphone capture actually is here, and RNNoise is a per-channel
     // model — asking for more channels than the source has is pure idle cost.
     const node = new RnnoiseWorkletNode(ctx, { wasmBinary: binary, maxChannels: 1 });
+    const gain = ctx.createGain();
+    gain.gain.value = MAKEUP_GAIN;
     const destination = ctx.createMediaStreamDestination();
 
     source.connect(node);
-    node.connect(destination);
+    node.connect(gain);
+    gain.connect(destination);
 
     this.source = source;
     this.node = node;
+    this.gain = gain;
     this.destination = destination;
     this.processedTrack = destination.stream.getAudioTracks()[0];
   }
@@ -131,10 +152,12 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
     this.source?.disconnect();
     this.node?.disconnect();
     this.node?.destroy();
+    this.gain?.disconnect();
     this.destination?.disconnect();
     this.processedTrack?.stop();
     this.source = undefined;
     this.node = undefined;
+    this.gain = undefined;
     this.destination = undefined;
     this.processedTrack = undefined;
   }
