@@ -623,6 +623,8 @@ export interface Account {
    * grantable by whoever takes over one account.
    */
   isAdmin: boolean;
+  /** MaxDurationMin is an optional custom maximum meeting duration in minutes. NULL means system default. */
+  maxDurationMin?: number | null;
 }
 export interface SignupRequest {
   name: string;
@@ -676,6 +678,8 @@ export interface AdminUser {
    * sessions still needs to be able to start them.
    */
   webinarCount: number /* int */;
+  /** MaxDurationMin is an optional custom maximum meeting duration in minutes configured by an admin. */
+  maxDurationMin?: number | null;
 }
 export interface LoginRequest {
   email: string;
@@ -850,6 +854,8 @@ export interface JoinResponse {
    * 	 * join on their account and have no registration at all.
    */
   joinKey?: string;
+  /** MaxDurationMin is the maximum allowed duration for this session in minutes. */
+  maxDurationMin: number;
 }
 /**
  * RoomMeta is mirrored into LiveKit room metadata on every control change.
@@ -874,6 +880,8 @@ export interface RoomMeta {
    * reach the whole room.
    */
   recording: boolean;
+  /** MaxDurationMin is the maximum allowed duration for this session in minutes. */
+  maxDurationMin?: number;
 }
 export type RecordingStatus = string;
 export const RecordingActive: RecordingStatus = "recording";
@@ -1084,6 +1092,8 @@ export interface AppConfig {
    * the flag off also turns off the client-side work, not just the endpoint.
    */
   telemetryEnabled?: boolean;
+  /** DefaultMaxMeetingMin is the system default maximum meeting duration in minutes (default 180 = 3h). */
+  defaultMaxMeetingMin: number;
 }
 /**
  *  TelemetryEvent is one entry in a POST /telemetry batch — the shape is

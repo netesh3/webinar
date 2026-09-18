@@ -104,6 +104,7 @@ export function PreviewRoom() {
       startedAt: join.startedAt ?? null,
       endedAt: null,
       status: "live",
+      maxDurationMin: null,
       recording: false,
       isHost: true,
       permissions: HOST_PERMS,

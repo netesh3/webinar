@@ -41,6 +41,8 @@ const CONFIG_FALLBACK: AppConfig = {
   // Unknown until the real config arrives, and false is the safe guess: it only
   // hides "the cloud" as a record destination, never offers one that 503s.
   cloudRecordingEnabled: false,
+  // 180 minutes = 3 hours, matches the server default.
+  defaultMaxMeetingMin: 180,
 };
 
 const ConfigContext = createContext<AppConfig>(CONFIG_FALLBACK);

@@ -66,6 +66,7 @@ import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
 import { useTelemetry } from "@/lib/telemetry";
+import { MeetingLimitBanner } from "./meeting-limit-banner";
 
 /* The webinar room.
  *
@@ -391,9 +392,10 @@ function ConnectedRoom({
     [join.identity, join.displayName, join.role, liveRole],
   );
 
-  const { controls, topic, recording, startedAt, endedAt, status } = useSessionControls(
+  const { controls, topic, recording, startedAt, endedAt, status, maxDurationMin } = useSessionControls(
     room,
     join.controls,
+    join.maxDurationMin,
   );
   const { notify } = useToast();
   // Attendee identities already announced to the host this room session —
@@ -862,6 +864,7 @@ function ConnectedRoom({
       startedAt: startedAt ?? join.startedAt ?? null,
       endedAt: endedAt ?? join.endedAt ?? null,
       status,
+      maxDurationMin,
       recording,
       isHost,
       permissions,
@@ -900,6 +903,7 @@ function ConnectedRoom({
       startedAt,
       endedAt,
       status,
+      maxDurationMin,
       recording,
       isHost,
       permissions,
@@ -972,6 +976,11 @@ function ConnectedRoom({
                       none of this can reach a subscriber. */}
                   <FileShareBar />
                   <ConnectionBanner />
+                  <MeetingLimitBanner
+                    startedAt={startedAt}
+                    maxDurationMin={maxDurationMin}
+                    endedByLimit={status === "ended" && Boolean(startedAt) && Boolean(maxDurationMin)}
+                  />
                   <RecordingBanner />
                   {/* Chat that arrived while the panel was shut, said once rather than
                       left as a number. Given the same `chatVisible` the badge uses, so

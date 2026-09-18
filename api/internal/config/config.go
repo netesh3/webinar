@@ -62,6 +62,8 @@ type Config struct {
 	 * out more seats than they configured.
 	 */
 	DefaultAttendeeLimit int
+	// DefaultMaxMeetingMin is the default maximum duration for meetings in minutes (default 180 = 3h).
+	DefaultMaxMeetingMin int
 
 	// Recording.
 	//
@@ -267,6 +269,7 @@ func Load() (Config, error) {
 		CORSOrigins:          splitAndTrim(env("CORS_ORIGINS", "http://localhost:3000")),
 		AppName:              env("APP_NAME", "Webinar Liv"),
 		SupportEmail:         env("SUPPORT_EMAIL", ""),
+		DefaultMaxMeetingMin: envInt("DEFAULT_MAX_MEETING_MIN", 180),
 		AdminEmails:          splitAndTrim(env("ADMIN_EMAILS", "")),
 		AdminPassword:        env("ADMIN_PASSWORD", ""),
 		SMTPHost:             env("SMTP_HOST", ""),
@@ -383,6 +386,9 @@ func (c Config) validate() error {
 	 * coach wondering why nobody can sign up. */
 	if c.DefaultAttendeeLimit < 1 {
 		errs = append(errs, errors.New("DEFAULT_ATTENDEE_LIMIT must be >= 1"))
+	}
+	if c.DefaultMaxMeetingMin < 1 {
+		errs = append(errs, errors.New("DEFAULT_MAX_MEETING_MIN must be >= 1"))
 	}
 	if c.RegisterPerMin < 1 {
 		errs = append(errs, errors.New("REGISTER_RATE_PER_MIN must be >= 1"))

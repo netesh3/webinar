@@ -513,6 +513,7 @@ type Webinar struct {
 	Status    WebinarStatus `json:"status"`
 	StartedAt string        `json:"startedAt,omitempty"`
 	EndedAt   string        `json:"endedAt,omitempty"`
+	MaxDurationMin int      `json:"maxDurationMin"`
 
 	Host      Person   `json:"host"`
 	Panelists []Person `json:"panelists"`
@@ -626,6 +627,9 @@ type Account struct {
 	// endpoint that promotes an admin, deliberately, because a privilege grantable in-band is
 	// grantable by whoever takes over one account.
 	IsAdmin bool `json:"isAdmin"`
+	// MaxDurationMin is an optional custom maximum meeting duration in minutes for this user.
+	// NULL means use the system default (e.g. 180 min = 3 hours).
+	MaxDurationMin *int `json:"maxDurationMin,omitempty"`
 }
 
 type SignupRequest struct {
@@ -674,6 +678,8 @@ type AdminUser struct {
 	// WebinarCount is why revoking is not always safe: an account that owns scheduled
 	// sessions still needs to be able to start them.
 	WebinarCount int `json:"webinarCount"`
+	// MaxDurationMin is an optional custom maximum meeting duration in minutes configured by an admin.
+	MaxDurationMin *int `json:"maxDurationMin,omitempty"`
 }
 
 type LoginRequest struct {
@@ -848,6 +854,12 @@ type JoinResponse struct {
 	 * join on their account and have no registration at all.
 	 */
 	JoinKey string `json:"joinKey,omitempty"`
+	// MaxDurationMin is the maximum allowed duration for this session in minutes.
+	MaxDurationMin int `json:"maxDurationMin"`
+}
+
+type SetUserMaxDurationRequest struct {
+	MaxDurationMin *int `json:"maxDurationMin"`
 }
 
 // RoomMeta is mirrored into LiveKit room metadata on every control change.
@@ -868,6 +880,8 @@ type RoomMeta struct {
 	// thing people sue over, so the indicator has to come from the server and
 	// reach the whole room.
 	Recording bool `json:"recording"`
+	// MaxDurationMin is the maximum allowed duration for this session in minutes.
+	MaxDurationMin int `json:"maxDurationMin,omitempty"`
 }
 
 // ------------------------------------------------------------------ recordings
@@ -1034,6 +1048,8 @@ type AppConfig struct {
 	SupportEmail string `json:"supportEmail,omitempty"`
 	MaxAttendees int    `json:"maxAttendees"`
 	SignupOpen   bool   `json:"signupOpen"`
+	// DefaultMaxMeetingMin is the system default maximum meeting duration in minutes (default 180 = 3h).
+	DefaultMaxMeetingMin int `json:"defaultMaxMeetingMin"`
 	// Tracks are the topic tags already in use, offered as suggestions rather
 	// than a fixed enum so an operator never has to edit a list in the bundle.
 	Tracks []string `json:"tracks"`

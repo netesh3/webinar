@@ -477,6 +477,7 @@ function newId(): string {
 export function useSessionControls(
   room: Room | null,
   fallback: SessionControls,
+  joinMaxDurationMin?: number,
 ): {
   controls: SessionControls;
   topic: string | null;
@@ -490,6 +491,8 @@ export function useSessionControls(
   /** Whether the session is being recorded. From the server, not from whoever
    *  pressed the button, so every browser in the room agrees. */
   recording: boolean;
+  /** The maximum meeting duration in minutes for this session. */
+  maxDurationMin: number | null;
 } {
   const [meta, setMeta] = useState<RoomMeta | null>(null);
 
@@ -525,8 +528,9 @@ export function useSessionControls(
       startedAt: meta?.startedAt || null,
       endedAt: meta?.endedAt || null,
       recording: meta?.recording === true,
+      maxDurationMin: meta?.maxDurationMin ?? joinMaxDurationMin ?? null,
     }),
-    [meta, fallback],
+    [meta, fallback, joinMaxDurationMin],
   );
 }
 

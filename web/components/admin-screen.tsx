@@ -88,6 +88,28 @@ export function AdminScreen() {
     }
   }
 
+  async function setMaxDuration(u: AdminUser, maxDurationMin: number | null) {
+    setBusy(u.id);
+    try {
+      await api.setUserMaxDuration(u.id, maxDurationMin);
+      setUsers((prev) =>
+        (prev ?? []).map((row) =>
+          row.id === u.id ? { ...row, maxDurationMin } : row,
+        ),
+      );
+      notify(
+        maxDurationMin
+          ? `Max meeting duration for ${u.name || u.email} set to ${maxDurationMin} minutes.`
+          : `Max meeting duration for ${u.name || u.email} reset to system default.`,
+        "ok",
+      );
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   /* Refused server-side too — for the caller's own account, and for one that
    * still owns webinars — this only saves the round trip and gives the error
    * a place to land next to the button that caused it. */
@@ -190,6 +212,28 @@ export function AdminScreen() {
                       onChange={(next) => void setHost(u, next)}
                       label="Can host"
                     />
+                  )}
+
+                  {/* Max meeting duration — only shown for hosts */}
+                  {u.canHost && busy !== u.id && (
+                    <select
+                      aria-label="Max meeting duration"
+                      title="Max meeting duration"
+                      value={u.maxDurationMin ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        void setMaxDuration(u, val === "" ? null : Number(val));
+                      }}
+                      className="rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
+                    >
+                      <option value="">Default (3h)</option>
+                      <option value="60">1 hour</option>
+                      <option value="120">2 hours</option>
+                      <option value="180">3 hours</option>
+                      <option value="240">4 hours</option>
+                      <option value="360">6 hours</option>
+                      <option value="480">8 hours</option>
+                    </select>
                   )}
 
                   <button

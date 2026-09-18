@@ -69,7 +69,7 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := userFromContext(r.Context())
-	wb, err := s.store.CreateWebinar(r.Context(), user.ID, in)
+	wb, err := s.store.CreateWebinar(r.Context(), user.ID, in, s.cfg.DefaultMaxMeetingMin)
 	if errors.Is(err, store.ErrInvalid) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "invalid", err.Error())
 		return
@@ -649,59 +649,55 @@ func (s *Server) handleTransferHost(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, wb)
 }
 
-// handleEndWebinar ends the session for everyone.
-//
-// Deleting the room is the point: disconnecting the host alone would leave the
-// audience watching a dead stage, waiting for them to come back.
-func (s *Server) handleEndWebinar(w http.ResponseWriter, r *http.Request) {
-	slug := slugFromContext(r.Context())
-
-	wb, err := s.store.SetStatus(r.Context(), slug, types.StatusEnded)
-	if errors.Is(err, store.ErrNotFound) {
-		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
-		return
-	}
+// endWebinarSession tears down an active webinar room, stops recordings, clears stage grants,
+// closes polls, and marks the session ended. Shared between host-initiated end and the meeting limit sweeper.
+func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webinar, error) {
+	wb, err := s.store.SetStatus(ctx, slug, types.StatusEnded)
 	if err != nil {
-		s.fail(w, r, "end webinar", err)
-		return
+		return types.Webinar{}, err
 	}
 
-	if sfu, err := s.sfuFor(r.Context(), wb); err != nil {
+	// Stop any active Egress recording before deleting the room so it uploads cleanly.
+	if recs, err := s.store.Recordings(ctx, slug); err == nil {
+		for _, r := range recs {
+			if r.Status == types.RecordingActive && r.EgressID != "" {
+				if sfu, err := s.sfuFor(ctx, wb); err == nil {
+					if _, err := sfu.StopEgress(ctx, r.EgressID); err != nil {
+						s.log.Warn("end webinar: could not stop egress", "slug", slug, "egress", r.EgressID, "error", err)
+					} else {
+						s.log.Info("end webinar: stopped egress recording", "slug", slug, "egress", r.EgressID)
+					}
+				}
+			}
+		}
+	}
+
+	if sfu, err := s.sfuFor(ctx, wb); err != nil {
 		s.log.Warn("end webinar: could not resolve the livekit project",
 			"slug", slug, "error", err)
-	} else if err := sfu.DeleteRoom(r.Context(), lk.RoomName(slug)); err != nil {
+	} else if err := sfu.DeleteRoom(ctx, lk.RoomName(slug)); err != nil {
 		// The database already says ended, which is the state that decides
 		// whether anyone can rejoin. A room that outlives it empties itself
 		// after empty_timeout, so this is a warning rather than a failure.
 		s.log.Warn("end webinar: could not delete room", "slug", slug, "error", err)
 	}
 	// Promotions are scoped to one session.
-	if err := s.store.ClearStageGrants(r.Context(), slug); err != nil {
+	if err := s.store.ClearStageGrants(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not clear stage grants", "slug", slug, "error", err)
 	}
 	// The room is gone, so no more chunks are coming. Closing the recording here
 	// is what turns "recording" into a file somebody can download, rather than a
 	// row stuck open until the staleness sweep notices.
-	if err := s.store.FinishActiveRecordings(r.Context(), slug); err != nil {
+	if err := s.store.FinishActiveRecordings(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not finalise recordings", "slug", slug, "error", err)
 	}
 	// A poll left open on a room nobody is in would still be accepting votes, and
 	// its tally would still be labelled provisional when it is in fact the result.
-	if err := s.store.CloseOpenPolls(r.Context(), slug); err != nil {
+	if err := s.store.CloseOpenPolls(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not close open polls", "slug", slug, "error", err)
 	}
-	/* The chat archive.
-	 *
-	 * There is nothing to move. Messages are written to Postgres as they are sent, so
-	 * ending a session does not migrate a transcript out of a cache — it closes one that
-	 * was already permanent. What happens here is that the summary is logged, which is
-	 * the line an operator looks for when asked whether a session's chat was kept.
-	 *
-	 * This is the step a Redis-backed design would have to get right, and the reason
-	 * there is no Redis: a flush that failed here would lose the whole conversation, and
-	 * it would fail exactly when the process was going down.
-	 */
-	if stats, err := s.store.ChatStats(r.Context(), slug); err != nil {
+
+	if stats, err := s.store.ChatStats(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not summarise chat", "slug", slug, "error", err)
 	} else {
 		s.log.Info("chat archived",
@@ -711,6 +707,26 @@ func (s *Server) handleEndWebinar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("webinar ended", "slug", slug)
+	return wb, nil
+}
+
+// handleEndWebinar ends the session for everyone.
+//
+// Deleting the room is the point: disconnecting the host alone would leave the
+// audience watching a dead stage, waiting for them to come back.
+func (s *Server) handleEndWebinar(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+
+	wb, err := s.endWebinarSession(r.Context(), slug)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "end webinar", err)
+		return
+	}
+
 	httpx.JSON(w, http.StatusOK, wb)
 }
 

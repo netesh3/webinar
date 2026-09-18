@@ -323,6 +323,7 @@ func (s *Server) Routes() http.Handler {
 
 			r.Get("/users", s.handleAdminUsers)
 			r.Patch("/users/{id}/host", s.handleSetHostCapability)
+			r.Patch("/users/{id}/max-duration", s.handleSetUserMaxDuration)
 			r.Delete("/users/{id}", s.handleAdminDeleteUser)
 
 			r.Get("/webinars", s.handleAdminWebinars)
@@ -483,6 +484,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		SupportEmail:          s.cfg.SupportEmail,
 		MaxAttendees:          s.cfg.MaxAttendees,
 		SignupOpen:            s.cfg.SignupOpen,
+		DefaultMaxMeetingMin:  s.cfg.DefaultMaxMeetingMin,
 		Tracks:                tracks,
 		GoogleClientID:        s.cfg.GoogleClientID,
 		GoogleAPIKey:          s.cfg.GoogleAPIKey,

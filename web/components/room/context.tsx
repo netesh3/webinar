@@ -52,6 +52,8 @@ export type RoomUI = {
   endedAt: string | null;
   /** Live status from room metadata when available (scheduled | live | ended). */
   status: string | null;
+  /** Maximum meeting duration in minutes for this session. From room metadata or join response. */
+  maxDurationMin: number | null;
   /** Whether the session is being recorded, as announced by the server. Everyone
    *  in the room sees this, which is the whole point: being recorded without being
    *  told is not something to leave to the client that pressed the button. */

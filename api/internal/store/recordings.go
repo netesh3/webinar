@@ -179,7 +179,7 @@ func (s *Store) FinishRecordingWithStats(ctx context.Context, id string, sizeByt
 		       size_bytes = GREATEST(size_bytes, $2),
 		       duration_ms = GREATEST(duration_ms, $3),
 		       stopped_at = now()
-		 WHERE id = $1::uuid AND status = 'recording'
+		 WHERE id = $1::uuid AND status IN ('recording', 'failed')
 		 RETURNING status`, id, sizeBytes, durationMs).Scan(&status)
 	if noRows(err) {
 		return "", ErrNotFound

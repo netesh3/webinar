@@ -537,6 +537,10 @@ export const api = {
   setHostCapability: (userId: string, canHost: boolean) =>
     patch<Account>(`/api/admin/users/${seg(userId)}/host`, { canHost }),
 
+  /** Set a custom max meeting duration for a user in minutes. Pass null to reset to system default. */
+  setUserMaxDuration: (userId: string, maxDurationMin: number | null) =>
+    patch<Account>(`/api/admin/users/${seg(userId)}/max-duration`, { maxDurationMin }),
+
   /** Deletes an account outright. Refused by the server for the caller's own
    *  account, and for one that still hosts webinars — those have to be
    *  deleted first, as their own explicit action. */

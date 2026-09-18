@@ -29,20 +29,24 @@ type User struct {
 	// IsAdmin may grant CanHost to other accounts. Never settable in-band: see
 	// PromoteAdmins and migrations/0011.
 	IsAdmin bool
+	// MaxDurationMin is an optional custom maximum meeting duration in minutes.
+	// NULL means use the system default.
+	MaxDurationMin *int
 }
 
 func (u User) Public() types.Account {
 	return types.Account{
-		ID:       u.ID,
-		Email:    u.Email,
-		Name:     u.Name,
-		Title:    u.Title,
-		Org:      u.Org,
-		Phone:    u.Phone,
-		Initials: u.Initials,
-		Hue:      u.Hue,
-		CanHost:  u.CanHost,
-		IsAdmin:  u.IsAdmin,
+		ID:             u.ID,
+		Email:          u.Email,
+		Name:           u.Name,
+		Title:          u.Title,
+		Org:            u.Org,
+		Phone:          u.Phone,
+		Initials:       u.Initials,
+		Hue:            u.Hue,
+		CanHost:        u.CanHost,
+		IsAdmin:        u.IsAdmin,
+		MaxDurationMin: u.MaxDurationMin,
 	}
 }
 
@@ -61,12 +65,12 @@ func (u User) Person() types.Person {
 }
 
 const userColumns = `id::text, email, coalesce(password_hash,''), name, title, org, phone,
-	initials, hue, can_host, is_admin`
+	initials, hue, can_host, is_admin, max_duration_min`
 
 func scanUser(row scanner) (User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Title, &u.Org, &u.Phone,
-		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin)
+		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.MaxDurationMin)
 	return u, err
 }
 

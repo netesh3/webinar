@@ -83,6 +83,43 @@ func (s *Server) handleSetHostCapability(w http.ResponseWriter, r *http.Request)
 	httpx.JSON(w, http.StatusOK, updated.Public())
 }
 
+/* handleSetUserMaxDuration is PATCH /api/admin/users/{id}/max-duration.
+ *
+ * Configures an account's maximum meeting length in minutes.
+ * Passing null resets the account to use the system default limit.
+ */
+func (s *Server) handleSetUserMaxDuration(w http.ResponseWriter, r *http.Request) {
+	admin := userFromContext(r.Context())
+	targetID := chi.URLParam(r, "id")
+
+	var body types.SetUserMaxDurationRequest
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+
+	if body.MaxDurationMin != nil && *body.MaxDurationMin <= 0 {
+		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_duration",
+			"Max meeting duration must be at least 1 minute or null to use the system default.")
+		return
+	}
+
+	updated, err := s.store.SetUserMaxDuration(r.Context(), targetID, body.MaxDurationMin)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such account.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "set user max duration", err)
+		return
+	}
+
+	s.log.Info("user max duration changed",
+		"admin", admin.ID, "target", updated.ID, "max_duration_min", updated.MaxDurationMin)
+
+	httpx.JSON(w, http.StatusOK, updated.Public())
+}
+
 /* handleAdminWebinars is GET /api/admin/webinars?status=&from=&to=&q=.
  *
  * The only place in the app that lists webinars across every host: every

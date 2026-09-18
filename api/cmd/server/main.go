@@ -166,9 +166,12 @@ func run() error {
 		log.Info("recording is disabled")
 	}
 
+	apiServer := api.NewServer(cfg, st, api.NewSFUPool(pool), recordings, log)
+	go apiServer.StartMeetingLimitSweeper(ctx)
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           api.NewServer(cfg, st, api.NewSFUPool(pool), recordings, log).Routes(),
+		Handler:           apiServer.Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

@@ -19,7 +19,7 @@ import (
 const webinarColumns = `
 	w.slug, w.webinar_id, w.topic, w.summary, w.description, w.track,
 	w.starts_at, w.duration_min, w.time_zone, w.kind, w.status,
-	w.started_at, w.ended_at,
+	w.started_at, w.ended_at, w.max_duration_min,
 	w.registration_required, w.approval, w.attendee_limit, w.price_cents,
 	w.passcode, w.agenda, w.takeaways, w.options, w.report,
 	w.hide_attendees, w.mute_on_entry, w.allow_unmute, w.chat_enabled,
@@ -50,7 +50,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	err := row.Scan(
 		&w.ID, &w.WebinarID, &w.Topic, &w.Summary, &w.Descript, &w.Track,
 		&startsAt, &w.Duration, &w.TimeZone, &w.Kind, &w.Status,
-		&startedAt, &endedAt,
+		&startedAt, &endedAt, &w.MaxDurationMin,
 		&w.RegistrationRequired, &w.Approval, &w.AttendeeLimit, &priceCents,
 		&w.Passcode, &agenda, &takeaways, &options, &report,
 		&c.HideAttendees, &c.MuteOnEntry, &c.AllowUnmute, &c.ChatEnabled,
@@ -319,7 +319,7 @@ func (s *Store) Tracks(ctx context.Context) ([]string, error) {
 // The slug and the human-facing webinar id are generated here rather than asked
 // for: both have to be unique, and a form that can fail on "that URL is taken"
 // after a host filled in twelve fields is a form people abandon.
-func (s *Store) CreateWebinar(ctx context.Context, hostID string, in types.WebinarInput) (types.Webinar, error) {
+func (s *Store) CreateWebinar(ctx context.Context, hostID string, in types.WebinarInput, defaultMaxDurationMin int) (types.Webinar, error) {
 	startsAt, err := time.Parse(time.RFC3339, in.StartsAt)
 	if err != nil {
 		return types.Webinar{}, fmt.Errorf("%w: startsAt must be RFC3339", ErrInvalid)
@@ -345,6 +345,16 @@ func (s *Store) CreateWebinar(ctx context.Context, hostID string, in types.Webin
 		return types.Webinar{}, err
 	}
 
+	var userMax *int
+	_ = tx.QueryRow(ctx, `SELECT max_duration_min FROM users WHERE id = $1`, hostID).Scan(&userMax)
+	maxDuration := defaultMaxDurationMin
+	if maxDuration <= 0 {
+		maxDuration = 180
+	}
+	if userMax != nil && *userMax > 0 {
+		maxDuration = *userMax
+	}
+
 	var id string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO webinars
@@ -354,10 +364,10 @@ func (s *Store) CreateWebinar(ctx context.Context, hostID string, in types.Webin
 			 agenda, takeaways, options,
 			 hide_attendees, mute_on_entry, allow_unmute, chat_enabled,
 			 qa_enabled, raise_hand_enabled, reactions_enabled, locked,
-			 chat_destination, polls_enabled)
+			 chat_destination, polls_enabled, max_duration_min)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
 		        $13,$14,$15,$16,$17,$18,$19,
-		        $20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+		        $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
 		RETURNING id::text`,
 		slug, webinarID, strings.TrimSpace(in.Topic), strings.TrimSpace(in.Summary),
 		strings.TrimSpace(in.Descript), strings.TrimSpace(in.Track),
@@ -368,6 +378,7 @@ func (s *Store) CreateWebinar(ctx context.Context, hostID string, in types.Webin
 		in.Controls.ChatEnabled, in.Controls.QAEnabled, in.Controls.RaiseHandEnabled,
 		in.Controls.ReactionsEnabled, in.Controls.Locked,
 		string(in.Controls.ChatDestination.OrDefault()), in.Controls.PollsEnabled,
+		maxDuration,
 	).Scan(&id)
 	if isUniqueViolation(err) {
 		return types.Webinar{}, ErrConflict
@@ -1328,4 +1339,29 @@ func (s *Store) WebinarImageMedia(ctx context.Context, slug string) (data []byte
 // simplest way to guarantee that without tracking any state.
 func newImageVersion() string {
 	return uuid.NewString()
+}
+
+// ExpiredLiveWebinars returns the slugs of webinars currently marked live that have
+// reached or exceeded their max_duration_min.
+func (s *Store) ExpiredLiveWebinars(ctx context.Context) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT slug
+		  FROM webinars
+		 WHERE status = 'live'
+		   AND started_at IS NOT NULL
+		   AND now() - started_at >= interval '1 minute' * max_duration_min`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var slugs []string
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, err
+		}
+		slugs = append(slugs, slug)
+	}
+	return slugs, rows.Err()
 }

@@ -274,6 +274,7 @@ export const DEV_BYPASS_JOIN: JoinResponse = {
   startedAt: new Date().toISOString(),
   hidden: false,
   canRecord: true,
+  maxDurationMin: 180,
 };
 
 function livePerson(

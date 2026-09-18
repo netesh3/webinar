@@ -521,12 +521,13 @@ func (s *Server) roomMetadata(ctx context.Context, wb types.Webinar) (string, er
 			"slug", wb.ID, "error", err)
 	}
 	b, err := json.Marshal(types.RoomMeta{
-		Controls:  wb.Controls,
-		Status:    wb.Status,
-		Topic:     wb.Topic,
-		StartedAt: wb.StartedAt,
-		EndedAt:   wb.EndedAt,
-		Recording: recording,
+		Controls:       wb.Controls,
+		Status:         wb.Status,
+		Topic:          wb.Topic,
+		StartedAt:      wb.StartedAt,
+		EndedAt:        wb.EndedAt,
+		Recording:      recording,
+		MaxDurationMin: wb.MaxDurationMin,
 	})
 	if err != nil {
 		return "", err
@@ -593,9 +594,10 @@ func (s *Server) issueToken(
 		Topic:       wb.Topic,
 		StartedAt:   wb.StartedAt,
 		EndedAt:     wb.EndedAt,
-		Hidden:      spec.Hidden,
-		CanRecord:   canRecord,
-		JoinKey:     joinKeyFromIdentity(spec.Identity),
+		Hidden:         spec.Hidden,
+		CanRecord:      canRecord,
+		JoinKey:        joinKeyFromIdentity(spec.Identity),
+		MaxDurationMin: wb.MaxDurationMin,
 	})
 	return true
 }
