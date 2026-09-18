@@ -24,6 +24,8 @@ services:
       - livekit
     environment:
       EGRESS_CONFIG_FILE: /etc/egress.yaml
+    cap_add:
+      - SYS_ADMIN
     volumes:
       - ./egress.yaml:/etc/egress.yaml:ro
       - /dev/shm:/dev/shm

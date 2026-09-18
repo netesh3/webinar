@@ -117,16 +117,13 @@ if [[ -f docker-compose.egress.yml && -f egress.yaml ]]; then
 fi
 
 docker compose "${COMPOSE_ARGS[@]}" pull
-docker compose "${COMPOSE_ARGS[@]}" up -d
-if [[ "$livekit_config_changed" -eq 1 ]]; then
-  # Same bind-mount issue as Caddy below, but livekit.yaml carries live
-  # WebRTC session state on this container, so — unlike Caddy — only
-  # restart it when the generated config actually changed, not on every
-  # redeploy (e.g. an unrelated Grafana/Prometheus-only change shouldn't
-  # drop anyone's call).
-  echo "livekit.yaml changed — restarting livekit to pick it up"
-  docker compose "${COMPOSE_ARGS[@]}" restart livekit
+docker compose "${COMPOSE_ARGS[@]}" up -d --remove-orphans
+# Restart livekit to ensure it connects to Redis if Redis was newly started
+docker compose "${COMPOSE_ARGS[@]}" restart livekit
+if [[ -f docker-compose.egress.yml && -f egress.yaml ]]; then
+  docker compose "${COMPOSE_ARGS[@]}" restart egress
 fi
+
 # Caddyfile is bind-mounted, so `up -d` alone does not make Caddy pick up
 # edits to it — the config-hash docker compose diffs against is the compose
 # service definition, not the mounted file's content, and Caddy itself only
