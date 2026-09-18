@@ -86,8 +86,8 @@ export function MicOffIcon(props: IconProps) {
 export function CameraIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="m16 7 6-4v18l-6-4" />
-      <rect x="2" y="5" width="14" height="14" rx="2" />
+      <rect x="2" y="6" width="13" height="12" rx="2" />
+      <path d="m15 10.5 6-3.5v10l-6-3.5z" />
     </Icon>
   );
 }
@@ -96,8 +96,8 @@ export function CameraOffIcon(props: IconProps) {
   return (
     <Icon {...props}>
       <line x1="2" x2="22" y1="2" y2="22" />
-      <path d="M10.66 5H14a2 2 0 0 1 2 2v3.34l6-4v11.33" />
-      <path d="M16 16v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 .58-1.42" />
+      <path d="M10 6h3a2 2 0 0 1 2 2v2.5l6-3.5v10l-3.3-1.9" />
+      <path d="M15 15.5V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 .6-1.4" />
     </Icon>
   );
 }
