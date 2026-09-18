@@ -72,6 +72,8 @@ function useRecorder() {
   const { slug, topic } = useRoomUI();
   const room = useRoomContext();
   const { notify } = useToast();
+  const { recordingMode } = useAppConfig();
+  const isEgress = recordingMode === "egress";
 
   const [state, setState] = useState<RecorderState>("idle");
   const [bytes, setBytes] = useState(0);
@@ -83,9 +85,12 @@ function useRecorder() {
   /** What is in flight, readable from an event handler that cannot wait for a
    *  render. Null when nothing is being recorded. `local: true` means there is
    *  no server-side row for the pagehide handler below to close. */
-  const recording = useRef<{ id: string; startedAt: number; local: boolean } | null>(
-    null,
-  );
+  const recording = useRef<{
+    id: string;
+    startedAt: number;
+    local: boolean;
+    egress?: boolean;
+  } | null>(null);
 
   // Kept in refs so the recorder's callbacks never close over a stale render.
   const notifyRef = useRef(notify);
@@ -95,10 +100,35 @@ function useRecorder() {
 
   const start = useCallback(
     async (destination: "cloud" | "local") => {
-      if (recorder.current) return;
+      if (recorder.current || recording.current) return;
       setState("starting");
 
       const local = destination === "local";
+
+      if (!local && isEgress) {
+        try {
+          const rec = await api.startRecording(slug, "video/mp4");
+          const began = Date.now();
+          recording.current = { id: rec.id, startedAt: began, local: false, egress: true };
+          setState("recording");
+          setStartedAt(began);
+          setBytes(0);
+          notifyRef.current(
+            "Cloud recording started directly on the server — zero extra bandwidth or CPU on your device.",
+            "ok",
+          );
+        } catch (err: unknown) {
+          recording.current = null;
+          setState("idle");
+          setStartedAt(null);
+          notifyRef.current(
+            err instanceof Error ? err.message : "Could not start cloud recording.",
+            "error",
+          );
+        }
+        return;
+      }
+
       const transport: RecordingTransport = local
         ? localRecordingTransport(suggestedFileName(topic))
         : {
@@ -166,15 +196,37 @@ function useRecorder() {
         setState("idle");
       }
     },
-    [room, slug, topic],
+    [isEgress, room, slug, topic],
   );
 
   const stop = useCallback(async () => {
+    if (recording.current?.egress) {
+      setState("stopping");
+      const current = recording.current;
+      try {
+        await api.completeRecording(slug, current.id, Date.now() - current.startedAt);
+        notifyRef.current(
+          "Recording stopped. Your video is being processed in Backblaze B2 and will be available under Recordings.",
+          "ok",
+        );
+      } catch (err: unknown) {
+        notifyRef.current(
+          err instanceof Error ? err.message : "Error stopping cloud recording.",
+          "error",
+        );
+      } finally {
+        recording.current = null;
+        setState("idle");
+        setStartedAt(null);
+      }
+      return;
+    }
+
     const instance = recorder.current;
     if (!instance) return;
     setState("stopping");
     await instance.stop();
-  }, []);
+  }, [slug]);
 
   // A recording is bytes on somebody's disk, so leaving the page has to close it
   // properly rather than abandoning it half-written. This runs on unmount, which
@@ -214,7 +266,8 @@ function useRecorder() {
 /** The control bar's record button. Rendered only for people who may record. */
 export function RecordButton() {
   const { join, recording } = useRoomUI();
-  const { cloudRecordingEnabled } = useAppConfig();
+  const { cloudRecordingEnabled, recordingMode } = useAppConfig();
+  const isEgress = recordingMode === "egress";
   const { notify } = useToast();
   const { state, bytes, startedAt, start, stop } = useRecorder();
   const connection = useConnectionState();
@@ -279,7 +332,7 @@ export function RecordButton() {
   // button whose every request came back 401: they have a microphone, not an
   // account on this webinar's stage roster, and requireStage wants the account.
   if (!join.canRecord) return null;
-  if (!supported) return null;
+  if (!supported && !isEgress && !localSupported) return null;
 
   /* And not until there is a session to record.
    *
@@ -372,7 +425,7 @@ export function RecordButton() {
             rather than trusting a red dot. */}
         {state === "recording" && startedAt !== null && (
           <span className="absolute -top-7 left-1/2 hidden -translate-x-1/2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap text-white sm:block">
-            <Elapsed since={startedAt} /> · {formatBytes(bytes)}
+            <Elapsed since={startedAt} /> {isEgress ? "· Cloud" : `· ${formatBytes(bytes)}`}
           </span>
         )}
       </button>
@@ -408,8 +461,9 @@ export function RecordButton() {
             <span>
               <span className="block text-[13px] font-medium">The cloud</span>
               <span className="block text-[11.5px] leading-tight text-ink-3">
-                Uploads as it records. Everyone sees the REC indicator, and it
-                lands on the webinar's Recordings tab.
+                {isEgress
+                  ? "Recorded server-side directly to Backblaze B2 cloud storage. Zero extra upload bandwidth or CPU on your device."
+                  : "Uploads as it records. Everyone sees the REC indicator, and it lands on the webinar's Recordings tab."}
               </span>
             </span>
           </button>
