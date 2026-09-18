@@ -79,7 +79,7 @@ export function VideoPlayer({
 
   function handleTimeUpdate() {
     const video = videoRef.current;
-    if (!video || seeking) return;
+    if (!video || seeking || isDraggingRef.current) return;
     setCurrentTime(video.currentTime);
 
     if (video.buffered.length > 0) {
@@ -171,33 +171,67 @@ export function VideoPlayer({
     }
   }
 
-  // Seek bar interaction
-  function handleSeekStart(e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) {
-    setSeeking(true);
-    handleSeekMove(e);
-  }
+  const isDraggingRef = useRef(false);
+  const wasPlayingBeforeSeekRef = useRef(false);
 
-  function handleSeekMove(e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement> | MouseEvent | TouchEvent) {
+  // Seek bar interaction with full drag support
+  function seekToClientX(clientX: number) {
     const bar = progressBarRef.current;
     const video = videoRef.current;
-    if (!bar || !video) return;
+    if (!bar || !video || !effectiveDuration) return;
 
     const rect = bar.getBoundingClientRect();
-    const clientX = "touches" in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
     const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const target = pos * (effectiveDuration || 0);
+    const target = pos * effectiveDuration;
 
-    if (seeking) {
-      video.currentTime = target;
-      setCurrentTime(target);
-    }
+    video.currentTime = target;
+    setCurrentTime(target);
+    setHoverPos(clientX - rect.left);
+    setHoverTime(target);
   }
 
-  function handleSeekEnd() {
-    setSeeking(false);
+  function handleSeekStart(e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+
+    isDraggingRef.current = true;
+    setSeeking(true);
+    wasPlayingBeforeSeekRef.current = !video.paused;
+
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    seekToClientX(clientX);
+
+    const onPointerMove = (moveEvent: MouseEvent | TouchEvent) => {
+      if (!isDraggingRef.current) return;
+      const moveX =
+        "touches" in moveEvent ? moveEvent.touches[0].clientX : (moveEvent as MouseEvent).clientX;
+      seekToClientX(moveX);
+    };
+
+    const onPointerUp = () => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      setSeeking(false);
+
+      window.removeEventListener("mousemove", onPointerMove);
+      window.removeEventListener("mouseup", onPointerUp);
+      window.removeEventListener("touchmove", onPointerMove);
+      window.removeEventListener("touchend", onPointerUp);
+
+      if (wasPlayingBeforeSeekRef.current && videoRef.current) {
+        void videoRef.current.play().catch(() => {});
+      }
+    };
+
+    window.addEventListener("mousemove", onPointerMove);
+    window.addEventListener("mouseup", onPointerUp);
+    window.addEventListener("touchmove", onPointerMove, { passive: true });
+    window.addEventListener("touchend", onPointerUp);
   }
 
   function handleProgressBarHover(e: React.MouseEvent<HTMLDivElement>) {
+    if (isDraggingRef.current) return;
     const bar = progressBarRef.current;
     if (!bar) return;
     const rect = bar.getBoundingClientRect();
@@ -210,7 +244,7 @@ export function VideoPlayer({
   function handleMouseMove() {
     setControlsVisible(true);
     if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
-    if (playing) {
+    if (playing && !isDraggingRef.current) {
       hideControlsTimer.current = setTimeout(() => {
         setControlsVisible(false);
         setShowSpeedMenu(false);
@@ -233,9 +267,7 @@ export function VideoPlayer({
     <div
       ref={containerRef}
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => playing && setControlsVisible(false)}
-      onMouseUp={handleSeekEnd}
-      onTouchEnd={handleSeekEnd}
+      onMouseLeave={() => playing && !isDraggingRef.current && setControlsVisible(false)}
       className={`group relative select-none overflow-hidden bg-black font-sans ${className}`}
     >
       <video
@@ -284,9 +316,10 @@ export function VideoPlayer({
         <div
           ref={progressBarRef}
           onMouseDown={handleSeekStart}
+          onTouchStart={handleSeekStart}
           onMouseMove={handleProgressBarHover}
           onMouseLeave={() => setHoverTime(null)}
-          className="group/seek relative mb-3.5 flex h-4 cursor-pointer items-center"
+          className="group/seek relative mb-3.5 flex h-4 cursor-pointer touch-none select-none items-center"
         >
           {/* Track Background */}
           <div className="relative h-1.5 w-full rounded-full bg-white/20 transition-all group-hover/seek:h-2.5">
