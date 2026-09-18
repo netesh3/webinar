@@ -39,7 +39,7 @@ import { MoreButton, MoreGrid } from "./more-grid";
 import { ReactionPicker } from "./reactions";
 import { RecordButton } from "./recording";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
-import { describeMediaError } from "@/lib/media-errors";
+import { describeMediaError, isScreenShareCancel } from "@/lib/media-errors";
 import { MediaToggle } from "./media-toggle";
 import { displayMediaOptions, SharePicker } from "./share-picker";
 import {
@@ -278,8 +278,17 @@ export function ControlBar() {
       try {
         await run();
       } catch (err) {
+        if (key === "share" && isScreenShareCancel(err)) {
+          return;
+        }
         const kind =
-          key === "mic" ? "microphone" : key === "camera" ? "camera" : "devices";
+          key === "mic"
+            ? "microphone"
+            : key === "camera"
+              ? "camera"
+              : key === "share"
+                ? "screen"
+                : "devices";
         notify(describeMediaError(err, kind), "error");
       } finally {
         setPending(null);
@@ -448,10 +457,15 @@ export function ControlBar() {
       await fileShare.stop();
       return;
     }
-    await toggle("share", "Screen share", () =>
-      localParticipant.setScreenShareEnabled(false),
-    );
-  }, [previewChrome, fileShare, toggle, localParticipant, notify]);
+    setPending("share");
+    try {
+      await localParticipant.setScreenShareEnabled(false);
+    } catch {
+      // Stopping share should not throw error toasts
+    } finally {
+      setPending(null);
+    }
+  }, [previewChrome, fileShare, localParticipant, notify]);
 
   /** Hands off to the browser's own picker, with a hint at which pane to open on. */
   const startScreenShare = useCallback(

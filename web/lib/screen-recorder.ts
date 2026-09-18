@@ -1,6 +1,7 @@
 "use client";
 
 import type { Room } from "livekit-client";
+import { isScreenShareCancel } from "./media-errors";
 import { AudioMixer, canRecord, pickRecordingMime } from "./recorder";
 import type { RecorderCallbacks, RecorderState, RecordingTransport } from "./recorder";
 
@@ -136,6 +137,9 @@ export class ScreenRecorder {
     } catch (err) {
       await this.teardown();
       this.state = "idle";
+      if (isScreenShareCancel(err)) {
+        return;
+      }
       this.callbacks.onError(
         err instanceof Error ? err.message : "Could not start recording.",
       );
