@@ -430,8 +430,11 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		s.log.Info("livekit webhook: egress ended",
-			"egress", info.EgressId, "status", info.Status.String(),
-			"room", info.RoomName)
+			"egress", info.EgressId,
+			"status", info.Status.String(),
+			"room", info.RoomName,
+			"error", info.GetError(),
+			"details", info.GetDetails())
 
 		rec, err := s.store.RecordingByEgressID(r.Context(), info.EgressId)
 		if err != nil {
@@ -441,7 +444,11 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 
 		var sizeBytes int64
 		var durationMs int64
-		for _, file := range info.GetFileResults() {
+		files := info.GetFileResults()
+		if len(files) == 0 && info.GetFile() != nil {
+			files = []*livekit.FileInfo{info.GetFile()}
+		}
+		for _, file := range files {
 			if file.Size > sizeBytes {
 				sizeBytes = file.Size
 			}
@@ -450,11 +457,15 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if info.Status == livekit.EgressStatus_EGRESS_COMPLETE {
+		if info.Status == livekit.EgressStatus_EGRESS_COMPLETE || (sizeBytes > 0 && info.Status != livekit.EgressStatus_EGRESS_FAILED) {
 			if _, err := s.store.FinishRecordingWithStats(r.Context(), rec.ID, sizeBytes, durationMs); err != nil {
 				s.log.Error("livekit webhook: finish recording failed", "id", rec.ID, "error", err)
+			} else {
+				s.log.Info("livekit webhook: recording marked ready", "id", rec.ID, "sizeBytes", sizeBytes, "durationMs", durationMs)
 			}
 		} else {
+			s.log.Warn("livekit webhook: recording failed or aborted without output",
+				"id", rec.ID, "status", info.Status.String(), "error", info.GetError(), "details", info.GetDetails())
 			if _, err := s.store.FinishRecording(r.Context(), rec.ID, 0); err != nil {
 				s.log.Error("livekit webhook: mark failed error", "id", rec.ID, "error", err)
 			}

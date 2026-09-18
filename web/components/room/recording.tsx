@@ -162,10 +162,7 @@ function useRecorder(): RecorderContextValue {
           setState("recording");
           setStartedAt(began);
           setBytes(0);
-          notifyRef.current(
-            "Cloud recording started directly on the server — zero extra bandwidth or CPU on your device.",
-            "ok",
-          );
+          notifyRef.current("Recording started.", "ok");
         } catch (err: unknown) {
           recording.current = null;
           setState("idle");
@@ -217,7 +214,7 @@ function useRecorder(): RecorderContextValue {
           notifyRef.current(
             local
               ? "Recording saved to your device."
-              : "Recording saved. It's on the webinar's page under Recordings.",
+              : "Recording stopped. It will be available in your recordings tab.",
             "ok",
           );
         },
@@ -273,7 +270,7 @@ function useRecorder(): RecorderContextValue {
       try {
         await api.completeRecording(slug, current.id, Date.now() - current.startedAt);
         notifyRef.current(
-          "Recording stopped. Your video is being processed in Backblaze B2 and will be available under Recordings.",
+          "Recording stopped. It will be available in your recordings tab.",
           "ok",
         );
       } catch (err: unknown) {
@@ -305,7 +302,10 @@ function useRecorder(): RecorderContextValue {
       const active = recs.find((r) => r.status === "active");
       if (active) {
         await api.completeRecording(slug, active.id, 0);
-        notifyRef.current("Recording stopped.", "ok");
+        notifyRef.current(
+          "Recording stopped. It will be available in your recordings tab.",
+          "ok",
+        );
       }
     } catch (err: unknown) {
       notifyRef.current(

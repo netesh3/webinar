@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, useMemo } from "react";
+import { Suspense, useEffect, useState, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   LiveKitRoom,
@@ -48,6 +48,12 @@ function RecorderTemplateInner() {
       connect={true}
       audio={true}
       video={true}
+      onConnected={() => {
+        console.log("START_RECORDING");
+      }}
+      onDisconnected={() => {
+        console.log("END_RECORDING");
+      }}
       className="fixed inset-0 h-screen w-screen overflow-hidden bg-black select-none"
     >
       <RoomAudioRenderer />
@@ -59,17 +65,41 @@ function RecorderTemplateInner() {
 function ZoomRecordingStage() {
   const room = useRoomContext();
   const [activeSpeakerId, setActiveSpeakerId] = useState<string>("");
+  const startedRef = useRef(false);
 
   useEffect(() => {
     if (!room) return;
+
+    const signalStart = () => {
+      if (!startedRef.current) {
+        startedRef.current = true;
+        console.log("START_RECORDING");
+      }
+    };
+
+    if (room.state === "connected") {
+      signalStart();
+    } else {
+      room.once(RoomEvent.Connected, signalStart);
+    }
+
     const onSpeakers = (speakers: Participant[]) => {
       if (speakers.length > 0) {
         setActiveSpeakerId(speakers[0].identity);
       }
     };
     room.on(RoomEvent.ActiveSpeakersChanged, onSpeakers);
+
+    const onDisconnected = () => {
+      console.log("END_RECORDING");
+    };
+    room.once(RoomEvent.Disconnected, onDisconnected);
+
     return () => {
+      room.off(RoomEvent.Connected, signalStart);
       room.off(RoomEvent.ActiveSpeakersChanged, onSpeakers);
+      room.off(RoomEvent.Disconnected, onDisconnected);
+      console.log("END_RECORDING");
     };
   }, [room]);
 

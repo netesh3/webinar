@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Recording, Webinar } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
@@ -34,6 +34,17 @@ export function RecordingsTab({
   const [playing, setPlaying] = useState<Recording | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Recording | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+
+  // Poll while any recording is still processing or recording, so the row
+  // transitions to "Ready" without requiring a manual page refresh.
+  const hasLive = rows.some((r) => r.status === "recording");
+  useEffect(() => {
+    if (!hasLive) return;
+    const timer = setInterval(() => {
+      void onChanged();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [hasLive, onChanged]);
 
   async function remove(rec: Recording) {
     setBusy(rec.id);
