@@ -1127,7 +1127,7 @@ function RoomHeader() {
 
   return (
     <header
-      className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start gap-2 bg-gradient-to-b from-black/70 to-transparent px-3 pt-2 pb-10 text-white ${
+      className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start gap-2 bg-black px-3 pt-2 pb-2 text-white ${
         panelOpen ? "md:pr-[24rem]" : ""
       }`}
     >
