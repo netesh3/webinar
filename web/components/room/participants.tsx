@@ -872,42 +872,43 @@ function AudienceRoster() {
         )}
       </Group>
 
-      {controls.hideAttendees && join.role !== "attendee" ? (
-        <div className="border-t border-line px-3 py-4">
-          <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
-            <EyeOffIcon className="size-3.5 text-ink-3" />
-            The audience is private
-          </p>
-          <p className="mt-1 text-[12px] leading-relaxed text-ink-2">
-            The host has hidden attendees. You can still see the panelists —
-            including yourself — but not the rest of the audience.
-          </p>
-        </div>
-      ) : (
-        <Group title={`Attendees · ${audience.length}`}>
-          {audience.map((p) => (
-            <AudienceRow
-              key={p.identity}
-              name={p.name || p.identity}
-              role="attendee"
-              isMe={p.identity === join.identity || p.isLocal}
-              muted
-            />
-          ))}
-          {controls.hideAttendees && (
-            <li className="px-3 py-2 text-[12px] leading-relaxed text-ink-3">
-              Other attendees are hidden. You can still see yourself.
-            </li>
-          )}
-          {audience.length === 0 && !controls.hideAttendees && (
-            <li className="px-3 py-4 text-[12.5px] text-ink-3">
-              {room.state === "connected"
-                ? "You're the first one here."
-                : "Connecting…"}
-            </li>
-          )}
-        </Group>
-      )}
+      {/* An attendee gets no Attendees section at all — not a count, not a list,
+          not even the "audience is private" notice. That headcount and roster
+          are for whoever is running or presenting the session; an ordinary
+          attendee clicking Participants is checking who is on stage, not
+          sizing up the room. Panelists keep exactly what they had. */}
+      {join.role !== "attendee" &&
+        (controls.hideAttendees ? (
+          <div className="border-t border-line px-3 py-4">
+            <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
+              <EyeOffIcon className="size-3.5 text-ink-3" />
+              The audience is private
+            </p>
+            <p className="mt-1 text-[12px] leading-relaxed text-ink-2">
+              The host has hidden attendees. You can still see the panelists —
+              including yourself — but not the rest of the audience.
+            </p>
+          </div>
+        ) : (
+          <Group title={`Attendees · ${audience.length}`}>
+            {audience.map((p) => (
+              <AudienceRow
+                key={p.identity}
+                name={p.name || p.identity}
+                role="attendee"
+                isMe={p.identity === join.identity || p.isLocal}
+                muted
+              />
+            ))}
+            {audience.length === 0 && (
+              <li className="px-3 py-4 text-[12.5px] text-ink-3">
+                {room.state === "connected"
+                  ? "You're the first one here."
+                  : "Connecting…"}
+              </li>
+            )}
+          </Group>
+        ))}
       </div>
     </div>
   );
