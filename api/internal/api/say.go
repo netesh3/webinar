@@ -57,6 +57,13 @@ const pollsChangedKind types.RoomMessageKind = "polls-changed"
 // host alone — see announceAttendeeJoined in join.go.
 const attendeeJoinedKind types.RoomMessageKind = "joined"
 
+// chatDeletedKind tells every client to remove one message. Not in RoomMessageKind
+// for the same reason as pollsChangedKind: it is the server announcing a
+// moderation action, never something a client may claim happened itself — see
+// handleDeleteChat in chat.go. Carries the deleted message's id in wirePacket.ID,
+// the same field a chat message's own id already travels in.
+const chatDeletedKind types.RoomMessageKind = "chat-deleted"
+
 // Limits mirrored from web/lib/realtime.ts. Enforced here as well because that
 // file runs on the sender's machine.
 const (

@@ -184,6 +184,17 @@ type HandsClearedMessage = { kind: "hands-cleared"; from: Sender };
  * a participant who has never opened a microphone can only be asked. */
 type UnmuteRequestMessage = { kind: "unmute-request"; from: Sender };
 
+/* "That message is gone — remove it from the conversation."
+ *
+ * Sent only by the SERVER (see chatDeletedKind in api/internal/api/say.go), the
+ * moment a host, co-host or panelist deletes an attendee's message — never
+ * something a client can claim happened itself; buildPacket's own switch in
+ * say.go has no case that lets a request name this kind, host or attendee alike.
+ * Carries only the id: the room already has the message, there is nothing else
+ * to say about it, and the deleted text has no business surviving in anyone's
+ * memory once it is gone from the transcript. */
+type ChatDeletedMessage = { kind: "chat-deleted"; id: string };
+
 export type RoomMessage =
   | ChatMessage
   | QuestionMessage
@@ -195,7 +206,8 @@ export type RoomMessage =
   | PollsChangedMessage
   | ReactionMessage
   | UnmuteRequestMessage
-  | AttendeeJoinedMessage;
+  | AttendeeJoinedMessage
+  | ChatDeletedMessage;
 
 /** The reactions a client may send. Anything else is dropped on receipt, so one
  *  patched client cannot push arbitrary strings into everyone's UI. */
@@ -375,6 +387,11 @@ function decode(bytes: Uint8Array): RoomMessage | null {
       const from = sender(msg.from);
       if (!from) return null;
       return { kind: "joined", from };
+    }
+    case "chat-deleted": {
+      const id = str(msg.id, 64);
+      if (!id) return null;
+      return { kind: "chat-deleted", id };
     }
     default:
       return null;
@@ -711,6 +728,9 @@ export function useRealtime(
           break;
         case "joined":
           notify.current?.onAttendeeJoined?.(msg.from);
+          break;
+        case "chat-deleted":
+          setChat((current) => current.filter((m) => m.id !== msg.id));
           break;
       }
     },

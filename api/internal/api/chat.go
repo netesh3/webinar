@@ -368,6 +368,66 @@ func (s *Server) handleChatStats(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, stats)
 }
 
+// -------------------------------------------------------------- moderation
+
+/* handleDeleteChat removes one attendee's message from the room, for the host,
+ * a co-host, or a panelist.
+ *
+ * A co-host is stored as an ordinary panelist with an extra grant (see
+ * stageRole) rather than its own role, so the same onStage check that gates a
+ * stage-only chat message gates this too — nothing extra is needed for "host,
+ * co-host and panelist" as a group.
+ *
+ * Store.DeleteChat is what actually restricts this to an attendee's own
+ * messages, in the query itself: there is no sender_role of "system" in this
+ * schema at all (chat_messages' own CHECK constraint only allows host,
+ * panelist, attendee), so there is nothing else to accidentally delete.
+ *
+ * Soft-deleted, not erased — see DeleteChat's own comment. Live delivery here
+ * is best-effort, matching every other realtime nudge in this file: the
+ * database is the source of truth, and a client that misses the broadcast
+ * still stops seeing the message on its next backlog sync, which ChatBacklog
+ * now filters on deleted_at.
+ */
+func (s *Server) handleDeleteChat(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id := chi.URLParam(r, "id")
+
+	from, ok := s.resolveSender(w, r, slug, r.URL.Query().Get("joinKey"))
+	if !ok {
+		return
+	}
+	if from.Role != types.RoleHost && from.Role != types.RolePanelist {
+		httpx.Error(w, http.StatusForbidden, "forbidden",
+			"Only the host or a panelist can delete a message.")
+		return
+	}
+
+	if err := s.store.DeleteChat(r.Context(), slug, id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.Error(w, http.StatusNotFound, "not_found",
+				"That message can't be deleted — it may already be gone, or it wasn't sent by an attendee.")
+			return
+		}
+		s.fail(w, r, "delete chat: update", err)
+		return
+	}
+
+	sfu, err := s.sfuForSlug(r.Context(), slug)
+	if err != nil {
+		s.log.Warn("delete chat: resolve project", "slug", slug, "error", err)
+	} else {
+		body, mErr := json.Marshal(wirePacket{Kind: chatDeletedKind, ID: id})
+		if mErr != nil {
+			s.log.Warn("delete chat: marshal", "slug", slug, "error", mErr)
+		} else if sErr := sfu.SendData(r.Context(), lk.RoomName(slug), dataTopic, body, nil); sErr != nil {
+			s.log.Warn("delete chat: send", "slug", slug, "error", sErr)
+		}
+	}
+
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
+}
+
 // ------------------------------------------------------------------- delivery
 
 /* deliverChat puts a recorded message on the wire.

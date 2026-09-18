@@ -282,6 +282,10 @@ func (s *Server) Routes() http.Handler {
 		// Served from here rather than as a bucket URL, so it stays behind the same
 		// credential as the room instead of being a link that outlives the session.
 		r.Get("/webinars/{slug}/chat/media/{id}", s.handleChatMedia)
+		// Moderation: host, co-host or panelist removing an attendee's message. Same
+		// credential path as the rest of this group (resolveSender) rather than
+		// requireUser, since a panelist reaches this without a full session too.
+		r.Delete("/webinars/{slug}/chat/{id}", s.handleDeleteChat)
 
 		// ---------------- auth ----------------
 		r.With(signupLimit.Middleware).Post("/auth/signup", s.handleSignup)
