@@ -488,6 +488,13 @@ function HostRosterRow({
   // publishing, which would call a panelist with their camera off "audio only".
   const speakingOnly = p.role === "panelist" && !isHost && p.audioOnly;
   const onStageNow = p.role === "panelist" && !isHost;
+  // Co-host needs an account behind the identity (see handleSetCoHost on the
+  // API side) — a panelist invited from the panelist list has one ("user_"
+  // identity); an attendee the host brought up on stage does not ("att_"
+  // identity), no matter that both show up as "Panelist" in this same list.
+  // Gating the menu item on the prefix means the rare mis-click never reaches
+  // the server at all, instead of surfacing as a confusing error toast.
+  const canBeCoHost = onStageNow && p.identity.startsWith("user_");
 
   return (
     <li className="flex min-h-12 items-center gap-2.5 px-3 py-2">
@@ -688,13 +695,10 @@ function HostRosterRow({
                     },
                   ]
                 : []),
-              // Full parity with the host, for this one webinar. Offered on any
-              // panelist row rather than only a confirmed scheduled one, because
-              // the roster here cannot tell a scheduled panelist apart from a
-              // promoted attendee — the server can, and refuses the rare
-              // mis-click with a clear "only a panelist can be made co-host"
-              // rather than a silent no-op.
-              ...(onStageNow
+              // Full parity with the host, for this one webinar. See
+              // canBeCoHost above for why this is withheld from a promoted
+              // attendee even though they read as "Panelist" too.
+              ...(canBeCoHost
                 ? [
                     {
                       kind: "action" as const,
