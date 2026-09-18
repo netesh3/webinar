@@ -268,6 +268,16 @@ export const api = {
     );
   },
 
+  /** Moderation: host, co-host or panelist removing an attendee's message.
+   *  The room finds out the same way it finds out about anything else the
+   *  server announces — a broadcast on the data channel — so there is
+   *  nothing to do with the response beyond knowing the call went through. */
+  deleteChatMessage: (slug: string, id: string, joinKey?: string) =>
+    del<StatusResponse>(
+      `/api/webinars/${seg(slug)}/chat/${seg(id)}` +
+        (joinKey ? `?joinKey=${seg(joinKey)}` : ""),
+    ),
+
   // ------------------------------------------------------------------ auth
 
   signup: (body: {

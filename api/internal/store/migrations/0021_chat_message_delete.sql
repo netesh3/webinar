@@ -1,0 +1,13 @@
+-- Lets a host, co-host or panelist remove an attendee's chat message from the room.
+--
+-- Soft delete, not a real DELETE: the row is the transcript's audit trail (who said
+-- what, and who took it down), and the host's export (ChatTranscript, unfiltered by
+-- design) should still be able to account for a moderation action rather than have
+-- the line simply vanish from history with no trace it ever existed.
+--
+-- deleted_at IS NULL means "still visible" everywhere that matters live — the
+-- backlog a reconnecting or newly-joined client reads. A deleted message stops
+-- appearing in all of those the moment this is set, which is what makes "gone for
+-- everyone, including someone who joins after" true without a second code path
+-- that could disagree about which messages are gone.
+ALTER TABLE chat_messages ADD COLUMN deleted_at timestamptz;

@@ -12,8 +12,8 @@ import {
 import { textRuns } from "@/lib/chat-text";
 import { FOCUS_TTL_MS, useChatFocus } from "@/lib/chat-notify";
 import { chatDestination, type ChatDestination, type ChatMessage } from "@/lib/realtime";
-import { Alert, Spinner } from "../controls";
-import { ArrowDownIcon, ImageIcon, SendIcon } from "../icons";
+import { Alert, ConfirmModal, Spinner } from "../controls";
+import { ArrowDownIcon, ImageIcon, SendIcon, TrashIcon } from "../icons";
 import { useRoomUI } from "./context";
 
 /* Chat.
@@ -56,6 +56,39 @@ export function ChatPanel() {
   const [switching, setSwitching] = useState<AudienceChatOption | null>(null);
 
   const [uploading, setUploading] = useState(false);
+
+  /* Who may remove an attendee's message.
+   *
+   * Host, always. Otherwise `permissions.canPublish && !permissions.promoted` —
+   * the same distinction control-bar.tsx already draws between a genuine
+   * panelist (has the grant from their scheduled role) and an attendee the
+   * host lifted onto the stage (has the same grant, `promoted: true`). A
+   * promoted attendee is still, fundamentally, an attendee — the "Panelists"
+   * this feature names are the ones scheduled onto the stage, not anyone
+   * currently holding a microphone. */
+  const canModerate = isHost || (permissions.canPublish && !permissions.promoted);
+  const [deleteTarget, setDeleteTarget] = useState<ChatMessage | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  /* Removing one of an attendee's messages.
+   *
+   * Nothing is removed from `realtime.chat` here. The server broadcasts
+   * "chat-deleted" to the whole room the moment it takes effect, and this
+   * tab hears its own broadcast exactly like everyone else's — see apply()
+   * in lib/realtime.ts. Updating local state ahead of that would be a second
+   * place this could disagree with what actually happened. */
+  async function confirmDeleteMessage() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      await api.deleteChatMessage(slug, deleteTarget.id, joinKey);
+      setDeleteTarget(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That message couldn't be deleted.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const list = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
@@ -327,6 +360,21 @@ export function ChatPanel() {
                       minute: "2-digit",
                     })}
                   </span>
+                  {/* Attendee messages only — moderation removes what the audience
+                      said, never another presenter's words. Always visible rather
+                      than hover-revealed: half of this room is on a phone, which
+                      has no hover to reveal it with. */}
+                  {canModerate && m.from.role === "attendee" && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(m)}
+                      aria-label="Delete message"
+                      title="Delete message"
+                      className="grid size-5 shrink-0 place-items-center rounded text-ink-3 transition-colors hover:bg-live-soft hover:text-live outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                    >
+                      <TrashIcon className="size-3.5" />
+                    </button>
+                  )}
                 </div>
                 <MessageBody message={m} />
               </div>
@@ -496,6 +544,21 @@ export function ChatPanel() {
           </>
         )}
       </div>
+
+      <ConfirmModal
+        open={deleteTarget !== null}
+        busy={deleting}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => void confirmDeleteMessage()}
+        title="Delete this message?"
+        body={
+          deleteTarget
+            ? `This removes ${deleteTarget.from.name}'s message for everyone in the webinar, including anyone who joins later. This can't be undone.`
+            : ""
+        }
+        confirmLabel="Delete message"
+        dark
+      />
     </div>
   );
 }

@@ -117,8 +117,12 @@ func (s *Store) ChatBacklog(
 ) (types.ChatBacklog, error) {
 	// Asked for one more than the limit, so "is there more" is answered by the same
 	// query rather than by a follow-up count over the whole session.
+	//
+	// deleted_at IS NULL: a moderated message must not reappear for somebody who
+	// joins, or reconnects, after it was taken down — the whole point of deleting
+	// it rather than just hiding it in already-open tabs.
 	rows, err := s.pool.Query(ctx, chatSelect+`
-		 WHERE w.slug = $1 AND m.seq > $2
+		 WHERE w.slug = $1 AND m.seq > $2 AND m.deleted_at IS NULL
 		   AND ($3 OR m.destination = 'everyone' OR m.sender_identity = $4)
 		 ORDER BY m.seq
 		 LIMIT $5`,
@@ -148,6 +152,36 @@ func (s *Store) ChatBacklog(
 		out.Cursor = out.Messages[n-1].Seq
 	}
 	return out, nil
+}
+
+/* DeleteChat soft-deletes one attendee's message, for moderation.
+ *
+ * Scoped to its webinar in the query itself, so a message id from one session
+ * cannot be used to reach into another's — the same guard ChatMedia uses. The
+ * sender_role check is enforced here too, not only by the handler that calls
+ * this: moderation removes what the AUDIENCE said, and a second guard at the
+ * only place that can actually write the row is what keeps that true even if
+ * a future caller forgets to check first.
+ *
+ * Returns ErrNotFound for all three ways this can fail to apply — the message
+ * does not exist, was already deleted, or was not sent by an attendee — since
+ * none of those is this caller's to distinguish from another: what matters to
+ * them is the same either way, nothing changed.
+ */
+func (s *Store) DeleteChat(ctx context.Context, slug, id string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE chat_messages m SET deleted_at = now()
+		  FROM webinars w
+		 WHERE w.id = m.webinar_id AND w.slug = $1 AND m.id = $2
+		   AND m.deleted_at IS NULL AND m.sender_role = 'attendee'`,
+		slug, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 /* chatViewer carries the caller's own identity into the backlog filter.
