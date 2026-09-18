@@ -54,10 +54,14 @@ console.log("\ncenterBarTools");
 }
 
 {
+  // Attendee, promoted or not — see CENTER_BAR_COMPACT_ATTENDEE's own
+  // comment: MediaToggle's mobile sizing was shrunk specifically so this
+  // never needs to fall back, including the one case that matters most (mic
+  // AND camera both showing).
   const phoneAttendee = centerBarTools(ALL, true, true);
   ok(
     phoneAttendee.join() === "chat,hand,reactions",
-    "an attendee with room to spare also gets Reactions on the bar",
+    "an attendee gets Reactions on the bar, promoted or not",
   );
   const more = morePanelTools(ALL, true, true) ?? [];
   ok(!more.includes("reactions"), "Reactions is not duplicated into More once it's on the bar");
@@ -68,21 +72,12 @@ console.log("\ncenterBarTools");
 }
 
 {
-  // Promoted (mic+camera showing): falls back to the plain two-item bar —
-  // see CENTER_BAR_COMPACT_ATTENDEE's own comment for the measured reason.
-  const phonePromoted = centerBarTools(ALL, true, false);
-  ok(
-    phonePromoted.join() === "chat,hand",
-    "attendee=false (e.g. mic+camera claiming the width) keeps the plain bar",
-  );
-  const more = morePanelTools(ALL, true, false) ?? [];
-  ok(more.includes("reactions"), "Reactions falls back into More when there's no room for it on the bar");
-}
-
-{
-  // Host/panelist never pass `attendee` — same two-item bar as always.
+  // Host/panelist never pass `attendee` — same two-item bar as always,
+  // Reactions included, regardless of mic/camera state.
   const phoneHost = centerBarTools(ALL, true);
   ok(phoneHost.join() === "chat,hand", "host/panelist compact bar is unaffected by the attendee variant");
+  const more = morePanelTools(ALL, true) ?? [];
+  ok(more.includes("reactions"), "Reactions stays in More for host/panelist, same as before");
 }
 
 console.log(
