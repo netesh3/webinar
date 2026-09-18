@@ -60,3 +60,63 @@ export function useAudiencePolls(
 export function activePoll(list: Poll[] | null): Poll | null {
   return (list ?? []).find((p) => p.state === "open" && p.myChoice < 0) ?? null;
 }
+
+// ------------------------------------------------------------------ the sound cue
+
+/* A short chime when the pop-up in poll-popup.tsx appears with a new poll.
+ *
+ * Always on, unlike chat's own cue (lib/chat-notify.ts), which defaults off because
+ * a host's laptop making an unarranged noise during their own shared screen is a real
+ * problem. Neither half of that applies here: this only ever plays for an attendee
+ * (PollPopup renders nothing for the host — see its own comment), so there is no
+ * presenter to surprise and no shared-screen audio track for the room to pick it up
+ * on. A poll is also a one-off, deliberate ask for attention the host chose to send,
+ * not a stream of messages that would turn a per-message chime into noise.
+ *
+ * Synthesised rather than loaded, same reasoning as playChatCue: no asset to fetch or
+ * get wrong on a browser that blocks autoplay before a gesture. A different two-note
+ * shape (falling rather than rising) so the two cues do not sound like the same event.
+ */
+let lastPollCueAt = 0;
+let pollCueContext: AudioContext | null = null;
+
+export function playPollCue(): void {
+  if (typeof window === "undefined") return;
+  const Ctor =
+    window.AudioContext ??
+    (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctor) return;
+
+  // One poll cannot chime twice, however the popup's own effects happen to re-run.
+  const now = Date.now();
+  if (now - lastPollCueAt < 1500) return;
+  lastPollCueAt = now;
+
+  try {
+    pollCueContext ??= new Ctor();
+    const ctx = pollCueContext;
+    void ctx.resume().catch(() => {});
+
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    const start = ctx.currentTime;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.06, start + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.38);
+
+    for (const [frequency, offset] of [
+      [988, 0],
+      [740, 0.1],
+    ] as const) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = frequency;
+      osc.connect(gain);
+      osc.start(start + offset);
+      osc.stop(start + offset + 0.22);
+    }
+  } catch {
+    // No output device, or a context the browser refused to create. The card is
+    // the notification; the sound was only ever the optional half of it.
+  }
+}
