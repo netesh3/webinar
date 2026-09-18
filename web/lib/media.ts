@@ -117,27 +117,18 @@ export const SCREEN_SHARE_OPTIONS: ScreenShareCaptureOptions = {
     noiseSuppression: false,
     autoGainControl: false,
   },
-  contentHint: "text",
+  contentHint: "motion",
 
-  /* Capture floors: desktop ≥720p (we ask 1080p), mobile ≥360p.
-   *
-   * 1080p on desktop because slides/terminals are the point and text suffers first from a
-   * downscale — and because SHARE_LADDER can cut fps / turn off 1080p without cutting below
-   * 720p@~3 Mbps. 15fps rather than 30: a deck does not need the duplicates; contentHint
-   * "text" still tells the encoder to spend budget on pixels when motion appears.
-   *
-   * Safari is left unconstrained (WebKit bug 263015 returns a LOW resolution under
-   * constraints). Mobile asks for the 360p floor explicitly when not Safari.
-   */
+  /* Capture floors: desktop 1080p@30fps for smooth video playback & sharp presentations. */
   resolution: isSafari()
     ? undefined
     : isMobilePublisher()
       ? {
           width: SHARE_FLOOR_MOBILE.width,
           height: SHARE_FLOOR_MOBILE.height,
-          frameRate: 15,
+          frameRate: 30,
         }
-      : ScreenSharePresets.h1080fps15.resolution,
+      : ScreenSharePresets.h1080fps30.resolution,
 
   // Offer a control to swap the shared window mid-share instead of stopping and
   // starting again — which, in a webinar, means a gap the audience sees.

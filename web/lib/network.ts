@@ -335,17 +335,17 @@ const SHARE_1080_BITRATE = 5_000_000;
 
 export const SHARE_LAYERS = [
   // Subscriber convenience for small phone tiles — not a desktop content floor.
-  new VideoPreset(640, 360, SHARE_LOW_BITRATE, 3),
-  // Constructed: stock h720fps5 is 800k@5fps (soft + slideshow); we hold 3 Mbps@15.
+  new VideoPreset(640, 360, SHARE_LOW_BITRATE, 5),
+  // 720p@30fps for smooth motion & presentation clarity.
   new VideoPreset(
     SHARE_FLOOR_DESKTOP.width,
     SHARE_FLOOR_DESKTOP.height,
     SHARE_720_MIN_BITRATE,
-    15,
+    30,
   ),
 ];
 
-export const SHARE_TOP = new VideoPreset(1920, 1080, SHARE_1080_BITRATE, 15);
+export const SHARE_TOP = new VideoPreset(1920, 1080, SHARE_1080_BITRATE, 30);
 
 /** One share-ladder rung: bitrate, optional fps cap, never a resolution drop below the floor. */
 export type ShareRung = {
