@@ -634,3 +634,40 @@ export function PipIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function CloudIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+    </Icon>
+  );
+}
+
+export function CloudCheckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m9 12 2 2 4-4" />
+      <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+    </Icon>
+  );
+}
+
+export function CloudUploadIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 12v6" />
+      <path d="m15 15-3-3-3 3" />
+      <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+    </Icon>
+  );
+}
+
+export function CloudAlertIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 9v3" />
+      <path d="M12 15h.01" />
+      <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+    </Icon>
+  );
+}

@@ -30,13 +30,17 @@ export default function RecordingReplayPage({
   const [unlocking, setUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
+  const isUploading =
+    recording !== null &&
+    (recording.status === "processing" || (recording.uploadedToS3 === false && recording.status !== "failed"));
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      setLoading(true);
+      if (!isUploading) setLoading(true);
       setError(null);
       try {
-        const res = await api.publicRecording(slug, recId);
+        const res = await api.publicRecording(slug, recId, passcode || undefined);
         if (!cancelled) {
           setRecording(res);
         }
@@ -53,10 +57,19 @@ export default function RecordingReplayPage({
       }
     }
     void load();
+
+    let pollInterval: NodeJS.Timeout | null = null;
+    if (isUploading) {
+      pollInterval = setInterval(() => {
+        void load();
+      }, 3000);
+    }
+
     return () => {
       cancelled = true;
+      if (pollInterval) clearInterval(pollInterval);
     };
-  }, [slug, recId]);
+  }, [slug, recId, passcode, isUploading]);
 
   async function handleUnlock(e?: React.FormEvent) {
     if (e) e.preventDefault();
@@ -84,7 +97,7 @@ export default function RecordingReplayPage({
     }
   }
 
-  const streamUrl = recording?.unlocked
+  const streamUrl = recording?.unlocked && recording.uploadedToS3 !== false
     ? api.publicRecordingStreamURL(slug, recId, passcode || undefined)
     : "";
 
@@ -106,6 +119,28 @@ export default function RecordingReplayPage({
             <h1 className="text-xl font-semibold text-ink">Recording Unavailable</h1>
             <p className="mt-2 text-[14px] text-ink-2">
               {error || "This recording does not exist or is not publicly accessible."}
+            </p>
+            <div className="mt-6">
+              <Link
+                href={`/webinars/${slug}`}
+                className="inline-flex h-9 items-center rounded-lg border border-line-2 bg-surface px-4 text-[13px] font-medium text-ink hover:bg-surface-2"
+              >
+                View Webinar Page
+              </Link>
+            </div>
+          </Card>
+        ) : isUploading ? (
+          /* Uploading to Cloud Storage */
+          <Card className="mx-auto max-w-lg p-8 text-center">
+            <div className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-brand-soft text-brand">
+              <Spinner className="size-6 text-brand" />
+            </div>
+            <h1 className="text-xl font-semibold text-ink">Processing Recording</h1>
+            <p className="mt-2 text-[14px] text-ink-2">
+              This session has ended and is currently uploading to secure cloud storage.
+            </p>
+            <p className="mt-1 text-[13px] text-ink-3">
+              This page will automatically update once it is ready for playback.
             </p>
             <div className="mt-6">
               <Link

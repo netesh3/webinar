@@ -285,13 +285,13 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	status, err := s.store.FinishRecording(r.Context(), id, durationMs)
+	status, err := s.store.MarkRecordingProcessing(r.Context(), id, durationMs)
 	if errors.Is(err, store.ErrNotFound) {
 		// Already closed — by the size cap, by the webinar ending, or by a second
 		// click. The requested end state, so not an error — but still the moment
 		// to finalize storage if nothing has yet: the size-cap path in
 		// handleRecordingChunk closes the row without doing that itself.
-		s.finalizeRecording(r, slug, id, lookupErr, rec)
+		go s.finalizeRecording(r, slug, id, lookupErr, rec)
 		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "closed"})
 		return
 	}
@@ -299,7 +299,7 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 		s.fail(w, r, "complete recording", err)
 		return
 	}
-	s.finalizeRecording(r, slug, id, lookupErr, rec)
+	go s.finalizeRecording(r, slug, id, lookupErr, rec)
 
 	if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
 		// Clears the room's recording indicator. Best-effort: the row is closed either way.
@@ -311,7 +311,7 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	s.log.Info("recording finished", "slug", slug, "recording", id,
+	s.log.Info("recording finished, finalizing upload", "slug", slug, "recording", id,
 		"status", status, "durationMs", durationMs)
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: string(status)})
 }
@@ -319,13 +319,8 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 // finalizeRecording pushes a completed recording to its backend's permanent
 // storage — a no-op for Disk, and for S3 the one point where the staged file
 // is actually uploaded to the bucket; see Store.Finalize's own comment.
-//
-// Best-effort and logged only: the row is already closed in the database
-// either way, a host watching it fail here would learn nothing they can act
-// on, and a failed upload leaves the local staged copy in place rather than
-// losing the recording — the same file is still there to retry against.
 func (s *Server) finalizeRecording(
-	r *http.Request, slug, id string, lookupErr error, rec store.RecordingFile,
+	_ *http.Request, slug, id string, lookupErr error, rec store.RecordingFile,
 ) {
 	if s.recordings == nil || lookupErr != nil {
 		return
@@ -333,8 +328,17 @@ func (s *Server) finalizeRecording(
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	if err := s.recordings.Finalize(ctx, rec.StorageKey); err != nil {
-		s.log.Warn("complete recording: finalize storage",
+		s.log.Warn("complete recording: finalize storage failed",
 			"slug", slug, "recording", id, "error", err)
+		_ = s.store.MarkRecordingFailed(context.Background(), id)
+		return
+	}
+	if err := s.store.MarkRecordingUploaded(context.Background(), id); err != nil {
+		s.log.Warn("complete recording: mark uploaded failed",
+			"slug", slug, "recording", id, "error", err)
+	} else {
+		s.log.Info("complete recording: finalized and uploaded to s3",
+			"slug", slug, "recording", id)
 	}
 }
 
@@ -372,9 +376,24 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if rec.Status != types.RecordingReady || (s.cfg.RecordingsBackend == "s3" && !rec.UploadedToS3) {
+		if rec.Status == types.RecordingProcessing || (rec.Status == types.RecordingReady && !rec.UploadedToS3) {
+			httpx.Error(w, http.StatusConflict, "uploading_to_storage",
+				"This recording is currently uploading to cloud storage and is not ready yet. Please try again in a moment.")
+			return
+		}
+		if rec.Status == types.RecordingActive {
+			httpx.Error(w, http.StatusConflict, "recording_in_progress",
+				"This recording is still in progress.")
+			return
+		}
+		httpx.Error(w, http.StatusNotFound, "not_ready", "This recording is not ready.")
+		return
+	}
+
 	// When Cloudflare CDN is configured and the recording is finalized, redirect
 	// directly to the CDN edge. Free egress via Bandwidth Alliance and instant caching.
-	if s.cfg.RecordingsCDNBaseURL != "" && rec.Status == types.RecordingReady {
+	if s.cfg.RecordingsCDNBaseURL != "" {
 		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
 		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
 		return
@@ -520,7 +539,7 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	rec, err := s.store.RecordingFor(r.Context(), slug, id)
-	if errors.Is(err, store.ErrNotFound) || !rec.IsPublic || rec.Status != types.RecordingReady {
+	if errors.Is(err, store.ErrNotFound) || !rec.IsPublic || rec.Status == types.RecordingFailed {
 		httpx.Error(w, http.StatusNotFound, "not_found", "This recording is not publicly available.")
 		return
 	}
@@ -548,6 +567,7 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 		ID:               rec.ID,
 		Webinar:          rec.Webinar,
 		Topic:            rec.Topic,
+		Status:           rec.Status,
 		HostName:         rec.HostName,
 		DurationMs:       rec.DurationMs,
 		SizeBytes:        rec.SizeBytes,
@@ -555,6 +575,7 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 		Ext:              store.ExtForMime(rec.Mime),
 		PasscodeRequired: effectivePasscode != "",
 		Unlocked:         unlocked,
+		UploadedToS3:     rec.UploadedToS3,
 	}
 
 	httpx.JSON(w, http.StatusOK, res)
@@ -572,7 +593,12 @@ func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Requ
 	}
 
 	rec, err := s.store.RecordingFor(r.Context(), slug, id)
-	if errors.Is(err, store.ErrNotFound) || !rec.IsPublic || rec.Status != types.RecordingReady {
+	if errors.Is(err, store.ErrNotFound) || !rec.IsPublic || rec.Status != types.RecordingReady || (s.cfg.RecordingsBackend == "s3" && !rec.UploadedToS3) {
+		if rec.Status == types.RecordingProcessing || (rec.Status == types.RecordingReady && !rec.UploadedToS3) {
+			httpx.Error(w, http.StatusConflict, "uploading_to_storage",
+				"This recording is currently uploading to cloud storage and is not ready yet. Please try again in a moment.")
+			return
+		}
 		httpx.Error(w, http.StatusNotFound, "not_found", "This recording is not publicly available.")
 		return
 	}
@@ -598,7 +624,7 @@ func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Requ
 	}
 
 	// When Cloudflare CDN is configured, redirect directly to the CDN edge.
-	if s.cfg.RecordingsCDNBaseURL != "" && rec.Status == types.RecordingReady {
+	if s.cfg.RecordingsCDNBaseURL != "" {
 		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
 		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
 		return

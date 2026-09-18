@@ -56,12 +56,12 @@ func (s *Store) StartRecording(
 		createdAt time.Time
 	)
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO recordings (id, webinar_id, started_by, started_by_name, mime, storage_key)
-		SELECT $2::uuid, w.id, $3::uuid, $4, $5, $6 FROM webinars w WHERE (w.slug = $1 OR w.id::text = $1)
-		RETURNING id::text, status, mime, size_bytes, duration_ms, started_by_name, created_at`,
+		INSERT INTO recordings (id, webinar_id, started_by, started_by_name, mime, storage_key, uploaded_to_s3)
+		SELECT $2::uuid, w.id, $3::uuid, $4, $5, $6, false FROM webinars w WHERE (w.slug = $1 OR w.id::text = $1)
+		RETURNING id::text, status, mime, size_bytes, duration_ms, started_by_name, created_at, COALESCE(uploaded_to_s3, false)`,
 		slug, id, nullUUID(userID), userName, mime, storageKey,
 	).Scan(&rec.ID, &rec.Status, &rec.Mime, &rec.SizeBytes, &rec.DurationMs,
-		&rec.StartedBy, &createdAt)
+		&rec.StartedBy, &createdAt, &rec.UploadedToS3)
 
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
@@ -98,6 +98,7 @@ type RecordingFile struct {
 	Passcode        string
 	WebinarPasscode string
 	HostName        string
+	UploadedToS3    bool
 }
 
 // RecordingFor loads one recording, scoped to the webinar in the URL.
@@ -111,14 +112,14 @@ func (s *Store) RecordingFor(ctx context.Context, slug, id string) (RecordingFil
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
 		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
-		       COALESCE(u.name, 'Host')
+		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
 		  LEFT JOIN users u ON u.id = w.host_id
 		 WHERE (w.slug = $1 OR w.id::text = $1) AND r.id = $2::uuid`, slug, id,
 	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes, &f.DurationMs,
 		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar,
-		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName)
+		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName, &f.UploadedToS3)
 	if noRows(err) {
 		return RecordingFile{}, ErrNotFound
 	}
@@ -137,6 +138,42 @@ func (s *Store) RecordedBytes(ctx context.Context, id string, size int64) error 
 	return err
 }
 
+// MarkRecordingProcessing moves a recording from recording to processing while S3 upload finalizes.
+func (s *Store) MarkRecordingProcessing(ctx context.Context, id string, durationMs int64) (types.RecordingStatus, error) {
+	var status types.RecordingStatus
+	err := s.pool.QueryRow(ctx, `
+		UPDATE recordings
+		   SET status = CASE WHEN size_bytes > 0 THEN 'processing' ELSE 'failed' END,
+		       duration_ms = GREATEST(duration_ms, $2),
+		       stopped_at = now()
+		 WHERE id = $1::uuid AND status = 'recording'
+		 RETURNING status`, id, durationMs).Scan(&status)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
+	return status, err
+}
+
+// MarkRecordingUploaded marks a recording as ready and confirmed uploaded to S3.
+func (s *Store) MarkRecordingUploaded(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE recordings
+		   SET status = 'ready',
+		       uploaded_to_s3 = true,
+		       stopped_at = COALESCE(stopped_at, now())
+		 WHERE id = $1::uuid`, id)
+	return err
+}
+
+// MarkRecordingFailed marks a recording as failed if upload or processing aborted.
+func (s *Store) MarkRecordingFailed(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE recordings
+		   SET status = 'failed'
+		 WHERE id = $1::uuid`, id)
+	return err
+}
+
 // FinishRecording closes a recording. An empty one is marked failed: a zero-byte
 // file listed as "ready" is a download that disappoints someone later.
 func (s *Store) FinishRecording(ctx context.Context, id string, durationMs int64) (types.RecordingStatus, error) {
@@ -144,9 +181,10 @@ func (s *Store) FinishRecording(ctx context.Context, id string, durationMs int64
 	err := s.pool.QueryRow(ctx, `
 		UPDATE recordings
 		   SET status = CASE WHEN size_bytes > 0 THEN 'ready' ELSE 'failed' END,
+		       uploaded_to_s3 = CASE WHEN size_bytes > 0 THEN true ELSE false END,
 		       duration_ms = GREATEST(duration_ms, $2),
 		       stopped_at = now()
-		 WHERE id = $1::uuid AND status = 'recording'
+		 WHERE id = $1::uuid AND status IN ('recording', 'processing')
 		 RETURNING status`, id, durationMs).Scan(&status)
 	if noRows(err) {
 		return "", ErrNotFound
@@ -170,14 +208,14 @@ func (s *Store) RecordingByEgressID(ctx context.Context, egressID string) (Recor
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
 		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
-		       COALESCE(u.name, 'Host')
+		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
 		  LEFT JOIN users u ON u.id = w.host_id
 		 WHERE r.egress_id = $1`, egressID,
 	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes, &f.DurationMs,
 		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar,
-		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName)
+		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName, &f.UploadedToS3)
 	if noRows(err) {
 		return RecordingFile{}, ErrNotFound
 	}
@@ -193,10 +231,11 @@ func (s *Store) FinishRecordingWithStats(ctx context.Context, id string, sizeByt
 	err := s.pool.QueryRow(ctx, `
 		UPDATE recordings
 		   SET status = CASE WHEN $2 > 0 OR size_bytes > 0 THEN 'ready' ELSE 'failed' END,
+		       uploaded_to_s3 = CASE WHEN $2 > 0 OR size_bytes > 0 THEN true ELSE false END,
 		       size_bytes = GREATEST(size_bytes, $2),
 		       duration_ms = GREATEST(duration_ms, $3),
 		       stopped_at = now()
-		 WHERE id = $1::uuid AND status IN ('recording', 'failed')
+		 WHERE id = $1::uuid AND status IN ('recording', 'processing', 'failed')
 		 RETURNING status`, id, sizeBytes, durationMs).Scan(&status)
 	if noRows(err) {
 		return "", ErrNotFound
@@ -210,6 +249,7 @@ func (s *Store) FinishActiveRecordings(ctx context.Context, slug string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE recordings r
 		   SET status = CASE WHEN r.size_bytes > 0 THEN 'ready' ELSE 'failed' END,
+		       uploaded_to_s3 = CASE WHEN r.size_bytes > 0 THEN true ELSE false END,
 		       stopped_at = now()
 		  FROM webinars w
 		 WHERE w.id = r.webinar_id AND (w.slug = $1 OR w.id::text = $1) AND r.status = 'recording'`, slug)
@@ -241,7 +281,8 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 		SELECT r.id::text, w.slug, w.topic, r.status, r.mime, r.size_bytes,
 		       r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
 		       COALESCE(r.egress_id, ''), COALESCE(r.is_public, true),
-		       COALESCE(r.passcode, ''), COALESCE(w.passcode, '')
+		       COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(r.uploaded_to_s3, false)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
 		 WHERE (w.slug = $1 OR w.id::text = $1)
@@ -262,7 +303,7 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 		)
 		if err := rows.Scan(&rec.ID, &rec.Webinar, &rec.Topic, &rec.Status, &rec.Mime,
 			&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt,
-			&rec.EgressID, &rec.IsPublic, &rec.Passcode, &webinarPasscode); err != nil {
+			&rec.EgressID, &rec.IsPublic, &rec.Passcode, &webinarPasscode, &rec.UploadedToS3); err != nil {
 			return nil, err
 		}
 		rec.CreatedAt = createdAt.Format(time.RFC3339)
@@ -315,7 +356,8 @@ func (s *Store) UpdateRecordingShareSettings(ctx context.Context, slug, id strin
 		 RETURNING r.id::text, w.slug, w.topic, r.status, r.mime, r.size_bytes,
 		           r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
 		           COALESCE(r.egress_id, ''), COALESCE(r.is_public, true),
-		           COALESCE(r.passcode, ''), COALESCE(w.passcode, '')`
+		           COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		           COALESCE(r.uploaded_to_s3, false)`
 
 	var (
 		rec             types.Recording
@@ -327,6 +369,7 @@ func (s *Store) UpdateRecordingShareSettings(ctx context.Context, slug, id strin
 		&rec.ID, &rec.Webinar, &rec.Topic, &rec.Status, &rec.Mime,
 		&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt,
 		&rec.EgressID, &rec.IsPublic, &rec.Passcode, &webinarPasscode,
+		&rec.UploadedToS3,
 	)
 	if noRows(err) {
 		return types.Recording{}, ErrNotFound

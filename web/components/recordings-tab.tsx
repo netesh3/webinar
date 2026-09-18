@@ -6,7 +6,15 @@ import type { Recording, Webinar } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { formatBytes, formatClock } from "@/lib/format";
 import { ConfirmModal, CopyField, Modal, Spinner, Toggle } from "./controls";
-import { LockIcon, PlayIcon, ShareIcon, TrashIcon } from "./icons";
+import {
+  CloudAlertIcon,
+  CloudCheckIcon,
+  CloudUploadIcon,
+  LockIcon,
+  PlayIcon,
+  ShareIcon,
+  TrashIcon,
+} from "./icons";
 import { useToast } from "./providers";
 import { Badge, Button, Card, Empty } from "./ui";
 import { VideoPlayer } from "./video-player";
@@ -37,9 +45,11 @@ export function RecordingsTab({
   const [confirmDelete, setConfirmDelete] = useState<Recording | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  // Poll while any recording is still processing or recording, so the row
-  // transitions to "Ready" without requiring a manual page refresh.
-  const hasLive = rows.some((r) => r.status === "recording");
+  // Poll while any recording is still processing or recording or not yet uploaded to S3,
+  // so the row transitions to "S3 Ready" without requiring a manual page refresh.
+  const hasLive = rows.some(
+    (r) => r.status === "recording" || r.status === "processing" || !r.uploadedToS3,
+  );
   useEffect(() => {
     if (!hasLive) return;
     const timer = setInterval(() => {
@@ -124,7 +134,7 @@ export function RecordingsTab({
       )}
 
       <p className="text-[12px] leading-relaxed text-ink-3">
-        Recordings are stored on this server. Everyone in the room is shown a
+        Recordings are securely stored in cloud storage (S3) and served directly via CDN edge. Everyone in the room is shown a
         recording indicator while one is running.
       </p>
 
@@ -147,7 +157,7 @@ export function RecordingsTab({
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => confirmDelete && void remove(confirmDelete)}
         title="Delete this recording?"
-        body="The file is removed from the server. This cannot be undone."
+        body="The file is removed from cloud storage. This cannot be undone."
         confirmLabel="Delete"
       />
     </div>
@@ -175,7 +185,7 @@ function ShareRecordingModal({
 
   const shareUrl = hydrated
     ? `${window.location.origin}/w/${w.id}/recording/${rec.id}`
-    : `https://webinar.com/w/${w.id}/recording/${rec.id}`;
+    : `https://webinarliv.com/w/${w.id}/recording/${rec.id}`;
 
   async function handleSave() {
     setBusy(true);
@@ -215,6 +225,12 @@ function ShareRecordingModal({
     >
       <div className="space-y-4 py-1">
         <CopyField value={shareUrl} label="Public share link" />
+
+        {!rec.uploadedToS3 && (
+          <div className="rounded-lg border border-warn/30 bg-warn-soft/30 p-2.5 text-[12px] text-ink-2">
+            <span className="font-semibold text-ink">Upload in progress:</span> This recording is currently being uploaded to S3 storage. Viewers will be able to play it as soon as processing completes.
+          </div>
+        )}
 
         <div className="pt-2 border-t border-line space-y-4">
           <Toggle
@@ -270,6 +286,8 @@ function RecordingRow({
   // server render and the browser, and React calls that a hydration error.
   const hydrated = useHydrated();
   const live = rec.status === "recording";
+  const processing = rec.status === "processing" || (rec.status === "ready" && !rec.uploadedToS3);
+  const ready = rec.status === "ready" && rec.uploadedToS3;
   const failed = rec.status === "failed";
 
   return (
@@ -281,10 +299,30 @@ function RecordingRow({
               Recording now
             </Badge>
           )}
-          {failed && <Badge tone="warn">Incomplete</Badge>}
-          {rec.status === "ready" && (
+          {processing && (
+            <Badge tone="warn">
+              <span className="inline-flex items-center gap-1">
+                <CloudUploadIcon className="size-3 animate-pulse" />
+                Uploading to S3...
+              </span>
+            </Badge>
+          )}
+          {failed && (
+            <Badge tone="warn">
+              <span className="inline-flex items-center gap-1">
+                <CloudAlertIcon className="size-3" />
+                Upload Failed
+              </span>
+            </Badge>
+          )}
+          {ready && (
             <>
-              <Badge tone="ok">Ready</Badge>
+              <Badge tone="ok">
+                <span className="inline-flex items-center gap-1">
+                  <CloudCheckIcon className="size-3" />
+                  S3 Ready
+                </span>
+              </Badge>
               {!rec.isPublic ? (
                 <Badge tone="warn">Private</Badge>
               ) : rec.passcodeRequired ? (
@@ -314,7 +352,7 @@ function RecordingRow({
           <Spinner className="size-4 text-ink-3" />
         ) : (
           <>
-            {rec.sizeBytes > 0 && (
+            {ready && rec.sizeBytes > 0 && (
               <>
                 <Button variant="secondary" size="sm" onClick={onPlay}>
                   <PlayIcon className="size-3.5" />
@@ -331,6 +369,18 @@ function RecordingRow({
                 >
                   Download
                 </a>
+              </>
+            )}
+            {processing && (
+              <>
+                <Button variant="secondary" size="sm" disabled title="Uploading to S3...">
+                  <Spinner className="size-3" />
+                  Uploading...
+                </Button>
+                <Button variant="secondary" size="sm" onClick={onShare}>
+                  <ShareIcon className="size-3.5" />
+                  Share
+                </Button>
               </>
             )}
             {/* Deleting is the host's alone; a panelist gets a 403 they cannot act

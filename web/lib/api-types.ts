@@ -883,8 +883,9 @@ export interface RoomMeta {
   /** MaxDurationMin is the maximum allowed duration for this session in minutes. */
   maxDurationMin?: number;
 }
-export type RecordingStatus = string;
+export type RecordingStatus = "recording" | "processing" | "ready" | "failed" | string;
 export const RecordingActive: RecordingStatus = "recording";
+export const RecordingProcessing: RecordingStatus = "processing";
 export const RecordingReady: RecordingStatus = "ready";
 export const RecordingFailed: RecordingStatus = "failed";
 /**
@@ -916,6 +917,7 @@ export interface Recording {
   isPublic: boolean;
   passcode?: string;
   passcodeRequired: boolean;
+  uploadedToS3: boolean;
 }
 /**
  * StartRecordingRequest is sent by the browser that will do the capturing. It
@@ -939,6 +941,7 @@ export interface PublicRecording {
   id: string;
   webinar: string;
   topic: string;
+  status?: RecordingStatus;
   hostName: string;
   durationMs: number /* int64 */;
   sizeBytes: number /* int64 */;
@@ -946,6 +949,7 @@ export interface PublicRecording {
   ext: string;
   passcodeRequired: boolean;
   unlocked: boolean;
+  uploadedToS3?: boolean;
 }
 /**
  * LiveParticipant is one row of the host's participant panel.

@@ -889,9 +889,10 @@ type RoomMeta struct {
 type RecordingStatus string
 
 const (
-	RecordingActive RecordingStatus = "recording"
-	RecordingReady  RecordingStatus = "ready"
-	RecordingFailed RecordingStatus = "failed"
+	RecordingActive     RecordingStatus = "recording"
+	RecordingProcessing RecordingStatus = "processing"
+	RecordingReady      RecordingStatus = "ready"
+	RecordingFailed     RecordingStatus = "failed"
 )
 
 // Recording is one captured session.
@@ -918,6 +919,7 @@ type Recording struct {
 	IsPublic         bool   `json:"isPublic"`
 	Passcode         string `json:"passcode,omitempty"`
 	PasscodeRequired bool   `json:"passcodeRequired"`
+	UploadedToS3     bool   `json:"uploadedToS3"`
 }
 
 // StartRecordingRequest is sent by the browser that will do the capturing. It
@@ -935,16 +937,18 @@ type ShareRecordingRequest struct {
 
 // PublicRecording is the sanitized recording metadata returned to anonymous viewers.
 type PublicRecording struct {
-	ID               string `json:"id"`
-	Webinar          string `json:"webinar"`
-	Topic            string `json:"topic"`
-	HostName         string `json:"hostName"`
-	DurationMs       int64  `json:"durationMs"`
-	SizeBytes        int64  `json:"sizeBytes"`
-	CreatedAt        string `json:"createdAt"`
-	Ext              string `json:"ext"`
-	PasscodeRequired bool   `json:"passcodeRequired"`
-	Unlocked         bool   `json:"unlocked"`
+	ID               string          `json:"id"`
+	Webinar          string          `json:"webinar"`
+	Topic            string          `json:"topic"`
+	Status           RecordingStatus `json:"status"`
+	HostName         string          `json:"hostName"`
+	DurationMs       int64           `json:"durationMs"`
+	SizeBytes        int64           `json:"sizeBytes"`
+	CreatedAt        string          `json:"createdAt"`
+	Ext              string          `json:"ext"`
+	PasscodeRequired bool            `json:"passcodeRequired"`
+	Unlocked         bool            `json:"unlocked"`
+	UploadedToS3     bool            `json:"uploadedToS3"`
 }
 
 // ------------------------------------------------------------ host: in-session
