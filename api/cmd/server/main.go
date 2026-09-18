@@ -139,12 +139,29 @@ func run() error {
 	// and the handlers answer 503 instead of pretending.
 	var recordings media.Store
 	if cfg.RecordingsEnabled {
-		disk, err := media.NewDisk(cfg.RecordingsDir)
-		if err != nil {
-			return err
+		switch cfg.RecordingsBackend {
+		case "s3":
+			bucket, err := media.NewS3(
+				cfg.RecordingsDir, cfg.RecordingsS3Endpoint, cfg.RecordingsS3Region,
+				cfg.RecordingsS3Bucket, cfg.RecordingsS3AccessKey, cfg.RecordingsS3SecretKey,
+			)
+			if err != nil {
+				return err
+			}
+			recordings = bucket
+			log.Info("recording storage ready", "backend", bucket.Describe())
+		default:
+			// config.validate already refused anything but "disk" or "s3" —
+			// this is unreachable except by a future backend name added there
+			// and not here, which is exactly the case worth a clear failure
+			// instead of a silent fall-through to disk.
+			disk, err := media.NewDisk(cfg.RecordingsDir)
+			if err != nil {
+				return err
+			}
+			recordings = disk
+			log.Info("recording storage ready", "backend", disk.Describe())
 		}
-		recordings = disk
-		log.Info("recording storage ready", "backend", disk.Describe())
 	} else {
 		log.Info("recording is disabled")
 	}

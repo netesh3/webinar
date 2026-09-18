@@ -32,6 +32,19 @@ type Store interface {
 	// seeking, a browser cannot scrub a video, it can only play it from 0.
 	Open(ctx context.Context, key string) (io.ReadSeekCloser, int64, error)
 	Delete(ctx context.Context, key string) error
+	/* Finalize marks an object done — every Append call for this key has
+	 * already happened, and nothing will call Append on it again.
+	 *
+	 * A no-op for Disk: every Append already fsyncs before returning, so an
+	 * object built one Append at a time is durable the moment the last one
+	 * lands, and there is nothing left to do. It exists on the interface at
+	 * all because a backend that cannot append to a remote object in place
+	 * (S3, and B2 through its S3-compatible API) has to stage the bytes
+	 * somewhere local and push the finished object in one upload — see S3
+	 * in this package — and needs to be told when that moment has arrived.
+	 * The handler that calls Complete on a recording is the only caller;
+	 * see handleCompleteRecording. */
+	Finalize(ctx context.Context, key string) error
 	// Describe names the backend for logs and the readiness endpoint.
 	Describe() string
 }
@@ -153,3 +166,6 @@ func (d *Disk) Delete(_ context.Context, key string) error {
 	}
 	return nil
 }
+
+// Finalize is a no-op — see the interface's own doc comment for why.
+func (d *Disk) Finalize(_ context.Context, _ string) error { return nil }

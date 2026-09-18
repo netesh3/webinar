@@ -226,10 +226,20 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 		durationMs = 0
 	}
 
+	// Looked up before FinishRecording, and kept regardless of which branch
+	// below runs: Finalize needs the storage key whether this call is the one
+	// that actually closes the row or arrives after something else already
+	// did (the size cap, in handleRecordingChunk) — a still-staged S3 upload
+	// does not care which of those closed it, only that it is closed now.
+	rec, lookupErr := s.store.RecordingFor(r.Context(), slug, id)
+
 	status, err := s.store.FinishRecording(r.Context(), id, durationMs)
 	if errors.Is(err, store.ErrNotFound) {
 		// Already closed — by the size cap, by the webinar ending, or by a second
-		// click. The requested end state, so not an error.
+		// click. The requested end state, so not an error — but still the moment
+		// to finalize storage if nothing has yet: the size-cap path in
+		// handleRecordingChunk closes the row without doing that itself.
+		s.finalizeRecording(r, slug, id, lookupErr, rec)
 		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "closed"})
 		return
 	}
@@ -237,6 +247,7 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 		s.fail(w, r, "complete recording", err)
 		return
 	}
+	s.finalizeRecording(r, slug, id, lookupErr, rec)
 
 	if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
 		// Clears the room's recording indicator. Best-effort: the row is closed either way.
@@ -251,6 +262,26 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 	s.log.Info("recording finished", "slug", slug, "recording", id,
 		"status", status, "durationMs", durationMs)
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: string(status)})
+}
+
+// finalizeRecording pushes a completed recording to its backend's permanent
+// storage — a no-op for Disk, and for S3 the one point where the staged file
+// is actually uploaded to the bucket; see Store.Finalize's own comment.
+//
+// Best-effort and logged only: the row is already closed in the database
+// either way, a host watching it fail here would learn nothing they can act
+// on, and a failed upload leaves the local staged copy in place rather than
+// losing the recording — the same file is still there to retry against.
+func (s *Server) finalizeRecording(
+	r *http.Request, slug, id string, lookupErr error, rec store.RecordingFile,
+) {
+	if s.recordings == nil || lookupErr != nil {
+		return
+	}
+	if err := s.recordings.Finalize(r.Context(), rec.StorageKey); err != nil {
+		s.log.Warn("complete recording: finalize storage",
+			"slug", slug, "recording", id, "error", err)
+	}
 }
 
 func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {

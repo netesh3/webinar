@@ -65,17 +65,36 @@ type Config struct {
 
 	// Recording.
 	//
-	// RecordingsBackend is the storage seam: "disk" today, "s3" when recordings
-	// outgrow one machine's filesystem. It is validated at boot rather than
-	// falling back silently, because "recording is on" and "recordings are being
-	// kept somewhere" have to be the same statement.
+	// RecordingsBackend is the storage seam: "disk", or "s3" for an
+	// S3-compatible bucket (Backblaze B2 in practice — it speaks the S3 API
+	// directly). It is validated at boot rather than falling back silently,
+	// because "recording is on" and "recordings are being kept somewhere"
+	// have to be the same statement.
 	RecordingsEnabled bool
 	RecordingsBackend string
-	RecordingsDir     string
+	// RecordingsDir is the local disk backend's own store when
+	// RecordingsBackend is "disk" — and, when it is "s3", the local STAGING
+	// area every recording still passes through before Finalize uploads it
+	// (see media.S3's own comment for why an S3-family bucket cannot be
+	// appended to in place the way this whole feature otherwise assumes).
+	// Both backends need it writable; only the meaning of what ends up there
+	// permanently differs.
+	RecordingsDir string
 	// MaxRecordingMB caps a single recording. A forgotten one otherwise fills the
 	// disk and takes the API down with it — the recording is not the thing that
-	// matters most on that machine.
+	// matters most on that machine. Doubles, for the "s3" backend, as the size
+	// a single recording occupies on local disk for the whole session before
+	// Finalize ever uploads it — see RecordingsDir.
 	MaxRecordingMB int
+
+	// RecordingsS3* configure the "s3" backend. Required only when
+	// RecordingsBackend is "s3" — left empty and unused for "disk", so a
+	// deployment that never turns this on need not set them at all.
+	RecordingsS3Bucket    string
+	RecordingsS3Endpoint  string
+	RecordingsS3Region    string
+	RecordingsS3AccessKey string
+	RecordingsS3SecretKey string
 
 	// Branding and public URLs are served to the frontend over /api/config so
 	// the bundle carries no build-time constants for things an operator sets.
@@ -254,9 +273,21 @@ func Load() (Config, error) {
 		SupabaseURL:       strings.TrimRight(env("SUPABASE_URL", ""), "/"),
 		SupabaseAnonKey:   env("SUPABASE_ANON_KEY", ""),
 		SupabaseJWTSecret: env("SUPABASE_JWT_SECRET", ""),
-		RecordingsBackend: strings.ToLower(env("RECORDINGS_BACKEND", "disk")),
-		RecordingsDir:     env("RECORDINGS_DIR", "./.data/recordings"),
-		MaxRecordingMB:    envInt("MAX_RECORDING_MB", 4096),
+		RecordingsBackend:     strings.ToLower(env("RECORDINGS_BACKEND", "disk")),
+		RecordingsDir:         env("RECORDINGS_DIR", "./.data/recordings"),
+		MaxRecordingMB:        envInt("MAX_RECORDING_MB", 4096),
+		RecordingsS3Bucket:    env("RECORDINGS_S3_BUCKET", ""),
+		RecordingsS3Endpoint:  env("RECORDINGS_S3_ENDPOINT", ""),
+		// us-east-1 as the fallback rather than empty: an S3-compatible
+		// provider that ignores region (many do) still gets something
+		// syntactically valid, and one that requires it (B2 does — the
+		// region is embedded in its own endpoint host, e.g.
+		// s3.eu-central-003.backblazeb2.com) is documented well enough that
+		// an operator setting RECORDINGS_S3_ENDPOINT is expected to set this
+		// to match.
+		RecordingsS3Region:    env("RECORDINGS_S3_REGION", "us-east-1"),
+		RecordingsS3AccessKey: env("RECORDINGS_S3_ACCESS_KEY", ""),
+		RecordingsS3SecretKey: env("RECORDINGS_S3_SECRET_KEY", ""),
 	}
 	c.CookieSecure = envBool("COOKIE_SECURE", c.Env != "development")
 	c.SignupOpen = envBool("SIGNUP_OPEN", true)
@@ -350,12 +381,26 @@ func (c Config) validate() error {
 				errs = append(errs, errors.New("RECORDINGS_DIR is required when RECORDINGS_BACKEND=disk"))
 			}
 		case "s3":
-			// Named in the config surface because it is the planned next step, and
-			// refused here because pretending to store recordings is worse than
-			// not offering to.
-			errs = append(errs, errors.New("RECORDINGS_BACKEND=s3 is not implemented yet — use disk, or set RECORDINGS_ENABLED=false"))
+			// RecordingsDir is required here too — it is the local staging
+			// area every recording still passes through before Finalize
+			// uploads it; see media.S3's own comment for why.
+			if strings.TrimSpace(c.RecordingsDir) == "" {
+				errs = append(errs, errors.New("RECORDINGS_DIR is required when RECORDINGS_BACKEND=s3 (it stages a recording locally before uploading it)"))
+			}
+			if strings.TrimSpace(c.RecordingsS3Bucket) == "" {
+				errs = append(errs, errors.New("RECORDINGS_S3_BUCKET is required when RECORDINGS_BACKEND=s3"))
+			}
+			if strings.TrimSpace(c.RecordingsS3Endpoint) == "" {
+				errs = append(errs, errors.New("RECORDINGS_S3_ENDPOINT is required when RECORDINGS_BACKEND=s3"))
+			}
+			if strings.TrimSpace(c.RecordingsS3AccessKey) == "" {
+				errs = append(errs, errors.New("RECORDINGS_S3_ACCESS_KEY is required when RECORDINGS_BACKEND=s3"))
+			}
+			if strings.TrimSpace(c.RecordingsS3SecretKey) == "" {
+				errs = append(errs, errors.New("RECORDINGS_S3_SECRET_KEY is required when RECORDINGS_BACKEND=s3"))
+			}
 		default:
-			errs = append(errs, fmt.Errorf("RECORDINGS_BACKEND=%q is not a known backend (disk)", c.RecordingsBackend))
+			errs = append(errs, fmt.Errorf("RECORDINGS_BACKEND=%q is not a known backend (disk, s3)", c.RecordingsBackend))
 		}
 		if c.MaxRecordingMB < 1 {
 			errs = append(errs, errors.New("MAX_RECORDING_MB must be >= 1"))
