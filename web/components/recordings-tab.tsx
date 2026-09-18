@@ -227,8 +227,20 @@ function ShareRecordingModal({
         <CopyField value={shareUrl} label="Public share link" />
 
         {!rec.uploadedToS3 && (
-          <div className="rounded-lg border border-warn/30 bg-warn-soft/30 p-2.5 text-[12px] text-ink-2">
-            <span className="font-semibold text-ink">Upload in progress:</span> This recording is currently being uploaded to S3 storage. Viewers will be able to play it as soon as processing completes.
+          <div className="rounded-lg border border-warn/30 bg-warn-soft/30 p-2.5 text-[12px] text-ink-2 space-y-1.5">
+            <div className="flex items-center justify-between font-semibold text-ink">
+              <span>Upload in progress:</span>
+              <span className="font-mono text-brand">{rec.uploadPercent || 0}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+              <div
+                className="h-full bg-brand transition-all duration-300"
+                style={{ width: `${rec.uploadPercent || 0}%` }}
+              />
+            </div>
+            <p className="text-[11.5px] text-ink-3">
+              This recording is uploading to secure cloud storage. Viewers will be able to play it as soon as processing completes.
+            </p>
           </div>
         )}
 
@@ -289,6 +301,7 @@ function RecordingRow({
   const processing = rec.status === "processing" || (rec.status === "ready" && !rec.uploadedToS3);
   const ready = rec.status === "ready" && rec.uploadedToS3;
   const failed = rec.status === "failed";
+  const pct = rec.uploadPercent ?? 0;
 
   return (
     <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
@@ -303,7 +316,7 @@ function RecordingRow({
             <Badge tone="warn">
               <span className="inline-flex items-center gap-1">
                 <CloudUploadIcon className="size-3 animate-pulse" />
-                Uploading to S3...
+                Uploading to S3 {pct > 0 ? `(${pct}%)` : "..."}
               </span>
             </Badge>
           )}
@@ -345,6 +358,17 @@ function RecordingRow({
           {formatBytes(rec.sizeBytes)}
           {rec.startedBy ? ` · started by ${rec.startedBy}` : ""}
         </p>
+        {processing && pct > 0 && (
+          <div className="mt-1.5 flex items-center gap-2">
+            <div className="h-1.5 w-32 overflow-hidden rounded-full bg-line">
+              <div
+                className="h-full bg-brand transition-all duration-300"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="font-mono text-[11px] text-ink-3">{pct}%</span>
+          </div>
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
@@ -373,9 +397,9 @@ function RecordingRow({
             )}
             {processing && (
               <>
-                <Button variant="secondary" size="sm" disabled title="Uploading to S3...">
+                <Button variant="secondary" size="sm" disabled title={`Uploading to S3 (${pct}%)...`}>
                   <Spinner className="size-3" />
-                  Uploading...
+                  {pct > 0 ? `Uploading ${pct}%` : "Uploading..."}
                 </Button>
                 <Button variant="secondary" size="sm" onClick={onShare}>
                   <ShareIcon className="size-3.5" />

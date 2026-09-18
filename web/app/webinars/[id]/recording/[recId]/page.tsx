@@ -131,18 +131,37 @@ export default function RecordingReplayPage({
           </Card>
         ) : isUploading ? (
           /* Uploading to Cloud Storage */
-          <Card className="mx-auto max-w-lg p-8 text-center">
-            <div className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-brand-soft text-brand">
+          <Card className="mx-auto max-w-lg p-8 text-center space-y-4">
+            <div className="mx-auto grid size-12 place-items-center rounded-full bg-brand-soft text-brand">
               <Spinner className="size-6 text-brand" />
             </div>
-            <h1 className="text-xl font-semibold text-ink">Processing Recording</h1>
-            <p className="mt-2 text-[14px] text-ink-2">
-              This session has ended and is currently uploading to secure cloud storage.
-            </p>
-            <p className="mt-1 text-[13px] text-ink-3">
+            <div>
+              <h1 className="text-xl font-semibold text-ink">
+                Processing Recording {recording.uploadPercent ? `(${recording.uploadPercent}%)` : ""}
+              </h1>
+              <p className="mt-2 text-[14px] text-ink-2">
+                This session has ended and is currently uploading to secure cloud storage.
+              </p>
+            </div>
+
+            {typeof recording.uploadPercent === "number" && recording.uploadPercent > 0 && (
+              <div className="space-y-1.5 pt-2">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-surface-3">
+                  <div
+                    className="h-full bg-brand transition-all duration-300"
+                    style={{ width: `${recording.uploadPercent}%` }}
+                  />
+                </div>
+                <p className="text-right font-mono text-[11.5px] text-ink-3">
+                  {recording.uploadPercent}% uploaded
+                </p>
+              </div>
+            )}
+
+            <p className="text-[13px] text-ink-3">
               This page will automatically update once it is ready for playback.
             </p>
-            <div className="mt-6">
+            <div className="pt-2">
               <Link
                 href={`/webinars/${slug}`}
                 className="inline-flex h-9 items-center rounded-lg border border-line-2 bg-surface px-4 text-[13px] font-medium text-ink hover:bg-surface-2"

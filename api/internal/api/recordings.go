@@ -327,7 +327,11 @@ func (s *Server) finalizeRecording(
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if err := s.recordings.Finalize(ctx, rec.StorageKey); err != nil {
+
+	err := s.recordings.FinalizeWithProgress(ctx, rec.StorageKey, func(percent int) {
+		_ = s.store.UpdateUploadProgress(context.Background(), id, percent)
+	})
+	if err != nil {
 		s.log.Warn("complete recording: finalize storage failed",
 			"slug", slug, "recording", id, "error", err)
 		_ = s.store.MarkRecordingFailed(context.Background(), id)
@@ -576,6 +580,7 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 		PasscodeRequired: effectivePasscode != "",
 		Unlocked:         unlocked,
 		UploadedToS3:     rec.UploadedToS3,
+		UploadPercent:    rec.UploadPercent,
 	}
 
 	httpx.JSON(w, http.StatusOK, res)

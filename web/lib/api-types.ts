@@ -918,6 +918,7 @@ export interface Recording {
   passcode?: string;
   passcodeRequired: boolean;
   uploadedToS3: boolean;
+  uploadPercent?: number;
 }
 /**
  * StartRecordingRequest is sent by the browser that will do the capturing. It
@@ -950,6 +951,7 @@ export interface PublicRecording {
   passcodeRequired: boolean;
   unlocked: boolean;
   uploadedToS3?: boolean;
+  uploadPercent?: number;
 }
 /**
  * LiveParticipant is one row of the host's participant panel.

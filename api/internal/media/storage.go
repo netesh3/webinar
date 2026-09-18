@@ -45,6 +45,7 @@ type Store interface {
 	 * The handler that calls Complete on a recording is the only caller;
 	 * see handleCompleteRecording. */
 	Finalize(ctx context.Context, key string) error
+	FinalizeWithProgress(ctx context.Context, key string, onProgress func(percent int)) error
 	// Describe names the backend for logs and the readiness endpoint.
 	Describe() string
 }
@@ -169,3 +170,10 @@ func (d *Disk) Delete(_ context.Context, key string) error {
 
 // Finalize is a no-op — see the interface's own doc comment for why.
 func (d *Disk) Finalize(_ context.Context, _ string) error { return nil }
+
+func (d *Disk) FinalizeWithProgress(_ context.Context, _ string, onProgress func(percent int)) error {
+	if onProgress != nil {
+		onProgress(100)
+	}
+	return nil
+}

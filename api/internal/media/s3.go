@@ -158,18 +158,34 @@ func (o *S3) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-/* Finalize uploads the complete staged file in one call and only then removes
- * it — a failed upload leaves the local copy in place rather than losing the
- * recording, so a retried Finalize (or a manual one, later) still has bytes
- * to push. manager.Uploader picks a single PutObject or a multipart upload
- * based on size on its own; there is no hand-rolled part-buffering here to
- * get wrong.
- */
+// Finalize uploads the complete staged file in one call and then removes it.
 func (o *S3) Finalize(ctx context.Context, key string) error {
-	f, _, err := o.staging.Open(ctx, key)
+	return o.FinalizeWithProgress(ctx, key, nil)
+}
+
+type progressReader struct {
+	r          io.Reader
+	total      int64
+	read       int64
+	onProgress func(read, total int64)
+}
+
+func (p *progressReader) Read(buf []byte) (int, error) {
+	n, err := p.r.Read(buf)
+	p.read += int64(n)
+	if p.onProgress != nil {
+		p.onProgress(p.read, p.total)
+	}
+	return n, err
+}
+
+func (o *S3) FinalizeWithProgress(ctx context.Context, key string, onProgress func(percent int)) error {
+	f, size, err := o.staging.Open(ctx, key)
 	if errors.Is(err, ErrNotFound) {
 		// Nothing staged — already finalized, or never appended to at all.
-		// Either way there is nothing this call needs to do.
+		if onProgress != nil {
+			onProgress(100)
+		}
 		return nil
 	}
 	if err != nil {
@@ -177,13 +193,39 @@ func (o *S3) Finalize(ctx context.Context, key string) error {
 	}
 	defer f.Close()
 
+	var body io.Reader = f
+	if size > 0 && onProgress != nil {
+		lastPercent := -1
+		body = &progressReader{
+			r:     f,
+			total: size,
+			onProgress: func(read, total int64) {
+				if total <= 0 {
+					return
+				}
+				pct := int(float64(read) / float64(total) * 100)
+				if pct > 99 {
+					pct = 99
+				}
+				if pct != lastPercent && (pct%2 == 0 || pct == 99 || pct == 0) {
+					lastPercent = pct
+					onProgress(pct)
+				}
+			},
+		}
+	}
+
 	uploader := manager.NewUploader(o.client)
 	if _, err := uploader.Upload(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(o.bucket),
 		Key:    aws.String(key),
-		Body:   f,
+		Body:   body,
 	}); err != nil {
 		return fmt.Errorf("upload %s: %w", key, err)
+	}
+
+	if onProgress != nil {
+		onProgress(100)
 	}
 
 	return o.staging.Delete(ctx, key)

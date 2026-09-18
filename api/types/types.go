@@ -920,6 +920,7 @@ type Recording struct {
 	Passcode         string `json:"passcode,omitempty"`
 	PasscodeRequired bool   `json:"passcodeRequired"`
 	UploadedToS3     bool   `json:"uploadedToS3"`
+	UploadPercent    int    `json:"uploadPercent"`
 }
 
 // StartRecordingRequest is sent by the browser that will do the capturing. It
@@ -949,6 +950,7 @@ type PublicRecording struct {
 	PasscodeRequired bool            `json:"passcodeRequired"`
 	Unlocked         bool            `json:"unlocked"`
 	UploadedToS3     bool            `json:"uploadedToS3"`
+	UploadPercent    int             `json:"uploadPercent"`
 }
 
 // ------------------------------------------------------------ host: in-session

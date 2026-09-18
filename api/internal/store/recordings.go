@@ -99,6 +99,7 @@ type RecordingFile struct {
 	WebinarPasscode string
 	HostName        string
 	UploadedToS3    bool
+	UploadPercent   int
 }
 
 // RecordingFor loads one recording, scoped to the webinar in the URL.
@@ -112,14 +113,14 @@ func (s *Store) RecordingFor(ctx context.Context, slug, id string) (RecordingFil
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
 		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
-		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false)
+		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
 		  LEFT JOIN users u ON u.id = w.host_id
 		 WHERE (w.slug = $1 OR w.id::text = $1) AND r.id = $2::uuid`, slug, id,
 	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes, &f.DurationMs,
 		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar,
-		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName, &f.UploadedToS3)
+		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName, &f.UploadedToS3, &f.UploadPercent)
 	if noRows(err) {
 		return RecordingFile{}, ErrNotFound
 	}
@@ -135,6 +136,15 @@ func (s *Store) RecordedBytes(ctx context.Context, id string, size int64) error 
 	_, err := s.pool.Exec(ctx, `
 		UPDATE recordings SET size_bytes = $2, last_chunk_at = now()
 		 WHERE id = $1::uuid AND status = 'recording'`, id, size)
+	return err
+}
+
+// UpdateUploadProgress updates the upload percentage of a recording being uploaded to S3.
+func (s *Store) UpdateUploadProgress(ctx context.Context, id string, percent int) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE recordings
+		   SET upload_percent = $2
+		 WHERE id = $1::uuid AND status IN ('recording', 'processing')`, id, percent)
 	return err
 }
 
@@ -160,6 +170,7 @@ func (s *Store) MarkRecordingUploaded(ctx context.Context, id string) error {
 		UPDATE recordings
 		   SET status = 'ready',
 		       uploaded_to_s3 = true,
+		       upload_percent = 100,
 		       stopped_at = COALESCE(stopped_at, now())
 		 WHERE id = $1::uuid`, id)
 	return err
@@ -208,14 +219,14 @@ func (s *Store) RecordingByEgressID(ctx context.Context, egressID string) (Recor
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
 		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
-		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false)
+		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
 		  LEFT JOIN users u ON u.id = w.host_id
 		 WHERE r.egress_id = $1`, egressID,
 	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes, &f.DurationMs,
 		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar,
-		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName, &f.UploadedToS3)
+		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName, &f.UploadedToS3, &f.UploadPercent)
 	if noRows(err) {
 		return RecordingFile{}, ErrNotFound
 	}
@@ -232,6 +243,7 @@ func (s *Store) FinishRecordingWithStats(ctx context.Context, id string, sizeByt
 		UPDATE recordings
 		   SET status = CASE WHEN $2 > 0 OR size_bytes > 0 THEN 'ready' ELSE 'failed' END,
 		       uploaded_to_s3 = CASE WHEN $2 > 0 OR size_bytes > 0 THEN true ELSE false END,
+		       upload_percent = CASE WHEN $2 > 0 OR size_bytes > 0 THEN 100 ELSE 0 END,
 		       size_bytes = GREATEST(size_bytes, $2),
 		       duration_ms = GREATEST(duration_ms, $3),
 		       stopped_at = now()
@@ -250,6 +262,7 @@ func (s *Store) FinishActiveRecordings(ctx context.Context, slug string) error {
 		UPDATE recordings r
 		   SET status = CASE WHEN r.size_bytes > 0 THEN 'ready' ELSE 'failed' END,
 		       uploaded_to_s3 = CASE WHEN r.size_bytes > 0 THEN true ELSE false END,
+		       upload_percent = CASE WHEN r.size_bytes > 0 THEN 100 ELSE 0 END,
 		       stopped_at = now()
 		  FROM webinars w
 		 WHERE w.id = r.webinar_id AND (w.slug = $1 OR w.id::text = $1) AND r.status = 'recording'`, slug)
@@ -282,7 +295,7 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 		       r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
 		       COALESCE(r.egress_id, ''), COALESCE(r.is_public, true),
 		       COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
-		       COALESCE(r.uploaded_to_s3, false)
+		       COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
 		 WHERE (w.slug = $1 OR w.id::text = $1)
@@ -303,7 +316,7 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 		)
 		if err := rows.Scan(&rec.ID, &rec.Webinar, &rec.Topic, &rec.Status, &rec.Mime,
 			&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt,
-			&rec.EgressID, &rec.IsPublic, &rec.Passcode, &webinarPasscode, &rec.UploadedToS3); err != nil {
+			&rec.EgressID, &rec.IsPublic, &rec.Passcode, &webinarPasscode, &rec.UploadedToS3, &rec.UploadPercent); err != nil {
 			return nil, err
 		}
 		rec.CreatedAt = createdAt.Format(time.RFC3339)
@@ -357,7 +370,7 @@ func (s *Store) UpdateRecordingShareSettings(ctx context.Context, slug, id strin
 		           r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
 		           COALESCE(r.egress_id, ''), COALESCE(r.is_public, true),
 		           COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
-		           COALESCE(r.uploaded_to_s3, false)`
+		           COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)`
 
 	var (
 		rec             types.Recording
@@ -369,7 +382,7 @@ func (s *Store) UpdateRecordingShareSettings(ctx context.Context, slug, id strin
 		&rec.ID, &rec.Webinar, &rec.Topic, &rec.Status, &rec.Mime,
 		&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt,
 		&rec.EgressID, &rec.IsPublic, &rec.Passcode, &webinarPasscode,
-		&rec.UploadedToS3,
+		&rec.UploadedToS3, &rec.UploadPercent,
 	)
 	if noRows(err) {
 		return types.Recording{}, ErrNotFound
