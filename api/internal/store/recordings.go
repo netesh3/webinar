@@ -43,7 +43,7 @@ func (s *Store) StartRecording(
 	if _, err := s.pool.Exec(ctx, `
 		UPDATE recordings r SET status = 'failed', stopped_at = now()
 		  FROM webinars w
-		 WHERE w.id = r.webinar_id AND w.slug = $1
+		 WHERE w.id = r.webinar_id AND (w.slug = $1 OR w.id::text = $1)
 		   AND r.status = 'recording'
 		   AND (r.egress_id IS NULL OR r.egress_id = '')
 		   AND r.last_chunk_at < now() - $2::interval`,
@@ -57,7 +57,7 @@ func (s *Store) StartRecording(
 	)
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO recordings (id, webinar_id, started_by, started_by_name, mime, storage_key)
-		SELECT $2::uuid, w.id, $3::uuid, $4, $5, $6 FROM webinars w WHERE w.slug = $1
+		SELECT $2::uuid, w.id, $3::uuid, $4, $5, $6 FROM webinars w WHERE (w.slug = $1 OR w.id::text = $1)
 		RETURNING id::text, status, mime, size_bytes, duration_ms, started_by_name, created_at`,
 		slug, id, nullUUID(userID), userName, mime, storageKey,
 	).Scan(&rec.ID, &rec.Status, &rec.Mime, &rec.SizeBytes, &rec.DurationMs,
@@ -115,7 +115,7 @@ func (s *Store) RecordingFor(ctx context.Context, slug, id string) (RecordingFil
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
 		  LEFT JOIN users u ON u.id = w.host_id
-		 WHERE w.slug = $1 AND r.id = $2::uuid`, slug, id,
+		 WHERE (w.slug = $1 OR w.id::text = $1) AND r.id = $2::uuid`, slug, id,
 	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes, &f.DurationMs,
 		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar,
 		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName)
@@ -212,7 +212,7 @@ func (s *Store) FinishActiveRecordings(ctx context.Context, slug string) error {
 		   SET status = CASE WHEN r.size_bytes > 0 THEN 'ready' ELSE 'failed' END,
 		       stopped_at = now()
 		  FROM webinars w
-		 WHERE w.id = r.webinar_id AND w.slug = $1 AND r.status = 'recording'`, slug)
+		 WHERE w.id = r.webinar_id AND (w.slug = $1 OR w.id::text = $1) AND r.status = 'recording'`, slug)
 	return err
 }
 
@@ -226,7 +226,7 @@ func (s *Store) ActiveRecording(ctx context.Context, slug string) (bool, error) 
 	err := s.pool.QueryRow(ctx, `
 		SELECT EXISTS (
 		  SELECT 1 FROM recordings r JOIN webinars w ON w.id = r.webinar_id
-		   WHERE w.slug = $1 AND r.status = 'recording'
+		   WHERE (w.slug = $1 OR w.id::text = $1) AND r.status = 'recording'
 		     AND (r.egress_id IS NOT NULL OR r.last_chunk_at > now() - $2::interval))`,
 		slug, staleAfter.String()).Scan(&live)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -244,7 +244,7 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 		       COALESCE(r.passcode, ''), COALESCE(w.passcode, '')
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
-		 WHERE w.slug = $1
+		 WHERE (w.slug = $1 OR w.id::text = $1)
 		 ORDER BY r.created_at DESC
 		 LIMIT 200`, slug)
 	if err != nil {
@@ -311,7 +311,7 @@ func (s *Store) UpdateRecordingShareSettings(ctx context.Context, slug, id strin
 		UPDATE recordings r
 		   SET ` + strings.Join(setClauses, ", ") + `
 		  FROM webinars w
-		 WHERE w.id = r.webinar_id AND w.slug = $1 AND r.id = $2::uuid
+		 WHERE w.id = r.webinar_id AND (w.slug = $1 OR w.id::text = $1) AND r.id = $2::uuid
 		 RETURNING r.id::text, w.slug, w.topic, r.status, r.mime, r.size_bytes,
 		           r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
 		           COALESCE(r.egress_id, ''), COALESCE(r.is_public, true),
@@ -355,7 +355,7 @@ func (s *Store) DeleteRecording(ctx context.Context, slug, id string) (string, e
 	err := s.pool.QueryRow(ctx, `
 		DELETE FROM recordings r
 		 USING webinars w
-		 WHERE w.id = r.webinar_id AND w.slug = $1 AND r.id = $2::uuid
+		 WHERE w.id = r.webinar_id AND (w.slug = $1 OR w.id::text = $1) AND r.id = $2::uuid
 		 RETURNING r.storage_key`, slug, id).Scan(&key)
 	if noRows(err) {
 		return "", ErrNotFound
