@@ -90,13 +90,25 @@ type VideoSource = {
 class VideoSources {
   private els = new Map<string, VideoSource>();
   private host: HTMLDivElement;
+  private cachedList: VideoSource[] = [];
 
   constructor(private room: Room) {
     this.host = document.createElement("div");
     this.host.setAttribute("aria-hidden", "true");
     this.host.style.cssText =
       "position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none";
-    document.body.appendChild(this.host);
+    this.sync();
+    for (const ev of RECORDER_EVENTS) {
+      this.room.on(ev, this.onRoomChange);
+    }
+  }
+
+  private onRoomChange = () => {
+    this.sync();
+  };
+
+  getSources(): VideoSource[] {
+    return this.cachedList;
   }
 
   /** Reconciles the elements against what the room is publishing right now. */
@@ -107,8 +119,6 @@ class VideoSources {
       for (const source of [Track.Source.ScreenShare, Track.Source.Camera]) {
         const pub = p.getTrackPublication(source);
         const track = pub?.track?.mediaStreamTrack;
-        // isMuted covers a camera switched off: its publication survives, and
-        // recording a black rectangle for it would waste a tile.
         if (!track || pub?.isMuted || track.readyState !== "live") continue;
         wanted.set(`${p.identity}:${source}`, {
           track,
@@ -135,30 +145,31 @@ class VideoSources {
         continue;
       }
       const el = document.createElement("video");
-      el.muted = true; // audio is mixed separately; playing it here would echo
+      el.muted = true;
       el.playsInline = true;
       el.autoplay = true;
       el.srcObject = new MediaStream([want.track]);
       this.host.appendChild(el);
-      void el.play().catch(() => {
-        // A frame will arrive when it arrives; a failed play() here is not worth
-        // interrupting the recording for.
-      });
+      void el.play().catch(() => {});
       this.els.set(key, { key, el, isScreen: want.isScreen, name: want.name });
     }
 
-    // Screen share first: it is what the layout is built around.
-    return [...this.els.values()].sort(
+    this.cachedList = [...this.els.values()].sort(
       (a, b) => Number(b.isScreen) - Number(a.isScreen) || a.key.localeCompare(b.key),
     );
+    return this.cachedList;
   }
 
   dispose(): void {
+    for (const ev of RECORDER_EVENTS) {
+      this.room.off(ev, this.onRoomChange);
+    }
     for (const { el } of this.els.values()) {
       el.srcObject = null;
       el.remove();
     }
     this.els.clear();
+    this.cachedList = [];
     this.host.remove();
   }
 }
@@ -354,7 +365,15 @@ export class AudioMixer {
   constructor(private room: Room) {
     this.ctx = new AudioContext();
     this.dest = this.ctx.createMediaStreamDestination();
+    this.sync();
+    for (const ev of RECORDER_EVENTS) {
+      this.room.on(ev, this.onRoomChange);
+    }
   }
+
+  private onRoomChange = () => {
+    this.sync();
+  };
 
   get track(): MediaStreamTrack | null {
     return this.dest.stream.getAudioTracks()[0] ?? null;
@@ -409,6 +428,9 @@ export class AudioMixer {
   }
 
   async dispose(): Promise<void> {
+    for (const ev of RECORDER_EVENTS) {
+      this.room.off(ev, this.onRoomChange);
+    }
     for (const node of this.nodes.values()) node.disconnect();
     this.nodes.clear();
     await this.ctx.close().catch(() => {});
@@ -448,6 +470,8 @@ export class SessionRecorder {
   private state: RecorderState = "idle";
   private canvas: HTMLCanvasElement | null = null;
   private ticker: ReturnType<typeof setInterval> | null = null;
+  private animationFrameId: number | null = null;
+  private active = false;
   private sources: VideoSources | null = null;
   private mixer: AudioMixer | null = null;
   private recorder: MediaRecorder | null = null;
@@ -496,23 +520,38 @@ export class SessionRecorder {
       this.mixer = new AudioMixer(this.room);
       await this.mixer.resume();
 
-      // A timer, deliberately, and not requestAnimationFrame.
-      //
-      // rAF stops completely in a hidden tab — and a presenter switching to the
-      // application they are demonstrating hides this one. The capture stream keeps
-      // emitting frames at its own rate regardless, so with rAF the recording
-      // would run at full length showing a single frozen frame: the worst possible
-      // failure, because it looks fine until somebody watches it. A timer is
-      // throttled in the background rather than stopped, so the picture keeps
-      // moving, and the audio — which comes from Web Audio, not from here — is
-      // unaffected either way.
-      const draw = () => {
-        const sources = this.sources?.sync() ?? [];
-        this.mixer?.sync();
+      this.active = true;
+      let lastDraw = 0;
+      const minInterval = 1000 / (FPS + 2); // ~31ms for 30fps
+
+      const draw = (nowMs = performance.now()) => {
+        if (!this.active || !ctx) return;
+        const sources = this.sources?.getSources() ?? [];
         paint(ctx, sources, this.topic);
+        lastDraw = nowMs;
       };
+
+      // Hybrid render loop: requestAnimationFrame for smooth VSync-aligned frames
+      // when tab is visible, plus a background interval fallback so the recording
+      // does not freeze when the tab is hidden/minimized.
+      const renderLoop = (nowMs: number) => {
+        if (!this.active) return;
+        if (nowMs - lastDraw >= minInterval) {
+          draw(nowMs);
+        }
+        this.animationFrameId = requestAnimationFrame(renderLoop);
+      };
+
       draw();
-      this.ticker = setInterval(draw, Math.round(1000 / FPS));
+      this.animationFrameId = requestAnimationFrame(renderLoop);
+
+      // Background fallback ticker: keeps drawing even if tab is backgrounded
+      this.ticker = setInterval(() => {
+        const now = performance.now();
+        if (now - lastDraw >= 30) {
+          draw(now);
+        }
+      }, Math.round(1000 / FPS));
 
       const stream = this.canvas.captureStream(FPS);
       const audio = this.mixer.track;
@@ -632,6 +671,11 @@ export class SessionRecorder {
   }
 
   private async teardown(): Promise<void> {
+    this.active = false;
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
     if (this.ticker !== null) {
       clearInterval(this.ticker);
       this.ticker = null;
@@ -645,12 +689,14 @@ export class SessionRecorder {
   }
 }
 
-/** Subscribes to the events that change what should be on the canvas. The draw
- *  loop reconciles every frame anyway, so this exists only to keep a recording
- *  going across a reconnect. */
+/** Subscribes to the events that change what should be on the canvas. */
 export const RECORDER_EVENTS = [
   RoomEvent.TrackSubscribed,
   RoomEvent.TrackUnsubscribed,
+  RoomEvent.TrackMuted,
+  RoomEvent.TrackUnmuted,
   RoomEvent.LocalTrackPublished,
   RoomEvent.LocalTrackUnpublished,
+  RoomEvent.ParticipantConnected,
+  RoomEvent.ParticipantDisconnected,
 ] as const;
