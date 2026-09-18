@@ -640,7 +640,7 @@ export function ControlBar() {
               deviceKind="audioinput"
               currentDeviceId={prefs.audioInput}
               onSelectDevice={(id) => void switchCapture("audioinput", id)}
-              meter={<MicLevelIcon meterRef={meterRef} />}
+              meter={isMicrophoneEnabled ? <MicLevelIcon meterRef={meterRef} /> : undefined}
               icon={
                 isMicrophoneEnabled ? (
                   <MicIcon className="size-5" />
@@ -1076,7 +1076,7 @@ function BarButton({
       <BarButtonShell label={label} active={active} danger={danger} dimmed={dimmed}>
         {busy ? (
           <Spinner className="size-5" />
-        ) : meterRef ? (
+        ) : active && meterRef ? (
           <MicLevelIcon meterRef={meterRef} />
         ) : (
           icon
@@ -1134,27 +1134,17 @@ function MicLevelIcon({
         </clipPath>
       </defs>
       <path d={MIC_CAPSULE_PATH} />
-      <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+      <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+      <path d="M12 18v3" />
+      <path d="M8 21h8" />
       <g clipPath={`url(#${clipId})`}>
         <rect
           ref={meterRef}
-          /* The capsule's own bounding box, not a padded guess — matched exactly
-           * so `scaleY` from this rect's bottom edge lines up with the capsule's
-           * true bottom (y=12). A padded rect still LOOKS right at empty and full
-           * (both ends are clipped to the same place either way) but makes the
-           * fill rise nonlinearly in between, which is the kind of thing a level
-           * meter cannot afford to get slightly wrong without looking broken. */
           x="9"
-          y="4"
+          y="2"
           width="6"
-          height="8"
+          height="12"
           fill="#4ade80"
-          /* Literal green, not currentColor and not --color-ok.
-           *
-           * The bar is not `.room-dark`, so --color-ok is the light-theme forest
-           * green — invisible on this near-black strip. currentColor inherits the
-           * button's white, so a working meter looked like the capsule getting
-           * slightly thicker, not like "I am being heard". */
           style={{
             transform: "scaleY(var(--mic-level, 0))",
             transformOrigin: "50% 100%",

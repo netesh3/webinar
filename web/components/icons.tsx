@@ -32,16 +32,39 @@ function Icon({ children, ...rest }: IconProps) {
   );
 }
 
+/** Google Material Symbols / Material Icons font renderer */
+export function MaterialIcon({
+  name,
+  className = "size-5",
+  fill = false,
+}: {
+  name: string;
+  className?: string;
+  fill?: boolean;
+}) {
+  return (
+    <span
+      className={`material-symbols-outlined select-none leading-none inline-flex items-center justify-center ${className}`}
+      style={fill ? { fontVariationSettings: "'FILL' 1" } : undefined}
+      aria-hidden="true"
+    >
+      {name}
+    </span>
+  );
+}
+
 /** The mic capsule alone, shared with control-bar.tsx's MicLevelIcon — which
  *  clips a rising green fill to this exact outline, so the two can never draw
  *  two slightly different capsules. */
-export const MIC_CAPSULE_PATH = "M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z";
+export const MIC_CAPSULE_PATH = "M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z";
 
 export function MicIcon(props: IconProps) {
   return (
     <Icon {...props}>
       <path d={MIC_CAPSULE_PATH} />
-      <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+      <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+      <path d="M12 18v3" />
+      <path d="M8 21h8" />
     </Icon>
   );
 }
@@ -49,9 +72,13 @@ export function MicIcon(props: IconProps) {
 export function MicOffIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M9 6.2A3 3 0 0 1 15 7v4M15 15.4A3 3 0 0 1 9 14v-3" />
-      <path d="M6 11a6 6 0 0 0 9.3 5M18 11v1M12 17v3" />
-      <path d="m4 3 16 18" />
+      <line x1="2" x2="22" y1="2" y2="22" />
+      <path d="M18.89 12.5A7.12 7.12 0 0 0 19 11v-1" />
+      <path d="M5 10v1a7 7 0 0 0 12 5" />
+      <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33" />
+      <path d="M9 9v2a3 3 0 0 0 3.58 2.95" />
+      <path d="M12 18v3" />
+      <path d="M8 21h8" />
     </Icon>
   );
 }
@@ -59,8 +86,8 @@ export function MicOffIcon(props: IconProps) {
 export function CameraIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="2.5" y="6.5" width="13" height="11" rx="2.5" />
-      <path d="m15.5 11.5 6-3.5v8l-6-3.5z" />
+      <path d="m16 7 6-4v18l-6-4" />
+      <rect x="2" y="5" width="14" height="14" rx="2" />
     </Icon>
   );
 }
@@ -68,9 +95,9 @@ export function CameraIcon(props: IconProps) {
 export function CameraOffIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M8.5 6.5H13a2.5 2.5 0 0 1 2.5 2.5v1.2M15.5 14.2V15a2.5 2.5 0 0 1-2.5 2.5H5A2.5 2.5 0 0 1 2.5 15V9a2.5 2.5 0 0 1 2-2.45" />
-      <path d="m15.5 11.5 6-3.5v8l-3.2-1.9" />
-      <path d="m4 3 16 18" />
+      <line x1="2" x2="22" y1="2" y2="22" />
+      <path d="M10.66 5H14a2 2 0 0 1 2 2v3.34l6-4v11.33" />
+      <path d="M16 16v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 .58-1.42" />
     </Icon>
   );
 }
@@ -78,9 +105,10 @@ export function CameraOffIcon(props: IconProps) {
 export function ScreenShareIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="2.5" y="4.5" width="19" height="12" rx="2" />
-      <path d="M9 20h6M12 16.5V20" />
-      <path d="M12 13V8m0 0-2.2 2.2M12 8l2.2 2.2" />
+      <path d="M13 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3" />
+      <path d="M8 21h8" />
+      <path d="M12 17v4" />
+      <path d="m17 8 5-5m0 0h-5m5 0v5" />
     </Icon>
   );
 }
@@ -88,9 +116,11 @@ export function ScreenShareIcon(props: IconProps) {
 export function ScreenShareOffIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M7 4.5h12.5a2 2 0 0 1 2 2V15M18 16.5H4.5a2 2 0 0 1-2-2v-8" />
-      <path d="M9 20h6M12 16.5V20" />
-      <path d="m3 3 18 18" />
+      <line x1="2" x2="22" y1="2" y2="22" />
+      <path d="M17 17H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h4" />
+      <path d="M22 15V5a2 2 0 0 0-2-2h-7" />
+      <path d="M8 21h8" />
+      <path d="M12 17v4" />
     </Icon>
   );
 }
@@ -98,8 +128,8 @@ export function ScreenShareOffIcon(props: IconProps) {
 export function ChatIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M21 12a8 8 0 0 1-8 8H8l-4 3v-5.2A8 8 0 0 1 13 4a8 8 0 0 1 8 8Z" />
-      <path d="M9 10.5h8M9 14h5" />
+      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+      <path d="M8 10h8M8 14h5" />
     </Icon>
   );
 }
@@ -107,23 +137,21 @@ export function ChatIcon(props: IconProps) {
 export function UsersIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M9.5 11a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5Z" />
-      <path d="M3 19.5a6.5 6.5 0 0 1 13 0" />
-      <path d="M16.5 5.2a3.25 3.25 0 0 1 0 6.1M18 14.2a6.5 6.5 0 0 1 3 5.3" />
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
     </Icon>
   );
 }
 
-/* One person and a plus: inviting somebody, as distinct from looking at who is here.
- *
- * Deliberately not UsersIcon with a badge. Invite sits next to Participants on the bar, and two
- * buttons whose glyphs are both "a crowd" are two buttons nobody can tell apart at 20px. */
 export function UserPlusIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M10 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-      <path d="M3.5 20a6.5 6.5 0 0 1 13 0" />
-      <path d="M18.5 8.5v5M16 11h5" />
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <line x1="19" x2="19" y1="8" y2="14" />
+      <line x1="16" x2="22" y1="11" y2="11" />
     </Icon>
   );
 }
@@ -131,7 +159,10 @@ export function UserPlusIcon(props: IconProps) {
 export function HandIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M8 12V5.5a1.5 1.5 0 0 1 3 0V11m0-1V4.5a1.5 1.5 0 0 1 3 0V11m0-.5V6a1.5 1.5 0 0 1 3 0v6.5a8 8 0 0 1-8 8 6 6 0 0 1-6-6V11a1.5 1.5 0 0 1 3 0v1.5" />
+      <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v5" />
+      <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8" />
+      <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8" />
+      <path d="M6 14v-1.5a1.5 1.5 0 0 0-3 0v4.5a7 7 0 0 0 7 7h2a7 7 0 0 0 7-7V11a1.5 1.5 0 0 0-3 0" />
     </Icon>
   );
 }
@@ -139,9 +170,10 @@ export function HandIcon(props: IconProps) {
 export function SmileIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M8.5 14.5a4.2 4.2 0 0 0 7 0" />
-      <path d="M9 9.5h.01M15 9.5h.01" strokeWidth={2.25} />
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+      <line x1="9" x2="9.01" y1="9" y2="9" strokeWidth={2.5} />
+      <line x1="15" x2="15.01" y1="9" y2="9" strokeWidth={2.5} />
     </Icon>
   );
 }
@@ -149,27 +181,23 @@ export function SmileIcon(props: IconProps) {
 export function QuestionIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M9.6 9.3A2.5 2.5 0 0 1 14.5 10c0 1.7-2.5 2-2.5 3.6" />
-      <path d="M12 17h.01" strokeWidth={2.25} />
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <line x1="12" x2="12.01" y1="17" y2="17" strokeWidth={2.5} />
     </Icon>
   );
 }
 
-/** Circle-i. Meeting information in the room header — the title is truncated
- *  there, so this is how a phone ever learns the webinar ID. */
 export function InfoIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 11.2V17" />
-      <path d="M12 7.5h.01" strokeWidth={2.25} />
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" x2="12" y1="11" y2="17" />
+      <line x1="12" x2="12.01" y1="7.5" y2="7.5" strokeWidth={2.5} />
     </Icon>
   );
 }
 
-/** Gear / cog — device and account settings. Replaces the old sun-with-rays
- *  glyph, which at control-bar size read as brightness, not settings. */
 export function SettingsIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -179,35 +207,36 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
-/** Distinct from SettingsIcon on purpose: one opens the host's live controls, the
- *  other opens this person's own device settings, and the two must not look alike
- *  in a control bar operated under time pressure. */
 export function SlidersIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
-      <circle cx="15" cy="7" r="2" />
-      <circle cx="9" cy="17" r="2" />
+      <line x1="4" x2="14" y1="7" y2="7" />
+      <line x1="18" x2="20" y1="7" y2="7" />
+      <line x1="4" x2="6" y1="17" y2="17" />
+      <line x1="10" x2="20" y1="17" y2="17" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="8" cy="17" r="2" />
     </Icon>
   );
 }
 
 export function MoreIcon(props: IconProps) {
   return (
-    <Icon {...props} strokeWidth={2.5}>
-      <path d="M6 12h.01M12 12h.01M18 12h.01" />
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
     </Icon>
   );
 }
 
-/** Zoom meetings' More glyph: three dots in a circle, not a 2×2 grid. */
 export function MoreCircleIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <circle cx="12" cy="12" r="8.25" />
-      <circle cx="12" cy="8.5" r="1.15" fill="currentColor" stroke="none" />
-      <circle cx="8.85" cy="14.15" r="1.15" fill="currentColor" stroke="none" />
-      <circle cx="15.15" cy="14.15" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="12" r="1" fill="currentColor" stroke="none" />
     </Icon>
   );
 }
@@ -215,8 +244,9 @@ export function MoreCircleIcon(props: IconProps) {
 export function LeaveIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M15 4.5h2.5a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H15" />
-      <path d="M10 8.5 6.5 12l3.5 3.5M6.5 12H15" />
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" x2="9" y1="12" y2="12" />
     </Icon>
   );
 }
@@ -224,7 +254,8 @@ export function LeaveIcon(props: IconProps) {
 export function CloseIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="m6 6 12 12M18 6 6 18" />
+      <line x1="18" x2="6" y1="6" y2="18" />
+      <line x1="6" x2="18" y1="6" y2="18" />
     </Icon>
   );
 }
@@ -232,7 +263,7 @@ export function CloseIcon(props: IconProps) {
 export function CheckIcon(props: IconProps) {
   return (
     <Icon {...props} strokeWidth={2.25}>
-      <path d="m5 12.5 4.5 4.5L19 7" />
+      <polyline points="20 6 9 17 4 12" />
     </Icon>
   );
 }
@@ -240,7 +271,7 @@ export function CheckIcon(props: IconProps) {
 export function ChevronDownIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="m6 9.5 6 6 6-6" />
+      <polyline points="6 9 12 15 18 9" />
     </Icon>
   );
 }
@@ -248,8 +279,8 @@ export function ChevronDownIcon(props: IconProps) {
 export function PinIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M9 3.5h6l-.8 6.2 3.3 3.3H6.5l3.3-3.3L9 3.5Z" />
-      <path d="M12 13v7.5" />
+      <line x1="12" x2="12" y1="17" y2="22" />
+      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z" />
     </Icon>
   );
 }
@@ -257,10 +288,10 @@ export function PinIcon(props: IconProps) {
 export function GridIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
-      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
-      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
-      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
     </Icon>
   );
 }
@@ -268,9 +299,9 @@ export function GridIcon(props: IconProps) {
 export function SpeakerViewIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="3.5" y="4.5" width="12" height="15" rx="1.5" />
-      <rect x="17.5" y="4.5" width="3" height="4.5" rx="1" />
-      <rect x="17.5" y="10.5" width="3" height="4.5" rx="1" />
+      <rect x="3" y="3" width="13" height="18" rx="2" />
+      <rect x="18" y="4" width="3" height="4.5" rx="1" />
+      <rect x="18" y="10" width="3" height="4.5" rx="1" />
     </Icon>
   );
 }
@@ -278,8 +309,8 @@ export function SpeakerViewIcon(props: IconProps) {
 export function LockIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
-      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </Icon>
   );
 }
@@ -287,10 +318,10 @@ export function LockIcon(props: IconProps) {
 export function EyeOffIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M6.2 7.3C4.2 8.7 2.8 10.6 2 12c1.6 2.9 5.2 6 10 6 1.4 0 2.7-.26 3.9-.72" />
-      <path d="M9.9 5.3A9.9 9.9 0 0 1 12 6c4.8 0 8.4 3.1 10 6-.5.9-1.2 1.9-2.1 2.8" />
-      <path d="M10.2 10.2a2.5 2.5 0 0 0 3.5 3.5" />
-      <path d="m3.5 3 17 18" />
+      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+      <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+      <line x1="2" x2="22" y1="2" y2="22" />
     </Icon>
   );
 }
@@ -298,8 +329,8 @@ export function EyeOffIcon(props: IconProps) {
 export function EyeIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M2 12c1.6-2.9 5.2-6 10-6s8.4 3.1 10 6c-1.6 2.9-5.2 6-10 6s-8.4-3.1-10-6Z" />
-      <circle cx="12" cy="12" r="2.75" />
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
     </Icon>
   );
 }
@@ -307,7 +338,8 @@ export function EyeIcon(props: IconProps) {
 export function SendIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M4 11.6 20 4l-7.6 16-2-6.4L4 11.6Z" />
+      <path d="m22 2-7 20-4-9-9-4Z" />
+      <path d="M22 2 11 13" />
     </Icon>
   );
 }
@@ -315,8 +347,8 @@ export function SendIcon(props: IconProps) {
 export function CopyIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="9" y="9" width="11.5" height="11.5" rx="2" />
-      <path d="M15 6V5.5a2 2 0 0 0-2-2H5.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2H6" />
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
     </Icon>
   );
 }
@@ -324,37 +356,39 @@ export function CopyIcon(props: IconProps) {
 export function PlusIcon(props: IconProps) {
   return (
     <Icon {...props} strokeWidth={2}>
-      <path d="M12 5v14M5 12h14" />
+      <line x1="12" x2="12" y1="5" y2="19" />
+      <line x1="5" x2="19" y1="12" y2="12" />
     </Icon>
   );
 }
 
-/* Three bars of different heights: a tally. */
 export function PollIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M6 20v-6M12 20V5M18 20v-9" />
+      <line x1="18" x2="18" y1="20" y2="4" />
+      <line x1="12" x2="12" y1="20" y2="10" />
+      <line x1="6" x2="6" y1="20" y2="14" />
     </Icon>
   );
 }
 
-/* A page-a-day calendar: frame, two hanger tabs, one ruled line under the header. */
 export function CalendarIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="3.5" y="4.5" width="17" height="16" rx="2.5" />
-      <path d="M3.5 9.5h17M8 3v3M16 3v3" />
+      <rect width="18" height="18" x="3" y="4" rx="2" />
+      <line x1="16" x2="16" y1="2" y2="6" />
+      <line x1="8" x2="8" y1="2" y2="6" />
+      <line x1="3" x2="21" y1="10" y2="10" />
     </Icon>
   );
 }
 
-/* A picture: frame, horizon, sun. */
 export function ImageIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
-      <circle cx="8.75" cy="9.75" r="1.5" />
-      <path d="m4 17 4.5-4.5 3.5 3.5 3-3 5 4.5" />
+      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
     </Icon>
   );
 }
@@ -362,46 +396,49 @@ export function ImageIcon(props: IconProps) {
 export function MinusIcon(props: IconProps) {
   return (
     <Icon {...props} strokeWidth={2}>
-      <path d="M5 12h14" />
+      <line x1="5" x2="19" y1="12" y2="12" />
     </Icon>
   );
 }
 
-/* Four arrows pushing outward: fill the window, cropping the edges. */
 export function ExpandIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M9 4.5H4.5V9M15 4.5h4.5V9M9 19.5H4.5V15M15 19.5h4.5V15" />
+      <polyline points="15 3 21 3 21 9" />
+      <polyline points="9 21 3 21 3 15" />
+      <line x1="21" x2="14" y1="3" y2="10" />
+      <line x1="3" x2="10" y1="21" y2="14" />
     </Icon>
   );
 }
 
-/* Four arrows pulling inward: fit the whole thing in, letterboxed. */
 export function FitIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M4.5 9V4.5H9M19.5 9V4.5H15M4.5 15v4.5H9M19.5 15v4.5H15" />
-      <rect x="8.5" y="8.5" width="7" height="7" rx="1" />
+      <polyline points="4 14 10 14 10 20" />
+      <polyline points="20 10 14 10 14 4" />
+      <line x1="14" x2="21" y1="10" y2="3" />
+      <line x1="3" x2="10" y1="21" y2="14" />
     </Icon>
   );
 }
 
-/* Square with an arrow out — undock a panel into a floating window. */
 export function PopOutIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="4" y="8" width="10" height="12" rx="1.5" />
-      <path d="M14 4h6v6M20 4l-7 7" />
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
     </Icon>
   );
 }
 
-/* Arrow into a side rail — dock a floating window back into the side panel. */
 export function DockIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="14" y="5" width="6" height="14" rx="1.5" />
-      <path d="M11 12H4M4 12l3-3M4 12l3 3" />
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M9 3v18" />
+      <path d="m14 9 3 3-3 3" />
     </Icon>
   );
 }
@@ -409,7 +446,11 @@ export function DockIcon(props: IconProps) {
 export function TrashIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M4 7h16M9.5 7V4.5h5V7M6 7l1 13h10l1-13" />
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+      <line x1="10" x2="10" y1="11" y2="17" />
+      <line x1="14" x2="14" y1="11" y2="17" />
     </Icon>
   );
 }
@@ -417,8 +458,8 @@ export function TrashIcon(props: IconProps) {
 export function SearchIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <circle cx="11" cy="11" r="6.5" />
-      <path d="m16 16 4.5 4.5" />
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" x2="16.65" y1="21" y2="16.65" />
     </Icon>
   );
 }
@@ -426,7 +467,9 @@ export function SearchIcon(props: IconProps) {
 export function MenuIcon(props: IconProps) {
   return (
     <Icon {...props} strokeWidth={2}>
-      <path d="M4 7h16M4 12h16M4 17h16" />
+      <line x1="4" x2="20" y1="12" y2="12" />
+      <line x1="4" x2="20" y1="6" y2="6" />
+      <line x1="4" x2="20" y1="18" y2="18" />
     </Icon>
   );
 }
@@ -434,29 +477,27 @@ export function MenuIcon(props: IconProps) {
 export function VolumeIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M4 9.5h3L11.5 6v12L7 14.5H4v-5Z" />
-      <path d="M15 9.8a3.2 3.2 0 0 1 0 4.4M17.6 7.4a6.6 6.6 0 0 1 0 9.2" />
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
     </Icon>
   );
 }
 
-/** A filled dot, the universal record glyph. Filled rather than stroked so it
- *  reads as "armed" next to the outline icons around it. */
 export function RecordIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <circle cx="12" cy="12" r="6" fill="currentColor" stroke="none" />
       <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" fill="currentColor" stroke="none" />
     </Icon>
   );
 }
 
-/* A laptop: screen, then the base beneath it as one wider stroke. */
 export function DeviceIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="4" y="4.5" width="16" height="11" rx="1.5" />
-      <path d="M2.5 19.5h19M9 19.5l1-2h4l1 2" />
+      <rect width="18" height="12" x="3" y="4" rx="2" />
+      <line x1="2" x2="22" y1="20" y2="20" />
     </Icon>
   );
 }
@@ -464,7 +505,7 @@ export function DeviceIcon(props: IconProps) {
 export function StopIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="6" y="6" width="12" height="12" rx="2" />
+      <rect width="12" height="12" x="6" y="6" rx="2" fill="currentColor" stroke="none" />
     </Icon>
   );
 }
@@ -472,7 +513,7 @@ export function StopIcon(props: IconProps) {
 export function PlayIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M7.5 5.5l11 6.5-11 6.5v-13Z" />
+      <polygon points="6 3 20 12 6 21 6 3" fill="currentColor" stroke="none" />
     </Icon>
   );
 }
@@ -480,7 +521,7 @@ export function PlayIcon(props: IconProps) {
 export function SignalIcon(props: IconProps) {
   return (
     <Icon {...props} strokeWidth={2}>
-      <path d="M5 17v-2.5M10 17v-5.5M15 17v-8.5M20 17V6" />
+      <path d="M4 20h.01M8 20v-4M12 20v-8M16 20v-12M20 20V4" />
     </Icon>
   );
 }
@@ -488,7 +529,8 @@ export function SignalIcon(props: IconProps) {
 export function ArrowLeftIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M19 12H5m0 0 6-6m-6 6 6 6" />
+      <line x1="19" x2="5" y1="12" y2="12" />
+      <polyline points="12 19 5 12 12 5" />
     </Icon>
   );
 }
@@ -496,7 +538,8 @@ export function ArrowLeftIcon(props: IconProps) {
 export function ArrowUpIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M12 19V5m0 0-6 6m6-6 6 6" />
+      <line x1="12" x2="12" y1="19" y2="5" />
+      <polyline points="5 12 12 5 19 12" />
     </Icon>
   );
 }
@@ -504,17 +547,16 @@ export function ArrowUpIcon(props: IconProps) {
 export function ArrowDownIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M12 5v14m0 0 6-6m-6 6-6-6" />
+      <line x1="12" x2="12" y1="5" y2="19" />
+      <polyline points="19 12 12 19 5 12" />
     </Icon>
   );
 }
 
-/** An indeterminate spinner. `animate-spin` is applied by the caller so a static
- *  render (a screenshot, a print) still shows a sensible glyph. */
 export function SpinnerIcon(props: IconProps) {
   return (
     <Icon {...props} strokeWidth={2.25}>
-      <path d="M12 3a9 9 0 1 0 9 9" opacity={0.9} />
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
     </Icon>
   );
 }

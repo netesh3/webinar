@@ -133,7 +133,7 @@ export function MediaToggle({
           className="relative flex flex-col items-center justify-center gap-0.5 px-1 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:min-w-14 sm:px-2"
         >
           <span className="flex h-10 flex-col items-center justify-center gap-0.5">
-            {busy ? <Spinner className="size-5" /> : (meter ?? icon)}
+            {busy ? <Spinner className="size-5" /> : active && meter ? meter : icon}
             <span className="hidden text-[9.5px] leading-none font-medium sm:block">
               {label}
             </span>
