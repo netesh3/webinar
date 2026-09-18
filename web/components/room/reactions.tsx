@@ -13,6 +13,15 @@ import { useRoomUI } from "./context";
  * audience is actually looking at. Zoom keeps them in a narrow lane at the edge for that
  * reason: a reaction is peripheral information and belongs in the periphery.
  *
+ * z-[45], not the z-10 this used to be: SidePanel (Chat/Q&A/Polls/Participants) is an
+ * opaque overlay docked to that same right edge at z-40, and rendering below it meant
+ * a reaction anyone sent was invisible to every viewer who had a panel open — which,
+ * for a host running a session with Chat or Participants open the whole time, was
+ * effectively always. z-[45] clears that opaque panel while staying under every actual
+ * popup/menu/dialog in the room (z-50), so a reaction is never mistaken for something
+ * that needs a click — see stage.tsx and side-panel.tsx for the two overlays this sits
+ * between.
+ *
  * Deliberately ephemeral and anonymous: a persistent list of who clapped is a
  * distraction during a talk, and the point of a reaction is that five hundred people
  * can respond at once without interrupting or identifying themselves.
@@ -30,7 +39,7 @@ export function ReactionOverlay() {
 
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-10 overflow-hidden"
+      className="pointer-events-none absolute inset-0 z-[45] overflow-hidden"
       // Establishes the container the emoji measure their rise against.
       style={{ containerType: "size" }}
       // Decorative, and intentionally not announced. The old single-emoji overlay
