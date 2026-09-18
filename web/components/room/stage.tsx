@@ -369,7 +369,12 @@ function SpotlightLayout({
 
       {rest.length > 0 && (
         <div
-          className="flex shrink-0 gap-2 overflow-auto lg:flex-col [scrollbar-width:thin]"
+          // lg:pt-12 clears the header: at the lg breakpoint this column sits beside
+          // the focus tile at the same top edge the header (absolute, inset-x-0,
+          // z-20) overlays — same 48px the corner overlay buttons already reserve
+          // for it, see CORNER below. Not needed below lg, where this row sits
+          // under the focus tile instead of beside it.
+          className="flex shrink-0 gap-2 overflow-auto lg:flex-col lg:pt-12 [scrollbar-width:thin]"
           // A width on wide screens, a height on narrow ones. Sized in vw/vh so it
           // stays proportionate rather than jumping between fixed steps.
           style={{ ["--spot" as string]: "clamp(180px, 20vw, 300px)" }}
