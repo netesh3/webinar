@@ -438,12 +438,12 @@ function HlsPlayer({
         liveMaxLatencyDurationCount: 8,
         enableWorker: true,
         lowLatencyMode: true,
-        manifestLoadingMaxRetry: 60,
+        manifestLoadingMaxRetry: 120,
         manifestLoadingRetryDelay: 1000,
-        manifestLoadingMaxRetryTimeout: 180000,
-        levelLoadingMaxRetry: 30,
+        manifestLoadingMaxRetryTimeout: 300000,
+        levelLoadingMaxRetry: 60,
         levelLoadingRetryDelay: 1000,
-        fragLoadingMaxRetry: 30,
+        fragLoadingMaxRetry: 60,
         fragLoadingRetryDelay: 1000,
         xhrSetup: (xhr, url) => {
           if (url.includes(".m3u8")) {
@@ -463,6 +463,12 @@ function HlsPlayer({
       });
 
       hls.on(Hls.Events.LEVEL_LOADED, () => {
+        setLoading(false);
+        setError(null);
+      });
+
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        setLoading(false);
         setError(null);
       });
 
@@ -478,14 +484,13 @@ function HlsPlayer({
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setError("Connecting to live broadcast stream...");
+              setError("Connecting to broadcast feed...");
               clearTimeout(retryTimer);
               retryTimer = setTimeout(() => {
                 if (hls) {
-                  hls.loadSource(streamUrl);
                   hls.startLoad();
                 }
-              }, 2000);
+              }, 1500);
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               hls?.recoverMediaError();
@@ -494,10 +499,9 @@ function HlsPlayer({
               clearTimeout(retryTimer);
               retryTimer = setTimeout(() => {
                 if (hls) {
-                  hls.loadSource(streamUrl);
                   hls.startLoad();
                 }
-              }, 2000);
+              }, 1500);
               break;
           }
         }
@@ -510,14 +514,14 @@ function HlsPlayer({
         tryPlay();
       };
       const onNativeError = () => {
-        setError("Connecting to live broadcast stream...");
+        setError("Connecting to broadcast feed...");
         clearTimeout(retryTimer);
         retryTimer = setTimeout(() => {
           if (video && video.paused) {
             video.src = streamUrl;
             video.load();
           }
-        }, 2000);
+        }, 1500);
       };
       video.addEventListener("loadedmetadata", onLoadedMetadata);
       video.addEventListener("error", onNativeError);
@@ -554,9 +558,32 @@ function HlsPlayer({
         playsInline
         controls
         autoPlay
-        onPlay={() => setLoading(false)}
-        onPlaying={() => setLoading(false)}
-        onLoadedData={() => setLoading(false)}
+        onPlay={() => {
+          setLoading(false);
+          setError(null);
+        }}
+        onPlaying={() => {
+          setLoading(false);
+          setError(null);
+        }}
+        onTimeUpdate={() => {
+          if (videoRef.current && videoRef.current.currentTime > 0) {
+            setLoading(false);
+            setError(null);
+          }
+        }}
+        onCanPlay={() => {
+          setLoading(false);
+          setError(null);
+        }}
+        onCanPlayThrough={() => {
+          setLoading(false);
+          setError(null);
+        }}
+        onLoadedData={() => {
+          setLoading(false);
+          setError(null);
+        }}
         onVolumeChange={(e) => {
           setIsMuted((e.target as HTMLVideoElement).muted);
         }}
@@ -568,7 +595,7 @@ function HlsPlayer({
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white gap-3 pointer-events-none z-10">
           <Spinner className="size-8 text-brand" />
           <p className="text-[13px] text-ink-3">
-            {error || "Connecting to broadcast stream..."}
+            {error || "Connecting to broadcast feed..."}
           </p>
         </div>
       )}

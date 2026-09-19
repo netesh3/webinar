@@ -161,7 +161,7 @@ func (s *Server) joinAsAttendee(
 	if isCdnAttendee {
 		cdnStreamURL = s.cdnStreamURL(wb.ID)
 		if wb.Status == types.StatusLive {
-			s.startHlsBroadcastIfEnabled(r.Context(), wb, sfu)
+			go s.startHlsBroadcastIfEnabled(context.Background(), wb, sfu)
 		}
 	}
 

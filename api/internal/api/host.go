@@ -513,7 +513,7 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	// room needs the update pushed explicitly.
 	s.pushRoomMetadata(r, sfu, wb)
 
-	s.startHlsBroadcastIfEnabled(r.Context(), wb, sfu)
+	go s.startHlsBroadcastIfEnabled(context.Background(), wb, sfu)
 
 	s.log.Info("webinar started", "slug", slug, "room", room)
 	httpx.JSON(w, http.StatusOK, wb)

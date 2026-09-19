@@ -13,12 +13,13 @@ import (
 	"github.com/livekit/protocol/livekit"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
+	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/types"
 )
 
 var (
 	broadcastMu      sync.Mutex
-	activeBroadcasts = make(map[string]string) // slug -> egressID
+	activeBroadcasts = make(map[string]string) // slug -> egressID or "starting"
 )
 
 func (s *Server) startHlsBroadcastIfEnabled(ctx context.Context, wb types.Webinar, sfu RoomManager) {
@@ -31,10 +32,12 @@ func (s *Server) startHlsBroadcastIfEnabled(ctx context.Context, wb types.Webina
 	}
 
 	broadcastMu.Lock()
-	if _, running := activeBroadcasts[wb.ID]; running {
+	if status, running := activeBroadcasts[wb.ID]; running && status != "" {
 		broadcastMu.Unlock()
 		return
 	}
+	// Mark as starting to prevent concurrent duplicate invocations
+	activeBroadcasts[wb.ID] = "starting"
 	broadcastMu.Unlock()
 
 	roomName := lk.RoomName(wb.ID)
@@ -57,6 +60,9 @@ func (s *Server) startHlsBroadcastIfEnabled(ctx context.Context, wb types.Webina
 	info, err := sfu.StartHlsBroadcastEgress(ctx, roomName, prefix, playlistName, s3Opts, s.cfg.RecordingsEgressTemplateURL, preset)
 	if err != nil {
 		s.log.Warn("cdn broadcast: could not start egress", "slug", wb.ID, "error", err)
+		broadcastMu.Lock()
+		delete(activeBroadcasts, wb.ID)
+		broadcastMu.Unlock()
 		return
 	}
 
@@ -75,7 +81,7 @@ func (s *Server) stopHlsBroadcastIfActive(ctx context.Context, slug string, sfu 
 	}
 	broadcastMu.Unlock()
 
-	if !ok || egressID == "" || sfu == nil {
+	if !ok || egressID == "" || egressID == "starting" || sfu == nil {
 		return
 	}
 
@@ -126,25 +132,6 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Set appropriate Content-Type and Cache-Control
-	if strings.HasSuffix(file, ".m3u8") {
-		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Expires", "0")
-	} else if strings.HasSuffix(file, ".ts") {
-		w.Header().Set("Content-Type", "video/mp2t")
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-
-		// If CDN base URL is configured, redirect immutable .ts video chunks to CDN edge
-		if s.cfg.RecordingsCDNBaseURL != "" {
-			s3Key := fmt.Sprintf("broadcast/%s/%s", slug, file)
-			cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), s3Key)
-			http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
-			return
-		}
-	}
-
 	if s.recordings == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "storage_unavailable", "Storage backend not available.")
 		return
@@ -166,35 +153,88 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 			fmt.Sprintf("broadcast/%s/chunk.m3u8", slug),
 		)
 	} else if strings.HasSuffix(file, ".ts") {
-		if strings.Contains(file, "-") {
-			candidateKeys = append(candidateKeys, fmt.Sprintf("broadcast/%s/%s", slug, strings.ReplaceAll(file, "-", "_")))
-		}
-		if strings.Contains(file, "_") {
-			candidateKeys = append(candidateKeys, fmt.Sprintf("broadcast/%s/%s", slug, strings.ReplaceAll(file, "_", "-")))
-		}
 		candidateKeys = append(candidateKeys,
+			fmt.Sprintf("broadcast/%s/chunk/%s", slug, file),
 			fmt.Sprintf("broadcast/%s/chunk_%s", slug, file),
 			fmt.Sprintf("broadcast/%s/chunk-%s", slug, file),
 		)
+		if strings.Contains(file, "-") {
+			candidateKeys = append(candidateKeys,
+				fmt.Sprintf("broadcast/%s/%s", slug, strings.ReplaceAll(file, "-", "_")),
+				fmt.Sprintf("broadcast/%s/chunk_%s", slug, strings.ReplaceAll(file, "-", "_")),
+			)
+		}
+		if strings.Contains(file, "_") {
+			candidateKeys = append(candidateKeys,
+				fmt.Sprintf("broadcast/%s/%s", slug, strings.ReplaceAll(file, "_", "-")),
+				fmt.Sprintf("broadcast/%s/chunk-%s", slug, strings.ReplaceAll(file, "_", "-")),
+			)
+		}
 	}
 
 	// Open the object from storage (S3/Disk)
 	var reader io.ReadSeekCloser
 	var size int64
 	var openErr error
+	var matchedKey string
 
 	for _, k := range candidateKeys {
 		reader, size, openErr = s.recordings.Open(r.Context(), k)
 		if openErr == nil {
+			matchedKey = k
 			break
 		}
 	}
 
 	if openErr != nil {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
 		httpx.Error(w, http.StatusNotFound, "not_found", "Broadcast segment not ready or not found.")
 		return
 	}
 	defer reader.Close()
+
+	if strings.HasSuffix(file, ".m3u8") {
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+
+		content, err := io.ReadAll(reader)
+		if err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "read_error", "Failed to read playlist.")
+			return
+		}
+
+		// Normalize playlist segment URLs to simple filenames
+		lines := strings.Split(string(content), "\n")
+		var rewritten []string
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				rewritten = append(rewritten, line)
+				continue
+			}
+			parts := strings.Split(trimmed, "/")
+			fileName := parts[len(parts)-1]
+			rewritten = append(rewritten, fileName)
+		}
+
+		rewrittenContent := strings.Join(rewritten, "\n")
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(rewrittenContent)))
+		_, _ = w.Write([]byte(rewrittenContent))
+		return
+	}
+
+	// For .ts video segments:
+	w.Header().Set("Content-Type", "video/mp2t")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+
+	if ps, ok := s.recordings.(media.Presigner); ok && matchedKey != "" {
+		if signedURL, err := ps.PresignedGetURL(r.Context(), matchedKey, "", "video/mp2t", true, 1*time.Hour); err == nil && signedURL != "" {
+			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
+			return
+		}
+	}
 
 	if seeker, ok := reader.(io.ReadSeeker); ok {
 		http.ServeContent(w, r, file, time.Now(), seeker)
