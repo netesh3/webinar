@@ -1157,18 +1157,20 @@ func (c *Client) StartRoomCompositeEgress(
 	return c.egress.StartRoomCompositeEgress(ctx, req)
 }
 
-// StartHlsBroadcastEgress begins an HLS segmented egress stream for live CDN distribution.
-//
-// rtmpURL, when set, is a second output on the same Chromium job: LiveKit pushes
-// the mixed program to MediaMTX (or any RTMP origin) so attendees can play
-// LL-HLS from the live origin instead of waiting on S3 segments. The S3
-// playlist stays as the slow fallback; one encoder, two pipes.
-func (c *Client) StartHlsBroadcastEgress(
+/* StartBroadcastEgress pushes the mixed program to an RTMP origin (MediaMTX),
+ * which serves it to attendees as LL-HLS.
+ *
+ * RTMP is the only output. This used to also write 2-second HLS segments to S3
+ * and hand attendees that playlist, which worked but ran ~15s behind — far
+ * enough that it was not worth serving, and every segment was a B2 write and a
+ * Class A transaction for a file nobody read once the live origin existed.
+ *
+ * The consequence is that the live origin is now load-bearing: if MediaMTX is
+ * down there is no second pipe to degrade to, and callers must not start this
+ * without an rtmpURL. */
+func (c *Client) StartBroadcastEgress(
 	ctx context.Context,
 	roomName string,
-	prefix string,
-	playlistName string,
-	s3Opts EgressS3Options,
 	templateURL string,
 	preset livekit.EncodingOptionsPreset,
 	rtmpURL string,
@@ -1177,40 +1179,19 @@ func (c *Client) StartHlsBroadcastEgress(
 		return nil, errors.New("egress is not configured on this client")
 	}
 
-	endpoint := strings.TrimSpace(s3Opts.Endpoint)
-	if endpoint != "" && !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
-		endpoint = "https://" + endpoint
+	u := strings.TrimSpace(rtmpURL)
+	if u == "" {
+		return nil, errors.New("broadcast egress needs an RTMP URL: it has no other output")
 	}
 
 	req := &livekit.RoomCompositeEgressRequest{
 		RoomName: roomName,
-		SegmentOutputs: []*livekit.SegmentedFileOutput{
-			{
-				Protocol:         livekit.SegmentedFileProtocol_HLS_PROTOCOL,
-				FilenamePrefix:   prefix,
-				PlaylistName:     playlistName,
-				LivePlaylistName: "live.m3u8",
-				SegmentDuration:  2,
-				Output: &livekit.SegmentedFileOutput_S3{
-					S3: &livekit.S3Upload{
-						Endpoint:       endpoint,
-						Bucket:         strings.TrimSpace(s3Opts.Bucket),
-						Region:         strings.TrimSpace(s3Opts.Region),
-						AccessKey:      strings.TrimSpace(s3Opts.AccessKey),
-						Secret:         strings.TrimSpace(s3Opts.SecretKey),
-						ForcePathStyle: true,
-					},
-				},
-			},
-		},
-	}
-	if u := strings.TrimSpace(rtmpURL); u != "" {
-		req.StreamOutputs = []*livekit.StreamOutput{
+		StreamOutputs: []*livekit.StreamOutput{
 			{
 				Protocol: livekit.StreamProtocol_RTMP,
 				Urls:     []string{u},
 			},
-		}
+		},
 	}
 
 	if templateURL != "" {

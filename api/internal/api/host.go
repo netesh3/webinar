@@ -302,7 +302,6 @@ func (s *Server) deleteWebinarBySlug(ctx context.Context, slug string) (store.De
 					"slug", slug, "key", key, "error", err)
 			}
 		}
-		s.cleanupBroadcastStorage(ctx, slug)
 	} else if len(deleted.BlobKeys) > 0 {
 		// No storage configured but rows referenced keys. Worth saying out loud.
 		deleted.FilesLeftBehind = len(deleted.BlobKeys)
@@ -533,7 +532,7 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	s.pushRoomMetadata(r, sfu, wb)
 
 	if wb.Kind != types.KindSimulive {
-		go s.startHlsBroadcastIfEnabled(context.Background(), wb, sfu)
+		go s.startBroadcastIfEnabled(context.Background(), wb, sfu)
 	}
 
 	s.log.Info("webinar started", "slug", slug, "room", room)
@@ -698,7 +697,7 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 
 	// Stop any active CDN broadcast egress.
 	if sfu, err := s.sfuFor(ctx, wb); err == nil {
-		s.stopHlsBroadcastIfActive(ctx, slug, sfu)
+		s.stopBroadcastIfActive(ctx, slug, sfu)
 	}
 
 	if sfu, err := s.sfuFor(ctx, wb); err != nil {

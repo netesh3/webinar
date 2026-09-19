@@ -157,7 +157,7 @@ func (s *Server) joinAsAttendee(
 		s.log.Warn("join: host cdn broadcast lookup failed", "host", wb.Host.ID, "error", err)
 	}
 	isCdnAttendee := cdnBroadcast && !grant.Granted
-	var cdnStreamURL, cdnFallbackURL string
+	var cdnStreamURL string
 	var cdnLowLatency bool
 	if wb.Kind == types.KindSimulive {
 		if u := s.simulivePlaybackURL(r.Context(), wb); u != "" {
@@ -166,18 +166,23 @@ func (s *Server) joinAsAttendee(
 			cdnStreamURL = u
 		}
 	} else if cdnBroadcast {
-		// Always include the playlist URL while the webinar is in CDN mode, even
-		// for someone currently on stage — demote remounts HLS from this join.
-		storage := s.cdnStreamURL(wb.ID)
-		if live := s.cfg.BroadcastHLSURL(wb.ID); live != "" {
-			cdnStreamURL = live
-			cdnFallbackURL = storage
-			cdnLowLatency = true
+		/* The live origin is the only attendee feed now that the S3 playlist is
+		 * gone, so with no origin configured CDN mode has nowhere to send
+		 * anyone. Fall back to the SFU rather than to a black video element:
+		 * more load on the SFU is a scaling problem, a blank stage is an outage.
+		 *
+		 * Otherwise hand out the playlist even to someone currently on stage —
+		 * demote remounts HLS from this join. */
+		live := s.cfg.BroadcastHLSURL(wb.ID)
+		if live == "" {
+			cdnBroadcast = false
+			isCdnAttendee = false
 		} else {
-			cdnStreamURL = storage
-		}
-		if isCdnAttendee && wb.Status == types.StatusLive {
-			go s.startHlsBroadcastIfEnabled(context.Background(), wb, sfu)
+			cdnStreamURL = live
+			cdnLowLatency = true
+			if isCdnAttendee && wb.Status == types.StatusLive {
+				go s.startBroadcastIfEnabled(context.Background(), wb, sfu)
+			}
 		}
 	}
 
@@ -196,7 +201,7 @@ func (s *Server) joinAsAttendee(
 		// along with its scope — see Metadata.Promoted.
 		Promoted: grant.Granted,
 		DataOnly: isCdnAttendee,
-	}, false, cdnBroadcast, cdnStreamURL, cdnFallbackURL, cdnLowLatency)
+	}, false, cdnBroadcast, cdnStreamURL, cdnLowLatency)
 	if ok {
 		_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID, display)
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
@@ -416,7 +421,7 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 
 	// Same as attendee join / Start: do not block the host token on egress RPC.
 	if wb.Status == types.StatusLive {
-		go s.startHlsBroadcastIfEnabled(context.Background(), wb, sfu)
+		go s.startBroadcastIfEnabled(context.Background(), wb, sfu)
 	}
 
 	// Reaching here means stageRole returned host or panelist for a real
@@ -432,7 +437,7 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		Name:        user.Name,
 		MutedByHost: muted,
 		CoHost:      coHost,
-	}, true, false, "", "", false)
+	}, true, false, "", false)
 }
 
 // ensureRoom creates the room with the capacity ceiling and seeds its metadata
@@ -585,7 +590,7 @@ func (s *Server) roomMetadata(ctx context.Context, wb types.Webinar) (string, er
 // request that ends in an error response.
 func (s *Server) issueToken(
 	w http.ResponseWriter, r *http.Request, wb types.Webinar, sfu RoomManager,
-	spec lk.Spec, canRecord bool, cdnBroadcast bool, cdnStreamURL, cdnFallbackURL string, cdnLowLatency bool,
+	spec lk.Spec, canRecord bool, cdnBroadcast bool, cdnStreamURL string, cdnLowLatency bool,
 ) bool {
 	spec.Hidden = lk.HiddenFor(spec.Role, wb.Controls.HideAttendees)
 
@@ -636,9 +641,8 @@ func (s *Server) issueToken(
 		JoinKey:        joinKeyFromIdentity(spec.Identity),
 		MaxDurationMin: wb.MaxDurationMin,
 		CdnBroadcast:   cdnBroadcast,
-		CdnStreamURL:   cdnStreamURL,
-		CdnFallbackURL: cdnFallbackURL,
-		CdnLowLatency:  cdnLowLatency,
+		CdnStreamURL:  cdnStreamURL,
+		CdnLowLatency: cdnLowLatency,
 	})
 	return true
 }
@@ -655,16 +659,6 @@ func (s *Server) simulivePlaybackURL(ctx context.Context, wb types.Webinar) stri
 		return cdn + "/" + strings.TrimPrefix(f.StorageKey, "/")
 	}
 	return "/api/webinars/" + f.Webinar + "/recordings/" + f.ID + "/file"
-}
-
-func (s *Server) cdnStreamURL(slug string) string {
-	if cdn := strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"); cdn != "" {
-		// Same directory LiveKit writes live.m3u8 and chunk_*.ts into, so the
-		// player can resolve segments on the CDN without proxying every poll
-		// through the Worker.
-		return cdn + "/broadcast/" + slug + "/live.m3u8"
-	}
-	return fmt.Sprintf("/api/webinars/%s/broadcast/live.m3u8", slug)
 }
 
 // Identities are prefixed by kind so a log line or an SFU dashboard reads

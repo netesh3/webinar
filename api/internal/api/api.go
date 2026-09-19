@@ -47,7 +47,7 @@ type RoomManager interface {
 	RemoveParticipant(ctx context.Context, room, identity string) error
 	DeleteRoom(ctx context.Context, room string) error
 	StartRoomCompositeEgress(ctx context.Context, roomName string, storageKey string, s3Opts lk.EgressS3Options, templateURL string, preset livekit.EncodingOptionsPreset) (*livekit.EgressInfo, error)
-	StartHlsBroadcastEgress(ctx context.Context, roomName string, prefix string, playlistName string, s3Opts lk.EgressS3Options, templateURL string, preset livekit.EncodingOptionsPreset, rtmpURL string) (*livekit.EgressInfo, error)
+	StartBroadcastEgress(ctx context.Context, roomName string, templateURL string, preset livekit.EncodingOptionsPreset, rtmpURL string) (*livekit.EgressInfo, error)
 	StopEgress(ctx context.Context, egressID string) (*livekit.EgressInfo, error)
 }
 
@@ -236,7 +236,6 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/webinars/{slug}/image", s.handleWebinarImage)
 		r.Get("/webinars/{slug}/recordings/{id}/public", s.handlePublicRecording)
 		r.Get("/webinars/{slug}/recordings/{id}/stream", s.handlePublicStreamRecording)
-		r.Get("/webinars/{slug}/broadcast/{file}", s.handleBroadcastStreamFile)
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)

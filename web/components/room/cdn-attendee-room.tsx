@@ -37,6 +37,7 @@ import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
 import { useToast } from "../providers";
 import { Spinner } from "../controls";
+import { FullscreenIcon, VolumeIcon, VolumeMuteIcon } from "../icons";
 import { ControlBar } from "./control-bar";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, type RoomUI } from "./context";
@@ -363,9 +364,10 @@ export function CdnAttendeeRoom({
     );
   }
 
-  const streamUrl = resolveBroadcastUrl(
-    join.cdnStreamUrl || `/api/webinars/${slug}/broadcast/live.m3u8`,
-  );
+  // Always set when the server puts this webinar in CDN mode: with the S3
+  // playlist gone there is no second URL to guess at, so join turns CDN mode
+  // off entirely rather than send an attendee here with nothing to play.
+  const streamUrl = resolveBroadcastUrl(join.cdnStreamUrl || "");
 
   return (
     <RoomContext.Provider value={room}>
@@ -385,11 +387,6 @@ export function CdnAttendeeRoom({
                     <div className="relative flex-1 flex items-center justify-center bg-black">
                       <HlsPlayer
                         streamUrl={streamUrl}
-                        fallbackUrl={
-                          join.cdnFallbackUrl
-                            ? resolveBroadcastUrl(join.cdnFallbackUrl)
-                            : undefined
-                        }
                         lowLatency={Boolean(join.cdnLowLatency)}
                         coverUrl={initialImageUrl}
                       />
@@ -425,22 +422,12 @@ export function CdnAttendeeRoom({
   );
 }
 
-/* How long the live origin may fail before the viewer is moved to the B2
- * playlist. Sized for Egress cold-start: booting Chromium, joining the room and
- * getting RTMP connected to MediaMTX is comfortably several seconds, and paying
- * a slow first join beats serving the whole session 15s behind. */
-const PRIMARY_GRACE_MS = 25_000;
-const PRIMARY_PROBE_MS = 5_000;
-const MAX_PRIMARY_RECOVERIES = 3;
-
 function HlsPlayer({
   streamUrl,
-  fallbackUrl,
   lowLatency,
   coverUrl,
 }: {
   streamUrl: string;
-  fallbackUrl?: string;
   lowLatency?: boolean;
   coverUrl?: string;
 }) {
@@ -448,22 +435,8 @@ function HlsPlayer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
-  const [useFallback, setUseFallback] = useState(false);
-  const [fromUrl, setFromUrl] = useState(streamUrl);
-  /* When the live origin started serving this viewer, and how many times we
-   * have come back to it. Refs, not state: the error handler reads them from
-   * inside a long-lived hls.js callback, and re-running the effect on every
-   * retry would tear down the player mid-recovery. */
-  const primarySinceRef = useRef(0);
-  const recoveriesRef = useRef(0);
-  if (fromUrl !== streamUrl) {
-    setFromUrl(streamUrl);
-    setUseFallback(false);
-    primarySinceRef.current = 0;
-    recoveriesRef.current = 0;
-  }
-  const activeUrl = useFallback && fallbackUrl ? fallbackUrl : streamUrl;
-  const ll = Boolean(lowLatency) && !useFallback;
+  const activeUrl = streamUrl;
+  const ll = Boolean(lowLatency);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -471,26 +444,6 @@ function HlsPlayer({
 
     let hls: Hls | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
-
-    if (!useFallback) {
-      primarySinceRef.current = Date.now();
-    }
-
-    /* Whether to give up on the live origin and take the 15s B2 playlist.
-     *
-     * Not on the first error, which is the trap: the live playlist 404s for
-     * the first seconds of every broadcast because Egress has to boot Chromium
-     * and connect RTMP before MediaMTX has anything to serve. hls.js reports
-     * that 404 as a fatal network error, so switching immediately pinned every
-     * attendee who joined at the start to the slow path for the whole session
-     * — the exact latency this origin exists to remove. Wait out the startup
-     * window first; hls.js is already retrying underneath. */
-    const giveUpOnPrimary = () => {
-      if (!fallbackUrl || useFallback) return false;
-      if (Date.now() - primarySinceRef.current < PRIMARY_GRACE_MS) return false;
-      setUseFallback(true);
-      return true;
-    };
 
     const tryPlay = () => {
       video.playsInline = true;
@@ -571,11 +524,14 @@ function HlsPlayer({
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           switch (data.type) {
+            /* Retry rather than surface a failure. The live origin 404s for
+             * the first seconds of every broadcast — Egress has to boot
+             * Chromium and connect RTMP before MediaMTX has a playlist — and
+             * that is indistinguishable from "the host has not started yet".
+             * There is no second feed to switch to, so waiting is the only
+             * correct behaviour. */
             case Hls.ErrorTypes.NETWORK_ERROR:
-              if (giveUpOnPrimary()) {
-                break;
-              }
-              setError("Connecting to broadcast feed...");
+              setError("Waiting for the broadcast to start...");
               clearTimeout(retryTimer);
               retryTimer = setTimeout(() => {
                 if (hls) {
@@ -587,9 +543,6 @@ function HlsPlayer({
               hls?.recoverMediaError();
               break;
             default:
-              if (giveUpOnPrimary()) {
-                break;
-              }
               clearTimeout(retryTimer);
               retryTimer = setTimeout(() => {
                 if (hls) {
@@ -608,10 +561,7 @@ function HlsPlayer({
         tryPlay();
       };
       const onNativeError = () => {
-        if (giveUpOnPrimary()) {
-          return;
-        }
-        setError("Connecting to broadcast feed...");
+        setError("Waiting for the broadcast to start...");
         clearTimeout(retryTimer);
         retryTimer = setTimeout(() => {
           if (video && video.paused) {
@@ -638,38 +588,7 @@ function HlsPlayer({
         hls.destroy();
       }
     };
-  }, [activeUrl, fallbackUrl, ll, useFallback]);
-
-  /* Climb back to the live origin after a fallback.
-   *
-   * Being on B2 is not an error state — the video plays, it is just 15s behind
-   * — so nothing else would ever bring the viewer back. Meanwhile the live
-   * origin typically appears a few seconds after the broadcast starts, so the
-   * most common reason to be down here is simply having joined too early.
-   *
-   * Capped, because flapping is worse than a slow feed: if the playlist answers
-   * but its segments do not, each attempt costs another grace window of stalled
-   * video before we land back here. */
-  useEffect(() => {
-    if (!useFallback || !lowLatency || !streamUrl) return;
-    if (recoveriesRef.current >= MAX_PRIMARY_RECOVERIES) return;
-    let cancelled = false;
-    const id = setInterval(() => {
-      void fetch(streamUrl, { cache: "no-store" })
-        .then((res) => {
-          if (cancelled || !res.ok) return;
-          recoveriesRef.current += 1;
-          setUseFallback(false);
-        })
-        .catch(() => {
-          /* Origin still has nothing to serve. Try again on the next tick. */
-        });
-    }, PRIMARY_PROBE_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [useFallback, lowLatency, streamUrl]);
+  }, [activeUrl, ll]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -699,14 +618,39 @@ function HlsPlayer({
     }
   };
 
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setIsMuted(video.muted);
+    if (!video.muted) void video.play();
+  };
+
+  const toggleFullscreen = () => {
+    const el = videoRef.current?.parentElement;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void el.requestFullscreen?.();
+    }
+  };
+
   return (
     <div className="relative h-full w-full flex items-center justify-center bg-black">
+      {/* No `controls`. This is a live stage, not a file: a scrubber invites
+        * seeking on a stream that has nowhere to seek to, and the native menu
+        * offers playback speed, download and PiP, none of which mean anything
+        * for a broadcast. The attributes below are belt-and-braces for the
+        * places a browser shows its own UI anyway, notably iOS fullscreen.
+        * Volume and fullscreen live in the overlay instead. */}
       <video
         ref={videoRef}
         playsInline
         muted
         autoPlay
-        controls
+        disablePictureInPicture
+        controlsList="nodownload noplaybackrate noremoteplayback"
         preload="auto"
         onPlay={() => {
           setLoading(false);
@@ -745,11 +689,20 @@ function HlsPlayer({
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white gap-3 pointer-events-none z-10">
           <Spinner className="size-8 text-brand" />
           <p className="text-[13px] text-ink-3">
-            {error || "Connecting to broadcast feed..."}
+            {error || "Waiting for the broadcast to start..."}
           </p>
         </div>
       )}
 
+      {!loading && (
+        <div className="absolute left-4 top-4 z-20 flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white backdrop-blur">
+          <span className="inline-block size-1.5 rounded-full bg-red-500 animate-pulse" />
+          Live
+        </div>
+      )}
+
+      {/* The one control an attendee genuinely needs, and it has to be loud:
+        * playback starts muted because no browser will autoplay with sound. */}
       {isMuted && !loading && (
         <button
           type="button"
@@ -759,6 +712,33 @@ function HlsPlayer({
           <span className="inline-block size-2 rounded-full bg-white animate-pulse" />
           Click to Unmute Broadcast
         </button>
+      )}
+
+      {!loading && (
+        <div className="absolute bottom-4 right-4 z-20 flex items-center gap-1 rounded-full bg-black/55 p-1 backdrop-blur">
+          <button
+            type="button"
+            onClick={toggleMute}
+            aria-label={isMuted ? "Unmute broadcast" : "Mute broadcast"}
+            title={isMuted ? "Unmute" : "Mute"}
+            className="grid size-8 place-items-center rounded-full text-white/90 transition hover:bg-white/15 hover:text-white"
+          >
+            {isMuted ? (
+              <VolumeMuteIcon className="size-4" />
+            ) : (
+              <VolumeIcon className="size-4" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label="Toggle fullscreen"
+            title="Fullscreen"
+            className="grid size-8 place-items-center rounded-full text-white/90 transition hover:bg-white/15 hover:text-white"
+          >
+            <FullscreenIcon className="size-4" />
+          </button>
+        </div>
       )}
     </div>
   );
