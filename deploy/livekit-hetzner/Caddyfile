@@ -1,10 +1,13 @@
-{$DOMAIN} {
-	encode gzip
-
-	# LL-HLS parts from MediaMTX. flush_interval -1 disables proxy buffering:
-	# a 200ms part held in a buffer puts back the latency this path exists to
-	# remove. No `encode` here — the directive only takes encoder names, and
-	# these segments are already compressed.
+# LL-HLS parts from MediaMTX. flush_interval -1 disables proxy buffering: a
+# 200ms part held in a buffer puts back the latency this path exists to remove.
+# No `encode` here — the directive only takes encoder names, and these segments
+# are already compressed.
+#
+# The Cache-Control values are aimed at Cloudflare, not the browser. s-maxage=1
+# on the playlist lets the edge collapse a thousand simultaneous polls into one
+# origin fetch without ever serving a stale segment list; parts are immutable
+# once named, so they can sit in the edge cache far longer.
+(live_hls) {
 	handle /live/* {
 		reverse_proxy 127.0.0.1:8888 {
 			flush_interval -1
@@ -17,6 +20,12 @@
 		@part path *.m4s *.mp4 *.ts
 		header @part Cache-Control "public, max-age=30, s-maxage=60"
 	}
+}
+
+{$DOMAIN} {
+	encode gzip
+
+	import live_hls
 
 	# `handle` (not `handle_path`) — Grafana's GF_SERVER_SERVE_FROM_SUB_PATH
 	# expects the /grafana prefix to still be in the request it receives and
@@ -30,7 +39,30 @@
 	reverse_proxy 127.0.0.1:7880
 }
 
-# No site block for live.webinarliv.com. Caddy manages a certificate for every
-# hostname it is configured to serve, and that record does not exist yet, so
-# naming it here only buys failing ACME orders. Add the block in the same
-# change that adds the DNS record — see README.
+# The hostname attendees actually play from. Always proxied by Cloudflare, which
+# is the whole point: the origin has one 1 Gbps NIC and would otherwise send a
+# private copy of every 200ms part to every viewer.
+#
+# `tls internal` rather than a public certificate. Behind the orange cloud an
+# HTTP-01 challenge is answered by Cloudflare's edge, not by Caddy, so a public
+# order here is unreliable at best and can deadlock: with the record proxied,
+# reaching origin:443 requires the certificate the order is trying to obtain.
+# The zone is set to Full (not Full strict), so Cloudflare encrypts to the
+# origin and accepts this locally-issued certificate. Browsers never see it —
+# they terminate against Cloudflare's edge certificate.
+#
+# If this record is ever un-proxied, that grey cloud is a hard outage, not a
+# degradation: the local certificate will not validate in a browser.
+live.webinarliv.com {
+	tls internal
+
+	import live_hls
+
+	# Anything that is not a stream is not something this hostname serves.
+	# A `handle` block, not a bare `respond`: handle blocks are mutually
+	# exclusive and matched in order, so this reliably runs only when the
+	# /live/* block above did not match.
+	handle {
+		respond 404
+	}
+}
