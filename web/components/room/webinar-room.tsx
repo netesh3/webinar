@@ -65,6 +65,7 @@ import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
 import { useTelemetry } from "@/lib/telemetry";
 import { MeetingLimitBanner } from "./meeting-limit-banner";
+import { CdnAttendeeRoom } from "./cdn-attendee-room";
 
 /* The webinar room.
  *
@@ -102,6 +103,22 @@ export function WebinarRoom({
   onLeave: () => void;
 }) {
   const { ready: prefsReady } = useMediaPreferences();
+  const [promotedToStage, setPromotedToStage] = useState(false);
+
+  // If this webinar is running in CDN broadcast mode and the user is an unpromoted attendee:
+  if (join.cdnBroadcast && !join.canPublish && !promotedToStage) {
+    return (
+      <CdnAttendeeRoom
+        join={join}
+        slug={slug}
+        initialTopic={initialTopic}
+        initialImageUrl={initialImageUrl}
+        joinKey={joinKey}
+        onLeave={onLeave}
+        onPromoted={() => setPromotedToStage(true)}
+      />
+    );
+  }
 
   // Every path below assumes WebRTC. That's true of every evergreen browser —
   // Chrome, Firefox, Safari, Edge, and every Chromium-based browser — but not
@@ -1091,7 +1108,7 @@ function AutoStartAudio({ room }: { room: Room }) {
 
 // ------------------------------------------------------------------- header
 
-function RoomHeader() {
+export function RoomHeader() {
   const { controls, isHost, permissions, tools } = useRoomUI();
   const panelOpen = Boolean(tools.panelTab);
 

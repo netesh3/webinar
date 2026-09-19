@@ -32,21 +32,24 @@ type User struct {
 	// MaxDurationMin is an optional custom maximum meeting duration in minutes.
 	// NULL means use the system default.
 	MaxDurationMin *int
+	// CanCdnBroadcast allows this host to run CDN HLS broadcast webinars.
+	CanCdnBroadcast bool
 }
 
 func (u User) Public() types.Account {
 	return types.Account{
-		ID:             u.ID,
-		Email:          u.Email,
-		Name:           u.Name,
-		Title:          u.Title,
-		Org:            u.Org,
-		Phone:          u.Phone,
-		Initials:       u.Initials,
-		Hue:            u.Hue,
-		CanHost:        u.CanHost,
-		IsAdmin:        u.IsAdmin,
-		MaxDurationMin: u.MaxDurationMin,
+		ID:              u.ID,
+		Email:           u.Email,
+		Name:            u.Name,
+		Title:           u.Title,
+		Org:             u.Org,
+		Phone:           u.Phone,
+		Initials:        u.Initials,
+		Hue:             u.Hue,
+		CanHost:         u.CanHost,
+		IsAdmin:         u.IsAdmin,
+		MaxDurationMin:  u.MaxDurationMin,
+		CanCdnBroadcast: u.CanCdnBroadcast,
 	}
 }
 
@@ -65,13 +68,22 @@ func (u User) Person() types.Person {
 }
 
 const userColumns = `id::text, email, coalesce(password_hash,''), name, title, org, phone,
-	initials, hue, can_host, is_admin, max_duration_min`
+	initials, hue, can_host, is_admin, max_duration_min, can_cdn_broadcast`
 
 func scanUser(row scanner) (User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Title, &u.Org, &u.Phone,
-		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.MaxDurationMin)
+		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.MaxDurationMin, &u.CanCdnBroadcast)
 	return u, err
+}
+
+func (s *Store) HostCanCdnBroadcast(ctx context.Context, hostID string) (bool, error) {
+	var can bool
+	err := s.pool.QueryRow(ctx, `SELECT can_cdn_broadcast FROM users WHERE id = $1`, hostID).Scan(&can)
+	if noRows(err) {
+		return false, nil
+	}
+	return can, err
 }
 
 func (s *Store) UserByEmail(ctx context.Context, email string) (User, error) {

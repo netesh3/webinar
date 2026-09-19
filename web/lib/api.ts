@@ -571,6 +571,10 @@ export const api = {
   setUserMaxDuration: (userId: string, maxDurationMin: number | null) =>
     patch<Account>(`/api/admin/users/${seg(userId)}/max-duration`, { maxDurationMin }),
 
+  /** Configure whether an account's webinars stream to audience attendees via CDN HLS. */
+  setCdnBroadcastCapability: (userId: string, canCdnBroadcast: boolean) =>
+    patch<Account>(`/api/admin/users/${seg(userId)}/cdn-broadcast`, { canCdnBroadcast }),
+
   /** Deletes an account outright. Refused by the server for the caller's own
    *  account, and for one that still hosts webinars — those have to be
    *  deleted first, as their own explicit action. */

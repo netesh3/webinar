@@ -512,6 +512,8 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	// room needs the update pushed explicitly.
 	s.pushRoomMetadata(r, sfu, wb)
 
+	s.startHlsBroadcastIfEnabled(r.Context(), wb, sfu)
+
 	s.log.Info("webinar started", "slug", slug, "room", room)
 	httpx.JSON(w, http.StatusOK, wb)
 }
@@ -670,6 +672,11 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 				}
 			}
 		}
+	}
+
+	// Stop any active CDN broadcast egress.
+	if sfu, err := s.sfuFor(ctx, wb); err == nil {
+		s.stopHlsBroadcastIfActive(ctx, slug, sfu)
 	}
 
 	if sfu, err := s.sfuFor(ctx, wb); err != nil {

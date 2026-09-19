@@ -110,6 +110,28 @@ export function AdminScreen() {
     }
   }
 
+  async function setCdnBroadcast(u: AdminUser, canCdnBroadcast: boolean) {
+    setBusy(u.id);
+    try {
+      await api.setCdnBroadcastCapability(u.id, canCdnBroadcast);
+      setUsers((prev) =>
+        (prev ?? []).map((row) =>
+          row.id === u.id ? { ...row, canCdnBroadcast } : row,
+        ),
+      );
+      notify(
+        canCdnBroadcast
+          ? `CDN broadcast mode enabled for ${u.name || u.email}.`
+          : `CDN broadcast mode disabled for ${u.name || u.email}.`,
+        "ok",
+      );
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   /* Refused server-side too — for the caller's own account, and for one that
    * still owns webinars — this only saves the round trip and gives the error
    * a place to land next to the button that caused it. */
@@ -234,6 +256,15 @@ export function AdminScreen() {
                       <option value="360">6 hours</option>
                       <option value="480">8 hours</option>
                     </select>
+                  )}
+
+                  {/* CDN Broadcast toggle — only shown for hosts */}
+                  {u.canHost && busy !== u.id && (
+                    <Toggle
+                      checked={u.canCdnBroadcast}
+                      onChange={(next) => void setCdnBroadcast(u, next)}
+                      label="CDN Broadcast"
+                    />
                   )}
 
                   <button

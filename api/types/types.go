@@ -630,6 +630,8 @@ type Account struct {
 	// MaxDurationMin is an optional custom maximum meeting duration in minutes for this user.
 	// NULL means use the system default (e.g. 180 min = 3 hours).
 	MaxDurationMin *int `json:"maxDurationMin,omitempty"`
+	// CanCdnBroadcast allows this host's webinars to broadcast to audience via CDN HLS.
+	CanCdnBroadcast bool `json:"canCdnBroadcast"`
 }
 
 type SignupRequest struct {
@@ -657,6 +659,11 @@ type HostGrant struct {
 	CanHost bool `json:"canHost"`
 }
 
+// CdnBroadcastGrant is an admin's grant allowing a host account to use CDN broadcast mode.
+type CdnBroadcastGrant struct {
+	CanCdnBroadcast bool `json:"canCdnBroadcast"`
+}
+
 /* AdminUser is one row of the admin panel.
  *
  * Carries what an admin needs to decide whether this person should be able to run webinars —
@@ -680,6 +687,8 @@ type AdminUser struct {
 	WebinarCount int `json:"webinarCount"`
 	// MaxDurationMin is an optional custom maximum meeting duration in minutes configured by an admin.
 	MaxDurationMin *int `json:"maxDurationMin,omitempty"`
+	// CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
+	CanCdnBroadcast bool `json:"canCdnBroadcast"`
 }
 
 type LoginRequest struct {
@@ -856,6 +865,10 @@ type JoinResponse struct {
 	JoinKey string `json:"joinKey,omitempty"`
 	// MaxDurationMin is the maximum allowed duration for this session in minutes.
 	MaxDurationMin int `json:"maxDurationMin"`
+	// CdnBroadcast indicates whether unpromoted attendees receive the webinar via CDN HLS stream.
+	CdnBroadcast bool `json:"cdnBroadcast,omitempty"`
+	// CdnStreamURL is the HLS / CDN playback URL for audience attendees when CdnBroadcast is true.
+	CdnStreamURL string `json:"cdnStreamUrl,omitempty"`
 }
 
 type SetUserMaxDurationRequest struct {

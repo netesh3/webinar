@@ -625,6 +625,8 @@ export interface Account {
   isAdmin: boolean;
   /** MaxDurationMin is an optional custom maximum meeting duration in minutes. NULL means system default. */
   maxDurationMin?: number | null;
+  /** CanCdnBroadcast reports whether this user's webinars stream to audience via CDN HLS. */
+  canCdnBroadcast: boolean;
 }
 export interface SignupRequest {
   name: string;
@@ -655,6 +657,12 @@ export interface HostGrant {
   canHost: boolean;
 }
 /**
+ * CdnBroadcastGrant is an admin's decision about an account's CDN broadcast capability.
+ */
+export interface CdnBroadcastGrant {
+  canCdnBroadcast: boolean;
+}
+/**
  *  AdminUser is one row of the admin panel.
  *  *
  *  * Carries what an admin needs to decide whether this person should be able to run webinars —
@@ -680,6 +688,8 @@ export interface AdminUser {
   webinarCount: number /* int */;
   /** MaxDurationMin is an optional custom maximum meeting duration in minutes configured by an admin. */
   maxDurationMin?: number | null;
+  /** CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars. */
+  canCdnBroadcast: boolean;
 }
 export interface LoginRequest {
   email: string;
@@ -856,6 +866,10 @@ export interface JoinResponse {
   joinKey?: string;
   /** MaxDurationMin is the maximum allowed duration for this session in minutes. */
   maxDurationMin: number;
+  /** CdnBroadcast indicates whether unpromoted attendees receive the webinar via CDN HLS stream. */
+  cdnBroadcast?: boolean;
+  /** CdnStreamURL is the HLS / CDN playback URL for audience attendees when CdnBroadcast is true. */
+  cdnStreamUrl?: string;
 }
 /**
  * RoomMeta is mirrored into LiveKit room metadata on every control change.

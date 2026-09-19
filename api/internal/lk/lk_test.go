@@ -90,6 +90,20 @@ func TestGrantFor(t *testing.T) {
 	}
 }
 
+func TestGrantForDataOnly(t *testing.T) {
+	const room = "webinar_cdn_test"
+	g, err := GrantFor(Spec{Role: types.RoleAttendee, Room: room, DataOnly: true})
+	if err != nil {
+		t.Fatalf("GrantFor returned error: %v", err)
+	}
+	if g.CanSubscribe == nil || *g.CanSubscribe != false {
+		t.Errorf("CanSubscribe = %v, want false for DataOnly attendee", g.CanSubscribe)
+	}
+	if g.CanPublish == nil || *g.CanPublish != false {
+		t.Errorf("CanPublish = %v, want false for DataOnly attendee", g.CanPublish)
+	}
+}
+
 // A promoted attendee has to be distinguishable from a scheduled panelist.
 //
 // They hold identical permissions, and the difference decides whether the

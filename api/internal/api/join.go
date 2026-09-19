@@ -151,6 +151,17 @@ func (s *Server) joinAsAttendee(
 		role = types.RolePanelist
 	}
 
+	// Check if host has CDN broadcast capability enabled
+	cdnBroadcast, err := s.store.HostCanCdnBroadcast(r.Context(), wb.Host.ID)
+	if err != nil {
+		s.log.Warn("join: host cdn broadcast lookup failed", "host", wb.Host.ID, "error", err)
+	}
+	isCdnAttendee := cdnBroadcast && !grant.Granted
+	var cdnStreamURL string
+	if isCdnAttendee {
+		cdnStreamURL = s.cdnStreamURL(wb.ID)
+	}
+
 	// canRecord is false down this path without qualification, including for
 	// someone the host promoted. A promotion is a microphone and a camera; it is
 	// not an account on the stage roster, which is what the recording endpoints
@@ -165,7 +176,8 @@ func (s *Server) joinAsAttendee(
 		// A seat the host gave this person, which has to survive their reconnect
 		// along with its scope — see Metadata.Promoted.
 		Promoted: grant.Granted,
-	}, false)
+		DataOnly: isCdnAttendee,
+	}, false, isCdnAttendee, cdnStreamURL)
 	if ok {
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
 	}
@@ -395,7 +407,7 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		Name:        user.Name,
 		MutedByHost: muted,
 		CoHost:      coHost,
-	}, true)
+	}, true, false, "")
 }
 
 // ensureRoom creates the room with the capacity ceiling and seeds its metadata
@@ -548,7 +560,7 @@ func (s *Server) roomMetadata(ctx context.Context, wb types.Webinar) (string, er
 // request that ends in an error response.
 func (s *Server) issueToken(
 	w http.ResponseWriter, r *http.Request, wb types.Webinar, sfu RoomManager,
-	spec lk.Spec, canRecord bool,
+	spec lk.Spec, canRecord bool, cdnBroadcast bool, cdnStreamURL string,
 ) bool {
 	spec.Hidden = lk.HiddenFor(spec.Role, wb.Controls.HideAttendees)
 
@@ -578,28 +590,37 @@ func (s *Server) issueToken(
 	}
 	s.log.Info("token issued",
 		"room", spec.Room, "role", spec.Role, "identity", spec.Identity,
-		"hidden", spec.Hidden, "audio_only", spec.AudioOnly)
+		"hidden", spec.Hidden, "audio_only", spec.AudioOnly, "cdn", cdnBroadcast)
 	httpx.JSON(w, http.StatusOK, types.JoinResponse{
 		Token: tok,
 		// The project's OWN address, not a global one. This is why the client is threaded
 		// all the way down here: a token signed by project B alongside project A's URL is a
 		// browser authenticating against a room it is not connected to.
-		URL:         sfu.URL(),
-		Room:        spec.Room,
-		Role:        spec.Role,
-		Identity:    spec.Identity,
-		DisplayName: spec.Name,
-		CanPublish:  lk.CanPublish(spec.Role),
-		Controls:    wb.Controls,
-		Topic:       wb.Topic,
-		StartedAt:   wb.StartedAt,
-		EndedAt:     wb.EndedAt,
+		URL:            sfu.URL(),
+		Room:           spec.Room,
+		Role:           spec.Role,
+		Identity:       spec.Identity,
+		DisplayName:    spec.Name,
+		CanPublish:     lk.CanPublish(spec.Role),
+		Controls:       wb.Controls,
+		Topic:          wb.Topic,
+		StartedAt:      wb.StartedAt,
+		EndedAt:        wb.EndedAt,
 		Hidden:         spec.Hidden,
 		CanRecord:      canRecord,
 		JoinKey:        joinKeyFromIdentity(spec.Identity),
 		MaxDurationMin: wb.MaxDurationMin,
+		CdnBroadcast:   cdnBroadcast,
+		CdnStreamURL:   cdnStreamURL,
 	})
 	return true
+}
+
+func (s *Server) cdnStreamURL(slug string) string {
+	if s.cfg.RecordingsCDNBaseURL != "" {
+		return fmt.Sprintf("%s/broadcast/%s/index.m3u8", s.cfg.RecordingsCDNBaseURL, slug)
+	}
+	return fmt.Sprintf("/api/webinars/%s/broadcast/index.m3u8", slug)
 }
 
 // Identities are prefixed by kind so a log line or an SFU dashboard reads

@@ -108,6 +108,9 @@ type Spec struct {
 	// publish grant regardless of MutedByHost. Only meaningful with Role ==
 	// RolePanelist — see GrantFor and metadataFor, which both narrow it there.
 	CoHost bool
+	// DataOnly restricts the participant to data channels only (no WebRTC audio/video subscription).
+	// Used for CDN broadcast attendees to receive Chat/Polls/Q&A without consuming SFU media bandwidth.
+	DataOnly bool
 }
 
 // MicrophoneSource is LiveKit's name for the microphone in a grant's source list.
@@ -211,7 +214,11 @@ func GrantFor(spec Spec) (*auth.VideoGrant, error) {
 		// The entire webinar/meeting distinction is these three lines: receive
 		// media, publish nothing, and send nothing directly.
 		base.CanPublish = ptr(false)
-		base.CanSubscribe = ptr(true)
+		if spec.DataOnly {
+			base.CanSubscribe = ptr(false)
+		} else {
+			base.CanSubscribe = ptr(true)
+		}
 		// canPublishData=false is what makes the host's chat destination
 		// enforceable rather than advisory.
 		//
@@ -1103,6 +1110,61 @@ func (c *Client) StartRoomCompositeEgress(
 						AccessKey:      strings.TrimSpace(s3Opts.AccessKey),
 						Secret:         strings.TrimSpace(s3Opts.SecretKey),
 						ForcePathStyle: true, // Backblaze B2 uses path-style addressing
+					},
+				},
+			},
+		},
+	}
+
+	if templateURL != "" {
+		req.CustomBaseUrl = templateURL
+		req.Layout = "custom"
+	} else {
+		req.Layout = "speaker"
+	}
+
+	req.Options = &livekit.RoomCompositeEgressRequest_Preset{
+		Preset: preset,
+	}
+
+	return c.egress.StartRoomCompositeEgress(ctx, req)
+}
+
+// StartHlsBroadcastEgress begins an HLS segmented egress stream for live CDN distribution.
+func (c *Client) StartHlsBroadcastEgress(
+	ctx context.Context,
+	roomName string,
+	prefix string,
+	playlistName string,
+	s3Opts EgressS3Options,
+	templateURL string,
+	preset livekit.EncodingOptionsPreset,
+) (*livekit.EgressInfo, error) {
+	if c.egress == nil {
+		return nil, errors.New("egress is not configured on this client")
+	}
+
+	endpoint := strings.TrimSpace(s3Opts.Endpoint)
+	if endpoint != "" && !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		endpoint = "https://" + endpoint
+	}
+
+	req := &livekit.RoomCompositeEgressRequest{
+		RoomName: roomName,
+		SegmentOutputs: []*livekit.SegmentedFileOutput{
+			{
+				Protocol:        livekit.SegmentedFileProtocol_HLS_PROTOCOL,
+				FilenamePrefix:  prefix,
+				PlaylistName:    playlistName,
+				SegmentDuration: 2,
+				Output: &livekit.SegmentedFileOutput_S3{
+					S3: &livekit.S3Upload{
+						Endpoint:       endpoint,
+						Bucket:         strings.TrimSpace(s3Opts.Bucket),
+						Region:         strings.TrimSpace(s3Opts.Region),
+						AccessKey:      strings.TrimSpace(s3Opts.AccessKey),
+						Secret:         strings.TrimSpace(s3Opts.SecretKey),
+						ForcePathStyle: true,
 					},
 				},
 			},

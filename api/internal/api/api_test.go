@@ -380,6 +380,19 @@ func (f *fakeRooms) StartRoomCompositeEgress(_ context.Context, roomName, storag
 	}, nil
 }
 
+func (f *fakeRooms) StartHlsBroadcastEgress(_ context.Context, roomName, prefix, playlistName string, _ lk.EgressS3Options, _ string, _ livekit.EncodingOptionsPreset) (*livekit.EgressInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.egressErr != nil {
+		return nil, f.egressErr
+	}
+	f.egressCalls = append(f.egressCalls, roomName+":"+prefix+playlistName)
+	return &livekit.EgressInfo{
+		EgressId: "EG_fake_hls_" + roomName,
+		Status:   livekit.EgressStatus_EGRESS_STARTING,
+	}, nil
+}
+
 func (f *fakeRooms) StopEgress(_ context.Context, egressID string) (*livekit.EgressInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

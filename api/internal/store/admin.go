@@ -155,6 +155,18 @@ func (s *Store) SetUserMaxDuration(ctx context.Context, userID string, maxDurati
 	return u, err
 }
 
+/* SetCdnBroadcastCapability configures whether an account's webinars stream to attendees via CDN HLS.
+ */
+func (s *Store) SetCdnBroadcastCapability(ctx context.Context, userID string, canCdnBroadcast bool) (User, error) {
+	u, err := scanUser(s.pool.QueryRow(ctx, `
+		UPDATE users SET can_cdn_broadcast = $2 WHERE id = $1
+		RETURNING `+userColumns, userID, canCdnBroadcast))
+	if noRows(err) {
+		return User{}, ErrNotFound
+	}
+	return u, err
+}
+
 /* AdminUsers lists every account for the admin panel.
  *
  * Includes the count of webinars each account owns, because that is the fact an admin needs
@@ -174,7 +186,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		SELECT u.id::text, u.email, u.name, u.title, u.org, u.initials, u.hue,
 		       u.can_host, u.is_admin, u.created_at,
 		       (SELECT count(*) FROM webinars w WHERE w.host_id = u.id),
-		       u.max_duration_min
+		       u.max_duration_min, u.can_cdn_broadcast
 		  FROM users u
 		 WHERE lower(u.email) LIKE $1 OR lower(u.name) LIKE $1
 		 ORDER BY u.is_admin DESC, u.can_host DESC, u.created_at DESC
@@ -191,7 +203,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 			createdAt time.Time
 		)
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Initials,
-			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin); err != nil {
+			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
@@ -199,3 +211,4 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 	}
 	return out, rows.Err()
 }
+

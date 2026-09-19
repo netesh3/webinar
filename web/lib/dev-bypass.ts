@@ -30,6 +30,7 @@ export const DEV_BYPASS_ACCOUNT: Account = {
   hue: "#3B6EA5",
   canHost: true,
   isAdmin: true,
+  canCdnBroadcast: true,
 };
 
 const CONTROLS: SessionControls = {
