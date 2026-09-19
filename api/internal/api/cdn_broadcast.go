@@ -13,7 +13,6 @@ import (
 	"github.com/livekit/protocol/livekit"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
-	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -91,11 +90,17 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	s3Key := fmt.Sprintf("broadcast/%s/%s", slug, file)
-
 	// Set CORS headers so web HLS player can load segments across origins
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	s3Key := fmt.Sprintf("broadcast/%s/%s", slug, file)
 
 	// Set appropriate Content-Type and Cache-Control
 	if strings.HasSuffix(file, ".m3u8") {
@@ -106,24 +111,11 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 
-	// If CDN base URL is configured, redirect directly to CDN
+	// If CDN base URL is configured, redirect directly to CDN edge
 	if s.cfg.RecordingsCDNBaseURL != "" {
 		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), s3Key)
 		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
 		return
-	}
-
-	// If storage backend is S3 with presigner capability, redirect to signed S3 URL
-	if presigner, ok := s.recordings.(media.Presigner); ok {
-		contentType := "video/mp2t"
-		if strings.HasSuffix(file, ".m3u8") {
-			contentType = "application/vnd.apple.mpegurl"
-		}
-		presignedURL, err := presigner.PresignedGetURL(r.Context(), s3Key, file, contentType, true, 10*time.Minute)
-		if err == nil && presignedURL != "" {
-			http.Redirect(w, r, presignedURL, http.StatusTemporaryRedirect)
-			return
-		}
 	}
 
 	if s.recordings == nil {
@@ -131,7 +123,14 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Open the object from storage (S3/Disk) and stream with range support
 	reader, size, err := s.recordings.Open(r.Context(), s3Key)
+	if err != nil && strings.HasSuffix(file, ".m3u8") {
+		// Fallback check if LiveKit saved playlist as chunk-index.m3u8
+		altKey := fmt.Sprintf("broadcast/%s/chunk-index.m3u8", slug)
+		reader, size, err = s.recordings.Open(r.Context(), altKey)
+	}
+
 	if err != nil {
 		httpx.Error(w, http.StatusNotFound, "not_found", "Broadcast segment not ready or not found.")
 		return
