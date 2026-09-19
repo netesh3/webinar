@@ -100,3 +100,40 @@ jobs:
              AND NOT EXISTS (SELECT 1 FROM recordings r WHERE r.webinar_id = w.id)
            ORDER BY w.created_at DESC LIMIT 15;
           SQL
+
+      # The database saying "uploaded_to_s3" and the CDN saying 404 cannot both
+      # be right. This asks the bucket the API actually writes to, which is the
+      # only party that knows. Object keys are printed; the bucket name, endpoint
+      # and credentials are not — a mismatch shows up as "the key is in the
+      # origin but not on the CDN", which needs no secret to read.
+      - name: What is actually in the origin bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.RECORDINGS_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.RECORDINGS_S3_REGION }}
+          BUCKET: ${{ secrets.RECORDINGS_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.RECORDINGS_S3_ENDPOINT }}
+          CDN: ${{ secrets.RECORDINGS_CDN_BASE_URL || 'https://recordings.webinarliv.com' }}
+        run: |
+          if [ -z "$BUCKET" ] || [ -z "$ENDPOINT" ]; then
+            echo "No S3 origin configured; recordings have nowhere to go."
+            exit 0
+          fi
+          # Which provider, without printing the endpoint — it carries the R2
+          # account id, and a masked secret tells the reader nothing anyway.
+          case "$ENDPOINT" in
+            *r2.cloudflarestorage.com) echo "origin provider: Cloudflare R2" ;;
+            *backblazeb2.com)          echo "origin provider: Backblaze B2" ;;
+            *)                         echo "origin provider: other S3-compatible" ;;
+          esac
+          echo "cdn host: ${CDN}"
+          echo
+
+          echo "===== objects in the bucket (newest 30) ====="
+          aws s3api list-objects-v2 --endpoint-url "$ENDPOINT" --bucket "$BUCKET" \
+            --query 'reverse(sort_by(Contents,&LastModified))[:30].[Key,Size,LastModified]' \
+            --output table || echo "could not list the bucket"
+
+          echo "===== how many objects in total ====="
+          aws s3api list-objects-v2 --endpoint-url "$ENDPOINT" --bucket "$BUCKET" \
+            --query 'length(Contents)' --output text || true
