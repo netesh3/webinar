@@ -33,6 +33,26 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
+/* What is left to do once a webinar is over.
+ *
+ * Admit, Share, Stage and Settings all act on a session that can still happen:
+ * a queue nobody can join, a registration link that leads nowhere, a panelist
+ * who will never present, toggles for a room that will not open again. Offering
+ * them after the fact is offering controls that cannot change anything. What a
+ * host actually comes back for is the recording and who turned up. */
+const ENDED_TABS = ["Recordings", "Attendees"] as const;
+
+function tabsFor(ended: boolean): readonly Tab[] {
+  return ended ? ENDED_TABS : TABS;
+}
+
+/** An old link, or the Host list, can still ask for a tab this webinar no
+ *  longer has. Anything not on offer resolves to null so the caller can fall
+ *  back rather than render an empty page. */
+function allowedTab(tab: Tab | null, ended: boolean): Tab | null {
+  return tab && tabsFor(ended).includes(tab) ? tab : null;
+}
+
 function tabFromQuery(raw: string | null | undefined): Tab | null {
   if (!raw) return null;
   const key = raw.toLowerCase();
@@ -60,10 +80,15 @@ export function HostWebinarTabs({
   initialTab?: string | null;
 }) {
   const pending = registrants.filter((r) => r.state === "pending");
+  const ended = w.status === "ended";
+  const tabs = tabsFor(ended);
+
   const defaultTab: Tab =
-    tabFromQuery(initialTab) ??
-    (w.status === "ended"
-      ? "Attendees"
+    allowedTab(tabFromQuery(initialTab), ended) ??
+    (ended
+      ? recordings.length > 0
+        ? "Recordings"
+        : "Attendees"
       : pending.length > 0
         ? "Admit"
         : "Attendees");
@@ -71,15 +96,15 @@ export function HostWebinarTabs({
 
   // Follow ?tab= when the host clicks Admit / Attendees from the list.
   useEffect(() => {
-    const next = tabFromQuery(initialTab);
+    const next = allowedTab(tabFromQuery(initialTab), ended);
     if (next) setTab(next);
-  }, [initialTab]);
+  }, [initialTab, ended]);
 
   return (
     <>
       <div className="mb-4">
         <Tabs
-          tabs={TABS}
+          tabs={tabs}
           value={tab}
           onChange={setTab}
           counts={{

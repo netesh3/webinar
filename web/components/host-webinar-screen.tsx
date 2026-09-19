@@ -218,8 +218,10 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
           {isDraft ? (
             <ButtonLink href={`/host/${slug}/edit`}>Finish setup</ButtonLink>
           ) : isEnded ? (
-            <ButtonLink href={`/host/${slug}?tab=attendees`}>
-              View attendance
+            <ButtonLink
+              href={`/host/${slug}?tab=${recordings.length > 0 ? "recordings" : "attendees"}`}
+            >
+              {recordings.length > 0 ? "Watch the recording" : "View attendance"}
             </ButtonLink>
           ) : (
             <>
@@ -249,7 +251,10 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
               )}
             </>
           )}
-          {!isDraft && (
+          {/* The registration link only means something while somebody can still
+              join. After the webinar it leads to a page that cannot be attended;
+              sharing the recording is a different link, offered on its own row. */}
+          {!isDraft && !isEnded && (
             <Button
               variant="secondary"
               onClick={() =>
