@@ -229,14 +229,31 @@ func (o *S3) abortSession(ctx context.Context, key string, sess *s3Session) erro
 // PresignedURL generates a direct S3 download URL valid for the given duration,
 // allowing clients to stream directly from Backblaze B2/S3 without API proxying.
 func (o *S3) PresignedURL(ctx context.Context, key string, expires time.Duration) (string, error) {
+	return o.PresignedGetURL(ctx, key, "", "", false, expires)
+}
+
+// PresignedGetURL generates a direct S3 URL with optional Content-Disposition and Content-Type response header overrides.
+func (o *S3) PresignedGetURL(ctx context.Context, key, filename, contentType string, inline bool, expires time.Duration) (string, error) {
 	if o.client == nil {
 		return "", errors.New("s3 client is not initialized")
 	}
-	ps := s3.NewPresignClient(o.client)
-	req, err := ps.PresignGetObject(ctx, &s3.GetObjectInput{
+	input := &s3.GetObjectInput{
 		Bucket: aws.String(o.bucket),
 		Key:    aws.String(key),
-	}, func(opts *s3.PresignOptions) {
+	}
+	if filename != "" {
+		disposition := fmt.Sprintf("attachment; filename=%q", filename)
+		if inline {
+			disposition = fmt.Sprintf("inline; filename=%q", filename)
+		}
+		input.ResponseContentDisposition = aws.String(disposition)
+	}
+	if contentType != "" {
+		input.ResponseContentType = aws.String(contentType)
+	}
+
+	ps := s3.NewPresignClient(o.client)
+	req, err := ps.PresignGetObject(ctx, input, func(opts *s3.PresignOptions) {
 		opts.Expires = expires
 	})
 	if err != nil {

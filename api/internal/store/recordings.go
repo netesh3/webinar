@@ -153,7 +153,7 @@ func (s *Store) MarkRecordingProcessing(ctx context.Context, id string, duration
 	var status types.RecordingStatus
 	err := s.pool.QueryRow(ctx, `
 		UPDATE recordings
-		   SET status = CASE WHEN size_bytes > 0 THEN 'processing' ELSE 'failed' END,
+		   SET status = CASE WHEN size_bytes > 0 OR egress_id IS NOT NULL THEN 'processing' ELSE 'failed' END,
 		       duration_ms = GREATEST(duration_ms, $2),
 		       stopped_at = now()
 		 WHERE id = $1::uuid AND status = 'recording'
@@ -191,8 +191,9 @@ func (s *Store) FinishRecording(ctx context.Context, id string, durationMs int64
 	var status types.RecordingStatus
 	err := s.pool.QueryRow(ctx, `
 		UPDATE recordings
-		   SET status = CASE WHEN size_bytes > 0 THEN 'ready' ELSE 'failed' END,
-		       uploaded_to_s3 = CASE WHEN size_bytes > 0 THEN true ELSE false END,
+		   SET status = CASE WHEN size_bytes > 0 OR egress_id IS NOT NULL THEN 'ready' ELSE 'failed' END,
+		       uploaded_to_s3 = CASE WHEN size_bytes > 0 OR egress_id IS NOT NULL THEN true ELSE false END,
+		       upload_percent = CASE WHEN size_bytes > 0 OR egress_id IS NOT NULL THEN 100 ELSE upload_percent END,
 		       duration_ms = GREATEST(duration_ms, $2),
 		       stopped_at = now()
 		 WHERE id = $1::uuid AND status IN ('recording', 'processing')
@@ -260,9 +261,9 @@ func (s *Store) FinishRecordingWithStats(ctx context.Context, id string, sizeByt
 func (s *Store) FinishActiveRecordings(ctx context.Context, slug string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE recordings r
-		   SET status = CASE WHEN r.size_bytes > 0 THEN 'ready' ELSE 'failed' END,
-		       uploaded_to_s3 = CASE WHEN r.size_bytes > 0 THEN true ELSE false END,
-		       upload_percent = CASE WHEN r.size_bytes > 0 THEN 100 ELSE 0 END,
+		   SET status = CASE WHEN r.size_bytes > 0 OR r.egress_id IS NOT NULL THEN 'ready' ELSE 'failed' END,
+		       uploaded_to_s3 = CASE WHEN r.size_bytes > 0 OR r.egress_id IS NOT NULL THEN true ELSE false END,
+		       upload_percent = CASE WHEN r.size_bytes > 0 OR r.egress_id IS NOT NULL THEN 100 ELSE upload_percent END,
 		       stopped_at = now()
 		  FROM webinars w
 		 WHERE w.id = r.webinar_id AND (w.slug = $1 OR w.id::text = $1) AND r.status = 'recording'`, slug)

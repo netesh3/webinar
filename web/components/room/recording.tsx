@@ -126,6 +126,15 @@ function useRecorder(): RecorderContextValue {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [destination, setDestination] = useState<"cloud" | "local" | null>(null);
 
+  const [stoppedRecently, setStoppedRecently] = useState(false);
+  const { recording: serverRecording } = useRoomUI();
+
+  useEffect(() => {
+    if (!serverRecording) {
+      setStoppedRecently(false);
+    }
+  }, [serverRecording]);
+
   // Local recording is a ScreenRecorder (lib/screen-recorder.ts), not a
   // SessionRecorder — no canvas compositing, see recording.tsx's module
   // comment for why that is the point.
@@ -149,6 +158,7 @@ function useRecorder(): RecorderContextValue {
   const start = useCallback(
     async (dest: "cloud" | "local") => {
       if (recorder.current || recording.current) return;
+      setStoppedRecently(false);
       setState("starting");
       setDestination(dest);
 
@@ -264,6 +274,7 @@ function useRecorder(): RecorderContextValue {
   );
 
   const stop = useCallback(async () => {
+    setStoppedRecently(true);
     if (recording.current?.egress) {
       setState("stopping");
       const current = recording.current;
@@ -364,7 +375,7 @@ function useRecorder(): RecorderContextValue {
     return () => window.removeEventListener("pagehide", onLeave);
   }, [slug]);
 
-  const mine = state === "recording" || state === "stopping" || state === "starting";
+  const mine = !stoppedRecently && (state === "recording" || state === "stopping" || state === "starting");
 
   return { state, bytes, startedAt, destination, start, stop, mine, isEgress };
 }
@@ -563,7 +574,9 @@ export function RecordingBanner() {
   const [minimized, setMinimized] = useState(false);
 
   const isRecordingActive =
-    serverRecording || state === "recording" || state === "starting" || state === "stopping";
+    (serverRecording && state !== "stopping") ||
+    state === "recording" ||
+    state === "starting";
 
   if (!isRecordingActive) return null;
 

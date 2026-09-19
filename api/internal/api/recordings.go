@@ -272,6 +272,7 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 	// does not care which of those closed it, only that it is closed now.
 	rec, lookupErr := s.store.RecordingFor(r.Context(), slug, id)
 	if lookupErr == nil && rec.EgressID != "" {
+		_, _ = s.store.MarkRecordingProcessing(r.Context(), id, durationMs)
 		if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
 			if sfu, err := s.sfuFor(r.Context(), wb); err == nil {
 				if _, err := sfu.StopEgress(r.Context(), rec.EgressID); err != nil {
@@ -395,6 +396,8 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
+
 	// When Cloudflare CDN is configured and the recording is finalized, redirect
 	// directly to the CDN edge. Free egress via Bandwidth Alliance and instant caching.
 	if s.cfg.RecordingsCDNBaseURL != "" {
@@ -403,9 +406,9 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// For S3/Backblaze storage, redirect directly to signed S3 URL for fast streaming and seeking
+	// For S3/Backblaze storage, redirect directly to signed S3 URL with filename and content type
 	if ps, ok := s.recordings.(media.Presigner); ok {
-		if signedURL, err := ps.PresignedURL(r.Context(), rec.StorageKey, 6*time.Hour); err == nil && signedURL != "" {
+		if signedURL, err := ps.PresignedGetURL(r.Context(), rec.StorageKey, name, rec.Mime, false, 6*time.Hour); err == nil && signedURL != "" {
 			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
 			return
 		}
@@ -435,7 +438,6 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 
 	// A recording still in progress is served as far as it has been written. A
 	// host who wants to check that it is working should not have to stop it first.
-	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
 	w.Header().Set("Content-Type", rec.Mime)
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf("attachment; filename=%q", name))
@@ -636,6 +638,8 @@ func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
+	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
+
 	// When Cloudflare CDN is configured, redirect directly to the CDN edge.
 	if s.cfg.RecordingsCDNBaseURL != "" {
 		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
@@ -645,7 +649,7 @@ func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Requ
 
 	// For S3/Backblaze storage, redirect directly to signed S3 URL for fast streaming and seeking
 	if ps, ok := s.recordings.(media.Presigner); ok {
-		if signedURL, err := ps.PresignedURL(r.Context(), rec.StorageKey, 6*time.Hour); err == nil && signedURL != "" {
+		if signedURL, err := ps.PresignedGetURL(r.Context(), rec.StorageKey, name, rec.Mime, true, 6*time.Hour); err == nil && signedURL != "" {
 			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
 			return
 		}
@@ -670,7 +674,6 @@ func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
 	w.Header().Set("Content-Type", rec.Mime)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", name))
 	w.Header().Set("Cache-Control", "private, no-store")

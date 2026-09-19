@@ -43,6 +43,7 @@ type Store interface {
 // direct time-limited download URLs for clients, bypassing the API as a proxy.
 type Presigner interface {
 	PresignedURL(ctx context.Context, key string, expires time.Duration) (string, error)
+	PresignedGetURL(ctx context.Context, key, filename, contentType string, inline bool, expires time.Duration) (string, error)
 }
 
 var (
