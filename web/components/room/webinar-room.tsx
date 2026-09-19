@@ -151,6 +151,7 @@ export function WebinarRoom({
       initialImageUrl={initialImageUrl}
       joinKey={joinKey}
       onLeave={onLeave}
+      onDemoted={() => setPromotedToStage(false)}
     />
   );
 }
@@ -215,6 +216,7 @@ function RoomSession({
   initialImageUrl,
   joinKey,
   onLeave,
+  onDemoted,
 }: {
   join: JoinResponse;
   slug: string;
@@ -222,6 +224,7 @@ function RoomSession({
   initialImageUrl?: string;
   joinKey?: string;
   onLeave: () => void;
+  onDemoted?: () => void;
 }) {
   const { prefs, update: updatePrefs } = useMediaPreferences();
 
@@ -293,6 +296,7 @@ function RoomSession({
       initialImageUrl={initialImageUrl}
       joinKey={joinKey}
       onLeave={onLeave}
+      onDemoted={onDemoted}
       prefs={prefs}
       updatePrefs={updatePrefs}
       // The host's mute-on-entry decision wins over a remembered preference: a
@@ -314,6 +318,7 @@ function ConnectedRoom({
   initialImageUrl,
   joinKey,
   onLeave,
+  onDemoted,
   prefs,
   updatePrefs,
   startMic,
@@ -328,6 +333,7 @@ function ConnectedRoom({
   initialImageUrl?: string;
   joinKey?: string;
   onLeave: () => void;
+  onDemoted?: () => void;
   prefs: ReturnType<typeof useMediaPreferences>["prefs"];
   updatePrefs: ReturnType<typeof useMediaPreferences>["update"];
   startMic: boolean;
@@ -358,6 +364,11 @@ function ConnectedRoom({
   useEffect(() => {
     onLeaveRef.current = onLeave;
   }, [onLeave]);
+
+  const onDemotedRef = useRef(onDemoted);
+  useEffect(() => {
+    onDemotedRef.current = onDemoted;
+  }, [onDemoted]);
 
   /* The pre-join screen's tracks, in a ref so they are not connect-effect dependencies — a
    * re-render must never tear down a live connection to pick up a new track identity.
@@ -518,11 +529,14 @@ function ConnectedRoom({
       }
       if (!next.canPublish && !next.mutedByHost && previous.canPublish) {
         notify("The host has moved you back to the audience.", "info");
+        if (join.cdnBroadcast && onDemotedRef.current) {
+          onDemotedRef.current();
+        }
       }
     },
-    // join.canPublish decides whether this says "Connected" or explains the stage, and it
-    // is fixed for the lifetime of a token — but it is a real dependency, so it is declared.
-    [notify, join.canPublish],
+    // join.canPublish and join.cdnBroadcast decide how transitions are handled and are fixed
+    // for the lifetime of a token — but they are real dependencies, so they are declared.
+    [notify, join.canPublish, join.cdnBroadcast],
   );
 
   const permissions = useMediaPermissions(room, announcePermissions);
