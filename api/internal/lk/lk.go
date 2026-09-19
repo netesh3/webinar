@@ -384,6 +384,21 @@ func (c *Client) SendData(ctx context.Context, room, topic string, data []byte, 
 	return err
 }
 
+// isEgressOrRecorder identifies internal LiveKit Egress or Recorder bot participants
+// so they are never counted as attendees or displayed in the moderation roster.
+func isEgressOrRecorder(p *livekit.ParticipantInfo) bool {
+	if strings.HasPrefix(p.Identity, "EG_") || strings.HasPrefix(p.Identity, "REC_") {
+		return true
+	}
+	if p.Permission != nil && (p.Permission.Recorder || p.Permission.Agent) {
+		return true
+	}
+	if p.Kind == livekit.ParticipantInfo_EGRESS {
+		return true
+	}
+	return false
+}
+
 // ParticipantCount is used by the join path to enforce the attendee ceiling
 // against reality rather than against the registration count.
 func (c *Client) ParticipantCount(ctx context.Context, room string) (int, error) {
@@ -394,7 +409,13 @@ func (c *Client) ParticipantCount(ctx context.Context, room string) (int, error)
 		}
 		return 0, err
 	}
-	return len(res.Participants), nil
+	count := 0
+	for _, p := range res.Participants {
+		if !isEgressOrRecorder(p) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // Participants is the host's moderation roster.
@@ -415,6 +436,9 @@ func (c *Client) Participants(ctx context.Context, room string) ([]types.LivePar
 
 	out := make([]types.LiveParticipant, 0, len(res.Participants))
 	for _, p := range res.Participants {
+		if isEgressOrRecorder(p) {
+			continue
+		}
 		out = append(out, describe(p))
 	}
 	return out, nil
@@ -532,7 +556,7 @@ func (c *Client) MuteAll(ctx context.Context, room string, keep map[string]bool)
 	muted := 0
 	var errs []error
 	for _, p := range res.Participants {
-		if keep[p.Identity] {
+		if keep[p.Identity] || isEgressOrRecorder(p) {
 			continue
 		}
 		for _, t := range p.Tracks {
@@ -710,7 +734,7 @@ func (c *Client) BlockSpeakingAll(ctx context.Context, room string, keep map[str
 	blocked := 0
 	var errs []error
 	for _, p := range res.Participants {
-		if keep[p.Identity] {
+		if keep[p.Identity] || isEgressOrRecorder(p) {
 			continue
 		}
 		if spec, ok := specOf(p); !ok || spec.MutedByHost {
@@ -753,7 +777,7 @@ func (c *Client) AllowAllToSpeak(ctx context.Context, room string, hideAttendees
 	var granted []string
 	var errs []error
 	for _, p := range res.Participants {
-		if roleOf(p) != types.RoleAttendee {
+		if isEgressOrRecorder(p) || roleOf(p) != types.RoleAttendee {
 			continue
 		}
 		spec := Spec{
@@ -796,7 +820,7 @@ func (c *Client) BringAllOnStage(ctx context.Context, room string, hideAttendees
 	var granted []string
 	var errs []error
 	for _, p := range res.Participants {
-		if roleOf(p) != types.RoleAttendee {
+		if isEgressOrRecorder(p) || roleOf(p) != types.RoleAttendee {
 			continue
 		}
 		spec := Spec{
@@ -847,6 +871,9 @@ func (c *Client) RevokeAllSpeaking(ctx context.Context, room string, hideAttende
 	var revoked []string
 	var errs []error
 	for _, p := range res.Participants {
+		if isEgressOrRecorder(p) {
+			continue
+		}
 		spec, ok := specOf(p)
 		if !ok || !spec.Promoted {
 			continue

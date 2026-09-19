@@ -421,6 +421,7 @@ function HlsPlayer({
     if (!video) return;
 
     let hls: Hls | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
     if (Hls.isSupported()) {
       hls = new Hls({
@@ -428,6 +429,11 @@ function HlsPlayer({
         liveMaxLatencyDurationCount: 6,
         enableWorker: true,
         lowLatencyMode: true,
+        manifestLoadingMaxRetry: 15,
+        manifestLoadingRetryDelay: 2000,
+        manifestLoadingMaxRetryTimeout: 60000,
+        levelLoadingMaxRetry: 10,
+        levelLoadingRetryDelay: 2000,
       });
 
       hls.loadSource(streamUrl);
@@ -435,6 +441,7 @@ function HlsPlayer({
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setLoading(false);
+        setError(null);
         void video.play().catch(() => {
           video.muted = true;
           void video.play().catch(() => {});
@@ -445,31 +452,55 @@ function HlsPlayer({
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              hls?.startLoad();
+              setError("Live broadcast stream is starting up (buffering)...");
+              retryTimer = setTimeout(() => {
+                hls?.startLoad();
+              }, 2000);
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               hls?.recoverMediaError();
               break;
             default:
-              setError("Broadcast stream is starting up, buffering...");
+              retryTimer = setTimeout(() => {
+                hls?.loadSource(streamUrl);
+              }, 2500);
               break;
           }
         }
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = streamUrl;
-      video.addEventListener("loadedmetadata", () => {
+      const onLoadedMetadata = () => {
         setLoading(false);
+        setError(null);
         void video.play().catch(() => {
           video.muted = true;
           void video.play().catch(() => {});
         });
-      });
+      };
+      const onNativeError = () => {
+        setError("Live broadcast stream is starting up (buffering)...");
+        retryTimer = setTimeout(() => {
+          if (video && video.paused) {
+            video.src = streamUrl;
+            video.load();
+          }
+        }, 2500);
+      };
+      video.addEventListener("loadedmetadata", onLoadedMetadata);
+      video.addEventListener("error", onNativeError);
+
+      return () => {
+        clearTimeout(retryTimer);
+        video.removeEventListener("loadedmetadata", onLoadedMetadata);
+        video.removeEventListener("error", onNativeError);
+      };
     } else {
       setError("HLS playback is not supported by your browser.");
     }
 
     return () => {
+      clearTimeout(retryTimer);
       if (hls) {
         hls.destroy();
       }
@@ -482,22 +513,21 @@ function HlsPlayer({
         ref={videoRef}
         playsInline
         controls
-        onPlay={() => setIsPlaying(true)}
+        onPlay={() => {
+          setIsPlaying(true);
+          setLoading(false);
+        }}
         onPause={() => setIsPlaying(false)}
         poster={coverUrl}
         className="h-full w-full object-contain"
       />
 
       {loading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white gap-3 pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white gap-3 pointer-events-none z-10">
           <Spinner className="size-8 text-brand" />
-          <p className="text-[13px] text-ink-3">Connecting to broadcast stream...</p>
-        </div>
-      )}
-
-      {error && !isPlaying && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-white p-6 text-center">
-          <p className="text-[14px] text-ink-2 max-w-md">{error}</p>
+          <p className="text-[13px] text-ink-3">
+            {error || "Connecting to broadcast stream..."}
+          </p>
         </div>
       )}
     </div>

@@ -36,6 +36,10 @@ export type HostRosterSections = {
   attendees: LiveParticipant[];
 };
 
+export function isBotOrEgress(identity: string): boolean {
+  return identity.startsWith("EG_") || identity.startsWith("REC_");
+}
+
 /** Host and panelists in one section, attendees in another, raised hands as a
  *  queue of their own.
  *
@@ -47,7 +51,8 @@ export function partitionHostRoster(
   rows: readonly LiveParticipant[],
   hands: readonly RaisedHand[],
 ): HostRosterSections {
-  const byIdentity = new Map(rows.map((p) => [p.identity, p]));
+  const cleanRows = rows.filter((p) => !isBotOrEgress(p.identity));
+  const byIdentity = new Map(cleanRows.map((p) => [p.identity, p]));
 
   const raised: LiveParticipant[] = [];
   const seenRaised = new Set<string>();
@@ -62,7 +67,7 @@ export function partitionHostRoster(
   const byName = (a: LiveParticipant, b: LiveParticipant) =>
     a.name.localeCompare(b.name) || a.identity.localeCompare(b.identity);
 
-  const panelists = rows
+  const panelists = cleanRows
     .filter((p) => p.role === "host" || p.role === "panelist")
     .sort((a, b) => {
       const rank = (p: LiveParticipant) =>
@@ -71,7 +76,7 @@ export function partitionHostRoster(
       return delta !== 0 ? delta : byName(a, b);
     });
 
-  const attendees = rows.filter((p) => p.role === "attendee").sort(byName);
+  const attendees = cleanRows.filter((p) => p.role === "attendee").sort(byName);
 
   return { raised, panelists, attendees };
 }

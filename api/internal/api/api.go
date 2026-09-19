@@ -231,6 +231,7 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/webinars/{slug}/image", s.handleWebinarImage)
 		r.Get("/webinars/{slug}/recordings/{id}/public", s.handlePublicRecording)
 		r.Get("/webinars/{slug}/recordings/{id}/stream", s.handlePublicStreamRecording)
+		r.Get("/webinars/{slug}/broadcast/{file}", s.handleBroadcastStreamFile)
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
