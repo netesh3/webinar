@@ -53,6 +53,17 @@ jobs:
             echo "===== egress ws_url ====="
             grep -E "^ws_url:" /opt/livekit/egress.yaml || true
             echo
+            echo "===== mediamtx logs (last 120 lines) ====="
+            mtx="$(docker ps -a --format "{{.Names}}" | grep -E "mediamtx" | head -1)"
+            if [ -n "$mtx" ]; then
+              docker logs --tail 120 "$mtx" 2>&1
+            else
+              echo "no mediamtx container found"
+            fi
+            echo
+            echo "===== is anything published? (RTMP 1935 / HLS 8888) ====="
+            ss -lntp 2>/dev/null | grep -E "1935|8888" || echo "neither port is listening"
+            echo
             echo "===== egress logs (last 400 lines) ====="
             name="$(docker ps -a --format "{{.Names}}" | grep -E "egress" | head -1)"
             if [ -n "$name" ]; then
