@@ -322,14 +322,16 @@ function useRecorder(): RecorderContextValue {
     try {
       setState("stopping");
       const recs = await api.recordings(slug);
-      const active = recs.find((r) => r.status === "active");
+      const active = recs.find((r) => r.status === "recording" || r.status === "active");
       if (active) {
         await api.completeRecording(slug, active.id, 0);
-        notifyRef.current(
-          "Recording stopped. It will be available in your recordings tab.",
-          "ok",
-        );
+      } else {
+        await api.completeRecording(slug, "active", 0);
       }
+      notifyRef.current(
+        "Recording stopped. It will be available in your recordings tab.",
+        "ok",
+      );
     } catch (err: unknown) {
       notifyRef.current(
         err instanceof Error ? err.message : "Could not stop recording.",

@@ -746,11 +746,8 @@ export class SessionRecorder {
       try {
         await this.transport.complete(id, durationMs);
       } catch (err) {
-        this.callbacks.onError(
-          err instanceof Error
-            ? `Couldn't close the recording: ${err.message}`
-            : "Couldn't close the recording.",
-        );
+        // If already closed or completed on the server, log and proceed with onStopped
+        console.warn("Complete recording transport note:", err);
       }
     }
 

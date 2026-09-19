@@ -130,6 +130,32 @@ func (s *Store) RecordingFor(ctx context.Context, slug, id string) (RecordingFil
 	return f, nil
 }
 
+// ActiveRecordingFile returns the active recording file for a webinar if one exists.
+func (s *Store) ActiveRecordingFile(ctx context.Context, slug string) (RecordingFile, error) {
+	var f RecordingFile
+	err := s.pool.QueryRow(ctx, `
+		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
+		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
+		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
+		  FROM recordings r
+		  JOIN webinars w ON w.id = r.webinar_id
+		  LEFT JOIN users u ON u.id = w.host_id
+		 WHERE (w.slug = $1 OR w.id::text = $1) AND r.status = 'recording'
+		 ORDER BY r.created_at DESC
+		 LIMIT 1`, slug,
+	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes, &f.DurationMs,
+		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar,
+		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName, &f.UploadedToS3, &f.UploadPercent)
+	if noRows(err) {
+		return RecordingFile{}, ErrNotFound
+	}
+	if err != nil {
+		return RecordingFile{}, err
+	}
+	return f, nil
+}
+
 // RecordedBytes records that a chunk landed. size is the object's new total,
 // reported by the storage backend, so the row cannot drift from the file.
 func (s *Store) RecordedBytes(ctx context.Context, id string, size int64) error {

@@ -271,6 +271,14 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 	// did (the size cap, in handleRecordingChunk) — a still-staged S3 upload
 	// does not care which of those closed it, only that it is closed now.
 	rec, lookupErr := s.store.RecordingFor(r.Context(), slug, id)
+	if (lookupErr != nil || id == "active" || id == "") && (errors.Is(lookupErr, store.ErrNotFound) || id == "active" || id == "") {
+		if activeRec, err := s.store.ActiveRecordingFile(r.Context(), slug); err == nil && activeRec.ID != "" {
+			rec = activeRec
+			id = activeRec.ID
+			lookupErr = nil
+		}
+	}
+
 	if lookupErr == nil && rec.EgressID != "" {
 		_, _ = s.store.MarkRecordingProcessing(r.Context(), id, durationMs)
 		if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
@@ -293,6 +301,11 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 		// to finalize storage if nothing has yet: the size-cap path in
 		// handleRecordingChunk closes the row without doing that itself.
 		go s.finalizeRecording(r, slug, id, lookupErr, rec)
+		if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+			if sfu, err := s.sfuFor(r.Context(), wb); err == nil {
+				s.pushRoomMetadata(r, sfu, wb)
+			}
+		}
 		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "closed"})
 		return
 	}
