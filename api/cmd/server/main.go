@@ -168,6 +168,7 @@ func run() error {
 
 	apiServer := api.NewServer(cfg, st, api.NewSFUPool(pool), recordings, log)
 	go apiServer.StartMeetingLimitSweeper(ctx)
+	go apiServer.StartRecordingRetentionSweeper(ctx)
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,

@@ -505,15 +505,15 @@ type Webinar struct {
 	 * every time the image is replaced, so a cache never serves stale bytes under a
 	 * URL that looks unchanged. Empty when no image was uploaded; the frontend falls
 	 * back to its own generated cover in that case. */
-	ImageURL  string        `json:"imageUrl,omitempty"`
-	StartsAt  string        `json:"startsAt"` // RFC3339
-	Duration  int           `json:"durationMin"`
-	TimeZone  string        `json:"timeZone"`
-	Kind      WebinarKind   `json:"kind"`
-	Status    WebinarStatus `json:"status"`
-	StartedAt string        `json:"startedAt,omitempty"`
-	EndedAt   string        `json:"endedAt,omitempty"`
-	MaxDurationMin int      `json:"maxDurationMin"`
+	ImageURL       string        `json:"imageUrl,omitempty"`
+	StartsAt       string        `json:"startsAt"` // RFC3339
+	Duration       int           `json:"durationMin"`
+	TimeZone       string        `json:"timeZone"`
+	Kind           WebinarKind   `json:"kind"`
+	Status         WebinarStatus `json:"status"`
+	StartedAt      string        `json:"startedAt,omitempty"`
+	EndedAt        string        `json:"endedAt,omitempty"`
+	MaxDurationMin int           `json:"maxDurationMin"`
 
 	Host      Person   `json:"host"`
 	Panelists []Person `json:"panelists"`
@@ -865,9 +865,11 @@ type JoinResponse struct {
 	JoinKey string `json:"joinKey,omitempty"`
 	// MaxDurationMin is the maximum allowed duration for this session in minutes.
 	MaxDurationMin int `json:"maxDurationMin"`
-	// CdnBroadcast indicates whether unpromoted attendees receive the webinar via CDN HLS stream.
-	CdnBroadcast bool `json:"cdnBroadcast,omitempty"`
-	// CdnStreamURL is the HLS / CDN playback URL for audience attendees when CdnBroadcast is true.
+	// CdnBroadcast is true when this webinar's *audience* is on HLS, including
+	// for a promoted attendee — so demote can put them back on the CDN player.
+	// CdnStreamURL is the playlist to play; set whenever the webinar is in that
+	// mode so a demote remount still has a URL.
+	CdnBroadcast bool   `json:"cdnBroadcast,omitempty"`
 	CdnStreamURL string `json:"cdnStreamUrl,omitempty"`
 }
 
@@ -934,6 +936,27 @@ type Recording struct {
 	PasscodeRequired bool   `json:"passcodeRequired"`
 	UploadedToS3     bool   `json:"uploadedToS3"`
 	UploadPercent    int    `json:"uploadPercent"`
+	// RetentionDays is how long cloud recordings are kept (from createdAt).
+	// 0 means the instance does not auto-delete.
+	RetentionDays int `json:"retentionDays"`
+	// ExpiresAt is when this file will be deleted from cloud storage, RFC3339.
+	// Empty when retention is disabled or createdAt could not be parsed.
+	ExpiresAt string `json:"expiresAt,omitempty"`
+	// Parts is every take in this session, oldest first. Stop-then-record-again
+	// appends a part rather than listing a second recording. A session with a
+	// single take still has one entry, so the player does not have to special-case
+	// the shape.
+	Parts []RecordingPart `json:"parts,omitempty"`
+}
+
+// RecordingPart is one start/stop take inside a session. The bytes are a
+// finished file; the session is the thing a host plays, shares and deletes.
+type RecordingPart struct {
+	ID         string          `json:"id"`
+	Status     RecordingStatus `json:"status"`
+	SizeBytes  int64           `json:"sizeBytes"`
+	DurationMs int64           `json:"durationMs"`
+	CreatedAt  string          `json:"createdAt"`
 }
 
 // StartRecordingRequest is sent by the browser that will do the capturing. It
@@ -964,6 +987,9 @@ type PublicRecording struct {
 	Unlocked         bool            `json:"unlocked"`
 	UploadedToS3     bool            `json:"uploadedToS3"`
 	UploadPercent    int             `json:"uploadPercent"`
+	RetentionDays    int             `json:"retentionDays"`
+	ExpiresAt        string          `json:"expiresAt,omitempty"`
+	Parts            []RecordingPart `json:"parts,omitempty"`
 }
 
 // ------------------------------------------------------------ host: in-session
@@ -1119,6 +1145,9 @@ type AppConfig struct {
 	 */
 	CloudRecordingEnabled bool   `json:"cloudRecordingEnabled"`
 	RecordingMode         string `json:"recordingMode,omitempty"`
+	// RecordingsRetentionDays is how long cloud recordings are kept before
+	// automatic deletion. 0 means they are kept until a host deletes them.
+	RecordingsRetentionDays int `json:"recordingsRetentionDays"`
 	// TelemetryEnabled mirrors config.Config.TelemetryEnabled: whether POST
 	// /telemetry accepts anything. The frontend's telemetry poller checks this
 	// before attaching a single listener or sampling a single stat, so turning

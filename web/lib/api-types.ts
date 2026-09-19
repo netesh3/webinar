@@ -507,6 +507,7 @@ export interface Webinar {
   status: WebinarStatus;
   startedAt?: string;
   endedAt?: string;
+  maxDurationMin: number /* int */;
   host: Person;
   panelists: Person[];
   agenda: AgendaItem[];
@@ -623,9 +624,14 @@ export interface Account {
    * grantable by whoever takes over one account.
    */
   isAdmin: boolean;
-  /** MaxDurationMin is an optional custom maximum meeting duration in minutes. NULL means system default. */
-  maxDurationMin?: number | null;
-  /** CanCdnBroadcast reports whether this user's webinars stream to audience via CDN HLS. */
+  /**
+   * MaxDurationMin is an optional custom maximum meeting duration in minutes for this user.
+   * NULL means use the system default (e.g. 180 min = 3 hours).
+   */
+  maxDurationMin?: number /* int */;
+  /**
+   * CanCdnBroadcast allows this host's webinars to broadcast to audience via CDN HLS.
+   */
   canCdnBroadcast: boolean;
 }
 export interface SignupRequest {
@@ -657,7 +663,7 @@ export interface HostGrant {
   canHost: boolean;
 }
 /**
- * CdnBroadcastGrant is an admin's decision about an account's CDN broadcast capability.
+ * CdnBroadcastGrant is an admin's grant allowing a host account to use CDN broadcast mode.
  */
 export interface CdnBroadcastGrant {
   canCdnBroadcast: boolean;
@@ -686,9 +692,13 @@ export interface AdminUser {
    * sessions still needs to be able to start them.
    */
   webinarCount: number /* int */;
-  /** MaxDurationMin is an optional custom maximum meeting duration in minutes configured by an admin. */
-  maxDurationMin?: number | null;
-  /** CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars. */
+  /**
+   * MaxDurationMin is an optional custom maximum meeting duration in minutes configured by an admin.
+   */
+  maxDurationMin?: number /* int */;
+  /**
+   * CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
+   */
   canCdnBroadcast: boolean;
 }
 export interface LoginRequest {
@@ -864,12 +874,21 @@ export interface JoinResponse {
    * 	 * join on their account and have no registration at all.
    */
   joinKey?: string;
-  /** MaxDurationMin is the maximum allowed duration for this session in minutes. */
-  maxDurationMin: number;
-  /** CdnBroadcast indicates whether unpromoted attendees receive the webinar via CDN HLS stream. */
+  /**
+   * MaxDurationMin is the maximum allowed duration for this session in minutes.
+   */
+  maxDurationMin: number /* int */;
+  /**
+   * CdnBroadcast is true when this webinar's *audience* is on HLS, including
+   * for a promoted attendee — so demote can put them back on the CDN player.
+   * CdnStreamURL is the playlist to play; set whenever the webinar is in that
+   * mode so a demote remount still has a URL.
+   */
   cdnBroadcast?: boolean;
-  /** CdnStreamURL is the HLS / CDN playback URL for audience attendees when CdnBroadcast is true. */
   cdnStreamUrl?: string;
+}
+export interface SetUserMaxDurationRequest {
+  maxDurationMin?: number /* int */;
 }
 /**
  * RoomMeta is mirrored into LiveKit room metadata on every control change.
@@ -894,10 +913,12 @@ export interface RoomMeta {
    * reach the whole room.
    */
   recording: boolean;
-  /** MaxDurationMin is the maximum allowed duration for this session in minutes. */
-  maxDurationMin?: number;
+  /**
+   * MaxDurationMin is the maximum allowed duration for this session in minutes.
+   */
+  maxDurationMin?: number /* int */;
 }
-export type RecordingStatus = "recording" | "processing" | "ready" | "failed" | string;
+export type RecordingStatus = string;
 export const RecordingActive: RecordingStatus = "recording";
 export const RecordingProcessing: RecordingStatus = "processing";
 export const RecordingReady: RecordingStatus = "ready";
@@ -932,7 +953,35 @@ export interface Recording {
   passcode?: string;
   passcodeRequired: boolean;
   uploadedToS3: boolean;
-  uploadPercent?: number;
+  uploadPercent: number /* int */;
+  /**
+   * RetentionDays is how long cloud recordings are kept (from createdAt).
+   * 0 means the instance does not auto-delete.
+   */
+  retentionDays: number /* int */;
+  /**
+   * ExpiresAt is when this file will be deleted from cloud storage, RFC3339.
+   * Empty when retention is disabled or createdAt could not be parsed.
+   */
+  expiresAt?: string;
+  /**
+   * Parts is every take in this session, oldest first. Stop-then-record-again
+   * appends a part rather than listing a second recording. A session with a
+   * single take still has one entry, so the player does not have to special-case
+   * the shape.
+   */
+  parts?: RecordingPart[];
+}
+/**
+ * RecordingPart is one start/stop take inside a session. The bytes are a
+ * finished file; the session is the thing a host plays, shares and deletes.
+ */
+export interface RecordingPart {
+  id: string;
+  status: RecordingStatus;
+  sizeBytes: number /* int64 */;
+  durationMs: number /* int64 */;
+  createdAt: string;
 }
 /**
  * StartRecordingRequest is sent by the browser that will do the capturing. It
@@ -956,7 +1005,7 @@ export interface PublicRecording {
   id: string;
   webinar: string;
   topic: string;
-  status?: RecordingStatus;
+  status: RecordingStatus;
   hostName: string;
   durationMs: number /* int64 */;
   sizeBytes: number /* int64 */;
@@ -964,8 +1013,11 @@ export interface PublicRecording {
   ext: string;
   passcodeRequired: boolean;
   unlocked: boolean;
-  uploadedToS3?: boolean;
-  uploadPercent?: number;
+  uploadedToS3: boolean;
+  uploadPercent: number /* int */;
+  retentionDays: number /* int */;
+  expiresAt?: string;
+  parts?: RecordingPart[];
 }
 /**
  * LiveParticipant is one row of the host's participant panel.
@@ -1098,6 +1150,10 @@ export interface AppConfig {
   maxAttendees: number /* int */;
   signupOpen: boolean;
   /**
+   * DefaultMaxMeetingMin is the system default maximum meeting duration in minutes (default 180 = 3h).
+   */
+  defaultMaxMeetingMin: number /* int */;
+  /**
    * Tracks are the topic tags already in use, offered as suggestions rather
    * than a fixed enum so an operator never has to edit a list in the bundle.
    */
@@ -1131,14 +1187,17 @@ export interface AppConfig {
   cloudRecordingEnabled: boolean;
   recordingMode?: string;
   /**
+   * RecordingsRetentionDays is how long cloud recordings are kept before
+   * automatic deletion. 0 means they are kept until a host deletes them.
+   */
+  recordingsRetentionDays: number /* int */;
+  /**
    * TelemetryEnabled mirrors config.Config.TelemetryEnabled: whether POST
    * /telemetry accepts anything. The frontend's telemetry poller checks this
    * before attaching a single listener or sampling a single stat, so turning
    * the flag off also turns off the client-side work, not just the endpoint.
    */
   telemetryEnabled?: boolean;
-  /** DefaultMaxMeetingMin is the system default maximum meeting duration in minutes (default 180 = 3h). */
-  defaultMaxMeetingMin: number;
 }
 /**
  *  TelemetryEvent is one entry in a POST /telemetry batch — the shape is

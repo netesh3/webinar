@@ -2437,6 +2437,38 @@ func TestRecordingLifecycle(t *testing.T) {
 		t.Errorf("range body = %q, want %q", got, "chunk")
 	}
 
+	// Stop-then-record-again is a second take on the same session, not a second
+	// recording in the list.
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/recordings",
+		types.StartRecordingRequest{Mime: "video/webm"})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("second take: status %d body %s", res.StatusCode, raw)
+	}
+	var take types.Recording
+	h.decode(raw, &take)
+	if take.ID == rec.ID {
+		t.Fatal("second take reused the first row; chunks would overwrite the first file")
+	}
+	chunkPath2 := "/api/host/webinars/" + wb.ID + "/recordings/" + take.ID + "/chunks"
+	if res, raw := h.doRaw(http.MethodPost, chunkPath2, "application/octet-stream", []byte("take-two"), nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("second take chunk: status %d body %s", res.StatusCode, raw)
+	}
+	if res, raw := h.do(http.MethodPost,
+		"/api/host/webinars/"+wb.ID+"/recordings/"+take.ID+"/complete?durationMs=4000", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("second take complete: status %d body %s", res.StatusCode, raw)
+	}
+	_, raw = h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/recordings", nil)
+	h.decode(raw, &list)
+	if len(list) != 1 {
+		t.Fatalf("after two takes, recordings = %d, want one session", len(list))
+	}
+	if list[0].ID != rec.ID {
+		t.Errorf("session id = %s, want the first take %s", list[0].ID, rec.ID)
+	}
+	if len(list[0].Parts) != 2 {
+		t.Fatalf("parts = %d, want 2", len(list[0].Parts))
+	}
+
 	// ---- delete -----------------------------------------------------------
 	if res, raw := h.do(http.MethodDelete,
 		"/api/host/webinars/"+wb.ID+"/recordings/"+rec.ID, nil); res.StatusCode != http.StatusOK {

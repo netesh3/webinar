@@ -497,8 +497,9 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		SupabaseURL:           s.cfg.SupabaseURL,
 		SupabaseAnonKey:       s.cfg.SupabaseAnonKey,
 		GoogleAuth:            s.cfg.GoogleAuthEnabled(),
-		CloudRecordingEnabled: s.recordings != nil,
-		RecordingMode:         s.cfg.RecordingsMode,
+		CloudRecordingEnabled:   s.recordings != nil,
+		RecordingMode:           s.cfg.RecordingsMode,
+		RecordingsRetentionDays: s.cfg.RecordingsRetentionDays,
 		TelemetryEnabled:      s.cfg.TelemetryEnabled,
 	})
 }

@@ -164,11 +164,7 @@ func (o *S3) Open(ctx context.Context, key string) (io.ReadSeekCloser, int64, er
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		var nsk *types.NoSuchKey
-		var nf *types.NotFound
-		var apiErr smithy.APIError
-		if errors.As(err, &nsk) || errors.As(err, &nf) ||
-			(errors.As(err, &apiErr) && (apiErr.ErrorCode() == "NoSuchKey" || apiErr.ErrorCode() == "NotFound" || apiErr.ErrorCode() == "404" || apiErr.ErrorCode() == "ResourceNotFoundException")) {
+		if isNotFound(err) {
 			return nil, 0, ErrNotFound
 		}
 		return nil, 0, err
@@ -181,6 +177,47 @@ func (o *S3) Open(ctx context.Context, key string) (io.ReadSeekCloser, int64, er
 	// request from the browser) cannot be served from it directly. Each
 	// range request is its own GetObject call instead; see rangeReader.
 	return &rangeReader{ctx: ctx, client: o.client, bucket: o.bucket, key: key, size: size, body: out.Body}, size, nil
+}
+
+// Stat reports the object's size with a HEAD, falling back to the staging copy
+// for a recording that has not been finalized yet.
+func (o *S3) Stat(ctx context.Context, key string) (int64, error) {
+	head, err := o.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(o.bucket),
+		Key:    aws.String(key),
+	})
+	if err == nil {
+		if head.ContentLength != nil {
+			return *head.ContentLength, nil
+		}
+		return 0, nil
+	}
+	if !isNotFound(err) {
+		return 0, err
+	}
+	if size, serr := o.staging.Stat(ctx, key); serr == nil {
+		return size, nil
+	}
+	return 0, ErrNotFound
+}
+
+// isNotFound recognises the several ways an S3-compatible provider can say
+// "no such object" — B2, R2 and AWS do not agree on the error code, and a
+// missing object must not read as a transport failure to the caller.
+func isNotFound(err error) bool {
+	var nsk *types.NoSuchKey
+	var nf *types.NotFound
+	var apiErr smithy.APIError
+	if errors.As(err, &nsk) || errors.As(err, &nf) {
+		return true
+	}
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "NoSuchKey", "NotFound", "404", "ResourceNotFoundException":
+			return true
+		}
+	}
+	return false
 }
 
 /* Delete removes both possible copies — the staging file, if the recording

@@ -94,7 +94,9 @@ export function AdminScreen() {
       await api.setUserMaxDuration(u.id, maxDurationMin);
       setUsers((prev) =>
         (prev ?? []).map((row) =>
-          row.id === u.id ? { ...row, maxDurationMin } : row,
+          // null is how the API says "back to the system default"; the type it
+          // hands back omits the field instead, so the two have to agree here.
+          row.id === u.id ? { ...row, maxDurationMin: maxDurationMin ?? undefined } : row,
         ),
       );
       notify(

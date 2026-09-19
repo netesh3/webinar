@@ -64,6 +64,11 @@ type Config struct {
 	DefaultAttendeeLimit int
 	// DefaultMaxMeetingMin is the default maximum duration for meetings in minutes (default 180 = 3h).
 	DefaultMaxMeetingMin int
+	// EmptyRoomCloseMin ends a live webinar that has had nobody in it for this
+	// many minutes, once its scheduled start has passed. A host who closes the
+	// tab instead of pressing End otherwise leaves the room live, the meeting
+	// limit counting, and any Egress still encoding. 0 turns the sweep off.
+	EmptyRoomCloseMin int
 
 	// Recording.
 	//
@@ -88,6 +93,10 @@ type Config struct {
 	// a single recording occupies on local disk for the whole session before
 	// Finalize ever uploads it — see RecordingsDir.
 	MaxRecordingMB int
+	// RecordingsRetentionDays is how long a finished recording is kept in object
+	// storage. After that the sweeper deletes the row and the bytes. 0 disables
+	// automatic deletion. The UI uses the same number so hosts know to download.
+	RecordingsRetentionDays int
 
 	// RecordingsS3* configure the "s3" backend. Required only when
 	// RecordingsBackend is "s3" — left empty and unused for "disk", so a
@@ -270,6 +279,7 @@ func Load() (Config, error) {
 		AppName:              env("APP_NAME", "Webinar Liv"),
 		SupportEmail:         env("SUPPORT_EMAIL", ""),
 		DefaultMaxMeetingMin: envInt("DEFAULT_MAX_MEETING_MIN", 180),
+		EmptyRoomCloseMin:    envInt("EMPTY_ROOM_CLOSE_MIN", 10),
 		AdminEmails:          splitAndTrim(env("ADMIN_EMAILS", "")),
 		AdminPassword:        env("ADMIN_PASSWORD", ""),
 		SMTPHost:             env("SMTP_HOST", ""),
@@ -287,7 +297,8 @@ func Load() (Config, error) {
 		SupabaseJWTSecret: env("SUPABASE_JWT_SECRET", ""),
 		RecordingsBackend:     strings.ToLower(env("RECORDINGS_BACKEND", "disk")),
 		RecordingsDir:         env("RECORDINGS_DIR", "./.data/recordings"),
-		MaxRecordingMB:        envInt("MAX_RECORDING_MB", 4096),
+		MaxRecordingMB:          envInt("MAX_RECORDING_MB", 4096),
+		RecordingsRetentionDays: envInt("RECORDINGS_RETENTION_DAYS", 30),
 		RecordingsS3Bucket:    env("RECORDINGS_S3_BUCKET", ""),
 		RecordingsS3Endpoint:  env("RECORDINGS_S3_ENDPOINT", ""),
 		// us-east-1 as the fallback rather than empty: an S3-compatible
@@ -390,6 +401,9 @@ func (c Config) validate() error {
 	if c.DefaultMaxMeetingMin < 1 {
 		errs = append(errs, errors.New("DEFAULT_MAX_MEETING_MIN must be >= 1"))
 	}
+	if c.EmptyRoomCloseMin < 0 {
+		errs = append(errs, errors.New("EMPTY_ROOM_CLOSE_MIN must be >= 0"))
+	}
 	if c.RegisterPerMin < 1 {
 		errs = append(errs, errors.New("REGISTER_RATE_PER_MIN must be >= 1"))
 	}
@@ -430,6 +444,9 @@ func (c Config) validate() error {
 		}
 		if c.MaxRecordingMB < 1 {
 			errs = append(errs, errors.New("MAX_RECORDING_MB must be >= 1"))
+		}
+		if c.RecordingsRetentionDays < 0 {
+			errs = append(errs, errors.New("RECORDINGS_RETENTION_DAYS must be >= 0"))
 		}
 		if c.RecordingsMode != "egress" && c.RecordingsMode != "client" {
 			errs = append(errs, fmt.Errorf("RECORDINGS_MODE=%q is not a known mode (egress, client)", c.RecordingsMode))
@@ -534,13 +551,17 @@ func (c Config) String() string {
 	// Never log secrets.
 	recordings := "off"
 	if c.RecordingsEnabled {
-		recordings = fmt.Sprintf("%s(max %dMB)", c.RecordingsBackend, c.MaxRecordingMB)
+		recordings = fmt.Sprintf("%s(max %dMB, keep %dd)", c.RecordingsBackend, c.MaxRecordingMB, c.RecordingsRetentionDays)
 	}
 	// authBypass is in the boot line because it is the setting here that removes
 	// a security boundary rather than adjusting one. telemetryEnabled doesn't,
 	// but it's worth seeing at boot too — it's easy to flip on for a test window
 	// and forget, and the boot log is the cheapest place to notice that.
-	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s seed=%v authBypass=%v telemetryEnabled=%v googleAuth=%v cors=%v",
-		c.Env, c.Addr, describeLiveKitProjects(c.LiveKitProjects), c.MaxAttendees, recordings,
+	emptyRoom := "off"
+	if c.EmptyRoomCloseMin > 0 {
+		emptyRoom = fmt.Sprintf("%dm", c.EmptyRoomCloseMin)
+	}
+	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s emptyRoomClose=%s seed=%v authBypass=%v telemetryEnabled=%v googleAuth=%v cors=%v",
+		c.Env, c.Addr, describeLiveKitProjects(c.LiveKitProjects), c.MaxAttendees, recordings, emptyRoom,
 		c.SeedDev, c.AuthBypass, c.TelemetryEnabled, c.GoogleAuthEnabled(), c.CORSOrigins)
 }

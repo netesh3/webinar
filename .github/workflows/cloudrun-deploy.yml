@@ -37,6 +37,11 @@
 #     RECORDINGS_S3_ACCESS_KEY / RECORDINGS_S3_SECRET_KEY — an S3-compatible
 #     bucket (Backblaze B2 in practice). Use a key SCOPED to this one bucket
 #     (listFiles/readFiles/writeFiles/deleteFiles) — never an account master key.
+#   RECORDINGS_RETENTION_DAYS — days to keep cloud recordings (default 30; 0 = keep until deleted).
+#
+# Repository variables (vars.*, not secrets):
+#   EMPTY_ROOM_CLOSE_MIN — minutes an empty live room may run past its scheduled
+#     start before the server ends it (default 10; 0 = never).
 
 name: Deploy API (Cloud Run)
 
@@ -103,6 +108,8 @@ jobs:
       RECORDINGS_EGRESS_TEMPLATE_URL: ${{ secrets.RECORDINGS_EGRESS_TEMPLATE_URL || '' }}
       RECORDINGS_EGRESS_PRESET: ${{ secrets.RECORDINGS_EGRESS_PRESET || '1080p' }}
       RECORDINGS_CDN_BASE_URL: ${{ secrets.RECORDINGS_CDN_BASE_URL }}
+      RECORDINGS_RETENTION_DAYS: ${{ secrets.RECORDINGS_RETENTION_DAYS || '30' }}
+      EMPTY_ROOM_CLOSE_MIN: ${{ vars.EMPTY_ROOM_CLOSE_MIN || '10' }}
       SEED_DEV: "false"
       # Temporary, for a performance-test window: POST /telemetry (see
       # api/internal/api/telemetry.go). Flip back to "false" and redeploy when

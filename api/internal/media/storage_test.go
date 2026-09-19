@@ -109,6 +109,30 @@ func TestDiskRefusesKeysThatEscapeTheRoot(t *testing.T) {
 	}
 }
 
+// Stat is what the recording reconciler uses to decide whether an Egress
+// upload has landed, so a missing object has to be distinguishable from a
+// failure to look — one means "wait", the other means "try again later".
+func TestDiskStatReportsSizeAndAbsence(t *testing.T) {
+	d := newDisk(t)
+	ctx := context.Background()
+	if _, err := d.Append(ctx, "w/rec.mp4", strings.NewReader("twelve bytes")); err != nil {
+		t.Fatal(err)
+	}
+	size, err := d.Stat(ctx, "w/rec.mp4")
+	if err != nil {
+		t.Fatalf("Stat = %v", err)
+	}
+	if size != 12 {
+		t.Errorf("Stat size = %d, want 12", size)
+	}
+	if _, err := d.Stat(ctx, "w/missing.mp4"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Stat of a missing object = %v, want ErrNotFound", err)
+	}
+	if _, err := d.Stat(ctx, "../escaped.mp4"); !errors.Is(err, ErrBadKey) {
+		t.Errorf("Stat of an escaping key = %v, want ErrBadKey", err)
+	}
+}
+
 func TestDiskMissingObject(t *testing.T) {
 	d := newDisk(t)
 	if _, _, err := d.Open(context.Background(), "no/such/file.webm"); !errors.Is(err, ErrNotFound) {
