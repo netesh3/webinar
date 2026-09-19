@@ -6,16 +6,24 @@ import { useRoomUI } from "./context";
 
 /* Live captions.
  *
- * Off until somebody asks for them, for everyone including the host. Captions are
- * a recording of what people said, published to the room — turning that on is a
- * decision, not a default, and on the publisher's side the toggle is also what
- * opens the microphone stream to speech recognition.
+ * The host's switch, and nobody else's. Captions are a transcript of what was
+ * said, broadcast to the room and written to the session record — that is the
+ * host's call to make, the same as recording, and an audience member has nothing
+ * to turn on anyway: the recogniser runs against the speaker's own microphone, so
+ * a viewer enabling it would transcribe their living room into the webinar.
+ *
+ * Off until the host asks for it. The audience then sees whatever arrives, with
+ * no toggle of their own, because the switch that stops the captions is the same
+ * one that stops them being produced.
  *
  * Module state rather than context because the control bar button and the overlay
  * sit in different subtrees of the room and both need the same answer.
  */
 
 let captionsVisible = false;
+/** When they were last switched on, so lines from before that are not replayed.
+ *  Without it, switching off and straight back on flashes whatever was mid-air. */
+let visibleSince = 0;
 const listeners = new Set<() => void>();
 
 function subscribeCaptions(fn: () => void) {
@@ -33,8 +41,17 @@ export function useShowCaptions() {
   );
 }
 
+function useCaptionsSince() {
+  return useSyncExternalStore(
+    subscribeCaptions,
+    () => visibleSince,
+    () => 0,
+  );
+}
+
 export function setShowCaptions(on: boolean) {
   captionsVisible = on;
+  if (on) visibleSince = Date.now();
   listeners.forEach((fn) => fn());
 }
 
@@ -43,34 +60,41 @@ export function setShowCaptions(on: boolean) {
  *  Without this the final sentence of every answer hangs over the stage until
  *  somebody speaks again — which reads as the captions having frozen rather than
  *  the room having gone quiet. Scaled by length so a long line is not pulled away
- *  mid-read. */
+ *  mid-read, and capped low enough that the audience's last line clears promptly
+ *  once the host switches captions off. */
 function holdMs(text: string): number {
-  return Math.min(12_000, 2_500 + text.length * 55);
+  return Math.min(8_000, 2_500 + text.length * 55);
 }
 
 export function CaptionOverlay() {
-  const { realtime } = useRoomUI();
+  const { realtime, isHost } = useRoomUI();
   const on = useShowCaptions();
+  const since = useCaptionsSince();
   const line = realtime.captions;
-  const [text, setText] = useState("");
 
-  // Held locally, and cleared on a timer, so the overlay empties when the talking
-  // stops. `line` is a fresh object per packet, so re-running on it also restarts
-  // the countdown for a caption that is still being revised.
+  /* Expiry is state, and what is on screen is derived from it.
+   *
+   * The other way round — copying the line into state and clearing it on a timer
+   * — means writing state the moment a caption arrives, which is a render for the
+   * packet and another for the copy, on every interim result of every sentence.
+   * Holding only "which line has timed out" keeps the timer as the sole writer,
+   * and the timer fires once per line. */
+  const [stale, setStale] = useState<object | null>(null);
   useEffect(() => {
     if (!line?.text) return;
-    setText(line.text);
-    const timer = setTimeout(() => setText(""), holdMs(line.text));
+    // `line` is a fresh object per packet, so a caption still being revised
+    // restarts its own countdown instead of vanishing mid-sentence.
+    const timer = setTimeout(() => setStale(line), holdMs(line.text));
     return () => clearTimeout(timer);
   }, [line]);
 
-  // Toggling off should clear immediately, not leave the last line to expire
-  // behind the scenes and reappear on the next toggle.
-  useEffect(() => {
-    if (!on) setText("");
-  }, [on]);
+  // Only the host has a switch. Everyone else has nothing to gate on: captions
+  // reaching them at all means the host has them on, and switching off stops the
+  // packets, so their last line times out on its own.
+  const text =
+    line && line !== stale && (!isHost || (on && line.at >= since)) ? line.text : "";
 
-  if (!on || !text) return null;
+  if (!text) return null;
 
   return (
     <div
@@ -93,24 +117,34 @@ export function CaptionOverlay() {
 
 export function CaptionsBarButton() {
   const on = useShowCaptions();
-  const { permissions, recording, slug, joinKey, realtime } = useRoomUI();
-  useCaptionsPublisher(on && permissions.canPublish, slug, joinKey, realtime.sendCaption);
+  const { permissions, recording, slug, joinKey, realtime, isHost } = useRoomUI();
+  useCaptionsPublisher(
+    on && isHost && permissions.canPublish,
+    slug,
+    joinKey,
+    realtime.sendCaption,
+  );
+
+  // Renders nothing for the audience, the way RecordButton beside it renders
+  // nothing for anyone who may not record. Called after the hooks above so the
+  // order is the same on every render.
+  if (!isHost) return null;
 
   return (
     <button
       type="button"
       aria-pressed={on}
-      aria-label={on ? "Turn captions off" : "Turn captions on"}
+      aria-label={on ? "Turn captions off for everyone" : "Turn captions on for everyone"}
       onClick={() => setShowCaptions(!on)}
       className={`flex h-10 min-w-10 items-center justify-center rounded-lg px-2 text-[11px] font-semibold ${
         on ? "bg-brand-soft text-brand" : "text-ink-3 hover:bg-white/10 hover:text-white"
       }`}
       title={
         on && recording
-          ? "Captions are on. This session is being recorded."
+          ? "Captions are on for everyone. This session is being recorded."
           : on
-            ? "Captions are on"
-            : "Captions are off"
+            ? "Captions are on for everyone"
+            : "Turn on captions for everyone"
       }
     >
       CC

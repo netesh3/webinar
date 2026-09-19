@@ -141,6 +141,15 @@ export type RoomUI = {
    * and the page live here rather than inside the stage. */
   stage: StageLayoutApi;
 
+  /** Watching the CDN broadcast rather than subscribing to tracks.
+   *
+   *  The stage is then one HLS video element, not a set of tiles, so everything
+   *  that arranges tiles — grid, spotlight, hide-non-video — has nothing to act
+   *  on. `stage` is still present and still read for the bandwidth decisions it
+   *  drives; what this suppresses is offering the viewer a choice that cannot
+   *  change what they see. */
+  cdnStage?: boolean;
+
   prefs: MediaPreferences;
   updatePrefs: (patch: Partial<MediaPreferences>) => void;
 
