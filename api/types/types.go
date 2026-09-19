@@ -77,6 +77,10 @@ const (
 	// NotifyRegistrationDeclined goes to the REGISTRANT. Sent rather than silently
 	// dropped: somebody who registered and hears nothing assumes they are coming.
 	NotifyRegistrationDeclined NotificationKind = "registration_declined"
+	// NotifyRegistrationConfirmed is auto-approve signup: they are in without a host review.
+	NotifyRegistrationConfirmed NotificationKind = "registration_confirmed"
+	NotifyReminder24h           NotificationKind = "reminder_24h"
+	NotifyReminder1h            NotificationKind = "reminder_1h"
 )
 
 /* HostAlert is one in-app notification as a host's browser sees it.
@@ -161,6 +165,8 @@ type WebinarOptions struct {
 	Captions          bool `json:"captions"`
 	Multistream       bool `json:"multistream"`
 	PostWebinarSurvey bool `json:"postWebinarSurvey"`
+	// EmailReminders defaults true for existing rows that never stored the key.
+	EmailReminders bool `json:"emailReminders"`
 }
 
 // SessionControls are the things a host flips *during* the session.
@@ -492,6 +498,45 @@ type WebinarReport struct {
 	Questions   int `json:"questions"`
 }
 
+type AttendanceRow struct {
+	Identity string `json:"identity"`
+	Name     string `json:"name"`
+	Email    string `json:"email,omitempty"`
+	WatchMin int    `json:"watchMin"`
+}
+
+type SessionQuestion struct {
+	ID        string `json:"id"`
+	Identity  string `json:"identity,omitempty"`
+	Name      string `json:"name"`
+	Text      string `json:"text"`
+	Anonymous bool   `json:"anonymous,omitempty"`
+	Answered  bool   `json:"answered"`
+	Answer    string `json:"answer,omitempty"`
+	Pinned    bool   `json:"pinned,omitempty"`
+	Dismissed bool   `json:"dismissed,omitempty"`
+	Upvotes   int    `json:"upvotes"`
+	CreatedAt string `json:"createdAt,omitempty"`
+}
+
+type QuestionPatch struct {
+	Answered  *bool   `json:"answered,omitempty"`
+	Answer    *string `json:"answer,omitempty"`
+	Pinned    *bool   `json:"pinned,omitempty"`
+	Dismissed *bool   `json:"dismissed,omitempty"`
+}
+
+type SessionReport struct {
+	Registered   int               `json:"registered"`
+	Approved     int               `json:"approved"`
+	Attended     int               `json:"attended"`
+	AvgWatchMin  int               `json:"avgWatchMin"`
+	Questions    int               `json:"questions"`
+	PollVoters   int               `json:"pollVoters"`
+	QuestionRows []SessionQuestion `json:"questionRows"`
+	Attendees    []AttendanceRow   `json:"attendees"`
+}
+
 type Webinar struct {
 	ID        string `json:"id"` // slug, used in URLs
 	WebinarID string `json:"webinarId"`
@@ -514,6 +559,9 @@ type Webinar struct {
 	StartedAt      string        `json:"startedAt,omitempty"`
 	EndedAt        string        `json:"endedAt,omitempty"`
 	MaxDurationMin int           `json:"maxDurationMin"`
+	// SimuliveRecordingID is the ready recording played as the audience video
+	// when Kind is simulive.
+	SimuliveRecordingID string `json:"simuliveRecordingId,omitempty"`
 
 	Host      Person   `json:"host"`
 	Panelists []Person `json:"panelists"`
@@ -577,15 +625,16 @@ type Webinar struct {
 // merge semantics on a nested shape like Agenda is where partial-update bugs
 // come from.
 type WebinarInput struct {
-	Topic    string        `json:"topic"`
-	Summary  string        `json:"summary"`
-	Descript string        `json:"description"`
-	Track    string        `json:"track"`
-	StartsAt string        `json:"startsAt"` // RFC3339, absolute instant
-	Duration int           `json:"durationMin"`
-	TimeZone string        `json:"timeZone"` // IANA name, for display
-	Kind     WebinarKind   `json:"kind"`
-	Status   WebinarStatus `json:"status"` // scheduled | draft only
+	Topic               string        `json:"topic"`
+	Summary             string        `json:"summary"`
+	Descript            string        `json:"description"`
+	Track               string        `json:"track"`
+	StartsAt            string        `json:"startsAt"` // RFC3339, absolute instant
+	Duration            int           `json:"durationMin"`
+	TimeZone            string        `json:"timeZone"` // IANA name, for display
+	Kind                WebinarKind   `json:"kind"`
+	Status              WebinarStatus `json:"status"` // scheduled | draft only
+	SimuliveRecordingID string        `json:"simuliveRecordingId,omitempty"`
 
 	RegistrationRequired bool         `json:"registrationRequired"`
 	Approval             ApprovalMode `json:"approval"`
@@ -739,6 +788,7 @@ type RegisterRequest struct {
 }
 
 type Registration struct {
+	ID        string `json:"id,omitempty"`
 	WebinarID string `json:"webinarId"` // slug
 	Email     string `json:"email"`
 	FirstName string `json:"firstName"`
@@ -1148,6 +1198,9 @@ type AppConfig struct {
 	// RecordingsRetentionDays is how long cloud recordings are kept before
 	// automatic deletion. 0 means they are kept until a host deletes them.
 	RecordingsRetentionDays int `json:"recordingsRetentionDays"`
+	// EmailConfigured is whether SMTP can actually deliver. The UI uses it to
+	// say "we'll email you" vs "save this join link; mail is off".
+	EmailConfigured bool `json:"emailConfigured"`
 	// TelemetryEnabled mirrors config.Config.TelemetryEnabled: whether POST
 	// /telemetry accepts anything. The frontend's telemetry poller checks this
 	// before attaching a single listener or sampling a single stat, so turning

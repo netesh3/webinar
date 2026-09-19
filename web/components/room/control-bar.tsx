@@ -38,6 +38,7 @@ import { LayoutMenu } from "./layout-menu";
 import { MoreButton, MoreGrid } from "./more-grid";
 import { ReactionPicker } from "./reactions";
 import { RecordButton } from "./recording";
+import { CaptionsBarButton } from "./caption-overlay";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
 import { describeMediaError, isScreenShareCancel } from "@/lib/media-errors";
 import { MediaToggle } from "./media-toggle";
@@ -729,6 +730,7 @@ export function ControlBar() {
               a capture control, not a mute/video twin. It renders nothing for
               anyone the server has not told they may record. */}
           <RecordButton />
+          <CaptionsBarButton />
 
         {centerTools.map((id) => {
           const Icon = tool(id).icon;

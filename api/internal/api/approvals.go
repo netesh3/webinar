@@ -134,14 +134,16 @@ func (s *Server) notifyDecisions(
 		var subject, bodyText string
 		switch state {
 		case types.RegApproved:
-			// The join link is personal and carries the access token, which is why it is
-			// built per row and appears in no other message.
 			in.JoinURL = s.joinURLFor(ctx, slug, row.ID)
 			kind = types.NotifyRegistrationApproved
 			subject, bodyText = notify.RegistrationApproved(in)
+			s.enqueueApprovedInvite(ctx, wb, row.Email, row.Name, row.ID, in.JoinURL, types.NotifyRegistrationApproved)
+			out.notified++
+			continue
 		case types.RegDeclined:
 			kind = types.NotifyRegistrationDeclined
 			subject, bodyText = notify.RegistrationDeclined(in)
+			_ = s.store.SkipPendingRemindersForRegistration(ctx, row.ID)
 		default:
 			continue
 		}
@@ -211,7 +213,9 @@ func (s *Server) flushOutbox(ctx context.Context) {
 			_ = s.store.MarkDelivered(ctx, m.ID, "skipped", "no mail transport configured")
 			continue
 		}
-		err := s.mail.Send(ctx, notify.Message{To: m.Email, Subject: m.Subject, Body: m.Body})
+		err := s.mail.Send(ctx, notify.Message{
+			To: m.Email, Subject: m.Subject, Body: m.Body, ICS: m.ICS, ICSName: "webinar.ics",
+		})
 		if err != nil {
 			s.log.Error("outbox: send failed", "to", m.Email, "err", err)
 			_ = s.store.MarkDelivered(ctx, m.ID, "failed", err.Error())

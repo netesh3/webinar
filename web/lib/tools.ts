@@ -104,7 +104,7 @@ export const CENTER_BAR_TOOLS: readonly ToolId[] = [
  *  measured) specifically so a FOUR-item attendee bar fits instead — see
  *  CENTER_BAR_COMPACT_ATTENDEE — but this two-item host/panelist bar was
  *  never the one that needed the room, so it stays as-is. */
-const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "hand"];
+const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "qa", "hand"];
 
 /** Attendee-only (control-bar.tsx passes `attendee` as true only for a
  *  genuine attendee — not host, not a scheduled panelist — via
@@ -124,7 +124,7 @@ const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "hand"];
  *  CENTER_BAR_COMPACT for that one case instead. Every other combination —
  *  including a not-yet-promoted attendee on the smallest phone, where
  *  nothing is claiming the left yet — gets the full four. */
-const CENTER_BAR_COMPACT_ATTENDEE: readonly ToolId[] = ["chat", "hand", "reactions"];
+const CENTER_BAR_COMPACT_ATTENDEE: readonly ToolId[] = ["chat", "qa", "hand"];
 
 export function centerBarTools(
   available: readonly ToolId[],

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, useEffect } from "react";
 import { Alert, Disclosure, Select, Spinner, Toggle } from "./controls";
 import { useAppConfig, useToast } from "./providers";
 import { Button, Card, SectionTitle } from "./ui";
@@ -11,6 +11,7 @@ import { API_BASE, ApiError, api } from "@/lib/api";
 import type {
   AgendaItem,
   CustomQuestion,
+  Recording,
   SessionControls,
   Webinar,
   WebinarInput,
@@ -89,6 +90,7 @@ type FormState = {
   agenda: AgendaItem[];
   options: WebinarOptions;
   controls: SessionControls;
+  simuliveRecordingId: string;
 };
 
 /* The seat counts a coach may choose from.
@@ -146,8 +148,12 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
       takeaways: webinar.takeaways.join("\n"),
       questions: webinar.customQuestions,
       agenda: webinar.agenda,
-      options: webinar.options,
+      options: {
+        ...webinar.options,
+        emailReminders: webinar.options.emailReminders !== false,
+      },
       controls: webinar.controls,
+      simuliveRecordingId: webinar.simuliveRecordingId ?? "",
     };
   }
 
@@ -181,6 +187,7 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
       captions: false,
       multistream: false,
       postWebinarSurvey: false,
+      emailReminders: true,
     },
     // The Zoom-webinar defaults: the audience is private and arrives muted.
     controls: {
@@ -204,6 +211,7 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
       reactionsEnabled: true,
       locked: false,
     },
+    simuliveRecordingId: "",
   };
 }
 
@@ -281,6 +289,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
         .filter(Boolean),
       options: form.options,
       controls: form.controls,
+      simuliveRecordingId: form.kind === "simulive" ? form.simuliveRecordingId : "",
     };
   }
 
@@ -443,6 +452,12 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
               <option value="simulive">Simulive (pre-recorded)</option>
               <option value="recurring">Recurring series</option>
             </Select>
+            {form.kind === "simulive" && (
+              <SimuliveRecordingField
+                value={form.simuliveRecordingId}
+                onChange={(id) => set("simuliveRecordingId", id)}
+              />
+            )}
           </div>
         </div>
       </Card>
@@ -705,11 +720,12 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                     ["captions", "Live captions"],
                     ["multistream", "Stream to YouTube / LinkedIn"],
                     ["postWebinarSurvey", "Post-webinar survey"],
+                    ["emailReminders", "Email reminders (24h and 1h before)"],
                   ] as const
                 ).map(([key, label]) => (
                   <Toggle
                     key={key}
-                    checked={form.options[key]}
+                    checked={Boolean(form.options[key])}
                     onChange={(v) => set("options", { ...form.options, [key]: v })}
                     label={label}
                   />
@@ -947,5 +963,39 @@ function AgendaEditor({
         Add an agenda item
       </Button>
     </div>
+  );
+}
+
+function SimuliveRecordingField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [list, setList] = useState<Recording[] | null>(null);
+  useEffect(() => {
+    void api
+      .hostRecordingLibrary()
+      .then(setList)
+      .catch(() => setList([]));
+  }, []);
+
+  return (
+    <Select
+      label="Recording to play"
+      value={value}
+      onChange={onChange}
+      hint="Audience watches this file at the scheduled start. Chat and Q&A still work live."
+    >
+      <option value="">
+        {list === null ? "Loading recordings…" : "Select a ready recording"}
+      </option>
+      {(list ?? []).map((r) => (
+        <option key={r.id} value={r.id}>
+          {r.topic} · {Math.round(r.durationMs / 60000) || r.sizeBytes} min
+        </option>
+      ))}
+    </Select>
   );
 }

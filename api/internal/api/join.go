@@ -158,7 +158,13 @@ func (s *Server) joinAsAttendee(
 	}
 	isCdnAttendee := cdnBroadcast && !grant.Granted
 	var cdnStreamURL string
-	if cdnBroadcast {
+	if wb.Kind == types.KindSimulive {
+		if u := s.simulivePlaybackURL(r.Context(), wb); u != "" {
+			cdnBroadcast = true
+			isCdnAttendee = !grant.Granted
+			cdnStreamURL = u
+		}
+	} else if cdnBroadcast {
 		// Always include the playlist URL while the webinar is in CDN mode, even
 		// for someone currently on stage — demote remounts HLS from this join.
 		cdnStreamURL = s.cdnStreamURL(wb.ID)
@@ -184,6 +190,7 @@ func (s *Server) joinAsAttendee(
 		DataOnly: isCdnAttendee,
 	}, false, cdnBroadcast, cdnStreamURL)
 	if ok {
+		_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID)
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
 	}
 }
@@ -624,6 +631,20 @@ func (s *Server) issueToken(
 		CdnStreamURL:   cdnStreamURL,
 	})
 	return true
+}
+
+func (s *Server) simulivePlaybackURL(ctx context.Context, wb types.Webinar) string {
+	if wb.Kind != types.KindSimulive || wb.SimuliveRecordingID == "" {
+		return ""
+	}
+	f, err := s.store.RecordingFileByID(ctx, wb.SimuliveRecordingID)
+	if err != nil || strings.TrimSpace(f.StorageKey) == "" {
+		return ""
+	}
+	if cdn := strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"); cdn != "" {
+		return cdn + "/" + strings.TrimPrefix(f.StorageKey, "/")
+	}
+	return "/api/webinars/" + f.Webinar + "/recordings/" + f.ID + "/file"
 }
 
 func (s *Server) cdnStreamURL(slug string) string {

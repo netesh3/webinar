@@ -82,6 +82,16 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusCreated, wb)
 }
 
+func (s *Server) handleHostRecordingLibrary(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r.Context())
+	list, err := s.store.HostReadyRecordings(r.Context(), user.ID)
+	if err != nil {
+		s.fail(w, r, "recording library", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, list)
+}
+
 func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
 
@@ -118,6 +128,12 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 			"slug", wb.ID, "error", err)
 	} else {
 		s.pushRoomMetadata(r, sfu, wb)
+	}
+
+	if starts, err := time.Parse(time.RFC3339, wb.StartsAt); err == nil {
+		if err := s.store.RescheduleRemindersForWebinar(r.Context(), slug, starts); err != nil {
+			s.log.Warn("update webinar: could not reschedule reminders", "slug", slug, "error", err)
+		}
 	}
 	httpx.JSON(w, http.StatusOK, wb)
 }
@@ -407,6 +423,9 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool) (ty
 	default:
 		fields["kind"] = "Pick live, simulive or a recurring series."
 	}
+	if in.Kind == types.KindSimulive && strings.TrimSpace(in.SimuliveRecordingID) == "" {
+		fields["simuliveRecordingId"] = "Pick a recording to play as the live session."
+	}
 
 	switch in.Status {
 	case types.StatusScheduled, types.StatusDraft:
@@ -513,7 +532,9 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	// room needs the update pushed explicitly.
 	s.pushRoomMetadata(r, sfu, wb)
 
-	go s.startHlsBroadcastIfEnabled(context.Background(), wb, sfu)
+	if wb.Kind != types.KindSimulive {
+		go s.startHlsBroadcastIfEnabled(context.Background(), wb, sfu)
+	}
 
 	s.log.Info("webinar started", "slug", slug, "room", room)
 	httpx.JSON(w, http.StatusOK, wb)
@@ -704,6 +725,12 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	if err := s.store.CloseOpenPolls(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not close open polls", "slug", slug, "error", err)
 	}
+	if err := s.store.SkipRemindersForEndedWebinar(ctx, slug); err != nil {
+		s.log.Warn("end webinar: could not skip pending mail", "slug", slug, "error", err)
+	}
+	if _, err := s.store.ComputeAndSaveReport(ctx, slug); err != nil {
+		s.log.Warn("end webinar: could not write report", "slug", slug, "error", err)
+	}
 
 	if stats, err := s.store.ChatStats(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not summarise chat", "slug", slug, "error", err)
@@ -846,12 +873,17 @@ func (s *Server) handleParticipants(w http.ResponseWriter, r *http.Request) {
 	}
 
 	attendees, onStage := 0, 0
+	var attendeeIDs []string
 	for _, p := range list {
 		if p.Role == types.RoleAttendee {
 			attendees++
+			attendeeIDs = append(attendeeIDs, p.Identity)
 		} else {
 			onStage++
 		}
+	}
+	if len(attendeeIDs) > 0 {
+		_ = s.store.TouchAttendanceMany(r.Context(), slug, attendeeIDs)
 	}
 
 	httpx.JSON(w, http.StatusOK, types.LiveRoom{
@@ -1207,13 +1239,59 @@ func (s *Server) handleSetStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Removing speaker permission mutes them on the way out. Revoking the
-	// permission drops their tracks by itself, but muting first means the audience
-	// stops hearing them at the moment the host clicks rather than whenever the
-	// unpublish lands.
+	if promoting {
+		already := false
+		if parts, listErr := sfu.Participants(r.Context(), room); listErr == nil {
+			for _, p := range parts {
+				if p.Identity == identity && (p.Role == types.RolePanelist || p.CanSpeak) {
+					already = true
+					break
+				}
+			}
+		}
+		if !already {
+			s.putInvite(slug, identity, audioOnly)
+			rec := wb.Status == types.StatusLive
+			if err := s.sendRoomPacket(r.Context(), sfu, slug, []string{identity}, map[string]any{
+				"kind":      "stage-invite",
+				"identity":  identity,
+				"audioOnly": audioOnly,
+				"recording": rec,
+				"at":        time.Now().UnixMilli(),
+			}); err != nil {
+				s.fail(w, r, "stage invite send", err)
+				return
+			}
+			httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "invited"})
+			return
+		}
+	}
+
+	if err := s.applyStageGrant(r.Context(), sfu, wb, identity, promoting, audioOnly); err != nil {
+		if errors.Is(err, lk.ErrNotInRoom) {
+			httpx.Error(w, http.StatusNotFound, "not_in_room", "That person has left the webinar.")
+			return
+		}
+		s.fail(w, r, "set stage", err)
+		return
+	}
+
+	s.log.Info("stage change", "slug", slug, "identity", identity,
+		"role", body.Role, "audio_only", audioOnly)
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
+}
+
+func (s *Server) applyStageGrant(ctx context.Context, sfu RoomManager, wb types.Webinar, identity string, promoting, audioOnly bool) error {
+	slug := wb.ID
+	room := lk.RoomName(slug)
+	role := types.RoleAttendee
+	if promoting {
+		role = types.RolePanelist
+	}
+
 	if !promoting {
 		if source, ok := lk.SourceFor("microphone"); ok {
-			if err := sfu.MuteTrack(r.Context(), room, identity, source, true); err != nil &&
+			if err := sfu.MuteTrack(ctx, room, identity, source, true); err != nil &&
 				!errors.Is(err, lk.ErrNotInRoom) && !errors.Is(err, lk.ErrNoTrack) {
 				s.log.Warn("set stage: could not mute on the way out",
 					"slug", slug, "identity", identity, "error", err)
@@ -1221,44 +1299,29 @@ func (s *Server) handleSetStage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// A promotion always comes with a microphone: it is the host saying this person
-	// may speak, which is exactly what lifts an earlier mute.
-	err = sfu.SetRole(r.Context(), lk.Spec{
-		Role:        body.Role,
+	if err := sfu.SetRole(ctx, lk.Spec{
+		Role:        role,
 		Room:        room,
 		Identity:    identity,
-		Hidden:      lk.HiddenFor(body.Role, wb.Controls.HideAttendees),
+		Hidden:      lk.HiddenFor(role, wb.Controls.HideAttendees),
 		AudioOnly:   audioOnly,
 		MutedByHost: false,
-		// The host choosing this person overrides the room-wide self-unmute switch
-		// for them. Without it, bringing somebody on stage after "mute everyone"
-		// gave them a camera and a microphone button that did nothing.
-		Promoted: promoting,
-	})
-	if errors.Is(err, lk.ErrNotInRoom) {
-		httpx.Error(w, http.StatusNotFound, "not_in_room", "That person has left the webinar.")
-		return
-	}
-	if err != nil {
-		s.fail(w, r, "set stage", err)
-		return
+		Promoted:    promoting,
+	}); err != nil {
+		return err
 	}
 
+	var err error
 	if promoting {
-		err = s.store.GrantStage(r.Context(), slug, identity, "", audioOnly)
+		err = s.store.GrantStage(ctx, slug, identity, "", audioOnly)
 	} else {
-		err = s.store.RevokeStage(r.Context(), slug, identity)
+		err = s.store.RevokeStage(ctx, slug, identity)
 	}
 	if err != nil {
-		// The live change already landed; only the survives-a-reconnect part
-		// failed, which is not worth failing the host's click over.
 		s.log.Warn("set stage: could not record grant",
 			"slug", slug, "identity", identity, "error", err)
 	}
-
-	s.log.Info("stage change", "slug", slug, "identity", identity,
-		"role", body.Role, "audio_only", audioOnly)
-	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
+	return nil
 }
 
 func (s *Server) handleRemoveParticipant(w http.ResponseWriter, r *http.Request) {
@@ -1300,6 +1363,105 @@ func (s *Server) handleHostRegistrants(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, rows)
+}
+
+func (s *Server) handleSessionReport(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+	rep, err := s.store.SessionReport(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "session report", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, rep)
+}
+
+func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+	rep, err := s.store.SessionReport(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "export report", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s-report.csv"`, slug))
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"section", "name", "email", "watch_min", "question", "answered"})
+	_ = cw.Write([]string{"summary", "registered", fmt.Sprint(rep.Registered), "", "", ""})
+	_ = cw.Write([]string{"summary", "approved", fmt.Sprint(rep.Approved), "", "", ""})
+	_ = cw.Write([]string{"summary", "attended", fmt.Sprint(rep.Attended), "", "", ""})
+	_ = cw.Write([]string{"summary", "avg_watch_min", fmt.Sprint(rep.AvgWatchMin), "", "", ""})
+	_ = cw.Write([]string{"summary", "questions", fmt.Sprint(rep.Questions), "", "", ""})
+	_ = cw.Write([]string{"summary", "poll_voters", fmt.Sprint(rep.PollVoters), "", "", ""})
+	for _, a := range rep.Attendees {
+		_ = cw.Write([]string{"attended", a.Name, a.Email, fmt.Sprint(a.WatchMin), "", ""})
+	}
+	for _, q := range rep.QuestionRows {
+		name := q.Name
+		if q.Anonymous {
+			name = "Anonymous"
+		}
+		_ = cw.Write([]string{"question", name, "", "", q.Text, fmt.Sprint(q.Answered)})
+	}
+	cw.Flush()
+}
+
+func (s *Server) handlePatchQuestion(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	var patch types.QuestionPatch
+	if err := httpx.DecodeJSON(w, r, &patch); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	if err := s.store.UpdateSessionQuestion(r.Context(), slug, id, patch); err != nil {
+		s.fail(w, r, "patch question", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
+}
+
+func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+	text, err := s.store.CaptionTranscript(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "transcript", err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s-transcript.txt"`, slug))
+	_, _ = w.Write([]byte(text))
+}
+
+func (s *Server) handleAppendCaption(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	var req struct {
+		JoinKey string `json:"joinKey"`
+		Text    string `json:"text"`
+	}
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	from, ok := s.resolveSender(w, r, slug, req.JoinKey)
+	if !ok {
+		return
+	}
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		httpx.Error(w, http.StatusBadRequest, "empty", "There's nothing to caption.")
+		return
+	}
+	if len(text) > 280 {
+		text = text[:280]
+	}
+	if err := s.store.AppendCaption(r.Context(), slug, from.Identity, text); err != nil {
+		s.fail(w, r, "caption", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
 }
 
 // handleExportRegistrants streams the registration list as CSV.

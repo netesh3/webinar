@@ -42,6 +42,7 @@ const CONFIG_FALLBACK: AppConfig = {
   // hides "the cloud" as a record destination, never offers one that 503s.
   cloudRecordingEnabled: false,
   recordingsRetentionDays: 30,
+  emailConfigured: false,
   // 180 minutes = 3 hours, matches the server default.
   defaultMaxMeetingMin: 180,
 };

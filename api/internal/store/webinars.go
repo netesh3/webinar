@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -26,6 +27,7 @@ const webinarColumns = `
 	w.chat_destination,
 	w.qa_enabled, w.raise_hand_enabled, w.reactions_enabled,
 	w.polls_enabled, w.locked, w.sfu_project, w.image_key,
+	w.simulive_recording_id::text,
 	h.id, h.name, h.title, h.org, h.initials, h.hue,
 	(SELECT count(*) FROM registrations r
 	  WHERE r.webinar_id = w.id AND r.state <> 'declined') AS registrant_count`
@@ -46,6 +48,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		hostID     string
 		imageKey   string
 		c          types.SessionControls
+		simuliveID *string
 	)
 	err := row.Scan(
 		&w.ID, &w.WebinarID, &w.Topic, &w.Summary, &w.Descript, &w.Track,
@@ -57,6 +60,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.ChatDestination,
 		&c.QAEnabled, &c.RaiseHandEnabled, &c.ReactionsEnabled,
 		&c.PollsEnabled, &c.Locked, &w.SFUProject, &imageKey,
+		&simuliveID,
 		&hostID, &w.Host.Name, &w.Host.Title, &w.Host.Org, &w.Host.Initials, &w.Host.Hue,
 		&w.RegistrantCount,
 	)
@@ -64,6 +68,9 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		return types.Webinar{}, "", err
 	}
 	w.Host.ID = hostID
+	if simuliveID != nil && *simuliveID != "" {
+		w.SimuliveRecordingID = *simuliveID
+	}
 	/* A path back to this API, not the image bytes — see ImageURL's doc comment.
 	 *
 	 * `v` is image_key, an opaque token that changes on every replace (see
@@ -96,6 +103,10 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	}
 	if err := json.Unmarshal(options, &w.Options); err != nil {
 		return types.Webinar{}, "", fmt.Errorf("options: %w", err)
+	}
+	// Existing webinars never stored this key; missing means on.
+	if !bytes.Contains(options, []byte(`"emailReminders"`)) {
+		w.Options.EmailReminders = true
 	}
 	if len(report) > 0 {
 		var r types.WebinarReport
@@ -364,10 +375,10 @@ func (s *Store) CreateWebinar(ctx context.Context, hostID string, in types.Webin
 			 agenda, takeaways, options,
 			 hide_attendees, mute_on_entry, allow_unmute, chat_enabled,
 			 qa_enabled, raise_hand_enabled, reactions_enabled, locked,
-			 chat_destination, polls_enabled, max_duration_min)
+			 chat_destination, polls_enabled, max_duration_min, simulive_recording_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
 		        $13,$14,$15,$16,$17,$18,$19,
-		        $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+		        $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30, NULLIF($31,'')::uuid)
 		RETURNING id::text`,
 		slug, webinarID, strings.TrimSpace(in.Topic), strings.TrimSpace(in.Summary),
 		strings.TrimSpace(in.Descript), strings.TrimSpace(in.Track),
@@ -378,7 +389,7 @@ func (s *Store) CreateWebinar(ctx context.Context, hostID string, in types.Webin
 		in.Controls.ChatEnabled, in.Controls.QAEnabled, in.Controls.RaiseHandEnabled,
 		in.Controls.ReactionsEnabled, in.Controls.Locked,
 		string(in.Controls.ChatDestination.OrDefault()), in.Controls.PollsEnabled,
-		maxDuration,
+		maxDuration, strings.TrimSpace(in.SimuliveRecordingID),
 	).Scan(&id)
 	if isUniqueViolation(err) {
 		return types.Webinar{}, ErrConflict
@@ -455,6 +466,7 @@ func (s *Store) UpdateWebinar(ctx context.Context, slug string, in types.Webinar
 			chat_enabled = $21, qa_enabled = $22, raise_hand_enabled = $23,
 			reactions_enabled = $24, locked = $25, chat_destination = $26,
 			polls_enabled = $27,
+			simulive_recording_id = NULLIF($28,'')::uuid,
 			updated_at = now()
 		 WHERE id = $1`,
 		id, strings.TrimSpace(in.Topic), strings.TrimSpace(in.Summary),
@@ -466,6 +478,7 @@ func (s *Store) UpdateWebinar(ctx context.Context, slug string, in types.Webinar
 		in.Controls.ChatEnabled, in.Controls.QAEnabled, in.Controls.RaiseHandEnabled,
 		in.Controls.ReactionsEnabled, in.Controls.Locked,
 		string(in.Controls.ChatDestination.OrDefault()), in.Controls.PollsEnabled,
+		strings.TrimSpace(in.SimuliveRecordingID),
 	); err != nil {
 		return types.Webinar{}, err
 	}
@@ -1361,6 +1374,50 @@ func (s *Store) LiveWebinarsPastStart(ctx context.Context) ([]string, error) {
 	}
 	defer rows.Close()
 
+	var slugs []string
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, err
+		}
+		slugs = append(slugs, slug)
+	}
+	return slugs, rows.Err()
+}
+
+func (s *Store) DueSimuliveSlugs(ctx context.Context) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT slug FROM webinars
+		 WHERE kind = 'simulive' AND status = 'scheduled'
+		   AND starts_at <= now() AND simulive_recording_id IS NOT NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var slugs []string
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, err
+		}
+		slugs = append(slugs, slug)
+	}
+	return slugs, rows.Err()
+}
+
+func (s *Store) ExpiredSimuliveSlugs(ctx context.Context) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT w.slug
+		  FROM webinars w
+		  JOIN recordings r ON r.id = w.simulive_recording_id
+		 WHERE w.kind = 'simulive' AND w.status = 'live'
+		   AND COALESCE(w.started_at, w.starts_at)
+		       + make_interval(secs => GREATEST(w.duration_min * 60, (r.duration_ms / 1000)::int))
+		       <= now()`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 	var slugs []string
 	for rows.Next() {
 		var slug string

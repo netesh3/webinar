@@ -1,31 +1,39 @@
 "use client";
 
 import { useState } from "react";
+import { api } from "@/lib/api";
 import { Alert } from "../controls";
 import { ArrowUpIcon, CheckIcon, SendIcon } from "../icons";
 import { useRoomUI } from "./context";
-
-/* Q&A.
- *
- * Separate from chat because it is a different shape of thing: questions are
- * upvoted, worked through and marked answered, and mixing them into a chat
- * stream means the good question scrolls away while the host is still talking.
- *
- * Ordering is decided in lib/realtime.ts — unanswered first, then most upvoted,
- * then oldest. That is the order a host actually works down.
- */
+import type { Question } from "@/lib/realtime";
 
 const MAX_CHARS = 600;
 
 export function QAPanel() {
-  const { realtime, controls, isHost, permissions, me } = useRoomUI();
+  const { slug, realtime, controls, isHost, permissions, me } = useRoomUI();
   const [draft, setDraft] = useState("");
   const [anonymous, setAnonymous] = useState(false);
   const [sending, setSending] = useState(false);
+  const [ctaTitle, setCtaTitle] = useState("");
+  const [ctaUrl, setCtaUrl] = useState("");
+  const [ctaLabel, setCtaLabel] = useState("Open");
 
   const off = !controls.qaEnabled;
-  const open = realtime.questions.filter((q) => !q.answered);
-  const done = realtime.questions.filter((q) => q.answered);
+  const visible = realtime.questions.filter((q) => isHost || !q.dismissed);
+  const open = visible.filter((q) => !q.answered);
+  const done = visible.filter((q) => q.answered);
+
+  async function persist(
+    id: string,
+    patch: { answered?: boolean; answer?: string; pinned?: boolean; dismissed?: boolean },
+  ) {
+    await realtime.modQuestion(id, patch);
+    try {
+      await api.patchQuestion(slug, id, patch);
+    } catch {
+      /* live packet already went out */
+    }
+  }
 
   async function ask() {
     const text = draft.trim();
@@ -50,7 +58,7 @@ export function QAPanel() {
           </div>
         )}
 
-        {realtime.questions.length === 0 ? (
+        {visible.length === 0 ? (
           <p className="py-8 text-center text-[12.5px] leading-relaxed text-ink-3">
             No questions yet.
             <br />
@@ -67,7 +75,11 @@ export function QAPanel() {
                 isHost={isHost}
                 mine={q.from.identity === me.identity}
                 onUpvote={() => void realtime.upvote(q.id)}
-                onAnswered={() => void realtime.markAnswered(q.id)}
+                onAnswered={(answer) =>
+                  void persist(q.id, { answered: true, answer })
+                }
+                onPin={() => void persist(q.id, { pinned: !q.pinned })}
+                onDismiss={() => void persist(q.id, { dismissed: true })}
               />
             ))}
 
@@ -83,7 +95,11 @@ export function QAPanel() {
                     isHost={isHost}
                     mine={q.from.identity === me.identity}
                     onUpvote={() => void realtime.upvote(q.id)}
-                    onAnswered={() => void realtime.markAnswered(q.id)}
+                    onAnswered={(answer) =>
+                      void persist(q.id, { answered: true, answer })
+                    }
+                    onPin={() => void persist(q.id, { pinned: !q.pinned })}
+                    onDismiss={() => void persist(q.id, { dismissed: true })}
                   />
                 ))}
               </>
@@ -91,6 +107,55 @@ export function QAPanel() {
           </div>
         )}
       </div>
+
+      {isHost && (
+        <div className="shrink-0 border-t border-line p-2.5">
+          <p className="mb-1.5 text-[10.5px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
+            Mid-session link
+          </p>
+          <form
+            className="space-y-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const title = ctaTitle.trim();
+              const url = ctaUrl.trim();
+              if (!title || !/^https?:\/\//i.test(url)) return;
+              void realtime.launchCta({
+                title,
+                url,
+                label: ctaLabel.trim() || "Open",
+              });
+            }}
+          >
+            <input
+              className="field h-8 w-full text-[12.5px]"
+              placeholder="Title"
+              value={ctaTitle}
+              onChange={(e) => setCtaTitle(e.target.value)}
+            />
+            <input
+              className="field h-8 w-full text-[12.5px]"
+              placeholder="https://…"
+              value={ctaUrl}
+              onChange={(e) => setCtaUrl(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <input
+                className="field h-8 flex-1 text-[12.5px]"
+                placeholder="Button label"
+                value={ctaLabel}
+                onChange={(e) => setCtaLabel(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="h-8 shrink-0 rounded-lg bg-brand px-3 text-[12px] font-medium text-white"
+              >
+                Show
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {!off && (
         <div className="shrink-0 border-t border-line p-2.5">
@@ -149,30 +214,30 @@ function QuestionCard({
   mine,
   onUpvote,
   onAnswered,
+  onPin,
+  onDismiss,
 }: {
-  question: {
-    id: string;
-    text: string;
-    votes: number;
-    answered: boolean;
-    votedByMe: boolean;
-    anonymous: boolean;
-    at: number;
-    from: { name: string; role: string };
-  };
+  question: Question;
   isHost: boolean;
   mine: boolean;
   onUpvote: () => void;
-  onAnswered: () => void;
+  onAnswered: (answer: string) => void;
+  onPin: () => void;
+  onDismiss: () => void;
 }) {
-  // "Anonymous" is honoured for everyone including the host. Showing the host a
-  // name the asker chose to withhold would make the checkbox a lie.
+  const [answer, setAnswer] = useState("");
   const who = q.anonymous ? "Anonymous" : mine ? "You" : q.from.name;
 
   return (
     <div
       className={`rounded-lg border px-3 py-2.5 ${
-        q.answered ? "border-line bg-surface-2/60" : "border-line bg-surface"
+        q.pinned
+          ? "border-brand-line bg-brand-soft/40"
+          : q.answered
+            ? "border-line bg-surface-2/60"
+            : q.dismissed
+              ? "border-line bg-surface-2/40 opacity-60"
+              : "border-line bg-surface"
       }`}
     >
       <div className="flex items-start gap-2.5">
@@ -199,6 +264,9 @@ function QuestionCard({
           >
             {q.text}
           </p>
+          {q.answer ? (
+            <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">{q.answer}</p>
+          ) : null}
           <p className="mt-1 text-[11px] text-ink-3">
             {who}
             {" · "}
@@ -206,19 +274,63 @@ function QuestionCard({
               hour: "2-digit",
               minute: "2-digit",
             })}
+            {q.pinned ? " · pinned" : ""}
+            {q.dismissed ? " · hidden" : ""}
           </p>
+          {isHost && !q.answered && (
+            <form
+              className="mt-2 flex gap-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                onAnswered(answer.trim());
+              }}
+            >
+              <input
+                className="field h-7 flex-1 text-[12px]"
+                placeholder="Short answer (optional)"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="h-7 rounded-md bg-ok px-2 text-[11px] font-medium text-white"
+              >
+                Answer
+              </button>
+            </form>
+          )}
         </div>
 
-        {isHost && !q.answered && (
-          <button
-            type="button"
-            onClick={onAnswered}
-            title="Mark as answered"
-            aria-label="Mark as answered"
-            className="grid size-7 shrink-0 place-items-center rounded-md text-ink-3 transition-colors hover:bg-ok-soft hover:text-ok"
-          >
-            <CheckIcon className="size-4" />
-          </button>
+        {isHost && (
+          <div className="flex shrink-0 flex-col gap-0.5">
+            <button
+              type="button"
+              onClick={onPin}
+              className="h-6 px-1.5 text-[10px] font-medium text-ink-3 hover:text-brand"
+            >
+              {q.pinned ? "Unpin" : "Pin"}
+            </button>
+            {!q.dismissed && (
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="h-6 px-1.5 text-[10px] font-medium text-ink-3 hover:text-ink"
+              >
+                Hide
+              </button>
+            )}
+            {!q.answered && (
+              <button
+                type="button"
+                onClick={() => onAnswered("")}
+                title="Mark as answered"
+                aria-label="Mark as answered"
+                className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-ok-soft hover:text-ok"
+              >
+                <CheckIcon className="size-4" />
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

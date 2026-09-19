@@ -298,8 +298,8 @@ function HostRoster() {
           role !== "panelist"
             ? `${p.name} is muted and back in the audience`
             : audioOnly
-              ? `${p.name} can speak now`
-              : `${p.name} is on the stage`,
+              ? `Waiting for ${p.name} to accept`
+              : `Waiting for ${p.name} to join the stage`,
           async () => {
             await api.setStage(slug, p.identity, role, audioOnly);
             // Their request has been answered either way, so it comes

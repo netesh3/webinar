@@ -35,13 +35,13 @@ console.log("\ncenterBarTools");
 
 {
   const phone = centerBarTools(ALL, true);
-  ok(phone.join() === "chat,hand", "a phone bar keeps only Chat and Raise hand");
+  ok(phone.join() === "chat,qa,hand", "a phone bar keeps Chat, Q&A and Raise hand");
   const more = morePanelTools(ALL, true) ?? [];
   ok(
-    more.includes("qa") && more.includes("settings") && more.includes("participants"),
+    more.includes("settings") && more.includes("participants"),
     "the rest of the cluster, including Participants, lands in More",
   );
-  ok(!more.includes("chat") && !more.includes("hand"), "Chat and Raise hand are not duplicated into More");
+  ok(!more.includes("chat") && !more.includes("hand") && !more.includes("qa"), "standing tools are not duplicated into More");
 }
 
 {
@@ -60,13 +60,13 @@ console.log("\ncenterBarTools");
   // AND camera both showing).
   const phoneAttendee = centerBarTools(ALL, true, true);
   ok(
-    phoneAttendee.join() === "chat,hand,reactions",
-    "an attendee gets Reactions on the bar, promoted or not",
+    phoneAttendee.join() === "chat,qa,hand",
+    "an attendee gets Chat, Q&A and Raise hand on the bar",
   );
   const more = morePanelTools(ALL, true, true) ?? [];
-  ok(!more.includes("reactions"), "Reactions is not duplicated into More once it's on the bar");
+  ok(!more.includes("qa"), "Q&A is not duplicated into More once it's on the bar");
   ok(
-    more.includes("qa") && more.includes("settings") && more.includes("participants"),
+    more.includes("reactions") && more.includes("settings") && more.includes("participants"),
     "everything else still lands in More",
   );
 }
@@ -75,7 +75,7 @@ console.log("\ncenterBarTools");
   // Host/panelist never pass `attendee` — same two-item bar as always,
   // Reactions included, regardless of mic/camera state.
   const phoneHost = centerBarTools(ALL, true);
-  ok(phoneHost.join() === "chat,hand", "host/panelist compact bar is unaffected by the attendee variant");
+  ok(phoneHost.join() === "chat,qa,hand", "host/panelist compact bar includes Q&A");
   const more = morePanelTools(ALL, true) ?? [];
   ok(more.includes("reactions"), "Reactions stays in More for host/panelist, same as before");
 }

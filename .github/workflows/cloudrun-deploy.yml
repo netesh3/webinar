@@ -113,6 +113,12 @@ jobs:
       RECORDINGS_CDN_BASE_URL: ${{ secrets.RECORDINGS_CDN_BASE_URL || 'https://recordings.webinarliv.com' }}
       RECORDINGS_RETENTION_DAYS: ${{ secrets.RECORDINGS_RETENTION_DAYS || '30' }}
       EMPTY_ROOM_CLOSE_MIN: ${{ vars.EMPTY_ROOM_CLOSE_MIN || '10' }}
+      SUPPORT_EMAIL: ${{ secrets.SUPPORT_EMAIL }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      SMTP_FROM: ${{ secrets.SMTP_FROM }}
       SEED_DEV: "false"
       # Temporary, for a performance-test window: POST /telemetry (see
       # api/internal/api/telemetry.go). Flip back to "false" and redeploy when

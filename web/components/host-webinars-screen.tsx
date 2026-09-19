@@ -58,6 +58,7 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
       captions: false,
       multistream: false,
       postWebinarSurvey: false,
+      emailReminders: true,
     },
     controls: {
       hideAttendees: true,

@@ -120,7 +120,26 @@ export type QuestionMessage = {
 };
 
 type UpvoteMessage = { kind: "upvote"; questionId: string; from: Sender };
-type AnsweredMessage = { kind: "answered"; questionId: string };
+type AnsweredMessage = { kind: "answered"; questionId: string; answer?: string };
+type QModMessage = {
+  kind: "qmod";
+  questionId: string;
+  pinned?: boolean;
+  dismissed?: boolean;
+  answered?: boolean;
+  answer?: string;
+};
+export type CtaOffer = { id: string; title: string; url: string; label: string };
+type CtaMessage = { kind: "cta" } & CtaOffer;
+type CtaClearMessage = { kind: "cta-clear" };
+type CaptionMessage = { kind: "caption"; from: Sender; text: string };
+type StageInviteMessage = {
+  kind: "stage-invite";
+  identity: string;
+  audioOnly?: boolean;
+  recording?: boolean;
+};
+type StageInviteClearMessage = { kind: "stage-invite-clear"; identity?: string };
 type HandMessage = { kind: "hand"; from: Sender; raised: boolean };
 type ReactionMessage = { kind: "reaction"; from: Sender; emoji: string };
 
@@ -208,7 +227,13 @@ export type RoomMessage =
   | ReactionMessage
   | UnmuteRequestMessage
   | AttendeeJoinedMessage
-  | ChatDeletedMessage;
+  | ChatDeletedMessage
+  | QModMessage
+  | CtaMessage
+  | CtaClearMessage
+  | CaptionMessage
+  | StageInviteMessage
+  | StageInviteClearMessage;
 
 /** The reactions a client may send. Anything else is dropped on receipt, so one
  *  patched client cannot push arbitrary strings into everyone's UI. */
@@ -219,6 +244,9 @@ export type Question = QuestionMessage & {
   votes: number;
   answered: boolean;
   votedByMe: boolean;
+  pinned: boolean;
+  dismissed: boolean;
+  answer: string;
 };
 
 /** One emoji in flight, from one tap. Randomised so a stream of taps doesn't look
@@ -342,8 +370,59 @@ function decode(bytes: Uint8Array): RoomMessage | null {
     case "answered": {
       const questionId = str(msg.questionId, 64);
       if (!questionId) return null;
-      return { kind: "answered", questionId };
+      return {
+        kind: "answered",
+        questionId,
+        answer: typeof msg.answer === "string" ? str(msg.answer, 600) || "" : "",
+      };
     }
+    case "qmod": {
+      const from = sender(msg.from);
+      const questionId = str(msg.questionId, 64);
+      if (!questionId) return null;
+      if (from && from.role === "attendee") return null;
+      return {
+        kind: "qmod",
+        questionId,
+        pinned: typeof msg.pinned === "boolean" ? msg.pinned : undefined,
+        dismissed: typeof msg.dismissed === "boolean" ? msg.dismissed : undefined,
+        answered: typeof msg.answered === "boolean" ? msg.answered : undefined,
+        answer: typeof msg.answer === "string" ? str(msg.answer, 600) || undefined : undefined,
+      };
+    }
+    case "cta": {
+      const from = sender(msg.from);
+      if (from && from.role === "attendee") return null;
+      const title = str(msg.title, 120);
+      const url = str(msg.url, 500);
+      const label = str(msg.label, 40) || "Open";
+      const id = str(msg.id, 64) || "cta";
+      if (!title || !url || !/^https?:\/\//i.test(url)) return null;
+      return { kind: "cta", id, title, url, label };
+    }
+    case "cta-clear":
+      return { kind: "cta-clear" };
+    case "caption": {
+      const from = sender(msg.from);
+      const text = str(msg.text, 280);
+      if (!from || !text) return null;
+      return { kind: "caption", from, text };
+    }
+    case "stage-invite": {
+      const identity = str(msg.identity, 200);
+      if (!identity) return null;
+      return {
+        kind: "stage-invite",
+        identity,
+        audioOnly: msg.audioOnly === true,
+        recording: msg.recording === true,
+      };
+    }
+    case "stage-invite-clear":
+      return {
+        kind: "stage-invite-clear",
+        identity: typeof msg.identity === "string" ? str(msg.identity, 200) || undefined : undefined,
+      };
     case "hand": {
       const from = sender(msg.from);
       if (!from) return null;
@@ -556,7 +635,18 @@ export type Realtime = {
   ) => Promise<{ delivered: boolean } | undefined>;
   askQuestion: (text: string, anonymous: boolean) => Promise<void>;
   upvote: (questionId: string) => Promise<void>;
-  markAnswered: (questionId: string) => Promise<void>;
+  markAnswered: (questionId: string, answer?: string) => Promise<void>;
+  modQuestion: (
+    questionId: string,
+    patch: { pinned?: boolean; dismissed?: boolean; answered?: boolean; answer?: string },
+  ) => Promise<void>;
+  launchCta: (offer: Omit<CtaOffer, "id">) => Promise<void>;
+  clearCta: () => Promise<void>;
+  sendCaption: (text: string) => Promise<void>;
+  cta: CtaOffer | null;
+  captions: { identity: string; text: string } | null;
+  stageInvite: { audioOnly: boolean; recording: boolean } | null;
+  dismissStageInvite: () => void;
   toggleHand: () => Promise<void>;
   /** Host-side: takes one person out of the queue. `granted` when they are being
    *  given the microphone, `dismissed` when they are being passed over. */
@@ -605,6 +695,17 @@ export function useRealtime(
   const [rawQuestions, setRawQuestions] = useState<QuestionMessage[]>([]);
   const [votes, setVotes] = useState<Record<string, Set<string>>>({});
   const [answered, setAnswered] = useState<Set<string>>(new Set());
+  const [qMods, setQMods] = useState<
+    Record<string, { pinned: boolean; dismissed: boolean; answer: string }>
+  >({});
+  const [cta, setCta] = useState<CtaOffer | null>(null);
+  const [captions, setCaptions] = useState<{ identity: string; text: string } | null>(
+    null,
+  );
+  const [stageInvite, setStageInvite] = useState<{
+    audioOnly: boolean;
+    recording: boolean;
+  } | null>(null);
   const [handMap, setHandMap] = useState<Record<string, RaisedHand>>({});
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   // A counter rather than the polls themselves. What the room is told is "something
@@ -685,6 +786,42 @@ export function useRealtime(
           break;
         case "answered":
           setAnswered((current) => new Set(current).add(msg.questionId));
+          if (msg.answer) {
+            setQMods((current) => ({
+              ...current,
+              [msg.questionId]: {
+                pinned: current[msg.questionId]?.pinned ?? false,
+                dismissed: current[msg.questionId]?.dismissed ?? false,
+                answer: msg.answer ?? "",
+              },
+            }));
+          }
+          break;
+        case "qmod":
+          setQMods((current) => {
+            const prev = current[msg.questionId] ?? {
+              pinned: false,
+              dismissed: false,
+              answer: "",
+            };
+            return {
+              ...current,
+              [msg.questionId]: {
+                pinned: msg.pinned ?? prev.pinned,
+                dismissed: msg.dismissed ?? prev.dismissed,
+                answer: msg.answer ?? prev.answer,
+              },
+            };
+          });
+          if (msg.answered) {
+            setAnswered((current) => new Set(current).add(msg.questionId));
+          }
+          break;
+        case "cta":
+          setCta({ id: msg.id, title: msg.title, url: msg.url, label: msg.label });
+          break;
+        case "cta-clear":
+          setCta(null);
           break;
         case "hand":
           setHandMap((current) => {
@@ -738,6 +875,19 @@ export function useRealtime(
           break;
         case "chat-deleted":
           setChat((current) => current.filter((m) => m.id !== msg.id));
+          break;
+        case "caption":
+          setCaptions({ identity: msg.from.identity, text: msg.text });
+          break;
+        case "stage-invite":
+          if (msg.identity === meRef.current.identity) {
+            setStageInvite({ audioOnly: msg.audioOnly === true, recording: msg.recording === true });
+          }
+          break;
+        case "stage-invite-clear":
+          if (!msg.identity || msg.identity === meRef.current.identity) {
+            setStageInvite(null);
+          }
           break;
       }
     },
@@ -891,8 +1041,46 @@ export function useRealtime(
   // and the stage holds canPublishData. The relay refuses this kind for the same
   // reason — see api/internal/api/say.go.
   const markAnswered = useCallback(
-    async (questionId: string) => {
-      const msg: AnsweredMessage = { kind: "answered", questionId };
+    async (questionId: string, answer = "") => {
+      const msg: AnsweredMessage = { kind: "answered", questionId, answer };
+      apply(msg);
+      await publish(msg);
+    },
+    [apply, publish],
+  );
+
+  const modQuestion = useCallback(
+    async (
+      questionId: string,
+      patch: { pinned?: boolean; dismissed?: boolean; answered?: boolean; answer?: string },
+    ) => {
+      const msg: QModMessage = { kind: "qmod", questionId, ...patch };
+      apply(msg);
+      await publish(msg);
+    },
+    [apply, publish],
+  );
+
+  const launchCta = useCallback(
+    async (offer: Omit<CtaOffer, "id">) => {
+      const msg: CtaMessage = { kind: "cta", id: newId(), ...offer };
+      apply(msg);
+      await publish(msg);
+    },
+    [apply, publish],
+  );
+
+  const clearCta = useCallback(async () => {
+    const msg: CtaClearMessage = { kind: "cta-clear" };
+    apply(msg);
+    await publish(msg);
+  }, [apply, publish]);
+
+  const sendCaption = useCallback(
+    async (text: string) => {
+      const clean = text.trim().slice(0, 280);
+      if (!clean) return;
+      const msg: CaptionMessage = { kind: "caption", from: meRef.current, text: clean };
       apply(msg);
       await publish(msg);
     },
@@ -975,24 +1163,29 @@ export function useRealtime(
   );
 
   const questions = useMemo<Question[]>(() => {
+    const host = me.role !== "attendee";
     return rawQuestions
       .map((q) => {
         const voters = votes[q.id];
+        const mod = qMods[q.id];
         return {
           ...q,
           votes: voters?.size ?? 0,
           answered: answered.has(q.id),
           votedByMe: voters?.has(me.identity) ?? false,
+          pinned: mod?.pinned ?? false,
+          dismissed: mod?.dismissed ?? false,
+          answer: mod?.answer ?? "",
         };
       })
-      // Unanswered first, then most-upvoted, then oldest — the order a host
-      // actually wants to work down.
+      .filter((q) => host || !q.dismissed)
       .sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
         if (a.answered !== b.answered) return a.answered ? 1 : -1;
         if (a.votes !== b.votes) return b.votes - a.votes;
         return a.at - b.at;
       });
-  }, [rawQuestions, votes, answered, me.identity]);
+  }, [rawQuestions, votes, answered, qMods, me.identity, me.role]);
 
   const hands = useMemo(
     () => Object.values(handMap).sort((a, b) => a.at - b.at),
@@ -1009,6 +1202,14 @@ export function useRealtime(
     askQuestion,
     upvote,
     markAnswered,
+    modQuestion,
+    launchCta,
+    clearCta,
+    sendCaption,
+    cta,
+    captions,
+    stageInvite,
+    dismissStageInvite: () => setStageInvite(null),
     toggleHand,
     lowerHand,
     clearHands,
