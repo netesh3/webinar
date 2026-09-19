@@ -208,11 +208,12 @@ export function AdminScreen() {
                     size={32}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="truncate text-[13px] font-medium">
                         {u.name}
                       </span>
                       {u.isAdmin && <Badge tone="brand">Admin</Badge>}
+                      {u.canCdnBroadcast && <Badge tone="ok">CDN Broadcast</Badge>}
                       {isSelf && <Badge>You</Badge>}
                     </div>
                     <div className="truncate text-[12px] text-ink-3">
@@ -225,46 +226,45 @@ export function AdminScreen() {
                   {busy === u.id ? (
                     <Spinner className="size-4" />
                   ) : (
-                    <Toggle
-                      checked={u.canHost}
-                      /* Self-revoke is refused by the server too — this only saves the
-                       * round trip. It is the one lockout with no way back from inside
-                       * the app: the toggle you would use to restore it is this one. */
-                      disabled={isSelf && u.canHost}
-                      onChange={(next) => void setHost(u, next)}
-                      label="Can host"
-                    />
-                  )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Toggle
+                        checked={u.canHost}
+                        /* Self-revoke is refused by the server too — this only saves the
+                         * round trip. It is the one lockout with no way back from inside
+                         * the app: the toggle you would use to restore it is this one. */
+                        disabled={isSelf && u.canHost}
+                        onChange={(next) => void setHost(u, next)}
+                        label="Can host"
+                      />
 
-                  {/* Max meeting duration — only shown for hosts */}
-                  {u.canHost && busy !== u.id && (
-                    <select
-                      aria-label="Max meeting duration"
-                      title="Max meeting duration"
-                      value={u.maxDurationMin ?? ""}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        void setMaxDuration(u, val === "" ? null : Number(val));
-                      }}
-                      className="rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
-                    >
-                      <option value="">Default (3h)</option>
-                      <option value="60">1 hour</option>
-                      <option value="120">2 hours</option>
-                      <option value="180">3 hours</option>
-                      <option value="240">4 hours</option>
-                      <option value="360">6 hours</option>
-                      <option value="480">8 hours</option>
-                    </select>
-                  )}
+                      <Toggle
+                        checked={u.canCdnBroadcast}
+                        onChange={(next) => void setCdnBroadcast(u, next)}
+                        label="CDN Broadcast"
+                      />
 
-                  {/* CDN Broadcast toggle — only shown for hosts */}
-                  {u.canHost && busy !== u.id && (
-                    <Toggle
-                      checked={u.canCdnBroadcast}
-                      onChange={(next) => void setCdnBroadcast(u, next)}
-                      label="CDN Broadcast"
-                    />
+                      {/* Max meeting duration — only shown for hosts */}
+                      {u.canHost && (
+                        <select
+                          aria-label="Max meeting duration"
+                          title="Max meeting duration"
+                          value={u.maxDurationMin ?? ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            void setMaxDuration(u, val === "" ? null : Number(val));
+                          }}
+                          className="rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
+                        >
+                          <option value="">Default (3h)</option>
+                          <option value="60">1 hour</option>
+                          <option value="120">2 hours</option>
+                          <option value="180">3 hours</option>
+                          <option value="240">4 hours</option>
+                          <option value="360">6 hours</option>
+                          <option value="480">8 hours</option>
+                        </select>
+                      )}
+                    </div>
                   )}
 
                   <button
