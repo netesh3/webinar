@@ -1,0 +1,96 @@
+# One-shot, READ ONLY: report where recordings are landing, and whether a given
+# webinar still exists.
+#
+# Exists because a replay link went dead and the API could only say "that webinar
+# doesn't exist" — which does not distinguish "deleted" from "never written" from
+# "pointing at a different database". Every statement here is a SELECT; nothing is
+# created, updated or removed.
+#
+# Actions → "Recordings audit" → Run workflow.
+
+name: Recordings audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Webinar slug to look up"
+        required: false
+        default: "instant-webinar-1981"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      # Never echoed. Actions masks secrets in logs, but the queries below also
+      # never select a credential column, so the output is safe to paste around.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SLUG: ${{ inputs.slug }}
+    steps:
+      - name: Require DATABASE_URL
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "Repository secret DATABASE_URL is not set." >&2
+            exit 1
+          fi
+
+      - name: How much is in this database
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off -c "
+            SELECT 'users' AS table, count(*) FROM users
+            UNION ALL SELECT 'webinars', count(*) FROM webinars
+            UNION ALL SELECT 'recordings', count(*) FROM recordings
+            UNION ALL SELECT 'registrations', count(*) FROM registrations;"
+
+      - name: Schema version
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off -c "
+            SELECT version, applied_at FROM schema_migrations
+             ORDER BY version DESC LIMIT 5;"
+
+      - name: The webinar in question
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off \
+            -v slug="$SLUG" -c "
+            SELECT slug, status, topic, starts_at, created_at
+              FROM webinars WHERE slug = :'slug';"
+
+      - name: Most recent webinars
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off -c "
+            SELECT slug, status, left(topic, 30) AS topic, created_at
+              FROM webinars ORDER BY created_at DESC LIMIT 10;"
+
+      # The actual question: are finished recordings reaching object storage, or
+      # are they sitting at zero bytes / failed / never uploaded?
+      - name: Where recent recordings landed
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off -c "
+            SELECT w.slug,
+                   r.status,
+                   r.size_bytes,
+                   r.uploaded_to_s3 AS in_s3,
+                   r.upload_percent AS pct,
+                   r.is_public,
+                   r.parent_id IS NOT NULL AS is_part,
+                   left(r.storage_key, 52) AS storage_key,
+                   r.created_at
+              FROM recordings r
+              JOIN webinars w ON w.id = r.webinar_id
+             ORDER BY r.created_at DESC
+             LIMIT 25;"
+
+      - name: Recording outcomes over the last week
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off -c "
+            SELECT status,
+                   count(*) AS rows,
+                   count(*) FILTER (WHERE size_bytes = 0) AS zero_bytes,
+                   count(*) FILTER (WHERE uploaded_to_s3) AS uploaded,
+                   pg_size_pretty(sum(size_bytes)) AS total
+              FROM recordings
+             WHERE created_at > now() - interval '7 days'
+             GROUP BY status ORDER BY status;"
