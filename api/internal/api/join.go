@@ -158,9 +158,11 @@ func (s *Server) joinAsAttendee(
 	}
 	isCdnAttendee := cdnBroadcast && !grant.Granted
 	var cdnStreamURL string
-	if isCdnAttendee {
+	if cdnBroadcast {
+		// Always include the playlist URL while the webinar is in CDN mode, even
+		// for someone currently on stage — demote remounts HLS from this join.
 		cdnStreamURL = s.cdnStreamURL(wb.ID)
-		if wb.Status == types.StatusLive {
+		if isCdnAttendee && wb.Status == types.StatusLive {
 			go s.startHlsBroadcastIfEnabled(context.Background(), wb, sfu)
 		}
 	}
@@ -180,7 +182,7 @@ func (s *Server) joinAsAttendee(
 		// along with its scope — see Metadata.Promoted.
 		Promoted: grant.Granted,
 		DataOnly: isCdnAttendee,
-	}, false, isCdnAttendee, cdnStreamURL)
+	}, false, cdnBroadcast, cdnStreamURL)
 	if ok {
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
 	}

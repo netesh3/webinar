@@ -112,31 +112,43 @@ export function WebinarRoom({
     try {
       const fresh = await api.join(slug, joinKey);
       setCurrentJoin(fresh);
+      setPromotedToStage(true);
     } catch {
-      // Fallback if re-join call fails
+      // Stay on HLS rather than mounting WebRTC with a data-only token.
     } finally {
       setTransitioning(false);
-      setPromotedToStage(true);
     }
   }, [slug, joinKey]);
 
   const handleDemoted = useCallback(async () => {
     setTransitioning(true);
-    setPromotedToStage(false);
     try {
       const fresh = await api.join(slug, joinKey);
       setCurrentJoin(fresh);
+      setPromotedToStage(false);
     } catch {
-      // Fallback
+      // Stay on the WebRTC room as audience rather than HLS with a stage token.
     } finally {
       setTransitioning(false);
     }
   }, [slug, joinKey]);
 
-  // If this webinar is running in CDN broadcast mode and the user is an unpromoted attendee:
   const isScheduledPresenter =
     initialJoin.role === "host" || initialJoin.role === "panelist";
-  if (currentJoin.cdnBroadcast && !isScheduledPresenter && !promotedToStage) {
+  const webinarUsesCdn = Boolean(initialJoin.cdnBroadcast || currentJoin.cdnBroadcast);
+
+  if (transitioning) {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-stage">
+        <div className="flex flex-col items-center gap-3">
+          <Spinner className="size-8 text-brand" />
+          <p className="text-[13px] text-white">Updating stage status...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (webinarUsesCdn && !isScheduledPresenter && !promotedToStage) {
     return (
       <CdnAttendeeRoom
         join={currentJoin}
@@ -147,17 +159,6 @@ export function WebinarRoom({
         onLeave={onLeave}
         onPromoted={handlePromoted}
       />
-    );
-  }
-
-  if (transitioning) {
-    return (
-      <main className="grid min-h-dvh place-items-center bg-stage">
-        <div className="flex flex-col items-center gap-3">
-          <Spinner className="size-8 text-brand" />
-          <p className="text-[13px] text-white">Updating stage status...</p>
-        </div>
-      </main>
     );
   }
 
@@ -192,7 +193,7 @@ export function WebinarRoom({
       initialImageUrl={initialImageUrl}
       joinKey={joinKey}
       onLeave={onLeave}
-      onDemoted={handleDemoted}
+      onDemoted={webinarUsesCdn ? handleDemoted : undefined}
     />
   );
 }
@@ -570,14 +571,10 @@ function ConnectedRoom({
       }
       if (!next.canPublish && !next.mutedByHost && previous.canPublish) {
         notify("The host has moved you back to the audience.", "info");
-        if (join.cdnBroadcast && onDemotedRef.current) {
-          onDemotedRef.current();
-        }
+        onDemotedRef.current?.();
       }
     },
-    // join.canPublish and join.cdnBroadcast decide how transitions are handled and are fixed
-    // for the lifetime of a token — but they are real dependencies, so they are declared.
-    [notify, join.canPublish, join.cdnBroadcast],
+    [notify, join.canPublish],
   );
 
   const permissions = useMediaPermissions(room, announcePermissions);
