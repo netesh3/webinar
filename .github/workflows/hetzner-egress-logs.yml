@@ -51,11 +51,12 @@ jobs:
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
             echo
             echo "===== egress logs (last 400 lines) ====="
-            if docker ps -a --format "{{.Names}}" | grep -qx egress; then
-              docker logs --tail 400 egress
+            name="$(docker ps -a --format "{{.Names}}" | grep -E "egress" | head -1)"
+            if [ -n "$name" ]; then
+              echo "container: $name"
+              docker logs --tail 400 "$name"
             else
-              echo "container named egress not found; compose logs:"
-              cd /opt/livekit
-              docker compose -f docker-compose.yml -f docker-compose.egress.yml logs --tail 400 egress || true
+              echo "no egress container found"
+              docker ps -a
             fi
           '
