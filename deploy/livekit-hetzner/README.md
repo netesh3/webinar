@@ -130,10 +130,10 @@ serves **LL-HLS** from Caddy instead of 2-second files on B2 (~15s lag).
 | Public playlist | `https://live.webinarliv.com/live/<slug>/index.m3u8` |
 | Fallback | existing B2/API `live.m3u8` if MediaMTX is not publishing yet |
 
-**This is off until you turn it on.** `BROADCAST_RTMP_BASE` and
-`BROADCAST_HLS_BASE` have no defaults, so the server keeps handing attendees
-the B2 playlist and MediaMTX just sits idle. Turning it on is the DNS step
-below, not a redeploy.
+This is live. `BROADCAST_RTMP_BASE` and `BROADCAST_HLS_BASE` are set as repo
+secrets, so joins hand out the LL-HLS URL with the B2 playlist as fallback.
+Clearing either secret reverts every attendee to B2 — that is the rollback, and
+it needs no code change.
 
 **`BROADCAST_HLS_BASE` must be the Cloudflare hostname, not the SFU's.**
 `88.198.141.104.sslip.io` resolves straight to the box, so pointing at it
@@ -142,14 +142,24 @@ divided by the bitrate allows — a worse trade than the 15s it replaces. The
 edge is what makes this scale: it fetches each HLS part once no matter how
 many people are watching.
 
-1. DNS: `live.webinarliv.com` → `88.198.141.104`, **proxied** (orange cloud), SSL mode Full.
-2. Cache Rule on `/live/*`: cache everything, respect origin TTL (Caddy already
-   sends `max-age=1` for `.m3u8` and 30s for parts).
-3. Set repo secrets `BROADCAST_RTMP_BASE=rtmp://127.0.0.1:1935/live` and
-   `BROADCAST_HLS_BASE=https://live.webinarliv.com/live`, then redeploy the API.
+What is configured, should any of it need rebuilding:
 
-Caddy already serves that hostname; it will obtain a certificate once the
-record exists.
+1. DNS: `live.webinarliv.com` → `88.198.141.104`, **proxied** (orange cloud).
+   The zone runs SSL mode Full, which is why the Caddyfile gives this hostname
+   `tls internal` — behind the proxy a public ACME order cannot reliably
+   complete, and Full accepts a locally-issued origin certificate. Un-proxying
+   this record is an outage, not a fallback.
+2. Cache Rule "Cache LL-HLS on live origin": `http.host eq "live.webinarliv.com"`
+   → eligible for cache, Edge TTL from the origin's `Cache-Control`. Without a
+   rule Cloudflare treats `.m3u8`/`.m4s` as uncacheable (`cf-cache-status:
+   DYNAMIC`) and every viewer reaches the origin — the exact cost this design
+   exists to avoid. Verify with `curl -I` after any cache change.
+3. Repo secrets `BROADCAST_RTMP_BASE=rtmp://127.0.0.1:1935/live` and
+   `BROADCAST_HLS_BASE=https://live.webinarliv.com/live`.
+
+The zone is on Cloudflare's **free** plan, whose terms restrict serving large
+volumes of video. This is fine for current traffic but is a business risk at
+scale, not a technical one — the fix is a paid plan or Cloudflare Stream.
 
 ## Stop paying
 
