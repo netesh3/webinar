@@ -7,6 +7,7 @@ import (
 
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
+	"github.com/netkumar/webcast/api/types"
 )
 
 // StartMeetingLimitSweeper runs a background loop that checks for live webinars
@@ -22,7 +23,9 @@ func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
 		case <-ticker.C:
 			s.sweepExpiredWebinars(ctx)
 			s.sweepEmptyWebinars(ctx)
+			s.sweepSimulive(ctx)
 			s.reconcileEgressRecordings(ctx)
+			s.flushOutbox(ctx)
 		}
 	}
 }
@@ -57,6 +60,39 @@ func (s *Server) sweepExpiredWebinars(ctx context.Context) {
  * mass reconnect looks like from here, and Cloud Run replaces instances often
  * enough that in-memory state would keep restarting the count.
  */
+func (s *Server) sweepSimulive(ctx context.Context) {
+	due, err := s.store.DueSimuliveSlugs(ctx)
+	if err != nil {
+		s.log.Error("simulive sweeper: due query failed", "error", err)
+		return
+	}
+	for _, slug := range due {
+		wb, err := s.store.SetStatus(ctx, slug, types.StatusLive)
+		if err != nil {
+			s.log.Error("simulive sweeper: start failed", "slug", slug, "error", err)
+			continue
+		}
+		s.log.Info("simulive started", "slug", slug)
+		if sfu, err := s.sfuFor(ctx, wb); err == nil {
+			_, _, _, _ = s.ensureRoom(ctx, wb, lk.RoomName(slug))
+			if meta, err := s.roomMetadata(ctx, wb); err == nil {
+				_ = sfu.SetMetadata(ctx, lk.RoomName(slug), meta)
+			}
+		}
+	}
+
+	expired, err := s.store.ExpiredSimuliveSlugs(ctx)
+	if err != nil {
+		s.log.Error("simulive sweeper: expiry query failed", "error", err)
+		return
+	}
+	for _, slug := range expired {
+		if _, err := s.endWebinarSession(ctx, slug); err != nil {
+			s.log.Error("simulive sweeper: end failed", "slug", slug, "error", err)
+		}
+	}
+}
+
 func (s *Server) sweepEmptyWebinars(ctx context.Context) {
 	grace := time.Duration(s.cfg.EmptyRoomCloseMin) * time.Minute
 	if grace <= 0 {
@@ -72,6 +108,9 @@ func (s *Server) sweepEmptyWebinars(ctx context.Context) {
 	for _, slug := range slugs {
 		wb, err := s.store.WebinarBySlug(ctx, slug)
 		if err != nil {
+			continue
+		}
+		if wb.Kind == types.KindSimulive {
 			continue
 		}
 		sfu, err := s.sfuFor(ctx, wb)

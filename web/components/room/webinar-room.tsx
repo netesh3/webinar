@@ -51,6 +51,9 @@ import { useHostRoster } from "./participants";
 import { VirtualBackground } from "./background-picker";
 import { NoiseSuppression } from "./noise-suppression";
 import { PollPopup } from "./poll-popup";
+import { CtaPopup } from "./cta-popup";
+import { CaptionOverlay } from "./caption-overlay";
+import { StageInviteDialog } from "./stage-invite-dialog";
 import { FileShareBar } from "./file-share-bar";
 import { MeetingInfo } from "./meeting-info";
 import { ViewsMenu } from "./views-menu";
@@ -1046,7 +1049,10 @@ function ConnectedRoom({
                 {/* A poll the host just launched, brought to the attendee rather than left
                     behind a button. Renders nothing for the stage and nothing when there is
                     no open poll they have yet to answer. */}
-                <PollPopup />
+                  <PollPopup />
+                <CtaPopup />
+                <CaptionOverlay />
+                <StageInviteDialog />
 
                 {/* Applies the stored virtual background to whatever camera track is
                     published, and re-applies it when the track is replaced. Renders nothing;

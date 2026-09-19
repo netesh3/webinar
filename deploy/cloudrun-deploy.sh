@@ -161,6 +161,12 @@ fi
 [[ -n "${RECORDINGS_CDN_BASE_URL:-}" ]] && ENV_VARS+=("RECORDINGS_CDN_BASE_URL=${RECORDINGS_CDN_BASE_URL}")
 [[ -n "${RECORDINGS_RETENTION_DAYS:-}" ]] && ENV_VARS+=("RECORDINGS_RETENTION_DAYS=${RECORDINGS_RETENTION_DAYS}")
 [[ -n "${EMPTY_ROOM_CLOSE_MIN:-}" ]] && ENV_VARS+=("EMPTY_ROOM_CLOSE_MIN=${EMPTY_ROOM_CLOSE_MIN}")
+[[ -n "${SUPPORT_EMAIL:-}" ]] && ENV_VARS+=("SUPPORT_EMAIL=${SUPPORT_EMAIL}")
+[[ -n "${SMTP_HOST:-}" ]] && ENV_VARS+=("SMTP_HOST=${SMTP_HOST}")
+[[ -n "${SMTP_PORT:-}" ]] && ENV_VARS+=("SMTP_PORT=${SMTP_PORT}")
+[[ -n "${SMTP_USERNAME:-}" ]] && ENV_VARS+=("SMTP_USERNAME=${SMTP_USERNAME}")
+[[ -n "${SMTP_PASSWORD:-}" ]] && ENV_VARS+=("SMTP_PASSWORD=${SMTP_PASSWORD}")
+[[ -n "${SMTP_FROM:-}" ]] && ENV_VARS+=("SMTP_FROM=${SMTP_FROM}")
 
 # Write YAML for --env-vars-file so values may contain commas (e.g. CORS_ORIGINS
 # with multiple origins). Comma-joined --set-env-vars breaks on those values.

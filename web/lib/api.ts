@@ -24,11 +24,13 @@ import type {
   Poll,
   PollInput,
   PollVoteRequest,
+  QuestionPatch,
   RegistrantRow,
   RegistrationState,
   Role,
   SendMessageRequest,
   SendMessageResponse,
+  SessionReport,
   ShareRecordingRequest,
   StageAllResponse,
   StatusResponse,
@@ -310,6 +312,7 @@ export const api = {
   // ------------------------------------------------------------------ host
 
   hostWebinars: () => request<Webinar[]>("/api/host/webinars", fresh),
+  hostRecordingLibrary: () => request<Recording[]>("/api/host/recordings", fresh),
 
   /** Sessions this account is a panelist on but does not own. */
   stageWebinars: () => request<Webinar[]>("/api/host/stage", fresh),
@@ -437,6 +440,23 @@ export const api = {
       { role, audioOnly },
     ),
 
+  respondStageInvite: (
+    slug: string,
+    body: { joinKey?: string; accept: boolean },
+  ) => post<StatusResponse>(`/api/webinars/${seg(slug)}/stage-invite`, body),
+
+  patchQuestion: (slug: string, id: string, body: QuestionPatch) =>
+    patch<StatusResponse>(
+      `/api/host/webinars/${seg(slug)}/questions/${seg(id)}`,
+      body,
+    ),
+
+  appendCaption: (slug: string, body: { joinKey?: string; text: string }) =>
+    post<StatusResponse>(`/api/webinars/${seg(slug)}/captions`, body),
+
+  transcriptUrl: (slug: string) =>
+    `${API_BASE}/api/host/webinars/${seg(slug)}/transcript.txt`,
+
   removeParticipant: (slug: string, identity: string) =>
     del<StatusResponse>(
       `/api/host/webinars/${seg(slug)}/participants/${seg(identity)}`,
@@ -524,6 +544,12 @@ export const api = {
    *  download machinery handles it. */
   registrantsCsvUrl: (slug: string) =>
     `${API_BASE}/api/host/webinars/${seg(slug)}/registrants.csv`,
+
+  sessionReport: (slug: string) =>
+    request<SessionReport>(`/api/host/webinars/${seg(slug)}/report`, fresh),
+
+  reportCsvUrl: (slug: string) =>
+    `${API_BASE}/api/host/webinars/${seg(slug)}/report.csv`,
 
   approveAll: (slug: string) =>
     post<MuteAllResponse>(

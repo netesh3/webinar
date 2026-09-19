@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useJoinKeys, useRegistrations } from "./registrations";
 import { Alert, CopyField, Spinner } from "./controls";
 import { ArrowLeftIcon, CalendarIcon, CheckIcon, UserPlusIcon } from "./icons";
-import { useSession, useShareOrigin } from "./providers";
+import { useSession, useShareOrigin, useAppConfig } from "./providers";
 import { Badge, Button, ButtonLink } from "./ui";
 import { DIAL_CODES, dialOptions } from "@/lib/dial-codes";
 import { formatDay, formatTime, formatTimeRange, tzLabel } from "@/lib/format";
@@ -845,6 +845,7 @@ function Confirmed({
   onCancel: () => void;
 }) {
   const origin = useShareOrigin();
+  const { emailConfigured } = useAppConfig();
   const pending = r.state === "pending";
   const declined = r.state === "declined";
   const joinUrl = `${origin}/webinars/${w.id}/room`;
@@ -894,6 +895,9 @@ function Confirmed({
           <>
             Your personal join link is below. Keep it: it is what gets you into
             the webinar.
+            {emailConfigured
+              ? " A confirmation with this link and a calendar invite is on its way to your inbox."
+              : " This site is not sending email yet, so save the link here (and add it to your calendar below)."}
           </>
         )}
       </p>

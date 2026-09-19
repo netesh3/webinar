@@ -45,9 +45,12 @@ type Notification struct {
 	// Slug, not the uuid. The caller already has the slug on every path that emits one, and
 	// resolving it in the INSERT saves a round trip whose only purpose would be to translate
 	// an identifier the caller was holding anyway.
-	WebinarSlug string
-	Subject     string
-	Body        string
+	WebinarSlug    string
+	Subject        string
+	Body           string
+	ICS            string
+	RegistrationID string
+	DueAt          time.Time // zero means send as soon as the outbox is flushed
 }
 
 /* Notify writes one notification.
@@ -58,12 +61,19 @@ type Notification struct {
  * window where somebody is waiting and nobody was told.
  */
 func (s *Store) Notify(ctx context.Context, q Querier, n Notification) error {
+	due := n.DueAt
+	if due.IsZero() {
+		due = time.Now()
+	}
 	_, err := q.Exec(ctx, `
-		INSERT INTO notifications (user_id, email, kind, webinar_id, subject, body)
+		INSERT INTO notifications (user_id, email, kind, webinar_id, subject, body, ics, registration_id, due_at)
 		VALUES (NULLIF($1,'')::uuid, $2, $3,
-		        (SELECT id FROM webinars WHERE slug = $4), $5, $6)`,
+		        (SELECT id FROM webinars WHERE slug = $4), $5, $6, $7, NULLIF($8,'')::uuid, $9)`,
 		n.UserID, strings.ToLower(strings.TrimSpace(n.Email)), string(n.Kind),
-		n.WebinarSlug, n.Subject, n.Body)
+		n.WebinarSlug, n.Subject, n.Body, n.ICS, n.RegistrationID, due)
+	if isUniqueViolation(err) {
+		return nil
+	}
 	return err
 }
 
@@ -157,13 +167,15 @@ func (s *Store) MarkAlertsRead(ctx context.Context, userID string, ids []string)
 
 // Outbound is one notification still owed to a transport.
 type Outbound struct {
-	ID      string
-	Email   string
-	Subject string
-	Body    string
+	ID       string
+	Email    string
+	Subject  string
+	Body     string
+	ICS      string
+	Attempts int
 }
 
-/* PendingDeliveries returns notifications with an address and nothing sent yet.
+/* PendingDeliveries returns notifications with an address that are due now.
  *
  * Only rows with an email: a host alert is delivered by being rendered in the app, so it has
  * no transport to wait for and must not sit in this queue for ever.
@@ -173,10 +185,25 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, email, subject, body
+		SELECT id::text, email, subject, body, ics, attempts
 		  FROM notifications
-		 WHERE delivery = 'pending' AND email <> ''
-		 ORDER BY created_at
+		 WHERE delivery = 'pending' AND email <> '' AND due_at <= now()
+		   AND (webinar_id IS NULL OR EXISTS (
+		         SELECT 1 FROM webinars w
+		          WHERE w.id = notifications.webinar_id
+		            AND w.status NOT IN ('ended','draft')
+		            AND (
+		              notifications.kind NOT IN ('reminder_24h','reminder_1h')
+		              OR COALESCE((w.options->>'emailReminders')::boolean, true)
+		            )
+		       ))
+		   AND (registration_id IS NULL OR EXISTS (
+		         SELECT 1 FROM registrations r
+		          WHERE r.id = notifications.registration_id
+		            AND r.state = 'approved'
+		            AND r.email <> ''
+		       ))
+		 ORDER BY due_at, created_at
 		 LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
@@ -186,7 +213,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 	out := []Outbound{}
 	for rows.Next() {
 		var o Outbound
-		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body); err != nil {
+		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.ICS, &o.Attempts); err != nil {
 			return nil, err
 		}
 		out = append(out, o)
@@ -194,13 +221,71 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 	return out, rows.Err()
 }
 
-// MarkDelivered records the outcome of one send attempt. `reason` is kept for
-// 'failed' and 'skipped' so an operator can tell a missing SMTP config from a
-// rejected address without reading process logs that have since rotated away.
-func (s *Store) MarkDelivered(ctx context.Context, id, delivery, reason string) error {
+const maxDeliveryAttempts = 8
+
+// RecordSendAttempt records a send. Failed rows with attempts left are scheduled
+// again (exponential backoff) rather than left pending for the same flush to retry.
+func (s *Store) RecordSendAttempt(ctx context.Context, id, delivery, reason string) error {
+	if delivery == "failed" {
+		_, err := s.pool.Exec(ctx, `
+			UPDATE notifications
+			   SET attempts = attempts + 1,
+			       delivery = CASE WHEN attempts + 1 >= $3 THEN 'failed' ELSE 'pending' END,
+			       delivery_error = $2,
+			       delivered_at = now(),
+			       due_at = now() + make_interval(secs => LEAST(900, 30 * POWER(2, attempts)::int))
+			 WHERE id = $1`, id, reason, maxDeliveryAttempts)
+		return err
+	}
 	_, err := s.pool.Exec(ctx, `
 		UPDATE notifications
 		   SET delivery = $2, delivery_error = $3, delivered_at = now()
 		 WHERE id = $1`, id, delivery, reason)
+	return err
+}
+
+// MarkDelivered records the outcome of one send attempt. `reason` is kept for
+// 'failed' and 'skipped' so an operator can tell a missing SMTP config from a
+// rejected address without reading process logs that have since rotated away.
+func (s *Store) MarkDelivered(ctx context.Context, id, delivery, reason string) error {
+	return s.RecordSendAttempt(ctx, id, delivery, reason)
+}
+
+// SkipPendingRemindersForRegistration drops unsent 24h/1h mail when a seat is declined.
+func (s *Store) SkipPendingRemindersForRegistration(ctx context.Context, registrationID string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE notifications
+		   SET delivery = 'skipped', delivery_error = 'registration declined', delivered_at = now()
+		 WHERE registration_id = $1
+		   AND delivery = 'pending'
+		   AND kind IN ('reminder_24h','reminder_1h')`, registrationID)
+	return err
+}
+
+// RescheduleRemindersForWebinar moves unsent 24h/1h due times when the host changes starts_at.
+func (s *Store) RescheduleRemindersForWebinar(ctx context.Context, slug string, startsAt time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE notifications n
+		   SET due_at = CASE n.kind
+		                  WHEN 'reminder_24h' THEN $2 - interval '24 hours'
+		                  WHEN 'reminder_1h'  THEN $2 - interval '1 hour'
+		                END
+		  FROM webinars w
+		 WHERE n.webinar_id = w.id AND w.slug = $1
+		   AND n.delivery = 'pending'
+		   AND n.kind IN ('reminder_24h','reminder_1h')`, slug, startsAt)
+	return err
+}
+
+// SkipRemindersForEndedWebinar stops mailing people about a session that will not happen.
+func (s *Store) SkipRemindersForEndedWebinar(ctx context.Context, slug string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE notifications n
+		   SET delivery = 'skipped', delivery_error = 'webinar ended', delivered_at = now()
+		  FROM webinars w
+		 WHERE n.webinar_id = w.id AND w.slug = $1
+		   AND n.delivery = 'pending'
+		   AND n.kind IN ('reminder_24h','reminder_1h','registration_confirmed','registration_approved')
+		   AND n.due_at > now()`, slug)
 	return err
 }

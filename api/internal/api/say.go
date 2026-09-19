@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -258,6 +259,19 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 	if err := sfu.SendData(r.Context(), room, dataTopic, body, to); err != nil {
 		s.fail(w, r, "say: send data", err)
 		return
+	}
+
+	switch packet.Kind {
+	case types.MsgQuestion:
+		if packet.ID == "" {
+			packet.ID = fmt.Sprintf("q-%d", packet.At)
+		}
+		_ = s.store.UpsertSessionQuestion(r.Context(), slug, types.SessionQuestion{
+			ID: packet.ID, Identity: from.Identity, Name: from.Name,
+			Text: packet.Text, Anonymous: packet.Anonymous,
+		})
+	case types.MsgUpvote:
+		_ = s.store.AddQuestionUpvote(r.Context(), packet.QuestionID)
 	}
 
 	httpx.JSON(w, http.StatusOK, types.SendMessageResponse{

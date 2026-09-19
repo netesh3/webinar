@@ -58,6 +58,9 @@ export const NotifyRegistrationApproved: NotificationKind = "registration_approv
  * dropped: somebody who registered and hears nothing assumes they are coming.
  */
 export const NotifyRegistrationDeclined: NotificationKind = "registration_declined";
+export const NotifyRegistrationConfirmed: NotificationKind = "registration_confirmed";
+export const NotifyReminder24h: NotificationKind = "reminder_24h";
+export const NotifyReminder1h: NotificationKind = "reminder_1h";
 /**
  *  HostAlert is one in-app notification as a host's browser sees it.
  *  *
@@ -143,6 +146,8 @@ export interface WebinarOptions {
   captions: boolean;
   multistream: boolean;
   postWebinarSurvey: boolean;
+  /** Defaults true when omitted by older webinars. */
+  emailReminders?: boolean;
 }
 /**
  * SessionControls are the things a host flips *during* the session.
@@ -484,6 +489,41 @@ export interface WebinarReport {
   avgWatchMin: number /* int */;
   questions: number /* int */;
 }
+export interface AttendanceRow {
+  identity: string;
+  name: string;
+  email?: string;
+  watchMin: number /* int */;
+}
+export interface SessionQuestion {
+  id: string;
+  identity?: string;
+  name: string;
+  text: string;
+  anonymous?: boolean;
+  answered: boolean;
+  answer?: string;
+  pinned?: boolean;
+  dismissed?: boolean;
+  upvotes: number /* int */;
+  createdAt?: string;
+}
+export interface QuestionPatch {
+  answered?: boolean;
+  answer?: string;
+  pinned?: boolean;
+  dismissed?: boolean;
+}
+export interface SessionReport {
+  registered: number /* int */;
+  approved: number /* int */;
+  attended: number /* int */;
+  avgWatchMin: number /* int */;
+  questions: number /* int */;
+  pollVoters: number /* int */;
+  questionRows: SessionQuestion[];
+  attendees: AttendanceRow[];
+}
 export interface Webinar {
   id: string; // slug, used in URLs
   webinarId: string;
@@ -508,6 +548,7 @@ export interface Webinar {
   startedAt?: string;
   endedAt?: string;
   maxDurationMin: number /* int */;
+  simuliveRecordingId?: string;
   host: Person;
   panelists: Person[];
   agenda: AgendaItem[];
@@ -578,6 +619,7 @@ export interface WebinarInput {
   timeZone: string; // IANA name, for display
   kind: WebinarKind;
   status: WebinarStatus; // scheduled | draft only
+  simuliveRecordingId?: string;
   registrationRequired: boolean;
   approval: ApprovalMode;
   /**
@@ -750,6 +792,7 @@ export interface RegisterRequest {
   passcode?: string;
 }
 export interface Registration {
+  id?: string;
   webinarId: string; // slug
   email: string;
   firstName: string;
@@ -1191,6 +1234,10 @@ export interface AppConfig {
    * automatic deletion. 0 means they are kept until a host deletes them.
    */
   recordingsRetentionDays: number /* int */;
+  /**
+   * EmailConfigured is whether SMTP can actually deliver.
+   */
+  emailConfigured?: boolean;
   /**
    * TelemetryEnabled mirrors config.Config.TelemetryEnabled: whether POST
    * /telemetry accepts anything. The frontend's telemetry poller checks this

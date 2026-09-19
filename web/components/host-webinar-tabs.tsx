@@ -15,7 +15,7 @@ import {
   tzLabel,
 } from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
-import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
+import type { Recording, RegistrantRow, SessionReport, Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
 /* Per-webinar management. Every tab here operates on real data — the share links
@@ -31,16 +31,9 @@ const TABS = [
   "Recordings",
   "Settings",
 ] as const;
-type Tab = (typeof TABS)[number];
+type Tab = (typeof TABS)[number] | "Report";
 
-/* What is left to do once a webinar is over.
- *
- * Admit, Share, Stage and Settings all act on a session that can still happen:
- * a queue nobody can join, a registration link that leads nowhere, a panelist
- * who will never present, toggles for a room that will not open again. Offering
- * them after the fact is offering controls that cannot change anything. What a
- * host actually comes back for is the recording and who turned up. */
-const ENDED_TABS = ["Recordings", "Attendees"] as const;
+const ENDED_TABS = ["Recordings", "Attendees", "Report"] as const;
 
 function tabsFor(ended: boolean): readonly Tab[] {
   return ended ? ENDED_TABS : TABS;
@@ -62,6 +55,7 @@ function tabFromQuery(raw: string | null | undefined): Tab | null {
   if (key === "stage") return "Stage";
   if (key === "recordings") return "Recordings";
   if (key === "settings") return "Settings";
+  if (key === "report") return "Report";
   return null;
 }
 
@@ -131,6 +125,7 @@ export function HostWebinarTabs({
         />
       )}
       {tab === "Settings" && <SettingsTab webinar={w} />}
+      {tab === "Report" && <ReportTab webinar={w} />}
     </>
   );
 }
@@ -515,6 +510,133 @@ function StageTab({
   );
 }
 
+function ReportTab({ webinar: w }: { webinar: Webinar }) {
+  const bypass = isDevAuthBypassActive();
+  const [rep, setRep] = useState<SessionReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (bypass) {
+      setRep({
+        registered: 4,
+        approved: 4,
+        attended: 3,
+        avgWatchMin: 18,
+        questions: 2,
+        pollVoters: 2,
+        questionRows: [],
+        attendees: [],
+      });
+      return;
+    }
+    void api
+      .sessionReport(w.id)
+      .then(setRep)
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : "Could not load the report."),
+      );
+  }, [w.id, bypass]);
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-[15px] font-semibold">Session report</h2>
+          <p className="mt-1 text-[13px] text-ink-2">
+            Who showed up, how long they stayed, and what they asked.
+          </p>
+        </div>
+        {!bypass && (
+          <ButtonLink
+            href={api.reportCsvUrl(w.id)}
+            size="sm"
+            variant="secondary"
+            prefetch={false}
+          >
+            Export CSV
+          </ButtonLink>
+        )}
+        {!bypass && (
+          <ButtonLink
+            href={api.transcriptUrl(w.id)}
+            size="sm"
+            variant="secondary"
+            prefetch={false}
+          >
+            Transcript
+          </ButtonLink>
+        )}
+      </div>
+      {error && <Alert>{error}</Alert>}
+      {!rep ? (
+        <Spinner className="size-5" />
+      ) : (
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Stat label="Registered" value={formatCount(rep.registered)} note="" />
+            <Stat
+              label="Attended"
+              value={formatCount(rep.attended)}
+              note={`${formatCount(rep.approved)} approved`}
+            />
+            <Stat
+              label="Avg. watch"
+              value={`${rep.avgWatchMin} min`}
+              note={`${formatCount(rep.pollVoters)} poll voters`}
+            />
+          </div>
+          <Card className="p-4">
+            <SectionTitle>Who attended</SectionTitle>
+            {rep.attendees.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-ink-3">
+                Nobody was recorded in the room.
+              </p>
+            ) : (
+              <ul className="mt-3 divide-y divide-line text-[13px]">
+                {rep.attendees.map((a) => (
+                  <li
+                    key={a.identity}
+                    className="flex items-center justify-between gap-3 py-2"
+                  >
+                    <span>
+                      <span className="font-medium">{a.name}</span>
+                      {a.email ? (
+                        <span className="ml-2 text-ink-3">{a.email}</span>
+                      ) : null}
+                    </span>
+                    <span className="text-ink-3">{a.watchMin} min</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+          <Card className="p-4">
+            <SectionTitle>Questions</SectionTitle>
+            {rep.questionRows.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-ink-3">
+                No questions were asked.
+              </p>
+            ) : (
+              <ul className="mt-3 divide-y divide-line text-[13px]">
+                {rep.questionRows.map((q) => (
+                  <li key={q.id} className="py-2">
+                    <p>{q.text}</p>
+                    <p className="mt-0.5 text-[12px] text-ink-3">
+                      {q.anonymous ? "Anonymous" : q.name}
+                      {q.answered ? " · answered" : ""}
+                      {q.upvotes ? ` · ${q.upvotes} upvotes` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ----------------------------------------------------------------- settings
 
 /** The settings the session will run with, read from the webinar record. Editing
@@ -534,6 +656,7 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     ["Practice session", w.options.practiceSession],
     ["Record automatically", w.options.autoRecord],
     ["Live captions", w.options.captions],
+    ["Email reminders", w.options.emailReminders !== false],
     ["Attendee limit", formatCount(w.attendeeLimit)],
     ["Time zone", w.timeZone],
   ];

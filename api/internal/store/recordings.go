@@ -166,6 +166,29 @@ func (s *Store) RecordingFor(ctx context.Context, slug, id string) (RecordingFil
 	return f, nil
 }
 
+func (s *Store) RecordingFileByID(ctx context.Context, id string) (RecordingFile, error) {
+	var f RecordingFile
+	err := s.pool.QueryRow(ctx, `
+		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
+		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
+		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
+		  FROM recordings r
+		  JOIN webinars w ON w.id = r.webinar_id
+		  LEFT JOIN users u ON u.id = w.host_id
+		 WHERE r.id = $1::uuid`, id,
+	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes, &f.DurationMs,
+		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar,
+		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName, &f.UploadedToS3, &f.UploadPercent)
+	if noRows(err) {
+		return RecordingFile{}, ErrNotFound
+	}
+	if err != nil {
+		return RecordingFile{}, err
+	}
+	return f, nil
+}
+
 // ActiveRecordingFile returns the active recording file for a webinar if one exists.
 func (s *Store) ActiveRecordingFile(ctx context.Context, slug string) (RecordingFile, error) {
 	var f RecordingFile
@@ -419,6 +442,52 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 			effectivePass = strings.TrimSpace(webinarPasscode)
 		}
 		rec.PasscodeRequired = effectivePass != ""
+		all = append(all, recordingRow{rec: rec, parentID: parentID})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return foldRecordingSessions(all), nil
+}
+
+// HostReadyRecordings lists this host's playable recordings for simulive scheduling.
+func (s *Store) HostReadyRecordings(ctx context.Context, hostID string) ([]types.Recording, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT r.id::text, w.slug, w.topic, r.status, r.mime, r.size_bytes,
+		       r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
+		       COALESCE(r.egress_id, ''), COALESCE(r.is_public, true),
+		       COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0),
+		       COALESCE(r.parent_id::text, '')
+		  FROM recordings r
+		  JOIN webinars w ON w.id = r.webinar_id
+		 WHERE w.host_id = $1 AND r.status = 'ready' AND r.size_bytes > 0
+		   AND (r.parent_id IS NULL)
+		 ORDER BY r.created_at DESC
+		 LIMIT 100`, hostID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var all []recordingRow
+	for rows.Next() {
+		var (
+			rec             types.Recording
+			createdAt       time.Time
+			stoppedAt       *time.Time
+			webinarPasscode string
+			parentID        string
+		)
+		if err := rows.Scan(&rec.ID, &rec.Webinar, &rec.Topic, &rec.Status, &rec.Mime,
+			&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt,
+			&rec.EgressID, &rec.IsPublic, &rec.Passcode, &webinarPasscode, &rec.UploadedToS3, &rec.UploadPercent,
+			&parentID); err != nil {
+			return nil, err
+		}
+		rec.CreatedAt = createdAt.Format(time.RFC3339)
+		if stoppedAt != nil {
+			rec.StoppedAt = stoppedAt.Format(time.RFC3339)
+		}
 		all = append(all, recordingRow{rec: rec, parentID: parentID})
 	}
 	if err := rows.Err(); err != nil {

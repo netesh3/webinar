@@ -34,7 +34,7 @@ func newJoinKey() string {
 }
 
 const registrationColumns = `
-	w.slug, r.email, r.first_name, r.last_name, r.company, r.job_title,
+	r.id::text, w.slug, r.email, r.first_name, r.last_name, r.company, r.job_title,
 	r.country, r.phone, r.answers, r.state, r.join_key, r.created_at`
 
 // Register creates a registration, or returns the existing one if this email
@@ -140,11 +140,11 @@ func (s *Store) Register(ctx context.Context, slug string, req types.RegisterReq
 			(webinar_id, email, first_name, last_name, company, job_title, country,
 			 phone, answers, state, join_key, user_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,nullif($12,'')::uuid)
-		RETURNING created_at`,
+		RETURNING id::text, created_at`,
 		webinarID, reg.Email, reg.FirstName, reg.LastName, reg.Company,
 		reg.JobTitle, reg.Country, reg.Phone, answersJSON, string(reg.State), reg.JoinKey,
 		userID,
-	).Scan(&createdAt)
+	).Scan(&reg.ID, &createdAt)
 	if isUniqueViolation(err) {
 		// Lost a race on the same email — return the row that won.
 		won, gerr := registrationByEmail(ctx, tx, webinarID, email)
@@ -435,7 +435,7 @@ func scanRegistration(row scanner) (types.Registration, error) {
 		createdAt time.Time
 	)
 	if err := row.Scan(
-		&reg.WebinarID, &reg.Email, &reg.FirstName, &reg.LastName, &reg.Company,
+		&reg.ID, &reg.WebinarID, &reg.Email, &reg.FirstName, &reg.LastName, &reg.Company,
 		&reg.JobTitle, &reg.Country, &reg.Phone, &answers, &reg.State, &reg.JoinKey,
 		&createdAt,
 	); err != nil {

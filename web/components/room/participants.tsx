@@ -298,12 +298,14 @@ function HostRoster() {
           role !== "panelist"
             ? `${p.name} is muted and back in the audience`
             : audioOnly
-              ? `${p.name} can speak now`
-              : `${p.name} is on the stage`,
+              ? `Waiting for ${p.name} to accept`
+              : `Waiting for ${p.name} to join the stage`,
           async () => {
-            await api.setStage(slug, p.identity, role, audioOnly);
-            // Their request has been answered either way, so it comes
-            // out of the queue — on every client, including theirs.
+            const res = await api.setStage(slug, p.identity, role, audioOnly);
+            // An invite is still pending — leave the hand up. Lowering it as
+            // "granted" used to remount CDN attendees onto WebRTC before they
+            // had publish permission (or a consent dialog).
+            if (res.status === "invited") return;
             if (handIdentities.has(p.identity)) {
               await realtime.lowerHand(
                 p.identity,

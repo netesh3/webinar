@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -90,8 +91,8 @@ func (a sfuPool) Get(id string) (RoomManager, error) {
 	return c, nil
 }
 
-func (a sfuPool) Candidates() []string           { return a.pool.Candidates() }
-func (a sfuPool) IDs() []string                  { return a.pool.IDs() }
+func (a sfuPool) Candidates() []string            { return a.pool.Candidates() }
+func (a sfuPool) IDs() []string                   { return a.pool.IDs() }
 func (a sfuPool) KeyProvider() lkauth.KeyProvider { return a.pool }
 
 // NewSFUPool wraps the real pool for NewServer.
@@ -126,6 +127,9 @@ type Server struct {
 	 * nothing tries to reach a mail server from CI.
 	 */
 	mail notify.Transport
+
+	invitesMu sync.Mutex
+	invites   map[string]pendingStage
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {
@@ -152,6 +156,7 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		log:        log,
 		sayLimit:   httpx.NewRateLimiter(sayPerMin, time.Minute),
 		mail:       mail,
+		invites:    map[string]pendingStage{},
 	}
 }
 
@@ -281,6 +286,8 @@ func (s *Server) Routes() http.Handler {
 		// five hundred browsers waiting to be read out of a response.
 		r.Get("/webinars/{slug}/polls", s.handleAudiencePolls)
 		r.Post("/webinars/{slug}/polls/{id}/vote", s.handleVote)
+		r.Post("/webinars/{slug}/stage-invite", s.handleStageInviteRespond)
+		r.Post("/webinars/{slug}/captions", s.handleAppendCaption)
 
 		// Chat history. The same request answers "catch up after a dropped connection" and
 		// "what was said before I arrived" — one is a cursor of zero — and the backlog is
@@ -376,6 +383,7 @@ func (s *Server) Routes() http.Handler {
 
 				r.Get("/webinars", s.handleHostWebinars)
 				r.Post("/webinars", s.handleCreateWebinar)
+				r.Get("/recordings", s.handleHostRecordingLibrary)
 
 				/* The notification bell. Outside the per-webinar subtree on purpose:
 				 * an alert's whole job is to tell a host about a webinar they are NOT
@@ -430,6 +438,10 @@ func (s *Server) Routes() http.Handler {
 
 					r.Get("/registrants", s.handleHostRegistrants)
 					r.Get("/registrants.csv", s.handleExportRegistrants)
+					r.Get("/report", s.handleSessionReport)
+					r.Get("/report.csv", s.handleExportReport)
+					r.Get("/transcript.txt", s.handleTranscript)
+					r.Patch("/questions/{id}", s.handlePatchQuestion)
 					r.Post("/registrants/approve-all", s.handleApproveAll)
 
 					/* The approval queue, and a selective batch decision on it.
@@ -485,21 +497,22 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		tracks = []string{}
 	}
 	httpx.JSON(w, http.StatusOK, types.AppConfig{
-		AppName:               s.cfg.AppName,
-		WebBaseURL:            s.cfg.WebBaseURL,
-		SupportEmail:          s.cfg.SupportEmail,
-		MaxAttendees:          s.cfg.MaxAttendees,
-		SignupOpen:            s.cfg.SignupOpen,
-		DefaultMaxMeetingMin:  s.cfg.DefaultMaxMeetingMin,
-		Tracks:                tracks,
-		GoogleClientID:        s.cfg.GoogleClientID,
-		GoogleAPIKey:          s.cfg.GoogleAPIKey,
-		SupabaseURL:           s.cfg.SupabaseURL,
-		SupabaseAnonKey:       s.cfg.SupabaseAnonKey,
-		GoogleAuth:            s.cfg.GoogleAuthEnabled(),
+		AppName:                 s.cfg.AppName,
+		WebBaseURL:              s.cfg.WebBaseURL,
+		SupportEmail:            s.cfg.SupportEmail,
+		MaxAttendees:            s.cfg.MaxAttendees,
+		SignupOpen:              s.cfg.SignupOpen,
+		DefaultMaxMeetingMin:    s.cfg.DefaultMaxMeetingMin,
+		Tracks:                  tracks,
+		GoogleClientID:          s.cfg.GoogleClientID,
+		GoogleAPIKey:            s.cfg.GoogleAPIKey,
+		SupabaseURL:             s.cfg.SupabaseURL,
+		SupabaseAnonKey:         s.cfg.SupabaseAnonKey,
+		GoogleAuth:              s.cfg.GoogleAuthEnabled(),
 		CloudRecordingEnabled:   s.recordings != nil,
 		RecordingMode:           s.cfg.RecordingsMode,
 		RecordingsRetentionDays: s.cfg.RecordingsRetentionDays,
-		TelemetryEnabled:      s.cfg.TelemetryEnabled,
+		EmailConfigured:         s.mail.Configured(),
+		TelemetryEnabled:        s.cfg.TelemetryEnabled,
 	})
 }

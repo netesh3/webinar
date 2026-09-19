@@ -34,6 +34,9 @@ type Message struct {
 	To      string
 	Subject string
 	Body    string
+	// ICS is an optional iCalendar payload. Empty means a plain-text message.
+	ICS     string
+	ICSName string
 }
 
 // Transport delivers a message, or explains why it did not.
@@ -100,9 +103,30 @@ func (s SMTP) Send(ctx context.Context, m Message) error {
 	fmt.Fprintf(&b, "Subject: %s\r\n", header(m.Subject))
 	fmt.Fprintf(&b, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	b.WriteString("MIME-Version: 1.0\r\n")
-	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-	b.WriteString("\r\n")
-	b.WriteString(strings.ReplaceAll(m.Body, "\n", "\r\n"))
+	if ics := strings.TrimSpace(m.ICS); ics != "" {
+		name := m.ICSName
+		if name == "" {
+			name = "invite.ics"
+		}
+		boundary := "wl" + fmt.Sprintf("%d", time.Now().UnixNano())
+		fmt.Fprintf(&b, "Content-Type: multipart/mixed; boundary=%s\r\n\r\n", boundary)
+		fmt.Fprintf(&b, "--%s\r\n", boundary)
+		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+		b.WriteString(strings.ReplaceAll(m.Body, "\n", "\r\n"))
+		b.WriteString("\r\n")
+		fmt.Fprintf(&b, "--%s\r\n", boundary)
+		fmt.Fprintf(&b, "Content-Type: text/calendar; charset=utf-8; method=PUBLISH; name=%q\r\n", header(name))
+		fmt.Fprintf(&b, "Content-Disposition: attachment; filename=%q\r\n\r\n", header(name))
+		b.WriteString(strings.ReplaceAll(ics, "\n", "\r\n"))
+		if !strings.HasSuffix(ics, "\r\n") {
+			b.WriteString("\r\n")
+		}
+		fmt.Fprintf(&b, "--%s--\r\n", boundary)
+	} else {
+		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+		b.WriteString("\r\n")
+		b.WriteString(strings.ReplaceAll(m.Body, "\n", "\r\n"))
+	}
 
 	var auth smtp.Auth
 	if s.Username != "" {

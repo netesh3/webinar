@@ -215,6 +215,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	 */
 	if reg.State == types.RegPending {
 		s.alertHostOfPending(r.Context(), wb, reg)
+	} else if strings.TrimSpace(reg.Email) != "" {
+		s.notifyNewRegistration(r.Context(), wb, reg, true)
 	}
 
 	httpx.JSON(w, http.StatusCreated, reg)

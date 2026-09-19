@@ -41,6 +41,9 @@ import { ControlBar } from "./control-bar";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, type RoomUI } from "./context";
 import { PollPopup } from "./poll-popup";
+import { CtaPopup } from "./cta-popup";
+import { CaptionOverlay } from "./caption-overlay";
+import { StageInviteDialog } from "./stage-invite-dialog";
 import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
@@ -123,10 +126,7 @@ export function CdnAttendeeRoom({
     useMemo(
       () => ({
         onHandLowered: (reason: "granted" | "dismissed") => {
-          if (reason === "granted") {
-            notify("The host invited you to speak! Joining the stage...", "ok");
-            onPromotedRef.current();
-          } else {
+          if (reason !== "granted") {
             notify("The host dismissed your request to speak for now.", "info");
           }
         },
@@ -396,6 +396,9 @@ export function CdnAttendeeRoom({
                   </div>
 
                   <PollPopup />
+                  <CtaPopup />
+                  <CaptionOverlay />
+                  <StageInviteDialog onAccepted={() => onPromotedRef.current()} />
                   <RoomHeader />
                   <SidePanel />
                 </div>
@@ -432,13 +435,36 @@ function HlsPlayer({
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
     const tryPlay = () => {
-      video.play().catch(() => {
-        // Autoplay policy prevented audio, mute and play with unmute button
-        video.muted = true;
-        setIsMuted(true);
-        video.play().catch(() => {});
-      });
+      video.playsInline = true;
+      video.setAttribute("playsinline", "");
+      video.setAttribute("webkit-playsinline", "true");
+      video.muted = true;
+      setIsMuted(true);
+      video.play().catch(() => {});
     };
+
+    const isPlaylist = /\.m3u8(\?|$)/i.test(streamUrl);
+    if (!isPlaylist) {
+      video.playsInline = true;
+      video.setAttribute("playsinline", "");
+      video.muted = true;
+      setIsMuted(true);
+      video.src = streamUrl;
+      const onLoaded = () => {
+        setLoading(false);
+        tryPlay();
+      };
+      video.addEventListener("loadedmetadata", onLoaded);
+      video.addEventListener("error", () => {
+        setError("Could not play this recording.");
+        setLoading(false);
+      });
+      return () => {
+        video.removeEventListener("loadedmetadata", onLoaded);
+        video.removeAttribute("src");
+        video.load();
+      };
+    }
 
     if (Hls.isSupported()) {
       hls = new Hls({
@@ -546,6 +572,26 @@ function HlsPlayer({
     };
   }, [streamUrl]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const resume = () => {
+      if (document.visibilityState === "visible" && video.paused) {
+        video.play().catch(() => {
+          video.muted = true;
+          setIsMuted(true);
+          video.play().catch(() => {});
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("pageshow", resume);
+    };
+  }, [streamUrl]);
+
   const unmute = () => {
     if (videoRef.current) {
       videoRef.current.muted = false;
@@ -559,8 +605,10 @@ function HlsPlayer({
       <video
         ref={videoRef}
         playsInline
-        controls
+        muted
         autoPlay
+        controls
+        preload="auto"
         onPlay={() => {
           setLoading(false);
           setError(null);
