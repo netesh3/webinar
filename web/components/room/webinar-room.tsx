@@ -122,6 +122,7 @@ export function WebinarRoom({
 
   const handleDemoted = useCallback(async () => {
     setTransitioning(true);
+    setPromotedToStage(false);
     try {
       const fresh = await api.join(slug, joinKey);
       setCurrentJoin(fresh);
@@ -129,12 +130,13 @@ export function WebinarRoom({
       // Fallback
     } finally {
       setTransitioning(false);
-      setPromotedToStage(false);
     }
   }, [slug, joinKey]);
 
   // If this webinar is running in CDN broadcast mode and the user is an unpromoted attendee:
-  if (currentJoin.cdnBroadcast && !currentJoin.canPublish && !promotedToStage) {
+  const isScheduledPresenter =
+    initialJoin.role === "host" || initialJoin.role === "panelist";
+  if (currentJoin.cdnBroadcast && !isScheduledPresenter && !promotedToStage) {
     return (
       <CdnAttendeeRoom
         join={currentJoin}
@@ -153,7 +155,7 @@ export function WebinarRoom({
       <main className="grid min-h-dvh place-items-center bg-stage">
         <div className="flex flex-col items-center gap-3">
           <Spinner className="size-8 text-brand" />
-          <p className="text-[13px] text-white">Joining the stage...</p>
+          <p className="text-[13px] text-white">Updating stage status...</p>
         </div>
       </main>
     );
