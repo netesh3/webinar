@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -223,6 +224,25 @@ func (o *S3) abortSession(ctx context.Context, key string, sess *s3Session) erro
 		UploadId: aws.String(uploadID),
 	})
 	return err
+}
+
+// PresignedURL generates a direct S3 download URL valid for the given duration,
+// allowing clients to stream directly from Backblaze B2/S3 without API proxying.
+func (o *S3) PresignedURL(ctx context.Context, key string, expires time.Duration) (string, error) {
+	if o.client == nil {
+		return "", errors.New("s3 client is not initialized")
+	}
+	ps := s3.NewPresignClient(o.client)
+	req, err := ps.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(o.bucket),
+		Key:    aws.String(key),
+	}, func(opts *s3.PresignOptions) {
+		opts.Expires = expires
+	})
+	if err != nil {
+		return "", fmt.Errorf("presign %s: %w", key, err)
+	}
+	return req.URL, nil
 }
 
 // Finalize uploads the complete staged file in one call and then removes it.

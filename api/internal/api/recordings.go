@@ -403,6 +403,14 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// For S3/Backblaze storage, redirect directly to signed S3 URL for fast streaming and seeking
+	if ps, ok := s.recordings.(media.Presigner); ok {
+		if signedURL, err := ps.PresignedURL(r.Context(), rec.StorageKey, 6*time.Hour); err == nil && signedURL != "" {
+			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
+			return
+		}
+	}
+
 	file, size, err := s.recordings.Open(r.Context(), rec.StorageKey)
 	if errors.Is(err, media.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "no_file",
@@ -633,6 +641,14 @@ func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Requ
 		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
 		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
 		return
+	}
+
+	// For S3/Backblaze storage, redirect directly to signed S3 URL for fast streaming and seeking
+	if ps, ok := s.recordings.(media.Presigner); ok {
+		if signedURL, err := ps.PresignedURL(r.Context(), rec.StorageKey, 6*time.Hour); err == nil && signedURL != "" {
+			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
+			return
+		}
 	}
 
 	file, size, err := s.recordings.Open(r.Context(), rec.StorageKey)
