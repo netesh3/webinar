@@ -1,0 +1,62 @@
+# One-shot: print LiveKit Egress logs from the Hetzner box using the existing
+# deploy SSH secrets. Does not restart anything.
+#
+# Actions → "Hetzner egress logs" → Run workflow.
+
+name: Hetzner egress logs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          HETZNER_SSH_HOST: ${{ secrets.HETZNER_SSH_HOST }}
+          HETZNER_SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "${HETZNER_SSH_HOST}" ] || [ -z "${HETZNER_SSH_PRIVATE_KEY}" ]; then
+            echo "HETZNER_SSH_HOST and HETZNER_SSH_PRIVATE_KEY must be set." >&2
+            exit 1
+          fi
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$HETZNER_SSH_PRIVATE_KEY" > "$HOME/.ssh/hetzner_deploy"
+          chmod 600 "$HOME/.ssh/hetzner_deploy"
+          host_only="${HETZNER_SSH_HOST#*@}"
+          user_part="${HETZNER_SSH_HOST%%@*}"
+          if [ "$user_part" = "$HETZNER_SSH_HOST" ]; then
+            user_part=root
+          fi
+          ssh-keyscan -H "$host_only" >> "$HOME/.ssh/known_hosts" 2>/dev/null
+          {
+            echo "Host livekit-hetzner"
+            echo "  HostName ${host_only}"
+            echo "  User ${user_part}"
+            echo "  IdentityFile ${HOME}/.ssh/hetzner_deploy"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking yes"
+          } > "$HOME/.ssh/config"
+          chmod 600 "$HOME/.ssh/config"
+
+      - name: Print egress logs
+        run: |
+          ssh livekit-hetzner 'set -e
+            echo "===== docker ps ====="
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
+            echo
+            echo "===== egress logs (last 400 lines) ====="
+            name="$(docker ps -a --format "{{.Names}}" | grep -E "egress" | head -1)"
+            if [ -n "$name" ]; then
+              echo "container: $name"
+              docker logs --tail 400 "$name"
+            else
+              echo "no egress container found"
+              docker ps -a
+            fi
+          '
