@@ -479,11 +479,26 @@ function HlsPlayer({
 
     if (Hls.isSupported()) {
       hls = new Hls({
-        liveSyncDurationCount: ll ? 2 : 3,
-        liveMaxLatencyDurationCount: ll ? 5 : 8,
+        /* Do not set liveSyncDurationCount in low-latency mode.
+         *
+         * hls.js only honours the playlist's PART-HOLD-BACK (0.585s here) if
+         * the caller left liveSyncDurationCount and liveSyncDuration unset —
+         * providing either makes it fall back to liveSyncDurationCount *
+         * targetduration instead. With 2-second segments that pinned the
+         * target latency at ~4s and quietly threw away the entire benefit of
+         * 200ms parts. Omitting these is what makes LL-HLS actually low
+         * latency; the counts below apply only to the non-LL path.
+         *
+         * liveDurationInfinity keeps the media duration at Infinity so the
+         * element behaves like a live stream rather than a growing file. */
+        ...(ll
+          ? { liveDurationInfinity: true }
+          : { liveSyncDurationCount: 3, liveMaxLatencyDurationCount: 8 }),
+        // Let the player nudge up to 1.5x to close a gap instead of waiting
+        // for it to drain on its own.
         maxLiveSyncPlaybackRate: ll ? 1.5 : 1,
         enableWorker: true,
-        // MediaMTX serves LL-HLS (200ms parts). B2 fallback is 2s segments.
+        // MediaMTX serves LL-HLS with 200ms parts and CAN-BLOCK-RELOAD.
         lowLatencyMode: ll,
         manifestLoadingMaxRetry: 120,
         manifestLoadingRetryDelay: 1000,
