@@ -443,6 +443,12 @@ function HlsPlayer({
         manifestLoadingMaxRetryTimeout: 120000,
         levelLoadingMaxRetry: 15,
         levelLoadingRetryDelay: 1500,
+        xhrSetup: (xhr, url) => {
+          if (url.includes(".m3u8")) {
+            xhr.setRequestHeader("Cache-Control", "no-cache");
+            xhr.setRequestHeader("Pragma", "no-cache");
+          }
+        },
       });
 
       hls.loadSource(streamUrl);
@@ -452,6 +458,11 @@ function HlsPlayer({
         setLoading(false);
         setError(null);
         tryPlay();
+      });
+
+      hls.on(Hls.Events.FRAG_BUFFERED, () => {
+        setLoading(false);
+        setError(null);
       });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
@@ -532,6 +543,8 @@ function HlsPlayer({
         controls
         autoPlay
         onPlay={() => setLoading(false)}
+        onPlaying={() => setLoading(false)}
+        onLoadedData={() => setLoading(false)}
         onVolumeChange={(e) => {
           setIsMuted((e.target as HTMLVideoElement).muted);
         }}

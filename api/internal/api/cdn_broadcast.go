@@ -129,18 +129,20 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 	// Set appropriate Content-Type and Cache-Control
 	if strings.HasSuffix(file, ".m3u8") {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
 	} else if strings.HasSuffix(file, ".ts") {
 		w.Header().Set("Content-Type", "video/mp2t")
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	}
 
-	// If CDN base URL is configured, redirect directly to CDN edge
-	if s.cfg.RecordingsCDNBaseURL != "" {
-		s3Key := fmt.Sprintf("broadcast/%s/%s", slug, file)
-		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), s3Key)
-		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
-		return
+		// If CDN base URL is configured, redirect immutable .ts video chunks to CDN edge
+		if s.cfg.RecordingsCDNBaseURL != "" {
+			s3Key := fmt.Sprintf("broadcast/%s/%s", slug, file)
+			cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), s3Key)
+			http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
+			return
+		}
 	}
 
 	if s.recordings == nil {
