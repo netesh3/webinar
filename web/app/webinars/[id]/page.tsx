@@ -11,13 +11,7 @@ import {
   kindLabel,
 } from "@/components/ui";
 import { API_BASE, ApiError, api } from "@/lib/api";
-import {
-  formatCount,
-  formatDay,
-  formatDuration,
-  formatTimeRange,
-  tzLabel,
-} from "@/lib/format";
+import { formatDay, formatDuration, formatTimeRange, tzLabel } from "@/lib/format";
 import type { Person } from "@/lib/api-types";
 
 export default async function WebinarDetailPage({
@@ -96,11 +90,10 @@ export default async function WebinarDetailPage({
                   {/* No Webinar ID. It is the host's own reference for the session — it
                       appears in the host dashboard and in the invitation the host composes.
                       A participant reached this page from a link and needs the date, the
-                      duration and the button; an internal identifier is host furniture. */}
-                  <Field label="Registered">
-                    {formatCount(w.registrantCount)} of{" "}
-                    {formatCount(w.attendeeLimit)} seats
-                  </Field>
+                      duration and the button; an internal identifier is host furniture.
+                      No registered-seat count either — how many other people have signed
+                      up is the host's business, not a number to show someone deciding
+                      whether to register themselves. */}
                 </dl>
               </div>
             </Card>

@@ -526,10 +526,8 @@ function RegisterFields({
   const [form, setForm] = useState(() => ({
     fullName: account?.name ?? "",
     email: account?.email ?? "",
-    company: account?.org ?? "",
-    jobTitle: account?.title ?? "",
-    // India rather than the viewer's own locale: both fields stay fully
-    // editable, this is only where they start.
+    // India rather than the viewer's own locale: still fully editable, this
+    // is only where it starts.
     country: "India",
   }));
   /* The number is two fields in the form and one value on the wire.
@@ -662,33 +660,6 @@ function RegisterFields({
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
           {fieldError("email")}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="label" htmlFor="company">
-              Company <span className="text-ink-3">(optional)</span>
-            </label>
-            <input
-              id="company"
-              className="field"
-              autoComplete="organization"
-              value={form.company}
-              onChange={(e) => setForm({ ...form, company: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="jobTitle">
-              Job title <span className="text-ink-3">(optional)</span>
-            </label>
-            <input
-              id="jobTitle"
-              className="field"
-              autoComplete="organization-title"
-              value={form.jobTitle}
-              onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
-            />
-          </div>
         </div>
 
         <div>
