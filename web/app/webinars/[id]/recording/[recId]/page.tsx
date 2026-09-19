@@ -7,11 +7,17 @@ import { Badge, Button, Card } from "@/components/ui";
 import { CopyField, Spinner } from "@/components/controls";
 import { LockIcon } from "@/components/icons";
 import { VideoPlayer } from "@/components/video-player";
+import { recordingSources, playableRecordingParts } from "@/lib/recording-parts";
 import { useToast } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { PublicRecording } from "@/lib/api-types";
 import { formatBytes, formatClock } from "@/lib/format";
 import { useHydrated } from "@/lib/clock";
+import {
+  daysUntilExpiry,
+  recordingRetentionDays,
+  retentionNotice,
+} from "@/lib/recording-retention";
 
 export default function RecordingReplayPage({
   params,
@@ -30,8 +36,11 @@ export default function RecordingReplayPage({
   const [unlocking, setUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
+  const playable = recording ? playableRecordingParts(recording) : [];
   const isUploading =
-    recording !== null && recording.status === "processing";
+    recording !== null &&
+    playable.length === 0 &&
+    recording.status !== "failed";
 
   useEffect(() => {
     let cancelled = false;
@@ -96,9 +105,16 @@ export default function RecordingReplayPage({
     }
   }
 
-  const streamUrl = recording?.unlocked && recording.status === "ready"
-    ? api.publicRecordingStreamURL(slug, recId, passcode || undefined)
-    : "";
+  const streamUrl =
+    recording?.unlocked && playable.length > 0
+      ? api.publicRecordingStreamURL(slug, recording.id, passcode || undefined)
+      : "";
+  const playerSources =
+    recording?.unlocked && playable.length > 0
+      ? recordingSources(recording, (id) =>
+          api.publicRecordingStreamURL(slug, id, passcode || undefined),
+        )
+      : [];
 
   const pageUrl = hydrated ? window.location.href : "";
 
@@ -223,8 +239,8 @@ export default function RecordingReplayPage({
           <div className="space-y-6">
             <Card className="overflow-hidden shadow-lg">
               <VideoPlayer
-                key={recId}
-                src={streamUrl}
+                key={recording.id}
+                sources={playerSources}
                 durationMs={recording.durationMs}
                 onError={() => {
                   setError("The video file is unavailable or could not be loaded from storage.");
@@ -256,22 +272,39 @@ export default function RecordingReplayPage({
                       {recording.durationMs > 0
                         ? `${formatClock(recording.durationMs)} · `
                         : ""}
-                      {formatBytes(recording.sizeBytes)} ·{" "}
+                      {recording.sizeBytes > 0
+                        ? `${formatBytes(recording.sizeBytes)} · `
+                        : ""}
                       {hydrated
                         ? new Date(recording.createdAt).toLocaleDateString(undefined, {
                             dateStyle: "medium",
                           })
                         : recording.createdAt}
                     </p>
+                    {recordingRetentionDays(recording) > 0 && (
+                      <p className="mt-2 text-[12.5px] text-ink-2">
+                        {(() => {
+                          const until = daysUntilExpiry(recording.expiresAt);
+                          const days = recordingRetentionDays(recording);
+                          if (until !== null && until <= 0) {
+                            return "This cloud copy is about to be deleted. Download it to keep it on your computer.";
+                          }
+                          if (until !== null && until <= 7) {
+                            return `This cloud copy is deleted in ${until} day${until === 1 ? "" : "s"}. Download it to keep it on your computer.`;
+                          }
+                          return retentionNotice(days);
+                        })()}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center gap-2.5">
                     <a
-                      href={streamUrl}
+                      href={`${streamUrl}${streamUrl.includes("?") ? "&" : "?"}download=1`}
                       download
                       className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-2 bg-surface px-3.5 text-[13px] font-medium text-ink hover:bg-surface-2"
                     >
-                      Download
+                      Download to this computer
                     </a>
                     <Link
                       href={`/webinars/${slug}`}

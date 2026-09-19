@@ -40,6 +40,17 @@ type Store interface {
 	Describe() string
 }
 
+// Stater is an optional capability: the size of an object without reading it.
+//
+// Separate from Open because Open on S3 starts a GET, and the one caller that
+// needs this — reconciling a recording whose size the database missed — only
+// wants the number. It also answers a question Open cannot: for a server-side
+// Egress recording the object appears in the bucket only once LiveKit has
+// finished uploading, so "does it have a size yet" is also "is it done yet".
+type Stater interface {
+	Stat(ctx context.Context, key string) (int64, error)
+}
+
 // Presigner is an optional capability for backends (like S3) that can generate
 // direct time-limited download URLs for clients, bypassing the API as a proxy.
 type Presigner interface {
@@ -152,6 +163,21 @@ func (d *Disk) Open(_ context.Context, key string) (io.ReadSeekCloser, int64, er
 		return nil, 0, err
 	}
 	return f, info.Size(), nil
+}
+
+func (d *Disk) Stat(_ context.Context, key string) (int64, error) {
+	full, err := d.path(key)
+	if err != nil {
+		return 0, err
+	}
+	info, err := os.Stat(full)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
+	return info.Size(), nil
 }
 
 func (d *Disk) Delete(_ context.Context, key string) error {

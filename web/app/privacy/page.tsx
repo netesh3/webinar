@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     "How Webinar Liv collects, uses, and shares personal data for webinar hosting and attendance.",
 };
 
-const UPDATED = "September 11, 2026";
+const UPDATED = "September 19, 2026";
 
 export default function PrivacyPage() {
   return (
@@ -146,11 +146,15 @@ export default function PrivacyPage() {
 
       <h2>9. Retention</h2>
       <p>
-        We retain account, webinar, registration, engagement, and recording data
-        for as long as needed to provide the Service and for legitimate
-        operational, security, and legal purposes. Hosts control webinars and
-        recordings they create; deleting a webinar or recording removes
-        associated content subject to backup and log retention windows.
+        We retain account, webinar, registration, and engagement data for as
+        long as needed to provide the Service and for legitimate operational,
+        security, and legal purposes. Cloud recordings are stored for{" "}
+        <strong>30 days</strong> from the time they are created, then deleted
+        automatically from our storage. Download a recording to your own
+        computer if you need it beyond that window. Hosts can also delete a
+        webinar or recording sooner; that removes associated content subject to
+        backup and log retention windows. Recordings saved only on a host&apos;s
+        device are never stored by us.
       </p>
 
       <h2>10. Security</h2>

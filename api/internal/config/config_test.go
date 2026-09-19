@@ -188,6 +188,33 @@ func productionEnv(extra map[string]string) map[string]string {
 	return env
 }
 
+func TestRecordingsRetentionDaysDefaultsToThirty(t *testing.T) {
+	c := load(t, map[string]string{})
+	if c.RecordingsRetentionDays != 30 {
+		t.Errorf("RecordingsRetentionDays = %d, want 30", c.RecordingsRetentionDays)
+	}
+	c = load(t, map[string]string{"RECORDINGS_RETENTION_DAYS": "0"})
+	if c.RecordingsRetentionDays != 0 {
+		t.Errorf("RECORDINGS_RETENTION_DAYS=0 = %d, want 0", c.RecordingsRetentionDays)
+	}
+}
+
+// The empty-room sweep ends live webinars, so both its default and its off
+// switch are worth pinning: an accidental 0 leaves abandoned rooms running, and
+// an accidental small number could close a room during a reconnect.
+func TestEmptyRoomCloseMinDefaultsToTenAndCanBeDisabled(t *testing.T) {
+	if c := load(t, map[string]string{}); c.EmptyRoomCloseMin != 10 {
+		t.Errorf("EmptyRoomCloseMin = %d, want 10", c.EmptyRoomCloseMin)
+	}
+	if c := load(t, map[string]string{"EMPTY_ROOM_CLOSE_MIN": "0"}); c.EmptyRoomCloseMin != 0 {
+		t.Error("EMPTY_ROOM_CLOSE_MIN=0 did not turn the sweep off")
+	}
+	setEnv(t, map[string]string{"EMPTY_ROOM_CLOSE_MIN": "-1"})
+	if _, err := Load(); err == nil {
+		t.Error("a negative EMPTY_ROOM_CLOSE_MIN was accepted")
+	}
+}
+
 func load(t *testing.T, env map[string]string) Config {
 	t.Helper()
 	setEnv(t, env)

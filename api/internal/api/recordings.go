@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
@@ -136,6 +137,7 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 	}
 	rec.Topic = wb.Topic
 	rec.Ext = store.ExtForMime(mime)
+	s.stampRecording(&rec)
 
 	sfu, sfuErr := s.sfuFor(r.Context(), wb)
 
@@ -366,6 +368,16 @@ func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "list recordings", err)
 		return
 	}
+	s.stampRecordings(list)
+	// Cloud Run scales to zero, so the background sweepers may not have run for
+	// hours. Opening the tab that shows recordings is as good a trigger as a
+	// ticker, and it is the moment a stuck row is about to be noticed anyway.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		s.sweepExpiredRecordings(ctx)
+		s.reconcileEgressRecordings(ctx)
+	}()
 	httpx.JSON(w, http.StatusOK, list)
 }
 
@@ -392,6 +404,17 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		s.fail(w, r, "download recording: lookup", err)
 		return
+	}
+
+	if r.URL.Query().Get("download") == "1" {
+		if parts, err := s.store.SessionParts(r.Context(), slug, id); err == nil {
+			sessionID := parts[0].ID
+			ready := readyRecordingFiles(parts)
+			if id == sessionID && len(ready) > 1 {
+				s.serveRecordingZip(w, r, ready, parts[0].Topic, parts[0].CreatedAt)
+				return
+			}
+		}
 	}
 
 	if rec.Status != types.RecordingReady {
@@ -517,7 +540,10 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 		} else {
 			s.log.Warn("livekit webhook: recording failed or aborted without output",
 				"id", rec.ID, "status", info.Status.String(), "error", info.GetError(), "details", info.GetDetails())
-			if _, err := s.store.FinishRecording(r.Context(), rec.ID, 0); err != nil {
+			// WithStats rather than FinishRecording: this is the call that knows
+			// there is no file, and it is the only one allowed to say so about an
+			// Egress row — FinishRecording leaves those processing by design.
+			if _, err := s.store.FinishRecordingWithStats(r.Context(), rec.ID, 0, durationMs); err != nil {
 				s.log.Error("livekit webhook: mark failed error", "id", rec.ID, "error", err)
 			}
 		}
@@ -559,6 +585,7 @@ func (s *Server) handleUpdateRecordingShare(w http.ResponseWriter, r *http.Reque
 	}
 
 	s.log.Info("recording share settings updated", "slug", slug, "recording", id, "isPublic", rec.IsPublic, "hasPasscode", rec.Passcode != "")
+	s.stampRecording(&rec)
 	httpx.JSON(w, http.StatusOK, rec)
 }
 
@@ -568,7 +595,7 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	rec, err := s.store.RecordingFor(r.Context(), slug, id)
-	if errors.Is(err, store.ErrNotFound) || !rec.IsPublic || rec.Status == types.RecordingFailed {
+	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "This recording is not publicly available.")
 		return
 	}
@@ -577,9 +604,25 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	effectivePasscode := strings.TrimSpace(rec.Passcode)
+	parts, partsErr := s.store.SessionParts(r.Context(), slug, id)
+	session := rec
+	if partsErr == nil && len(parts) > 0 {
+		session = parts[0]
+		for _, p := range parts {
+			if p.ParentID == "" {
+				session = p
+				break
+			}
+		}
+	}
+	if !session.IsPublic || sessionStatusFromFiles(parts, rec) == types.RecordingFailed {
+		httpx.Error(w, http.StatusNotFound, "not_found", "This recording is not publicly available.")
+		return
+	}
+
+	effectivePasscode := strings.TrimSpace(session.Passcode)
 	if effectivePasscode == "" {
-		effectivePasscode = strings.TrimSpace(rec.WebinarPasscode)
+		effectivePasscode = strings.TrimSpace(session.WebinarPasscode)
 	}
 
 	providedPasscode := strings.TrimSpace(r.URL.Query().Get("passcode"))
@@ -589,24 +632,44 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 
 	unlocked := true
 	if effectivePasscode != "" {
-		unlocked = (providedPasscode == effectivePasscode)
+		unlocked = providedPasscode == effectivePasscode
+	}
+
+	status := sessionStatusFromFiles(parts, rec)
+	var size, duration int64
+	var pubParts []types.RecordingPart
+	src := []store.RecordingFile{rec}
+	if len(parts) > 0 {
+		src = parts
+	}
+	for _, p := range src {
+		pubParts = append(pubParts, types.RecordingPart{
+			ID: p.ID, Status: p.Status, SizeBytes: p.SizeBytes, DurationMs: p.DurationMs,
+			CreatedAt: p.CreatedAt.Format(time.RFC3339),
+		})
+		if p.Status != types.RecordingFailed {
+			size += p.SizeBytes
+			duration += p.DurationMs
+		}
 	}
 
 	res := types.PublicRecording{
-		ID:               rec.ID,
-		Webinar:          rec.Webinar,
-		Topic:            rec.Topic,
-		Status:           rec.Status,
-		HostName:         rec.HostName,
-		DurationMs:       rec.DurationMs,
-		SizeBytes:        rec.SizeBytes,
-		CreatedAt:        rec.CreatedAt.Format(time.RFC3339),
-		Ext:              store.ExtForMime(rec.Mime),
+		ID:               session.ID,
+		Webinar:          session.Webinar,
+		Topic:            session.Topic,
+		Status:           status,
+		HostName:         session.HostName,
+		DurationMs:       duration,
+		SizeBytes:        size,
+		CreatedAt:        session.CreatedAt.Format(time.RFC3339),
+		Ext:              store.ExtForMime(session.Mime),
 		PasscodeRequired: effectivePasscode != "",
 		Unlocked:         unlocked,
-		UploadedToS3:     rec.UploadedToS3,
-		UploadPercent:    rec.UploadPercent,
+		UploadedToS3:     session.UploadedToS3,
+		UploadPercent:    session.UploadPercent,
+		Parts:            pubParts,
 	}
+	s.stampPublicRecording(&res)
 
 	httpx.JSON(w, http.StatusOK, res)
 }
@@ -650,6 +713,17 @@ func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Requ
 		if providedPasscode != effectivePasscode {
 			httpx.Error(w, http.StatusUnauthorized, "passcode_required", "Passcode is incorrect or required.")
 			return
+		}
+	}
+
+	if r.URL.Query().Get("download") == "1" {
+		if parts, err := s.store.SessionParts(r.Context(), slug, id); err == nil {
+			sessionID := parts[0].ID
+			ready := readyRecordingFiles(parts)
+			if id == sessionID && len(ready) > 1 {
+				s.serveRecordingZip(w, r, ready, parts[0].Topic, parts[0].CreatedAt)
+				return
+			}
 		}
 	}
 
@@ -712,7 +786,7 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key, err := s.store.DeleteRecording(r.Context(), slug, id)
+	keys, err := s.store.DeleteRecording(r.Context(), slug, id)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
 		return
@@ -722,11 +796,11 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.recordings != nil {
-		if err := s.recordings.Delete(r.Context(), key); err != nil {
-			// The row is gone, so nothing points at these bytes any more. Worth a
-			// log line for whoever watches the disk, not worth an error response.
-			s.log.Warn("delete recording: file left behind",
-				"recording", id, "key", key, "error", err)
+		for _, key := range keys {
+			if err := s.recordings.Delete(r.Context(), key); err != nil {
+				s.log.Warn("delete recording: file left behind",
+					"recording", id, "key", key, "error", err)
+			}
 		}
 	}
 
@@ -735,6 +809,85 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 }
 
 // ------------------------------------------------------------------- helpers
+
+func readyRecordingFiles(parts []store.RecordingFile) []store.RecordingFile {
+	out := make([]store.RecordingFile, 0, len(parts))
+	for _, p := range parts {
+		if p.Status == types.RecordingReady && p.SizeBytes > 0 {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func sessionStatusFromFiles(parts []store.RecordingFile, fallback store.RecordingFile) types.RecordingStatus {
+	src := parts
+	if len(src) == 0 {
+		src = []store.RecordingFile{fallback}
+	}
+	hasRecording, hasProcessing, hasReady := false, false, false
+	for _, p := range src {
+		switch p.Status {
+		case types.RecordingActive:
+			hasRecording = true
+		case types.RecordingProcessing:
+			hasProcessing = true
+		case types.RecordingReady:
+			if p.SizeBytes > 0 {
+				hasReady = true
+			} else {
+				hasProcessing = true
+			}
+		}
+	}
+	switch {
+	case hasRecording:
+		return types.RecordingActive
+	case hasProcessing:
+		return types.RecordingProcessing
+	case hasReady:
+		return types.RecordingReady
+	default:
+		return types.RecordingFailed
+	}
+}
+
+// serveRecordingZip is the download of a session that has more than one take.
+// The player concatenates the takes in the browser; a single MP4 would need a
+// remuxer this image does not ship. A zip of the parts is still one file to
+// save, and each part plays in any video app.
+func (s *Server) serveRecordingZip(w http.ResponseWriter, r *http.Request, parts []store.RecordingFile, topic string, at time.Time) {
+	name := downloadName(topic, at, "zip")
+	if rc := http.NewResponseController(w); rc != nil {
+		_ = rc.SetWriteDeadline(time.Now().Add(downloadWindow))
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+	for i, p := range parts {
+		file, _, err := s.recordings.Open(r.Context(), p.StorageKey)
+		if err != nil {
+			s.log.Warn("recording zip: skip missing part", "key", p.StorageKey, "error", err)
+			continue
+		}
+		hdr := &zip.FileHeader{
+			Name:     fmt.Sprintf("part-%02d.%s", i+1, store.ExtForMime(p.Mime)),
+			Method:   zip.Store,
+			Modified: p.CreatedAt,
+		}
+		fw, err := zw.CreateHeader(hdr)
+		if err != nil {
+			file.Close()
+			return
+		}
+		_, _ = io.Copy(fw, file)
+		file.Close()
+	}
+}
 
 // normalizeMime validates a browser-supplied container string and returns it in
 // the form that will be stored and echoed back.

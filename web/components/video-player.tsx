@@ -15,8 +15,14 @@ import {
   VolumeMuteIcon,
 } from "./icons";
 
-interface VideoPlayerProps {
+interface VideoSource {
   src: string;
+  durationMs?: number;
+}
+
+interface VideoPlayerProps {
+  src?: string;
+  sources?: VideoSource[];
   durationMs?: number;
   className?: string;
   onError?: () => void;
@@ -25,11 +31,18 @@ interface VideoPlayerProps {
 
 export function VideoPlayer({
   src,
+  sources,
   durationMs = 0,
   className = "",
   onError,
   poster,
 }: VideoPlayerProps) {
+  const playlist =
+    sources && sources.length > 0
+      ? sources
+      : src
+        ? [{ src, durationMs }]
+        : [];
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -48,47 +61,140 @@ export function VideoPlayer({
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPos, setHoverPos] = useState(0);
   const [buffering, setBuffering] = useState(false);
+  const [partIndex, setPartIndex] = useState(0);
+  const partIndexRef = useRef(0);
+  const pendingSeekRef = useRef<number | null>(null);
+  const playAfterLoadRef = useRef(false);
+  const [partDurations, setPartDurations] = useState(() =>
+    playlist.map((p) => (p.durationMs && p.durationMs > 0 ? p.durationMs / 1000 : 0)),
+  );
+
+  useEffect(() => {
+    partIndexRef.current = partIndex;
+  }, [partIndex]);
 
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const effectiveDuration =
-    duration > 0 ? duration : durationMs > 0 ? durationMs / 1000 : 0;
+  const offsets: number[] = [];
+  {
+    let acc = 0;
+    for (const d of partDurations) {
+      offsets.push(acc);
+      acc += d;
+    }
+  }
+  const playlistTotal = offsets.length
+    ? offsets[offsets.length - 1] + (partDurations[partDurations.length - 1] || 0)
+    : 0;
 
-  // Handle Chrome WebM Infinity duration workaround
+  const effectiveDuration =
+    playlist.length > 1
+      ? playlistTotal || (durationMs > 0 ? durationMs / 1000 : 0)
+      : duration > 0
+        ? duration
+        : durationMs > 0
+          ? durationMs / 1000
+          : 0;
+
   function handleLoadedMetadata() {
     const video = videoRef.current;
     if (!video) return;
+    const i = partIndexRef.current;
+
+    const apply = (seconds: number) => {
+      if (playlist.length > 1) {
+        setPartDurations((prev) => {
+          const next = prev.slice();
+          if (seconds > 0) next[i] = seconds;
+          return next;
+        });
+      } else if (seconds > 0) {
+        setDuration(seconds);
+      }
+    };
 
     if (Number.isFinite(video.duration) && video.duration > 0) {
-      setDuration(video.duration);
-    } else if (durationMs > 0) {
-      setDuration(durationMs / 1000);
+      apply(video.duration);
+    } else if (playlist[i]?.durationMs) {
+      apply(playlist[i].durationMs! / 1000);
+    } else if (durationMs > 0 && playlist.length === 1) {
+      apply(durationMs / 1000);
     } else {
-      // Chrome Infinity workaround: seek to end then back to 0
       const onSeeked = () => {
         if (Number.isFinite(video.duration) && video.duration > 0) {
-          setDuration(video.duration);
+          apply(video.duration);
         }
-        video.currentTime = 0;
+        video.currentTime = pendingSeekRef.current ?? 0;
+        pendingSeekRef.current = null;
         video.removeEventListener("seeked", onSeeked);
       };
       video.addEventListener("seeked", onSeeked);
       video.currentTime = 1e101;
+      return;
+    }
+
+    if (pendingSeekRef.current != null) {
+      video.currentTime = pendingSeekRef.current;
+      pendingSeekRef.current = null;
+    }
+    if (playAfterLoadRef.current) {
+      playAfterLoadRef.current = false;
+      void video.play().catch(() => {});
     }
   }
 
   function handleTimeUpdate() {
     const video = videoRef.current;
     if (!video || seeking || isDraggingRef.current) return;
-    setCurrentTime(video.currentTime);
+    const origin = playlist.length > 1 ? (offsets[partIndexRef.current] ?? 0) : 0;
+    setCurrentTime(origin + video.currentTime);
 
     if (video.buffered.length > 0) {
       try {
         const end = video.buffered.end(video.buffered.length - 1);
-        setBuffered(end);
+        setBuffered(origin + end);
       } catch {
         // ignore
       }
+    }
+  }
+
+  function handleEnded() {
+    const i = partIndexRef.current;
+    if (i < playlist.length - 1) {
+      playAfterLoadRef.current = true;
+      setPartIndex(i + 1);
+      return;
+    }
+    setPlaying(false);
+  }
+
+  function seekGlobal(target: number) {
+    const video = videoRef.current;
+    if (!video) return;
+    const clamped = Math.max(0, Math.min(effectiveDuration || target, target));
+    if (playlist.length <= 1) {
+      video.currentTime = clamped;
+      setCurrentTime(clamped);
+      return;
+    }
+    let acc = 0;
+    for (let i = 0; i < playlist.length; i++) {
+      const d = partDurations[i] || 0;
+      const end = i === playlist.length - 1 ? Number.POSITIVE_INFINITY : acc + d;
+      if (clamped < end || i === playlist.length - 1) {
+        const local = Math.max(0, clamped - acc);
+        if (i === partIndexRef.current) {
+          video.currentTime = local;
+        } else {
+          pendingSeekRef.current = local;
+          playAfterLoadRef.current = !video.paused || playing;
+          setPartIndex(i);
+        }
+        setCurrentTime(clamped);
+        return;
+      }
+      acc += d;
     }
   }
 
@@ -105,11 +211,7 @@ export function VideoPlayer({
   }
 
   function skip(seconds: number) {
-    const video = videoRef.current;
-    if (!video) return;
-    const target = Math.max(0, Math.min(effectiveDuration || 999999, video.currentTime + seconds));
-    video.currentTime = target;
-    setCurrentTime(target);
+    seekGlobal(currentTime + seconds);
   }
 
   function handleVolumeChange(val: number) {
@@ -240,8 +342,7 @@ export function VideoPlayer({
     const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     const target = pos * effectiveDuration;
 
-    video.currentTime = target;
-    setCurrentTime(target);
+    seekGlobal(target);
     setHoverPos(clientX - rect.left);
     setHoverTime(target);
   }
@@ -346,12 +447,13 @@ export function VideoPlayer({
     >
       <video
         ref={videoRef}
-        src={src}
+        src={playlist[partIndex]?.src ?? src}
         poster={poster}
         playsInline
         preload="metadata"
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
+        onEnded={handleEnded}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onWaiting={() => setBuffering(true)}

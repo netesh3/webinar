@@ -486,14 +486,18 @@ func (s *Store) UpdateWebinar(ctx context.Context, slug string, in types.Webinar
 // transition times. Returns the updated record so a handler can mirror the new
 // state into room metadata in the same request.
 func (s *Store) SetStatus(ctx context.Context, slug string, status types.WebinarStatus) (types.Webinar, error) {
+	// Every transition clears empty_since: a room that is starting has not been
+	// observed empty yet, and one that has ended is not being watched any more.
+	// Leaving a stale value behind would let the empty-room sweeper close a
+	// restarted session on a clock from the previous one.
 	var col string
 	switch status {
 	case types.StatusLive:
-		col = `started_at = coalesce(started_at, now()), ended_at = NULL`
+		col = `started_at = coalesce(started_at, now()), ended_at = NULL, empty_since = NULL`
 	case types.StatusEnded:
-		col = `ended_at = now()`
+		col = `ended_at = now(), empty_since = NULL`
 	case types.StatusScheduled, types.StatusDraft:
-		col = `started_at = NULL, ended_at = NULL`
+		col = `started_at = NULL, ended_at = NULL, empty_since = NULL`
 	default:
 		return types.Webinar{}, fmt.Errorf("%w: unknown status %q", ErrInvalid, status)
 	}
@@ -1343,6 +1347,57 @@ func newImageVersion() string {
 
 // ExpiredLiveWebinars returns the slugs of webinars currently marked live that have
 // reached or exceeded their max_duration_min.
+// LiveWebinarsPastStart lists live webinars whose scheduled start has passed —
+// the candidates for the empty-room sweep. A host who opens the room early and
+// waits for an audience is deliberately not one of them.
+func (s *Store) LiveWebinarsPastStart(ctx context.Context) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT slug
+		  FROM webinars
+		 WHERE status = 'live'
+		   AND starts_at <= now()`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var slugs []string
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, err
+		}
+		slugs = append(slugs, slug)
+	}
+	return slugs, rows.Err()
+}
+
+// MarkWebinarEmptiness records what the SFU just reported and returns how long
+// the room has been empty. An occupied room clears the clock and reports zero,
+// so a brief gap between two participants does not accumulate towards a close.
+func (s *Store) MarkWebinarEmptiness(ctx context.Context, slug string, empty bool) (time.Duration, error) {
+	if !empty {
+		_, err := s.pool.Exec(ctx, `
+			UPDATE webinars SET empty_since = NULL
+			 WHERE (slug = $1 OR id::text = $1) AND empty_since IS NOT NULL`, slug)
+		return 0, err
+	}
+
+	var seconds float64
+	err := s.pool.QueryRow(ctx, `
+		UPDATE webinars
+		   SET empty_since = COALESCE(empty_since, now())
+		 WHERE (slug = $1 OR id::text = $1)
+		 RETURNING EXTRACT(EPOCH FROM (now() - empty_since))::float8`, slug).Scan(&seconds)
+	if noRows(err) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(seconds * float64(time.Second)), nil
+}
+
 func (s *Store) ExpiredLiveWebinars(ctx context.Context) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT slug

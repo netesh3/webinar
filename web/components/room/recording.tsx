@@ -24,6 +24,7 @@ import {
 import { canRecordScreen, ScreenRecorder } from "@/lib/screen-recorder";
 import { Spinner } from "../controls";
 import { useAppConfig, useToast } from "../providers";
+import { recordingRetentionDays } from "@/lib/recording-retention";
 import { ChevronDownIcon, DeviceIcon, RecordIcon, StopIcon } from "../icons";
 import { useRoomUI } from "./context";
 
@@ -385,7 +386,8 @@ function useRecorder(): RecorderContextValue {
 /** The control bar's record button. Rendered as a split button with dropdown chevron arrow. */
 export function RecordButton() {
   const { join, recording: serverRecording, isHost } = useRoomUI();
-  const { recordingMode } = useAppConfig();
+  const { recordingMode, recordingsRetentionDays } = useAppConfig();
+  const keepDays = recordingRetentionDays(undefined, recordingsRetentionDays);
   const isEgress = recordingMode === "egress";
   const { notify } = useToast();
   const { state, bytes, startedAt, destination, start, stop, mine } = useRoomRecorder();
@@ -519,7 +521,7 @@ export function RecordButton() {
         <div
           role="menu"
           aria-label="Recording options"
-          className="room-dark absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-line bg-surface p-1.5 text-ink shadow-2xl backdrop-blur-xl"
+          className="room-dark absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-line bg-surface p-1.5 text-ink shadow-2xl backdrop-blur-xl"
         >
           {/* Option 1: Record to the Cloud */}
           <button
@@ -530,7 +532,14 @@ export function RecordButton() {
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
           >
             <RecordIcon className="size-4 text-live" />
-            <span className="text-[13px] font-medium text-ink">Record to the Cloud</span>
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium text-ink">Record to the Cloud</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-ink-3">
+                {keepDays > 0
+                  ? `Stored for ${keepDays} days. Download a copy if you need it longer.`
+                  : "Saved to your recordings list."}
+              </span>
+            </span>
           </button>
 
           {/* Option 2: Record on this Computer */}
@@ -542,7 +551,12 @@ export function RecordButton() {
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
           >
             <DeviceIcon className="size-4 text-brand" />
-            <span className="text-[13px] font-medium text-ink">Record on this Computer</span>
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium text-ink">Record on this Computer</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-ink-3">
+                Saved as a local file. Nothing is uploaded or auto-deleted.
+              </span>
+            </span>
           </button>
 
           {/* If currently recording, show direct Stop button */}
