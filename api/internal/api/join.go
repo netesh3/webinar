@@ -397,6 +397,11 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Check if HLS broadcast should be active if the session is already live
+	if wb.Status == types.StatusLive {
+		s.startHlsBroadcastIfEnabled(r.Context(), wb, sfu)
+	}
+
 	// Reaching here means stageRole returned host or panelist for a real
 	// account, which is the same check the recording endpoints make — so this
 	// is the one path that may record. Not gated on s.recordings any more: that
@@ -620,9 +625,6 @@ func (s *Server) issueToken(
 }
 
 func (s *Server) cdnStreamURL(slug string) string {
-	if s.cfg.RecordingsCDNBaseURL != "" {
-		return fmt.Sprintf("%s/broadcast/%s/live.m3u8", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), slug)
-	}
 	return fmt.Sprintf("/api/webinars/%s/broadcast/live.m3u8", slug)
 }
 

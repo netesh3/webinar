@@ -172,6 +172,10 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 		if strings.Contains(file, "_") {
 			candidateKeys = append(candidateKeys, fmt.Sprintf("broadcast/%s/%s", slug, strings.ReplaceAll(file, "_", "-")))
 		}
+		candidateKeys = append(candidateKeys,
+			fmt.Sprintf("broadcast/%s/chunk_%s", slug, file),
+			fmt.Sprintf("broadcast/%s/chunk-%s", slug, file),
+		)
 	}
 
 	// Open the object from storage (S3/Disk)

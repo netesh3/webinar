@@ -435,17 +435,19 @@ function HlsPlayer({
     if (Hls.isSupported()) {
       hls = new Hls({
         liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 6,
+        liveMaxLatencyDurationCount: 8,
         enableWorker: true,
         lowLatencyMode: true,
-        manifestLoadingMaxRetry: 30,
-        manifestLoadingRetryDelay: 1500,
-        manifestLoadingMaxRetryTimeout: 120000,
-        levelLoadingMaxRetry: 15,
-        levelLoadingRetryDelay: 1500,
+        manifestLoadingMaxRetry: 60,
+        manifestLoadingRetryDelay: 1000,
+        manifestLoadingMaxRetryTimeout: 180000,
+        levelLoadingMaxRetry: 30,
+        levelLoadingRetryDelay: 1000,
+        fragLoadingMaxRetry: 30,
+        fragLoadingRetryDelay: 1000,
         xhrSetup: (xhr, url) => {
           if (url.includes(".m3u8")) {
-            xhr.setRequestHeader("Cache-Control", "no-cache");
+            xhr.setRequestHeader("Cache-Control", "no-cache, no-store, must-revalidate");
             xhr.setRequestHeader("Pragma", "no-cache");
           }
         },
@@ -460,9 +462,16 @@ function HlsPlayer({
         tryPlay();
       });
 
+      hls.on(Hls.Events.LEVEL_LOADED, () => {
+        setError(null);
+      });
+
       hls.on(Hls.Events.FRAG_BUFFERED, () => {
         setLoading(false);
         setError(null);
+        if (video.paused) {
+          tryPlay();
+        }
       });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
@@ -470,6 +479,7 @@ function HlsPlayer({
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               setError("Connecting to live broadcast stream...");
+              clearTimeout(retryTimer);
               retryTimer = setTimeout(() => {
                 if (hls) {
                   hls.loadSource(streamUrl);
@@ -481,6 +491,7 @@ function HlsPlayer({
               hls?.recoverMediaError();
               break;
             default:
+              clearTimeout(retryTimer);
               retryTimer = setTimeout(() => {
                 if (hls) {
                   hls.loadSource(streamUrl);
@@ -500,6 +511,7 @@ function HlsPlayer({
       };
       const onNativeError = () => {
         setError("Connecting to live broadcast stream...");
+        clearTimeout(retryTimer);
         retryTimer = setTimeout(() => {
           if (video && video.paused) {
             video.src = streamUrl;
