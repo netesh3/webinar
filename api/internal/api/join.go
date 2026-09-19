@@ -625,6 +625,12 @@ func (s *Server) issueToken(
 }
 
 func (s *Server) cdnStreamURL(slug string) string {
+	if cdn := strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"); cdn != "" {
+		// Same directory LiveKit writes live.m3u8 and chunk_*.ts into, so the
+		// player can resolve segments on the CDN without proxying every poll
+		// through the Worker.
+		return cdn + "/broadcast/" + slug + "/live.m3u8"
+	}
 	return fmt.Sprintf("/api/webinars/%s/broadcast/live.m3u8", slug)
 }
 
