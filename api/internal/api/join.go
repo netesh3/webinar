@@ -397,9 +397,9 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check if HLS broadcast should be active if the session is already live
+	// Same as attendee join / Start: do not block the host token on egress RPC.
 	if wb.Status == types.StatusLive {
-		s.startHlsBroadcastIfEnabled(r.Context(), wb, sfu)
+		go s.startHlsBroadcastIfEnabled(context.Background(), wb, sfu)
 	}
 
 	// Reaching here means stageRole returned host or panelist for a real

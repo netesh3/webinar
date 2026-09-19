@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -177,6 +179,7 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 	var size int64
 	var openErr error
 	var matchedKey string
+	var refusal error
 
 	for _, k := range candidateKeys {
 		reader, size, openErr = s.recordings.Open(r.Context(), k)
@@ -184,10 +187,26 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 			matchedKey = k
 			break
 		}
+		if refusal == nil && !errors.Is(openErr, media.ErrNotFound) {
+			refusal = openErr
+		}
 	}
 
 	if openErr != nil {
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+		/* A backend that refused us is not a segment the encoder has not written yet,
+		 * and reporting both as 404 is why an exhausted bucket presents as a feed that
+		 * is merely slow to start. Backblaze answers an exceeded daily cap with 403
+		 * download_cap_exceeded or transaction_cap_exceeded — the counters reset at
+		 * 00:00 GMT — and the player will retry against that for ever unless somebody
+		 * reads this line. */
+		if refusal != nil {
+			s.log.Error("cdn broadcast: storage refused a segment",
+				"slug", slug, "file", file, "error", refusal)
+			httpx.Error(w, http.StatusBadGateway, "storage_error",
+				"The broadcast storage backend rejected this request.")
+			return
+		}
 		httpx.Error(w, http.StatusNotFound, "not_found", "Broadcast segment not ready or not found.")
 		return
 	}
@@ -196,6 +215,8 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 	if strings.HasSuffix(file, ".m3u8") {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+		w.Header().Set("CDN-Cache-Control", "no-store")
+		w.Header().Set("Cloudflare-CDN-Cache-Control", "no-store")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 
@@ -203,6 +224,23 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 		if err != nil {
 			httpx.Error(w, http.StatusInternalServerError, "read_error", "Failed to read playlist.")
 			return
+		}
+
+		/* Where the audience fetches segments from.
+		 *
+		 * With a CDN configured, absolute edge URLs rather than filenames routed back
+		 * through here. An audience is the multiplier that matters: proxying means one
+		 * bucket read per viewer per two-second segment, all of it billed egress and a
+		 * Class B transaction each, which is what exhausts a daily cap in one session.
+		 * Segments are immutable, so the edge serves them from cache and the bucket is
+		 * read once no matter how many people are watching.
+		 *
+		 * The prefix comes from the key the playlist itself was found under, so it is
+		 * whatever Egress actually wrote rather than a second guess at its naming.
+		 */
+		segmentBase := ""
+		if cdn := strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"); cdn != "" && matchedKey != "" {
+			segmentBase = cdn + "/" + path.Dir(matchedKey) + "/"
 		}
 
 		// Normalize playlist segment URLs to simple filenames
@@ -216,7 +254,10 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 			}
 			parts := strings.Split(trimmed, "/")
 			fileName := parts[len(parts)-1]
-			rewritten = append(rewritten, fileName)
+			if q := strings.IndexAny(fileName, "?#"); q >= 0 {
+				fileName = fileName[:q]
+			}
+			rewritten = append(rewritten, segmentBase+fileName)
 		}
 
 		rewrittenContent := strings.Join(rewritten, "\n")
@@ -225,16 +266,12 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// For .ts video segments:
+	// For .ts video segments: stream through this API. Do not 307 to a B2
+	// presigned URL — that was already tried and broken (CORS on the bucket,
+	// and B2 does not honour response-content-type on signed GETs, which
+	// produces 403s in hls.js).
 	w.Header().Set("Content-Type", "video/mp2t")
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-
-	if ps, ok := s.recordings.(media.Presigner); ok && matchedKey != "" {
-		if signedURL, err := ps.PresignedGetURL(r.Context(), matchedKey, "", "video/mp2t", true, 1*time.Hour); err == nil && signedURL != "" {
-			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
-			return
-		}
-	}
 
 	if seeker, ok := reader.(io.ReadSeeker); ok {
 		http.ServeContent(w, r, file, time.Now(), seeker)
