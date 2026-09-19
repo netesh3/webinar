@@ -12,9 +12,14 @@
 		reverse_proxy 127.0.0.1:8888 {
 			flush_interval -1
 		}
-		header Access-Control-Allow-Origin *
-		header Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
-		header Access-Control-Allow-Headers "*"
+
+		# No CORS headers here. MediaMTX already sends them (hlsAllowOrigin),
+		# and adding our own did not replace those — it appended, so every
+		# response carried two Access-Control-Allow-Origin headers. The spec
+		# allows exactly one, so browsers rejected the playlist outright while
+		# curl reported a perfectly healthy 200, and the player hung forever on
+		# a stream that was demonstrably being served. If CORS ever needs to
+		# change, change it in mediamtx.yml.
 		@playlist path *.m3u8
 		header @playlist Cache-Control "max-age=1, s-maxage=1, public"
 		@part path *.m4s *.mp4 *.ts

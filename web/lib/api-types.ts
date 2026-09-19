@@ -181,6 +181,14 @@ export interface SessionControls {
    * is what you do before turning it on.
    */
   pollsEnabled: boolean;
+  /**
+   * CaptionsEnabled is the live-caption switch, and it is a CONTROL rather than
+   * something the host's own browser remembers. Recognition runs against each
+   * speaker's own microphone, so every publisher has to know captions are on or
+   * only the person who pressed the button is ever transcribed. Initialised from
+   * the scheduled Options.Captions when the webinar is created.
+   */
+  captionsEnabled: boolean;
   locked: boolean;
   /**
    * ChatDestination decides where an ATTENDEE's chat goes: to the whole room, or
@@ -213,6 +221,7 @@ export interface ControlsPatch {
   raiseHandEnabled?: boolean;
   reactionsEnabled?: boolean;
   pollsEnabled?: boolean;
+  captionsEnabled?: boolean;
   locked?: boolean;
   /**
    * A pointer for the same reason as the others: "not mentioned" and "set to

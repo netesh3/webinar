@@ -41,6 +41,7 @@ const CONTROLS: SessionControls = {
   qaEnabled: true,
   raiseHandEnabled: true,
   reactionsEnabled: true,
+  captionsEnabled: false,
   pollsEnabled: true,
   locked: false,
   chatDestination: "everyone",

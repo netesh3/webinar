@@ -70,6 +70,7 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
       qaEnabled: true,
       raiseHandEnabled: true,
       reactionsEnabled: true,
+      captionsEnabled: false,
       locked: false,
     },
   };
