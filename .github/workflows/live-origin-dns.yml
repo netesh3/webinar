@@ -8,9 +8,12 @@
 #
 # Idempotent: creates the record, or updates it if it already exists.
 #
-# Requires CLOUDFLARE_API_TOKEN to carry Zone:DNS:Edit for webinarliv.com. The
-# token used for Workers deploys may not — the job says so plainly if it cannot
-# read the zone, and adding the record by hand in the dashboard is equivalent.
+# Needs a token with Zone:DNS:Edit on webinarliv.com, as CLOUDFLARE_DNS_API_TOKEN.
+# CLOUDFLARE_API_TOKEN is tried as a fallback and is expected to fail: the Workers
+# deploy token can read the zone but not write records, which comes back as a bare
+# "Authentication error" on the create call. Adding the record in the dashboard is
+# equivalent — this workflow exists so the step is repeatable, not because it is
+# the only way.
 
 name: Live origin DNS
 
@@ -36,7 +39,7 @@ jobs:
   dns:
     runs-on: ubuntu-latest
     env:
-      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_DNS_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       HOSTNAME: ${{ inputs.hostname }}
       TARGET: ${{ inputs.target }}
     steps:
@@ -80,6 +83,8 @@ jobs:
 
           if [ "$(echo "$resp" | jq -r '.success')" != "true" ]; then
             echo "$resp" | jq -r '.errors' >&2
+            echo "If this is code 10000 on an otherwise working zone lookup, the token can read but not write DNS." >&2
+            echo "Create one with Zone:DNS:Edit for ${zone_name} and store it as CLOUDFLARE_DNS_API_TOKEN." >&2
             exit 1
           fi
           echo "$resp" | jq -r '"\(.result.name) -> \(.result.content) proxied=\(.result.proxied)"'
