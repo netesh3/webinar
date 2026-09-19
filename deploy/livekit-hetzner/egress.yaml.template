@@ -1,9 +1,19 @@
-# LiveKit Egress configuration template for Hetzner
-# Generated at install/redeploy time by substituting __API_KEY__ and __API_SECRET__
+# LiveKit Egress configuration template for Hetzner.
+# redeploy.sh substitutes the placeholders below; keep them out of prose so a
+# comment can never end up holding the literal secret.
 
 api_key: __API_KEY__
 api_secret: __API_SECRET__
-ws_url: ws://127.0.0.1:7880
+
+# Handed to the recording page as its ?url=, not just used by egress itself.
+# A loopback address works for LiveKit's built-in layouts, which egress serves
+# from its own container over http — but the custom template is served from
+# https://webinarliv.com, and a page on a public origin cannot open a
+# websocket to 127.0.0.1. The room never connects, the page reports
+# END_RECORDING without ever reporting START_RECORDING, and egress abandons
+# the job with "Start signal not received". The public address is reachable
+# either way, so it is the one that has to be here.
+ws_url: wss://__DOMAIN__
 
 redis:
   address: 127.0.0.1:6379
