@@ -1168,7 +1168,7 @@ function AutoStartAudio({ room }: { room: Room }) {
 // ------------------------------------------------------------------- header
 
 export function RoomHeader() {
-  const { controls, isHost, permissions, tools } = useRoomUI();
+  const { controls, isHost, permissions, tools, cdnStage } = useRoomUI();
   const panelOpen = Boolean(tools.panelTab);
 
   // From the live permissions, not from the role in the join response. An attendee
@@ -1211,7 +1211,9 @@ export function RoomHeader() {
       </div>
 
       <div className="pointer-events-auto flex shrink-0 items-center gap-1">
-        <ViewsMenu />
+        {/* Nothing to arrange when the stage is a single CDN video element —
+            every option in here would leave the picture exactly as it was. */}
+        {!cdnStage && <ViewsMenu />}
 
         <span className="hidden sm:block">
           <Badge tone={standing.tone}>{standing.label}</Badge>

@@ -288,6 +288,7 @@ export function CdnAttendeeRoom({
       unread,
       fileShare,
       stage,
+      cdnStage: true,
       prefs,
       updatePrefs,
       leave,

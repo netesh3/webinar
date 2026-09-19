@@ -644,7 +644,12 @@ export type Realtime = {
   clearCta: () => Promise<void>;
   sendCaption: (text: string) => Promise<void>;
   cta: CtaOffer | null;
-  captions: { identity: string; text: string } | null;
+  /** The caption line currently being spoken, stamped with when it arrived.
+   *
+   *  Captions are never cleared by a packet — the speaker just stops sending —
+   *  so the overlay decides for itself when a line has gone stale, and `at` is
+   *  what it measures that against. */
+  captions: { identity: string; text: string; at: number } | null;
   stageInvite: { audioOnly: boolean; recording: boolean } | null;
   dismissStageInvite: () => void;
   toggleHand: () => Promise<void>;
@@ -699,9 +704,11 @@ export function useRealtime(
     Record<string, { pinned: boolean; dismissed: boolean; answer: string }>
   >({});
   const [cta, setCta] = useState<CtaOffer | null>(null);
-  const [captions, setCaptions] = useState<{ identity: string; text: string } | null>(
-    null,
-  );
+  const [captions, setCaptions] = useState<{
+    identity: string;
+    text: string;
+    at: number;
+  } | null>(null);
   const [stageInvite, setStageInvite] = useState<{
     audioOnly: boolean;
     recording: boolean;
@@ -877,7 +884,7 @@ export function useRealtime(
           setChat((current) => current.filter((m) => m.id !== msg.id));
           break;
         case "caption":
-          setCaptions({ identity: msg.from.identity, text: msg.text });
+          setCaptions({ identity: msg.from.identity, text: msg.text, at: Date.now() });
           break;
         case "stage-invite":
           if (msg.identity === meRef.current.identity) {
