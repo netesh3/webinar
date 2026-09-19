@@ -31,8 +31,7 @@ export default function RecordingReplayPage({
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const isUploading =
-    recording !== null &&
-    (recording.status === "processing" || (recording.uploadedToS3 === false && recording.status !== "failed"));
+    recording !== null && recording.status === "processing";
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +96,7 @@ export default function RecordingReplayPage({
     }
   }
 
-  const streamUrl = recording?.unlocked && recording.uploadedToS3 !== false
+  const streamUrl = recording?.unlocked && recording.status === "ready"
     ? api.publicRecordingStreamURL(slug, recId, passcode || undefined)
     : "";
 
