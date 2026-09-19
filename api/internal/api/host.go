@@ -873,17 +873,17 @@ func (s *Server) handleParticipants(w http.ResponseWriter, r *http.Request) {
 	}
 
 	attendees, onStage := 0, 0
-	var attendeeIDs []string
+	var seen []types.LiveParticipant
 	for _, p := range list {
 		if p.Role == types.RoleAttendee {
 			attendees++
-			attendeeIDs = append(attendeeIDs, p.Identity)
+			seen = append(seen, p)
 		} else {
 			onStage++
 		}
 	}
-	if len(attendeeIDs) > 0 {
-		_ = s.store.TouchAttendanceMany(r.Context(), slug, attendeeIDs)
+	if len(seen) > 0 {
+		_ = s.store.TouchAttendanceMany(r.Context(), slug, seen)
 	}
 
 	httpx.JSON(w, http.StatusOK, types.LiveRoom{

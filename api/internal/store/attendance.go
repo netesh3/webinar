@@ -9,23 +9,31 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-func (s *Store) TouchAttendance(ctx context.Context, slug, identity, registrationID string) error {
+func (s *Store) TouchAttendance(ctx context.Context, slug, identity, registrationID, name string) error {
 	if identity == "" {
 		return nil
 	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO attendance (webinar_id, identity, registration_id)
-		SELECT w.id, $2, NULLIF($3,'')::uuid
+		INSERT INTO attendance (webinar_id, identity, registration_id, name)
+		SELECT w.id, $2, NULLIF($3,'')::uuid, $4
 		  FROM webinars w WHERE w.slug = $1
 		ON CONFLICT (webinar_id, identity) DO UPDATE
-		   SET last_seen_at = now()`,
-		slug, identity, registrationID)
+		   SET last_seen_at = now(),
+		       -- A later touch usually knows less than the first one: the roster
+		       -- poll carries no registration, and a name can arrive empty. Fill
+		       -- in what is still blank, never overwrite what is already there.
+		       registration_id = COALESCE(attendance.registration_id, EXCLUDED.registration_id),
+		       name = CASE WHEN attendance.name = '' THEN EXCLUDED.name ELSE attendance.name END`,
+		slug, identity, registrationID, strings.TrimSpace(name))
 	return err
 }
 
-func (s *Store) TouchAttendanceMany(ctx context.Context, slug string, identities []string) error {
-	for _, id := range identities {
-		if err := s.TouchAttendance(ctx, slug, id, ""); err != nil {
+// TouchAttendanceMany records everyone the SFU roster currently shows. It takes
+// participants rather than bare identities so the name travels with them: these
+// rows have no registration to look a name up in later.
+func (s *Store) TouchAttendanceMany(ctx context.Context, slug string, seen []types.LiveParticipant) error {
+	for _, p := range seen {
+		if err := s.TouchAttendance(ctx, slug, p.Identity, "", p.Name); err != nil {
 			return err
 		}
 	}
@@ -142,7 +150,12 @@ func (s *Store) SessionReport(ctx context.Context, slug string) (types.SessionRe
 
 	attRows, err := s.pool.Query(ctx, `
 		SELECT a.identity,
-		       COALESCE(NULLIF(trim(COALESCE(r.first_name,'') || ' ' || COALESCE(r.last_name,'')), ''), a.identity),
+		       -- Never the identity: it is an opaque join key, and a report that
+		       -- names people "att_7f3c..." is a report nobody can read.
+		       COALESCE(
+		         NULLIF(trim(COALESCE(r.first_name,'') || ' ' || COALESCE(r.last_name,'')), ''),
+		         NULLIF(trim(a.name), ''),
+		         'Guest'),
 		       COALESCE(r.email, ''),
 		       GREATEST(0, (EXTRACT(EPOCH FROM (a.last_seen_at - a.first_joined_at))/60)::int)
 		  FROM attendance a
