@@ -409,6 +409,7 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	inline := r.URL.Query().Get("download") != "1"
 	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
 
 	// When Cloudflare CDN is configured and the recording is finalized, redirect
@@ -421,7 +422,7 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 
 	// For S3/Backblaze storage, redirect directly to signed S3 URL with filename and content type
 	if ps, ok := s.recordings.(media.Presigner); ok {
-		if signedURL, err := ps.PresignedGetURL(r.Context(), rec.StorageKey, name, rec.Mime, false, 6*time.Hour); err == nil && signedURL != "" {
+		if signedURL, err := ps.PresignedGetURL(r.Context(), rec.StorageKey, name, rec.Mime, inline, 6*time.Hour); err == nil && signedURL != "" {
 			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
 			return
 		}
@@ -449,11 +450,13 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// A recording still in progress is served as far as it has been written. A
-	// host who wants to check that it is working should not have to stop it first.
+	disposition := "inline"
+	if !inline {
+		disposition = "attachment"
+	}
 	w.Header().Set("Content-Type", rec.Mime)
 	w.Header().Set("Content-Disposition",
-		fmt.Sprintf("attachment; filename=%q", name))
+		fmt.Sprintf("%s; filename=%q", disposition, name))
 	// Recordings are private to a stage, so no shared cache may keep a copy.
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

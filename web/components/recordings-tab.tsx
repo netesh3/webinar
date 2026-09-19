@@ -98,7 +98,7 @@ export function RecordingsTab({
                 Share
               </Button>
               <a
-                href={api.recordingFileURL(w.id, playing.id)}
+                href={`${api.recordingFileURL(w.id, playing.id)}?download=1`}
                 download
                 className="inline-flex h-9 items-center rounded-lg border border-line-2 px-3 text-[13px] font-medium text-ink hover:bg-surface-2"
               >
@@ -387,7 +387,7 @@ function RecordingRow({
                   Share
                 </Button>
                 <a
-                  href={api.recordingFileURL(slug, rec.id)}
+                  href={`${api.recordingFileURL(slug, rec.id)}?download=1`}
                   download
                   className="inline-flex h-8 items-center rounded-lg border border-line-2 px-2.5 text-[12.5px] font-medium text-ink hover:bg-surface-2"
                 >
