@@ -1180,10 +1180,11 @@ func (c *Client) StartHlsBroadcastEgress(
 		RoomName: roomName,
 		SegmentOutputs: []*livekit.SegmentedFileOutput{
 			{
-				Protocol:        livekit.SegmentedFileProtocol_HLS_PROTOCOL,
-				FilenamePrefix:  prefix,
-				PlaylistName:    playlistName,
-				SegmentDuration: 2,
+				Protocol:         livekit.SegmentedFileProtocol_HLS_PROTOCOL,
+				FilenamePrefix:   prefix,
+				PlaylistName:     playlistName,
+				LivePlaylistName: "live.m3u8",
+				SegmentDuration:  2,
 				Output: &livekit.SegmentedFileOutput_S3{
 					S3: &livekit.S3Upload{
 						Endpoint:       endpoint,

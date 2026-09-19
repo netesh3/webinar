@@ -414,7 +414,7 @@ function HlsPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -423,17 +423,26 @@ function HlsPlayer({
     let hls: Hls | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
+    const tryPlay = () => {
+      video.play().catch(() => {
+        // Autoplay policy prevented audio, mute and play with unmute button
+        video.muted = true;
+        setIsMuted(true);
+        video.play().catch(() => {});
+      });
+    };
+
     if (Hls.isSupported()) {
       hls = new Hls({
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 6,
         enableWorker: true,
         lowLatencyMode: true,
-        manifestLoadingMaxRetry: 15,
-        manifestLoadingRetryDelay: 2000,
-        manifestLoadingMaxRetryTimeout: 60000,
-        levelLoadingMaxRetry: 10,
-        levelLoadingRetryDelay: 2000,
+        manifestLoadingMaxRetry: 30,
+        manifestLoadingRetryDelay: 1500,
+        manifestLoadingMaxRetryTimeout: 120000,
+        levelLoadingMaxRetry: 15,
+        levelLoadingRetryDelay: 1500,
       });
 
       hls.loadSource(streamUrl);
@@ -442,19 +451,19 @@ function HlsPlayer({
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setLoading(false);
         setError(null);
-        void video.play().catch(() => {
-          video.muted = true;
-          void video.play().catch(() => {});
-        });
+        tryPlay();
       });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setError("Live broadcast stream is starting up (buffering)...");
+              setError("Connecting to live broadcast stream...");
               retryTimer = setTimeout(() => {
-                hls?.startLoad();
+                if (hls) {
+                  hls.loadSource(streamUrl);
+                  hls.startLoad();
+                }
               }, 2000);
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
@@ -462,8 +471,11 @@ function HlsPlayer({
               break;
             default:
               retryTimer = setTimeout(() => {
-                hls?.loadSource(streamUrl);
-              }, 2500);
+                if (hls) {
+                  hls.loadSource(streamUrl);
+                  hls.startLoad();
+                }
+              }, 2000);
               break;
           }
         }
@@ -473,19 +485,16 @@ function HlsPlayer({
       const onLoadedMetadata = () => {
         setLoading(false);
         setError(null);
-        void video.play().catch(() => {
-          video.muted = true;
-          void video.play().catch(() => {});
-        });
+        tryPlay();
       };
       const onNativeError = () => {
-        setError("Live broadcast stream is starting up (buffering)...");
+        setError("Connecting to live broadcast stream...");
         retryTimer = setTimeout(() => {
           if (video && video.paused) {
             video.src = streamUrl;
             video.load();
           }
-        }, 2500);
+        }, 2000);
       };
       video.addEventListener("loadedmetadata", onLoadedMetadata);
       video.addEventListener("error", onNativeError);
@@ -507,17 +516,25 @@ function HlsPlayer({
     };
   }, [streamUrl]);
 
+  const unmute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = false;
+      setIsMuted(false);
+      void videoRef.current.play();
+    }
+  };
+
   return (
     <div className="relative h-full w-full flex items-center justify-center bg-black">
       <video
         ref={videoRef}
         playsInline
         controls
-        onPlay={() => {
-          setIsPlaying(true);
-          setLoading(false);
+        autoPlay
+        onPlay={() => setLoading(false)}
+        onVolumeChange={(e) => {
+          setIsMuted((e.target as HTMLVideoElement).muted);
         }}
-        onPause={() => setIsPlaying(false)}
         poster={coverUrl}
         className="h-full w-full object-contain"
       />
@@ -529,6 +546,17 @@ function HlsPlayer({
             {error || "Connecting to broadcast stream..."}
           </p>
         </div>
+      )}
+
+      {isMuted && !loading && (
+        <button
+          type="button"
+          onClick={unmute}
+          className="absolute bottom-16 left-6 z-20 flex items-center gap-2 rounded-full bg-brand px-4 py-2 text-[13px] font-semibold text-white shadow-lg transition hover:bg-brand-hover"
+        >
+          <span className="inline-block size-2 rounded-full bg-white animate-pulse" />
+          Click to Unmute Broadcast
+        </button>
       )}
     </div>
   );

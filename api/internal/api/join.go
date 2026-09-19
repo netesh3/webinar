@@ -160,6 +160,9 @@ func (s *Server) joinAsAttendee(
 	var cdnStreamURL string
 	if isCdnAttendee {
 		cdnStreamURL = s.cdnStreamURL(wb.ID)
+		if wb.Status == types.StatusLive {
+			s.startHlsBroadcastIfEnabled(r.Context(), wb, sfu)
+		}
 	}
 
 	// canRecord is false down this path without qualification, including for
@@ -618,9 +621,9 @@ func (s *Server) issueToken(
 
 func (s *Server) cdnStreamURL(slug string) string {
 	if s.cfg.RecordingsCDNBaseURL != "" {
-		return fmt.Sprintf("%s/broadcast/%s/index.m3u8", s.cfg.RecordingsCDNBaseURL, slug)
+		return fmt.Sprintf("%s/broadcast/%s/live.m3u8", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), slug)
 	}
-	return fmt.Sprintf("/api/webinars/%s/broadcast/index.m3u8", slug)
+	return fmt.Sprintf("/api/webinars/%s/broadcast/live.m3u8", slug)
 }
 
 // Identities are prefixed by kind so a log line or an SFU dashboard reads

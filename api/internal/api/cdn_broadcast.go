@@ -30,8 +30,15 @@ func (s *Server) startHlsBroadcastIfEnabled(ctx context.Context, wb types.Webina
 		return
 	}
 
+	broadcastMu.Lock()
+	if _, running := activeBroadcasts[wb.ID]; running {
+		broadcastMu.Unlock()
+		return
+	}
+	broadcastMu.Unlock()
+
 	roomName := lk.RoomName(wb.ID)
-	prefix := fmt.Sprintf("broadcast/%s/chunk-", wb.ID)
+	prefix := fmt.Sprintf("broadcast/%s/chunk", wb.ID)
 	playlistName := "index.m3u8"
 
 	preset := livekit.EncodingOptionsPreset_H264_1080P_30
@@ -119,8 +126,6 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	s3Key := fmt.Sprintf("broadcast/%s/%s", slug, file)
-
 	// Set appropriate Content-Type and Cache-Control
 	if strings.HasSuffix(file, ".m3u8") {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
@@ -132,6 +137,7 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 
 	// If CDN base URL is configured, redirect directly to CDN edge
 	if s.cfg.RecordingsCDNBaseURL != "" {
+		s3Key := fmt.Sprintf("broadcast/%s/%s", slug, file)
 		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), s3Key)
 		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
 		return
@@ -142,15 +148,43 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Open the object from storage (S3/Disk) and stream with range support
-	reader, size, err := s.recordings.Open(r.Context(), s3Key)
-	if err != nil && strings.HasSuffix(file, ".m3u8") {
-		// Fallback check if LiveKit saved playlist as chunk-index.m3u8
-		altKey := fmt.Sprintf("broadcast/%s/chunk-index.m3u8", slug)
-		reader, size, err = s.recordings.Open(r.Context(), altKey)
+	// Determine candidate keys for S3 lookup
+	var candidateKeys []string
+	primaryKey := fmt.Sprintf("broadcast/%s/%s", slug, file)
+	candidateKeys = append(candidateKeys, primaryKey)
+
+	if strings.HasSuffix(file, ".m3u8") {
+		candidateKeys = append(candidateKeys,
+			fmt.Sprintf("broadcast/%s/live.m3u8", slug),
+			fmt.Sprintf("broadcast/%s/index.m3u8", slug),
+			fmt.Sprintf("broadcast/%s/chunk-live.m3u8", slug),
+			fmt.Sprintf("broadcast/%s/chunk-index.m3u8", slug),
+			fmt.Sprintf("broadcast/%s/chunk_live.m3u8", slug),
+			fmt.Sprintf("broadcast/%s/chunk_index.m3u8", slug),
+			fmt.Sprintf("broadcast/%s/chunk.m3u8", slug),
+		)
+	} else if strings.HasSuffix(file, ".ts") {
+		if strings.Contains(file, "-") {
+			candidateKeys = append(candidateKeys, fmt.Sprintf("broadcast/%s/%s", slug, strings.ReplaceAll(file, "-", "_")))
+		}
+		if strings.Contains(file, "_") {
+			candidateKeys = append(candidateKeys, fmt.Sprintf("broadcast/%s/%s", slug, strings.ReplaceAll(file, "_", "-")))
+		}
 	}
 
-	if err != nil {
+	// Open the object from storage (S3/Disk)
+	var reader io.ReadSeekCloser
+	var size int64
+	var openErr error
+
+	for _, k := range candidateKeys {
+		reader, size, openErr = s.recordings.Open(r.Context(), k)
+		if openErr == nil {
+			break
+		}
+	}
+
+	if openErr != nil {
 		httpx.Error(w, http.StatusNotFound, "not_found", "Broadcast segment not ready or not found.")
 		return
 	}
