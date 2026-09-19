@@ -58,7 +58,12 @@ func (s *Server) requireHost(next http.Handler) http.Handler {
 		if !ok {
 			return
 		}
-		if !user.CanHost {
+		// An admin without hosting capability still reads through, on a GET — the
+		// outer half of the same read-only carve-out requireOwnership makes further
+		// in. Without this, an admin who has never been granted CanHost could never
+		// reach requireOwnership's admin branch at all: this gate runs first.
+		admin := user.IsAdmin && r.Method == http.MethodGet
+		if !user.CanHost && !admin {
 			// The old copy said "turn hosting on in your account settings", which is now a
 			// lie: the toggle is gone and only an admin can grant it. Copy that tells
 			// somebody to do an impossible thing is worse than a bare refusal.
@@ -212,6 +217,14 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
  * host-only regardless (deleting the webinar, transferring it away) are not
  * enforced here: they sit behind the extra requireTrueOwner, which reads the
  * flag this middleware leaves in the context.
+ *
+ * An admin passes too, but only for a GET — read access to any webinar's
+ * details, chat archive, polls, registrants, so an admin can actually look
+ * into a report without the host's help. Deliberately not every verb: this
+ * subtree is also where mute-all, end-webinar and remove-participant live,
+ * and "admin can see everything" was never "admin can run someone else's
+ * live session." Method-gated here rather than split into a separate route
+ * group, so nothing has to be told twice which endpoints are reads.
  */
 func (s *Server) requireOwnership(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +247,7 @@ func (s *Server) requireOwnership(next http.Handler) http.Handler {
 				s.fail(w, r, "co-host check", err)
 				return
 			}
-			if !grant.CoHost {
+			if !grant.CoHost && !(user.IsAdmin && r.Method == http.MethodGet) {
 				// 404 rather than 403: don't confirm the webinar exists to
 				// someone who has no business knowing.
 				httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
@@ -282,6 +295,13 @@ func slugFromContext(ctx context.Context) string {
 // it, and the audience must not be able to record anything at all. The role it
 // resolves is put in the context, because "did the host do this or a panelist"
 // changes what some of those handlers allow.
+//
+// An admin reads in on a GET the same way requireOwnership lets them read the
+// webinar itself — listing and downloading recordings, never starting, chunking,
+// completing or deleting one (all POST/DELETE, so never reach this branch).
+// Reported as RoleHost: the one place downstream that reads the role at all,
+// handleDeleteRecording, is a DELETE and therefore never sees an admin's request
+// in the first place.
 func (s *Server) requireStage(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := s.authenticate(w, r)
@@ -298,6 +318,9 @@ func (s *Server) requireStage(next http.Handler) http.Handler {
 		if err != nil {
 			s.fail(w, r, "stage check", err)
 			return
+		}
+		if role == "" && user.IsAdmin && r.Method == http.MethodGet {
+			role = types.RoleHost
 		}
 		if role == "" {
 			httpx.Error(w, http.StatusForbidden, "forbidden",

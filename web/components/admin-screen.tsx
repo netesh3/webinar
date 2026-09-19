@@ -6,7 +6,7 @@ import type { AdminUser, Webinar } from "@/lib/api-types";
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { useSession, useToast } from "./providers";
 import { Alert, ConfirmModal, Spinner, Toggle } from "./controls";
-import { Avatar, Badge, Card, Empty, SectionTitle } from "./ui";
+import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 
 /* The admin panel: who may host, every webinar on the instance, and the two
  * things only an admin can do to either — delete an account, delete a
@@ -457,13 +457,25 @@ function AdminWebinars() {
                 {deleting && confirmSlug === w.id ? (
                   <Spinner className="size-4" />
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmSlug(w.id)}
-                    className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-live transition-colors hover:bg-live-soft outline-none focus-visible:ring-2 focus-visible:ring-live/40"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {/* Read-only: the host detail page itself still gates every
+                        action (mute, end, remove a participant, …) on being the
+                        true host or a co-host — see requireOwnership's admin
+                        branch in api/internal/api/auth.go. An admin lands on the
+                        same page a host would, sees the same details, recordings
+                        and transcripts, but every button that changes a live
+                        session simply won't work for them. */}
+                    <ButtonLink href={`/host/${w.id}`} variant="secondary" size="sm">
+                      View
+                    </ButtonLink>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmSlug(w.id)}
+                      className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-live transition-colors hover:bg-live-soft outline-none focus-visible:ring-2 focus-visible:ring-live/40"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
