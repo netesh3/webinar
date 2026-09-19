@@ -190,7 +190,7 @@ func (s *Server) joinAsAttendee(
 		DataOnly: isCdnAttendee,
 	}, false, cdnBroadcast, cdnStreamURL)
 	if ok {
-		_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID)
+		_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID, display)
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
 	}
 }
