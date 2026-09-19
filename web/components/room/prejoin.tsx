@@ -7,6 +7,12 @@ import {
   type LocalVideoTrack,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  backgroundsSupported,
+  useVirtualBackground,
+  VIRTUAL_BACKGROUNDS,
+  type BackgroundChoice,
+} from "@/lib/backgrounds";
 import { cameraCapturePreset, deviceLabel, useDevices, type MediaPreferences } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
@@ -15,6 +21,7 @@ import { Button } from "../ui";
 import {
   CameraIcon,
   CameraOffIcon,
+  CheckIcon,
   MicIcon,
   MicOffIcon,
 } from "../icons";
@@ -62,12 +69,18 @@ export function PreJoin({
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(true);
   const [level, setLevel] = useState(0);
+  const [previewTrack, setPreviewTrack] = useState<LocalVideoTrack | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoTrack = useRef<LocalVideoTrack | null>(null);
   const audioTrack = useRef<LocalAudioTrack | null>(null);
   /** Set once the tracks belong to the room, so unmount stops releasing them. */
   const handedOff = useRef(false);
+
+  // Apply virtual background to the preview track so the presenter sees it in real time
+  useVirtualBackground(previewTrack ?? undefined, prefs.background, () => {
+    onUpdatePrefs({ background: { mode: "none" } });
+  });
 
   // Device labels stay blank until the page holds a permission, so enumeration is
   // deliberately gated on having acquired a preview track first.
@@ -77,6 +90,7 @@ export function PreJoin({
   const stopVideo = useCallback(() => {
     videoTrack.current?.stop();
     videoTrack.current = null;
+    setPreviewTrack(null);
   }, []);
 
   const stopAudio = useCallback(() => {
@@ -96,6 +110,7 @@ export function PreJoin({
       resolution: cameraCapturePreset().resolution,
     });
     videoTrack.current = track;
+    setPreviewTrack(track);
     if (videoRef.current) track.attach(videoRef.current);
     setPermitted(true);
   }, [prefs.videoInput, stopVideo]);
@@ -221,6 +236,7 @@ export function PreJoin({
     handedOff.current = true;
     audioTrack.current = null;
     videoTrack.current = null;
+    setPreviewTrack(null);
 
     onUpdatePrefs({ micEnabled, cameraEnabled });
     onJoin({ micEnabled, cameraEnabled, audioTrack: audio, videoTrack: video });
@@ -311,8 +327,8 @@ export function PreJoin({
             )}
           </div>
 
-          {/* ---- devices ---- */}
-          <div className="space-y-3">
+          {/* ---- devices & background ---- */}
+          <div className="space-y-3.5">
             {error && <Alert tone="warn">{error}</Alert>}
 
             <Select
@@ -341,13 +357,12 @@ export function PreJoin({
               ))}
             </Select>
 
-            {/* Nothing here about arriving with camera or microphone on.
-                A "Send video at" resolution picker used to sit in this spot; it was replaced
-                by a pair of Join-with-video / Join-with-audio toggles, and those were then
-                removed too, because the preview already carries exactly those two controls
-                as buttons on the image. Two places to set one thing is worse than either
-                place alone — the mic and camera buttons over the preview are the ones people
-                reach for, since that is where they can see the effect. */}
+            {/* Virtual Background Selection before joining */}
+            <PreJoinBackgroundPicker
+              choice={prefs.background}
+              disabled={!cameraEnabled}
+              onSelect={(bg) => onUpdatePrefs({ background: bg })}
+            />
 
             <Button onClick={join} size="lg" className="w-full">
               Join the webinar
@@ -361,6 +376,111 @@ export function PreJoin({
         </div>
       </div>
     </main>
+  );
+}
+
+function PreJoinBackgroundPicker({
+  choice,
+  onSelect,
+  disabled,
+}: {
+  choice: BackgroundChoice;
+  onSelect: (next: BackgroundChoice) => void;
+  disabled?: boolean;
+}) {
+  const supported = backgroundsSupported();
+  if (!supported) return null;
+
+  const isActive = (next: BackgroundChoice) =>
+    choice.mode === next.mode &&
+    ("id" in choice ? "id" in next && choice.id === next.id : true);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="block text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
+          Virtual Background
+        </label>
+        {disabled && (
+          <span className="text-[11px] text-ink-3">Camera is off</span>
+        )}
+      </div>
+
+      <div className={`grid grid-cols-4 gap-1.5 ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
+        <PreJoinBgTile
+          label="Off"
+          active={isActive({ mode: "none" })}
+          onClick={() => onSelect({ mode: "none" })}
+        >
+          <span className="grid size-full place-items-center bg-surface-2 text-ink-3">
+            <CameraOffIcon className="size-3.5" />
+          </span>
+        </PreJoinBgTile>
+
+        <PreJoinBgTile
+          label="Blur"
+          active={isActive({ mode: "blur" })}
+          onClick={() => onSelect({ mode: "blur" })}
+        >
+          <span className="relative grid size-full place-items-center overflow-hidden bg-stage-tile">
+            <span className="absolute inset-0 bg-gradient-to-br from-white/25 via-white/5 to-transparent blur-[4px]" />
+            <span className="absolute right-1 bottom-0 size-3.5 rounded-full bg-white/30 blur-[4px]" />
+            <span className="relative size-3 rounded-full bg-white/80" />
+          </span>
+        </PreJoinBgTile>
+
+        {VIRTUAL_BACKGROUNDS.map((bg) => (
+          <PreJoinBgTile
+            key={bg.id}
+            label={bg.label}
+            active={isActive({ mode: "image", id: bg.id })}
+            onClick={() => onSelect({ mode: "image", id: bg.id })}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={bg.src}
+              alt=""
+              className="size-full object-cover"
+              draggable={false}
+            />
+          </PreJoinBgTile>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PreJoinBgTile({
+  label,
+  active,
+  onClick,
+  children,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      className={`relative aspect-video overflow-hidden rounded-lg border-2 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer ${
+        active ? "border-brand" : "border-line/60 hover:border-line-2"
+      }`}
+    >
+      {children}
+      {active && (
+        <span className="absolute inset-0 grid place-items-center bg-brand/25">
+          <span className="grid size-4 place-items-center rounded-full bg-brand text-white">
+            <CheckIcon className="size-2.5" />
+          </span>
+        </span>
+      )}
+    </button>
   );
 }
 

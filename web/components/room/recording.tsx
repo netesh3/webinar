@@ -574,9 +574,7 @@ export function RecordingBanner() {
   const [minimized, setMinimized] = useState(false);
 
   const isRecordingActive =
-    (serverRecording && state !== "stopping") ||
-    state === "recording" ||
-    state === "starting";
+    serverRecording || state === "recording" || state === "starting" || state === "stopping";
 
   if (!isRecordingActive) return null;
 

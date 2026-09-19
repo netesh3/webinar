@@ -281,21 +281,8 @@ function RoomSession({
       // The host's mute-on-entry decision wins over a remembered preference: a
       // panelist who always joins unmuted must not walk over it.
       startMic={entry.micEnabled && !(join.controls.muteOnEntry && join.role !== "host")}
-      /* A presenter's camera comes on when they enter, whatever the remembered
-       * preference said.
-       *
-       * The stage used to greet them with "You're live — nothing on stage yet.
-       * Start your camera or share your screen" and two buttons. That is a nag
-       * screen in the first seconds of a session the presenter has just
-       * deliberately started, and the fix it suggested is something the app can
-       * simply do — so it does. They can turn it off again from the bar, and
-       * nothing turns it back on.
-       *
-       * Note what this overrides: a presenter who joined camera-off last week has
-       * that remembered, and now comes in with video. That is the trade the change
-       * asks for. The microphone is untouched — coming in audible without meaning
-       * to is a different and worse surprise. */
-      startCamera={entry.cameraEnabled || join.canPublish}
+      /* A presenter's camera only starts on entry if enabled in the pre-join check. */
+      startCamera={entry.cameraEnabled}
       entryAudio={entry.audioTrack}
       entryVideo={entry.videoTrack}
     />
