@@ -50,6 +50,12 @@ jobs:
             echo "===== docker ps ====="
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
             echo
+            echo "===== egress.yaml (secrets redacted) ====="
+            sed -E "s/(api_key|api_secret|secret):.*/\1: <redacted>/" /opt/livekit/egress.yaml || true
+            echo
+            echo "===== livekit.yaml ws/port/webhook ====="
+            grep -nE "port|ws_url|use_external_ip|node_ip|urls:|https?://" /opt/livekit/livekit.yaml || true
+            echo
             echo "===== egress logs (last 400 lines) ====="
             name="$(docker ps -a --format "{{.Names}}" | grep -E "egress" | head -1)"
             if [ -n "$name" ]; then
