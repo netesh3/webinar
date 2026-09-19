@@ -45,10 +45,10 @@ export function RecordingsTab({
   const [confirmDelete, setConfirmDelete] = useState<Recording | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  // Poll while any recording is still processing or recording or not yet uploaded to S3,
-  // so the row transitions to "S3 Ready" without requiring a manual page refresh.
+  // Poll while any recording is still processing or recording,
+  // so the row transitions to "Ready" without requiring a manual page refresh.
   const hasLive = rows.some(
-    (r) => r.status === "recording" || r.status === "processing" || !r.uploadedToS3,
+    (r) => r.status === "recording" || r.status === "processing",
   );
   useEffect(() => {
     if (!hasLive) return;
@@ -226,7 +226,7 @@ function ShareRecordingModal({
       <div className="space-y-4 py-1">
         <CopyField value={shareUrl} label="Public share link" />
 
-        {!rec.uploadedToS3 && (
+        {rec.status === "processing" && (
           <div className="rounded-lg border border-warn/30 bg-warn-soft/30 p-2.5 text-[12px] text-ink-2 space-y-1.5">
             <div className="flex items-center justify-between font-semibold text-ink">
               <span>Upload in progress:</span>
@@ -298,8 +298,8 @@ function RecordingRow({
   // server render and the browser, and React calls that a hydration error.
   const hydrated = useHydrated();
   const live = rec.status === "recording";
-  const processing = rec.status === "processing" || (rec.status === "ready" && !rec.uploadedToS3);
-  const ready = rec.status === "ready" && rec.uploadedToS3;
+  const processing = rec.status === "processing";
+  const ready = rec.status === "ready";
   const failed = rec.status === "failed";
   const pct = rec.uploadPercent ?? 0;
 
@@ -333,7 +333,7 @@ function RecordingRow({
               <Badge tone="ok">
                 <span className="inline-flex items-center gap-1">
                   <CloudCheckIcon className="size-3" />
-                  S3 Ready
+                  Ready
                 </span>
               </Badge>
               {!rec.isPublic ? (

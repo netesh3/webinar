@@ -394,8 +394,8 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if rec.Status != types.RecordingReady || (s.cfg.RecordingsBackend == "s3" && !rec.UploadedToS3) {
-		if rec.Status == types.RecordingProcessing || (rec.Status == types.RecordingReady && !rec.UploadedToS3) {
+	if rec.Status != types.RecordingReady {
+		if rec.Status == types.RecordingProcessing {
 			httpx.Error(w, http.StatusConflict, "uploading_to_storage",
 				"This recording is currently uploading to cloud storage and is not ready yet. Please try again in a moment.")
 			return
@@ -412,20 +412,19 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 	inline := r.URL.Query().Get("download") != "1"
 	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
 
-	// When Cloudflare CDN is configured and the recording is finalized, redirect
-	// directly to the CDN edge. Free egress via Bandwidth Alliance and instant caching.
-	if s.cfg.RecordingsCDNBaseURL != "" {
-		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
-		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
-		return
-	}
-
 	// For S3/Backblaze storage, redirect directly to signed S3 URL with filename and content type
 	if ps, ok := s.recordings.(media.Presigner); ok {
 		if signedURL, err := ps.PresignedGetURL(r.Context(), rec.StorageKey, name, rec.Mime, inline, 6*time.Hour); err == nil && signedURL != "" {
 			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
 			return
 		}
+	}
+
+	// When Cloudflare CDN is configured and presigning is not used, redirect to CDN
+	if s.cfg.RecordingsCDNBaseURL != "" {
+		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
+		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
+		return
 	}
 
 	file, size, err := s.recordings.Open(r.Context(), rec.StorageKey)
@@ -624,8 +623,8 @@ func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Requ
 	}
 
 	rec, err := s.store.RecordingFor(r.Context(), slug, id)
-	if errors.Is(err, store.ErrNotFound) || !rec.IsPublic || rec.Status != types.RecordingReady || (s.cfg.RecordingsBackend == "s3" && !rec.UploadedToS3) {
-		if rec.Status == types.RecordingProcessing || (rec.Status == types.RecordingReady && !rec.UploadedToS3) {
+	if errors.Is(err, store.ErrNotFound) || !rec.IsPublic || rec.Status != types.RecordingReady {
+		if rec.Status == types.RecordingProcessing {
 			httpx.Error(w, http.StatusConflict, "uploading_to_storage",
 				"This recording is currently uploading to cloud storage and is not ready yet. Please try again in a moment.")
 			return
@@ -656,19 +655,19 @@ func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Requ
 
 	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
 
-	// When Cloudflare CDN is configured, redirect directly to the CDN edge.
-	if s.cfg.RecordingsCDNBaseURL != "" {
-		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
-		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
-		return
-	}
-
 	// For S3/Backblaze storage, redirect directly to signed S3 URL for fast streaming and seeking
 	if ps, ok := s.recordings.(media.Presigner); ok {
 		if signedURL, err := ps.PresignedGetURL(r.Context(), rec.StorageKey, name, rec.Mime, true, 6*time.Hour); err == nil && signedURL != "" {
 			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
 			return
 		}
+	}
+
+	// When Cloudflare CDN is configured and presigning is not used, redirect to CDN
+	if s.cfg.RecordingsCDNBaseURL != "" {
+		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
+		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
+		return
 	}
 
 	file, size, err := s.recordings.Open(r.Context(), rec.StorageKey)
