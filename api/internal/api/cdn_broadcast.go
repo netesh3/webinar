@@ -13,7 +13,6 @@ import (
 	"github.com/livekit/protocol/livekit"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
-	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -176,12 +175,10 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 	var reader io.ReadSeekCloser
 	var size int64
 	var openErr error
-	var matchedKey string
 
 	for _, k := range candidateKeys {
 		reader, size, openErr = s.recordings.Open(r.Context(), k)
 		if openErr == nil {
-			matchedKey = k
 			break
 		}
 	}
@@ -196,6 +193,8 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 	if strings.HasSuffix(file, ".m3u8") {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+		w.Header().Set("CDN-Cache-Control", "no-store")
+		w.Header().Set("Cloudflare-CDN-Cache-Control", "no-store")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 
@@ -216,6 +215,9 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 			}
 			parts := strings.Split(trimmed, "/")
 			fileName := parts[len(parts)-1]
+			if q := strings.IndexAny(fileName, "?#"); q >= 0 {
+				fileName = fileName[:q]
+			}
 			rewritten = append(rewritten, fileName)
 		}
 
@@ -225,16 +227,12 @@ func (s *Server) handleBroadcastStreamFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// For .ts video segments:
+	// For .ts video segments: stream through this API. Do not 307 to a B2
+	// presigned URL — that was already tried and broken (CORS on the bucket,
+	// and B2 does not honour response-content-type on signed GETs, which
+	// produces 403s in hls.js).
 	w.Header().Set("Content-Type", "video/mp2t")
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-
-	if ps, ok := s.recordings.(media.Presigner); ok && matchedKey != "" {
-		if signedURL, err := ps.PresignedGetURL(r.Context(), matchedKey, "", "video/mp2t", true, 1*time.Hour); err == nil && signedURL != "" {
-			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
-			return
-		}
-	}
 
 	if seeker, ok := reader.(io.ReadSeeker); ok {
 		http.ServeContent(w, r, file, time.Now(), seeker)

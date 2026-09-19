@@ -11,7 +11,7 @@ import {
 } from "livekit-client";
 import Hls from "hls.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { API_BASE, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { useMediaPreferences } from "@/lib/media";
 import {
@@ -49,6 +49,12 @@ import { RecorderProvider, RecordingBanner } from "./recording";
 import { FileShareBar } from "./file-share-bar";
 import { MeetingLimitBanner } from "./meeting-limit-banner";
 import { RoomHeader } from "./webinar-room";
+
+function resolveBroadcastUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = API_BASE.replace(/\/+$/, "");
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
 
 export function CdnAttendeeRoom({
   join,
@@ -356,7 +362,9 @@ export function CdnAttendeeRoom({
     );
   }
 
-  const streamUrl = join.cdnStreamUrl || `/api/webinars/${slug}/broadcast/index.m3u8`;
+  const streamUrl = resolveBroadcastUrl(
+    join.cdnStreamUrl || `/api/webinars/${slug}/broadcast/live.m3u8`,
+  );
 
   return (
     <RoomContext.Provider value={room}>
@@ -437,7 +445,8 @@ function HlsPlayer({
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 8,
         enableWorker: true,
-        lowLatencyMode: true,
+        // LiveKit room-composite HLS is standard 2s segments, not LL-HLS.
+        lowLatencyMode: false,
         manifestLoadingMaxRetry: 120,
         manifestLoadingRetryDelay: 1000,
         manifestLoadingMaxRetryTimeout: 300000,
@@ -445,12 +454,6 @@ function HlsPlayer({
         levelLoadingRetryDelay: 1000,
         fragLoadingMaxRetry: 60,
         fragLoadingRetryDelay: 1000,
-        xhrSetup: (xhr, url) => {
-          if (url.includes(".m3u8")) {
-            xhr.setRequestHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-            xhr.setRequestHeader("Pragma", "no-cache");
-          }
-        },
       });
 
       hls.loadSource(streamUrl);
