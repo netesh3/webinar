@@ -129,11 +129,26 @@ jobs:
           echo "cdn host: ${CDN}"
           echo
 
-          echo "===== objects in the bucket (newest 30) ====="
           aws s3api list-objects-v2 --endpoint-url "$ENDPOINT" --bucket "$BUCKET" \
-            --query 'reverse(sort_by(Contents,&LastModified))[:30].[Key,Size,LastModified]' \
-            --output table || echo "could not list the bucket"
+            --query 'Contents[].[LastModified,Size,Key]' --output text > /tmp/keys.tsv
 
-          echo "===== how many objects in total ====="
-          aws s3api list-objects-v2 --endpoint-url "$ENDPOINT" --bucket "$BUCKET" \
-            --query 'length(Contents)' --output text || true
+          echo "===== what kind of object is in here ====="
+          # Broadcasts and recordings share the bucket but not the key space: a
+          # broadcast is "broadcast/<slug>/...", a recording is the API's own
+          # sharded "ab/cd/<uuid>.<ext>". Counting them apart is the whole
+          # question — all of one and none of the other says the recording path
+          # never reaches storage.
+          awk -F'\t' '{ if ($3 ~ /^broadcast\//) b++; else o++ }
+                      END { printf "broadcast segments: %d\nanything else:      %d\n", b+0, o+0 }' /tmp/keys.tsv
+
+          echo
+          echo "===== every object that is NOT a broadcast segment ====="
+          if awk -F'\t' '$3 !~ /^broadcast\//' /tmp/keys.tsv | grep -q .; then
+            awk -F'\t' '$3 !~ /^broadcast\//' /tmp/keys.tsv
+          else
+            echo "(none — no recording has ever landed in this bucket)"
+          fi
+
+          echo
+          echo "===== total objects ====="
+          wc -l < /tmp/keys.tsv
