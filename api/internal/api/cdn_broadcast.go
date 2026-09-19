@@ -77,6 +77,25 @@ func (s *Server) stopHlsBroadcastIfActive(ctx context.Context, slug string, sfu 
 	} else {
 		s.log.Info("cdn broadcast stopped", "slug", slug, "egress", egressID)
 	}
+
+	// Schedule asynchronous cleanup of temporary HLS chunks from storage after a short buffer drain period
+	go func() {
+		time.Sleep(30 * time.Second)
+		s.cleanupBroadcastStorage(context.Background(), slug)
+	}()
+}
+
+// cleanupBroadcastStorage deletes all temporary HLS chunks (.ts and .m3u8) for a webinar from S3/disk storage.
+func (s *Server) cleanupBroadcastStorage(ctx context.Context, slug string) {
+	if s.recordings == nil || strings.TrimSpace(slug) == "" {
+		return
+	}
+	prefix := fmt.Sprintf("broadcast/%s/", slug)
+	if err := s.recordings.DeletePrefix(ctx, prefix); err != nil {
+		s.log.Warn("cdn broadcast: could not clean temporary files", "slug", slug, "prefix", prefix, "error", err)
+	} else {
+		s.log.Info("cdn broadcast: temporary files deleted from storage", "slug", slug, "prefix", prefix)
+	}
 }
 
 // handleBroadcastStreamFile serves HLS playlist and video segments (.m3u8 and .ts) for CDN broadcast.

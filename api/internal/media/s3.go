@@ -210,6 +210,42 @@ func (o *S3) Delete(ctx context.Context, key string) error {
 	return err
 }
 
+// DeletePrefix deletes all staged and S3 objects matching a key prefix (e.g. temporary HLS broadcast files).
+func (o *S3) DeletePrefix(ctx context.Context, prefix string) error {
+	if o.staging != nil {
+		_ = o.staging.DeletePrefix(ctx, prefix)
+	}
+	if o.client == nil || strings.TrimSpace(prefix) == "" {
+		return nil
+	}
+
+	paginator := s3.NewListObjectsV2Paginator(o.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(o.bucket),
+		Prefix: aws.String(prefix),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return err
+		}
+		if len(page.Contents) == 0 {
+			continue
+		}
+		var toDelete []types.ObjectIdentifier
+		for _, obj := range page.Contents {
+			toDelete = append(toDelete, types.ObjectIdentifier{Key: obj.Key})
+		}
+		_, err = o.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(o.bucket),
+			Delete: &types.Delete{Objects: toDelete, Quiet: aws.Bool(true)},
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (o *S3) abortSession(ctx context.Context, key string, sess *s3Session) error {
 	if sess.uploadID == "" {
 		return nil

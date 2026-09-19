@@ -286,6 +286,7 @@ func (s *Server) deleteWebinarBySlug(ctx context.Context, slug string) (store.De
 					"slug", slug, "key", key, "error", err)
 			}
 		}
+		s.cleanupBroadcastStorage(ctx, slug)
 	} else if len(deleted.BlobKeys) > 0 {
 		// No storage configured but rows referenced keys. Worth saying out loud.
 		deleted.FilesLeftBehind = len(deleted.BlobKeys)

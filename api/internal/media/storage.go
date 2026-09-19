@@ -33,6 +33,7 @@ type Store interface {
 	// seeking, a browser cannot scrub a video, it can only play it from 0.
 	Open(ctx context.Context, key string) (io.ReadSeekCloser, int64, error)
 	Delete(ctx context.Context, key string) error
+	DeletePrefix(ctx context.Context, prefix string) error
 	Finalize(ctx context.Context, key string) error
 	FinalizeWithProgress(ctx context.Context, key string, onProgress func(percent int)) error
 	// Describe names the backend for logs and the readiness endpoint.
@@ -159,6 +160,17 @@ func (d *Disk) Delete(_ context.Context, key string) error {
 		return err
 	}
 	if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func (d *Disk) DeletePrefix(_ context.Context, prefix string) error {
+	full, err := d.path(prefix)
+	if err != nil {
+		return nil
+	}
+	if err := os.RemoveAll(full); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil
