@@ -1,59 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import type { ControlsPatch } from "@/lib/api-types";
+import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 
 /* Live captions.
  *
- * The host's switch, and nobody else's. Captions are a transcript of what was
- * said, broadcast to the room and written to the session record — that is the
- * host's call to make, the same as recording, and an audience member has nothing
- * to turn on anyway: the recogniser runs against the speaker's own microphone, so
- * a viewer enabling it would transcribe their living room into the webinar.
+ * The host's switch, and nobody else's — but it is a SESSION CONTROL, not a flag
+ * in the host's own browser. Recognition runs against each speaker's own
+ * microphone, so every publisher has to know captions are on; when the switch
+ * lived in one tab, a panelist answering a question was never transcribed and the
+ * feature looked broken to everyone who was not the host talking.
  *
- * Off until the host asks for it. The audience then sees whatever arrives, with
- * no toggle of their own, because the switch that stops the captions is the same
- * one that stops them being produced.
- *
- * Module state rather than context because the control bar button and the overlay
- * sit in different subtrees of the room and both need the same answer.
+ * The control reaches the room through LiveKit metadata, the same path chat and
+ * polls use, so it also applies to someone who joins ten minutes later and it
+ * survives the host reloading. The audience gets no toggle of their own: what
+ * stops the captions is the same switch that stops them being produced.
  */
-
-let captionsVisible = false;
-/** When they were last switched on, so lines from before that are not replayed.
- *  Without it, switching off and straight back on flashes whatever was mid-air. */
-let visibleSince = 0;
-const listeners = new Set<() => void>();
-
-function subscribeCaptions(fn: () => void) {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-
-export function useShowCaptions() {
-  return useSyncExternalStore(
-    subscribeCaptions,
-    () => captionsVisible,
-    () => false,
-  );
-}
-
-function useCaptionsSince() {
-  return useSyncExternalStore(
-    subscribeCaptions,
-    () => visibleSince,
-    () => 0,
-  );
-}
-
-export function setShowCaptions(on: boolean) {
-  captionsVisible = on;
-  if (on) visibleSince = Date.now();
-  listeners.forEach((fn) => fn());
-}
 
 /** How long a caption stays up after the last packet for it.
  *
@@ -67,10 +32,24 @@ function holdMs(text: string): number {
 }
 
 export function CaptionOverlay() {
-  const { realtime, isHost } = useRoomUI();
-  const on = useShowCaptions();
-  const since = useCaptionsSince();
+  const { realtime, controls } = useRoomUI();
+  const on = controls.captionsEnabled;
   const line = realtime.captions;
+
+  /* The line that was mid-air when the switch last came on, so it is not
+   * replayed: without this, switching captions off and straight back on flashes
+   * whatever was on screen when they went off.
+   *
+   * Held by identity rather than by timestamp — every packet is a fresh object,
+   * so "the one that was already there" is exactly what identity says, and it
+   * needs no clock read during render. Adjusted from the previous value here
+   * rather than in an effect, which would show the stale line for a frame. */
+  const [ignored, setIgnored] = useState<object | null>(null);
+  const [wasOn, setWasOn] = useState(on);
+  if (wasOn !== on) {
+    setWasOn(on);
+    if (on) setIgnored(line);
+  }
 
   /* Expiry is state, and what is on screen is derived from it.
    *
@@ -88,11 +67,7 @@ export function CaptionOverlay() {
     return () => clearTimeout(timer);
   }, [line]);
 
-  // Only the host has a switch. Everyone else has nothing to gate on: captions
-  // reaching them at all means the host has them on, and switching off stops the
-  // packets, so their last line times out on its own.
-  const text =
-    line && line !== stale && (!isHost || (on && line.at >= since)) ? line.text : "";
+  const text = on && line && line !== stale && line !== ignored ? line.text : "";
 
   if (!text) return null;
 
@@ -116,27 +91,56 @@ export function CaptionOverlay() {
 }
 
 export function CaptionsBarButton() {
-  const on = useShowCaptions();
-  const { permissions, recording, slug, joinKey, realtime, isHost } = useRoomUI();
-  useCaptionsPublisher(
-    on && isHost && permissions.canPublish,
-    slug,
-    joinKey,
-    realtime.sendCaption,
+  const { permissions, recording, slug, joinKey, realtime, isHost, controls } = useRoomUI();
+  const { notify } = useToast();
+  const on = controls.captionsEnabled;
+  const [busy, setBusy] = useState(false);
+
+  /* Trouble is reported to whoever it happened to, because it is their machine
+   * that has to be fixed — a host cannot grant a panelist's microphone from
+   * here. Each distinct problem is said once: the recogniser can fail several
+   * times a minute and a toast per failure would bury the room. */
+  const told = useRef(new Set<string>());
+  const report = useCallback(
+    (key: string, message: string) => {
+      if (told.current.has(key)) return;
+      told.current.add(key);
+      notify(message, "error");
+    },
+    [notify],
   );
+
+  // Runs for every publisher, not just the host: the recogniser only ever hears
+  // the microphone it is running next to.
+  useCaptionsPublisher(on && permissions.canPublish, slug, joinKey, realtime.sendCaption, report);
 
   // Renders nothing for the audience, the way RecordButton beside it renders
   // nothing for anyone who may not record. Called after the hooks above so the
   // order is the same on every render.
   if (!isHost) return null;
 
+  async function toggle() {
+    setBusy(true);
+    try {
+      // Written to the API, which persists it and mirrors it into room metadata.
+      // Nothing local is set: this button reacts to the same broadcast as every
+      // other browser, which is what keeps them in agreement.
+      await api.updateControls(slug, { captionsEnabled: !on } satisfies ControlsPatch);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "That didn't apply.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <button
       type="button"
       aria-pressed={on}
+      disabled={busy}
       aria-label={on ? "Turn captions off for everyone" : "Turn captions on for everyone"}
-      onClick={() => setShowCaptions(!on)}
-      className={`flex h-10 min-w-10 items-center justify-center rounded-lg px-2 text-[11px] font-semibold ${
+      onClick={() => void toggle()}
+      className={`flex h-10 min-w-10 items-center justify-center rounded-lg px-2 text-[11px] font-semibold disabled:opacity-60 ${
         on ? "bg-brand-soft text-brand" : "text-ink-3 hover:bg-white/10 hover:text-white"
       }`}
       title={
@@ -152,18 +156,39 @@ export function CaptionsBarButton() {
   );
 }
 
+/** Errors the recogniser will never recover from on its own. Retrying these is
+ *  what turned a denied microphone into a request every 400ms for the rest of
+ *  the session, with nothing on screen to say why captions never appeared. */
+const FATAL: Record<string, string> = {
+  "not-allowed":
+    "Captions need microphone access for speech recognition. Allow it in your browser's site settings, then switch captions off and on.",
+  "service-not-allowed":
+    "This browser has speech recognition turned off, so your speech can't be captioned.",
+  "language-not-supported": "Speech recognition doesn't support this language.",
+};
+
+/** Consecutive failures with nothing recognised in between before giving up.
+ *  A recogniser that cannot start is not going to start on the ninth try, and a
+ *  loop that never ends is worse than an honest message. */
+const MAX_RETRIES = 8;
+
 function useCaptionsPublisher(
   active: boolean,
   slug: string,
   joinKey: string | undefined,
   sendCaption: (text: string) => Promise<void>,
+  report: (key: string, message: string) => void,
 ) {
-  // Through a ref so a new callback identity does not tear down a running
+  // Through refs so a new callback identity does not tear down a running
   // recogniser and lose the sentence in progress.
   const send = useRef(sendCaption);
   useEffect(() => {
     send.current = sendCaption;
   }, [sendCaption]);
+  const trouble = useRef(report);
+  useEffect(() => {
+    trouble.current = report;
+  }, [report]);
 
   useEffect(() => {
     if (!active) return;
@@ -177,7 +202,17 @@ function useCaptionsPublisher(
             webkitSpeechRecognition?: new () => SpeechRecognitionLike;
           }).webkitSpeechRecognition)
         : undefined;
-    if (!Speech) return;
+    if (!Speech) {
+      /* Silent before this. The button lit up, no recogniser existed, and nobody
+       * was told — which is most of "captions are not coming". Firefox has it
+       * behind a flag and Chromium builds without Google's speech keys do
+       * nothing at all, not even raise an error. */
+      trouble.current(
+        "unsupported",
+        "This browser can't do live captions. Chrome, Edge or Safari can.",
+      );
+      return;
+    }
 
     const rec = new Speech();
     rec.continuous = true;
@@ -188,8 +223,11 @@ function useCaptionsPublisher(
     let restart: ReturnType<typeof setTimeout> | undefined;
     let last = "";
     let lastPersistedAt = 0;
+    let failures = 0;
 
     rec.onresult = (ev: SpeechRecognitionEventLike) => {
+      // Something came back, so whatever went wrong before has passed.
+      failures = 0;
       let text = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         text += ev.results[i][0].transcript;
@@ -209,26 +247,64 @@ function useCaptionsPublisher(
      * on a `no-speech` error — and does not come back by itself. That is the whole
      * of "captions worked for a minute and then froze": the recogniser was gone
      * while the button still said CC was on. Restarting keeps it alive until the
-     * toggle actually goes off. */
+     * toggle actually goes off.
+     *
+     * The delay backs off, because the failures that repeat are the ones no delay
+     * fixes, and start() throwing must reschedule rather than fall through: a bare
+     * catch here left the recogniser dead for the rest of the session, since no
+     * further `end` event could arrive to try again. */
     const revive = () => {
       if (stopped) return;
       clearTimeout(restart);
+      if (failures >= MAX_RETRIES) {
+        trouble.current(
+          "gave-up",
+          "Speech recognition keeps dropping, so captions have stopped. Switching captions off and on will try again.",
+        );
+        return;
+      }
+      const wait = Math.min(8_000, 400 * 2 ** Math.max(0, failures - 1));
       restart = setTimeout(() => {
         if (stopped) return;
         try {
           rec.start();
         } catch {
-          /* Already running: start() throws rather than no-oping. */
+          // Already running: start() throws rather than no-oping. Also thrown when
+          // the previous session has not finished closing, which is recoverable —
+          // so count it and come back rather than giving up here.
+          failures++;
+          revive();
         }
-      }, 400);
+      }, wait);
     };
-    rec.onend = revive;
-    rec.onerror = revive;
+
+    rec.onend = () => {
+      failures++;
+      revive();
+    };
+    rec.onerror = (ev: SpeechRecognitionErrorLike) => {
+      const fatal = FATAL[ev?.error ?? ""];
+      if (fatal) {
+        stopped = true;
+        clearTimeout(restart);
+        trouble.current(ev.error, fatal);
+        return;
+      }
+      if (ev?.error === "network") {
+        trouble.current(
+          "network",
+          "Speech recognition couldn't reach its service, so captions may be patchy.",
+        );
+      }
+      failures++;
+      revive();
+    };
 
     try {
       rec.start();
     } catch {
-      return;
+      failures++;
+      revive();
     }
 
     return () => {
@@ -252,7 +328,7 @@ type SpeechRecognitionLike = {
   lang: string;
   onresult: ((ev: SpeechRecognitionEventLike) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((ev: SpeechRecognitionErrorLike) => void) | null;
   start: () => void;
   stop: () => void;
 };
@@ -261,3 +337,5 @@ type SpeechRecognitionEventLike = {
   resultIndex: number;
   results: { length: number; [i: number]: { 0: { transcript: string } } };
 };
+
+type SpeechRecognitionErrorLike = { error: string };

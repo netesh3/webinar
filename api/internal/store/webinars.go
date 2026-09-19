@@ -26,7 +26,7 @@ const webinarColumns = `
 	w.hide_attendees, w.mute_on_entry, w.allow_unmute, w.chat_enabled,
 	w.chat_destination,
 	w.qa_enabled, w.raise_hand_enabled, w.reactions_enabled,
-	w.polls_enabled, w.locked, w.sfu_project, w.image_key,
+	w.polls_enabled, w.captions_enabled, w.locked, w.sfu_project, w.image_key,
 	w.simulive_recording_id::text,
 	h.id, h.name, h.title, h.org, h.initials, h.hue,
 	(SELECT count(*) FROM registrations r
@@ -59,7 +59,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.HideAttendees, &c.MuteOnEntry, &c.AllowUnmute, &c.ChatEnabled,
 		&c.ChatDestination,
 		&c.QAEnabled, &c.RaiseHandEnabled, &c.ReactionsEnabled,
-		&c.PollsEnabled, &c.Locked, &w.SFUProject, &imageKey,
+		&c.PollsEnabled, &c.CaptionsEnabled, &c.Locked, &w.SFUProject, &imageKey,
 		&simuliveID,
 		&hostID, &w.Host.Name, &w.Host.Title, &w.Host.Org, &w.Host.Initials, &w.Host.Hue,
 		&w.RegistrantCount,
@@ -375,10 +375,11 @@ func (s *Store) CreateWebinar(ctx context.Context, hostID string, in types.Webin
 			 agenda, takeaways, options,
 			 hide_attendees, mute_on_entry, allow_unmute, chat_enabled,
 			 qa_enabled, raise_hand_enabled, reactions_enabled, locked,
-			 chat_destination, polls_enabled, max_duration_min, simulive_recording_id)
+			 chat_destination, polls_enabled, captions_enabled,
+			 max_duration_min, simulive_recording_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
 		        $13,$14,$15,$16,$17,$18,$19,
-		        $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30, NULLIF($31,'')::uuid)
+		        $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31, NULLIF($32,'')::uuid)
 		RETURNING id::text`,
 		slug, webinarID, strings.TrimSpace(in.Topic), strings.TrimSpace(in.Summary),
 		strings.TrimSpace(in.Descript), strings.TrimSpace(in.Track),
@@ -389,6 +390,10 @@ func (s *Store) CreateWebinar(ctx context.Context, hostID string, in types.Webin
 		in.Controls.ChatEnabled, in.Controls.QAEnabled, in.Controls.RaiseHandEnabled,
 		in.Controls.ReactionsEnabled, in.Controls.Locked,
 		string(in.Controls.ChatDestination.OrDefault()), in.Controls.PollsEnabled,
+		// Ticking "Live captions" on the schedule form is a request for captions,
+		// so it starts the session with the control already on. It used to set a
+		// badge and nothing else.
+		in.Controls.CaptionsEnabled || in.Options.Captions,
 		maxDuration, strings.TrimSpace(in.SimuliveRecordingID),
 	).Scan(&id)
 	if isUniqueViolation(err) {
@@ -465,8 +470,8 @@ func (s *Store) UpdateWebinar(ctx context.Context, slug string, in types.Webinar
 			hide_attendees = $18, mute_on_entry = $19, allow_unmute = $20,
 			chat_enabled = $21, qa_enabled = $22, raise_hand_enabled = $23,
 			reactions_enabled = $24, locked = $25, chat_destination = $26,
-			polls_enabled = $27,
-			simulive_recording_id = NULLIF($28,'')::uuid,
+			polls_enabled = $27, captions_enabled = $28,
+			simulive_recording_id = NULLIF($29,'')::uuid,
 			updated_at = now()
 		 WHERE id = $1`,
 		id, strings.TrimSpace(in.Topic), strings.TrimSpace(in.Summary),
@@ -478,6 +483,7 @@ func (s *Store) UpdateWebinar(ctx context.Context, slug string, in types.Webinar
 		in.Controls.ChatEnabled, in.Controls.QAEnabled, in.Controls.RaiseHandEnabled,
 		in.Controls.ReactionsEnabled, in.Controls.Locked,
 		string(in.Controls.ChatDestination.OrDefault()), in.Controls.PollsEnabled,
+		in.Controls.CaptionsEnabled || in.Options.Captions,
 		strings.TrimSpace(in.SimuliveRecordingID),
 	); err != nil {
 		return types.Webinar{}, err
@@ -554,11 +560,12 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
 			locked             = coalesce($9, locked),
 			chat_destination   = coalesce($10, chat_destination),
 			polls_enabled      = coalesce($11, polls_enabled),
+			captions_enabled   = coalesce($12, captions_enabled),
 			updated_at         = now()
 		 WHERE slug = $1`,
 		slug, p.HideAttendees, p.MuteOnEntry, p.AllowUnmute, p.ChatEnabled,
 		p.QAEnabled, p.RaiseHandEnabled, p.ReactionsEnabled, p.Locked,
-		chatDestination, p.PollsEnabled)
+		chatDestination, p.PollsEnabled, p.CaptionsEnabled)
 	if err != nil {
 		return types.Webinar{}, err
 	}

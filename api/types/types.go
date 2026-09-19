@@ -192,7 +192,13 @@ type SessionControls struct {
 	// for them entirely; the host still sees theirs, because writing the questions
 	// is what you do before turning it on.
 	PollsEnabled bool `json:"pollsEnabled"`
-	Locked       bool `json:"locked"`
+	// CaptionsEnabled is the live-caption switch, and it is a CONTROL rather than
+	// something the host's own browser remembers. Recognition runs against each
+	// speaker's own microphone, so every publisher has to know captions are on or
+	// only the person who pressed the button is ever transcribed. Initialised from
+	// the scheduled Options.Captions when the webinar is created.
+	CaptionsEnabled bool `json:"captionsEnabled"`
+	Locked          bool `json:"locked"`
 
 	// ChatDestination decides where an ATTENDEE's chat goes: to the whole room, or
 	// to the stage only. The host owns it, which is the point — an attendee picking
@@ -245,6 +251,7 @@ type ControlsPatch struct {
 	RaiseHandEnabled *bool `json:"raiseHandEnabled,omitempty"`
 	ReactionsEnabled *bool `json:"reactionsEnabled,omitempty"`
 	PollsEnabled     *bool `json:"pollsEnabled,omitempty"`
+	CaptionsEnabled  *bool `json:"captionsEnabled,omitempty"`
 	Locked           *bool `json:"locked,omitempty"`
 	// A pointer for the same reason as the others: "not mentioned" and "set to
 	// everyone" are different requests.
