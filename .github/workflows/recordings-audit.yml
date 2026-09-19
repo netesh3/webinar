@@ -152,3 +152,46 @@ jobs:
           echo
           echo "===== total objects ====="
           wc -l < /tmp/keys.tsv
+
+      # Everything small in that bucket arrived; nothing large did. A 389-byte
+      # egress manifest is a single PutObject, a 1MB HLS chunk is a single
+      # PutObject, and a 12MB recording is a multipart upload — so "multipart
+      # does not work against this bucket" fits every observation. This is the
+      # experiment that decides it. The two probe objects are deleted again.
+      - name: Can a large object be written at all
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.RECORDINGS_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.RECORDINGS_S3_REGION }}
+          BUCKET: ${{ secrets.RECORDINGS_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.RECORDINGS_S3_ENDPOINT }}
+        run: |
+          [ -n "$BUCKET" ] || exit 0
+          head -c 12000000 /dev/urandom > /tmp/probe.bin
+
+          echo "===== single PutObject, 389 bytes ====="
+          head -c 389 /dev/urandom > /tmp/small.bin
+          if aws s3api put-object --endpoint-url "$ENDPOINT" --bucket "$BUCKET" \
+               --key "_probe/small.bin" --body /tmp/small.bin >/dev/null 2>/tmp/e1; then
+            echo "OK — small single-part upload works"
+          else
+            echo "FAILED:"; cat /tmp/e1
+          fi
+
+          echo
+          echo "===== multipart, 12MB (what a recording is) ====="
+          if aws s3 cp /tmp/probe.bin "s3://$BUCKET/_probe/large.bin" \
+               --endpoint-url "$ENDPOINT" >/dev/null 2>/tmp/e2; then
+            echo "OK — multipart upload works"
+          else
+            echo "FAILED:"; cat /tmp/e2
+          fi
+
+          echo
+          echo "===== what actually landed ====="
+          aws s3api list-objects-v2 --endpoint-url "$ENDPOINT" --bucket "$BUCKET" \
+            --prefix "_probe/" --query 'Contents[].[Key,Size]' --output text || echo "(nothing)"
+
+          echo
+          echo "===== cleaning up the probe ====="
+          aws s3 rm "s3://$BUCKET/_probe/" --recursive --endpoint-url "$ENDPOINT" || true
