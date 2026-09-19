@@ -82,7 +82,7 @@ import { CdnAttendeeRoom } from "./cdn-attendee-room";
  */
 
 export function WebinarRoom({
-  join,
+  join: initialJoin,
   slug,
   topic: initialTopic,
   imageUrl: initialImageUrl,
@@ -103,20 +103,59 @@ export function WebinarRoom({
   onLeave: () => void;
 }) {
   const { ready: prefsReady } = useMediaPreferences();
+  const [currentJoin, setCurrentJoin] = useState<JoinResponse>(initialJoin);
   const [promotedToStage, setPromotedToStage] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+
+  const handlePromoted = useCallback(async () => {
+    setTransitioning(true);
+    try {
+      const fresh = await api.join(slug, joinKey);
+      setCurrentJoin(fresh);
+    } catch {
+      // Fallback if re-join call fails
+    } finally {
+      setTransitioning(false);
+      setPromotedToStage(true);
+    }
+  }, [slug, joinKey]);
+
+  const handleDemoted = useCallback(async () => {
+    setTransitioning(true);
+    try {
+      const fresh = await api.join(slug, joinKey);
+      setCurrentJoin(fresh);
+    } catch {
+      // Fallback
+    } finally {
+      setTransitioning(false);
+      setPromotedToStage(false);
+    }
+  }, [slug, joinKey]);
 
   // If this webinar is running in CDN broadcast mode and the user is an unpromoted attendee:
-  if (join.cdnBroadcast && !join.canPublish && !promotedToStage) {
+  if (currentJoin.cdnBroadcast && !currentJoin.canPublish && !promotedToStage) {
     return (
       <CdnAttendeeRoom
-        join={join}
+        join={currentJoin}
         slug={slug}
         initialTopic={initialTopic}
         initialImageUrl={initialImageUrl}
         joinKey={joinKey}
         onLeave={onLeave}
-        onPromoted={() => setPromotedToStage(true)}
+        onPromoted={handlePromoted}
       />
+    );
+  }
+
+  if (transitioning) {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-stage">
+        <div className="flex flex-col items-center gap-3">
+          <Spinner className="size-8 text-brand" />
+          <p className="text-[13px] text-white">Joining the stage...</p>
+        </div>
+      </main>
     );
   }
 
@@ -145,13 +184,13 @@ export function WebinarRoom({
   // be warmed up while the presenter is still checking their camera.
   return (
     <RoomSession
-      join={join}
+      join={currentJoin}
       slug={slug}
       initialTopic={initialTopic}
       initialImageUrl={initialImageUrl}
       joinKey={joinKey}
       onLeave={onLeave}
-      onDemoted={() => setPromotedToStage(false)}
+      onDemoted={handleDemoted}
     />
   );
 }
