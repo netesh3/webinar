@@ -435,18 +435,7 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 	inline := r.URL.Query().Get("download") != "1"
 	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
 
-	// For S3/Backblaze storage, redirect directly to signed S3 URL with filename and content type
-	if ps, ok := s.recordings.(media.Presigner); ok {
-		if signedURL, err := ps.PresignedGetURL(r.Context(), rec.StorageKey, name, rec.Mime, inline, 6*time.Hour); err == nil && signedURL != "" {
-			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
-			return
-		}
-	}
-
-	// When Cloudflare CDN is configured and presigning is not used, redirect to CDN
-	if s.cfg.RecordingsCDNBaseURL != "" {
-		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
-		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
+	if s.redirectRecordingObject(w, r, rec.StorageKey, name, rec.Mime, inline) {
 		return
 	}
 
@@ -729,18 +718,7 @@ func (s *Server) handlePublicStreamRecording(w http.ResponseWriter, r *http.Requ
 
 	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
 
-	// For S3/Backblaze storage, redirect directly to signed S3 URL for fast streaming and seeking
-	if ps, ok := s.recordings.(media.Presigner); ok {
-		if signedURL, err := ps.PresignedGetURL(r.Context(), rec.StorageKey, name, rec.Mime, true, 6*time.Hour); err == nil && signedURL != "" {
-			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
-			return
-		}
-	}
-
-	// When Cloudflare CDN is configured and presigning is not used, redirect to CDN
-	if s.cfg.RecordingsCDNBaseURL != "" {
-		cdnURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"), strings.TrimPrefix(rec.StorageKey, "/"))
-		http.Redirect(w, r, cdnURL, http.StatusTemporaryRedirect)
+	if s.redirectRecordingObject(w, r, rec.StorageKey, name, rec.Mime, true) {
 		return
 	}
 
@@ -912,6 +890,26 @@ func normalizeMime(raw string) (string, bool) {
 		return base, true
 	}
 	return base + ";" + params, true
+}
+
+/* redirectRecordingObject sends the browser to the bytes, preferring the CDN
+ * host when one is configured. A presigned origin URL is the fallback, not the
+ * default: that path skips Cloudflare, so a Bandwidth Alliance or R2 custom
+ * domain never sees the audience, and a daily origin cap trips on the first
+ * play. Returns true if a redirect was written.
+ */
+func (s *Server) redirectRecordingObject(w http.ResponseWriter, r *http.Request, storageKey, name, mime string, inline bool) bool {
+	if cdn := strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"); cdn != "" && strings.TrimSpace(storageKey) != "" {
+		http.Redirect(w, r, cdn+"/"+strings.TrimPrefix(storageKey, "/"), http.StatusTemporaryRedirect)
+		return true
+	}
+	if ps, ok := s.recordings.(media.Presigner); ok {
+		if signedURL, err := ps.PresignedGetURL(r.Context(), storageKey, name, mime, inline, 6*time.Hour); err == nil && signedURL != "" {
+			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
+			return true
+		}
+	}
+	return false
 }
 
 // safeName strips everything that would be awkward in a filename across

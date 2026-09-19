@@ -35,8 +35,11 @@
 #     RECORDINGS_ENABLED=true; "s3" also needs the five RECORDINGS_S3_* below.
 #   RECORDINGS_S3_BUCKET / RECORDINGS_S3_ENDPOINT / RECORDINGS_S3_REGION /
 #     RECORDINGS_S3_ACCESS_KEY / RECORDINGS_S3_SECRET_KEY — an S3-compatible
-#     bucket (Backblaze B2 in practice). Use a key SCOPED to this one bucket
-#     (listFiles/readFiles/writeFiles/deleteFiles) — never an account master key.
+#     origin (Cloudflare R2 preferred; B2 still works). R2 endpoint is
+#     https://<ACCOUNT_ID>.r2.cloudflarestorage.com, region auto.
+#   RECORDINGS_CDN_BASE_URL — public host for playback (default
+#     https://recordings.webinarliv.com). Must be a Cloudflare custom domain
+#     on the bucket so the audience never talks to the origin.
 #   RECORDINGS_RETENTION_DAYS — days to keep cloud recordings (default 30; 0 = keep until deleted).
 #
 # Repository variables (vars.*, not secrets):
@@ -105,9 +108,9 @@ jobs:
       RECORDINGS_S3_ACCESS_KEY: ${{ secrets.RECORDINGS_S3_ACCESS_KEY }}
       RECORDINGS_S3_SECRET_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
       RECORDINGS_MODE: ${{ secrets.RECORDINGS_MODE || 'egress' }}
-      RECORDINGS_EGRESS_TEMPLATE_URL: ${{ secrets.RECORDINGS_EGRESS_TEMPLATE_URL || '' }}
+      RECORDINGS_EGRESS_TEMPLATE_URL: ${{ secrets.RECORDINGS_EGRESS_TEMPLATE_URL || 'https://webinarliv.com/recorder-template' }}
       RECORDINGS_EGRESS_PRESET: ${{ secrets.RECORDINGS_EGRESS_PRESET || '1080p' }}
-      RECORDINGS_CDN_BASE_URL: ${{ secrets.RECORDINGS_CDN_BASE_URL }}
+      RECORDINGS_CDN_BASE_URL: ${{ secrets.RECORDINGS_CDN_BASE_URL || 'https://recordings.webinarliv.com' }}
       RECORDINGS_RETENTION_DAYS: ${{ secrets.RECORDINGS_RETENTION_DAYS || '30' }}
       EMPTY_ROOM_CLOSE_MIN: ${{ vars.EMPTY_ROOM_CLOSE_MIN || '10' }}
       SEED_DEV: "false"
