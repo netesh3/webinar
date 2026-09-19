@@ -921,6 +921,13 @@ type JoinResponse struct {
 	// mode so a demote remount still has a URL.
 	CdnBroadcast bool   `json:"cdnBroadcast,omitempty"`
 	CdnStreamURL string `json:"cdnStreamUrl,omitempty"`
+	// CdnFallbackURL is the S3/API playlist when CdnStreamURL is the live origin.
+	// Empty when there is no live origin, or for simulive. The player tries the
+	// live URL first and falls back here if MediaMTX is not yet publishing.
+	CdnFallbackURL string `json:"cdnFallbackUrl,omitempty"`
+	// CdnLowLatency is true when CdnStreamURL is LL-HLS (MediaMTX), so the
+	// player can sit closer to the live edge than a 2s-segment B2 playlist.
+	CdnLowLatency bool `json:"cdnLowLatency,omitempty"`
 }
 
 type SetUserMaxDurationRequest struct {

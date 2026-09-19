@@ -188,6 +188,38 @@ func productionEnv(extra map[string]string) map[string]string {
 	return env
 }
 
+func TestBroadcastURLsStayEmptyUntilBothBasesAreSet(t *testing.T) {
+	c := Config{}
+	if c.BroadcastHLSURL("slug") != "" || c.BroadcastRTMPURL("slug") != "" {
+		t.Fatal("empty bases should produce empty URLs")
+	}
+	c.BroadcastHLSBase = "https://live.example.com/live"
+	c.BroadcastRTMPBase = "rtmp://127.0.0.1:1935/live"
+	if got, want := c.BroadcastHLSURL("slug"), "https://live.example.com/live/slug/index.m3u8"; got != want {
+		t.Errorf("BroadcastHLSURL = %q, want %q", got, want)
+	}
+	if got, want := c.BroadcastRTMPURL("slug"), "rtmp://127.0.0.1:1935/live/slug"; got != want {
+		t.Errorf("BroadcastRTMPURL = %q, want %q", got, want)
+	}
+}
+
+func TestBroadcastBasesMustBePaired(t *testing.T) {
+	setEnv(t, productionEnv(map[string]string{
+		"BROADCAST_RTMP_BASE": "rtmp://127.0.0.1:1935/live",
+	}))
+	if _, err := Load(); err == nil {
+		t.Fatal("RTMP without HLS was accepted")
+	}
+	c := load(t, productionEnv(map[string]string{
+		"BROADCAST_RTMP_BASE": "rtmp://127.0.0.1:1935/live",
+		"BROADCAST_HLS_BASE":  "https://sfu.example.com/live",
+	}))
+	if c.BroadcastHLSBase != "https://sfu.example.com/live" {
+		t.Errorf("BroadcastHLSBase = %q", c.BroadcastHLSBase)
+	}
+}
+
+
 func TestRecordingsRetentionDaysDefaultsToThirty(t *testing.T) {
 	c := load(t, map[string]string{})
 	if c.RecordingsRetentionDays != 30 {
@@ -322,6 +354,7 @@ func setEnv(t *testing.T, env map[string]string) {
 		"SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM",
 		"LIVEKIT_PROJECTS", "AUTH_BYPASS", "GOOGLE_CLIENT_ID", "GOOGLE_API_KEY",
 		"SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_JWT_SECRET",
+		"BROADCAST_RTMP_BASE", "BROADCAST_HLS_BASE",
 	} {
 		t.Setenv(key, "")
 	}

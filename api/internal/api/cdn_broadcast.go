@@ -59,7 +59,7 @@ func (s *Server) startHlsBroadcastIfEnabled(ctx context.Context, wb types.Webina
 		SecretKey: s.cfg.RecordingsS3SecretKey,
 	}
 
-	info, err := sfu.StartHlsBroadcastEgress(ctx, roomName, prefix, playlistName, s3Opts, s.cfg.RecordingsEgressTemplateURL, preset)
+	info, err := sfu.StartHlsBroadcastEgress(ctx, roomName, prefix, playlistName, s3Opts, s.cfg.RecordingsEgressTemplateURL, preset, s.cfg.BroadcastRTMPURL(wb.ID))
 	if err != nil {
 		s.log.Warn("cdn broadcast: could not start egress", "slug", wb.ID, "error", err)
 		broadcastMu.Lock()

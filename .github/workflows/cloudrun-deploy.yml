@@ -40,6 +40,10 @@
 #   RECORDINGS_CDN_BASE_URL — public host for playback (default
 #     https://recordings.webinarliv.com). Must be a Cloudflare custom domain
 #     on the bucket so the audience never talks to the origin.
+#   BROADCAST_RTMP_BASE / BROADCAST_HLS_BASE — live attendee origin (MediaMTX).
+#     Unset by default: attendees stay on the B2 playlist. Both or neither.
+#     BROADCAST_HLS_BASE must be a Cloudflare-proxied host (live.webinarliv.com),
+#     never the SFU's sslip.io address — see deploy/livekit-hetzner/README.md.
 #   RECORDINGS_RETENTION_DAYS — days to keep cloud recordings (default 30; 0 = keep until deleted).
 #
 # Repository variables (vars.*, not secrets):
@@ -111,6 +115,14 @@ jobs:
       RECORDINGS_EGRESS_TEMPLATE_URL: ${{ secrets.RECORDINGS_EGRESS_TEMPLATE_URL || 'https://webinarliv.com/recorder-template' }}
       RECORDINGS_EGRESS_PRESET: ${{ secrets.RECORDINGS_EGRESS_PRESET || '1080p' }}
       RECORDINGS_CDN_BASE_URL: ${{ secrets.RECORDINGS_CDN_BASE_URL || 'https://recordings.webinarliv.com' }}
+      # No defaults on purpose. Setting these switches every CDN attendee off the
+      # B2 playlist and onto the live origin, and the only origin available before
+      # DNS exists is the SFU's own sslip.io host — which is a bare Hetzner IP with
+      # no Cloudflare in front, so the box would serve one copy of the stream per
+      # viewer off a 1 Gbps NIC. Fewer seconds of lag, far fewer seats. Set both
+      # secrets once live.webinarliv.com is orange-clouded; see the Hetzner README.
+      BROADCAST_RTMP_BASE: ${{ secrets.BROADCAST_RTMP_BASE }}
+      BROADCAST_HLS_BASE: ${{ secrets.BROADCAST_HLS_BASE }}
       RECORDINGS_RETENTION_DAYS: ${{ secrets.RECORDINGS_RETENTION_DAYS || '30' }}
       EMPTY_ROOM_CLOSE_MIN: ${{ vars.EMPTY_ROOM_CLOSE_MIN || '10' }}
       SUPPORT_EMAIL: ${{ secrets.SUPPORT_EMAIL }}

@@ -157,7 +157,8 @@ func (s *Server) joinAsAttendee(
 		s.log.Warn("join: host cdn broadcast lookup failed", "host", wb.Host.ID, "error", err)
 	}
 	isCdnAttendee := cdnBroadcast && !grant.Granted
-	var cdnStreamURL string
+	var cdnStreamURL, cdnFallbackURL string
+	var cdnLowLatency bool
 	if wb.Kind == types.KindSimulive {
 		if u := s.simulivePlaybackURL(r.Context(), wb); u != "" {
 			cdnBroadcast = true
@@ -167,7 +168,14 @@ func (s *Server) joinAsAttendee(
 	} else if cdnBroadcast {
 		// Always include the playlist URL while the webinar is in CDN mode, even
 		// for someone currently on stage — demote remounts HLS from this join.
-		cdnStreamURL = s.cdnStreamURL(wb.ID)
+		storage := s.cdnStreamURL(wb.ID)
+		if live := s.cfg.BroadcastHLSURL(wb.ID); live != "" {
+			cdnStreamURL = live
+			cdnFallbackURL = storage
+			cdnLowLatency = true
+		} else {
+			cdnStreamURL = storage
+		}
 		if isCdnAttendee && wb.Status == types.StatusLive {
 			go s.startHlsBroadcastIfEnabled(context.Background(), wb, sfu)
 		}
@@ -188,7 +196,7 @@ func (s *Server) joinAsAttendee(
 		// along with its scope — see Metadata.Promoted.
 		Promoted: grant.Granted,
 		DataOnly: isCdnAttendee,
-	}, false, cdnBroadcast, cdnStreamURL)
+	}, false, cdnBroadcast, cdnStreamURL, cdnFallbackURL, cdnLowLatency)
 	if ok {
 		_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID, display)
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
@@ -424,7 +432,7 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		Name:        user.Name,
 		MutedByHost: muted,
 		CoHost:      coHost,
-	}, true, false, "")
+	}, true, false, "", "", false)
 }
 
 // ensureRoom creates the room with the capacity ceiling and seeds its metadata
@@ -577,7 +585,7 @@ func (s *Server) roomMetadata(ctx context.Context, wb types.Webinar) (string, er
 // request that ends in an error response.
 func (s *Server) issueToken(
 	w http.ResponseWriter, r *http.Request, wb types.Webinar, sfu RoomManager,
-	spec lk.Spec, canRecord bool, cdnBroadcast bool, cdnStreamURL string,
+	spec lk.Spec, canRecord bool, cdnBroadcast bool, cdnStreamURL, cdnFallbackURL string, cdnLowLatency bool,
 ) bool {
 	spec.Hidden = lk.HiddenFor(spec.Role, wb.Controls.HideAttendees)
 
@@ -629,6 +637,8 @@ func (s *Server) issueToken(
 		MaxDurationMin: wb.MaxDurationMin,
 		CdnBroadcast:   cdnBroadcast,
 		CdnStreamURL:   cdnStreamURL,
+		CdnFallbackURL: cdnFallbackURL,
+		CdnLowLatency:  cdnLowLatency,
 	})
 	return true
 }

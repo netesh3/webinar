@@ -116,6 +116,16 @@ type Config struct {
 	// RecordingsCDNBaseURL: Cloudflare CDN URL for serving recordings (e.g. https://recordings.webinarliv.com).
 	RecordingsCDNBaseURL string
 
+	/* BroadcastRTMPBase / BroadcastHLSBase are the Zoom-style one-way attendee
+	 * path: Egress pushes RTMP to MediaMTX on the SFU box, attendees play LL-HLS
+	 * from that origin (ideally orange-clouded so the 1 Gbps NIC is not per-viewer).
+	 *
+	 * Empty means the old B2 playlist only. Both must be set together — RTMP
+	 * without a public HLS URL would encode a feed nobody can watch, and an HLS
+	 * URL without RTMP would 404 forever. */
+	BroadcastRTMPBase string
+	BroadcastHLSBase  string
+
 	// Branding and public URLs are served to the frontend over /api/config so
 	// the bundle carries no build-time constants for things an operator sets.
 	// Share links in particular must not be baked in: a link that points at
@@ -315,6 +325,8 @@ func Load() (Config, error) {
 		RecordingsEgressTemplateURL: strings.TrimRight(env("RECORDINGS_EGRESS_TEMPLATE_URL", ""), "/"),
 		RecordingsEgressPreset:      strings.ToLower(env("RECORDINGS_EGRESS_PRESET", "1080p")),
 		RecordingsCDNBaseURL:        strings.TrimRight(env("RECORDINGS_CDN_BASE_URL", ""), "/"),
+		BroadcastRTMPBase:           strings.TrimRight(env("BROADCAST_RTMP_BASE", ""), "/"),
+		BroadcastHLSBase:            strings.TrimRight(env("BROADCAST_HLS_BASE", ""), "/"),
 	}
 	if c.RecordingsMode == "" {
 		if c.RecordingsBackend == "s3" {
@@ -458,6 +470,15 @@ func (c Config) validate() error {
 			errs = append(errs, fmt.Errorf("RECORDINGS_CDN_BASE_URL must begin with http:// or https://: %q", c.RecordingsCDNBaseURL))
 		}
 	}
+	if (c.BroadcastRTMPBase == "") != (c.BroadcastHLSBase == "") {
+		errs = append(errs, errors.New("BROADCAST_RTMP_BASE and BROADCAST_HLS_BASE must be set together (RTMP ingest and the public LL-HLS URL)"))
+	}
+	if c.BroadcastRTMPBase != "" && !strings.HasPrefix(c.BroadcastRTMPBase, "rtmp://") && !strings.HasPrefix(c.BroadcastRTMPBase, "rtmps://") {
+		errs = append(errs, fmt.Errorf("BROADCAST_RTMP_BASE must begin with rtmp:// or rtmps://: %q", c.BroadcastRTMPBase))
+	}
+	if c.BroadcastHLSBase != "" && !strings.HasPrefix(c.BroadcastHLSBase, "http://") && !strings.HasPrefix(c.BroadcastHLSBase, "https://") {
+		errs = append(errs, fmt.Errorf("BROADCAST_HLS_BASE must begin with http:// or https://: %q", c.BroadcastHLSBase))
+	}
 
 	if c.MinPasswordLength < 1 {
 		errs = append(errs, errors.New("MIN_PASSWORD_LENGTH must be >= 1"))
@@ -545,6 +566,28 @@ func splitAndTrim(s string) []string {
 		}
 	}
 	return out
+}
+
+/* BroadcastRTMPURL is the RTMP ingest LiveKit Egress pushes, on the SFU box.
+ *
+ * Empty when the live origin is not configured — the HLS-to-S3 path then runs
+ * alone. The slug is the path MediaMTX already uses for the matching playlist. */
+func (c Config) BroadcastRTMPURL(slug string) string {
+	if c.BroadcastRTMPBase == "" || strings.TrimSpace(slug) == "" {
+		return ""
+	}
+	return c.BroadcastRTMPBase + "/" + strings.TrimSpace(slug)
+}
+
+/* BroadcastHLSURL is the LL-HLS playlist attendees fetch from Caddy/Cloudflare.
+ *
+ * Empty when the live origin is not configured, so join keeps handing out the
+ * B2/API playlist as the only URL. */
+func (c Config) BroadcastHLSURL(slug string) string {
+	if c.BroadcastHLSBase == "" || strings.TrimSpace(slug) == "" {
+		return ""
+	}
+	return c.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/index.m3u8"
 }
 
 func (c Config) String() string {

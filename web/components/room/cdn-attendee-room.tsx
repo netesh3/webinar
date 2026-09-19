@@ -383,7 +383,16 @@ export function CdnAttendeeRoom({
                   >
                     {/* CDN Stream Player */}
                     <div className="relative flex-1 flex items-center justify-center bg-black">
-                      <HlsPlayer streamUrl={streamUrl} coverUrl={initialImageUrl} />
+                      <HlsPlayer
+                        streamUrl={streamUrl}
+                        fallbackUrl={
+                          join.cdnFallbackUrl
+                            ? resolveBroadcastUrl(join.cdnFallbackUrl)
+                            : undefined
+                        }
+                        lowLatency={Boolean(join.cdnLowLatency)}
+                        coverUrl={initialImageUrl}
+                      />
                     </div>
 
                     <FileShareBar />
@@ -418,15 +427,27 @@ export function CdnAttendeeRoom({
 
 function HlsPlayer({
   streamUrl,
+  fallbackUrl,
+  lowLatency,
   coverUrl,
 }: {
   streamUrl: string;
+  fallbackUrl?: string;
+  lowLatency?: boolean;
   coverUrl?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [useFallback, setUseFallback] = useState(false);
+  const [fromUrl, setFromUrl] = useState(streamUrl);
+  if (fromUrl !== streamUrl) {
+    setFromUrl(streamUrl);
+    setUseFallback(false);
+  }
+  const activeUrl = useFallback && fallbackUrl ? fallbackUrl : streamUrl;
+  const ll = Boolean(lowLatency) && !useFallback;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -444,13 +465,13 @@ function HlsPlayer({
       video.play().catch(() => {});
     };
 
-    const isPlaylist = /\.m3u8(\?|$)/i.test(streamUrl);
+    const isPlaylist = /\.m3u8(\?|$)/i.test(activeUrl);
     if (!isPlaylist) {
       video.playsInline = true;
       video.setAttribute("playsinline", "");
       video.muted = true;
       setIsMuted(true);
-      video.src = streamUrl;
+      video.src = activeUrl;
       const onLoaded = () => {
         setLoading(false);
         tryPlay();
@@ -469,11 +490,12 @@ function HlsPlayer({
 
     if (Hls.isSupported()) {
       hls = new Hls({
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 8,
+        liveSyncDurationCount: ll ? 2 : 3,
+        liveMaxLatencyDurationCount: ll ? 5 : 8,
+        maxLiveSyncPlaybackRate: ll ? 1.5 : 1,
         enableWorker: true,
-        // LiveKit room-composite HLS is standard 2s segments, not LL-HLS.
-        lowLatencyMode: false,
+        // MediaMTX serves LL-HLS (200ms parts). B2 fallback is 2s segments.
+        lowLatencyMode: ll,
         manifestLoadingMaxRetry: 120,
         manifestLoadingRetryDelay: 1000,
         manifestLoadingMaxRetryTimeout: 300000,
@@ -483,7 +505,7 @@ function HlsPlayer({
         fragLoadingRetryDelay: 1000,
       });
 
-      hls.loadSource(streamUrl);
+      hls.loadSource(activeUrl);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -514,6 +536,10 @@ function HlsPlayer({
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
+              if (fallbackUrl && !useFallback) {
+                setUseFallback(true);
+                break;
+              }
               setError("Connecting to broadcast feed...");
               clearTimeout(retryTimer);
               retryTimer = setTimeout(() => {
@@ -526,6 +552,10 @@ function HlsPlayer({
               hls?.recoverMediaError();
               break;
             default:
+              if (fallbackUrl && !useFallback) {
+                setUseFallback(true);
+                break;
+              }
               clearTimeout(retryTimer);
               retryTimer = setTimeout(() => {
                 if (hls) {
@@ -537,18 +567,22 @@ function HlsPlayer({
         }
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = streamUrl;
+      video.src = activeUrl;
       const onLoadedMetadata = () => {
         setLoading(false);
         setError(null);
         tryPlay();
       };
       const onNativeError = () => {
+        if (fallbackUrl && !useFallback) {
+          setUseFallback(true);
+          return;
+        }
         setError("Connecting to broadcast feed...");
         clearTimeout(retryTimer);
         retryTimer = setTimeout(() => {
           if (video && video.paused) {
-            video.src = streamUrl;
+            video.src = activeUrl;
             video.load();
           }
         }, 1500);
@@ -571,7 +605,7 @@ function HlsPlayer({
         hls.destroy();
       }
     };
-  }, [streamUrl]);
+  }, [activeUrl, fallbackUrl, ll, useFallback]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -591,7 +625,7 @@ function HlsPlayer({
       document.removeEventListener("visibilitychange", resume);
       window.removeEventListener("pageshow", resume);
     };
-  }, [streamUrl]);
+  }, [activeUrl]);
 
   const unmute = () => {
     if (videoRef.current) {

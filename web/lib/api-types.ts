@@ -58,6 +58,9 @@ export const NotifyRegistrationApproved: NotificationKind = "registration_approv
  * dropped: somebody who registered and hears nothing assumes they are coming.
  */
 export const NotifyRegistrationDeclined: NotificationKind = "registration_declined";
+/**
+ * NotifyRegistrationConfirmed is auto-approve signup: they are in without a host review.
+ */
 export const NotifyRegistrationConfirmed: NotificationKind = "registration_confirmed";
 export const NotifyReminder24h: NotificationKind = "reminder_24h";
 export const NotifyReminder1h: NotificationKind = "reminder_1h";
@@ -146,8 +149,10 @@ export interface WebinarOptions {
   captions: boolean;
   multistream: boolean;
   postWebinarSurvey: boolean;
-  /** Defaults true when omitted by older webinars. */
-  emailReminders?: boolean;
+  /**
+   * EmailReminders defaults true for existing rows that never stored the key.
+   */
+  emailReminders: boolean;
 }
 /**
  * SessionControls are the things a host flips *during* the session.
@@ -548,6 +553,10 @@ export interface Webinar {
   startedAt?: string;
   endedAt?: string;
   maxDurationMin: number /* int */;
+  /**
+   * SimuliveRecordingID is the ready recording played as the audience video
+   * when Kind is simulive.
+   */
   simuliveRecordingId?: string;
   host: Person;
   panelists: Person[];
@@ -929,6 +938,17 @@ export interface JoinResponse {
    */
   cdnBroadcast?: boolean;
   cdnStreamUrl?: string;
+  /**
+   * CdnFallbackURL is the S3/API playlist when CdnStreamURL is the live origin.
+   * Empty when there is no live origin, or for simulive. The player tries the
+   * live URL first and falls back here if MediaMTX is not yet publishing.
+   */
+  cdnFallbackUrl?: string;
+  /**
+   * CdnLowLatency is true when CdnStreamURL is LL-HLS (MediaMTX), so the
+   * player can sit closer to the live edge than a 2s-segment B2 playlist.
+   */
+  cdnLowLatency?: boolean;
 }
 export interface SetUserMaxDurationRequest {
   maxDurationMin?: number /* int */;
@@ -1235,9 +1255,10 @@ export interface AppConfig {
    */
   recordingsRetentionDays: number /* int */;
   /**
-   * EmailConfigured is whether SMTP can actually deliver.
+   * EmailConfigured is whether SMTP can actually deliver. The UI uses it to
+   * say "we'll email you" vs "save this join link; mail is off".
    */
-  emailConfigured?: boolean;
+  emailConfigured: boolean;
   /**
    * TelemetryEnabled mirrors config.Config.TelemetryEnabled: whether POST
    * /telemetry accepts anything. The frontend's telemetry poller checks this
