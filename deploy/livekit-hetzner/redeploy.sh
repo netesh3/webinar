@@ -107,6 +107,7 @@ trap - EXIT
 if [[ -f egress.yaml.template ]]; then
   sed -e "s/__API_KEY__/${API_KEY}/g" \
       -e "s/__API_SECRET__/${API_SECRET}/g" \
+      -e "s/__DOMAIN__/${DOMAIN}/g" \
       egress.yaml.template > egress.yaml
   chmod 644 egress.yaml
 fi
