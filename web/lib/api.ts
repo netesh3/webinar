@@ -465,12 +465,17 @@ export const api = {
         method: "POST",
         body: blob,
         headers: { "Content-Type": "application/octet-stream" },
+        signal: AbortSignal.timeout(15_000),
       },
     ),
 
   completeRecording: (slug: string, id: string, durationMs: number) =>
-    post<StatusResponse>(
+    request<StatusResponse>(
       `/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/complete?durationMs=${Math.round(durationMs)}`,
+      {
+        method: "POST",
+        signal: AbortSignal.timeout(15_000),
+      },
     ),
 
   updateRecordingShare: (

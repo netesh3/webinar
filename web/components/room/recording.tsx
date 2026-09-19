@@ -290,8 +290,20 @@ function useRecorder(): RecorderContextValue {
     const instance = recorder.current;
     if (instance) {
       setState("stopping");
-      await instance.stop();
-      setDestination(null);
+      try {
+        await instance.stop();
+      } catch (err: unknown) {
+        notifyRef.current(
+          err instanceof Error ? err.message : "Error stopping recording.",
+          "error",
+        );
+      } finally {
+        recorder.current = null;
+        recording.current = null;
+        setState("idle");
+        setStartedAt(null);
+        setDestination(null);
+      }
       return;
     }
 
@@ -313,6 +325,7 @@ function useRecorder(): RecorderContextValue {
         "error",
       );
     } finally {
+      recording.current = null;
       setState("idle");
       setStartedAt(null);
       setDestination(null);

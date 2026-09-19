@@ -737,7 +737,10 @@ export class SessionRecorder {
     await this.teardown();
     // Every queued upload has to land before the recording is marked finished,
     // or the server closes it while bytes are still in flight.
-    await this.queue.catch(() => {});
+    await Promise.race([
+      this.queue.catch(() => {}),
+      new Promise<void>((r) => setTimeout(r, 6000)),
+    ]);
 
     if (id) {
       try {
