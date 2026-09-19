@@ -1,26 +1,22 @@
-# Shared by the SFU hostname and (once DNS exists) live.webinarliv.com.
-# encode off + flush_interval -1: LL-HLS parts are tiny and blocking; gzip
-# and proxy buffering add seconds back onto the path we just shortened.
-(live_hls) {
+{$DOMAIN} {
+	encode gzip
+
+	# LL-HLS parts from MediaMTX. flush_interval -1 disables proxy buffering:
+	# a 200ms part held in a buffer puts back the latency this path exists to
+	# remove. No `encode` here — the directive only takes encoder names, and
+	# these segments are already compressed.
 	handle /live/* {
-		encode off
 		reverse_proxy 127.0.0.1:8888 {
 			flush_interval -1
 		}
 		header Access-Control-Allow-Origin *
 		header Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
 		header Access-Control-Allow-Headers "*"
-		header Access-Control-Expose-Headers "*"
 		@playlist path *.m3u8
 		header @playlist Cache-Control "max-age=1, s-maxage=1, public"
 		@part path *.m4s *.mp4 *.ts
 		header @part Cache-Control "public, max-age=30, s-maxage=60"
 	}
-}
-
-{$DOMAIN} {
-	encode gzip
-	import live_hls
 
 	# `handle` (not `handle_path`) — Grafana's GF_SERVER_SERVE_FROM_SUB_PATH
 	# expects the /grafana prefix to still be in the request it receives and
@@ -34,12 +30,7 @@
 	reverse_proxy 127.0.0.1:7880
 }
 
-# Orange-cloud this hostname on Cloudflare so HLS parts fan out at the edge
-# instead of the Hetzner 1 Gbps NIC. Until the A record exists Caddy will
-# retry ACME; the {$DOMAIN} site above still serves.
-live.webinarliv.com {
-	import live_hls
-	handle {
-		respond "live origin" 200
-	}
-}
+# No site block for live.webinarliv.com. Caddy manages a certificate for every
+# hostname it is configured to serve, and that record does not exist yet, so
+# naming it here only buys failing ACME orders. Add the block in the same
+# change that adds the DNS record — see README.
