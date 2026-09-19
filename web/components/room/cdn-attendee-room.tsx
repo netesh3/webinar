@@ -425,6 +425,14 @@ export function CdnAttendeeRoom({
   );
 }
 
+/* How long the live origin may fail before the viewer is moved to the B2
+ * playlist. Sized for Egress cold-start: booting Chromium, joining the room and
+ * getting RTMP connected to MediaMTX is comfortably several seconds, and paying
+ * a slow first join beats serving the whole session 15s behind. */
+const PRIMARY_GRACE_MS = 25_000;
+const PRIMARY_PROBE_MS = 5_000;
+const MAX_PRIMARY_RECOVERIES = 3;
+
 function HlsPlayer({
   streamUrl,
   fallbackUrl,
@@ -442,9 +450,17 @@ function HlsPlayer({
   const [isMuted, setIsMuted] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
   const [fromUrl, setFromUrl] = useState(streamUrl);
+  /* When the live origin started serving this viewer, and how many times we
+   * have come back to it. Refs, not state: the error handler reads them from
+   * inside a long-lived hls.js callback, and re-running the effect on every
+   * retry would tear down the player mid-recovery. */
+  const primarySinceRef = useRef(0);
+  const recoveriesRef = useRef(0);
   if (fromUrl !== streamUrl) {
     setFromUrl(streamUrl);
     setUseFallback(false);
+    primarySinceRef.current = 0;
+    recoveriesRef.current = 0;
   }
   const activeUrl = useFallback && fallbackUrl ? fallbackUrl : streamUrl;
   const ll = Boolean(lowLatency) && !useFallback;
@@ -455,6 +471,26 @@ function HlsPlayer({
 
     let hls: Hls | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    if (!useFallback) {
+      primarySinceRef.current = Date.now();
+    }
+
+    /* Whether to give up on the live origin and take the 15s B2 playlist.
+     *
+     * Not on the first error, which is the trap: the live playlist 404s for
+     * the first seconds of every broadcast because Egress has to boot Chromium
+     * and connect RTMP before MediaMTX has anything to serve. hls.js reports
+     * that 404 as a fatal network error, so switching immediately pinned every
+     * attendee who joined at the start to the slow path for the whole session
+     * — the exact latency this origin exists to remove. Wait out the startup
+     * window first; hls.js is already retrying underneath. */
+    const giveUpOnPrimary = () => {
+      if (!fallbackUrl || useFallback) return false;
+      if (Date.now() - primarySinceRef.current < PRIMARY_GRACE_MS) return false;
+      setUseFallback(true);
+      return true;
+    };
 
     const tryPlay = () => {
       video.playsInline = true;
@@ -536,8 +572,7 @@ function HlsPlayer({
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              if (fallbackUrl && !useFallback) {
-                setUseFallback(true);
+              if (giveUpOnPrimary()) {
                 break;
               }
               setError("Connecting to broadcast feed...");
@@ -552,8 +587,7 @@ function HlsPlayer({
               hls?.recoverMediaError();
               break;
             default:
-              if (fallbackUrl && !useFallback) {
-                setUseFallback(true);
+              if (giveUpOnPrimary()) {
                 break;
               }
               clearTimeout(retryTimer);
@@ -574,8 +608,7 @@ function HlsPlayer({
         tryPlay();
       };
       const onNativeError = () => {
-        if (fallbackUrl && !useFallback) {
-          setUseFallback(true);
+        if (giveUpOnPrimary()) {
           return;
         }
         setError("Connecting to broadcast feed...");
@@ -606,6 +639,37 @@ function HlsPlayer({
       }
     };
   }, [activeUrl, fallbackUrl, ll, useFallback]);
+
+  /* Climb back to the live origin after a fallback.
+   *
+   * Being on B2 is not an error state — the video plays, it is just 15s behind
+   * — so nothing else would ever bring the viewer back. Meanwhile the live
+   * origin typically appears a few seconds after the broadcast starts, so the
+   * most common reason to be down here is simply having joined too early.
+   *
+   * Capped, because flapping is worse than a slow feed: if the playlist answers
+   * but its segments do not, each attempt costs another grace window of stalled
+   * video before we land back here. */
+  useEffect(() => {
+    if (!useFallback || !lowLatency || !streamUrl) return;
+    if (recoveriesRef.current >= MAX_PRIMARY_RECOVERIES) return;
+    let cancelled = false;
+    const id = setInterval(() => {
+      void fetch(streamUrl, { cache: "no-store" })
+        .then((res) => {
+          if (cancelled || !res.ok) return;
+          recoveriesRef.current += 1;
+          setUseFallback(false);
+        })
+        .catch(() => {
+          /* Origin still has nothing to serve. Try again on the next tick. */
+        });
+    }, PRIMARY_PROBE_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [useFallback, lowLatency, streamUrl]);
 
   useEffect(() => {
     const video = videoRef.current;
