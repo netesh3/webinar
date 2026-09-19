@@ -616,6 +616,7 @@ function ConnectedRoom({
         retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
         return;
       }
+      stopLocalCapture(room);
       setExit(exitReason);
     };
 
@@ -1315,6 +1316,22 @@ function ConnectionBanner() {
 /** Why this participant is no longer in the room. Only for things that happened
  *  TO them — leaving on their own is not an exit state, it is navigation. */
 type ExitReason = "ended" | "removed" | "duplicate" | "lost";
+
+/* Releases every device this browser is still capturing from.
+ *
+ * A publisher runs with stopLocalTrackOnUnpublish off, so that toggling a camera
+ * hands the same track back instead of reopening the device and risking a second
+ * permission prompt. LiveKit passes that same flag into its teardown, which means
+ * a disconnect it did not initiate unpublishes without stopping anything — the
+ * room is gone while the screen-share bar and the camera light stay on. That is
+ * the right trade during a session and the wrong one after it, because an exit
+ * classified here is terminal and has no next publish to hand a track to. */
+function stopLocalCapture(room: Room) {
+  room.localParticipant.trackPublications.forEach(({ track }) => {
+    track?.detach();
+    track?.stop();
+  });
+}
 
 /** Maps LiveKit's disconnect reason onto something worth telling a person.
  *
