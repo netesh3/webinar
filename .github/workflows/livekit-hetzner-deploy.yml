@@ -83,6 +83,19 @@ jobs:
           chmod 600 "$HOME/.ssh/config"
           echo "SSH_CONFIG=$HOME/.ssh/config" >> "$GITHUB_ENV"
 
+      # A Caddyfile that fails to adapt takes the SFU down with it, because
+      # Caddy refuses the whole config and never starts listening — LiveKit's
+      # only route to the world is through it. That is worth catching on the
+      # runner rather than on the box. DOMAIN is a placeholder; validation
+      # cares about syntax and module setup, not which hostname is served.
+      - name: Validate Caddyfile
+        run: |
+          docker run --rm \
+            -v "$PWD/deploy/livekit-hetzner/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e DOMAIN=validate.example.com \
+            caddy:2-alpine \
+            caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile
+
       - name: Sync deploy files (preserve secrets)
         run: |
           # Do not overwrite .env.keys, .env, or generated livekit.yaml on the server.
