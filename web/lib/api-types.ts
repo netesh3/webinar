@@ -939,14 +939,9 @@ export interface JoinResponse {
   cdnBroadcast?: boolean;
   cdnStreamUrl?: string;
   /**
-   * CdnFallbackURL is the S3/API playlist when CdnStreamURL is the live origin.
-   * Empty when there is no live origin, or for simulive. The player tries the
-   * live URL first and falls back here if MediaMTX is not yet publishing.
-   */
-  cdnFallbackUrl?: string;
-  /**
-   * CdnLowLatency is true when CdnStreamURL is LL-HLS (MediaMTX), so the
-   * player can sit closer to the live edge than a 2s-segment B2 playlist.
+   * CdnLowLatency is true when CdnStreamURL is LL-HLS from the live origin,
+   * so the player can sit close to the live edge. False for simulive, which
+   * is a stored file and has no edge to chase.
    */
   cdnLowLatency?: boolean;
 }
