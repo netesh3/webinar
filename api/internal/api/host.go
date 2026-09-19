@@ -1241,11 +1241,16 @@ func (s *Server) handleSetStage(w http.ResponseWriter, r *http.Request) {
 
 	if promoting {
 		already := false
-		if parts, listErr := sfu.Participants(r.Context(), room); listErr == nil {
-			for _, p := range parts {
-				if p.Identity == identity && (p.Role == types.RolePanelist || p.CanSpeak) {
-					already = true
-					break
+		if grant, gerr := s.store.StageGrant(r.Context(), slug, identity); gerr == nil && grant.Granted {
+			already = true
+		}
+		if !already {
+			if parts, listErr := sfu.Participants(r.Context(), room); listErr == nil {
+				for _, p := range parts {
+					if p.Identity == identity && (p.Role == types.RolePanelist || p.CanSpeak) {
+						already = true
+						break
+					}
 				}
 			}
 		}

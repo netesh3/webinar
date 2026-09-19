@@ -521,7 +521,7 @@ func (p *fakePool) KeyProvider() lkauth.KeyProvider {
 type fakeKeyProvider struct{}
 
 func (fakeKeyProvider) GetSecret(key string) string { return "secret_" + key }
-func (fakeKeyProvider) NumKeys() int               { return 1 }
+func (fakeKeyProvider) NumKeys() int                { return 1 }
 
 // forget removes a project entirely, which is what an operator deleting it from
 // LIVEKIT_PROJECTS does. Distinct from disabling: a forgotten project cannot serve even the
@@ -894,6 +894,15 @@ func (h *harness) registerAsGuest(slug, email string) types.Registration {
 	var reg types.Registration
 	h.decode(raw, &reg)
 	return reg
+}
+
+func (h *harness) acceptStage(slug, joinKey string) {
+	h.t.Helper()
+	res, raw := h.do(http.MethodPost, "/api/webinars/"+slug+"/stage-invite",
+		map[string]any{"joinKey": joinKey, "accept": true})
+	if res.StatusCode != http.StatusOK {
+		h.t.Fatalf("accept stage: status %d body %s", res.StatusCode, raw)
+	}
 }
 
 // truncateAll gives each test a clean database. CASCADE handles the FK order.
@@ -1823,6 +1832,7 @@ func TestPromotionSurvivesRejoin(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("promote: status %d body %s", res.StatusCode, raw)
 	}
+	h.acceptStage(wb.ID, reg.JoinKey)
 	h.rooms.mu.Lock()
 	changes := append([]lk.Spec{}, h.rooms.roleChanges...)
 	h.rooms.mu.Unlock()
@@ -1885,6 +1895,7 @@ func TestAllowToTalkGrantsMicrophoneOnly(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("allow to talk: status %d body %s", res.StatusCode, raw)
 	}
+	h.acceptStage(wb.ID, reg.JoinKey)
 
 	h.rooms.mu.Lock()
 	changes := append([]lk.Spec{}, h.rooms.roleChanges...)
@@ -2161,6 +2172,7 @@ func TestMuteAllLatchesAllowedSpeakers(t *testing.T) {
 		types.StageRequest{Role: types.RolePanelist, AudioOnly: true}); res.StatusCode != http.StatusOK {
 		t.Fatalf("allow to speak: status %d body %s", res.StatusCode, raw)
 	}
+	h.acceptStage(wb.ID, reg.JoinKey)
 
 	host := "user_" + acct.ID
 	h.rooms.setRoster(
@@ -2749,6 +2761,7 @@ func TestCanRecordFollowsTheStageRosterNotPublishPermission(t *testing.T) {
 		types.StageRequest{Role: types.RolePanelist}); res.StatusCode != http.StatusOK {
 		t.Fatalf("promote: status %d body %s", res.StatusCode, raw)
 	}
+	h.acceptStage(wb.ID, reg.JoinKey)
 
 	res, raw = h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/join",
 		types.JoinRequest{JoinKey: reg.JoinKey})
