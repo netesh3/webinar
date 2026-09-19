@@ -118,6 +118,39 @@ over days/weeks" is just the existing `livekit_participant_total` panel with
 a wider time range / a `max_over_time(...)` query in Grafana — no separate
 tracking needed once the dashboard above is live.
 
+## Live attendee origin (LL-HLS)
+
+CDN-broadcast attendees watch a mixed program, not SFU tracks. Egress already
+composites the room; this path pushes that composite to MediaMTX over RTMP and
+serves **LL-HLS** from Caddy instead of 2-second files on B2 (~15s lag).
+
+| Piece | Where |
+|---|---|
+| MediaMTX | `docker-compose.egress.yml` · `127.0.0.1:1935` RTMP, `:8888` HLS |
+| Public playlist | `https://live.webinarliv.com/live/<slug>/index.m3u8` |
+| Fallback | existing B2/API `live.m3u8` if MediaMTX is not publishing yet |
+
+**This is off until you turn it on.** `BROADCAST_RTMP_BASE` and
+`BROADCAST_HLS_BASE` have no defaults, so the server keeps handing attendees
+the B2 playlist and MediaMTX just sits idle. Turning it on is the DNS step
+below, not a redeploy.
+
+**`BROADCAST_HLS_BASE` must be the Cloudflare hostname, not the SFU's.**
+`88.198.141.104.sslip.io` resolves straight to the box, so pointing at it
+would cut lag to a few seconds and cap the audience at whatever 1 Gbps
+divided by the bitrate allows — a worse trade than the 15s it replaces. The
+edge is what makes this scale: it fetches each HLS part once no matter how
+many people are watching.
+
+1. DNS: `live.webinarliv.com` → `88.198.141.104`, **proxied** (orange cloud), SSL mode Full.
+2. Cache Rule on `/live/*`: cache everything, respect origin TTL (Caddy already
+   sends `max-age=1` for `.m3u8` and 30s for parts).
+3. Set repo secrets `BROADCAST_RTMP_BASE=rtmp://127.0.0.1:1935/live` and
+   `BROADCAST_HLS_BASE=https://live.webinarliv.com/live`, then redeploy the API.
+
+Caddy already serves that hostname; it will obtain a certificate once the
+record exists.
+
 ## Stop paying
 
 ```bash

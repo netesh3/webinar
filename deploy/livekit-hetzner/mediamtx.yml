@@ -1,0 +1,44 @@
+# Live origin for CDN-broadcast attendees.
+#
+# LiveKit Egress (host network) pushes RTMP to 127.0.0.1:1935/live/{slug}.
+# Caddy proxies HTTPS /live/* to 127.0.0.1:8888. Neither port is in ufw's
+# allow-list; bind localhost so a missed firewall rule still cannot publish.
+#
+# LL-HLS (200ms parts) is what gets glass-to-glass from ~15s (B2 files) down
+# to a few seconds. Cloudflare in front of Caddy is what keeps the 1 Gbps NIC
+# from copying that stream once per viewer — see README.
+
+logLevel: info
+logDestinations: [stdout]
+
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+
+rtsp: no
+rtmp: yes
+rtmpAddress: 127.0.0.1:1935
+hls: yes
+hlsAddress: 127.0.0.1:8888
+hlsAllowOrigin: "*"
+hlsAlwaysRemux: yes
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsMuxerCloseAfter: 60s
+webrtc: no
+srt: no
+api: no
+metrics: no
+pprof: no
+playback: no
+
+paths:
+  all_others:

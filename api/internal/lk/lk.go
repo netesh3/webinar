@@ -1158,6 +1158,11 @@ func (c *Client) StartRoomCompositeEgress(
 }
 
 // StartHlsBroadcastEgress begins an HLS segmented egress stream for live CDN distribution.
+//
+// rtmpURL, when set, is a second output on the same Chromium job: LiveKit pushes
+// the mixed program to MediaMTX (or any RTMP origin) so attendees can play
+// LL-HLS from the live origin instead of waiting on S3 segments. The S3
+// playlist stays as the slow fallback; one encoder, two pipes.
 func (c *Client) StartHlsBroadcastEgress(
 	ctx context.Context,
 	roomName string,
@@ -1166,6 +1171,7 @@ func (c *Client) StartHlsBroadcastEgress(
 	s3Opts EgressS3Options,
 	templateURL string,
 	preset livekit.EncodingOptionsPreset,
+	rtmpURL string,
 ) (*livekit.EgressInfo, error) {
 	if c.egress == nil {
 		return nil, errors.New("egress is not configured on this client")
@@ -1197,6 +1203,14 @@ func (c *Client) StartHlsBroadcastEgress(
 				},
 			},
 		},
+	}
+	if u := strings.TrimSpace(rtmpURL); u != "" {
+		req.StreamOutputs = []*livekit.StreamOutput{
+			{
+				Protocol: livekit.StreamProtocol_RTMP,
+				Urls:     []string{u},
+			},
+		}
 	}
 
 	if templateURL != "" {
