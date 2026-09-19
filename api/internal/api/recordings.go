@@ -892,24 +892,84 @@ func normalizeMime(raw string) (string, bool) {
 	return base + ";" + params, true
 }
 
+/* Its own client, with a short timeout. The check below sits in front of a
+ * replay page, so a CDN that is slow to answer should cost a fallback to the
+ * origin rather than the whole request. */
+var cdnProbe = &http.Client{Timeout: 4 * time.Second}
+
 /* redirectRecordingObject sends the browser to the bytes, preferring the CDN
  * host when one is configured. A presigned origin URL is the fallback, not the
  * default: that path skips Cloudflare, so a Bandwidth Alliance or R2 custom
  * domain never sees the audience, and a daily origin cap trips on the first
  * play. Returns true if a redirect was written.
+ *
+ * The CDN is asked whether it holds the object before anyone is sent there. It
+ * used not to be, and the failure that followed was silent and total: the
+ * storage bucket was changed without moving what was already in the old one, so
+ * every recording made before the switch redirected to a key the new bucket had
+ * never heard of. The viewer landed on Cloudflare's own 404 page — not ours, so
+ * it could not even say what had gone wrong — while the app went on listing the
+ * recording as ready and the database went on claiming it was uploaded. One
+ * HEAD in front of a replay is a cheap price for the difference between playing
+ * from the origin and not playing at all.
  */
 func (s *Server) redirectRecordingObject(w http.ResponseWriter, r *http.Request, storageKey, name, mime string, inline bool) bool {
-	if cdn := strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"); cdn != "" && strings.TrimSpace(storageKey) != "" {
-		http.Redirect(w, r, cdn+"/"+strings.TrimPrefix(storageKey, "/"), http.StatusTemporaryRedirect)
-		return true
+	key := strings.TrimPrefix(strings.TrimSpace(storageKey), "/")
+	if key == "" {
+		return false
 	}
+
+	if cdn := strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"); cdn != "" {
+		target := cdn + "/" + key
+		if s.cdnHasObject(r.Context(), target) {
+			http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+			return true
+		}
+		// Worth a log line rather than a silent fallback: a CDN that does not
+		// have a recording the database says is uploaded means the two are
+		// pointed at different buckets, and that is an operator problem no
+		// amount of retrying will fix.
+		s.log.Warn("recording is not on the CDN, trying the origin",
+			"key", key, "cdn", cdn)
+	}
+
+	/* Presigning signs a key; it does not check that anything is stored under
+	 * it. Redirecting to one unverified would swap Cloudflare's 404 page for
+	 * the origin's — a different hostname on the same dead end — so ask first
+	 * and let the caller say "the file for that recording is missing" in our
+	 * own words. Only a definite absence counts: a storage backend having a bad
+	 * minute is not evidence that the file is gone. */
+	if st, ok := s.recordings.(media.Stater); ok {
+		if _, err := st.Stat(r.Context(), key); errors.Is(err, media.ErrNotFound) {
+			return false
+		}
+	}
+
 	if ps, ok := s.recordings.(media.Presigner); ok {
-		if signedURL, err := ps.PresignedGetURL(r.Context(), storageKey, name, mime, inline, 6*time.Hour); err == nil && signedURL != "" {
+		if signedURL, err := ps.PresignedGetURL(r.Context(), key, name, mime, inline, 6*time.Hour); err == nil && signedURL != "" {
 			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
 			return true
 		}
 	}
 	return false
+}
+
+// cdnHasObject is HEAD, so nothing is transferred to find out. An unreachable
+// CDN answers the same as a missing object on purpose: both mean "do not send
+// the viewer here", and the origin can serve either way.
+func (s *Server) cdnHasObject(ctx context.Context, url string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := cdnProbe.Do(req)
+	if err != nil {
+		s.log.Warn("could not ask the CDN for a recording", "url", url, "error", err)
+		return false
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode == http.StatusOK
 }
 
 // safeName strips everything that would be awkward in a filename across
