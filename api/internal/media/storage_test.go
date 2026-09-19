@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,4 +148,51 @@ func newDisk(t *testing.T) *Disk {
 		t.Fatal(err)
 	}
 	return d
+}
+
+func TestS3SessionLifecycle(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	s3Backend, err := NewS3(
+		t.TempDir(),
+		ts.URL,
+		"us-east-1",
+		"test-bucket",
+		"key",
+		"secret",
+	)
+	if err != nil {
+		t.Fatalf("NewS3: %v", err)
+	}
+
+	ctx := context.Background()
+	key := "test/rec.webm"
+
+	// Append small chunk
+	if _, err := s3Backend.Append(ctx, key, strings.NewReader("sample-webm-header")); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	s3Backend.sessionsMu.Lock()
+	sess, exists := s3Backend.sessions[key]
+	s3Backend.sessionsMu.Unlock()
+
+	if !exists || sess == nil {
+		t.Fatal("expected session to exist for key")
+	}
+
+	// Delete should clean up session and staging file
+	if err := s3Backend.Delete(ctx, key); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	s3Backend.sessionsMu.Lock()
+	_, exists = s3Backend.sessions[key]
+	s3Backend.sessionsMu.Unlock()
+	if exists {
+		t.Error("expected session to be removed after Delete")
+	}
 }

@@ -188,8 +188,9 @@ DEPLOY_ARGS=(
   --platform managed
   --allow-unauthenticated
   --port 8080
-  --memory 512Mi
-  --cpu 1
+  --memory 2Gi
+  --cpu 2
+  --timeout 3600
   --min-instances 0
   --max-instances 3
   --env-vars-file "$ENV_YAML"

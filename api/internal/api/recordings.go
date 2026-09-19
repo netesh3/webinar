@@ -325,7 +325,7 @@ func (s *Server) finalizeRecording(
 	if s.recordings == nil || lookupErr != nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
 	defer cancel()
 
 	err := s.recordings.FinalizeWithProgress(ctx, rec.StorageKey, func(percent int) {

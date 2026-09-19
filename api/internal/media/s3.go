@@ -1,11 +1,13 @@
 package media
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -15,52 +17,23 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-/* S3 stores recordings in an S3-compatible bucket — Backblaze B2 in practice,
- * which speaks the S3 API directly, so no B2-specific SDK is needed.
- *
- * The interface this satisfies was shaped for append-in-place (see Store's
- * own comment), which an S3-family object store does not offer: an object is
- * written once, whole, or not at all. So Append does not touch the bucket at
- * all — every chunk lands in a local staging file (via an embedded Disk,
- * reusing its already-proven fsync-per-chunk durability rather than
- * reimplementing it) and Finalize is what actually uploads, once, when the
- * recording is complete and every byte is known.
- *
- * That trade means a recording's full size sits on local disk for the
- * duration of the session before it ever reaches the bucket — this backend
- * does not stream to B2 as it records. For MAX_RECORDING_MB in the
- * neighbourhood of a few gigabytes on a host with room to spare, that is a
- * non-issue; run this on a memory-constrained container (Cloud Run's default
- * is 512Mi) and a long, high-bitrate recording can outgrow the instance
- * before Finalize ever runs. Widen the instance's memory/disk, or lower
- * MAX_RECORDING_MB to fit it, rather than assume this streams — it does not.
- *
- * Open and Delete check the local staging file first, and only fall back to
- * the bucket if it is gone — which Finalize only removes after a confirmed
- * upload. That single check is what keeps "a still-recording session can be
- * downloaded as far as it has gotten" (see handleDownloadRecording) true for
- * this backend exactly as it already is for Disk, with no separate
- * in-progress/finalized flag to keep in sync by hand.
- *
- * One gap, honestly stated rather than silently accepted: a recording whose
- * tab crashes or closes without ever reaching /complete is swept by
- * StartRecording's own stale-row cleanup (store/recordings.go, 90 seconds
- * without a chunk) — a pure database UPDATE that has no reference to this
- * package and so never calls Finalize. Under Disk that is harmless, because
- * every byte already landed on disk as it was appended. Under this backend
- * it means an abandoned recording's staged file stays local, unreachable
- * from the Recordings list's download link, until something re-runs
- * Finalize for that key by hand. Rare in practice — it needs a crash mid-
- * recording specifically, not just the host forgetting to press Stop, since
- * stop() itself still calls complete() — but real, and worth a periodic
- * "finalize anything still staged" sweep if it turns out to matter more
- * than that.
- */
+const minMultipartPartSize = 5 * 1024 * 1024
+
+type s3Session struct {
+	uploadID   string
+	partNumber int32
+	parts      []types.CompletedPart
+	buf        []byte
+	mu         sync.Mutex
+}
+
 type S3 struct {
-	staging  *Disk
-	client   *s3.Client
-	bucket   string
-	endpoint string
+	staging    *Disk
+	client     *s3.Client
+	bucket     string
+	endpoint   string
+	sessions   map[string]*s3Session
+	sessionsMu sync.Mutex
 }
 
 // NewS3 opens the local staging area (same write-probe Disk already does, so
@@ -93,15 +66,86 @@ func NewS3(stagingDir, endpoint, region, bucket, accessKeyID, secretAccessKey st
 		UsePathStyle: true,
 	})
 
-	return &S3{staging: staging, client: client, bucket: bucket, endpoint: endpoint}, nil
+	return &S3{
+		staging:  staging,
+		client:   client,
+		bucket:   bucket,
+		endpoint: endpoint,
+		sessions: make(map[string]*s3Session),
+	}, nil
 }
 
 func (o *S3) Describe() string { return "s3:" + o.bucket + " (" + o.endpoint + ")" }
 
-// Append only ever writes to the local staging file — see the type's own
-// comment for why an S3-family store cannot append to a bucket object.
+// Append writes each incoming chunk to local staging (for fallback durability)
+// and progressively uploads completed 5 MB parts to S3 multipart upload in real-time.
 func (o *S3) Append(ctx context.Context, key string, r io.Reader) (int64, error) {
-	return o.staging.Append(ctx, key, r)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return 0, err
+	}
+
+	size, err := o.staging.Append(ctx, key, bytes.NewReader(data))
+	if err != nil {
+		return 0, err
+	}
+
+	if o.client == nil {
+		return size, nil
+	}
+
+	o.sessionsMu.Lock()
+	sess, ok := o.sessions[key]
+	if !ok {
+		sess = &s3Session{}
+		o.sessions[key] = sess
+	}
+	o.sessionsMu.Unlock()
+
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	if sess.uploadID == "" && len(sess.parts) == 0 {
+		out, err := o.client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{
+			Bucket:      aws.String(o.bucket),
+			Key:         aws.String(key),
+			ContentType: aws.String("video/webm"),
+		})
+		if err == nil && out.UploadId != nil {
+			sess.uploadID = *out.UploadId
+		}
+	}
+
+	sess.buf = append(sess.buf, data...)
+
+	if sess.uploadID != "" {
+		for len(sess.buf) >= minMultipartPartSize {
+			partData := make([]byte, minMultipartPartSize)
+			copy(partData, sess.buf[:minMultipartPartSize])
+			sess.partNumber++
+			partNum := sess.partNumber
+
+			up, err := o.client.UploadPart(ctx, &s3.UploadPartInput{
+				Bucket:     aws.String(o.bucket),
+				Key:        aws.String(key),
+				UploadId:   aws.String(sess.uploadID),
+				PartNumber: aws.Int32(partNum),
+				Body:       bytes.NewReader(partData),
+			})
+			if err != nil {
+				_ = o.abortSession(ctx, key, sess)
+				break
+			}
+
+			sess.parts = append(sess.parts, types.CompletedPart{
+				PartNumber: aws.Int32(partNum),
+				ETag:       up.ETag,
+			})
+			sess.buf = sess.buf[minMultipartPartSize:]
+		}
+	}
+
+	return size, nil
 }
 
 // Open serves the local staging file while it still exists — which covers
@@ -148,12 +192,35 @@ func (o *S3) Open(ctx context.Context, key string) (io.ReadSeekCloser, int64, er
  * special-casing to get.
  */
 func (o *S3) Delete(ctx context.Context, key string) error {
+	o.sessionsMu.Lock()
+	if sess, ok := o.sessions[key]; ok {
+		delete(o.sessions, key)
+		_ = o.abortSession(ctx, key, sess)
+	}
+	o.sessionsMu.Unlock()
+
 	if err := o.staging.Delete(ctx, key); err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	}
 	_, err := o.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(o.bucket),
 		Key:    aws.String(key),
+	})
+	return err
+}
+
+func (o *S3) abortSession(ctx context.Context, key string, sess *s3Session) error {
+	if sess.uploadID == "" {
+		return nil
+	}
+	uploadID := sess.uploadID
+	sess.uploadID = ""
+	sess.parts = nil
+	sess.buf = nil
+	_, err := o.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+		Bucket:   aws.String(o.bucket),
+		Key:      aws.String(key),
+		UploadId: aws.String(uploadID),
 	})
 	return err
 }
@@ -180,6 +247,59 @@ func (p *progressReader) Read(buf []byte) (int, error) {
 }
 
 func (o *S3) FinalizeWithProgress(ctx context.Context, key string, onProgress func(percent int)) error {
+	o.sessionsMu.Lock()
+	sess, hasSession := o.sessions[key]
+	delete(o.sessions, key)
+	o.sessionsMu.Unlock()
+
+	if hasSession && sess != nil {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+
+		if sess.uploadID != "" {
+			if len(sess.buf) > 0 {
+				sess.partNumber++
+				partNum := sess.partNumber
+				up, err := o.client.UploadPart(ctx, &s3.UploadPartInput{
+					Bucket:     aws.String(o.bucket),
+					Key:        aws.String(key),
+					UploadId:   aws.String(sess.uploadID),
+					PartNumber: aws.Int32(partNum),
+					Body:       bytes.NewReader(sess.buf),
+				})
+				if err == nil {
+					sess.parts = append(sess.parts, types.CompletedPart{
+						PartNumber: aws.Int32(partNum),
+						ETag:       up.ETag,
+					})
+					sess.buf = nil
+				}
+			}
+
+			if len(sess.parts) > 0 {
+				_, err := o.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+					Bucket:   aws.String(o.bucket),
+					Key:      aws.String(key),
+					UploadId: aws.String(sess.uploadID),
+					MultipartUpload: &types.CompletedMultipartUpload{
+						Parts: sess.parts,
+					},
+				})
+				if err == nil {
+					if onProgress != nil {
+						onProgress(100)
+					}
+					return o.staging.Delete(ctx, key)
+				}
+				_ = o.abortSession(ctx, key, sess)
+			}
+		}
+	}
+
+	return o.finalizeFromStaging(ctx, key, onProgress)
+}
+
+func (o *S3) finalizeFromStaging(ctx context.Context, key string, onProgress func(percent int)) error {
 	f, size, err := o.staging.Open(ctx, key)
 	if errors.Is(err, ErrNotFound) {
 		// Nothing staged — already finalized, or never appended to at all.
@@ -215,7 +335,10 @@ func (o *S3) FinalizeWithProgress(ctx context.Context, key string, onProgress fu
 		}
 	}
 
-	uploader := manager.NewUploader(o.client)
+	uploader := manager.NewUploader(o.client, func(u *manager.Uploader) {
+		u.PartSize = 16 * 1024 * 1024 // 16 MB parts
+		u.Concurrency = 5
+	})
 	if _, err := uploader.Upload(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(o.bucket),
 		Key:    aws.String(key),
