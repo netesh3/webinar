@@ -30,67 +30,73 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       SLUG: ${{ inputs.slug }}
     steps:
-      - name: Require DATABASE_URL
+      # One step, not one per query: a report is only useful whole, and with
+      # ON_ERROR_STOP off a query that cannot run costs its own answer rather
+      # than every answer after it.
+      - name: Report
         run: |
           if [ -z "${DATABASE_URL}" ]; then
             echo "Repository secret DATABASE_URL is not set." >&2
             exit 1
           fi
+          # The slug reaches SQL as a literal, so it is held to what a slug can
+          # actually contain rather than trusted to be one.
+          case "$SLUG" in
+            *[!a-zA-Z0-9-]*) echo "Slug may only contain letters, digits and hyphens." >&2; exit 1 ;;
+          esac
 
-      - name: How much is in this database
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off -c "
-            SELECT 'users' AS table, count(*) FROM users
-            UNION ALL SELECT 'webinars', count(*) FROM webinars
-            UNION ALL SELECT 'recordings', count(*) FROM recordings
-            UNION ALL SELECT 'registrations', count(*) FROM registrations;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=0 --pset=pager=off -f - <<SQL
+          \echo '===== how much is in this database ====='
+          SELECT 'users' AS "table", count(*) FROM users
+          UNION ALL SELECT 'webinars', count(*) FROM webinars
+          UNION ALL SELECT 'recordings', count(*) FROM recordings
+          UNION ALL SELECT 'registrations', count(*) FROM registrations;
 
-      - name: Schema version
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off -c "
-            SELECT version, applied_at FROM schema_migrations
-             ORDER BY version DESC LIMIT 5;"
+          \echo '===== schema version ====='
+          SELECT version, applied_at FROM schema_migrations
+           ORDER BY applied_at DESC LIMIT 5;
 
-      - name: The webinar in question
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off \
-            -v slug="$SLUG" -c "
-            SELECT slug, status, topic, starts_at, created_at
-              FROM webinars WHERE slug = :'slug';"
+          \echo '===== the webinar in question ====='
+          SELECT slug, status, topic, starts_at, created_at
+            FROM webinars WHERE slug = '${SLUG}';
 
-      - name: Most recent webinars
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off -c "
-            SELECT slug, status, left(topic, 30) AS topic, created_at
-              FROM webinars ORDER BY created_at DESC LIMIT 10;"
+          \echo '===== most recent webinars ====='
+          SELECT slug, status, left(topic, 30) AS topic, created_at
+            FROM webinars ORDER BY created_at DESC LIMIT 10;
 
-      # The actual question: are finished recordings reaching object storage, or
-      # are they sitting at zero bytes / failed / never uploaded?
-      - name: Where recent recordings landed
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off -c "
-            SELECT w.slug,
-                   r.status,
-                   r.size_bytes,
-                   r.uploaded_to_s3 AS in_s3,
-                   r.upload_percent AS pct,
-                   r.is_public,
-                   r.parent_id IS NOT NULL AS is_part,
-                   left(r.storage_key, 52) AS storage_key,
-                   r.created_at
-              FROM recordings r
-              JOIN webinars w ON w.id = r.webinar_id
-             ORDER BY r.created_at DESC
-             LIMIT 25;"
+          \echo '===== every recording on record ====='
+          -- The actual question: are finished recordings reaching object
+          -- storage, or sitting at zero bytes / failed / never uploaded?
+          SELECT w.slug,
+                 r.status,
+                 r.size_bytes,
+                 r.uploaded_to_s3 AS in_s3,
+                 r.upload_percent AS pct,
+                 r.is_public,
+                 r.parent_id IS NOT NULL AS is_part,
+                 left(r.storage_key, 52) AS storage_key,
+                 r.created_at
+            FROM recordings r
+            JOIN webinars w ON w.id = r.webinar_id
+           ORDER BY r.created_at DESC
+           LIMIT 40;
 
-      - name: Recording outcomes over the last week
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --pset=pager=off -c "
-            SELECT status,
-                   count(*) AS rows,
-                   count(*) FILTER (WHERE size_bytes = 0) AS zero_bytes,
-                   count(*) FILTER (WHERE uploaded_to_s3) AS uploaded,
-                   pg_size_pretty(sum(size_bytes)) AS total
-              FROM recordings
-             WHERE created_at > now() - interval '7 days'
-             GROUP BY status ORDER BY status;"
+          \echo '===== recording outcomes, last 7 days ====='
+          SELECT status,
+                 count(*) AS rows,
+                 count(*) FILTER (WHERE size_bytes = 0) AS zero_bytes,
+                 count(*) FILTER (WHERE uploaded_to_s3) AS uploaded,
+                 pg_size_pretty(coalesce(sum(size_bytes), 0)) AS total
+            FROM recordings
+           WHERE created_at > now() - interval '7 days'
+           GROUP BY status ORDER BY status;
+
+          \echo '===== webinars that ended but have no recording ====='
+          -- A host who pressed record and got nothing leaves this trace: the
+          -- session is over and nothing was ever written against it.
+          SELECT w.slug, w.status, w.created_at
+            FROM webinars w
+           WHERE w.status = 'ended'
+             AND NOT EXISTS (SELECT 1 FROM recordings r WHERE r.webinar_id = w.id)
+           ORDER BY w.created_at DESC LIMIT 15;
+          SQL
