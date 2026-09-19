@@ -1201,11 +1201,46 @@ func (c *Client) StartBroadcastEgress(
 		req.Layout = "speaker"
 	}
 
-	req.Options = &livekit.RoomCompositeEgressRequest_Preset{
-		Preset: preset,
+	/* Explicit options rather than the preset, purely to pin KeyFrameInterval.
+	 *
+	 * MediaMTX can only cut a segment on a keyframe, so the encoder's GOP
+	 * becomes the playlist's EXT-X-TARGETDURATION. The presets leave it at the
+	 * encoder default of 4s, which makes any non-low-latency sync target
+	 * 3 x 4s = 12s and leaves a joining player waiting up to 4s for its first
+	 * independent frame. One second costs a little bitrate efficiency and buys
+	 * a 1s target duration.
+	 *
+	 * This used to be masked: while this egress also wrote HLS segments to S3,
+	 * SegmentDuration pinned the GOP to 2s as a side effect. Dropping that
+	 * output silently doubled it, so it is now stated outright. */
+	opts := encodingOptionsFor(preset)
+	opts.KeyFrameInterval = 1
+	req.Options = &livekit.RoomCompositeEgressRequest_Advanced{
+		Advanced: opts,
 	}
 
 	return c.egress.StartRoomCompositeEgress(ctx, req)
+}
+
+// encodingOptionsFor mirrors the LiveKit preset of the same name so that moving
+// to Advanced options changes only the key frame interval.
+func encodingOptionsFor(preset livekit.EncodingOptionsPreset) *livekit.EncodingOptions {
+	opts := &livekit.EncodingOptions{
+		Width:          1920,
+		Height:         1080,
+		Framerate:      30,
+		VideoCodec:     livekit.VideoCodec_H264_MAIN,
+		VideoBitrate:   3000,
+		AudioCodec:     livekit.AudioCodec_AAC,
+		AudioBitrate:   128,
+		AudioFrequency: 44100,
+	}
+	if preset == livekit.EncodingOptionsPreset_H264_720P_30 {
+		opts.Width = 1280
+		opts.Height = 720
+		opts.VideoBitrate = 1700
+	}
+	return opts
 }
 
 // StopEgress requests LiveKit Egress to finalize recording and upload the file.
