@@ -89,6 +89,9 @@ type fakeRooms struct {
 	egressCalls   []string
 	stoppedEgress []string
 	egressErr     error
+	// liveEgress is what LiveKit would report for the room: the thing the
+	// broadcast sweeper trusts over the API's own map of what it once started.
+	liveEgress []*livekit.EgressInfo
 	// sent records every realtime packet the API handed to the SFU, with the
 	// recipient list. The list is the thing worth asserting: it is what decides who
 	// a panelist-only message actually reaches.
@@ -391,6 +394,12 @@ func (f *fakeRooms) StartBroadcastEgress(_ context.Context, roomName string, _ s
 		EgressId: "EG_fake_hls_" + roomName,
 		Status:   livekit.EgressStatus_EGRESS_STARTING,
 	}, nil
+}
+
+func (f *fakeRooms) ListEgress(_ context.Context, _ string) ([]*livekit.EgressInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.liveEgress, nil
 }
 
 func (f *fakeRooms) StopEgress(_ context.Context, egressID string) (*livekit.EgressInfo, error) {

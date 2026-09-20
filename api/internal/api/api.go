@@ -49,6 +49,7 @@ type RoomManager interface {
 	StartRoomCompositeEgress(ctx context.Context, roomName string, storageKey string, s3Opts lk.EgressS3Options, templateURL string, preset livekit.EncodingOptionsPreset) (*livekit.EgressInfo, error)
 	StartBroadcastEgress(ctx context.Context, roomName string, templateURL string, preset livekit.EncodingOptionsPreset, rtmpURL string) (*livekit.EgressInfo, error)
 	StopEgress(ctx context.Context, egressID string) (*livekit.EgressInfo, error)
+	ListEgress(ctx context.Context, roomName string) ([]*livekit.EgressInfo, error)
 }
 
 // Compile-time proof the real client satisfies it.
