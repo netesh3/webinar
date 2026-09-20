@@ -118,48 +118,36 @@ over days/weeks" is just the existing `livekit_participant_total` panel with
 a wider time range / a `max_over_time(...)` query in Grafana — no separate
 tracking needed once the dashboard above is live.
 
-## Live attendee origin (LL-HLS)
+## Live attendee origin (WHEP)
 
-CDN-broadcast attendees watch a mixed program, not SFU tracks. Egress already
-composites the room; this path pushes that composite to MediaMTX over RTMP and
-serves **LL-HLS** from Caddy instead of 2-second files on B2 (~15s lag).
+CDN-broadcast attendees (the existing host switch) watch a mixed program, not
+SFU tracks. Egress composites the room, pushes RTMP to MediaMTX, and attendees
+play that mix over **WHEP** (~1–3s). One mix bitrate times viewers, not full
+SFU fan-out. HLS remains on MediaMTX for debugging; join does not hand it out.
 
 | Piece | Where |
 |---|---|
-| MediaMTX | `docker-compose.egress.yml` · `127.0.0.1:1935` RTMP, `:8888` HLS |
-| Public playlist | `https://live.webinarliv.com/live/<slug>/index.m3u8` |
-| Fallback | existing B2/API `live.m3u8` if MediaMTX is not publishing yet |
+| MediaMTX | `docker-compose.egress.yml` · `127.0.0.1:1935` RTMP, `:8889` WHEP, UDP `:8189` ICE |
+| Public WHEP | `{BROADCAST_HLS_BASE}/<slug>/whep` |
+| ICE | public IPv4 of this box (same as LiveKit `node_ip`) |
 
-This is live. `BROADCAST_RTMP_BASE` and `BROADCAST_HLS_BASE` are set as repo
-secrets, so joins hand out the LL-HLS URL with the B2 playlist as fallback.
-Clearing either secret reverts every attendee to B2 — that is the rollback, and
-it needs no code change.
+`BROADCAST_RTMP_BASE` and `BROADCAST_HLS_BASE` are repo secrets. Clearing either
+sends CDN-broadcast attendees back to the SFU. Env names are unchanged.
 
-**`BROADCAST_HLS_BASE` must be the Cloudflare hostname, not the SFU's.**
-`88.198.141.104.sslip.io` resolves straight to the box, so pointing at it
-would cut lag to a few seconds and cap the audience at whatever 1 Gbps
-divided by the bitrate allows — a worse trade than the 15s it replaces. The
-edge is what makes this scale: it fetches each HLS part once no matter how
-many people are watching.
+WHEP cannot be cached. Signaling may use `live.webinarliv.com` (Cloudflare HTTPS)
+or `https://88.198.141.104.sslip.io/live` (direct, already has a public cert).
+Media always goes UDP to the origin on **8189** — open that on ufw *and* on
+`webcast-livekit-fw` if the cloud firewall is in use.
 
 What is configured, should any of it need rebuilding:
 
-1. DNS: `live.webinarliv.com` → `88.198.141.104`, **proxied** (orange cloud).
-   The zone runs SSL mode Full, which is why the Caddyfile gives this hostname
-   `tls internal` — behind the proxy a public ACME order cannot reliably
-   complete, and Full accepts a locally-issued origin certificate. Un-proxying
-   this record is an outage, not a fallback.
-2. Cache Rule "Cache LL-HLS on live origin": `http.host eq "live.webinarliv.com"`
-   → eligible for cache, Edge TTL from the origin's `Cache-Control`. Without a
-   rule Cloudflare treats `.m3u8`/`.m4s` as uncacheable (`cf-cache-status:
-   DYNAMIC`) and every viewer reaches the origin — the exact cost this design
-   exists to avoid. Verify with `curl -I` after any cache change.
-3. Repo secrets `BROADCAST_RTMP_BASE=rtmp://127.0.0.1:1935/live` and
-   `BROADCAST_HLS_BASE=https://live.webinarliv.com/live`.
-
-The zone is on Cloudflare's **free** plan, whose terms restrict serving large
-volumes of video. This is fine for current traffic but is a business risk at
-scale, not a technical one — the fix is a paid plan or Cloudflare Stream.
+1. DNS: `live.webinarliv.com` → `88.198.141.104`, **proxied** (orange cloud) if
+   that hostname is `BROADCAST_HLS_BASE`. Zone SSL mode Full + Caddy
+   `tls internal`. Bypass cache for `/live/*/whep*`.
+2. Repo secrets `BROADCAST_RTMP_BASE=rtmp://127.0.0.1:1935/live` and
+   `BROADCAST_HLS_BASE=https://live.webinarliv.com/live` (or the sslip.io
+   equivalent).
+3. Host firewall: `ufw allow 8189/udp` (`redeploy.sh` applies this).
 
 ## Stop paying
 

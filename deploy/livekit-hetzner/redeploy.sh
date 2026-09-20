@@ -103,6 +103,22 @@ umask 077
 mv "$tmp" livekit.yaml
 trap - EXIT
 
+# MediaMTX WHEP: advertise the same public IPv4 LiveKit uses, then restart.
+# ufw on an already-installed host never re-runs install.sh, so the ICE mux
+# has to be opened here or an upgraded box would signal WHEP and drop media.
+if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
+  ufw allow 8189/udp >/dev/null
+fi
+
+if [[ -f mediamtx.yml.template ]]; then
+  extra="[]"
+  if [[ -n "${PRESERVE_NODE_IP}" ]]; then
+    extra="[${PRESERVE_NODE_IP}]"
+  fi
+  sed -e "s/__WEBRTC_ADDITIONAL_HOSTS__/${extra}/g" \
+      mediamtx.yml.template > mediamtx.yml
+fi
+
 # Generate egress.yaml if template is present
 if [[ -f egress.yaml.template ]]; then
   sed -e "s/__API_KEY__/${API_KEY}/g" \
@@ -132,6 +148,9 @@ fi
 # `caddy reload`). Restart it unconditionally on every redeploy instead of
 # depending on that heuristic to happen to also recreate the container.
 docker compose "${COMPOSE_ARGS[@]}" restart caddy
+if [[ -f docker-compose.egress.yml ]]; then
+  docker compose "${COMPOSE_ARGS[@]}" restart mediamtx
+fi
 
 echo "LiveKit redeployed at wss://${DOMAIN} (keys unchanged in ${TARGET}/.env.keys)"
 echo "Grafana: https://${DOMAIN}/grafana/ (user: admin, password in ${TARGET}/.env.keys)"

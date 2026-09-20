@@ -23,6 +23,8 @@ ufw allow 7881/tcp
 ufw allow 3478/udp
 ufw allow 3478/tcp
 ufw allow 50000:60000/udp
+# MediaMTX WHEP ICE. Signaling stays on 443 via Caddy; media is this UDP mux.
+ufw allow 8189/udp
 ufw --force enable
 
 mkdir -p "$TARGET"
