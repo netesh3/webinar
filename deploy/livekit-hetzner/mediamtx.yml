@@ -19,31 +19,44 @@ authInternalUsers:
     permissions:
       - action: read
 
-rtsp: no
-rtmp: yes
+rtsp: true
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]
+rtmp: true
 rtmpAddress: 127.0.0.1:1935
-hls: yes
+hls: true
 hlsAddress: 127.0.0.1:8888
-hlsAllowOrigin: "*"
-hlsAlwaysRemux: yes
+hlsAllowOrigins: ["*"]
+hlsAlwaysRemux: false
 hlsVariant: lowLatency
 hlsSegmentCount: 7
 hlsSegmentDuration: 1s
 hlsPartDuration: 200ms
 hlsMuxerCloseAfter: 60s
-webrtc: yes
+webrtc: true
 webrtcAddress: 127.0.0.1:8889
-webrtcEncryption: no
-webrtcAllowOrigin: "*"
+webrtcEncryption: false
+webrtcAllowOrigins: ["*"]
 webrtcTrustedProxies: ["127.0.0.1"]
 webrtcLocalUDPAddress: :8189
-webrtcIPsFromInterfaces: yes
+webrtcIPsFromInterfaces: true
 webrtcAdditionalHosts: []
-srt: no
-api: no
-metrics: no
-pprof: no
-playback: no
+srt: false
+moq: false
+api: false
+metrics: false
+pprof: false
+playback: false
 
 paths:
+  # RTMP ingest, transcoded to wrtc/{slug} for WHEP — see the template for why.
+  "~^live/(.+)$":
+    runOnAvailable: >
+      ffmpeg -nostdin -hide_banner -loglevel warning
+      -rtsp_transport tcp -i rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
+      -map 0:v:0 -c:v copy
+      -map 0:a:0 -c:a libopus -b:a 96k -ar 48000 -ac 2 -application audio
+      -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:$RTSP_PORT/wrtc/$G1
+    runOnAvailableRestart: true
+
   all_others:

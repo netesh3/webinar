@@ -1201,17 +1201,38 @@ func (c *Client) StartBroadcastEgress(
 		req.Layout = "speaker"
 	}
 
-	/* Explicit options rather than the preset, purely to pin KeyFrameInterval.
-	 *
-	 * MediaMTX still remuxes HLS for debugging, and a 1s GOP keeps that playlist
-	 * joinable. WHEP does not need it; it does not hurt the mix. */
-	opts := encodingOptionsFor(preset)
-	opts.KeyFrameInterval = 1
 	req.Options = &livekit.RoomCompositeEgressRequest_Advanced{
-		Advanced: opts,
+		Advanced: broadcastEncodingOptions(preset),
 	}
 
 	return c.egress.StartRoomCompositeEgress(ctx, req)
+}
+
+/* broadcastEncodingOptions is the preset with the three fields WHEP cares about
+ * pinned. Separate from encodingOptionsFor, and tested, because none of these
+ * fail loudly: the egress accepts any of them and publishes happily, and the
+ * damage only shows up as an audience watching a spinner.
+ *
+ * H264_BASELINE, not the preset's Main: WebRTC cannot carry B-frames, and the
+ * origin does not quietly drop them — it refuses the whole track ("WebRTC
+ * doesn't support H264 streams with B-frames") while the stream publishes
+ * perfectly. Baseline forbids B-frames by definition, which is what lets the
+ * origin pass the video through to WHEP untouched instead of re-encoding it on
+ * the same box as the SFU. The cost is a few percent of compression efficiency.
+ *
+ * AudioFrequency 48k, not the preset's 44.1k, because the origin transcodes
+ * this AAC to Opus (RTMP cannot carry Opus, WebRTC will not take AAC) and Opus
+ * is a 48k codec. Sending 44.1k only buys a resample.
+ *
+ * KeyFrameInterval pins a 1s GOP, so an attendee joining mid-session waits at
+ * most a second for the keyframe their decoder needs before showing anything,
+ * rather than however long the encoder felt like. */
+func broadcastEncodingOptions(preset livekit.EncodingOptionsPreset) *livekit.EncodingOptions {
+	opts := encodingOptionsFor(preset)
+	opts.VideoCodec = livekit.VideoCodec_H264_BASELINE
+	opts.AudioFrequency = 48000
+	opts.KeyFrameInterval = 1
+	return opts
 }
 
 // encodingOptionsFor mirrors the LiveKit preset of the same name so that moving
@@ -1233,6 +1254,22 @@ func encodingOptionsFor(preset livekit.EncodingOptionsPreset) *livekit.EncodingO
 		opts.VideoBitrate = 1700
 	}
 	return opts
+}
+
+/* ListEgress reports the egress jobs LiveKit holds for a room.
+ *
+ * Needed because the API's own record of a running broadcast is process memory,
+ * and the encoder outlives neither a redeploy of the egress container nor a
+ * crash. LiveKit knows; ask it rather than believe a map. */
+func (c *Client) ListEgress(ctx context.Context, roomName string) ([]*livekit.EgressInfo, error) {
+	if c.egress == nil {
+		return nil, errors.New("egress is not configured on this client")
+	}
+	res, err := c.egress.ListEgress(ctx, &livekit.ListEgressRequest{RoomName: roomName})
+	if err != nil {
+		return nil, err
+	}
+	return res.GetItems(), nil
 }
 
 // StopEgress requests LiveKit Egress to finalize recording and upload the file.

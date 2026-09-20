@@ -4,12 +4,33 @@
 # prefix carries /whep (HTTP POST of SDP) and, after 201, /whep/<session>.
 # flush_interval -1 so neither SDP nor LL-HLS parts sit in a proxy buffer.
 #
+# The rewrite is the join between two MediaMTX paths. `live/{slug}` is what
+# the egress publishes (H.264 + AAC, unplayable by a browser) and `wrtc/{slug}`
+# is what ffmpeg republishes for WebRTC — see mediamtx.yml.template. Attendees
+# are handed one public URL for both, so the mapping lives here rather than in
+# BROADCAST_HLS_BASE: the two names are an implementation detail of this box,
+# and putting them in a deploy secret would mean a config edit in two places
+# every time the origin's internal layout changed.
+#
+# The /wrtc/* handler below is not optional. MediaMTX answers the SDP POST with
+# a Location of /wrtc/{slug}/whep/{session}, which the browser resolves against
+# this origin and DELETEs when the attendee leaves. Without a route for it,
+# every closed tab leaves a session on the origin until it times out.
+#
 # No CORS headers here. MediaMTX already sends them; a second
 # Access-Control-Allow-Origin makes browsers reject the response.
 
 (live_origin) {
-	@whep path_regexp ^/live/.+/whep
+	@whep path_regexp whep ^/live/(.+)/whep$
 	handle @whep {
+		rewrite * /wrtc/{re.whep.1}/whep
+		reverse_proxy 127.0.0.1:8889 {
+			flush_interval -1
+		}
+		header Cache-Control "private, no-store"
+	}
+
+	handle /wrtc/* {
 		reverse_proxy 127.0.0.1:8889 {
 			flush_interval -1
 		}
