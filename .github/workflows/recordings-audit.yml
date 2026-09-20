@@ -1,0 +1,197 @@
+# One-shot, READ ONLY: report where recordings are landing, and whether a given
+# webinar still exists.
+#
+# Exists because a replay link went dead and the API could only say "that webinar
+# doesn't exist" — which does not distinguish "deleted" from "never written" from
+# "pointing at a different database". Every statement here is a SELECT; nothing is
+# created, updated or removed.
+#
+# Actions → "Recordings audit" → Run workflow.
+
+name: Recordings audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Webinar slug to look up"
+        required: false
+        default: "instant-webinar-1981"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      # Never echoed. Actions masks secrets in logs, but the queries below also
+      # never select a credential column, so the output is safe to paste around.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SLUG: ${{ inputs.slug }}
+    steps:
+      # One step, not one per query: a report is only useful whole, and with
+      # ON_ERROR_STOP off a query that cannot run costs its own answer rather
+      # than every answer after it.
+      - name: Report
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "Repository secret DATABASE_URL is not set." >&2
+            exit 1
+          fi
+          # The slug reaches SQL as a literal, so it is held to what a slug can
+          # actually contain rather than trusted to be one.
+          case "$SLUG" in
+            *[!a-zA-Z0-9-]*) echo "Slug may only contain letters, digits and hyphens." >&2; exit 1 ;;
+          esac
+
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=0 --pset=pager=off -f - <<SQL
+          \echo '===== how much is in this database ====='
+          SELECT 'users' AS "table", count(*) FROM users
+          UNION ALL SELECT 'webinars', count(*) FROM webinars
+          UNION ALL SELECT 'recordings', count(*) FROM recordings
+          UNION ALL SELECT 'registrations', count(*) FROM registrations;
+
+          \echo '===== schema version ====='
+          SELECT version, applied_at FROM schema_migrations
+           ORDER BY applied_at DESC LIMIT 5;
+
+          \echo '===== the webinar in question ====='
+          SELECT slug, status, topic, starts_at, created_at
+            FROM webinars WHERE slug = '${SLUG}';
+
+          \echo '===== most recent webinars ====='
+          SELECT slug, status, left(topic, 30) AS topic, created_at
+            FROM webinars ORDER BY created_at DESC LIMIT 10;
+
+          \echo '===== every recording on record ====='
+          -- The actual question: are finished recordings reaching object
+          -- storage, or sitting at zero bytes / failed / never uploaded?
+          SELECT w.slug,
+                 r.status,
+                 r.size_bytes,
+                 r.uploaded_to_s3 AS in_s3,
+                 r.upload_percent AS pct,
+                 r.is_public,
+                 r.parent_id IS NOT NULL AS is_part,
+                 left(r.storage_key, 52) AS storage_key,
+                 r.created_at
+            FROM recordings r
+            JOIN webinars w ON w.id = r.webinar_id
+           ORDER BY r.created_at DESC
+           LIMIT 40;
+
+          \echo '===== recording outcomes, last 7 days ====='
+          SELECT status,
+                 count(*) AS rows,
+                 count(*) FILTER (WHERE size_bytes = 0) AS zero_bytes,
+                 count(*) FILTER (WHERE uploaded_to_s3) AS uploaded,
+                 pg_size_pretty(coalesce(sum(size_bytes), 0)) AS total
+            FROM recordings
+           WHERE created_at > now() - interval '7 days'
+           GROUP BY status ORDER BY status;
+
+          \echo '===== webinars that ended but have no recording ====='
+          -- A host who pressed record and got nothing leaves this trace: the
+          -- session is over and nothing was ever written against it.
+          SELECT w.slug, w.status, w.created_at
+            FROM webinars w
+           WHERE w.status = 'ended'
+             AND NOT EXISTS (SELECT 1 FROM recordings r WHERE r.webinar_id = w.id)
+           ORDER BY w.created_at DESC LIMIT 15;
+          SQL
+
+      # The database saying "uploaded_to_s3" and the CDN saying 404 cannot both
+      # be right. This asks the bucket the API actually writes to, which is the
+      # only party that knows. Object keys are printed; the bucket name, endpoint
+      # and credentials are not — a mismatch shows up as "the key is in the
+      # origin but not on the CDN", which needs no secret to read.
+      - name: What is actually in the origin bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.RECORDINGS_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.RECORDINGS_S3_REGION }}
+          BUCKET: ${{ secrets.RECORDINGS_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.RECORDINGS_S3_ENDPOINT }}
+          CDN: ${{ secrets.RECORDINGS_CDN_BASE_URL || 'https://recordings.webinarliv.com' }}
+        run: |
+          if [ -z "$BUCKET" ] || [ -z "$ENDPOINT" ]; then
+            echo "No S3 origin configured; recordings have nowhere to go."
+            exit 0
+          fi
+          # Which provider, without printing the endpoint — it carries the R2
+          # account id, and a masked secret tells the reader nothing anyway.
+          case "$ENDPOINT" in
+            *r2.cloudflarestorage.com) echo "origin provider: Cloudflare R2" ;;
+            *backblazeb2.com)          echo "origin provider: Backblaze B2" ;;
+            *)                         echo "origin provider: other S3-compatible" ;;
+          esac
+          echo "cdn host: ${CDN}"
+          echo
+
+          aws s3api list-objects-v2 --endpoint-url "$ENDPOINT" --bucket "$BUCKET" \
+            --query 'Contents[].[LastModified,Size,Key]' --output text > /tmp/keys.tsv
+
+          echo "===== what kind of object is in here ====="
+          # Broadcasts and recordings share the bucket but not the key space: a
+          # broadcast is "broadcast/<slug>/...", a recording is the API's own
+          # sharded "ab/cd/<uuid>.<ext>". Counting them apart is the whole
+          # question — all of one and none of the other says the recording path
+          # never reaches storage.
+          awk -F'\t' '{ if ($3 ~ /^broadcast\//) b++; else o++ }
+                      END { printf "broadcast segments: %d\nanything else:      %d\n", b+0, o+0 }' /tmp/keys.tsv
+
+          echo
+          echo "===== every object that is NOT a broadcast segment ====="
+          if awk -F'\t' '$3 !~ /^broadcast\//' /tmp/keys.tsv | grep -q .; then
+            awk -F'\t' '$3 !~ /^broadcast\//' /tmp/keys.tsv
+          else
+            echo "(none — no recording has ever landed in this bucket)"
+          fi
+
+          echo
+          echo "===== total objects ====="
+          wc -l < /tmp/keys.tsv
+
+      # Everything small in that bucket arrived; nothing large did. A 389-byte
+      # egress manifest is a single PutObject, a 1MB HLS chunk is a single
+      # PutObject, and a 12MB recording is a multipart upload — so "multipart
+      # does not work against this bucket" fits every observation. This is the
+      # experiment that decides it. The two probe objects are deleted again.
+      - name: Can a large object be written at all
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.RECORDINGS_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.RECORDINGS_S3_REGION }}
+          BUCKET: ${{ secrets.RECORDINGS_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.RECORDINGS_S3_ENDPOINT }}
+        run: |
+          [ -n "$BUCKET" ] || exit 0
+          head -c 12000000 /dev/urandom > /tmp/probe.bin
+
+          echo "===== single PutObject, 389 bytes ====="
+          head -c 389 /dev/urandom > /tmp/small.bin
+          if aws s3api put-object --endpoint-url "$ENDPOINT" --bucket "$BUCKET" \
+               --key "_probe/small.bin" --body /tmp/small.bin >/dev/null 2>/tmp/e1; then
+            echo "OK — small single-part upload works"
+          else
+            echo "FAILED:"; cat /tmp/e1
+          fi
+
+          echo
+          echo "===== multipart, 12MB (what a recording is) ====="
+          if aws s3 cp /tmp/probe.bin "s3://$BUCKET/_probe/large.bin" \
+               --endpoint-url "$ENDPOINT" >/dev/null 2>/tmp/e2; then
+            echo "OK — multipart upload works"
+          else
+            echo "FAILED:"; cat /tmp/e2
+          fi
+
+          echo
+          echo "===== what actually landed ====="
+          aws s3api list-objects-v2 --endpoint-url "$ENDPOINT" --bucket "$BUCKET" \
+            --prefix "_probe/" --query 'Contents[].[Key,Size]' --output text || echo "(nothing)"
+
+          echo
+          echo "===== cleaning up the probe ====="
+          aws s3 rm "s3://$BUCKET/_probe/" --recursive --endpoint-url "$ENDPOINT" || true
