@@ -117,7 +117,7 @@ export function WebinarRoom({
       setCurrentJoin(fresh);
       setPromotedToStage(true);
     } catch {
-      // Stay on HLS rather than mounting WebRTC with a data-only token.
+      // Stay on the mix player rather than mounting WebRTC with a data-only token.
     } finally {
       setTransitioning(false);
     }
@@ -130,7 +130,7 @@ export function WebinarRoom({
       setCurrentJoin(fresh);
       setPromotedToStage(false);
     } catch {
-      // Stay on the WebRTC room as audience rather than HLS with a stage token.
+      // Stay on the WebRTC room as audience rather than the mix player with a stage token.
     } finally {
       setTransitioning(false);
     }

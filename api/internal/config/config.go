@@ -117,12 +117,13 @@ type Config struct {
 	RecordingsCDNBaseURL string
 
 	/* BroadcastRTMPBase / BroadcastHLSBase are the Zoom-style one-way attendee
-	 * path: Egress pushes RTMP to MediaMTX on the SFU box, attendees play LL-HLS
-	 * from that origin (ideally orange-clouded so the 1 Gbps NIC is not per-viewer).
+	 * path: Egress pushes RTMP to MediaMTX on the SFU box, attendees play WHEP
+	 * from BroadcastHLSBase/<slug>/whep. Env names are leftover from HLS; the
+	 * public URL is no longer a playlist.
 	 *
-	 * Empty means the old B2 playlist only. Both must be set together — RTMP
-	 * without a public HLS URL would encode a feed nobody can watch, and an HLS
-	 * URL without RTMP would 404 forever. */
+	 * Empty means CDN-broadcast attendees stay on the SFU. Both must be set
+	 * together — RTMP without a public WHEP URL would encode a feed nobody can
+	 * watch, and a WHEP URL without RTMP would 404 forever. */
 	BroadcastRTMPBase string
 	BroadcastHLSBase  string
 
@@ -471,7 +472,7 @@ func (c Config) validate() error {
 		}
 	}
 	if (c.BroadcastRTMPBase == "") != (c.BroadcastHLSBase == "") {
-		errs = append(errs, errors.New("BROADCAST_RTMP_BASE and BROADCAST_HLS_BASE must be set together (RTMP ingest and the public LL-HLS URL)"))
+		errs = append(errs, errors.New("BROADCAST_RTMP_BASE and BROADCAST_HLS_BASE must be set together (RTMP ingest and the public WHEP URL)"))
 	}
 	if c.BroadcastRTMPBase != "" && !strings.HasPrefix(c.BroadcastRTMPBase, "rtmp://") && !strings.HasPrefix(c.BroadcastRTMPBase, "rtmps://") {
 		errs = append(errs, fmt.Errorf("BROADCAST_RTMP_BASE must begin with rtmp:// or rtmps://: %q", c.BroadcastRTMPBase))
@@ -570,8 +571,8 @@ func splitAndTrim(s string) []string {
 
 /* BroadcastRTMPURL is the RTMP ingest LiveKit Egress pushes, on the SFU box.
  *
- * Empty when the live origin is not configured — the HLS-to-S3 path then runs
- * alone. The slug is the path MediaMTX already uses for the matching playlist. */
+ * Empty when the live origin is not configured. The slug is the MediaMTX path
+ * that also appears in the matching WHEP URL. */
 func (c Config) BroadcastRTMPURL(slug string) string {
 	if c.BroadcastRTMPBase == "" || strings.TrimSpace(slug) == "" {
 		return ""
@@ -579,15 +580,14 @@ func (c Config) BroadcastRTMPURL(slug string) string {
 	return c.BroadcastRTMPBase + "/" + strings.TrimSpace(slug)
 }
 
-/* BroadcastHLSURL is the LL-HLS playlist attendees fetch from Caddy/Cloudflare.
+/* BroadcastHLSURL is the WHEP endpoint attendees POST an SDP offer to.
  *
- * Empty when the live origin is not configured, so join keeps handing out the
- * B2/API playlist as the only URL. */
+ * Empty when the live origin is not configured, so join keeps attendees on the SFU. */
 func (c Config) BroadcastHLSURL(slug string) string {
 	if c.BroadcastHLSBase == "" || strings.TrimSpace(slug) == "" {
 		return ""
 	}
-	return c.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/index.m3u8"
+	return c.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/whep"
 }
 
 func (c Config) String() string {

@@ -15,7 +15,7 @@ var (
 )
 
 /* startBroadcastIfEnabled starts the one-way attendee feed: Egress composites
- * the room and pushes RTMP to MediaMTX, which serves LL-HLS.
+ * the room and pushes RTMP to MediaMTX, which serves WHEP.
  *
  * Does nothing without a configured RTMP origin. That is not a degraded mode —
  * the egress has no other output, so starting it would burn a Chromium job
@@ -43,10 +43,9 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	activeBroadcasts[wb.ID] = "starting"
 	broadcastMu.Unlock()
 
-	preset := livekit.EncodingOptionsPreset_H264_1080P_30
-	if s.cfg.RecordingsEgressPreset == "720p" {
-		preset = livekit.EncodingOptionsPreset_H264_720P_30
-	}
+	/* 720p mix on purpose: this stream is copied once per attendee on the same
+	 * NIC as the SFU. 1080p × a few hundred viewers does not fit a CX33. */
+	preset := livekit.EncodingOptionsPreset_H264_720P_30
 
 	info, err := sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL, preset, rtmpURL)
 	if err != nil {

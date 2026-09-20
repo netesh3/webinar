@@ -166,13 +166,12 @@ func (s *Server) joinAsAttendee(
 			cdnStreamURL = u
 		}
 	} else if cdnBroadcast {
-		/* The live origin is the only attendee feed now that the S3 playlist is
-		 * gone, so with no origin configured CDN mode has nowhere to send
-		 * anyone. Fall back to the SFU rather than to a black video element:
-		 * more load on the SFU is a scaling problem, a blank stage is an outage.
+		/* The live origin is the only attendee feed, so with no origin
+		 * configured CDN mode has nowhere to send anyone. Fall back to the SFU
+		 * rather than to a black video element.
 		 *
-		 * Otherwise hand out the playlist even to someone currently on stage —
-		 * demote remounts HLS from this join. */
+		 * Hand out the WHEP URL even to someone currently on stage — demote
+		 * remounts the mix player from this join. */
 		live := s.cfg.BroadcastHLSURL(wb.ID)
 		if live == "" {
 			cdnBroadcast = false

@@ -1158,7 +1158,7 @@ func (c *Client) StartRoomCompositeEgress(
 }
 
 /* StartBroadcastEgress pushes the mixed program to an RTMP origin (MediaMTX),
- * which serves it to attendees as LL-HLS.
+ * which serves it to attendees as WHEP (WebRTC playback of the mix).
  *
  * RTMP is the only output. This used to also write 2-second HLS segments to S3
  * and hand attendees that playlist, which worked but ran ~15s behind — far
@@ -1203,16 +1203,8 @@ func (c *Client) StartBroadcastEgress(
 
 	/* Explicit options rather than the preset, purely to pin KeyFrameInterval.
 	 *
-	 * MediaMTX can only cut a segment on a keyframe, so the encoder's GOP
-	 * becomes the playlist's EXT-X-TARGETDURATION. The presets leave it at the
-	 * encoder default of 4s, which makes any non-low-latency sync target
-	 * 3 x 4s = 12s and leaves a joining player waiting up to 4s for its first
-	 * independent frame. One second costs a little bitrate efficiency and buys
-	 * a 1s target duration.
-	 *
-	 * This used to be masked: while this egress also wrote HLS segments to S3,
-	 * SegmentDuration pinned the GOP to 2s as a side effect. Dropping that
-	 * output silently doubled it, so it is now stated outright. */
+	 * MediaMTX still remuxes HLS for debugging, and a 1s GOP keeps that playlist
+	 * joinable. WHEP does not need it; it does not hurt the mix. */
 	opts := encodingOptionsFor(preset)
 	opts.KeyFrameInterval = 1
 	req.Options = &livekit.RoomCompositeEgressRequest_Advanced{

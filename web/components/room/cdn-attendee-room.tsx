@@ -10,7 +10,7 @@ import {
   RoomEvent,
 } from "livekit-client";
 import Hls from "hls.js";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { API_BASE, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { useMediaPreferences } from "@/lib/media";
@@ -385,7 +385,7 @@ export function CdnAttendeeRoom({
                   >
                     {/* CDN Stream Player */}
                     <div className="relative flex-1 flex items-center justify-center bg-black">
-                      <HlsPlayer
+                      <BroadcastPlayer
                         streamUrl={streamUrl}
                         lowLatency={Boolean(join.cdnLowLatency)}
                         coverUrl={initialImageUrl}
@@ -419,6 +419,235 @@ export function CdnAttendeeRoom({
         </RecorderProvider>
       </RoomUIProvider>
     </RoomContext.Provider>
+  );
+}
+
+function isWhepUrl(url: string) {
+  return /\/whep(\?|$)/i.test(url);
+}
+
+function BroadcastPlayer({
+  streamUrl,
+  lowLatency,
+  coverUrl,
+}: {
+  streamUrl: string;
+  lowLatency?: boolean;
+  coverUrl?: string;
+}) {
+  if (isWhepUrl(streamUrl)) {
+    return <WhepPlayer streamUrl={streamUrl} coverUrl={coverUrl} />;
+  }
+  return (
+    <HlsPlayer
+      streamUrl={streamUrl}
+      lowLatency={lowLatency}
+      coverUrl={coverUrl}
+    />
+  );
+}
+
+async function waitIceGathering(pc: RTCPeerConnection, ms = 2500) {
+  if (pc.iceGatheringState === "complete") return;
+  await new Promise<void>((resolve) => {
+    const t = window.setTimeout(resolve, ms);
+    const onChange = () => {
+      if (pc.iceGatheringState === "complete") {
+        window.clearTimeout(t);
+        pc.removeEventListener("icegatheringstatechange", onChange);
+        resolve();
+      }
+    };
+    pc.addEventListener("icegatheringstatechange", onChange);
+  });
+}
+
+function WhepPlayer({
+  streamUrl,
+  coverUrl,
+}: {
+  streamUrl: string;
+  coverUrl?: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isMuted, setIsMuted] = useState(true);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let cancelled = false;
+    let pc: RTCPeerConnection | null = null;
+    let sessionUrl: string | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let tearingDown = false;
+
+    const tryPlay = () => {
+      video.playsInline = true;
+      video.setAttribute("playsinline", "");
+      video.setAttribute("webkit-playsinline", "true");
+      video.muted = true;
+      setIsMuted(true);
+      video.play().catch(() => {});
+    };
+
+    const teardown = () => {
+      tearingDown = true;
+      if (sessionUrl) {
+        void fetch(sessionUrl, { method: "DELETE" }).catch(() => {});
+        sessionUrl = null;
+      }
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+      video.srcObject = null;
+    };
+
+    const connect = async () => {
+      teardown();
+      if (cancelled) return;
+      tearingDown = false;
+
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      pc.addTransceiver("video", { direction: "recvonly" });
+      pc.addTransceiver("audio", { direction: "recvonly" });
+      pc.ontrack = (ev) => {
+        if (cancelled || !video) return;
+        video.srcObject = ev.streams[0] ?? new MediaStream([ev.track]);
+        setLoading(false);
+        setError(null);
+        tryPlay();
+      };
+      pc.onconnectionstatechange = () => {
+        if (tearingDown || cancelled || !pc) return;
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          setError("Waiting for the broadcast to start...");
+          setLoading(true);
+          clearTimeout(retryTimer);
+          retryTimer = setTimeout(() => {
+            void connect();
+          }, 1500);
+        }
+      };
+
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await waitIceGathering(pc);
+        const sdp = pc.localDescription?.sdp;
+        if (!sdp) throw new Error("no local sdp");
+
+        const res = await fetch(streamUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/sdp",
+            Accept: "application/sdp",
+          },
+          body: sdp,
+        });
+
+        if (cancelled) return;
+
+        if (res.status === 404 || res.status === 406 || res.status === 425) {
+          setError("Waiting for the broadcast to start...");
+          setLoading(true);
+          teardown();
+          retryTimer = setTimeout(() => {
+            void connect();
+          }, 1500);
+          return;
+        }
+        if (!res.ok) {
+          throw new Error(`whep ${res.status}`);
+        }
+
+        const loc = res.headers.get("Location");
+        if (loc) {
+          sessionUrl = new URL(loc, streamUrl).toString();
+        }
+        const answer = await res.text();
+        await pc.setRemoteDescription({ type: "answer", sdp: answer });
+      } catch {
+        if (cancelled) return;
+        setError("Waiting for the broadcast to start...");
+        setLoading(true);
+        teardown();
+        retryTimer = setTimeout(() => {
+          void connect();
+        }, 1500);
+      }
+    };
+
+    void connect();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+      teardown();
+    };
+  }, [streamUrl]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const resume = () => {
+      if (document.visibilityState === "visible" && video.paused) {
+        video.play().catch(() => {
+          video.muted = true;
+          setIsMuted(true);
+          video.play().catch(() => {});
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("pageshow", resume);
+    };
+  }, [streamUrl]);
+
+  return (
+    <StagePlayerChrome
+      videoRef={videoRef}
+      loading={loading}
+      error={error}
+      isMuted={isMuted}
+      coverUrl={coverUrl}
+      onMutedChange={setIsMuted}
+      onReady={() => {
+        setLoading(false);
+        setError(null);
+      }}
+      unmute={() => {
+        if (videoRef.current) {
+          videoRef.current.muted = false;
+          setIsMuted(false);
+          void videoRef.current.play();
+        }
+      }}
+      toggleMute={() => {
+        const video = videoRef.current;
+        if (!video) return;
+        video.muted = !video.muted;
+        setIsMuted(video.muted);
+        if (!video.muted) void video.play();
+      }}
+      toggleFullscreen={() => {
+        const el = videoRef.current?.parentElement;
+        if (!el) return;
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+        } else {
+          void el.requestFullscreen?.();
+        }
+      }}
+    />
   );
 }
 
@@ -652,6 +881,48 @@ function HlsPlayer({
   };
 
   return (
+    <StagePlayerChrome
+      videoRef={videoRef}
+      loading={loading}
+      error={error}
+      isMuted={isMuted}
+      coverUrl={coverUrl}
+      onMutedChange={setIsMuted}
+      onReady={() => {
+        setLoading(false);
+        setError(null);
+      }}
+      unmute={unmute}
+      toggleMute={toggleMute}
+      toggleFullscreen={toggleFullscreen}
+    />
+  );
+}
+
+function StagePlayerChrome({
+  videoRef,
+  loading,
+  error,
+  isMuted,
+  coverUrl,
+  onMutedChange,
+  onReady,
+  unmute,
+  toggleMute,
+  toggleFullscreen,
+}: {
+  videoRef: RefObject<HTMLVideoElement | null>;
+  loading: boolean;
+  error: string | null;
+  isMuted: boolean;
+  coverUrl?: string;
+  onMutedChange: (muted: boolean) => void;
+  onReady?: () => void;
+  unmute: () => void;
+  toggleMute: () => void;
+  toggleFullscreen: () => void;
+}) {
+  return (
     <div className="relative h-full w-full flex items-center justify-center bg-black">
       {/* No `controls`. This is a live stage, not a file: a scrubber invites
         * seeking on a stream that has nowhere to seek to, and the native menu
@@ -667,37 +938,21 @@ function HlsPlayer({
         disablePictureInPicture
         controlsList="nodownload noplaybackrate noremoteplayback"
         preload="auto"
-        onPlay={() => {
-          setLoading(false);
-          setError(null);
-        }}
-        onPlaying={() => {
-          setLoading(false);
-          setError(null);
-        }}
+        onPlay={() => onReady?.()}
+        onPlaying={() => onReady?.()}
         onTimeUpdate={() => {
           if (videoRef.current && videoRef.current.currentTime > 0) {
-            setLoading(false);
-            setError(null);
+            onReady?.();
           }
         }}
-        onCanPlay={() => {
-          setLoading(false);
-          setError(null);
-        }}
-        onCanPlayThrough={() => {
-          setLoading(false);
-          setError(null);
-        }}
-        onLoadedData={() => {
-          setLoading(false);
-          setError(null);
-        }}
-        onVolumeChange={(e) => {
-          setIsMuted((e.target as HTMLVideoElement).muted);
-        }}
+        onCanPlay={() => onReady?.()}
+        onCanPlayThrough={() => onReady?.()}
+        onLoadedData={() => onReady?.()}
         poster={coverUrl}
         className="h-full w-full object-contain"
+        onVolumeChange={(e) => {
+          onMutedChange((e.target as HTMLVideoElement).muted);
+        }}
       />
 
       {loading && (
@@ -716,8 +971,6 @@ function HlsPlayer({
         </div>
       )}
 
-      {/* The one control an attendee genuinely needs, and it has to be loud:
-        * playback starts muted because no browser will autoplay with sound. */}
       {isMuted && !loading && (
         <button
           type="button"

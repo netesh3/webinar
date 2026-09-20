@@ -1,5 +1,13 @@
-# Generated on the box by redeploy.sh from mediamtx.yml.template.
-# Checked in so a local `docker compose` still has a valid default (no ICE IP).
+# Live origin for CDN-broadcast attendees.
+#
+# LiveKit Egress (host network) pushes RTMP to 127.0.0.1:1935/live/{slug}.
+# Attendees play that mix over WHEP (WebRTC). Signaling is HTTPS via Caddy
+# on /live/{slug}/whep; media is UDP :8189 advertised as the box's public IP.
+# HLS stays on for debugging; it is not what join hands out.
+#
+# __WEBRTC_ADDITIONAL_HOSTS__ is filled by redeploy.sh (same IP as LiveKit
+# node_ip) so ICE candidates are the reachable IPv4, not a Cloudflare hostname
+# and not a docker bridge address.
 
 logLevel: info
 logDestinations: [stdout]
@@ -33,7 +41,7 @@ webrtcAllowOrigin: "*"
 webrtcTrustedProxies: ["127.0.0.1"]
 webrtcLocalUDPAddress: :8189
 webrtcIPsFromInterfaces: yes
-webrtcAdditionalHosts: []
+webrtcAdditionalHosts: __WEBRTC_ADDITIONAL_HOSTS__
 srt: no
 api: no
 metrics: no

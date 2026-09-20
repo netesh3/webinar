@@ -1,10 +1,7 @@
 # Point live.webinarliv.com at the SFU box, proxied by Cloudflare.
 #
-# This is the switch that makes the low-latency attendee path scale. MediaMTX
-# and the Caddy route ship with the SFU already; what is missing until this runs
-# is an edge in front of them. Without the orange cloud the origin sends one
-# copy of every HLS part per viewer off a 1 Gbps NIC, which is why the API keeps
-# attendees on the B2 playlist until BROADCAST_HLS_BASE is set.
+# WHEP signaling can use this hostname (HTTPS). ICE media is UDP :8189 on the
+# origin IP and never goes through Cloudflare. Join still needs BROADCAST_HLS_BASE.
 #
 # Idempotent: creates the record, or updates it if it already exists.
 #
