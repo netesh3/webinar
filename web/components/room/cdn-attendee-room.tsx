@@ -553,17 +553,31 @@ function WhepPlayer({
 
         if (cancelled) return;
 
-        if (res.status === 404 || res.status === 406 || res.status === 425) {
-          setError("Waiting for the broadcast to start...");
+        if (!res.ok) {
+          /* 404 is the normal state before the host goes live: Egress has to
+           * boot Chromium and connect RTMP before the origin has a stream.
+           *
+           * Anything else is the origin refusing us, and saying "waiting for
+           * the broadcast" to that is how a misconfigured origin cost a whole
+           * session — it rejected every viewer with 401 while the mix was
+           * publishing, and the room sat on a spinner that read as "the host
+           * has not started yet". Still retry, but do not claim to know why. */
+          const waiting =
+            res.status === 404 || res.status === 406 || res.status === 425;
+          if (!waiting) {
+            console.error(`whep ${res.status} from ${streamUrl}`);
+          }
+          setError(
+            waiting
+              ? "Waiting for the broadcast to start..."
+              : "Reconnecting to the broadcast...",
+          );
           setLoading(true);
           teardown();
           retryTimer = setTimeout(() => {
             void connect();
-          }, 1500);
+          }, waiting ? 1500 : 4000);
           return;
-        }
-        if (!res.ok) {
-          throw new Error(`whep ${res.status}`);
         }
 
         const loc = res.headers.get("Location");

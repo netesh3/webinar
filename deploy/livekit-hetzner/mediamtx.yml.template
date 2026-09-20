@@ -14,6 +14,7 @@ logDestinations: [stdout]
 
 authMethod: internal
 authInternalUsers:
+  # Egress and anything else on the box.
   - user: any
     pass:
     ips: ["127.0.0.1", "::1"]
@@ -21,6 +22,18 @@ authInternalUsers:
       - action: publish
       - action: read
       - action: playback
+  # WHEP viewers, read-only.
+  #
+  # webrtcTrustedProxies makes MediaMTX resolve the client from
+  # X-Forwarded-For, so an attendee is their own (or Cloudflare's) address
+  # here, never Caddy's 127.0.0.1 — the entry above cannot match them, and
+  # every SDP offer came back "authentication failed" while the stream was
+  # publishing perfectly. Publish stays localhost-only: Caddy routes just
+  # /whep, and :8889 is not in ufw's allow-list.
+  - user: any
+    pass:
+    permissions:
+      - action: read
 
 rtsp: no
 rtmp: yes
