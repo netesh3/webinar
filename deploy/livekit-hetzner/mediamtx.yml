@@ -13,6 +13,11 @@ authInternalUsers:
       - action: publish
       - action: read
       - action: playback
+  # WHEP viewers arrive as their own address, not Caddy's — see the template.
+  - user: any
+    pass:
+    permissions:
+      - action: read
 
 rtsp: no
 rtmp: yes
