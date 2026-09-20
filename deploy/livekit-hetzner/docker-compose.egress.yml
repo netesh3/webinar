@@ -1,4 +1,4 @@
-# LiveKit Egress, Redis, and MediaMTX (live LL-HLS origin).
+# LiveKit Egress, Redis, and MediaMTX (live WHEP origin).
 # Extends the base livekit-hetzner deployment.
 #
 # Usage:
@@ -13,7 +13,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--bind", "127.0.0.1", "--protected-mode", "yes", "--save", "", "--appendonly", "no"]
 
-  # Live origin: RTMP ingest from egress, LL-HLS for attendees.
+  # Live origin: RTMP ingest from egress, WHEP for attendees (HLS kept for debug).
   # Host network like everything else here so egress can push rtmp://127.0.0.1.
   mediamtx:
     image: bluenviron/mediamtx:1.12.2

@@ -922,15 +922,15 @@ type JoinResponse struct {
 	JoinKey string `json:"joinKey,omitempty"`
 	// MaxDurationMin is the maximum allowed duration for this session in minutes.
 	MaxDurationMin int `json:"maxDurationMin"`
-	// CdnBroadcast is true when this webinar's *audience* is on HLS, including
-	// for a promoted attendee — so demote can put them back on the CDN player.
-	// CdnStreamURL is the playlist to play; set whenever the webinar is in that
-	// mode so a demote remount still has a URL.
+	// CdnBroadcast is true when this webinar's *audience* is on the mixed
+	// program (WHEP live, HLS/file for simulive), including for a promoted
+	// attendee — so demote can put them back on the mix player.
+	// CdnStreamURL is what to play; set whenever the webinar is in that mode
+	// so a demote remount still has a URL.
 	CdnBroadcast bool   `json:"cdnBroadcast,omitempty"`
 	CdnStreamURL string `json:"cdnStreamUrl,omitempty"`
-	// CdnLowLatency is true when CdnStreamURL is LL-HLS from the live origin,
-	// so the player can sit close to the live edge. False for simulive, which
-	// is a stored file and has no edge to chase.
+	// CdnLowLatency is true when CdnStreamURL is the live origin (WHEP),
+	// so the player can sit close to the live edge. False for simulive.
 	CdnLowLatency bool `json:"cdnLowLatency,omitempty"`
 }
 

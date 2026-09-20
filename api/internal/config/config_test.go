@@ -195,7 +195,7 @@ func TestBroadcastURLsStayEmptyUntilBothBasesAreSet(t *testing.T) {
 	}
 	c.BroadcastHLSBase = "https://live.example.com/live"
 	c.BroadcastRTMPBase = "rtmp://127.0.0.1:1935/live"
-	if got, want := c.BroadcastHLSURL("slug"), "https://live.example.com/live/slug/index.m3u8"; got != want {
+	if got, want := c.BroadcastHLSURL("slug"), "https://live.example.com/live/slug/whep"; got != want {
 		t.Errorf("BroadcastHLSURL = %q, want %q", got, want)
 	}
 	if got, want := c.BroadcastRTMPURL("slug"), "rtmp://127.0.0.1:1935/live/slug"; got != want {

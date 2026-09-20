@@ -1,25 +1,26 @@
-# LL-HLS parts from MediaMTX. flush_interval -1 disables proxy buffering: a
-# 200ms part held in a buffer puts back the latency this path exists to remove.
-# No `encode` here — the directive only takes encoder names, and these segments
-# are already compressed.
+# Live origin in front of MediaMTX.
 #
-# The Cache-Control values are aimed at Cloudflare, not the browser. s-maxage=1
-# on the playlist lets the edge collapse a thousand simultaneous polls into one
-# origin fetch without ever serving a stale segment list; parts are immutable
-# once named, so they can sit in the edge cache far longer.
-(live_hls) {
+# WHEP signaling must win over the catch-all /live/* HLS proxy: the same path
+# prefix carries /whep (HTTP POST of SDP) and, after 201, /whep/<session>.
+# flush_interval -1 so neither SDP nor LL-HLS parts sit in a proxy buffer.
+#
+# No CORS headers here. MediaMTX already sends them; a second
+# Access-Control-Allow-Origin makes browsers reject the response.
+
+(live_origin) {
+	@whep path_regexp ^/live/.+/whep
+	handle @whep {
+		reverse_proxy 127.0.0.1:8889 {
+			flush_interval -1
+		}
+		header Cache-Control "private, no-store"
+	}
+
 	handle /live/* {
 		reverse_proxy 127.0.0.1:8888 {
 			flush_interval -1
 		}
 
-		# No CORS headers here. MediaMTX already sends them (hlsAllowOrigin),
-		# and adding our own did not replace those — it appended, so every
-		# response carried two Access-Control-Allow-Origin headers. The spec
-		# allows exactly one, so browsers rejected the playlist outright while
-		# curl reported a perfectly healthy 200, and the player hung forever on
-		# a stream that was demonstrably being served. If CORS ever needs to
-		# change, change it in mediamtx.yml.
 		@playlist path *.m3u8
 		header @playlist Cache-Control "max-age=1, s-maxage=1, public"
 		@part path *.m4s *.mp4 *.ts
@@ -30,7 +31,7 @@
 {$DOMAIN} {
 	encode gzip
 
-	import live_hls
+	import live_origin
 
 	# `handle` (not `handle_path`) — Grafana's GF_SERVER_SERVE_FROM_SUB_PATH
 	# expects the /grafana prefix to still be in the request it receives and
@@ -44,29 +45,21 @@
 	reverse_proxy 127.0.0.1:7880
 }
 
-# The hostname attendees actually play from. Always proxied by Cloudflare, which
-# is the whole point: the origin has one 1 Gbps NIC and would otherwise send a
-# private copy of every 200ms part to every viewer.
+# Hostname used when BROADCAST_HLS_BASE points at live.webinarliv.com.
+# Signaling can sit behind Cloudflare; ICE UDP does not — MediaMTX advertises
+# the box IPv4 on :8189. Do not cache WHEP (the handle above sets no-store).
 #
 # `tls internal` rather than a public certificate. Behind the orange cloud an
-# HTTP-01 challenge is answered by Cloudflare's edge, not by Caddy, so a public
-# order here is unreliable at best and can deadlock: with the record proxied,
-# reaching origin:443 requires the certificate the order is trying to obtain.
-# The zone is set to Full (not Full strict), so Cloudflare encrypts to the
-# origin and accepts this locally-issued certificate. Browsers never see it —
-# they terminate against Cloudflare's edge certificate.
-#
-# If this record is ever un-proxied, that grey cloud is a hard outage, not a
-# degradation: the local certificate will not validate in a browser.
+# HTTP-01 challenge is answered by Cloudflare's edge, not by Caddy. The zone
+# is Full (not Full strict), so Cloudflare encrypts to origin and accepts this
+# locally-issued certificate. Un-proxying this record is an outage for this
+# hostname: the local certificate will not validate in a browser. WHEP can
+# also be served on {$DOMAIN} (sslip.io) if you point BROADCAST_HLS_BASE there.
 live.webinarliv.com {
 	tls internal
 
-	import live_hls
+	import live_origin
 
-	# Anything that is not a stream is not something this hostname serves.
-	# A `handle` block, not a bare `respond`: handle blocks are mutually
-	# exclusive and matched in order, so this reliably runs only when the
-	# /live/* block above did not match.
 	handle {
 		respond 404
 	}
