@@ -34,10 +34,11 @@ import { useAvailableTools } from "./tools";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
 import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
+import { useFullscreen } from "@/lib/fullscreen";
 import { useStageLayout } from "@/lib/layout";
 import { useToast } from "../providers";
 import { Spinner } from "../controls";
-import { FullscreenIcon, VolumeIcon, VolumeMuteIcon } from "../icons";
+import { FullscreenExitIcon, FullscreenIcon, VolumeIcon, VolumeMuteIcon } from "../icons";
 import { ControlBar } from "./control-bar";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, type RoomUI } from "./context";
@@ -652,15 +653,6 @@ function WhepPlayer({
         setIsMuted(video.muted);
         if (!video.muted) void video.play();
       }}
-      toggleFullscreen={() => {
-        const el = videoRef.current?.parentElement;
-        if (!el) return;
-        if (document.fullscreenElement) {
-          void document.exitFullscreen();
-        } else {
-          void el.requestFullscreen?.();
-        }
-      }}
     />
   );
 }
@@ -884,16 +876,6 @@ function HlsPlayer({
     if (!video.muted) void video.play();
   };
 
-  const toggleFullscreen = () => {
-    const el = videoRef.current?.parentElement;
-    if (!el) return;
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void el.requestFullscreen?.();
-    }
-  };
-
   return (
     <StagePlayerChrome
       videoRef={videoRef}
@@ -908,7 +890,6 @@ function HlsPlayer({
       }}
       unmute={unmute}
       toggleMute={toggleMute}
-      toggleFullscreen={toggleFullscreen}
     />
   );
 }
@@ -923,7 +904,6 @@ function StagePlayerChrome({
   onReady,
   unmute,
   toggleMute,
-  toggleFullscreen,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   loading: boolean;
@@ -934,10 +914,20 @@ function StagePlayerChrome({
   onReady?: () => void;
   unmute: () => void;
   toggleMute: () => void;
-  toggleFullscreen: () => void;
 }) {
+  /* Fullscreen belongs to the chrome, not to each player: WHEP and HLS differ
+   * in how they fill the video element and in nothing else, and the two copies
+   * of this that lived in those players had already drifted into being the
+   * same eight lines twice. */
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { notify } = useToast();
+  const { isFullscreen, toggle } = useFullscreen(containerRef, videoRef);
+
   return (
-    <div className="relative h-full w-full flex items-center justify-center bg-black">
+    <div
+      ref={containerRef}
+      className="relative h-full w-full flex items-center justify-center bg-black"
+    >
       {/* No `controls`. This is a live stage, not a file: a scrubber invites
         * seeking on a stream that has nowhere to seek to, and the native menu
         * offers playback speed, download and PiP, none of which mean anything
@@ -1013,12 +1003,22 @@ function StagePlayerChrome({
           </button>
           <button
             type="button"
-            onClick={toggleFullscreen}
-            aria-label="Toggle fullscreen"
-            title="Fullscreen"
+            onClick={() => {
+              void toggle().then((ok) => {
+                // Only reachable where no fullscreen API exists at all — an
+                // in-app browser, mostly. Saying so beats a dead button.
+                if (!ok) notify("This browser will not let the video go fullscreen.", "info");
+              });
+            }}
+            aria-label={isFullscreen ? "Leave fullscreen" : "Enter fullscreen"}
+            title={isFullscreen ? "Leave fullscreen" : "Fullscreen"}
             className="grid size-8 place-items-center rounded-full text-white/90 transition hover:bg-white/15 hover:text-white"
           >
-            <FullscreenIcon className="size-4" />
+            {isFullscreen ? (
+              <FullscreenExitIcon className="size-4" />
+            ) : (
+              <FullscreenIcon className="size-4" />
+            )}
           </button>
         </div>
       )}
