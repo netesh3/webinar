@@ -2,8 +2,19 @@
 #
 # LiveKit Egress (host network) pushes RTMP to 127.0.0.1:1935/live/{slug}.
 # Attendees play that mix over WHEP (WebRTC). Signaling is HTTPS via Caddy
-# on /live/{slug}/whep; media is UDP :8189 advertised as the box's public IP.
-# HLS stays on for debugging; it is not what join hands out.
+# on /live/{slug}/whep, which Caddy rewrites onto wrtc/{slug} (see below);
+# media is UDP :8189 advertised as the box's public IP. HLS stays on for
+# debugging; it is not what join hands out.
+#
+# What the RTMP ingest carries cannot be sent to a browser as-is: RTMP has no
+# Opus, so the audio arrives as AAC, which WebRTC does not accept. MediaMTX
+# does not transcode on its own, so the `live/` path below shells out to
+# ffmpeg and republishes as `wrtc/{slug}` with the video copied through and
+# the audio re-encoded. Video is copied rather than re-encoded because the
+# egress is pinned to H.264 Baseline (see StartBroadcastEgress) — no B-frames,
+# which is the other thing WebRTC refuses. Copying is also what keeps this
+# affordable: one 720p30 re-encode per concurrent webinar would not fit next
+# to the SFU and headless Chromium on this box.
 #
 # __WEBRTC_ADDITIONAL_HOSTS__ is filled by redeploy.sh (same IP as LiveKit
 # node_ip) so ICE candidates are the reachable IPv4, not a Cloudflare hostname
@@ -14,7 +25,7 @@ logDestinations: [stdout]
 
 authMethod: internal
 authInternalUsers:
-  # Egress and anything else on the box.
+  # Egress, the ffmpeg transcode, and anything else on the box.
   - user: any
     pass:
     ips: ["127.0.0.1", "::1"]
@@ -35,31 +46,71 @@ authInternalUsers:
     permissions:
       - action: read
 
-rtsp: no
-rtmp: yes
+# RTSP is the transcode's own transport, localhost only: ffmpeg reads the
+# ingest and publishes the result back over it. Not reachable from outside —
+# it is not in ufw's allow-list and Caddy does not route to it.
+#
+# TCP-only transports because this is a loopback hop where UDP buys nothing,
+# and the default list ([udp, multicast, tcp]) opens RTP/RTCP listeners on
+# 0.0.0.0:8000-8001. On a host-network container that is two more ports facing
+# the internet, held shut by nothing but ufw.
+rtsp: true
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]
+rtmp: true
 rtmpAddress: 127.0.0.1:1935
-hls: yes
+hls: true
 hlsAddress: 127.0.0.1:8888
-hlsAllowOrigin: "*"
-hlsAlwaysRemux: yes
+hlsAllowOrigins: ["*"]
+# Off now that attendees are on WHEP: with it on, every broadcast built two
+# HLS muxers nobody read — one for the ingest and one for the transcode — on
+# the same box as the SFU and headless Chromium. A muxer is still created on
+# demand the moment someone actually requests a playlist, which is all the
+# debug path needs; the first few seconds of that playlist are just colder.
+hlsAlwaysRemux: false
 hlsVariant: lowLatency
 hlsSegmentCount: 7
 hlsSegmentDuration: 1s
 hlsPartDuration: 200ms
 hlsMuxerCloseAfter: 60s
-webrtc: yes
+webrtc: true
 webrtcAddress: 127.0.0.1:8889
-webrtcEncryption: no
-webrtcAllowOrigin: "*"
+webrtcEncryption: false
+webrtcAllowOrigins: ["*"]
 webrtcTrustedProxies: ["127.0.0.1"]
 webrtcLocalUDPAddress: :8189
-webrtcIPsFromInterfaces: yes
+webrtcIPsFromInterfaces: true
 webrtcAdditionalHosts: __WEBRTC_ADDITIONAL_HOSTS__
-srt: no
-api: no
-metrics: no
-pprof: no
-playback: no
+srt: false
+# MoQ is new in 1.21 and defaults to on, which is three more listeners (:8892
+# TCP and UDP, :8893 UDP) and a self-signed certificate generated at boot, for
+# a protocol nothing here speaks.
+moq: false
+api: false
+metrics: false
+pprof: false
+playback: false
 
 paths:
+  # The RTMP ingest, and the only path that transcodes.
+  #
+  # Two namespaces rather than one so this cannot feed itself: the ffmpeg
+  # below writes to `wrtc/`, which falls through to all_others and runs
+  # nothing. A single namespace would make the output match this rule again
+  # and fork a transcode of the transcode, forever.
+  #
+  # runOnAvailable (renamed from runOnReady in MediaMTX 1.13) fires when the
+  # egress starts publishing and is SIGINTed when it stops, so the ffmpeg's
+  # lifetime is the broadcast's. Restart is on because ffmpeg exiting while
+  # the ingest is still live — a decoder hiccup, an OOM — would otherwise
+  # leave attendees on a dead path until the host restarted the whole webinar.
+  "~^live/(.+)$":
+    runOnAvailable: >
+      ffmpeg -nostdin -hide_banner -loglevel warning
+      -rtsp_transport tcp -i rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
+      -map 0:v:0 -c:v copy
+      -map 0:a:0 -c:a libopus -b:a 96k -ar 48000 -ac 2 -application audio
+      -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:$RTSP_PORT/wrtc/$G1
+    runOnAvailableRestart: true
+
   all_others:

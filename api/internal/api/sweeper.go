@@ -23,6 +23,7 @@ func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
 		case <-ticker.C:
 			s.sweepExpiredWebinars(ctx)
 			s.sweepEmptyWebinars(ctx)
+			s.sweepBroadcasts(ctx)
 			s.sweepSimulive(ctx)
 			s.reconcileEgressRecordings(ctx)
 			s.flushOutbox(ctx)

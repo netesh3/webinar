@@ -35,9 +35,24 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	}
 
 	broadcastMu.Lock()
-	if status, running := activeBroadcasts[wb.ID]; running && status != "" {
+	status, running := activeBroadcasts[wb.ID]
+	if running && status != "" {
 		broadcastMu.Unlock()
-		return
+		/* "starting" is a genuine in-flight start; leave it alone rather than
+		 * queue a second Chromium for the same room. Anything else is an egress
+		 * id this process recorded, which is only evidence that a broadcast was
+		 * started once — not that it is still encoding. */
+		if status == "starting" || s.broadcastEgressRunning(ctx, wb.ID, sfu) {
+			return
+		}
+		broadcastMu.Lock()
+		if activeBroadcasts[wb.ID] != status {
+			// Someone else reconciled while we were asking LiveKit.
+			broadcastMu.Unlock()
+			return
+		}
+		s.log.Warn("cdn broadcast: recorded egress is gone, starting a new one",
+			"slug", wb.ID, "egress", status)
 	}
 	// Mark as starting to prevent concurrent duplicate invocations
 	activeBroadcasts[wb.ID] = "starting"
@@ -61,6 +76,85 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	broadcastMu.Unlock()
 
 	s.log.Info("cdn broadcast started", "slug", wb.ID, "egress", info.EgressId)
+}
+
+/* broadcastEgressRunning asks LiveKit whether this room still has a live mix.
+ *
+ * A broadcast is the egress with stream (RTMP) results; a recording writes a
+ * file and must not be mistaken for one, or a room that is only being recorded
+ * would look like it were already broadcasting.
+ *
+ * An unreachable egress API returns true — "keep the current state" — because
+ * the failure mode of guessing wrong the other way is a second encoder for a
+ * room that already has one, on the box whose NIC is the reason this path
+ * exists. */
+func (s *Server) broadcastEgressRunning(ctx context.Context, slug string, sfu RoomManager) bool {
+	infos, err := sfu.ListEgress(ctx, lk.RoomName(slug))
+	if err != nil {
+		s.log.Warn("cdn broadcast: could not list egress", "slug", slug, "error", err)
+		return true
+	}
+	for _, info := range infos {
+		if len(info.GetStreamResults()) == 0 {
+			continue
+		}
+		switch info.GetStatus() {
+		case livekit.EgressStatus_EGRESS_STARTING, livekit.EgressStatus_EGRESS_ACTIVE:
+			return true
+		}
+	}
+	return false
+}
+
+/* sweepBroadcasts restarts the mix for a live webinar that has lost it.
+ *
+ * Nothing else notices. An attendee whose WHEP offer gets "no stream is
+ * available" retries against MediaMTX, which never talks to this server, so a
+ * dead encoder is invisible until someone joins again — and a redeploy of the
+ * egress container mid-session kills every encoder at once. That is exactly how
+ * a room full of people ended up watching a spinner while the API believed the
+ * broadcast was running.
+ *
+ * Only rooms already past their scheduled start are candidates, matching the
+ * empty-room sweep: a host waiting in an early room does not need an encoder. */
+func (s *Server) sweepBroadcasts(ctx context.Context) {
+	if s.cfg.BroadcastRTMPURL("probe") == "" {
+		return
+	}
+
+	slugs, err := s.store.LiveWebinarsPastStart(ctx)
+	if err != nil {
+		s.log.Error("cdn broadcast sweeper: query failed", "error", err)
+		return
+	}
+
+	for _, slug := range slugs {
+		wb, err := s.store.WebinarBySlug(ctx, slug)
+		if err != nil || wb.Kind == types.KindSimulive {
+			continue
+		}
+		can, err := s.store.HostCanCdnBroadcast(ctx, wb.Host.ID)
+		if err != nil || !can {
+			continue
+		}
+		sfu, err := s.sfuFor(ctx, wb)
+		if err != nil {
+			continue
+		}
+		if s.broadcastEgressRunning(ctx, slug, sfu) {
+			continue
+		}
+		broadcastMu.Lock()
+		if activeBroadcasts[slug] == "starting" {
+			broadcastMu.Unlock()
+			continue
+		}
+		delete(activeBroadcasts, slug)
+		broadcastMu.Unlock()
+
+		s.log.Warn("cdn broadcast sweeper: live room has no mix, restarting", "slug", slug)
+		s.startBroadcastIfEnabled(ctx, wb, sfu)
+	}
 }
 
 func (s *Server) stopBroadcastIfActive(ctx context.Context, slug string, sfu RoomManager) {

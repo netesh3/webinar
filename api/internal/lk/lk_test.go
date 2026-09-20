@@ -704,3 +704,27 @@ func TestDescribe(t *testing.T) {
 		t.Error("an unmuted microphone must not read as muted")
 	}
 }
+
+// The mix an attendee plays over WHEP is only playable if the encoder agrees to
+// three things the egress has no opinion about. Each of these has a plausible
+// "cleaner" value (the preset's Main profile, the preset's 44.1k, no explicit
+// GOP) that publishes a perfectly healthy stream the origin then refuses.
+func TestBroadcastEncodingOptions(t *testing.T) {
+	opts := broadcastEncodingOptions(livekit.EncodingOptionsPreset_H264_720P_30)
+
+	if opts.VideoCodec != livekit.VideoCodec_H264_BASELINE {
+		t.Errorf("video codec = %v, want H264_BASELINE: any other profile may carry "+
+			"B-frames, which WebRTC cannot and the origin will not", opts.VideoCodec)
+	}
+	if opts.AudioFrequency != 48000 {
+		t.Errorf("audio frequency = %v, want 48000 to match Opus at the origin", opts.AudioFrequency)
+	}
+	if opts.KeyFrameInterval != 1 {
+		t.Errorf("key frame interval = %v, want 1s so a joining attendee sees video within a second",
+			opts.KeyFrameInterval)
+	}
+	if opts.Width != 1280 || opts.Height != 720 {
+		t.Errorf("mix is %dx%d, want 720p: this stream is copied once per attendee "+
+			"on the same NIC as the SFU", opts.Width, opts.Height)
+	}
+}

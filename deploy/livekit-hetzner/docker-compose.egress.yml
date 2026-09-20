@@ -15,8 +15,13 @@ services:
 
   # Live origin: RTMP ingest from egress, WHEP for attendees (HLS kept for debug).
   # Host network like everything else here so egress can push rtmp://127.0.0.1.
+  #
+  # The -ffmpeg image variant, not the plain one: the WHEP path transcodes the
+  # ingest's AAC to Opus through ffmpeg, and the slim image has no ffmpeg to run
+  # (runOnAvailable would fail silently per stream). 1.21 is the floor for that
+  # variant, and it renamed runOnReady to runOnAvailable — see mediamtx.yml.
   mediamtx:
-    image: bluenviron/mediamtx:1.12.2
+    image: bluenviron/mediamtx:1.21.0-ffmpeg
     network_mode: host
     restart: unless-stopped
     volumes:

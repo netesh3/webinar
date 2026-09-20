@@ -127,9 +127,19 @@ SFU fan-out. HLS remains on MediaMTX for debugging; join does not hand it out.
 
 | Piece | Where |
 |---|---|
-| MediaMTX | `docker-compose.egress.yml` · `127.0.0.1:1935` RTMP, `:8889` WHEP, UDP `:8189` ICE |
+| MediaMTX | `docker-compose.egress.yml` · `127.0.0.1:1935` RTMP, `:8889` WHEP, `:8554` RTSP (loopback), UDP `:8189` ICE |
 | Public WHEP | `{BROADCAST_HLS_BASE}/<slug>/whep` |
 | ICE | public IPv4 of this box (same as LiveKit `node_ip`) |
+
+The ingest is not what attendees read. RTMP cannot carry Opus and WebRTC will
+not take AAC, so the mix lands on `live/<slug>` and MediaMTX runs ffmpeg to
+republish it as `wrtc/<slug>` with the video copied and the audio re-encoded to
+Opus. Copying the video is only legal because the egress is pinned to H.264
+Baseline — WebRTC refuses B-frames, which Main profile emits, and MediaMTX
+rejects the track outright rather than dropping them (`WebRTC doesn't support
+H264 streams with B-frames`, with attendees left on a spinner while the stream
+publishes fine). Caddy maps the one public URL onto `wrtc/`; the two path names
+never leave this box. This is also why MediaMTX runs the `-ffmpeg` image tag.
 
 `BROADCAST_RTMP_BASE` and `BROADCAST_HLS_BASE` are repo secrets. Clearing either
 sends CDN-broadcast attendees back to the SFU. Env names are unchanged.
