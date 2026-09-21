@@ -101,12 +101,8 @@ export function HostWebinarBrowser({
   /** Bumped by the parent after it creates or starts a webinar, to pull the
    *  list back in step with what just happened. */
   reloadToken = 0,
-  /** Reports the tab tallies up so the page heading can say "3 upcoming"
-   *  without a second request for a list this component already holds. */
-  onCounts,
 }: {
   reloadToken?: number;
-  onCounts?: (counts: HostWebinarCounts) => void;
 }) {
   const bypass = isDevAuthBypassActive();
 
@@ -172,8 +168,7 @@ export function HostWebinarBrowser({
   const load = useCallback(() => {
     /* Nothing to ask this endpoint for. Returning before the sequence number is
      * bumped deliberately leaves any reply still in the air free to land: it is
-     * the answer for the tab behind this one, which is where a host goes back to,
-     * and its counts are what the heading above is reading. */
+     * the answer for the tab behind this one, which is where a host goes back to. */
     if (tab === REGISTERED) return;
 
     const mine = ++seq.current;
@@ -204,18 +199,6 @@ export function HostWebinarBrowser({
   }, [fetchPage, tab, q, from, to]);
 
   useEffect(load, [load, reloadToken]);
-
-  /* Only ever reported from an unfiltered page.
-   *
-   * Counts are narrowed by the search and the dates, which is what the tab
-   * badges want and the opposite of what the page heading above wants: "3
-   * upcoming" there is a summary of the host's schedule, and it must not drop
-   * to 3 because they typed "security" into a box. A filtered page has no
-   * answer to the question the parent is asking, so it says nothing and the
-   * heading keeps the last real one. */
-  useEffect(() => {
-    if (!filtersActive) onCounts?.(counts);
-  }, [counts, filtersActive, onCounts]);
 
   function loadMore() {
     if (!cursor || loadingMore || tab === REGISTERED) return;
