@@ -22,6 +22,12 @@
 /** What the middleware knows about whoever is asking. */
 export type Viewer =
   | { kind: "anonymous" }
+  /* A session cookie was presented and could not be checked — the API was slow,
+   * or down. Distinct from "anonymous" because the two deserve opposite
+   * answers: somebody with no cookie is a stranger, somebody whose cookie we
+   * failed to read is almost always a signed-in person we are about to accuse
+   * of being signed out. See decideAccess for what this is allowed. */
+  | { kind: "unknown" }
   /** A valid session. `canHost` is the capability, not the role in any one webinar. */
   | { kind: "account"; canHost: boolean; isAdmin?: boolean };
 
@@ -45,6 +51,25 @@ const HOST_PAGES = new Set(["login", "new"]);
 export function decideAccess(pathname: string, viewer: Viewer): Decision {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   const segments = path.split("/").filter(Boolean);
+
+  /* A session we could not check is let through, everywhere except /admin.
+   *
+   * Treating it as anonymous is what this used to do, and it reads to the
+   * person as being logged out: they hold a perfectly good cookie, the
+   * identity lookup misses its deadline — a cold start on a scale-to-zero API
+   * is enough — and they are bounced to a sign-in form from a tab they were
+   * already signed in on. That is a far more common event than a stranger
+   * guessing a host URL during the same outage, and a much worse one.
+   *
+   * Letting it through costs little, because this layer was never the one
+   * holding the door. Every host endpoint re-checks, and the page that renders
+   * behind this decision has no data until the same API it could not reach
+   * answers — so what gets through during an outage is a shell that shows its
+   * own signed-out state. /admin stays closed because an admin waiting out a
+   * blip is a smaller cost than the alternative, and admins are few. */
+  if (viewer.kind === "unknown") {
+    return segments[0] === "admin" ? { allow: false, redirectTo: "/account" } : ALLOW;
+  }
 
   /* Marketing home is for visitors only. Signed-in users skip the brand page and
    * land in the app — hosts on Hosting, everyone else on Browse. Matches the

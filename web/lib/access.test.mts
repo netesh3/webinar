@@ -200,6 +200,34 @@ console.log("\nACCOUNT PAGES — a session, not a capability");
   allowed("/account", participant, "…and their own settings");
 }
 
+/* A SESSION THE API COULD NOT CONFIRM
+ *
+ * Distinct from anonymous, and the distinction is the whole point: this is
+ * overwhelmingly a signed-in person whose identity lookup hit a cold start, not
+ * a stranger. Answering it as anonymous redirected them to a sign-in form from a
+ * tab they were already signed in on, which is what "it logs me out when I
+ * switch tabs" was. */
+console.log("\nUNCONFIRMED SESSION — a lookup that failed, not a missing one");
+{
+  const unknown: Viewer = { kind: "unknown" };
+
+  for (const path of ["/host", "/host/acme-launch", "/my-webinars", "/account", "/"]) {
+    ok(
+      decideAccess(path, unknown).allow === true,
+      `${path} is allowed when the session could not be checked`,
+      "the API re-checks anyway, and the page has no data until it answers",
+    );
+  }
+
+  // Except the admin area, which keeps failing closed.
+  const adminDecision = decideAccess("/admin", unknown);
+  ok(
+    adminDecision.allow === false && adminDecision.redirectTo === "/account",
+    "/admin still refuses a session that could not be checked",
+    "few people, and waiting out a blip is the cheaper mistake",
+  );
+}
+
 console.log("\nEDGE CASES");
 {
   // A pasted link with a trailing slash is the same link.

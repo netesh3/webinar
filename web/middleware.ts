@@ -133,7 +133,11 @@ async function identify(request: NextRequest): Promise<Viewer> {
       signal: controller.signal,
       cache: "no-store",
     });
-    if (!res.ok) return { kind: "anonymous" };
+    /* Only the API saying "this is not a session" makes somebody anonymous.
+     * A 500 or a 502 is the API failing to answer the question, which is the
+     * same situation as the timeout below and gets the same treatment. */
+    if (res.status === 401 || res.status === 403) return { kind: "anonymous" };
+    if (!res.ok) return { kind: "unknown" };
     const account = (await res.json()) as {
       canHost?: boolean;
       isAdmin?: boolean;
@@ -144,9 +148,15 @@ async function identify(request: NextRequest): Promise<Viewer> {
       isAdmin: account.isAdmin === true,
     };
   } catch {
-    // Timed out, or the API is unreachable. Treated as no session, which refuses host routes
-    // and leaves every participant route open — the failure mode that keeps a webinar running.
-    return { kind: "anonymous" };
+    /* Timed out, or the API is unreachable — which is not the same as having no
+     * session, and must not be answered as though it were.
+     *
+     * This used to return anonymous, so a host whose lookup missed the deadline
+     * was redirected to a sign-in page while still holding a valid cookie. A
+     * cold start on the API is enough to cause it, which is why it showed up as
+     * being logged out at random when moving between tabs. `unknown` carries
+     * the distinction to decideAccess, which lets it through. */
+    return { kind: "unknown" };
   } finally {
     clearTimeout(timer);
   }
