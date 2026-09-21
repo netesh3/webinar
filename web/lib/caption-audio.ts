@@ -11,8 +11,20 @@ const HALLUCINATIONS = new Set([
   "...",
 ]);
 
+/* Whisper reports non-speech as a bracketed tag rather than an empty string:
+ * [BLANK_AUDIO], [MUSIC], (applause). On a quiet line [BLANK_AUDIO] is its most
+ * common output by far — the RMS gate in local-captions.ts skips true silence,
+ * but room noise just above that threshold still reaches the model and comes
+ * back as one of these. None of them is something a viewer reading captions
+ * asked for.
+ *
+ * Stripped inline rather than only when the tag is the whole output, because
+ * Whisper mixes them into a line it does transcribe. Speech itself is not
+ * parenthesised, so there is nothing of value in the brackets to lose. */
+const NON_SPEECH_TAG = /\[[^\]]*\]|\([^)]*\)/g;
+
 export function captionText(raw: string): string {
-  const clean = raw.replace(/\s+/g, " ").trim();
+  const clean = raw.replace(NON_SPEECH_TAG, " ").replace(/\s+/g, " ").trim();
   if (!clean) return "";
   const key = clean.toLowerCase().replace(/[!.?]+$/g, "").trim();
   if (HALLUCINATIONS.has(key)) return "";
