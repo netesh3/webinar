@@ -202,8 +202,13 @@ DEPLOY_ARGS=(
   --memory 2Gi
   --cpu 2
   --timeout 3600
-  --min-instances 0
-  --max-instances 3
+  # One instance stays warm. At 0 the service scaled to nothing when idle, and
+  # the next request paid a cold start — long enough that the UI middleware's
+  # 2.5s identity lookup timed out and bounced a signed-in host to the login
+  # page. A warm instance costs a always-on CPU but removes that class of bug
+  # and the first-request latency with it. Override with MIN_INSTANCES.
+  --min-instances "${MIN_INSTANCES:-1}"
+  --max-instances "${MAX_INSTANCES:-3}"
   --env-vars-file "$ENV_YAML"
 )
 
