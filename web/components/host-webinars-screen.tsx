@@ -9,7 +9,7 @@ import { DEFAULT_ATTENDEE_LIMIT } from "./schedule-form";
 import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
 import { ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
-import type { HostWebinarCounts, Webinar, WebinarInput } from "@/lib/api-types";
+import type { Webinar, WebinarInput } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { localTimeZone } from "@/lib/format";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
@@ -78,10 +78,13 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
 
 /** Host Webinar home: create, run upcoming sessions, review past attendance.
  *
- *  One primary nav area (top: Host Webinar) + in-page segments (Upcoming /
- *  Past / Drafts). No competing sidebar — two action tiles up top (Instant /
- *  Schedule) instead of a pair of same-weight buttons, so which one to click
- *  is obvious without reading closely. */
+ *  No top nav entry of its own any more — the logo is this page for a host,
+ *  see homeHrefFor in top-nav.tsx — and no page heading either: the two
+ *  action tiles below say what this screen is for more directly than a title
+ *  repeating them would. In-page segments (Upcoming / Past / Drafts) instead
+ *  of a competing sidebar, and two action tiles up top (Instant / Schedule)
+ *  instead of a pair of same-weight buttons, so which one to click is obvious
+ *  without reading closely. */
 export function HostWebinarsScreen() {
   const { account, status } = useSession();
   const { maxAttendees } = useAppConfig();
@@ -90,11 +93,9 @@ export function HostWebinarsScreen() {
   const [onStage, setOnStage] = useState<Webinar[]>([]);
   const [startingInstant, setStartingInstant] = useState(false);
   /* The host's own list is paged server-side, so this screen no longer holds
-   * it: HostWebinarBrowser fetches it, and reports the tab tallies back up for
-   * the heading. Bumping reloadToken is how a webinar created here gets into a
-   * list this component cannot reach into. */
+   * it: HostWebinarBrowser fetches it. Bumping reloadToken is how a webinar
+   * created here gets into a list this component cannot reach into. */
   const [reloadToken, setReloadToken] = useState(0);
-  const [upcoming, setUpcoming] = useState(0);
   const bypass = isDevAuthBypassActive();
 
   const canHost = account?.canHost ?? false;
@@ -164,13 +165,6 @@ export function HostWebinarsScreen() {
     setReloadToken((n) => n + 1);
     loadStage();
   }
-
-  /** Memoised because the browser watches it: an arrow rebuilt every render
-   *  would make a stable count look like new information. */
-  const takeCounts = useCallback(
-    (c: HostWebinarCounts) => setUpcoming(c.upcoming),
-    [],
-  );
 
   if (status === "loading") {
     return (
@@ -254,16 +248,6 @@ export function HostWebinarsScreen() {
         </div>
       )}
 
-      <div className="mb-6">
-        <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
-          Host Webinar
-        </h1>
-        <p className="mt-1.5 max-w-lg text-[13.5px] leading-relaxed text-ink-2">
-          Start a webinar right now, or schedule one for later
-          {upcoming > 0 ? ` · ${upcoming} upcoming` : ""}.
-        </p>
-      </div>
-
       {/* Two distinct rows rather than two same-weight buttons: which one to
           click should be obvious without reading closely, the way Zoom's own
           "New Meeting" vs "Schedule" tiles are. Compact and horizontal, not a
@@ -311,7 +295,7 @@ export function HostWebinarsScreen() {
         </ButtonLink>
       </div>
 
-      <HostWebinarBrowser reloadToken={reloadToken} onCounts={takeCounts} />
+      <HostWebinarBrowser reloadToken={reloadToken} />
 
       {onStage.length > 0 && (
         <section className="mt-10">

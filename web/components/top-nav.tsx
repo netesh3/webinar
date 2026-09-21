@@ -10,7 +10,7 @@ import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 
-/* The top bar — one primary entry, Host Webinar, and the account menu.
+/* The top bar: the account menu, and one nav entry for whoever is not hosting.
  *
  * It held three. Browse went first: a public catalogue that stopped being one,
  * since the list is now scoped to sessions the account already hosts, presents
@@ -20,19 +20,34 @@ import { HostAlerts } from "./host-alerts";
  * decide which door leads to the webinar they are looking for, and both doors
  * open on the same room.
  *
+ * Host Webinar went last, and for a sharper version of the same reason: a host
+ * has no second door to choose between, only the one they are already standing
+ * in. The link pointed at whatever page they were already reading — clicking it
+ * could not have gone anywhere. The logo does that job now, see homeHrefFor.
+ *
  * Both routes stay reachable. /browse still takes the links already sent out, and
  * /my-webinars is where registering sends somebody and what the account menu's
  * neighbours link to. */
 
 function linksFor(signedIn: boolean, canHost: boolean) {
-  // A host reaches their registrations through the tab. An account that cannot
-  // host has no Host Webinar page to hold that tab, so the entry survives for
-  // them — otherwise this nav is empty and their own registrations are reachable
-  // only by typing the URL. Same label as the tab, since it is the same list;
-  // the /my-webinars path stays as it is, because renaming a URL breaks the
-  // links already sent out to it.
-  if (canHost) return [{ href: "/host", label: "Host Webinar" }];
+  // A host reaches their registrations through the tab, and /host through the
+  // logo (see homeHrefFor) — nothing left for a nav entry to point at that is
+  // not already the page they are standing on. An account that cannot host has
+  // no Host Webinar page to hold that tab, so the entry survives for them —
+  // otherwise this nav is empty and their own registrations are reachable only
+  // by typing the URL. Same label as the tab, since it is the same list; the
+  // /my-webinars path stays as it is, because renaming a URL breaks the links
+  // already sent out to it.
+  if (canHost) return [];
   return signedIn ? [{ href: "/my-webinars", label: "Registered" }] : [];
+}
+
+/** Where the logo takes you. A host's real home base is /host — everything else
+ *  reachable from here is either that page's own tabs or a room opened from
+ *  inside it — so the logo is the way back to it now that the nav does not
+ *  repeat it as a link. */
+function homeHrefFor(canHost: boolean): string {
+  return canHost ? "/host" : "/";
 }
 
 export function TopNav() {
@@ -43,6 +58,9 @@ export function TopNav() {
   const { registrations } = useRegistrations();
   const [open, setOpen] = useState(false);
   const links = linksFor(Boolean(account), account?.canHost === true);
+  // Nothing for the mobile drawer to reveal without at least one of these — a
+  // button that opens onto an empty panel is worse than no button.
+  const hasMobileMenu = links.length > 0 || !account;
 
   const count = registrations?.length ?? 0;
 
@@ -51,7 +69,10 @@ export function TopNav() {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-5">
-        <Link href="/" className="mr-1 flex shrink-0 items-center gap-2.5 sm:mr-3">
+        <Link
+          href={homeHrefFor(account?.canHost === true)}
+          className="mr-1 flex shrink-0 items-center gap-2.5 sm:mr-3"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element -- a fixed
               brand asset, not a page image next/image would optimize. */}
           <img src="/brand/mark.png" alt="" width={28} height={28} className="size-7 rounded-lg" />
@@ -144,22 +165,24 @@ export function TopNav() {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-label={open ? "Close menu" : "Open menu"}
-          aria-expanded={open}
-          className="grid size-8 place-items-center rounded-lg text-ink-2 hover:bg-surface-2 sm:hidden"
-        >
-          {open ? (
-            <CloseIcon className="size-5" />
-          ) : (
-            <MenuIcon className="size-5" />
-          )}
-        </button>
+        {hasMobileMenu && (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+            className="grid size-8 place-items-center rounded-lg text-ink-2 hover:bg-surface-2 sm:hidden"
+          >
+            {open ? (
+              <CloseIcon className="size-5" />
+            ) : (
+              <MenuIcon className="size-5" />
+            )}
+          </button>
+        )}
       </div>
 
-      {open && (
+      {open && hasMobileMenu && (
         <div className="border-t border-line px-4 pt-2 pb-3 sm:hidden">
           <nav className="grid gap-0.5">
             {links.map((l) => (
