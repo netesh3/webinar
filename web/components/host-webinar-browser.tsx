@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HostWebinarRows } from "./host-webinar-list";
+import { MyWebinarsList } from "./my-webinars-list";
+import { useRegistrations } from "./registrations";
 import { Alert, Spinner, Tabs } from "./controls";
 import { CloseIcon, SearchIcon } from "./icons";
 import { Button, ButtonLink, Empty } from "./ui";
@@ -19,14 +21,33 @@ import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
  * three hundred on every visit to render ten rows. Now a tab click, a keystroke
  * and a date are one request each, and the tab badges come back with the page
  * because nothing here can count rows it was never sent.
+ *
+ * Registered sits on the end of that row, and is the one tab this endpoint knows
+ * nothing about: it is the sessions this account signed up for as an attendee,
+ * which used to be "My Webinar" in the top nav. Hosting and attending are two
+ * things one person does, not two places they go — and a nav entry per list made
+ * "where is that webinar again?" a question about which door to use. So it moved
+ * in here after Drafts, where every other list of this person's sessions already
+ * was, and took the name of the state its rows are in rather than a possessive
+ * that said nothing the other three tabs did not.
  */
 
 const TABS: readonly HostWebinarTab[] = ["upcoming", "past", "drafts"];
 
-const TAB_LABELS: Record<HostWebinarTab, string> = {
+/* Not a HostWebinarTab, and named apart from them so it cannot be passed to the
+ * paged endpoint by accident: MyWebinarsList resolves join keys and
+ * /api/me/registrations itself. Everything that fetches below narrows this out
+ * first. */
+const REGISTERED = "registered";
+type ViewTab = HostWebinarTab | typeof REGISTERED;
+
+const VIEW_TABS: readonly ViewTab[] = [...TABS, REGISTERED];
+
+const TAB_LABELS: Record<ViewTab, string> = {
   upcoming: "Upcoming",
   past: "Past",
   drafts: "Drafts",
+  registered: "Registered",
 };
 
 /** Matches store.DefaultHostWebinarLimit. Sent explicitly rather than left to
@@ -89,7 +110,14 @@ export function HostWebinarBrowser({
 }) {
   const bypass = isDevAuthBypassActive();
 
-  const [tab, setTab] = useState<HostWebinarTab>("upcoming");
+  /* Only for the tab's badge. The list itself calls this too, and the hook holds
+   * its state per caller, so the count is here rather than lifted: reading it
+   * costs the same request the top nav already makes on every page, and the
+   * alternative — an unbadged tab — loses the one number that says whether it is
+   * worth opening. */
+  const { registrations } = useRegistrations();
+
+  const [tab, setTab] = useState<ViewTab>("upcoming");
   // Two search values: what is in the box, and what has been asked for. The
   // gap between them is the debounce.
   const [typed, setTyped] = useState("");
@@ -142,6 +170,12 @@ export function HostWebinarBrowser({
    * react-hooks/set-state-in-effect rejects an async function called from an
    * effect body, the same shape admin-screen.tsx's load has. */
   const load = useCallback(() => {
+    /* Nothing to ask this endpoint for. Returning before the sequence number is
+     * bumped deliberately leaves any reply still in the air free to land: it is
+     * the answer for the tab behind this one, which is where a host goes back to,
+     * and its counts are what the heading above is reading. */
+    if (tab === REGISTERED) return;
+
     const mine = ++seq.current;
     fetchPage({ tab, q, from, to })
       .then((page) => {
@@ -184,7 +218,7 @@ export function HostWebinarBrowser({
   }, [counts, filtersActive, onCounts]);
 
   function loadMore() {
-    if (!cursor || loadingMore) return;
+    if (!cursor || loadingMore || tab === REGISTERED) return;
     const mine = seq.current;
     setLoadingMore(true);
     fetchPage({ tab, q, from, to }, cursor)
@@ -233,72 +267,89 @@ export function HostWebinarBrowser({
           <div className="min-w-0">
             <Tabs
               bare
-              tabs={TABS}
+              tabs={VIEW_TABS}
               value={tab}
-              onChange={(next) => refilter(() => setTab(next))}
+              /* Registered has nothing to re-filter and fetches itself, so it
+                 skips refilter: that would raise the pending flag for a request
+                 this tab never makes, and leave the rows behind it dimmed. */
+              onChange={(next) =>
+                next === REGISTERED
+                  ? setTab(next)
+                  : refilter(() => setTab(next))
+              }
               labels={TAB_LABELS}
-              counts={counts}
+              counts={{ ...counts, [REGISTERED]: registrations?.length ?? 0 }}
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 pb-2.5 sm:pb-2">
-            <label className="relative">
-              <span className="sr-only">Search webinars by name</span>
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
-              <input
-                type="search"
-                className="field h-9 w-full pl-8 text-[13px] sm:w-56"
-                placeholder="Search by name…"
-                value={typed}
-                onChange={(e) => refilter(() => setTyped(e.target.value))}
-              />
-              {pending && typed !== "" && (
-                <Spinner className="absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
+          {/* Hidden on Registered rather than disabled. Both controls are
+              arguments to the host's paged endpoint; leaving them up over a list
+              they cannot narrow is a control that lies about what it does. */}
+          {tab !== REGISTERED && (
+            <div className="flex flex-wrap items-center gap-2 pb-2.5 sm:pb-2">
+              <label className="relative">
+                <span className="sr-only">Search webinars by name</span>
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
+                <input
+                  type="search"
+                  className="field h-9 w-full pl-8 text-[13px] sm:w-56"
+                  placeholder="Search by name…"
+                  value={typed}
+                  onChange={(e) => refilter(() => setTyped(e.target.value))}
+                />
+                {pending && typed !== "" && (
+                  <Spinner className="absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
+                )}
+              </label>
+
+              {/* One bordered group, not two loose inputs: a range is a single
+                  idea, and the arrow between the ends says which way it runs. No
+                  icon of our own in front — each date input draws its own picker
+                  indicator, and a third calendar glyph on one control is clutter
+                  pretending to be a label. */}
+              <div className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
+                <DateEnd
+                  label="Show webinars from this date"
+                  value={from}
+                  onChange={(v) => refilter(() => setFrom(v))}
+                />
+                <span aria-hidden className="text-[11px] text-ink-3">
+                  →
+                </span>
+                <DateEnd
+                  label="Show webinars up to this date"
+                  value={to}
+                  onChange={(v) => refilter(() => setTo(v))}
+                />
+              </div>
+
+              {filtersActive && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="flex h-9 items-center gap-1 rounded-lg px-2 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                >
+                  <CloseIcon className="size-3.5" />
+                  Clear
+                </button>
               )}
-            </label>
-
-            {/* One bordered group, not two loose inputs: a range is a single
-                idea, and the arrow between the ends says which way it runs. No
-                icon of our own in front — each date input draws its own picker
-                indicator, and a third calendar glyph on one control is clutter
-                pretending to be a label. */}
-            <div className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
-              <DateEnd
-                label="Show webinars from this date"
-                value={from}
-                onChange={(v) => refilter(() => setFrom(v))}
-              />
-              <span aria-hidden className="text-[11px] text-ink-3">
-                →
-              </span>
-              <DateEnd
-                label="Show webinars up to this date"
-                value={to}
-                onChange={(v) => refilter(() => setTo(v))}
-              />
             </div>
-
-            {filtersActive && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="flex h-9 items-center gap-1 rounded-lg px-2 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
-              >
-                <CloseIcon className="size-3.5" />
-                Clear
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      {error && (
+      {error && tab !== REGISTERED && (
         <div className="mb-4">
           <Alert tone="error">{error}</Alert>
         </div>
       )}
 
-      {items === null ? (
+      {tab === REGISTERED ? (
+        /* Its own loading, empty and error states, unchanged from the page this
+           used to be: the rows carry a join key and a calendar link, which is
+           what an attendee came for and is nothing like a host row. */
+        <MyWebinarsList />
+      ) : items === null ? (
         <div className="grid gap-3">
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />

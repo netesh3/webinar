@@ -10,21 +10,29 @@ import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 
-/* The top bar — primary product nav: My Webinar | Host Webinar.
+/* The top bar — one primary entry, Host Webinar, and the account menu.
  *
- * Browse used to sit in front of both and no longer does. It was a public
- * catalogue that stopped being one: the list is now scoped to sessions the
- * account already hosts, presents on, or registered for, which is the same set
- * My Webinar shows with more to say about each. A nav entry per view of one list
- * asks people to choose between two doors to the same room. The route itself
- * stays — links already sent out, and the sign-in redirect for an account that
- * cannot host, both still land there. */
+ * It held three. Browse went first: a public catalogue that stopped being one,
+ * since the list is now scoped to sessions the account already hosts, presents
+ * on or registered for. My Webinar went the same way and for the same reason —
+ * it is the Registered tab on Host Webinar now, sitting after Drafts with the
+ * host's other lists. A nav entry per view of one person's sessions asks them to
+ * decide which door leads to the webinar they are looking for, and both doors
+ * open on the same room.
+ *
+ * Both routes stay reachable. /browse still takes the links already sent out, and
+ * /my-webinars is where registering sends somebody and what the account menu's
+ * neighbours link to. */
 
 function linksFor(signedIn: boolean, canHost: boolean) {
-  return [
-    ...(signedIn ? [{ href: "/my-webinars", label: "My Webinar" }] : []),
-    ...(canHost ? [{ href: "/host", label: "Host Webinar" }] : []),
-  ];
+  // A host reaches their registrations through the tab. An account that cannot
+  // host has no Host Webinar page to hold that tab, so the entry survives for
+  // them — otherwise this nav is empty and their own registrations are reachable
+  // only by typing the URL. Same label as the tab, since it is the same list;
+  // the /my-webinars path stays as it is, because renaming a URL breaks the
+  // links already sent out to it.
+  if (canHost) return [{ href: "/host", label: "Host Webinar" }];
+  return signedIn ? [{ href: "/my-webinars", label: "Registered" }] : [];
 }
 
 export function TopNav() {
