@@ -22,6 +22,7 @@ func TestAuthCodeURLAsksForOfflineAccess(t *testing.T) {
 
 func TestExchangeAndStartLive(t *testing.T) {
 	var streams, broadcasts int
+	var deleted []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/token":
@@ -57,6 +58,23 @@ func TestExchangeAndStartLive(t *testing.T) {
 			})
 		case strings.HasSuffix(r.URL.Path, "/liveStreams") && r.Method == http.MethodGet:
 			writeJSON(w, map[string]any{"items": []any{}})
+		/* The sweep for broadcasts still holding the reusable stream. One
+		 * upcoming broadcast is bound to it and one is bound to somebody
+		 * else's stream, so the test pins that only the first is cleared. */
+		case strings.HasSuffix(r.URL.Path, "/liveBroadcasts") && r.Method == http.MethodGet:
+			if r.URL.Query().Get("broadcastStatus") != "upcoming" {
+				writeJSON(w, map[string]any{"items": []any{}})
+				return
+			}
+			writeJSON(w, map[string]any{"items": []map[string]any{
+				{"id": "stuck-on-our-stream",
+					"contentDetails": map[string]string{"boundStreamId": "stream-1"}},
+				{"id": "someone-elses",
+					"contentDetails": map[string]string{"boundStreamId": "stream-9"}},
+			}})
+		case strings.HasSuffix(r.URL.Path, "/liveBroadcasts") && r.Method == http.MethodDelete:
+			deleted = append(deleted, r.URL.Query().Get("id"))
+			w.WriteHeader(http.StatusNoContent)
 		case strings.HasSuffix(r.URL.Path, "/liveBroadcasts") && r.Method == http.MethodPost:
 			broadcasts++
 			var body map[string]any
@@ -118,6 +136,16 @@ func TestExchangeAndStartLive(t *testing.T) {
 	}
 	if streams != 1 || broadcasts != 1 {
 		t.Errorf("streams=%d broadcasts=%d", streams, broadcasts)
+	}
+	/* The leftover broadcast on our stream is cleared, and only that one.
+	 *
+	 * YouTube assigns a stream to one unfinished broadcast at a time, so a
+	 * session that ended without completing blocks every session after it —
+	 * the new live reports "Stream key is currently assigned" and waits
+	 * forever while the encoder happily sends. Deleting somebody else's
+	 * broadcast to fix that would be a far worse bug than the one it fixes. */
+	if len(deleted) != 1 || deleted[0] != "stuck-on-our-stream" {
+		t.Errorf("deleted = %v, want just the broadcast holding our stream", deleted)
 	}
 }
 

@@ -194,7 +194,6 @@ function RegisteredCard({
               </Badge>
             )}
             {w.track && <Badge>{w.track}</Badge>}
-            {w.kind === "simulive" && <Badge tone="brand">Simulive</Badge>}
           </div>
 
           <h3 className="text-[15px] leading-snug font-semibold">

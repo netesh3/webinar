@@ -54,6 +54,10 @@ func (c *Client) StartLive(ctx context.Context, refresh, title, privacy, streamI
 		return Live{}, tok, err
 	}
 
+	// A broadcast left over from a session that did not finish cleanly still owns
+	// this stream, and YouTube will not hand it to a second one.
+	c.releaseStream(ctx, tok.AccessToken, streamID)
+
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "Webinar Liv"
@@ -142,31 +146,93 @@ func (c *Client) Complete(ctx context.Context, refresh, broadcastID string) erro
 	if err != nil {
 		return err
 	}
+	return c.complete(ctx, tok.AccessToken, broadcastID)
+}
+
+/* complete ends a broadcast, and makes sure it stops holding the stream either
+ * way.
+ *
+ * "complete" is only reachable from "live", so a broadcast that never aired
+ * cannot be completed at all. Treating that refusal as nothing to do — which is
+ * what this did — leaves it sitting on the reusable stream forever, and the next
+ * session is then refused the key it needs. Delete it instead: it aired nothing,
+ * so there is nothing to keep, and the stream comes free. */
+func (c *Client) complete(ctx context.Context, access, broadcastID string) error {
 	q := url.Values{
 		"id":              {broadcastID},
 		"broadcastStatus": {"complete"},
 		"part":            {"status"},
 	}
-	err = c.api(ctx, tok.AccessToken, "POST", "/liveBroadcasts/transition?"+q.Encode(), nil, nil)
-	if err != nil && !endedAnyway(err) {
+	err := c.api(ctx, access, "POST", "/liveBroadcasts/transition?"+q.Encode(), nil, nil)
+	switch {
+	case err == nil, matches(err, "redundant"):
+		// Ended, or enableAutoStop got there first when ingest stopped.
+		return nil
+	case matches(err, "invalidtransition", "invalid transition", "streaminactive"):
+		return c.deleteBroadcast(ctx, access, broadcastID)
+	default:
 		return err
 	}
-	return nil
 }
 
-/* endedAnyway reports refusals that mean the broadcast is already finished, or
- * never started, and so needs nothing further from us.
+func (c *Client) deleteBroadcast(ctx context.Context, access, broadcastID string) error {
+	return c.api(ctx, access, "DELETE",
+		"/liveBroadcasts?"+url.Values{"id": {broadcastID}}.Encode(), nil, nil)
+}
+
+/* releaseStream detaches the reusable stream from anything still holding it.
  *
- * "complete" is only reachable from "live". YouTube refuses the rest, and every
- * refusal here describes a broadcast that is not going to air again: already
- * complete (redundant), never left ready or testing (invalid transition), or
- * bound to an encoder that never sent a frame (stream inactive). Treating those
- * as failures means ending a webinar logs an error for the ordinary case where
- * the host went live and stopped, since enableAutoStop has usually completed
- * the broadcast before we ask. */
-func endedAnyway(err error) bool {
+ * YouTube assigns a stream to one unfinished broadcast at a time. A session whose
+ * broadcast never reached "complete" keeps that assignment, and the next one is
+ * then refused: the control room says "Stream key is currently assigned", the new
+ * broadcast sits on "Preparing stream", and it does so with the encoder connected
+ * and sending the entire time — which is why nothing in the ingest logs ever
+ * looked wrong. One stuck broadcast blocks every session after it.
+ *
+ * So clear the way before each new live rather than trusting the last one to have
+ * tidied up after itself. Upcoming broadcasts never aired and are deleted; an
+ * active one is an earlier session still marked live and is completed. Failures
+ * are ignored on purpose — this is housekeeping, and it must not be what stops a
+ * host going live. */
+func (c *Client) releaseStream(ctx context.Context, access, streamID string) {
+	if streamID == "" {
+		return
+	}
+	for _, status := range []string{"upcoming", "active"} {
+		var out struct {
+			Items []struct {
+				ID             string `json:"id"`
+				ContentDetails struct {
+					BoundStreamID string `json:"boundStreamId"`
+				} `json:"contentDetails"`
+			} `json:"items"`
+		}
+		q := url.Values{
+			"part":            {"id,contentDetails"},
+			"broadcastStatus": {status},
+			"broadcastType":   {"all"},
+			"maxResults":      {"50"},
+		}
+		if err := c.api(ctx, access, "GET", "/liveBroadcasts?"+q.Encode(), nil, &out); err != nil {
+			continue
+		}
+		for _, b := range out.Items {
+			if b.ID == "" || b.ContentDetails.BoundStreamID != streamID {
+				continue
+			}
+			if status == "upcoming" {
+				_ = c.deleteBroadcast(ctx, access, b.ID)
+				continue
+			}
+			_ = c.complete(ctx, access, b.ID)
+		}
+	}
+}
+
+// matches reports whether the API error mentions any of these reasons.
+func matches(err error, reasons ...string) bool {
 	msg := strings.ToLower(err.Error())
-	for _, reason := range []string{"redundant", "invalidtransition", "invalid transition", "streaminactive"} {
+	for _, reason := range reasons {
 		if strings.Contains(msg, reason) {
 			return true
 		}

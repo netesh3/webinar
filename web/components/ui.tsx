@@ -196,7 +196,6 @@ export function kindLabel(w: Webinar): { text: string; tone: Tone } {
   if (w.status === "live") return { text: "Live now", tone: "live" };
   if (w.status === "ended") return { text: "Ended", tone: "neutral" };
   if (w.status === "draft") return { text: "Draft", tone: "warn" };
-  if (w.kind === "simulive") return { text: "Simulive", tone: "brand" };
   if (w.kind === "recurring") return { text: "Series", tone: "brand" };
   // A scheduled broadcast is NOT "live" — reserve that word (and the red dot)
   // for a session actually in progress, or people think they're missing it.
