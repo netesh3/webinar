@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Track } from "livekit-client";
+import { useLocalParticipant } from "@livekit/components-react";
 import { api } from "@/lib/api";
 import type { ControlsPatch } from "@/lib/api-types";
+import { useLocalCaptions } from "@/lib/local-captions";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 
@@ -10,7 +13,8 @@ import { useRoomUI } from "./context";
  *
  * The host's switch, and nobody else's — but it is a SESSION CONTROL, not a flag
  * in the host's own browser. Recognition runs against each speaker's own
- * microphone, so every publisher has to know captions are on; when the switch
+ * microphone (Whisper tiny.en, in this tab — not a cloud speech API), so every
+ * publisher has to know captions are on; when the switch
  * lived in one tab, a panelist answering a question was never transcribed and the
  * feature looked broken to everyone who was not the host talking.
  *
@@ -102,17 +106,28 @@ export function CaptionsBarButton() {
    * times a minute and a toast per failure would bury the room. */
   const told = useRef(new Set<string>());
   const report = useCallback(
-    (key: string, message: string) => {
+    (key: string, message: string, tone: "error" | "info" = "error") => {
       if (told.current.has(key)) return;
       told.current.add(key);
-      notify(message, "error");
+      notify(message, tone);
     },
     [notify],
   );
 
-  // Runs for every publisher, not just the host: the recogniser only ever hears
-  // the microphone it is running next to.
-  useCaptionsPublisher(on && permissions.canPublish, slug, joinKey, realtime.sendCaption, report);
+  const { localParticipant } = useLocalParticipant();
+  const mic = localParticipant.getTrackPublication(Track.Source.Microphone)
+    ?.audioTrack?.mediaStreamTrack;
+
+  // Runs for every publisher, not just the host: Whisper only ever hears the
+  // microphone published from this tab.
+  useLocalCaptions({
+    active: on && permissions.canPublish,
+    track: mic,
+    slug,
+    joinKey,
+    send: realtime.sendCaption,
+    report,
+  });
 
   // Renders nothing for the audience, the way RecordButton beside it renders
   // nothing for anyone who may not record. Called after the hooks above so the
@@ -155,187 +170,3 @@ export function CaptionsBarButton() {
     </button>
   );
 }
-
-/** Errors the recogniser will never recover from on its own. Retrying these is
- *  what turned a denied microphone into a request every 400ms for the rest of
- *  the session, with nothing on screen to say why captions never appeared. */
-const FATAL: Record<string, string> = {
-  "not-allowed":
-    "Captions need microphone access for speech recognition. Allow it in your browser's site settings, then switch captions off and on.",
-  "service-not-allowed":
-    "This browser has speech recognition turned off, so your speech can't be captioned.",
-  "language-not-supported": "Speech recognition doesn't support this language.",
-};
-
-/** Consecutive failures with nothing recognised in between before giving up.
- *  A recogniser that cannot start is not going to start on the ninth try, and a
- *  loop that never ends is worse than an honest message. */
-const MAX_RETRIES = 8;
-
-function useCaptionsPublisher(
-  active: boolean,
-  slug: string,
-  joinKey: string | undefined,
-  sendCaption: (text: string) => Promise<void>,
-  report: (key: string, message: string) => void,
-) {
-  // Through refs so a new callback identity does not tear down a running
-  // recogniser and lose the sentence in progress.
-  const send = useRef(sendCaption);
-  useEffect(() => {
-    send.current = sendCaption;
-  }, [sendCaption]);
-  const trouble = useRef(report);
-  useEffect(() => {
-    trouble.current = report;
-  }, [report]);
-
-  useEffect(() => {
-    if (!active) return;
-    const Speech =
-      typeof window !== "undefined"
-        ? ((window as unknown as {
-            SpeechRecognition?: new () => SpeechRecognitionLike;
-            webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-          }).SpeechRecognition ??
-          (window as unknown as {
-            webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-          }).webkitSpeechRecognition)
-        : undefined;
-    if (!Speech) {
-      /* Silent before this. The button lit up, no recogniser existed, and nobody
-       * was told — which is most of "captions are not coming". Firefox has it
-       * behind a flag and Chromium builds without Google's speech keys do
-       * nothing at all, not even raise an error. */
-      trouble.current(
-        "unsupported",
-        "This browser can't do live captions. Chrome, Edge or Safari can.",
-      );
-      return;
-    }
-
-    const rec = new Speech();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = "en-US";
-
-    let stopped = false;
-    let restart: ReturnType<typeof setTimeout> | undefined;
-    let last = "";
-    let lastPersistedAt = 0;
-    let failures = 0;
-
-    rec.onresult = (ev: SpeechRecognitionEventLike) => {
-      // Something came back, so whatever went wrong before has passed.
-      failures = 0;
-      let text = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        text += ev.results[i][0].transcript;
-      }
-      const clean = text.trim();
-      if (!clean || clean === last) return;
-      last = clean;
-      void send.current(clean);
-      const now = Date.now();
-      if (now - lastPersistedAt > 2500) {
-        lastPersistedAt = now;
-        void api.appendCaption(slug, { joinKey, text: clean }).catch(() => undefined);
-      }
-    };
-
-    /* Chrome ends a continuous session on its own — after a stretch of silence, and
-     * on a `no-speech` error — and does not come back by itself. That is the whole
-     * of "captions worked for a minute and then froze": the recogniser was gone
-     * while the button still said CC was on. Restarting keeps it alive until the
-     * toggle actually goes off.
-     *
-     * The delay backs off, because the failures that repeat are the ones no delay
-     * fixes, and start() throwing must reschedule rather than fall through: a bare
-     * catch here left the recogniser dead for the rest of the session, since no
-     * further `end` event could arrive to try again. */
-    const revive = () => {
-      if (stopped) return;
-      clearTimeout(restart);
-      if (failures >= MAX_RETRIES) {
-        trouble.current(
-          "gave-up",
-          "Speech recognition keeps dropping, so captions have stopped. Switching captions off and on will try again.",
-        );
-        return;
-      }
-      const wait = Math.min(8_000, 400 * 2 ** Math.max(0, failures - 1));
-      restart = setTimeout(() => {
-        if (stopped) return;
-        try {
-          rec.start();
-        } catch {
-          // Already running: start() throws rather than no-oping. Also thrown when
-          // the previous session has not finished closing, which is recoverable —
-          // so count it and come back rather than giving up here.
-          failures++;
-          revive();
-        }
-      }, wait);
-    };
-
-    rec.onend = () => {
-      failures++;
-      revive();
-    };
-    rec.onerror = (ev: SpeechRecognitionErrorLike) => {
-      const fatal = FATAL[ev?.error ?? ""];
-      if (fatal) {
-        stopped = true;
-        clearTimeout(restart);
-        trouble.current(ev.error, fatal);
-        return;
-      }
-      if (ev?.error === "network") {
-        trouble.current(
-          "network",
-          "Speech recognition couldn't reach its service, so captions may be patchy.",
-        );
-      }
-      failures++;
-      revive();
-    };
-
-    try {
-      rec.start();
-    } catch {
-      failures++;
-      revive();
-    }
-
-    return () => {
-      stopped = true;
-      clearTimeout(restart);
-      rec.onend = null;
-      rec.onerror = null;
-      rec.onresult = null;
-      try {
-        rec.stop();
-      } catch {
-        /* already stopped */
-      }
-    };
-  }, [active, joinKey, slug]);
-}
-
-type SpeechRecognitionLike = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((ev: SpeechRecognitionEventLike) => void) | null;
-  onend: (() => void) | null;
-  onerror: ((ev: SpeechRecognitionErrorLike) => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-
-type SpeechRecognitionEventLike = {
-  resultIndex: number;
-  results: { length: number; [i: number]: { 0: { transcript: string } } };
-};
-
-type SpeechRecognitionErrorLike = { error: string };
