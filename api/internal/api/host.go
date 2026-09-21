@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/mail"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,14 +25,76 @@ import (
 // typo, and an uncapped duration makes the "ends at" arithmetic meaningless.
 const maxDurationMin = 24 * 60
 
+/* handleHostWebinars is GET /api/host/webinars — one page of the sessions this
+ * account owns, in the bucket the portal is showing.
+ *
+ * Paged rather than complete. It used to return every webinar the host had ever
+ * run on every visit to the portal, which is a growing response for a screen
+ * that only ever shows ten rows. The tab counts come back with it because the
+ * client can no longer count what it does not have.
+ *
+ * tab is upcoming | past | drafts, defaulting to upcoming. from/to are plain
+ * dates (2006-01-02) rather than timestamps, because a date picker is what the
+ * host filtering "sessions in March" actually has — and to is read as the end
+ * of that day, so the day the host asked for is included. cursor is opaque and
+ * comes from a previous page's nextCursor.
+ */
 func (s *Server) handleHostWebinars(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	list, err := s.store.ByHost(r.Context(), user.ID)
+	q := r.URL.Query()
+
+	filter := store.HostWebinarFilter{Search: q.Get("q"), Cursor: q.Get("cursor")}
+
+	switch tab := store.HostWebinarTab(q.Get("tab")); tab {
+	case "", store.HostTabUpcoming, store.HostTabPast, store.HostTabDrafts:
+		filter.Tab = tab
+	default:
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_tab",
+			"tab must be upcoming, past, or drafts.")
+		return
+	}
+
+	if v := q.Get("from"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_from", "from must be YYYY-MM-DD.")
+			return
+		}
+		filter.From = t
+	}
+	if v := q.Get("to"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_to", "to must be YYYY-MM-DD.")
+			return
+		}
+		// End of that day, inclusive — a bare date otherwise means midnight,
+		// which would exclude every session on the day the host picked.
+		filter.To = t.Add(24*time.Hour - time.Nanosecond)
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_limit", "limit must be a positive whole number.")
+			return
+		}
+		filter.Limit = n
+	}
+
+	page, err := s.store.ByHostPage(r.Context(), user.ID, filter)
+	if errors.Is(err, store.ErrInvalid) {
+		// A stale or hand-built cursor. Worth its own status: the host should
+		// start the list over, not see "something went wrong" on a page that
+		// would load perfectly without it.
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_cursor",
+			"That page marker is no longer valid — reload the list.")
+		return
+	}
 	if err != nil {
 		s.fail(w, r, "host webinars", err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, list)
+	httpx.JSON(w, http.StatusOK, page)
 }
 
 // handleStageWebinars lists sessions this account is a panelist on but does not

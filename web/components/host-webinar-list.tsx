@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ConfirmModal, Spinner, Tabs } from "./controls";
+import { ConfirmModal, Spinner } from "./controls";
 import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, kindLabel } from "./ui";
 import {
@@ -20,17 +20,16 @@ import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 
-/** Zoom / Livestorm-style host list: Upcoming vs Past vs Drafts. */
-const TABS = ["Upcoming", "Past", "Drafts"] as const;
-type TabId = (typeof TABS)[number];
-
-function inTab(w: Webinar, tab: TabId): boolean {
-  if (tab === "Drafts") return w.status === "draft";
-  if (tab === "Past") return w.status === "ended";
-  return w.status === "scheduled" || w.status === "live";
-}
-
-export function HostWebinarList({
+/* Rows, and the two things a host can do to one from the list — start it, or
+ * delete it.
+ *
+ * Tabs, search, date range and paging used to live here as well, filtering a
+ * complete list held in the browser. They moved to host-webinar-browser.tsx
+ * when that list became one server-side page at a time, because a component
+ * cannot count tabs it no longer holds every row for. What is left is what both
+ * lists share: the host's own paged one, and the panelist list below it.
+ */
+export function HostWebinarRows({
   webinars,
   readOnly = false,
 }: {
@@ -40,18 +39,9 @@ export function HostWebinarList({
 }) {
   const router = useRouter();
   const { notify } = useToast();
-  const [tab, setTab] = useState<TabId>("Upcoming");
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Webinar | null>(null);
   const bypass = isDevAuthBypassActive();
-
-  const rows = readOnly
-    ? webinars.filter((w) => w.status !== "ended")
-    : webinars.filter((w) => inTab(w, tab));
-
-  const counts = Object.fromEntries(
-    TABS.map((t) => [t, webinars.filter((w) => inTab(w, t)).length]),
-  ) as Record<TabId, number>;
 
   async function start(w: Webinar) {
     if (bypass) {
@@ -104,48 +94,18 @@ export function HostWebinarList({
 
   return (
     <>
-      {!readOnly && (
-        <div className="mb-4">
-          <Tabs tabs={TABS} value={tab} onChange={setTab} counts={counts} />
-        </div>
-      )}
-
-      {rows.length === 0 ? (
-        <Empty
-          title={
-            readOnly
-              ? "Nothing coming up"
-              : tab === "Drafts"
-                ? "No drafts"
-                : tab === "Past"
-                  ? "No past webinars"
-                  : "Nothing upcoming"
-          }
-          hint={
-            tab === "Upcoming" && !readOnly
-              ? "Create a webinar, then Host it from this list when it's time."
-              : undefined
-          }
-          action={
-            tab === "Upcoming" && !readOnly ? (
-              <ButtonLink href="/host/new">Create webinar</ButtonLink>
-            ) : undefined
-          }
-        />
-      ) : (
-        <div className="grid gap-3">
-          {rows.map((w) => (
-            <HostCard
-              key={w.id}
-              webinar={w}
-              readOnly={readOnly}
-              busy={busy === w.id}
-              onStart={() => void start(w)}
-              onDelete={() => setConfirmDelete(w)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="grid gap-3">
+        {webinars.map((w) => (
+          <HostCard
+            key={w.id}
+            webinar={w}
+            readOnly={readOnly}
+            busy={busy === w.id}
+            onStart={() => void start(w)}
+            onDelete={() => setConfirmDelete(w)}
+          />
+        ))}
+      </div>
 
       <ConfirmModal
         open={confirmDelete !== null}
@@ -158,6 +118,20 @@ export function HostWebinarList({
       />
     </>
   );
+}
+
+/* The panelist list: sessions somebody else owns and invited this account onto.
+ *
+ * Whole, unpaged and untabbed on purpose. A host is invited onto a handful of
+ * these rather than hundreds, and the only split that would matter — has it
+ * happened yet — is already made by dropping the ended ones: there is nothing
+ * to join in a session that is over.
+ */
+export function HostWebinarList({ webinars }: { webinars: Webinar[] }) {
+  const rows = webinars.filter((w) => w.status !== "ended");
+
+  if (rows.length === 0) return <Empty title="Nothing coming up" />;
+  return <HostWebinarRows webinars={rows} readOnly />;
 }
 
 function HostCard({
