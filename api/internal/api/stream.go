@@ -47,8 +47,12 @@ func (s *Server) handleSetStream(w http.ResponseWriter, r *http.Request) {
 		oldIngest = savedIngest
 	}
 
+	/* The broadcast being stopped, read before StopWebinarStream forgets it and
+	 * ended further down, once the compositor has actually let go of it. */
+	ending := ""
+
 	if body.Off {
-		s.completeYouTubeBroadcast(r.Context(), slug, wb.Host.ID)
+		ending, _ = s.store.WebinarYouTubeBroadcast(r.Context(), slug)
 		if err := s.store.StopWebinarStream(r.Context(), slug, body.DropWatch); err != nil {
 			s.fail(w, r, "set stream", err)
 			return
@@ -110,6 +114,16 @@ func (s *Server) handleSetStream(w http.ResponseWriter, r *http.Request) {
 	if sfu, err := s.sfuFor(r.Context(), wb); err == nil {
 		s.syncStreamDest(r.Context(), wb, sfu, oldIngest, newIngest)
 	}
+
+	/* Only now, with the push taken down above.
+	 *
+	 * Completing first — which is what this did — asks YouTube to end a
+	 * broadcast whose encoder is still connected and still sending. The
+	 * transition is refused, so the broadcast never ends: Studio keeps showing
+	 * it as live long after the host pressed Stop. Dropping the encoder first
+	 * lets enableAutoStop do the work, and this becomes the backstop for when
+	 * it does not. */
+	s.finishYouTubeBroadcast(r.Context(), ending, wb.Host.ID)
 
 	s.log.Info("stream dest updated", "slug", slug, "configured", newIngest != "", "off", body.Off, "via_youtube", body.ViaYouTube)
 	httpx.JSON(w, http.StatusOK, wb)

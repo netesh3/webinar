@@ -148,10 +148,30 @@ func (c *Client) Complete(ctx context.Context, refresh, broadcastID string) erro
 		"part":            {"status"},
 	}
 	err = c.api(ctx, tok.AccessToken, "POST", "/liveBroadcasts/transition?"+q.Encode(), nil, nil)
-	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "redundant") {
+	if err != nil && !endedAnyway(err) {
 		return err
 	}
 	return nil
+}
+
+/* endedAnyway reports refusals that mean the broadcast is already finished, or
+ * never started, and so needs nothing further from us.
+ *
+ * "complete" is only reachable from "live". YouTube refuses the rest, and every
+ * refusal here describes a broadcast that is not going to air again: already
+ * complete (redundant), never left ready or testing (invalid transition), or
+ * bound to an encoder that never sent a frame (stream inactive). Treating those
+ * as failures means ending a webinar logs an error for the ordinary case where
+ * the host went live and stopped, since enableAutoStop has usually completed
+ * the broadcast before we ask. */
+func endedAnyway(err error) bool {
+	msg := strings.ToLower(err.Error())
+	for _, reason := range []string{"redundant", "invalidtransition", "invalid transition", "streaminactive"} {
+		if strings.Contains(msg, reason) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) ensureStream(ctx context.Context, access, streamID string) (id, ingest string, err error) {

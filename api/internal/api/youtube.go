@@ -229,15 +229,28 @@ func (s *Server) applyYouTubeLive(ctx context.Context, wb types.Webinar, privacy
 
 func (s *Server) completeYouTubeBroadcast(ctx context.Context, slug string, hostID string) {
 	id, err := s.store.WebinarYouTubeBroadcast(ctx, slug)
-	if err != nil || id == "" || s.youtube == nil {
+	if err != nil || id == "" {
+		return
+	}
+	s.finishYouTubeBroadcast(ctx, id, hostID)
+}
+
+/* finishYouTubeBroadcast ends a broadcast by id rather than by looking one up.
+ *
+ * Stopping a stream clears youtube_broadcast_id, and the broadcast has to be
+ * ended after the encoder has gone away rather than before — so by the time
+ * this is the right thing to do, the webinar row no longer says which
+ * broadcast it was. The caller holds onto the id across that gap. */
+func (s *Server) finishYouTubeBroadcast(ctx context.Context, broadcastID, hostID string) {
+	if broadcastID == "" || s.youtube == nil {
 		return
 	}
 	host, err := s.store.UserByID(ctx, hostID)
 	if err != nil || host.YouTubeRefresh == "" {
 		return
 	}
-	if err := s.youtube.Complete(ctx, host.YouTubeRefresh, id); err != nil {
-		s.log.Warn("youtube complete broadcast", "slug", slug, "error", err)
+	if err := s.youtube.Complete(ctx, host.YouTubeRefresh, broadcastID); err != nil {
+		s.log.Warn("youtube complete broadcast", "broadcast", broadcastID, "error", err)
 	}
 }
 
