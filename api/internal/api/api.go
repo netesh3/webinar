@@ -48,6 +48,7 @@ type RoomManager interface {
 	DeleteRoom(ctx context.Context, room string) error
 	StartRoomCompositeEgress(ctx context.Context, roomName string, storageKey string, s3Opts lk.EgressS3Options, templateURL string, preset livekit.EncodingOptionsPreset) (*livekit.EgressInfo, error)
 	StartBroadcastEgress(ctx context.Context, roomName string, templateURL string, preset livekit.EncodingOptionsPreset, rtmpURL string) (*livekit.EgressInfo, error)
+	StartCombinedEgress(ctx context.Context, roomName string, templateURL string, preset livekit.EncodingOptionsPreset, rtmpURL string, storageKey string, s3Opts lk.EgressS3Options) (*livekit.EgressInfo, error)
 	StopEgress(ctx context.Context, egressID string) (*livekit.EgressInfo, error)
 	ListEgress(ctx context.Context, roomName string) ([]*livekit.EgressInfo, error)
 }

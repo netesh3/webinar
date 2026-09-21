@@ -63,6 +63,31 @@ This guide explains the architecture, deployment, and configuration for zero-cli
 +-----------------------------------------------------------------------------------+
 ```
 
+### One compositor per room, not two
+
+A room composite is a headless Chromium painting the stage plus an x264 encode.
+Measured on the CX33: the recording job peaks at **3.0–3.2 of 4 cores** on its
+own, and the CDN broadcast job at **2.3**. They do not both fit, and LiveKit
+will not even try — it only admits a room composite when the node reports
+**3.0 idle cores** (`room_composite_cpu_cost`, the default, since `egress.yaml`
+sets no `cpu_cost` block).
+
+Before this was understood, pressing Record during a CDN broadcast was refused
+before the job started. Nothing appeared in the egress logs, and the host was
+told only that the recording had failed.
+
+So when a room already has a broadcast, the API does not ask for a second
+compositor. It stops the stream-only egress and starts one carrying **both**
+outputs — RTMP to MediaMTX and MP4 to the bucket — then puts the stream-only
+one back when recording stops. See `startEgressRecording` in
+`api/internal/api/cdn_broadcast.go` and `StartCombinedEgress` in
+`api/internal/lk/lk.go`.
+
+The trade: while recording, the file inherits the broadcast's encoding — 720p
+H.264 Baseline rather than 1080p Main — because one encoder feeds both and the
+RTMP side has to stay playable over WebRTC. Rooms with no broadcast still
+record at the full `RECORDINGS_EGRESS_PRESET`.
+
 ---
 
 ## 2. Hetzner Server Setup (LiveKit SFU + Egress + Redis)
