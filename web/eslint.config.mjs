@@ -22,6 +22,9 @@ const eslintConfig = defineConfig([
     // for the same reason — served from this origin, not a CDN. Also bundled/minified
     // output: not ours to lint.
     "public/rnnoise/**",
+    // ONNX Runtime WASM, vendored so Whisper captions do not fetch a CDN.
+    "public/onnxruntime/**",
+    "**/*.test.ts",
   ]),
 ]);
 

@@ -25,6 +25,17 @@ const nextConfig: NextConfig = {
   // Cloudflare OpenNext — that adapter transforms the default Next output.
   ...(process.env.OPEN_NEXT !== "1" ? { output: "standalone" as const } : {}),
   basePath: basePath(),
+  // Transformers.js pulls Node-only optional deps (sharp, onnxruntime-node)
+  // that webpack would otherwise try to bundle into the captions path.
+  serverExternalPackages: ["@huggingface/transformers", "onnxruntime-node", "sharp"],
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      sharp$: false,
+      "onnxruntime-node$": false,
+    };
+    return config;
+  },
   // Local same-origin `/api` is handled by app/api/[...path]/route.ts (cookie
   // softening for http://localhost). Production Workers use worker.ts instead.
   async headers() {
