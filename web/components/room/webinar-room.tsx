@@ -10,6 +10,8 @@ import {
 import {
   ConnectionState,
   DisconnectReason,
+  type LocalTrack,
+  type LocalTrackPublication,
   type LocalAudioTrack,
   type LocalVideoTrack,
   Room,
@@ -591,6 +593,26 @@ function ConnectedRoom({
   // thing that leaves the room is somebody choosing to.
   const leaving = useRef(false);
 
+  /* Every local track this browser has published, kept past its unpublish.
+   *
+   * room.localParticipant.trackPublications is not a substitute. LiveKit's
+   * teardown clears that map before it emits Disconnected, so a handler on
+   * that event iterates nothing and the camera light and the screen-share bar
+   * stay on — which is how ending a webinar kept capturing despite there being
+   * code to stop it. Entries are never removed: stopping an already-ended
+   * track does nothing, and the track that matters here is precisely the one
+   * LiveKit has just let go of without stopping. */
+  const captured = useRef(new Set<LocalTrack>());
+  useEffect(() => {
+    const onPublished = (pub: LocalTrackPublication) => {
+      if (pub.track) captured.current.add(pub.track);
+    };
+    room.on(RoomEvent.LocalTrackPublished, onPublished);
+    return () => {
+      room.off(RoomEvent.LocalTrackPublished, onPublished);
+    };
+  }, [room]);
+
   // Sequentialises connect and disconnect. React can run a cleanup's disconnect
   // and the next effect's connect concurrently, and the two overlapping leaves
   // the room in a state where neither has really happened.
@@ -605,7 +627,12 @@ function ConnectedRoom({
       if (cancelled) return;
       const exitReason = classifyDisconnect(reason);
       if (!exitReason) {
-        if (leaving.current) onLeaveRef.current();
+        // Pressing Leave is as terminal for this browser's devices as being
+        // thrown out is; only a retryable drop keeps them open.
+        if (leaving.current) {
+          stopLocalCapture(room, captured.current);
+          onLeaveRef.current();
+        }
         return;
       }
       /* Only "lost" is worth retrying, and the distinction matters. Being removed by the
@@ -619,7 +646,7 @@ function ConnectedRoom({
         retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
         return;
       }
-      stopLocalCapture(room);
+      stopLocalCapture(room, captured.current);
       setExit(exitReason);
     };
 
@@ -1333,12 +1360,18 @@ type ExitReason = "ended" | "removed" | "duplicate" | "lost";
  * a disconnect it did not initiate unpublishes without stopping anything — the
  * room is gone while the screen-share bar and the camera light stay on. That is
  * the right trade during a session and the wrong one after it, because an exit
- * classified here is terminal and has no next publish to hand a track to. */
-function stopLocalCapture(room: Room) {
-  room.localParticipant.trackPublications.forEach(({ track }) => {
+ * classified here is terminal and has no next publish to hand a track to.
+ *
+ * Takes the tracks separately because the room's own list is already empty by
+ * the time anyone learns the session is over — see `captured`. The room is
+ * still swept for anything published before that listener was attached. */
+function stopLocalCapture(room: Room, published: Set<LocalTrack>) {
+  const release = (track?: LocalTrack) => {
     track?.detach();
     track?.stop();
-  });
+  };
+  room.localParticipant.trackPublications.forEach(({ track }) => release(track));
+  published.forEach(release);
 }
 
 /** Maps LiveKit's disconnect reason onto something worth telling a person.
