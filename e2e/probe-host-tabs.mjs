@@ -1,12 +1,12 @@
 /* Where the attendee list lives, in a real browser.
  *
- * It used to be a top-nav entry called "My Webinar" and is now Registered, the fourth
+ * It used to be a top-nav entry called "My Webinar" and is now WatchList, the fourth
  * tab on the host list, after Drafts. Both halves of that are pixels — the order of a
  * tab row and the absence of a nav link — so the only honest way to check them is to
  * load the page.
  *
  * What it asserts, on /host under NEXT_PUBLIC_DEV_BYPASS_AUTH=1:
- *   1. the tab row reads Upcoming · Past · Drafts · Registered, in that order
+ *   1. the tab row reads Upcoming · Past · Drafts · WatchList, in that order
  *   2. the top nav no longer offers the attendee list at all
  *   3. clicking the tab swaps the list in without throwing
  *   4. the search box and date range — arguments to the host's paged endpoint — go away
@@ -105,8 +105,8 @@ const tabs = await evaluate(
 );
 console.log(`  tabs: ${JSON.stringify(tabs)}`);
 const labels = (tabs ?? []).map((t) => t.replace(/\d+$/, "").trim());
-JSON.stringify(labels) === JSON.stringify(["Upcoming", "Past", "Drafts", "Registered"])
-  ? ok("tab row is Upcoming · Past · Drafts · Registered")
+JSON.stringify(labels) === JSON.stringify(["Upcoming", "Past", "Drafts", "WatchList"])
+  ? ok("tab row is Upcoming · Past · Drafts · WatchList")
   : bad(`tab row is ${JSON.stringify(labels)}`);
 
 /* -------------------------------------------------------------- 2. the nav */
@@ -114,7 +114,7 @@ const nav = await evaluate(
   `[...document.querySelectorAll('header nav a')].map(a => a.textContent.trim())`,
 );
 console.log(`  nav: ${JSON.stringify(nav)}`);
-(nav ?? []).some((l) => /^registered/i.test(l))
+(nav ?? []).some((l) => /^watchlist/i.test(l))
   ? bad("top nav still offers the attendee list")
   : ok(`top nav no longer offers the attendee list (${JSON.stringify(nav)})`);
 
@@ -129,17 +129,17 @@ beforeToolbar
 
 const clicked = await evaluate(`(() => {
   const t = [...document.querySelectorAll('[role=tab]')]
-    .find(el => /^registered/i.test(el.textContent));
+    .find(el => /^watchlist/i.test(el.textContent));
   if (!t) return false;
   t.click();
   return true;
 })()`);
-if (!clicked) bad("no Registered tab to click");
+if (!clicked) bad("no WatchList tab to click");
 await sleep(2500);
 
 const after = await evaluate(`(() => {
   const t = [...document.querySelectorAll('[role=tab]')]
-    .find(el => /^registered/i.test(el.textContent));
+    .find(el => /^watchlist/i.test(el.textContent));
   return {
     selected: t?.getAttribute('aria-selected'),
     search: Boolean(document.querySelector('input[type=search]')),
@@ -149,17 +149,17 @@ const after = await evaluate(`(() => {
 })()`);
 
 after?.selected === "true"
-  ? ok("Registered is the selected tab after clicking it")
+  ? ok("WatchList is the selected tab after clicking it")
   : bad(`aria-selected is ${after?.selected} after clicking`);
 !after?.search && !after?.date
-  ? ok("search box and date range are gone on Registered")
+  ? ok("search box and date range are gone on WatchList")
   : bad(`toolbar still showing: search=${after?.search} date=${after?.date}`);
 
 /* The bypass has no API behind it, so the list's own empty or error state is the
  * expected content here — what matters is that MyWebinarsList rendered rather
  * than the host rows or a blank panel.
  *
- * Matched against strings only that component produces. "Registered" would be a
+ * Matched against strings only that component produces. "WatchList" would be a
  * vacuous test now that it is also the tab's own label, which is in this text. */
 const own =
   /haven't registered for anything yet|Join key|Couldn't load your webinars/i.test(
@@ -192,7 +192,7 @@ const backToolbar = await evaluate(
 );
 backToolbar
   ? ok("toolbar comes back on Drafts")
-  : bad("toolbar did not come back after leaving Registered");
+  : bad("toolbar did not come back after leaving WatchList");
 
 /* ------------------------------------------------------------- exceptions */
 thrown.length === 0

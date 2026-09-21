@@ -22,14 +22,13 @@ import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
  * and a date are one request each, and the tab badges come back with the page
  * because nothing here can count rows it was never sent.
  *
- * Registered sits on the end of that row, and is the one tab this endpoint knows
+ * WatchList sits on the end of that row, and is the one tab this endpoint knows
  * nothing about: it is the sessions this account signed up for as an attendee,
  * which used to be "My Webinar" in the top nav. Hosting and attending are two
  * things one person does, not two places they go — and a nav entry per list made
  * "where is that webinar again?" a question about which door to use. So it moved
  * in here after Drafts, where every other list of this person's sessions already
- * was, and took the name of the state its rows are in rather than a possessive
- * that said nothing the other three tabs did not.
+ * was.
  */
 
 const TABS: readonly HostWebinarTab[] = ["upcoming", "past", "drafts"];
@@ -47,7 +46,7 @@ const TAB_LABELS: Record<ViewTab, string> = {
   upcoming: "Upcoming",
   past: "Past",
   drafts: "Drafts",
-  registered: "Registered",
+  registered: "WatchList",
 };
 
 /** Matches store.DefaultHostWebinarLimit. Sent explicitly rather than left to
@@ -252,7 +251,7 @@ export function HostWebinarBrowser({
               bare
               tabs={VIEW_TABS}
               value={tab}
-              /* Registered has nothing to re-filter and fetches itself, so it
+              /* WatchList has nothing to re-filter and fetches itself, so it
                  skips refilter: that would raise the pending flag for a request
                  this tab never makes, and leave the rows behind it dimmed. */
               onChange={(next) =>
@@ -265,7 +264,7 @@ export function HostWebinarBrowser({
             />
           </div>
 
-          {/* Hidden on Registered rather than disabled. Both controls are
+          {/* Hidden on WatchList rather than disabled. Both controls are
               arguments to the host's paged endpoint; leaving them up over a list
               they cannot narrow is a control that lies about what it does. */}
           {tab !== REGISTERED && (
