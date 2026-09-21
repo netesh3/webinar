@@ -31,10 +31,15 @@ const WINDOW_S = 3.2;
 const HOP_S = 1.6;
 const MIN_RMS = 0.012;
 
-type Transcriber = (
-  audio: Float32Array,
-  options?: { language?: string; task?: string },
-) => Promise<{ text?: string } | string>;
+/* Audio in, text out, and deliberately no `language` or `task` options.
+ *
+ * MODEL_ID is an English-only checkpoint, and Transformers.js throws on either
+ * of those for one — "Cannot specify `task` or `language` for an English-only
+ * model" — because there is no multilingual token for it to force. English
+ * transcription is the only thing the model does, so both arguments were
+ * redundant as well as fatal. Kept off the type so they cannot come back
+ * without this comment being read. */
+type Transcriber = (audio: Float32Array) => Promise<{ text?: string } | string>;
 
 let transcriber: Promise<Transcriber> | null = null;
 
@@ -123,7 +128,7 @@ export function useLocalCaptions(opts: {
       if (stopped || rms(pcm) < MIN_RMS) return;
       const asr = await loadTranscriber(report.current);
       if (stopped) return;
-      const out = await asr(pcm, { language: "english", task: "transcribe" });
+      const out = await asr(pcm);
       const raw = typeof out === "string" ? out : (out.text ?? "");
       const clean = captionText(raw);
       if (!clean || clean === last) return;
