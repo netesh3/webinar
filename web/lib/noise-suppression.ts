@@ -105,13 +105,28 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
   name = "rnnoise-noise-suppression";
   processedTrack?: MediaStreamTrack;
 
+  /* Kept across mic restarts. LiveKit's LocalTrack.restart calls
+   * processor.restart with { track, kind, element } only — no audioContext —
+   * which is exactly what unplugging a headset triggers (the capture device
+   * disappears, the track is replaced, the processor is asked to rebuild). The
+   * context from the first init is still valid for the worklet; without this,
+   * restart would read `.audioWorklet` on undefined and surface as
+   * "Couldn't open your microphone." */
+  private ctx?: AudioContext;
   private source?: MediaStreamAudioSourceNode;
   private node?: AudioWorkletNode & { destroy(): void };
   private gain?: GainNode;
   private destination?: MediaStreamAudioDestinationNode;
 
   async init(opts: AudioProcessorOptions): Promise<void> {
-    const ctx = opts.audioContext;
+    const ctx = opts.audioContext ?? this.ctx;
+    if (!ctx) {
+      throw new Error(
+        "Noise suppression needs an audio context, and none was ready yet.",
+      );
+    }
+    this.ctx = ctx;
+
     const [{ RnnoiseWorkletNode }, binary] = await Promise.all([
       import("@sapphi-red/web-noise-suppressor"),
       loadWasmBinary(),
@@ -139,13 +154,15 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
 
   async restart(opts: AudioProcessorOptions): Promise<void> {
     // The WASM binary and the context's worklet registration are both still good —
-    // only the graph around this particular capture needs rebuilding.
+    // only the graph around this particular capture needs rebuilding. audioContext
+    // is restored above when LiveKit omits it (see the field comment).
     this.teardownGraph();
     await this.init(opts);
   }
 
   async destroy(): Promise<void> {
     this.teardownGraph();
+    this.ctx = undefined;
   }
 
   private teardownGraph(): void {
