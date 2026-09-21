@@ -110,10 +110,18 @@ export type StageLayoutState = {
 };
 
 const DEFAULTS: StageLayoutState = {
-  // Speaker, not grid. A webinar has a handful of publishers and hundreds of
-  // watchers, so the common case is one presenter and the grid would be one large
-  // tile in a container built to hold forty-nine.
-  mode: "speaker",
+  /* Grid. Everyone lands looking at everyone.
+   *
+   * This used to be speaker, reasoning that a webinar is one presenter and a
+   * large audience, so the grid would be a single big tile in a container built
+   * to hold forty-nine. True of the audience, but the people who join before
+   * the audience does are the host and the panelists, and what they want first
+   * is to see each other. A grid with one publisher in it still shows that one
+   * publisher; a speaker view with four hides three of them.
+   *
+   * The stage still moves to speaker by itself when a share starts, so the
+   * content takes over when there is content. See stage.tsx. */
+  mode: "grid",
   preferences: {
     hideNonVideo: false,
     hideSelf: false,
@@ -383,10 +391,16 @@ export { VideoQuality };
 
 const STORAGE_KEY = "webcast.stage-layout.v1";
 
-/** Persisted: the mode and the filters, because they are preferences. Not the page
- *  or the pin, which are about a session that has already ended. */
+/** Persisted: the filters, because they are preferences. Not the page or the pin,
+ *  which are about a session that has already ended — and not the mode.
+ *
+ *  The mode used to be stored here, which made "the default view" almost
+ *  meaningless: the save effect below writes on mount, so every browser that had
+ *  ever opened a room already held a mode, and changing the default reached only
+ *  people who had never joined one. Every join now starts at DEFAULTS.mode and
+ *  the toggle lasts the session, which is what makes "everyone lands in grid"
+ *  true of everyone rather than of new visitors. */
 type Persisted = {
-  mode: LayoutMode;
   hideNonVideo: boolean;
   hideSelf: boolean;
   onlySpeakers: boolean;
@@ -401,9 +415,6 @@ function load(): StageLayoutState {
     const parsed = JSON.parse(raw) as Partial<Persisted>;
     return {
       ...DEFAULTS,
-      mode: LAYOUT_MODES.includes(parsed.mode as LayoutMode)
-        ? (parsed.mode as LayoutMode)
-        : DEFAULTS.mode,
       preferences: {
         ...DEFAULTS.preferences,
         hideNonVideo: parsed.hideNonVideo === true,
@@ -442,7 +453,6 @@ export function useStageLayout(): StageLayoutApi {
     if (typeof window === "undefined") return;
     try {
       const persisted: Persisted = {
-        mode: state.mode,
         hideNonVideo: state.preferences.hideNonVideo,
         hideSelf: state.preferences.hideSelf,
         onlySpeakers: state.preferences.onlySpeakers,
@@ -453,7 +463,6 @@ export function useStageLayout(): StageLayoutApi {
       // Private browsing. The choice lasts the session.
     }
   }, [
-    state.mode,
     state.preferences.hideNonVideo,
     state.preferences.hideSelf,
     state.preferences.onlySpeakers,
