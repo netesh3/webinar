@@ -79,6 +79,15 @@ export const LOW_LIGHT_MAX = 100;
  *  from one end to the other is a handful of uniform writes rather than a hundred. */
 export const LOW_LIGHT_STEP = 5;
 
+/* What the one-click version turns on.
+ *
+ * Measured rather than picked: at 50 a face midtone goes 64 -> 99 while a near-white 240
+ * only reaches 246 (see e2e/probe-low-light.mjs, which prints that table). Visibly lit and
+ * short of the point where a webcam's shadow noise comes up with the face — so it is the
+ * right answer for somebody who wants the problem gone rather than a control to operate.
+ */
+export const LOW_LIGHT_DEFAULT_ON = 50;
+
 /**
  * asLowLight narrows whatever was in storage to a usable amount.
  *
