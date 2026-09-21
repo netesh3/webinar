@@ -207,7 +207,7 @@ DEPLOY_ARGS=(
   # 2.5s identity lookup timed out and bounced a signed-in host to the login
   # page. A warm instance costs a always-on CPU but removes that class of bug
   # and the first-request latency with it. Override with MIN_INSTANCES.
-  --min-instances "${MIN_INSTANCES:-1}"
+  --min-instances "${MIN_INSTANCES:-0}"
   --max-instances "${MAX_INSTANCES:-3}"
   --env-vars-file "$ENV_YAML"
 )
