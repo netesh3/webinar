@@ -16,7 +16,8 @@ import {
 import { isHighlighted } from "@/lib/speaker";
 import { API_BASE } from "@/lib/api";
 import { useCompact } from "@/lib/compact";
-import { ArrowLeftIcon, ChevronDownIcon } from "../icons";
+import { startWaitingTune, stopWaitingTune, useWaitingTune } from "@/lib/waiting-tune";
+import { ArrowLeftIcon, ChevronDownIcon, VolumeIcon, VolumeMuteIcon } from "../icons";
 import { useActiveSpeaker } from "./active-speaker";
 import { useRoomUI } from "./context";
 import { ReactionOverlay } from "./reactions";
@@ -820,6 +821,17 @@ function WaitingForStage({
   canPresent: boolean;
   preview: LocalVideoTrack | null;
 }) {
+  const { enabled: tuneEnabled, setEnabled: setTuneEnabled } = useWaitingTune();
+
+  // The only place that starts or stops it: a presenter is never shown this card (see
+  // the branch below), so gating on canPresent here is what keeps a host checking
+  // their camera from hearing hold music meant for people waiting on them.
+  useEffect(() => {
+    if (canPresent || !tuneEnabled) return;
+    startWaitingTune();
+    return () => stopWaitingTune();
+  }, [canPresent, tuneEnabled]);
+
   if (canPresent) {
     /* Their own camera, while the connection is still being made.
      *
@@ -909,6 +921,19 @@ function WaitingForStage({
         </p>
       </div>
       <ReactionOverlay />
+      <button
+        type="button"
+        onClick={() => setTuneEnabled(!tuneEnabled)}
+        aria-label={tuneEnabled ? "Mute the waiting tune" : "Unmute the waiting tune"}
+        title={tuneEnabled ? "Mute the waiting tune" : "Unmute the waiting tune"}
+        className="absolute right-4 top-4 grid size-9 place-items-center rounded-full bg-white/10 text-white/70 backdrop-blur transition-colors outline-none hover:bg-white/20 hover:text-white/90 focus-visible:ring-2 focus-visible:ring-white/60"
+      >
+        {tuneEnabled ? (
+          <VolumeIcon className="size-4.5" aria-hidden />
+        ) : (
+          <VolumeMuteIcon className="size-4.5" aria-hidden />
+        )}
+      </button>
     </div>
   );
 }
