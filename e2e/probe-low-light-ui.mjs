@@ -8,13 +8,23 @@
  * a slider that renders off-screen, or one that writes a preference nothing reads, would
  * pass every numeric check in that file.
  *
- * So this loads the bypass preview room, opens Settings, and checks:
- *   1. the control is there, is a range input, and spans the stored 0..100
- *   2. it starts at 0 — nobody's camera is altered until they ask
- *   3. moving it round-trips through the room context: the handle holds its new position
- *      and the readout beside it agrees, so the value a presenter sets is the value the
- *      pipeline would be handed
- *   4. no uncaught exceptions on the way through
+ * So this loads the bypass preview room and checks both ways in:
+ *
+ *   SETTINGS
+ *   1. the switch is there and starts off — nobody's camera is altered until they ask
+ *   2. no slider until the switch is on, because a slider for a feature that is off is a
+ *      control with nothing to control
+ *   3. one click turns it on at LOW_LIGHT_DEFAULT_ON, which is the whole point of the
+ *      switch: the common case must not ask anybody to choose a number
+ *   4. the slider then appears, spans the stored range, and moving it round-trips through
+ *      the room context — the handle holds its new position and the readout agrees
+ *   5. switching off and back on returns to the amount that was chosen, not the default
+ *
+ *   THE CAMERA MENU
+ *   6. the same switch sits under "Blur my background", and agrees with the setting — one
+ *      preference behind both, not two that can disagree
+ *
+ *   7. no uncaught exceptions on the way through
  *
  * Two things it deliberately does NOT check, because this harness cannot and a check that
  * appears to is worse than none:
@@ -125,7 +135,22 @@ const OPEN_SETTINGS = `(() => {
 const SLIDER = `[...document.querySelectorAll('input[type=range]')]
   .find((el) => /low light/i.test(el.getAttribute('aria-label') ?? ''))`;
 
-console.log(`\n== ${BASE}/preview/room`);
+/** The switch. A checkbox inside a label whose text names the feature. */
+const SWITCH = `[...document.querySelectorAll('input[type=checkbox]')]
+  .find((el) => /adjust for low light/i.test(el.closest('label')?.innerText ?? ''))`;
+
+/* The same switch in the camera menu. MenuToggle renders a <label> wrapping a visually
+ * hidden checkbox — not a button and not role=menuitemcheckbox — so this finds the label by
+ * its text and reads the real input inside it. */
+const MENU_SWITCH = `(() => {
+  const label = [...document.querySelectorAll('label')]
+    .find((el) => /adjust for low light/i.test(el.textContent ?? ''));
+  return label ? label.querySelector('input[type=checkbox]') : null;
+})()`;
+
+const LOW_LIGHT_DEFAULT_ON = "50";
+
+console.log(`\n== ${BASE}/preview/room  ·  settings`);
 await goto(`${BASE}/preview/room`);
 
 if (!(await evaluate(OPEN_SETTINGS))) {
@@ -134,65 +159,95 @@ if (!(await evaluate(OPEN_SETTINGS))) {
 }
 await sleep(1800);
 
-/* ------------------------------------------------- 1. the control is reachable */
-const shape = await evaluate(`(() => {
-  const el = ${SLIDER};
-  if (!el) return null;
-  return { min: el.min, max: el.max, step: el.step, value: el.value, type: el.type };
+/* ------------------------------------------- 1 & 2. the switch, and only the switch */
+const initial = await evaluate(`(() => {
+  const sw = ${SWITCH};
+  return { hasSwitch: Boolean(sw), checked: sw ? sw.checked : null, hasSlider: Boolean(${SLIDER}) };
 })()`);
 
-if (!shape) {
-  bad("no slider labelled for low light in the settings panel");
-} else {
-  console.log(`  slider: ${JSON.stringify(shape)}`);
-  shape.type === "range"
-    ? ok("the control is a range input — keyboard-operable for free")
-    : bad(`the control is a ${shape.type}`);
-  shape.min === "0" && shape.max === "100"
-    ? ok("it spans the stored range 0..100")
-    : bad(`it spans ${shape.min}..${shape.max}, not the stored 0..100`);
-
-  /* ------------------------------------------------------- 2. off by default */
-  shape.value === "0"
-    ? ok("it starts at 0 — no camera is altered unasked")
-    : bad(`it starts at ${shape.value}, so a first-time presenter is adjusted without asking`);
+if (!initial?.hasSwitch) {
+  console.error("  no 'Adjust for low light' switch in the settings panel");
+  cleanup(1);
 }
+initial.checked === false
+  ? ok("the switch starts off — no camera is altered unasked")
+  : bad(`the switch starts ${initial.checked}, so a first-time presenter is adjusted without asking`);
+initial.hasSlider === false
+  ? ok("no slider while it is off — nothing to control yet")
+  : bad("the slider is showing even though the feature is off");
 
-/* -------------------------- 3. moving it round-trips through the room context
- *
- * The handle holding its position is the assertion, not a formality. A range input is
- * uncontrolled by default and will hold whatever it is dragged to on its own — but this one
- * is controlled, its value coming back from prefs through the provider. So a handle that
- * stays at 40 means the write reached the context and the context re-rendered the component
- * with it, and a handle that springs back to 0 means it did not. */
-const dragged = await evaluate(`(() => {
-  const el = ${SLIDER};
-  if (!el) return null;
-  // Through the prototype setter, because React tracks the value it last rendered and
-  // ignores an input event whose value it thinks it already has.
-  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-  set.call(el, '40');
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
-  return true;
-})()`);
-if (!dragged) bad("could not move the slider");
-await sleep(1200);
+/* ------------------------------------- 3 & 4. one click is enough, then the slider */
+await evaluate(`(() => { ${SWITCH}?.click(); })()`);
+await sleep(1400);
 
-const after = await evaluate(`(() => {
+const switched = await evaluate(`(() => {
   const el = ${SLIDER};
   return {
+    checked: ${SWITCH}?.checked ?? null,
     value: el ? el.value : null,
-    readout: (document.body.innerText.match(/\\b40%/) ?? [null])[0],
+    min: el ? el.min : null,
+    max: el ? el.max : null,
+    readout: (document.body.innerText.match(/\\b\\d+%/) ?? [null])[0],
   };
 })()`);
 
-after?.value === "40"
-  ? ok("the controlled handle holds 40 — the write reached the room context")
-  : bad(`the handle sprang back to ${after?.value}: the context did not take the write`);
-after?.readout === "40%"
-  ? ok("the readout agrees, so the amount can be found again next week")
-  : bad("no 40% readout next to the slider");
+switched?.checked === true
+  ? ok("one click turns it on")
+  : bad(`the switch did not take the click (checked=${switched?.checked})`);
+switched?.value === LOW_LIGHT_DEFAULT_ON
+  ? ok(`it lands on ${LOW_LIGHT_DEFAULT_ON}% without asking anybody to choose a number`)
+  : bad(`it landed on ${switched?.value}, not the ${LOW_LIGHT_DEFAULT_ON} default`);
+switched?.max === "100"
+  ? ok("the revealed slider spans the stored range")
+  : bad(`the slider spans ${switched?.min}..${switched?.max}`);
+
+/* The handle holding its position is the assertion, not a formality. A range input is
+ * uncontrolled by default and would hold a dragged value on its own — but this one is
+ * controlled, its value coming back from prefs through the provider. A handle that stays at
+ * 25 means the write reached the context and it re-rendered; one that springs back to 50
+ * means it did not. */
+await evaluate(`(() => {
+  const el = ${SLIDER};
+  if (!el) return;
+  // Through the prototype setter, because React tracks the value it last rendered and
+  // ignores an input event whose value it thinks it already has.
+  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  set.call(el, '25');
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+})()`);
+await sleep(1200);
+
+const moved = await evaluate(`(() => {
+  const el = ${SLIDER};
+  return {
+    value: el ? el.value : null,
+    readout: (document.body.innerText.match(/\\b25%/) ?? [null])[0],
+  };
+})()`);
+moved?.value === "25"
+  ? ok("the controlled handle holds 25 — the write reached the room context")
+  : bad(`the handle sprang back to ${moved?.value}: the context did not take the write`);
+moved?.readout === "25%"
+  ? ok("the readout agrees, so the amount can be found again")
+  : bad("no 25% readout beside the slider");
+
+/* ------------------------------ 5. off and on again returns to the chosen amount */
+await evaluate(`(() => { ${SWITCH}?.click(); })()`);
+await sleep(1000);
+const offAgain = await evaluate(
+  `(() => ({ checked: ${SWITCH}?.checked ?? null, hasSlider: Boolean(${SLIDER}) }))()`,
+);
+offAgain?.checked === false && offAgain?.hasSlider === false
+  ? ok("switching off hides the slider again")
+  : bad(`after switching off: checked=${offAgain?.checked} slider=${offAgain?.hasSlider}`);
+
+await evaluate(`(() => { ${SWITCH}?.click(); })()`);
+await sleep(1200);
+const back = await evaluate(`(() => { const el = ${SLIDER}; return el ? el.value : null; })()`);
+back === "25"
+  ? ok("switching back on returns to 25, not the default — the choice was remembered")
+  : bad(`switching back on gave ${JSON.stringify(back)}, losing the chosen 25`);
 
 /* Scrolled into view purely for the screenshot. The assertions above read the DOM and do
  * not care where it sits; a person looking at the image does. */
@@ -203,6 +258,57 @@ const shot = await call("Page.captureScreenshot", { format: "png" });
 if (shot?.result?.data) {
   writeFileSync("/tmp/low-light-ui.png", Buffer.from(shot.result.data, "base64"));
   console.log("  screenshot: /tmp/low-light-ui.png");
+}
+
+/* ------------------------------------------------ 6. the same switch in the camera menu
+ *
+ * One preference behind both, which is the thing worth checking: two switches that each
+ * hold their own idea of whether the feature is on is the bug this would have. The setting
+ * above left it ON at 25, so the menu's switch has to already agree before it is touched. */
+console.log(`\n== the camera menu`);
+const opened = await evaluate(`(() => {
+  /* The chevron beside the camera button — "Choose camera" — and NOT the camera button
+     itself, which toggles the camera rather than opening anything. Matched on the exact
+     label media-toggle.tsx gives it rather than on a guess at the wording. */
+  const hit = [...document.querySelectorAll('button[aria-haspopup=menu]')].find((b) =>
+    /choose camera/i.test(b.getAttribute('aria-label') ?? ''));
+  if (!hit) return false;
+  hit.click();
+  return true;
+})()`);
+await sleep(1200);
+
+if (!opened) {
+  bad("could not open the camera menu (no options button beside the camera control)");
+} else {
+  const menu = await evaluate(`(() => {
+    const box = ${MENU_SWITCH};
+    if (!box) return null;
+    const menuEl = box.closest('[role=menu]') ?? box.closest('div');
+    const text = (menuEl?.innerText ?? '').replace(/\\n+/g, ' | ');
+    // Order within the menu, so "below Blur my background" is asserted rather than assumed.
+    const blurAt = text.search(/blur my background|virtual background/i);
+    const lightAt = text.search(/adjust for low light/i);
+    return { checked: box.checked, text: text.slice(0, 180), blurAt, lightAt };
+  })()`);
+
+  if (!menu) {
+    bad("no 'Adjust for low light' item in the camera menu");
+  } else {
+    console.log(`  menu: ${JSON.stringify(menu.text)}`);
+    menu.checked === true
+      ? ok("the menu switch already reads on — one preference behind both controls")
+      : bad(`the menu switch reads ${menu.checked} while the setting is on: two sources of truth`);
+    menu.blurAt >= 0 && menu.lightAt > menu.blurAt
+      ? ok("it sits directly below the background switch, as asked")
+      : bad(`wrong order in the menu: blur at ${menu.blurAt}, low light at ${menu.lightAt}`);
+
+    const menuShot = await call("Page.captureScreenshot", { format: "png" });
+    if (menuShot?.result?.data) {
+      writeFileSync("/tmp/low-light-menu.png", Buffer.from(menuShot.result.data, "base64"));
+      console.log("  screenshot: /tmp/low-light-menu.png");
+    }
+  }
 }
 
 /* ------------------------------------------------------------- 5. exceptions */
