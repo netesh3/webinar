@@ -46,9 +46,12 @@ func TestExchangeAndStartLive(t *testing.T) {
 			writeJSON(w, map[string]any{
 				"id": "stream-1",
 				"cdn": map[string]any{
+					// Both addresses, as YouTube sends them. The RTMPS one is a
+					// different host, not the same one with another scheme.
 					"ingestionInfo": map[string]string{
-						"ingestionAddress": "rtmp://a.rtmp.youtube.com/live2",
-						"streamName":       "abcd-efgh-ijkl-mnop",
+						"ingestionAddress":      "rtmp://a.rtmp.youtube.com/live2",
+						"rtmpsIngestionAddress": "rtmps://a.rtmps.youtube.com/live2",
+						"streamName":            "abcd-efgh-ijkl-mnop",
 					},
 				},
 			})
@@ -95,8 +98,11 @@ func TestExchangeAndStartLive(t *testing.T) {
 	if !strings.Contains(live.IngestURL, "abcd-efgh-ijkl-mnop") {
 		t.Errorf("ingest = %q, want the stream key", live.IngestURL)
 	}
-	if !strings.HasPrefix(live.IngestURL, "rtmps://") {
-		t.Errorf("ingest = %q, want rtmps", live.IngestURL)
+	/* The address YouTube nominated for RTMPS, not one derived from the plain
+	 * address. a.rtmp.youtube.com does not answer on 443, so getting this
+	 * wrong means the encoder never connects and the live waits forever. */
+	if live.IngestURL != "rtmps://a.rtmps.youtube.com/live2/abcd-efgh-ijkl-mnop" {
+		t.Errorf("ingest = %q, want YouTube's rtmpsIngestionAddress with the key", live.IngestURL)
 	}
 	if streams != 1 || broadcasts != 1 {
 		t.Errorf("streams=%d broadcasts=%d", streams, broadcasts)

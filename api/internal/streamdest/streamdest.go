@@ -9,9 +9,14 @@ import (
 	"strings"
 )
 
-// DefaultYouTubeIngest is YouTube's primary RTMPS ingest. Used when the host
-// pastes only a stream key, which is what Studio copies for them.
-const DefaultYouTubeIngest = "rtmps://a.rtmp.youtube.com/live2"
+/* DefaultYouTubeIngest is YouTube's primary RTMPS ingest. Used when the host
+ * pastes only a stream key, which is what Studio copies for them.
+ *
+ * Note the host: RTMPS is a.rtmps.youtube.com on 443, a different name from
+ * the RTMP one (a.rtmp.youtube.com on 1935). They are not the same server with
+ * two schemes — pointing rtmps:// at the RTMP host connects to nothing, and the
+ * only symptom is a live that sits on "waiting to start" forever. */
+const DefaultYouTubeIngest = "rtmps://a.rtmps.youtube.com/live2"
 
 var (
 	ErrNeedKey   = errors.New("paste the stream key from YouTube Studio")

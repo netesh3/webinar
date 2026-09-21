@@ -146,10 +146,7 @@ func (c *Client) ensureStream(ctx context.Context, access, streamID string) (id,
 	var created struct {
 		ID  string `json:"id"`
 		CDN struct {
-			IngestionInfo struct {
-				IngestionAddress string `json:"ingestionAddress"`
-				StreamName       string `json:"streamName"`
-			} `json:"ingestionInfo"`
+			IngestionInfo ingestionInfo `json:"ingestionInfo"`
 		} `json:"cdn"`
 	}
 	err = c.api(ctx, access, "POST", "/liveStreams?part=snippet,cdn", map[string]any{
@@ -163,7 +160,7 @@ func (c *Client) ensureStream(ctx context.Context, access, streamID string) (id,
 	if err != nil {
 		return "", "", err
 	}
-	ingest, err = ingestURL(created.CDN.IngestionInfo.IngestionAddress, created.CDN.IngestionInfo.StreamName)
+	ingest, err = created.CDN.IngestionInfo.url()
 	if err != nil {
 		return "", "", err
 	}
@@ -175,10 +172,7 @@ func (c *Client) streamIngest(ctx context.Context, access, id string) (string, s
 		Items []struct {
 			ID  string `json:"id"`
 			CDN struct {
-				IngestionInfo struct {
-					IngestionAddress string `json:"ingestionAddress"`
-					StreamName       string `json:"streamName"`
-				} `json:"ingestionInfo"`
+				IngestionInfo ingestionInfo `json:"ingestionInfo"`
 			} `json:"cdn"`
 		} `json:"items"`
 	}
@@ -189,24 +183,38 @@ func (c *Client) streamIngest(ctx context.Context, access, id string) (string, s
 	if len(out.Items) == 0 {
 		return "", "", nil
 	}
-	info := out.Items[0].CDN.IngestionInfo
-	ingest, err := ingestURL(info.IngestionAddress, info.StreamName)
+	ingest, err := out.Items[0].CDN.IngestionInfo.url()
 	if err != nil {
 		return "", "", err
 	}
 	return out.Items[0].ID, ingest, nil
 }
 
-func ingestURL(address, name string) (string, error) {
-	address = strings.TrimRight(strings.TrimSpace(address), "/")
-	name = strings.TrimSpace(name)
+// ingestionInfo is where YouTube puts the encoder's address and key.
+type ingestionInfo struct {
+	IngestionAddress string `json:"ingestionAddress"`
+	// RTMPSIngestionAddress is a different host from IngestionAddress, not the
+	// same one with a different scheme: a.rtmps.youtube.com on 443 against
+	// a.rtmp.youtube.com on 1935.
+	RTMPSIngestionAddress string `json:"rtmpsIngestionAddress"`
+	StreamName            string `json:"streamName"`
+}
+
+/* url is the address LiveKit Egress should push to, key included.
+ *
+ * Prefer the RTMPS address YouTube gives us. Deriving one by swapping rtmp for
+ * rtmps on the plain address is what the first cut did, and it produced a URL
+ * pointing at a host that answers nothing on 443 — the encoder failed to
+ * connect and the broadcast sat on "waiting to start" with no error anywhere a
+ * host could see it. */
+func (i ingestionInfo) url() (string, error) {
+	address := strings.TrimRight(strings.TrimSpace(i.RTMPSIngestionAddress), "/")
+	if address == "" {
+		address = strings.TrimRight(strings.TrimSpace(i.IngestionAddress), "/")
+	}
+	name := strings.TrimSpace(i.StreamName)
 	if address == "" || name == "" {
 		return "", ErrLiveDisabled
-	}
-	// YouTube still returns rtmp://; LiveKit and YouTube both speak rtmps on
-	// the same path, and we already use rtmps for pasted keys.
-	if strings.HasPrefix(address, "rtmp://") {
-		address = "rtmps://" + strings.TrimPrefix(address, "rtmp://")
 	}
 	return streamdest.IngestURL(name, address)
 }
