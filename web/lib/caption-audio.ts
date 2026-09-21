@@ -23,9 +23,34 @@ const HALLUCINATIONS = new Set([
  * parenthesised, so there is nothing of value in the brackets to lose. */
 const NON_SPEECH_TAG = /\[[^\]]*\]|\([^)]*\)/g;
 
+/** Any short fragment repeated back to back three or more times. */
+const RUN = /(.{1,20}?)\1{2,}/g;
+
+/* Whisper loops, and greedy decoding on a three-second window is where it does
+ * it: a cut mid-word, or noise the RMS gate let through, and it repeats one
+ * fragment until the token budget runs out. The reported case filled the caption
+ * bar with "ste'e'e'e'e'e'…" and ran off the side of the screen.
+ *
+ * Bounded generation in local-captions.ts makes this rarer and shorter. It does
+ * not make it impossible — the model is free to return whatever it likes — and
+ * one of these on screen in front of an audience is worse than a dropped line,
+ * so the text is judged too.
+ *
+ * Proportional rather than a flat "no repeats" rule, because repetition is also
+ * something people say. "no no no no" is eleven characters and survives; a line
+ * that is half one repeated fragment, or contains a "word" longer than any real
+ * one, was not spoken by anybody.
+ */
+function isDegenerate(s: string): boolean {
+  if (/\S{40,}/.test(s)) return true;
+  if (s.length < 30) return false;
+  return s.replace(RUN, "$1").length < s.length / 2;
+}
+
 export function captionText(raw: string): string {
   const clean = raw.replace(NON_SPEECH_TAG, " ").replace(/\s+/g, " ").trim();
   if (!clean) return "";
+  if (isDegenerate(clean)) return "";
   const key = clean.toLowerCase().replace(/[!.?]+$/g, "").trim();
   if (HALLUCINATIONS.has(key)) return "";
   if (key.length < 2) return "";

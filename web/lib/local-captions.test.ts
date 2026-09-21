@@ -27,10 +27,34 @@ describe("captionText", () => {
     );
   });
 
+  /* The reported failure, verbatim off the screen: Whisper looping one fragment
+   * until it ran out of tokens, filling the caption bar and spilling past the
+   * edge of the video. Bounded generation makes this rarer; nothing makes it
+   * impossible, so it has to die here too. */
+  it("drops a decoder that has fallen into a loop", () => {
+    assert.equal(captionText("ste" + "'e".repeat(80)), "");
+    assert.equal(captionText("biasesVIDEO ".repeat(11).trim()), "");
+    assert.equal(
+      captionText("proc bicy at fare " + "biasesVIDEO ".repeat(8).trim()),
+      "",
+    );
+  });
+
+  /* Repetition is also something people say, so the rule is proportional rather
+   * than "no repeats". These are short, and mostly not a repeated fragment. */
+  it("keeps speech that repeats a word on purpose", () => {
+    assert.equal(captionText("no no no no"), "no no no no");
+    assert.equal(captionText("that is very very good"), "that is very very good");
+  });
+
   it("keeps a real sentence", () => {
     assert.equal(
       captionText("  Let's look at the next slide. "),
       "Let's look at the next slide.",
+    );
+    assert.equal(
+      captionText("I'm just going to share my screen for a moment"),
+      "I'm just going to share my screen for a moment",
     );
   });
 });
