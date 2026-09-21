@@ -7,6 +7,7 @@ import { deviceLabel, supportsOutputSelection, useDevices } from "@/lib/media";
 import { useWaitingTune } from "@/lib/waiting-tune";
 import { Alert, Select, Toggle } from "../controls";
 import { BackgroundPicker } from "./background-picker";
+import { LowLightSlider } from "./low-light";
 import { NetworkReadout } from "./network-readout";
 import { useRoomUI } from "./context";
 
@@ -169,6 +170,13 @@ export function DeviceSettings() {
 
             <div className="border-t border-line pt-3">
               <BackgroundPicker />
+            </div>
+
+            {/* Below the background rather than above it, because the two share a
+                processor and the order matches what the lift does: with a background on
+                it lights the person, so the thing it depends on is the thing above it. */}
+            <div className="border-t border-line pt-3">
+              <LowLightSlider />
             </div>
 
             <div className="border-t border-line pt-3">

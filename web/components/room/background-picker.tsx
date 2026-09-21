@@ -41,12 +41,26 @@ export function VirtualBackground() {
   const { notify } = useToast();
   const track = useCameraTrack();
 
-  useVirtualBackground(track, prefs.background, () => {
-    // The device cannot keep up. Turned off rather than left stuttering: the person
-    // whose laptop is struggling cannot see the stutter, and the audience can.
-    updatePrefs({ background: { mode: "none" } });
+  useVirtualBackground(track, prefs.background, prefs.lowLight, () => {
+    /* The device cannot keep up. Turned off rather than left stuttering: the person
+     * whose laptop is struggling cannot see the stutter, and the audience can.
+     *
+     * The background goes first and alone, because it is what costs — segmentation is
+     * the inference, the lift is four instructions on a pixel already in a register. A
+     * machine that cannot sustain both can usually sustain the lift, so taking it away
+     * too would be removing the cheap thing to fix the expensive one. Only when there
+     * was no background to drop does the lift go instead. */
+    if (prefs.background.mode !== "none") {
+      updatePrefs({ background: { mode: "none" } });
+      notify(
+        "Your device can't keep up with the virtual background, so it's been turned off.",
+        "info",
+      );
+      return;
+    }
+    updatePrefs({ lowLight: 0 });
     notify(
-      "Your device can't keep up with the virtual background, so it's been turned off.",
+      "Your device can't keep up with the low-light adjustment, so it's been turned off.",
       "info",
     );
   });
