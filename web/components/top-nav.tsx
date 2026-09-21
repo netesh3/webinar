@@ -10,11 +10,18 @@ import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 
-/* The top bar — primary product nav: Browse | My Webinar | Host Webinar. */
+/* The top bar — primary product nav: My Webinar | Host Webinar.
+ *
+ * Browse used to sit in front of both and no longer does. It was a public
+ * catalogue that stopped being one: the list is now scoped to sessions the
+ * account already hosts, presents on, or registered for, which is the same set
+ * My Webinar shows with more to say about each. A nav entry per view of one list
+ * asks people to choose between two doors to the same room. The route itself
+ * stays — links already sent out, and the sign-in redirect for an account that
+ * cannot host, both still land there. */
 
 function linksFor(signedIn: boolean, canHost: boolean) {
   return [
-    { href: "/browse", label: "Browse" },
     ...(signedIn ? [{ href: "/my-webinars", label: "My Webinar" }] : []),
     ...(canHost ? [{ href: "/host", label: "Host Webinar" }] : []),
   ];
@@ -31,12 +38,7 @@ export function TopNav() {
 
   const count = registrations?.length ?? 0;
 
-  const isActive = (href: string) => {
-    if (href === "/browse") {
-      return pathname === "/browse" || pathname.startsWith("/browse/");
-    }
-    return pathname.startsWith(href);
-  };
+  const isActive = (href: string) => pathname.startsWith(href);
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">

@@ -72,10 +72,13 @@ export function MyWebinarsList() {
             <Alert tone="error">{error}</Alert>
           </div>
         )}
+        {/* No "Browse webinars" button. Browse lists the sessions this account
+            is already involved in, which for somebody reading this empty state
+            is the same nothing — a door onto the room they are standing in. The
+            hint says the thing that actually works. */}
         <Empty
           title="You haven't registered for anything yet"
           hint="Open an invitation link to register for a session. Your personal join link will show up here."
-          action={<ButtonLink href="/browse">Browse webinars</ButtonLink>}
         />
       </>
     );
