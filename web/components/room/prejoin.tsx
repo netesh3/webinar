@@ -77,9 +77,16 @@ export function PreJoin({
   /** Set once the tracks belong to the room, so unmount stops releasing them. */
   const handedOff = useRef(false);
 
-  // Apply virtual background to the preview track so the presenter sees it in real time
-  useVirtualBackground(previewTrack ?? undefined, prefs.background, () => {
-    onUpdatePrefs({ background: { mode: "none" } });
+  /* Applied to the preview track so the presenter sees both in real time — which for the
+   * low-light lift is the whole point of having it here: the right amount is whatever
+   * looks right in this room today, and this is the screen where they can still judge it
+   * without an audience watching them decide. */
+  useVirtualBackground(previewTrack ?? undefined, prefs.background, prefs.lowLight, () => {
+    if (prefs.background.mode !== "none") {
+      onUpdatePrefs({ background: { mode: "none" } });
+      return;
+    }
+    onUpdatePrefs({ lowLight: 0 });
   });
 
   // Device labels stay blank until the page holds a permission, so enumeration is

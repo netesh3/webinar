@@ -9,7 +9,7 @@ import {
   type VideoPreset,
 } from "livekit-client";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { asBackgroundChoice, type BackgroundChoice } from "./backgrounds";
+import { asBackgroundChoice, asLowLight, type BackgroundChoice } from "./backgrounds";
 // Camera and share layers live with the ladders that budget them, so publish defaults and
 // applyLadder cannot drift. See CAMERA_* / SHARE_* in network.ts.
 import {
@@ -245,6 +245,10 @@ export type MediaPreferences = DeviceChoices & {
   /** The virtual background, remembered for the same reason as the mute state:
    *  somebody who blurs their room does not want to remember to do it every week. */
   background: BackgroundChoice;
+  /** How much to lift the shadows on the camera, 0..LOW_LIGHT_MAX. Remembered for the
+   *  same reason again, and more strongly: a room's lighting is a property of the room,
+   *  so somebody who needed 40% last Thursday needs it again this Thursday. */
+  lowLight: number;
 };
 
 export const DEFAULT_PREFERENCES: MediaPreferences = {
@@ -258,6 +262,11 @@ export const DEFAULT_PREFERENCES: MediaPreferences = {
   // Off by default. It costs a WASM download and a GPU pass per frame, and nobody
   // should pay either without asking for it.
   background: { mode: "none" },
+  /* Off by default too, and for a reason that survives the cost argument — the lift
+   * costs no download and no segmentation, so it is nearly free. But a webcam in a
+   * well-lit room does not need it, and applying it unasked would brighten every
+   * presenter who was already fine and make them look washed out instead. */
+  lowLight: 0,
 };
 
 /**
@@ -399,6 +408,11 @@ function readPreferences(): MediaPreferences {
        * leave the presenter with an unprocessed frame — their room on show, with nothing in
        * the UI to explain why. */
       background: asBackgroundChoice(parsed.background),
+      /* And the lift needs it for a sharper version of the same reason: this value is
+       * the gamma exponent the shader divides by. A negative one out of hand-edited
+       * storage inverts the picture and a huge one flattens it to white, either of which
+       * a presenter would be looking at with nothing in the UI to explain it. */
+      lowLight: asLowLight(parsed.lowLight),
     };
   } catch {
     return DEFAULT_PREFERENCES;
