@@ -39,7 +39,37 @@ const MIN_RMS = 0.012;
  * transcription is the only thing the model does, so both arguments were
  * redundant as well as fatal. Kept off the type so they cannot come back
  * without this comment being read. */
-type Transcriber = (audio: Float32Array) => Promise<{ text?: string } | string>;
+type Transcriber = (
+  audio: Float32Array,
+  options?: GenerationBounds,
+) => Promise<{ text?: string } | string>;
+
+/* What the decoder is allowed to do with one window.
+ *
+ * Unbounded, greedy Whisper on a three-second window will happily emit two
+ * hundred tokens of one repeated fragment — that is where "ste'e'e'e'e'…" came
+ * from, and it cost eight seconds of GPU time to produce.
+ *
+ * max_new_tokens is sized to the window: nobody fits more than about five words
+ * a second into WINDOW_S, so anything past that is the model talking to itself.
+ * It also caps the worst-case latency, which matters more than the text — a
+ * window that takes longer than HOP_S to decode puts the captions permanently
+ * behind the speaker.
+ *
+ * no_repeat_ngram_size stops the loop forming in the first place rather than
+ * truncating it. Measured across clean speech, noise above the gate, a half word
+ * followed by noise, speech pulled down to the gate, and speech over a hum:
+ * identical text to the unbounded call on every one of them, and faster.
+ */
+type GenerationBounds = {
+  max_new_tokens: number;
+  no_repeat_ngram_size: number;
+};
+
+const BOUNDS: GenerationBounds = {
+  max_new_tokens: Math.ceil(WINDOW_S * 5 * 1.6),
+  no_repeat_ngram_size: 3,
+};
 
 let transcriber: Promise<Transcriber> | null = null;
 
@@ -151,10 +181,16 @@ export function useLocalCaptions(opts: {
       if (stopped || rms(pcm) < MIN_RMS) return;
       const asr = await loadTranscriber(report.current);
       if (stopped) return;
-      const out = await asr(pcm);
+      const out = await asr(pcm, BOUNDS);
       const raw = typeof out === "string" ? out : (out.text ?? "");
       const clean = captionText(raw);
-      if (!clean || clean === last) return;
+      if (!clean) return;
+      /* Windows overlap by WINDOW_S - HOP_S, so consecutive ones transcribe some
+       * of the same speech and the second is often the first again with a word
+       * added, or a fragment of it. An equality check let both through and the
+       * caption bar repeated itself. Containment either way is the same
+       * sentence twice. */
+      if (clean === last || last.includes(clean)) return;
       last = clean;
       void send.current(clean);
       const now = Date.now();
