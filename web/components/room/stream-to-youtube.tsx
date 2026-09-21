@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { SetStreamRequest, Webinar } from "@/lib/api-types";
-import { Modal, Spinner } from "../controls";
+import { CopyField, Modal, Spinner } from "../controls";
 import { YouTubeIcon } from "../icons";
 import { useAppConfig, useSession, useToast } from "../providers";
 import { Button } from "../ui";
@@ -80,11 +80,9 @@ export function StreamButton() {
       const next = await api.setWebinarStream(slug, { viaYouTube: true, privacy, streamKey: "", watchUrl: "" });
       setWb(next);
       setWatch(next.streamWatchUrl ?? "");
-      setOpen(false);
-      notify(
-        "Live on YouTube. The watch link is in this webinar's recordings tab.",
-        "ok",
-      );
+      // Left open on purpose: the watch link only exists once the live is
+      // created, and handing it over to share is the point of making one.
+      notify("Live on YouTube. Copy the watch link to share it.", "ok");
     } catch (e) {
       notify(e instanceof Error ? e.message : "Could not start the YouTube stream.", "error");
     } finally {
@@ -159,6 +157,31 @@ export function StreamButton() {
         }
       >
         <div className="space-y-3 py-1">
+          {/* The link the audience needs. Only on the connected path — the
+            * paste path already renders it as an editable field below. */}
+          {watch && connected && !paste && (
+            <div className="space-y-2 rounded-lg border border-line bg-surface-2 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[12.5px] font-medium text-ink">
+                  Share this live
+                </span>
+                <a
+                  href={watch}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
+                >
+                  Open on YouTube
+                </a>
+              </div>
+              <CopyField value={watch} />
+              <p className="text-[12px] leading-relaxed text-ink-3">
+                It can take up to a minute for YouTube to show the first frames
+                after going live.
+              </p>
+            </div>
+          )}
+
           {youtubeOAuth && !connected && (
             <a
               href={api.youtubeConnectURL(typeof window === "undefined" ? "/account" : window.location.pathname)}

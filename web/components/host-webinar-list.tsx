@@ -66,7 +66,7 @@ export function HostWebinarList({
     // silently blocks.
     if (w.status === "live") {
       openRoomTab(`/host/${w.id}/room`);
-      location.reload();
+      router.refresh();
       return;
     }
     const pendingTab = openPendingRoomTab();
@@ -74,7 +74,14 @@ export function HostWebinarList({
     try {
       await api.startWebinar(w.id);
       pendingTab.open(`/host/${w.id}/room`);
-      location.reload();
+      /* router.refresh(), not location.reload(): the tab opened a line above is
+       * still an about:blank whose navigation was started by THIS document, and
+       * tearing this document down in the same tick cancels it — the room tab
+       * stays blank and the only visible effect of pressing Host is the
+       * dashboard reloading. Refreshing re-renders the list in place instead,
+       * which is all the reload was ever for. */
+      router.refresh();
+      setBusy(null);
     } catch (err) {
       pendingTab.cancel();
       notify(err instanceof Error ? err.message : "Could not start the webinar.", "error");

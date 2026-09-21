@@ -16,7 +16,7 @@ import {
   DEV_BYPASS_REGISTRANTS,
 } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
-import { openRoomTab } from "@/lib/open-room";
+import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 
@@ -80,12 +80,19 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
       openRoomTab("/preview/room");
       return;
     }
+    /* Opened NOW, synchronously, before the await below. Opening it afterwards
+     * is what made "Host webinar" intermittently do nothing but refresh into a
+     * "Rejoin room" button: by then the click no longer counts as the gesture
+     * that opened the tab, and the popup blocker drops it without an error for
+     * this code to catch. See openPendingRoomTab. */
+    const pendingTab = openPendingRoomTab();
     setBusy(true);
     try {
       await api.startWebinar(slug);
-      openRoomTab(`/host/${slug}/room`);
+      pendingTab.open(`/host/${slug}/room`);
       await load();
     } catch (e) {
+      pendingTab.cancel();
       notify(e instanceof Error ? e.message : "Could not start the webinar.", "error");
     } finally {
       setBusy(false);
