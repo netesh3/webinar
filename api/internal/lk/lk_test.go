@@ -740,6 +740,7 @@ func TestCombinedEgressRequestCarriesBothOutputs(t *testing.T) {
 		"rtmp://127.0.0.1:1935/live/demo",
 		"ab/cd/rec.mp4",
 		EgressS3Options{Endpoint: "s3.example.test", Bucket: "recordings"},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("combinedEgressRequest: %v", err)
@@ -768,7 +769,26 @@ func TestCombinedEgressRequestCarriesBothOutputs(t *testing.T) {
 // start an encoder pushing at nothing.
 func TestCombinedEgressRequestNeedsAnOrigin(t *testing.T) {
 	if _, err := combinedEgressRequest("webinar_demo", "", livekit.EncodingOptionsPreset_H264_720P_30,
-		"  ", "ab/cd/rec.mp4", EgressS3Options{}); err == nil {
+		"  ", "ab/cd/rec.mp4", EgressS3Options{}, nil); err == nil {
 		t.Fatal("combinedEgressRequest accepted a blank RTMP URL")
+	}
+}
+
+func TestCombinedEgressRequestAddsTheHostDestination(t *testing.T) {
+	req, err := combinedEgressRequest(
+		"webinar_demo",
+		"",
+		livekit.EncodingOptionsPreset_H264_720P_30,
+		"rtmp://127.0.0.1:1935/live/demo",
+		"ab/cd/rec.mp4",
+		EgressS3Options{Bucket: "recordings"},
+		[]string{"rtmps://a.rtmp.youtube.com/live2/key"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	urls := req.StreamOutputs[0].Urls
+	if len(urls) != 2 || urls[1] != "rtmps://a.rtmp.youtube.com/live2/key" {
+		t.Errorf("urls = %v, want origin plus the YouTube ingest", urls)
 	}
 }

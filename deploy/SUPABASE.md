@@ -229,6 +229,20 @@ Use dedicated project **`selfreminder-rnix`** (display name **Webinar Liv**):
    Console may hide existing secrets (“Viewing and downloading client secrets is
    no longer available”); rotate/add a secret on the client detail page if needed.
 
+**YouTube Live (Connect YouTube):** put that same Client ID on the API as
+`GOOGLE_CLIENT_ID` and the Client secret as `GOOGLE_CLIENT_SECRET`. Add
+Authorized redirect URIs:
+
+```text
+https://webinarliv.com/api/host/youtube/callback
+http://localhost:3000/api/host/youtube/callback
+```
+
+Enable **YouTube Data API v3** on the GCP project. The YouTube scope is
+sensitive; while the OAuth app is in Testing, add host Gmail addresses as test
+users. Hosts connect from Account settings — this is not the Supabase sign-in
+grant.
+
 This is separate from `GOOGLE_CLIENT_ID` / `GOOGLE_API_KEY` used for Drive Picker /
 One Tap — if those are enabled, point them at the **same** Webinar Liv web client
 (or another client in `selfreminder-rnix`), not the shared `ai-project-490516`
@@ -272,7 +286,8 @@ Set on Cloud Run (via `deploy/cloudrun.env`, GitHub secrets, or `gcloud`):
 | `SUPABASE_URL` | yes (via `/api/config`) | `https://<ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | yes (via `/api/config`) | anon/public key for browser OAuth |
 | `SUPABASE_JWT_SECRET` | **no** | optional legacy HS256 secret; modern projects use JWKS/ES256 |
-| `GOOGLE_CLIENT_ID` | yes (via `/api/config` as `googleClientId`) | same Web OAuth client as Supabase Google; required for **Google One Tap** / FedCM and Drive Picker |
+| `GOOGLE_CLIENT_ID` | yes (via `/api/config` as `googleClientId`) | same Web OAuth client as Supabase Google; required for **Google One Tap** / FedCM, Drive Picker, and Connect YouTube |
+| `GOOGLE_CLIENT_SECRET` | **no** | same Web client secret; required for Connect YouTube (YouTube Data API). Unset = paste stream keys only |
 | `GOOGLE_API_KEY` | yes (via `/api/config`) | optional; Drive Picker only |
 
 When the Supabase trio is set, `/api/config` returns `googleAuth: true` and the
@@ -291,7 +306,7 @@ Configured under **Google Auth Platform → Audience / Branding** for project
 | Home / Privacy / Terms | `https://webinarliv.com`, `/privacy`, `/terms` |
 | User type | **External** |
 | Publishing status | **In production** (or Testing) |
-| Scopes used | `openid` `email` `profile` (non-sensitive) |
+| Scopes used | Login: `openid` `email` `profile`. YouTube live: `https://www.googleapis.com/auth/youtube` (sensitive) |
 
 - **Testing** mode: only allowlisted test users can complete sign-in; add each
   Gmail under Audience → Test users. Cap is usually 100 test users.

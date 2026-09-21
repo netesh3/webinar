@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Spinner } from "./controls";
-import { useSession } from "./providers";
+import { useAppConfig, useSession } from "./providers";
 import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
-import { ApiError } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import type { Account } from "@/lib/api-types";
+import { YouTubeIcon } from "./icons";
 
 /** Account settings. Deliberately small: a name, where they work, and whether
  *  this account may host. Everything else about a person lives on the
@@ -41,7 +42,8 @@ export function AccountScreen() {
 
 function ProfileForm({ account }: { account: Account }) {
   const router = useRouter();
-  const { updateProfile, signOut } = useSession();
+  const { updateProfile, signOut, refresh } = useSession();
+  const { youtubeOAuth } = useAppConfig();
 
   const [name, setName] = useState(account.name);
   const [title, setTitle] = useState(account.title);
@@ -49,6 +51,23 @@ function ProfileForm({ account }: { account: Account }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ytBusy, setYtBusy] = useState(false);
+  const [ytNotice, setYtNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const result = q.get("youtube");
+    if (!result) return;
+    void refresh();
+    if (result === "connected") {
+      setYtNotice("YouTube connected. You can go live from a webinar without pasting a stream key.");
+    } else if (result === "denied") {
+      setError("YouTube access was not granted.");
+    } else if (result === "error") {
+      setError("Could not connect YouTube. Try again, or paste a stream key in the room.");
+    }
+    window.history.replaceState({}, "", window.location.pathname);
+  }, [refresh]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -134,6 +153,57 @@ function ProfileForm({ account }: { account: Account }) {
             />
           </div>
 
+          {youtubeOAuth && (
+            <div className="rounded-lg border border-line px-3 py-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="inline-flex items-center gap-1.5 text-[13px] font-medium">
+                    <YouTubeIcon className="size-4" />
+                    YouTube
+                  </div>
+                  <div className="mt-0.5 text-[12px] leading-relaxed text-ink-2">
+                    {account.youtube?.connected
+                      ? `Connected as ${account.youtube.channelTitle || "your channel"}. We can create Unlisted lives for you and put the watch link in Recordings.`
+                      : "Connect a channel to go live without pasting a stream key. We request YouTube live-stream access only — not your Google password."}
+                  </div>
+                </div>
+                {account.youtube?.connected ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={ytBusy}
+                    onClick={async () => {
+                      setYtBusy(true);
+                      setError(null);
+                      try {
+                        await api.disconnectYouTube();
+                        await refresh();
+                        setYtNotice("YouTube disconnected.");
+                      } catch (err) {
+                        setError(
+                          err instanceof ApiError
+                            ? err.message
+                            : "Could not disconnect YouTube.",
+                        );
+                      } finally {
+                        setYtBusy(false);
+                      }
+                    }}
+                  >
+                    {ytBusy ? <Spinner className="size-4" /> : "Disconnect"}
+                  </Button>
+                ) : (
+                  <a
+                    href={api.youtubeConnectURL("/account")}
+                    className={`${"inline-flex items-center justify-center rounded-lg bg-brand px-4 text-[13px] font-medium text-white hover:bg-brand-hover"} h-10`}
+                  >
+                    Connect
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Hosting is now READ-ONLY here.
               This was a Toggle wired to wantsHost, which meant any account could grant
               itself the ability to create webinars and collect strangers' names, emails
@@ -156,6 +226,7 @@ function ProfileForm({ account }: { account: Account }) {
           </div>
 
           {error && <Alert tone="error">{error}</Alert>}
+          {ytNotice && <Alert tone="ok">{ytNotice}</Alert>}
           {saved && <Alert tone="ok">Saved.</Alert>}
 
           <div className="flex flex-wrap items-center gap-2 pt-1">

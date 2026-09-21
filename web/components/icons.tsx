@@ -505,6 +505,15 @@ export function RecordIcon(props: IconProps) {
   );
 }
 
+export function YouTubeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect width="20" height="14" x="2" y="5" rx="3" />
+      <polygon points="10 9 16 12 10 15" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
 export function DeviceIcon(props: IconProps) {
   return (
     <Icon {...props}>

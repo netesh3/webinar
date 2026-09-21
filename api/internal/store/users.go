@@ -34,10 +34,16 @@ type User struct {
 	MaxDurationMin *int
 	// CanCdnBroadcast allows this host to run CDN HLS broadcast webinars.
 	CanCdnBroadcast bool
+
+	// YouTube OAuth. Refresh is the secret; Public() never copies it.
+	YouTubeRefresh      string
+	YouTubeChannelID    string
+	YouTubeChannelTitle string
+	YouTubeStreamID     string
 }
 
 func (u User) Public() types.Account {
-	return types.Account{
+	a := types.Account{
 		ID:              u.ID,
 		Email:           u.Email,
 		Name:            u.Name,
@@ -51,6 +57,14 @@ func (u User) Public() types.Account {
 		MaxDurationMin:  u.MaxDurationMin,
 		CanCdnBroadcast: u.CanCdnBroadcast,
 	}
+	if u.YouTubeRefresh != "" {
+		a.YouTube = &types.YouTubeLink{
+			Connected:    true,
+			ChannelID:    u.YouTubeChannelID,
+			ChannelTitle: u.YouTubeChannelTitle,
+		}
+	}
+	return a
 }
 
 // Person is the public projection used inside webinar records: everything the
@@ -68,12 +82,15 @@ func (u User) Person() types.Person {
 }
 
 const userColumns = `id::text, email, coalesce(password_hash,''), name, title, org, phone,
-	initials, hue, can_host, is_admin, max_duration_min, can_cdn_broadcast`
+	initials, hue, can_host, is_admin, max_duration_min, can_cdn_broadcast,
+	coalesce(youtube_refresh,''), coalesce(youtube_channel_id,''),
+	coalesce(youtube_channel_title,''), coalesce(youtube_stream_id,'')`
 
 func scanUser(row scanner) (User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Title, &u.Org, &u.Phone,
-		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.MaxDurationMin, &u.CanCdnBroadcast)
+		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.MaxDurationMin, &u.CanCdnBroadcast,
+		&u.YouTubeRefresh, &u.YouTubeChannelID, &u.YouTubeChannelTitle, &u.YouTubeStreamID)
 	return u, err
 }
 
@@ -299,4 +316,31 @@ func hslToHex(hDeg, s, l float64) string {
 	m := l - c/2
 	to255 := func(v float64) int { return int(math.Round((v + m) * 255)) }
 	return fmt.Sprintf("#%02x%02x%02x", to255(r), to255(g), to255(b))
+}
+
+// SetUserYouTube stores (or clears, when refresh is empty) the host's YouTube
+// grant. Channel title is what Account settings shows; the refresh token never
+// reaches JSON.
+func (s *Store) SetUserYouTube(ctx context.Context, userID, refresh, channelID, channelTitle, streamID string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE users
+		   SET youtube_refresh = $2,
+		       youtube_channel_id = $3,
+		       youtube_channel_title = $4,
+		       youtube_stream_id = $5
+		 WHERE id = $1`,
+		userID, refresh, channelID, channelTitle, streamID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) SetUserYouTubeStreamID(ctx context.Context, userID, streamID string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE users SET youtube_stream_id = $2 WHERE id = $1`, userID, streamID)
+	return err
 }

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useId, useMemo, useState, useEffect } from "react";
 import { Alert, Disclosure, Select, Spinner, Toggle } from "./controls";
-import { useAppConfig, useToast } from "./providers";
+import { useAppConfig, useSession, useToast } from "./providers";
 import { Button, Card, SectionTitle } from "./ui";
 import { PlusIcon, TrashIcon } from "./icons";
 import { WebinarImagePicker } from "./webinar-image-picker";
@@ -91,6 +91,8 @@ type FormState = {
   options: WebinarOptions;
   controls: SessionControls;
   simuliveRecordingId: string;
+  streamKey: string;
+  streamWatchUrl: string;
 };
 
 /* The seat counts a coach may choose from.
@@ -151,9 +153,12 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
       options: {
         ...webinar.options,
         emailReminders: webinar.options.emailReminders !== false,
+        multistream: webinar.options.multistream || Boolean(webinar.streamConfigured),
       },
       controls: webinar.controls,
       simuliveRecordingId: webinar.simuliveRecordingId ?? "",
+      streamKey: "",
+      streamWatchUrl: webinar.streamWatchUrl ?? "",
     };
   }
 
@@ -215,12 +220,15 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
       locked: false,
     },
     simuliveRecordingId: "",
+    streamKey: "",
+    streamWatchUrl: "",
   };
 }
 
 export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
   const router = useRouter();
   const config = useAppConfig();
+  const { account } = useSession();
   const { notify } = useToast();
   const editing = webinar !== null;
 
@@ -334,6 +342,33 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
         } catch {
           notify("Saved, but the cover image couldn't be removed. Edit the webinar to try again.", "info");
         }
+      }
+
+      try {
+        if (form.options.multistream) {
+          if (form.streamKey || form.streamWatchUrl) {
+            saved = await api.setWebinarStream(saved.id, {
+              streamKey: form.streamKey,
+              watchUrl: form.streamWatchUrl,
+            });
+          }
+          // Connected YouTube with no pasted key: the live is created when
+          // the webinar starts, so we do not mint a Studio event on every save.
+        } else if (saved.streamConfigured || saved.streamWatchUrl) {
+          saved = await api.setWebinarStream(saved.id, {
+            off: true,
+            dropWatch: true,
+            streamKey: "",
+            watchUrl: "",
+          });
+        }
+      } catch (err) {
+        notify(
+          err instanceof Error
+            ? `Saved the webinar, but YouTube streaming wasn't set: ${err.message}`
+            : "Saved the webinar, but YouTube streaming wasn't set.",
+          "info",
+        );
       }
 
       notify(
@@ -734,6 +769,68 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                   />
                 ))}
               </div>
+              {form.options.multistream && (
+                <div className="mt-3 grid gap-2">
+                  {config.youtubeOAuth && account?.youtube?.connected ? (
+                    <p className="text-[12.5px] text-ink-2">
+                      Linked channel:{" "}
+                      <span className="font-medium text-ink">
+                        {account.youtube.channelTitle || "YouTube"}
+                      </span>
+                      . We create an Unlisted live when you start, and put the
+                      watch link in Recordings. Paste a Studio key below only if
+                      you want a different destination.
+                    </p>
+                  ) : config.youtubeOAuth ? (
+                    <p className="text-[12.5px] text-ink-2">
+                      <a
+                        href={api.youtubeConnectURL(
+                          typeof window === "undefined"
+                            ? "/host/schedule"
+                            : window.location.pathname,
+                        )}
+                        className="font-medium text-brand hover:underline"
+                      >
+                        Connect YouTube
+                      </a>{" "}
+                      to create the live automatically, or paste a stream key
+                      from Studio.
+                    </p>
+                  ) : null}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="grid gap-1">
+                    <span className="text-[12.5px] font-medium text-ink">YouTube watch link</span>
+                    <input
+                      type="url"
+                      value={form.streamWatchUrl}
+                      onChange={(e) => set("streamWatchUrl", e.target.value)}
+                      placeholder="https://youtu.be/…"
+                      className="h-10 rounded-lg border border-line bg-surface px-3 text-[13px]"
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-[12.5px] font-medium text-ink">Stream key</span>
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      value={form.streamKey}
+                      onChange={(e) => set("streamKey", e.target.value)}
+                      placeholder={
+                        webinar?.streamConfigured
+                          ? "Already saved — paste a new key to replace"
+                          : "From YouTube Studio → Go live"
+                      }
+                      className="h-10 rounded-lg border border-line bg-surface px-3 font-mono text-[13px]"
+                    />
+                  </label>
+                  </div>
+                  <p className="text-[12px] text-ink-3">
+                    We push the same mix attendees see. Set the YouTube live to Unlisted or
+                    Private if you want it as a recording. The watch link shows in the
+                    recordings tab after the session.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </Disclosure>

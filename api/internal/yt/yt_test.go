@@ -1,0 +1,145 @@
+package yt
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestAuthCodeURLAsksForOfflineAccess(t *testing.T) {
+	c := New("cid", "secret")
+	u := c.AuthCodeURL("http://localhost:3000/api/host/youtube/callback", "state-1")
+	if !strings.Contains(u, "access_type=offline") || !strings.Contains(u, "prompt=consent") {
+		t.Fatalf("url = %s, want offline + consent so Google issues a refresh token", u)
+	}
+	if !strings.Contains(u, "client_id=cid") {
+		t.Errorf("missing client id: %s", u)
+	}
+}
+
+func TestExchangeAndStartLive(t *testing.T) {
+	var streams, broadcasts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/token":
+			_ = r.ParseForm()
+			refresh := "refresh-from-google"
+			if r.Form.Get("grant_type") == "refresh_token" {
+				refresh = r.Form.Get("refresh_token")
+			}
+			writeJSON(w, map[string]string{
+				"access_token":  "access-1",
+				"refresh_token": refresh,
+			})
+		case strings.HasSuffix(r.URL.Path, "/channels"):
+			writeJSON(w, map[string]any{
+				"items": []map[string]any{{
+					"id":      "UCchannel",
+					"snippet": map[string]string{"title": "Host Channel"},
+				}},
+			})
+		case strings.HasSuffix(r.URL.Path, "/liveStreams") && r.Method == http.MethodPost:
+			streams++
+			writeJSON(w, map[string]any{
+				"id": "stream-1",
+				"cdn": map[string]any{
+					"ingestionInfo": map[string]string{
+						"ingestionAddress": "rtmp://a.rtmp.youtube.com/live2",
+						"streamName":       "abcd-efgh-ijkl-mnop",
+					},
+				},
+			})
+		case strings.HasSuffix(r.URL.Path, "/liveStreams") && r.Method == http.MethodGet:
+			writeJSON(w, map[string]any{"items": []any{}})
+		case strings.HasSuffix(r.URL.Path, "/liveBroadcasts") && r.Method == http.MethodPost:
+			broadcasts++
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			status, _ := body["status"].(map[string]any)
+			if status["privacyStatus"] != "unlisted" {
+				t.Errorf("privacy = %v, want unlisted", status["privacyStatus"])
+			}
+			writeJSON(w, map[string]string{"id": "dQw4w9WgXcQ"})
+		case strings.HasSuffix(r.URL.Path, "/liveBroadcasts/bind"):
+			writeJSON(w, map[string]string{"id": r.URL.Query().Get("id")})
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New("cid", "secret")
+	c.TokenURL = srv.URL + "/token"
+	c.API = srv.URL + "/youtube/v3"
+	c.HTTP = srv.Client()
+
+	tok, ch, err := c.Exchange(context.Background(), "http://localhost/callback", "code-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.RefreshToken != "refresh-from-google" || ch.Title != "Host Channel" {
+		t.Fatalf("tok=%+v ch=%+v", tok, ch)
+	}
+
+	live, _, err := c.StartLive(context.Background(), tok.RefreshToken, "Q3 all-hands", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if live.WatchURL != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" {
+		t.Errorf("watch = %q", live.WatchURL)
+	}
+	if !strings.Contains(live.IngestURL, "abcd-efgh-ijkl-mnop") {
+		t.Errorf("ingest = %q, want the stream key", live.IngestURL)
+	}
+	if !strings.HasPrefix(live.IngestURL, "rtmps://") {
+		t.Errorf("ingest = %q, want rtmps", live.IngestURL)
+	}
+	if streams != 1 || broadcasts != 1 {
+		t.Errorf("streams=%d broadcasts=%d", streams, broadcasts)
+	}
+}
+
+func TestLiveDisabledIsAFriendlyError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/token") {
+			writeJSON(w, map[string]string{"access_token": "a", "refresh_token": "r"})
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		writeJSON(w, map[string]any{
+			"error": map[string]any{
+				"message": "The user has not enabled live streaming",
+				"errors":  []map[string]string{{"reason": "liveStreamingNotEnabled"}},
+			},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New("cid", "secret")
+	c.TokenURL = srv.URL + "/token"
+	c.API = srv.URL
+	c.HTTP = srv.Client()
+
+	_, _, err := c.StartLive(context.Background(), "refresh", "Talk", PrivacyUnlisted, "")
+	if err != ErrLiveDisabled {
+		t.Fatalf("err = %v, want ErrLiveDisabled", err)
+	}
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func TestEnabled(t *testing.T) {
+	if New("", "s").Enabled() || New("id", "").Enabled() {
+		t.Fatal("empty credentials must not enable YouTube OAuth")
+	}
+	if !New("id", "s").Enabled() {
+		t.Fatal("want enabled")
+	}
+}

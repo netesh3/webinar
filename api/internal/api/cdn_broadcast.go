@@ -34,12 +34,8 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	if sfu == nil {
 		return
 	}
-	rtmpURL := s.cfg.BroadcastRTMPURL(wb.ID)
-	if rtmpURL == "" {
-		return
-	}
-	canBroadcast, err := s.store.HostCanCdnBroadcast(ctx, wb.Host.ID)
-	if err != nil || !canBroadcast {
+	origin, extra := s.mixDestinations(ctx, wb)
+	if origin == "" && extra == "" {
 		return
 	}
 
@@ -71,7 +67,7 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	 * NIC as the SFU. 1080p × a few hundred viewers does not fit a CX33. */
 	preset := livekit.EncodingOptionsPreset_H264_720P_30
 
-	info, err := sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL, preset, rtmpURL)
+	info, err := sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL, preset, origin, extraSlice(extra))
 	if err != nil {
 		s.log.Warn("cdn broadcast: could not start egress", "slug", wb.ID, "error", err)
 		broadcastMu.Lock()
@@ -147,10 +143,10 @@ func (s *Server) startEgressRecording(
 	storageKey string,
 	s3Opts lk.EgressS3Options,
 ) (info *livekit.EgressInfo, carriesMix bool, err error) {
-	rtmpURL := s.cfg.BroadcastRTMPURL(wb.ID)
+	origin, extra := s.mixDestinations(ctx, wb)
 
 	running, listErr := s.broadcastEgressIDs(ctx, wb.ID, sfu)
-	if rtmpURL == "" || listErr != nil || len(running) == 0 {
+	if listErr != nil || len(running) == 0 {
 		// Nothing to fold into, so the recording gets the whole box and the
 		// quality that goes with it.
 		preset := livekit.EncodingOptionsPreset_H264_1080P_30
@@ -177,7 +173,7 @@ func (s *Server) startEgressRecording(
 	}
 
 	info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL,
-		livekit.EncodingOptionsPreset_H264_720P_30, rtmpURL, storageKey, s3Opts)
+		livekit.EncodingOptionsPreset_H264_720P_30, origin, storageKey, s3Opts, extraSlice(extra))
 	if err != nil {
 		// The room now has no mix and no recording. Releasing the slot is what
 		// lets the sweeper notice and put the mix back.
@@ -236,10 +232,6 @@ func (s *Server) restoreBroadcastAfterRecording(ctx context.Context, wb types.We
  * Only rooms already past their scheduled start are candidates, matching the
  * empty-room sweep: a host waiting in an early room does not need an encoder. */
 func (s *Server) sweepBroadcasts(ctx context.Context) {
-	if s.cfg.BroadcastRTMPURL("probe") == "" {
-		return
-	}
-
 	slugs, err := s.store.LiveWebinarsPastStart(ctx)
 	if err != nil {
 		s.log.Error("cdn broadcast sweeper: query failed", "error", err)
@@ -251,8 +243,8 @@ func (s *Server) sweepBroadcasts(ctx context.Context) {
 		if err != nil || wb.Kind == types.KindSimulive {
 			continue
 		}
-		can, err := s.store.HostCanCdnBroadcast(ctx, wb.Host.ID)
-		if err != nil || !can {
+		origin, extra := s.mixDestinations(ctx, wb)
+		if origin == "" && extra == "" {
 			continue
 		}
 		sfu, err := s.sfuFor(ctx, wb)
@@ -291,5 +283,67 @@ func (s *Server) stopBroadcastIfActive(ctx context.Context, slug string, sfu Roo
 		s.log.Warn("cdn broadcast: could not stop egress", "slug", slug, "egress", egressID, "error", err)
 	} else {
 		s.log.Info("cdn broadcast stopped", "slug", slug, "egress", egressID)
+	}
+}
+
+// mixDestinations is the RTMP URLs this room's compositor should push: the
+// attendee origin (when this host is on CDN broadcast) and the host's own
+// destination (YouTube, …). Either may be empty. Both empty means do not start
+// a compositor.
+func (s *Server) mixDestinations(ctx context.Context, wb types.Webinar) (origin, extra string) {
+	if can, err := s.store.HostCanCdnBroadcast(ctx, wb.Host.ID); err == nil && can {
+		origin = s.cfg.BroadcastRTMPURL(wb.ID)
+	}
+	extra, err := s.store.WebinarStreamIngest(ctx, wb.ID)
+	if err != nil {
+		s.log.Warn("stream dest: could not load ingest", "slug", wb.ID, "error", err)
+		return origin, ""
+	}
+	return origin, extra
+}
+
+func extraSlice(u string) []string {
+	if u == "" {
+		return nil
+	}
+	return []string{u}
+}
+
+/* syncStreamDest adds or replaces the host's RTMP destination on a running mix.
+ *
+ * One compositor, extra URL — that is the whole point of not starting a second
+ * Chromium for YouTube. If nothing is encoding yet and the webinar is live,
+ * startBroadcastIfEnabled is what creates the job. */
+func (s *Server) syncStreamDest(ctx context.Context, wb types.Webinar, sfu RoomManager, oldURL, newURL string) {
+	if sfu == nil || oldURL == newURL {
+		return
+	}
+	if wb.Status != types.StatusLive {
+		return
+	}
+
+	ids, err := s.broadcastEgressIDs(ctx, wb.ID, sfu)
+	if err != nil {
+		return
+	}
+	if len(ids) == 0 {
+		if newURL != "" {
+			s.startBroadcastIfEnabled(ctx, wb, sfu)
+		}
+		return
+	}
+
+	var add, remove []string
+	if oldURL != "" {
+		remove = []string{oldURL}
+	}
+	if newURL != "" {
+		add = []string{newURL}
+	}
+	for _, id := range ids {
+		if _, err := sfu.UpdateStream(ctx, id, add, remove); err != nil {
+			s.log.Warn("stream dest: update stream failed",
+				"slug", wb.ID, "egress", id, "error", err)
+		}
 	}
 }

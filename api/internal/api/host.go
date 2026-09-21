@@ -16,6 +16,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/store"
+	"github.com/netkumar/webcast/api/internal/yt"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -532,6 +533,14 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	s.pushRoomMetadata(r, sfu, wb)
 
 	if wb.Kind != types.KindSimulive {
+		if wb.Options.Multistream && s.youtube != nil {
+			ingest, err := s.store.WebinarStreamIngest(r.Context(), slug)
+			if err == nil && ingest == "" {
+				if _, _, err := s.applyYouTubeLive(r.Context(), wb, yt.PrivacyUnlisted); err != nil {
+					s.log.Warn("youtube auto live on start", "slug", slug, "error", err)
+				}
+			}
+		}
 		go s.startBroadcastIfEnabled(context.Background(), wb, sfu)
 	}
 
@@ -699,6 +708,7 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	if sfu, err := s.sfuFor(ctx, wb); err == nil {
 		s.stopBroadcastIfActive(ctx, slug, sfu)
 	}
+	s.completeYouTubeBroadcast(ctx, slug, wb.Host.ID)
 
 	if sfu, err := s.sfuFor(ctx, wb); err != nil {
 		s.log.Warn("end webinar: could not resolve the livekit project",

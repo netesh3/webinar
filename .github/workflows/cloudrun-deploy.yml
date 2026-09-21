@@ -25,6 +25,7 @@
 #   SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_JWT_SECRET — Google sign-in via Supabase Auth
 #   GOOGLE_CLIENT_ID — Web OAuth client (selfreminder-rnix); exposed as googleClientId for One Tap
 #   GOOGLE_API_KEY — optional; Drive Picker only
+#   GOOGLE_CLIENT_SECRET — same Web client secret; Connect YouTube / YouTube Data API
 #   TELEMETRY_ENABLED — hardcoded below (not a secret): "true" turns on
 #     POST /telemetry for a performance-test window. Flip to "false" and
 #     redeploy when the test is done.
@@ -95,6 +96,7 @@ jobs:
       SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       APP_NAME: ${{ vars.APP_NAME }}

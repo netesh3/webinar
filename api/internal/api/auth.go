@@ -112,6 +112,21 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (store.Use
 	return user, true
 }
 
+// sessionUser is authenticate without writing a response — for the YouTube
+// OAuth callback, which is a browser redirect and must answer with another
+// redirect rather than a JSON 401.
+func (s *Server) sessionUser(r *http.Request) (store.User, error) {
+	cookie, err := r.Cookie(auth.CookieName)
+	if err != nil {
+		return store.User{}, err
+	}
+	userID, err := s.sessions.Verify(cookie.Value)
+	if err != nil {
+		return store.User{}, err
+	}
+	return s.store.UserByID(r.Context(), userID)
+}
+
 // bypassUser provisions an account for a caller who has none, and signs them in.
 // Only ever reached when AUTH_BYPASS is on.
 //

@@ -183,17 +183,27 @@ type Config struct {
 
 	/* Google Drive, for picking a video to share into a session.
 	 *
-	 * Both are public values by design — the OAuth client id identifies the app to
-	 * Google and the API key is restricted by HTTP referrer, so serving them to the
-	 * browser is how the Picker is meant to be used. There is no client SECRET
-	 * here and there must never be: the picker flow is entirely browser-side and a
-	 * secret in the bundle is a secret you have published.
+	 * Client ID and API key are public values by design — the OAuth client id
+	 * identifies the app to Google and the API key is restricted by HTTP
+	 * referrer, so serving them to the browser is how the Picker is meant to
+	 * be used. GoogleClientSecret is NOT for the picker: it is the YouTube
+	 * Live authorization-code grant, server-side only.
 	 *
-	 * Unset means the Drive source is offered as unavailable rather than as a
-	 * button that opens a Google error page.
+	 * Unset client id means the Drive source is offered as unavailable rather
+	 * than as a button that opens a Google error page.
 	 */
 	GoogleClientID string
 	GoogleAPIKey   string
+	/* GoogleClientSecret is the Web OAuth client's secret, used only for the
+	 * YouTube Live authorization-code grant (offline access). Never served to
+	 * the browser. Unset means Connect YouTube is hidden and viaYouTube 503s;
+	 * pasted stream keys still work. */
+	GoogleClientSecret string
+
+	/* YouTubeAPIURL / YouTubeTokenURL override Google's endpoints. Empty in
+	 * production. Tests point them at httptest.Server. */
+	YouTubeAPIURL   string
+	YouTubeTokenURL string
 
 	/* Supabase Auth — Google sign-in / sign-up.
 	 *
@@ -300,18 +310,19 @@ func Load() (Config, error) {
 		SMTPPassword: env("SMTP_PASSWORD", ""),
 		// Falls back to SUPPORT_EMAIL, because an operator who has already said where mail
 		// comes from should not have to say it twice.
-		SMTPFrom:          env("SMTP_FROM", env("SUPPORT_EMAIL", "")),
-		GoogleClientID:    env("GOOGLE_CLIENT_ID", ""),
-		GoogleAPIKey:      env("GOOGLE_API_KEY", ""),
-		SupabaseURL:       strings.TrimRight(env("SUPABASE_URL", ""), "/"),
-		SupabaseAnonKey:   env("SUPABASE_ANON_KEY", ""),
-		SupabaseJWTSecret: env("SUPABASE_JWT_SECRET", ""),
-		RecordingsBackend:     strings.ToLower(env("RECORDINGS_BACKEND", "disk")),
-		RecordingsDir:         env("RECORDINGS_DIR", "./.data/recordings"),
+		SMTPFrom:                env("SMTP_FROM", env("SUPPORT_EMAIL", "")),
+		GoogleClientID:          env("GOOGLE_CLIENT_ID", ""),
+		GoogleAPIKey:            env("GOOGLE_API_KEY", ""),
+		GoogleClientSecret:      env("GOOGLE_CLIENT_SECRET", ""),
+		SupabaseURL:             strings.TrimRight(env("SUPABASE_URL", ""), "/"),
+		SupabaseAnonKey:         env("SUPABASE_ANON_KEY", ""),
+		SupabaseJWTSecret:       env("SUPABASE_JWT_SECRET", ""),
+		RecordingsBackend:       strings.ToLower(env("RECORDINGS_BACKEND", "disk")),
+		RecordingsDir:           env("RECORDINGS_DIR", "./.data/recordings"),
 		MaxRecordingMB:          envInt("MAX_RECORDING_MB", 4096),
 		RecordingsRetentionDays: envInt("RECORDINGS_RETENTION_DAYS", 30),
-		RecordingsS3Bucket:    env("RECORDINGS_S3_BUCKET", ""),
-		RecordingsS3Endpoint:  env("RECORDINGS_S3_ENDPOINT", ""),
+		RecordingsS3Bucket:      env("RECORDINGS_S3_BUCKET", ""),
+		RecordingsS3Endpoint:    env("RECORDINGS_S3_ENDPOINT", ""),
 		// us-east-1 as the fallback rather than empty: an S3-compatible
 		// provider that ignores region (many do) still gets something
 		// syntactically valid, and one that requires it (B2 does — the
@@ -377,6 +388,12 @@ func (c Config) IsDev() bool { return c.Env == "development" }
 // Tokens are verified via JWKS (ES256) and/or the legacy HS256 JWT secret.
 func (c Config) GoogleAuthEnabled() bool {
 	return c.SupabaseURL != "" && c.SupabaseAnonKey != ""
+}
+
+// YouTubeOAuthEnabled is the Connect YouTube / create-a-live path. Needs the
+// Web client id AND secret; the picker-only client id is not enough.
+func (c Config) YouTubeOAuthEnabled() bool {
+	return strings.TrimSpace(c.GoogleClientID) != "" && strings.TrimSpace(c.GoogleClientSecret) != ""
 }
 
 // passwordFloor is the shortest password a real deployment may accept. Ten

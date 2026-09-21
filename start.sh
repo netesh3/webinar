@@ -164,7 +164,17 @@ else
   ok "started on :$LK_PORT  $D(UDP 50000-50060, TCP 7881)$N"
 fi
 
-# ------------------------------------------------------------------ api
+# Google OAuth for Connect YouTube / Drive. Sourced from .env without
+# clobbering the local DATABASE_URL this script just set.
+if [[ -f "$ROOT/.env" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      GOOGLE_CLIENT_ID=*|GOOGLE_CLIENT_SECRET=*|GOOGLE_API_KEY=*)
+        export "$line"
+        ;;
+    esac
+  done < "$ROOT/.env"
+fi
 
 step "Go API"
 if http_ok "http://localhost:$API_PORT/readyz"; then
@@ -175,7 +185,13 @@ else
 
   # Compiled rather than `go run`: an explicit binary means the pid we record is
   # the process that actually serves traffic, so stop.sh can kill it reliably.
-  ( cd "$ROOT/api" && go build -o "$BIN_DIR/webcast-api" ./cmd/server ) \
+  #
+  # CGO off, matching api/Dockerfile and `make deploy-build`. Nothing here needs
+  # it — pgx is pure Go — and leaving it on makes the link step shell out to the
+  # system linker, which fails outright when the Command Line Tools binaries are
+  # older than the SDK they ship alongside ("unknown architecture arm64e.x1" from
+  # tapi). Local builds should not depend on the Xcode install being coherent.
+  ( cd "$ROOT/api" && CGO_ENABLED=0 go build -o "$BIN_DIR/webcast-api" ./cmd/server ) \
     || die "API build failed"
 
   APP_ENV=development \
@@ -183,6 +199,9 @@ else
   SEED_DEV="${SEED_DEV:-true}" \
   LIVEKIT_URL="ws://localhost:$LK_PORT" \
   ADDR=":$API_PORT" \
+  GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}" \
+  GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}" \
+  GOOGLE_API_KEY="${GOOGLE_API_KEY:-}" \
     start_bg api "$BIN_DIR/webcast-api"
 
   wait_for "the API" "http://localhost:$API_PORT/readyz" 45 \

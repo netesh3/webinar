@@ -1091,7 +1091,7 @@ var (
 	// ErrIsHost is not a failure at either call site: muting the host's track is
 	// allowed, latching it is neither possible nor wanted.
 	ErrIsHost = errors.New("participant is the host")
-// ErrRemoteUnmute means the SFU will not switch a live microphone back on from
+	// ErrRemoteUnmute means the SFU will not switch a live microphone back on from
 	// the server. See isRemoteUnmuteDisabled — this is a protection, not a fault.
 	ErrRemoteUnmute = errors.New("the media server does not allow remote unmute")
 )
@@ -1177,13 +1177,14 @@ func (c *Client) StartBroadcastEgress(
 	templateURL string,
 	preset livekit.EncodingOptionsPreset,
 	rtmpURL string,
+	extraURLs []string,
 ) (*livekit.EgressInfo, error) {
 	if c.egress == nil {
 		return nil, errors.New("egress is not configured on this client")
 	}
 
-	u := strings.TrimSpace(rtmpURL)
-	if u == "" {
+	urls := compactRTMP(rtmpURL, extraURLs)
+	if len(urls) == 0 {
 		return nil, errors.New("broadcast egress needs an RTMP URL: it has no other output")
 	}
 
@@ -1192,7 +1193,7 @@ func (c *Client) StartBroadcastEgress(
 		StreamOutputs: []*livekit.StreamOutput{
 			{
 				Protocol: livekit.StreamProtocol_RTMP,
-				Urls:     []string{u},
+				Urls:     urls,
 			},
 		},
 	}
@@ -1234,12 +1235,13 @@ func (c *Client) StartCombinedEgress(
 	rtmpURL string,
 	storageKey string,
 	s3Opts EgressS3Options,
+	extraURLs []string,
 ) (*livekit.EgressInfo, error) {
 	if c.egress == nil {
 		return nil, errors.New("egress is not configured on this client")
 	}
 
-	req, err := combinedEgressRequest(roomName, templateURL, preset, rtmpURL, storageKey, s3Opts)
+	req, err := combinedEgressRequest(roomName, templateURL, preset, rtmpURL, storageKey, s3Opts, extraURLs)
 	if err != nil {
 		return nil, err
 	}
@@ -1257,9 +1259,10 @@ func combinedEgressRequest(
 	rtmpURL string,
 	storageKey string,
 	s3Opts EgressS3Options,
+	extraURLs []string,
 ) (*livekit.RoomCompositeEgressRequest, error) {
-	u := strings.TrimSpace(rtmpURL)
-	if u == "" {
+	urls := compactRTMP(rtmpURL, extraURLs)
+	if len(urls) == 0 {
 		return nil, errors.New("combined egress needs an RTMP URL: use StartRoomCompositeEgress to record only")
 	}
 
@@ -1268,7 +1271,7 @@ func combinedEgressRequest(
 		StreamOutputs: []*livekit.StreamOutput{
 			{
 				Protocol: livekit.StreamProtocol_RTMP,
-				Urls:     []string{u},
+				Urls:     urls,
 			},
 		},
 		FileOutputs: []*livekit.EncodedFileOutput{fileOutput(storageKey, s3Opts)},
@@ -1289,6 +1292,30 @@ func combinedEgressRequest(
 	}
 
 	return req, nil
+}
+
+func compactRTMP(origin string, extra []string) []string {
+	var out []string
+	if u := strings.TrimSpace(origin); u != "" {
+		out = append(out, u)
+	}
+	for _, u := range extra {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		dup := false
+		for _, have := range out {
+			if have == u {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, u)
+		}
+	}
+	return out
 }
 
 /* broadcastEncodingOptions is the preset with the three fields WHEP cares about
@@ -1355,6 +1382,17 @@ func (c *Client) ListEgress(ctx context.Context, roomName string) ([]*livekit.Eg
 	return res.GetItems(), nil
 }
 
+func (c *Client) UpdateStream(ctx context.Context, egressID string, add, remove []string) (*livekit.EgressInfo, error) {
+	if c.egress == nil {
+		return nil, errors.New("egress is not configured on this client")
+	}
+	return c.egress.UpdateStream(ctx, &livekit.UpdateStreamRequest{
+		EgressId:         egressID,
+		AddOutputUrls:    compactRTMP("", add),
+		RemoveOutputUrls: compactRTMP("", remove),
+	})
+}
+
 // StopEgress requests LiveKit Egress to finalize recording and upload the file.
 func (c *Client) StopEgress(ctx context.Context, egressID string) (*livekit.EgressInfo, error) {
 	if c.egress == nil {
@@ -1364,4 +1402,3 @@ func (c *Client) StopEgress(ctx context.Context, egressID string) (*livekit.Egre
 		EgressId: egressID,
 	})
 }
-

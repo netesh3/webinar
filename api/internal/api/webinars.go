@@ -74,6 +74,9 @@ func publicWebinar(wb types.Webinar) types.Webinar {
 	// Which LiveKit project this room is on is the operator's business. Nothing an attendee
 	// can do with it, and the browser is told the URL it needs in the join response.
 	wb.SFUProject = ""
+	// An unlisted YouTube live is not public because the registration page loaded.
+	wb.StreamWatchURL = ""
+	wb.StreamConfigured = false
 	return wb
 }
 

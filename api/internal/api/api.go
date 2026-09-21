@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
+	"github.com/netkumar/webcast/api/internal/yt"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -47,8 +49,9 @@ type RoomManager interface {
 	RemoveParticipant(ctx context.Context, room, identity string) error
 	DeleteRoom(ctx context.Context, room string) error
 	StartRoomCompositeEgress(ctx context.Context, roomName string, storageKey string, s3Opts lk.EgressS3Options, templateURL string, preset livekit.EncodingOptionsPreset) (*livekit.EgressInfo, error)
-	StartBroadcastEgress(ctx context.Context, roomName string, templateURL string, preset livekit.EncodingOptionsPreset, rtmpURL string) (*livekit.EgressInfo, error)
-	StartCombinedEgress(ctx context.Context, roomName string, templateURL string, preset livekit.EncodingOptionsPreset, rtmpURL string, storageKey string, s3Opts lk.EgressS3Options) (*livekit.EgressInfo, error)
+	StartBroadcastEgress(ctx context.Context, roomName string, templateURL string, preset livekit.EncodingOptionsPreset, rtmpURL string, extraURLs []string) (*livekit.EgressInfo, error)
+	StartCombinedEgress(ctx context.Context, roomName string, templateURL string, preset livekit.EncodingOptionsPreset, rtmpURL string, storageKey string, s3Opts lk.EgressS3Options, extraURLs []string) (*livekit.EgressInfo, error)
+	UpdateStream(ctx context.Context, egressID string, add, remove []string) (*livekit.EgressInfo, error)
 	StopEgress(ctx context.Context, egressID string) (*livekit.EgressInfo, error)
 	ListEgress(ctx context.Context, roomName string) ([]*livekit.EgressInfo, error)
 }
@@ -111,6 +114,9 @@ type Server struct {
 	 * happened to be configured first.
 	 */
 	sfu SFUPool
+	// youtube is nil when GOOGLE_CLIENT_SECRET is unset. Pasted stream keys
+	// still work; Connect YouTube and viaYouTube do not.
+	youtube *yt.Client
 	// recordings is nil when recording is turned off for this instance, which the
 	// handlers check — an operator who disables it gets a clear 503 rather than a
 	// button that appears to work and drops the bytes.
@@ -149,10 +155,23 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 
 	log.Info("livekit projects", "configured", sfu.IDs(), "accepting_new_rooms", sfu.Candidates())
 
+	var youtube *yt.Client
+	if cfg.YouTubeOAuthEnabled() {
+		youtube = yt.New(cfg.GoogleClientID, cfg.GoogleClientSecret)
+		if cfg.YouTubeAPIURL != "" {
+			youtube.API = strings.TrimRight(cfg.YouTubeAPIURL, "/")
+		}
+		if cfg.YouTubeTokenURL != "" {
+			youtube.TokenURL = cfg.YouTubeTokenURL
+		}
+		log.Info("youtube oauth enabled")
+	}
+
 	return &Server{
 		cfg:        cfg,
 		store:      st,
 		sfu:        sfu,
+		youtube:    youtube,
 		recordings: rec,
 		sessions:   auth.NewSessions(cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure),
 		log:        log,
@@ -343,6 +362,8 @@ func (s *Server) Routes() http.Handler {
 			r.Delete("/webinars/{slug}", s.handleAdminDeleteWebinar)
 		})
 
+		r.Get("/host/youtube/callback", s.handleYouTubeCallback)
+
 		r.Route("/host", func(r chi.Router) {
 			r.Use(s.requireUser)
 
@@ -386,6 +407,9 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/webinars", s.handleCreateWebinar)
 				r.Get("/recordings", s.handleHostRecordingLibrary)
 
+				r.Get("/youtube/connect", s.handleYouTubeConnect)
+				r.Delete("/youtube", s.handleYouTubeDisconnect)
+
 				/* The notification bell. Outside the per-webinar subtree on purpose:
 				 * an alert's whole job is to tell a host about a webinar they are NOT
 				 * currently looking at, so it cannot be scoped to one slug. Scoped to
@@ -400,6 +424,7 @@ func (s *Server) Routes() http.Handler {
 
 					r.Get("/", s.handleHostWebinar)
 					r.Patch("/", s.handleUpdateWebinar)
+					r.Patch("/stream", s.handleSetStream)
 
 					// Deleting the webinar and handing it to someone else stay with the
 					// account actually listed as its host — see requireTrueOwner. Every
@@ -507,6 +532,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Tracks:                  tracks,
 		GoogleClientID:          s.cfg.GoogleClientID,
 		GoogleAPIKey:            s.cfg.GoogleAPIKey,
+		YouTubeOAuth:            s.cfg.YouTubeOAuthEnabled(),
 		SupabaseURL:             s.cfg.SupabaseURL,
 		SupabaseAnonKey:         s.cfg.SupabaseAnonKey,
 		GoogleAuth:              s.cfg.GoogleAuthEnabled(),

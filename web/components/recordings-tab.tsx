@@ -20,6 +20,7 @@ import {
   PlayIcon,
   ShareIcon,
   TrashIcon,
+  YouTubeIcon,
 } from "./icons";
 import { Badge, Button, Card, Empty } from "./ui";
 import { VideoPlayer } from "./video-player";
@@ -95,6 +96,32 @@ export function RecordingsTab({
         </Alert>
       )}
 
+      {w.streamWatchUrl && (
+        <Card className="space-y-3 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="inline-flex items-center gap-2 text-[13px] font-semibold text-ink">
+                <YouTubeIcon className="size-4" />
+                YouTube
+              </p>
+              <p className="mt-0.5 text-[12.5px] text-ink-2">
+                This session was also pushed live to YouTube. The processed video
+                usually appears a few minutes after you end the live.
+              </p>
+            </div>
+            <a
+              href={w.streamWatchUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-9 shrink-0 items-center rounded-lg bg-brand px-3 text-[13px] font-medium text-white"
+            >
+              Open on YouTube
+            </a>
+          </div>
+          <CopyField value={w.streamWatchUrl} label="Watch link" />
+        </Card>
+      )}
+
       {playing && (
         <Card className="overflow-hidden">
           <VideoPlayer
@@ -131,10 +158,12 @@ export function RecordingsTab({
       )}
 
       {rows.length === 0 ? (
-        <Empty
-          title="No recordings yet"
-          hint="Press Record in the room. Stop and start again adds to the same recording — one file per webinar."
-        />
+        !w.streamWatchUrl && (
+          <Empty
+            title="No recordings yet"
+            hint="Press Record in the room, or stream to YouTube from the control bar. Stop and start again adds to the same recording — one file per webinar."
+          />
+        )
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map((rec) => (

@@ -28,6 +28,7 @@ const webinarColumns = `
 	w.qa_enabled, w.raise_hand_enabled, w.reactions_enabled,
 	w.polls_enabled, w.captions_enabled, w.locked, w.sfu_project, w.image_key,
 	w.simulive_recording_id::text,
+	w.stream_watch, (w.stream_ingest <> ''),
 	h.id, h.name, h.title, h.org, h.initials, h.hue,
 	(SELECT count(*) FROM registrations r
 	  WHERE r.webinar_id = w.id AND r.state <> 'declined') AS registrant_count`
@@ -36,19 +37,21 @@ const webinarFrom = ` FROM webinars w JOIN users h ON h.id = w.host_id `
 
 func scanWebinar(row scanner) (types.Webinar, string, error) {
 	var (
-		w          types.Webinar
-		startsAt   time.Time
-		startedAt  *time.Time
-		endedAt    *time.Time
-		priceCents *int
-		agenda     []byte
-		takeaways  []byte
-		options    []byte
-		report     []byte
-		hostID     string
-		imageKey   string
-		c          types.SessionControls
-		simuliveID *string
+		w           types.Webinar
+		startsAt    time.Time
+		startedAt   *time.Time
+		endedAt     *time.Time
+		priceCents  *int
+		agenda      []byte
+		takeaways   []byte
+		options     []byte
+		report      []byte
+		hostID      string
+		imageKey    string
+		c           types.SessionControls
+		simuliveID  *string
+		streamWatch string
+		streamOn    bool
 	)
 	err := row.Scan(
 		&w.ID, &w.WebinarID, &w.Topic, &w.Summary, &w.Descript, &w.Track,
@@ -61,6 +64,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.QAEnabled, &c.RaiseHandEnabled, &c.ReactionsEnabled,
 		&c.PollsEnabled, &c.CaptionsEnabled, &c.Locked, &w.SFUProject, &imageKey,
 		&simuliveID,
+		&streamWatch, &streamOn,
 		&hostID, &w.Host.Name, &w.Host.Title, &w.Host.Org, &w.Host.Initials, &w.Host.Hue,
 		&w.RegistrantCount,
 	)
@@ -71,6 +75,8 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	if simuliveID != nil && *simuliveID != "" {
 		w.SimuliveRecordingID = *simuliveID
 	}
+	w.StreamWatchURL = streamWatch
+	w.StreamConfigured = streamOn
 	/* A path back to this API, not the image bytes — see ImageURL's doc comment.
 	 *
 	 * `v` is image_key, an opaque token that changes on every replace (see
@@ -1483,4 +1489,60 @@ func (s *Store) ExpiredLiveWebinars(ctx context.Context) ([]string, error) {
 		slugs = append(slugs, slug)
 	}
 	return slugs, rows.Err()
+}
+
+// WebinarStreamIngest is the RTMP(S) URL including the stream key. Empty means
+// this webinar has no extra destination. Not on the Webinar JSON type — the
+// key must not reach a browser.
+func (s *Store) WebinarStreamIngest(ctx context.Context, slug string) (string, error) {
+	var ingest string
+	err := s.pool.QueryRow(ctx, `
+		SELECT stream_ingest FROM webinars WHERE slug = $1 OR id::text = $1`, slug).Scan(&ingest)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
+	return ingest, err
+}
+
+// SetWebinarStream stores the encoder destination and the watch URL the
+// recordings tab will show. An empty ingest stops the push but keeps the
+// watch URL unless dropWatch is set — Stop streaming should not hide the
+// YouTube link the recordings tab exists to offer.
+func (s *Store) SetWebinarStream(ctx context.Context, slug, ingest, watch, broadcastID string, dropWatch bool) error {
+	var tag interface{ RowsAffected() int64 }
+	var err error
+	if ingest == "" {
+		watchSQL := `stream_watch`
+		if dropWatch {
+			watchSQL = `''`
+		}
+		tag, err = s.pool.Exec(ctx, `
+			UPDATE webinars
+			   SET stream_ingest = '',
+			       youtube_broadcast_id = '',
+			       stream_watch = `+watchSQL+`
+			 WHERE slug = $1 OR id::text = $1`, slug)
+	} else {
+		tag, err = s.pool.Exec(ctx, `
+			UPDATE webinars
+			   SET stream_ingest = $2, stream_watch = $3, youtube_broadcast_id = $4
+			 WHERE slug = $1 OR id::text = $1`, slug, ingest, watch, broadcastID)
+	}
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) WebinarYouTubeBroadcast(ctx context.Context, slug string) (string, error) {
+	var id string
+	err := s.pool.QueryRow(ctx, `
+		SELECT youtube_broadcast_id FROM webinars WHERE slug = $1 OR id::text = $1`, slug).Scan(&id)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
+	return id, err
 }

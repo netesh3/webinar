@@ -145,6 +145,7 @@ fi
 # Public Web client ID → /api/config googleClientId (One Tap + Drive Picker).
 [[ -n "${GOOGLE_CLIENT_ID:-}" ]] && ENV_VARS+=("GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}")
 [[ -n "${GOOGLE_API_KEY:-}" ]] && ENV_VARS+=("GOOGLE_API_KEY=${GOOGLE_API_KEY}")
+[[ -n "${GOOGLE_CLIENT_SECRET:-}" ]] && ENV_VARS+=("GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}")
 # Recording storage. "disk" needs nothing further; "s3" (an S3-compatible
 # bucket — Backblaze B2 in practice) needs all five below. config.go refuses
 # to boot with RECORDINGS_ENABLED=true and RECORDINGS_BACKEND=s3 if any are

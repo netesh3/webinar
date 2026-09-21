@@ -383,30 +383,46 @@ func (f *fakeRooms) StartRoomCompositeEgress(_ context.Context, roomName, storag
 	}, nil
 }
 
-func (f *fakeRooms) StartBroadcastEgress(_ context.Context, roomName string, _ string, _ livekit.EncodingOptionsPreset, rtmpURL string) (*livekit.EgressInfo, error) {
+func (f *fakeRooms) StartBroadcastEgress(_ context.Context, roomName string, _ string, _ livekit.EncodingOptionsPreset, rtmpURL string, extraURLs []string) (*livekit.EgressInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.egressErr != nil {
 		return nil, f.egressErr
 	}
 	f.egressCalls = append(f.egressCalls, roomName+":"+rtmpURL)
+	if len(extraURLs) > 0 {
+		f.egressCalls = append(f.egressCalls, "extra:"+strings.Join(extraURLs, ","))
+	}
 	return &livekit.EgressInfo{
 		EgressId: "EG_fake_hls_" + roomName,
 		Status:   livekit.EgressStatus_EGRESS_STARTING,
 	}, nil
 }
 
-func (f *fakeRooms) StartCombinedEgress(_ context.Context, roomName string, _ string, _ livekit.EncodingOptionsPreset, rtmpURL string, storageKey string, _ lk.EgressS3Options) (*livekit.EgressInfo, error) {
+func (f *fakeRooms) StartCombinedEgress(_ context.Context, roomName string, _ string, _ livekit.EncodingOptionsPreset, rtmpURL string, storageKey string, _ lk.EgressS3Options, extraURLs []string) (*livekit.EgressInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.egressErr != nil {
 		return nil, f.egressErr
 	}
 	f.egressCalls = append(f.egressCalls, roomName+":"+rtmpURL+":"+storageKey)
+	if len(extraURLs) > 0 {
+		f.egressCalls = append(f.egressCalls, "extra:"+strings.Join(extraURLs, ","))
+	}
 	return &livekit.EgressInfo{
 		EgressId: "EG_fake_both_" + roomName,
 		Status:   livekit.EgressStatus_EGRESS_STARTING,
 	}, nil
+}
+
+func (f *fakeRooms) UpdateStream(_ context.Context, egressID string, add, remove []string) (*livekit.EgressInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.egressErr != nil {
+		return nil, f.egressErr
+	}
+	f.egressCalls = append(f.egressCalls, "update:"+egressID)
+	return &livekit.EgressInfo{EgressId: egressID, Status: livekit.EgressStatus_EGRESS_ACTIVE}, nil
 }
 
 func (f *fakeRooms) ListEgress(_ context.Context, _ string) ([]*livekit.EgressInfo, error) {

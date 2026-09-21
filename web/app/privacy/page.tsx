@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     "How Webinar Liv collects, uses, and shares personal data for webinar hosting and attendance.",
 };
 
-const UPDATED = "September 19, 2026";
+const UPDATED = "September 21, 2026";
 
 export default function PrivacyPage() {
   return (
@@ -88,6 +88,31 @@ export default function PrivacyPage() {
         afterward.
       </p>
 
+      <h3>YouTube Live (optional)</h3>
+      <p>
+        Hosts may connect a YouTube channel so Webinar Liv can create a live
+        broadcast and push the session mix to YouTube. That grant uses Google
+        OAuth with the YouTube scope and is separate from Google sign-in. We
+        store a refresh token on the host account, plus the channel name and a
+        reusable encoder id. We use this access only to create, bind, and
+        complete lives you start from Webinar Liv, and to show you the watch
+        link. We do not use it to read your private videos, manage comments, or
+        advertise. You can disconnect YouTube in Account settings, which
+        revokes the grant and deletes the stored token.
+      </p>
+      <p>
+        Use of YouTube is also subject to{" "}
+        <a href="https://www.youtube.com/t/terms">YouTube&apos;s Terms of Service</a>{" "}
+        and the{" "}
+        <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.
+        Webinar Liv&apos;s use of information received from Google APIs adheres
+        to the{" "}
+        <a href="https://developers.google.com/terms/api-services-user-data-policy">
+          Google API Services User Data Policy
+        </a>
+        , including the Limited Use requirements.
+      </p>
+
       <h2>5. Live media (LiveKit)</h2>
       <p>
         Real-time audio and video are delivered through LiveKit infrastructure.
@@ -118,7 +143,8 @@ export default function PrivacyPage() {
           <strong>LiveKit</strong> — real-time media transport
         </li>
         <li>
-          <strong>Google</strong> — optional OAuth sign-in
+          <strong>Google</strong> — optional OAuth sign-in and, if a host
+          connects YouTube, the YouTube Data API for live broadcasts
         </li>
       </ul>
       <p>

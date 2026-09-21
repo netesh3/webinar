@@ -607,6 +607,22 @@ export interface Webinar {
   passcode?: string;
   passcodeRequired: boolean;
   /**
+   *  StreamWatchURL is the YouTube (or other) watch link for a live this
+   * 	 * webinar was pushed to. Empty when the host never set a destination.
+   * 	 * The ingest URL with the stream key is NOT on this type — it never
+   * 	 * leaves the database except toward LiveKit Egress.
+   * 	 *
+   * 	 * Host views only. publicWebinar strips it, because an unlisted YouTube
+   * 	 * live is not public just because someone opened the registration page.
+   * 	 * The recordings tab is where it is meant to be found, after the session.
+   */
+  streamWatchUrl?: string;
+  /**
+   * StreamConfigured is true when an ingest destination is stored, so the
+   * form can say "already set" without echoing the key.
+   */
+  streamConfigured?: boolean;
+  /**
    *  SFUProject is which LiveKit project this webinar's room lives on, once chosen.
    * 	 *
    * 	 * Empty until the first join picks one. Operator information — it is what answers "which
@@ -655,6 +671,30 @@ export interface WebinarInput {
   controls: SessionControls;
 }
 /**
+ * SetStreamRequest is the host's RTMP destination.
+ * Three ways in:
+ *   - paste a Studio stream key + watch URL (manual)
+ *   - ViaYouTube, which creates an Unlisted live on the host's connected
+ *     channel and fills both URLs itself
+ *   - Off, which stops the RTMP push. The watch link stays for Recordings
+ *     unless DropWatch is set (turning the option off on the schedule form).
+ */
+export interface SetStreamRequest {
+  streamKey: string;
+  ingestUrl?: string;
+  watchUrl: string;
+  off?: boolean;
+  dropWatch?: boolean;
+  /**
+   * ViaYouTube creates the live through YouTube OAuth instead of a pasted key.
+   */
+  viaYouTube?: boolean;
+  /**
+   * Privacy is public, unlisted (default), or private. Only used with ViaYouTube.
+   */
+  privacy?: string;
+}
+/**
  * Account is the signed-in person. Hosting is a capability on an ordinary
  * account, not a separate kind of account: the same person registers for other
  * people's webinars and runs their own.
@@ -693,6 +733,19 @@ export interface Account {
    * CanCdnBroadcast allows this host's webinars to broadcast to audience via CDN HLS.
    */
   canCdnBroadcast: boolean;
+  /**
+   * YouTube is present when this account has granted live-stream access.
+   */
+  youtube?: YouTubeLink;
+}
+/**
+ * YouTubeLink is the public half of a host's YouTube OAuth grant. The refresh
+ * token never appears here.
+ */
+export interface YouTubeLink {
+  connected: boolean;
+  channelId?: string;
+  channelTitle?: string;
 }
 export interface SignupRequest {
   name: string;
@@ -1233,6 +1286,12 @@ export interface AppConfig {
    */
   googleClientId?: string;
   googleApiKey?: string;
+  /**
+   *  YouTubeOAuth is whether GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are both
+   * 	 * set, so Account settings can offer Connect YouTube. Distinct from GoogleAuth
+   * 	 * (Supabase sign-in) and from GoogleClientID used for Drive Picker.
+   */
+  youtubeOAuth?: boolean;
   /**
    *  Supabase Auth (Google sign-in). Public values only — the JWT secret stays
    * 	 * on the API. When googleAuth is false the Continue with Google button is hidden.

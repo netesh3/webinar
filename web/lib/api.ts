@@ -34,6 +34,7 @@ import type {
   ShareRecordingRequest,
   StageAllResponse,
   StatusResponse,
+  SetStreamRequest,
   Webinar,
   WebinarInput,
 } from "./api-types";
@@ -325,6 +326,18 @@ export const api = {
 
   updateWebinar: (slug: string, body: WebinarInput) =>
     patch<Webinar>(`/api/host/webinars/${seg(slug)}/`, body),
+
+  /** Save or clear the host's RTMP destination (YouTube stream key + watch URL). */
+  setWebinarStream: (slug: string, body: SetStreamRequest) =>
+    patch<Webinar>(`/api/host/webinars/${seg(slug)}/stream`, body),
+
+  /** Browser navigation to Google (not fetch) — needs a top-level redirect. */
+  youtubeConnectURL: (returnTo = "/account") => {
+    const next = returnTo.startsWith("/") ? returnTo : "/account";
+    return `${baseFor()}/api/host/youtube/connect?return=${encodeURIComponent(next)}`;
+  },
+
+  disconnectYouTube: () => del<Account>("/api/host/youtube"),
 
   deleteWebinar: (slug: string) =>
     del<StatusResponse>(`/api/host/webinars/${seg(slug)}/`),
