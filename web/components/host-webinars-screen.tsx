@@ -218,7 +218,7 @@ export function HostWebinarsScreen() {
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <ButtonLink href="/my-webinars" variant="secondary" size="sm">
-              Registered
+              WatchList
             </ButtonLink>
             <ButtonLink href="/account" variant="ghost" size="sm">
               Account settings

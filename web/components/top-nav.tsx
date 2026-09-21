@@ -15,7 +15,7 @@ import { HostAlerts } from "./host-alerts";
  * It held three. Browse went first: a public catalogue that stopped being one,
  * since the list is now scoped to sessions the account already hosts, presents
  * on or registered for. My Webinar went the same way and for the same reason —
- * it is the Registered tab on Host Webinar now, sitting after Drafts with the
+ * it is the WatchList tab on Host Webinar now, sitting after Drafts with the
  * host's other lists. A nav entry per view of one person's sessions asks them to
  * decide which door leads to the webinar they are looking for, and both doors
  * open on the same room.
@@ -39,7 +39,7 @@ function linksFor(signedIn: boolean, canHost: boolean) {
   // /my-webinars path stays as it is, because renaming a URL breaks the links
   // already sent out to it.
   if (canHost) return [];
-  return signedIn ? [{ href: "/my-webinars", label: "Registered" }] : [];
+  return signedIn ? [{ href: "/my-webinars", label: "WatchList" }] : [];
 }
 
 /** Where the logo takes you. A host's real home base is /host — everything else
