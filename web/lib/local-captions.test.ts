@@ -9,6 +9,24 @@ describe("captionText", () => {
     assert.equal(captionText("you"), "");
   });
 
+  /* What the model actually returns on a quiet line. Verified against
+   * Xenova/whisper-tiny.en itself, which answered " [BLANK_AUDIO]" for 3.2s of
+   * a faint tone — audio above the RMS gate, so this reaches a viewer's screen
+   * unless it is dropped here. */
+  it("drops Whisper's non-speech tags", () => {
+    assert.equal(captionText(" [BLANK_AUDIO]"), "");
+    assert.equal(captionText("[ Silence ]"), "");
+    assert.equal(captionText("(applause)"), "");
+    assert.equal(captionText("[MUSIC PLAYING]"), "");
+  });
+
+  it("keeps the speech around a tag it strips", () => {
+    assert.equal(
+      captionText("So [BLANK_AUDIO] where were we"),
+      "So where were we",
+    );
+  });
+
   it("keeps a real sentence", () => {
     assert.equal(
       captionText("  Let's look at the next slide. "),
