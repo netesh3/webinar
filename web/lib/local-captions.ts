@@ -66,10 +66,33 @@ async function loadTranscriber(
           ? "webgpu"
           : "wasm";
 
+      /* The weight precision has to match the backend. It is not one setting
+       * for both, and getting it wrong does not raise anything.
+       *
+       * q8 on WebGPU returns fluent nonsense. Not degraded text — a different
+       * language: "proc bicy at fare TwilightixirAbyss retali learned Glow bull
+       * belly repayment" and then a loop of "biasesVIDEO biasesVIDEO" until the
+       * token budget runs out. int8 matmul is not implemented on that backend,
+       * so the quantized weights are read as something else entirely, and
+       * because it produces confident output rather than an error the fallback
+       * below never fired and the captions looked broken with nothing logged.
+       *
+       * Measured on the same clip, cold cache: webgpu/q8 gave that string;
+       * webgpu/fp16 57MB and webgpu/fp32 113MB both transcribed it correctly in
+       * 0.3s; wasm/q8 was correct in 1.1s. fp16 is half of fp32's download for
+       * the same speed, so WebGPU gets fp16 and the CPU path keeps q8 — where
+       * it is both correct and worth the smaller download.
+       *
+       * fp16 needs the shader-f16 WebGPU feature. A GPU without it fails to
+       * LOAD, which is the failure mode we want: the catch below then falls
+       * back to a WASM path that has been verified to transcribe. The rule to
+       * keep is that a quantized dtype never goes to WebGPU. */
+      const dtype = device === "webgpu" ? "fp16" : "q8";
+
       try {
         return (await pipeline("automatic-speech-recognition", MODEL_ID, {
           device,
-          dtype: "q8",
+          dtype,
         })) as unknown as Transcriber;
       } catch (webgpuErr) {
         if (device === "wasm") throw webgpuErr;
