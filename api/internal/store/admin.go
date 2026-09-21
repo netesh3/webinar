@@ -183,7 +183,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 	like := "%" + strings.ToLower(strings.TrimSpace(search)) + "%"
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT u.id::text, u.email, u.name, u.title, u.org, u.initials, u.hue,
+		SELECT u.id::text, u.email, u.name, u.title, u.org, u.phone, u.initials, u.hue,
 		       u.can_host, u.is_admin, u.created_at,
 		       (SELECT count(*) FROM webinars w WHERE w.host_id = u.id),
 		       u.max_duration_min, u.can_cdn_broadcast
@@ -202,7 +202,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 			u         types.AdminUser
 			createdAt time.Time
 		)
-		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Initials,
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Phone, &u.Initials,
 			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast); err != nil {
 			return nil, err
 		}

@@ -218,10 +218,22 @@ export function AdminScreen() {
                       {u.canCdnBroadcast && <Badge tone="ok">CDN Broadcast</Badge>}
                       {isSelf && <Badge>You</Badge>}
                     </div>
+                    {/* How to reach this person, then what they've done with the
+                        capability. The phone is only shown when there is one, rather
+                        than as an em dash holding an empty column: it comes from the
+                        signup form, so accounts that arrived through Google — and any
+                        created before migrations/0020 — simply have no number, and a
+                        row of dashes would read as "we lost it". */}
                     <div className="truncate text-[12px] text-ink-3">
-                      {u.email}
-                      {u.webinarCount > 0 &&
-                        ` · ${u.webinarCount} webinar${u.webinarCount === 1 ? "" : "s"}`}
+                      {[
+                        u.email,
+                        u.phone,
+                        u.webinarCount > 0
+                          ? `${u.webinarCount} webinar${u.webinarCount === 1 ? "" : "s"}`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </div>
                   </div>
 
