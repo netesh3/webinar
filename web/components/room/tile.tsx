@@ -222,33 +222,20 @@ export function ParticipantTile({
         <AvatarFallback participant={participant} size={size} />
       )}
 
-      {/* Mute stays glanceable without a bar. Nameplate chrome used to paint a
-          permanent black gradient across every tile — reveal that on hover/focus
-          instead. Name stays discoverable via sr-only when chrome is hidden. */}
+      {/* Always on, for anyone identifiable enough to be worth naming — this used
+          to reveal only on hover or focus, so a tile's name was invisible until
+          somebody happened to point at it, and unreachable at all on a touch
+          screen. The mic icon lives only here now: a separate glanceable badge
+          for the moments this bar was hidden would just duplicate it while this
+          is permanent. Name stays discoverable via sr-only regardless. */}
       <span className="sr-only">
         {participant.name || participant.identity}
         {isScreen ? "’s screen" : ""}
         {role !== "attendee" ? `, ${roleLabel[role]}` : ""}
         {!isScreen && micMuted ? ", muted" : ""}
       </span>
-      {!isScreen && micMuted && (
-        <span
-          className="pointer-events-none absolute bottom-1.5 left-1.5 z-10 rounded-md bg-black/40 p-1 backdrop-blur transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
-          aria-hidden
-        >
-          <MicOffIcon className="size-3.5 text-white/85" />
-        </span>
-      )}
       <div
-        className={`pointer-events-none absolute inset-x-0 bottom-0 flex items-end gap-1.5 bg-gradient-to-t from-black/45 to-transparent px-2 pt-5 pb-1.5 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 ${
-          // Hover-to-reveal exists so a name bar does not sit permanently over
-          // somebody's face. There is no face here — just initials on a plain
-          // colour — so nothing is decluttered by hiding it, and a viewer
-          // scanning a strip of camera-off tiles (see SpotlightLayout) would
-          // otherwise have to hover each one, which a touch screen cannot even
-          // do, just to find out who they are looking at.
-          hasVideo ? "opacity-0" : "opacity-100"
-        }`}
+        className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end gap-1.5 bg-gradient-to-t from-black/45 to-transparent px-2 pt-5 pb-1.5"
         aria-hidden
       >
         {!isScreen && micMuted && (
