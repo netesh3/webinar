@@ -44,6 +44,31 @@ jobs:
           } > "$HOME/.ssh/config"
           chmod 600 "$HOME/.ssh/config"
 
+      - name: Egress capacity and rejections
+        run: |
+          ssh livekit-hetzner 'set +e
+            echo "===== cores / load ====="
+            nproc; uptime
+            echo
+            echo "===== per-container CPU right now ====="
+            docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
+            echo
+            echo "===== egress cpu_cost config (blank = LiveKit defaults) ====="
+            grep -iA8 "cpu_cost" /opt/livekit/egress.yaml || echo "no cpu_cost block: defaults apply (room_composite = 3.0 CPU)"
+            echo
+            echo "===== egress node: what it thinks it can accept ====="
+            eg="$(docker ps -a --format "{{.Names}}" | grep -E "egress" | head -1)"
+            docker logs "$eg" 2>&1 | grep -iE "cannot accept|not accepting|insufficient|cpu hold|denied|unavailable|cpu_cost|available cpu" | tail -40
+            echo
+            echo "===== every FILE-output (recording) egress ever requested ====="
+            docker logs "$eg" 2>&1 | grep -E "request validated" | grep -oE "outputType\": \"[a-z]+\"" | sort | uniq -c
+            docker logs "$eg" 2>&1 | grep -E "\"outputType\": \"file\"" | tail -20 || echo "(no file-output egress in retained logs)"
+            echo
+            echo "===== livekit-server: egress requests it could not place ====="
+            lk="$(docker ps -a --format "{{.Names}}" | grep -E "livekit" | grep -v egress | head -1)"
+            docker logs --tail 3000 "$lk" 2>&1 | grep -iE "egress|no available|unavailable" | tail -60
+          '
+
       - name: Print egress logs
         run: |
           ssh livekit-hetzner 'set -e

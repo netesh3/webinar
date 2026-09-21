@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, useMemo, useRef } from "react";
+import { Component, Suspense, useEffect, useState, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   LiveKitRoom,
@@ -29,27 +29,21 @@ export default function RecorderTemplatePage() {
 }
 
 function RecorderTemplateInner() {
+  /* Read during render, not stored in state from an effect.
+   *
+   * Holding them in state meant one render with no credentials, an effect, and
+   * only then the render that connects. Egress abandons a job that has not
+   * signalled START_RECORDING in time ("Start signal not received", which this
+   * template has produced), so a wasted round trip before connecting is not
+   * free. */
   const searchParams = useSearchParams();
-  const [params, setParams] = useState<{ url: string; token: string }>({ url: "", token: "" });
-
-  useEffect(() => {
-    let url = searchParams.get("url") || "";
-    let token = searchParams.get("token") || "";
-
-    if (!url || !token) {
-      if (typeof window !== "undefined") {
-        const sp = new URLSearchParams(window.location.search);
-        url = url || sp.get("url") || "";
-        token = token || sp.get("token") || "";
-      }
-    }
-
-    if (url && token) {
-      setParams({ url, token });
-    }
-  }, [searchParams]);
-
-  const { url, token } = params;
+  let url = searchParams.get("url") || "";
+  let token = searchParams.get("token") || "";
+  if ((!url || !token) && typeof window !== "undefined") {
+    const sp = new URLSearchParams(window.location.search);
+    url = url || sp.get("url") || "";
+    token = token || sp.get("token") || "";
+  }
 
   if (!url || !token) {
     return (
@@ -60,12 +54,14 @@ function RecorderTemplateInner() {
   }
 
   return (
+    /* No audio or video props: those make LiveKitRoom publish a microphone and
+       a camera on connect. This participant is a recorder — it has no devices,
+       and its token is not permitted to publish — so all that produced was a
+       failed getUserMedia and a permission error on every job. */
     <LiveKitRoom
       serverUrl={url}
       token={token}
       connect={true}
-      audio={true}
-      video={true}
       onConnected={() => {
         console.log("START_RECORDING");
       }}
@@ -75,9 +71,42 @@ function RecorderTemplateInner() {
       className="fixed inset-0 h-screen w-screen overflow-hidden bg-black select-none"
     >
       <RoomAudioRenderer />
-      <ZoomRecordingStage />
+      {/* Around the stage only, so that a render error costs the picture and
+          not the rest of the session. Outside this boundary the room stays
+          connected and RoomAudioRenderer keeps playing, which is the difference
+          between a recording with a broken stretch and no recording at all. */}
+      <StageBoundary>
+        <ZoomRecordingStage />
+      </StageBoundary>
     </LiveKitRoom>
   );
+}
+
+class StageBoundary extends Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error) {
+    // Reaches the egress logs, which is the only place anyone can read it from.
+    console.error("recorder stage failed:", error?.message ?? error);
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="flex h-full w-full items-center justify-center bg-black text-zinc-600 font-mono text-sm">
+          Reconnecting to the stage...
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function ZoomRecordingStage() {
@@ -113,11 +142,15 @@ function ZoomRecordingStage() {
     };
     room.once(RoomEvent.Disconnected, onDisconnected);
 
+    /* Detach the listeners and nothing else. Logging END_RECORDING here ended
+       the job on any re-run of this effect, not just a real disconnect — and
+       egress treats that line as "stop now", so a remount silently finished a
+       live recording. A genuine disconnect still reports it, from the handler
+       above and from LiveKitRoom's own onDisconnected. */
     return () => {
       room.off(RoomEvent.Connected, signalStart);
       room.off(RoomEvent.ActiveSpeakersChanged, onSpeakers);
       room.off(RoomEvent.Disconnected, onDisconnected);
-      console.log("END_RECORDING");
     };
   }, [room]);
 
@@ -146,48 +179,22 @@ function ZoomRecordingStage() {
     });
   }, [trackRefs, activeSpeakerId]);
 
-  // If a screen is being shared: ZOOM SIDE-BY-SIDE RECORDING LAYOUT
-  if (screenShareRef) {
-    return (
-      <div className="flex h-full w-full bg-black">
-        {/* Left 78%: Full presentation screen share */}
-        <div className="relative flex-1 h-full min-w-0 flex items-center justify-center bg-black p-1">
-          <VideoTrack
-            trackRef={screenShareRef}
-            className="size-full object-contain"
-          />
-        </div>
+  /* Sharing puts the screen in the main area with everyone down the side;
+   * otherwise the loudest person takes the main area and the rest sit along the
+   * top. Both cases are the same two boxes in a different direction, and that
+   * is deliberate.
+   *
+   * These used to be two separate trees returned from two branches. Swapping
+   * between them unmounted and remounted every VideoTrack, so each time a share
+   * started or stopped, every tile detached its track and attached a new
+   * element — seconds of black frames, on the one machine with no CPU to spare,
+   * while RoomAudioRenderer carried on. That is the moment hosts reported the
+   * recording breaking and the audio drifting out of step. One tree keyed by
+   * identity means a share toggle relocates at most a single tile. */
+  const primarySpeaker = screenShareRef ? undefined : cameraRefs[0];
+  const stripRefs = screenShareRef ? cameraRefs : cameraRefs.slice(1);
 
-        {/* Right 22%: Vertical filmstrip of speakers */}
-        <div className="w-[22%] min-w-[240px] max-w-[340px] h-full bg-zinc-950/90 border-l border-zinc-800/80 p-2 flex flex-col gap-2.5 overflow-hidden">
-          {cameraRefs.length > 0 ? (
-            cameraRefs.map((ref) => {
-              const isSpeaking =
-                ref.participant.identity === activeSpeakerId || ref.participant.isSpeaking;
-              return (
-                <SpeakerTile
-                  key={ref.participant.identity}
-                  trackRef={ref}
-                  isSpeaking={isSpeaking}
-                  aspect="aspect-video"
-                />
-              );
-            })
-          ) : (
-            <div className="flex flex-1 items-center justify-center text-xs text-zinc-600">
-              No camera published
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // If NO screen is being shared: ZOOM ACTIVE SPEAKER RECORDING LAYOUT
-  const primarySpeaker = cameraRefs[0];
-  const otherSpeakers = cameraRefs.slice(1);
-
-  if (!primarySpeaker) {
+  if (!screenShareRef && !primarySpeaker) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-black text-zinc-600 font-mono text-sm">
         Waiting for webinar presenter to start video...
@@ -196,33 +203,62 @@ function ZoomRecordingStage() {
   }
 
   return (
-    <div className="flex flex-col h-full w-full bg-black">
-      {/* Top filmstrip if there are other speakers on stage */}
-      {otherSpeakers.length > 0 && (
-        <div className="h-28 shrink-0 flex items-center justify-center gap-2 px-3 py-1.5 bg-zinc-950/80 border-b border-zinc-800/60">
-          {otherSpeakers.slice(0, 5).map((ref) => {
-            const isSpeaking =
-              ref.participant.identity === activeSpeakerId || ref.participant.isSpeaking;
-            return (
-              <div key={ref.participant.identity} className="h-full aspect-video">
-                <SpeakerTile trackRef={ref} isSpeaking={isSpeaking} compact />
-              </div>
-            );
-          })}
+    <div className={`flex h-full w-full bg-black ${screenShareRef ? "flex-row" : "flex-col"}`}>
+      {/* Main area: the shared screen, or the active speaker. */}
+      <div
+        className={
+          screenShareRef
+            ? "relative flex-1 h-full min-w-0 flex items-center justify-center bg-black p-1 order-1"
+            : "flex-1 min-h-0 relative flex items-center justify-center p-3 bg-black order-2"
+        }
+      >
+        {screenShareRef ? (
+          <VideoTrack trackRef={screenShareRef} className="size-full object-contain" />
+        ) : primarySpeaker ? (
+          <SpeakerTile
+            trackRef={primarySpeaker}
+            isSpeaking={
+              primarySpeaker.participant.identity === activeSpeakerId ||
+              primarySpeaker.participant.isSpeaking
+            }
+            className="size-full max-w-7xl max-h-full"
+          />
+        ) : null}
+      </div>
+
+      {/* Filmstrip: down the right while sharing, along the top otherwise. */}
+      {(screenShareRef || stripRefs.length > 0) && (
+        <div
+          className={
+            screenShareRef
+              ? "w-[22%] min-w-[240px] max-w-[340px] h-full bg-zinc-950/90 border-l border-zinc-800/80 p-2 flex flex-col gap-2.5 overflow-hidden order-2"
+              : "h-28 shrink-0 flex items-center justify-center gap-2 px-3 py-1.5 bg-zinc-950/80 border-b border-zinc-800/60 order-1"
+          }
+        >
+          {stripRefs.length > 0 ? (
+            stripRefs.slice(0, screenShareRef ? undefined : 5).map((ref) => {
+              const isSpeaking =
+                ref.participant.identity === activeSpeakerId || ref.participant.isSpeaking;
+              return (
+                <div
+                  key={ref.participant.identity}
+                  className={screenShareRef ? "w-full" : "h-full aspect-video"}
+                >
+                  <SpeakerTile
+                    trackRef={ref}
+                    isSpeaking={isSpeaking}
+                    compact={!screenShareRef}
+                  />
+                </div>
+              );
+            })
+          ) : (
+            <div className="flex flex-1 items-center justify-center text-xs text-zinc-600">
+              No camera published
+            </div>
+          )}
         </div>
       )}
-
-      {/* Main active speaker centered */}
-      <div className="flex-1 min-h-0 relative flex items-center justify-center p-3 bg-black">
-        <SpeakerTile
-          trackRef={primarySpeaker}
-          isSpeaking={
-            primarySpeaker.participant.identity === activeSpeakerId ||
-            primarySpeaker.participant.isSpeaking
-          }
-          className="size-full max-w-7xl max-h-full"
-        />
-      </div>
     </div>
   );
 }

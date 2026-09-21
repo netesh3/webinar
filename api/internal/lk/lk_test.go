@@ -728,3 +728,47 @@ func TestBroadcastEncodingOptions(t *testing.T) {
 			"on the same NIC as the SFU", opts.Width, opts.Height)
 	}
 }
+
+// The combined egress exists so that recording a broadcast room costs one
+// compositor instead of the two the box cannot run. That saving is only real if
+// the single request actually carries both outputs.
+func TestCombinedEgressRequestCarriesBothOutputs(t *testing.T) {
+	req, err := combinedEgressRequest(
+		"webinar_demo",
+		"https://example.test/recorder-template",
+		livekit.EncodingOptionsPreset_H264_720P_30,
+		"rtmp://127.0.0.1:1935/live/demo",
+		"ab/cd/rec.mp4",
+		EgressS3Options{Endpoint: "s3.example.test", Bucket: "recordings"},
+	)
+	if err != nil {
+		t.Fatalf("combinedEgressRequest: %v", err)
+	}
+
+	if len(req.StreamOutputs) != 1 || req.StreamOutputs[0].Urls[0] != "rtmp://127.0.0.1:1935/live/demo" {
+		t.Errorf("stream outputs = %v, want the RTMP origin: without it the attendees "+
+			"lose the mix the moment recording starts", req.StreamOutputs)
+	}
+	if len(req.FileOutputs) != 1 || req.FileOutputs[0].Filepath != "ab/cd/rec.mp4" {
+		t.Errorf("file outputs = %v, want the recording's storage key", req.FileOutputs)
+	}
+
+	// Advanced, not Preset: the recording presets carry H264 Main, and Main may
+	// carry B-frames, which is what the RTMP side cannot survive.
+	adv, ok := req.Options.(*livekit.RoomCompositeEgressRequest_Advanced)
+	if !ok {
+		t.Fatalf("options = %T, want Advanced so the WHEP constraints are pinned", req.Options)
+	}
+	if adv.Advanced.VideoCodec != livekit.VideoCodec_H264_BASELINE {
+		t.Errorf("video codec = %v, want H264_BASELINE", adv.Advanced.VideoCodec)
+	}
+}
+
+// Recording only is a different call. Reaching this one without an origin would
+// start an encoder pushing at nothing.
+func TestCombinedEgressRequestNeedsAnOrigin(t *testing.T) {
+	if _, err := combinedEgressRequest("webinar_demo", "", livekit.EncodingOptionsPreset_H264_720P_30,
+		"  ", "ab/cd/rec.mp4", EgressS3Options{}); err == nil {
+		t.Fatal("combinedEgressRequest accepted a blank RTMP URL")
+	}
+}

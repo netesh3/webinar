@@ -396,6 +396,19 @@ func (f *fakeRooms) StartBroadcastEgress(_ context.Context, roomName string, _ s
 	}, nil
 }
 
+func (f *fakeRooms) StartCombinedEgress(_ context.Context, roomName string, _ string, _ livekit.EncodingOptionsPreset, rtmpURL string, storageKey string, _ lk.EgressS3Options) (*livekit.EgressInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.egressErr != nil {
+		return nil, f.egressErr
+	}
+	f.egressCalls = append(f.egressCalls, roomName+":"+rtmpURL+":"+storageKey)
+	return &livekit.EgressInfo{
+		EgressId: "EG_fake_both_" + roomName,
+		Status:   livekit.EgressStatus_EGRESS_STARTING,
+	}, nil
+}
+
 func (f *fakeRooms) ListEgress(_ context.Context, _ string) ([]*livekit.EgressInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -1105,6 +1105,29 @@ type EgressS3Options struct {
 	SecretKey string
 }
 
+// fileOutput is the MP4-to-S3 destination shared by the recording-only and the
+// combined recording-plus-broadcast egress.
+func fileOutput(storageKey string, s3Opts EgressS3Options) *livekit.EncodedFileOutput {
+	endpoint := strings.TrimSpace(s3Opts.Endpoint)
+	if endpoint != "" && !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		endpoint = "https://" + endpoint
+	}
+	return &livekit.EncodedFileOutput{
+		FileType: livekit.EncodedFileType_MP4,
+		Filepath: storageKey,
+		Output: &livekit.EncodedFileOutput_S3{
+			S3: &livekit.S3Upload{
+				Endpoint:       endpoint,
+				Bucket:         strings.TrimSpace(s3Opts.Bucket),
+				Region:         strings.TrimSpace(s3Opts.Region),
+				AccessKey:      strings.TrimSpace(s3Opts.AccessKey),
+				Secret:         strings.TrimSpace(s3Opts.SecretKey),
+				ForcePathStyle: true, // Backblaze B2 uses path-style addressing
+			},
+		},
+	}
+}
+
 // StartRoomCompositeEgress launches server-side recording with LiveKit Egress.
 func (c *Client) StartRoomCompositeEgress(
 	ctx context.Context,
@@ -1118,29 +1141,9 @@ func (c *Client) StartRoomCompositeEgress(
 		return nil, errors.New("egress is not configured on this client")
 	}
 
-	endpoint := strings.TrimSpace(s3Opts.Endpoint)
-	if endpoint != "" && !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
-		endpoint = "https://" + endpoint
-	}
-
 	req := &livekit.RoomCompositeEgressRequest{
-		RoomName: roomName,
-		FileOutputs: []*livekit.EncodedFileOutput{
-			{
-				FileType: livekit.EncodedFileType_MP4,
-				Filepath: storageKey,
-				Output: &livekit.EncodedFileOutput_S3{
-					S3: &livekit.S3Upload{
-						Endpoint:       endpoint,
-						Bucket:         strings.TrimSpace(s3Opts.Bucket),
-						Region:         strings.TrimSpace(s3Opts.Region),
-						AccessKey:      strings.TrimSpace(s3Opts.AccessKey),
-						Secret:         strings.TrimSpace(s3Opts.SecretKey),
-						ForcePathStyle: true, // Backblaze B2 uses path-style addressing
-					},
-				},
-			},
-		},
+		RoomName:    roomName,
+		FileOutputs: []*livekit.EncodedFileOutput{fileOutput(storageKey, s3Opts)},
 	}
 
 	if templateURL != "" {
@@ -1206,6 +1209,86 @@ func (c *Client) StartBroadcastEgress(
 	}
 
 	return c.egress.StartRoomCompositeEgress(ctx, req)
+}
+
+/* StartCombinedEgress writes the recording file and feeds the attendee mix from
+ * a single compositor.
+ *
+ * Two room composites do not fit on one box. Each one is a headless Chrome
+ * painting the stage plus an x264 encode: measured here, the recording job
+ * peaks at 3.0-3.2 of 4 cores on its own and the broadcast job at 2.3. LiveKit
+ * will not even admit the second — a room composite is only accepted when the
+ * node has 3.0 idle cores — so pressing Record during a broadcast used to fail
+ * before it started, and the host was told only that the recording failed.
+ *
+ * One egress with both outputs encodes once and muxes twice, which costs barely
+ * more than the broadcast alone. The price is that the file inherits the
+ * broadcast's encoding: 720p Baseline rather than 1080p Main, because the RTMP
+ * side has to stay playable over WebRTC and one encoder cannot do both. A 720p
+ * recording that exists beats a 1080p one that was refused. */
+func (c *Client) StartCombinedEgress(
+	ctx context.Context,
+	roomName string,
+	templateURL string,
+	preset livekit.EncodingOptionsPreset,
+	rtmpURL string,
+	storageKey string,
+	s3Opts EgressS3Options,
+) (*livekit.EgressInfo, error) {
+	if c.egress == nil {
+		return nil, errors.New("egress is not configured on this client")
+	}
+
+	req, err := combinedEgressRequest(roomName, templateURL, preset, rtmpURL, storageKey, s3Opts)
+	if err != nil {
+		return nil, err
+	}
+	return c.egress.StartRoomCompositeEgress(ctx, req)
+}
+
+/* combinedEgressRequest builds that request. Separate and tested for the same
+ * reason broadcastEncodingOptions is: an egress with one output missing, or
+ * with the recording's encoding on the stream, starts and runs happily. The
+ * first anyone would know is an audience on a spinner or a file nobody has. */
+func combinedEgressRequest(
+	roomName string,
+	templateURL string,
+	preset livekit.EncodingOptionsPreset,
+	rtmpURL string,
+	storageKey string,
+	s3Opts EgressS3Options,
+) (*livekit.RoomCompositeEgressRequest, error) {
+	u := strings.TrimSpace(rtmpURL)
+	if u == "" {
+		return nil, errors.New("combined egress needs an RTMP URL: use StartRoomCompositeEgress to record only")
+	}
+
+	req := &livekit.RoomCompositeEgressRequest{
+		RoomName: roomName,
+		StreamOutputs: []*livekit.StreamOutput{
+			{
+				Protocol: livekit.StreamProtocol_RTMP,
+				Urls:     []string{u},
+			},
+		},
+		FileOutputs: []*livekit.EncodedFileOutput{fileOutput(storageKey, s3Opts)},
+	}
+
+	if templateURL != "" {
+		req.CustomBaseUrl = templateURL
+		req.Layout = "custom"
+	} else {
+		req.Layout = "speaker"
+	}
+
+	// The broadcast's options, not the recording's: the constraints below are
+	// what keep the RTMP side playable as WHEP, and they are not negotiable the
+	// way the file's resolution is.
+	req.Options = &livekit.RoomCompositeEgressRequest_Advanced{
+		Advanced: broadcastEncodingOptions(preset),
+	}
+
+	return req, nil
 }
 
 /* broadcastEncodingOptions is the preset with the three fields WHEP cares about

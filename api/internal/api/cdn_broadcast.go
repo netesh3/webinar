@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/livekit/protocol/livekit"
 	"github.com/netkumar/webcast/api/internal/lk"
@@ -13,6 +14,14 @@ var (
 	broadcastMu      sync.Mutex
 	activeBroadcasts = make(map[string]string) // slug -> egressID or "starting"
 )
+
+/* How long to wait before putting the mix back after a combined egress stops.
+ *
+ * LiveKit only admits a room composite when the node has three idle cores, and
+ * a compositor that has just been told to stop is still holding them while it
+ * finalises. Asking immediately is how the replacement gets refused. A var so
+ * tests do not sleep. */
+var broadcastRestartDelay = 3 * time.Second
 
 /* startBroadcastIfEnabled starts the one-way attendee feed: Egress composites
  * the room and pushes RTMP to MediaMTX, which serves WHEP.
@@ -89,21 +98,130 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
  * room that already has one, on the box whose NIC is the reason this path
  * exists. */
 func (s *Server) broadcastEgressRunning(ctx context.Context, slug string, sfu RoomManager) bool {
+	ids, err := s.broadcastEgressIDs(ctx, slug, sfu)
+	if err != nil {
+		return true
+	}
+	return len(ids) > 0
+}
+
+// broadcastEgressIDs is the same question as broadcastEgressRunning, answered
+// with the ids: taking the mix over for a recording has to stop the encoder
+// LiveKit actually has, which after a redeploy of this process is not
+// necessarily the one activeBroadcasts remembers.
+func (s *Server) broadcastEgressIDs(ctx context.Context, slug string, sfu RoomManager) ([]string, error) {
 	infos, err := sfu.ListEgress(ctx, lk.RoomName(slug))
 	if err != nil {
 		s.log.Warn("cdn broadcast: could not list egress", "slug", slug, "error", err)
-		return true
+		return nil, err
 	}
+	var ids []string
 	for _, info := range infos {
 		if len(info.GetStreamResults()) == 0 {
 			continue
 		}
 		switch info.GetStatus() {
 		case livekit.EgressStatus_EGRESS_STARTING, livekit.EgressStatus_EGRESS_ACTIVE:
-			return true
+			ids = append(ids, info.GetEgressId())
 		}
 	}
-	return false
+	return ids, nil
+}
+
+/* startEgressRecording begins a server-side recording, folding it into the
+ * attendee mix when there is one.
+ *
+ * The box cannot run two room composites — see StartCombinedEgress for the
+ * measurements — so when a broadcast is already encoding this room, the
+ * recording replaces it with one egress carrying both outputs rather than
+ * asking LiveKit for a second compositor it will refuse.
+ *
+ * Reports whether the returned egress is also carrying the mix, because that is
+ * what stopping it later has to know: an egress that was only ever a recording
+ * is finished when it stops, and one that took the broadcast's place leaves the
+ * room without a mix until it is put back. */
+func (s *Server) startEgressRecording(
+	ctx context.Context,
+	wb types.Webinar,
+	sfu RoomManager,
+	storageKey string,
+	s3Opts lk.EgressS3Options,
+) (info *livekit.EgressInfo, carriesMix bool, err error) {
+	rtmpURL := s.cfg.BroadcastRTMPURL(wb.ID)
+
+	running, listErr := s.broadcastEgressIDs(ctx, wb.ID, sfu)
+	if rtmpURL == "" || listErr != nil || len(running) == 0 {
+		// Nothing to fold into, so the recording gets the whole box and the
+		// quality that goes with it.
+		preset := livekit.EncodingOptionsPreset_H264_1080P_30
+		if s.cfg.RecordingsEgressPreset == "720p" {
+			preset = livekit.EncodingOptionsPreset_H264_720P_30
+		}
+		info, err = sfu.StartRoomCompositeEgress(ctx, lk.RoomName(wb.ID), storageKey, s3Opts,
+			s.cfg.RecordingsEgressTemplateURL, preset)
+		return info, false, err
+	}
+
+	/* Claim the slot before stopping anything. The sweeper restarts a mix it
+	 * finds missing, and between the stop below and the start after it there is
+	 * a window where that is exactly what this room looks like. */
+	broadcastMu.Lock()
+	activeBroadcasts[wb.ID] = "starting"
+	broadcastMu.Unlock()
+
+	for _, id := range running {
+		if _, stopErr := sfu.StopEgress(ctx, id); stopErr != nil {
+			s.log.Warn("recording: could not stop the mix it is taking over",
+				"slug", wb.ID, "egress", id, "error", stopErr)
+		}
+	}
+
+	info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL,
+		livekit.EncodingOptionsPreset_H264_720P_30, rtmpURL, storageKey, s3Opts)
+	if err != nil {
+		// The room now has no mix and no recording. Releasing the slot is what
+		// lets the sweeper notice and put the mix back.
+		broadcastMu.Lock()
+		delete(activeBroadcasts, wb.ID)
+		broadcastMu.Unlock()
+		return nil, false, err
+	}
+
+	broadcastMu.Lock()
+	activeBroadcasts[wb.ID] = info.EgressId
+	broadcastMu.Unlock()
+
+	s.log.Info("recording folded into the attendee mix",
+		"slug", wb.ID, "egress", info.EgressId, "replaced", running)
+	return info, true, nil
+}
+
+/* restoreBroadcastAfterRecording puts the attendee mix back once a combined
+ * egress has been stopped.
+ *
+ * Only when the egress that stopped is the one holding the slot: a recording
+ * that was never folded into the mix has nothing to restore, and a mix that has
+ * already been replaced by someone else is not this call's to touch. */
+func (s *Server) restoreBroadcastAfterRecording(ctx context.Context, wb types.Webinar, sfu RoomManager, egressID string) {
+	if sfu == nil || egressID == "" {
+		return
+	}
+
+	broadcastMu.Lock()
+	if activeBroadcasts[wb.ID] != egressID {
+		broadcastMu.Unlock()
+		return
+	}
+	delete(activeBroadcasts, wb.ID)
+	broadcastMu.Unlock()
+
+	if wb.Status != types.StatusLive {
+		// Ending the webinar stops the mix on purpose; do not start another.
+		return
+	}
+
+	s.log.Info("restoring the attendee mix after recording", "slug", wb.ID, "egress", egressID)
+	s.startBroadcastIfEnabled(ctx, wb, sfu)
 }
 
 /* sweepBroadcasts restarts the mix for a live webinar that has lost it.

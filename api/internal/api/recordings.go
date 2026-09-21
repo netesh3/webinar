@@ -147,10 +147,6 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, "start egress: sfu lookup", sfuErr)
 			return
 		}
-		preset := livekit.EncodingOptionsPreset_H264_1080P_30
-		if s.cfg.RecordingsEgressPreset == "720p" {
-			preset = livekit.EncodingOptionsPreset_H264_720P_30
-		}
 		s3Opts := lk.EgressS3Options{
 			Endpoint:  s.cfg.RecordingsS3Endpoint,
 			Bucket:    s.cfg.RecordingsS3Bucket,
@@ -158,8 +154,9 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 			AccessKey: s.cfg.RecordingsS3AccessKey,
 			SecretKey: s.cfg.RecordingsS3SecretKey,
 		}
-		roomName := lk.RoomName(slug)
-		info, err := sfu.StartRoomCompositeEgress(r.Context(), roomName, key, s3Opts, s.cfg.RecordingsEgressTemplateURL, preset)
+		// Folds into the attendee mix if this room already has one — the box has
+		// room for one compositor, not two. See startEgressRecording.
+		info, _, err := s.startEgressRecording(r.Context(), wb, sfu, key, s3Opts)
 		if err != nil {
 			_, _ = s.store.FinishRecording(r.Context(), id, 0)
 			s.fail(w, r, "start egress", err)
@@ -289,6 +286,16 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 					s.log.Warn("stop egress: request failed", "egress", rec.EgressID, "error", err)
 				}
 				s.pushRoomMetadata(r, sfu, wb)
+
+				/* If that egress was also feeding the attendees, they have
+				 * nothing to watch until a stream-only one replaces it. Not
+				 * inline: the cores the stopped compositor is holding have to
+				 * come back before LiveKit will admit another. */
+				stopped := rec.EgressID
+				go func() {
+					time.Sleep(broadcastRestartDelay)
+					s.restoreBroadcastAfterRecording(context.Background(), wb, sfu, stopped)
+				}()
 			}
 		}
 		s.log.Info("egress recording stopping", "slug", slug, "recording", id, "egress", rec.EgressID)
