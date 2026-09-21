@@ -834,9 +834,9 @@ export interface CdnBroadcastGrant {
  *  AdminUser is one row of the admin panel.
  *  *
  *  * Carries what an admin needs to decide whether this person should be able to run webinars —
- *  * who they are, when they joined, whether they asked — and nothing more. No password hash, no
- *  * session data, and no registration history: the panel's job is granting a capability, not
- *  * profiling users.
+ *  * who they are, how to reach them about it, when they joined — and nothing more. No password
+ *  * hash, no session data, and no registration history: the panel's job is granting a capability,
+ *  * not profiling users.
  */
 export interface AdminUser {
   id: string;
@@ -844,6 +844,12 @@ export interface AdminUser {
   name: string;
   title?: string;
   org?: string;
+  /**
+   * Phone is E.164 shape, same as Account.Phone — the number given at signup, so an
+   * admin can reach the account holder about hosting without going to the database.
+   * Admin-only: it is still absent from Person, which is what other attendees see.
+   */
+  phone?: string;
   initials: string;
   hue: string;
   canHost: boolean;
