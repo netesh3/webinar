@@ -2,11 +2,14 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/netkumar/webcast/api/internal/config"
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -176,5 +179,75 @@ func TestYouTubeConnectWithoutSecret(t *testing.T) {
 	res, _ := h.do(http.MethodGet, "/api/host/youtube/connect", nil)
 	if res.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("connect unset: status %d, want 503", res.StatusCode)
+	}
+}
+
+/* Ending a webinar must end the broadcast, and must do it in that order.
+ *
+ * The push has to be down before YouTube is asked to finish: a broadcast whose
+ * encoder is still connected refuses to complete, and that refusal is silent
+ * here because finishing is best-effort. Getting the order backwards left the
+ * broadcast live in Studio after the webinar was over, and left it holding the
+ * channel's one reusable stream, which then blocked the next session from going
+ * live at all.
+ *
+ * So the fake reads the webinar back as the transition arrives, and the test
+ * asserts on what it saw rather than merely that YouTube was called. The broken
+ * ordering called YouTube too, just too early, and every weaker assertion
+ * passes on it.
+ */
+func TestEndingAWebinarEndsTheBroadcastAfterTheStreamIsDown(t *testing.T) {
+	ctx := context.Background()
+
+	var (
+		slug      string
+		completed []string
+		pushUp    bool
+		st        *store.Store
+	)
+	yt := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/liveBroadcasts/transition") {
+			_, on, _ := st.WebinarStreamIngest(ctx, slug)
+			pushUp = on
+			completed = append(completed, r.URL.Query().Get("id"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "a", "refresh_token": "r", "items": []any{},
+		})
+	}))
+	t.Cleanup(yt.Close)
+
+	h := newHarness(t, func(c *config.Config) {
+		c.GoogleClientID = "cid"
+		c.GoogleClientSecret = "secret"
+		c.YouTubeAPIURL = yt.URL + "/youtube/v3"
+		c.YouTubeTokenURL = yt.URL + "/token"
+	})
+	st = h.store
+
+	host := h.signup("Streamer", "yt-end@test.dev", true)
+	wb := h.newWebinar("Ends on its own", nil)
+	slug = wb.ID
+
+	if err := st.SetUserYouTube(ctx, host.ID, "refresh-1", "UCc", "Chan", "stream-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetWebinarStream(ctx, slug,
+		"rtmps://a.rtmps.youtube.com/live2/key", "https://youtu.be/vid", "bcast-1"); err != nil {
+		t.Fatal(err)
+	}
+	h.goLive(slug)
+
+	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+slug+"/end", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("end: status %d body %s", res.StatusCode, raw)
+	}
+
+	if len(completed) != 1 || completed[0] != "bcast-1" {
+		t.Fatalf("completed = %v, want the webinar's broadcast ended exactly once", completed)
+	}
+	if pushUp {
+		t.Error("YouTube was asked to end the broadcast while the push was still up")
 	}
 }

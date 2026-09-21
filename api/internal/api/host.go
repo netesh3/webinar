@@ -711,7 +711,9 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	if sfu, err := s.sfuFor(ctx, wb); err == nil {
 		s.stopBroadcastIfActive(ctx, slug, sfu)
 	}
-	s.completeYouTubeBroadcast(ctx, slug, wb.Host.ID)
+	/* The broadcast being ended, read before StopWebinarStream forgets which one
+	 * it was. It is ended further down, once the push is actually down. */
+	ending, _ := s.store.WebinarYouTubeBroadcast(ctx, slug)
 	// The push is over with the room. The destination stays on file so the
 	// next session can reuse it, and the watch link stays for Recordings.
 	if err := s.store.StopWebinarStream(ctx, slug, false); err != nil {
@@ -727,6 +729,16 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 		// after empty_timeout, so this is a warning rather than a failure.
 		s.log.Warn("end webinar: could not delete room", "slug", slug, "error", err)
 	}
+
+	/* Only now, with the room gone and the compositor along with it.
+	 *
+	 * Asking YouTube to end a broadcast whose encoder is still connected is
+	 * refused, and this ran before the push was stopped — so a webinar that
+	 * ended on the meeting limit, on an empty room, or on the host pressing End
+	 * left its broadcast live in Studio afterwards. It also left the broadcast
+	 * holding the channel's reusable stream, which is what then blocked the
+	 * next session from going live at all. */
+	s.finishYouTubeBroadcast(ctx, ending, wb.Host.ID)
 	// Promotions are scoped to one session.
 	if err := s.store.ClearStageGrants(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not clear stage grants", "slug", slug, "error", err)

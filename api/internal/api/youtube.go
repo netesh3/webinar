@@ -227,14 +227,6 @@ func (s *Server) applyYouTubeLive(ctx context.Context, wb types.Webinar, privacy
 	return live.IngestURL, live.WatchURL, nil
 }
 
-func (s *Server) completeYouTubeBroadcast(ctx context.Context, slug string, hostID string) {
-	id, err := s.store.WebinarYouTubeBroadcast(ctx, slug)
-	if err != nil || id == "" {
-		return
-	}
-	s.finishYouTubeBroadcast(ctx, id, hostID)
-}
-
 /* finishYouTubeBroadcast ends a broadcast by id rather than by looking one up.
  *
  * Stopping a stream clears youtube_broadcast_id, and the broadcast has to be
