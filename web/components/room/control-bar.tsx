@@ -837,8 +837,10 @@ export function ControlBar() {
               // A deliberate, rarer choice than Share itself (which now hands
               // straight off to the browser's own picker) — always tucked away
               // here rather than sat on the bar next to it, whether or not Share
-              // itself is on the bar. Hidden outright where the browser cannot
-              // capture a video file at all, same gate the picker's own tab used.
+              // itself is on the bar. This is the only door into SharePicker, and
+              // the gate matters because of it: where the browser cannot capture a
+              // video element there is nothing behind the dialog, so the entry is
+              // hidden rather than opening onto an explanation.
               shareFileAction={
                 !previewChrome && permissions.canShareScreen && canShareFile()
                   ? {
