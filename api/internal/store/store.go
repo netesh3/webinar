@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -50,11 +52,26 @@ func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
-	// Sized for a single API node in front of a 500-attendee webinar. The join
-	// burst at the top of the hour is the peak: ~500 requests over a minute or
-	// two, each a single indexed lookup.
-	cfg.MaxConns = 20
-	cfg.MinConns = 2
+	/* Sized to the database's ceiling, not to one node's appetite.
+	 *
+	 * This used to ask for 20, reasoning about a single API node in front of a
+	 * 500-attendee join burst. But the connections are not this node's to spend:
+	 * production runs on Supabase's session-mode pooler, which caps the whole
+	 * project at 15 clients, and every pooled connection is one of those 15. One
+	 * node at 20 could hold the entire allowance, so when Cloud Run started a
+	 * second instance — a deploy rolling over, or a scale-up under load — the new
+	 * one's very first ping came back "max clients reached" and the container
+	 * exited on boot. That is what made deploys fail and, with a warm instance
+	 * always holding connections, what min-instances exposed.
+	 *
+	 * The default now fits max-instances (3) inside the 15: 4 each leaves room
+	 * for a fourth instance's boot ping during a rollover. Each query is a single
+	 * indexed lookup measured in milliseconds, so four in flight per node clears
+	 * the burst without trouble. DB_MAX_CONNS / DB_MIN_CONNS override it for a
+	 * database with a different ceiling — a dedicated Postgres, or Supabase's
+	 * transaction pooler, where the old 20 would be fine again. */
+	cfg.MaxConns = int32(envInt("DB_MAX_CONNS", 4))
+	cfg.MinConns = int32(envInt("DB_MIN_CONNS", 1))
 	cfg.MaxConnLifetime = time.Hour
 	cfg.MaxConnIdleTime = 10 * time.Minute
 	cfg.HealthCheckPeriod = 30 * time.Second
@@ -71,6 +88,16 @@ func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
 		return nil, fmt.Errorf("ping: %w", err)
 	}
 	return &Store{pool: pool, log: log}, nil
+}
+
+// envInt reads a positive integer from the environment, falling back to def
+// when the variable is unset, empty, unparseable, or not positive. Pool sizes
+// are the only knobs here and a zero or negative one is never what was meant.
+func envInt(key string, def int) int {
+	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v > 0 {
+		return v
+	}
+	return def
 }
 
 func (s *Store) Close() { s.pool.Close() }
