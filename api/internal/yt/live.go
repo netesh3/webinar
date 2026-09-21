@@ -81,6 +81,24 @@ func (c *Client) StartLive(ctx context.Context, refresh, title, privacy, streamI
 				"enableAutoStart": true,
 				"enableAutoStop":  true,
 				"enableDvr":       true,
+				/* Off, and this is the difference between a live that works and
+				 * one that silently does not.
+				 *
+				 * monitorStream defaults to ON. With it on, a broadcast whose
+				 * encoder connects goes to "testing", not "live": the frames
+				 * arrive, YouTube is happy, Studio's control room previews them
+				 * — and the public watch page stays empty until somebody presses
+				 * "Go live" there by hand. enableAutoStart does not override it.
+				 * Nothing in the ingest logs looks wrong, because nothing about
+				 * the ingest is wrong.
+				 *
+				 * With no monitor stream there is no testing state to sit in, so
+				 * enableAutoStart means what it says and the broadcast goes live
+				 * on the first frames. We have no use for a review step nobody
+				 * is watching for. */
+				"monitorStream": map[string]any{
+					"enableMonitorStream": false,
+				},
 			},
 		}, &created)
 	if err != nil {

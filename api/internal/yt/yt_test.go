@@ -65,6 +65,18 @@ func TestExchangeAndStartLive(t *testing.T) {
 			if status["privacyStatus"] != "unlisted" {
 				t.Errorf("privacy = %v, want unlisted", status["privacyStatus"])
 			}
+			/* A broadcast with a monitor stream stops at "testing" when the
+			 * encoder connects and never reaches the watch page on its own, so
+			 * asking for one here would ship a live that looks perfect from the
+			 * ingest side and plays nothing. */
+			details, _ := body["contentDetails"].(map[string]any)
+			if details["enableAutoStart"] != true {
+				t.Errorf("enableAutoStart = %v, want true", details["enableAutoStart"])
+			}
+			monitor, _ := details["monitorStream"].(map[string]any)
+			if monitor["enableMonitorStream"] != false {
+				t.Errorf("enableMonitorStream = %v, want false", monitor["enableMonitorStream"])
+			}
 			writeJSON(w, map[string]string{"id": "dQw4w9WgXcQ"})
 		case strings.HasSuffix(r.URL.Path, "/liveBroadcasts/bind"):
 			writeJSON(w, map[string]string{"id": r.URL.Query().Get("id")})
