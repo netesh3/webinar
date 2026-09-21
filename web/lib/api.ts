@@ -11,6 +11,7 @@ import type {
   ChatMessage as ChatTranscriptMessage,
   CoHostPatch,
   ControlsPatch,
+  HostWebinarPage,
   JoinResponse,
   LiveRoom,
   MuteAllResponse,
@@ -154,6 +155,15 @@ const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 /** Reads are never cached: a stale registrant count or a stale "live" badge is
  *  worse than a round trip. */
 const fresh = { cache: "no-store" } as const;
+
+/* Which bucket of the host's own list to read — the three tabs the host portal
+ * shows, and the `tab` parameter the API takes, which are deliberately the same
+ * three words so a tab click needs no translation.
+ *
+ * Spelled out here rather than taken from api-types.ts because tygo renders a
+ * Go string type as `string`, which would accept "upcomming" silently. Same
+ * reason adminWebinars inlines its own status union. */
+export type HostWebinarTab = "upcoming" | "past" | "drafts";
 
 // ------------------------------------------------------------------- public
 
@@ -312,7 +322,34 @@ export const api = {
 
   // ------------------------------------------------------------------ host
 
-  hostWebinars: () => request<Webinar[]>("/api/host/webinars", fresh),
+  /** One page of the host's own sessions, with every tab's count alongside —
+   *  the list is paged server-side, so the badges can't be counted here.
+   *  `tab` defaults to upcoming, `q` matches the topic, `from`/`to` are plain
+   *  YYYY-MM-DD dates inclusive on both ends, and `cursor` is the previous
+   *  page's `nextCursor` (opaque: pass it back, don't read it). */
+  hostWebinars: (
+    params: {
+      tab?: HostWebinarTab;
+      q?: string;
+      from?: string;
+      to?: string;
+      limit?: number;
+      cursor?: string;
+    } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.tab) qs.set("tab", params.tab);
+    if (params.q) qs.set("q", params.q);
+    if (params.from) qs.set("from", params.from);
+    if (params.to) qs.set("to", params.to);
+    if (params.limit) qs.set("limit", String(params.limit));
+    if (params.cursor) qs.set("cursor", params.cursor);
+    const s = qs.toString();
+    return request<HostWebinarPage>(
+      `/api/host/webinars${s ? `?${s}` : ""}`,
+      fresh,
+    );
+  },
   hostRecordingLibrary: () => request<Recording[]>("/api/host/recordings", fresh),
 
   /** Sessions this account is a panelist on but does not own. */

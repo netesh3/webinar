@@ -441,6 +441,7 @@ export function Tabs<T extends string>({
   onChange,
   counts,
   labels,
+  bare = false,
 }: {
   tabs: readonly T[];
   value: T;
@@ -449,13 +450,21 @@ export function Tabs<T extends string>({
   /** Display text per tab, for when the tab id is not what a person should read
    *  — "qa" is an identifier, "Q&A" is a label. */
   labels?: Partial<Record<T, string>>;
+  /** Drop the bottom rule because the caller draws its own — for a row that
+   *  puts filters beside the tabs and wants one line under both, rather than a
+   *  rule under the tabs and a second one under the toolbar. The active tab's
+   *  underline still sits on the caller's border, so align this row's bottom
+   *  edge with it (`items-end`). */
+  bare?: boolean;
 }) {
   return (
     // Horizontally scrollable rather than wrapping: seven tabs on a phone should
     // stay one row you can swipe, not three rows that push the content down.
     <div
       role="tablist"
-      className="-mx-1 flex items-center gap-1 overflow-x-auto border-b border-line px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className={`-mx-1 flex items-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+        bare ? "" : "border-b border-line"
+      }`}
     >
       {tabs.map((tab) => {
         const active = tab === value;
@@ -480,8 +489,17 @@ export function Tabs<T extends string>({
                 {count}
               </span>
             )}
+            {/* Inside the padding box when the rule belongs to the caller.
+                This row scrolls horizontally, and overflow clips at the padding
+                edge — so the -1px that reaches into this row's own border is
+                painted when there is a border to reach into, and swallowed
+                when there isn't. */}
             {active && (
-              <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-t bg-brand" />
+              <span
+                className={`absolute inset-x-2 h-0.5 rounded-t bg-brand ${
+                  bare ? "bottom-0" : "-bottom-px"
+                }`}
+              />
             )}
           </button>
         );
