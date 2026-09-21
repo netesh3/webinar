@@ -620,9 +620,13 @@ type Webinar struct {
 	 * live is not public just because someone opened the registration page.
 	 * The recordings tab is where it is meant to be found, after the session. */
 	StreamWatchURL string `json:"streamWatchUrl,omitempty"`
-	// StreamConfigured is true when an ingest destination is stored, so the
-	// form can say "already set" without echoing the key.
+	// StreamConfigured is true while the mix is being pushed to that
+	// destination — what the control-bar button lights up on.
 	StreamConfigured bool `json:"streamConfigured,omitempty"`
+	// StreamKeySaved is true when a destination is stored, whether or not it
+	// is currently pushing, so the form can say "already set" without echoing
+	// the key and the host can go live again without re-pasting it.
+	StreamKeySaved bool `json:"streamKeySaved,omitempty"`
 
 	/* SFUProject is which LiveKit project this webinar's room lives on, once chosen.
 	 *

@@ -618,10 +618,16 @@ export interface Webinar {
    */
   streamWatchUrl?: string;
   /**
-   * StreamConfigured is true when an ingest destination is stored, so the
-   * form can say "already set" without echoing the key.
+   * StreamConfigured is true while the mix is being pushed to that
+   * destination — what the control-bar button lights up on.
    */
   streamConfigured?: boolean;
+  /**
+   * StreamKeySaved is true when a destination is stored, whether or not it
+   * is currently pushing, so the form can say "already set" without echoing
+   * the key and the host can go live again without re-pasting it.
+   */
+  streamKeySaved?: boolean;
   /**
    *  SFUProject is which LiveKit project this webinar's room lives on, once chosen.
    * 	 *

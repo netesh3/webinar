@@ -221,7 +221,7 @@ func (s *Server) applyYouTubeLive(ctx context.Context, wb types.Webinar, privacy
 		_ = s.store.SetUserYouTubeStreamID(ctx, host.ID, live.StreamID)
 	}
 
-	if err := s.store.SetWebinarStream(ctx, wb.ID, live.IngestURL, live.WatchURL, live.BroadcastID, false); err != nil {
+	if err := s.store.SetWebinarStream(ctx, wb.ID, live.IngestURL, live.WatchURL, live.BroadcastID); err != nil {
 		return "", "", err
 	}
 	return live.IngestURL, live.WatchURL, nil

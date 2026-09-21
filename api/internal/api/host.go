@@ -534,8 +534,11 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 
 	if wb.Kind != types.KindSimulive {
 		if wb.Options.Multistream && s.youtube != nil {
-			ingest, err := s.store.WebinarStreamIngest(r.Context(), slug)
-			if err == nil && ingest == "" {
+			// Not already pushing somewhere — a key the host pasted for this
+			// session is theirs to keep, but a destination left over from a
+			// previous, finished session points at a broadcast that is over.
+			_, on, err := s.store.WebinarStreamIngest(r.Context(), slug)
+			if err == nil && !on {
 				if _, _, err := s.applyYouTubeLive(r.Context(), wb, yt.PrivacyUnlisted); err != nil {
 					s.log.Warn("youtube auto live on start", "slug", slug, "error", err)
 				}
@@ -709,6 +712,11 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 		s.stopBroadcastIfActive(ctx, slug, sfu)
 	}
 	s.completeYouTubeBroadcast(ctx, slug, wb.Host.ID)
+	// The push is over with the room. The destination stays on file so the
+	// next session can reuse it, and the watch link stays for Recordings.
+	if err := s.store.StopWebinarStream(ctx, slug, false); err != nil {
+		s.log.Warn("end webinar: could not stop the stream destination", "slug", slug, "error", err)
+	}
 
 	if sfu, err := s.sfuFor(ctx, wb); err != nil {
 		s.log.Warn("end webinar: could not resolve the livekit project",

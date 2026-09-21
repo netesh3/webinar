@@ -31,13 +31,17 @@ func TestSetStreamStoresWatchURLAndHidesTheKey(t *testing.T) {
 		t.Errorf("watch = %q", got.StreamWatchURL)
 	}
 
-	ingest, err := h.store.WebinarStreamIngest(context.Background(), wb.ID)
+	ingest, on, err := h.store.WebinarStreamIngest(context.Background(), wb.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ingest == "" || ingest == got.StreamWatchURL {
 		t.Errorf("ingest = %q, want the RTMP URL with the key, never the watch link", ingest)
 	}
+	if !on {
+		t.Error("want the stream pushing after a key is saved")
+	}
+	saved := ingest
 
 	res, raw = h.do(http.MethodGet, "/api/webinars/"+wb.ID, nil)
 	if res.StatusCode != http.StatusOK {
@@ -63,6 +67,30 @@ func TestSetStreamStoresWatchURLAndHidesTheKey(t *testing.T) {
 	if got.StreamWatchURL != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" {
 		t.Errorf("after off: watch = %q, want the recordings-tab link kept", got.StreamWatchURL)
 	}
+	if !got.StreamKeySaved {
+		t.Error("after off: want the key still on file so Go live does not ask for it again")
+	}
+
+	/* Go live again with no key pasted. Stopping and starting is the ordinary
+	 * thing to do in a session, and making the host fetch the key out of
+	 * YouTube Studio a second time is not an acceptable answer to it. */
+	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/stream", types.SetStreamRequest{
+		WatchURL: "https://youtu.be/dQw4w9WgXcQ",
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("restart stream: status %d body %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &got)
+	if !got.StreamConfigured {
+		t.Error("restart: want streamConfigured again without a pasted key")
+	}
+	again, on, err := h.store.WebinarStreamIngest(context.Background(), wb.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again != saved || !on {
+		t.Errorf("restart: ingest = %q on = %v, want the saved key pushing again", again, on)
+	}
 
 	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/stream", types.SetStreamRequest{
 		Off:       true,
@@ -74,6 +102,11 @@ func TestSetStreamStoresWatchURLAndHidesTheKey(t *testing.T) {
 	h.decode(raw, &got)
 	if got.StreamWatchURL != "" {
 		t.Errorf("after dropWatch: watch = %q", got.StreamWatchURL)
+	}
+	// Turning the option off on the schedule form means no YouTube on this
+	// webinar at all, so the key goes with it.
+	if got.StreamKeySaved {
+		t.Error("after dropWatch: want the key forgotten too")
 	}
 }
 

@@ -50,6 +50,9 @@ export function StreamButton() {
   if (!isHost) return null;
 
   const configured = Boolean(wb?.streamConfigured);
+  // A key from an earlier take in this session is still on file, so going live
+  // again does not need one — the placeholder should not imply otherwise.
+  const keySaved = Boolean(wb?.streamKeySaved);
 
   async function savePasted() {
     setBusy(true);
@@ -199,7 +202,7 @@ export function StreamButton() {
                   autoComplete="off"
                   value={key}
                   onChange={(e) => setKey(e.target.value)}
-                  placeholder={configured ? "Already saved — paste a new key to replace" : "xxxx-xxxx-xxxx-xxxx"}
+                  placeholder={keySaved ? "Already saved — paste a new key to replace" : "xxxx-xxxx-xxxx-xxxx"}
                   className="h-10 rounded-lg border border-line bg-surface px-3 font-mono text-[13px] outline-none focus:ring-2 focus:ring-brand/40"
                 />
               </label>

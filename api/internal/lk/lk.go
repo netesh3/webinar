@@ -1144,6 +1144,17 @@ func (c *Client) StartRoomCompositeEgress(
 	req := &livekit.RoomCompositeEgressRequest{
 		RoomName:    roomName,
 		FileOutputs: []*livekit.EncodedFileOutput{fileOutput(storageKey, s3Opts)},
+		/* An RTMP output with no URLs yet, so a destination can be attached
+		 * later without touching this compositor.
+		 *
+		 * UpdateStream only accepts URLs on an egress that was started with a
+		 * stream output. Without this placeholder, a host who presses Record
+		 * and then goes live on YouTube needs a second room composite, which
+		 * the box will not admit — see StartCombinedEgress — so the RTMP push
+		 * never starts and YouTube sits on "waiting to start" forever. */
+		StreamOutputs: []*livekit.StreamOutput{
+			{Protocol: livekit.StreamProtocol_RTMP},
+		},
 	}
 
 	if templateURL != "" {

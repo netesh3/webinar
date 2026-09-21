@@ -153,7 +153,10 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
       options: {
         ...webinar.options,
         emailReminders: webinar.options.emailReminders !== false,
-        multistream: webinar.options.multistream || Boolean(webinar.streamConfigured),
+        multistream:
+          webinar.options.multistream ||
+          Boolean(webinar.streamConfigured) ||
+          Boolean(webinar.streamKeySaved),
       },
       controls: webinar.controls,
       simuliveRecordingId: webinar.simuliveRecordingId ?? "",
@@ -354,7 +357,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
           }
           // Connected YouTube with no pasted key: the live is created when
           // the webinar starts, so we do not mint a Studio event on every save.
-        } else if (saved.streamConfigured || saved.streamWatchUrl) {
+        } else if (saved.streamConfigured || saved.streamKeySaved || saved.streamWatchUrl) {
           saved = await api.setWebinarStream(saved.id, {
             off: true,
             dropWatch: true,
@@ -816,7 +819,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                       value={form.streamKey}
                       onChange={(e) => set("streamKey", e.target.value)}
                       placeholder={
-                        webinar?.streamConfigured
+                        webinar?.streamKeySaved
                           ? "Already saved — paste a new key to replace"
                           : "From YouTube Studio → Go live"
                       }

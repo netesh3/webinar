@@ -124,6 +124,30 @@ func (s *Server) broadcastEgressIDs(ctx context.Context, slug string, sfu RoomMa
 	return ids, nil
 }
 
+/* mixEgressIDs is every compositor running on this room, whether or not it is
+ * pushing RTMP yet.
+ *
+ * Wider than broadcastEgressIDs on purpose. A recording is started with an
+ * empty RTMP output precisely so a destination can be attached to it later, and
+ * until that happens it has no stream results — so the question "is anything
+ * broadcasting" and the question "is there a compositor I can hand a URL to"
+ * have different answers, and adding a YouTube destination needs the second. */
+func (s *Server) mixEgressIDs(ctx context.Context, slug string, sfu RoomManager) []string {
+	infos, err := sfu.ListEgress(ctx, lk.RoomName(slug))
+	if err != nil {
+		s.log.Warn("stream dest: could not list egress", "slug", slug, "error", err)
+		return nil
+	}
+	var ids []string
+	for _, info := range infos {
+		switch info.GetStatus() {
+		case livekit.EgressStatus_EGRESS_STARTING, livekit.EgressStatus_EGRESS_ACTIVE:
+			ids = append(ids, info.GetEgressId())
+		}
+	}
+	return ids
+}
+
 /* startEgressRecording begins a server-side recording, folding it into the
  * attendee mix when there is one.
  *
@@ -147,6 +171,21 @@ func (s *Server) startEgressRecording(
 
 	running, listErr := s.broadcastEgressIDs(ctx, wb.ID, sfu)
 	if listErr != nil || len(running) == 0 {
+		/* No mix to fold into, but a destination is already on file — the host
+		 * set up YouTube before pressing Record. Carry it from the start rather
+		 * than leaving it for a second compositor that will be refused. */
+		if origin != "" || extra != "" {
+			info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL,
+				livekit.EncodingOptionsPreset_H264_720P_30, origin, storageKey, s3Opts, extraSlice(extra))
+			if err != nil {
+				return nil, false, err
+			}
+			broadcastMu.Lock()
+			activeBroadcasts[wb.ID] = info.EgressId
+			broadcastMu.Unlock()
+			return info, true, nil
+		}
+
 		// Nothing to fold into, so the recording gets the whole box and the
 		// quality that goes with it.
 		preset := livekit.EncodingOptionsPreset_H264_1080P_30
@@ -294,9 +333,13 @@ func (s *Server) mixDestinations(ctx context.Context, wb types.Webinar) (origin,
 	if can, err := s.store.HostCanCdnBroadcast(ctx, wb.Host.ID); err == nil && can {
 		origin = s.cfg.BroadcastRTMPURL(wb.ID)
 	}
-	extra, err := s.store.WebinarStreamIngest(ctx, wb.ID)
+	extra, on, err := s.store.WebinarStreamIngest(ctx, wb.ID)
 	if err != nil {
 		s.log.Warn("stream dest: could not load ingest", "slug", wb.ID, "error", err)
+		return origin, ""
+	}
+	// A saved-but-stopped destination is not one to push to.
+	if !on {
 		return origin, ""
 	}
 	return origin, extra
@@ -322,10 +365,11 @@ func (s *Server) syncStreamDest(ctx context.Context, wb types.Webinar, sfu RoomM
 		return
 	}
 
-	ids, err := s.broadcastEgressIDs(ctx, wb.ID, sfu)
-	if err != nil {
-		return
-	}
+	/* Every compositor on the room, not just the ones already streaming: when
+	 * the host pressed Record first, the only one running is the recording, and
+	 * that is the one that has to carry YouTube too. Starting a second is what
+	 * LiveKit refuses. */
+	ids := s.mixEgressIDs(ctx, wb.ID, sfu)
 	if len(ids) == 0 {
 		if newURL != "" {
 			s.startBroadcastIfEnabled(ctx, wb, sfu)

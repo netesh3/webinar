@@ -28,7 +28,7 @@ const webinarColumns = `
 	w.qa_enabled, w.raise_hand_enabled, w.reactions_enabled,
 	w.polls_enabled, w.captions_enabled, w.locked, w.sfu_project, w.image_key,
 	w.simulive_recording_id::text,
-	w.stream_watch, (w.stream_ingest <> ''),
+	w.stream_watch, w.stream_on, (w.stream_ingest <> ''),
 	h.id, h.name, h.title, h.org, h.initials, h.hue,
 	(SELECT count(*) FROM registrations r
 	  WHERE r.webinar_id = w.id AND r.state <> 'declined') AS registrant_count`
@@ -52,6 +52,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		simuliveID  *string
 		streamWatch string
 		streamOn    bool
+		streamSaved bool
 	)
 	err := row.Scan(
 		&w.ID, &w.WebinarID, &w.Topic, &w.Summary, &w.Descript, &w.Track,
@@ -64,7 +65,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.QAEnabled, &c.RaiseHandEnabled, &c.ReactionsEnabled,
 		&c.PollsEnabled, &c.CaptionsEnabled, &c.Locked, &w.SFUProject, &imageKey,
 		&simuliveID,
-		&streamWatch, &streamOn,
+		&streamWatch, &streamOn, &streamSaved,
 		&hostID, &w.Host.Name, &w.Host.Title, &w.Host.Org, &w.Host.Initials, &w.Host.Hue,
 		&w.RegistrantCount,
 	)
@@ -77,6 +78,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	}
 	w.StreamWatchURL = streamWatch
 	w.StreamConfigured = streamOn
+	w.StreamKeySaved = streamSaved
 	/* A path back to this API, not the image bytes — see ImageURL's doc comment.
 	 *
 	 * `v` is image_key, an opaque token that changes on every replace (see
@@ -1491,43 +1493,61 @@ func (s *Store) ExpiredLiveWebinars(ctx context.Context) ([]string, error) {
 	return slugs, rows.Err()
 }
 
-// WebinarStreamIngest is the RTMP(S) URL including the stream key. Empty means
-// this webinar has no extra destination. Not on the Webinar JSON type — the
-// key must not reach a browser.
-func (s *Store) WebinarStreamIngest(ctx context.Context, slug string) (string, error) {
-	var ingest string
-	err := s.pool.QueryRow(ctx, `
-		SELECT stream_ingest FROM webinars WHERE slug = $1 OR id::text = $1`, slug).Scan(&ingest)
+/* WebinarStreamIngest is the RTMP(S) URL including the stream key, and whether
+ * the encoder should currently be pushing to it. Not on the Webinar JSON type —
+ * the key must not reach a browser.
+ *
+ * The two are independent: a stopped stream keeps its ingest so the host can go
+ * live again without digging the key out of YouTube Studio a second time. Read
+ * `on` to decide what to push; read `ingest` to decide what is already saved. */
+func (s *Store) WebinarStreamIngest(ctx context.Context, slug string) (ingest string, on bool, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT stream_ingest, stream_on FROM webinars WHERE slug = $1 OR id::text = $1`,
+		slug).Scan(&ingest, &on)
 	if noRows(err) {
-		return "", ErrNotFound
+		return "", false, ErrNotFound
 	}
-	return ingest, err
+	return ingest, on, err
 }
 
-// SetWebinarStream stores the encoder destination and the watch URL the
-// recordings tab will show. An empty ingest stops the push but keeps the
-// watch URL unless dropWatch is set — Stop streaming should not hide the
-// YouTube link the recordings tab exists to offer.
-func (s *Store) SetWebinarStream(ctx context.Context, slug, ingest, watch, broadcastID string, dropWatch bool) error {
-	var tag interface{ RowsAffected() int64 }
-	var err error
-	if ingest == "" {
-		watchSQL := `stream_watch`
-		if dropWatch {
-			watchSQL = `''`
-		}
-		tag, err = s.pool.Exec(ctx, `
-			UPDATE webinars
-			   SET stream_ingest = '',
-			       youtube_broadcast_id = '',
-			       stream_watch = `+watchSQL+`
-			 WHERE slug = $1 OR id::text = $1`, slug)
-	} else {
-		tag, err = s.pool.Exec(ctx, `
-			UPDATE webinars
-			   SET stream_ingest = $2, stream_watch = $3, youtube_broadcast_id = $4
-			 WHERE slug = $1 OR id::text = $1`, slug, ingest, watch, broadcastID)
+// SetWebinarStream saves the encoder destination and the watch URL the
+// recordings tab will show, and starts pushing to it.
+func (s *Store) SetWebinarStream(ctx context.Context, slug, ingest, watch, broadcastID string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE webinars
+		   SET stream_ingest = $2, stream_watch = $3, youtube_broadcast_id = $4,
+		       stream_on = true
+		 WHERE slug = $1 OR id::text = $1`, slug, ingest, watch, broadcastID)
+	if err != nil {
+		return err
 	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+/* StopWebinarStream stops the RTMP push without forgetting where it pointed.
+ *
+ * The stream key stays so the host can go live again from the same dialog, and
+ * the watch URL stays because that link is the whole reason the recordings tab
+ * mentions YouTube at all. dropWatch is for turning the option off on the
+ * schedule form, where the host is saying they want no YouTube on this webinar.
+ *
+ * The broadcast id is always cleared: that one belongs to the live we just
+ * ended, and the next one gets a new id. */
+func (s *Store) StopWebinarStream(ctx context.Context, slug string, dropWatch bool) error {
+	watchSQL := `stream_watch`
+	if dropWatch {
+		watchSQL = `''`
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE webinars
+		   SET stream_on = false,
+		       youtube_broadcast_id = '',
+		       stream_ingest = CASE WHEN $2 THEN '' ELSE stream_ingest END,
+		       stream_watch = `+watchSQL+`
+		 WHERE slug = $1 OR id::text = $1`, slug, dropWatch)
 	if err != nil {
 		return err
 	}

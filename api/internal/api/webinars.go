@@ -77,6 +77,7 @@ func publicWebinar(wb types.Webinar) types.Webinar {
 	// An unlisted YouTube live is not public because the registration page loaded.
 	wb.StreamWatchURL = ""
 	wb.StreamConfigured = false
+	wb.StreamKeySaved = false
 	return wb
 }
 

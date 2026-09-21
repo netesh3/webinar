@@ -35,15 +35,21 @@ func (s *Server) handleSetStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oldIngest, err := s.store.WebinarStreamIngest(r.Context(), slug)
+	savedIngest, wasOn, err := s.store.WebinarStreamIngest(r.Context(), slug)
 	if err != nil {
 		s.fail(w, r, "set stream: load ingest", err)
 		return
 	}
+	// What the compositor is pushing right now, which is nothing while the
+	// stream is stopped even though the destination is still on file.
+	oldIngest := ""
+	if wasOn {
+		oldIngest = savedIngest
+	}
 
 	if body.Off {
 		s.completeYouTubeBroadcast(r.Context(), slug, wb.Host.ID)
-		if err := s.store.SetWebinarStream(r.Context(), slug, "", "", "", body.DropWatch); err != nil {
+		if err := s.store.StopWebinarStream(r.Context(), slug, body.DropWatch); err != nil {
 			s.fail(w, r, "set stream", err)
 			return
 		}
@@ -76,14 +82,16 @@ func (s *Server) handleSetStream(w http.ResponseWriter, r *http.Request) {
 				httpx.Error(w, http.StatusUnprocessableEntity, "bad_key", err.Error())
 				return
 			}
-		case oldIngest != "":
-			ingest = oldIngest
+		// No new key pasted, but this webinar already has one — going live
+		// again after a stop should not make the host fetch it from Studio.
+		case savedIngest != "":
+			ingest = savedIngest
 		default:
 			httpx.Error(w, http.StatusUnprocessableEntity, "need_key", streamdest.ErrNeedKey.Error())
 			return
 		}
 
-		if err := s.store.SetWebinarStream(r.Context(), slug, ingest, watch, "", false); err != nil {
+		if err := s.store.SetWebinarStream(r.Context(), slug, ingest, watch, ""); err != nil {
 			s.fail(w, r, "set stream", err)
 			return
 		}
@@ -95,7 +103,10 @@ func (s *Server) handleSetStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newIngest, _ := s.store.WebinarStreamIngest(r.Context(), slug)
+	newIngest, isOn, _ := s.store.WebinarStreamIngest(r.Context(), slug)
+	if !isOn {
+		newIngest = ""
+	}
 	if sfu, err := s.sfuFor(r.Context(), wb); err == nil {
 		s.syncStreamDest(r.Context(), wb, sfu, oldIngest, newIngest)
 	}
