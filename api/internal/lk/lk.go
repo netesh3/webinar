@@ -1035,6 +1035,21 @@ func (c *Client) DeleteRoom(ctx context.Context, room string) error {
 // namespace stays clear if this cluster ever hosts anything else.
 func RoomName(slug string) string { return "webinar_" + slug }
 
+/* SlugFromRoom inverts RoomName, and returns "" for a name it did not make.
+ *
+ * Needed by the webhook path, which is handed a room name and has to find the webinar behind
+ * it. Here rather than at the call site so the two halves cannot drift: a change to the prefix
+ * that missed the inverse would silently stop every attendance event from matching anything,
+ * and nothing would be logged because "not one of ours" is a legitimate answer.
+ */
+func SlugFromRoom(room string) string {
+	const prefix = "webinar_"
+	if !strings.HasPrefix(room, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(room, prefix)
+}
+
 // SourceFor maps a wire-level track name onto LiveKit's enum. Returns false for
 // anything unrecognised rather than defaulting, so a typo cannot silently mute
 // the wrong track.

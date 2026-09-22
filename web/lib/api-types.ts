@@ -503,11 +503,50 @@ export interface WebinarReport {
   avgWatchMin: number /* int */;
   questions: number /* int */;
 }
+/**
+ *  AttendanceVisit is one arrival and one departure.
+ *  *
+ *  * A person who left and came back is several of these, which is the whole reason the type
+ *  * exists: watch time used to be last_seen_at minus first_joined_at, and for anybody who
+ *  * rejoined that is the span of their evening rather than the time they were present.
+ */
+export interface AttendanceVisit {
+  joinedAt: string;
+  /**
+   * LeftAt is absent while somebody is still in the room — a report pulled during a live
+   * session is a legitimate thing to ask for, and "" says "still here" without inventing
+   * a departure that has not happened.
+   */
+  leftAt?: string;
+  /**
+   * Minutes is this visit CLIPPED to the live window, so it can be less than
+   * LeftAt-JoinedAt for somebody who arrived early and sat on the waiting screen.
+   */
+  minutes: number /* int */;
+}
 export interface AttendanceRow {
   identity: string;
   name: string;
   email?: string;
+  /**
+   *  Role is "host", "panelist" or "attendee", derived from the identity.
+   * 	 *
+   * 	 * Carried because the stage is in this list too and a reader needs to know which rows
+   * 	 * are the audience — but the Attended and AvgWatchMin figures above count attendees
+   * 	 * only, so a host's own presence never inflates their audience numbers.
+   */
+  role: string;
+  /**
+   * WatchMin is the SUM of the visits below, not the span between the first and the last.
+   */
   watchMin: number /* int */;
+  /**
+   * FirstJoinedAt / LastLeftAt bracket the visits, so a summary row can be read without
+   * expanding it. LastLeftAt is absent while they are still in the room.
+   */
+  firstJoinedAt?: string;
+  lastLeftAt?: string;
+  visits: AttendanceVisit[];
 }
 export interface SessionQuestion {
   id: string;

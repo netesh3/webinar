@@ -820,6 +820,16 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	if err := s.store.SkipRemindersForEndedWebinar(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not skip pending mail", "slug", slug, "error", err)
 	}
+	/* Before the report, because the report reads what this writes.
+	 *
+	 * A visit left open counts against now() every time anybody opens the report, so the
+	 * number would keep growing for weeks after the session. room_finished is the tidier
+	 * signal and usually arrives, but it does not if the SFU is restarted mid-session and it
+	 * says nothing about a room this host just ended while others were still in it — so both
+	 * paths close visits and whichever arrives first wins. */
+	if err := s.store.CloseOpenVisits(ctx, slug, time.Now()); err != nil {
+		s.log.Warn("end webinar: could not close open visits", "slug", slug, "error", err)
+	}
 	if _, err := s.store.ComputeAndSaveReport(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not write report", "slug", slug, "error", err)
 	}
@@ -1483,23 +1493,63 @@ func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf(`attachment; filename="%s-report.csv"`, slug))
+	/* Columns, and why there are now four more of them.
+	 *
+	 * A spreadsheet is where somebody goes to answer a question the screen did not anticipate
+	 * — "who left in the first ten minutes", "did the people who rejoined stay longer" — and
+	 * neither is answerable from a single total. So the visit rows carry their own in and out
+	 * times, and the total is on the person row above them.
+	 */
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"section", "name", "email", "watch_min", "question", "answered"})
-	_ = cw.Write([]string{"summary", "registered", fmt.Sprint(rep.Registered), "", "", ""})
-	_ = cw.Write([]string{"summary", "approved", fmt.Sprint(rep.Approved), "", "", ""})
-	_ = cw.Write([]string{"summary", "attended", fmt.Sprint(rep.Attended), "", "", ""})
-	_ = cw.Write([]string{"summary", "avg_watch_min", fmt.Sprint(rep.AvgWatchMin), "", "", ""})
-	_ = cw.Write([]string{"summary", "questions", fmt.Sprint(rep.Questions), "", "", ""})
-	_ = cw.Write([]string{"summary", "poll_voters", fmt.Sprint(rep.PollVoters), "", "", ""})
-	for _, a := range rep.Attendees {
-		_ = cw.Write([]string{"attended", a.Name, a.Email, fmt.Sprint(a.WatchMin), "", ""})
+	_ = cw.Write([]string{
+		"section", "name", "email", "role",
+		"joined_at", "left_at", "minutes", "visits",
+		"question", "answered",
+	})
+	summary := func(label string, value int) {
+		_ = cw.Write([]string{"summary", label, fmt.Sprint(value), "", "", "", "", "", "", ""})
 	}
+	summary("registered", rep.Registered)
+	summary("approved", rep.Approved)
+	summary("attended", rep.Attended)
+	summary("avg_watch_min", rep.AvgWatchMin)
+	summary("questions", rep.Questions)
+	summary("poll_voters", rep.PollVoters)
+
+	for _, a := range rep.Attendees {
+		// The person: their whole session, with first in, last out and the summed total.
+		_ = cw.Write([]string{
+			"attended", a.Name, a.Email, a.Role,
+			a.FirstJoinedAt, a.LastLeftAt, fmt.Sprint(a.WatchMin), fmt.Sprint(len(a.Visits)),
+			"", "",
+		})
+		/* Then one row per visit, and only when there is more than one.
+		 *
+		 * A single visit would repeat the row above it exactly, and a CSV where every
+		 * attendee appears twice is one somebody has to de-duplicate before they can count
+		 * anything. The rows that add something are the rejoins. */
+		if len(a.Visits) < 2 {
+			continue
+		}
+		for _, v := range a.Visits {
+			_ = cw.Write([]string{
+				"visit", a.Name, a.Email, a.Role,
+				v.JoinedAt, v.LeftAt, fmt.Sprint(v.Minutes), "",
+				"", "",
+			})
+		}
+	}
+
 	for _, q := range rep.QuestionRows {
 		name := q.Name
 		if q.Anonymous {
 			name = "Anonymous"
 		}
-		_ = cw.Write([]string{"question", name, "", "", q.Text, fmt.Sprint(q.Answered)})
+		_ = cw.Write([]string{
+			"question", name, "", "",
+			"", "", "", "",
+			q.Text, fmt.Sprint(q.Answered),
+		})
 	}
 	cw.Flush()
 }
