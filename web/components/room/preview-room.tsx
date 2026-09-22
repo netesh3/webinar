@@ -2,6 +2,7 @@
 
 import { Room } from "livekit-client";
 import { RoomContext } from "@livekit/components-react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   bypassRealtime,
@@ -39,6 +40,49 @@ const HOST_PERMS: MediaPermissions = {
   promoted: false,
 };
 
+/* A panelist: on the stage, and not running the session.
+ *
+ * The difference from the host is not a permission at all — it is the isHost flag — so this
+ * is HOST_PERMS with Share taken away, which is the one capability the two do not share.
+ */
+const PANELIST_PERMS: MediaPermissions = { ...HOST_PERMS, canShareScreen: false };
+
+/** An attendee: watching, with nothing to publish. */
+const ATTENDEE_PERMS: MediaPermissions = {
+  canPublish: false,
+  canSpeak: false,
+  canShareCamera: false,
+  canShareScreen: false,
+  audioOnly: false,
+  mutedByHost: false,
+  promoted: false,
+};
+
+/* Which seat to preview, from ?as= in the URL.
+ *
+ * The preview was the host's own session and nothing else, which left the two control bars
+ * most people actually see unreviewable in the one mode that exists for reviewing them: an
+ * attendee's bar has no host controls, no Share and a different Leave, and none of it could be
+ * looked at without a real room, a real token and a second person.
+ *
+ *   /preview/room                  the host
+ *   /preview/room?as=panelist      on the stage, not running it
+ *   /preview/room?as=attendee      watching
+ *
+ * Host stays the default, because that is what this page has always shown.
+ */
+type PreviewSeat = "host" | "panelist" | "attendee";
+
+function asSeat(value: string | null): PreviewSeat {
+  return value === "attendee" || value === "panelist" ? value : "host";
+}
+
+const SEAT_PERMS: Record<PreviewSeat, MediaPermissions> = {
+  host: HOST_PERMS,
+  panelist: PANELIST_PERMS,
+  attendee: ATTENDEE_PERMS,
+};
+
 const IDLE_FILE_SHARE: FileShareApi = {
   active: false,
   source: null,
@@ -72,8 +116,16 @@ const EMPTY_UNREAD: Record<ToolId, number> = {
 export function PreviewRoom() {
   const room = useMemo(() => new Room(), []);
   const join = DEV_BYPASS_JOIN;
+  /* Through useSearchParams rather than window.location, so the server render and the client
+   * render agree. Reading the URL in an effect would flash the host's bar before swapping to
+   * an attendee's, and reading it in a lazy initialiser would render one thing on the server
+   * and another on hydration. */
+  const seat = asSeat(useSearchParams().get("as"));
+  const isHost = seat === "host";
+  const permissions = SEAT_PERMS[seat];
+
   const availableTools = useAvailableTools({
-    isHost: true,
+    isHost,
     controls: join.controls,
   });
   const tools = useToolLayout(availableTools);
@@ -98,16 +150,17 @@ export function PreviewRoom() {
       join,
       controls: join.controls,
       topic: join.topic,
-      // Preview mode is always the host's own session, which never reaches
-      // the attendee-only "waiting for the host" screen this would feed.
+      // Null whichever seat is being previewed: the attendee-only "waiting for the host"
+      // screen this feeds needs a live-but-not-started session, and this preview is always
+      // live — so there is nothing for a cover image to cover.
       coverImageUrl: null,
       startedAt: join.startedAt ?? null,
       endedAt: null,
       status: "live",
       maxDurationMin: null,
       recording: false,
-      isHost: true,
-      permissions: HOST_PERMS,
+      isHost,
+      permissions,
       me: DEV_BYPASS_ME,
       entryVideo: null,
       recovering: null,
@@ -135,7 +188,7 @@ export function PreviewRoom() {
       },
       previewChrome: true,
     }),
-    [join, realtime, tools, availableTools, stage, prefs],
+    [join, realtime, tools, availableTools, stage, prefs, isHost, permissions],
   );
 
   return (
