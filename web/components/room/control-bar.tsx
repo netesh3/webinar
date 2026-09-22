@@ -49,6 +49,7 @@ import {
   HostEndConfirm,
   HostLeaveMenu,
 } from "./host-leave-dialog";
+import { LeaveConfirm } from "./leave-confirm";
 import { useToolDrag } from "./tool-drag";
 import { tool } from "./tools";
 
@@ -169,6 +170,8 @@ export function ControlBar() {
   const [leaveMenuOpen, setLeaveMenuOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
+  /** Everybody else's Leave confirmation, in the same place the host's menu appears. */
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
@@ -866,27 +869,43 @@ export function ControlBar() {
         <div className="relative">
           <button
             type="button"
+            /* One attribute for both popovers, because both need the same guard: the click
+               that opens them must not also register as a click outside them. */
             data-host-leave-trigger={isHost ? "" : undefined}
+            data-leave-trigger=""
             onClick={() => {
               if (isHost) setLeaveMenuOpen((v) => !v);
-              else leave();
+              // Not leave(). A mis-click on the one button parked where a window's close
+              // control lives used to drop somebody out of a live session with no step in
+              // between — see LeaveConfirm for why that step is a popover and not a modal.
+              else setLeaveConfirmOpen((v) => !v);
             }}
             disabled={connecting}
             aria-label={isHost ? "Leave or end the webinar" : "Leave the webinar"}
-            aria-haspopup={isHost ? "menu" : undefined}
-            aria-expanded={isHost ? leaveMenuOpen : undefined}
+            aria-haspopup={isHost ? "menu" : "dialog"}
+            aria-expanded={isHost ? leaveMenuOpen : leaveConfirmOpen}
             title={connecting ? "Connecting…" : undefined}
             className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-live sm:px-4"
           >
             <LeaveIcon className="size-4 sm:hidden" />
             <span className="hidden sm:inline">Leave</span>
           </button>
-          {isHost && (
+          {isHost ? (
             <HostLeaveMenu
               open={leaveMenuOpen}
               onClose={() => setLeaveMenuOpen(false)}
               onAssign={() => setAssignOpen(true)}
               onEnd={() => setEndConfirmOpen(true)}
+            />
+          ) : (
+            <LeaveConfirm
+              open={leaveConfirmOpen}
+              /* A panelist is on the stage, and what they take with them when they go is
+                 different from what an attendee does — so the copy is too. isAttendee is
+                 already the app's own test for the difference. */
+              role={isAttendee ? "attendee" : "panelist"}
+              onClose={() => setLeaveConfirmOpen(false)}
+              onLeave={leave}
             />
           )}
         </div>
