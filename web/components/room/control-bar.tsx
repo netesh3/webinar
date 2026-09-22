@@ -8,6 +8,7 @@ import {
 } from "@livekit/components-react";
 import { ConnectionState, Track } from "livekit-client";
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { barSlots, centerBarTools, gridItems, morePanelTools, type ToolId } from "@/lib/tools";
@@ -17,6 +18,7 @@ import {
   useMediaToggleSize,
 } from "@/lib/compact";
 import { isTypingTarget, mediaHotkey } from "@/lib/media-hotkeys";
+import { usePictureInPicture } from "@/lib/pip";
 import { canShareFile } from "@/lib/file-share";
 import { Spinner } from "../controls";
 import {
@@ -26,6 +28,7 @@ import {
   MIC_CAPSULE_PATH,
   MicIcon,
   MicOffIcon,
+  PipIcon,
   PlayIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
@@ -50,6 +53,7 @@ import {
   HostLeaveMenu,
 } from "./host-leave-dialog";
 import { LeaveConfirm } from "./leave-confirm";
+import { PipStage } from "./pip-stage";
 import { useToolDrag } from "./tool-drag";
 import { tool } from "./tools";
 
@@ -172,6 +176,19 @@ export function ControlBar() {
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
   /** Everybody else's Leave confirmation, in the same place the host's menu appears. */
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+
+  /* The floating window, owned here rather than at the room level.
+   *
+   * Because this is where the microphone and camera handlers already are, with every guard on
+   * them — the host-muted refusal, the self-unmute block, the busy latch. The popped-out window
+   * offers those same two controls, and rebuilding them next to it would be a second copy of
+   * rules that must never disagree with the bar's: an attendee the host muted has to be refused
+   * in both places, by the same code.
+   *
+   * Allowed in previewChrome, unlike Share. There is no LiveKit behind it there so the window
+   * opens with no video in it — which is exactly the empty state worth being able to look at,
+   * and reviewing room chrome is what that mode is for. */
+  const pip = usePictureInPicture({ enabled: !connecting });
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
@@ -865,7 +882,32 @@ export function ControlBar() {
 
       {/* Leave stays on the far right, alone, the way Zoom parks End/Leave.
           Out of flow so it does not pull the centred strip toward the left. */}
-      <div className="absolute top-0 right-2 flex h-14 items-center sm:right-3">
+      <div className="absolute top-0 right-2 flex h-14 items-center gap-1.5 sm:right-3">
+        {/* Pop out, beside Leave rather than in the tool strip.
+            It is a window-level control like Leave is — it puts the webinar somewhere else
+            rather than changing anything inside it — and the tool strip is a draggable layout
+            somebody arranges, which this does not belong in.
+
+            Desktop only, and hidden when unsupported rather than disabled: no mobile browser
+            implements either kind of PiP, and a dead button that never explains itself is
+            worse than one that was never offered. */}
+        {pip.supported && (
+          <button
+            type="button"
+            onClick={() => (pip.active ? pip.close() : pip.open())}
+            disabled={connecting}
+            aria-label={pip.active ? "Close the floating window" : "Pop out into a floating window"}
+            aria-pressed={pip.active}
+            title={pip.active ? "Close the floating window" : "Pop out"}
+            className={`hidden size-10 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 sm:grid ${
+              pip.active
+                ? "bg-white/20 text-white"
+                : "text-white/70 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            <PipIcon className="size-4.5" />
+          </button>
+        )}
         <div className="relative">
           <button
             type="button"
@@ -924,6 +966,29 @@ export function ControlBar() {
           />
         </>
       )}
+
+      {/* Into the floating window's own document, which is a different document — so this is
+          a portal by necessity rather than for stacking. React keeps the tree and its context,
+          which is what lets the buttons in there call the same handlers as the bar's. */}
+      {pip.container &&
+        createPortal(
+          <PipStage
+            micEnabled={isMicrophoneEnabled}
+            cameraEnabled={isCameraEnabled}
+            onMic={onMicClick}
+            onCamera={onCameraClick}
+            canSpeak={permissions.canSpeak && !permissions.mutedByHost}
+            canShareCamera={permissions.canShareCamera}
+            onBackToTab={() => {
+              // Raising the tab is what somebody pressing this wants; the window closing is a
+              // consequence of arriving, and the visibility listener in usePictureInPicture
+              // would do it a moment later anyway. Done here so it is not two steps.
+              window.focus();
+              pip.close();
+            }}
+          />,
+          pip.container,
+        )}
 
       {/* Rendered here rather than at the room level so it is mounted only for
           somebody who may actually share. It is a Modal, so it portals out of the
