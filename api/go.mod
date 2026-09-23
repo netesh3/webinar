@@ -15,6 +15,7 @@ require (
 	github.com/livekit/protocol v1.49.0
 	github.com/livekit/server-sdk-go/v2 v2.18.1
 	golang.org/x/crypto v0.56.0
+
 )
 
 require (
