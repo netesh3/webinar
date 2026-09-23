@@ -157,6 +157,18 @@ void main() {
   gl_Position = vec4(position, 0.0, 1.0);
 }`;
 
+/* What to say when the graphics context is gone.
+ *
+ * Worded for a presenter rather than for a graphics programmer, because it reaches them
+ * through backgrounds.ts as "Couldn't start the background: <this>" on the screen they are
+ * about to go live from. It names the cause they can actually do something about: browsers
+ * cap how many pages may use the GPU for video at once, and a machine with a dozen tabs open
+ * is over that cap. "WebGL context lost" would be accurate and useless.
+ */
+const CONTEXT_LOST =
+  "your browser ran out of graphics capacity — too many open tabs are using it. " +
+  "Close a few and switch this back on.";
+
 /** One axis of a separable Gaussian. Used twice for the mask feather and twice for
  *  the background blur — separable because a 21×21 kernel is 441 samples per pixel
  *  in one pass and 42 in two. */
@@ -423,6 +435,13 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       desynchronized: true,
     }) as WebGL2RenderingContext | null;
     if (!gl) throw new Error("WebGL2 is not available");
+    /* A context can arrive already lost, and asking is the only way to know.
+     *
+     * Past the browser's limit on live contexts, getContext still returns an object — it is
+     * simply a dead one. Everything downstream then fails somewhere less obvious than here:
+     * MediaPipe's glue reads getContextAttributes().alpha, which is null on a lost context,
+     * and the presenter is shown a TypeError about a property they have never heard of. */
+    if (gl.isContextLost()) throw new Error(CONTEXT_LOST);
     this.ctx = gl;
 
     // The composite is the only pass that reaches the canvas, so it is the only one that
@@ -490,6 +509,13 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     const canvas = this.canvas;
     if (!canvas) throw new Error("the transformer has no canvas to segment into");
 
+    /* Checked again here, and not only in init, because this runs later than init does and
+     * the answer can have changed in between. A background chosen mid-session loads the model
+     * now, by which time another tab may have taken the context this was going to render
+     * into. MediaPipe is handed our context below; if it is dead, the failure surfaces from
+     * inside the WASM as a null property read, which is unreadable and unactionable. */
+    if (!this.ctx || this.ctx.isContextLost()) throw new Error(CONTEXT_LOST);
+
     // Loaded here rather than at module scope: 9MB of WASM that nobody who never
     // turns a background on should download.
     const vision = await import("@mediapipe/tasks-vision");
@@ -539,6 +565,27 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
         gl.deleteFramebuffer(t.framebuffer);
       }
       if (this.quad) gl.deleteBuffer(this.quad);
+
+      /* And then the context itself, explicitly. Deleting every resource in it is not the
+       * same thing and this omission was a real bug.
+       *
+       * A WebGL context is not freed when the last reference to it goes; it is freed when
+       * the canvas is collected, which is whenever the garbage collector gets round to it.
+       * Chrome allows about sixteen live contexts per process and silently drops the OLDEST
+       * when a seventeenth is asked for. This class builds a context per processor, and a
+       * processor is rebuilt every time somebody turns the low-light lift off and on again
+       * — so a presenter fiddling with the slider, in one of several tabs that each hold a
+       * context of their own, walks into that limit without doing anything unreasonable.
+       *
+       * What they saw when they did was "Couldn't start the background: Cannot read
+       * properties of null (reading 'alpha')", from MediaPipe's emscripten glue reading
+       * getContextAttributes().alpha — and getContextAttributes() returns null for exactly
+       * one reason, which is that the context is already lost.
+       *
+       * loseContext() is the only way to hand one back deliberately. It is an extension and
+       * may be absent, which is survivable: without it this leaks as it always did.
+       */
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
     }
     this.ctx = null;
     this.hasPreviousMask = false;
@@ -610,6 +657,17 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
      * must not be held back by one, so the check is on the background alone rather
      * than on `!this.segmenter` for everything as it once was. */
     if (!gl || !canvas || (!wantsBackground && !wantsLowLight)) {
+      controller.enqueue(frame);
+      return;
+    }
+    /* A third way, and the one that happens mid-session rather than on the way in: the
+     * context was taken away while this was running, because another page asked for one and
+     * the browser dropped the oldest. Every GL call below would then be a silent no-op and
+     * the canvas would publish a frozen or black frame to the audience — while the presenter,
+     * whose preview comes from the same canvas, sees exactly what they are sending and has no
+     * reason to think anything is wrong. Passing the camera through untouched loses the
+     * background and keeps the person, which is the right way round. */
+    if (gl.isContextLost()) {
       controller.enqueue(frame);
       return;
     }
