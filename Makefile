@@ -103,6 +103,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the reconnection ladder, which cannot be tested in a browser at all: a real
 	# media-path failure is not injectable, so this is the only check it gets.
 	cd web && node --experimental-strip-types --no-warnings lib/recovery.test.mts
+	# And what that ladder puts back once it reconnects, for the same reason plus a worse
+	# one: getting it wrong in the generous direction republishes somebody's screen.
+	cd web && node --experimental-strip-types --no-warnings lib/republish.test.mts
 	# And route-level access control, where both failure directions are silent: a
 	# participant reading a registrant list, or a panelist locked out of their own stage.
 	cd web && node --experimental-strip-types --no-warnings lib/access.test.mts
