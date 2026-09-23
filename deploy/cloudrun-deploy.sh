@@ -146,6 +146,14 @@ fi
 [[ -n "${GOOGLE_CLIENT_ID:-}" ]] && ENV_VARS+=("GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}")
 [[ -n "${GOOGLE_API_KEY:-}" ]] && ENV_VARS+=("GOOGLE_API_KEY=${GOOGLE_API_KEY}")
 [[ -n "${GOOGLE_CLIENT_SECRET:-}" ]] && ENV_VARS+=("GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}")
+# Connect WhatsApp (Meta Embedded Signup). config.go refuses to boot on a partial
+# set — app id, app secret and Embedded Signup config id, or none of the three —
+# so a half-filled environment here fails at container start rather than leaving a
+# Connect button that dies after the host has already granted access.
+[[ -n "${META_APP_ID:-}" ]] && ENV_VARS+=("META_APP_ID=${META_APP_ID}")
+[[ -n "${META_APP_SECRET:-}" ]] && ENV_VARS+=("META_APP_SECRET=${META_APP_SECRET}")
+[[ -n "${META_WHATSAPP_CONFIG_ID:-}" ]] && ENV_VARS+=("META_WHATSAPP_CONFIG_ID=${META_WHATSAPP_CONFIG_ID}")
+[[ -n "${META_WEBHOOK_VERIFY_TOKEN:-}" ]] && ENV_VARS+=("META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN}")
 # Recording storage. "disk" needs nothing further; "s3" (an S3-compatible
 # bucket — Backblaze B2 in practice) needs all five below. config.go refuses
 # to boot with RECORDINGS_ENABLED=true and RECORDINGS_BACKEND=s3 if any are

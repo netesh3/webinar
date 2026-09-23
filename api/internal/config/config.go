@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -205,6 +206,35 @@ type Config struct {
 	YouTubeAPIURL   string
 	YouTubeTokenURL string
 
+	/* Meta WhatsApp Cloud API — Connect WhatsApp, via Meta Embedded Signup.
+	 *
+	 * MetaAppID and MetaWhatsAppConfigID are public values by design, the same way
+	 * GoogleClientID is: the browser needs both to open Meta's Embedded Signup
+	 * dialog at all. MetaAppSecret is not — it signs the code exchange and
+	 * verifies every webhook body — and stays on the API.
+	 *
+	 * All three unset means Connect WhatsApp is not offered. That default is
+	 * deliberate and it is about money, not tidiness: the host's own WhatsApp
+	 * Business Account is billed for every conversation, so an instance must not
+	 * imply it can send on somebody's behalf until an operator has actually set
+	 * this up. validate() refuses a partial set.
+	 */
+	MetaAppID            string
+	MetaAppSecret        string
+	MetaWhatsAppConfigID string
+	/* MetaWebhookVerifyToken is the string Meta echoes back once, when the
+	 * webhook subscription is first confirmed (GET /api/webhooks/whatsapp).
+	 *
+	 * It says nothing about the authenticity of later payloads — that is the app
+	 * secret's HMAC, see wa.Client.VerifySignature — so it only needs to be
+	 * unguessable enough that nobody else can complete our subscription.
+	 */
+	MetaWebhookVerifyToken string
+	/* WhatsAppGraphURL overrides Meta's Graph host, including its version
+	 * segment. Empty in production, where the pinned wa.DefaultGraph applies.
+	 * Tests point it at an httptest.Server, like YouTubeAPIURL. */
+	WhatsAppGraphURL string
+
 	/* Supabase Auth — Google sign-in / sign-up.
 	 *
 	 * The Postgres DATABASE_URL may already point at the same Supabase project;
@@ -314,6 +344,11 @@ func Load() (Config, error) {
 		GoogleClientID:          env("GOOGLE_CLIENT_ID", ""),
 		GoogleAPIKey:            env("GOOGLE_API_KEY", ""),
 		GoogleClientSecret:      env("GOOGLE_CLIENT_SECRET", ""),
+		MetaAppID:               env("META_APP_ID", ""),
+		MetaAppSecret:           env("META_APP_SECRET", ""),
+		MetaWhatsAppConfigID:    env("META_WHATSAPP_CONFIG_ID", ""),
+		MetaWebhookVerifyToken:  env("META_WEBHOOK_VERIFY_TOKEN", ""),
+		WhatsAppGraphURL:        strings.TrimRight(env("WHATSAPP_GRAPH_URL", ""), "/"),
 		SupabaseURL:             strings.TrimRight(env("SUPABASE_URL", ""), "/"),
 		SupabaseAnonKey:         env("SUPABASE_ANON_KEY", ""),
 		SupabaseJWTSecret:       env("SUPABASE_JWT_SECRET", ""),
@@ -394,6 +429,19 @@ func (c Config) GoogleAuthEnabled() bool {
 // Web client id AND secret; the picker-only client id is not enough.
 func (c Config) YouTubeOAuthEnabled() bool {
 	return strings.TrimSpace(c.GoogleClientID) != "" && strings.TrimSpace(c.GoogleClientSecret) != ""
+}
+
+/* WhatsAppConnectEnabled is the Connect WhatsApp path: Embedded Signup, and the
+ * CRM sends that ride on the grant it produces.
+ *
+ * Needs the app id, the app secret AND the Embedded Signup config id. Two of the
+ * three is not a degraded mode, it is a Connect button that cannot finish — so
+ * the frontend is told the feature is off, and validate() has already refused to
+ * boot on a partial set. */
+func (c Config) WhatsAppConnectEnabled() bool {
+	return strings.TrimSpace(c.MetaAppID) != "" &&
+		strings.TrimSpace(c.MetaAppSecret) != "" &&
+		strings.TrimSpace(c.MetaWhatsAppConfigID) != ""
 }
 
 // passwordFloor is the shortest password a real deployment may accept. Ten
@@ -488,6 +536,35 @@ func (c Config) validate() error {
 			errs = append(errs, fmt.Errorf("RECORDINGS_CDN_BASE_URL must begin with http:// or https://: %q", c.RecordingsCDNBaseURL))
 		}
 	}
+	/* Embedded Signup: all three, or none.
+	 *
+	 * Caught at boot because the failure it prevents is invisible until somebody
+	 * tries to use it. With the app id and config id but no secret, a host
+	 * completes Meta's dialog — granting us access to their business, with their
+	 * payment method behind it — and the exchange that would have stored the grant
+	 * fails afterwards. That is a worse outcome than no button at all, and the
+	 * operator who forgot the secret should hear about it from the boot log rather
+	 * than from the host.
+	 */
+	metaSet := map[string]string{
+		"META_APP_ID":             c.MetaAppID,
+		"META_APP_SECRET":         c.MetaAppSecret,
+		"META_WHATSAPP_CONFIG_ID": c.MetaWhatsAppConfigID,
+	}
+	var metaMissing []string
+	for name, v := range metaSet {
+		if strings.TrimSpace(v) == "" {
+			metaMissing = append(metaMissing, name)
+		}
+	}
+	// Sorted so the message is stable — map iteration order is not.
+	sort.Strings(metaMissing)
+	if n := len(metaMissing); n > 0 && n < len(metaSet) {
+		errs = append(errs, fmt.Errorf(
+			"Connect WhatsApp is half-configured: %s missing. Set all three or none",
+			strings.Join(metaMissing, ", ")))
+	}
+
 	if (c.BroadcastRTMPBase == "") != (c.BroadcastHLSBase == "") {
 		errs = append(errs, errors.New("BROADCAST_RTMP_BASE and BROADCAST_HLS_BASE must be set together (RTMP ingest and the public WHEP URL)"))
 	}
@@ -621,7 +698,10 @@ func (c Config) String() string {
 	if c.EmptyRoomCloseMin > 0 {
 		emptyRoom = fmt.Sprintf("%dm", c.EmptyRoomCloseMin)
 	}
-	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s emptyRoomClose=%s seed=%v authBypass=%v telemetryEnabled=%v googleAuth=%v cors=%v",
+	// whatsAppConnect is here for the same reason googleAuth is: it is a whole
+	// surface that silently does not exist when its credentials are unset, and the
+	// boot line is the cheapest place to find that out.
+	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s emptyRoomClose=%s seed=%v authBypass=%v telemetryEnabled=%v googleAuth=%v whatsAppConnect=%v cors=%v",
 		c.Env, c.Addr, describeLiveKitProjects(c.LiveKitProjects), c.MaxAttendees, recordings, emptyRoom,
-		c.SeedDev, c.AuthBypass, c.TelemetryEnabled, c.GoogleAuthEnabled(), c.CORSOrigins)
+		c.SeedDev, c.AuthBypass, c.TelemetryEnabled, c.GoogleAuthEnabled(), c.WhatsAppConnectEnabled(), c.CORSOrigins)
 }

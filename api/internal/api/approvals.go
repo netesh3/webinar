@@ -165,6 +165,11 @@ func (s *Server) notifyDecisions(
 	// Delivery is attempted immediately for responsiveness, and the outbox is what makes it
 	// safe for this to fail. See s.flushOutbox.
 	s.flushOutbox(ctx)
+	/* And the WhatsApp side of the same decision. A confirmation queued when somebody
+	 * registered is held by the sweep until their seat is approved, so this press is
+	 * the moment it becomes sendable — waiting up to 30 seconds for the ticker to
+	 * notice would make the fastest channel the slowest one. */
+	s.flushWhatsAppOutbox(ctx)
 	return out
 }
 

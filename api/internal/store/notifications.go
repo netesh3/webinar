@@ -42,6 +42,30 @@ type Notification struct {
 	UserID string // set for a host alert; empty for a registrant invitation
 	Email  string // set for a registrant invitation; empty for a host alert
 	Kind   types.NotificationKind
+	/* Channel is "email" (the default when empty) or "whatsapp".
+	 *
+	 * A WhatsApp row is addressed to a ContactID and carries a template instead of a
+	 * Subject and Body, because Meta will not deliver a business's own words to
+	 * somebody who has not written in within the last 24 hours — and a reminder, by
+	 * definition, arrives when nobody has. See migrations/0043 for why this is the
+	 * same table rather than a second queue. */
+	Channel          string
+	ContactID        string
+	TemplateName     string
+	TemplateLanguage string
+	// TemplateParams fill the template's {{1}}, {{2}} … in order, already resolved
+	// for this recipient.
+	TemplateParams []string
+	/* BroadcastID is set on exactly the broadcast rows, and on nothing else — the
+	 * constraint in 0044 enforces the "exactly". The reminder sweeps use its absence
+	 * to mean "this is not part of a broadcast", so moving a webinar cannot rewrite
+	 * the due time of a message the host scheduled themselves. */
+	BroadcastID string
+	/* DripEnrollmentID is set on exactly the drip rows, by the same rule and the same
+	 * kind of constraint in 0045. One row per step per person, written when the step
+	 * comes due rather than when they were enrolled: the time of the third message is
+	 * not knowable until the second has gone. */
+	DripEnrollmentID string
 	// Slug, not the uuid. The caller already has the slug on every path that emits one, and
 	// resolving it in the INSERT saves a round trip whose only purpose would be to translate
 	// an identifier the caller was holding anyway.
@@ -65,12 +89,27 @@ func (s *Store) Notify(ctx context.Context, q Querier, n Notification) error {
 	if due.IsZero() {
 		due = time.Now()
 	}
+	channel := n.Channel
+	if channel == "" {
+		channel = "email"
+	}
+	params := n.TemplateParams
+	if params == nil {
+		// '[]', not 'null': the column is jsonb and the send path indexes into it.
+		params = []string{}
+	}
 	_, err := q.Exec(ctx, `
-		INSERT INTO notifications (user_id, email, kind, webinar_id, subject, body, ics, registration_id, due_at)
+		INSERT INTO notifications (user_id, email, kind, webinar_id, subject, body, ics, registration_id, due_at,
+		                           channel, contact_id, template_name, template_language, template_params,
+		                           broadcast_id, drip_enrollment_id)
 		VALUES (NULLIF($1,'')::uuid, $2, $3,
-		        (SELECT id FROM webinars WHERE slug = $4), $5, $6, $7, NULLIF($8,'')::uuid, $9)`,
+		        (SELECT id FROM webinars WHERE slug = $4), $5, $6, $7, NULLIF($8,'')::uuid, $9,
+		        $10, NULLIF($11,'')::uuid, $12, $13, $14, NULLIF($15,'')::uuid,
+		        NULLIF($16,'')::uuid)`,
 		n.UserID, strings.ToLower(strings.TrimSpace(n.Email)), string(n.Kind),
-		n.WebinarSlug, n.Subject, n.Body, n.ICS, n.RegistrationID, due)
+		n.WebinarSlug, n.Subject, n.Body, n.ICS, n.RegistrationID, due,
+		channel, n.ContactID, n.TemplateName, n.TemplateLanguage, params, n.BroadcastID,
+		n.DripEnrollmentID)
 	if isUniqueViolation(err) {
 		return nil
 	}
@@ -191,11 +230,17 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		   AND (webinar_id IS NULL OR EXISTS (
 		         SELECT 1 FROM webinars w
 		          WHERE w.id = notifications.webinar_id
-		            AND w.status NOT IN ('ended','draft')
-		            AND (
-		              notifications.kind NOT IN ('reminder_24h','reminder_1h')
-		              OR COALESCE((w.options->>'emailReminders')::boolean, true)
-		            )
+		            /* The replay is the one message that is ABOUT a webinar being over, so
+		             * it is the one that must survive the session ending — every other kind
+		             * here is a promise about something that is going to happen, and an
+		             * ended webinar is the reason not to keep it. */
+		            AND (notifications.kind = 'replay_ready' OR (
+		              w.status NOT IN ('ended','draft')
+		              AND (
+		                notifications.kind NOT IN ('reminder_24h','reminder_1h')
+		                OR COALESCE((w.options->>'emailReminders')::boolean, true)
+		              )
+		            ))
 		       ))
 		   AND (registration_id IS NULL OR EXISTS (
 		         SELECT 1 FROM registrations r
@@ -251,33 +296,58 @@ func (s *Store) MarkDelivered(ctx context.Context, id, delivery, reason string) 
 	return s.RecordSendAttempt(ctx, id, delivery, reason)
 }
 
-// SkipPendingRemindersForRegistration drops unsent 24h/1h mail when a seat is declined.
+/* The three statements below all name the WhatsApp kinds alongside the email ones.
+ *
+ * Every one of them is a promise about a message that has not gone out yet, and a
+ * WhatsApp message is the one where breaking it costs the host money and lands on
+ * somebody's phone: a reminder for a webinar that was cancelled, or one that still
+ * says "in an hour" three hours after it was moved. Whenever a kind is added to the
+ * outbox it has to be added here too, which is why they are kept together.
+ */
+
+/* SkipPendingRemindersForRegistration drops unsent reminders when a seat is declined.
+ *
+ * The WhatsApp confirmation is in the list and the email one is not, because they
+ * are queued at different moments: the email confirmation is only written once a
+ * registration is approved, while the WhatsApp one is written on registration and
+ * held by the sweep until the host decides. A decline is that decision, and the row
+ * would otherwise wait for an approval that is never coming.
+ */
 func (s *Store) SkipPendingRemindersForRegistration(ctx context.Context, registrationID string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE notifications
 		   SET delivery = 'skipped', delivery_error = 'registration declined', delivered_at = now()
 		 WHERE registration_id = $1
 		   AND delivery = 'pending'
-		   AND kind IN ('reminder_24h','reminder_1h')`, registrationID)
+		   AND kind IN ('reminder_24h','reminder_1h',
+		                'wa_reminder_24h','wa_reminder_1h','wa_registration_confirmed')`, registrationID)
 	return err
 }
 
-// RescheduleRemindersForWebinar moves unsent 24h/1h due times when the host changes starts_at.
+/* RescheduleRemindersForWebinar moves unsent 24h/1h due times when the host changes starts_at.
+ *
+ * $2 is cast explicitly, and it matters: without the cast Postgres resolves the
+ * parameter's type from `$2 - interval '24 hours'`, decides it is an interval, and
+ * rejects the whole statement — which the caller logs as a warning and carries on
+ * from, so every reschedule quietly left the old reminders where they were.
+ */
 func (s *Store) RescheduleRemindersForWebinar(ctx context.Context, slug string, startsAt time.Time) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE notifications n
 		   SET due_at = CASE n.kind
-		                  WHEN 'reminder_24h' THEN $2 - interval '24 hours'
-		                  WHEN 'reminder_1h'  THEN $2 - interval '1 hour'
+		                  WHEN 'reminder_24h'    THEN $2::timestamptz - interval '24 hours'
+		                  WHEN 'reminder_1h'     THEN $2::timestamptz - interval '1 hour'
+		                  WHEN 'wa_reminder_24h' THEN $2::timestamptz - interval '24 hours'
+		                  WHEN 'wa_reminder_1h'  THEN $2::timestamptz - interval '1 hour'
 		                END
 		  FROM webinars w
 		 WHERE n.webinar_id = w.id AND w.slug = $1
 		   AND n.delivery = 'pending'
-		   AND n.kind IN ('reminder_24h','reminder_1h')`, slug, startsAt)
+		   AND n.kind IN ('reminder_24h','reminder_1h','wa_reminder_24h','wa_reminder_1h')`, slug, startsAt)
 	return err
 }
 
-// SkipRemindersForEndedWebinar stops mailing people about a session that will not happen.
+// SkipRemindersForEndedWebinar stops telling people about a session that will not happen.
 func (s *Store) SkipRemindersForEndedWebinar(ctx context.Context, slug string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE notifications n
@@ -285,7 +355,8 @@ func (s *Store) SkipRemindersForEndedWebinar(ctx context.Context, slug string) e
 		  FROM webinars w
 		 WHERE n.webinar_id = w.id AND w.slug = $1
 		   AND n.delivery = 'pending'
-		   AND n.kind IN ('reminder_24h','reminder_1h','registration_confirmed','registration_approved')
+		   AND n.kind IN ('reminder_24h','reminder_1h','registration_confirmed','registration_approved',
+		                  'wa_reminder_24h','wa_reminder_1h','wa_registration_confirmed')
 		   AND n.due_at > now()`, slug)
 	return err
 }

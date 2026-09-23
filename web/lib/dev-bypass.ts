@@ -1,3 +1,9 @@
+import {
+  FeatureCRMNotes,
+  FeatureCRMTags,
+  FeatureReplayLinks,
+  FeatureWhatsAppRegister,
+} from "@/lib/api-types";
 import type {
   Account,
   JoinResponse,
@@ -31,6 +37,17 @@ export const DEV_BYPASS_ACCOUNT: Account = {
   canHost: true,
   isAdmin: true,
   canCdnBroadcast: true,
+  /* Every switch on, because this fixture exists to look at screens: a preview
+   * account missing a feature is a preview of the screen without it, which is
+   * the one thing this file cannot be used to check. Named through the constants
+   * so a renamed key breaks the build here rather than silently previewing a
+   * feature the server has never heard of. */
+  features: [
+    FeatureCRMTags,
+    FeatureCRMNotes,
+    FeatureReplayLinks,
+    FeatureWhatsAppRegister,
+  ],
 };
 
 const CONTROLS: SessionControls = {
@@ -98,6 +115,7 @@ export const DEV_BYPASS_WEBINARS: Webinar[] = [
       multistream: false,
       postWebinarSurvey: false,
       emailReminders: true,
+      whatsappReminders: false,
     },
     controls: CONTROLS,
     passcode: "2468",
@@ -137,6 +155,7 @@ export const DEV_BYPASS_WEBINARS: Webinar[] = [
       multistream: false,
       postWebinarSurvey: false,
       emailReminders: true,
+      whatsappReminders: false,
     },
     controls: CONTROLS,
     passcodeRequired: false,
@@ -174,6 +193,7 @@ export const DEV_BYPASS_WEBINARS: Webinar[] = [
       multistream: false,
       postWebinarSurvey: false,
       emailReminders: true,
+      whatsappReminders: false,
     },
     controls: CONTROLS,
     passcodeRequired: false,
@@ -213,6 +233,7 @@ export const DEV_BYPASS_WEBINARS: Webinar[] = [
       multistream: false,
       postWebinarSurvey: true,
       emailReminders: true,
+      whatsappReminders: false,
     },
     controls: CONTROLS,
     passcodeRequired: false,

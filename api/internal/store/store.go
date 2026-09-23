@@ -40,6 +40,14 @@ var (
 	// webinar's registrations, chat history and recordings quietly vanish.
 	// The webinars have to go first, on purpose, as their own visible action.
 	ErrHasWebinars = errors.New("account owns webinars")
+	/* ErrInUse means a row cannot be deleted because something still points at it and
+	 * the pointer is not ours to break. The one case today is a tag a sequence triggers
+	 * on (crm_drips.trigger_tag_id is ON DELETE RESTRICT — see migrations/0048): NULL
+	 * there means "any tag", so letting the delete through would silently widen the rule
+	 * from one label to every label. Distinct from ErrConflict because the handler names
+	 * the sequence in its refusal, which is the only thing that makes it actionable.
+	 */
+	ErrInUse = errors.New("still referenced")
 )
 
 type Store struct {
@@ -166,6 +174,14 @@ func (s *Store) Migrate(ctx context.Context) error {
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// isForeignKeyViolation reports whether err is a Postgres 23503 — a row that is
+// still referenced by an ON DELETE RESTRICT pointer, or one pointing at something
+// that does not exist.
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
 func noRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }

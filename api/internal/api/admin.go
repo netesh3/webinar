@@ -150,6 +150,49 @@ func (s *Server) handleSetCdnBroadcastCapability(w http.ResponseWriter, r *http.
 	httpx.JSON(w, http.StatusOK, updated.Public())
 }
 
+/* handleSetFeature is PATCH /api/admin/users/{id}/features.
+ *
+ * One feature per request, carrying the end state rather than a verb, for the same reason
+ * handleSetHostCapability does: the UI is a row of switches, and a retried request that says
+ * what should BE cannot double-apply.
+ *
+ * The unknown-key refusal is the only validation these switches get. features is a text[]
+ * with no CHECK behind it (see migrations/0047), so a typo in a client would otherwise be
+ * stored happily and read as off for ever — an admin would flip a switch, see it stick, and
+ * the customer still could not use the thing. Refusing here is what makes types.Features the
+ * list that decides.
+ */
+func (s *Server) handleSetFeature(w http.ResponseWriter, r *http.Request) {
+	admin := userFromContext(r.Context())
+	targetID := chi.URLParam(r, "id")
+
+	var body types.FeatureGrant
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	if !types.KnownFeature(body.Feature) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "unknown_feature",
+			"That isn't a feature this server knows about.")
+		return
+	}
+
+	updated, err := s.store.SetFeature(r.Context(), targetID, body.Feature, body.Enabled)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such account.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "set feature", err)
+		return
+	}
+
+	s.log.Info("account feature changed",
+		"admin", admin.ID, "target", updated.ID, "feature", body.Feature, "enabled", body.Enabled)
+
+	httpx.JSON(w, http.StatusOK, updated.Public())
+}
+
 /* handleAdminWebinars is GET /api/admin/webinars?status=&from=&to=&q=.
  *
  * The only place in the app that lists webinars across every host: every

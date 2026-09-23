@@ -514,6 +514,18 @@ export function YouTubeIcon(props: IconProps) {
   );
 }
 
+/** WhatsApp: the handset in a speech bubble, drawn on the same grid and stroke as
+ *  everything else here rather than pasted in as Meta's filled glyph, so it sits
+ *  at the same optical weight as the icon beside it. */
+export function WhatsAppIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20.5l1.7-5.2A8.5 8.5 0 1 1 21 11.5Z" />
+      <path d="M9 8.6c.4-.1.7 0 .9.4l.6 1.2c.1.3.1.5-.1.8l-.4.5c.5 1 1.3 1.8 2.3 2.3l.5-.4c.3-.2.5-.2.8-.1l1.2.6c.4.2.5.5.4.9-.2.8-1 1.3-1.9 1.2-2.5-.4-4.5-2.4-4.9-4.9-.1-.9.4-1.7 1.2-1.9Z" />
+    </Icon>
+  );
+}
+
 export function DeviceIcon(props: IconProps) {
   return (
     <Icon {...props}>

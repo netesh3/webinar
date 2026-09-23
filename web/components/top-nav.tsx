@@ -10,13 +10,18 @@ import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 
-/* The top bar — primary product nav: Browse | My Webinar | Host Webinar. */
+/* The top bar — primary product nav: Browse | My Webinar | Host Webinar | Contacts. */
 
 function linksFor(signedIn: boolean, canHost: boolean) {
   return [
     { href: "/browse", label: "Browse" },
     ...(signedIn ? [{ href: "/my-webinars", label: "My Webinar" }] : []),
     ...(canHost ? [{ href: "/host", label: "Host Webinar" }] : []),
+    /* Top level rather than a tab inside a webinar, because a contact does not
+     * belong to one: somebody who registered for three sessions is one person
+     * with one conversation, and burying that under whichever webinar they came
+     * through is how a host ends up messaging them twice. */
+    ...(canHost ? [{ href: "/host/crm", label: "Contacts" }] : []),
   ];
 }
 
@@ -34,6 +39,12 @@ export function TopNav() {
   const isActive = (href: string) => {
     if (href === "/browse") {
       return pathname === "/browse" || pathname.startsWith("/browse/");
+    }
+    /* Contacts lives under /host so it inherits the portal's chrome, which makes
+     * a plain prefix test light up both tabs at once — and two current tabs tell
+     * a reader less than none. */
+    if (href === "/host") {
+      return pathname.startsWith("/host") && !pathname.startsWith("/host/crm");
     }
     return pathname.startsWith(href);
   };

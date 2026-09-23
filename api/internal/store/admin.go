@@ -167,6 +167,32 @@ func (s *Store) SetCdnBroadcastCapability(ctx context.Context, userID string, ca
 	return u, err
 }
 
+/* SetFeature switches one per-account feature on or off.
+ *
+ * Set arithmetic in SQL rather than read-modify-write in Go, which is what makes it
+ * safe for two admins on two screens: array_remove then append touches only the key
+ * being changed, so a request about `crm_tags` cannot undo a decision about
+ * `replay_links` somebody made a second earlier. Turning on something already on, and
+ * off something already off, both land as no-ops rather than as a duplicate key.
+ *
+ * The key is checked against types.Features by the handler before it gets here — the
+ * column has no CHECK to lean on, so that check is the whole of the validation.
+ */
+func (s *Store) SetFeature(ctx context.Context, userID, feature string, enabled bool) (User, error) {
+	u, err := scanUser(s.pool.QueryRow(ctx, `
+		UPDATE users
+		   SET features = CASE WHEN $3
+		            THEN array_remove(features, $2) || ARRAY[$2]::text[]
+		            ELSE array_remove(features, $2)
+		       END
+		 WHERE id = $1
+		RETURNING `+userColumns, userID, feature, enabled))
+	if noRows(err) {
+		return User{}, ErrNotFound
+	}
+	return u, err
+}
+
 /* AdminUsers lists every account for the admin panel.
  *
  * Includes the count of webinars each account owns, because that is the fact an admin needs
@@ -186,7 +212,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		SELECT u.id::text, u.email, u.name, u.title, u.org, u.initials, u.hue,
 		       u.can_host, u.is_admin, u.created_at,
 		       (SELECT count(*) FROM webinars w WHERE w.host_id = u.id),
-		       u.max_duration_min, u.can_cdn_broadcast
+		       u.max_duration_min, u.can_cdn_broadcast, u.features
 		  FROM users u
 		 WHERE lower(u.email) LIKE $1 OR lower(u.name) LIKE $1
 		 ORDER BY u.is_admin DESC, u.can_host DESC, u.created_at DESC
@@ -203,10 +229,14 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 			createdAt time.Time
 		)
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Initials,
-			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast); err != nil {
+			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast,
+			&u.Features); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
+		if u.Features == nil {
+			u.Features = []string{}
+		}
 		out = append(out, u)
 	}
 	return out, rows.Err()

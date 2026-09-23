@@ -223,7 +223,65 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		s.notifyNewRegistration(r.Context(), wb, reg, true)
 	}
 
+	s.contactFromRegistration(r.Context(), wb, reg, req.WhatsAppOptIn)
+
 	httpx.JSON(w, http.StatusCreated, reg)
+}
+
+/* contactFromRegistration files a registrant in the host's CRM.
+ *
+ * The one place the two halves of this feature are joined, and deliberately AFTER
+ * the registration is committed rather than inside it. A CRM the host may not even
+ * have looked at yet must not be able to fail somebody's registration: the seat,
+ * the join key and the confirmation email are what the attendee came for, and a
+ * contact row is a convenience for the host. So a failure here is logged and the
+ * registration stands.
+ *
+ * Done on every registration and not only on approval. The plan said "register or
+ * approve", and register is the earlier of the two — a lead who is waiting for a
+ * manual approval is still a lead, and a host reviewing them can see who they are.
+ * Approving later re-upserts nothing, because the contact is already there.
+ *
+ * ErrNotFound is the documented answer for a registrant with neither a phone number
+ * nor an email — a guest, in practice — and is not logged as a problem. See
+ * store.ContactFromRegistration for why they stay out.
+ */
+func (s *Server) contactFromRegistration(ctx context.Context, wb types.Webinar, reg types.Registration, optIn bool) {
+	contact, err := s.store.ContactFromRegistration(ctx, wb.ID, reg, optIn)
+	if errors.Is(err, store.ErrNotFound) {
+		return
+	}
+	if err != nil {
+		s.log.Error("crm contact from registration", "error", err, "webinar", wb.ID)
+		return
+	}
+	// No phone number, no email address, no name: an id and whether they agreed to
+	// be messaged is all this line needs to be useful.
+	s.log.Info("crm contact", "webinar", wb.ID, "contact", contact.ID,
+		"whatsapp_opt_in", contact.WhatsAppOptIn)
+
+	/* And queue their WhatsApp messages, including for a registration that is still
+	 * pending. Nothing is sent while it is: the outbox sweep requires an approved
+	 * registration, so the confirmation waits for the host's decision and then goes
+	 * out — which is the same rule the approved invitation email follows, without a
+	 * second hook on the approval path. A declined seat retires the rows instead;
+	 * see store.SkipPendingRemindersForRegistration. */
+	s.enqueueWhatsAppInvite(ctx, wb, contact, reg.ID)
+
+	/* And the `registered` drip trigger, which is the same event seen from the CRM's
+	 * side: the invitation is about this webinar, a sequence is the host's own
+	 * follow-up that happens to start here. Nothing is sent by this call — the first
+	 * step is queued by the next sweep, which is why it sits before the flush and
+	 * still arrives about half a minute later than the confirmation. */
+	s.enrollDripsOnRegistration(ctx, wb, contact)
+
+	/* Sent now rather than on the next tick of the sweeper, for the same reason the
+	 * email outbox is flushed from the approval path: a confirmation that arrives
+	 * half a minute after the button was pressed reads as a system that is not sure.
+	 * The row is written first, so this call is allowed to fail — and on all but the
+	 * one webinar shape where a seat needs approving, the only thing due is the
+	 * message this registration just queued. */
+	s.flushWhatsAppOutbox(ctx)
 }
 
 /* alertHostOfPending queues the host's "somebody is waiting" notification.

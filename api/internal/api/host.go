@@ -757,6 +757,11 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	if err := s.store.SkipRemindersForEndedWebinar(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not skip pending mail", "slug", slug, "error", err)
 	}
+	/* The other direction for the CRM: the reminders about this webinar are over, and
+	 * the follow-up sequences start. Here rather than in handleEndWebinar so a webinar
+	 * the sweeper closes on the meeting limit enrolls the same people — and after the
+	 * room is gone, so who attended has its final answer. */
+	s.enrollDripsOnWebinarEnd(ctx, wb)
 	if _, err := s.store.ComputeAndSaveReport(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not write report", "slug", slug, "error", err)
 	}

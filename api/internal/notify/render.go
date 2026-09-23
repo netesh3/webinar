@@ -21,6 +21,16 @@ type Invite struct {
 	WhenText string // already formatted in the webinar's own zone by the caller
 	JoinURL  string // personal: contains the access token
 	HostName string
+	/* ReplayURL is the recording's public page, and is the opposite of JoinURL: the
+	 * same link for everybody, carrying no token, safe to forward. Kept as a separate
+	 * field rather than reusing JoinURL so no renderer can reach for the personal one
+	 * when it meant the public one. */
+	ReplayURL string
+	/* Passcode is the recording's, when it has one. Included in the replay mail on
+	 * purpose: the passcode keeps strangers off a public URL, and the people this
+	 * message goes to are the ones the host already approved — sending them a link they
+	 * cannot open would be a notification about a door that is locked. */
+	Passcode string
 }
 
 // greeting avoids "Hi ," for a registrant who gave no name.

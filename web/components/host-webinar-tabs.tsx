@@ -657,6 +657,9 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     ["Record automatically", w.options.autoRecord],
     ["Live captions", w.options.captions],
     ["Email reminders", w.options.emailReminders !== false],
+    // Shown whether or not it is on, because "no WhatsApp message will be sent" is
+    // the fact a host is checking here — and the default is off.
+    ["WhatsApp reminders", w.options.whatsappReminders === true],
     ["Attendee limit", formatCount(w.attendeeLimit)],
     ["Time zone", w.timeZone],
   ];

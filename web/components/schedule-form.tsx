@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useMemo, useState } from "react";
 import { Alert, Disclosure, Select, Spinner, Toggle } from "./controls";
@@ -193,6 +194,10 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
       multistream: false,
       postWebinarSurvey: false,
       emailReminders: true,
+      /* Off, unlike email. Every WhatsApp message is charged to the host's own Meta
+       * account, so messaging a list on it is something they ask for rather than
+       * something they discover on an invoice. */
+      whatsappReminders: false,
     },
     // The Zoom-webinar defaults: the audience is private and arrives muted.
     controls: {
@@ -759,6 +764,47 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                     label={label}
                   />
                 ))}
+                {/* WhatsApp sits with the other options and is written by hand,
+                 *  because it is the one toggle that can be unavailable: without a
+                 *  connected WhatsApp Business account there is nothing to send
+                 *  from, and a switch that turns on and then silently does nothing
+                 *  would be worse than one that says why. */}
+                {config.whatsappConnect && (
+                  <Toggle
+                    checked={Boolean(form.options.whatsappReminders)}
+                    onChange={(v) =>
+                      set("options", { ...form.options, whatsappReminders: v })
+                    }
+                    disabled={!account?.whatsapp?.connected}
+                    label="WhatsApp reminders (confirmation, 24h and 1h before)"
+                    description={
+                      account?.whatsapp?.connected ? (
+                        <>
+                          Sent from {account.whatsapp.displayPhone || "your number"} to
+                          registrants who tick the WhatsApp box, and billed to your Meta
+                          account. Pick the template for each message under{" "}
+                          <Link
+                            href="/host/contacts"
+                            className="font-medium text-brand hover:underline"
+                          >
+                            Contacts
+                          </Link>
+                          .
+                        </>
+                      ) : (
+                        <>
+                          <Link
+                            href="/account"
+                            className="font-medium text-brand hover:underline"
+                          >
+                            Connect WhatsApp
+                          </Link>{" "}
+                          to message registrants on their phone.
+                        </>
+                      )
+                    }
+                  />
+                )}
               </div>
               {form.options.multistream && (
                 <div className="mt-3 grid gap-2">
