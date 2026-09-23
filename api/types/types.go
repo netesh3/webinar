@@ -1058,6 +1058,14 @@ type CRMContact struct {
 	/** The last thing said in either direction, for an inbox row. Absent on a
 	 *  contact nobody has messaged. */
 	LastMessage *CRMMessage `json:"lastMessage,omitempty"`
+	/** RFC3339 of the last message this person sent TO the host, empty when they
+	 *  never have.
+	 *
+	 *  Separate from LastMessage, which cannot answer it: that is the last message in
+	 *  either direction, so a host who replied most recently would make their own
+	 *  contact look like somebody who never wrote. "Have they answered me" is the
+	 *  question a host actually has about a list of leads. */
+	LastInboundAt string `json:"lastInboundAt,omitempty"`
 }
 
 /** CRMMessage is one message in a thread, from the host's point of view:
@@ -1101,6 +1109,70 @@ type CRMContactScope struct {
 	Topic     string `json:"topic"`
 }
 
+/* CRMContactStatus values: the buckets a contacts list can be filtered to, and the
+ * words both screens that show them use.
+ *
+ * One vocabulary on purpose. The filter chips over the inbox and the WhatsApp column on
+ * a webinar's attendees are the same fact about the same person, and a host who reads
+ * "opted out" in one place and something else in the other is entitled to assume one of
+ * them is wrong.
+ */
+const (
+	CRMStatusReplied  = "replied"
+	CRMStatusNoReply  = "no_reply"
+	CRMStatusOptedIn  = "opted_in"
+	CRMStatusNoOptIn  = "no_opt_in"
+	CRMStatusOptedOut = "opted_out"
+	CRMStatusNoNumber = "no_number"
+)
+
+// CRMContactStatuses is every value ?status= accepts, in the order the chips are
+// rendered. Declared here rather than in the handler so the validator, the UI and this
+// comment cannot fall out of step.
+var CRMContactStatuses = []string{
+	CRMStatusReplied, CRMStatusNoReply,
+	CRMStatusOptedIn, CRMStatusNoOptIn, CRMStatusOptedOut, CRMStatusNoNumber,
+}
+
+// ValidCRMContactStatus reports whether s is one of CRMContactStatuses. The empty
+// string is not a status — it is the absence of the filter — and is rejected here so a
+// caller has to decide what to do about it.
+func ValidCRMContactStatus(s string) bool {
+	for _, v := range CRMContactStatuses {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+/* CRMContactCounts is how a host's contacts divide up, for the chips above the list.
+ *
+ * TWO partitions, not one, and every screen showing them must show them as two groups.
+ * Total is OptedIn + NoOptIn + OptedOut + NoNumber, and Total is ALSO Replied + NoReply
+ * — because whether somebody answered is independent of whether they ever consented. A
+ * single row of six chips would read as one partition summing to nearly twice the
+ * heading above it, and a host who added them up would be right to stop believing any
+ * of the numbers.
+ *
+ * The four consent buckets are the same four Store.AudienceCounts reports, from the
+ * same shared predicates, so the CRM and the broadcast preview cannot say different
+ * things about one webinar.
+ *
+ * Counted through the webinar scope but never through the search box or the selected
+ * chip — the rule already stated on Total below. A number that changes when you click
+ * it is not a number.
+ */
+type CRMContactCounts struct {
+	Total    int `json:"total"`
+	Replied  int `json:"replied"`
+	NoReply  int `json:"noReply"`
+	OptedIn  int `json:"optedIn"`
+	NoOptIn  int `json:"noOptIn"`
+	OptedOut int `json:"optedOut"`
+	NoNumber int `json:"noNumber"`
+}
+
 // CRMContactsResponse is the contacts list, newest activity first.
 type CRMContactsResponse struct {
 	Contacts []CRMContact `json:"contacts"`
@@ -1109,6 +1181,12 @@ type CRMContactsResponse struct {
 	 *  the search box and the page limit both narrow the rows without changing this,
 	 *  so the count in the heading holds still while somebody types. */
 	Total int `json:"total"`
+	/** The same list broken into buckets, for the filter chips. Counts.Total is Total
+	 *  — one query answers both, so the heading and the "All" chip cannot disagree. */
+	Counts CRMContactCounts `json:"counts"`
+	/** Echoed back when ?status= narrowed the list, so the UI can be sure the server
+	 *  applied the filter it asked for rather than silently ignoring an unknown one. */
+	Status string `json:"status,omitempty"`
 	/** Set when ?webinarId= narrowed the list, and absent when it did not. Absent
 	 *  rather than empty so "the whole CRM" is one state and not two. */
 	Scope *CRMContactScope `json:"scope,omitempty"`
@@ -1338,6 +1416,62 @@ type CRMRemindersResponse struct {
 // CRMRemindersRequest replaces the whole set — the kinds omitted are turned off.
 type CRMRemindersRequest struct {
 	Reminders []CRMReminder `json:"reminders"`
+}
+
+/* CRMSetup is how far along a host is in making WhatsApp actually work, as the server
+ * sees it.
+ *
+ * Computed here rather than assembled by the browser out of four other responses, and
+ * that is not only about round trips. What counts as done is a server rule: a template
+ * Meta has since paused stops being sendable, so a reminder configured against it is
+ * neither set nor unset but broken, and only this side knows. Four separate requests
+ * would also let the checklist render a half-updated mix of them.
+ *
+ * Every field is a count or a flag rather than a "next step", because the order a host
+ * does these in is theirs. The screen decides what to nudge; this says what is true.
+ */
+type CRMSetup struct {
+	/** Whether this host has connected their own WhatsApp Business account. Nothing
+	 *  else in here can be finished until this is true, and several of the numbers
+	 *  below are honestly zero rather than pending while it is false. */
+	Connected    bool   `json:"connected"`
+	DisplayPhone string `json:"displayPhone,omitempty"`
+	VerifiedName string `json:"verifiedName,omitempty"`
+	/** Whether registering the number is this host's step at all. False when the
+	 *  `whatsapp_register` switch is off for the account, in which case the step is not
+	 *  undone — it is not theirs, and showing it as outstanding would describe work
+	 *  they have no button for. */
+	RegisterStep bool `json:"registerStep"`
+	/** RFC3339, when the number was registered for sending. Empty when it has not
+	 *  been, which for a number created inside the Embedded Signup dialog is why the
+	 *  first reminder fails. */
+	RegisteredAt string `json:"registeredAt,omitempty"`
+	/** Templates cached from Meta, and how many of those can actually be sent from
+	 *  here — approved, and made only of the parts this implementation fills in. A host
+	 *  with templates and none sendable is the case the count exists to make visible. */
+	Templates         int `json:"templates"`
+	SendableTemplates int `json:"sendableTemplates"`
+	/** RFC3339 of the last template sync, empty when Meta has never been asked. */
+	TemplatesSyncedAt string `json:"templatesSyncedAt,omitempty"`
+	/** Automatic message kinds with a template chosen, out of the kinds there are.
+	 *  RemindersSet counts only the ones whose template is still sendable. */
+	RemindersSet   int `json:"remindersSet"`
+	RemindersTotal int `json:"remindersTotal"`
+	/** Kinds configured against a template Meta no longer approves — set, and silently
+	 *  skipped at send time. The one state a host cannot discover any other way, since
+	 *  nothing fails: the message simply never goes. */
+	RemindersBroken []NotificationKind `json:"remindersBroken,omitempty"`
+	/** The step nothing else in the product surfaces: WhatsApp reminders are a
+	 *  per-webinar switch that defaults to off, deliberately (see
+	 *  WebinarOptions.WhatsAppReminders), so a host who set all of the above up and
+	 *  wonders why nothing sent is usually looking at this. Counted over webinars that
+	 *  have not ended, because the switch no longer means anything on one that has. */
+	WebinarsWithReminders int `json:"webinarsWithReminders"`
+	WebinarsTotal         int `json:"webinarsTotal"`
+	/** Contacts who could be sent a message right now. The end of the checklist: every
+	 *  step above is preparation, and this is the only number that says whether any of
+	 *  it can reach anybody. */
+	OptedInContacts int `json:"optedInContacts"`
 }
 
 /* CRMParam fills one `{{n}}` in a broadcast: either the same words for everybody
@@ -2383,6 +2517,26 @@ type RegistrantRow struct {
 	 * up": nothing was collected, by design.
 	 */
 	IsGuest bool `json:"isGuest,omitempty"`
+	/* WhatsAppStatus is where this registrant stands on WhatsApp, in the CRM's own
+	 * words: one of the CRMStatus* consent values, or empty for somebody who is not in
+	 * the CRM at all.
+	 *
+	 * The same vocabulary the contacts list filters by, deliberately — see
+	 * CRMContactStatuses. One set of words means a host who filters the inbox to "opted
+	 * out" and reads the same phrase on this row is looking at one fact.
+	 *
+	 * A string rather than a bool because empty is NOT "no". A guest registration
+	 * collects neither a phone nor an email and so creates no contact at all, and
+	 * rendering that as "has not opted in" would invite the host to go and chase
+	 * somebody who was never asked and cannot be.
+	 *
+	 * Only filled in for a host who has connected WhatsApp; otherwise there is no CRM
+	 * to answer from and the columns are not shown.
+	 */
+	WhatsAppStatus string `json:"whatsappStatus,omitempty"`
+	/* RFC3339 of the last message this person sent to the host's WhatsApp number, empty
+	 * when they never have — which is the ordinary case and reads as a dash. */
+	LastInboundAt string `json:"lastInboundAt,omitempty"`
 }
 
 type PanelistRequest struct {

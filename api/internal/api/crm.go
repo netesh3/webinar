@@ -42,6 +42,20 @@ func (s *Server) handleCRMContacts(w http.ResponseWriter, r *http.Request) {
 	// same thing, so one name means one thing across this API.
 	slug := strings.TrimSpace(r.URL.Query().Get("webinarId"))
 
+	/* One filter chip, refused rather than ignored when it is not one of ours.
+	 *
+	 * Silently listing everybody for an unknown status would be the worst outcome here:
+	 * the host asked to see only the people who have not replied, and a full list looks
+	 * exactly like a webinar where everybody replied. The accepted values are spelled
+	 * out in the message because they are a closed set this server defines.
+	 */
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	if status != "" && !types.ValidCRMContactStatus(status) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_status",
+			"Filter by one of: "+strings.Join(types.CRMContactStatuses, ", ")+".")
+		return
+	}
+
 	/* The scope is resolved BEFORE the list, because it decides whether there is a list
 	 * to send at all.
 	 *
@@ -70,9 +84,10 @@ func (s *Server) handleCRMContacts(w http.ResponseWriter, r *http.Request) {
 		scope = &types.CRMContactScope{WebinarID: slug, Topic: topic}
 	}
 
-	contacts, total, err := s.store.Contacts(r.Context(), user.ID, store.ContactFilter{
+	contacts, counts, err := s.store.Contacts(r.Context(), user.ID, store.ContactFilter{
 		Query:       q,
 		WebinarSlug: slug,
+		Status:      status,
 		Limit:       limit,
 	})
 	if err != nil {
@@ -89,9 +104,13 @@ func (s *Server) handleCRMContacts(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, types.CRMContactsResponse{
 		Contacts: contacts,
-		Total:    total,
-		Scope:    scope,
-		Tags:     s.hostTags(r.Context(), user),
+		// The same number twice, from one query: the sentence above the list and the
+		// "All" chip beside it are the same claim and must not be able to differ.
+		Total:  counts.Total,
+		Counts: counts,
+		Status: status,
+		Scope:  scope,
+		Tags:   s.hostTags(r.Context(), user),
 		/* Reported alongside the list rather than left to /api/config, because it is
 		 * the answer to a different question. The flag in the config says WhatsApp
 		 * exists on this instance; this says whether THIS host can currently send —

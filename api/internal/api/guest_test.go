@@ -3,6 +3,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -533,28 +534,57 @@ func TestTheHostCanTellAGuestApart(t *testing.T) {
 	}
 
 	// The export, header and all.
-	res, raw = h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/registrants.csv", nil)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("csv: status %d body %s", res.StatusCode, raw)
+	rows2 := exportedCSV(t, h, wb.ID)
+	if len(rows2) != 3 {
+		t.Fatalf("csv has %d records, want a header and two rows: %+v", len(rows2), rows2)
 	}
-	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("csv has %d lines, want a header and two rows: %s", len(lines), raw)
-	}
-	if !strings.HasSuffix(strings.TrimSpace(lines[0]), ",guest") {
-		t.Errorf("csv header has no guest column: %q", lines[0])
-	}
-	// One "true" and one "false" in the last field, whichever order the rows came in.
+	guest := csvColumn(t, rows2[0], "guest")
+	// One "true" and one "false" in that column, whichever order the rows came in.
 	trues := 0
-	for _, line := range lines[1:] {
-		fields := strings.Split(strings.TrimSpace(line), ",")
-		if fields[len(fields)-1] == "true" {
+	for _, row := range rows2[1:] {
+		if row[guest] == "true" {
 			trues++
 		}
 	}
 	if trues != 1 {
-		t.Errorf("csv marked %d rows as guests, want 1: %s", trues, raw)
+		t.Errorf("csv marked %d rows as guests, want 1: %+v", trues, rows2)
 	}
+}
+
+/* exportedCSV reads the registrant export as records rather than as text.
+ *
+ * Parsed, because the export quotes fields — the phone is written with a leading tab so
+ * spreadsheets stop eating the + — and splitting on commas gets that right only by luck.
+ */
+func exportedCSV(t *testing.T, h *harness, slug string) [][]string {
+	t.Helper()
+	res, raw := h.do(http.MethodGet, "/api/host/webinars/"+slug+"/registrants.csv", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("csv: status %d body %s", res.StatusCode, raw)
+	}
+	records, err := csv.NewReader(bytes.NewReader(raw)).ReadAll()
+	if err != nil {
+		t.Fatalf("csv: %v\n  body: %s", err, raw)
+	}
+	return records
+}
+
+/* csvColumn finds a column by NAME and fails if it is missing.
+ *
+ * By name and not by position, which is the whole point: columns are only ever appended
+ * to this export (see handleExportRegistrants), so a test that pinned "guest" to the last
+ * field would fail the next time something legitimate is added after it — and a test that
+ * pinned it to index 8 would pass while the column it is reading changed meaning.
+ */
+func csvColumn(t *testing.T, header []string, name string) int {
+	t.Helper()
+	for i, h := range header {
+		if h == name {
+			return i
+		}
+	}
+	t.Fatalf("csv header has no %q column: %v", name, header)
+	return -1
 }
 
 // A webinar with no guests still has the column, so a host's spreadsheet does not change
@@ -565,13 +595,13 @@ func TestTheGuestColumnIsAlwaysInTheExport(t *testing.T) {
 	wb := h.openWebinar("No guests")
 	h.registerAs(wb.ID, "only-lead@test.dev")
 
-	res, raw := h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/registrants.csv", nil)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("csv: status %d body %s", res.StatusCode, raw)
+	records := exportedCSV(t, h, wb.ID)
+	if len(records) != 2 {
+		t.Fatalf("csv has %d records, want a header and one row: %+v", len(records), records)
 	}
-	header := strings.SplitN(strings.TrimSpace(string(raw)), "\n", 2)[0]
-	if !strings.HasSuffix(strings.TrimSpace(header), ",guest") {
-		t.Errorf("csv header has no guest column: %q", header)
+	guest := csvColumn(t, records[0], "guest")
+	if records[1][guest] != "false" {
+		t.Errorf("the only row reads %q in the guest column, want false", records[1][guest])
 	}
 }
 

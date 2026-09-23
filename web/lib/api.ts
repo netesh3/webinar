@@ -33,6 +33,7 @@ import type {
   CRMRemindersRequest,
   CRMRemindersResponse,
   CRMSendRequest,
+  CRMSetup,
   CRMTag,
   CRMTagRequest,
   CRMTagsResponse,
@@ -472,18 +473,35 @@ export const api = {
    *  that one webinar — which is what the link from a webinar's Attendees tab asks
    *  for. Spelled as the audience endpoint spells it. A slug that is not this
    *  host's answers 404 rather than an empty list, so the caller can tell a stale
-   *  link from a webinar nobody came to. */
-  crmContacts: (q = "", webinarId = "", limit = 0) => {
+   *  link from a webinar nobody came to.
+   *
+   *  `status` is one of the CRMStatus* values and narrows to one of the chips above
+   *  the list — who has written back, who can still be messaged. The counts come back
+   *  whole either way, so the other chips still say how many they hold while one of
+   *  them is active. A value the server does not know is a 422 rather than an
+   *  unfiltered list, since those two look identical on screen. */
+  crmContacts: (q = "", webinarId = "", limit = 0, status = "") => {
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
     if (webinarId.trim()) params.set("webinarId", webinarId.trim());
     if (limit > 0) params.set("limit", String(limit));
+    if (status.trim()) params.set("status", status.trim());
     const query = params.toString();
     return request<CRMContactsResponse>(
       `/api/host/crm/contacts${query ? `?${query}` : ""}`,
       fresh,
     );
   },
+
+  /** How far along this host is in making WhatsApp work: connected, number
+   *  registered, templates synced, a template chosen per automatic message, and the
+   *  per-webinar switch turned on somewhere.
+   *
+   *  One call rather than four, because "done" is the server's rule — a template Meta
+   *  paused yesterday un-does a step nobody touched — and because four requests can
+   *  render a half-updated mix of each other. It reads the template cache and never
+   *  asks Meta, so arriving at the CRM costs nothing. */
+  crmSetup: () => request<CRMSetup>("/api/host/crm/setup", fresh),
 
   /** One contact and the conversation with them. 404 for a contact that is not
    *  this host's — there is no distinction to draw for the caller between "no
