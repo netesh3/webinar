@@ -980,6 +980,11 @@ rather than about opt-in state).
 Embedded Signup for *other* businesses needs Tech Provider status + App Review.
 You can code and test against your own number long before that is approved.
 
+`docs/META-HANDOVER.md` is the same ground in plain English, written to be handed
+to whoever holds the Facebook login: where each value hides in the Meta UI, which
+values are pasted *into* Meta rather than collected *from* it, and a fill-in form
+to send back. Keep the two in step.
+
 **Webcast needs:**
 
 1. **Facebook / Meta personal account** → [developers.facebook.com](https://developers.facebook.com/), developer terms accepted.
