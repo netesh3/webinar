@@ -190,6 +190,45 @@ export function useBackgroundCost(): FrameCost {
   return useSyncExternalStore(subscribeFrameCost, readFrameCost, readFrameCostOnServer);
 }
 
+/* Whether the segmentation model is still on its way, which somebody has to be told.
+ *
+ * Choosing a background downloads 2.7 MB of brotli-compressed WASM and a quarter-megabyte
+ * model, then instantiates both and brings up the GPU delegate. Until that finishes,
+ * SoftSegmenter.transform deliberately passes the camera through untouched — a second of the
+ * real room beats a second of black rectangle, and that decision is right.
+ *
+ * What was missing is that it looked exactly like the feature being broken: click a
+ * background, nothing changes, no message, nothing to wait for. And because the download
+ * finishes while you are deciding what to do about it, joining the webinar appears to be what
+ * fixed it. That is how this was reported — "it's not getting set on this page, it sets when
+ * I joined the webinar".
+ *
+ * Through a store rather than useState for the same reason frameCost above uses one, with a
+ * second reason on top: this is written from inside the attach effect, and a setState called
+ * synchronously in an effect body is a cascading render that React's own lint rule refuses.
+ * Publishing to a store is not a render, so the flag can go up before the first await — which
+ * it must, or the first paint after the click is the one paint that fails to explain itself.
+ */
+let preparingModel = false;
+const preparingListeners = new Set<() => void>();
+
+function publishPreparing(next: boolean): void {
+  // Guarded, so a switch between two image backgrounds does not notify twice for no change.
+  if (preparingModel === next) return;
+  preparingModel = next;
+  for (const listener of preparingListeners) listener();
+}
+
+function subscribePreparing(listener: () => void): () => void {
+  preparingListeners.add(listener);
+  return () => {
+    preparingListeners.delete(listener);
+  };
+}
+
+const readPreparing = () => preparingModel;
+const readPreparingOnServer = (): boolean => false;
+
 // ------------------------------------------------------------------- the processor
 
 /* How slow is too slow.
@@ -294,6 +333,13 @@ export function useVirtualBackground(
   const processor = useRef<Processor | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Whether the model is still on its way. See publishPreparing.
+  const preparing = useSyncExternalStore(
+    subscribePreparing,
+    readPreparing,
+    readPreparingOnServer,
+  );
+
   /* The latest amount, for the attach path to read at the moment it builds the
    * transformer. Attaching is async, so the value can move between the effect starting
    * and the processor existing — and the push effect below cannot cover that window,
@@ -346,7 +392,19 @@ export function useVirtualBackground(
     if (!track) return;
     let cancelled = false;
 
+    /* Announced before the first await, so the very first paint after the click already
+     * says something is happening. Anything later and the gap this exists to explain is
+     * the gap it fails to cover. */
+    if (choice.mode !== "none") publishPreparing(true);
+
     (async () => {
+      /* One exit for the flag, covering every way out of this function below — the two
+       * early returns, the success and the failure. A "preparing…" that outlives what it
+       * was describing is worse than never having shown one. */
+      const done = () => {
+        if (!cancelled) publishPreparing(false);
+      };
+
       // Nothing to do, and nothing to load: a participant who never turns a
       // background on never downloads nine megabytes of WASM.
       if (choice.mode === "none" && !lit) {
@@ -360,6 +418,7 @@ export function useVirtualBackground(
           await processor.current.destroy().catch(() => {});
           processor.current = null;
         }
+        done();
         return;
       }
 
@@ -372,6 +431,7 @@ export function useVirtualBackground(
             ? "This browser can't adjust your video. It needs WebGL2."
             : "This browser can't run virtual backgrounds.",
         );
+        done();
         return;
       }
 
@@ -448,6 +508,7 @@ export function useVirtualBackground(
           processor.current.setLowLight(lowLightAmount(latestLowLight.current));
         }
         if (!cancelled) setError(null);
+        done();
       } catch (err) {
         if (cancelled) return;
         /* A failed enhancement must not cost somebody their camera.
@@ -476,6 +537,7 @@ export function useVirtualBackground(
             ? `Couldn't start the background: ${err.message}`
             : "Couldn't start the background.",
         );
+        done();
       }
     })();
 
@@ -518,5 +580,5 @@ export function useVirtualBackground(
     [],
   );
 
-  return { error };
+  return { error, preparing };
 }
