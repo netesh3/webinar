@@ -1,6 +1,49 @@
+# Response headers for static assets, applied by Cloudflare Workers Assets.
+#
+# This is the mechanism rather than next.config.ts's headers() for one reason: Cache-Control
+# on an asset is set by the asset server, and a value from headers() does not displace it.
+# Permissions-Policy does arrive from next.config (it is on every asset response in
+# production), which is why that one is in both places and this file is not the only copy.
+
+# Next's own build output. Safe at a year because the filename contains a content hash, so
+# an upgrade is a different URL rather than the same URL with different bytes.
 /_next/static/*
   Cache-Control: public,max-age=31536000,immutable
 
+# Vendored runtimes: MediaPipe's selfie segmenter (~19 MB on disk, 2.7 MB brotli for the
+# WASM alone), onnxruntime for in-browser captions (~31 MB) and rnnoise (~380 KB). See the
+# README in each directory for why they are served from this origin at all.
+#
+# They were on the asset server's default of `public, max-age=0, must-revalidate`, which
+# means the browser may not use its own copy without asking first. Each of these is fetched
+# lazily — MediaPipe when somebody picks a background, onnxruntime when captions start — so
+# the cost was a conditional request per asset on every session that used the feature, and a
+# full re-download of 2.7 MB whenever a cache entry had been evicted in between. For files
+# that have not changed since they were vendored, that is a round trip bought for nothing.
+#
+# Thirty days rather than a year, and deliberately WITHOUT `immutable`, which is the whole
+# decision here. Unlike /_next/static above, these paths carry no version or content hash:
+# public/mediapipe/README.md documents refreshing them by copying new bytes over the old
+# ones at the same URL. `immutable` tells the browser not to revalidate even on an explicit
+# reload, so on a path like this it would mean an upgraded runtime never reaching anyone who
+# already had the old one — and no way for them to fix it but to clear their cache. Leaving
+# it off keeps "reload the page" an honest remedy, and thirty days still removes the round
+# trip from every session anybody actually runs.
+#
+# If a year is wanted later, the way to earn it is a version in the path
+# (/mediapipe/0.10.14/wasm), not a longer max-age here.
+/mediapipe/*
+  Cache-Control: public,max-age=2592000
+
+/onnxruntime/*
+  Cache-Control: public,max-age=2592000
+
+/rnnoise/*
+  Cache-Control: public,max-age=2592000
+
+# The background images the picker offers. Same reasoning, same unversioned paths.
+/backgrounds/*
+  Cache-Control: public,max-age=2592000
+
 /*
   Permissions-Policy: identity-credentials-get=(self "https://accounts.google.com")
-
