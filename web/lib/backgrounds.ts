@@ -230,7 +230,36 @@ export function backgroundsSupported(): boolean {
   try {
     // Loaded lazily elsewhere; this check is synchronous and cheap.
     const canvas = document.createElement("canvas");
-    return !!canvas.getContext("webgl2");
+    if (!canvas.getContext("webgl2")) return false;
+
+    /* WebGL2 is necessary and is not sufficient, which is what this check used to assume.
+     *
+     * Three things have to be true, and a browser can easily have the first without the
+     * others — Safari 26 has no MediaStreamTrackProcessor at all, and Firefox had
+     * canvas.captureStream for years before it had WebCodecs. Offering the picker on
+     * WebGL2 alone meant those browsers were shown backgrounds and a brightness slider
+     * that could not attach, and found out by having setProcessor throw
+     * "Neither MediaStreamTrackProcessor nor canvas.captureStream() fallback is supported
+     * in this browser" — worded for whoever wrote the library, not for a presenter three
+     * minutes from going live.
+     *
+     * VideoFrame, because lib/segmenter.ts constructs one for every processed frame on
+     * both paths, so it is required even where the wrapper needs nothing.
+     *
+     * Then a way to get frames in and out of a track: MediaStreamTrackProcessor with its
+     * Generator, or the canvas.captureStream fallback. The condition mirrors the one inside
+     * @livekit/track-processors deliberately — if this file is more optimistic than the
+     * library it calls, the difference is a feature that appears to exist and then fails.
+     */
+    const w = window as unknown as Record<string, unknown>;
+    if (typeof w.VideoFrame === "undefined") return false;
+    const hasTrackProcessor =
+      typeof w.MediaStreamTrackProcessor !== "undefined" &&
+      typeof w.MediaStreamTrackGenerator !== "undefined";
+    const hasCanvasFallback =
+      typeof HTMLCanvasElement !== "undefined" &&
+      "captureStream" in HTMLCanvasElement.prototype;
+    return hasTrackProcessor || hasCanvasFallback;
   } catch {
     return false;
   }
