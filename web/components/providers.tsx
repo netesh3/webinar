@@ -45,6 +45,11 @@ const CONFIG_FALLBACK: AppConfig = {
   emailConfigured: false,
   // 180 minutes = 3 hours, matches the server default.
   defaultMaxMeetingMin: 180,
+  /* Empty rather than a copy of the server's list. The catalogue is what the
+   * admin screen renders switches from, and a hardcoded one here would offer a
+   * switch this build's API does not know about — better no switches for the
+   * second before the real config lands than a wrong one. */
+  featureCatalogue: [],
 };
 
 const ConfigContext = createContext<AppConfig>(CONFIG_FALLBACK);

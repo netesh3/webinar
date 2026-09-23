@@ -225,16 +225,36 @@ function AttendeesTab({
           <SectionTitle>
             {ended ? "Who registered / attended" : "Registrants"}
           </SectionTitle>
-          {!bypass && (
+          <div className="flex flex-wrap items-center gap-2">
+            {/* The other thing a host wants to do with this list: talk to it.
+                This table is who holds a seat — a name, a company, a decision —
+                and the CRM is the same people as an ongoing conversation, with
+                the tags, the notes and the message history the table has no
+                business carrying. So one link rather than a second table here.
+                Not hidden behind the WhatsApp connection: registrants become
+                contacts whether or not the host ever connects a number, and the
+                tags and notes about them work with no number at all. Nor behind
+                the dev bypass that hides Export CSV beside it — that one is a
+                download the API has to authorise, this is a route in this app
+                that the preview host already reaches from the nav. */}
             <ButtonLink
-              href={api.registrantsCsvUrl(w.id)}
+              href={`/host/crm?webinar=${w.id}`}
               size="sm"
               variant="secondary"
-              prefetch={false}
             >
-              Export CSV
+              View in CRM
             </ButtonLink>
-          )}
+            {!bypass && (
+              <ButtonLink
+                href={api.registrantsCsvUrl(w.id)}
+                size="sm"
+                variant="secondary"
+                prefetch={false}
+              >
+                Export CSV
+              </ButtonLink>
+            )}
+          </div>
         </div>
 
         {registrants.length === 0 ? (
@@ -874,6 +894,9 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     ["Record automatically", w.options.autoRecord],
     ["Live captions", w.options.captions],
     ["Email reminders", w.options.emailReminders !== false],
+    // Shown whether or not it is on, because "no WhatsApp message will be sent" is
+    // the fact a host is checking here — and the default is off.
+    ["WhatsApp reminders", w.options.whatsappReminders === true],
     ["Attendee limit", formatCount(w.attendeeLimit)],
     ["Time zone", w.timeZone],
   ];

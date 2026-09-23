@@ -8,6 +8,7 @@ import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Account } from "@/lib/api-types";
 import { YouTubeIcon } from "./icons";
+import { WhatsAppCard } from "./whatsapp-card";
 
 /** Account settings. Deliberately small: a name, where they work, and whether
  *  this account may host. Everything else about a person lives on the
@@ -43,7 +44,7 @@ export function AccountScreen() {
 function ProfileForm({ account }: { account: Account }) {
   const router = useRouter();
   const { updateProfile, signOut, refresh } = useSession();
-  const { youtubeOAuth } = useAppConfig();
+  const { youtubeOAuth, whatsappConnect } = useAppConfig();
 
   const [name, setName] = useState(account.name);
   const [title, setTitle] = useState(account.title);
@@ -202,6 +203,14 @@ function ProfileForm({ account }: { account: Account }) {
                 )}
               </div>
             </div>
+          )}
+
+          {/* Only for an account that may host, unlike the YouTube card above:
+              the WhatsApp card asks the API for Meta's signup ids as it mounts,
+              and that endpoint requires the hosting capability — so an attendee
+              would be shown a failure for a feature they cannot use. */}
+          {whatsappConnect && account.canHost && (
+            <WhatsAppCard account={account} onChanged={refresh} />
           )}
 
           {/* Hosting is now READ-ONLY here.

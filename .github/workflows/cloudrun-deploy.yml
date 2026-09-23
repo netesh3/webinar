@@ -26,6 +26,10 @@
 #   GOOGLE_CLIENT_ID — Web OAuth client (selfreminder-rnix); exposed as googleClientId for One Tap
 #   GOOGLE_API_KEY — optional; Drive Picker only
 #   GOOGLE_CLIENT_SECRET — same Web client secret; Connect YouTube / YouTube Data API
+#   META_APP_ID / META_APP_SECRET / META_WHATSAPP_CONFIG_ID — Connect WhatsApp via Meta
+#     Embedded Signup. All three or none: the API refuses to boot on a partial set.
+#   META_WEBHOOK_VERIFY_TOKEN — must match the Verify token on the Meta app's
+#     WhatsApp webhook, whose callback is {API}/api/webhooks/whatsapp
 #   TELEMETRY_ENABLED — hardcoded below (not a secret): "true" turns on
 #     POST /telemetry for a performance-test window. Flip to "false" and
 #     redeploy when the test is done.
@@ -97,6 +101,10 @@ jobs:
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      META_APP_ID: ${{ secrets.META_APP_ID }}
+      META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+      META_WHATSAPP_CONFIG_ID: ${{ secrets.META_WHATSAPP_CONFIG_ID }}
+      META_WEBHOOK_VERIFY_TOKEN: ${{ secrets.META_WEBHOOK_VERIFY_TOKEN }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       APP_NAME: ${{ vars.APP_NAME }}

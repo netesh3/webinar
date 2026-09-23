@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { FeatureReplayLinks } from "@/lib/api-types";
 import type { Recording, Webinar } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { formatBytes, formatClock } from "@/lib/format";
 import { ConfirmModal, CopyField, Modal, Spinner, Toggle, Alert } from "./controls";
-import { useAppConfig, useToast } from "./providers";
+import { useAppConfig, useSession, useToast } from "./providers";
 import {
   daysUntilExpiry,
   recordingRetentionDays,
@@ -227,7 +228,14 @@ function ShareRecordingModal({
   onSaved: () => Promise<void>;
 }) {
   const { notify } = useToast();
+  const { account } = useSession();
   const hydrated = useHydrated();
+  /* Whether publishing will tell anybody. The same switch the server checks —
+   * an account without it publishes a recording and nothing is sent, which is
+   * how this worked before the replay existed. */
+  const tellsRegistrants = (account?.features ?? []).includes(
+    FeatureReplayLinks,
+  );
   const [isPublic, setIsPublic] = useState(rec.isPublic);
   const [passcode, setPasscode] = useState(rec.passcode ?? "");
   const [busy, setBusy] = useState(false);
@@ -304,6 +312,20 @@ function ShareRecordingModal({
             label="Enable public viewing"
             description="When enabled, anyone with the link can view this recording."
           />
+
+          {/* Said before Save, not afterwards. Publishing is what sends the
+              replay to everybody who registered, and a host who did not expect
+              that has already sent it by the time a toast could tell them.
+              Only while it is still private: once it is published the messages
+              have gone, and switching it off and on again sends nothing, so
+              repeating the warning would misdescribe what the button does. */}
+          {tellsRegistrants && isPublic && !rec.isPublic && (
+            <Alert tone="info">
+              Saving this emails everyone who registered — and messages the ones
+              who opted in on WhatsApp — with a link to watch it back. It happens
+              once per person: unpublishing and publishing again sends nothing.
+            </Alert>
+          )}
 
           <div className="space-y-1.5">
             <label className="block text-[12.5px] font-medium text-ink">

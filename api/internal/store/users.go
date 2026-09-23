@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"math"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/netkumar/webcast/api/types"
@@ -34,12 +35,52 @@ type User struct {
 	MaxDurationMin *int
 	// CanCdnBroadcast allows this host to run CDN HLS broadcast webinars.
 	CanCdnBroadcast bool
+	/* Features are the per-account switches an admin has turned on — the
+	 * types.Feature keys, and nothing else. Absent means off; see migrations/0048 for
+	 * why these are a list and can_host is a column.
+	 */
+	Features []string
 
 	// YouTube OAuth. Refresh is the secret; Public() never copies it.
 	YouTubeRefresh      string
 	YouTubeChannelID    string
 	YouTubeChannelTitle string
 	YouTubeStreamID     string
+
+	/* WhatsApp Cloud API, granted through Meta Embedded Signup. WhatsAppToken is
+	 * the secret; Public() never copies it.
+	 *
+	 * The token is what makes this host's messages billable to this host's own
+	 * WhatsApp Business Account, so it is per-account for the same reason the
+	 * YouTube grant is — see migrations/0041. Both timestamps are pointers because
+	 * NULL is meaningful for both: no expiry at all, and never connected.
+	 */
+	WhatsAppToken          string
+	WhatsAppWABAID         string
+	WhatsAppPhoneNumberID  string
+	WhatsAppDisplayPhone   string
+	WhatsAppVerifiedName   string
+	WhatsAppTokenExpiresAt *time.Time
+	WhatsAppConnectedAt    *time.Time
+	// WhatsAppRegisteredAt is when this number was registered with Cloud API from
+	// here, if it ever was. The PIN that did it is deliberately not stored — see
+	// migrations/0048.
+	WhatsAppRegisteredAt *time.Time
+}
+
+/* HasFeature reports whether a per-account switch is on.
+ *
+ * On the user rather than on the Store because every caller already has one: a handler
+ * reads the account out of the request context, and the runtime paths carry it. A
+ * feature check that needed a query would be a query on every send.
+ */
+func (u User) HasFeature(key string) bool {
+	for _, f := range u.Features {
+		if f == key {
+			return true
+		}
+	}
+	return false
 }
 
 func (u User) Public() types.Account {
@@ -56,12 +97,33 @@ func (u User) Public() types.Account {
 		IsAdmin:         u.IsAdmin,
 		MaxDurationMin:  u.MaxDurationMin,
 		CanCdnBroadcast: u.CanCdnBroadcast,
+		// Never nil on the wire: a browser that has to guard a list guards it
+		// differently on every screen.
+		Features: append([]string{}, u.Features...),
 	}
 	if u.YouTubeRefresh != "" {
 		a.YouTube = &types.YouTubeLink{
 			Connected:    true,
 			ChannelID:    u.YouTubeChannelID,
 			ChannelTitle: u.YouTubeChannelTitle,
+		}
+	}
+	// Keyed on the token, not on the ids: a row can carry a WABA id from a signup
+	// that never finished, and only a token means we can actually send.
+	if u.WhatsAppToken != "" {
+		a.WhatsApp = &types.WhatsAppLink{
+			Connected:    true,
+			DisplayPhone: u.WhatsAppDisplayPhone,
+			VerifiedName: u.WhatsAppVerifiedName,
+		}
+		if u.WhatsAppConnectedAt != nil {
+			a.WhatsApp.ConnectedAt = u.WhatsAppConnectedAt.Format(time.RFC3339)
+		}
+		if u.WhatsAppTokenExpiresAt != nil {
+			a.WhatsApp.TokenExpiresAt = u.WhatsAppTokenExpiresAt.Format(time.RFC3339)
+		}
+		if u.WhatsAppRegisteredAt != nil {
+			a.WhatsApp.RegisteredAt = u.WhatsAppRegisteredAt.Format(time.RFC3339)
 		}
 	}
 	return a
@@ -82,16 +144,39 @@ func (u User) Person() types.Person {
 }
 
 const userColumns = `id::text, email, coalesce(password_hash,''), name, title, org, phone,
-	initials, hue, can_host, is_admin, max_duration_min, can_cdn_broadcast,
+	initials, hue, can_host, is_admin, max_duration_min, can_cdn_broadcast, features,
 	coalesce(youtube_refresh,''), coalesce(youtube_channel_id,''),
-	coalesce(youtube_channel_title,''), coalesce(youtube_stream_id,'')`
+	coalesce(youtube_channel_title,''), coalesce(youtube_stream_id,''),
+	coalesce(whatsapp_access_token,''), coalesce(whatsapp_waba_id,''),
+	coalesce(whatsapp_phone_number_id,''), coalesce(whatsapp_display_phone,''),
+	coalesce(whatsapp_verified_name,''),
+	whatsapp_token_expires_at, whatsapp_connected_at, whatsapp_registered_at`
 
 func scanUser(row scanner) (User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Title, &u.Org, &u.Phone,
 		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.MaxDurationMin, &u.CanCdnBroadcast,
-		&u.YouTubeRefresh, &u.YouTubeChannelID, &u.YouTubeChannelTitle, &u.YouTubeStreamID)
+		&u.Features,
+		&u.YouTubeRefresh, &u.YouTubeChannelID, &u.YouTubeChannelTitle, &u.YouTubeStreamID,
+		&u.WhatsAppToken, &u.WhatsAppWABAID, &u.WhatsAppPhoneNumberID, &u.WhatsAppDisplayPhone,
+		&u.WhatsAppVerifiedName, &u.WhatsAppTokenExpiresAt, &u.WhatsAppConnectedAt,
+		&u.WhatsAppRegisteredAt)
 	return u, err
+}
+
+/* SetUserWhatsAppRegistered records that this host's number has been registered with
+ * Cloud API. The PIN that did it is not a parameter: see migrations/0048.
+ */
+func (s *Store) SetUserWhatsAppRegistered(ctx context.Context, userID string) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE users SET whatsapp_registered_at = now() WHERE id = $1`, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) HostCanCdnBroadcast(ctx context.Context, hostID string) (bool, error) {
@@ -116,6 +201,33 @@ func (s *Store) UserByEmail(ctx context.Context, email string) (User, error) {
 func (s *Store) UserByID(ctx context.Context, id string) (User, error) {
 	u, err := scanUser(s.pool.QueryRow(ctx,
 		`SELECT `+userColumns+` FROM users WHERE id = $1`, id))
+	if noRows(err) {
+		return User{}, ErrNotFound
+	}
+	return u, err
+}
+
+/* UserByWhatsAppPhoneNumberID finds the host a webhook delivery belongs to.
+ *
+ * Meta says which number a message arrived on and nothing about which account of
+ * ours owns it, so this is the whole of the routing: one phone-number id, one
+ * host, one CRM. It is also the only user lookup in this package that is driven by
+ * a stranger's request rather than a session, which is why the caller treats an
+ * unknown id as "not ours, drop it" instead of an error.
+ *
+ * The id stays unique across accounts by Meta's own arrangement — a WhatsApp
+ * number belongs to exactly one WABA — and a host who disconnects has the column
+ * cleared, so a former host's traffic stops resolving to them.
+ */
+func (s *Store) UserByWhatsAppPhoneNumberID(ctx context.Context, phoneNumberID string) (User, error) {
+	id := strings.TrimSpace(phoneNumberID)
+	if id == "" {
+		return User{}, ErrNotFound
+	}
+	u, err := scanUser(s.pool.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users
+		  WHERE whatsapp_phone_number_id = $1 AND whatsapp_access_token <> ''
+		  ORDER BY whatsapp_connected_at DESC NULLS LAST LIMIT 1`, id))
 	if noRows(err) {
 		return User{}, ErrNotFound
 	}
@@ -330,6 +442,45 @@ func (s *Store) SetUserYouTube(ctx context.Context, userID, refresh, channelID, 
 		       youtube_stream_id = $5
 		 WHERE id = $1`,
 		userID, refresh, channelID, channelTitle, streamID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+/* SetUserWhatsApp stores the grant Embedded Signup produced, or clears it.
+ *
+ * An empty token is the disconnect: every other column goes with it, including
+ * the ids, so a half-cleared row can never be read as "connected to something,
+ * details unknown". whatsapp_connected_at is derived here rather than passed in —
+ * it is the time the grant was stored, which is a fact this function owns.
+ *
+ * expiresAt is nil for the usual non-expiring business token; see wa.Token.
+ */
+func (s *Store) SetUserWhatsApp(ctx context.Context, userID, token, wabaID, phoneNumberID, displayPhone, verifiedName string, expiresAt *time.Time) error {
+	connectedAt := (*time.Time)(nil)
+	if strings.TrimSpace(token) != "" {
+		now := time.Now().UTC()
+		connectedAt = &now
+	} else {
+		// Disconnecting: drop everything, not just the token.
+		wabaID, phoneNumberID, displayPhone, verifiedName, expiresAt = "", "", "", "", nil
+	}
+
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE users
+		   SET whatsapp_access_token = $2,
+		       whatsapp_waba_id = $3,
+		       whatsapp_phone_number_id = $4,
+		       whatsapp_display_phone = $5,
+		       whatsapp_verified_name = $6,
+		       whatsapp_token_expires_at = $7,
+		       whatsapp_connected_at = $8
+		 WHERE id = $1`,
+		userID, token, wabaID, phoneNumberID, displayPhone, verifiedName, expiresAt, connectedAt)
 	if err != nil {
 		return err
 	}

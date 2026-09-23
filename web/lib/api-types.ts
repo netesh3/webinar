@@ -65,6 +65,44 @@ export const NotifyRegistrationConfirmed: NotificationKind = "registration_confi
 export const NotifyReminder24h: NotificationKind = "reminder_24h";
 export const NotifyReminder1h: NotificationKind = "reminder_1h";
 /**
+ *  The same three things said on WhatsApp, which are separate kinds rather than
+ * 	 * the same kinds on another channel. A host may well want both — an email with
+ * 	 * a calendar file and a message on the phone the person will actually be
+ * 	 * holding — and one kind per row is what lets the outbox guarantee one of each
+ * 	 * per registration.
+ */
+export const NotifyWhatsAppConfirmed: NotificationKind = "wa_registration_confirmed";
+export const NotifyWhatsAppReminder24h: NotificationKind = "wa_reminder_24h";
+export const NotifyWhatsAppReminder1h: NotificationKind = "wa_reminder_1h";
+/**
+ *  NotifyWhatsAppBroadcast is one recipient of one broadcast: the host's own
+ * 	 * message, written once and queued per person, rather than anything this
+ * 	 * application decided to send. It is not in WhatsAppReminderKinds because it has
+ * 	 * no settings row — the template and its values belong to the broadcast.
+ */
+export const NotifyWhatsAppBroadcast: NotificationKind = "wa_broadcast";
+/**
+ *  NotifyWhatsAppDrip is one step of one person's sequence, queued when it comes
+ * 	 * due rather than all at once — the next step's time is only known once the
+ * 	 * previous one has actually gone. Also not in WhatsAppReminderKinds: the template
+ * 	 * belongs to the step, and nothing about a webinar's clock may reschedule it.
+ */
+export const NotifyWhatsAppDrip: NotificationKind = "wa_drip";
+/**
+ *  NotifyReplayReady is the email that says the recording is up, with the link to
+ * 	 * watch it. Sent when the host shares one, not when it finishes processing: a
+ * 	 * replay link that arrives before anybody has decided to publish it would hand out
+ * 	 * a recording the host has not looked at yet.
+ */
+export const NotifyReplayReady: NotificationKind = "replay_ready";
+/**
+ *  NotifyWhatsAppReplay is the same sentence on WhatsApp, and it is in
+ * 	 * WhatsAppReminderKinds because it works the way the other automatic messages do:
+ * 	 * the host picks an approved template for it once, and it is sent to the people
+ * 	 * who registered for the webinar it belongs to.
+ */
+export const NotifyWhatsAppReplay: NotificationKind = "wa_replay";
+/**
  *  HostAlert is one in-app notification as a host's browser sees it.
  *  *
  *  * Carries the webinar's slug and topic rather than only an id, so the panel can render a
@@ -153,6 +191,15 @@ export interface WebinarOptions {
    * EmailReminders defaults true for existing rows that never stored the key.
    */
   emailReminders: boolean;
+  /**
+   *  WhatsAppReminders defaults FALSE, unlike its email counterpart, and the
+   * 	 * asymmetry is deliberate: every WhatsApp message is charged to the host's own
+   * 	 * Meta account, so spending their money on a webinar has to be something they
+   * 	 * asked for. It also gates the confirmation message and not only the timed
+   * 	 * reminders — one switch per webinar for "message my registrants on WhatsApp",
+   * 	 * because a host turning it off does not mean "but keep sending one of them".
+   */
+  whatsappReminders: boolean;
 }
 /**
  * SessionControls are the things a host flips *during* the session.
@@ -822,9 +869,52 @@ export interface Account {
    */
   canCdnBroadcast: boolean;
   /**
+   *  Features switched on for this account by an admin — the Feature constants, and
+   * 	 * never anything else. Sent to the browser so a screen can leave out a tab the
+   * 	 * server would refuse anyway; the server checks it again on every request, because
+   * 	 * a hidden button is not a permission.
+   */
+  features: string[];
+  /**
    * YouTube is present when this account has granted live-stream access.
    */
   youtube?: YouTubeLink;
+  /**
+   * WhatsApp is present when this account has connected a WhatsApp Business
+   * Account through Meta Embedded Signup.
+   */
+  whatsapp?: WhatsAppLink;
+}
+/**
+ * FeatureCRMTags is labelling contacts, and everything that reads a label: the
+ * tag audience for a broadcast, the "tag added" sequence trigger, the bot step.
+ */
+export const FeatureCRMTags = "crm_tags";
+/**
+ * FeatureCRMNotes is writing private notes on a contact.
+ */
+export const FeatureCRMNotes = "crm_notes";
+/**
+ * FeatureReplayLinks is the replay email, and the WhatsApp replay message with
+ * it: sharing a recording tells everybody who registered where to watch it.
+ */
+export const FeatureReplayLinks = "replay_links";
+/**
+ * FeatureWhatsAppRegister is registering the connected number with Cloud API from
+ * the connect flow, using a two-step PIN the host types.
+ */
+export const FeatureWhatsAppRegister = "whatsapp_register";
+/**
+ *  Feature is one switch as the admin screen renders it.
+ *  *
+ *  * Label and Description are here rather than in the browser so that the two cannot
+ *  * disagree about what a switch does — the server owns both the key and the sentence
+ *  * explaining it.
+ */
+export interface Feature {
+  key: string;
+  label: string;
+  description: string;
 }
 /**
  * YouTubeLink is the public half of a host's YouTube OAuth grant. The refresh
@@ -834,6 +924,1237 @@ export interface YouTubeLink {
   connected: boolean;
   channelId?: string;
   channelTitle?: string;
+}
+/**
+ *  WhatsAppLink is the public half of a host's WhatsApp Cloud API grant. The
+ *  * access token never appears here.
+ *  *
+ *  * Deliberately the human-readable half and not the ids: a host recognises
+ *  * "+27 82 000 0000 (Acme Coaching)" as their own number, and can tell at a glance
+ *  * that they connected the right one. The WABA and phone-number ids are ours to
+ *  * send with, not theirs to read.
+ *  *
+ *  * TokenExpiresAt is almost always absent, which means the grant does not expire —
+ *  * see wa.Token. When it is set, it is there so the UI can say a connection has
+ *  * gone stale instead of letting a host find out when a reminder fails to send.
+ */
+export interface WhatsAppLink {
+  connected: boolean;
+  displayPhone?: string;
+  verifiedName?: string;
+  /**
+   * RFC3339, like every other timestamp on the wire here. Empty rather than a
+   * zero instant when there is none.
+   */
+  connectedAt?: string;
+  tokenExpiresAt?: string;
+  /**
+   *  When this number was registered with Cloud API from here, if it ever was.
+   * 	 *
+   * 	 * Only ever set by the host asking for it — see WhatsAppRegisterRequest. A number
+   * 	 * that was already registered when it was connected (every number a host had
+   * 	 * before, and every one they migrated in) has nothing here and needs nothing: this
+   * 	 * says "we did this", not "this number works".
+   */
+  registeredAt?: string;
+}
+/**
+ *  WhatsAppSignup is everything the browser needs to open Meta's Embedded Signup
+ *  * dialog, and nothing else.
+ *  *
+ *  * Connecting WhatsApp is not an OAuth redirect like Connect YouTube: Meta's JS
+ *  * SDK opens a popup, the host picks or creates a WhatsApp Business Account inside
+ *  * it, and the dialog hands the code back to the page that opened it. So there is
+ *  * no URL to send a host to — hence a payload here rather than a 302, and hence
+ *  * GraphVersion, which the SDK must be initialised with.
+ *  *
+ *  * All three values are public. The app secret is what must never leave the API,
+ *  * and it is not here.
+ */
+export interface WhatsAppSignup {
+  appId: string;
+  configId: string;
+  graphVersion: string;
+}
+/**
+ *  WhatsAppCallbackRequest is what the browser posts once that dialog closes.
+ *  *
+ *  * Three values from two different places, which is why they arrive together:
+ *  * Code comes from the SDK's login callback, while WABAID and PhoneNumberID come
+ *  * from the dialog's own postMessage. Both halves are required — the code alone
+ *  * would buy a token with nothing to send from.
+ */
+export interface WhatsAppCallbackRequest {
+  code: string;
+  wabaId: string;
+  phoneNumberId: string;
+}
+/**
+ *  WhatsAppRegisterRequest registers the connected number with Cloud API.
+ *  *
+ *  * A number created inside the Embedded Signup dialog is not usable until it has been
+ *  * registered, and Meta asks for a six-digit two-step verification PIN to do it. The
+ *  * PIN is the host's to choose and it is theirs to keep: it is read out of this
+ *  * request, passed to Meta, and never stored, logged or returned. If they forget it,
+ *  * Meta's own two-step settings is where it is reset — this server cannot tell them
+ *  * what it was, on purpose.
+ *  *
+ *  * Its own request rather than part of the callback because it can fail on its own: a
+ *  * number that is already registered, or a PIN that does not match the one on the
+ *  * account, must not undo a connection that worked.
+ */
+export interface WhatsAppRegisterRequest {
+  /**
+   * Exactly six digits. Checked here and by Meta.
+   */
+  pin: string;
+}
+/**
+ *  CRMContact is one person a host may message.
+ *  *
+ *  * Not a Registration, even where the fields look alike: a registration is what
+ *  * somebody submitted for one webinar and stays as it was, while a contact is the
+ *  * person behind however many of those there are and keeps changing. A host with
+ *  * four sessions has four registrations and one contact.
+ *  *
+ *  * Name is assembled server-side rather than sent as first/last, because nothing
+ *  * in the CRM edits half a name and every surface that shows a contact shows the
+ *  * whole of it.
+ */
+export interface CRMContact {
+  id: string;
+  /**
+   * * E.164 — `+` then digits. Empty for a contact who only ever gave an email,
+   * 	 *  which is also a contact who cannot be sent a WhatsApp message.
+   */
+  phone?: string;
+  email?: string;
+  name?: string;
+  company?: string;
+  /**
+   * * Where the contact came from: `registration`, `whatsapp`, or empty for the
+   * 	 *  rows that predate anyone recording it.
+   */
+  source?: string;
+  /**
+   * * Whether a WhatsApp message may be sent to this person at all — opt-in
+   * 	 *  present, and no later opt-out. Computed, so the UI and the send path cannot
+   * 	 *  read the two timestamps and disagree.
+   */
+  whatsappOptIn: boolean;
+  /**
+   * * RFC3339, all four. Empty when there is none.
+   */
+  whatsappOptInAt?: string;
+  whatsappOptOutAt?: string;
+  lastSeenAt?: string;
+  createdAt: string;
+  /**
+   * * RFC3339, when a person took this conversation over from the bot. While it is
+   * 	 *  set no bot answers this contact — see CRMBot. Set by a handoff node, and by the
+   * 	 *  host from the inbox; cleared only by the host.
+   */
+  botPausedAt?: string;
+  /**
+   * * The labels on this contact, alphabetically. Always present, and empty for a
+   * 	 *  contact with none — a list the browser has to guard against being null is a
+   * 	 *  list every screen guards differently.
+   */
+  tags: CRMTag[];
+  /**
+   * * The last thing said in either direction, for an inbox row. Absent on a
+   * 	 *  contact nobody has messaged.
+   */
+  lastMessage?: CRMMessage;
+}
+/**
+ * * CRMMessage is one message in a thread, from the host's point of view:
+ *  *  `in` is the contact writing to the business.
+ */
+export interface CRMMessage {
+  id: string;
+  contactId: string;
+  /**
+   * * `in` or `out`.
+   */
+  direction: string;
+  body?: string;
+  /**
+   * * Meta's own type for an inbound message that is not text — `image`, `audio`,
+   * 	 *  `location`, `button`. Empty for text, which is the only kind with a Body
+   * 	 *  worth showing.
+   */
+  kind?: string;
+  templateName?: string;
+  /**
+   * * queued / sent / delivered / read / failed. Inbound messages are written
+   * 	 *  `delivered`: they arrived, and nothing further will be reported.
+   */
+  status: string;
+  /**
+   * * Meta's words when Status is `failed` — usually something only the host can
+   * 	 *  fix, like a WABA with no payment method on it.
+   */
+  error?: string;
+  /**
+   * * The bot that sent this, when one did. Empty for everything a person sent or
+   * 	 *  received, which is most of a thread. Reading a handed-over conversation, this
+   * 	 *  is how the host tells which half of it they did not write.
+   */
+  fromBot?: string;
+  createdAt: string;
+}
+/**
+ *  CRMContactScope names the webinar a contacts list was narrowed to.
+ *  *
+ *  * The topic comes from the server rather than riding along in the link, because the
+ *  * heading it fills in is a claim about whose webinar this is. A topic passed in a query
+ *  * string could say anything, and a heading built from the slug instead would show the
+ *  * host a URL fragment where the name of their webinar belongs.
+ */
+export interface CRMContactScope {
+  /**
+   * * The webinar's slug — the same value its own pages use in the path, and what
+   * 	 *  ?webinarId= was set to. Echoed so the UI can be sure the server honoured the
+   * 	 *  filter rather than quietly listing everybody.
+   */
+  webinarId: string;
+  topic: string;
+}
+/**
+ * CRMContactsResponse is the contacts list, newest activity first.
+ */
+export interface CRMContactsResponse {
+  contacts: CRMContact[];
+  /**
+   * * How many contacts are in the list being looked at — every contact this host
+   * 	 *  has, or every contact of one webinar when Scope is set. Not len(Contacts):
+   * 	 *  the search box and the page limit both narrow the rows without changing this,
+   * 	 *  so the count in the heading holds still while somebody types.
+   */
+  total: number /* int */;
+  /**
+   * * Set when ?webinarId= narrowed the list, and absent when it did not. Absent
+   * 	 *  rather than empty so "the whole CRM" is one state and not two.
+   */
+  scope?: CRMContactScope;
+  /**
+   * * Every tag this host has, so the list can offer them as a filter and the thread
+   * 	 *  can offer them as a picker without a request per contact. Empty when the tags
+   * 	 *  feature is off.
+   */
+  tags: CRMTag[];
+  /**
+   * * False once WhatsApp is disconnected, so the CRM can keep showing a host
+   * 	 *  their leads while explaining why nothing can be sent.
+   */
+  whatsappConnected: boolean;
+}
+/**
+ * CRMThreadResponse is one contact and the conversation with them, oldest first.
+ */
+export interface CRMThreadResponse {
+  contact: CRMContact;
+  messages: CRMMessage[];
+  /**
+   * * RFC3339 deadline for writing free-form text to this contact, or empty when
+   * 	 *  there is none open. WhatsApp only allows a business to type its own words
+   * 	 *  for 24 hours after the contact's last message; outside that, the only thing
+   * 	 *  that may be sent is an approved template. Sent as the deadline rather than a
+   * 	 *  boolean so the UI can say "until 14:32" instead of "yes".
+   */
+  serviceWindowUntil?: string;
+  /**
+   * * False once WhatsApp is disconnected, which is why a compose box would be
+   * 	 *  refused even to a contact who is opted in and mid-conversation.
+   */
+  whatsappConnected: boolean;
+  /**
+   * * This contact's notes, newest first. Empty unless the notes feature is on for
+   * 	 *  this account, which is also when the pane is not shown.
+   */
+  notes: CRMNote[];
+}
+/**
+ *  CRMTag is one label a host puts on people.
+ *  *
+ *  * A name and nothing else — no colour, no group, no description. A tag earns its
+ *  * place by being something this server can act on: an audience for a broadcast, a
+ *  * sequence trigger, a step in a bot. A colour would be a preference that changes
+ *  * nothing about who gets messaged, and every tag would then need one.
+ *  *
+ *  * Names are the host's own words, trimmed and single-spaced, and unique per account
+ *  * case-insensitively: "VIP" and "vip" are one label, because a host who typed the
+ *  * second meant the first.
+ */
+export interface CRMTag {
+  id: string;
+  name: string;
+  /**
+   * * How many of this host's contacts carry it. Sent with the list, because "delete
+   * 	 *  this tag" is a different decision at 2 contacts and at 900.
+   */
+  contacts: number /* int */;
+  createdAt: string;
+}
+/**
+ * CRMTagsResponse is every tag this host has, alphabetically.
+ */
+export interface CRMTagsResponse {
+  tags: CRMTag[];
+}
+/**
+ *  CRMTagRequest creates a tag or renames one.
+ *  *
+ *  * The same body for both, because a tag is its name: there is nothing else to edit.
+ */
+export interface CRMTagRequest {
+  name: string;
+}
+/**
+ *  CRMContactTagRequest puts a tag on a contact, or takes it off.
+ *  *
+ *  * By id rather than by name, so a typo cannot quietly create a second label — the
+ *  * tag has to exist first. Creating one and applying it are two calls for the same
+ *  * reason.
+ */
+export interface CRMContactTagRequest {
+  tagId: string;
+}
+/**
+ *  CRMNote is something the host wrote down about a contact.
+ *  *
+ *  * Private to the account: never sent to anybody, never merged into a template, and
+ *  * not readable by the person it is about. That is the whole point of it — "asked us
+ *  * to call after 5", "already a customer" — and it is why notes are their own thing
+ *  * rather than an extra field on the contact.
+ *  *
+ *  * Immutable once written. A note is a dated observation, and editing one silently
+ *  * rewrites what the host knew in February; the way to correct one is to delete it and
+ *  * write another.
+ */
+export interface CRMNote {
+  id: string;
+  contactId: string;
+  body: string;
+  /**
+   * * Who wrote it, for the accounts that share a login between colleagues. The
+   * 	 *  account's name at the time it is read, not when it was written.
+   */
+  author?: string;
+  createdAt: string;
+}
+/**
+ * CRMNotesResponse is one contact's notes, newest first.
+ */
+export interface CRMNotesResponse {
+  notes: CRMNote[];
+}
+/**
+ * CRMNoteRequest writes one note. There is no edit: see CRMNote.
+ */
+export interface CRMNoteRequest {
+  body: string;
+}
+/**
+ *  NoteMaxLength caps one note.
+ *  *
+ *  * Long enough for a paragraph about somebody, short enough that the notes pane stays
+ *  * a list of observations rather than a document store.
+ */
+export const NoteMaxLength = 2000;
+/**
+ * TagMaxLength caps a tag name: a label, not a sentence.
+ */
+export const TagMaxLength = 48;
+/**
+ * TagMaxPerHost caps how many tags one account may have. A host with a hundred
+ * labels has a taxonomy nobody can pick from, and the picker is a list.
+ */
+export const TagMaxPerHost = 100;
+/**
+ *  CRMTemplate is one of the host's WhatsApp message templates, as Meta last
+ *  * described it.
+ *  *
+ *  * Read-only here, and that is Meta's rule rather than a simplification: a
+ *  * template is submitted and approved in WhatsApp Manager, and a send must match
+ *  * the approved text word for word.
+ */
+export interface CRMTemplate {
+  name: string;
+  /**
+   * * Meta's language code — `en`, `en_US`, `pt_BR`. Part of the identity: the
+   * 	 *  same template is approved once per translation, and a send names both.
+   */
+  language: string;
+  /**
+   * * Meta's own: APPROVED / PENDING / REJECTED / PAUSED / DISABLED.
+   */
+  status: string;
+  /**
+   * * MARKETING / UTILITY / AUTHENTICATION. Marketing needs the contact's opt-in;
+   * 	 *  it is also the category Meta charges most for.
+   */
+  category: string;
+  header?: string;
+  /**
+   * * The approved text with `{{1}}`-style placeholders left in, so a host can
+   * 	 *  read what they are about to send.
+   */
+  body?: string;
+  footer?: string;
+  /**
+   * * How many values a send has to supply, in order. Meta rejects a mismatch.
+   */
+  variables: number /* int */;
+  /**
+   * * Whether this one can actually be sent from here: approved, and made only of
+   * 	 *  the parts this implementation fills in.
+   */
+  sendable: boolean;
+  /**
+   * * Why not, in words, when Sendable is false.
+   */
+  unsupported?: string;
+}
+/**
+ * CRMTemplatesResponse is the host's cached template list, alphabetical.
+ */
+export interface CRMTemplatesResponse {
+  templates: CRMTemplate[];
+  /**
+   * * RFC3339 of the last time Meta was asked. Empty when it never has been.
+   */
+  syncedAt?: string;
+  /**
+   * * False once WhatsApp is disconnected: the list is then whatever was last
+   * 	 *  cached, and nothing can be sent from it.
+   */
+  whatsappConnected: boolean;
+}
+/**
+ *  CRMSendRequest is one outbound message: either free-form text or a template,
+ *  * never both.
+ *  *
+ *  * Which one is allowed depends on CRMThreadResponse.ServiceWindowUntil, and the
+ *  * server decides rather than trusting this: a client that sends Body outside the
+ *  * window is refused instead of quietly having a template picked for it.
+ */
+export interface CRMSendRequest {
+  /**
+   * * Free-form text, allowed only inside the 24-hour service window.
+   */
+  body?: string;
+  /**
+   * * Template name; requires Language too.
+   */
+  template?: string;
+  language?: string;
+  /**
+   * * Values for the template's `{{1}}`, `{{2}}` … in order. The count must match
+   * 	 *  CRMTemplate.Variables exactly.
+   */
+  params?: string[];
+}
+/**
+ *  CRMReminder is the template one kind of automatic WhatsApp message uses.
+ *  *
+ *  * A host-level choice, and a choice rather than a name this application invents:
+ *  * Meta only delivers templates it has approved, so the only names that exist are
+ *  * the ones already in this host's account. Nothing is sent for a kind that has not
+ *  * been set, which is the honest behaviour when the alternative is naming a
+ *  * template that would be rejected.
+ */
+export interface CRMReminder {
+  /**
+   * * One of the `wa_` NotificationKind values.
+   */
+  kind: NotificationKind;
+  /**
+   * * Empty means this kind is off.
+   */
+  template: string;
+  language: string;
+  /**
+   * * One merge-field token per `{{n}}`, in order — see CRMMergeField. Tokens
+   * 	 *  rather than values, because the values differ for every recipient and are
+   * 	 *  resolved when the message is queued.
+   */
+  params: string[];
+}
+/**
+ *  CRMMergeField is one fact a reminder template can be filled in with.
+ *  *
+ *  * Sent to the browser rather than hardcoded there, so a picker cannot offer a
+ *  * token the server would refuse — and so the set can grow in one place.
+ */
+export interface CRMMergeField {
+  token: string;
+  label: string;
+  /**
+   * * What it looks like filled in, for the preview beside the picker.
+   */
+  example: string;
+  /**
+   * * When set, the token resolves to something only on this one message kind, and
+   * 	 *  the server refuses it anywhere else. The replay link is the case it exists
+   * 	 *  for: there is no recording to point at in a broadcast or a drip step, so
+   * 	 *  offering it there would produce a message whose whole subject is a dash.
+   */
+  onlyKind?: NotificationKind;
+}
+/**
+ * CRMRemindersResponse is the host's automatic-message settings.
+ */
+export interface CRMRemindersResponse {
+  /**
+   * * One entry per kind, always all of them, in the order they happen. An unset
+   * 	 *  kind is present with an empty Template rather than absent, so the UI renders
+   * 	 *  the same rows whether or not anything has been configured.
+   */
+  reminders: CRMReminder[];
+  fields: CRMMergeField[];
+  /**
+   * * False once WhatsApp is disconnected: the settings are kept, and nothing is
+   * 	 *  sent from them.
+   */
+  whatsappConnected: boolean;
+}
+/**
+ * CRMRemindersRequest replaces the whole set — the kinds omitted are turned off.
+ */
+export interface CRMRemindersRequest {
+  reminders: CRMReminder[];
+}
+/**
+ *  CRMParam fills one `{{n}}` in a broadcast: either the same words for everybody
+ *  * or a fact about the person receiving it.
+ *  *
+ *  * Two shapes rather than one, because a broadcast needs both in the same sentence.
+ *  * "Hi {{1}}, {{2}} starts on {{3}}" wants the name filled in per recipient and the
+ *  * other two typed once — and a bare string could not tell the difference between a
+ *  * host who meant the merge field `name` and a host whose message really does say
+ *  * the word "name".
+ */
+export interface CRMParam {
+  /**
+   * * A merge-field token — see CRMMergeField. Empty means Text is used instead.
+   */
+  field?: string;
+  /**
+   * * The literal words, when Field is empty.
+   */
+  text?: string;
+}
+/**
+ * * AudienceOptedIn is every contact of this host who has opted in and has a
+ * 	 *  number — the marketing list, and the only audience that needs no webinar.
+ */
+export const AudienceOptedIn = "opted_in";
+/**
+ * * AudienceWebinar is the opted-in contacts who registered for one webinar.
+ */
+export const AudienceWebinar = "webinar";
+/**
+ * * AudienceTag is the opted-in contacts carrying one tag — the host's own
+ * 	 *  segment, and the only audience they define themselves. Needs the tags
+ * 	 *  feature.
+ */
+export const AudienceTag = "tag";
+/**
+ *  CRMBroadcast is one message the host sent, or will send, to many people.
+ *  *
+ *  * Status is derived rather than stored: it is whatever the queued messages say —
+ *  * see the store. A broadcast has no draft state, because a draft is a message
+ *  * nobody has decided to send and there is nothing to keep about it.
+ */
+export interface CRMBroadcast {
+  id: string;
+  /**
+   * * The host's own label for it, shown in the list. Never sent to anybody.
+   */
+  name: string;
+  template: string;
+  language: string;
+  /**
+   * * One entry per `{{n}}`, in order, as configured — merge tokens unresolved.
+   */
+  params: CRMParam[];
+  /**
+   * * `opted_in`, `webinar` or `tag`.
+   */
+  audience: string;
+  /**
+   * * The tag this went to, when Audience is `tag`. The name is sent with it so a
+   * 	 *  list can say which segment was messaged without a second request — and it is
+   * 	 *  the name as it is now, because a renamed tag is the same tag.
+   */
+  tagId?: string;
+  tagName?: string;
+  /**
+   * * The webinar slug this message is about: the audience when Audience is
+   * 	 *  `webinar`, and the source of the `topic` and `when` merge fields either way.
+   * 	 *  Empty when the broadcast names no webinar.
+   */
+  webinarId?: string;
+  /**
+   * * Its topic, so a list can name the webinar without a second request.
+   */
+  webinarTopic?: string;
+  /**
+   * * scheduled / sending / sent / cancelled.
+   */
+  status: string;
+  /**
+   * * RFC3339. In the past for a broadcast sent immediately.
+   */
+  scheduledAt: string;
+  createdAt: string;
+  /**
+   * * How it is going, counted from the outbox and the conversations.
+   */
+  stats: CRMBroadcastStats;
+}
+/**
+ *  CRMBroadcastStats is one broadcast's progress.
+ *  *
+ *  * Recipients is fixed when the broadcast is created — the audience is frozen then,
+ *  * so the number a host approved is the number that gets messaged. The rest move as
+ *  * the outbox drains and as Meta reports back.
+ */
+export interface CRMBroadcastStats {
+  recipients: number /* int */;
+  /**
+   * * Still waiting in the outbox.
+   */
+  queued: number /* int */;
+  /**
+   * * Accepted by Meta. Delivered and Read are subsets of it, reported later by
+   * 	 *  webhook — a message can be sent and never delivered, to a number that is no
+   * 	 *  longer on WhatsApp.
+   */
+  sent: number /* int */;
+  delivered: number /* int */;
+  read: number /* int */;
+  /**
+   * * Meta refused it. Both kinds of refusal: one at send time, after the retries
+   * 	 *  ran out, and one reported by webhook about a message it had already accepted —
+   * 	 *  which is also counted in Sent, because it was.
+   */
+  failed: number /* int */;
+  /**
+   * * Not sent, and never will be: the contact opted out, or the template stopped
+   * 	 *  being approved, or the broadcast was cancelled before this one went out.
+   */
+  skipped: number /* int */;
+}
+/**
+ * CRMBroadcastsResponse is the host's broadcasts, newest first.
+ */
+export interface CRMBroadcastsResponse {
+  broadcasts: CRMBroadcast[];
+  fields: CRMMergeField[];
+  /**
+   * * The tags a `tag` audience may name, alphabetically. Empty when the tags feature
+   * 	 *  is off for this account, which is also when that audience is refused.
+   */
+  tags: CRMTag[];
+  /**
+   * * False once WhatsApp is disconnected: the history stays readable and nothing
+   * 	 *  new can be queued.
+   */
+  whatsappConnected: boolean;
+}
+/**
+ *  CRMBroadcastRequest creates one, and sends it: there is no separate send call.
+ *  *
+ *  * ScheduledAt in the past or absent means now, which is also what "Send now"
+ *  * posts. The audience is resolved and the per-recipient messages are queued while
+ *  * this request is being handled, so the recipient count in the response is the
+ *  * real one rather than an estimate.
+ */
+export interface CRMBroadcastRequest {
+  name: string;
+  template: string;
+  language: string;
+  params?: CRMParam[];
+  audience: string;
+  /**
+   * * Required when Audience is `webinar`; optional otherwise, and then only used
+   * 	 *  for the `topic` and `when` merge fields.
+   */
+  webinarId?: string;
+  /**
+   * * Required when Audience is `tag`, ignored otherwise.
+   */
+  tagId?: string;
+  /**
+   * * RFC3339, or empty for now.
+   */
+  scheduledAt?: string;
+}
+/**
+ *  CRMAudienceResponse is how many people an audience would reach, before anybody
+ *  * commits to messaging them.
+ *  *
+ *  * Its own endpoint because the count is the decision: a host picking "everyone who
+ *  * opted in" is entitled to know whether that is eleven people or four thousand,
+ *  * and to find out without creating something.
+ */
+export interface CRMAudienceResponse {
+  audience: string;
+  /**
+   * * Contacts who would be messaged: opted in, not opted out, with a number.
+   */
+  recipients: number /* int */;
+  /**
+   * * Why the rest are not being messaged. Four disjoint buckets, so they add up to
+   * 	 *  the size of the audience: the point of showing them is that "40 of your 900
+   * 	 *  contacts" is a reasonable thing to see and a silent 40 is not.
+   */
+  noOptIn: number /* int */;
+  optedOut: number /* int */;
+  noNumber: number /* int */;
+}
+/**
+ * * DripManual is a sequence the host puts people on themselves.
+ */
+export const DripManual = "manual";
+/**
+ * * DripRegistered fires when somebody registers, before any approval.
+ */
+export const DripRegistered = "registered";
+/**
+ * * DripAttended fires when a webinar ends, for the registrants who joined.
+ */
+export const DripAttended = "attended";
+/**
+ * * DripNoShow fires when a webinar ends, for the registrants who did not.
+ */
+export const DripNoShow = "no_show";
+/**
+ * * DripEnded fires when a webinar ends, for every registrant either way.
+ */
+export const DripEnded = "ended";
+/**
+ * * DripTagAdded fires when a tag is put on a contact — by the host, or by a bot
+ * 	 *  step. The one trigger that is not about a webinar at all, so a sequence on it
+ * 	 *  has no `topic` or `when` to fill a template with. Needs the tags feature.
+ */
+export const DripTagAdded = "tag_added";
+/**
+ *  CRMDripStep is one message of a sequence.
+ *  *
+ *  * The delay is from the step before it — from entering, for the first one — because
+ *  * that is how a sequence is written ("then two days later") and because inserting a
+ *  * step in the middle then does not move every step after it.
+ */
+export interface CRMDripStep {
+  /**
+   * * Minutes to wait after the previous step. 0 means as soon as they enter.
+   */
+  delayMinutes: number /* int */;
+  /**
+   * * The approved template's name and language — its identity at Meta.
+   */
+  template: string;
+  language: string;
+  /**
+   * * One entry per `{{n}}`, in order, as configured: merge tokens unresolved.
+   */
+  params: CRMParam[];
+}
+/**
+ *  CRMDrip is a sequence the host wrote, and the rule that puts people on it.
+ *  *
+ *  * Unlike a broadcast, this is not a record of something that happened: it is a rule
+ *  * that keeps applying to people who have not registered yet. That is why it has an
+ *  * on/off switch and why editing it is allowed — a drip with nobody on it yet and a
+ *  * drip that has been running for a month are the same row.
+ */
+export interface CRMDrip {
+  id: string;
+  name: string;
+  /**
+   * * One of DripTriggers.
+   */
+  trigger: string;
+  /**
+   * * The webinar the trigger is about, or empty for every webinar. Never set for
+   * 	 *  the manual trigger.
+   */
+  webinarId?: string;
+  /**
+   * * Its topic, so a list can name the webinar without a second request.
+   */
+  webinarTopic?: string;
+  /**
+   * * The tag the trigger is about when Trigger is `tag_added`, or empty for any tag.
+   * 	 *  The name comes with it so the list can say "when VIP is added" without a second
+   * 	 *  request. Never set for the other triggers.
+   */
+  tagId?: string;
+  tagName?: string;
+  /**
+   * * False pauses it: nobody new enters and nobody already on it is sent anything,
+   * 	 *  without losing the sequence or anybody's place in it.
+   */
+  active: boolean;
+  /**
+   * * In order. A drip with no steps cannot be saved.
+   */
+  steps: CRMDripStep[];
+  stats: CRMDripStats;
+  /**
+   * * RFC3339.
+   */
+  createdAt: string;
+}
+/**
+ *  CRMDripStats is how a sequence is going.
+ *  *
+ *  * Enrollment counts and outbox counts, which are the two halves of the question: how
+ *  * many people are on it, and how many messages that has cost so far.
+ */
+export interface CRMDripStats {
+  /**
+   * * People still moving through it, waiting for their next step.
+   */
+  active: number /* int */;
+  /**
+   * * People who have had every step.
+   */
+  done: number /* int */;
+  /**
+   * * People who stopped early: opted out, or the host took them off.
+   */
+  exited: number /* int */;
+  /**
+   * * Steps queued and not yet away.
+   */
+  queued: number /* int */;
+  /**
+   * * Steps accepted by Meta, and the ones it refused.
+   */
+  sent: number /* int */;
+  failed: number /* int */;
+}
+/**
+ *  CRMDripEnrollment is one person's place in one sequence.
+ *  *
+ *  * Step is how many they have had, which for somebody active is also the index of the
+ *  * one they are waiting for. A finished enrollment keeps its row: it is the record
+ *  * that this person has already been through this sequence, and the reason a second
+ *  * registration does not start them again.
+ */
+export interface CRMDripEnrollment {
+  id: string;
+  contactId: string;
+  /**
+   * * For the list, so it reads as people rather than ids.
+   */
+  contactName?: string;
+  phone?: string;
+  /**
+   * * How many steps they have had.
+   */
+  step: number /* int */;
+  /**
+   * * active / done / exited.
+   */
+  state: string;
+  /**
+   * * Why they stopped early. Empty unless State is `exited`.
+   */
+  exitReason?: string;
+  /**
+   * * RFC3339, when the next step is due. Meaningless once they are not active.
+   */
+  nextDueAt?: string;
+  /**
+   * * The webinar they entered from, when they entered from one.
+   */
+  webinarTopic?: string;
+  createdAt: string;
+}
+/**
+ * CRMDripsResponse is the host's sequences, newest first.
+ */
+export interface CRMDripsResponse {
+  drips: CRMDrip[];
+  fields: CRMMergeField[];
+  /**
+   * * The triggers this server can fire, so the builder cannot offer one it would
+   * 	 *  refuse.
+   */
+  triggers: string[];
+  /**
+   * * The tags a `tag_added` trigger may name. Empty when the tags feature is off,
+   * 	 *  which is also when `tag_added` is not in Triggers.
+   */
+  tags: CRMTag[];
+  /**
+   * * False once WhatsApp is disconnected: the sequences stay readable and their
+   * 	 *  steps stay queued, unsent, until it is reconnected.
+   */
+  whatsappConnected: boolean;
+}
+/**
+ * CRMDripResponse is one sequence with the people on it.
+ */
+export interface CRMDripResponse {
+  drip: CRMDrip;
+  /**
+   * * Newest first, capped: this is a view of who is on it, not an export.
+   */
+  enrollments: CRMDripEnrollment[];
+}
+/**
+ *  CRMDripRequest writes a sequence, and is the whole of it: the steps come with it
+ *  * rather than being added one call at a time.
+ *  *
+ *  * A sequence read back has to be the sequence that was sent, and a step-at-a-time API
+ *  * would have a state where half of one exists and the sweep can already see it.
+ */
+export interface CRMDripRequest {
+  name: string;
+  trigger: string;
+  /**
+   * * Optional for the webinar triggers, where empty means every webinar. Ignored
+   * 	 *  for `manual`.
+   */
+  webinarId?: string;
+  /**
+   * * Optional for `tag_added`, where empty means any tag. Ignored otherwise.
+   */
+  tagId?: string;
+  /**
+   * * Whether it runs. Absent is false, so a request that forgets it creates a
+   * 	 *  paused sequence rather than one that starts messaging people.
+   */
+  active: boolean;
+  steps: CRMDripStep[];
+}
+/**
+ *  CRMDripEnrollRequest puts one person on a sequence by hand.
+ *  *
+ *  * The webinar is needed when the steps use the `topic` or `when` merge fields and the
+ *  * drip is not already scoped to one — there is no registration to infer it from.
+ */
+export interface CRMDripEnrollRequest {
+  contactId: string;
+  webinarId?: string;
+}
+/**
+ * * BotAnyMessage answers any message from somebody it is not already talking to.
+ */
+export const BotAnyMessage = "any_message";
+/**
+ * * BotKeyword answers only the words the host listed.
+ */
+export const BotKeyword = "keyword";
+/**
+ * * BotNodeMessage says something and carries on to the next node.
+ */
+export const BotNodeMessage = "message";
+/**
+ * * BotNodeAsk says something with buttons and waits for the answer.
+ */
+export const BotNodeAsk = "ask";
+/**
+ * * BotNodeWait pauses the flow for DelayMinutes, then carries on.
+ */
+export const BotNodeWait = "wait";
+/**
+ * * BotNodeEnroll puts the contact on a drip sequence, then carries on.
+ */
+export const BotNodeEnroll = "enroll";
+/**
+ * * BotNodeHandoff stops the bot and gives the conversation to a person.
+ */
+export const BotNodeHandoff = "handoff";
+/**
+ * * BotNodeTag puts a tag on the contact, then carries on. Sends nothing, so it is
+ * 	 *  the one step the person on the other end cannot see happening. Needs the tags
+ * 	 *  feature.
+ */
+export const BotNodeTag = "set_tag";
+/**
+ * * BotMaxButtons is three reply buttons per question — Meta's cap.
+ */
+export const BotMaxButtons = 3;
+/**
+ * * BotMaxButtonLabel is 20 characters on a button, also Meta's.
+ */
+export const BotMaxButtonLabel = 20;
+/**
+ * * BotMaxText is the body of an interactive message: 1024, against 4096 for plain
+ * 	 *  text. One limit for both, so adding a button to a message cannot make its text
+ * 	 *  suddenly invalid.
+ */
+export const BotMaxText = 1024;
+/**
+ * * BotMaxNodes is how big one flow may be. A bound rather than a design: past this
+ * 	 *  a flowchart is not the tool.
+ */
+export const BotMaxNodes = 40;
+/**
+ *  CRMBotButton is one reply button, and the edge the flow takes when it is pressed.
+ *  *
+ *  * Label is what the contact sees and also how their answer is matched: Meta sends the
+ *  * button's id back, but a person who types "yes" instead of pressing anything is
+ *  * answering the same question, so both are compared against the label.
+ */
+export interface CRMBotButton {
+  label: string;
+  /**
+   * * The node this answer goes to, or empty to end the conversation there.
+   */
+  next?: string;
+}
+/**
+ *  CRMBotNode is one step of a flow.
+ *  *
+ *  * One struct for all five kinds, with the fields each ignores left empty, because a
+ *  * node is edited as one card in a builder where changing its kind must not throw away
+ *  * what was typed into it.
+ */
+export interface CRMBotNode {
+  /**
+   * * The node's name inside this bot, and what every edge is written as. Generated
+   * 	 *  by the builder; never shown to the contact.
+   */
+  key: string;
+  /**
+   * * One of the BotNode constants.
+   */
+  kind: string;
+  /**
+   * * What it says. Required for `message` and `ask`, optional for `handoff`, unused
+   * 	 *  by the rest.
+   */
+  text?: string;
+  /**
+   * * An `ask`'s buttons, in the order they are shown. At most BotMaxButtons.
+   */
+  buttons?: CRMBotButton[];
+  /**
+   * * Where the flow goes when this node is done, or empty to stop.
+   * 	 *
+   * 	 *  On an `ask` this is the fallback: where an answer that matched no button goes.
+   * 	 *  Empty there means hand the conversation to a person, on the grounds that a bot
+   * 	 *  which did not understand somebody should stop guessing.
+   */
+  next?: string;
+  /**
+   * * How long a `wait` pauses. Capped at 24 hours: Meta's service window closes then
+   * 	 *  and a flow that slept through it cannot speak.
+   */
+  delayMinutes?: number /* int */;
+  /**
+   * * The sequence an `enroll` node uses.
+   */
+  dripId?: string;
+  /**
+   * * Its name, read-only, so the builder can show the sequence without a second
+   * 	 *  request. Empty also means the sequence has since been deleted — the node is
+   * 	 *  then broken, and the runtime steps over it rather than stopping.
+   */
+  dripName?: string;
+  /**
+   * * The tag a `set_tag` node applies, and its name read-only, on the same terms as
+   * 	 *  the sequence above: empty means the tag was deleted and the step does nothing.
+   */
+  tagId?: string;
+  tagName?: string;
+}
+/**
+ *  CRMBot is a flow and the rule that starts it.
+ *  *
+ *  * The only thing in this CRM that sends without the host asking, message by message,
+ *  * which is why Active defaults off and why the runtime checks opt-out, the service
+ *  * window and a per-conversation step budget before every send.
+ */
+export interface CRMBot {
+  id: string;
+  name: string;
+  /**
+   * * BotAnyMessage or BotKeyword.
+   */
+  trigger: string;
+  /**
+   * * The words that start it, lower-cased, matched against the whole message.
+   * 	 *  Only for BotKeyword.
+   */
+  keywords?: string[];
+  /**
+   * * The node a new conversation starts at.
+   */
+  entry: string;
+  /**
+   * * False parks it: no new conversations, and the ones under way stop at their next
+   * 	 *  step. A host may have only one active bot on BotAnyMessage, since two would
+   * 	 *  both match every message.
+   */
+  active: boolean;
+  /**
+   * * Every node, in the builder's order. A bot with none cannot be saved.
+   */
+  nodes: CRMBotNode[];
+  stats: CRMBotStats;
+  /**
+   * * RFC3339.
+   */
+  createdAt: string;
+}
+/**
+ *  CRMBotStats is how many conversations this bot is in, by what became of them.
+ *  *
+ *  * Disjoint, and they add up to every conversation it has ever had.
+ */
+export interface CRMBotStats {
+  /**
+   * * Mid-question: the bot has asked and is waiting for an answer.
+   */
+  waiting: number /* int */;
+  /**
+   * * Held by a `wait` node until its time comes.
+   */
+  sleeping: number /* int */;
+  /**
+   * * Ran to the end of the flow.
+   */
+  done: number /* int */;
+  /**
+   * * Given to a person.
+   */
+  handedOff: number /* int */;
+  /**
+   * * Ended for a reason nobody chose — see CRMBotSession.EndedReason.
+   */
+  stopped: number /* int */;
+}
+/**
+ *  CRMBotSession is one person's trip through one flow.
+ *  *
+ *  * Kept after it finishes: where conversations stop is the only honest review of a
+ *  * flow, and a stack of sessions ending at the same question is the thing worth seeing.
+ */
+export interface CRMBotSession {
+  id: string;
+  contactId: string;
+  /**
+   * * For the list, so it reads as people rather than ids.
+   */
+  contactName?: string;
+  phone?: string;
+  /**
+   * * The node it is at, or the one it stopped at.
+   */
+  nodeKey?: string;
+  /**
+   * * waiting / sleeping / done / handoff / stopped.
+   */
+  state: string;
+  /**
+   * * Why it ended, in codes: `handed_over` (a handoff node), `host_took_over`,
+   * 	 *  `window_closed` (asleep past WhatsApp's 24 hours), `node_missing` (the flow
+   * 	 *  was edited underneath it), `too_many_steps`, `opted_out`, `bot_off`,
+   * 	 *  `send_failed`, `whatsapp_disconnected`. Empty for a flow that simply ran to
+   * 	 *  the end.
+   */
+  endedReason?: string;
+  /**
+   * * RFC3339, when a sleeping flow wakes.
+   */
+  resumeAt?: string;
+  /**
+   * * Nodes run so far, which is what the step budget counts.
+   */
+  steps: number /* int */;
+  createdAt: string;
+  updatedAt: string;
+}
+/**
+ * * CRMBotSequence is one of the host's drip sequences, as an `enroll` node's options:
+ *  *  the id to store and the name to show, and nothing else the builder needs.
+ */
+export interface CRMBotSequence {
+  id: string;
+  name: string;
+}
+/**
+ * CRMBotsResponse is the host's bots, newest first.
+ */
+export interface CRMBotsResponse {
+  bots: CRMBot[];
+  /**
+   * * The triggers and node kinds this server implements, so the builder cannot offer
+   * 	 *  one it would refuse.
+   */
+  triggers: string[];
+  nodeKinds: string[];
+  /**
+   * * What an `enroll` node may point at.
+   */
+  sequences: CRMBotSequence[];
+  /**
+   * * What a `set_tag` node may point at. Empty when the tags feature is off for this
+   * 	 *  account, which is also when `set_tag` is not in NodeKinds.
+   */
+  tags: CRMTag[];
+  /**
+   * * False once WhatsApp is disconnected. Bots stay readable and stay off: a flow
+   * 	 *  cannot answer anybody when nothing is receiving their messages.
+   */
+  whatsappConnected: boolean;
+}
+/**
+ * CRMBotResponse is one bot with the conversations it has had.
+ */
+export interface CRMBotResponse {
+  bot: CRMBot;
+  /**
+   * * Newest first, capped: a view of who it talked to, not an export.
+   */
+  sessions: CRMBotSession[];
+}
+/**
+ *  CRMBotRequest writes a bot, nodes and all.
+ *  *
+ *  * The whole flow in one call, for the reason CRMDripRequest gives and one more: the
+ *  * edges are checked against each other — every `next` has to name a node that exists,
+ *  * and the graph has to be free of cycles — which is only possible when the nodes
+ *  * arrive together.
+ */
+export interface CRMBotRequest {
+  name: string;
+  trigger: string;
+  /**
+   * * Required for BotKeyword, ignored otherwise. Lower-cased and de-duplicated by
+   * 	 *  the server.
+   */
+  keywords?: string[];
+  entry: string;
+  /**
+   * * Whether it answers anybody. Absent is false, so a request that forgets it
+   * 	 *  creates a bot nobody is talking to yet.
+   */
+  active: boolean;
+  nodes: CRMBotNode[];
+}
+/**
+ *  CRMBotPauseRequest hands a conversation between the bot and a person.
+ *  *
+ *  * On the contact rather than on a session because that is the scope of the decision:
+ *  * "I am dealing with this person" has to hold for their next message too, which may
+ *  * arrive after the flow they were in has ended.
+ */
+export interface CRMBotPauseRequest {
+  /**
+   * * True stops any bot answering this contact; false lets them run again.
+   */
+  paused: boolean;
 }
 export interface SignupRequest {
   name: string;
@@ -868,6 +2189,21 @@ export interface HostGrant {
  */
 export interface CdnBroadcastGrant {
   canCdnBroadcast: boolean;
+}
+/**
+ *  FeatureGrant switches one feature on or off for one account.
+ *  *
+ *  * One feature per request, with the state it should end in rather than a verb, for the
+ *  * reason handleSetHostCapability gives: the UI is a switch and a retried request must
+ *  * not toggle anything back. Sending the whole set instead would make two admins on two
+ *  * screens overwrite each other's decisions about features neither of them touched.
+ */
+export interface FeatureGrant {
+  /**
+   * * One of the Feature keys. Anything else is refused rather than stored.
+   */
+  feature: string;
+  enabled: boolean;
 }
 /**
  *  AdminUser is one row of the admin panel.
@@ -907,6 +2243,11 @@ export interface AdminUser {
    * CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
    */
   canCdnBroadcast: boolean;
+  /**
+   * Features are the per-account switches that are on — see Features and
+   * FeatureGrant. Always present, empty for an account with none.
+   */
+  features: string[];
 }
 export interface LoginRequest {
   email: string;
@@ -950,6 +2291,16 @@ export interface RegisterRequest {
   phone?: string;
   answers?: { [key: string]: string};
   consent: boolean;
+  /**
+   * * Permission for the HOST to send WhatsApp messages to Phone — a separate
+   * 	 *  decision from Consent, which covers the registration itself.
+   * 	 *
+   * 	 *  Its own field rather than an answer, because Meta requires opt-in to be
+   * 	 *  recorded per person and it has to be as auditable as the number it applies
+   * 	 *  to. Ignored without a phone number: there is nothing to opt a person in to
+   * 	 *  when there is no way to reach them.
+   */
+  whatsappOptIn?: boolean;
   /**
    * * The webinar's passcode, when it has one. Checked at registration, which is the
    * 	 *  one gate every attendee passes through — a join key is only issued here.
@@ -1387,6 +2738,14 @@ export interface AppConfig {
    */
   youtubeOAuth?: boolean;
   /**
+   *  WhatsAppConnect is whether META_APP_ID, META_APP_SECRET and
+   * 	 * META_WHATSAPP_CONFIG_ID are all set, so Account settings can offer Connect
+   * 	 * WhatsApp. Only the flag is public: the app id and the signup configuration id
+   * 	 * are handed out by GET /api/host/whatsapp/connect, to a signed-in host at the
+   * 	 * moment they click, rather than to every anonymous visitor at boot.
+   */
+  whatsappConnect?: boolean;
+  /**
    *  Supabase Auth (Google sign-in). Public values only — the JWT secret stays
    * 	 * on the API. When googleAuth is false the Continue with Google button is hidden.
    * 	 *
@@ -1423,6 +2782,14 @@ export interface AppConfig {
    * the flag off also turns off the client-side work, not just the endpoint.
    */
   telemetryEnabled?: boolean;
+  /**
+   *  FeatureCatalogue is every per-account switch this server has, with the sentence
+   * 	 * that explains each one — see Features. Sent here rather than with the accounts
+   * 	 * list so that adding a switch does not change the shape of that response, and so
+   * 	 * the admin screen renders what this build actually supports instead of a list the
+   * 	 * browser keeps its own copy of.
+   */
+  featureCatalogue: Feature[];
 }
 /**
  *  TelemetryEvent is one entry in a POST /telemetry batch — the shape is

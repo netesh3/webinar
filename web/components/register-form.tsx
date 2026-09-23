@@ -544,12 +544,33 @@ function RegisterFields({
   const dials = useMemo(() => dialOptions(), []);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [consent, setConsent] = useState(true);
+  /* WhatsApp updates: a SEPARATE decision, and unticked.
+   *
+   * Separate because agreeing to be contacted about a webinar is not agreeing to
+   * be messaged on a personal phone, and the host's WhatsApp number is billed per
+   * conversation by Meta — an opt-in list padded with people who never chose it
+   * costs the host money and gets the number reported.
+   *
+   * Unticked while the consent above starts ticked, which is the one asymmetry
+   * worth having on this form: pre-ticked marketing consent is not consent
+   * anywhere that regulates it, and this is the box a broadcast will rely on.
+   */
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
+  /* Digits only, so "83 111 2222" and "+27 83 111 2222" agree on whether a number
+   * was typed at all. Shared by the submit body and the opt-in box, which only
+   * appears once there is a number for it to apply to. */
+  const phoneDigits = phoneNumber.replace(/\D/g, "");
   /* Asked for only when the webinar has one, and the server never tells us what it is —
    * `passcodeRequired` is a boolean precisely so the code itself is not in this bundle. */
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  /* Whether this deployment has WhatsApp at all. Not whether THIS host has
+   * connected a number — that is theirs to know and not a public page's business —
+   * so the box can be offered to somebody whose host has not finished connecting.
+   * The opt-in is still worth recording: it is permission, and it keeps. */
+  const { whatsappConnect } = useAppConfig();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -561,7 +582,6 @@ function RegisterFields({
       // The server validates too and is the authority — this call is the only
       // thing that actually creates a registration or a join key.
       const { fullName, ...rest } = form;
-      const digits = phoneNumber.replace(/\D/g, "");
       const reg = await api.register(w.id, {
         ...rest,
         ...splitName(fullName),
@@ -571,9 +591,15 @@ function RegisterFields({
          * number: unusable, and indistinguishable in the export from a real one.
          * The server normalises again — it has to, since a pasted number never comes
          * through here. */
-        phone: digits ? `+${DIAL_CODES[dialIso] ?? ""}${digits}` : "",
+        phone: phoneDigits
+          ? `+${DIAL_CODES[dialIso] ?? ""}${phoneDigits}`
+          : "",
         answers,
         consent,
+        /* Never sent without a number: the server ignores it too, but an opt-in
+         * that reaches the API unqualified would be a consent record pointing at
+         * nothing — somebody in a broadcast audience nobody can reach. */
+        whatsappOptIn: whatsappOptIn && phoneDigits !== "",
         passcode,
       });
       onRegistered(reg);
@@ -809,6 +835,26 @@ function RegisterFields({
           </span>
         </label>
         {fieldError("consent")}
+
+        {/* Only once there is a number to message. A box that asks for WhatsApp
+            permission above an empty phone field is a question with no answer —
+            and ticking it would record a consent that can never be acted on. */}
+        {whatsappConnect && phoneDigits !== "" && (
+          <label className="flex items-start gap-2.5 text-[12px] leading-relaxed text-ink-2">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-3.5 shrink-0 accent-brand"
+              checked={whatsappOptIn}
+              onChange={(e) => setWhatsappOptIn(e.target.checked)}
+            />
+            <span>
+              Send me reminders and updates on{" "}
+              <span className="font-medium text-ink">WhatsApp</span>. You can
+              reply <span className="font-medium text-ink">STOP</span> at any
+              time.
+            </span>
+          </label>
+        )}
 
         {error && (
           <p role="alert" className="text-[12.5px] font-medium text-live">

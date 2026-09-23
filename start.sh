@@ -164,12 +164,16 @@ else
   ok "started on :$LK_PORT  $D(UDP 50000-50060, TCP 7881)$N"
 fi
 
-# Google OAuth for Connect YouTube / Drive. Sourced from .env without
-# clobbering the local DATABASE_URL this script just set.
+# Google OAuth for Connect YouTube / Drive, and the Meta app behind Connect
+# WhatsApp. Sourced from .env without clobbering the local DATABASE_URL this
+# script just set — which is why this is an allowlist and not `source`.
 if [[ -f "$ROOT/.env" ]]; then
   while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
       GOOGLE_CLIENT_ID=*|GOOGLE_CLIENT_SECRET=*|GOOGLE_API_KEY=*)
+        export "$line"
+        ;;
+      META_APP_ID=*|META_APP_SECRET=*|META_WHATSAPP_CONFIG_ID=*|META_WEBHOOK_VERIFY_TOKEN=*|WHATSAPP_GRAPH_URL=*)
         export "$line"
         ;;
     esac
@@ -202,6 +206,11 @@ else
   GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}" \
   GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}" \
   GOOGLE_API_KEY="${GOOGLE_API_KEY:-}" \
+  META_APP_ID="${META_APP_ID:-}" \
+  META_APP_SECRET="${META_APP_SECRET:-}" \
+  META_WHATSAPP_CONFIG_ID="${META_WHATSAPP_CONFIG_ID:-}" \
+  META_WEBHOOK_VERIFY_TOKEN="${META_WEBHOOK_VERIFY_TOKEN:-}" \
+  WHATSAPP_GRAPH_URL="${WHATSAPP_GRAPH_URL:-}" \
     start_bg api "$BIN_DIR/webcast-api"
 
   wait_for "the API" "http://localhost:$API_PORT/readyz" 45 \

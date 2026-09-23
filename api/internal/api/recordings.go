@@ -669,6 +669,23 @@ func (s *Server) handleUpdateRecordingShare(w http.ResponseWriter, r *http.Reque
 	}
 
 	s.log.Info("recording share settings updated", "slug", slug, "recording", id, "isPublic", rec.IsPublic, "hasPasscode", rec.Passcode != "")
+
+	/* Publishing a recording is what tells the registrants about it.
+	 *
+	 * Here rather than when the upload finishes, because processing is not a decision
+	 * and this is: a replay link sent the moment a file was ready would hand out a
+	 * recording the host has not watched back yet. Only on the way to public, only for
+	 * a session that can actually be played, and only once per person however many
+	 * times this switch is flipped — the dedupe is in the database, see replay.go.
+	 *
+	 * Queued in the request rather than by a sweep so the host sees it happen, and the
+	 * outbox flush is left to the sweeper: the rows are safe once written, and five
+	 * thousand SMTP conversations are not something a browser should be waiting on.
+	 */
+	if body.IsPublic != nil && *body.IsPublic && rec.Status == types.RecordingReady {
+		s.enqueueReplay(r.Context(), slug, rec)
+	}
+
 	s.stampRecording(&rec)
 	httpx.JSON(w, http.StatusOK, rec)
 }

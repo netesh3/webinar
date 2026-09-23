@@ -1,0 +1,86 @@
+package store
+
+import (
+	"context"
+)
+
+/* Who to tell when a recording is published.
+ *
+ * The replay is the one message this application owed people and never sent. A host
+ * records a session, switches the recording to public, copies the link — and then has
+ * to go and find the four hundred addresses themselves, in a spreadsheet, outside the
+ * product that already knows every one of them. Most of them never send it, which
+ * means the recording that cost bandwidth to keep is watched by nobody.
+ *
+ * One query, because the email and the WhatsApp message go to the same list and
+ * differ only in what each recipient can receive: an address always, a phone number
+ * and a consent tick sometimes.
+ */
+
+// ReplayRecipient is one person owed the replay of a webinar.
+type ReplayRecipient struct {
+	RegistrationID string
+	Email          string
+	Name           string
+	// ContactID is empty when this registrant never became a CRM contact — a
+	// registration with an email and no phone, which is most of them.
+	ContactID string
+	Phone     string
+	// OptIn is the computed consent: opted in, and not opted out since.
+	OptIn bool
+}
+
+/* ReplayRecipients lists the approved registrants of one webinar.
+ *
+ * Only 'approved', and only with an address: a declined registration is somebody the
+ * host decided not to admit, and sending them the recording afterwards would hand
+ * over the thing they were refused.
+ *
+ * The CRM contact is joined on rather than required, and matched two ways. A contact
+ * carries the registration that created it, which is the exact link — but only for the
+ * FIRST webinar that person registered for, because UpsertContact keeps the original
+ * (see crm.go). Everyone else is matched by address, lower-cased, which is the same
+ * rule UpsertContact matched them by. DISTINCT ON keeps one row per registration when
+ * both match, preferring the exact one.
+ *
+ * Phone is not matched on, though UpsertContact does: the numbers in crm_contacts are
+ * normalised and the ones in registrations are whatever somebody typed, so matching
+ * them in SQL would mean re-implementing normalisePhone in it. The cost of missing one
+ * is an email instead of a WhatsApp message, which is the right way for this to fail.
+ */
+func (s *Store) ReplayRecipients(ctx context.Context, slug string, limit int) ([]ReplayRecipient, error) {
+	if limit <= 0 || limit > 20000 {
+		limit = 5000
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT ON (r.id)
+		       r.id::text, r.email,
+		       btrim(btrim(r.first_name) || ' ' || btrim(r.last_name)),
+		       COALESCE(c.id::text,''), COALESCE(c.phone,''),
+		       COALESCE(c.whatsapp_opt_in_at IS NOT NULL
+		                AND (c.whatsapp_opt_out_at IS NULL
+		                     OR c.whatsapp_opt_in_at > c.whatsapp_opt_out_at), false)
+		  FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		  LEFT JOIN crm_contacts c
+		         ON c.host_id = w.host_id
+		        AND (c.registration_id = r.id OR lower(c.email) = lower(r.email))
+		 WHERE w.slug = $1 AND r.state = 'approved' AND r.email <> ''
+		 ORDER BY r.id, (c.registration_id = r.id) DESC NULLS LAST, c.created_at
+		 LIMIT $2`, slug, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []ReplayRecipient{}
+	for rows.Next() {
+		var p ReplayRecipient
+		if err := rows.Scan(&p.RegistrationID, &p.Email, &p.Name,
+			&p.ContactID, &p.Phone, &p.OptIn); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

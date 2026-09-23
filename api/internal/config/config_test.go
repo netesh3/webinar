@@ -219,7 +219,6 @@ func TestBroadcastBasesMustBePaired(t *testing.T) {
 	}
 }
 
-
 func TestRecordingsRetentionDaysDefaultsToThirty(t *testing.T) {
 	c := load(t, map[string]string{})
 	if c.RecordingsRetentionDays != 30 {
@@ -285,6 +284,13 @@ func TestEveryConfiguredValueIsActuallyRead(t *testing.T) {
 		"SMTP_FROM":              "webinars@example.test",
 		"REGISTER_RATE_PER_MIN":  "300",
 		"DEFAULT_ATTENDEE_LIMIT": "120",
+		// All three, because a partial set is a boot error by design — see
+		// TestConnectWhatsAppIsAllThreeOrNone.
+		"META_APP_ID":               "meta-app",
+		"META_APP_SECRET":           "meta-secret",
+		"META_WHATSAPP_CONFIG_ID":   "es-config",
+		"META_WEBHOOK_VERIFY_TOKEN": "verify-me",
+		"WHATSAPP_GRAPH_URL":        "https://graph.example.test/v23.0/",
 	})
 
 	c, err := Load()
@@ -314,6 +320,69 @@ func TestEveryConfiguredValueIsActuallyRead(t *testing.T) {
 	if c.DefaultAttendeeLimit != 120 {
 		t.Errorf("DefaultAttendeeLimit = %d, want 120", c.DefaultAttendeeLimit)
 	}
+	if c.MetaAppID != "meta-app" || c.MetaAppSecret != "meta-secret" || c.MetaWhatsAppConfigID != "es-config" {
+		t.Errorf("Meta credentials not read: %q / %q / %q",
+			c.MetaAppID, c.MetaAppSecret, c.MetaWhatsAppConfigID)
+	}
+	if c.MetaWebhookVerifyToken != "verify-me" {
+		t.Errorf("MetaWebhookVerifyToken = %q", c.MetaWebhookVerifyToken)
+	}
+	// Trailing slash trimmed, so the client can append "/oauth/access_token"
+	// without producing a double slash Meta answers with a 404.
+	if c.WhatsAppGraphURL != "https://graph.example.test/v23.0" {
+		t.Errorf("WhatsAppGraphURL = %q, want it trimmed", c.WhatsAppGraphURL)
+	}
+	if !c.WhatsAppConnectEnabled() {
+		t.Error("WhatsAppConnectEnabled is false with all three values set")
+	}
+}
+
+/* Connect WhatsApp needs all three values, and a partial set must not boot.
+ *
+ * The failure this prevents happens on somebody else's account: with the app id
+ * and config id but no secret, a host completes Meta's dialog — granting access
+ * to their business, with their payment method behind it — and only then does the
+ * exchange that would have stored the grant fail. Boot is the right place to
+ * find that out.
+ */
+func TestConnectWhatsAppIsAllThreeOrNone(t *testing.T) {
+	full := map[string]string{
+		"META_APP_ID":             "meta-app",
+		"META_APP_SECRET":         "meta-secret",
+		"META_WHATSAPP_CONFIG_ID": "es-config",
+	}
+
+	t.Run("none is a valid instance with the feature off", func(t *testing.T) {
+		c := load(t, map[string]string{})
+		if c.WhatsAppConnectEnabled() {
+			t.Error("WhatsAppConnectEnabled with nothing configured")
+		}
+	})
+
+	for missing := range full {
+		t.Run("without "+missing, func(t *testing.T) {
+			partial := map[string]string{}
+			for k, v := range full {
+				if k != missing {
+					partial[k] = v
+				}
+			}
+			setEnv(t, partial)
+			_, err := Load()
+			if err == nil {
+				t.Fatalf("booted with %s missing", missing)
+			}
+			if !strings.Contains(err.Error(), missing) {
+				t.Errorf("error does not name the missing value %s: %v", missing, err)
+			}
+		})
+	}
+
+	t.Run("all three boots and turns the feature on", func(t *testing.T) {
+		if c := load(t, full); !c.WhatsAppConnectEnabled() {
+			t.Error("WhatsAppConnectEnabled is false with a complete set")
+		}
+	})
 }
 
 /* SMTPFrom falls back to SUPPORT_EMAIL, so an operator who has already said where mail comes
@@ -356,6 +425,8 @@ func setEnv(t *testing.T, env map[string]string) {
 		"GOOGLE_CLIENT_SECRET",
 		"SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_JWT_SECRET",
 		"BROADCAST_RTMP_BASE", "BROADCAST_HLS_BASE",
+		"META_APP_ID", "META_APP_SECRET", "META_WHATSAPP_CONFIG_ID",
+		"META_WEBHOOK_VERIFY_TOKEN", "WHATSAPP_GRAPH_URL",
 	} {
 		t.Setenv(key, "")
 	}

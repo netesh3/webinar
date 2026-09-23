@@ -488,6 +488,9 @@ type harness struct {
 	// The same handler the server is serving, for the one test that reads the route
 	// table instead of calling it. See isolation_test.go.
 	handler http.Handler
+	// server is the same server that handler belongs to, for the one piece of
+	// behaviour no request performs: the drip sweep. See crm_drips_test.go.
+	server *api.Server
 	// rooms is the DEFAULT project's fake — the one every single-project test asserts on.
 	// Multi-project tests reach for h.pool instead.
 	rooms *fakeRooms
@@ -675,7 +678,11 @@ func newHarnessWith(
 	 * ENUMERATE the routes rather than call them: see isolation_test.go, which walks the real
 	 * route table so that a host route added tomorrow is covered without anyone remembering
 	 * to add it to a list. */
-	handler := api.NewServer(cfg, st, pool, recordings, log).Routes()
+	/* The server itself is kept as well as its routes, for the one piece of
+	 * behaviour that has no HTTP surface at all: see the drip sweep in
+	 * crm_drips_test.go. Everything else goes through the handler. */
+	server := api.NewServer(cfg, st, pool, recordings, log)
+	handler := server.Routes()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
@@ -685,7 +692,7 @@ func newHarnessWith(
 		t.Fatal(err)
 	}
 	return &harness{
-		t: t, srv: srv, handler: handler, rooms: rooms, pool: pool,
+		t: t, srv: srv, handler: handler, server: server, rooms: rooms, pool: pool,
 		client: &http.Client{Jar: jar}, store: st,
 		recordingsDir: recordingsDir,
 	}

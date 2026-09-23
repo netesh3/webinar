@@ -59,6 +59,8 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
       multistream: false,
       postWebinarSurvey: false,
       emailReminders: true,
+      // Off: it spends the host's own WhatsApp balance. See WebinarOptions.
+      whatsappReminders: false,
     },
     controls: {
       hideAttendees: true,

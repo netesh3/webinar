@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { AdminUser, Webinar } from "@/lib/api-types";
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
-import { useSession, useToast } from "./providers";
-import { Alert, ConfirmModal, Spinner, Toggle } from "./controls";
+import { useAppConfig, useSession, useToast } from "./providers";
+import { Alert, ConfirmModal, Disclosure, Spinner, Toggle } from "./controls";
 import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 
 /* The admin panel: who may host, every webinar on the instance, and the two
@@ -290,6 +290,25 @@ export function AdminScreen() {
                   >
                     Delete
                   </button>
+
+                  {/* Hosts only. Every feature in the catalogue is something a
+                      host does with their own audience, so the switches would be
+                      a row of decisions with no effect on an account that cannot
+                      create a webinar. */}
+                  {u.canHost && (
+                    <div className="w-full">
+                      <AccountFeatures
+                        user={u}
+                        onChange={(features) =>
+                          setUsers((prev) =>
+                            (prev ?? []).map((row) =>
+                              row.id === u.id ? { ...row, features } : row,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -325,6 +344,71 @@ export function AdminScreen() {
         confirmLabel="Delete account"
       />
     </div>
+  );
+}
+
+/* The per-account switches: what this customer has bought.
+ *
+ * Rendered from `config.featureCatalogue` and never from a list written here.
+ * The server owns the key, the label AND the sentence explaining each switch,
+ * which is what stops this screen from describing a feature differently to the
+ * way it behaves — and means a feature added to the API appears here without a
+ * frontend change.
+ *
+ * One request per switch, stating the state it should end in. Two admins on two
+ * screens can then work at the same time without either of them overwriting a
+ * decision about a switch they never touched, and a retried request cannot
+ * toggle something back.
+ */
+function AccountFeatures({
+  user,
+  onChange,
+}: {
+  user: AdminUser;
+  onChange: (features: string[]) => void;
+}) {
+  const { featureCatalogue } = useAppConfig();
+  const { notify } = useToast();
+  /* Keyed by feature rather than a single boolean: an admin switching two things
+   * on in quick succession should not have the second switch look dead because
+   * the first is still in flight. */
+  const [busy, setBusy] = useState<string | null>(null);
+
+  if (featureCatalogue.length === 0) return null;
+
+  const on = new Set(user.features ?? []);
+
+  async function set(key: string, enabled: boolean) {
+    setBusy(key);
+    try {
+      const updated = await api.setUserFeature(user.id, key, enabled);
+      // The account as the server now describes it, rather than this screen's
+      // guess at the new set — the two cannot then drift.
+      onChange(updated.features);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Disclosure
+      summary={`Features · ${on.size} of ${featureCatalogue.length} on`}
+    >
+      <div className="grid gap-2.5">
+        {featureCatalogue.map((f) => (
+          <Toggle
+            key={f.key}
+            checked={on.has(f.key)}
+            disabled={busy !== null}
+            onChange={(next) => void set(f.key, next)}
+            label={f.label}
+            description={f.description}
+          />
+        ))}
+      </div>
+    </Disclosure>
   );
 }
 

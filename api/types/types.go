@@ -81,7 +81,50 @@ const (
 	NotifyRegistrationConfirmed NotificationKind = "registration_confirmed"
 	NotifyReminder24h           NotificationKind = "reminder_24h"
 	NotifyReminder1h            NotificationKind = "reminder_1h"
+
+	/* The same three things said on WhatsApp, which are separate kinds rather than
+	 * the same kinds on another channel. A host may well want both — an email with
+	 * a calendar file and a message on the phone the person will actually be
+	 * holding — and one kind per row is what lets the outbox guarantee one of each
+	 * per registration. */
+	NotifyWhatsAppConfirmed   NotificationKind = "wa_registration_confirmed"
+	NotifyWhatsAppReminder24h NotificationKind = "wa_reminder_24h"
+	NotifyWhatsAppReminder1h  NotificationKind = "wa_reminder_1h"
+
+	/* NotifyWhatsAppBroadcast is one recipient of one broadcast: the host's own
+	 * message, written once and queued per person, rather than anything this
+	 * application decided to send. It is not in WhatsAppReminderKinds because it has
+	 * no settings row — the template and its values belong to the broadcast. */
+	NotifyWhatsAppBroadcast NotificationKind = "wa_broadcast"
+
+	/* NotifyWhatsAppDrip is one step of one person's sequence, queued when it comes
+	 * due rather than all at once — the next step's time is only known once the
+	 * previous one has actually gone. Also not in WhatsAppReminderKinds: the template
+	 * belongs to the step, and nothing about a webinar's clock may reschedule it. */
+	NotifyWhatsAppDrip NotificationKind = "wa_drip"
+
+	/* NotifyReplayReady is the email that says the recording is up, with the link to
+	 * watch it. Sent when the host shares one, not when it finishes processing: a
+	 * replay link that arrives before anybody has decided to publish it would hand out
+	 * a recording the host has not looked at yet. */
+	NotifyReplayReady NotificationKind = "replay_ready"
+	/* NotifyWhatsAppReplay is the same sentence on WhatsApp, and it is in
+	 * WhatsAppReminderKinds because it works the way the other automatic messages do:
+	 * the host picks an approved template for it once, and it is sent to the people
+	 * who registered for the webinar it belongs to. */
+	NotifyWhatsAppReplay NotificationKind = "wa_replay"
 )
+
+/* WhatsAppReminderKinds are the automatic WhatsApp messages, in the order they
+ * reach somebody. Iterated by the settings endpoint and the enqueue path, so a new
+ * kind is added here rather than in three switch statements.
+ */
+var WhatsAppReminderKinds = []NotificationKind{
+	NotifyWhatsAppConfirmed,
+	NotifyWhatsAppReminder24h,
+	NotifyWhatsAppReminder1h,
+	NotifyWhatsAppReplay,
+}
 
 /* HostAlert is one in-app notification as a host's browser sees it.
  *
@@ -167,6 +210,13 @@ type WebinarOptions struct {
 	PostWebinarSurvey bool `json:"postWebinarSurvey"`
 	// EmailReminders defaults true for existing rows that never stored the key.
 	EmailReminders bool `json:"emailReminders"`
+	/* WhatsAppReminders defaults FALSE, unlike its email counterpart, and the
+	 * asymmetry is deliberate: every WhatsApp message is charged to the host's own
+	 * Meta account, so spending their money on a webinar has to be something they
+	 * asked for. It also gates the confirmation message and not only the timed
+	 * reminders — one switch per webinar for "message my registrants on WhatsApp",
+	 * because a host turning it off does not mean "but keep sending one of them". */
+	WhatsAppReminders bool `json:"whatsappReminders"`
 }
 
 // SessionControls are the things a host flips *during* the session.
@@ -791,8 +841,93 @@ type Account struct {
 	MaxDurationMin *int `json:"maxDurationMin,omitempty"`
 	// CanCdnBroadcast allows this host's webinars to broadcast to audience via CDN HLS.
 	CanCdnBroadcast bool `json:"canCdnBroadcast"`
+	/* Features switched on for this account by an admin — the Feature constants, and
+	 * never anything else. Sent to the browser so a screen can leave out a tab the
+	 * server would refuse anyway; the server checks it again on every request, because
+	 * a hidden button is not a permission. */
+	Features []string `json:"features"`
 	// YouTube is present when this account has granted live-stream access.
 	YouTube *YouTubeLink `json:"youtube,omitempty"`
+	// WhatsApp is present when this account has connected a WhatsApp Business
+	// Account through Meta Embedded Signup.
+	WhatsApp *WhatsAppLink `json:"whatsapp,omitempty"`
+}
+
+/* Per-account features, switched on and off by an admin.
+ *
+ * A list of keys on the account rather than a boolean column each, unlike CanHost
+ * and CanCdnBroadcast. Those two are old enough to be part of what an account IS;
+ * these are the switches on individual pieces of the CRM, and there will be more of
+ * them with every phase. One column, one endpoint and one catalogue means the next
+ * feature is a line here instead of a migration, a handler, a scan list and a toggle
+ * — and the admin screen renders whatever this server declares rather than a list
+ * the browser keeps its own copy of.
+ *
+ * Absent means off. There is no feature that defaults to on: every one of these
+ * either spends the host's money or writes to other people's phones, so an
+ * administrator turning it on for an account is the record that somebody decided to.
+ */
+const (
+	// FeatureCRMTags is labelling contacts, and everything that reads a label: the
+	// tag audience for a broadcast, the "tag added" sequence trigger, the bot step.
+	FeatureCRMTags = "crm_tags"
+	// FeatureCRMNotes is writing private notes on a contact.
+	FeatureCRMNotes = "crm_notes"
+	// FeatureReplayLinks is the replay email, and the WhatsApp replay message with
+	// it: sharing a recording tells everybody who registered where to watch it.
+	FeatureReplayLinks = "replay_links"
+	// FeatureWhatsAppRegister is registering the connected number with Cloud API from
+	// the connect flow, using a two-step PIN the host types.
+	FeatureWhatsAppRegister = "whatsapp_register"
+)
+
+/* Feature is one switch as the admin screen renders it.
+ *
+ * Label and Description are here rather than in the browser so that the two cannot
+ * disagree about what a switch does — the server owns both the key and the sentence
+ * explaining it.
+ */
+type Feature struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}
+
+/* Features is the catalogue, in the order an admin is offered it. Iterated by the
+ * admin endpoint's validation and sent to the admin screen, so a new switch is added
+ * here and nowhere else.
+ */
+var Features = []Feature{
+	{
+		Key:         FeatureCRMTags,
+		Label:       "Contact tags",
+		Description: "Label contacts, message a tag, and start a sequence when one is added.",
+	},
+	{
+		Key:         FeatureCRMNotes,
+		Label:       "Contact notes",
+		Description: "Keep private notes on a contact, visible only to this account.",
+	},
+	{
+		Key:         FeatureReplayLinks,
+		Label:       "Replay links",
+		Description: "Sharing a recording emails the replay link to everyone who registered, and sends it on WhatsApp where a template is set.",
+	},
+	{
+		Key:         FeatureWhatsAppRegister,
+		Label:       "Register WhatsApp number",
+		Description: "Let this host register a number created in the signup dialog, with a two-step PIN they choose.",
+	},
+}
+
+// KnownFeature reports whether a key is one of the switches this server has.
+func KnownFeature(key string) bool {
+	for _, f := range Features {
+		if f.Key == key {
+			return true
+		}
+	}
+	return false
 }
 
 // YouTubeLink is the public half of a host's YouTube OAuth grant. The refresh
@@ -801,6 +936,971 @@ type YouTubeLink struct {
 	Connected    bool   `json:"connected"`
 	ChannelID    string `json:"channelId,omitempty"`
 	ChannelTitle string `json:"channelTitle,omitempty"`
+}
+
+/* WhatsAppLink is the public half of a host's WhatsApp Cloud API grant. The
+ * access token never appears here.
+ *
+ * Deliberately the human-readable half and not the ids: a host recognises
+ * "+27 82 000 0000 (Acme Coaching)" as their own number, and can tell at a glance
+ * that they connected the right one. The WABA and phone-number ids are ours to
+ * send with, not theirs to read.
+ *
+ * TokenExpiresAt is almost always absent, which means the grant does not expire —
+ * see wa.Token. When it is set, it is there so the UI can say a connection has
+ * gone stale instead of letting a host find out when a reminder fails to send.
+ */
+type WhatsAppLink struct {
+	Connected    bool   `json:"connected"`
+	DisplayPhone string `json:"displayPhone,omitempty"`
+	VerifiedName string `json:"verifiedName,omitempty"`
+	// RFC3339, like every other timestamp on the wire here. Empty rather than a
+	// zero instant when there is none.
+	ConnectedAt    string `json:"connectedAt,omitempty"`
+	TokenExpiresAt string `json:"tokenExpiresAt,omitempty"`
+	/* When this number was registered with Cloud API from here, if it ever was.
+	 *
+	 * Only ever set by the host asking for it — see WhatsAppRegisterRequest. A number
+	 * that was already registered when it was connected (every number a host had
+	 * before, and every one they migrated in) has nothing here and needs nothing: this
+	 * says "we did this", not "this number works". */
+	RegisteredAt string `json:"registeredAt,omitempty"`
+}
+
+/* WhatsAppSignup is everything the browser needs to open Meta's Embedded Signup
+ * dialog, and nothing else.
+ *
+ * Connecting WhatsApp is not an OAuth redirect like Connect YouTube: Meta's JS
+ * SDK opens a popup, the host picks or creates a WhatsApp Business Account inside
+ * it, and the dialog hands the code back to the page that opened it. So there is
+ * no URL to send a host to — hence a payload here rather than a 302, and hence
+ * GraphVersion, which the SDK must be initialised with.
+ *
+ * All three values are public. The app secret is what must never leave the API,
+ * and it is not here.
+ */
+type WhatsAppSignup struct {
+	AppID        string `json:"appId"`
+	ConfigID     string `json:"configId"`
+	GraphVersion string `json:"graphVersion"`
+}
+
+/* WhatsAppCallbackRequest is what the browser posts once that dialog closes.
+ *
+ * Three values from two different places, which is why they arrive together:
+ * Code comes from the SDK's login callback, while WABAID and PhoneNumberID come
+ * from the dialog's own postMessage. Both halves are required — the code alone
+ * would buy a token with nothing to send from.
+ */
+type WhatsAppCallbackRequest struct {
+	Code          string `json:"code"`
+	WABAID        string `json:"wabaId"`
+	PhoneNumberID string `json:"phoneNumberId"`
+}
+
+/* WhatsAppRegisterRequest registers the connected number with Cloud API.
+ *
+ * A number created inside the Embedded Signup dialog is not usable until it has been
+ * registered, and Meta asks for a six-digit two-step verification PIN to do it. The
+ * PIN is the host's to choose and it is theirs to keep: it is read out of this
+ * request, passed to Meta, and never stored, logged or returned. If they forget it,
+ * Meta's own two-step settings is where it is reset — this server cannot tell them
+ * what it was, on purpose.
+ *
+ * Its own request rather than part of the callback because it can fail on its own: a
+ * number that is already registered, or a PIN that does not match the one on the
+ * account, must not undo a connection that worked.
+ */
+type WhatsAppRegisterRequest struct {
+	// Exactly six digits. Checked here and by Meta.
+	Pin string `json:"pin"`
+}
+
+/* CRMContact is one person a host may message.
+ *
+ * Not a Registration, even where the fields look alike: a registration is what
+ * somebody submitted for one webinar and stays as it was, while a contact is the
+ * person behind however many of those there are and keeps changing. A host with
+ * four sessions has four registrations and one contact.
+ *
+ * Name is assembled server-side rather than sent as first/last, because nothing
+ * in the CRM edits half a name and every surface that shows a contact shows the
+ * whole of it.
+ */
+type CRMContact struct {
+	ID string `json:"id"`
+	/** E.164 — `+` then digits. Empty for a contact who only ever gave an email,
+	 *  which is also a contact who cannot be sent a WhatsApp message. */
+	Phone   string `json:"phone,omitempty"`
+	Email   string `json:"email,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Company string `json:"company,omitempty"`
+	/** Where the contact came from: `registration`, `whatsapp`, or empty for the
+	 *  rows that predate anyone recording it. */
+	Source string `json:"source,omitempty"`
+	/** Whether a WhatsApp message may be sent to this person at all — opt-in
+	 *  present, and no later opt-out. Computed, so the UI and the send path cannot
+	 *  read the two timestamps and disagree. */
+	WhatsAppOptIn bool `json:"whatsappOptIn"`
+	/** RFC3339, all four. Empty when there is none. */
+	WhatsAppOptInAt  string `json:"whatsappOptInAt,omitempty"`
+	WhatsAppOptOutAt string `json:"whatsappOptOutAt,omitempty"`
+	LastSeenAt       string `json:"lastSeenAt,omitempty"`
+	CreatedAt        string `json:"createdAt"`
+	/** RFC3339, when a person took this conversation over from the bot. While it is
+	 *  set no bot answers this contact — see CRMBot. Set by a handoff node, and by the
+	 *  host from the inbox; cleared only by the host. */
+	BotPausedAt string `json:"botPausedAt,omitempty"`
+	/** The labels on this contact, alphabetically. Always present, and empty for a
+	 *  contact with none — a list the browser has to guard against being null is a
+	 *  list every screen guards differently. */
+	Tags []CRMTag `json:"tags"`
+	/** The last thing said in either direction, for an inbox row. Absent on a
+	 *  contact nobody has messaged. */
+	LastMessage *CRMMessage `json:"lastMessage,omitempty"`
+}
+
+/** CRMMessage is one message in a thread, from the host's point of view:
+ *  `in` is the contact writing to the business. */
+type CRMMessage struct {
+	ID        string `json:"id"`
+	ContactID string `json:"contactId"`
+	/** `in` or `out`. */
+	Direction string `json:"direction"`
+	Body      string `json:"body,omitempty"`
+	/** Meta's own type for an inbound message that is not text — `image`, `audio`,
+	 *  `location`, `button`. Empty for text, which is the only kind with a Body
+	 *  worth showing. */
+	Kind         string `json:"kind,omitempty"`
+	TemplateName string `json:"templateName,omitempty"`
+	/** queued / sent / delivered / read / failed. Inbound messages are written
+	 *  `delivered`: they arrived, and nothing further will be reported. */
+	Status string `json:"status"`
+	/** Meta's words when Status is `failed` — usually something only the host can
+	 *  fix, like a WABA with no payment method on it. */
+	Error string `json:"error,omitempty"`
+	/** The bot that sent this, when one did. Empty for everything a person sent or
+	 *  received, which is most of a thread. Reading a handed-over conversation, this
+	 *  is how the host tells which half of it they did not write. */
+	FromBot   string `json:"fromBot,omitempty"`
+	CreatedAt string `json:"createdAt"`
+}
+
+/* CRMContactScope names the webinar a contacts list was narrowed to.
+ *
+ * The topic comes from the server rather than riding along in the link, because the
+ * heading it fills in is a claim about whose webinar this is. A topic passed in a query
+ * string could say anything, and a heading built from the slug instead would show the
+ * host a URL fragment where the name of their webinar belongs.
+ */
+type CRMContactScope struct {
+	/** The webinar's slug — the same value its own pages use in the path, and what
+	 *  ?webinarId= was set to. Echoed so the UI can be sure the server honoured the
+	 *  filter rather than quietly listing everybody. */
+	WebinarID string `json:"webinarId"`
+	Topic     string `json:"topic"`
+}
+
+// CRMContactsResponse is the contacts list, newest activity first.
+type CRMContactsResponse struct {
+	Contacts []CRMContact `json:"contacts"`
+	/** How many contacts are in the list being looked at — every contact this host
+	 *  has, or every contact of one webinar when Scope is set. Not len(Contacts):
+	 *  the search box and the page limit both narrow the rows without changing this,
+	 *  so the count in the heading holds still while somebody types. */
+	Total int `json:"total"`
+	/** Set when ?webinarId= narrowed the list, and absent when it did not. Absent
+	 *  rather than empty so "the whole CRM" is one state and not two. */
+	Scope *CRMContactScope `json:"scope,omitempty"`
+	/** Every tag this host has, so the list can offer them as a filter and the thread
+	 *  can offer them as a picker without a request per contact. Empty when the tags
+	 *  feature is off. */
+	Tags []CRMTag `json:"tags"`
+	/** False once WhatsApp is disconnected, so the CRM can keep showing a host
+	 *  their leads while explaining why nothing can be sent. */
+	WhatsAppConnected bool `json:"whatsappConnected"`
+}
+
+// CRMThreadResponse is one contact and the conversation with them, oldest first.
+type CRMThreadResponse struct {
+	Contact  CRMContact   `json:"contact"`
+	Messages []CRMMessage `json:"messages"`
+	/** RFC3339 deadline for writing free-form text to this contact, or empty when
+	 *  there is none open. WhatsApp only allows a business to type its own words
+	 *  for 24 hours after the contact's last message; outside that, the only thing
+	 *  that may be sent is an approved template. Sent as the deadline rather than a
+	 *  boolean so the UI can say "until 14:32" instead of "yes". */
+	ServiceWindowUntil string `json:"serviceWindowUntil,omitempty"`
+	/** False once WhatsApp is disconnected, which is why a compose box would be
+	 *  refused even to a contact who is opted in and mid-conversation. */
+	WhatsAppConnected bool `json:"whatsappConnected"`
+	/** This contact's notes, newest first. Empty unless the notes feature is on for
+	 *  this account, which is also when the pane is not shown. */
+	Notes []CRMNote `json:"notes"`
+}
+
+/* CRMTag is one label a host puts on people.
+ *
+ * A name and nothing else — no colour, no group, no description. A tag earns its
+ * place by being something this server can act on: an audience for a broadcast, a
+ * sequence trigger, a step in a bot. A colour would be a preference that changes
+ * nothing about who gets messaged, and every tag would then need one.
+ *
+ * Names are the host's own words, trimmed and single-spaced, and unique per account
+ * case-insensitively: "VIP" and "vip" are one label, because a host who typed the
+ * second meant the first.
+ */
+type CRMTag struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	/** How many of this host's contacts carry it. Sent with the list, because "delete
+	 *  this tag" is a different decision at 2 contacts and at 900. */
+	Contacts  int    `json:"contacts"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// CRMTagsResponse is every tag this host has, alphabetically.
+type CRMTagsResponse struct {
+	Tags []CRMTag `json:"tags"`
+}
+
+/* CRMTagRequest creates a tag or renames one.
+ *
+ * The same body for both, because a tag is its name: there is nothing else to edit.
+ */
+type CRMTagRequest struct {
+	Name string `json:"name"`
+}
+
+/* CRMContactTagRequest puts a tag on a contact, or takes it off.
+ *
+ * By id rather than by name, so a typo cannot quietly create a second label — the
+ * tag has to exist first. Creating one and applying it are two calls for the same
+ * reason.
+ */
+type CRMContactTagRequest struct {
+	TagID string `json:"tagId"`
+}
+
+/* CRMNote is something the host wrote down about a contact.
+ *
+ * Private to the account: never sent to anybody, never merged into a template, and
+ * not readable by the person it is about. That is the whole point of it — "asked us
+ * to call after 5", "already a customer" — and it is why notes are their own thing
+ * rather than an extra field on the contact.
+ *
+ * Immutable once written. A note is a dated observation, and editing one silently
+ * rewrites what the host knew in February; the way to correct one is to delete it and
+ * write another.
+ */
+type CRMNote struct {
+	ID        string `json:"id"`
+	ContactID string `json:"contactId"`
+	Body      string `json:"body"`
+	/** Who wrote it, for the accounts that share a login between colleagues. The
+	 *  account's name at the time it is read, not when it was written. */
+	Author    string `json:"author,omitempty"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// CRMNotesResponse is one contact's notes, newest first.
+type CRMNotesResponse struct {
+	Notes []CRMNote `json:"notes"`
+}
+
+// CRMNoteRequest writes one note. There is no edit: see CRMNote.
+type CRMNoteRequest struct {
+	Body string `json:"body"`
+}
+
+/* NoteMaxLength caps one note.
+ *
+ * Long enough for a paragraph about somebody, short enough that the notes pane stays
+ * a list of observations rather than a document store.
+ */
+const NoteMaxLength = 2000
+
+// TagMaxLength caps a tag name: a label, not a sentence.
+const TagMaxLength = 48
+
+// TagMaxPerHost caps how many tags one account may have. A host with a hundred
+// labels has a taxonomy nobody can pick from, and the picker is a list.
+const TagMaxPerHost = 100
+
+/* CRMTemplate is one of the host's WhatsApp message templates, as Meta last
+ * described it.
+ *
+ * Read-only here, and that is Meta's rule rather than a simplification: a
+ * template is submitted and approved in WhatsApp Manager, and a send must match
+ * the approved text word for word.
+ */
+type CRMTemplate struct {
+	Name string `json:"name"`
+	/** Meta's language code — `en`, `en_US`, `pt_BR`. Part of the identity: the
+	 *  same template is approved once per translation, and a send names both. */
+	Language string `json:"language"`
+	/** Meta's own: APPROVED / PENDING / REJECTED / PAUSED / DISABLED. */
+	Status string `json:"status"`
+	/** MARKETING / UTILITY / AUTHENTICATION. Marketing needs the contact's opt-in;
+	 *  it is also the category Meta charges most for. */
+	Category string `json:"category"`
+	Header   string `json:"header,omitempty"`
+	/** The approved text with `{{1}}`-style placeholders left in, so a host can
+	 *  read what they are about to send. */
+	Body   string `json:"body,omitempty"`
+	Footer string `json:"footer,omitempty"`
+	/** How many values a send has to supply, in order. Meta rejects a mismatch. */
+	Variables int `json:"variables"`
+	/** Whether this one can actually be sent from here: approved, and made only of
+	 *  the parts this implementation fills in. */
+	Sendable bool `json:"sendable"`
+	/** Why not, in words, when Sendable is false. */
+	Unsupported string `json:"unsupported,omitempty"`
+}
+
+// CRMTemplatesResponse is the host's cached template list, alphabetical.
+type CRMTemplatesResponse struct {
+	Templates []CRMTemplate `json:"templates"`
+	/** RFC3339 of the last time Meta was asked. Empty when it never has been. */
+	SyncedAt string `json:"syncedAt,omitempty"`
+	/** False once WhatsApp is disconnected: the list is then whatever was last
+	 *  cached, and nothing can be sent from it. */
+	WhatsAppConnected bool `json:"whatsappConnected"`
+}
+
+/* CRMSendRequest is one outbound message: either free-form text or a template,
+ * never both.
+ *
+ * Which one is allowed depends on CRMThreadResponse.ServiceWindowUntil, and the
+ * server decides rather than trusting this: a client that sends Body outside the
+ * window is refused instead of quietly having a template picked for it.
+ */
+type CRMSendRequest struct {
+	/** Free-form text, allowed only inside the 24-hour service window. */
+	Body string `json:"body,omitempty"`
+	/** Template name; requires Language too. */
+	Template string `json:"template,omitempty"`
+	Language string `json:"language,omitempty"`
+	/** Values for the template's `{{1}}`, `{{2}}` … in order. The count must match
+	 *  CRMTemplate.Variables exactly. */
+	Params []string `json:"params,omitempty"`
+}
+
+/* CRMReminder is the template one kind of automatic WhatsApp message uses.
+ *
+ * A host-level choice, and a choice rather than a name this application invents:
+ * Meta only delivers templates it has approved, so the only names that exist are
+ * the ones already in this host's account. Nothing is sent for a kind that has not
+ * been set, which is the honest behaviour when the alternative is naming a
+ * template that would be rejected.
+ */
+type CRMReminder struct {
+	/** One of the `wa_` NotificationKind values. */
+	Kind NotificationKind `json:"kind"`
+	/** Empty means this kind is off. */
+	Template string `json:"template"`
+	Language string `json:"language"`
+	/** One merge-field token per `{{n}}`, in order — see CRMMergeField. Tokens
+	 *  rather than values, because the values differ for every recipient and are
+	 *  resolved when the message is queued. */
+	Params []string `json:"params"`
+}
+
+/* CRMMergeField is one fact a reminder template can be filled in with.
+ *
+ * Sent to the browser rather than hardcoded there, so a picker cannot offer a
+ * token the server would refuse — and so the set can grow in one place.
+ */
+type CRMMergeField struct {
+	Token string `json:"token"`
+	Label string `json:"label"`
+	/** What it looks like filled in, for the preview beside the picker. */
+	Example string `json:"example"`
+	/** When set, the token resolves to something only on this one message kind, and
+	 *  the server refuses it anywhere else. The replay link is the case it exists
+	 *  for: there is no recording to point at in a broadcast or a drip step, so
+	 *  offering it there would produce a message whose whole subject is a dash. */
+	OnlyKind NotificationKind `json:"onlyKind,omitempty"`
+}
+
+// CRMRemindersResponse is the host's automatic-message settings.
+type CRMRemindersResponse struct {
+	/** One entry per kind, always all of them, in the order they happen. An unset
+	 *  kind is present with an empty Template rather than absent, so the UI renders
+	 *  the same rows whether or not anything has been configured. */
+	Reminders []CRMReminder   `json:"reminders"`
+	Fields    []CRMMergeField `json:"fields"`
+	/** False once WhatsApp is disconnected: the settings are kept, and nothing is
+	 *  sent from them. */
+	WhatsAppConnected bool `json:"whatsappConnected"`
+}
+
+// CRMRemindersRequest replaces the whole set — the kinds omitted are turned off.
+type CRMRemindersRequest struct {
+	Reminders []CRMReminder `json:"reminders"`
+}
+
+/* CRMParam fills one `{{n}}` in a broadcast: either the same words for everybody
+ * or a fact about the person receiving it.
+ *
+ * Two shapes rather than one, because a broadcast needs both in the same sentence.
+ * "Hi {{1}}, {{2}} starts on {{3}}" wants the name filled in per recipient and the
+ * other two typed once — and a bare string could not tell the difference between a
+ * host who meant the merge field `name` and a host whose message really does say
+ * the word "name".
+ */
+type CRMParam struct {
+	/** A merge-field token — see CRMMergeField. Empty means Text is used instead. */
+	Field string `json:"field,omitempty"`
+	/** The literal words, when Field is empty. */
+	Text string `json:"text,omitempty"`
+}
+
+/* Broadcast audiences. Deliberately few: every one of them has to be a set this
+ * server can resolve to phone numbers on its own, without a host uploading a list
+ * of people who never agreed to anything.
+ */
+const (
+	/** AudienceOptedIn is every contact of this host who has opted in and has a
+	 *  number — the marketing list, and the only audience that needs no webinar. */
+	AudienceOptedIn = "opted_in"
+	/** AudienceWebinar is the opted-in contacts who registered for one webinar. */
+	AudienceWebinar = "webinar"
+	/** AudienceTag is the opted-in contacts carrying one tag — the host's own
+	 *  segment, and the only audience they define themselves. Needs the tags
+	 *  feature. */
+	AudienceTag = "tag"
+)
+
+/* CRMBroadcast is one message the host sent, or will send, to many people.
+ *
+ * Status is derived rather than stored: it is whatever the queued messages say —
+ * see the store. A broadcast has no draft state, because a draft is a message
+ * nobody has decided to send and there is nothing to keep about it.
+ */
+type CRMBroadcast struct {
+	ID string `json:"id"`
+	/** The host's own label for it, shown in the list. Never sent to anybody. */
+	Name     string `json:"name"`
+	Template string `json:"template"`
+	Language string `json:"language"`
+	/** One entry per `{{n}}`, in order, as configured — merge tokens unresolved. */
+	Params []CRMParam `json:"params"`
+	/** `opted_in`, `webinar` or `tag`. */
+	Audience string `json:"audience"`
+	/** The tag this went to, when Audience is `tag`. The name is sent with it so a
+	 *  list can say which segment was messaged without a second request — and it is
+	 *  the name as it is now, because a renamed tag is the same tag. */
+	TagID   string `json:"tagId,omitempty"`
+	TagName string `json:"tagName,omitempty"`
+	/** The webinar slug this message is about: the audience when Audience is
+	 *  `webinar`, and the source of the `topic` and `when` merge fields either way.
+	 *  Empty when the broadcast names no webinar. */
+	WebinarID string `json:"webinarId,omitempty"`
+	/** Its topic, so a list can name the webinar without a second request. */
+	WebinarTopic string `json:"webinarTopic,omitempty"`
+	/** scheduled / sending / sent / cancelled. */
+	Status string `json:"status"`
+	/** RFC3339. In the past for a broadcast sent immediately. */
+	ScheduledAt string `json:"scheduledAt"`
+	CreatedAt   string `json:"createdAt"`
+	/** How it is going, counted from the outbox and the conversations. */
+	Stats CRMBroadcastStats `json:"stats"`
+}
+
+/* CRMBroadcastStats is one broadcast's progress.
+ *
+ * Recipients is fixed when the broadcast is created — the audience is frozen then,
+ * so the number a host approved is the number that gets messaged. The rest move as
+ * the outbox drains and as Meta reports back.
+ */
+type CRMBroadcastStats struct {
+	Recipients int `json:"recipients"`
+	/** Still waiting in the outbox. */
+	Queued int `json:"queued"`
+	/** Accepted by Meta. Delivered and Read are subsets of it, reported later by
+	 *  webhook — a message can be sent and never delivered, to a number that is no
+	 *  longer on WhatsApp. */
+	Sent      int `json:"sent"`
+	Delivered int `json:"delivered"`
+	Read      int `json:"read"`
+	/** Meta refused it. Both kinds of refusal: one at send time, after the retries
+	 *  ran out, and one reported by webhook about a message it had already accepted —
+	 *  which is also counted in Sent, because it was. */
+	Failed int `json:"failed"`
+	/** Not sent, and never will be: the contact opted out, or the template stopped
+	 *  being approved, or the broadcast was cancelled before this one went out. */
+	Skipped int `json:"skipped"`
+}
+
+// CRMBroadcastsResponse is the host's broadcasts, newest first.
+type CRMBroadcastsResponse struct {
+	Broadcasts []CRMBroadcast  `json:"broadcasts"`
+	Fields     []CRMMergeField `json:"fields"`
+	/** The tags a `tag` audience may name, alphabetically. Empty when the tags feature
+	 *  is off for this account, which is also when that audience is refused. */
+	Tags []CRMTag `json:"tags"`
+	/** False once WhatsApp is disconnected: the history stays readable and nothing
+	 *  new can be queued. */
+	WhatsAppConnected bool `json:"whatsappConnected"`
+}
+
+/* CRMBroadcastRequest creates one, and sends it: there is no separate send call.
+ *
+ * ScheduledAt in the past or absent means now, which is also what "Send now"
+ * posts. The audience is resolved and the per-recipient messages are queued while
+ * this request is being handled, so the recipient count in the response is the
+ * real one rather than an estimate.
+ */
+type CRMBroadcastRequest struct {
+	Name     string     `json:"name"`
+	Template string     `json:"template"`
+	Language string     `json:"language"`
+	Params   []CRMParam `json:"params,omitempty"`
+	Audience string     `json:"audience"`
+	/** Required when Audience is `webinar`; optional otherwise, and then only used
+	 *  for the `topic` and `when` merge fields. */
+	WebinarID string `json:"webinarId,omitempty"`
+	/** Required when Audience is `tag`, ignored otherwise. */
+	TagID string `json:"tagId,omitempty"`
+	/** RFC3339, or empty for now. */
+	ScheduledAt string `json:"scheduledAt,omitempty"`
+}
+
+/* CRMAudienceResponse is how many people an audience would reach, before anybody
+ * commits to messaging them.
+ *
+ * Its own endpoint because the count is the decision: a host picking "everyone who
+ * opted in" is entitled to know whether that is eleven people or four thousand,
+ * and to find out without creating something.
+ */
+type CRMAudienceResponse struct {
+	Audience string `json:"audience"`
+	/** Contacts who would be messaged: opted in, not opted out, with a number. */
+	Recipients int `json:"recipients"`
+	/** Why the rest are not being messaged. Four disjoint buckets, so they add up to
+	 *  the size of the audience: the point of showing them is that "40 of your 900
+	 *  contacts" is a reasonable thing to see and a silent 40 is not. */
+	NoOptIn  int `json:"noOptIn"`
+	OptedOut int `json:"optedOut"`
+	NoNumber int `json:"noNumber"`
+}
+
+/* How somebody enters a drip.
+ *
+ * Every one of these is an event this server already records, which is the rule that
+ * decided the list: a trigger nobody can observe is a setting that does nothing.
+ */
+const (
+	/** DripManual is a sequence the host puts people on themselves. */
+	DripManual = "manual"
+	/** DripRegistered fires when somebody registers, before any approval. */
+	DripRegistered = "registered"
+	/** DripAttended fires when a webinar ends, for the registrants who joined. */
+	DripAttended = "attended"
+	/** DripNoShow fires when a webinar ends, for the registrants who did not. */
+	DripNoShow = "no_show"
+	/** DripEnded fires when a webinar ends, for every registrant either way. */
+	DripEnded = "ended"
+	/** DripTagAdded fires when a tag is put on a contact — by the host, or by a bot
+	 *  step. The one trigger that is not about a webinar at all, so a sequence on it
+	 *  has no `topic` or `when` to fill a template with. Needs the tags feature. */
+	DripTagAdded = "tag_added"
+)
+
+/* DripTriggers are the entry triggers, in the order a host is offered them.
+ *
+ * Iterated by the API's validation and sent to the builder, so a new trigger is added
+ * here rather than in a switch statement and a form.
+ */
+var DripTriggers = []string{DripManual, DripRegistered, DripAttended, DripNoShow, DripEnded, DripTagAdded}
+
+/* CRMDripStep is one message of a sequence.
+ *
+ * The delay is from the step before it — from entering, for the first one — because
+ * that is how a sequence is written ("then two days later") and because inserting a
+ * step in the middle then does not move every step after it.
+ */
+type CRMDripStep struct {
+	/** Minutes to wait after the previous step. 0 means as soon as they enter. */
+	DelayMinutes int `json:"delayMinutes"`
+	/** The approved template's name and language — its identity at Meta. */
+	Template string `json:"template"`
+	Language string `json:"language"`
+	/** One entry per `{{n}}`, in order, as configured: merge tokens unresolved. */
+	Params []CRMParam `json:"params"`
+}
+
+/* CRMDrip is a sequence the host wrote, and the rule that puts people on it.
+ *
+ * Unlike a broadcast, this is not a record of something that happened: it is a rule
+ * that keeps applying to people who have not registered yet. That is why it has an
+ * on/off switch and why editing it is allowed — a drip with nobody on it yet and a
+ * drip that has been running for a month are the same row.
+ */
+type CRMDrip struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	/** One of DripTriggers. */
+	Trigger string `json:"trigger"`
+	/** The webinar the trigger is about, or empty for every webinar. Never set for
+	 *  the manual trigger. */
+	WebinarID string `json:"webinarId,omitempty"`
+	/** Its topic, so a list can name the webinar without a second request. */
+	WebinarTopic string `json:"webinarTopic,omitempty"`
+	/** The tag the trigger is about when Trigger is `tag_added`, or empty for any tag.
+	 *  The name comes with it so the list can say "when VIP is added" without a second
+	 *  request. Never set for the other triggers. */
+	TagID   string `json:"tagId,omitempty"`
+	TagName string `json:"tagName,omitempty"`
+	/** False pauses it: nobody new enters and nobody already on it is sent anything,
+	 *  without losing the sequence or anybody's place in it. */
+	Active bool `json:"active"`
+	/** In order. A drip with no steps cannot be saved. */
+	Steps []CRMDripStep `json:"steps"`
+	Stats CRMDripStats  `json:"stats"`
+	/** RFC3339. */
+	CreatedAt string `json:"createdAt"`
+}
+
+/* CRMDripStats is how a sequence is going.
+ *
+ * Enrollment counts and outbox counts, which are the two halves of the question: how
+ * many people are on it, and how many messages that has cost so far.
+ */
+type CRMDripStats struct {
+	/** People still moving through it, waiting for their next step. */
+	Active int `json:"active"`
+	/** People who have had every step. */
+	Done int `json:"done"`
+	/** People who stopped early: opted out, or the host took them off. */
+	Exited int `json:"exited"`
+	/** Steps queued and not yet away. */
+	Queued int `json:"queued"`
+	/** Steps accepted by Meta, and the ones it refused. */
+	Sent   int `json:"sent"`
+	Failed int `json:"failed"`
+}
+
+/* CRMDripEnrollment is one person's place in one sequence.
+ *
+ * Step is how many they have had, which for somebody active is also the index of the
+ * one they are waiting for. A finished enrollment keeps its row: it is the record
+ * that this person has already been through this sequence, and the reason a second
+ * registration does not start them again.
+ */
+type CRMDripEnrollment struct {
+	ID        string `json:"id"`
+	ContactID string `json:"contactId"`
+	/** For the list, so it reads as people rather than ids. */
+	ContactName string `json:"contactName,omitempty"`
+	Phone       string `json:"phone,omitempty"`
+	/** How many steps they have had. */
+	Step int `json:"step"`
+	/** active / done / exited. */
+	State string `json:"state"`
+	/** Why they stopped early. Empty unless State is `exited`. */
+	ExitReason string `json:"exitReason,omitempty"`
+	/** RFC3339, when the next step is due. Meaningless once they are not active. */
+	NextDueAt string `json:"nextDueAt,omitempty"`
+	/** The webinar they entered from, when they entered from one. */
+	WebinarTopic string `json:"webinarTopic,omitempty"`
+	CreatedAt    string `json:"createdAt"`
+}
+
+// CRMDripsResponse is the host's sequences, newest first.
+type CRMDripsResponse struct {
+	Drips  []CRMDrip       `json:"drips"`
+	Fields []CRMMergeField `json:"fields"`
+	/** The triggers this server can fire, so the builder cannot offer one it would
+	 *  refuse. */
+	Triggers []string `json:"triggers"`
+	/** The tags a `tag_added` trigger may name. Empty when the tags feature is off,
+	 *  which is also when `tag_added` is not in Triggers. */
+	Tags []CRMTag `json:"tags"`
+	/** False once WhatsApp is disconnected: the sequences stay readable and their
+	 *  steps stay queued, unsent, until it is reconnected. */
+	WhatsAppConnected bool `json:"whatsappConnected"`
+}
+
+// CRMDripResponse is one sequence with the people on it.
+type CRMDripResponse struct {
+	Drip CRMDrip `json:"drip"`
+	/** Newest first, capped: this is a view of who is on it, not an export. */
+	Enrollments []CRMDripEnrollment `json:"enrollments"`
+}
+
+/* CRMDripRequest writes a sequence, and is the whole of it: the steps come with it
+ * rather than being added one call at a time.
+ *
+ * A sequence read back has to be the sequence that was sent, and a step-at-a-time API
+ * would have a state where half of one exists and the sweep can already see it.
+ */
+type CRMDripRequest struct {
+	Name    string `json:"name"`
+	Trigger string `json:"trigger"`
+	/** Optional for the webinar triggers, where empty means every webinar. Ignored
+	 *  for `manual`. */
+	WebinarID string `json:"webinarId,omitempty"`
+	/** Optional for `tag_added`, where empty means any tag. Ignored otherwise. */
+	TagID string `json:"tagId,omitempty"`
+	/** Whether it runs. Absent is false, so a request that forgets it creates a
+	 *  paused sequence rather than one that starts messaging people. */
+	Active bool          `json:"active"`
+	Steps  []CRMDripStep `json:"steps"`
+}
+
+/* CRMDripEnrollRequest puts one person on a sequence by hand.
+ *
+ * The webinar is needed when the steps use the `topic` or `when` merge fields and the
+ * drip is not already scoped to one — there is no registration to infer it from.
+ */
+type CRMDripEnrollRequest struct {
+	ContactID string `json:"contactId"`
+	WebinarID string `json:"webinarId,omitempty"`
+}
+
+/* What starts a bot.
+ *
+ * An inbound message and nothing else, which is the shape of the thing: a bot exists
+ * to answer somebody, so the only question is whether it answers everything or only
+ * certain words. The other triggers a chatbot might want — a click on an ad, a button
+ * on a template — arrive at this server as a message too, and are matched by their
+ * text like anything else.
+ */
+const (
+	/** BotAnyMessage answers any message from somebody it is not already talking to. */
+	BotAnyMessage = "any_message"
+	/** BotKeyword answers only the words the host listed. */
+	BotKeyword = "keyword"
+)
+
+/* What one step of a flow does.
+ *
+ * The plan asked for message, buttons/list, condition, wait, set tag, enroll drip and
+ * handoff. Buttons are the `ask` node, because a question and its answers are one step
+ * rather than two. A condition is that node's branches — there is nothing else in a
+ * flow to test. And a tag is a thing contacts still do not have.
+ */
+const (
+	/** BotNodeMessage says something and carries on to the next node. */
+	BotNodeMessage = "message"
+	/** BotNodeAsk says something with buttons and waits for the answer. */
+	BotNodeAsk = "ask"
+	/** BotNodeWait pauses the flow for DelayMinutes, then carries on. */
+	BotNodeWait = "wait"
+	/** BotNodeEnroll puts the contact on a drip sequence, then carries on. */
+	BotNodeEnroll = "enroll"
+	/** BotNodeHandoff stops the bot and gives the conversation to a person. */
+	BotNodeHandoff = "handoff"
+	/** BotNodeTag puts a tag on the contact, then carries on. Sends nothing, so it is
+	 *  the one step the person on the other end cannot see happening. Needs the tags
+	 *  feature. */
+	BotNodeTag = "set_tag"
+)
+
+/* Meta's limits on an interactive message, which are therefore the builder's.
+ *
+ * Exported so the form enforces the same numbers the API does and the server is not
+ * the first thing to mention them.
+ */
+const (
+	/** BotMaxButtons is three reply buttons per question — Meta's cap. */
+	BotMaxButtons = 3
+	/** BotMaxButtonLabel is 20 characters on a button, also Meta's. */
+	BotMaxButtonLabel = 20
+	/** BotMaxText is the body of an interactive message: 1024, against 4096 for plain
+	 *  text. One limit for both, so adding a button to a message cannot make its text
+	 *  suddenly invalid. */
+	BotMaxText = 1024
+	/** BotMaxNodes is how big one flow may be. A bound rather than a design: past this
+	 *  a flowchart is not the tool. */
+	BotMaxNodes = 40
+)
+
+/* CRMBotButton is one reply button, and the edge the flow takes when it is pressed.
+ *
+ * Label is what the contact sees and also how their answer is matched: Meta sends the
+ * button's id back, but a person who types "yes" instead of pressing anything is
+ * answering the same question, so both are compared against the label.
+ */
+type CRMBotButton struct {
+	Label string `json:"label"`
+	/** The node this answer goes to, or empty to end the conversation there. */
+	Next string `json:"next,omitempty"`
+}
+
+/* CRMBotNode is one step of a flow.
+ *
+ * One struct for all five kinds, with the fields each ignores left empty, because a
+ * node is edited as one card in a builder where changing its kind must not throw away
+ * what was typed into it.
+ */
+type CRMBotNode struct {
+	/** The node's name inside this bot, and what every edge is written as. Generated
+	 *  by the builder; never shown to the contact. */
+	Key string `json:"key"`
+	/** One of the BotNode constants. */
+	Kind string `json:"kind"`
+	/** What it says. Required for `message` and `ask`, optional for `handoff`, unused
+	 *  by the rest. */
+	Text string `json:"text,omitempty"`
+	/** An `ask`'s buttons, in the order they are shown. At most BotMaxButtons. */
+	Buttons []CRMBotButton `json:"buttons,omitempty"`
+	/** Where the flow goes when this node is done, or empty to stop.
+	 *
+	 *  On an `ask` this is the fallback: where an answer that matched no button goes.
+	 *  Empty there means hand the conversation to a person, on the grounds that a bot
+	 *  which did not understand somebody should stop guessing. */
+	Next string `json:"next,omitempty"`
+	/** How long a `wait` pauses. Capped at 24 hours: Meta's service window closes then
+	 *  and a flow that slept through it cannot speak. */
+	DelayMinutes int `json:"delayMinutes,omitempty"`
+	/** The sequence an `enroll` node uses. */
+	DripID string `json:"dripId,omitempty"`
+	/** Its name, read-only, so the builder can show the sequence without a second
+	 *  request. Empty also means the sequence has since been deleted — the node is
+	 *  then broken, and the runtime steps over it rather than stopping. */
+	DripName string `json:"dripName,omitempty"`
+	/** The tag a `set_tag` node applies, and its name read-only, on the same terms as
+	 *  the sequence above: empty means the tag was deleted and the step does nothing. */
+	TagID   string `json:"tagId,omitempty"`
+	TagName string `json:"tagName,omitempty"`
+}
+
+/* CRMBot is a flow and the rule that starts it.
+ *
+ * The only thing in this CRM that sends without the host asking, message by message,
+ * which is why Active defaults off and why the runtime checks opt-out, the service
+ * window and a per-conversation step budget before every send.
+ */
+type CRMBot struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	/** BotAnyMessage or BotKeyword. */
+	Trigger string `json:"trigger"`
+	/** The words that start it, lower-cased, matched against the whole message.
+	 *  Only for BotKeyword. */
+	Keywords []string `json:"keywords,omitempty"`
+	/** The node a new conversation starts at. */
+	Entry string `json:"entry"`
+	/** False parks it: no new conversations, and the ones under way stop at their next
+	 *  step. A host may have only one active bot on BotAnyMessage, since two would
+	 *  both match every message. */
+	Active bool `json:"active"`
+	/** Every node, in the builder's order. A bot with none cannot be saved. */
+	Nodes []CRMBotNode `json:"nodes"`
+	Stats CRMBotStats  `json:"stats"`
+	/** RFC3339. */
+	CreatedAt string `json:"createdAt"`
+}
+
+/* CRMBotStats is how many conversations this bot is in, by what became of them.
+ *
+ * Disjoint, and they add up to every conversation it has ever had.
+ */
+type CRMBotStats struct {
+	/** Mid-question: the bot has asked and is waiting for an answer. */
+	Waiting int `json:"waiting"`
+	/** Held by a `wait` node until its time comes. */
+	Sleeping int `json:"sleeping"`
+	/** Ran to the end of the flow. */
+	Done int `json:"done"`
+	/** Given to a person. */
+	HandedOff int `json:"handedOff"`
+	/** Ended for a reason nobody chose — see CRMBotSession.EndedReason. */
+	Stopped int `json:"stopped"`
+}
+
+/* CRMBotSession is one person's trip through one flow.
+ *
+ * Kept after it finishes: where conversations stop is the only honest review of a
+ * flow, and a stack of sessions ending at the same question is the thing worth seeing.
+ */
+type CRMBotSession struct {
+	ID        string `json:"id"`
+	ContactID string `json:"contactId"`
+	/** For the list, so it reads as people rather than ids. */
+	ContactName string `json:"contactName,omitempty"`
+	Phone       string `json:"phone,omitempty"`
+	/** The node it is at, or the one it stopped at. */
+	NodeKey string `json:"nodeKey,omitempty"`
+	/** waiting / sleeping / done / handoff / stopped. */
+	State string `json:"state"`
+	/** Why it ended, in codes: `handed_over` (a handoff node), `host_took_over`,
+	 *  `window_closed` (asleep past WhatsApp's 24 hours), `node_missing` (the flow
+	 *  was edited underneath it), `too_many_steps`, `opted_out`, `bot_off`,
+	 *  `send_failed`, `whatsapp_disconnected`. Empty for a flow that simply ran to
+	 *  the end. */
+	EndedReason string `json:"endedReason,omitempty"`
+	/** RFC3339, when a sleeping flow wakes. */
+	ResumeAt string `json:"resumeAt,omitempty"`
+	/** Nodes run so far, which is what the step budget counts. */
+	Steps     int    `json:"steps"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+/** CRMBotSequence is one of the host's drip sequences, as an `enroll` node's options:
+ *  the id to store and the name to show, and nothing else the builder needs. */
+type CRMBotSequence struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// CRMBotsResponse is the host's bots, newest first.
+type CRMBotsResponse struct {
+	Bots []CRMBot `json:"bots"`
+	/** The triggers and node kinds this server implements, so the builder cannot offer
+	 *  one it would refuse. */
+	Triggers  []string `json:"triggers"`
+	NodeKinds []string `json:"nodeKinds"`
+	/** What an `enroll` node may point at. */
+	Sequences []CRMBotSequence `json:"sequences"`
+	/** What a `set_tag` node may point at. Empty when the tags feature is off for this
+	 *  account, which is also when `set_tag` is not in NodeKinds. */
+	Tags []CRMTag `json:"tags"`
+	/** False once WhatsApp is disconnected. Bots stay readable and stay off: a flow
+	 *  cannot answer anybody when nothing is receiving their messages. */
+	WhatsAppConnected bool `json:"whatsappConnected"`
+}
+
+// CRMBotResponse is one bot with the conversations it has had.
+type CRMBotResponse struct {
+	Bot CRMBot `json:"bot"`
+	/** Newest first, capped: a view of who it talked to, not an export. */
+	Sessions []CRMBotSession `json:"sessions"`
+}
+
+/* CRMBotRequest writes a bot, nodes and all.
+ *
+ * The whole flow in one call, for the reason CRMDripRequest gives and one more: the
+ * edges are checked against each other — every `next` has to name a node that exists,
+ * and the graph has to be free of cycles — which is only possible when the nodes
+ * arrive together.
+ */
+type CRMBotRequest struct {
+	Name    string `json:"name"`
+	Trigger string `json:"trigger"`
+	/** Required for BotKeyword, ignored otherwise. Lower-cased and de-duplicated by
+	 *  the server. */
+	Keywords []string `json:"keywords,omitempty"`
+	Entry    string   `json:"entry"`
+	/** Whether it answers anybody. Absent is false, so a request that forgets it
+	 *  creates a bot nobody is talking to yet. */
+	Active bool         `json:"active"`
+	Nodes  []CRMBotNode `json:"nodes"`
+}
+
+/* CRMBotPauseRequest hands a conversation between the bot and a person.
+ *
+ * On the contact rather than on a session because that is the scope of the decision:
+ * "I am dealing with this person" has to hold for their next message too, which may
+ * arrive after the flow they were in has ended.
+ */
+type CRMBotPauseRequest struct {
+	/** True stops any bot answering this contact; false lets them run again. */
+	Paused bool `json:"paused"`
 }
 
 type SignupRequest struct {
@@ -833,6 +1933,19 @@ type CdnBroadcastGrant struct {
 	CanCdnBroadcast bool `json:"canCdnBroadcast"`
 }
 
+/* FeatureGrant switches one feature on or off for one account.
+ *
+ * One feature per request, with the state it should end in rather than a verb, for the
+ * reason handleSetHostCapability gives: the UI is a switch and a retried request must
+ * not toggle anything back. Sending the whole set instead would make two admins on two
+ * screens overwrite each other's decisions about features neither of them touched.
+ */
+type FeatureGrant struct {
+	/** One of the Feature keys. Anything else is refused rather than stored. */
+	Feature string `json:"feature"`
+	Enabled bool   `json:"enabled"`
+}
+
 /* AdminUser is one row of the admin panel.
  *
  * Carries what an admin needs to decide whether this person should be able to run webinars —
@@ -862,6 +1975,9 @@ type AdminUser struct {
 	MaxDurationMin *int `json:"maxDurationMin,omitempty"`
 	// CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
 	CanCdnBroadcast bool `json:"canCdnBroadcast"`
+	// Features are the per-account switches that are on — see Features and
+	// FeatureGrant. Always present, empty for an account with none.
+	Features []string `json:"features"`
 }
 
 type LoginRequest struct {
@@ -906,6 +2022,14 @@ type RegisterRequest struct {
 	Phone   string            `json:"phone,omitempty"`
 	Answers map[string]string `json:"answers,omitempty"`
 	Consent bool              `json:"consent"`
+	/** Permission for the HOST to send WhatsApp messages to Phone — a separate
+	 *  decision from Consent, which covers the registration itself.
+	 *
+	 *  Its own field rather than an answer, because Meta requires opt-in to be
+	 *  recorded per person and it has to be as auditable as the number it applies
+	 *  to. Ignored without a phone number: there is nothing to opt a person in to
+	 *  when there is no way to reach them. */
+	WhatsAppOptIn bool `json:"whatsappOptIn,omitempty"`
 	/** The webinar's passcode, when it has one. Checked at registration, which is the
 	 *  one gate every attendee passes through — a join key is only issued here. */
 	Passcode string `json:"passcode,omitempty"`
@@ -1309,6 +2433,12 @@ type AppConfig struct {
 	 * set, so Account settings can offer Connect YouTube. Distinct from GoogleAuth
 	 * (Supabase sign-in) and from GoogleClientID used for Drive Picker. */
 	YouTubeOAuth bool `json:"youtubeOAuth,omitempty"`
+	/* WhatsAppConnect is whether META_APP_ID, META_APP_SECRET and
+	 * META_WHATSAPP_CONFIG_ID are all set, so Account settings can offer Connect
+	 * WhatsApp. Only the flag is public: the app id and the signup configuration id
+	 * are handed out by GET /api/host/whatsapp/connect, to a signed-in host at the
+	 * moment they click, rather than to every anonymous visitor at boot. */
+	WhatsAppConnect bool `json:"whatsappConnect,omitempty"`
 	/* Supabase Auth (Google sign-in). Public values only — the JWT secret stays
 	 * on the API. When googleAuth is false the Continue with Google button is hidden.
 	 *
@@ -1338,6 +2468,12 @@ type AppConfig struct {
 	// before attaching a single listener or sampling a single stat, so turning
 	// the flag off also turns off the client-side work, not just the endpoint.
 	TelemetryEnabled bool `json:"telemetryEnabled,omitempty"`
+	/* FeatureCatalogue is every per-account switch this server has, with the sentence
+	 * that explains each one — see Features. Sent here rather than with the accounts
+	 * list so that adding a switch does not change the shape of that response, and so
+	 * the admin screen renders what this build actually supports instead of a list the
+	 * browser keeps its own copy of. */
+	FeatureCatalogue []Feature `json:"featureCatalogue"`
 }
 
 /* TelemetryEvent is one entry in a POST /telemetry batch — the shape is
