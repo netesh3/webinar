@@ -1469,12 +1469,32 @@ func (s *Server) handleRemoveParticipant(w http.ResponseWriter, r *http.Request)
 // ----------------------------------------------------------- registrants
 
 func (s *Server) handleHostRegistrants(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.Registrants(r.Context(), slugFromContext(r.Context()), 500)
+	slug := slugFromContext(r.Context())
+	rows, err := s.store.Registrants(r.Context(), slug, 500)
 	if err != nil {
 		s.fail(w, r, "registrants", err)
 		return
 	}
+	s.attachRegistrantWhatsApp(r, slug, rows)
 	httpx.JSON(w, http.StatusOK, rows)
+}
+
+/* attachRegistrantWhatsApp adds the two CRM columns to a registrant list, when there is
+ * a CRM to add them from.
+ *
+ * Skipped entirely for a host who has not connected WhatsApp: there is nothing to say,
+ * and the columns are not rendered either. A failure is logged rather than fatal, the
+ * same choice handleCRMContacts makes about tags — a roster without the WhatsApp columns
+ * is still the roster the host asked for, and turning a CRM query into "nobody has
+ * registered yet" would be a worse answer than an incomplete one.
+ */
+func (s *Server) attachRegistrantWhatsApp(r *http.Request, slug string, rows []types.RegistrantRow) {
+	if userFromContext(r.Context()).WhatsAppToken == "" {
+		return
+	}
+	if err := s.store.AttachRegistrantWhatsApp(r.Context(), slug, rows); err != nil {
+		s.log.Warn("registrants: whatsapp", "error", err, "slug", slug)
+	}
 }
 
 func (s *Server) handleSessionReport(w http.ResponseWriter, r *http.Request) {
@@ -1629,6 +1649,10 @@ func (s *Server) handleExportRegistrants(w http.ResponseWriter, r *http.Request)
 		s.fail(w, r, "export registrants", err)
 		return
 	}
+	// The export carries the same columns the tab shows. Following somebody up is what
+	// the export is FOR, and "who has not replied to me on WhatsApp" is the list a host
+	// would otherwise have to rebuild by hand from two screens.
+	s.attachRegistrantWhatsApp(r, slug, rows)
 
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition",
@@ -1637,11 +1661,14 @@ func (s *Server) handleExportRegistrants(w http.ResponseWriter, r *http.Request)
 	cw := csv.NewWriter(w)
 	// `phone` after `email`, because the two contact columns belong together — a host opening
 	// this in a spreadsheet is looking for how to reach somebody.
-	// `guest` last, and present even when there are none: a column that appears and
-	// disappears depending on the data breaks whatever the host built on top of this export.
+	// The two WhatsApp columns are APPENDED, after `guest`, rather than slotted in beside
+	// the phone number where they read better. Every existing column keeps the position it
+	// has always had, because a column that moves breaks whatever the host built on top of
+	// this export just as surely as one that disappears. Both are present even for a host
+	// with no WhatsApp connected, and empty there — for the same reason `guest` is.
 	_ = cw.Write([]string{
 		"name", "email", "phone", "company", "job title", "state", "registered at",
-		"has account", "guest",
+		"has account", "guest", "whatsapp", "whatsapp replied at",
 	})
 	for _, row := range rows {
 		/* The number is prefixed with a tab.
@@ -1657,7 +1684,7 @@ func (s *Server) handleExportRegistrants(w http.ResponseWriter, r *http.Request)
 		_ = cw.Write([]string{
 			row.Name, row.Email, phone, row.Company, row.JobTitle,
 			string(row.State), row.CreatedAt, fmt.Sprint(row.HasAccount),
-			fmt.Sprint(row.IsGuest),
+			fmt.Sprint(row.IsGuest), row.WhatsAppStatus, row.LastInboundAt,
 		})
 	}
 	cw.Flush()

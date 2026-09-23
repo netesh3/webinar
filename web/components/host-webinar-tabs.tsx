@@ -5,18 +5,24 @@ import { Alert, CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
 import { CalendarIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "./icons";
-import { useShareOrigin, useToast } from "./providers";
+import { useSession, useShareOrigin, useToast } from "./providers";
 import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
 import {
   formatCount,
   formatDay,
   formatDuration,
+  formatRelative,
   formatTime,
   formatTimeRange,
   googleCalendarInviteUrl,
   tzLabel,
 } from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
+import {
+  CRMStatusNoNumber,
+  CRMStatusOptedIn,
+  CRMStatusOptedOut,
+} from "@/lib/api-types";
 import type {
   AttendanceRow,
   Recording,
@@ -186,6 +192,12 @@ function AttendeesTab({
   registrants: RegistrantRow[];
 }) {
   const bypass = isDevAuthBypassActive();
+  /* The two WhatsApp columns only exist for a host who has connected an account.
+   * Read from the session rather than from the rows: a connected host whose
+   * registrants are all guests has every cell empty, and dropping the columns then
+   * would hide the reason — nothing was collected from any of them. */
+  const { account } = useSession();
+  const whatsappOn = Boolean(account?.whatsapp);
   const approved = registrants.filter((r) => r.state === "approved");
   const declined = registrants.filter((r) => r.state === "declined");
   const ended = w.status === "ended";
@@ -263,11 +275,17 @@ function AttendeesTab({
           </p>
         ) : (
           <div className="-mx-4 overflow-x-auto px-4">
-            <table className="w-full min-w-[520px] text-[12.5px]">
+            <table className="w-full min-w-[680px] text-[12.5px]">
               <thead>
                 <tr className="border-b border-line text-left text-[11.5px] text-ink-3">
                   <th className="py-2 pr-3 font-medium">Name</th>
                   <th className="py-2 pr-3 font-medium">Company</th>
+                  {whatsappOn && (
+                    <>
+                      <th className="py-2 pr-3 font-medium">WhatsApp</th>
+                      <th className="py-2 pr-3 font-medium">Replied</th>
+                    </>
+                  )}
                   <th className="py-2 pr-3 font-medium">Registered</th>
                   <th className="py-2 font-medium">Status</th>
                 </tr>
@@ -283,6 +301,13 @@ function AttendeesTab({
                       <div className="text-[11.5px] text-ink-3">
                         {r.isGuest ? "No email — joined as a guest" : r.email}
                       </div>
+                      {/* The number was on the wire all along and never rendered,
+                          which left the WhatsApp columns beside it unexplainable:
+                          "no number" is only an answer if the numbers are visible.
+                          Under the email because it is the same kind of fact. */}
+                      {r.phone && (
+                        <div className="text-[11.5px] text-ink-3">{r.phone}</div>
+                      )}
                     </td>
                     <td className="py-2.5 pr-3 text-ink-2">
                       {r.company || "—"}
@@ -292,6 +317,25 @@ function AttendeesTab({
                         </div>
                       )}
                     </td>
+                    {whatsappOn && (
+                      <>
+                        <td className="py-2.5 pr-3">
+                          <WhatsAppCell status={r.whatsappStatus} />
+                        </td>
+                        <td className="py-2.5 pr-3 text-ink-2">
+                          {/* A date, not a tick: "who has written in" is nearly
+                              always asked as "how long ago", and a host deciding
+                              whether to chase somebody needs the second half. */}
+                          {r.lastInboundAt ? (
+                            <span className="text-ok">
+                              ✓ {formatRelative(r.lastInboundAt, new Date())}
+                            </span>
+                          ) : (
+                            <span className="text-ink-3">—</span>
+                          )}
+                        </td>
+                      </>
+                    )}
                     <td className="py-2.5 pr-3 text-ink-2">
                       {new Date(r.createdAt).toLocaleDateString("en-GB", {
                         day: "numeric",
@@ -316,6 +360,23 @@ function AttendeesTab({
       </Card>
     </div>
   );
+}
+
+/* Where one registrant stands on WhatsApp, in the CRM's own words.
+ *
+ * The same four phrases the contacts list filters by, from the same server value, so
+ * a host who filters the inbox to "opted out" and reads this cell is looking at one
+ * fact rather than two descriptions of it. An empty status is a dash and not a "no":
+ * a guest gave neither a number nor an email, so nobody ever asked them, and printing
+ * "no consent" would send the host chasing somebody who cannot be reached.
+ */
+function WhatsAppCell({ status }: { status?: string }) {
+  if (!status) return <span className="text-ink-3">—</span>;
+  if (status === CRMStatusOptedIn) return <Badge tone="ok">Opted in</Badge>;
+  if (status === CRMStatusOptedOut) return <Badge tone="live">Opted out</Badge>;
+  if (status === CRMStatusNoNumber) return <Badge>No number</Badge>;
+  // Everything left is no_opt_in, which is most of a list rather than a fault.
+  return <Badge>No consent</Badge>;
 }
 
 // -------------------------------------------------------------------- share

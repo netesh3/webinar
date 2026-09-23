@@ -301,23 +301,35 @@ type ContactFilter struct {
 	 *  registered" are different answers and a store query cannot tell the host which
 	 *  one it found. */
 	WebinarSlug string
-	Limit       int
+	/** Status narrows the list to one bucket — one of the types.CRMStatus* values, or
+	 *  empty for no narrowing. Validated by contactStatusPredicate rather than bound as
+	 *  an argument, because it is a choice from a list this server wrote. */
+	Status string
+	Limit  int
 }
 
 /* Contacts lists a host's people, most recent activity first, with the last thing
- * said in each thread.
+ * said in each thread, and reports how the whole list divides into buckets.
  *
  * The last message comes from a LATERAL rather than a second round of queries,
  * because the inbox is a list of conversations and a list that needs one query
  * per row to say anything useful is a list that gets slower the more it matters.
  */
-func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([]types.CRMContact, int, error) {
+func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([]types.CRMContact, types.CRMContactCounts, error) {
 	limit := f.Limit
 	if limit <= 0 || limit > crmContactsPageMax {
 		limit = crmContactsPageMax
 	}
 	q := strings.TrimSpace(f.Query)
 	slug := strings.TrimSpace(f.WebinarSlug)
+	var zero types.CRMContactCounts
+
+	/* The chosen bucket narrows the rows and not the counts — see below. It contributes
+	 * no placeholder, so every argument keeps the number it already had. */
+	statusFilter, err := contactStatusPredicate(strings.TrimSpace(f.Status))
+	if err != nil {
+		return nil, zero, err
+	}
 
 	/* The webinar scope goes into both queries, and it is the same predicate the
 	 * broadcast audience uses — see contactRegisteredFor for why that sharing matters.
@@ -334,22 +346,46 @@ func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([
 		listScope = ` AND ` + contactRegisteredFor(`$4`)
 	}
 
-	/* The total counts through the scope but NOT through the search box. That split is
-	 * deliberate: the total is the size of the list the host is looking at, printed in
-	 * the sentence above it, and typing into the box narrows the rows without rewriting
-	 * that sentence to count its own results back at them.
+	/* The counts go through the scope but NOT through the search box and NOT through the
+	 * chosen bucket. That split is deliberate: they are the size and shape of the list
+	 * the host is looking at, printed in the sentence and the chips above it, and
+	 * narrowing the rows does not rewrite those to count their own results back. A chip
+	 * whose own number changed when it was clicked would be unusable.
+	 *
+	 * The two groups are independent partitions of the same set — consent and
+	 * conversation — so each sums to Total on its own. See types.CRMContactCounts, and
+	 * the four consent buckets are the ones Store.AudienceCounts reports, from the same
+	 * shared predicates.
+	 *
+	 * NoReply is derived rather than selected: a second `NOT EXISTS` filter makes
+	 * Postgres plant another correlated subplan and probe crm_messages twice per row,
+	 * and the subtraction is exact by construction.
 	 */
-	var total int
-	if err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM crm_contacts c WHERE c.host_id = $1`+countScope,
-		countArgs...).Scan(&total); err != nil {
-		return nil, 0, err
+	counts := zero
+	if err := s.pool.QueryRow(ctx, `
+		SELECT count(*),
+		       count(*) FILTER (WHERE replied.ok),
+		       count(*) FILTER (WHERE `+optedInNow+`),
+		       count(*) FILTER (WHERE `+neverOptedIn+`),
+		       count(*) FILTER (WHERE `+optedOutNow+`),
+		       count(*) FILTER (WHERE `+noNumber+`)
+		  FROM crm_contacts c
+		  LEFT JOIN LATERAL (
+		       SELECT true AS ok FROM crm_messages inb
+		        WHERE inb.contact_id = c.id AND inb.direction = 'in'
+		        LIMIT 1
+		  ) replied ON true
+		 WHERE c.host_id = $1`+countScope,
+		countArgs...).Scan(&counts.Total, &counts.Replied,
+		&counts.OptedIn, &counts.NoOptIn, &counts.OptedOut, &counts.NoNumber); err != nil {
+		return nil, zero, err
 	}
+	counts.NoReply = counts.Total - counts.Replied
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+crmContactColumns+`,
 		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status,
-		       m.error, m.created_at
+		       m.error, m.created_at, `+lastInboundAt+`
 		  FROM crm_contacts c
 		  LEFT JOIN LATERAL (
 		       SELECT id, direction, body, kind, template_name, status, error, created_at
@@ -361,11 +397,11 @@ func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([
 		 WHERE c.host_id = $1
 		   AND ($2 = '' OR c.name ILIKE '%' || $2 || '%'
 		                OR c.email ILIKE '%' || $2 || '%'
-		                OR c.phone ILIKE '%' || $2 || '%')`+listScope+`
+		                OR c.phone ILIKE '%' || $2 || '%')`+listScope+statusFilter+`
 		 ORDER BY coalesce(c.last_seen_at, c.created_at) DESC, c.id DESC
 		 LIMIT $3`, listArgs...)
 	if err != nil {
-		return nil, 0, err
+		return nil, zero, err
 	}
 	defer rows.Close()
 
@@ -390,11 +426,14 @@ func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([
 			mStatus   *string
 			mError    *string
 			mAt       *time.Time
+			// Null for the majority of any list: most leads never write back.
+			inboundAt *time.Time
 		)
 		if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
 			&optIn, &optOut, &lastSeen, &created, &botPaused,
-			&mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mError, &mAt); err != nil {
-			return nil, 0, err
+			&mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mError, &mAt,
+			&inboundAt); err != nil {
+			return nil, zero, err
 		}
 		c.CreatedAt = created.Format(time.RFC3339)
 		if botPaused != nil {
@@ -410,6 +449,9 @@ func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([
 			c.LastSeenAt = lastSeen.Format(time.RFC3339)
 		}
 		c.WhatsAppOptIn = optIn != nil && (optOut == nil || optOut.Before(*optIn))
+		if inboundAt != nil {
+			c.LastInboundAt = inboundAt.Format(time.RFC3339)
+		}
 		c.Tags = []types.CRMTag{}
 		if mID != nil {
 			c.LastMessage = &types.CRMMessage{
@@ -428,7 +470,113 @@ func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([
 		}
 		out = append(out, c)
 	}
-	return out, total, rows.Err()
+	return out, counts, rows.Err()
+}
+
+/* AttachRegistrantWhatsApp fills in what the CRM knows about each row of a webinar's
+ * registrant list: where that person stands on WhatsApp, and when they last wrote in.
+ *
+ * Matched to a contact by contactMatchesRegistration and by nothing else. A webinar's
+ * attendees tab and the CRM filtered to the same webinar are one question asked on two
+ * screens, and a registrant this one calls opted-in who the inbox does not list at all
+ * is a pair of numbers with no reason to trust either.
+ *
+ * Its own query rather than a join inside Registrants, for three reasons. Three of that
+ * function's four callers never read these columns — including one that runs inside a
+ * registration request — and would pay for the join anyway. It can fail soft: a roster
+ * rendered without the WhatsApp columns is still the roster, whereas a lateral inside
+ * Registrants turns a CRM problem into "nobody has registered yet". And keying on the
+ * ids already in hand removes any dependence on re-deriving the page: Registrants orders
+ * by created_at with no tiebreak, so a second query selecting "the same" 500 rows would
+ * only usually get them.
+ *
+ * Rows already carrying an id are all it needs; an empty slice is not an error.
+ */
+func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows []types.RegistrantRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(rows))
+	for _, r := range rows {
+		ids = append(ids, r.ID)
+	}
+
+	/* c.host_id = w.host_id, rather than a host id passed in: the webinar's owner is the
+	 * authority, exactly as in contactRegisteredFor, so a registration id that leaked
+	 * from another account cannot pick up this host's contact.
+	 *
+	 * The ORDER BY is load-bearing. More than one contact can match one registration —
+	 * one row found by email, another by phone — and without a deterministic tiebreak
+	 * the column would flip between refreshes. The registration-id match wins, then
+	 * email, then the oldest row. It is still a pick: a host with a duplicated contact
+	 * where one copy opted in and the other did not sees one answer. The real fix for
+	 * that is contact de-duplication, which is its own feature; this is the honest
+	 * stopgap.
+	 */
+	found, err := s.pool.Query(ctx, `
+		SELECT r.id::text, wa.status, wa.last_inbound_at
+		  FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		  LEFT JOIN LATERAL (
+		       SELECT CASE
+		                WHEN `+noNumber+`     THEN '`+types.CRMStatusNoNumber+`'
+		                WHEN `+optedInNow+`   THEN '`+types.CRMStatusOptedIn+`'
+		                WHEN `+optedOutNow+`  THEN '`+types.CRMStatusOptedOut+`'
+		                ELSE '`+types.CRMStatusNoOptIn+`'
+		              END AS status,
+		              `+lastInboundAt+` AS last_inbound_at
+		         FROM crm_contacts c
+		        WHERE c.host_id = w.host_id AND `+contactMatchesRegistration+`
+		        -- NULLS LAST is not decoration: registration_id is NULL on every
+		        -- contact that arrived from WhatsApp, and a bare DESC sorts NULL
+		        -- ahead of true, which would prefer the arm that did not match.
+		        ORDER BY (`+matchByRegistrationID+`) DESC NULLS LAST,
+		                 (`+matchByEmail+`) DESC NULLS LAST,
+		                 c.created_at, c.id
+		        LIMIT 1
+		  ) wa ON true
+		 WHERE w.slug = $1 AND r.id = ANY($2::uuid[])`, slug, ids)
+	if err != nil {
+		return err
+	}
+	defer found.Close()
+
+	type waState struct {
+		status    string
+		inboundAt *time.Time
+	}
+	byID := make(map[string]waState, len(rows))
+	for found.Next() {
+		var (
+			id        string
+			status    *string
+			inboundAt *time.Time
+		)
+		if err := found.Scan(&id, &status, &inboundAt); err != nil {
+			return err
+		}
+		// Both null for a registrant with no contact at all — a guest, or somebody whose
+		// email and phone match nothing. Left empty rather than called "not opted in":
+		// see types.RegistrantRow.WhatsAppStatus.
+		if status != nil {
+			byID[id] = waState{status: *status, inboundAt: inboundAt}
+		}
+	}
+	if err := found.Err(); err != nil {
+		return err
+	}
+
+	for i := range rows {
+		st, ok := byID[rows[i].ID]
+		if !ok {
+			continue
+		}
+		rows[i].WhatsAppStatus = st.status
+		if st.inboundAt != nil {
+			rows[i].LastInboundAt = st.inboundAt.Format(time.RFC3339)
+		}
+	}
+	return nil
 }
 
 func derefString(s *string) string {

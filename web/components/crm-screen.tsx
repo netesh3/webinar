@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import {
   Alert,
   ConfirmModal,
@@ -15,6 +16,7 @@ import { Bots } from "./crm-bots";
 import { Broadcasts } from "./crm-broadcasts";
 import { Drips } from "./crm-drips";
 import { NotesPane } from "./crm-notes";
+import { SetupChecklist, setupTodo } from "./crm-setup";
 import { ContactTags, TagChips, TagManager } from "./crm-tags";
 import {
   BlockedList,
@@ -29,6 +31,12 @@ import { useSession, useToast } from "./providers";
 import { Badge, Button, Card, Empty } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import {
+  CRMStatusNoNumber,
+  CRMStatusNoOptIn,
+  CRMStatusNoReply,
+  CRMStatusOptedIn,
+  CRMStatusOptedOut,
+  CRMStatusReplied,
   FeatureCRMNotes,
   FeatureCRMTags,
   FeatureReplayLinks,
@@ -39,12 +47,14 @@ import {
 } from "@/lib/api-types";
 import type {
   CRMContact,
+  CRMContactCounts,
   CRMContactScope,
   CRMMergeField,
   CRMMessage,
   CRMNote,
   CRMReminder,
   CRMSendRequest,
+  CRMSetup,
   CRMTag,
   CRMTemplate,
   NotificationKind,
@@ -71,19 +81,125 @@ import { formatRelative } from "@/lib/format";
  *  this screen sees a reply arrive without wondering whether to reload. */
 const POLL_MS = 20_000;
 
-/** The four views of the CRM: the people, one message sent to many of them at once,
- *  the sequences that keep sending on their own, and the bots that answer without
- *  anybody here at all. Tabs rather than routes because they are the same list seen
- *  four ways — a host who has just read a reply is one click from the campaign that
- *  prompted it, or from the flow that sent it. */
-const CRM_VIEWS = ["contacts", "broadcasts", "sequences", "bots"] as const;
+/** The five views of the CRM: what is left to set up, the people, one message sent to
+ *  many of them at once, the sequences that keep sending on their own, and the bots that
+ *  answer without anybody here at all. Tabs rather than routes because they are the same
+ *  list seen five ways — a host who has just read a reply is one click from the campaign
+ *  that prompted it, or from the flow that sent it.
+ *
+ *  Setting up comes first because it is the order the host meets them in, and it carries
+ *  a count of what is outstanding so the work is visible from the other four. It is not
+ *  the DEFAULT view, though: a host arrives here to read their contacts, including the
+ *  many who arrive before WhatsApp is finished. */
+const CRM_VIEWS = [
+  "setup",
+  "contacts",
+  "broadcasts",
+  "sequences",
+  "bots",
+] as const;
 type CRMView = (typeof CRM_VIEWS)[number];
 
 const VIEW_LABELS: Record<CRMView, string> = {
+  setup: "Set up",
   contacts: "Contacts",
   broadcasts: "Broadcasts",
   sequences: "Sequences",
   bots: "Bots",
+};
+
+/** The sentence under each heading. Contacts is deliberately absent: its blurb counts
+ *  the list being looked at, so it is built per render and falls through to it here. */
+const VIEW_BLURBS: Partial<Record<CRMView, string>> = {
+  setup:
+    "Five things, once. Each one is checked against your WhatsApp account rather than ticked off here, so this is what is actually true.",
+  broadcasts:
+    "One message to many people, from your own WhatsApp number and billed to your Meta account.",
+  sequences:
+    "Several messages over days, sent on their own to everybody who registers from now on.",
+  bots: "A reply to somebody who writes in, with the conversation handed to you the moment the flow runs out of answers.",
+};
+
+/* The chips above the contacts list, in two labelled groups.
+ *
+ * Two groups and not one row of six, because they are two different partitions of the
+ * same people: everybody is either replied or not, and separately everybody is one of
+ * opted-in / no-consent / opted-out / no-number. A contact can be both "no reply" and
+ * "no number", so six chips in one row would show parts that add up to more than the
+ * heading and leave the host to work out why.
+ */
+const CHIP_GROUPS: {
+  label: string;
+  /** Only shown to a host who has WhatsApp connected. "Has written in" is a fact about
+   *  a conversation that cannot exist without it; consent is recorded at registration
+   *  either way, so the other group is always worth reading. */
+  needsWhatsApp?: boolean;
+  chips: {
+    status: string;
+    label: string;
+    of: keyof CRMContactCounts;
+    /** The segment's colour in the bar. A CSS variable rather than a hex value, so the
+     *  chart follows the palette — including the dark scheme, which overrides these. */
+    fill: string;
+  }[];
+}[] = [
+  {
+    label: "Conversation",
+    needsWhatsApp: true,
+    chips: [
+      {
+        status: CRMStatusReplied,
+        label: "Replied",
+        of: "replied",
+        fill: "var(--color-brand)",
+      },
+      {
+        status: CRMStatusNoReply,
+        label: "No reply",
+        of: "noReply",
+        fill: "var(--color-line-2)",
+      },
+    ],
+  },
+  {
+    label: "Can be messaged",
+    chips: [
+      {
+        status: CRMStatusOptedIn,
+        label: "Opted in",
+        of: "optedIn",
+        fill: "var(--color-ok)",
+      },
+      {
+        status: CRMStatusNoOptIn,
+        label: "No consent",
+        of: "noOptIn",
+        fill: "var(--color-line-2)",
+      },
+      {
+        status: CRMStatusOptedOut,
+        label: "Opted out",
+        of: "optedOut",
+        fill: "var(--color-live)",
+      },
+      {
+        status: CRMStatusNoNumber,
+        label: "No number",
+        of: "noNumber",
+        fill: "var(--color-ink-3)",
+      },
+    ],
+  },
+];
+
+const ZERO_COUNTS: CRMContactCounts = {
+  total: 0,
+  replied: 0,
+  noReply: 0,
+  optedIn: 0,
+  noOptIn: 0,
+  optedOut: 0,
+  noNumber: 0,
 };
 
 export function CRMScreen() {
@@ -91,7 +207,18 @@ export function CRMScreen() {
   const { notify } = useToast();
   const router = useRouter();
   const search = useSearchParams();
-  const [view, setView] = useState<CRMView>("contacts");
+  /* Contacts unless a link asked for something else. Read once, on mount, and NOT
+   * written back as the host switches tabs: an incoming link has to be able to name
+   * where it means — account settings points at the setup steps, and landing on the
+   * inbox instead would leave a host to find them — but which tab somebody is reading
+   * is not a narrowing of the list the way ?webinar= and ?status= are, and putting
+   * every tab they touched in the back button would bury the link that brought them. */
+  const [view, setView] = useState<CRMView>(() => {
+    const asked = (search.get("view") ?? "").trim();
+    return (CRM_VIEWS as readonly string[]).includes(asked)
+      ? (asked as CRMView)
+      : "contacts";
+  });
   const [query, setQuery] = useState("");
   /* One webinar's registrants, when a link asked for them — the "View in CRM" link
    * on a webinar's Attendees tab is the only thing that sets this.
@@ -102,6 +229,12 @@ export function CRMScreen() {
    * it true past the first page — the list is capped at 200 contacts, and picking this
    * webinar's people out of whichever 200 arrived would silently miss the rest. */
   const webinarSlug = (search.get("webinar") ?? "").trim();
+  /* Which chip is active, also from the URL and for the same reasons: a host who has
+   * filtered to "no reply" can send that link to whoever chases them, and the back
+   * button undoes the narrowing. The server validates it — an unknown value is refused
+   * rather than answered with the whole list under a heading that names a filter — so a
+   * hand-edited URL produces an error the host can read. */
+  const statusFilter = (search.get("status") ?? "").trim();
   /* Which webinar that slug turned out to be, as the SERVER describes it. The name is
    * not taken from the link: a topic in a query string is a heading anybody could
    * write, and this one asserts that the webinar is the host's own. */
@@ -114,6 +247,11 @@ export function CRMScreen() {
    * account whose tags switch is off — the server sends nothing then. */
   const [tags, setTags] = useState<CRMTag[] | null>(null);
   const [total, setTotal] = useState(0);
+  /* How the list divides up, from the server, for the chips. Zeroed rather than null so
+   * the chips can render before the first answer arrives at their eventual size — and
+   * they arrive whole even while a chip is active, because a host who has filtered to
+   * "no reply" still needs to see how many replied in order to come back. */
+  const [counts, setCounts] = useState<CRMContactCounts>(ZERO_COUNTS);
   const [whatsappConnected, setWhatsappConnected] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -130,6 +268,24 @@ export function CRMScreen() {
   const showAllContacts = useCallback(() => {
     router.replace("/host/crm");
   }, [router]);
+
+  /* Pressing a chip, as a change of address.
+   *
+   * replace rather than push, and the webinar filter is carried over: switching chips is
+   * adjusting the same list rather than moving somewhere new, so a back button full of
+   * every chip the host tried would bury the webinar they came from. Pressing the active
+   * chip again clears it, which is what makes the row work as a filter with no "all"
+   * button in it. */
+  const setStatus = useCallback(
+    (next: string) => {
+      const params = new URLSearchParams();
+      if (webinarSlug) params.set("webinar", webinarSlug);
+      if (next && next !== statusFilter) params.set("status", next);
+      const qs = params.toString();
+      router.replace(`/host/crm${qs ? `?${qs}` : ""}`);
+    },
+    [router, statusFilter, webinarSlug],
+  );
 
   const canHost = account?.canHost ?? false;
   /* What this account has switched on, as the server describes it. Checked again
@@ -217,12 +373,13 @@ export function CRMScreen() {
     let cancelled = false;
     const run = () => {
       api
-        .crmContacts(query, webinarSlug)
+        .crmContacts(query, webinarSlug, 0, statusFilter)
         .then((res) => {
           if (cancelled) return;
           setContacts(res.contacts);
           setTags(res.tags);
           setTotal(res.total);
+          setCounts(res.counts);
           // Null, not left as it was: the server sends no scope once the filter is
           // gone, and a heading still naming the webinar would describe the wrong list.
           setScope(res.scope ?? null);
@@ -249,7 +406,48 @@ export function CRMScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, webinarSlug, tick, status, canHost]);
+  }, [query, webinarSlug, statusFilter, tick, status, canHost]);
+
+  /* What is left to set up, for the checklist and for the count on its tab.
+   *
+   * Loaded here rather than inside the tab so the badge is right before anybody opens it
+   * — a step nobody knows is outstanding is the problem this whole tab exists for. Not on
+   * `tick`: setup changes when the host does something about it, and those are the
+   * moments that call reloadSetup. */
+  const [setup, setSetup] = useState<CRMSetup | null>(null);
+  const [setupLoading, setSetupLoading] = useState(true);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [setupTick, setSetupTick] = useState(0);
+  const reloadSetup = useCallback(() => setSetupTick((n) => n + 1), []);
+
+  useEffect(() => {
+    if (status !== "signed-in" || !canHost) return;
+    let cancelled = false;
+    // Not set back to true on a reload: by then the checklist is on screen, and
+    // replacing five answered steps with a spinner because one of them was just
+    // finished would hide the very change the host is waiting to see.
+    api
+      .crmSetup()
+      .then((res) => {
+        if (cancelled) return;
+        setSetup(res);
+        setSetupError(null);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setSetupError(
+          e instanceof ApiError && e.code !== "network"
+            ? e.message
+            : "Could not work out what is left to set up.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setSetupLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status, canHost, setupTick]);
 
   if (status === "loading") {
     return (
@@ -291,13 +489,7 @@ export function CRMScreen() {
             {VIEW_LABELS[view]}
           </h1>
           <p className="mt-1 text-[13.5px] text-ink-2">
-            {view === "contacts"
-              ? contactsBlurb
-              : view === "broadcasts"
-                ? "One message to many people, from your own WhatsApp number and billed to your Meta account."
-                : view === "sequences"
-                  ? "Several messages over days, sent on their own to everybody who registers from now on."
-                  : "A reply to somebody who writes in, with the conversation handed to you the moment the flow runs out of answers."}
+            {VIEW_BLURBS[view] ?? contactsBlurb}
           </p>
         </div>
         {view === "contacts" && (
@@ -320,23 +512,57 @@ export function CRMScreen() {
         value={view}
         onChange={setView}
         labels={VIEW_LABELS}
+        /* The number of steps still outstanding, so a host reading their contacts can
+           see there is work waiting without going looking for it. It disappears at
+           zero — a badge saying "0" is an alarm about nothing. */
+        counts={{ setup: setupTodo(setup) }}
       />
 
       {/* The leads are all still here with WhatsApp disconnected — only the
           sending is gone. Saying which is which is the difference between a
           host fixing a connection and a host thinking they lost their list. */}
-      {!whatsappConnected && (
+      {!whatsappConnected && view !== "setup" && (
         <Alert tone="warn" title="WhatsApp isn't connected">
-          Your contacts and conversations are unaffected, but nothing can be
-          sent until you connect your own WhatsApp Business account in{" "}
-          <Link href="/account" className="font-medium underline">
-            account settings
-          </Link>
+          Your contacts and conversations are unaffected, but nothing can be sent
+          until you connect your own WhatsApp Business account.{" "}
+          {/* Straight to the step, not to account settings: the card moved here,
+              and sending somebody to a different screen to do one of five things
+              is the arrangement this tab replaced. */}
+          <button
+            type="button"
+            className="font-medium underline"
+            onClick={() => setView("setup")}
+          >
+            Set it up
+          </button>
           .
         </Alert>
       )}
 
-      {view === "broadcasts" ? (
+      {view === "setup" ? (
+        <SetupChecklist
+          setup={setup}
+          loading={setupLoading}
+          error={setupError}
+          onChanged={reloadSetup}
+          templates={templates}
+          templatesError={templatesError}
+          syncing={syncing}
+          onRefreshTemplates={refreshTemplates}
+          /* The same pane as before, rendered open instead of folded away. Handed in
+             rather than imported so crm-setup does not have to import this file back:
+             the templates it needs are loaded here, once, for every view. */
+          remindersPane={
+            <RemindersSettings
+              templates={templates}
+              templatesError={templatesError}
+              syncing={syncing}
+              onRefreshTemplates={refreshTemplates}
+              onSaved={reloadSetup}
+            />
+          }
+        />
+      ) : view === "broadcasts" ? (
         <Broadcasts
           whatsappConnected={whatsappConnected}
           templates={templates}
@@ -388,24 +614,14 @@ export function CRMScreen() {
             </Card>
           )}
 
-          {/* Folded away by default: the subject of this screen is the list, and
-              the automatic messages are set up once and then left for months. */}
-          {whatsappConnected && (
-            <Card className="px-5 py-3">
-              <Disclosure summary="Automatic WhatsApp messages">
-                <RemindersSettings
-                  templates={templates}
-                  templatesError={templatesError}
-                  syncing={syncing}
-                  onRefreshTemplates={refreshTemplates}
-                />
-              </Disclosure>
-            </Card>
-          )}
+          {/* The automatic messages used to be folded away here, which is how a host
+              who had never opened that disclosure went months without knowing the
+              step existed. They are step 4 of the Set up tab now — one place that
+              lists every step instead of one step hidden beside the list. */}
 
-          {/* Folded away for the same reason, and shown whether or not WhatsApp
-              is connected: a label is a fact about a person, and it is still
-              worth recording on a list nothing can currently be sent to. */}
+          {/* Folded away because the subject of this screen is the list, and shown
+              whether or not WhatsApp is connected: a label is a fact about a person,
+              and it is still worth recording on a list nothing can be sent to. */}
           {tagsOn && (
             <Card className="px-5 py-3">
               <Disclosure
@@ -414,6 +630,19 @@ export function CRMScreen() {
                 <TagManager tags={tags} onChanged={refresh} />
               </Disclosure>
             </Card>
+          )}
+
+          {/* Who these people are, before any of them are read one by one — and
+              above the list rather than beside it, because it is also the control
+              that narrows the list. Shown while a filtered list is EMPTY too: the
+              way back out of "0 contacts" is the chip that is still lit. */}
+          {!error && counts.total > 0 && (
+            <ContactBreakdown
+              counts={counts}
+              status={statusFilter}
+              onPick={setStatus}
+              whatsappConnected={whatsappConnected}
+            />
           )}
 
           {contacts === null ? (
@@ -425,7 +654,20 @@ export function CRMScreen() {
                  contradicts the first — "no contacts yet" is a cheerful answer to
                  a request that failed. */
           error ? null : contacts.length === 0 ? (
-            query.trim() ? (
+            /* A chip can only ever count what the same request returns, so an empty
+               list under a lit chip means the search is also on — the two narrowings
+               are named separately because only one of them is undone by the chips
+               above. */
+            statusFilter ? (
+              <Empty
+                title={`Nobody here is “${statusLabel(statusFilter)}”`}
+                hint={
+                  query.trim()
+                    ? "Your search is narrowing it as well — clear the search box, or pick the lit chip again to drop this filter."
+                    : "Pick the lit chip again to drop the filter. The number on it counts the whole list, not the search."
+                }
+              />
+            ) : query.trim() ? (
               <Empty
                 title="No contacts match that"
                 hint={
@@ -494,6 +736,168 @@ export function CRMScreen() {
   );
 }
 
+// ---------------------------------------------------------------- breakdown
+
+/** A bucket's own words, for the empty state that has to name the filter it is empty
+ *  under. Falls back to the wire value rather than to nothing: a status that reached
+ *  the URL without a chip is still better read than blanked out. */
+function statusLabel(status: string): string {
+  for (const group of CHIP_GROUPS) {
+    for (const chip of group.chips) {
+      if (chip.status === status) return chip.label;
+    }
+  }
+  return status;
+}
+
+/* How the list divides, as two bars and two rows of chips.
+ *
+ * Two, not one, and that is the whole reason this is not a single stacked bar: consent
+ * and conversation are separate partitions of the same people. Somebody with no number
+ * is also somebody who has never replied, so the six numbers do NOT sum to the total —
+ * each group does, on its own. One bar across all six would invite exactly the reading
+ * the shape of it denied.
+ *
+ * The chips carry every number the bars encode, as text, which is why the charts are
+ * aria-hidden: a screen reader reading the bar would read the chip row twice.
+ */
+function ContactBreakdown({
+  counts,
+  status,
+  onPick,
+  whatsappConnected,
+}: {
+  counts: CRMContactCounts;
+  status: string;
+  onPick: (status: string) => void;
+  whatsappConnected: boolean;
+}) {
+  /* "Has written in" is a fact about a conversation, and there are no conversations
+   * before WhatsApp is connected — but consent is recorded by the registration form
+   * either way, so the other group is worth reading from the first sign-up. */
+  const groups = CHIP_GROUPS.filter((g) => whatsappConnected || !g.needsWhatsApp);
+
+  return (
+    <Card className="grid gap-4 px-5 py-4">
+      {groups.map((group) => (
+        <div key={group.label} className="grid gap-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-[12px] font-semibold tracking-[0.02em] text-ink-2 uppercase">
+              {group.label}
+            </h2>
+            {status !== "" && group.chips.some((c) => c.status === status) && (
+              <button
+                type="button"
+                className="text-[12px] font-medium text-ink-2 underline"
+                onClick={() => onPick(status)}
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+
+          {/* The rounded box is the div, not the chart: recharts draws rectangles and
+              a radius on each segment of a stack reads as six separate bars. It also
+              holds the height, so the row does not move when recharts finishes
+              measuring itself — which it can only do in the browser. */}
+          <div
+            className="h-2.5 overflow-hidden rounded-full bg-surface-2"
+            aria-hidden
+          >
+            <ResponsiveContainer width="100%" height={10}>
+              <BarChart
+                layout="vertical"
+                data={[
+                  Object.fromEntries([
+                    ["group", group.label],
+                    ...group.chips.map((c) => [c.of, counts[c.of]]),
+                  ]),
+                ]}
+                margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
+              >
+                {/* Both axes hidden: a tick or a grid line here would be six labels
+                    for numbers already printed underneath. The domain is pinned to the
+                    total so an empty bucket is an empty width, not a rescaled one. */}
+                <XAxis type="number" domain={[0, counts.total]} hide />
+                <YAxis type="category" dataKey="group" hide />
+                {group.chips.map((chip) => (
+                  <Bar
+                    key={chip.of}
+                    dataKey={chip.of}
+                    stackId="all"
+                    fill={chip.fill}
+                    barSize={10}
+                    isAnimationActive={false}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {group.chips.map((chip) => (
+              <Chip
+                key={chip.status}
+                label={chip.label}
+                count={counts[chip.of]}
+                fill={chip.fill}
+                active={status === chip.status}
+                onClick={() => onPick(chip.status)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+function Chip({
+  label,
+  count,
+  fill,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  fill: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  /* An empty bucket is not a filter worth pressing — it can only ever produce the
+   * list the host is already looking at, minus everybody. Still shown, because "none
+   * of them opted out" is one of the more useful things this row says. */
+  const dead = count === 0 && !active;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={dead}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
+        active
+          ? "border-brand bg-brand-soft text-brand"
+          : dead
+            ? "border-line text-ink-3"
+            : "border-line text-ink-2 hover:bg-surface-2"
+      }`}
+    >
+      <span
+        className="size-1.5 rounded-full"
+        style={{ background: fill }}
+        aria-hidden
+      />
+      {label}
+      <span
+        className={`tabular-nums ${active || dead ? "" : "font-medium text-ink"}`}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
 // ---------------------------------------------------------------- reminders
 
 /** The automatic messages, in the order they reach somebody, with the host's
@@ -548,11 +952,17 @@ function RemindersSettings({
   templatesError,
   syncing,
   onRefreshTemplates,
+  /* Told after a successful save, so the checklist this pane sits inside can
+   * re-read its own state. It must be the server's answer and not this pane's:
+   * saving a kind against a template Meta has since paused stores the row and
+   * still sends nothing, and only the server knows that. */
+  onSaved,
 }: {
   templates: CRMTemplate[] | null;
   templatesError: string | null;
   syncing: boolean;
   onRefreshTemplates: () => void;
+  onSaved?: () => void;
 }) {
   const { notify } = useToast();
   const { account } = useSession();
@@ -608,6 +1018,7 @@ function RemindersSettings({
       setRows(res.reminders);
       setError(null);
       notify("Automatic messages saved.", "ok");
+      onSaved?.();
     } catch (e: unknown) {
       /* The server's sentence, because every refusal here names the template or
        * the field that is wrong — "could not save" would leave a host guessing
@@ -864,6 +1275,12 @@ function ContactRow({
         </span>
         <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <ConsentBadge contact={c} />
+          {/* Whether this person has ever written in, which consent does not answer
+              and the preview line above cannot: lastMessage is the last message in
+              either direction, so a host who wrote last makes their own contact look
+              like a stranger. No badge for the ones who never have — most of a list
+              is silent, and a marker on every quiet row marks nothing. */}
+          {c.lastInboundAt && <Badge tone="brand">Replied</Badge>}
           {/* Read-only here. The list is for finding somebody, and the chips are
               what a host scans it by — they are edited in the conversation, where
               the reason for a label is on screen beside it. Empty for an account

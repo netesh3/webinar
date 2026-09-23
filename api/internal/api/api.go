@@ -459,6 +459,11 @@ func (s *Server) Routes() http.Handler {
 				 * and for a stronger version of the same reason: a contact is a person,
 				 * not an attendee of one session, and the whole point of the CRM is that
 				 * they outlive the webinar they first registered for. */
+				/* How far along this host is in setting WhatsApp up. First
+				 * because it is what the CRM opens on for a host who has not
+				 * finished — see handleCRMSetup for why the answer is assembled
+				 * here rather than out of the four endpoints below it. */
+				r.Get("/crm/setup", s.handleCRMSetup)
 				r.Get("/crm/contacts", s.handleCRMContacts)
 				r.Get("/crm/contacts/{id}", s.handleCRMThread)
 				r.Post("/crm/contacts/{id}/opt-out", s.handleCRMOptOut)
