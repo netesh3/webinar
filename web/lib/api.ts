@@ -39,6 +39,7 @@ import type {
   CRMTemplatesResponse,
   CRMThreadResponse,
   FeatureGrant,
+  HostWebinarPage,
   JoinResponse,
   LiveRoom,
   MuteAllResponse,
@@ -185,6 +186,15 @@ const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 /** Reads are never cached: a stale registrant count or a stale "live" badge is
  *  worse than a round trip. */
 const fresh = { cache: "no-store" } as const;
+
+/* Which bucket of the host's own list to read — the three tabs the host portal
+ * shows, and the `tab` parameter the API takes, which are deliberately the same
+ * three words so a tab click needs no translation.
+ *
+ * Spelled out here rather than taken from api-types.ts because tygo renders a
+ * Go string type as `string`, which would accept "upcomming" silently. Same
+ * reason adminWebinars inlines its own status union. */
+export type HostWebinarTab = "upcoming" | "past" | "drafts";
 
 // ------------------------------------------------------------------- public
 
@@ -343,9 +353,65 @@ export const api = {
 
   // ------------------------------------------------------------------ host
 
-  hostWebinars: () => request<Webinar[]>("/api/host/webinars", fresh),
-  hostRecordingLibrary: () =>
-    request<Recording[]>("/api/host/recordings", fresh),
+  /** One page of the host's own sessions, with every tab's count alongside —
+   *  the list is paged server-side, so the badges can't be counted here.
+   *  `tab` defaults to upcoming, `q` matches the topic, `from`/`to` are plain
+   *  YYYY-MM-DD dates inclusive on both ends, and `cursor` is the previous
+   *  page's `nextCursor` (opaque: pass it back, don't read it). */
+  hostWebinars: (
+    params: {
+      tab?: HostWebinarTab;
+      q?: string;
+      from?: string;
+      to?: string;
+      limit?: number;
+      cursor?: string;
+    } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.tab) qs.set("tab", params.tab);
+    if (params.q) qs.set("q", params.q);
+    if (params.from) qs.set("from", params.from);
+    if (params.to) qs.set("to", params.to);
+    if (params.limit) qs.set("limit", String(params.limit));
+    if (params.cursor) qs.set("cursor", params.cursor);
+    const s = qs.toString();
+    return request<HostWebinarPage>(
+      `/api/host/webinars${s ? `?${s}` : ""}`,
+      fresh,
+    );
+  },
+  /** Every session this host has, upcoming and past, for a PICKER rather than a
+   *  list — the CRM asks "which webinar is this broadcast about", and a broadcast
+   *  to the people who came to last week's is the most obvious one there is, so
+   *  an answer that only offered the next ten could not express it.
+   *
+   *  Walks the cursor, because the list endpoint above is paged and capped at 100
+   *  a page. Drafts are left out: a draft has never been scheduled, so nobody has
+   *  registered for it and there is nobody to message about it. */
+  hostWebinarsForPicker: async (): Promise<Webinar[]> => {
+    const out: Webinar[] = [];
+    for (const tab of ["upcoming", "past"] satisfies HostWebinarTab[]) {
+      let cursor = "";
+      /* A bound rather than a while(true). Ten pages of 100 is more sessions
+       * than any host on this instance has, and a loop whose exit condition is
+       * a field the server sends is how one stale cursor becomes a spin. */
+      for (let page = 0; page < 10; page++) {
+        const qs = new URLSearchParams({ tab, limit: "100" });
+        if (cursor) qs.set("cursor", cursor);
+        const res = await request<HostWebinarPage>(
+          `/api/host/webinars?${qs.toString()}`,
+          fresh,
+        );
+        out.push(...res.items);
+        if (!res.nextCursor) break;
+        cursor = res.nextCursor;
+      }
+    }
+    return out;
+  },
+
+  hostRecordingLibrary: () => request<Recording[]>("/api/host/recordings", fresh),
 
   /** Sessions this account is a panelist on but does not own. */
   stageWebinars: () => request<Webinar[]>("/api/host/stage", fresh),

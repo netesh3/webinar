@@ -25,7 +25,7 @@ import (
  * money and lands on a phone.
  *
  * Sent once per person per webinar, for ever, and that is enforced in the database
- * rather than here: the dedupe indexes in 0048 cover (registration, kind) for both
+ * rather than here: the dedupe indexes in 0049 cover (registration, kind) for both
  * channels, so a host who switches the recording to private and public again — or
  * publishes a second take of the same session — does not send anybody a second copy.
  */

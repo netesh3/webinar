@@ -555,11 +555,40 @@ type WebinarReport struct {
 	Questions   int `json:"questions"`
 }
 
+/* AttendanceVisit is one arrival and one departure.
+ *
+ * A person who left and came back is several of these, which is the whole reason the type
+ * exists: watch time used to be last_seen_at minus first_joined_at, and for anybody who
+ * rejoined that is the span of their evening rather than the time they were present.
+ */
+type AttendanceVisit struct {
+	JoinedAt string `json:"joinedAt"`
+	// LeftAt is absent while somebody is still in the room — a report pulled during a live
+	// session is a legitimate thing to ask for, and "" says "still here" without inventing
+	// a departure that has not happened.
+	LeftAt string `json:"leftAt,omitempty"`
+	// Minutes is this visit CLIPPED to the live window, so it can be less than
+	// LeftAt-JoinedAt for somebody who arrived early and sat on the waiting screen.
+	Minutes int `json:"minutes"`
+}
+
 type AttendanceRow struct {
 	Identity string `json:"identity"`
 	Name     string `json:"name"`
 	Email    string `json:"email,omitempty"`
-	WatchMin int    `json:"watchMin"`
+	/* Role is "host", "panelist" or "attendee", derived from the identity.
+	 *
+	 * Carried because the stage is in this list too and a reader needs to know which rows
+	 * are the audience — but the Attended and AvgWatchMin figures above count attendees
+	 * only, so a host's own presence never inflates their audience numbers. */
+	Role string `json:"role"`
+	// WatchMin is the SUM of the visits below, not the span between the first and the last.
+	WatchMin int `json:"watchMin"`
+	// FirstJoinedAt / LastLeftAt bracket the visits, so a summary row can be read without
+	// expanding it. LastLeftAt is absent while they are still in the room.
+	FirstJoinedAt string            `json:"firstJoinedAt,omitempty"`
+	LastLeftAt    string            `json:"lastLeftAt,omitempty"`
+	Visits        []AttendanceVisit `json:"visits"`
 }
 
 type SessionQuestion struct {
@@ -692,6 +721,43 @@ type Webinar struct {
 	SFUProject string `json:"sfuProject,omitempty"`
 
 	Report *WebinarReport `json:"report,omitempty"`
+}
+
+/* HostWebinarPage is one screen of a host's own webinars.
+ *
+ * The host list used to answer with every webinar the account had ever run —
+ * fine at five, wasteful at five hundred, and it is re-read on every visit to
+ * the portal. This carries a bounded slice plus the two things the UI cannot
+ * work out for itself once it no longer holds every row: where the next slice
+ * starts, and how many sessions are in each tab.
+ */
+type HostWebinarPage struct {
+	Items []Webinar `json:"items"`
+	/* NextCursor resumes after the last item, and is empty on the last page.
+	 *
+	 * Opaque on purpose. It encodes a (starts_at, slug) keyset position, and a
+	 * client that parsed it would be depending on an ordering the server is
+	 * free to change per tab — which it does, ascending for upcoming and
+	 * descending for past. Emptiness is the only thing worth reading off it.
+	 */
+	NextCursor string `json:"nextCursor,omitempty"`
+	/* Counts sizes every tab under the same search and date filters as the
+	 * page itself, not the account's whole history. A host who searches for
+	 * "onboarding" wants the badges to say where the matches are; three
+	 * numbers describing a list they are not looking at would be noise. */
+	Counts HostWebinarCounts `json:"counts"`
+	/* Total is how many rows the active tab holds in full, so the list can say
+	 * "10 of 34" rather than only knowing whether more exist. Always equal to
+	 * the Counts field for the requested tab — sent separately so the footer
+	 * does not have to re-derive which tab it is rendering. */
+	Total int `json:"total"`
+}
+
+// HostWebinarCounts is the per-tab tally behind the host list's badges.
+type HostWebinarCounts struct {
+	Upcoming int `json:"upcoming"`
+	Past     int `json:"past"`
+	Drafts   int `json:"drafts"`
 }
 
 // WebinarInput creates or replaces a webinar. PATCH has replace semantics
@@ -1863,16 +1929,20 @@ type FeatureGrant struct {
 /* AdminUser is one row of the admin panel.
  *
  * Carries what an admin needs to decide whether this person should be able to run webinars —
- * who they are, when they joined, whether they asked — and nothing more. No password hash, no
- * session data, and no registration history: the panel's job is granting a capability, not
- * profiling users.
+ * who they are, how to reach them about it, when they joined — and nothing more. No password
+ * hash, no session data, and no registration history: the panel's job is granting a capability,
+ * not profiling users.
  */
 type AdminUser struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	Name      string `json:"name"`
-	Title     string `json:"title,omitempty"`
-	Org       string `json:"org,omitempty"`
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Title string `json:"title,omitempty"`
+	Org   string `json:"org,omitempty"`
+	// Phone is E.164 shape, same as Account.Phone — the number given at signup, so an
+	// admin can reach the account holder about hosting without going to the database.
+	// Admin-only: it is still absent from Person, which is what other attendees see.
+	Phone     string `json:"phone,omitempty"`
 	Initials  string `json:"initials"`
 	Hue       string `json:"hue"`
 	CanHost   bool   `json:"canHost"`

@@ -1,6 +1,7 @@
 "use client";
 
 import { VideoTransformer } from "@livekit/track-processors";
+import { LOW_LIGHT_GLSL } from "./low-light-curve";
 
 /* Segmentation and compositing, done ourselves.
  *
@@ -50,6 +51,8 @@ export type Background =
 
 export type SegmenterOptions = {
   background: Background;
+  /** How hard to lift the shadows, 0..1, where 0 is off. See LOW_LIGHT_LIFT. */
+  lowLight: number;
   /** Reports per-frame cost so the caller can back out on a slow device. */
   onFrame?: (stats: { totalMs: number; segmentMs: number }) => void;
 };
@@ -193,7 +196,9 @@ uniform sampler2D mask;
 uniform int mode;               // 0 = passthrough, 1 = blur, 2 = image
 uniform vec2 frameSize;
 uniform vec2 imageSize;
+uniform float lowLight;         // 0 = off, 1 = the full lift
 out vec4 color;
+${LOW_LIGHT_GLSL}
 
 /* object-fit: cover. A 16:9 still behind a 4:3 webcam must crop, not squash. */
 vec2 coverUv(vec2 p) {
@@ -206,7 +211,13 @@ vec2 coverUv(vec2 p) {
 }
 
 void main() {
-  vec3 fg = texture(frame, uv).rgb;
+  /* Lifted once, here, and applied to the PERSON only.
+   *
+   * With a background on, bg below is the blurred room or a still and is left alone: the
+   * person gets the light and their room does not, which is a key light rather than an
+   * exposure change. With no background there is no mask to confine it to, so mode 0
+   * lifts the whole frame — still the thing somebody dark on camera asked for. */
+  vec3 fg = liftShadows(texture(frame, uv).rgb, lowLight);
   if (mode == 0) { color = vec4(fg, 1.0); return; }
 
   vec2 bgUv = mode == 2 ? coverUv(uv) : uv;
@@ -319,6 +330,8 @@ type Segmenter = {
 export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   private options: SegmenterOptions;
   private segmenter: Segmenter | null = null;
+  /** The in-flight model load, so concurrent callers share one. See ensureSegmenter. */
+  private segmenterLoad: Promise<void> | null = null;
   private ctx: WebGL2RenderingContext | null = null;
 
   private compositeProgram: WebGLProgram | null = null;
@@ -370,7 +383,26 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     if (background.kind === "image") {
       await this.loadImageTexture(background.src);
     }
+    /* Before the mode switches, for the same reason the image load is: a background
+     * asked for while the model is still downloading must not leave the person
+     * composited against a mask that does not exist yet. transform() also refuses to
+     * run a background without a segmenter, so the worst case is the raw camera for
+     * a moment rather than a black rectangle. */
+    if (background.kind !== "none") {
+      await this.ensureSegmenter();
+    }
     this.options = { ...this.options, background };
+  }
+
+  /* Changes the lift, and does not await anything.
+   *
+   * A slider fires on every pixel of the drag. Anything that rebuilt the pipeline — or
+   * even re-entered the attach path — thirty times between 0 and 60 would drop frames
+   * the audience can see and the person dragging cannot. This writes a number that the
+   * next frame's uniform read picks up, so a drag costs nothing at all.
+   */
+  setLowLight(lowLight: number): void {
+    this.options = { ...this.options, lowLight };
   }
 
   async init(opts: { outputCanvas: OffscreenCanvas | HTMLCanvasElement; inputElement: HTMLVideoElement }): Promise<void> {
@@ -414,26 +446,15 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    // Loaded here rather than at module scope: 9MB of WASM that nobody who never
-    // turns a background on should download.
-    const vision = await import("@mediapipe/tasks-vision");
-    const fileset = await vision.FilesetResolver.forVisionTasks(WASM_PATH);
-    this.segmenter = (await vision.ImageSegmenter.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: MODEL_PATH, delegate: "GPU" },
-      runningMode: "VIDEO",
-      // The whole point. A confidence mask is a float 0..1 per pixel; the category
-      // mask the previous implementation used is a hard 0/1 with no edge to soften.
-      outputConfidenceMasks: true,
-      outputCategoryMask: false,
-      /* Our canvas — the reason the mask never leaves the GPU.
-       *
-       * The context was created above, and a second getContext("webgl2") on the same
-       * canvas returns the same context rather than a new one. So MediaPipe renders
-       * the mask into OUR context and `getAsWebGLTexture()` hands back a texture we
-       * can sample. The alternative is `getAsFloat32Array()`, which is a readPixels
-       * — a full GPU pipeline stall, every frame. */
-      canvas,
-    })) as unknown as Segmenter;
+    /* The model is loaded only if a background wants it.
+     *
+     * Low light is a function of one pixel and knows nothing about where the person is,
+     * so somebody who only wants to be brighter gets a pipeline that is one shader pass
+     * with no inference in it — and downloads none of the nine megabytes. Picking a
+     * background later goes through setBackground, which loads it then. */
+    if (this.options.background.kind !== "none") {
+      await this.ensureSegmenter();
+    }
 
     if (this.options.background.kind === "image") {
       await this.loadImageTexture(this.options.background.src);
@@ -442,16 +463,71 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     // One line, at info level. Whether the processor attached at all is the first
     // question anybody asks when a background looks wrong, and it was previously
     // unanswerable from outside the tab.
-    console.info("[background] segmenter ready", {
-      model: MODEL_PATH,
+    console.info("[background] processor ready", {
+      model: this.segmenter ? MODEL_PATH : "none (low light only)",
       background: this.options.background.kind,
+      lowLight: this.options.lowLight,
     });
+  }
+
+  /* MediaPipe, created at most once however many callers ask.
+   *
+   * Through a stored promise rather than a boolean: two rapid background switches would
+   * otherwise both see `segmenter === null` and start the nine-megabyte import twice.
+   * Cleared on failure so a switch that failed on a flaky network can be retried by
+   * picking the background again.
+   */
+  private ensureSegmenter(): Promise<void> {
+    if (this.segmenter) return Promise.resolve();
+    this.segmenterLoad ??= this.createSegmenter().catch((err: unknown) => {
+      this.segmenterLoad = null;
+      throw err;
+    });
+    return this.segmenterLoad;
+  }
+
+  private async createSegmenter(): Promise<void> {
+    const canvas = this.canvas;
+    if (!canvas) throw new Error("the transformer has no canvas to segment into");
+
+    // Loaded here rather than at module scope: 9MB of WASM that nobody who never
+    // turns a background on should download.
+    const vision = await import("@mediapipe/tasks-vision");
+    const fileset = await vision.FilesetResolver.forVisionTasks(WASM_PATH);
+    const segmenter = (await vision.ImageSegmenter.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: MODEL_PATH, delegate: "GPU" },
+      runningMode: "VIDEO",
+      // The whole point. A confidence mask is a float 0..1 per pixel; the category
+      // mask the previous implementation used is a hard 0/1 with no edge to soften.
+      outputConfidenceMasks: true,
+      outputCategoryMask: false,
+      /* Our canvas — the reason the mask never leaves the GPU.
+       *
+       * The context was created in init, and a second getContext("webgl2") on the same
+       * canvas returns the same context rather than a new one. So MediaPipe renders
+       * the mask into OUR context and `getAsWebGLTexture()` hands back a texture we
+       * can sample. The alternative is `getAsFloat32Array()`, which is a readPixels
+       * — a full GPU pipeline stall, every frame. */
+      canvas,
+    })) as unknown as Segmenter;
+
+    /* Destroyed while the import was in the air. Closing it here rather than assigning
+     * it: `destroy` has already run and would not see this one, so it would outlive the
+     * track it was built for and hold its GPU textures until the tab closed. */
+    if (!this.ctx) {
+      segmenter.close();
+      return;
+    }
+    this.segmenter = segmenter;
   }
 
   async destroy(): Promise<void> {
     await super.destroy();
     this.segmenter?.close();
     this.segmenter = null;
+    /* Cleared alongside it, and the null ctx below is what a load still in the air
+     * checks on its way back — see the tail of createSegmenter. */
+    this.segmenterLoad = null;
     const gl = this.ctx;
     if (gl) {
       for (const p of [this.compositeProgram, this.blurProgram]) if (p) gl.deleteProgram(p);
@@ -523,10 +599,21 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     const gl = this.ctx;
     const canvas = this.canvas;
     const background = this.options.background;
+    const wantsBackground = background.kind !== "none";
+    const wantsLowLight = this.options.lowLight > 0;
 
-    // Nothing to do, and nothing to pay for: the frame goes straight through
-    // without touching the GPU or the segmenter.
-    if (!gl || !canvas || !this.segmenter || background.kind === "none") {
+    /* Two ways to have nothing to do, and the frame goes straight through for both
+     * without touching the GPU.
+     *
+     * Nothing asked for is the first. The second is a background asked for before the
+     * model has finished loading — the low-light path does not need a segmenter and
+     * must not be held back by one, so the check is on the background alone rather
+     * than on `!this.segmenter` for everything as it once was. */
+    if (!gl || !canvas || (!wantsBackground && !wantsLowLight)) {
+      controller.enqueue(frame);
+      return;
+    }
+    if (wantsBackground && !this.segmenter) {
       controller.enqueue(frame);
       return;
     }
@@ -559,34 +646,38 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       gl.bindTexture(gl.TEXTURE_2D, this.frameTexture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
 
-      /* Segmentation, awaited before compositing.
+      /* Segmentation, awaited before compositing — and skipped entirely when there is
+       * no background, which is the whole cost of the low-light-only path: nothing.
        *
        * `segmentForVideo` with a callback is synchronous — the callback runs before
        * it returns — so this reads sequentially and there is no stale-mask window.
        * The mask must be consumed inside the callback: MediaPipe frees it on
        * `result.close()`, and holding the texture past that point renders garbage. */
-      const segmentStart = performance.now();
-      let segmented = false;
-      this.segmenter.segmentForVideo(frame, segmentStart, (result) => {
-        const mask = result.confidenceMasks?.[0];
-        if (mask) {
-          this.updateMask(gl, mask.getAsWebGLTexture());
-          segmented = true;
-        }
-        result.close();
-      });
-      const segmentMs = performance.now() - segmentStart;
+      let segmentMs = 0;
+      if (wantsBackground) {
+        const segmentStart = performance.now();
+        let segmented = false;
+        this.segmenter!.segmentForVideo(frame, segmentStart, (result) => {
+          const mask = result.confidenceMasks?.[0];
+          if (mask) {
+            this.updateMask(gl, mask.getAsWebGLTexture());
+            segmented = true;
+          }
+          result.close();
+        });
+        segmentMs = performance.now() - segmentStart;
 
-      if (!segmented && !this.hasPreviousMask) {
-        /* No mask yet and nothing to fall back on. Passing the frame through
-         * unmodified for a frame or two is better than a black rectangle.
-         *
-         * A CLONE, not the frame itself: `finally` closes the original, and a
-         * consumer handed an already-closed VideoFrame gets nothing. That mistake is
-         * invisible — the track stays alive and simply shows the unprocessed camera,
-         * which reads as "the feature does not work". */
-        controller.enqueue(frame.clone());
-        return;
+        if (!segmented && !this.hasPreviousMask) {
+          /* No mask yet and nothing to fall back on. Passing the frame through
+           * unmodified for a frame or two is better than a black rectangle.
+           *
+           * A CLONE, not the frame itself: `finally` closes the original, and a
+           * consumer handed an already-closed VideoFrame gets nothing. That mistake is
+           * invisible — the track stays alive and simply shows the unprocessed camera,
+           * which reads as "the feature does not work". */
+          controller.enqueue(frame.clone());
+          return;
+        }
       }
 
       this.composite(gl, background, w, h);
@@ -730,6 +821,8 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     gl.uniform1i(gl.getUniformLocation(p, "mode"), mode);
     gl.uniform2f(gl.getUniformLocation(p, "frameSize"), w, h);
     gl.uniform2f(gl.getUniformLocation(p, "imageSize"), this.imageW, this.imageH);
+    // Read fresh every frame, which is what makes setLowLight free.
+    gl.uniform1f(gl.getUniformLocation(p, "lowLight"), this.options.lowLight);
 
     this.drawQuad(gl, p, w, h);
   }

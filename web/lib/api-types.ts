@@ -550,11 +550,50 @@ export interface WebinarReport {
   avgWatchMin: number /* int */;
   questions: number /* int */;
 }
+/**
+ *  AttendanceVisit is one arrival and one departure.
+ *  *
+ *  * A person who left and came back is several of these, which is the whole reason the type
+ *  * exists: watch time used to be last_seen_at minus first_joined_at, and for anybody who
+ *  * rejoined that is the span of their evening rather than the time they were present.
+ */
+export interface AttendanceVisit {
+  joinedAt: string;
+  /**
+   * LeftAt is absent while somebody is still in the room — a report pulled during a live
+   * session is a legitimate thing to ask for, and "" says "still here" without inventing
+   * a departure that has not happened.
+   */
+  leftAt?: string;
+  /**
+   * Minutes is this visit CLIPPED to the live window, so it can be less than
+   * LeftAt-JoinedAt for somebody who arrived early and sat on the waiting screen.
+   */
+  minutes: number /* int */;
+}
 export interface AttendanceRow {
   identity: string;
   name: string;
   email?: string;
+  /**
+   *  Role is "host", "panelist" or "attendee", derived from the identity.
+   * 	 *
+   * 	 * Carried because the stage is in this list too and a reader needs to know which rows
+   * 	 * are the audience — but the Attended and AvgWatchMin figures above count attendees
+   * 	 * only, so a host's own presence never inflates their audience numbers.
+   */
+  role: string;
+  /**
+   * WatchMin is the SUM of the visits below, not the span between the first and the last.
+   */
   watchMin: number /* int */;
+  /**
+   * FirstJoinedAt / LastLeftAt bracket the visits, so a summary row can be read without
+   * expanding it. LastLeftAt is absent while they are still in the room.
+   */
+  firstJoinedAt?: string;
+  lastLeftAt?: string;
+  visits: AttendanceVisit[];
 }
 export interface SessionQuestion {
   id: string;
@@ -689,6 +728,49 @@ export interface Webinar {
    */
   sfuProject?: string;
   report?: WebinarReport;
+}
+/**
+ *  HostWebinarPage is one screen of a host's own webinars.
+ *  *
+ *  * The host list used to answer with every webinar the account had ever run —
+ *  * fine at five, wasteful at five hundred, and it is re-read on every visit to
+ *  * the portal. This carries a bounded slice plus the two things the UI cannot
+ *  * work out for itself once it no longer holds every row: where the next slice
+ *  * starts, and how many sessions are in each tab.
+ */
+export interface HostWebinarPage {
+  items: Webinar[];
+  /**
+   *  NextCursor resumes after the last item, and is empty on the last page.
+   * 	 *
+   * 	 * Opaque on purpose. It encodes a (starts_at, slug) keyset position, and a
+   * 	 * client that parsed it would be depending on an ordering the server is
+   * 	 * free to change per tab — which it does, ascending for upcoming and
+   * 	 * descending for past. Emptiness is the only thing worth reading off it.
+   */
+  nextCursor?: string;
+  /**
+   *  Counts sizes every tab under the same search and date filters as the
+   * 	 * page itself, not the account's whole history. A host who searches for
+   * 	 * "onboarding" wants the badges to say where the matches are; three
+   * 	 * numbers describing a list they are not looking at would be noise.
+   */
+  counts: HostWebinarCounts;
+  /**
+   *  Total is how many rows the active tab holds in full, so the list can say
+   * 	 * "10 of 34" rather than only knowing whether more exist. Always equal to
+   * 	 * the Counts field for the requested tab — sent separately so the footer
+   * 	 * does not have to re-derive which tab it is rendering.
+   */
+  total: number /* int */;
+}
+/**
+ * HostWebinarCounts is the per-tab tally behind the host list's badges.
+ */
+export interface HostWebinarCounts {
+  upcoming: number /* int */;
+  past: number /* int */;
+  drafts: number /* int */;
 }
 /**
  * WebinarInput creates or replaces a webinar. PATCH has replace semantics
@@ -2103,9 +2185,9 @@ export interface FeatureGrant {
  *  AdminUser is one row of the admin panel.
  *  *
  *  * Carries what an admin needs to decide whether this person should be able to run webinars —
- *  * who they are, when they joined, whether they asked — and nothing more. No password hash, no
- *  * session data, and no registration history: the panel's job is granting a capability, not
- *  * profiling users.
+ *  * who they are, how to reach them about it, when they joined — and nothing more. No password
+ *  * hash, no session data, and no registration history: the panel's job is granting a capability,
+ *  * not profiling users.
  */
 export interface AdminUser {
   id: string;
@@ -2113,6 +2195,12 @@ export interface AdminUser {
   name: string;
   title?: string;
   org?: string;
+  /**
+   * Phone is E.164 shape, same as Account.Phone — the number given at signup, so an
+   * admin can reach the account holder about hosting without going to the database.
+   * Admin-only: it is still absent from Person, which is what other attendees see.
+   */
+  phone?: string;
   initials: string;
   hue: string;
   canHost: boolean;

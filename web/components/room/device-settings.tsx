@@ -4,8 +4,10 @@ import { useRoomContext } from "@livekit/components-react";
 import { useEffect, useState } from "react";
 import { useChatSound } from "@/lib/chat-notify";
 import { deviceLabel, supportsOutputSelection, useDevices } from "@/lib/media";
+import { useWaitingTune } from "@/lib/waiting-tune";
 import { Alert, Select, Toggle } from "../controls";
 import { BackgroundPicker } from "./background-picker";
+import { LowLightSetting } from "./low-light";
 import { NetworkReadout } from "./network-readout";
 import { useRoomUI } from "./context";
 
@@ -28,6 +30,7 @@ export function DeviceSettings() {
   const { prefs, updatePrefs, permissions } = useRoomUI();
   const { devices, refresh } = useDevices(true);
   const chatSound = useChatSound();
+  const waitingTune = useWaitingTune();
   const [error, setError] = useState<string | null>(null);
 
   // Labels are hidden until the page holds a media permission, so re-enumerate
@@ -133,6 +136,19 @@ export function DeviceSettings() {
           />
         </div>
 
+        {/* Not gated on role for the same reason the toggle above isn't: this is a
+            per-browser preference, and a host today may be an attendee elsewhere on the
+            same browser. It only ever actually plays on the "waiting for the host"
+            screen — see WaitingForStage in stage.tsx — which nobody presenting is shown. */}
+        <div className="border-t border-line pt-1">
+          <Toggle
+            checked={waitingTune.enabled}
+            onChange={waitingTune.setEnabled}
+            label="Tune while waiting for the host"
+            description="A soft chime that repeats quietly on the “waiting for the host” screen. Stops as soon as the host or a panelist goes live."
+          />
+        </div>
+
         {(permissions.canSpeak || permissions.canShareCamera) && (
           <p className="text-[12px] leading-relaxed text-ink-3">
             Keyboard: M mutes, V toggles the camera, hold Space to talk while muted.
@@ -154,6 +170,13 @@ export function DeviceSettings() {
 
             <div className="border-t border-line pt-3">
               <BackgroundPicker />
+            </div>
+
+            {/* Below the background rather than above it, because the two share a
+                processor and the order matches what the lift does: with a background on
+                it lights the person, so the thing it depends on is the thing above it. */}
+            <div className="border-t border-line pt-3">
+              <LowLightSetting />
             </div>
 
             <div className="border-t border-line pt-3">

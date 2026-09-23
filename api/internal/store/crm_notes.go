@@ -15,7 +15,7 @@ import (
  * useful ("asked us to call after 5") and what makes it the one thing here with no Meta
  * rule attached.
  *
- * There is no update. See migrations/0048: a note is a dated observation, and editing one
+ * There is no update. See migrations/0049: a note is a dated observation, and editing one
  * rewrites what the host knew in February.
  */
 

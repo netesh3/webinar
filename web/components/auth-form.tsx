@@ -145,16 +145,16 @@ export function SignupForm() {
     return (
       <Card className="mx-auto w-full max-w-sm p-6 text-center">
         <h1 className="text-[18px] font-semibold">Sign-ups are closed</h1>
+        {/* No link onward. Browse needs a session to list anything, and this
+            card is read by the one visitor who cannot get one — pointing them
+            at "Sign in to see your sessions" would be a circle. An invitation
+            link is what still works without an account, and that is what this
+            says. */}
         <p className="mt-2 text-[13px] leading-relaxed text-ink-2">
           This {appName} instance isn&apos;t accepting new accounts. You can
-          still register for a webinar without one.
+          still register for a webinar without one — open the invitation link
+          you were sent.
         </p>
-        <Link
-          href="/browse"
-          className="mt-4 inline-block text-[13px] font-medium text-brand hover:underline"
-        >
-          Browse webinars
-        </Link>
       </Card>
     );
   }

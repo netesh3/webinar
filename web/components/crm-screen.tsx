@@ -445,7 +445,7 @@ const REMINDER_KINDS: {
     label: "When you publish the recording",
     /* Not "after the webinar": nothing is sent when a session ends, because the
      * host has not decided the recording may be watched yet. Publishing it is
-     * that decision, and it is the only one — see the note in 0048. */
+     * that decision, and it is the only one — see the note in 0049. */
     hint: "Sent once, to everybody who registered, when you switch on public viewing for a recording. Everyone gets the email; this is the WhatsApp copy. The per-webinar reminder switch does not apply to it — publishing is the decision.",
     feature: FeatureReplayLinks,
   },

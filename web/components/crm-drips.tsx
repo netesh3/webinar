@@ -657,7 +657,7 @@ function AddPerson({
     if (!needsWebinar) return;
     let cancelled = false;
     api
-      .hostWebinars()
+      .hostWebinarsForPicker()
       .then((list) => {
         if (!cancelled) setWebinars(list);
       })
@@ -842,7 +842,7 @@ function Builder({
   useEffect(() => {
     let cancelled = false;
     api
-      .hostWebinars()
+      .hostWebinarsForPicker()
       .then((list) => {
         if (!cancelled) setWebinars(list);
       })

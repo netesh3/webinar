@@ -17,6 +17,7 @@ import { cameraCapturePreset, deviceLabel, useDevices, type MediaPreferences } f
 import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
 import { Alert, Select, Spinner } from "../controls";
+import { LowLightControl } from "./low-light";
 import { Button } from "../ui";
 import {
   CameraIcon,
@@ -77,9 +78,16 @@ export function PreJoin({
   /** Set once the tracks belong to the room, so unmount stops releasing them. */
   const handedOff = useRef(false);
 
-  // Apply virtual background to the preview track so the presenter sees it in real time
-  useVirtualBackground(previewTrack ?? undefined, prefs.background, () => {
-    onUpdatePrefs({ background: { mode: "none" } });
+  /* Applied to the preview track so the presenter sees both in real time — which for the
+   * low-light lift is the whole point of having it here: the right amount is whatever
+   * looks right in this room today, and this is the screen where they can still judge it
+   * without an audience watching them decide. */
+  useVirtualBackground(previewTrack ?? undefined, prefs.background, prefs.lowLight, () => {
+    if (prefs.background.mode !== "none") {
+      onUpdatePrefs({ background: { mode: "none" } });
+      return;
+    }
+    onUpdatePrefs({ lowLight: 0 });
   });
 
   // Device labels stay blank until the page holds a permission, so enumeration is
@@ -362,6 +370,21 @@ export function PreJoin({
               choice={prefs.background}
               disabled={!cameraEnabled}
               onSelect={(bg) => onUpdatePrefs({ background: bg })}
+            />
+
+            {/* Under the backgrounds, and on this screen rather than only in Settings,
+                because this is the one moment a presenter is looking at their own face on
+                purpose. Finding out you were in shadow belongs here, next to the preview
+                that shows it, not two clicks deep once an audience is already watching. */}
+            <LowLightControl
+              value={prefs.lowLight}
+              disabled={!cameraEnabled}
+              onChange={(lowLight) => onUpdatePrefs({ lowLight })}
+              hint={
+                cameraEnabled
+                  ? "Too dark? This lifts the shadows on you without blowing out the light behind you."
+                  : "Start your camera to see the change. Your choice is saved either way."
+              }
             />
 
             <Button onClick={join} size="lg" className="w-full">

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -144,6 +146,21 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 }
 
 func (s *Store) queryWebinars(ctx context.Context, where string, args ...any) ([]types.Webinar, error) {
+	out, err := s.queryWebinarRows(ctx, where, args...)
+	if err != nil {
+		return nil, err
+	}
+	return s.attachChildren(ctx, out)
+}
+
+/* queryWebinarRows is queryWebinars without the child fetch.
+ *
+ * Split out for the paginated reads, which ask for one row more than they will
+ * return in order to find out whether a next page exists. Attaching panelists
+ * and custom questions to a row that is about to be discarded is two wasted
+ * queries per page, so the caller trims first and attaches after.
+ */
+func (s *Store) queryWebinarRows(ctx context.Context, where string, args ...any) ([]types.Webinar, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+webinarColumns+webinarFrom+where, args...)
 	if err != nil {
 		return nil, err
@@ -161,7 +178,7 @@ func (s *Store) queryWebinars(ctx context.Context, where string, args ...any) ([
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return s.attachChildren(ctx, out)
+	return out, nil
 }
 
 /* VisibleTo returns every webinar one account is entitled to see in a list.
@@ -193,10 +210,243 @@ func (s *Store) VisibleTo(ctx context.Context, userID string) ([]types.Webinar, 
 		 ORDER BY w.starts_at ASC`, userID)
 }
 
-// ByHost returns every webinar owned by one host, including drafts and past.
-func (s *Store) ByHost(ctx context.Context, hostID string) ([]types.Webinar, error) {
-	return s.queryWebinars(ctx,
-		` WHERE w.host_id = $1 ORDER BY w.starts_at ASC`, hostID)
+// ------------------------------------------------- a host's own list, by page
+
+/* HostWebinarTab is one bucket of the host portal's list.
+ *
+ * Not the same axis as a lifecycle status, which is why it exists: "upcoming"
+ * covers scheduled *and* live, because a host looking at what is coming up
+ * counts the session currently running as one of them. The portal's tabs and
+ * this type are deliberately the same three values, so a tab click is one
+ * query parameter rather than a translation table on either side.
+ */
+type HostWebinarTab string
+
+const (
+	HostTabUpcoming HostWebinarTab = "upcoming"
+	HostTabPast     HostWebinarTab = "past"
+	HostTabDrafts   HostWebinarTab = "drafts"
+)
+
+// statuses is the lifecycle states one tab holds. An unrecognised tab reads as
+// upcoming, matching the portal's own default, so a missing parameter lands on
+// the same page a host sees when they arrive.
+func (t HostWebinarTab) statuses() []string {
+	switch t {
+	case HostTabPast:
+		return []string{string(types.StatusEnded)}
+	case HostTabDrafts:
+		return []string{string(types.StatusDraft)}
+	default:
+		return []string{string(types.StatusScheduled), string(types.StatusLive)}
+	}
+}
+
+// Page size for a host's own list: enough to fill a screen, few enough that a
+// host with hundreds of sessions is not made to download all of them to read
+// the next one up. Max exists so a caller cannot ask for the whole table back
+// by passing limit=100000 and undo the point of paging.
+const (
+	DefaultHostWebinarLimit = 10
+	MaxHostWebinarLimit     = 100
+)
+
+/* HostWebinarFilter narrows and pages one host's own webinars. Every field is
+ * optional: a zero filter is the first page of Upcoming, which is what the
+ * portal asks for on arrival. */
+type HostWebinarFilter struct {
+	// Tab picks the bucket. Empty means upcoming.
+	Tab HostWebinarTab
+	// Search matches the topic, case-insensitively and anywhere within it. A
+	// host searches for the two words they remember from a title, not a prefix.
+	Search string
+	// From/To bound starts_at inclusively. Zero on either end is unbounded in
+	// that direction, so picking only one date still means something.
+	From, To time.Time
+	// Limit is rows per page, defaulting to DefaultHostWebinarLimit and capped
+	// at MaxHostWebinarLimit.
+	Limit int
+	// Cursor resumes after a previous page's last row. Opaque — produced by
+	// ByHostPage, never built by a caller.
+	Cursor string
+}
+
+/* ByHostPage returns one page of the webinars owned by a host, with the tab
+ * counts alongside.
+ *
+ * Keyset paging on (starts_at, slug), not OFFSET. A host's list changes under
+ * them — a session goes live, a draft gets published, a scheduled one is
+ * deleted — and OFFSET 10 after any of that either repeats a row or skips one.
+ * A keyset says "after this exact session", which stays true regardless.
+ *
+ * The cursor carries only the slug; the anchor timestamp is resolved in SQL
+ * from it. Two reasons: types.Webinar formats StartsAt to whole seconds, so a
+ * cursor built from the row the client holds would compare short against a
+ * stored microsecond value and hand back the anchor row a second time; and a
+ * client that cannot see the ordering key cannot come to depend on it.
+ *
+ * Ordering flips per tab. Upcoming and Drafts run ascending — the next thing to
+ * happen belongs at the top. Past runs descending, because a host reviewing
+ * what happened means the session that just ended, not the first one they ever
+ * ran, the same reasoning AdminWebinars sorts on.
+ */
+func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilter) (types.HostWebinarPage, error) {
+	limit := f.Limit
+	if limit <= 0 {
+		limit = DefaultHostWebinarLimit
+	}
+	if limit > MaxHostWebinarLimit {
+		limit = MaxHostWebinarLimit
+	}
+
+	args := []any{hostID}
+	arg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	/* Search and dates narrow the counts as well as the rows, so a badge can
+	 * never disagree with the list under it — and a host who searches is told
+	 * which tab their matches are in rather than being shown three totals for
+	 * a list they are not looking at. The tab and the cursor are page-only:
+	 * counting a tab through its own filter would make every badge read 10. */
+	narrow := ""
+	if !f.From.IsZero() {
+		narrow += " AND w.starts_at >= " + arg(f.From)
+	}
+	if !f.To.IsZero() {
+		narrow += " AND w.starts_at <= " + arg(f.To)
+	}
+	if q := strings.TrimSpace(f.Search); q != "" {
+		narrow += " AND w.topic ILIKE " + arg("%"+likeLiteral(q)+"%") + ` ESCAPE '\'`
+	}
+	countArgs := slices.Clone(args)
+
+	where := " WHERE w.host_id = $1" + narrow +
+		" AND w.status = ANY(" + arg(f.Tab.statuses()) + ")"
+
+	if f.Cursor != "" {
+		slug, err := decodeHostCursor(f.Cursor)
+		if err != nil {
+			return types.HostWebinarPage{}, err
+		}
+		// One bound parameter, used twice: as the anchor lookup and as the
+		// tuple's own tiebreaker. Scoped to this host so a cursor cannot be
+		// pointed at a row the caller is not allowed to read.
+		p := arg(slug)
+		cmp := ">"
+		if f.Tab == HostTabPast {
+			cmp = "<"
+		}
+		where += " AND (w.starts_at, w.slug) " + cmp +
+			" ((SELECT starts_at FROM webinars WHERE slug = " + p +
+			" AND host_id = $1), " + p + "::text)"
+	}
+
+	dir := "ASC"
+	if f.Tab == HostTabPast {
+		dir = "DESC"
+	}
+	// One row more than asked for: whether a next page exists is a fact about
+	// the data, and reading it off an extra row costs nothing next to a second
+	// COUNT query per page.
+	where += " ORDER BY w.starts_at " + dir + ", w.slug " + dir +
+		" LIMIT " + arg(limit+1)
+
+	rows, err := s.queryWebinarRows(ctx, where, args...)
+	if err != nil {
+		return types.HostWebinarPage{}, err
+	}
+	more := len(rows) > limit
+	if more {
+		rows = rows[:limit]
+	}
+	items, err := s.attachChildren(ctx, rows)
+	if err != nil {
+		return types.HostWebinarPage{}, err
+	}
+
+	counts, err := s.hostWebinarCounts(ctx, narrow, countArgs...)
+	if err != nil {
+		return types.HostWebinarPage{}, err
+	}
+
+	page := types.HostWebinarPage{Items: items, Counts: counts}
+	switch f.Tab {
+	case HostTabPast:
+		page.Total = counts.Past
+	case HostTabDrafts:
+		page.Total = counts.Drafts
+	default:
+		page.Total = counts.Upcoming
+	}
+	if more && len(items) > 0 {
+		page.NextCursor = encodeHostCursor(items[len(items)-1].ID)
+	}
+	return page, nil
+}
+
+// hostWebinarCounts tallies all three tabs in one pass under the same narrowing
+// clause as the page. Grouping by status and folding into buckets here keeps the
+// tab definition in exactly one place — HostWebinarTab.statuses.
+func (s *Store) hostWebinarCounts(ctx context.Context, narrow string, args ...any) (types.HostWebinarCounts, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT w.status, count(*) FROM webinars w
+		 WHERE w.host_id = $1`+narrow+`
+		 GROUP BY w.status`, args...)
+	if err != nil {
+		return types.HostWebinarCounts{}, err
+	}
+	defer rows.Close()
+
+	var out types.HostWebinarCounts
+	for rows.Next() {
+		var status string
+		var n int
+		if err := rows.Scan(&status, &n); err != nil {
+			return types.HostWebinarCounts{}, err
+		}
+		switch types.WebinarStatus(status) {
+		case types.StatusEnded:
+			out.Past += n
+		case types.StatusDraft:
+			out.Drafts += n
+		case types.StatusScheduled, types.StatusLive:
+			out.Upcoming += n
+		}
+	}
+	return out, rows.Err()
+}
+
+/* likeLiteral makes a host's search text mean itself inside an ILIKE pattern.
+ * Unescaped, "50% off" would match any title starting "50" and "kick_off" would
+ * match "kickoff" — wildcards the host did not type and cannot see. The
+ * backslash is the escape character the query names explicitly, since the
+ * default depends on standard_conforming_strings. */
+func likeLiteral(q string) string {
+	var b strings.Builder
+	for _, r := range q {
+		if r == '%' || r == '_' || r == '\\' {
+			b.WriteRune('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// encodeHostCursor / decodeHostCursor keep the paging key opaque. Base64 is not
+// security — it is a sign that the value is the server's to define, so nobody
+// builds one by hand and depends on a format that is free to change.
+func encodeHostCursor(slug string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(slug))
+}
+
+func decodeHostCursor(cursor string) (string, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil || len(raw) == 0 {
+		return "", fmt.Errorf("%w: cursor is not one this server issued", ErrInvalid)
+	}
+	return string(raw), nil
 }
 
 // AdminWebinarFilter narrows AdminWebinars. Every field is optional and zero

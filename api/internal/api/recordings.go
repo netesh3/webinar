@@ -484,7 +484,41 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 	http.ServeContent(w, r, name, rec.CreatedAt, file)
 }
 
-// handleLiveKitWebhook receives events from LiveKit, including EGRESS_ENDED.
+/* slugFromRoom, participantFromEvent and eventTime read a webhook event's envelope.
+ *
+ * Separate from the handler because every one of them has a "we cannot tell" answer that the
+ * handler must not guess at: an event for a room this deployment did not create, an event with
+ * no participant attached, a timestamp LiveKit did not set. Each returns the zero value and
+ * the caller skips, rather than writing an attendance row against an empty slug.
+ */
+func slugFromRoom(room *livekit.Room) string {
+	if room == nil {
+		return ""
+	}
+	return lk.SlugFromRoom(room.Name)
+}
+
+func participantFromEvent(event *livekit.WebhookEvent) (slug, identity, name string) {
+	p := event.Participant
+	if p == nil {
+		return "", "", ""
+	}
+	return slugFromRoom(event.Room), p.Identity, p.Name
+}
+
+/* eventTime prefers LiveKit's own clock over ours.
+ *
+ * A webhook is retried until it is acknowledged, so "now" in this process can be minutes after
+ * the thing it describes. CreatedAt is when the event happened; falling back to now() only
+ * when it is unset, which would put the error in the same direction but smaller. */
+func eventTime(event *livekit.WebhookEvent) time.Time {
+	if event.CreatedAt > 0 {
+		return time.Unix(event.CreatedAt, 0)
+	}
+	return time.Now()
+}
+
+// handleLiveKitWebhook receives events from LiveKit: attendance, and EGRESS_ENDED.
 func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 	event, err := webhook.ReceiveWebhookEvent(r, s.sfu.KeyProvider())
 	if err != nil {
@@ -494,6 +528,60 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch event.Event {
+	/* Attendance, from the SFU rather than from the browser.
+	 *
+	 * These events were already arriving here and being dropped: LiveKit posts every event to
+	 * every configured webhook URL, and this switch only knew about egress. They are the only
+	 * honest source for a departure — a browser that crashes, loses its network, or is closed
+	 * by the lid coming down sends nothing, and a "leave" the client is trusted to report is
+	 * a leave that goes missing exactly when somebody's laptop dies mid-webinar.
+	 *
+	 * CONNECTION_ABORTED is treated as a departure too. It means a participant reached the
+	 * signalling layer and never established media; whatever it says about their connection,
+	 * they are not in the room, and leaving the visit open would have them still watching
+	 * until the session ended.
+	 */
+	case webhook.EventParticipantJoined:
+		slug, identity, name := participantFromEvent(event)
+		if slug == "" || identity == "" {
+			break
+		}
+		at := time.Now()
+		if p := event.Participant; p != nil && p.JoinedAt > 0 {
+			// The SFU's own timestamp, so a webhook delayed by a retry does not record
+			// somebody as having arrived when the retry landed.
+			at = time.Unix(p.JoinedAt, 0)
+		}
+		if err := s.store.OpenVisit(r.Context(), slug, identity, name, at); err != nil {
+			s.log.Warn("livekit webhook: could not open a visit",
+				"slug", slug, "identity", identity, "error", err)
+		}
+
+	case webhook.EventParticipantLeft, webhook.EventParticipantConnectionAborted:
+		slug, identity, _ := participantFromEvent(event)
+		if slug == "" || identity == "" {
+			break
+		}
+		if err := s.store.CloseVisit(r.Context(), slug, identity, eventTime(event)); err != nil {
+			s.log.Warn("livekit webhook: could not close a visit",
+				"slug", slug, "identity", identity, "error", err)
+		}
+
+	/* The room is gone, so nobody is in it — whatever the participant events managed to say.
+	 *
+	 * The backstop for a lost participant_left. Without it one dropped webhook leaves a visit
+	 * open forever, and an open visit reads as "still watching": that person's time would go
+	 * on growing against `now()` every time anybody opened the report. */
+	case webhook.EventRoomFinished:
+		slug := slugFromRoom(event.Room)
+		if slug == "" {
+			break
+		}
+		if err := s.store.CloseOpenVisits(r.Context(), slug, eventTime(event)); err != nil {
+			s.log.Warn("livekit webhook: could not close open visits",
+				"slug", slug, "error", err)
+		}
+
 	case webhook.EventEgressEnded:
 		info := event.EgressInfo
 		if info == nil {

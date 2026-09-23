@@ -47,7 +47,7 @@ type Notification struct {
 	 * A WhatsApp row is addressed to a ContactID and carries a template instead of a
 	 * Subject and Body, because Meta will not deliver a business's own words to
 	 * somebody who has not written in within the last 24 hours — and a reminder, by
-	 * definition, arrives when nobody has. See migrations/0043 for why this is the
+	 * definition, arrives when nobody has. See migrations/0044 for why this is the
 	 * same table rather than a second queue. */
 	Channel          string
 	ContactID        string
@@ -57,12 +57,12 @@ type Notification struct {
 	// for this recipient.
 	TemplateParams []string
 	/* BroadcastID is set on exactly the broadcast rows, and on nothing else — the
-	 * constraint in 0044 enforces the "exactly". The reminder sweeps use its absence
+	 * constraint in 0045 enforces the "exactly". The reminder sweeps use its absence
 	 * to mean "this is not part of a broadcast", so moving a webinar cannot rewrite
 	 * the due time of a message the host scheduled themselves. */
 	BroadcastID string
 	/* DripEnrollmentID is set on exactly the drip rows, by the same rule and the same
-	 * kind of constraint in 0045. One row per step per person, written when the step
+	 * kind of constraint in 0046. One row per step per person, written when the step
 	 * comes due rather than when they were enrolled: the time of the third message is
 	 * not knowable until the second has gone. */
 	DripEnrollmentID string

@@ -130,6 +130,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the virtual-background catalogue: an old stored image id must not reach
 	# the compositor as a missing texture.
 	cd web && node --experimental-strip-types --no-warnings lib/backgrounds.test.mts
+	# And the low-light amount, which the shader divides by as a gamma exponent — a
+	# negative one out of storage inverts the presenter's camera. The curve itself is
+	# GLSL and is checked on a real GPU by `make test-low-light`.
+	cd web && node --experimental-strip-types --no-warnings lib/low-light.test.mts
 
 .PHONY: test-mask
 test-mask: ## Virtual-background mask check: make test-mask PHOTO=~/some-photo-of-a-person.jpg
@@ -138,6 +142,14 @@ test-mask: ## Virtual-background mask check: make test-mask PHOTO=~/some-photo-o
 	# required — the page is assembled from the vendored MediaPipe assets.
 	@test -n "$(PHOTO)" || (echo "set PHOTO=<a photo with a person in it>"; exit 2)
 	node e2e/probe-mask.mjs "$(PHOTO)"
+
+.PHONY: test-low-light
+test-low-light: ## Low-light curve on a real GPU. Optional: make test-low-light PHOTO=~/photo.jpg
+	# The curve is GLSL, so the only honest check compiles the shipped string and reads
+	# pixels back — a JavaScript copy of the formula would assert every property and prove
+	# none of them. No server and no model needed; the curve knows nothing about the person.
+	# PHOTO additionally writes a side-by-side strip, for judging how much lift is right.
+	node --experimental-strip-types --no-warnings e2e/probe-low-light.mjs $(PHOTO)
 
 .PHONY: test-e2e
 test-e2e: ## Three-browser WebRTC test (needs livekit + api + web running)

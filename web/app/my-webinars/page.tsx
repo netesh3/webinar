@@ -18,8 +18,13 @@ export default function MyWebinarsPage() {
       <TopNav />
       <main className="mx-auto w-full max-w-4xl flex-1 px-5 py-8">
         <div className="mb-6">
+          {/* Same name as the WatchList tab on the host page, because it is the
+              same list — a person told "WatchList" by one door and "My Webinar"
+              by the other has to work out that they lead to one place. The path
+              keeps its old name: renaming a URL breaks the links already sent to
+              it, and nobody reads the path for the title. */}
           <h1 className="text-[26px] font-semibold tracking-[-0.02em]">
-            My Webinar
+            WatchList
           </h1>
           <p className="mt-1.5 text-[14px] text-ink-2">
             Everything you&apos;ve registered for, with your personal join key.

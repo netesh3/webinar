@@ -42,7 +42,7 @@ var (
 	ErrHasWebinars = errors.New("account owns webinars")
 	/* ErrInUse means a row cannot be deleted because something still points at it and
 	 * the pointer is not ours to break. The one case today is a tag a sequence triggers
-	 * on (crm_drips.trigger_tag_id is ON DELETE RESTRICT — see migrations/0048): NULL
+	 * on (crm_drips.trigger_tag_id is ON DELETE RESTRICT — see migrations/0049): NULL
 	 * there means "any tag", so letting the delete through would silently widen the rule
 	 * from one label to every label. Distinct from ErrConflict because the handler names
 	 * the sequence in its refusal, which is the only thing that makes it actionable.

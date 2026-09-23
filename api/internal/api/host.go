@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/mail"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,14 +25,76 @@ import (
 // typo, and an uncapped duration makes the "ends at" arithmetic meaningless.
 const maxDurationMin = 24 * 60
 
+/* handleHostWebinars is GET /api/host/webinars — one page of the sessions this
+ * account owns, in the bucket the portal is showing.
+ *
+ * Paged rather than complete. It used to return every webinar the host had ever
+ * run on every visit to the portal, which is a growing response for a screen
+ * that only ever shows ten rows. The tab counts come back with it because the
+ * client can no longer count what it does not have.
+ *
+ * tab is upcoming | past | drafts, defaulting to upcoming. from/to are plain
+ * dates (2006-01-02) rather than timestamps, because a date picker is what the
+ * host filtering "sessions in March" actually has — and to is read as the end
+ * of that day, so the day the host asked for is included. cursor is opaque and
+ * comes from a previous page's nextCursor.
+ */
 func (s *Server) handleHostWebinars(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	list, err := s.store.ByHost(r.Context(), user.ID)
+	q := r.URL.Query()
+
+	filter := store.HostWebinarFilter{Search: q.Get("q"), Cursor: q.Get("cursor")}
+
+	switch tab := store.HostWebinarTab(q.Get("tab")); tab {
+	case "", store.HostTabUpcoming, store.HostTabPast, store.HostTabDrafts:
+		filter.Tab = tab
+	default:
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_tab",
+			"tab must be upcoming, past, or drafts.")
+		return
+	}
+
+	if v := q.Get("from"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_from", "from must be YYYY-MM-DD.")
+			return
+		}
+		filter.From = t
+	}
+	if v := q.Get("to"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_to", "to must be YYYY-MM-DD.")
+			return
+		}
+		// End of that day, inclusive — a bare date otherwise means midnight,
+		// which would exclude every session on the day the host picked.
+		filter.To = t.Add(24*time.Hour - time.Nanosecond)
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_limit", "limit must be a positive whole number.")
+			return
+		}
+		filter.Limit = n
+	}
+
+	page, err := s.store.ByHostPage(r.Context(), user.ID, filter)
+	if errors.Is(err, store.ErrInvalid) {
+		// A stale or hand-built cursor. Worth its own status: the host should
+		// start the list over, not see "something went wrong" on a page that
+		// would load perfectly without it.
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_cursor",
+			"That page marker is no longer valid — reload the list.")
+		return
+	}
 	if err != nil {
 		s.fail(w, r, "host webinars", err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, list)
+	httpx.JSON(w, http.StatusOK, page)
 }
 
 // handleStageWebinars lists sessions this account is a panelist on but does not
@@ -762,6 +825,16 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	 * the sweeper closes on the meeting limit enrolls the same people — and after the
 	 * room is gone, so who attended has its final answer. */
 	s.enrollDripsOnWebinarEnd(ctx, wb)
+	/* Before the report, because the report reads what this writes.
+	 *
+	 * A visit left open counts against now() every time anybody opens the report, so the
+	 * number would keep growing for weeks after the session. room_finished is the tidier
+	 * signal and usually arrives, but it does not if the SFU is restarted mid-session and it
+	 * says nothing about a room this host just ended while others were still in it — so both
+	 * paths close visits and whichever arrives first wins. */
+	if err := s.store.CloseOpenVisits(ctx, slug, time.Now()); err != nil {
+		s.log.Warn("end webinar: could not close open visits", "slug", slug, "error", err)
+	}
 	if _, err := s.store.ComputeAndSaveReport(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not write report", "slug", slug, "error", err)
 	}
@@ -1425,23 +1498,63 @@ func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf(`attachment; filename="%s-report.csv"`, slug))
+	/* Columns, and why there are now four more of them.
+	 *
+	 * A spreadsheet is where somebody goes to answer a question the screen did not anticipate
+	 * — "who left in the first ten minutes", "did the people who rejoined stay longer" — and
+	 * neither is answerable from a single total. So the visit rows carry their own in and out
+	 * times, and the total is on the person row above them.
+	 */
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"section", "name", "email", "watch_min", "question", "answered"})
-	_ = cw.Write([]string{"summary", "registered", fmt.Sprint(rep.Registered), "", "", ""})
-	_ = cw.Write([]string{"summary", "approved", fmt.Sprint(rep.Approved), "", "", ""})
-	_ = cw.Write([]string{"summary", "attended", fmt.Sprint(rep.Attended), "", "", ""})
-	_ = cw.Write([]string{"summary", "avg_watch_min", fmt.Sprint(rep.AvgWatchMin), "", "", ""})
-	_ = cw.Write([]string{"summary", "questions", fmt.Sprint(rep.Questions), "", "", ""})
-	_ = cw.Write([]string{"summary", "poll_voters", fmt.Sprint(rep.PollVoters), "", "", ""})
-	for _, a := range rep.Attendees {
-		_ = cw.Write([]string{"attended", a.Name, a.Email, fmt.Sprint(a.WatchMin), "", ""})
+	_ = cw.Write([]string{
+		"section", "name", "email", "role",
+		"joined_at", "left_at", "minutes", "visits",
+		"question", "answered",
+	})
+	summary := func(label string, value int) {
+		_ = cw.Write([]string{"summary", label, fmt.Sprint(value), "", "", "", "", "", "", ""})
 	}
+	summary("registered", rep.Registered)
+	summary("approved", rep.Approved)
+	summary("attended", rep.Attended)
+	summary("avg_watch_min", rep.AvgWatchMin)
+	summary("questions", rep.Questions)
+	summary("poll_voters", rep.PollVoters)
+
+	for _, a := range rep.Attendees {
+		// The person: their whole session, with first in, last out and the summed total.
+		_ = cw.Write([]string{
+			"attended", a.Name, a.Email, a.Role,
+			a.FirstJoinedAt, a.LastLeftAt, fmt.Sprint(a.WatchMin), fmt.Sprint(len(a.Visits)),
+			"", "",
+		})
+		/* Then one row per visit, and only when there is more than one.
+		 *
+		 * A single visit would repeat the row above it exactly, and a CSV where every
+		 * attendee appears twice is one somebody has to de-duplicate before they can count
+		 * anything. The rows that add something are the rejoins. */
+		if len(a.Visits) < 2 {
+			continue
+		}
+		for _, v := range a.Visits {
+			_ = cw.Write([]string{
+				"visit", a.Name, a.Email, a.Role,
+				v.JoinedAt, v.LeftAt, fmt.Sprint(v.Minutes), "",
+				"", "",
+			})
+		}
+	}
+
 	for _, q := range rep.QuestionRows {
 		name := q.Name
 		if q.Anonymous {
 			name = "Anonymous"
 		}
-		_ = cw.Write([]string{"question", name, "", "", q.Text, fmt.Sprint(q.Answered)})
+		_ = cw.Write([]string{
+			"question", name, "", "",
+			"", "", "", "",
+			q.Text, fmt.Sprint(q.Answered),
+		})
 	}
 	cw.Flush()
 }

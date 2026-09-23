@@ -65,6 +65,55 @@ export const NO_BACKGROUND: BackgroundChoice = { mode: "none" };
  *  segmentation edge does not become the most interesting thing on screen. */
 const BLUR_RADIUS = 12;
 
+// ------------------------------------------------------------------- low light
+
+/* The slider's range, in the units the preference is stored in.
+ *
+ * 0..100 rather than 0..1 because it is what reads well next to a slider ("40%"), and
+ * because an integer survives a JSON round trip through localStorage without accreting
+ * float noise. The shader wants 0..1; lowLightAmount is the one place that divides.
+ */
+export const LOW_LIGHT_MAX = 100;
+
+/** Slider steps. Fine enough to find the right amount, coarse enough that dragging
+ *  from one end to the other is a handful of uniform writes rather than a hundred. */
+export const LOW_LIGHT_STEP = 5;
+
+/* What the one-click version turns on.
+ *
+ * Measured rather than picked: at 50 a face midtone goes 64 -> 99 while a near-white 240
+ * only reaches 246 (see e2e/probe-low-light.mjs, which prints that table). Visibly lit and
+ * short of the point where a webcam's shadow noise comes up with the face — so it is the
+ * right answer for somebody who wants the problem gone rather than a control to operate.
+ */
+export const LOW_LIGHT_DEFAULT_ON = 50;
+
+/**
+ * asLowLight narrows whatever was in storage to a usable amount.
+ *
+ * Same job as asBackgroundChoice and the same reason: preferences are persisted as JSON
+ * and read back with a spread, so this can be a string, a NaN, or 5000 from a hand-edited
+ * value. An unchecked number reaches the shader as the gamma exponent, where a negative
+ * one inverts the picture and a huge one flattens it to white — both of which a presenter
+ * would see and have no way to explain.
+ */
+export function asLowLight(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(Math.max(Math.round(n), 0), LOW_LIGHT_MAX);
+}
+
+/** Stored units to shader units. */
+function lowLightAmount(stored: number): number {
+  return asLowLight(stored) / LOW_LIGHT_MAX;
+}
+
+/** A one-line description for a settings row, matching describeBackground. */
+export function describeLowLight(stored: number): string {
+  const n = asLowLight(stored);
+  return n === 0 ? "Off" : `${n}%`;
+}
+
 /**
  * asBackgroundChoice narrows whatever was in storage to a mode that still exists.
  *
@@ -156,6 +205,7 @@ const SLOW_FRAME_LIMIT = 55;
 
 type Processor = {
   setBackground: (background: Background) => Promise<void>;
+  setLowLight: (amount: number) => void;
   destroy: () => Promise<void>;
 };
 
@@ -187,7 +237,14 @@ export function backgroundsSupported(): boolean {
 }
 
 /**
- * Applies a background to a camera track, and keeps applying it.
+ * Applies a background and a low-light lift to a camera track, and keeps applying them.
+ *
+ * Both, from one hook, because they are one GPU pass. The compositor already has the
+ * person's pixels in a register to blend them over a background; lifting them there costs
+ * an instruction, and doing it in a second processor would mean a second WebGL context, a
+ * second canvas.captureStream and a second frame of latency for something that is four
+ * lines of shader. The name stayed `useVirtualBackground` for the same reason it is not
+ * two processors: this is where the pass is.
  *
  * The track changes underneath this: stopping and starting the camera republishes it,
  * switching camera device replaces it, and a promoted attendee gets one for the first
@@ -201,10 +258,21 @@ export function backgroundsSupported(): boolean {
 export function useVirtualBackground(
   track: LocalVideoTrack | undefined,
   choice: BackgroundChoice,
+  /** The low-light lift in stored units, 0..LOW_LIGHT_MAX. 0 is off. */
+  lowLight: number,
   onDegraded?: () => void,
 ) {
   const processor = useRef<Processor | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /* The latest amount, for the attach path to read at the moment it builds the
+   * transformer. Attaching is async, so the value can move between the effect starting
+   * and the processor existing — and the push effect below cannot cover that window,
+   * because there is nothing to push to yet. */
+  const latestLowLight = useRef(lowLight);
+  useEffect(() => {
+    latestLowLight.current = lowLight;
+  }, [lowLight]);
 
   // The slow-frame window, reset whenever the mode changes.
   const slow = useRef({ frames: 0, slowFrames: 0, totalMs: 0, segmentMs: 0 });
@@ -217,8 +285,17 @@ export function useVirtualBackground(
   }, [onDegraded]);
 
   const sid = track?.sid ?? track?.mediaStreamID;
+  /* Whether the lift is on, NOT how much.
+   *
+   * The amount must not be in this key. It changes on every pixel of a slider drag, and
+   * this key drives the attach/detach effect — so including it would tear the processor
+   * down and stand it back up thirty times on the way from 0 to 60, which the audience
+   * sees as a stutter. Whether there is anything to attach AT ALL is all this needs, and
+   * the amount goes in through setLowLight. */
+  const lit = asLowLight(lowLight) > 0;
   const key =
-    choice.mode === "image" ? `image:${choice.id}` : choice.mode;
+    (choice.mode === "image" ? `image:${choice.id}` : choice.mode) +
+    (lit ? "+lit" : "");
 
   /* Fetch the model before there is a track to apply it to.
    *
@@ -243,7 +320,7 @@ export function useVirtualBackground(
     (async () => {
       // Nothing to do, and nothing to load: a participant who never turns a
       // background on never downloads nine megabytes of WASM.
-      if (choice.mode === "none") {
+      if (choice.mode === "none" && !lit) {
         publishFrameCost(null);
         if (processor.current) {
           try {
@@ -258,7 +335,14 @@ export function useVirtualBackground(
       }
 
       if (!backgroundsSupported()) {
-        setError("This browser can't run virtual backgrounds.");
+        // Both need WebGL2, and the sentence has to name the one being asked for:
+        // "can't run virtual backgrounds" over a brightness slider reads as a
+        // different feature failing.
+        setError(
+          choice.mode === "none"
+            ? "This browser can't adjust your video. It needs WebGL2."
+            : "This browser can't run virtual backgrounds.",
+        );
         return;
       }
 
@@ -281,6 +365,7 @@ export function useVirtualBackground(
 
           const transformer = new SoftSegmenter({
             background: backgroundFor(choice),
+            lowLight: lowLightAmount(latestLowLight.current),
             onFrame: ({ totalMs, segmentMs }) => {
               const w = slow.current;
               w.frames += 1;
@@ -313,6 +398,7 @@ export function useVirtualBackground(
           const wrapper = new ProcessorWrapper(transformer as never, "soft-background");
           const created: Processor = {
             setBackground: (background) => transformer.setBackground(background),
+            setLowLight: (amount) => transformer.setLowLight(amount),
             destroy: () => wrapper.destroy(),
           };
 
@@ -321,11 +407,16 @@ export function useVirtualBackground(
             return;
           }
           processor.current = created;
+          // Again, after assignment: the slider may have moved while the import above
+          // was in the air, and until this line there was nothing for the push effect
+          // below to write to.
+          created.setLowLight(lowLightAmount(latestLowLight.current));
           await track.setProcessor(wrapper as never);
         } else {
           // Changed in place rather than rebuilt: recreating drops frames while the
           // WASM re-initialises, and the audience sees the stutter.
           await processor.current.setBackground(backgroundFor(choice));
+          processor.current.setLowLight(lowLightAmount(latestLowLight.current));
         }
         if (!cancelled) setError(null);
       } catch (err) {
@@ -346,6 +437,17 @@ export function useVirtualBackground(
     // hands back a new wrapper on every render for the same underlying track.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sid, key]);
+
+  /* The amount, straight into the processor that is already running.
+   *
+   * A uniform write, not a restart — see SoftSegmenter.setLowLight. Nothing is awaited
+   * and nothing is torn down, so dragging the slider is smooth and the published track
+   * never drops a frame. A no-op before the processor exists, which is fine: the attach
+   * path reads the same ref when it builds one.
+   */
+  useEffect(() => {
+    processor.current?.setLowLight(lowLightAmount(lowLight));
+  }, [lowLight]);
 
   // The window and the one-shot warning both reset when the mode changes, so a
   // lighter background gets a fair hearing on a device that failed with a heavier one.

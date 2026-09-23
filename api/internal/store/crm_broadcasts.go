@@ -15,7 +15,7 @@ import (
  * per person, written here in the same transaction as the broadcast they belong to.
  * That is the point of the design: the thing that sends a broadcast is the same
  * sweep that sends a reminder, so consent, backoff and "the host disconnected
- * WhatsApp yesterday" are handled once. See migrations/0044.
+ * WhatsApp yesterday" are handled once. See migrations/0045.
  *
  * What this file does own is the audience — which is SQL rather than product logic
  * only at first glance. Every clause in it is a person who must not be messaged.

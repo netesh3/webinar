@@ -36,7 +36,7 @@ type User struct {
 	// CanCdnBroadcast allows this host to run CDN HLS broadcast webinars.
 	CanCdnBroadcast bool
 	/* Features are the per-account switches an admin has turned on — the
-	 * types.Feature keys, and nothing else. Absent means off; see migrations/0047 for
+	 * types.Feature keys, and nothing else. Absent means off; see migrations/0048 for
 	 * why these are a list and can_host is a column.
 	 */
 	Features []string
@@ -52,7 +52,7 @@ type User struct {
 	 *
 	 * The token is what makes this host's messages billable to this host's own
 	 * WhatsApp Business Account, so it is per-account for the same reason the
-	 * YouTube grant is — see migrations/0040. Both timestamps are pointers because
+	 * YouTube grant is — see migrations/0041. Both timestamps are pointers because
 	 * NULL is meaningful for both: no expiry at all, and never connected.
 	 */
 	WhatsAppToken          string
@@ -64,7 +64,7 @@ type User struct {
 	WhatsAppConnectedAt    *time.Time
 	// WhatsAppRegisteredAt is when this number was registered with Cloud API from
 	// here, if it ever was. The PIN that did it is deliberately not stored — see
-	// migrations/0047.
+	// migrations/0048.
 	WhatsAppRegisteredAt *time.Time
 }
 
@@ -165,7 +165,7 @@ func scanUser(row scanner) (User, error) {
 }
 
 /* SetUserWhatsAppRegistered records that this host's number has been registered with
- * Cloud API. The PIN that did it is not a parameter: see migrations/0047.
+ * Cloud API. The PIN that did it is not a parameter: see migrations/0048.
  */
 func (s *Store) SetUserWhatsAppRegistered(ctx context.Context, userID string) error {
 	tag, err := s.pool.Exec(ctx,

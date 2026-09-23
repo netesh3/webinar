@@ -399,7 +399,7 @@ function Composer({
   useEffect(() => {
     let cancelled = false;
     api
-      .hostWebinars()
+      .hostWebinarsForPicker()
       .then((list) => {
         if (!cancelled) setWebinars(list);
       })

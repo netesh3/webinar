@@ -157,7 +157,7 @@ func (s *Server) handleSetCdnBroadcastCapability(w http.ResponseWriter, r *http.
  * what should BE cannot double-apply.
  *
  * The unknown-key refusal is the only validation these switches get. features is a text[]
- * with no CHECK behind it (see migrations/0047), so a typo in a client would otherwise be
+ * with no CHECK behind it (see migrations/0048), so a typo in a client would otherwise be
  * stored happily and read as off for ever — an admin would flip a switch, see it stick, and
  * the customer still could not use the thing. Refusing here is what makes types.Features the
  * list that decides.

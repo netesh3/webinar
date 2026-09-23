@@ -155,7 +155,7 @@ func (s *Server) handleWhatsAppCallback(w http.ResponseWriter, r *http.Request) 
  * The PIN is the host's, typed in the connect flow, and this is everything that happens
  * to it: it is validated for shape, handed to Meta, and dropped when the request ends.
  *
- *   - never stored. There is no column for it, and 0047 says why: a PIN this server
+ *   - never stored. There is no column for it, and 0048 says why: a PIN this server
  *     kept would be a credential for somebody else's WhatsApp number sitting in our
  *     database for the benefit of a button nobody needs.
  *   - never logged, at any level. The success line below names the number, not the PIN.

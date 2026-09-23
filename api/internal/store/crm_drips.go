@@ -17,9 +17,9 @@ import (
  * sequence without anybody watching, and the one the sweeper calls, which is the only
  * thing that decides a message is due.
  *
- * As in 0044, the messages are notifications. A step comes due, its row is written
+ * As in 0045, the messages are notifications. A step comes due, its row is written
  * into the outbox, and from there it is indistinguishable from a reminder: same
- * backoff, same consent re-check, same host's token and bill. See migrations/0045.
+ * backoff, same consent re-check, same host's token and bill. See migrations/0046.
  */
 
 // DripInput is a sequence as the host wrote it. Steps are the whole of it: saving
@@ -30,7 +30,7 @@ type DripInput struct {
 	// WebinarSlug scopes a webinar trigger to one webinar; empty means every webinar.
 	WebinarSlug string
 	// TagID scopes a tag_added trigger to one label; empty means any tag. The
-	// wildcard is why the column is ON DELETE RESTRICT — see migrations/0048.
+	// wildcard is why the column is ON DELETE RESTRICT — see migrations/0049.
 	TagID  string
 	Active bool
 	Steps  []types.CRMDripStep
@@ -295,7 +295,7 @@ const enrollSelect = `
 
 /* EnrollOnRegistration puts one new registrant on every sequence that fires for them.
  *
- * ON CONFLICT DO NOTHING, which is the rule in migrations/0045: somebody who has
+ * ON CONFLICT DO NOTHING, which is the rule in migrations/0046: somebody who has
  * already been through this sequence does not go through it again because they
  * registered for a second webinar.
  */
@@ -608,7 +608,7 @@ func (s *Store) DueDripSteps(ctx context.Context, limit int) ([]DripDue, error) 
  * One transaction, and the position is the guard: the update only matches an
  * enrollment still sitting at the step just queued, so two sweepers racing on the same
  * row produce one message and one ErrConflict rather than two of somebody's phone.
- * That is also why there is no unique index for this — see migrations/0045.
+ * That is also why there is no unique index for this — see migrations/0046.
  *
  * The step's own values are resolved by the caller, per person, exactly like a
  * broadcast's: the row records what was promised to this recipient at the moment it

@@ -1,21 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Alert, CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
-import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
+import { CalendarIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "./icons";
 import { useShareOrigin, useToast } from "./providers";
 import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
 import {
   formatCount,
   formatDay,
+  formatDuration,
+  formatTime,
   formatTimeRange,
   googleCalendarInviteUrl,
   tzLabel,
 } from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
-import type { Recording, RegistrantRow, SessionReport, Webinar } from "@/lib/api-types";
+import type {
+  AttendanceRow,
+  Recording,
+  RegistrantRow,
+  SessionReport,
+  Webinar,
+} from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
 /* Per-webinar management. Every tab here operates on real data — the share links
@@ -525,7 +533,14 @@ function ReportTab({ webinar: w }: { webinar: Webinar }) {
         questions: 2,
         pollVoters: 2,
         questionRows: [],
-        attendees: [],
+        /* Not an empty list any more, and each row is here for a reason: the table has four
+         * states worth looking at and none of them were reachable in preview.
+         *
+         * A rejoiner whose total is much less than their brackets (the case the whole change
+         * exists for), an early arrival whose waiting time is not counted, somebody still in
+         * the room, and the host — listed, labelled, and deliberately absent from the
+         * attended count above. */
+        attendees: BYPASS_ATTENDANCE,
       });
       return;
     }
@@ -592,22 +607,7 @@ function ReportTab({ webinar: w }: { webinar: Webinar }) {
                 Nobody was recorded in the room.
               </p>
             ) : (
-              <ul className="mt-3 divide-y divide-line text-[13px]">
-                {rep.attendees.map((a) => (
-                  <li
-                    key={a.identity}
-                    className="flex items-center justify-between gap-3 py-2"
-                  >
-                    <span>
-                      <span className="font-medium">{a.name}</span>
-                      {a.email ? (
-                        <span className="ml-2 text-ink-3">{a.email}</span>
-                      ) : null}
-                    </span>
-                    <span className="text-ink-3">{a.watchMin} min</span>
-                  </li>
-                ))}
-              </ul>
+              <AttendanceTable rows={rep.attendees} timeZone={w.timeZone} />
             )}
           </Card>
           <Card className="p-4">
@@ -632,6 +632,223 @@ function ReportTab({ webinar: w }: { webinar: Webinar }) {
             )}
           </Card>
         </>
+      )}
+    </div>
+  );
+}
+
+/* The preview's attendance rows, in the local-UI mode that has no API behind it.
+ *
+ * Times are fixed rather than relative to now: they are only ever read through
+ * formatTime(webinar.timeZone), the fixture webinar is two weeks in the past, and a clock that
+ * moved would make the one screen whose job is looking at a table impossible to compare
+ * against itself.
+ */
+const BYPASS_ATTENDANCE: AttendanceRow[] = [
+  {
+    identity: "att_preview_1",
+    name: "Amlesh Kumar",
+    email: "amlesh177@gmail.com",
+    role: "attendee",
+    // Watched the open and the close, nothing in the middle: brackets say 58 minutes, the
+    // total says 20, and the difference is the point of the table.
+    watchMin: 20,
+    firstJoinedAt: "2026-09-08T09:32:00Z",
+    lastLeftAt: "2026-09-08T10:30:00Z",
+    visits: [
+      { joinedAt: "2026-09-08T09:32:00Z", leftAt: "2026-09-08T09:44:00Z", minutes: 12 },
+      { joinedAt: "2026-09-08T10:05:00Z", leftAt: "2026-09-08T10:11:00Z", minutes: 6 },
+      { joinedAt: "2026-09-08T10:28:00Z", leftAt: "2026-09-08T10:30:00Z", minutes: 2 },
+    ],
+  },
+  {
+    identity: "att_preview_2",
+    name: "Sunayana G",
+    email: "sunayana.g23@gmail.com",
+    role: "attendee",
+    // Arrived twelve minutes early and sat on the waiting screen, which is not watching: in
+    // at 09:18, live at 09:30, so 42 minutes rather than 54.
+    watchMin: 42,
+    firstJoinedAt: "2026-09-08T09:18:00Z",
+    lastLeftAt: "2026-09-08T10:12:00Z",
+    visits: [
+      { joinedAt: "2026-09-08T09:18:00Z", leftAt: "2026-09-08T10:12:00Z", minutes: 42 },
+    ],
+  },
+  {
+    identity: "att_preview_3",
+    name: "Guest",
+    email: "",
+    role: "attendee",
+    // No departure: their laptop went to sleep and the SFU never said they left, so the row
+    // has to read as "still in" rather than inventing a time.
+    watchMin: 30,
+    firstJoinedAt: "2026-09-08T10:00:00Z",
+    lastLeftAt: "",
+    visits: [{ joinedAt: "2026-09-08T10:00:00Z", leftAt: "", minutes: 30 }],
+  },
+  {
+    identity: "user_preview_host",
+    name: "Preview Host",
+    email: "host@example.com",
+    role: "host",
+    watchMin: 60,
+    firstJoinedAt: "2026-09-08T09:28:00Z",
+    lastLeftAt: "2026-09-08T10:31:00Z",
+    visits: [
+      { joinedAt: "2026-09-08T09:28:00Z", leftAt: "2026-09-08T10:31:00Z", minutes: 60 },
+    ],
+  },
+];
+
+/* Who was in the room, when, and for how long.
+ *
+ * One row per person with their visits folded into it, rather than one row per visit. A person
+ * who dropped out three times is one attendee and reads as one line; flattening the visits
+ * would put them in the table three times and make "how long did they watch" a sum the reader
+ * has to do. The rejoins are the interesting part, so they are a click away rather than a
+ * column away — and the row says how many there were, so nobody has to open rows to find out
+ * which ones have anything behind them.
+ *
+ * In and Out are the brackets of the whole session: first arrival, last departure. Total is the
+ * sum of the visits, which for a rejoiner is LESS than Out minus In — and that gap is the
+ * entire point of the table. Before this, Total was Out minus In, so somebody who watched the
+ * first five minutes and the last five of an hour was reported as having watched the hour.
+ */
+function AttendanceTable({
+  rows,
+  timeZone,
+}: {
+  rows: AttendanceRow[];
+  timeZone: string;
+}) {
+  /* Which rows are open, by identity. A Set rather than a flag on the row: the rows come from
+   * the server on every poll of the report, and state keyed to the data would be lost each
+   * time one arrived. */
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (identity: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(identity)) next.add(identity);
+      return next;
+    });
+
+  return (
+    <div className="-mx-4 mt-3 overflow-x-auto px-4">
+      <table className="w-full min-w-[560px] text-[12.5px]">
+        <thead>
+          <tr className="border-b border-line text-left text-[11.5px] text-ink-3">
+            <th className="py-2 pr-3 font-medium">Name</th>
+            <th className="py-2 pr-3 font-medium">In</th>
+            <th className="py-2 pr-3 font-medium">Out</th>
+            <th className="py-2 pr-3 text-right font-medium">Total</th>
+            <th className="py-2 text-right font-medium">Visits</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((a) => {
+            const expandable = a.visits.length > 1;
+            const isOpen = open.has(a.identity);
+            return (
+              <Fragment key={a.identity}>
+                <tr
+                  className={`border-b border-line ${
+                    expandable ? "cursor-pointer hover:bg-surface-2" : ""
+                  }`}
+                  onClick={expandable ? () => toggle(a.identity) : undefined}
+                >
+                  <td className="py-2.5 pr-3">
+                    <div className="flex items-center gap-1.5">
+                      {/* Only where there is something to open. A disclosure arrow on a row
+                          that does nothing is a promise the row cannot keep. */}
+                      {expandable ? (
+                        <ChevronDownIcon
+                          className={`size-3.5 shrink-0 text-ink-3 transition-transform ${
+                            isOpen ? "" : "-rotate-90"
+                          }`}
+                        />
+                      ) : (
+                        <span aria-hidden className="size-3.5 shrink-0" />
+                      )}
+                      <span className="font-medium">{a.name}</span>
+                      {/* The stage is in this list, labelled, because "was my panelist there
+                          for the whole hour?" is a real question — but the counts above are
+                          attendees only, so a host is never in their own audience figures. */}
+                      {a.role !== "attendee" && (
+                        <Badge tone={a.role === "host" ? "brand" : "neutral"}>
+                          {a.role === "host" ? "Host" : "Panelist"}
+                        </Badge>
+                      )}
+                    </div>
+                    {a.email && (
+                      <div className="text-[11.5px] text-ink-3">{a.email}</div>
+                    )}
+                  </td>
+                  <td className="py-2.5 pr-3 text-ink-2 tabular-nums">
+                    {a.firstJoinedAt ? formatTime(a.firstJoinedAt, timeZone) : "—"}
+                  </td>
+                  <td className="py-2.5 pr-3 text-ink-2 tabular-nums">
+                    {/* No departure means they were still in the room when this was read,
+                        which is a different fact from "left at the end" and has to look
+                        different. */}
+                    {a.lastLeftAt ? (
+                      formatTime(a.lastLeftAt, timeZone)
+                    ) : (
+                      <span className="text-ink-3">still in</span>
+                    )}
+                  </td>
+                  <td className="py-2.5 pr-3 text-right tabular-nums">
+                    {formatDuration(a.watchMin)}
+                  </td>
+                  <td className="py-2.5 text-right text-ink-2 tabular-nums">
+                    {a.visits.length}
+                  </td>
+                </tr>
+
+                {expandable && isOpen && (
+                  <tr className="border-b border-line bg-surface-2/40">
+                    <td colSpan={5} className="px-3 py-2">
+                      <ul className="grid gap-1">
+                        {a.visits.map((v, i) => (
+                          <li
+                            key={`${v.joinedAt}-${i}`}
+                            className="flex items-center gap-2 text-[11.5px] text-ink-2 tabular-nums"
+                          >
+                            <span className="text-ink-3">{i + 1}.</span>
+                            <span>{formatTime(v.joinedAt, timeZone)}</span>
+                            <span aria-hidden className="text-ink-3">
+                              →
+                            </span>
+                            <span>
+                              {v.leftAt ? (
+                                formatTime(v.leftAt, timeZone)
+                              ) : (
+                                <span className="text-ink-3">still in</span>
+                              )}
+                            </span>
+                            <span className="text-ink-3">
+                              ({formatDuration(v.minutes)})
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {/* Said once, under the table, rather than as a footnote on every row that shows it.
+          Somebody comparing Total against In and Out will notice they disagree, and the reason
+          is the feature rather than a bug. */}
+      {rows.some((a) => a.visits.length > 1) && (
+        <p className="mt-3 text-[11.5px] leading-relaxed text-ink-3">
+          Total is time actually present, so it is less than In to Out for anyone who left and
+          came back. Time spent waiting before the webinar went live is not counted.
+        </p>
       )}
     </div>
   );

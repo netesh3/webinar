@@ -1,0 +1,253 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import { api } from "@/lib/api";
+import { captionText, downsample, rms } from "./caption-audio";
+
+/* On-device captions.
+ *
+ * The previous engine was the browser's Web Speech API. Chrome implements that
+ * by shipping audio to Google; when that request fails it raises `network`,
+ * which is exactly "Speech recognition couldn't reach its service." Firefox
+ * does not implement it at all. Neither is a captioner we control.
+ *
+ * This runs OpenAI's Whisper tiny.en through Transformers.js / ONNX Runtime
+ * in the speaker's own tab. Nothing leaves the machine except the text we
+ * already broadcast. The weights are fetched once (then cached by the
+ * browser); the ONNX WASM is served from this origin, same reason MediaPipe
+ * and RNNoise are.
+ *
+ * Captions still come from the speaker's published microphone, not a second
+ * getUserMedia: a second capture was a second permission prompt and a second
+ * device, and after a headset unplug those two would disagree.
+ */
+
+const MODEL_ID = "Xenova/whisper-tiny.en";
+const TARGET_RATE = 16_000;
+/** Seconds of audio per inference. Tiny Whisper is trained on 30s pads; a
+ *  short window keeps latency in the 2–4s range a live caption can tolerate. */
+const WINDOW_S = 3.2;
+/** Hop inside the window so a word split across a boundary is not lost. */
+const HOP_S = 1.6;
+const MIN_RMS = 0.012;
+
+/* Audio in, text out, and deliberately no `language` or `task` options.
+ *
+ * MODEL_ID is an English-only checkpoint, and Transformers.js throws on either
+ * of those for one — "Cannot specify `task` or `language` for an English-only
+ * model" — because there is no multilingual token for it to force. English
+ * transcription is the only thing the model does, so both arguments were
+ * redundant as well as fatal. Kept off the type so they cannot come back
+ * without this comment being read. */
+type Transcriber = (
+  audio: Float32Array,
+  options?: GenerationBounds,
+) => Promise<{ text?: string } | string>;
+
+/* What the decoder is allowed to do with one window.
+ *
+ * Unbounded, greedy Whisper on a three-second window will happily emit two
+ * hundred tokens of one repeated fragment — that is where "ste'e'e'e'e'…" came
+ * from, and it cost eight seconds of GPU time to produce.
+ *
+ * max_new_tokens is sized to the window: nobody fits more than about five words
+ * a second into WINDOW_S, so anything past that is the model talking to itself.
+ * It also caps the worst-case latency, which matters more than the text — a
+ * window that takes longer than HOP_S to decode puts the captions permanently
+ * behind the speaker.
+ *
+ * no_repeat_ngram_size stops the loop forming in the first place rather than
+ * truncating it. Measured across clean speech, noise above the gate, a half word
+ * followed by noise, speech pulled down to the gate, and speech over a hum:
+ * identical text to the unbounded call on every one of them, and faster.
+ */
+type GenerationBounds = {
+  max_new_tokens: number;
+  no_repeat_ngram_size: number;
+};
+
+const BOUNDS: GenerationBounds = {
+  max_new_tokens: Math.ceil(WINDOW_S * 5 * 1.6),
+  no_repeat_ngram_size: 3,
+};
+
+let transcriber: Promise<Transcriber> | null = null;
+
+async function loadTranscriber(
+  report: (key: string, message: string, tone?: "error" | "info") => void,
+): Promise<Transcriber> {
+  if (!transcriber) {
+    transcriber = (async () => {
+      report(
+        "loading",
+        "Loading captions on this device. The first time takes a moment; after that it stays on the machine.",
+        "info",
+      );
+      const { pipeline, env } = await import("@huggingface/transformers");
+      // WASM from our origin. The model still comes from the Hub on first use
+      // and is then in the browser cache — inference itself never calls out.
+      const wasm = env.backends.onnx.wasm;
+      if (wasm) wasm.wasmPaths = "/onnxruntime/";
+      env.allowLocalModels = false;
+      env.useBrowserCache = true;
+
+      const device =
+        typeof navigator !== "undefined" && "gpu" in navigator
+          ? "webgpu"
+          : "wasm";
+
+      /* The weight precision has to match the backend. It is not one setting
+       * for both, and getting it wrong does not raise anything.
+       *
+       * q8 on WebGPU returns fluent nonsense. Not degraded text — a different
+       * language: "proc bicy at fare TwilightixirAbyss retali learned Glow bull
+       * belly repayment" and then a loop of "biasesVIDEO biasesVIDEO" until the
+       * token budget runs out. int8 matmul is not implemented on that backend,
+       * so the quantized weights are read as something else entirely, and
+       * because it produces confident output rather than an error the fallback
+       * below never fired and the captions looked broken with nothing logged.
+       *
+       * Measured on the same clip, cold cache: webgpu/q8 gave that string;
+       * webgpu/fp16 57MB and webgpu/fp32 113MB both transcribed it correctly in
+       * 0.3s; wasm/q8 was correct in 1.1s. fp16 is half of fp32's download for
+       * the same speed, so WebGPU gets fp16 and the CPU path keeps q8 — where
+       * it is both correct and worth the smaller download.
+       *
+       * fp16 needs the shader-f16 WebGPU feature. A GPU without it fails to
+       * LOAD, which is the failure mode we want: the catch below then falls
+       * back to a WASM path that has been verified to transcribe. The rule to
+       * keep is that a quantized dtype never goes to WebGPU. */
+      const dtype = device === "webgpu" ? "fp16" : "q8";
+
+      try {
+        return (await pipeline("automatic-speech-recognition", MODEL_ID, {
+          device,
+          dtype,
+        })) as unknown as Transcriber;
+      } catch (webgpuErr) {
+        if (device === "wasm") throw webgpuErr;
+        return (await pipeline("automatic-speech-recognition", MODEL_ID, {
+          device: "wasm",
+          dtype: "q8",
+        })) as unknown as Transcriber;
+      }
+    })().catch((err) => {
+      transcriber = null;
+      throw err;
+    });
+  }
+  return transcriber;
+}
+
+/**
+ * Runs Whisper against `track` while `active` is true, and pushes recognised
+ * lines through `send` / the captions log. `track` may be missing (mic off);
+ * we wait rather than opening a second capture.
+ */
+export function useLocalCaptions(opts: {
+  active: boolean;
+  track: MediaStreamTrack | undefined;
+  slug: string;
+  joinKey: string | undefined;
+  send: (text: string) => Promise<void>;
+  report: (key: string, message: string, tone?: "error" | "info") => void;
+}): void {
+  const send = useRef(opts.send);
+  useEffect(() => {
+    send.current = opts.send;
+  }, [opts.send]);
+  const report = useRef(opts.report);
+  useEffect(() => {
+    report.current = opts.report;
+  }, [opts.report]);
+
+  const trackId = opts.track?.id;
+  const { active, track, slug, joinKey } = opts;
+
+  useEffect(() => {
+    if (!active) return;
+    if (!track || track.readyState === "ended") return;
+
+    let stopped = false;
+    const pending: number[] = [];
+    let busy = false;
+    let last = "";
+    let lastPersistedAt = 0;
+
+    const windowN = Math.round(WINDOW_S * TARGET_RATE);
+    const hopN = Math.round(HOP_S * TARGET_RATE);
+
+    const transcribe = async (pcm: Float32Array) => {
+      if (stopped || rms(pcm) < MIN_RMS) return;
+      const asr = await loadTranscriber(report.current);
+      if (stopped) return;
+      const out = await asr(pcm, BOUNDS);
+      const raw = typeof out === "string" ? out : (out.text ?? "");
+      const clean = captionText(raw);
+      if (!clean) return;
+      /* Windows overlap by WINDOW_S - HOP_S, so consecutive ones transcribe some
+       * of the same speech and the second is often the first again with a word
+       * added, or a fragment of it. An equality check let both through and the
+       * caption bar repeated itself. Containment either way is the same
+       * sentence twice. */
+      if (clean === last || last.includes(clean)) return;
+      last = clean;
+      void send.current(clean);
+      const now = Date.now();
+      if (now - lastPersistedAt > 2500) {
+        lastPersistedAt = now;
+        void api.appendCaption(slug, { joinKey, text: clean }).catch(() => undefined);
+      }
+    };
+
+    const flush = () => {
+      if (busy || pending.length < windowN) return;
+      const pcm = Float32Array.from(pending.slice(0, windowN));
+      pending.splice(0, hopN);
+      busy = true;
+      void transcribe(pcm)
+        .catch((err) => {
+          report.current(
+            "failed",
+            err instanceof Error
+              ? `Captions couldn't start: ${err.message}`
+              : "Captions couldn't start on this device.",
+          );
+        })
+        .finally(() => {
+          busy = false;
+          if (!stopped) flush();
+        });
+    };
+
+    const ctx = new AudioContext();
+    const source = ctx.createMediaStreamSource(new MediaStream([track]));
+    // 4096 is coarse enough that this is not a hot path, and ScriptProcessor
+    // is the capture that does not need a separate worklet file. Output is
+    // silenced — we must connect it or the callback never fires.
+    const processor = ctx.createScriptProcessor(4096, 1, 1);
+    processor.onaudioprocess = (ev) => {
+      if (stopped) return;
+      const input = ev.inputBuffer.getChannelData(0);
+      const at16 = downsample(input, ctx.sampleRate, TARGET_RATE);
+      for (let i = 0; i < at16.length; i++) pending.push(at16[i]!);
+      const cap = windowN * 3;
+      if (pending.length > cap) pending.splice(0, pending.length - cap);
+      flush();
+    };
+    const drain = ctx.createGain();
+    drain.gain.value = 0;
+    source.connect(processor);
+    processor.connect(drain);
+    drain.connect(ctx.destination);
+    void ctx.resume().catch(() => undefined);
+
+    return () => {
+      stopped = true;
+      processor?.disconnect();
+      source?.disconnect();
+      drain?.disconnect();
+      void ctx?.close().catch(() => undefined);
+    };
+  }, [active, trackId, track, slug, joinKey]);
+}

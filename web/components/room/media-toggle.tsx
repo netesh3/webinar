@@ -2,7 +2,7 @@
 
 import { useRoomContext } from "@livekit/components-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { backgroundsSupported } from "@/lib/backgrounds";
+import { asLowLight, backgroundsSupported } from "@/lib/backgrounds";
 import { useCompact, useMediaToggleSize } from "@/lib/compact";
 import {
   deviceLabel,
@@ -14,6 +14,7 @@ import { CheckIcon, ChevronDownIcon } from "../icons";
 import { Spinner } from "../controls";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
+import { lowLightToggled } from "./low-light";
 
 /* Mic / camera on the control bar.
  *
@@ -221,6 +222,20 @@ export function MediaToggle({
                     ? "Virtual background"
                     : "Blur my background"
                 }
+              />
+              {/* The switch only, with no amount beside it.
+                  A slider in a menu that closes when you click away is a control you
+                  cannot operate while watching its effect — and the amount is one item
+                  further down, under Video settings, for anybody who wants it. The switch
+                  is the case this menu is for: mid-webinar, somebody has told the host
+                  they look dark, and the fix should be one click from the camera button
+                  they are already next to. */}
+              <MenuToggle
+                checked={asLowLight(prefs.lowLight) > 0}
+                onChange={() =>
+                  updatePrefs({ lowLight: lowLightToggled(prefs.lowLight) })
+                }
+                label="Adjust for low light"
               />
             </>
           )}

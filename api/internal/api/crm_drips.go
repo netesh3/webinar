@@ -42,7 +42,7 @@ import (
  */
 
 const (
-	// maxDripSteps matches the CHECK in migrations/0045. A bound rather than a
+	// maxDripSteps matches the CHECK in migrations/0046. A bound rather than a
 	// judgement about sequences: fifty messages to one person is already a problem
 	// this code should not be the thing that allows.
 	maxDripSteps = 50

@@ -1274,13 +1274,17 @@ func TestHostCannotTouchAnotherHostsWebinar(t *testing.T) {
 		t.Errorf("foreign join: status %d body %s, want 403", res.StatusCode, raw)
 	}
 
-	// His own list must not include her webinars.
-	_, raw = h.do(http.MethodGet, "/api/host/webinars", nil)
-	var mine []types.Webinar
-	h.decode(raw, &mine)
-	for _, w := range mine {
-		if w.ID == "simulive-playbook" {
-			t.Error("host list leaked another host's webinar")
+	// His own list must not include her webinars — in any tab. The list is
+	// paged per tab now, so asking once would only clear the default one and
+	// leave the other two untested.
+	for _, tab := range []string{"upcoming", "past", "drafts"} {
+		_, raw = h.do(http.MethodGet, "/api/host/webinars?tab="+tab, nil)
+		var page types.HostWebinarPage
+		h.decode(raw, &page)
+		for _, w := range page.Items {
+			if w.ID == "simulive-playbook" {
+				t.Errorf("%s tab leaked another host's webinar", tab)
+			}
 		}
 	}
 }

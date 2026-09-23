@@ -8,6 +8,7 @@ import {
 } from "@livekit/components-react";
 import { ConnectionState, Track } from "livekit-client";
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { barSlots, centerBarTools, gridItems, morePanelTools, type ToolId } from "@/lib/tools";
@@ -17,6 +18,7 @@ import {
   useMediaToggleSize,
 } from "@/lib/compact";
 import { isTypingTarget, mediaHotkey } from "@/lib/media-hotkeys";
+import { usePictureInPicture } from "@/lib/pip";
 import { canShareFile } from "@/lib/file-share";
 import { Spinner } from "../controls";
 import {
@@ -26,6 +28,7 @@ import {
   MIC_CAPSULE_PATH,
   MicIcon,
   MicOffIcon,
+  PipIcon,
   PlayIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
@@ -49,6 +52,8 @@ import {
   HostEndConfirm,
   HostLeaveMenu,
 } from "./host-leave-dialog";
+import { LeaveConfirm } from "./leave-confirm";
+import { PipStage } from "./pip-stage";
 import { useToolDrag } from "./tool-drag";
 import { tool } from "./tools";
 
@@ -169,6 +174,21 @@ export function ControlBar() {
   const [leaveMenuOpen, setLeaveMenuOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
+  /** Everybody else's Leave confirmation, in the same place the host's menu appears. */
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+
+  /* The floating window, owned here rather than at the room level.
+   *
+   * Because this is where the microphone and camera handlers already are, with every guard on
+   * them — the host-muted refusal, the self-unmute block, the busy latch. The popped-out window
+   * offers those same two controls, and rebuilding them next to it would be a second copy of
+   * rules that must never disagree with the bar's: an attendee the host muted has to be refused
+   * in both places, by the same code.
+   *
+   * Allowed in previewChrome, unlike Share. There is no LiveKit behind it there so the window
+   * opens with no video in it — which is exactly the empty state worth being able to look at,
+   * and reviewing room chrome is what that mode is for. */
+  const pip = usePictureInPicture({ enabled: !connecting });
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
@@ -837,8 +857,10 @@ export function ControlBar() {
               // A deliberate, rarer choice than Share itself (which now hands
               // straight off to the browser's own picker) — always tucked away
               // here rather than sat on the bar next to it, whether or not Share
-              // itself is on the bar. Hidden outright where the browser cannot
-              // capture a video file at all, same gate the picker's own tab used.
+              // itself is on the bar. This is the only door into SharePicker, and
+              // the gate matters because of it: where the browser cannot capture a
+              // video element there is nothing behind the dialog, so the entry is
+              // hidden rather than opening onto an explanation.
               shareFileAction={
                 !previewChrome && permissions.canShareScreen && canShareFile()
                   ? {
@@ -860,31 +882,72 @@ export function ControlBar() {
 
       {/* Leave stays on the far right, alone, the way Zoom parks End/Leave.
           Out of flow so it does not pull the centred strip toward the left. */}
-      <div className="absolute top-0 right-2 flex h-14 items-center sm:right-3">
+      <div className="absolute top-0 right-2 flex h-14 items-center gap-1.5 sm:right-3">
+        {/* Pop out, beside Leave rather than in the tool strip.
+            It is a window-level control like Leave is — it puts the webinar somewhere else
+            rather than changing anything inside it — and the tool strip is a draggable layout
+            somebody arranges, which this does not belong in.
+
+            Desktop only, and hidden when unsupported rather than disabled: no mobile browser
+            implements either kind of PiP, and a dead button that never explains itself is
+            worse than one that was never offered. */}
+        {pip.supported && (
+          <button
+            type="button"
+            onClick={() => (pip.active ? pip.close() : pip.open())}
+            disabled={connecting}
+            aria-label={pip.active ? "Close the floating window" : "Pop out into a floating window"}
+            aria-pressed={pip.active}
+            title={pip.active ? "Close the floating window" : "Pop out"}
+            className={`hidden size-10 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 sm:grid ${
+              pip.active
+                ? "bg-white/20 text-white"
+                : "text-white/70 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            <PipIcon className="size-4.5" />
+          </button>
+        )}
         <div className="relative">
           <button
             type="button"
+            /* One attribute for both popovers, because both need the same guard: the click
+               that opens them must not also register as a click outside them. */
             data-host-leave-trigger={isHost ? "" : undefined}
+            data-leave-trigger=""
             onClick={() => {
               if (isHost) setLeaveMenuOpen((v) => !v);
-              else leave();
+              // Not leave(). A mis-click on the one button parked where a window's close
+              // control lives used to drop somebody out of a live session with no step in
+              // between — see LeaveConfirm for why that step is a popover and not a modal.
+              else setLeaveConfirmOpen((v) => !v);
             }}
             disabled={connecting}
             aria-label={isHost ? "Leave or end the webinar" : "Leave the webinar"}
-            aria-haspopup={isHost ? "menu" : undefined}
-            aria-expanded={isHost ? leaveMenuOpen : undefined}
+            aria-haspopup={isHost ? "menu" : "dialog"}
+            aria-expanded={isHost ? leaveMenuOpen : leaveConfirmOpen}
             title={connecting ? "Connecting…" : undefined}
             className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-live sm:px-4"
           >
             <LeaveIcon className="size-4 sm:hidden" />
             <span className="hidden sm:inline">Leave</span>
           </button>
-          {isHost && (
+          {isHost ? (
             <HostLeaveMenu
               open={leaveMenuOpen}
               onClose={() => setLeaveMenuOpen(false)}
               onAssign={() => setAssignOpen(true)}
               onEnd={() => setEndConfirmOpen(true)}
+            />
+          ) : (
+            <LeaveConfirm
+              open={leaveConfirmOpen}
+              /* A panelist is on the stage, and what they take with them when they go is
+                 different from what an attendee does — so the copy is too. isAttendee is
+                 already the app's own test for the difference. */
+              role={isAttendee ? "attendee" : "panelist"}
+              onClose={() => setLeaveConfirmOpen(false)}
+              onLeave={leave}
             />
           )}
         </div>
@@ -903,6 +966,29 @@ export function ControlBar() {
           />
         </>
       )}
+
+      {/* Into the floating window's own document, which is a different document — so this is
+          a portal by necessity rather than for stacking. React keeps the tree and its context,
+          which is what lets the buttons in there call the same handlers as the bar's. */}
+      {pip.container &&
+        createPortal(
+          <PipStage
+            micEnabled={isMicrophoneEnabled}
+            cameraEnabled={isCameraEnabled}
+            onMic={onMicClick}
+            onCamera={onCameraClick}
+            canSpeak={permissions.canSpeak && !permissions.mutedByHost}
+            canShareCamera={permissions.canShareCamera}
+            onBackToTab={() => {
+              // Raising the tab is what somebody pressing this wants; the window closing is a
+              // consequence of arriving, and the visibility listener in usePictureInPicture
+              // would do it a moment later anyway. Done here so it is not two steps.
+              window.focus();
+              pip.close();
+            }}
+          />,
+          pip.container,
+        )}
 
       {/* Rendered here rather than at the room level so it is mounted only for
           somebody who may actually share. It is a Modal, so it portals out of the

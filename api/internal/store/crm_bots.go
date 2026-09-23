@@ -22,7 +22,7 @@ import (
  * and Meta's rules about windows, neither of which belongs in a store. What this file
  * owns is the state machine: which node, what state, and the two guards that keep a
  * flow from running away — the wamid it last acted on, and the number of steps it has
- * taken. See migrations/0046.
+ * taken. See migrations/0047.
  */
 
 // BotInput is a bot as the host built it. Nodes are the whole flow: saving replaces
@@ -390,7 +390,7 @@ type BotRun struct {
  * newest session is returned whatever became of it, and the caller compares
  * LastWAMID before deciding anything else.
  *
- * At most one is ever live — see the unique index in migrations/0046 — so ordering by
+ * At most one is ever live — see the unique index in migrations/0047 — so ordering by
  * age is only picking between a live one and the history behind it.
  */
 func (s *Store) LatestBotSession(ctx context.Context, hostID, contactID string) (BotRun, error) {

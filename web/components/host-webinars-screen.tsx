@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
 import { CalendarIcon, ChevronDownIcon, PlayIcon } from "./icons";
 import { DEFAULT_ATTENDEE_LIMIT } from "./schedule-form";
 import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
-import { ButtonLink, Card, Empty } from "./ui";
+import { ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar, WebinarInput } from "@/lib/api-types";
-import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { localTimeZone } from "@/lib/format";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
@@ -80,19 +80,24 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
 
 /** Host Webinar home: create, run upcoming sessions, review past attendance.
  *
- *  One primary nav area (top: Host Webinar) + in-page segments (Upcoming /
- *  Past / Drafts). No competing sidebar — two action tiles up top (Instant /
- *  Schedule) instead of a pair of same-weight buttons, so which one to click
- *  is obvious without reading closely. */
+ *  No top nav entry of its own any more — the logo is this page for a host,
+ *  see homeHrefFor in top-nav.tsx — and no page heading either: the two
+ *  action tiles below say what this screen is for more directly than a title
+ *  repeating them would. In-page segments (Upcoming / Past / Drafts) instead
+ *  of a competing sidebar, and two action tiles up top (Instant / Schedule)
+ *  instead of a pair of same-weight buttons, so which one to click is obvious
+ *  without reading closely. */
 export function HostWebinarsScreen() {
   const { account, status } = useSession();
   const { maxAttendees } = useAppConfig();
   const { notify } = useToast();
   const origin = useShareOrigin();
-  const [mine, setMine] = useState<Webinar[] | null>(null);
   const [onStage, setOnStage] = useState<Webinar[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [startingInstant, setStartingInstant] = useState(false);
+  /* The host's own list is paged server-side, so this screen no longer holds
+   * it: HostWebinarBrowser fetches it. Bumping reloadToken is how a webinar
+   * created here gets into a list this component cannot reach into. */
+  const [reloadToken, setReloadToken] = useState(0);
   const bypass = isDevAuthBypassActive();
 
   const canHost = account?.canHost ?? false;
@@ -123,7 +128,7 @@ export function HostWebinarsScreen() {
           "info",
         );
       }
-      load();
+      refresh();
     } catch (err) {
       pendingTab.cancel();
       const message =
@@ -138,38 +143,30 @@ export function HostWebinarsScreen() {
     }
   }
 
-  const load = useCallback(() => {
-    if (bypass) {
-      setMine(DEV_BYPASS_WEBINARS);
-      setOnStage([]);
-      setError(null);
-      return;
-    }
-
+  /* Panelist sessions only, and not async so the state write lands inside
+   * .then() — react-hooks/set-state-in-effect rejects an async function called
+   * from an effect body. A failure here is swallowed on purpose: not being able
+   * to list somebody else's sessions is not a reason to put an error banner
+   * over the host's own. */
+  const loadStage = useCallback(() => {
+    if (bypass) return;
     api
       .stageWebinars()
       .then(setOnStage)
       .catch(() => setOnStage([]));
-
-    if (!canHost) return;
-    api
-      .hostWebinars()
-      .then((owned) => {
-        setMine(owned);
-        setError(null);
-      })
-      .catch((e: unknown) => {
-        setMine([]);
-        if (e instanceof ApiError && e.code === "not_a_host") return;
-        setError(
-          e instanceof Error ? e.message : "Could not load your webinars.",
-        );
-      });
-  }, [canHost, bypass]);
+  }, [bypass]);
 
   useEffect(() => {
-    if (status === "signed-in") load();
-  }, [status, load]);
+    if (status === "signed-in") loadStage();
+  }, [status, loadStage]);
+
+  /** After starting an instant webinar: the host's own list lives inside
+   *  HostWebinarBrowser and fetches itself, so it gets nudged rather than
+   *  handed new rows. */
+  function refresh() {
+    setReloadToken((n) => n + 1);
+    loadStage();
+  }
 
   if (status === "loading") {
     return (
@@ -210,7 +207,7 @@ export function HostWebinarsScreen() {
               Join the stage when the host starts. Hosting your own sessions is
               separate — ask an admin to enable it on your account.
             </p>
-            <HostWebinarList webinars={onStage} readOnly />
+            <HostWebinarList webinars={onStage} />
           </section>
         )}
         <Card className="p-8 text-center">
@@ -223,7 +220,7 @@ export function HostWebinarsScreen() {
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <ButtonLink href="/my-webinars" variant="secondary" size="sm">
-              My Webinar
+              WatchList
             </ButtonLink>
             <ButtonLink href="/account" variant="ghost" size="sm">
               Account settings
@@ -233,10 +230,6 @@ export function HostWebinarsScreen() {
       </>
     );
   }
-
-  const upcoming =
-    mine?.filter((w) => w.status === "scheduled" || w.status === "live")
-      .length ?? 0;
 
   return (
     <>
@@ -256,16 +249,6 @@ export function HostWebinarsScreen() {
           </Alert>
         </div>
       )}
-
-      <div className="mb-6">
-        <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
-          Host Webinar
-        </h1>
-        <p className="mt-1.5 max-w-lg text-[13.5px] leading-relaxed text-ink-2">
-          Start a webinar right now, or schedule one for later
-          {upcoming > 0 ? ` · ${upcoming} upcoming` : ""}.
-        </p>
-      </div>
 
       {/* Two distinct rows rather than two same-weight buttons: which one to
           click should be obvious without reading closely, the way Zoom's own
@@ -314,28 +297,7 @@ export function HostWebinarsScreen() {
         </ButtonLink>
       </div>
 
-      {error && (
-        <div className="mb-4">
-          <Alert tone="error">{error}</Alert>
-        </div>
-      )}
-
-      {mine === null ? (
-        <div className="grid gap-3">
-          <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
-          <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
-        </div>
-      ) : mine.length === 0 && !error ? (
-        // No action button here on purpose — the two rows above already are
-        // the actions, and repeating "Create webinar" a third time (nav
-        // label, tile, empty-state button) says nothing new.
-        <Empty
-          title="No webinars yet"
-          hint="Start one instantly, or schedule one above — then share the link."
-        />
-      ) : (
-        <HostWebinarList webinars={mine} />
-      )}
+      <HostWebinarBrowser reloadToken={reloadToken} />
 
       {onStage.length > 0 && (
         <section className="mt-10">
@@ -343,7 +305,7 @@ export function HostWebinarsScreen() {
           <p className="mb-3 text-[13px] text-ink-2">
             Sessions you were invited to present on — join when the host starts.
           </p>
-          <HostWebinarList webinars={onStage} readOnly />
+          <HostWebinarList webinars={onStage} />
         </section>
       )}
     </>

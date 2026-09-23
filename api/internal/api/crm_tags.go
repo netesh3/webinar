@@ -118,7 +118,7 @@ func (s *Server) handleRenameCRMTag(w http.ResponseWriter, r *http.Request) {
 /* handleDeleteCRMTag removes a label from the account and from everybody who carries it.
  *
  * Refused while a sequence triggers on it, and the refusal names the sequence. The reason
- * is in migrations/0048: an empty trigger_tag_id means "any tag", so clearing it would
+ * is in migrations/0049: an empty trigger_tag_id means "any tag", so clearing it would
  * widen the rule to every label rather than break it, and the host would find out by
  * somebody being messaged.
  */

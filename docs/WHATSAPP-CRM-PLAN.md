@@ -22,7 +22,7 @@ one to edit.
 - `api/internal/wa/` — Graph client: Embedded Signup code exchange, phone-number
   lookup, app subscribe/unsubscribe on a WABA, webhook signature verification,
   and the pinned Graph version the browser SDK is initialised with.
-- `api/internal/store/migrations/0040_whatsapp_connect.sql` — the WA columns on
+- `api/internal/store/migrations/0041_whatsapp_connect.sql` — the WA columns on
   `users`, alongside the YouTube grant.
 - `store.User` WA fields + `SetUserWhatsApp`, `types.WhatsAppLink` on `Account`.
 - `config.Config`: `META_APP_ID`, `META_APP_SECRET`, `META_WHATSAPP_CONFIG_ID`,
@@ -66,7 +66,7 @@ and stored nowhere — see deviations 84 to 86.
 
 **Phase 1b, as built:**
 
-- `api/internal/store/migrations/0041_crm_contacts.sql` — `crm_contacts`
+- `api/internal/store/migrations/0042_crm_contacts.sql` — `crm_contacts`
   (host-scoped, partial-unique on phone and on email, `registration_id` with
   `ON DELETE SET NULL`, the two consent timestamps, `last_seen_at`) and
   `crm_messages` (direction, body, `kind`, `wamid` partial-unique per host,
@@ -128,12 +128,12 @@ delivery webhook over an outbound row as well.
 
 **Phase 1c, as built:**
 
-- `api/internal/store/migrations/0042_crm_templates.sql` — `crm_templates`, a
+- `api/internal/store/migrations/0043_crm_templates.sql` — `crm_templates`, a
   cache of what Meta last said about a host's templates: `(host, name, language)`
   identity, Meta's `status`/`category` as free text, the header, body and footer,
   the parsed `{{n}}` count, and `unsupported` — empty when the template can be
   sent from here, otherwise the reason it cannot.
-- `api/internal/store/migrations/0043_whatsapp_reminders.sql` — `channel`,
+- `api/internal/store/migrations/0044_whatsapp_reminders.sql` — `channel`,
   `contact_id`, `template_name`, `template_language`, `template_params` on
   `notifications`, the three `wa_*` kinds, a one-per-kind-per-registration unique
   index, a partial index for the WhatsApp sweep, and `crm_reminder_templates`
@@ -201,7 +201,7 @@ delivery webhook over an outbound row as well.
 13. **One extended outbox rather than a second queue.** A WhatsApp reminder is
     the same fact as an email reminder with a different transport, so `due_at`,
     `attempts`, the backoff and the reschedule-on-move behaviour are already
-    right for it. Reasoned out in full at the top of `0043`.
+    right for it. Reasoned out in full at the top of `0044`.
 14. **`options.whatsappReminders` defaults to false and gates the confirmation
     too.** Email reminders default on because the address was typed into our own
     form; a WhatsApp message costs the host money on Meta's bill, so somebody has
@@ -247,7 +247,7 @@ settings kept across a disconnect).
 
 **Phase 2, as built:**
 
-- `api/internal/store/migrations/0044_whatsapp_broadcasts.sql` — `crm_broadcasts`
+- `api/internal/store/migrations/0045_whatsapp_broadcasts.sql` — `crm_broadcasts`
   (host, label, template name + language, the unresolved `params`, the audience
   with a `CHECK`, `webinar_id` `SET NULL`, `scheduled_at`, `canceled_at` and
   nothing else about status), the `wa_broadcast` kind and `broadcast_id` on
@@ -344,7 +344,7 @@ registration flushes the WhatsApp outbox synchronously.
 
 **Phase 3, as built:**
 
-- `api/internal/store/migrations/0045_whatsapp_drips.sql` — three tables, and the
+- `api/internal/store/migrations/0046_whatsapp_drips.sql` — three tables, and the
   split is the design: `crm_drips` (host, name, `trigger_kind` with a `CHECK`,
   optional `webinar_id` `ON DELETE CASCADE`, `active`) is the rule; `crm_drip_steps`
   (`(drip_id, position)` primary key, `delay_minutes` relative to the step before,
@@ -475,7 +475,7 @@ tick is one step and no test has to fake a clock.
 
 **Phase 4, as built:**
 
-- `api/internal/store/migrations/0046_whatsapp_bots.sql` — three tables and two
+- `api/internal/store/migrations/0047_whatsapp_bots.sql` — three tables and two
   columns. `crm_bots` (host, name, `trigger_kind` with a `CHECK` over `any_message`
   and `keyword`, `keywords text[]`, `entry_key`, `active`) is the rule that starts a
   conversation, with a unique partial index — `WHERE active AND trigger_kind =
@@ -633,16 +633,16 @@ service window is a real 24 hours from the contact's own message.
 Four things, and they are one phase because each of the first three was a gap the
 earlier phases named and left open — the tag audience (deviation 22), the `tag_added`
 trigger (30), the `set_tag` node (43), and the replay message with no trigger on any
-channel (0043's own comment) — and because the fourth, the per-account switch, is what
+channel (0044's own comment) — and because the fourth, the per-account switch, is what
 makes it safe to ship features that label other people, write to everybody who
 registered, and hand a PIN to Meta.
 
-- `api/internal/store/migrations/0047_account_features.sql` — `users.features text[]`
+- `api/internal/store/migrations/0048_account_features.sql` — `users.features text[]`
   (absent means off; the valid keys live in `api/types` rather than in a `CHECK`, so the
   API refuses an unknown one before it can be written) and
   `users.whatsapp_registered_at`. There is no column for the PIN anywhere, and the
   migration says why.
-- `api/internal/store/migrations/0048_crm_tags_notes.sql` — `crm_tags` (a name and
+- `api/internal/store/migrations/0049_crm_tags_notes.sql` — `crm_tags` (a name and
   nothing else, unique per host case-insensitively), `crm_contact_tags` (a join table
   with a timestamp, because *when* a label went on somebody is part of why they are
   being messaged), `crm_notes` (no `UPDATE` path and no `updated_at`), and then the
@@ -827,7 +827,7 @@ registered, and hand a PIN to Meta.
     not carry a business's own words to somebody who has not written in — so no template
     means no WhatsApp copy, and the email still goes.
 84. **The two-step PIN is the host's: never stored, never logged, never returned.** There
-    is no column for it and 0047 says so. A PIN this server kept would be the second
+    is no column for it and 0048 says so. A PIN this server kept would be the second
     factor for somebody else's WhatsApp Business Account sitting in our database for the
     benefit of a button nobody needs. A host who forgets theirs resets it in WhatsApp
     Manager, which is where they set it.
@@ -981,7 +981,7 @@ flowchart LR
 
 ## Data model
 
-**WhatsApp connect (on `users`)** — shipped in `0040_whatsapp_connect.sql`:
+**WhatsApp connect (on `users`)** — shipped in `0041_whatsapp_connect.sql`:
 `whatsapp_access_token`, `whatsapp_waba_id`, `whatsapp_phone_number_id`,
 `whatsapp_display_phone`, `whatsapp_verified_name`,
 `whatsapp_token_expires_at`, `whatsapp_connected_at`.
@@ -990,15 +990,15 @@ flowchart LR
 
 - `crm_contacts` — `host_id`, `phone` (E.164, unique per host), `email`, `name`,
   `company`, `source`, `last_seen_at`, `whatsapp_opt_in_at`,
-  `whatsapp_opt_out_at` — shipped in `0041_crm_contacts.sql`
+  `whatsapp_opt_out_at` — shipped in `0042_crm_contacts.sql`
 - `crm_messages` — direction, body, kind, template name, Meta `wamid`, status
-  (queued/sent/delivered/read/failed), error — shipped in `0041`; no
+  (queued/sent/delivered/read/failed), error — shipped in `0042`; no
   `crm_conversations` (see the 1b deviations)
 - `crm_templates` — cached Meta templates (name, language, category, status,
   header/body/footer, param count, why it cannot be sent) — shipped in
-  `0042_crm_templates.sql`
+  `0043_crm_templates.sql`
 - `crm_reminder_templates` + the WhatsApp columns on `notifications` — shipped in
-  `0043_whatsapp_reminders.sql`
+  `0044_whatsapp_reminders.sql`
 - `crm_tags` + `crm_contact_tags` — still to come
 - `crm_notes` — still to come
 - `whatsapp_broadcasts` — audience (tags / webinar / CSV), template, schedule,

@@ -450,6 +450,57 @@ func TestBootstrapNeverOverwritesAnExistingPassword(t *testing.T) {
 	}
 }
 
+/* TestAdminUsersCarryTheSignupPhone.
+ *
+ * The admin panel is where hosting is granted and taken away, and an operator
+ * about to do either usually wants to ask the person first. The number they
+ * gave at signup is the only one this app has, so the row has to carry it —
+ * and an account that never gave one (every Google sign-in) has to come back
+ * with an empty string rather than the previous row's number, which is what a
+ * mis-ordered Scan against the widened SELECT would produce.
+ */
+func TestAdminUsersCarryTheSignupPhone(t *testing.T) {
+	h := newHarness(t)
+
+	res, raw := h.do(http.MethodPost, "/api/auth/signup", map[string]any{
+		"name": "Reachable Host", "email": "reachable@test.dev",
+		"password": "a-long-enough-password", "phone": "+919876543210",
+	})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("signup with phone: status %d body %s", res.StatusCode, raw)
+	}
+	// No phone on this one, the shape every OAuth account has.
+	h.signup("Silent Host", "silent@test.dev", true)
+
+	if _, _, err := h.store.PromoteAdmins(t.Context(), []string{"neeraj@acme.dev"}); err != nil {
+		t.Fatalf("promote admin: %v", err)
+	}
+	h.login("neeraj@acme.dev")
+
+	for email, want := range map[string]string{
+		"reachable@test.dev": "+919876543210",
+		"silent@test.dev":    "",
+	} {
+		res, raw = h.do(http.MethodGet, "/api/admin/users?q="+email, nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("admin users %s: status %d body %s", email, res.StatusCode, raw)
+		}
+		var users []types.AdminUser
+		h.decode(raw, &users)
+		if len(users) != 1 {
+			t.Fatalf("search for %s returned %d rows, want 1: %s", email, len(users), raw)
+		}
+		if got := users[0].Phone; got != want {
+			t.Errorf("phone for %s = %q, want %q", email, got, want)
+		}
+		// The rest of the row still lines up — the assertion that a Scan reading
+		// one column into the wrong field would fail.
+		if users[0].Email != email {
+			t.Errorf("row for %s came back with email %q", email, users[0].Email)
+		}
+	}
+}
+
 func TestNameFromEmail(t *testing.T) {
 	for in, want := range map[string]string{
 		"admin@gmail.com":       "Admin",
