@@ -38,8 +38,43 @@ func (s *Server) handleCRMContacts(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	// A bad or absent limit is not worth an error: the store clamps it to a page.
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	// webinarId, the slug — spelled the way the audience endpoint beside it spells the
+	// same thing, so one name means one thing across this API.
+	slug := strings.TrimSpace(r.URL.Query().Get("webinarId"))
 
-	contacts, total, err := s.store.Contacts(r.Context(), user.ID, q, limit)
+	/* The scope is resolved BEFORE the list, because it decides whether there is a list
+	 * to send at all.
+	 *
+	 * A slug that is not this host's is refused rather than answered with the zero
+	 * contacts the query would honestly find. The two look identical on screen and mean
+	 * opposite things: a host following a link to a webinar they have since deleted
+	 * needs to be told the webinar is gone, not left to conclude that nobody came to it.
+	 *
+	 * 404 rather than the 422 the write paths use for the same mistake. There, a slug is
+	 * one field of a form the host can correct; here it IS the thing being read, and a
+	 * request for a webinar's contacts when there is no such webinar of theirs has no
+	 * field to point at.
+	 */
+	var scope *types.CRMContactScope
+	if slug != "" {
+		topic, err := s.store.HostWebinarTopic(r.Context(), user.ID, slug)
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.Error(w, http.StatusNotFound, "not_found",
+				"That webinar is not one of yours.")
+			return
+		}
+		if err != nil {
+			s.fail(w, r, "crm contacts: webinar", err)
+			return
+		}
+		scope = &types.CRMContactScope{WebinarID: slug, Topic: topic}
+	}
+
+	contacts, total, err := s.store.Contacts(r.Context(), user.ID, store.ContactFilter{
+		Query:       q,
+		WebinarSlug: slug,
+		Limit:       limit,
+	})
 	if err != nil {
 		s.fail(w, r, "crm contacts", err)
 		return
@@ -55,6 +90,7 @@ func (s *Server) handleCRMContacts(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, types.CRMContactsResponse{
 		Contacts: contacts,
 		Total:    total,
+		Scope:    scope,
 		Tags:     s.hostTags(r.Context(), user),
 		/* Reported alongside the list rather than left to /api/config, because it is
 		 * the answer to a different question. The flag in the config says WhatsApp

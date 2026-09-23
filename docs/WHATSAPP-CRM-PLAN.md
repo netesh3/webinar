@@ -894,6 +894,75 @@ contain it and `whatsapp_registered_at` recorded; then the refusals — five dig
 letter in it, no WhatsApp connected, the switch off, Meta refusing, and another
 account's number).
 
+### The "View in CRM" link, as built
+
+The last unbuilt row of the UX map, and small enough to describe in one place rather
+than as a phase of its own. A webinar's Attendees tab is who holds a seat; the CRM is
+the same people as an ongoing conversation. The link joins them, and the join is a
+server-side filter rather than a screen that fetches everybody and hides most of them.
+
+- `web/components/host-webinar-tabs.tsx` — **View in CRM** on the Attendees tab,
+  beside Export CSV, pointing at `/host/crm?webinar={slug}`.
+- `web/components/crm-screen.tsx` — reads `?webinar=`, narrows the list, renames the
+  heading to `Registered for “{topic}” — N people`, says what the narrowing leaves out,
+  and offers **Show all contacts**.
+- `api/internal/api/crm.go` — `GET /api/host/crm/contacts?webinarId={slug}`, with the
+  webinar resolved and owned before the list is read.
+- `api/internal/store/crm.go` — `ContactFilter`, replacing the positional query/limit
+  arguments, and the scope in both the list and the count.
+- `api/internal/store/crm_broadcasts.go` — `contactRegisteredFor`, the one definition
+  of "registered for this webinar", now shared with the broadcast audience.
+- `api/internal/store/webinars.go` — `HostWebinarTopic`, ownership and the name in one
+  query.
+- `api/types/types.go` — `CRMContactScope`, and `Scope` on `CRMContactsResponse`.
+
+93. **The filter is in the URL, not in component state.** `?webinar=` means the back
+    button undoes the narrowing and the narrowed list is a link a host can keep. It also
+    forced a `Suspense` boundary around the CRM page, which is what `useSearchParams`
+    costs — the same shape `/host/[id]` already has for `?tab=`.
+94. **`?webinar=` in the browser, `?webinarId=` in the API.** The API name matches its
+    own neighbours, `?tagId=` and the audience endpoint's `?webinarId=`, where one name
+    for one thing matters because the broadcast composer posts whichever it previewed. A
+    page URL is read by people, and `webinarId` inside a webinar's own link reads as
+    stutter.
+95. **A slug that is not the caller's is a 404, not an empty list.** The SQL already
+    requires the webinar's host to be the contact's, so a missing ownership check would
+    leak nothing — it would instead answer "nobody registered" for a webinar the host is
+    looking straight at, which is indistinguishable from the truth. 404 rather than the
+    422 the write paths use for the same mistake: there a slug is one field of a form to
+    correct, here it is the thing being read.
+96. **The scoped list and the broadcast audience share one predicate.** `contactRegisteredFor`
+    is called by both, with the placeholder passed in because the two statements number
+    their arguments differently. Two copies would drift the first time one was fixed, and
+    a host reading "12 people" on the list and sending to 10 of them has been given two
+    facts and no way to choose.
+97. **Declined registrations are excluded, which makes this list shorter than the
+    Attendees tab it was reached from.** Deliberate, and the consequence of 96: the CRM's
+    answer to "this webinar's people" has to be one answer. The Attendees tab is about
+    seats, where a declined row is part of the record; the CRM is about who may be
+    talked to. Said on screen rather than left to be discovered, along with the other
+    absence — a guest who gave neither an email nor a number was never a contact at all.
+98. **The topic comes from the server.** A heading naming the host's webinar is a claim
+    that the webinar is theirs, so it is answered by the same request that checks it
+    rather than passed along in the link, where it could say anything.
+99. **The total counts through the scope but not through the search box.** The total is
+    the size of the list being looked at, printed above it; typing in the box narrows the
+    rows without rewriting that sentence to count its own results back. The search runs
+    strictly inside the scope — a filter a search can reach around is not a filter, and
+    tags applied from a list the host was told was one webinar's would land on strangers.
+100. **Show all contacts replaces the history entry rather than pushing one.** It undoes
+    a narrowing rather than going somewhere new, so the back button still leads to the
+    webinar the host came from.
+
+**Tests added:** `api/internal/api/crm_scope_test.go` (3: the scope selecting one
+webinar's registrants with a person who registered for both appearing under each, the
+total moving with the scope and not with the search box, and a search inside the scope
+unable to reach past it; a slug belonging to another host and an unknown slug both
+answering 404, with the owner's own list unaffected; and the scoped list agreeing with
+the broadcast audience for the same webinar down to the declined registrant, compared as
+the sum of the audience's four disjoint buckets so the claim is about the same *people*
+rather than about opt-in state).
+
 ## Decisions locked
 
 - **Billing:** the customer's Meta Business pays WhatsApp fees (Cloud API only;
@@ -1157,7 +1226,7 @@ themselves.
 | --- | --- |
 | `web/components/account-screen.tsx` | Connect WhatsApp card (built: `whatsapp-card.tsx`) |
 | New `/host/crm` | Contacts, Inbox, Broadcasts, Drips, Bots |
-| Webinar tabs | "View in CRM" link; WhatsApp reminder toggle |
+| Webinar tabs | "View in CRM" link (built — Attendees tab, beside Export CSV); WhatsApp reminder toggle |
 | Register flow | Phone + WhatsApp opt-in |
 
 ## Explicit non-goals
@@ -1430,3 +1499,53 @@ is Meta's constraint rather than a gap here.
     (deviation 92): a host whose tags were withdrawn should not keep getting them
     applied by a flow built while they had them, and the conversation carries on past
     the step rather than stopping mid-answer.
+
+### Trying the "View in CRM" link
+
+1. Open a webinar with a few registrants, go to **Attendees**, and click **View in CRM**
+   beside Export CSV. The CRM opens on `/host/crm?webinar={slug}`, the heading reads
+   *Registered for “{topic}”* with the count of that webinar's people, and a line under
+   the tabs says what is missing from the list and offers the way back.
+2. Type a name from a DIFFERENT webinar into the search box. Nothing is found — the
+   search runs inside the scope, which is what makes it safe to tag and take notes from
+   this list (deviation 99). Search for somebody who is in it and the count above stays
+   on the scope's total rather than dropping to 1.
+3. Compare the count against the Attendees tab. It will be equal or smaller, never
+   larger, and the two reasons are on screen: a declined seat is not part of this
+   webinar's CRM audience, and a guest who gave neither an email nor a number never
+   became a contact (deviation 97). To see the first, decline somebody on a
+   manual-approval webinar and reload.
+4. Then go to **Broadcasts** and preview an audience of *one webinar's registrants* for
+   the same webinar. The number of people it holds — recipients plus the three
+   unreachable buckets — is the count the contacts list showed, because both come from
+   one predicate (deviation 96).
+5. Click **Show all contacts**. The filter goes, the heading returns to the whole CRM,
+   and the browser's back button goes to the webinar rather than back into the filtered
+   list (deviation 100).
+6. Finally, edit the URL to a webinar belonging to another account, or to a slug that
+   does not exist. Both answer 404 and the screen says so, rather than showing an empty
+   list that would read as "nobody registered" (deviation 95).
+
+## Running the Go tests for real
+
+Worth writing down, because the suite is quiet about it: every API and store test calls
+`t.Skip` unless **`TEST_DATABASE_URL`** is set, so `go test ./...` on its own reports `ok`
+for packages in which nothing ran. `make test-api` sets it, and the default is
+`postgres://webcast:webcast@localhost:5432/webcast_test?sslmode=disable`.
+
+```sh
+make test-api
+```
+
+Two things to expect on a developer machine:
+
+- **A local test database from before the migrations were renumbered has to be dropped.**
+  `schema_migrations` records the filenames that were applied, so `0041_whatsapp_connect.sql`
+  looks new to a database that already ran it as `0040_…` and fails on the column it
+  already added. `dropdb webcast_test && createdb -O webcast webcast_test` and let the
+  tests migrate it. Nothing deployed is affected — the renumbering happened before the
+  branch ever ran anywhere — but every local copy of that branch needs this once.
+- **Ten tests fail on a bare machine, and did before this work.** Signup/Supabase,
+  recordings, the stream key and host transfer want fixtures or services that are not
+  there. Establish the count before a change and compare after it; they are not a
+  baseline anyone should add to.

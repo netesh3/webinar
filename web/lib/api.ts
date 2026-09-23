@@ -466,10 +466,17 @@ export const api = {
    *
    *  `q` matches name, email or number. The server clamps the page size, so a
    *  caller cannot ask for everybody at once — the CRM is meant to be searched
-   *  rather than scrolled. */
-  crmContacts: (q = "", limit = 0) => {
+   *  rather than scrolled.
+   *
+   *  `webinarId` is a slug, and narrows the list to the people who registered for
+   *  that one webinar — which is what the link from a webinar's Attendees tab asks
+   *  for. Spelled as the audience endpoint spells it. A slug that is not this
+   *  host's answers 404 rather than an empty list, so the caller can tell a stale
+   *  link from a webinar nobody came to. */
+  crmContacts: (q = "", webinarId = "", limit = 0) => {
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
+    if (webinarId.trim()) params.set("webinarId", webinarId.trim());
     if (limit > 0) params.set("limit", String(limit));
     const query = params.toString();
     return request<CRMContactsResponse>(

@@ -1086,12 +1086,32 @@ type CRMMessage struct {
 	CreatedAt string `json:"createdAt"`
 }
 
+/* CRMContactScope names the webinar a contacts list was narrowed to.
+ *
+ * The topic comes from the server rather than riding along in the link, because the
+ * heading it fills in is a claim about whose webinar this is. A topic passed in a query
+ * string could say anything, and a heading built from the slug instead would show the
+ * host a URL fragment where the name of their webinar belongs.
+ */
+type CRMContactScope struct {
+	/** The webinar's slug — the same value its own pages use in the path, and what
+	 *  ?webinarId= was set to. Echoed so the UI can be sure the server honoured the
+	 *  filter rather than quietly listing everybody. */
+	WebinarID string `json:"webinarId"`
+	Topic     string `json:"topic"`
+}
+
 // CRMContactsResponse is the contacts list, newest activity first.
 type CRMContactsResponse struct {
 	Contacts []CRMContact `json:"contacts"`
-	/** How many contacts this host has in total, which is not len(Contacts) once
-	 *  a filter or the page limit has been applied. */
+	/** How many contacts are in the list being looked at — every contact this host
+	 *  has, or every contact of one webinar when Scope is set. Not len(Contacts):
+	 *  the search box and the page limit both narrow the rows without changing this,
+	 *  so the count in the heading holds still while somebody types. */
 	Total int `json:"total"`
+	/** Set when ?webinarId= narrowed the list, and absent when it did not. Absent
+	 *  rather than empty so "the whole CRM" is one state and not two. */
+	Scope *CRMContactScope `json:"scope,omitempty"`
 	/** Every tag this host has, so the list can offer them as a filter and the thread
 	 *  can offer them as a picker without a request per contact. Empty when the tags
 	 *  feature is off. */

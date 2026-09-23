@@ -281,26 +281,68 @@ func (s *Store) ContactByPhone(ctx context.Context, hostID, phone string) (types
 // render them.
 const crmContactsPageMax = 200
 
+/* ContactFilter narrows a contacts list.
+ *
+ * A struct rather than two more positional arguments, because `Contacts(ctx, id, q,
+ * slug, limit)` is two adjacent strings a caller can transpose without the compiler
+ * saying a word — and they mean entirely different things. One is what the host typed
+ * into a search box; the other is a webinar whose registrants they asked to see.
+ */
+type ContactFilter struct {
+	/** Query filters on name, email or phone as a substring — one box, because a host
+	 *  looking for somebody knows one of those three things and should not have to say
+	 *  which. */
+	Query string
+	/** WebinarSlug narrows the list to the people who registered for one webinar.
+	 *
+	 *  Checked for ownership by the handler BEFORE it gets here. The SQL also requires
+	 *  the webinar's host to be the contact's, so a slug from another account finds
+	 *  nobody rather than somebody — but "that webinar is not yours" and "nobody
+	 *  registered" are different answers and a store query cannot tell the host which
+	 *  one it found. */
+	WebinarSlug string
+	Limit       int
+}
+
 /* Contacts lists a host's people, most recent activity first, with the last thing
  * said in each thread.
  *
  * The last message comes from a LATERAL rather than a second round of queries,
  * because the inbox is a list of conversations and a list that needs one query
  * per row to say anything useful is a list that gets slower the more it matters.
- *
- * query filters on name, email or phone as a substring — one box, because a host
- * looking for somebody knows one of those three things and should not have to say
- * which.
  */
-func (s *Store) Contacts(ctx context.Context, hostID, query string, limit int) ([]types.CRMContact, int, error) {
+func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([]types.CRMContact, int, error) {
+	limit := f.Limit
 	if limit <= 0 || limit > crmContactsPageMax {
 		limit = crmContactsPageMax
 	}
-	q := strings.TrimSpace(query)
+	q := strings.TrimSpace(f.Query)
+	slug := strings.TrimSpace(f.WebinarSlug)
 
+	/* The webinar scope goes into both queries, and it is the same predicate the
+	 * broadcast audience uses — see contactRegisteredFor for why that sharing matters.
+	 * The two statements bind it to different placeholders, which is the only reason
+	 * this is built twice rather than once.
+	 */
+	countArgs := []any{hostID}
+	listArgs := []any{hostID, q, limit}
+	countScope, listScope := "", ""
+	if slug != "" {
+		countArgs = append(countArgs, slug)
+		listArgs = append(listArgs, slug)
+		countScope = ` AND ` + contactRegisteredFor(`$2`)
+		listScope = ` AND ` + contactRegisteredFor(`$4`)
+	}
+
+	/* The total counts through the scope but NOT through the search box. That split is
+	 * deliberate: the total is the size of the list the host is looking at, printed in
+	 * the sentence above it, and typing into the box narrows the rows without rewriting
+	 * that sentence to count its own results back at them.
+	 */
 	var total int
 	if err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM crm_contacts WHERE host_id = $1`, hostID).Scan(&total); err != nil {
+		`SELECT count(*) FROM crm_contacts c WHERE c.host_id = $1`+countScope,
+		countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -319,9 +361,9 @@ func (s *Store) Contacts(ctx context.Context, hostID, query string, limit int) (
 		 WHERE c.host_id = $1
 		   AND ($2 = '' OR c.name ILIKE '%' || $2 || '%'
 		                OR c.email ILIKE '%' || $2 || '%'
-		                OR c.phone ILIKE '%' || $2 || '%')
+		                OR c.phone ILIKE '%' || $2 || '%')`+listScope+`
 		 ORDER BY coalesce(c.last_seen_at, c.created_at) DESC, c.id DESC
-		 LIMIT $3`, hostID, q, limit)
+		 LIMIT $3`, listArgs...)
 	if err != nil {
 		return nil, 0, err
 	}

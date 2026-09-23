@@ -78,24 +78,43 @@ func audienceFrom(hostID, audience, webinarSlug, tagID string) (string, []any) {
 			 WHERE ct.contact_id = c.id AND t.id = $2::uuid AND t.host_id = c.host_id
 		)`, []any{hostID, tagID}
 	}
-	/* Registrants matched three ways, because there is no single key.
-	 *
-	 * registration_id is only set from the FIRST registration that created the
-	 * contact, so it answers for one webinar and not for the others. Email is the
-	 * reliable one but a registrant may have given a different address than the
-	 * contact has. Phone needs the digits compared rather than the strings: a
-	 * registration keeps what was typed ("+27 84 555 6666") and a contact is
-	 * normalised, and matching them literally would quietly message nobody.
-	 *
-	 * Declined seats are excluded. Pending ones are not: the host decides whether to
-	 * approve, and somebody waiting for that decision still asked to hear about it.
-	 */
-	return base + ` AND EXISTS (
+	return base + ` AND ` + contactRegisteredFor(`$2`), []any{hostID, webinarSlug}
+}
+
+/* contactRegisteredFor is "this contact `c` registered for the webinar named by that
+ * placeholder", for a caller that has a contacts query and a slug to bind.
+ *
+ * Takes the placeholder rather than assuming $2, because the two callers number their
+ * arguments differently and a predicate that silently reads the wrong one would filter
+ * a contacts list by a search term.
+ *
+ * Shared so that "this webinar's contacts" is ONE set of people. The CRM list scoped to
+ * a webinar and the broadcast audience for the same webinar are the same question asked
+ * on two screens, and a host who reads 12 on one and 14 on the other has no reason to
+ * trust either number. Two copies of this would drift the first time one was fixed.
+ *
+ * Registrants are matched three ways, because there is no single key. registration_id is
+ * only set from the FIRST registration that created the contact, so it answers for one
+ * webinar and not for the others. Email is the reliable one but a registrant may have
+ * given a different address than the contact has. Phone needs the digits compared rather
+ * than the strings: a registration keeps what was typed ("+27 84 555 6666") and a contact
+ * is normalised, and matching them literally would quietly message nobody.
+ *
+ * Declined seats are excluded. Pending ones are not: the host decides whether to approve,
+ * and somebody waiting for that decision still asked to hear about it.
+ *
+ * The webinar's host must be the contact's, which is what stops a slug from another
+ * account selecting anybody. It is not the whole of the authorization — a handler still
+ * owes the host the difference between "not yours" and "nobody came" — but it means the
+ * worst case of a missing check is an empty list rather than a leak.
+ */
+func contactRegisteredFor(slugParam string) string {
+	return `EXISTS (
 		SELECT 1 FROM registrations r
 		  JOIN webinars w ON w.id = r.webinar_id
-		 WHERE w.slug = $2 AND w.host_id = c.host_id AND r.state <> 'declined'
+		 WHERE w.slug = ` + slugParam + ` AND w.host_id = c.host_id AND r.state <> 'declined'
 		   AND ` + contactMatchesRegistration + `
-	)`, []any{hostID, webinarSlug}
+	)`
 }
 
 /* contactMatchesRegistration matches a contact `c` to a registration `r`, for callers

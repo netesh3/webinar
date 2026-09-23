@@ -537,6 +537,27 @@ func (s *Store) HostIDFor(ctx context.Context, slug string) (string, error) {
 	return id, err
 }
 
+/* HostWebinarTopic answers "is this webinar mine, and what is it called" in one query.
+ *
+ * For the callers that need to NAME a host's webinar rather than only to be allowed near
+ * it — a heading that says which webinar a list was narrowed to. HostIDFor plus a second
+ * read would be two round trips for one sentence, and a heading built from the slug
+ * instead is a heading that shows the host a URL fragment.
+ *
+ * ErrNotFound covers both "no such slug" and "not yours", deliberately and in one branch.
+ * Distinguishing them would mean telling the caller that somebody else's webinar exists,
+ * and the caller has nothing it could honestly do with that.
+ */
+func (s *Store) HostWebinarTopic(ctx context.Context, hostID, slug string) (string, error) {
+	var topic string
+	err := s.pool.QueryRow(ctx,
+		`SELECT topic FROM webinars WHERE slug = $1 AND host_id = $2::uuid`, slug, hostID).Scan(&topic)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
+	return topic, err
+}
+
 // PanelistIDs returns the user ids allowed to publish alongside the host.
 func (s *Store) PanelistIDs(ctx context.Context, slug string) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `

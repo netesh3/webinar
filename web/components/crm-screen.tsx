@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   Alert,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/api-types";
 import type {
   CRMContact,
+  CRMContactScope,
   CRMMergeField,
   CRMMessage,
   CRMNote,
@@ -87,8 +89,23 @@ const VIEW_LABELS: Record<CRMView, string> = {
 export function CRMScreen() {
   const { account, status } = useSession();
   const { notify } = useToast();
+  const router = useRouter();
+  const search = useSearchParams();
   const [view, setView] = useState<CRMView>("contacts");
   const [query, setQuery] = useState("");
+  /* One webinar's registrants, when a link asked for them — the "View in CRM" link
+   * on a webinar's Attendees tab is the only thing that sets this.
+   *
+   * Read from the URL rather than held in state, so it is the address that carries the
+   * filter: the host's back button undoes the narrowing, and the narrowed list is a
+   * link they can keep. The narrowing itself is done by the server, which is what makes
+   * it true past the first page — the list is capped at 200 contacts, and picking this
+   * webinar's people out of whichever 200 arrived would silently miss the rest. */
+  const webinarSlug = (search.get("webinar") ?? "").trim();
+  /* Which webinar that slug turned out to be, as the SERVER describes it. The name is
+   * not taken from the link: a topic in a query string is a heading anybody could
+   * write, and this one asserts that the webinar is the host's own. */
+  const [scope, setScope] = useState<CRMContactScope | null>(null);
   const [contacts, setContacts] = useState<CRMContact[] | null>(null);
   /* Every tag this host has, for the picker beside a conversation and for the
    * manager. It arrives with the contacts list rather than in a call of its own:
@@ -105,6 +122,14 @@ export function CRMScreen() {
    * was — an opt-out applied in the thread has to change the badge in the list. */
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((n) => n + 1), []);
+
+  /* Drop the webinar filter. replace rather than push, because "show all" undoes a
+   * narrowing rather than going somewhere new: the host arrived here from a webinar,
+   * and their back button should still lead to it and not to the filtered list they
+   * have just finished with. */
+  const showAllContacts = useCallback(() => {
+    router.replace("/host/crm");
+  }, [router]);
 
   const canHost = account?.canHost ?? false;
   /* What this account has switched on, as the server describes it. Checked again
@@ -192,18 +217,25 @@ export function CRMScreen() {
     let cancelled = false;
     const run = () => {
       api
-        .crmContacts(query)
+        .crmContacts(query, webinarSlug)
         .then((res) => {
           if (cancelled) return;
           setContacts(res.contacts);
           setTags(res.tags);
           setTotal(res.total);
+          // Null, not left as it was: the server sends no scope once the filter is
+          // gone, and a heading still naming the webinar would describe the wrong list.
+          setScope(res.scope ?? null);
           setWhatsappConnected(res.whatsappConnected);
           setError(null);
         })
         .catch((e: unknown) => {
           if (cancelled) return;
           setContacts([]);
+          /* And drop the scope, which is the case that matters here: a link to a
+           * webinar since deleted answers 404, and keeping the old heading would put
+           * "Registered for X" above an error saying there is no X. */
+          setScope(null);
           setError(
             e instanceof ApiError && e.code !== "network"
               ? e.message
@@ -217,7 +249,7 @@ export function CRMScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, tick, status, canHost]);
+  }, [query, webinarSlug, tick, status, canHost]);
 
   if (status === "loading") {
     return (
@@ -241,6 +273,16 @@ export function CRMScreen() {
 
   const selected = contacts?.find((c) => c.id === selectedId) ?? null;
 
+  /* The sentence under the heading DEFINES the list, so a narrowed list needs a
+   * different one: "everyone who registered for one of your webinars" printed above
+   * one webinar's registrants is a count a host has no reason to doubt and every
+   * reason to misread. Hoisted out of the view ternary below rather than nested
+   * inside it — that chain is four deep already. */
+  const people = total === 1 ? "1 person" : `${total} people`;
+  const contactsBlurb = scope
+    ? `Registered for “${scope.topic}” — ${people}.`
+    : `Everyone who registered for one of your webinars or wrote to your WhatsApp number — ${people}.`;
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -250,7 +292,7 @@ export function CRMScreen() {
           </h1>
           <p className="mt-1 text-[13.5px] text-ink-2">
             {view === "contacts"
-              ? `Everyone who registered for one of your webinars or wrote to your WhatsApp number — ${total === 1 ? "1 person" : `${total} people`}.`
+              ? contactsBlurb
               : view === "broadcasts"
                 ? "One message to many people, from your own WhatsApp number and billed to your Meta account."
                 : view === "sequences"
@@ -320,6 +362,32 @@ export function CRMScreen() {
         <>
           {error && <Alert tone="error">{error}</Alert>}
 
+          {/* What a narrowed list leaves out, and the way back to all of it.
+              Spelled out rather than left to be noticed: a host comparing this
+              against the Attendees tab they came from will find it shorter, and
+              the two reasons for that are both deliberate. Declined seats are
+              excluded to match the broadcast audience for the same webinar, so
+              the count here and the count there agree; guests were never in the
+              CRM at all, because a contact with no email and no number is a row
+              nobody can ever do anything with. */}
+          {scope && (
+            <Card className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+              <p className="text-[13px] leading-relaxed text-ink-2">
+                Declined registrations are left out, and so is anybody who joined
+                as a guest without an email address or a number.{" "}
+                <Link
+                  href={`/host/${scope.webinarId}?tab=attendees`}
+                  className="font-medium text-ink underline"
+                >
+                  Back to the webinar
+                </Link>
+              </p>
+              <Button variant="secondary" size="sm" onClick={showAllContacts}>
+                Show all contacts
+              </Button>
+            </Card>
+          )}
+
           {/* Folded away by default: the subject of this screen is the list, and
               the automatic messages are set up once and then left for months. */}
           {whatsappConnected && (
@@ -352,11 +420,24 @@ export function CRMScreen() {
             <div className="grid place-items-center py-20">
               <Spinner className="size-6 text-ink-3" />
             </div>
-          ) : contacts.length === 0 ? (
+          ) : /* Nothing under an error. The Alert above has already said why the
+                 list is empty, and an empty state is a second explanation that
+                 contradicts the first — "no contacts yet" is a cheerful answer to
+                 a request that failed. */
+          error ? null : contacts.length === 0 ? (
             query.trim() ? (
               <Empty
                 title="No contacts match that"
-                hint="Search runs over names, email addresses and phone numbers."
+                hint={
+                  scope
+                    ? "Search runs over names, email addresses and phone numbers — of this webinar's registrants only."
+                    : "Search runs over names, email addresses and phone numbers."
+                }
+              />
+            ) : scope ? (
+              <Empty
+                title="Nobody from this webinar is in your contacts"
+                hint="Registrants land here as they sign up. Guests who gave neither an email address nor a phone number never do — there would be no way to reach them."
               />
             ) : (
               <Empty
