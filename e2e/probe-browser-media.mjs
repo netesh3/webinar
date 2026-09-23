@@ -207,6 +207,49 @@ async function send() {
   } catch {}
 }
 
+/* How many WebGL2 contexts this browser will hold, and whether releasing them helps.
+ *
+ * This is the one that explains "Couldn't start the background: Cannot read properties of
+ * null (reading 'alpha')". MediaPipe's emscripten glue reads getContextAttributes().alpha,
+ * and getContextAttributes() returns null on a lost context — so that TypeError is a
+ * context-loss report wearing a disguise. lib/segmenter.ts builds a context per processor
+ * and, until this was found, never handed one back, so a presenter toggling the low-light
+ * lift walked towards the browser's ceiling one click at a time.
+ *
+ * Both halves are measured, because the first without the second is only half an argument:
+ * how many leak before one is lost, and then whether loseContext() keeps it from happening.
+ */
+await step("webgl2 context budget — leaked (how it was)", async () => {
+  const held = [];
+  let lostAt = 0;
+  for (let i = 1; i <= 24; i++) {
+    const gl = document.createElement("canvas").getContext("webgl2");
+    if (!gl) { lostAt = i; break; }
+    held.push(gl);
+    // A lost context still returns an object. These two are how you find out, and the
+    // second is the exact call MediaPipe makes.
+    if (gl.isContextLost() || gl.getContextAttributes() === null) { lostAt = i; break; }
+    // And the ones already held can be taken instead of the new one being refused.
+    const casualty = held.findIndex(c => c.isContextLost() || c.getContextAttributes() === null);
+    if (casualty !== -1) { lostAt = i; break; }
+  }
+  for (const gl of held) gl.getExtension("WEBGL_lose_context")?.loseContext();
+  if (lostAt) throw new Error("a context was lost at #" + lostAt + " of 24 — this is the ceiling the bug walks into");
+  return "held 24 contexts without a loss (this machine's ceiling is higher than 24)";
+});
+
+await step("webgl2 context budget — released each time (the fix)", async () => {
+  for (let i = 1; i <= 60; i++) {
+    const gl = document.createElement("canvas").getContext("webgl2");
+    if (!gl) throw new Error("getContext returned null at #" + i + " even when releasing");
+    if (gl.isContextLost() || gl.getContextAttributes() === null) {
+      throw new Error("lost at #" + i + " despite releasing — releasing is not sufficient");
+    }
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+  }
+  return "60 contexts created and released, none lost";
+});
+
 // Step 1: on load, with no user gesture in front of it — the app's current behaviour.
 await suite("no-gesture");
 await send();
