@@ -2,6 +2,7 @@
 
 import { Track, type LocalVideoTrack } from "livekit-client";
 import { useLocalParticipant } from "@livekit/components-react";
+import { useEffect } from "react";
 import {
   backgroundsSupported,
   useVirtualBackground,
@@ -41,7 +42,7 @@ export function VirtualBackground() {
   const { notify } = useToast();
   const track = useCameraTrack();
 
-  useVirtualBackground(track, prefs.background, prefs.lowLight, () => {
+  const { error } = useVirtualBackground(track, prefs.background, prefs.lowLight, () => {
     /* The device cannot keep up. Turned off rather than left stuttering: the person
      * whose laptop is struggling cannot see the stutter, and the audience can.
      *
@@ -64,6 +65,18 @@ export function VirtualBackground() {
       "info",
     );
   });
+
+  /* The same failure the pre-join screen shows, said out loud in the room.
+   *
+   * There is no panel to put a sentence in here, and the consequence is the one the
+   * pre-join screen has with an audience added: the hook has just taken the processor back
+   * off and handed the raw camera over, so without this the presenter's video would change
+   * for no stated reason in the middle of a webinar. Once per distinct message — `notify` is
+   * memoised, so this cannot become a toast storm.
+   */
+  useEffect(() => {
+    if (error) notify(error, "error");
+  }, [error, notify]);
 
   return null;
 }
