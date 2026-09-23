@@ -31,6 +31,7 @@ import type { Background } from "./segmenter";
 
 export type BackgroundMode = "none" | "blur" | "image";
 
+
 export type VirtualBackgroundId =
   | "office"
   | "library"
