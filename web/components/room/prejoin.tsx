@@ -139,7 +139,7 @@ export function PreJoin({
    * explain the dark square is a slider nobody would connect to it. The hook now puts the
    * raw camera back when this happens; this makes it say so as well.
    */
-  const { error: enhanceError } = useVirtualBackground(
+  const { error: enhanceError, preparing: enhancePreparing } = useVirtualBackground(
     previewTrack ?? undefined,
     prefs.background,
     prefs.lowLight,
@@ -466,6 +466,7 @@ export function PreJoin({
             <PreJoinBackgroundPicker
               choice={prefs.background}
               disabled={!cameraEnabled}
+              preparing={enhancePreparing}
               onSelect={(bg) => onUpdatePrefs({ background: bg })}
             />
 
@@ -503,10 +504,13 @@ function PreJoinBackgroundPicker({
   choice,
   onSelect,
   disabled,
+  preparing,
 }: {
   choice: BackgroundChoice;
   onSelect: (next: BackgroundChoice) => void;
   disabled?: boolean;
+  /** The segmentation model is still downloading. See useVirtualBackground. */
+  preparing?: boolean;
 }) {
   const supported = backgroundsSupported();
   if (!supported) return null;
@@ -521,9 +525,18 @@ function PreJoinBackgroundPicker({
         <label className="block text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
           Virtual Background
         </label>
-        {disabled && (
+        {/* Three states, and the order matters: the camera being off explains everything
+            else, so it wins. Otherwise, if a model is on its way, say so — the preview goes
+            on showing the real room while it downloads, and without this line that is
+            indistinguishable from the background not working. */}
+        {disabled ? (
           <span className="text-[11px] text-ink-3">Camera is off</span>
-        )}
+        ) : preparing ? (
+          <span className="flex items-center gap-1.5 text-[11px] text-ink-3">
+            <Spinner className="size-3" />
+            Preparing…
+          </span>
+        ) : null}
       </div>
 
       <div className={`grid grid-cols-4 gap-1.5 ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
