@@ -78,6 +78,32 @@ export function PreJoin({
   /** Set once the tracks belong to the room, so unmount stops releasing them. */
   const handedOff = useRef(false);
 
+  /* What the presenter has ASKED for, which is not the same as what is running.
+   *
+   * The two diverge when a device will not open: the toggle goes off, because this screen has
+   * to tell the truth about what is about to be published. Writing THAT back as a preference
+   * is the bug this ref exists to prevent. A camera that was busy in another tab once is not
+   * a decision to present without a camera from then on, and nothing would ever tell the
+   * presenter it had been read as one — the next webinar simply starts dark and silent, with
+   * no error to explain it, because the failure being remembered happened days ago.
+   *
+   * A deliberate toggle does still persist, which is the point of having the preference: it
+   * is the difference between a choice and an accident that only this file can tell apart.
+   */
+  const wanted = useRef({ mic: prefs.micEnabled, camera: prefs.cameraEnabled });
+
+  const toggleMic = useCallback(() => {
+    const next = !micEnabled;
+    wanted.current.mic = next;
+    setMicEnabled(next);
+  }, [micEnabled]);
+
+  const toggleCamera = useCallback(() => {
+    const next = !cameraEnabled;
+    wanted.current.camera = next;
+    setCameraEnabled(next);
+  }, [cameraEnabled]);
+
   /* Applied to the preview track so the presenter sees both in real time — which for the
    * low-light lift is the whole point of having it here: the right amount is whatever
    * looks right in this room today, and this is the screen where they can still judge it
@@ -90,10 +116,30 @@ export function PreJoin({
     onUpdatePrefs({ lowLight: 0 });
   });
 
-  // Device labels stay blank until the page holds a permission, so enumeration is
-  // deliberately gated on having acquired a preview track first.
+  /* Enumerate from the start, rather than only after something has been opened.
+   *
+   * Labels are blank until the page holds a permission, which is why this used to wait — but
+   * a browser that has been granted this origin before reports them anyway, and deviceLabel
+   * already falls back to "Camera 1" for the ones it cannot name. Waiting cost more than it
+   * saved: a presenter arriving with their camera switched off got two pickers containing
+   * nothing but "System default", so the one screen that exists for choosing a device could
+   * not be used to choose one. Acquiring a permission later fires devicechange, and
+   * useDevices re-reads on it, so the real labels still arrive.
+   */
   const [permitted, setPermitted] = useState(false);
-  const { devices } = useDevices(permitted);
+  const { devices } = useDevices(true);
+
+  /* Whether this machine really has no camera — a claim, so it needs to be supportable.
+   *
+   * It used to be the length of the list above, which was empty for two quite different
+   * reasons and only one of them was "there is no camera". A presenter who arrived with their
+   * camera off was told their machine had none, which is worse than silence: it is a reason
+   * not to turn it on. A browser with no permission for this origin also reports cameras
+   * without a deviceId, which useDevices filters out, so an empty list on its own still
+   * cannot carry the claim. Having opened SOMETHING is what makes the enumeration complete
+   * enough to trust, and `permitted` is that.
+   */
+  const noCamera = permitted && devices.videoInput.length === 0;
 
   const stopVideo = useCallback(() => {
     videoTrack.current?.stop();
@@ -246,7 +292,12 @@ export function PreJoin({
     videoTrack.current = null;
     setPreviewTrack(null);
 
-    onUpdatePrefs({ micEnabled, cameraEnabled });
+    // What was asked for is persisted; what is actually running is what gets published. See
+    // `wanted` for why those cannot be the same value.
+    onUpdatePrefs({
+      micEnabled: wanted.current.mic,
+      cameraEnabled: wanted.current.camera,
+    });
     onJoin({ micEnabled, cameraEnabled, audioTrack: audio, videoTrack: video });
   }
 
@@ -293,14 +344,14 @@ export function PreJoin({
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 bg-gradient-to-t from-black/60 to-transparent p-2.5">
                 <PreJoinToggle
                   on={micEnabled}
-                  onClick={() => setMicEnabled((v) => !v)}
+                  onClick={toggleMic}
                   label={micEnabled ? "Mute microphone" : "Unmute microphone"}
                   onIcon={<MicIcon className="size-4" />}
                   offIcon={<MicOffIcon className="size-4" />}
                 />
                 <PreJoinToggle
                   on={cameraEnabled}
-                  onClick={() => setCameraEnabled((v) => !v)}
+                  onClick={toggleCamera}
                   label={cameraEnabled ? "Turn camera off" : "Turn camera on"}
                   onIcon={<CameraIcon className="size-4" />}
                   offIcon={<CameraOffIcon className="size-4" />}
@@ -391,7 +442,7 @@ export function PreJoin({
               Join the webinar
             </Button>
             <p className="text-center text-[11.5px] leading-relaxed text-ink-3">
-              {devices.videoInput.length === 0 && !starting
+              {noCamera && !starting
                 ? "No camera detected — you can still present with your screen."
                 : "You can change any of this once you're in."}
             </p>
