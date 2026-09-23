@@ -67,7 +67,26 @@ export function PreJoin({
 }) {
   const [micEnabled, setMicEnabled] = useState(prefs.micEnabled);
   const [cameraEnabled, setCameraEnabled] = useState(prefs.cameraEnabled);
-  const [error, setError] = useState<string | null>(null);
+  /* Why a device that would not open gets its OWN piece of state, one per device.
+   *
+   * These used to be one `error`, written at the end of the acquisition effect and cleared at
+   * the start of it — and that could not survive the thing it was describing. A camera that
+   * throws turns its own toggle off, turning the toggle off re-runs the effect, and the re-run
+   * cleared the message before the run that produced it had finished writing it. So a Safari
+   * presenter clicking the camera button saw it flick back to off and nothing else: no reason,
+   * no suggestion, no indication that the click had been received at all.
+   *
+   * Per device, because they fail independently — a camera held by another tab while the
+   * microphone is fine is the common case, and "couldn't open your camera" must not be worded
+   * or cleared as though both were gone.
+   *
+   * Written before the state change that re-runs the effect, and NOT cleared when a device is
+   * off: being off is what a failure looks like from the outside, so clearing the explanation
+   * then is exactly when it is needed. Only the presenter's own click clears it, because only
+   * they can say the problem is worth another try.
+   */
+  const [cameraFailure, setCameraFailure] = useState<string | null>(null);
+  const [micFailure, setMicFailure] = useState<string | null>(null);
   const [starting, setStarting] = useState(true);
   const [level, setLevel] = useState(0);
   const [previewTrack, setPreviewTrack] = useState<LocalVideoTrack | null>(null);
@@ -95,12 +114,16 @@ export function PreJoin({
   const toggleMic = useCallback(() => {
     const next = !micEnabled;
     wanted.current.mic = next;
+    // Their click is the one thing that clears a failure: it is a request to try again,
+    // and a stale reason next to a button somebody just pressed reads as the press failing.
+    setMicFailure(null);
     setMicEnabled(next);
   }, [micEnabled]);
 
   const toggleCamera = useCallback(() => {
     const next = !cameraEnabled;
     wanted.current.camera = next;
+    setCameraFailure(null);
     setCameraEnabled(next);
   }, [cameraEnabled]);
 
@@ -108,13 +131,26 @@ export function PreJoin({
    * low-light lift is the whole point of having it here: the right amount is whatever
    * looks right in this room today, and this is the screen where they can still judge it
    * without an audience watching them decide. */
-  useVirtualBackground(previewTrack ?? undefined, prefs.background, prefs.lowLight, () => {
-    if (prefs.background.mode !== "none") {
-      onUpdatePrefs({ background: { mode: "none" } });
-      return;
-    }
-    onUpdatePrefs({ lowLight: 0 });
-  });
+  /* The processor's own error, which used to be dropped on the floor here.
+   *
+   * useVirtualBackground has always returned one and neither caller read it. That is how a
+   * brightness lift that fails to start becomes an unexplained black preview: the camera is
+   * open, the toggle says on, the light is lit, and the only thing on screen that could
+   * explain the dark square is a slider nobody would connect to it. The hook now puts the
+   * raw camera back when this happens; this makes it say so as well.
+   */
+  const { error: enhanceError } = useVirtualBackground(
+    previewTrack ?? undefined,
+    prefs.background,
+    prefs.lowLight,
+    () => {
+      if (prefs.background.mode !== "none") {
+        onUpdatePrefs({ background: { mode: "none" } });
+        return;
+      }
+      onUpdatePrefs({ lowLight: 0 });
+    },
+  );
 
   /* Enumerate from the start, rather than only after something has been opened.
    *
@@ -198,18 +234,25 @@ export function PreJoin({
 
     (async () => {
       setStarting(true);
-      setError(null);
-      const failures: string[] = [];
 
       if (!cameraEnabled) stopVideo();
       else {
         try {
           await startVideo();
+          // Cleared on success only. A device that opens has nothing left to explain.
+          if (!cancelled) setCameraFailure(null);
         } catch (err) {
           if (!cancelled) {
             stopVideo();
+            /* The message first, the toggle second, and the order is the whole fix.
+             *
+             * setCameraEnabled(false) re-runs this effect, whose cleanup sets `cancelled`
+             * — so anything written after it was written by a run that had already been
+             * told to stop, behind an `if (!cancelled)` that was false by then. That is
+             * how the reason for a failure used to be lost between the failure and the
+             * screen. */
+            setCameraFailure(describeMediaError(err, "camera"));
             setCameraEnabled(false);
-            failures.push(describeMediaError(err, "camera"));
           }
         }
       }
@@ -218,19 +261,17 @@ export function PreJoin({
       else {
         try {
           await startAudio();
+          if (!cancelled) setMicFailure(null);
         } catch (err) {
           if (!cancelled) {
             stopAudio();
+            setMicFailure(describeMediaError(err, "microphone"));
             setMicEnabled(false);
-            failures.push(describeMediaError(err, "microphone"));
           }
         }
       }
 
-      if (!cancelled) {
-        setError(failures.length > 0 ? failures.join(" ") : null);
-        setStarting(false);
-      }
+      if (!cancelled) setStarting(false);
     })();
 
     return () => {
@@ -388,7 +429,12 @@ export function PreJoin({
 
           {/* ---- devices & background ---- */}
           <div className="space-y-3.5">
-            {error && <Alert tone="warn">{error}</Alert>}
+            {/* One per thing that went wrong, rather than one joined string. A presenter
+                reading "couldn't open your camera" while their microphone works needs to
+                see which sentence applies to which button. */}
+            {cameraFailure && <Alert tone="warn">{cameraFailure}</Alert>}
+            {micFailure && <Alert tone="warn">{micFailure}</Alert>}
+            {enhanceError && <Alert tone="warn">{enhanceError}</Alert>}
 
             <Select
               label="Camera"

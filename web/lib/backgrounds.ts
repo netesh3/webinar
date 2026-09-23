@@ -421,6 +421,27 @@ export function useVirtualBackground(
         if (!cancelled) setError(null);
       } catch (err) {
         if (cancelled) return;
+        /* A failed enhancement must not cost somebody their camera.
+         *
+         * setProcessor can throw with the processor half-attached, and a half-attached
+         * processor goes on feeding the track from a canvas that is not rendering. That
+         * reaches the preview as a BLACK RECTANGLE rather than as an error: the camera
+         * toggle still says on, the light on the machine is still lit, and nothing on the
+         * screen connects the dark square to the brightness slider that caused it. Whoever
+         * hits this concludes their camera is broken.
+         *
+         * So the processor comes back off. The raw camera is worse than the lift they asked
+         * for and enormously better than nothing, and the message below is then the only
+         * thing that needs to be read rather than deduced.
+         */
+        try {
+          await track.stopProcessor();
+        } catch {
+          // Nothing attached to stop, which is the good version of this.
+        }
+        await processor.current?.destroy().catch(() => {});
+        processor.current = null;
+        publishFrameCost(null);
         setError(
           err instanceof Error
             ? `Couldn't start the background: ${err.message}`
