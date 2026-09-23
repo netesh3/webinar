@@ -17,11 +17,13 @@ import {
   Room,
   RoomEvent,
   Track,
+  type TrackPublishOptions,
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
-import { roomOptions, useMediaPreferences } from "@/lib/media";
+import { roomOptions, SCREEN_SHARE_PUBLISH, useMediaPreferences } from "@/lib/media";
+import { publishLedger } from "@/lib/republish";
 import {
   useMediaPermissions,
   useLiveRole,
@@ -140,6 +142,46 @@ export function WebinarRoom({
 
   const isScheduledPresenter =
     initialJoin.role === "host" || initialJoin.role === "panelist";
+
+  /* A new credential for a reconnection attempt.
+   *
+   * The same two calls the gates make, for the same reason they make them: whichever one
+   * minted the token this room opened with is the one that can mint another. A promoted
+   * attendee is on api.join with their join key even though they are publishing, which is
+   * why this asks the role it was HANDED rather than the role it has now.
+   *
+   * Deliberately does not write to currentJoin. Everything else in a join response — the
+   * role, the host's controls, the display name — comes back the same for the same person,
+   * and setting state here would re-render the room in the middle of reconnecting it.
+   *
+   * Returns null rather than throwing when the API cannot be reached, because the caller's
+   * right move then is to retry with the credential it already has: an unreachable API is
+   * usually the same network fault that dropped the media, and it comes back.
+   *
+   * Bounded, and this is not optional. api.hostJoin has no timeout of its own, so on the
+   * kind of network that drops a media path a fetch can sit unresolved for minutes — which
+   * would replace the recovery ladder's quarter-second first retry with a stall, and make
+   * reconnection slower than it was before any of this existed. CREDENTIAL_BUDGET_MS is the
+   * whole point: short against the fifteen seconds the connect that follows is allowed, long
+   * enough that a phone on a bad cell can still mint one. The abandoned request is left to
+   * finish into nothing; a token nobody uses costs nothing, because it is only a signature.
+   */
+  const freshCredential = useCallback(async () => {
+    const mint = (async () => {
+      try {
+        const fresh = isScheduledPresenter
+          ? await api.hostJoin(slug)
+          : await api.join(slug, joinKey);
+        return { url: fresh.url, token: fresh.token };
+      } catch {
+        return null;
+      }
+    })();
+    const giveUp = new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), CREDENTIAL_BUDGET_MS);
+    });
+    return Promise.race([mint, giveUp]);
+  }, [isScheduledPresenter, slug, joinKey]);
   const webinarUsesCdn = Boolean(initialJoin.cdnBroadcast || currentJoin.cdnBroadcast);
 
   if (transitioning) {
@@ -199,6 +241,7 @@ export function WebinarRoom({
       joinKey={joinKey}
       onLeave={onLeave}
       onDemoted={webinarUsesCdn ? handleDemoted : undefined}
+      freshCredential={freshCredential}
     />
   );
 }
@@ -249,6 +292,10 @@ const CONNECT_OPTIONS = {
  * terminal screen and tells the person the truth. */
 const STABLE_MS = 30_000;
 
+/** How long a reconnection attempt will wait for a new credential before going ahead with
+ *  the one it has. See freshCredential, which explains why this bound exists at all. */
+const CREDENTIAL_BUDGET_MS = 4_000;
+
 type Entry = {
   micEnabled: boolean;
   cameraEnabled: boolean;
@@ -264,6 +311,7 @@ function RoomSession({
   joinKey,
   onLeave,
   onDemoted,
+  freshCredential,
 }: {
   join: JoinResponse;
   slug: string;
@@ -272,6 +320,7 @@ function RoomSession({
   joinKey?: string;
   onLeave: () => void;
   onDemoted?: () => void;
+  freshCredential: Credential;
 }) {
   const { prefs, update: updatePrefs } = useMediaPreferences();
 
@@ -344,6 +393,7 @@ function RoomSession({
       joinKey={joinKey}
       onLeave={onLeave}
       onDemoted={onDemoted}
+      freshCredential={freshCredential}
       prefs={prefs}
       updatePrefs={updatePrefs}
       // The host's mute-on-entry decision wins over a remembered preference: a
@@ -366,6 +416,7 @@ function ConnectedRoom({
   joinKey,
   onLeave,
   onDemoted,
+  freshCredential,
   prefs,
   updatePrefs,
   startMic,
@@ -381,6 +432,7 @@ function ConnectedRoom({
   joinKey?: string;
   onLeave: () => void;
   onDemoted?: () => void;
+  freshCredential: Credential;
   prefs: ReturnType<typeof useMediaPreferences>["prefs"];
   updatePrefs: ReturnType<typeof useMediaPreferences>["update"];
   startMic: boolean;
@@ -613,6 +665,67 @@ function ConnectedRoom({
     };
   }, [room]);
 
+  /* What this browser is publishing right now, kept so a recovery can put it back.
+   *
+   * Deliberately not merged into `captured` above. That set is add-only, because its job is
+   * to stop every device this browser ever opened and stopping an already-stopped track is
+   * free. This one has to know what is publishing NOW — a share the presenter stopped must
+   * not reappear because the network hiccuped — so it removes, and the rules for when a
+   * removal is the presenter rather than a teardown are in lib/republish.ts.
+   */
+  const [ledger] = useState(publishLedger<LocalTrack>);
+  useEffect(() => {
+    const onPublished = (pub: LocalTrackPublication) => {
+      if (pub.track) ledger.published(pub.source, pub.track);
+    };
+    const onUnpublished = (pub: LocalTrackPublication) => {
+      ledger.unpublished(pub.source);
+    };
+    /* Both of the SDK's reconnection signals, because they fire BEFORE its teardown
+     * unpublishes everything — and that window is the only chance to tell a drop apart from
+     * somebody switching their camera off. Reconnected closes the window again: when the SDK
+     * recovers on its own the publications were never lost, and leaving the ledger deaf to
+     * unpublications after that would let a share stopped later come back at the next drop. */
+    const onDropping = () => ledger.dropping();
+    const onSettled = () => ledger.settled();
+    room.on(RoomEvent.LocalTrackPublished, onPublished);
+    room.on(RoomEvent.LocalTrackUnpublished, onUnpublished);
+    room.on(RoomEvent.Reconnecting, onDropping);
+    room.on(RoomEvent.SignalReconnecting, onDropping);
+    room.on(RoomEvent.Reconnected, onSettled);
+    return () => {
+      room.off(RoomEvent.LocalTrackPublished, onPublished);
+      room.off(RoomEvent.LocalTrackUnpublished, onUnpublished);
+      room.off(RoomEvent.Reconnecting, onDropping);
+      room.off(RoomEvent.SignalReconnecting, onDropping);
+      room.off(RoomEvent.Reconnected, onSettled);
+    };
+  }, [room, ledger]);
+
+  /* Publishing again after the ladder has rebuilt the connection.
+   *
+   * See lib/republish.ts for why a recovered connection carries nothing over. Stable for the
+   * life of the component — `room` and `ledger` both are — so the connect effect can depend
+   * on it without that dependency ever reconnecting anybody.
+   */
+  const restorePublications = useCallback(async () => {
+    for (const { source, track } of ledger.restorable(isCapturing)) {
+      try {
+        // The cast is the string/enum identity stated in lib/republish.ts: that module has
+        // no imports, and its source constants are Track.Source's own values.
+        await room.localParticipant.publishTrack(
+          track,
+          publishOptionsFor(source as Track.Source),
+        );
+      } catch {
+        /* One track that will not go back up must not take the others with it. A presenter
+         * whose voice is back and whose slides are not is in a far better position than one
+         * with neither, and the honest recovery for the rest is the control bar. */
+      }
+    }
+    ledger.settled();
+  }, [room, ledger]);
+
   // Sequentialises connect and disconnect. React can run a cleanup's disconnect
   // and the next effect's connect concurrently, and the two overlapping leaves
   // the room in a state where neither has really happened.
@@ -654,9 +767,29 @@ function ConnectedRoom({
 
     (async () => {
       try {
-        await connect(join.url, join.token, CONNECT_OPTIONS);
+        /* A retry asks for a new credential rather than replaying the one that just failed.
+         *
+         * This is the other half of why a reload used to fix what four retries could not.
+         * The ladder reconnected with the token this component mounted with, and a token the
+         * SFU has stopped accepting — expired, most obviously — is rejected identically on
+         * every attempt, for ever. Only a page load asked for another one. Tokens last
+         * LIVEKIT_TOKEN_TTL (two hours by default), so this is an ordinary tab that has been
+         * open a while rather than an exotic case.
+         *
+         * Only on a retry: the first attempt already holds a credential minted seconds ago,
+         * and a second round trip before the first connect would cost every presenter time
+         * to pay for a case that cannot have happened yet. */
+        const credential =
+          (attempts.current > 0 ? await freshCredential() : null) ?? join;
+        if (cancelled) return;
+        await connect(credential.url, credential.token, CONNECT_OPTIONS);
         if (cancelled) return;
         setRecovering(null);
+        /* Before the settle timer, not after: until this has run the presenter is connected
+         * and publishing nothing, and that is not a state to start calling stable. See
+         * lib/republish.ts for what a fresh session does not carry over and why. */
+        if (attempts.current > 0) await restorePublications();
+        if (cancelled) return;
         // Forgiven only after it has held. See STABLE_MS.
         settle = setTimeout(() => {
           attempts.current = 0;
@@ -697,7 +830,15 @@ function ConnectedRoom({
      * connection is already up — so listing them would tear down a working transport at the
      * exact moment the presenter clicked Join, and hand back the 1708 ms this change exists
      * to save. Publishing reads them in its own effect below. */
-  }, [attempt, room, connect, disconnect, join.url, join.token]);
+  }, [
+    attempt,
+    room,
+    connect,
+    disconnect,
+    join,
+    freshCredential,
+    restorePublications,
+  ]);
 
   /* Publishing, once the connection is up AND the presenter has finished checking devices.
    *
@@ -1351,6 +1492,49 @@ function ConnectionBanner() {
 /** Why this participant is no longer in the room. Only for things that happened
  *  TO them — leaving on their own is not an exit state, it is navigation. */
 type ExitReason = "ended" | "removed" | "duplicate" | "lost";
+
+/** Asks the API for a credential to reconnect with, or null if it cannot be reached.
+ *  Implemented in WebinarRoom, which is the component that knows which gate minted the
+ *  first one. See the comment there for why a retry needs a new one at all. */
+type Credential = () => Promise<{ url: string; token: string } | null>;
+
+/* Whether the capture behind a track is still running.
+ *
+ * The one question that decides whether a track can be restored after a reconnection.
+ * An ended MediaStreamTrack cannot be republished — the SFU would be handed a sender with
+ * nothing behind it — and a track arrives here ended for two quite different reasons that
+ * both mean the same thing to a recovery:
+ *
+ *   The presenter turned it off. Muting a camera stops its capture so the indicator light
+ *   goes out, so "camera off" and "camera ended" are the same state. Not restoring it is
+ *   therefore not a limitation but the correct reading of their intent.
+ *
+ *   The device went away. A webcam unplugged, or a screen share stopped from the browser's
+ *   own "Stop sharing" bar rather than from ours.
+ */
+function isCapturing(track: LocalTrack): boolean {
+  return track.mediaStreamTrack?.readyState === "live";
+}
+
+/* How a restored track has to be published.
+ *
+ * A share is not published like a camera, and getting this wrong is silent: the codec has
+ * to match what the browser actually sends, or the SFU finds no receiver for the video and
+ * the audience gets the audio of a shared clip with no picture. Both paths that START a
+ * share already say so — the control bar for a desktop share, lib/file-share.ts for a
+ * played file, both with SCREEN_SHARE_PUBLISH — so the path that puts one BACK has to say
+ * the same thing, or a reconnection would quietly downgrade a working share to the camera
+ * settings and reintroduce a bug that has already been fixed once.
+ *
+ * The source is restated in the options because publishTrack is being called directly here
+ * rather than through setScreenShareEnabled, which is what would otherwise set it.
+ */
+function publishOptionsFor(source: Track.Source): TrackPublishOptions | undefined {
+  if (source === Track.Source.ScreenShare || source === Track.Source.ScreenShareAudio) {
+    return { ...SCREEN_SHARE_PUBLISH, source };
+  }
+  return undefined;
+}
 
 /* Releases every device this browser is still capturing from.
  *
