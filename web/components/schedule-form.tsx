@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useMemo, useState } from "react";
-import { Alert, Disclosure, Select, Spinner, Toggle } from "./controls";
+import { Alert, Disclosure, openPickerOnClick, Select, Spinner, Toggle } from "./controls";
 import { useAppConfig, useSession, useToast } from "./providers";
 import { Button, Card, SectionTitle } from "./ui";
 import { PlusIcon, TrashIcon } from "./icons";
@@ -507,6 +507,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
             <input
               id="date"
               type="date"
+              onClick={openPickerOnClick}
               className="field"
               value={form.date}
               onChange={(e) => set("date", e.target.value)}
@@ -527,6 +528,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
             <input
               id="time"
               type="time"
+              onClick={openPickerOnClick}
               className="field"
               value={form.time}
               onChange={(e) => set("time", e.target.value)}

@@ -550,6 +550,41 @@ export function Segmented<T extends string>({
   );
 }
 
+// ------------------------------------------------------------- date and time
+
+/**
+ * Opens a date or time input's picker from a click anywhere in the field.
+ *
+ * Native date and time inputs only show their picker when the little calendar or clock at
+ * the right-hand edge is hit — a target a few pixels wide, in a field that looks entirely
+ * clickable. Clicking the other 95% of it focuses the first segment and does nothing
+ * visible, which reads as the control being broken rather than as an invitation to type.
+ *
+ * showPicker() is the sanctioned way to ask, and it has to be from a real click: it throws
+ * NotAllowedError without user activation. Hence a click handler rather than focus — and
+ * focus is the wrong event anyway, because tabbing through a form should not have a picker
+ * open itself over the next field.
+ *
+ * Typing still works. The picker and the text segments stay live together, so anyone who
+ * would rather key in 24/09/2026 can carry on doing exactly that.
+ *
+ * Every failure here is survivable and none of them is worth a message, because the native
+ * indicator still does what it always did: showPicker is absent before Chrome 99 / Firefox
+ * 101 / Safari 16, throws on a disabled or read-only input, and throws if the activation
+ * has already been spent.
+ */
+export function openPickerOnClick(event: React.MouseEvent<HTMLInputElement>): void {
+  const input = event.currentTarget;
+  if (typeof input.showPicker !== "function") return;
+  try {
+    // A no-op when the picker is already up, which is what happens when the click landed on
+    // the native indicator and the browser has opened it itself.
+    input.showPicker();
+  } catch {
+    // See above: nothing here costs the user anything they had before.
+  }
+}
+
 // -------------------------------------------------------------------- select
 
 /** A styled native select. Native because a custom listbox on a phone is worse
