@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import type { AdminUser, Webinar } from "@/lib/api-types";
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { useAppConfig, useSession, useToast } from "./providers";
-import { Alert, ConfirmModal, Disclosure, Spinner, Toggle } from "./controls";
+import { Alert, ConfirmModal, Disclosure, openPickerOnClick, Spinner, Toggle } from "./controls";
 import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 
 /* The admin panel: who may host, every webinar on the instance, and the two
@@ -521,6 +521,7 @@ function AdminWebinars() {
             From
             <input
               type="date"
+              onClick={openPickerOnClick}
               className="field mt-0.5 block"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
@@ -530,6 +531,7 @@ function AdminWebinars() {
             To
             <input
               type="date"
+              onClick={openPickerOnClick}
               className="field mt-0.5 block"
               value={to}
               onChange={(e) => setTo(e.target.value)}

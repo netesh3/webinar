@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { HostWebinarRows } from "./host-webinar-list";
 import { MyWebinarsList } from "./my-webinars-list";
 import { useRegistrations } from "./registrations";
-import { Alert, Spinner, Tabs } from "./controls";
+import { Alert, openPickerOnClick, Spinner, Tabs } from "./controls";
 import { CloseIcon, SearchIcon } from "./icons";
 import { Button, ButtonLink, Empty } from "./ui";
 import { ApiError, api, type HostWebinarTab } from "@/lib/api";
@@ -395,6 +395,7 @@ function DateEnd({
   return (
     <input
       type="date"
+      onClick={openPickerOnClick}
       aria-label={label}
       value={value}
       onChange={(e) => onChange(e.target.value)}
