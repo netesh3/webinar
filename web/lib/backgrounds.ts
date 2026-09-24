@@ -436,6 +436,14 @@ export function useVirtualBackground(
         return;
       }
 
+      /* Which of the two paths below we took, captured before either can change it.
+       *
+       * They fail for different reasons and the stack does not distinguish them well: building
+       * a processor loads the WASM runtime from cold, while switching one already running only
+       * loads a model and an image. Knowing which was in progress is the first question worth
+       * asking of a report, so it is recorded rather than inferred. */
+      const hadProcessor = processor.current !== null;
+
       try {
         if (!processor.current) {
           /* Imported here rather than at the top of the file: between them these two
@@ -533,6 +541,29 @@ export function useVirtualBackground(
         await processor.current?.destroy().catch(() => {});
         processor.current = null;
         publishFrameCost(null);
+
+        /* The whole error, not just its sentence.
+         *
+         * `err.message` is what a presenter can be shown and is nowhere near enough to act
+         * on. "callbacks.shift(...) is not a function" is a real example: that string appears
+         * in three vendored WASM runtimes and in no source file, so the message alone cannot
+         * say which module threw, at which stage, or on which of the two copies of MediaPipe
+         * this bundle contains. Thirteen cold-start scenarios in
+         * e2e/probe-segmenter-init.mjs failed to reproduce it, which is exactly the situation
+         * where the stack is worth more than any amount of further guessing.
+         *
+         * console.error rather than a telemetry call, because the error object goes to the
+         * console intact and the browser expands the frames. Whoever hits it can screenshot
+         * that, and the answer is in it.
+         */
+        console.error("[background] failed to start", err, {
+          mode: choice.mode,
+          image: choice.mode === "image" ? choice.id : null,
+          lowLight: asLowLight(lowLight),
+          trackId: sid ?? null,
+          hadProcessor: hadProcessor,
+        });
+
         setError(
           err instanceof Error
             ? `Couldn't start the background: ${err.message}`
