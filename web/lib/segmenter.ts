@@ -157,6 +157,49 @@ void main() {
   gl_Position = vec4(position, 0.0, 1.0);
 }`;
 
+/* One MediaPipe start-up or teardown at a time, across every instance of this class.
+ *
+ * ensureSegmenter's own guard is a per-instance field, which is enough to stop ONE transformer
+ * loading the model twice and is not enough for the failure this exists to prevent: two
+ * transformers doing it at once. Emscripten does not survive that. Module start-up drains
+ * shared callback arrays with
+ *
+ *     var callRuntimeCallbacks = callbacks => { while (callbacks.length > 0) {
+ *       callbacks.shift()(Module)
+ *     }};
+ *
+ * which is a check followed by an act. A second initialisation can empty the array between
+ * the two, and the first then calls `undefined(Module)` — surfacing as "callbacks.shift(...)
+ * is not a function", intermittently, depending on nothing but timing. Which is how it was
+ * reported: "sometime works sometime fails".
+ *
+ * Two at once is not exotic, and neither reachable path involves anybody doing anything odd:
+ *
+ *   Joining. The pre-join screen's processor is destroyed on unmount without being awaited —
+ *   `void current?.destroy()` in useVirtualBackground — while the room's processor is already
+ *   being built. A close and an init, overlapping by construction, on every join with a
+ *   background on.
+ *
+ *   Changing your mind. Turning a background off and on again, or switching between off and an
+ *   image, destroys in one run of the attach effect and creates in the next. Nothing awaits the
+ *   previous run's async body, so the create starts while the close is still going.
+ *
+ * (An unmount DURING a create is not one of them: that path checks `cancelled` and destroys
+ * what it built before publishing it, so it cleans up after itself.)
+ *
+ * A queue rather than a mutex, so no caller has to handle being refused — everyone waits and
+ * everyone proceeds. A rejection does not wedge the chain: `turn` is what the caller sees and
+ * keeps the error, while the swallowed copy is what the next caller waits on.
+ */
+let mediapipeTurn: Promise<unknown> = Promise.resolve();
+
+function oneAtATime<T>(work: () => Promise<T>): Promise<T> {
+  // Both arms are `work`: a previous turn that failed must not stop this one from running.
+  const turn = mediapipeTurn.then(work, work);
+  mediapipeTurn = turn.catch(() => undefined);
+  return turn;
+}
+
 /* What to say when the graphics context is gone.
  *
  * Worded for a presenter rather than for a graphics programmer, because it reaches them
@@ -498,7 +541,9 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
    */
   private ensureSegmenter(): Promise<void> {
     if (this.segmenter) return Promise.resolve();
-    this.segmenterLoad ??= this.createSegmenter().catch((err: unknown) => {
+    // Through oneAtATime as well as the per-instance guard below: the two answer different
+    // questions, and only the former covers two transformers starting up together.
+    this.segmenterLoad ??= oneAtATime(() => this.createSegmenter()).catch((err: unknown) => {
       this.segmenterLoad = null;
       throw err;
     });
@@ -549,8 +594,13 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
 
   async destroy(): Promise<void> {
     await super.destroy();
-    this.segmenter?.close();
+    /* Closing takes its turn too, because close() tears down the same emscripten module
+     * another transformer may be in the middle of bringing up — which is the collision
+     * oneAtATime exists for, just from the other end. Detached from `this` first, so a
+     * start-up that overtakes us finds nothing to reuse and builds its own. */
+    const dying = this.segmenter;
     this.segmenter = null;
+    if (dying) await oneAtATime(async () => dying.close());
     /* Cleared alongside it, and the null ctx below is what a load still in the air
      * checks on its way back — see the tail of createSegmenter. */
     this.segmenterLoad = null;
