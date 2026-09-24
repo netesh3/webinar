@@ -219,7 +219,7 @@ func (s *Store) ActiveRecordingFile(ctx context.Context, slug string) (Recording
 // reported by the storage backend, so the row cannot drift from the file.
 func (s *Store) RecordedBytes(ctx context.Context, id string, size int64) error {
 	_, err := s.pool.Exec(ctx, `
-		UPDATE recordings SET size_bytes = $2, last_chunk_at = now()
+		UPDATE recordings SET size_bytes = $2::bigint, last_chunk_at = now()
 		 WHERE id = $1::uuid AND status = 'recording'`, id, size)
 	return err
 }
@@ -338,15 +338,20 @@ func (s *Store) RecordingByEgressID(ctx context.Context, egressID string) (Recor
 // by something that did not know the size yet (the webinar ending, a second
 // stop), and this call is the one that knows. Without it the real size arrives
 // and is silently discarded.
+//
+// $2 is cast to bigint because `$2 > 0` would otherwise type the parameter as
+// int4. A two-hour 720p composite is already past 2 GiB, and pgx then refuses
+// to send the size — the file sits in the bucket while the host stares at
+// "Finishing upload" forever.
 func (s *Store) FinishRecordingWithStats(ctx context.Context, id string, sizeBytes, durationMs int64) (types.RecordingStatus, error) {
 	var status types.RecordingStatus
 	err := s.pool.QueryRow(ctx, `
 		UPDATE recordings
-		   SET status = CASE WHEN $2 > 0 OR size_bytes > 0 THEN 'ready' ELSE 'failed' END,
-		       uploaded_to_s3 = CASE WHEN $2 > 0 OR size_bytes > 0 THEN true ELSE false END,
-		       upload_percent = CASE WHEN $2 > 0 OR size_bytes > 0 THEN 100 ELSE 0 END,
-		       size_bytes = GREATEST(size_bytes, $2),
-		       duration_ms = GREATEST(duration_ms, $3),
+		   SET status = CASE WHEN $2::bigint > 0 OR size_bytes > 0 THEN 'ready' ELSE 'failed' END,
+		       uploaded_to_s3 = CASE WHEN $2::bigint > 0 OR size_bytes > 0 THEN true ELSE false END,
+		       upload_percent = CASE WHEN $2::bigint > 0 OR size_bytes > 0 THEN 100 ELSE 0 END,
+		       size_bytes = GREATEST(size_bytes, $2::bigint),
+		       duration_ms = GREATEST(duration_ms, $3::bigint),
 		       stopped_at = COALESCE(stopped_at, now())
 		 WHERE id = $1::uuid AND status IN ('recording', 'processing', 'failed', 'ready')
 		 RETURNING status`, id, sizeBytes, durationMs).Scan(&status)
