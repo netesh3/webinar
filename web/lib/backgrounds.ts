@@ -78,7 +78,7 @@ export function asBackgroundEngine(value: unknown): BackgroundEngine {
 
 /** One-line label for settings rows and the A/B toggle. */
 export function describeBackgroundEngine(engine: BackgroundEngine): string {
-  return engine === "livekit" ? "LiveKit" : "Enhanced";
+  return engine === "livekit" ? "Beta" : "Enhanced";
 }
 
 export type VirtualBackgroundId =

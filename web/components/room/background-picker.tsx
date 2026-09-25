@@ -167,7 +167,7 @@ export function BackgroundEngineToggle({
 
   const options: { id: BackgroundEngine; label: string }[] = [
     { id: "enhanced", label: "Enhanced" },
-    { id: "livekit", label: "LiveKit" },
+    { id: "livekit", label: "Beta" },
   ];
 
   return (
@@ -201,7 +201,7 @@ export function BackgroundEngineToggle({
       </div>
       <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-3">
         {engine === "livekit"
-          ? "LiveKit’s built-in processor. Low-light adjustment is unavailable on this engine."
+          ? "Beta processor. Low-light adjustment is unavailable on this engine."
           : "Our MediaPipe SoftSegmenter (default). Supports blur, image, and low-light."}
       </p>
     </div>
