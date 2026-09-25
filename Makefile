@@ -7,7 +7,7 @@ export PATH := /opt/homebrew/bin:/opt/homebrew/opt/postgresql@18/bin:$(PATH)
 DB_URL      ?= postgres://webcast:webcast@localhost:5432/webcast?sslmode=disable
 TEST_DB_URL ?= postgres://webcast:webcast@localhost:5432/webcast_test?sslmode=disable
 LIVEKIT_BIN := infra/bin/livekit-server
-LIVEKIT_VER := v1.13.6
+LIVEKIT_VER := v1.13.7
 
 .PHONY: help
 help: ## Show this help

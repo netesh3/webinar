@@ -27,7 +27,7 @@ This guide explains the architecture, deployment, and configuration for zero-cli
                                          v psrpc RPC over Redis
 +-----------------------------------------------------------------------------------+
 | HETZNER SERVER                                                                    |
-|   1. LiveKit SFU (livekit-server:v1.9.1) dispatches job to Redis queue            |
+|   1. LiveKit SFU (livekit-server:v1.13.7) dispatches job to Redis queue           |
 |   2. Redis (redis:7-alpine, in-memory queue, ~15MB RAM)                           |
 |   3. LiveKit Egress (livekit/egress:v1.8.8)                                       |
 |      - Launches Headless Chromium pointing to:                                    |
