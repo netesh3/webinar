@@ -98,19 +98,32 @@ const MATTE_LONG_SIDE = 256;
  * visible trail on a head turning left/right or leaning toward the camera: at a moderate
  * colour change of 0.05 — a typical face turn, not a waving hand — the old MOTION_HI of 0.1
  * only reached ~0.29 along the blend, so k sat near 0.44 and the matte lagged by more than
- * half a frame of history. Raising K_MOVE to 0.97 and tightening MOTION_HI to 0.065 puts
- * that same turn near k ≈ 0.8, and a clear move near 0.97, without touching K_STILL (so the
- * still-edge shimmer trade measured above is unchanged). MOTION_LO drops slightly so a
- * gentle turn starts leaving the still weight sooner.
+ * half a frame of history. Raising K_MOVE to 0.97 and tightening MOTION_HI to 0.055 puts
+ * that same turn near k ≈ 0.85, and a clear move near 0.97, without touching K_STILL (so the
+ * still-edge shimmer trade measured above is unchanged).
  *
- * "Moved" is the largest colour change in the 3×3 neighbourhood between this frame and the
- * last, at the matte's resolution — which averages away sensor noise (well under MOTION_LO
- * even in a dim room) and keeps real movement.
+ * Colour alone still undersenses small fast limbs: a waving hand is only a few matte texels,
+ * and at that resolution the RGB delta can sit mid-band while confidence jumps hard. Large
+ * confidence deltas (above MASK_MOTION_FLOOR, so still-edge shimmer does not count) therefore
+ * also drive the motion amount. Under high motion the blend snaps harder toward the new mask
+ * (MOTION_SNAP) and prefers a rising confidence (hand arriving into this pixel). Translucent
+ * palms from MASK_LO on mid-confidence skin are handled in the composite via HAND_MASK_*,
+ * not by lifting mid-confidence here — that solidifies furniture whenever the whole frame
+ * moves.
+ *
+ * "Moved" is the largest colour — or significant mask — change in the 3×3 neighbourhood
+ * between this frame and the last, at the matte's resolution.
  */
 const K_STILL = 0.25;
 const K_MOVE = 0.97;
-const MOTION_LO = 0.025;
-const MOTION_HI = 0.065;
+const MOTION_LO = 0.022;
+const MOTION_HI = 0.055;
+/** Confidence deltas below this are treated as model shimmer, not limb motion. */
+const MASK_MOTION_FLOOR = 0.2;
+/** How strongly a (floor-subtracted) confidence jump counts as motion, vs RGB. */
+const MASK_MOTION_GAIN = 1.1;
+/** Extra pull toward the new mask at full motion (on top of K_MOVE). */
+const MOTION_SNAP = 0.65;
 
 /* Where the mask becomes opaque, and why it is not centred on a half.
  *
@@ -146,9 +159,23 @@ const MOTION_HI = 0.065;
  * Reaching full opacity by 0.75 is what keeps a less-confident person solid. Erosion was
  * measured as the alternative and is worse at both ends: 14 mask pixels of it took the
  * chair to 36% but the face to 73%.
+ *
+ * Hands break the furniture trade: palms often land in the same mid band as the chair
+ * (≈0.55–0.70), so MASK_LO punches translucent holes through them. Lowering MASK_LO
+ * globally brings the chair back. The composite therefore keeps these thresholds for cool
+ * pixels, and on warm (skin-chroma) uncertain pixels only, dips the band so a confidence
+ * of ~0.55 reads nearly opaque — see HAND_MASK_* — without reopening cool furniture.
  */
 const MASK_LO = 0.62;
 const MASK_HI = 0.75;
+/** Soften the person threshold on warm mid-confidence pixels (hands), not on cool chairs. */
+const HAND_MASK_LO = 0.48;
+const HAND_MASK_HI = 0.70;
+/** Skin chroma (R−B) where the hand band fully replaces MASK_LO/HI. Kept high so warm
+ *  wood/desk mid-confidence does not solidify as a person (that made the probe label
+ *  whole frames "lifted" instead of the office still). */
+const HAND_WARM_LO = 0.08;
+const HAND_WARM_HI = 0.16;
 
 /** Below this the blur counts a pixel wholly as room. Between it and MASK_LO the pixel is
  *  shown as room but kept out of the blur, so furniture the model half-believes in is
@@ -301,7 +328,11 @@ void main() {
  * Ping-pong, because a framebuffer cannot sample the texture it is writing to. `previous`
  * carries its own frame's colour, so the motion test compares like with like. This is a
  * running average, so it only works if what goes in comes out the same way up — see the
- * vertex shaders; a temporal filter amplifies a geometry error instead of hiding it. */
+ * vertex shaders; a temporal filter amplifies a geometry error instead of hiding it.
+ *
+ * Fast limbs need more than a high K_MOVE: RGB motion at matte resolution can undershoot
+ * on a small hand, so confidence jumps join the motion metric, the blend snaps harder, and
+ * rising confidence is preferred under motion (hand entering this texel). */
 const TEMPORAL = `#version 300 es
 precision highp float;
 uniform sampler2D current;    // guide colour, raw confidence
@@ -317,13 +348,30 @@ void main() {
   for (int y = -1; y <= 1; y++) {
     for (int x = -1; x <= 1; x++) {
       ivec2 q = clamp(p + ivec2(x, y), ivec2(0), last);
-      vec3 d = abs(texelFetch(current, q, 0).rgb - texelFetch(previous, q, 0).rgb);
+      vec4 cq = texelFetch(current, q, 0);
+      vec4 pq = texelFetch(previous, q, 0);
+      vec3 d = abs(cq.rgb - pq.rgb);
       motion = max(motion, max(d.r, max(d.g, d.b)));
+      // Limb enter/leave moves confidence hard; still-edge shimmer stays under the floor.
+      float da = abs(cq.a - pq.a);
+      motion = max(motion, max(0.0, da - ${MASK_MOTION_FLOOR.toFixed(3)})
+                          * ${MASK_MOTION_GAIN.toFixed(3)});
     }
   }
-  float k = mix(${K_STILL.toFixed(3)}, ${K_MOVE.toFixed(3)},
-                smoothstep(${MOTION_LO.toFixed(3)}, ${MOTION_HI.toFixed(3)}, motion));
-  color = vec4(now.rgb, mix(before, now.a, max(k, restart)));
+  float moveAmt = smoothstep(${MOTION_LO.toFixed(3)}, ${MOTION_HI.toFixed(3)}, motion);
+  float k = mix(${K_STILL.toFixed(3)}, ${K_MOVE.toFixed(3)}, moveAmt);
+  // Quadratic snap: leave still edges alone, chase waving hands to the new mask.
+  k = mix(k, 1.0, moveAmt * moveAmt * ${MOTION_SNAP.toFixed(3)});
+  float a = mix(before, now.a, max(k, restart));
+  // Prefer rising person confidence under motion (hand arriving); clearing uses high k.
+  a = mix(a, max(a, now.a), moveAmt * moveAmt);
+  // Under clear limb motion, lift warm mid-confidence toward opaque before MASK_LO.
+  // Gated by moveAmt² and skin chroma so still edges and cool furniture are untouched.
+  float skin = smoothstep(${HAND_WARM_LO.toFixed(3)}, ${HAND_WARM_HI.toFixed(3)}, now.r - now.b)
+             * smoothstep(0.0, 0.05, now.r - now.g);
+  float mid = smoothstep(0.45, 0.58, a) * (1.0 - smoothstep(0.72, 0.88, a));
+  a = mix(a, max(a, mix(a, 0.82, mid)), moveAmt * moveAmt * skin);
+  color = vec4(now.rgb, a);
 }`;
 
 /* The room, with the person taken out, ready to blur: colour premultiplied by how much of
@@ -409,6 +457,10 @@ const COMPOSITE = `#version 300 es
 precision highp float;
 const float MASK_LO = ${MASK_LO.toFixed(3)};
 const float MASK_HI = ${MASK_HI.toFixed(3)};
+const float HAND_MASK_LO = ${HAND_MASK_LO.toFixed(3)};
+const float HAND_MASK_HI = ${HAND_MASK_HI.toFixed(3)};
+const float HAND_WARM_LO = ${HAND_WARM_LO.toFixed(3)};
+const float HAND_WARM_HI = ${HAND_WARM_HI.toFixed(3)};
 const float SIGMA_SPACE = ${SIGMA_SPACE.toFixed(3)};
 const float SIGMA_COLOR = ${SIGMA_COLOR.toFixed(3)};
 const float FG_CONTRAST = ${FG_CONTRAST.toFixed(3)};
@@ -542,9 +594,19 @@ void main() {
    *
    * The transition band is narrow and sits above the middle rather than across it, which
    * is a measured choice about what the model is confidently wrong about rather than a
-   * feel — see MASK_LO. The softness of the edge comes from matteAt, which is where an
-   * anti-aliased edge that follows the picture comes from. */
-  float alpha = smoothstep(MASK_LO, MASK_HI, matteAt(uv)) * (1.0 - veil);
+   * feel — see MASK_LO. On warm mid-confidence pixels (hands) the band dips toward
+   * HAND_MASK_* so palms are not translucent while cool furniture keeps the hard cut.
+   * The softness of the edge comes from matteAt. */
+  float conf = matteAt(uv);
+  // Skin-like: red above blue AND red above green. Wood desks often fail the second.
+  float warm = smoothstep(HAND_WARM_LO, HAND_WARM_HI, raw.r - raw.b)
+             * smoothstep(0.0, 0.05, raw.r - raw.g);
+  // Only the uncertain band: solid person and clear room keep the furniture thresholds.
+  float uncertain = smoothstep(0.45, 0.58, conf) * (1.0 - smoothstep(0.72, 0.88, conf));
+  float handAmt = warm * uncertain;
+  float lo = mix(MASK_LO, HAND_MASK_LO, handAmt);
+  float hi = mix(MASK_HI, HAND_MASK_HI, handAmt);
+  float alpha = smoothstep(lo, hi, conf) * (1.0 - veil);
   color = vec4(mix(bg, fg, alpha), 1.0);
 }`;
 
