@@ -389,9 +389,21 @@ export function ControlBar() {
     void toggle("camera", "Camera", () =>
       isCameraEnabled
         ? localParticipant.setCameraEnabled(false)
-        : enableCamera(localParticipant, prefs.background, prefs.lowLight),
+        : enableCamera(
+            localParticipant,
+            prefs.background,
+            prefs.lowLight,
+            prefs.backgroundEngine,
+          ),
     );
-  }, [toggle, localParticipant, isCameraEnabled, prefs.background, prefs.lowLight]);
+  }, [
+    toggle,
+    localParticipant,
+    isCameraEnabled,
+    prefs.background,
+    prefs.lowLight,
+    prefs.backgroundEngine,
+  ]);
 
   const switchCapture = useCallback(
     async (kind: "audioinput" | "videoinput", deviceId: string) => {

@@ -7,7 +7,8 @@ backgrounds work without reaching a third-party CDN at runtime.
 the model from `storage.googleapis.com`. Both are routinely blocked on the corporate
 networks a webinar audience sits behind, and the failure is silent and per-viewer — a
 background that does not load for a quarter of the room is worse than one that is not
-offered. `lib/backgrounds.ts` points `assetPaths` here instead.
+offered. Both engines in `lib/backgrounds.ts` (Enhanced SoftSegmenter and LiveKit's
+built-in `BackgroundProcessor`) point `assetPaths` here instead.
 
 It also means nobody outside this deployment learns who is in a session from the
 asset requests.

@@ -491,10 +491,18 @@ function ConnectedRoom({
 
   // The background a camera opened here opens with, in a ref for the same reason: changing
   // it must not re-run publishing.
-  const look = useRef({ background: prefs.background, lowLight: prefs.lowLight });
+  const look = useRef({
+    background: prefs.background,
+    lowLight: prefs.lowLight,
+    backgroundEngine: prefs.backgroundEngine,
+  });
   useEffect(() => {
-    look.current = { background: prefs.background, lowLight: prefs.lowLight };
-  }, [prefs.background, prefs.lowLight]);
+    look.current = {
+      background: prefs.background,
+      lowLight: prefs.lowLight,
+      backgroundEngine: prefs.backgroundEngine,
+    };
+  }, [prefs.background, prefs.lowLight, prefs.backgroundEngine]);
 
   const liveRole = useLiveRole(room, join.role);
   // A co-host is a panelist the host made their equal — everywhere in this
@@ -882,8 +890,8 @@ function ConnectedRoom({
         // the audience's first frame of it is not the room; see openCamera.
         if (startMic && !audio) await room.localParticipant.setMicrophoneEnabled(true);
         if (startCamera && !video) {
-          const { background, lowLight } = look.current;
-          await enableCamera(room.localParticipant, background, lowLight);
+          const { background, lowLight, backgroundEngine } = look.current;
+          await enableCamera(room.localParticipant, background, lowLight, backgroundEngine);
         }
       } catch {
         /* A publish that fails is not a connection that failed, and must not be reported as

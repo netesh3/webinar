@@ -178,10 +178,14 @@ export function DeviceSettings() {
 
                 {/* Below the background rather than above it, because the two share a
                     processor and the order matches what the lift does: with a background on
-                    it lights the person, so the thing it depends on is the thing above it. */}
-                <div className="border-t border-line pt-3">
-                  <LowLightSetting />
-                </div>
+                    it lights the person, so the thing it depends on is the thing above it.
+                    LiveKit's built-in processor has no low-light API — hide rather than
+                    leave a control that does nothing. */}
+                {prefs.backgroundEngine !== "livekit" && (
+                  <div className="border-t border-line pt-3">
+                    <LowLightSetting />
+                  </div>
+                )}
               </>
             )}
 
