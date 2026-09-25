@@ -226,7 +226,32 @@ export function describeBackgroundError(err: unknown, lowLightOnly = false): str
   if (text.includes("background image failed to load")) {
     return "Couldn't load that background image. Try again or pick another one.";
   }
+  /* Emscripten's half-drained start-up callbacks — see oneAtATime in lib/segmenter.ts.
+   *
+   * Named rather than folded into the catch-all: Retry alone rarely clears a corrupted
+   * Module, and "reload the page" is the action that does. The string is stable across
+   * MediaPipe versions and is what the console shows when dispose races create. */
+  if (/callbacks\.shift/.test(text)) {
+    return `Couldn't ${what}: the effect engine was interrupted. Reload the page and try again.`;
+  }
+  /* Catch-all: keep it short for the presenter, but keep a clipped hint so a screenshot of
+   * the yellow box is enough to tell the next failure from the last without DevTools.
+   * Long GPU sentences still go through the patterns above; this only runs for unknowns. */
+  const hint = clippedErrorHint(err);
+  if (hint) {
+    return `Couldn't ${what} (${hint}). Try again, or reload the page if it keeps happening.`;
+  }
   return `Couldn't ${what}. Try again, or reload the page if it keeps happening.`;
+}
+
+/** A short, screenshot-safe excerpt of an unknown failure — never a multi-line GPU dump. */
+function clippedErrorHint(err: unknown, max = 72): string | null {
+  const raw = errorText(err).replace(/\s+/g, " ").trim();
+  if (!raw || raw === "undefined" || raw === "null") return null;
+  // Skip values that are only noise when stringified.
+  if (/^\[object \w+\]$/i.test(raw)) return null;
+  if (raw.length <= max) return raw;
+  return `${raw.slice(0, max - 1)}…`;
 }
 
 /** Every message in an error and the chain of causes behind it, as one string. */
@@ -646,10 +671,17 @@ async function createProcessor(
   lowLight: number,
   listeners: Pick<SegmenterOptions, "onFrame" | "onStatus">,
 ): Promise<BackgroundProcessor> {
-  const [{ ProcessorWrapper }, { SoftSegmenter }] = await Promise.all([
-    import("@livekit/track-processors"),
-    import("./segmenter"),
-  ]);
+  /* SoftSegmenter first, then ProcessorWrapper — not in parallel.
+   *
+   * `@livekit/track-processors` statically imports `@mediapipe/tasks-vision` for its unused
+   * BackgroundTransformer. SoftSegmenter loads the same package for real. Two copies of the
+   * Emscripten glue (0.10.14 nested under track-processors, 1.0.1 at the top level) sharing
+   * one vendored `/mediapipe/wasm` was a second path to "callbacks.shift(...) is not a
+   * function" that oneAtATime alone could not cover: module evaluation itself was racing.
+   * npm overrides pin a single version; loading them one after the other keeps evaluation
+   * ordered even if a bundler still emits two chunks. */
+  const { SoftSegmenter } = await import("./segmenter");
+  const { ProcessorWrapper } = await import("@livekit/track-processors");
   const soft = new SoftSegmenter({
     background: backgroundFor(choice),
     lowLight: lowLightAmount(lowLight),
@@ -815,8 +847,10 @@ export function useVirtualBackground(
    */
   useEffect(() => {
     if (choice.mode === "none" || !backgroundsSupported()) return;
-    void import("@livekit/track-processors").catch(() => {});
-    void import("./segmenter").catch(() => {});
+    // Same order as createProcessor: SoftSegmenter's module before track-processors'.
+    void import("./segmenter")
+      .then(() => import("@livekit/track-processors"))
+      .catch(() => {});
   }, [choice.mode]);
 
   useEffect(() => {
