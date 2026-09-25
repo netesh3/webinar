@@ -1,15 +1,17 @@
 /* The low-light curve, as shader source, in a module with no imports.
  *
  * Its own file for one reason: e2e/probe-low-light.mjs imports this and compiles the exact
- * string below in a real WebGL2 context. probe-mask.mjs, testing the segmentation chain,
- * has to transcribe segmenter.ts's shaders by hand and says so — "a copy that drifts is
- * worse than no test". A transcription of THIS would be worse still, because every property
- * worth asserting about a tone curve is a property of the arithmetic: a copy that drifts is
- * a test that passes while the shipped curve clips.
+ * string below in a real WebGL2 context. The segmentation chain used to be tested from a
+ * hand-made transcription of segmenter.ts's shaders, and the copy drifted until it tested a
+ * pipeline that no longer shipped — "a copy that drifts is worse than no test". A
+ * transcription of THIS would be worse still, because every property worth asserting about a
+ * tone curve is a property of the arithmetic: a copy that drifts is a test that passes while
+ * the shipped curve clips.
  *
- * segmenter.ts cannot be imported by a probe — it pulls in @livekit/track-processors and
- * MediaPipe — so the curve moved here instead, where `node --experimental-strip-types` can
- * load it with nothing behind it.
+ * segmenter.ts cannot be loaded by `node --experimental-strip-types` — it pulls in
+ * @livekit/track-processors and MediaPipe — so the curve moved here instead, where it loads
+ * with nothing behind it. (e2e/probe-background.mjs does run segmenter.ts itself, whole, by
+ * bundling it; that needs a photo of a person and a minute, which a tone curve does not.)
  */
 
 /* Why this is a curve and not a multiply.

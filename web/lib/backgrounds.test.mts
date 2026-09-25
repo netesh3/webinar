@@ -10,6 +10,7 @@
 import {
   asBackgroundChoice,
   describeBackground,
+  describeBackgroundError,
   VIRTUAL_BACKGROUNDS,
 } from "./backgrounds.ts";
 
@@ -79,6 +80,104 @@ console.log("\ndescribeBackground");
     "Office",
     "a still uses its label",
   );
+}
+
+console.log("\ndescribeBackgroundError");
+
+{
+  const GPU =
+    "Couldn't start the background: your browser ran out of graphics capacity. Close a few tabs and try again.";
+
+  // The report that prompted it, verbatim from the pre-join screen.
+  eq(
+    describeBackgroundError(
+      new Error(
+        "Unable to initialize EGL context. Error querying for GL extensions. INTERNAL: Service kGpuService, a required service, failed to initialize.",
+      ),
+    ),
+    GPU,
+    "MediaPipe's GPU start-up failure is a graphics-capacity sentence",
+  );
+  eq(
+    describeBackgroundError(
+      // CONTEXT_LOST in lib/segmenter.ts, wrapped as createSegmenter wraps it.
+      new Error(
+        "your browser ran out of graphics capacity — too many open tabs are using it. Close a few and try again.",
+        { cause: new Error("emscripten threw") },
+      ),
+    ),
+    GPU,
+    "our own context-lost error reads the same",
+  );
+  eq(
+    describeBackgroundError(
+      new Error("the segmentation model did not load", {
+        cause: new TypeError("Cannot read properties of null (reading 'alpha')"),
+      }),
+    ),
+    GPU,
+    "a context loss is found in the cause, not only the message",
+  );
+  eq(
+    describeBackgroundError(new TypeError("Failed to fetch")),
+    "Couldn't download the background effect. Check your connection and try again.",
+    "a failed download says to check the connection",
+  );
+  eq(
+    describeBackgroundError(
+      new TypeError("Failed to fetch dynamically imported module: /_next/static/chunks/x.js"),
+    ),
+    "Couldn't download the background effect. Check your connection and try again.",
+    "a failed chunk load is a download too",
+  );
+  eq(
+    describeBackgroundError(new Error("background image failed to load: /backgrounds/office.jpg")),
+    "Couldn't load that background image. Try again or pick another one.",
+    "a still that did not load says to pick another",
+  );
+  eq(
+    describeBackgroundError(new Error("callbacks.shift(...) is not a function")),
+    "Couldn't start the background. Try again, or reload the page if it keeps happening.",
+    "anything else is a sentence, never the raw message",
+  );
+  eq(
+    describeBackgroundError(new Error("WebGL2 is not available"), true),
+    "Couldn't adjust your video: your browser ran out of graphics capacity. Close a few tabs and try again.",
+    "low light on its own does not mention a background",
+  );
+  eq(
+    describeBackgroundError(new TypeError("NetworkError when attempting to fetch resource."), true),
+    "Couldn't load the video adjustment. Check your connection and try again.",
+    "low light on its own has its own download sentence",
+  );
+  eq(
+    describeBackgroundError("kGpuService failed"),
+    GPU,
+    "a thrown string is read like a message",
+  );
+  eq(
+    describeBackgroundError(undefined),
+    "Couldn't start the background. Try again, or reload the page if it keeps happening.",
+    "nothing at all still gets a sentence",
+  );
+  const loop: { message: string; cause?: unknown } = { message: "odd" };
+  loop.cause = loop;
+  eq(
+    describeBackgroundError(loop),
+    "Couldn't start the background. Try again, or reload the page if it keeps happening.",
+    "a cause chain that loops does not hang",
+  );
+  for (const err of [
+    new Error("Unable to initialize EGL context. Error querying for GL extensions. INTERNAL: Service kGpuService, a required service, failed to initialize."),
+    new Error("x".repeat(400)),
+  ]) {
+    const said = describeBackgroundError(err);
+    ok(
+      !said.includes("kGpuService") && !said.includes("xxxx"),
+      "the raw message never reaches the screen",
+      said,
+    );
+  }
 }
 
 if (failures) {

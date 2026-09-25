@@ -7,25 +7,15 @@ import {
   type LocalVideoTrack,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  backgroundsSupported,
-  useVirtualBackground,
-  VIRTUAL_BACKGROUNDS,
-  type BackgroundChoice,
-} from "@/lib/backgrounds";
+import { openCamera, useBackgroundsSupported, useVirtualBackground } from "@/lib/backgrounds";
 import { cameraCapturePreset, deviceLabel, useDevices, type MediaPreferences } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
 import { Alert, Select, Spinner } from "../controls";
+import { BackgroundTiles } from "./background-picker";
 import { LowLightControl } from "./low-light";
 import { Button } from "../ui";
-import {
-  CameraIcon,
-  CameraOffIcon,
-  CheckIcon,
-  MicIcon,
-  MicOffIcon,
-} from "../icons";
+import { CameraIcon, CameraOffIcon, MicIcon, MicOffIcon } from "../icons";
 
 /* The pre-join check, for people who are about to be on camera.
  *
@@ -88,8 +78,12 @@ export function PreJoin({
   const [cameraFailure, setCameraFailure] = useState<string | null>(null);
   const [micFailure, setMicFailure] = useState<string | null>(null);
   const [starting, setStarting] = useState(true);
-  const [level, setLevel] = useState(0);
+  /* The open tracks, for rendering. The refs below are the ones that are acted on: these
+   * exist so the preview and the level meter re-render when a track arrives or goes, and
+   * nothing that acquires a track reads them — which would make it re-run on its own
+   * result. */
   const [previewTrack, setPreviewTrack] = useState<LocalVideoTrack | null>(null);
+  const [micTrack, setMicTrack] = useState<LocalAudioTrack | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoTrack = useRef<LocalVideoTrack | null>(null);
@@ -137,9 +131,10 @@ export function PreJoin({
    * brightness lift that fails to start becomes an unexplained black preview: the camera is
    * open, the toggle says on, the light is lit, and the only thing on screen that could
    * explain the dark square is a slider nobody would connect to it. The hook now puts the
-   * raw camera back when this happens; this makes it say so as well.
+   * raw camera back when this happens; this makes it say so as well. Most failures are said
+   * under the background tiles, next to a button to try again; see BackgroundTiles.
    */
-  const { error: enhanceError, preparing: enhancePreparing } = useVirtualBackground(
+  const { error: enhanceError, retryable: enhanceRetryable } = useVirtualBackground(
     previewTrack ?? undefined,
     prefs.background,
     prefs.lowLight,
@@ -163,7 +158,8 @@ export function PreJoin({
    * useDevices re-reads on it, so the real labels still arrive.
    */
   const [permitted, setPermitted] = useState(false);
-  const { devices } = useDevices(true);
+  const { devices, refresh: refreshDevices } = useDevices(true);
+  const backgroundsOk = useBackgroundsSupported();
 
   /* Whether this machine really has no camera — a claim, so it needs to be supportable.
    *
@@ -174,8 +170,21 @@ export function PreJoin({
    * without a deviceId, which useDevices filters out, so an empty list on its own still
    * cannot carry the claim. Having opened SOMETHING is what makes the enumeration complete
    * enough to trust, and `permitted` is that.
+   *
+   * And a camera that is open and showing in the preview is proof on its own. The list is
+   * read again once something opens (see startVideo), but a browser that answers that read
+   * before it has caught up with the new permission used to leave "No camera detected"
+   * under the presenter's own face.
    */
-  const noCamera = permitted && devices.videoInput.length === 0;
+  const noCamera = permitted && devices.videoInput.length === 0 && !previewTrack;
+
+  /* The background to open the camera with. A ref, read when the camera opens, because
+   * changing the background is a call on the processor already running and must not
+   * reopen the camera — which it would as a dependency of startVideo. */
+  const look = useRef({ background: prefs.background, lowLight: prefs.lowLight });
+  useEffect(() => {
+    look.current = { background: prefs.background, lowLight: prefs.lowLight };
+  }, [prefs.background, prefs.lowLight]);
 
   const stopVideo = useCallback(() => {
     videoTrack.current?.stop();
@@ -186,98 +195,145 @@ export function PreJoin({
   const stopAudio = useCallback(() => {
     audioTrack.current?.stop();
     audioTrack.current = null;
+    setMicTrack(null);
   }, []);
 
   /** Opens the camera and attaches it to the preview.
    *
    *  One resolution, the same one the room publishes at — there is nothing to choose here
    *  any more, because what actually goes out is decided by the measured uplink rather than
-   *  by a dropdown. See cameraCapturePreset in lib/media.ts. */
-  const startVideo = useCallback(async () => {
-    stopVideo();
-    const track = await createLocalVideoTrack({
-      deviceId: prefs.videoInput,
-      resolution: cameraCapturePreset().resolution,
-    });
-    videoTrack.current = track;
-    setPreviewTrack(track);
-    if (videoRef.current) track.attach(videoRef.current);
-    setPermitted(true);
-  }, [prefs.videoInput, stopVideo]);
+   *  by a dropdown. See cameraCapturePreset in lib/media.ts.
+   *
+   *  `stale` is whether the caller has moved on while the camera was opening — another
+   *  device chosen, or the camera turned off. Opening takes long enough for that to happen,
+   *  and a track that arrived for a request nobody is waiting on would be a second live
+   *  camera that nothing on screen shows and nothing will stop.
+   *
+   *  Opened with the background already on it, so the preview's first frame is not the
+   *  room; see openCamera. */
+  const startVideo = useCallback(
+    async (stale: () => boolean) => {
+      stopVideo();
+      const { background, lowLight } = look.current;
+      const track = await openCamera(background, lowLight, (processor) =>
+        createLocalVideoTrack({
+          deviceId: prefs.videoInput,
+          resolution: cameraCapturePreset().resolution,
+          processor,
+        }),
+      );
+      if (stale()) {
+        track.stop();
+        return;
+      }
+      videoTrack.current = track;
+      setPreviewTrack(track);
+      if (videoRef.current) track.attach(videoRef.current);
+      setPermitted(true);
+      /* The labels and ids arrive with the permission, and not every browser says so with
+       * a devicechange — Chrome often does not. Without this the camera picker went on
+       * offering only "System default", beside a preview of the camera it could not name. */
+      void refreshDevices();
+    },
+    [prefs.videoInput, stopVideo, refreshDevices],
+  );
 
-  // Bumped whenever a new audio track is acquired, so the level meter's effect
-  // re-runs. The track itself lives in a ref: putting it in state would retrigger
-  // the acquisition effect that created it.
-  const [micGeneration, setMicGeneration] = useState(0);
+  /** Opens the microphone, for the level meter and to hand to the room. */
+  const startAudio = useCallback(
+    async (stale: () => boolean) => {
+      stopAudio();
+      const track = await createLocalAudioTrack({
+        deviceId: prefs.audioInput,
+        echoCancellation: true,
+        // Off here too — see lib/media.ts's roomOptions for why. This track is
+        // handed straight to the room on join (see join() below) and becomes the
+        // published one, so it has to make the same choice roomOptions makes for
+        // any track the room captures itself later.
+        noiseSuppression: false,
+      });
+      if (stale()) {
+        track.stop();
+        return;
+      }
+      audioTrack.current = track;
+      setMicTrack(track);
+      setPermitted(true);
+      void refreshDevices();
+    },
+    [prefs.audioInput, stopAudio, refreshDevices],
+  );
 
-  const startAudio = useCallback(async () => {
-    stopAudio();
-    const track = await createLocalAudioTrack({
-      deviceId: prefs.audioInput,
-      echoCancellation: true,
-      // Off here too — see lib/media.ts's roomOptions for why. This track is
-      // handed straight to the room on join (see join() below) and becomes the
-      // published one, so it has to make the same choice roomOptions makes for
-      // any track the room captures itself later.
-      noiseSuppression: false,
-    });
-    audioTrack.current = track;
-    setPermitted(true);
-    setMicGeneration((n) => n + 1);
-  }, [prefs.audioInput, stopAudio]);
-
-  // Acquire whatever is switched on. Camera and mic are independent — a blocked
-  // camera used to abort before the mic opened, which looked like "mic blocked"
-  // even when only the camera was denied for this origin.
+  /* Acquire whatever is switched on — the camera and the microphone each in an effect of
+   * its own, because they are independent devices and one effect for both made them
+   * anything but.
+   *
+   * A blocked camera used to abort before the mic opened, which looked like "mic blocked"
+   * even when only the camera was denied for this origin. And muting the microphone, or
+   * choosing another one, re-ran the camera half as well: a new camera track, so the
+   * background was attached from scratch and the preview showed the room while it loaded.
+   * That was a large part of the flicker on this screen.
+   */
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
+      if (!cameraEnabled) {
+        stopVideo();
+        setStarting(false);
+        return;
+      }
       setStarting(true);
-
-      if (!cameraEnabled) stopVideo();
-      else {
-        try {
-          await startVideo();
-          // Cleared on success only. A device that opens has nothing left to explain.
-          if (!cancelled) setCameraFailure(null);
-        } catch (err) {
-          if (!cancelled) {
-            stopVideo();
-            /* The message first, the toggle second, and the order is the whole fix.
-             *
-             * setCameraEnabled(false) re-runs this effect, whose cleanup sets `cancelled`
-             * — so anything written after it was written by a run that had already been
-             * told to stop, behind an `if (!cancelled)` that was false by then. That is
-             * how the reason for a failure used to be lost between the failure and the
-             * screen. */
-            setCameraFailure(describeMediaError(err, "camera"));
-            setCameraEnabled(false);
-          }
+      try {
+        await startVideo(() => cancelled);
+        // Cleared on success only. A device that opens has nothing left to explain.
+        if (!cancelled) setCameraFailure(null);
+      } catch (err) {
+        if (!cancelled) {
+          stopVideo();
+          /* The message first, the toggle second, and the order is the whole fix.
+           *
+           * setCameraEnabled(false) re-runs this effect, whose cleanup sets `cancelled`
+           * — so anything written after it was written by a run that had already been
+           * told to stop, behind an `if (!cancelled)` that was false by then. That is
+           * how the reason for a failure used to be lost between the failure and the
+           * screen. */
+          setCameraFailure(describeMediaError(err, "camera"));
+          setCameraEnabled(false);
         }
       }
-
-      if (!micEnabled) stopAudio();
-      else {
-        try {
-          await startAudio();
-          if (!cancelled) setMicFailure(null);
-        } catch (err) {
-          if (!cancelled) {
-            stopAudio();
-            setMicFailure(describeMediaError(err, "microphone"));
-            setMicEnabled(false);
-          }
-        }
-      }
-
       if (!cancelled) setStarting(false);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [cameraEnabled, micEnabled, startVideo, startAudio, stopVideo, stopAudio]);
+  }, [cameraEnabled, startVideo, stopVideo]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (!micEnabled) {
+        stopAudio();
+        return;
+      }
+      try {
+        await startAudio(() => cancelled);
+        if (!cancelled) setMicFailure(null);
+      } catch (err) {
+        if (!cancelled) {
+          stopAudio();
+          // Message first, toggle second, for the reason given in the camera effect.
+          setMicFailure(describeMediaError(err, "microphone"));
+          setMicEnabled(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [micEnabled, startAudio, stopAudio]);
 
   // Release the preview on unmount — unless it was handed to the room, which owns
   // it from that point. Without the guard the camera light would go out a moment
@@ -289,30 +345,6 @@ export function PreJoin({
       stopAudio();
     };
   }, [stopVideo, stopAudio]);
-
-  /* A real level meter, from the shared measurement in lib/mic-level.ts.
-   *
-   * The AnalyserNode used to be inline here, and then the control bar needed the same thing —
-   * two copies of the same waveform maths is one of them quietly drifting. The measuring moved
-   * out; this screen keeps its own state because it needs the NUMBER, for the bar's width and
-   * for aria-valuenow, and because nothing else is rendering on a pre-join screen.
-   *
-   * Still the only way to tell a working microphone from one that is muted in hardware: a
-   * device that opens successfully and delivers pure silence looks identical to a good one
-   * until somebody tells you they cannot hear you.
-   */
-  useEffect(() => {
-    if (!micEnabled) return;
-    return measureMicLevel(audioTrack.current?.mediaStreamTrack, setLevel);
-  }, [micEnabled, micGeneration]);
-
-  /* Zero when the microphone is off, DERIVED rather than stored.
-   *
-   * The obvious version calls setLevel(0) in the effect when the mic is disabled, and that is a
-   * synchronous setState inside an effect — a cascading render, and React's lint rule is right
-   * to refuse it. Deriving costs nothing and cannot go stale: there is no path where the mic is
-   * off and a leftover level is still on screen. */
-  const shownLevel = micEnabled ? level : 0;
 
   function join() {
     // The previous version stopped both tracks here so the room could open its
@@ -332,6 +364,7 @@ export function PreJoin({
     audioTrack.current = null;
     videoTrack.current = null;
     setPreviewTrack(null);
+    setMicTrack(null);
 
     // What was asked for is persisted; what is actually running is what gets published. See
     // `wanted` for why those cannot be the same value.
@@ -355,9 +388,12 @@ export function PreJoin({
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
+        {/* minmax(0, …) rather than bare fr, and min-w-0 on both columns. A bare fr track is
+            never narrower than its widest unbreakable content, and one long error once made the
+            right-hand column the whole page and the preview a thumbnail beside it. */}
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           {/* ---- preview ---- */}
-          <div>
+          <div className="min-w-0">
             <div className="relative aspect-video overflow-hidden rounded-xl bg-stage-tile">
               {/* muted is required for autoplay; playsInline stops iOS opening it
                   full-screen the moment it starts. */}
@@ -400,41 +436,22 @@ export function PreJoin({
               </div>
             </div>
 
-            {micEnabled && (
-              <div className="mt-2 flex items-center gap-2">
-                <MicIcon className="size-3.5 shrink-0 text-ink-3" />
-                <div
-                  className="h-1 flex-1 overflow-hidden rounded-full bg-line"
-                  role="meter"
-                  aria-label="Microphone activity"
-                  aria-valuenow={Math.round(shownLevel * 100)}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                >
-                  <div
-                    className="h-full rounded-full bg-ok transition-[width] duration-150"
-                    style={{ width: `${Math.max(4, shownLevel * 100)}%` }}
-                  />
-                </div>
-                <span className="shrink-0 text-[11px] text-ink-3">
-                  {micGeneration === 0
-                    ? "Starting…"
-                    : shownLevel > 0.04
-                      ? "Hearing you"
-                      : "Say something"}
-                </span>
-              </div>
-            )}
+            {micEnabled && <MicMeter track={micTrack} />}
           </div>
 
           {/* ---- devices & background ---- */}
-          <div className="space-y-3.5">
+          <div className="min-w-0 space-y-3.5">
             {/* One per thing that went wrong, rather than one joined string. A presenter
                 reading "couldn't open your camera" while their microphone works needs to
                 see which sentence applies to which button. */}
             {cameraFailure && <Alert tone="warn">{cameraFailure}</Alert>}
             {micFailure && <Alert tone="warn">{micFailure}</Alert>}
-            {enhanceError && <Alert tone="warn">{enhanceError}</Alert>}
+            {/* Only a browser that cannot run backgrounds at all, which has no tiles to say
+                it under — everything else is said beneath them with a Retry. Not for the
+                lift on its own, whose control says the same thing in its own place. */}
+            {enhanceError && !enhanceRetryable && prefs.background.mode !== "none" && (
+              <Alert tone="warn">{enhanceError}</Alert>
+            )}
 
             <Select
               label="Camera"
@@ -463,12 +480,14 @@ export function PreJoin({
             </Select>
 
             {/* Virtual Background Selection before joining */}
-            <PreJoinBackgroundPicker
-              choice={prefs.background}
-              disabled={!cameraEnabled}
-              preparing={enhancePreparing}
-              onSelect={(bg) => onUpdatePrefs({ background: bg })}
-            />
+            {backgroundsOk && (
+              <BackgroundTiles
+                heading="Virtual background"
+                choice={prefs.background}
+                disabledReason={cameraEnabled ? undefined : "Camera is off"}
+                onSelect={(bg) => onUpdatePrefs({ background: bg })}
+              />
+            )}
 
             {/* Under the backgrounds, and on this screen rather than only in Settings,
                 because this is the one moment a presenter is looking at their own face on
@@ -500,120 +519,59 @@ export function PreJoin({
   );
 }
 
-function PreJoinBackgroundPicker({
-  choice,
-  onSelect,
-  disabled,
-  preparing,
-}: {
-  choice: BackgroundChoice;
-  onSelect: (next: BackgroundChoice) => void;
-  disabled?: boolean;
-  /** The segmentation model is still downloading. See useVirtualBackground. */
-  preparing?: boolean;
-}) {
-  const supported = backgroundsSupported();
-  if (!supported) return null;
+/* A real level meter, from the shared measurement in lib/mic-level.ts.
+ *
+ * The AnalyserNode used to be inline here, and then the control bar needed the same thing —
+ * two copies of the same waveform maths is one of them quietly drifting. The measuring moved
+ * out; this screen keeps its own state because it needs the NUMBER, for the bar's width and
+ * for aria-valuenow.
+ *
+ * In a component of its own so that the number is the only thing that re-renders. It moves
+ * sixty times a second while somebody talks, and held in PreJoin that was the whole screen
+ * sixty times a second — the device lists, the background tiles, the background hook —
+ * which is how a check that made a graphics context on every render once managed to make
+ * the browser throw away the one the background was starting up in.
+ *
+ * Still the only way to tell a working microphone from one that is muted in hardware: a
+ * device that opens successfully and delivers pure silence looks identical to a good one
+ * until somebody tells you they cannot hear you.
+ */
+function MicMeter({ track }: { track: LocalAudioTrack | null }) {
+  const [level, setLevel] = useState(0);
 
-  const isActive = (next: BackgroundChoice) =>
-    choice.mode === next.mode &&
-    ("id" in choice ? "id" in next && choice.id === next.id : true);
+  useEffect(() => {
+    if (!track) return;
+    return measureMicLevel(track.mediaStreamTrack, setLevel);
+  }, [track]);
+
+  /* Zero while there is no track, DERIVED rather than stored.
+   *
+   * The obvious version calls setLevel(0) in the effect when the track goes, and that is a
+   * synchronous setState inside an effect — a cascading render, and React's lint rule is right
+   * to refuse it. Deriving costs nothing and cannot go stale: there is no path where the mic is
+   * off and a leftover level is still on screen. */
+  const shown = track ? level : 0;
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <label className="block text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-          Virtual Background
-        </label>
-        {/* Three states, and the order matters: the camera being off explains everything
-            else, so it wins. Otherwise, if a model is on its way, say so — the preview goes
-            on showing the real room while it downloads, and without this line that is
-            indistinguishable from the background not working. */}
-        {disabled ? (
-          <span className="text-[11px] text-ink-3">Camera is off</span>
-        ) : preparing ? (
-          <span className="flex items-center gap-1.5 text-[11px] text-ink-3">
-            <Spinner className="size-3" />
-            Preparing…
-          </span>
-        ) : null}
+    <div className="mt-2 flex items-center gap-2">
+      <MicIcon className="size-3.5 shrink-0 text-ink-3" />
+      <div
+        className="h-1 flex-1 overflow-hidden rounded-full bg-line"
+        role="meter"
+        aria-label="Microphone activity"
+        aria-valuenow={Math.round(shown * 100)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div
+          className="h-full rounded-full bg-ok transition-[width] duration-150"
+          style={{ width: `${Math.max(4, shown * 100)}%` }}
+        />
       </div>
-
-      <div className={`grid grid-cols-4 gap-1.5 ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
-        <PreJoinBgTile
-          label="Off"
-          active={isActive({ mode: "none" })}
-          onClick={() => onSelect({ mode: "none" })}
-        >
-          <span className="grid size-full place-items-center bg-surface-2 text-ink-3">
-            <CameraOffIcon className="size-3.5" />
-          </span>
-        </PreJoinBgTile>
-
-        <PreJoinBgTile
-          label="Blur"
-          active={isActive({ mode: "blur" })}
-          onClick={() => onSelect({ mode: "blur" })}
-        >
-          <span className="relative grid size-full place-items-center overflow-hidden bg-stage-tile">
-            <span className="absolute inset-0 bg-gradient-to-br from-white/25 via-white/5 to-transparent blur-[4px]" />
-            <span className="absolute right-1 bottom-0 size-3.5 rounded-full bg-white/30 blur-[4px]" />
-            <span className="relative size-3 rounded-full bg-white/80" />
-          </span>
-        </PreJoinBgTile>
-
-        {VIRTUAL_BACKGROUNDS.map((bg) => (
-          <PreJoinBgTile
-            key={bg.id}
-            label={bg.label}
-            active={isActive({ mode: "image", id: bg.id })}
-            onClick={() => onSelect({ mode: "image", id: bg.id })}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={bg.src}
-              alt=""
-              className="size-full object-cover"
-              draggable={false}
-            />
-          </PreJoinBgTile>
-        ))}
-      </div>
+      <span className="shrink-0 text-[11px] text-ink-3">
+        {!track ? "Starting…" : shown > 0.04 ? "Hearing you" : "Say something"}
+      </span>
     </div>
-  );
-}
-
-function PreJoinBgTile({
-  label,
-  active,
-  onClick,
-  children,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      className={`relative aspect-video overflow-hidden rounded-lg border-2 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer ${
-        active ? "border-brand" : "border-line/60 hover:border-line-2"
-      }`}
-    >
-      {children}
-      {active && (
-        <span className="absolute inset-0 grid place-items-center bg-brand/25">
-          <span className="grid size-4 place-items-center rounded-full bg-brand text-white">
-            <CheckIcon className="size-2.5" />
-          </span>
-        </span>
-      )}
-    </button>
   );
 }
 

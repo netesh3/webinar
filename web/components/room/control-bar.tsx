@@ -9,6 +9,7 @@ import {
 import { ConnectionState, Track } from "livekit-client";
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { enableCamera } from "@/lib/backgrounds";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { barSlots, centerBarTools, gridItems, morePanelTools, type ToolId } from "@/lib/tools";
@@ -373,11 +374,14 @@ export function ControlBar() {
     isMicrophoneEnabled,
   ]);
 
+  // On with the background already applied, so the audience's first frame is not the room.
   const onCameraClick = useCallback(() => {
     void toggle("camera", "Camera", () =>
-      localParticipant.setCameraEnabled(!isCameraEnabled),
+      isCameraEnabled
+        ? localParticipant.setCameraEnabled(false)
+        : enableCamera(localParticipant, prefs.background, prefs.lowLight),
     );
-  }, [toggle, localParticipant, isCameraEnabled]);
+  }, [toggle, localParticipant, isCameraEnabled, prefs.background, prefs.lowLight]);
 
   const switchCapture = useCallback(
     async (kind: "audioinput" | "videoinput", deviceId: string) => {

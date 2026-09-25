@@ -901,16 +901,17 @@ watching a live call.
 
 ## 8c. Virtual backgrounds: why the segmenter is ours
 
-**Two modes: off, or blur.** Solid colours and the ten bundled images were removed at the
-operator's request, along with their assets and the picker grid.
+**Off, blur, or one of six bundled stills** (`VIRTUAL_BACKGROUNDS`), picked from a grid of
+tiles. Solid colours and ten bundled images were once removed at the operator's request, to
+reduce lag, leaving only blur; six stills came back (47c359d) once it was clear that removing
+them had not.
 
-The request was made to reduce lag, and it does not — which is worth stating plainly here so it
-is not "fixed" again in the same direction. The cost of a virtual background is almost entirely
-the **segmentation**: MediaPipe deciding per frame which pixels are the person. That runs
-identically whichever mode is selected. What happens afterwards is comparatively free, and blur
-is the **more** expensive of the two that were kept: a separable Gaussian across two
-half-resolution render targets, versus a single texture lookup for an image. So this change
-removed the cheaper option and kept the dearer one.
+It could not, which is worth stating plainly here so it is not "fixed" again in the same
+direction. The cost of a virtual background is almost entirely the **segmentation**: MediaPipe
+deciding per frame which pixels are the person. That runs identically whichever mode is
+selected. What happens afterwards is comparatively free, and blur is the **more** expensive of
+the two: a separable Gaussian across quarter-resolution render targets, versus a single texture
+lookup for an image. So the removal took away the cheaper option and kept the dearer one.
 
 The lever that does reduce cost is `{ mode: "none" }`, which skips segmentation entirely. The
 per-frame cost is measured and shown in the settings window (`useBackgroundCost`), so nobody has
@@ -938,15 +939,16 @@ transformer, not different arguments. `ProcessorWrapper` — their
 |---|---|
 | confidence mask | a float 0..1 per pixel; the model's own uncertainty at the boundary *is* the alpha |
 | landscape model | 256×144, so a widescreen camera is not squashed — and 44% fewer pixels, so the quality fix and the latency fix are the same change |
-| temporal smoothing | each mask blended 0.6/0.4 with the last, because segmentation is independent per frame and edges shimmer |
-| feathered edge | a separable blur on the mask at 256×144, then a smoothstep |
+| temporal smoothing | segmentation is independent per frame, so a still edge shimmers. Each mask takes a quarter of the new answer where the picture held still and nine tenths where it moved (`K_STILL`, `K_MOVE`), judged by the frame's own colour. A fixed blend has to trade shimmer on a still shoulder against a smear on a moving hand: at a still edge the 0.6 it replaced let through about half of the model's shimmer (49–52% over three runs), this lets through about a quarter (24–29% over four), and it follows movement as closely (IoU 0.97 against the truth, moving) |
+| joint upsample | the 256×144 matte upsampled against the full-resolution frame with a joint bilateral filter, so the edge lands where the edge is in the picture rather than on the model's grid; then the smoothstep |
+| room-only blur | the person is taken out before the room is blurred, and the result divided by how much room each neighbourhood had. A plain blur drags the person's own colours into the room around them, which is the halo round a head |
 | no CPU readback | MediaPipe is given our own canvas, so `getAsWebGLTexture()` returns a texture we can sample. A `getAsFloat32Array()` would stall the pipeline on the GPU every frame |
 
 MediaPipe upsamples the mask to the **input** size before handing it over — measured
-1280×720 for a 720p frame, not the model's 256×144. The mask render targets are still
-256×144 because that is the information the model actually produced, and feathering at 720p
-would blur four times as many pixels for the same edge. Checked rather than assumed: mask
-targets at 640×360 give the same result to within 1%.
+1280×720 for a 720p frame, not the model's 256×144. The matte is still kept at 256×144,
+because that is the information the model actually produced: the ingest pass reads the mask
+by position, whichever size it arrives at, and resolution is added back only where it is
+real — by the joint upsample, from the frame.
 
 ### What the model is confidently wrong about
 
@@ -1031,26 +1033,39 @@ adding a pass.
 
 ### Why this needed a photograph to find
 
-`e2e/probe-mask.mjs` is the regression guard, and it takes a photo of a person as an
-argument for a reason: **Chrome's fake camera has no person in it**, so the confidence mask
-is ~0 everywhere and every geometry bug looks exactly like "nothing to segment". Upside
-down, half scale, averaged into mush — all identical on that input. The earlier verification
-of this feature measured a flat blue frame and a colour match, and was right about both
-while the mask was broken.
+`make test-background PHOTO=<person.jpg> [HAIR=<long-hair.jpg>]` is the regression guard
+(`e2e/probe-background.mjs`), and it takes a photo of a person for a reason: **Chrome's fake
+camera has no person in it**, so the confidence mask is ~0 everywhere and every geometry bug
+looks exactly like "nothing to segment". Upside down, half scale, averaged into mush — all
+identical on that input. The earlier verification of this feature measured a flat blue frame
+and a colour match, and was right about both while the mask was broken.
 
-The probe separates three things that must agree, because two of them were fine:
+What found the inversion was keeping apart two answers that must agree: the mask straight out
+of MediaPipe on the CPU, and what the app's own GPU chain makes of it — because the first was
+perfect the whole time. The probe that did it, `probe-mask.mjs`, then taught a second lesson
+by going stale: it transcribed segmenter.ts's shaders into a page of its own, and the copy
+drifted until it tested a pipeline that no longer shipped. Its replacement keeps the first
+lesson and cannot repeat the second. Nothing in it is a copy — it bundles `lib/backgrounds.ts`
+and `lib/segmenter.ts` themselves with esbuild, out of `web/node_modules`, and runs them in
+Chrome on the machine's GPU:
 
-1. where the person is in the input, from the pixels
-2. the mask straight out of MediaPipe — the CPU ground truth
-3. the mask after the app's own GPU chain, sampled the way the composite samples it
+| | |
+|---|---|
+| the camera | `getUserMedia` answered with a track fed from the photo, so LiveKit opens, mutes, restarts and stops it exactly as it would a webcam. Each frame's timestamp is its index and survives the processor, so every frame that comes out is compared with the picture that went in |
+| the truth | MediaPipe on the CPU, in IMAGE mode, on the same pictures: where the person is, so "the room is hidden" and "the person is kept" are measured rather than looked at |
+| the labels | every output frame is one of raw, black, veiled, blur, `image:<id>`, lifted — read from its detail inside the person and inside the room, against its own input. Scenarios assert on them: never black, never the room while a background is on, what was chosen once settled, the model downloaded once, contexts handed back |
+| the sheets | a contact sheet per scenario in `$OUT`, every frame labelled and any showing the room in red. The numbers say whether it worked; the sheet says whether it looks right |
 
-(2) was perfect the whole time. It asserts on which *half* of the picture each lands rather
-than on exact values, so any photograph works and none has to be committed. Verified against
-the pre-fix shader: 3 of its 6 checks fail, including the two that matter.
+It walks the pre-join screen and the room in the order a presenter meets them — cold start,
+every tile, moving, camera off and on, a lost graphics context once and repeatedly, joining,
+a quick reopen, frantic clicking, the room's camera button — and then, each in a fresh page:
+a background chosen with the camera off, the model unreachable, StrictMode with quick clicks,
+and (with `HAIR`) a still edge with sensor noise.
 
-One earlier check in it was worthless and is worth naming: "the composite keeps a visible
+One check in the old probe was worthless and is worth naming: "the composite keeps a visible
 region of person" passed on peak alpha alone, and the broken build peaked at 9% — a real
-number, in entirely the wrong place. Where the alpha is has to be part of the assertion.
+number, in entirely the wrong place. Where the alpha is has to be part of the assertion, which
+is why the matte is scored by its overlap with the truth, frame by frame, and never by a peak.
 
 **Measured semantics, because the obvious assumption is wrong.** The selfie segmenter
 emits **one** confidence channel, not one per category — verified against both models:
@@ -1068,13 +1083,105 @@ exactly like the feature not working at all.
 - The catch that keeps one bad frame from tearing the track down was swallowing the
   error in silence, so a pipeline failing on every frame was indistinguishable from a
   working one with nothing to do — the camera simply passed through. It now warns once
-  per session, and `init` logs one line when the segmenter attaches.
+  per session (`[background] frame processing failed`) and the failed frame goes out
+  veiled rather than as the room. `init` logs `[background] processor ready` when the
+  processor attaches, and `[background] segmentation ready` follows once the model has
+  loaded; between the two, the video is veiled.
 
 The cost is shown in the settings window next to the connection metrics
 (`Background: N ms/frame`) — reported rather than asserted, because "this is faster
 now" is not something to take on trust. Note what that number is: **main-thread time
 per frame**, which is what causes dropped frames. GPU completion is pipelined and not
 included.
+
+### What presenters saw: the room between one background and the next
+
+The report that led to the rework said the background flickered and was "not like Zoom", with
+a screenshot of a pre-join screen showing MediaPipe's kGpuService error verbatim. Very little
+of that was the matte. It was everything around it: **when** the processor went on, what went
+out while it was not ready, and what happened when anything failed. Each point was measured
+with `make test-background`, on the code as it was (034f2ad) and then again after. The probe
+was the same both times, with a thin adapter onto the old hook's names, and it read "ready"
+generously for the old code (a transformer holding a segmenter for the right background):
+
+| | before | after |
+|---|---|---|
+| the camera opened with blur on it | the first frame is the room; 1–3 frames of it per start | the first frame is veiled; none of the room |
+| Off → Blur | 2 frames of the room, and the model downloaded again | the next frame |
+| the camera reopened in the pre-join | 1 frame of the room, and the model downloaded again | the parked engine, warm; nothing downloaded |
+| camera off and on | the model downloaded again at every unmute | nothing reloads; the first frame back in 29–52 ms |
+| joining | the room builds a processor of its own and loads the model again | the room adopts the pre-join screen's; nothing reloads |
+| the room's camera button | the audience's first frame is the room; 2 frames of it | the first frame is already processed |
+| a background chosen with the camera off | "Couldn't start the background: Failed to construct 'MediaStreamTrackProcessor': Input track cannot be ended", and the room when the camera comes on | the model loads meanwhile, and the camera comes on to the background |
+| the graphics context lost once | the room, silently, for the rest of the run (501 frames) | veiled while a new context is built; back in 51–63 ms |
+| lost over and over | the room, silently, with no end and no Retry | veiled; gives up in about 4 s with a sentence, and Retry brings it back |
+| the model unreachable | the room throughout; gave up in 57 ms without a retry, showing "Failed to fetch model: /mediapipe/selfie_segmenter_landscape.tflite (503)" | veiled through its retries; then "check your connection", and a Retry that works |
+| clicking about during a load | 16 live WebGL contexts, Chrome's limit | 1 |
+| a status listener that throws | the room, for as long as it throws | unaffected |
+| a still edge, shimmer let through | about half of the model's own (49–52%) | about a quarter (24–29%) |
+| moving, IoU against the truth | 0.96, 5th percentile 0.94 | 0.97, 5th percentile 0.96 |
+
+The last two rows passed before as well, and are there to show how much changed, not as fixes.
+Switching between stills, StrictMode with quick clicks, and low light were clean in both.
+
+The causes, roughly in the order a presenter met them:
+
+- **The processor went on after the camera opened.** The hook called `setProcessor` on a
+  track that was already on screen, so the room showed until the attach finished — at every
+  cold start and every Off → Blur, and in the room, to everybody watching. `openCamera` and
+  `enableCamera` now give LiveKit the processor along with the request to open the camera,
+  and LiveKit attaches it before it returns the track. A processor attached while the camera
+  is off waits for the camera (`BackgroundProcessor`), and `setBackground` loads the model
+  in the meantime.
+- **Anything not ready went out as the room.** The old transformer passed the camera through
+  while the model loaded, when a frame failed, and after a lost context. Now, until there is a
+  matte, the whole frame is blurred at `VEIL_RADIUS`, and once one arrives the veil lifts over
+  `VEIL_FADE_MS`; with no context at all, the frame is shrunk to `FLAT_LONG_SIDE` on a 2D
+  canvas and blown back up. Only after giving up does it send the camera as it is. A
+  background that can never arrive is not a reason to blur somebody forever, but that is a
+  product choice, and it could reasonably go the other way.
+- **Rebuilt where it should have been switched or kept.** Off tore the processor down, and
+  joining, unmuting and reopening each built a new one, which meant a new context and a new
+  model load. Now the mode is a uniform, and the processor belongs to the track, so the room
+  adopts it. An unmute keeps the engine (`willProcessorRestart`), and the last engine let go
+  is parked for `PARK_MS`, so a camera reopened in the pre-join finds the model warm.
+- **Contexts were not handed back.** `ProcessorWrapper.destroy` passes the destroy on only
+  to a transformer that finished starting, so one stopped mid-load kept its context: one per
+  click. And `backgroundsSupported()` made a context on every render, about 120 a second on
+  the pre-join screen. Chrome keeps about sixteen and drops the one that has gone longest
+  unused. During start-up that is MediaPipe's own context, waiting for the model, and losing
+  it is the kGpuService / "Error querying for GL extensions" failure in the report. Measured,
+  a context held idle while others opened was lost, and one flushed every 100 ms
+  (`keepWarm`) was not. The churn from the render loop was collected fast enough that it
+  never evicted anything by itself, so it was fixed as a contributor rather than named as
+  the cause. Three tabs of the app were open in the report, each with contexts of its own.
+- **No way back.** A lost context went unnoticed, a failed model load gave up at once, and
+  the failure was shown as the raw exception, one unbreakable line that pushed the page
+  sideways. Now a lost context is rebuilt straight away, then after one second and then
+  three (`REBUILD_RETRY_MS`), and the model is retried on the same schedule
+  (`MODEL_RETRY_MS`). Whatever it gives up on is worded by `describeBackgroundError`, as a
+  graphics, connection or image problem, with a Retry beside it. The raw error still goes
+  to the console in full.
+- **A listener could take the video down.** A status or frame listener that threw did so
+  inside the frame loop. Listeners are called through `safely()` now.
+- **The preview blinked when the first background went on.** `setProcessor` moves each
+  element showing the camera to the processed track by taking the camera out of the
+  element's stream first; a stream that goes empty is taken off the element, which then
+  shows nothing until the new stream's first frame. That was an empty tile for 20–30 ms
+  (1–2 frames), dark against a lit room, the first time a background went on for a camera;
+  every switch after that is a call on the processor already attached. Now LiveKit is told
+  not to, and `putOn` swaps the track inside the stream the element already has. Only where
+  the wrapper's output is a `MediaStreamTrackGenerator` (Chrome, Edge): on Safari and
+  Firefox LiveKit's own swap is kept, and was not measured. The probe judges the
+  processor's output and has no preview element, so this was measured on the pre-join
+  screen itself, sampling the preview's brightness every frame: the blank at the swap
+  before, none in three runs after.
+- **A camera switched mid-start was reported as a failure.** Choosing another camera while
+  a background was attaching stopped the track under it, and the wrapper threw "Input track
+  cannot be ended", logged as "[background] failed to start" with a stack. A camera stopped
+  by hand is now let go quietly. Over 31 switch timings, 0–120 ms after choosing Blur, the
+  race was hit 3 times, and every run ended on the new camera, processed, with nothing
+  logged and no Retry shown.
 
 ---
 
@@ -1953,10 +2060,12 @@ provisioned. Recording enabled, disk-backed.
 | a green test run that proves nothing | the API suite SKIPS without `TEST_DATABASE_URL`. Look for `SKIP`. §5a |
 | no Record button for a panelist | `canRecord` in the join response. False unless the account is on the stage roster *and* the instance has recording storage |
 | recorded tiles cropped or overlapping | the compositor's grid — `gridFor` and the clip in `drawInto` (`lib/recorder.ts`) |
-| background never starts | `/mediapipe/wasm` must be reachable from the browser; check `public/mediapipe/README.md` |
-| background silently does nothing | the console. `[background] segmenter ready` means it attached; a `[background] frame processing failed` warning names the real fault. §8c |
+| background never starts | `/mediapipe/wasm` must be reachable from the browser; check `public/mediapipe/README.md`. "Couldn't download the background effect" in the picker, after about 4 s of veiled retries, is this |
+| background silently does nothing | the console. `[background] processor ready` means it attached and `[background] segmentation ready` that the model loaded; a `[background] frame processing failed` warning names the real fault, and `[background] gave up` what it gave up on. §8c |
+| the room flashes up while a background is on | should not happen at all: `make test-background PHOTO=<photo>` labels every frame and fails on one frame of the room. If it only happens in the product, check that the camera was opened through `openCamera`/`enableCamera` — a processor attached after the camera opens shows the room until it lands. §8c |
+| "ran out of graphics capacity" | more live WebGL contexts than the browser will keep. Chrome keeps about sixteen and drops the one unused longest, and other tabs of the app count. `[background] graphics context lost; rebuilding` is the same thing, recovered from. §8c |
 | the person is cut out and the background shows through them | mask polarity — the confidence mask is the PERSON's probability, not the background's. §8c |
-| a floating head, or the background sharp in one band | the mask is inverted. Every GPU pass that samples with `1.0 - y` inverts; only the composite may. `node e2e/probe-mask.mjs <photo>`. §8c |
+| a floating head, or the background sharp in one band | the mask is inverted. Every GPU pass that samples with `1.0 - y` inverts; only the composite may. `make test-background PHOTO=<photo>`. §8c |
 | furniture next to the person is not replaced | the model believes it is clothing. `MASK_LO`/`MASK_HI` in `segmenter.ts` is the lever, and raising it too far erases people in dim rooms. §8c |
 | the person vanishes in a dim room | `MASK_LO` is too high for how sure the model is. §8c has the measured trade |
 | "Share by file" tab is disabled | no `captureStream` on a media element. Safari, or a very old Chrome |
@@ -2017,8 +2126,10 @@ Things that are **not** true today, so nobody plans around them:
   0.256 Gbps baseline. `docs/CAPACITY.md` has the arithmetic and the instance sizes.
 - **One room lives on one SFU node.** OSS LiveKit assigns rooms to nodes; it does not split
   a room. Adding nodes buys concurrent *sessions*, not a bigger session.
-- **No pre-join background picker.** Choosing one before joining would need a PreJoin
-  variant, so on first use there's a brief window while the model loads.
+- **A background that gives up sends the camera as it is.** When the model cannot be loaded,
+  or the graphics context keeps being taken away, the video is veiled through about 4 s of
+  retries; after that the presenter is told why, with a Retry, and the audience sees the room
+  until it works. That is a choice, not a limit of the pipeline — see §8c.
 - **Simulive and recurring webinars** are a `kind` column and a form field, nothing more.
 - **No load test has been run.** At 100/300/500 the result is predictable from the
   arithmetic; measuring on this instance would measure the NIC throttling.
