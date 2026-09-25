@@ -52,6 +52,11 @@ const MAX_QUESTIONS = 300;
  * one every time reads as mechanical; a burst of five to ten copies of the same
  * emoji is what makes a single tap look like it landed with some weight behind it.
  *
+ * Those copies (and concurrent taps/wire events) are staggered into the display
+ * queue a few tens of milliseconds apart so they read as many people clicking
+ * rather than a synchronized stack. The first emoji in a quiet queue still starts
+ * on the same frame as the event — only subsequent ones wait.
+ *
  * The cap matters more than any one tap. Five hundred people applauding at the end of
  * a talk is the moment this feature is for and also the moment it could put ten
  * thousand animated spans on the stage, so the oldest are dropped once the screen is
@@ -62,6 +67,8 @@ const REACTION_COPIES_MIN = 5;
 const REACTION_COPIES_MAX = 10;
 /** How long one emoji takes to cross the stage, before per-emoji variation. */
 const REACTION_MS = 4200;
+/** Gap between successive floating emoji starts (burst copies and concurrent events). */
+const REACTION_STAGGER_MS = 75;
 const MAX_FLOATING = 240;
 
 export type Sender = {
@@ -729,6 +736,10 @@ export function useRealtime(
   }, [me]);
 
   const reactionTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  /** performance.now() when the next floating emoji may start. Shared across
+   *  local taps and wire events so a simultaneous group is sequential, while a
+   *  quiet queue still starts the first emoji immediately. */
+  const reactionNextSlot = useRef(0);
 
   // Through a ref so `apply` keeps a stable identity: it is a dependency of the
   // DataReceived subscription, and re-subscribing on every render would drop
@@ -738,31 +749,55 @@ export function useRealtime(
     notify.current = handlers;
   }, [handlers]);
 
-  const pushReaction = useCallback((emoji: string) => {
-    const copies =
-      REACTION_COPIES_MIN +
-      Math.floor(Math.random() * (REACTION_COPIES_MAX - REACTION_COPIES_MIN + 1));
-    const items: FloatingReaction[] = Array.from({ length: copies }, () => ({
-      id: newId(),
-      emoji,
-      // Kept off the very edges, where an emoji is half cut off by the overflow.
-      offset: Math.random(),
-      duration: REACTION_MS + Math.round((Math.random() - 0.5) * 1400),
-      drift: Math.round((Math.random() - 0.5) * 90),
-      size: 22 + Math.round(Math.random() * 16),
-    }));
-
-    setReactions((current) => [...current, ...items].slice(-MAX_FLOATING));
-    for (const item of items) {
-      reactionTimers.current.set(
-        item.id,
-        setTimeout(() => {
-          setReactions((current) => current.filter((r) => r.id !== item.id));
-          reactionTimers.current.delete(item.id);
-        }, item.duration + 200),
-      );
-    }
+  const showFloating = useCallback((item: FloatingReaction) => {
+    setReactions((current) => [...current, item].slice(-MAX_FLOATING));
+    reactionTimers.current.set(
+      item.id,
+      setTimeout(() => {
+        setReactions((current) => current.filter((r) => r.id !== item.id));
+        reactionTimers.current.delete(item.id);
+      }, item.duration + 200),
+    );
   }, []);
+
+  const pushReaction = useCallback(
+    (emoji: string) => {
+      const copies =
+        REACTION_COPIES_MIN +
+        Math.floor(Math.random() * (REACTION_COPIES_MAX - REACTION_COPIES_MIN + 1));
+      const now = performance.now();
+      let slot = Math.max(now, reactionNextSlot.current);
+
+      for (let i = 0; i < copies; i++) {
+        const item: FloatingReaction = {
+          id: newId(),
+          emoji,
+          // Kept off the very edges, where an emoji is half cut off by the overflow.
+          offset: Math.random(),
+          duration: REACTION_MS + Math.round((Math.random() - 0.5) * 1400),
+          drift: Math.round((Math.random() - 0.5) * 90),
+          size: 22 + Math.round(Math.random() * 16),
+        };
+        const delay = Math.max(0, Math.round(slot - now));
+        slot += REACTION_STAGGER_MS;
+
+        if (delay === 0) {
+          showFloating(item);
+        } else {
+          const pendingKey = `pending:${item.id}`;
+          reactionTimers.current.set(
+            pendingKey,
+            setTimeout(() => {
+              reactionTimers.current.delete(pendingKey);
+              showFloating(item);
+            }, delay),
+          );
+        }
+      }
+      reactionNextSlot.current = slot;
+    },
+    [showFloating],
+  );
 
   useEffect(() => {
     const timers = reactionTimers.current;
