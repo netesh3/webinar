@@ -193,11 +193,39 @@ const FLAT_LONG_SIDE = 48;
 
 /* How much the still is zoomed past a plain object-fit: cover.
  *
- * 1.0 is edge-to-edge cover. 1.10 leaves ~5% margin on each side after cover crops, which
- * is enough that leaning or walking toward a frame edge still samples inside the image
- * when the still is CLAMP_TO_EDGE-wrapped. Higher starts to look like a digital zoom on
- * the photo; lower lets the clamp band show again. */
-const COVER_OVERSCALE = 1.1;
+ * 1.0 is edge-to-edge cover. The usable half-margin after cover is
+ * (OVERSCALE - 1) / (2 * OVERSCALE): at 1.14 that is ~6.1% of UV on each side. Person
+ * tracking pans the still inside that margin (see PAN_*), so the overscale must leave
+ * room for the clamped pan — 1.10 was only enough for ~4.5% and the pan hit the clamp
+ * band on a normal lean. Higher starts to look like a digital zoom on the photo. */
+const COVER_OVERSCALE = 1.14;
+
+/* Face/body-driven still pan.
+ *
+ * SoftSegmenter has no separate face-mesh tracker: the person centre is the alpha-weighted
+ * centroid of the smoothed matte, read from a tiny downsample so left/right travel can
+ * shift the still without a full-frame readback. Raw centroids jitter a few percent of UV
+ * every frame (segmentation noise + temporal blend), which reads as stutter when applied
+ * directly to cover UVs. The pan is therefore:
+ *   1. deadzoned — sub-threshold motion holds the current pan
+ *   2. exponentially smoothed — settles in about PAN_SMOOTH_MS
+ *   3. speed-capped — no single frame can jump more than PAN_MAX_SPEED
+ *   4. clamped — never asks for more margin than COVER_OVERSCALE provides
+ * Gain is less than one so a walk to the frame edge does not burn the whole margin. */
+const PAN_GAIN_X = 0.28;
+const PAN_GAIN_Y = 0;
+const PAN_MARGIN_FRAC = 0.85;
+const PAN_SMOOTH_MS = 140;
+const PAN_DEADZONE = 0.012;
+const PAN_MAX_SPEED = 0.55;
+/** Long side of the matte downsample used only to estimate the person centre. */
+const TRACK_LONG_SIDE = 32;
+/** Matte alpha below this does not vote for the centroid (skips clear room). */
+const TRACK_ALPHA_LO = 0.2;
+
+function panLimit(): number {
+  return ((COVER_OVERSCALE - 1) / (2 * COVER_OVERSCALE)) * PAN_MARGIN_FRAC;
+}
 
 // ------------------------------------------------------------------- shaders
 
@@ -349,6 +377,20 @@ void main() {
   color = sum / total;
 }`;
 
+/* Matte alpha into a tiny target for the person-centre estimate.
+ *
+ * LINEAR sampling from the full matte is a free box downsample; the CPU then takes the
+ * alpha-weighted centroid of those few hundred texels. Kept as its own pass so the
+ * composite never blocks on a 256×144 readPixels. */
+const TRACK = `#version 300 es
+precision highp float;
+in vec2 uv;
+uniform sampler2D matte;
+out vec4 color;
+void main() {
+  color = vec4(texture(matte, uv).a, 0.0, 0.0, 1.0);
+}`;
+
 /* Subtle polish on the PERSON only, after the low-light lift.
  *
  * Not a beauty filter: a mild S-curve so the presenter reads clearer against blur/stills,
@@ -381,6 +423,7 @@ uniform int mode;            // 0 = low light only, 1 = blur, 2 = image
 uniform float veil;          // 1 = nothing usable yet: show the room blur, person and all
 uniform vec2 frameSize;
 uniform vec2 imageSize;
+uniform vec2 bgPan;          // smoothed person-centre offset applied to still UVs
 uniform float lowLight;      // 0 = off, 1 = the full lift
 out vec4 color;
 ${LOW_LIGHT_GLSL}
@@ -409,8 +452,10 @@ vec3 polishPerson(vec3 lifted, vec3 softSample) {
  * with REPEAT it tiles. Neither looks like a background.
  *
  * COVER_OVERSCALE zooms in a few percent so typical left/right travel still lands on the
- * image. Order is load-bearing: scale about the centre, then translate — never the other
- * way, which walks off one edge while leaving unused margin on the other. */
+ * image. bgPan is the smoothed person-centre offset (see Engine.updatePan): subtracting it
+ * after the scale moves the still with the person without changing cover crop. Order is
+ * load-bearing: scale about the centre, then translate — never the other way, which walks
+ * off one edge while leaving unused margin on the other. */
 const float COVER_OVERSCALE = ${COVER_OVERSCALE.toFixed(3)};
 vec2 coverUv(vec2 p) {
   float frameAspect = frameSize.x / max(frameSize.y, 1.0);
@@ -419,7 +464,7 @@ vec2 coverUv(vec2 p) {
     ? vec2(frameAspect / imageAspect, 1.0)
     : vec2(1.0, imageAspect / frameAspect);
   vec2 scale = cover / COVER_OVERSCALE;
-  return (p - 0.5) * scale + 0.5;
+  return (p - 0.5) * scale + 0.5 - bgPan;
 }
 
 /* The matte at full resolution: a joint bilateral upsample.
@@ -772,6 +817,7 @@ class Engine {
   private readonly temporal: Pass;
   private readonly prep: Pass;
   private readonly blur: Pass;
+  private readonly track: Pass;
   private readonly composite: Pass;
 
   private frame: WebGLTexture | null = null;
@@ -786,9 +832,16 @@ class Engine {
   /** The room blur's two halves. The result always ends in roomA. */
   private roomA: Target | null = null;
   private roomB: Target | null = null;
+  /** Tiny matte downsample + CPU buffer for the person-centre pan. */
+  private trackTarget: Target | null = null;
+  private trackPixels: Uint8Array | null = null;
   private image: WebGLTexture | null = null;
   private imageW = 1;
   private imageH = 1;
+  /** Smoothed still pan in UV units (applied as coverUv − bgPan). */
+  private panX = 0;
+  private panY = 0;
+  private panAt = 0;
 
   constructor() {
     const canvas = newCanvas(1, 1);
@@ -818,13 +871,14 @@ class Engine {
       this.temporal = pass(gl, VERTEX_PASS, TEMPORAL, ["current", "previous"], ["restart"]);
       this.prep = pass(gl, VERTEX_PASS, PREP, ["frame", "matte"], ["lod", "veil"]);
       this.blur = pass(gl, VERTEX_PASS, BLUR, ["source"], ["texel", "sigma"]);
+      this.track = pass(gl, VERTEX_PASS, TRACK, ["matte"], []);
       // The only pass that reaches the canvas, so the only one that flips.
       this.composite = pass(
         gl,
         VERTEX_PRESENT,
         COMPOSITE,
         ["frame", "matte", "room", "image"],
-        ["mode", "veil", "frameSize", "imageSize", "lowLight"],
+        ["mode", "veil", "frameSize", "imageSize", "bgPan", "lowLight"],
       );
       gl.useProgram(null);
 
@@ -872,6 +926,9 @@ class Engine {
 
   forgetHistory(): void {
     this.hasHistory = false;
+    this.panX = 0;
+    this.panY = 0;
+    this.panAt = 0;
   }
 
   /** The frame, uploaded once and sampled by every pass. Mips only when a pass reads them. */
@@ -986,6 +1043,7 @@ class Engine {
     gl.uniform1f(c.u.veil, veil);
     gl.uniform2f(c.u.frameSize, this.w, this.h);
     gl.uniform2f(c.u.imageSize, this.imageW, this.imageH);
+    gl.uniform2f(c.u.bgPan, this.panX, this.panY);
     // Read fresh every frame, which is what makes setLowLight free.
     gl.uniform1f(c.u.lowLight, lowLight);
     // Every unit the program samples gets a real texture, even ones this mode ignores:
@@ -1041,7 +1099,7 @@ class Engine {
     try {
       if (!gl.isContextLost()) {
         this.releaseTargets();
-        for (const p of [this.ingest, this.temporal, this.prep, this.blur, this.composite]) {
+        for (const p of [this.ingest, this.temporal, this.prep, this.blur, this.track, this.composite]) {
           gl.deleteProgram(p.program);
         }
         gl.deleteVertexArray(this.vao);
@@ -1085,19 +1143,30 @@ class Engine {
     this.roomA = target(gl, rw, rh);
     this.roomB = target(gl, rw, rh);
     this.roomLod = Math.max(0, Math.log2(w / rw));
+
+    const trackLong = Math.min(TRACK_LONG_SIDE, Math.max(mw, mh));
+    const tw = mw >= mh ? trackLong : Math.max(1, Math.round((trackLong * mw) / mh));
+    const th = mw >= mh ? Math.max(1, Math.round((trackLong * mh) / mw)) : trackLong;
+    this.trackTarget = target(gl, tw, th);
+    this.trackPixels = new Uint8Array(tw * th * 4);
+
     this.hasHistory = false;
+    this.panX = 0;
+    this.panY = 0;
+    this.panAt = 0;
   }
 
   private releaseTargets(): void {
     const gl = this.gl;
     if (this.frame) gl.deleteTexture(this.frame);
-    for (const t of [this.current, this.matte, this.spare, this.roomA, this.roomB]) {
+    for (const t of [this.current, this.matte, this.spare, this.roomA, this.roomB, this.trackTarget]) {
       if (!t) continue;
       gl.deleteTexture(t.texture);
       gl.deleteFramebuffer(t.framebuffer);
     }
     this.frame = null;
-    this.current = this.matte = this.spare = this.roomA = this.roomB = null;
+    this.current = this.matte = this.spare = this.roomA = this.roomB = this.trackTarget = null;
+    this.trackPixels = null;
     this.w = 0;
     this.h = 0;
   }
@@ -1143,6 +1212,72 @@ class Engine {
     this.matte = next;
     this.spare = previous;
     this.hasHistory = true;
+    this.updatePan();
+  }
+
+  /* Person centre → smoothed still pan.
+   *
+   * Downsamples the matte, reads a few hundred alphas, and takes their weighted centroid.
+   * Applied only to image backgrounds (the uniform is ignored in blur/low-light modes). The
+   * raw (cx − 0.5) jumps every frame from mask noise; deadzone + exp smooth + speed cap is
+   * what keeps left/right travel from stuttering while still following a real lean. */
+  private updatePan(): void {
+    const gl = this.gl;
+    const track = this.trackTarget;
+    const pixels = this.trackPixels;
+    const matte = this.matte;
+    if (!track || !pixels || !matte) return;
+
+    this.resetState();
+    try {
+      this.bindTarget(track);
+      gl.useProgram(this.track.program);
+      this.bindTextures(matte.texture);
+      this.draw();
+      gl.readPixels(0, 0, track.w, track.h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    } finally {
+      this.endState();
+    }
+
+    let mass = 0;
+    let sx = 0;
+    let sy = 0;
+    const tw = track.w;
+    const th = track.h;
+    for (let y = 0; y < th; y++) {
+      for (let x = 0; x < tw; x++) {
+        const a = pixels[(y * tw + x) * 4]! / 255;
+        if (a < TRACK_ALPHA_LO) continue;
+        // Square the confidence so a solid torso/face outvotes a soft fringe.
+        const w = a * a;
+        sx += (x + 0.5) * w;
+        sy += (y + 0.5) * w;
+        mass += w;
+      }
+    }
+    if (mass < 1e-3) return;
+
+    const limit = panLimit();
+    const rawX = Math.max(-limit, Math.min(limit, (sx / mass / tw - 0.5) * PAN_GAIN_X));
+    const rawY = Math.max(-limit, Math.min(limit, (sy / mass / th - 0.5) * PAN_GAIN_Y));
+
+    const now = performance.now();
+    const dt = this.panAt > 0 ? Math.min(100, Math.max(0, now - this.panAt)) : 1000 / 30;
+    this.panAt = now;
+
+    this.panX = this.smoothAxis(this.panX, rawX, dt);
+    this.panY = this.smoothAxis(this.panY, rawY, dt);
+  }
+
+  private smoothAxis(current: number, raw: number, dtMs: number): number {
+    const target = Math.abs(raw - current) < PAN_DEADZONE ? current : raw;
+    const alpha = 1 - Math.exp(-dtMs / PAN_SMOOTH_MS);
+    let next = current + (target - current) * alpha;
+    const maxStep = PAN_MAX_SPEED * (dtMs / 1000);
+    const delta = next - current;
+    if (delta > maxStep) next = current + maxStep;
+    else if (delta < -maxStep) next = current - maxStep;
+    return next;
   }
 
   /* The state our passes assume, set rather than hoped for.
