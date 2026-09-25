@@ -36,6 +36,7 @@ export function MoreGrid({
   panelItems,
   shareAction,
   shareFileAction,
+  captionsAction,
   onClose,
 }: {
   items: readonly ToolId[];
@@ -67,6 +68,16 @@ export function MoreGrid({
     icon: React.ReactNode;
     active: boolean;
     busy: boolean;
+    onClick: () => void;
+  };
+  /** Live captions — host-only session control, always in More rather than on
+   *  the standing bar (same secondary-action shelf as Share a video file). */
+  captionsAction?: {
+    label: string;
+    icon: React.ReactNode;
+    active: boolean;
+    busy: boolean;
+    title: string;
     onClick: () => void;
   };
   onClose: () => void;
@@ -227,7 +238,7 @@ export function MoreGrid({
           </div>
         )}
 
-        {(shareAction || shareFileAction) && (
+        {(shareAction || shareFileAction || captionsAction) && (
           <div className="mb-1 grid grid-cols-3 border-b border-line pb-1">
             {shareAction && (
               <button
@@ -270,6 +281,33 @@ export function MoreGrid({
                 {shareFileAction.icon}
                 <span className="text-[11px] leading-tight font-medium">
                   {shareFileAction.label}
+                </span>
+              </button>
+            )}
+            {captionsAction && (
+              <button
+                type="button"
+                aria-label={
+                  captionsAction.active
+                    ? "Turn captions off for everyone"
+                    : "Turn captions on for everyone"
+                }
+                aria-pressed={captionsAction.active}
+                title={captionsAction.title}
+                disabled={captionsAction.busy}
+                onClick={() => {
+                  captionsAction.onClick();
+                  onClose();
+                }}
+                className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 ${
+                  captionsAction.active
+                    ? "text-brand ring-2 ring-brand ring-inset"
+                    : "text-ink-2 hover:text-ink"
+                }`}
+              >
+                {captionsAction.icon}
+                <span className="text-[11px] leading-tight font-medium">
+                  {captionsAction.label}
                 </span>
               </button>
             )}
