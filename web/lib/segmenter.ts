@@ -111,6 +111,14 @@ const MATTE_LONG_SIDE = 256;
  * not by lifting mid-confidence here — that solidifies furniture whenever the whole frame
  * moves.
  *
+ * Outstretched arms are a different failure: the landscape selfie model often zeros the hand
+ * entirely once it leaves the torso silhouette (confidence ≈0, not the mid band #189 fixed).
+ * Temporal recovery therefore also seeds low-confidence warm pixels that sit next to a solid
+ * person neighbour (connected limb), with a mild skin-gated dilate so a finger-width gap at
+ * the silhouette can fill without expanding cool chairs. Held-still sideways arms get a
+ * partial seed; waving gets the full amount. Furniture stays gated by skin chroma + neighbour
+ * person — a warm desk with no solid person in the 3×3 is untouched.
+ *
  * "Moved" is the largest colour — or significant mask — change in the 3×3 neighbourhood
  * between this frame and the last, at the matte's resolution.
  */
@@ -124,6 +132,16 @@ const MASK_MOTION_FLOOR = 0.2;
 const MASK_MOTION_GAIN = 1.1;
 /** Extra pull toward the new mask at full motion (on top of K_MOVE). */
 const MOTION_SNAP = 0.65;
+/** How hard to seed a missing warm limb texel toward person when a neighbour is solid. */
+const EXTREMITY_SEED = 0.88;
+/** Confidence floor a seeded extremity is lifted toward (into the HAND_MASK opaque zone). */
+const EXTREMITY_FLOOR = 0.66;
+/** Still-limb seed strength as a fraction of the moving-limb seed (held-outstretched arms). */
+const EXTREMITY_STILL = 0.42;
+/** Skin-gated max-dilate: keep this fraction of the neighbourhood person max. */
+const EXTREMITY_DILATE_KEEP = 0.90;
+/** How strongly the skin-gated dilate applies when a solid neighbour is present. */
+const EXTREMITY_DILATE = 0.55;
 
 /* Where the mask becomes opaque, and why it is not centred on a half.
  *
@@ -164,18 +182,25 @@ const MOTION_SNAP = 0.65;
  * (≈0.55–0.70), so MASK_LO punches translucent holes through them. Lowering MASK_LO
  * globally brings the chair back. The composite therefore keeps these thresholds for cool
  * pixels, and on warm (skin-chroma) uncertain pixels only, dips the band so a confidence
- * of ~0.55 reads nearly opaque — see HAND_MASK_* — without reopening cool furniture.
+ * of ~0.40–0.55 reads nearly opaque — see HAND_MASK_* — without reopening cool furniture.
+ * Hands the model zeros entirely (outstretched beyond the torso) are seeded in the temporal
+ * pass first; the composite band alone cannot invent confidence from nothing.
  */
 const MASK_LO = 0.62;
 const MASK_HI = 0.75;
 /** Soften the person threshold on warm mid-confidence pixels (hands), not on cool chairs. */
-const HAND_MASK_LO = 0.48;
+const HAND_MASK_LO = 0.42;
 const HAND_MASK_HI = 0.70;
 /** Skin chroma (R−B) where the hand band fully replaces MASK_LO/HI. Kept high so warm
  *  wood/desk mid-confidence does not solidify as a person (that made the probe label
  *  whole frames "lifted" instead of the office still). */
 const HAND_WARM_LO = 0.08;
 const HAND_WARM_HI = 0.16;
+/** Lower end of the "uncertain" band where HAND_MASK_* may apply. Slightly below the
+ *  #189 mid-palm band so extremity-seeded confidence (~0.66) and weak limb fringe still
+ *  read opaque on warm pixels without opening clear-room furniture. */
+const HAND_UNCERTAIN_LO = 0.28;
+const HAND_UNCERTAIN_MID = 0.50;
 
 /** Below this the blur counts a pixel wholly as room. Between it and MASK_LO the pixel is
  *  shown as room but kept out of the blur, so furniture the model half-believes in is
@@ -332,7 +357,10 @@ void main() {
  *
  * Fast limbs need more than a high K_MOVE: RGB motion at matte resolution can undershoot
  * on a small hand, so confidence jumps join the motion metric, the blend snaps harder, and
- * rising confidence is preferred under motion (hand entering this texel). */
+ * rising confidence is preferred under motion (hand entering this texel).
+ *
+ * Far outstretched hands that the model zeros are recovered only when a solid person
+ * neighbour remains (connected limb) and the texel is warm skin — see EXTREMITY_*. */
 const TEMPORAL = `#version 300 es
 precision highp float;
 uniform sampler2D current;    // guide colour, raw confidence
@@ -345,6 +373,7 @@ void main() {
   vec4 now = texelFetch(current, p, 0);
   float before = texelFetch(previous, p, 0).a;
   float motion = 0.0;
+  float nbrPerson = 0.0;
   for (int y = -1; y <= 1; y++) {
     for (int x = -1; x <= 1; x++) {
       ivec2 q = clamp(p + ivec2(x, y), ivec2(0), last);
@@ -356,6 +385,8 @@ void main() {
       float da = abs(cq.a - pq.a);
       motion = max(motion, max(0.0, da - ${MASK_MOTION_FLOOR.toFixed(3)})
                           * ${MASK_MOTION_GAIN.toFixed(3)});
+      // Connected-limb cue: solid person nearby in this frame or the smoothed history.
+      nbrPerson = max(nbrPerson, max(cq.a, pq.a));
     }
   }
   float moveAmt = smoothstep(${MOTION_LO.toFixed(3)}, ${MOTION_HI.toFixed(3)}, motion);
@@ -371,6 +402,23 @@ void main() {
              * smoothstep(0.0, 0.05, now.r - now.g);
   float mid = smoothstep(0.45, 0.58, a) * (1.0 - smoothstep(0.72, 0.88, a));
   a = mix(a, max(a, mix(a, 0.82, mid)), moveAmt * moveAmt * skin);
+
+  // Extremity recovery for hands the model dropped outside the torso silhouette.
+  // Requires warm skin + a solid person neighbour; still limbs get a partial seed so a
+  // held-outstretched arm is not only recoverable while waving. Left/right frame edges
+  // (typical reach) get a mild boost; cool furniture never qualifies as skin.
+  float connected = smoothstep(0.55, 0.78, nbrPerson);
+  float missing = 1.0 - smoothstep(0.18, 0.48, a);
+  float limbMotion = mix(${EXTREMITY_STILL.toFixed(3)}, 1.0, moveAmt * moveAmt);
+  vec2 uv = (vec2(p) + 0.5) / vec2(last + 1);
+  float side = max(smoothstep(0.30, 0.05, uv.x), smoothstep(0.70, 0.95, uv.x));
+  float seed = skin * connected * missing * limbMotion
+             * mix(1.0, 1.2, side) * ${EXTREMITY_SEED.toFixed(3)};
+  a = max(a, mix(a, ${EXTREMITY_FLOOR.toFixed(3)}, seed));
+  // Mild skin-gated dilate: close a finger-width gap without expanding cool chairs.
+  float dilate = max(a, nbrPerson * ${EXTREMITY_DILATE_KEEP.toFixed(3)});
+  a = mix(a, max(a, dilate), skin * connected * ${EXTREMITY_DILATE.toFixed(3)});
+
   color = vec4(now.rgb, a);
 }`;
 
@@ -461,6 +509,8 @@ const float HAND_MASK_LO = ${HAND_MASK_LO.toFixed(3)};
 const float HAND_MASK_HI = ${HAND_MASK_HI.toFixed(3)};
 const float HAND_WARM_LO = ${HAND_WARM_LO.toFixed(3)};
 const float HAND_WARM_HI = ${HAND_WARM_HI.toFixed(3)};
+const float HAND_UNCERTAIN_LO = ${HAND_UNCERTAIN_LO.toFixed(3)};
+const float HAND_UNCERTAIN_MID = ${HAND_UNCERTAIN_MID.toFixed(3)};
 const float SIGMA_SPACE = ${SIGMA_SPACE.toFixed(3)};
 const float SIGMA_COLOR = ${SIGMA_COLOR.toFixed(3)};
 const float FG_CONTRAST = ${FG_CONTRAST.toFixed(3)};
@@ -596,13 +646,15 @@ void main() {
    * is a measured choice about what the model is confidently wrong about rather than a
    * feel — see MASK_LO. On warm mid-confidence pixels (hands) the band dips toward
    * HAND_MASK_* so palms are not translucent while cool furniture keeps the hard cut.
+   * Extremity-seeded limbs land in this warm uncertain band after the temporal pass.
    * The softness of the edge comes from matteAt. */
   float conf = matteAt(uv);
   // Skin-like: red above blue AND red above green. Wood desks often fail the second.
   float warm = smoothstep(HAND_WARM_LO, HAND_WARM_HI, raw.r - raw.b)
              * smoothstep(0.0, 0.05, raw.r - raw.g);
-  // Only the uncertain band: solid person and clear room keep the furniture thresholds.
-  float uncertain = smoothstep(0.45, 0.58, conf) * (1.0 - smoothstep(0.72, 0.88, conf));
+  // Uncertain band includes weak limb fringe / seeded extremities, not only mid palms.
+  float uncertain = smoothstep(HAND_UNCERTAIN_LO, HAND_UNCERTAIN_MID, conf)
+                  * (1.0 - smoothstep(0.72, 0.88, conf));
   float handAmt = warm * uncertain;
   float lo = mix(MASK_LO, HAND_MASK_LO, handAmt);
   float hi = mix(MASK_HI, HAND_MASK_HI, handAmt);
