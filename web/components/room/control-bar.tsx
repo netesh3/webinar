@@ -44,7 +44,7 @@ import { MoreButton, MoreGrid } from "./more-grid";
 import { ReactionPicker } from "./reactions";
 import { RecordButton } from "./recording";
 import { StreamButton } from "./stream-to-youtube";
-import { CaptionsBarButton } from "./caption-overlay";
+import { CaptionsSession, useCaptionsMoreAction } from "./caption-overlay";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
 import { describeMediaError, isScreenShareCancel } from "@/lib/media-errors";
 import { MediaToggle } from "./media-toggle";
@@ -199,6 +199,7 @@ export function ControlBar() {
     enabled: !connecting,
     shareActive: screenShares.length > 0,
   });
+  const captionsAction = useCaptionsMoreAction();
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
@@ -765,7 +766,9 @@ export function ControlBar() {
               anyone the server has not told they may record. */}
           <RecordButton />
           <StreamButton />
-          <CaptionsBarButton />
+          {/* Captions recognition stays mounted for publishers; the host
+              toggle lives in More (captionsAction), not on the standing bar. */}
+          <CaptionsSession />
 
         {centerTools.map((id) => {
           const Icon = tool(id).icon;
@@ -885,6 +888,7 @@ export function ControlBar() {
                     }
                   : undefined
               }
+              captionsAction={captionsAction}
               // While the grid is only open because a drag is in flight, dismissing
               // it is not something the user can ask for — the drag owns it.
               onClose={() => setMoreOpen(false)}
