@@ -11,6 +11,7 @@ import {
   useVirtualBackgroundsEnabled,
   VIRTUAL_BACKGROUNDS,
   type BackgroundChoice,
+  type BackgroundEngine,
 } from "@/lib/backgrounds";
 import { Alert, Spinner } from "../controls";
 import { CheckIcon, NoneIcon } from "../icons";
@@ -50,7 +51,11 @@ export function VirtualBackground() {
   const { notify } = useToast();
   const track = useCameraTrack();
 
-  const { error } = useVirtualBackground(track, prefs.background, prefs.lowLight, () => {
+  const { error } = useVirtualBackground(
+    track,
+    prefs.background,
+    prefs.lowLight,
+    () => {
     /* The device cannot keep up. Turned off rather than left stuttering: the person
      * whose laptop is struggling cannot see the stutter, and the audience can.
      *
@@ -72,7 +77,9 @@ export function VirtualBackground() {
       "Your device can't keep up with the low-light adjustment, so it's been turned off.",
       "info",
     );
-  });
+  },
+    prefs.backgroundEngine,
+  );
 
   /* The same failure the pre-join screen shows, said out loud in the room.
    *
@@ -114,6 +121,11 @@ export function BackgroundPicker() {
 
   return (
     <section className="sm:max-w-[22rem]">
+      <BackgroundEngineToggle
+        engine={prefs.backgroundEngine}
+        onChange={(backgroundEngine) => updatePrefs({ backgroundEngine })}
+      />
+
       <BackgroundTiles
         heading="Background"
         choice={prefs.background}
@@ -135,6 +147,64 @@ export function BackgroundPicker() {
         publish a stuttering picture.
       </p>
     </section>
+  );
+}
+
+/**
+ * A/B toggle between our SoftSegmenter pipeline and LiveKit's built-in BackgroundProcessor.
+ * Only shown when virtual backgrounds are enabled (kill switch + browser support gated by
+ * the parent). Persisted as `backgroundEngine` in media preferences.
+ */
+export function BackgroundEngineToggle({
+  engine,
+  onChange,
+}: {
+  engine: BackgroundEngine;
+  onChange: (next: BackgroundEngine) => void;
+}) {
+  const enabled = useVirtualBackgroundsEnabled();
+  if (!enabled) return null;
+
+  const options: { id: BackgroundEngine; label: string }[] = [
+    { id: "enhanced", label: "Enhanced" },
+    { id: "livekit", label: "LiveKit" },
+  ];
+
+  return (
+    <div className="mb-3">
+      <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
+        Background engine
+      </h3>
+      <div
+        role="group"
+        aria-label="Background engine"
+        className="flex rounded-lg border border-line bg-surface-2 p-0.5"
+      >
+        {options.map((opt) => {
+          const active = engine === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(opt.id)}
+              className={`flex-1 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-brand/50 ${
+                active
+                  ? "bg-surface text-ink shadow-sm"
+                  : "text-ink-3 hover:text-ink-2"
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-3">
+        {engine === "livekit"
+          ? "LiveKit’s built-in processor. Low-light adjustment is unavailable on this engine."
+          : "Our MediaPipe SoftSegmenter (default). Supports blur, image, and low-light."}
+      </p>
+    </div>
   );
 }
 

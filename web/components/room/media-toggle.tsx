@@ -230,14 +230,17 @@ export function MediaToggle({
                   further down, under Video settings, for anybody who wants it. The switch
                   is the case this menu is for: mid-webinar, somebody has told the host
                   they look dark, and the fix should be one click from the camera button
-                  they are already next to. */}
-              <MenuToggle
-                checked={asLowLight(prefs.lowLight) > 0}
-                onChange={() =>
-                  updatePrefs({ lowLight: lowLightToggled(prefs.lowLight) })
-                }
-                label="Adjust for low light"
-              />
+                  they are already next to.
+                  Hidden on LiveKit's built-in processor — no low-light API there. */}
+              {prefs.backgroundEngine !== "livekit" && (
+                <MenuToggle
+                  checked={asLowLight(prefs.lowLight) > 0}
+                  onChange={() =>
+                    updatePrefs({ lowLight: lowLightToggled(prefs.lowLight) })
+                  }
+                  label="Adjust for low light"
+                />
+              )}
             </>
           )}
 

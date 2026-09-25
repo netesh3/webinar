@@ -12,7 +12,7 @@ import { cameraCapturePreset, deviceLabel, useDevices, type MediaPreferences } f
 import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
 import { Alert, Select, Spinner } from "../controls";
-import { BackgroundTiles } from "./background-picker";
+import { BackgroundEngineToggle, BackgroundTiles } from "./background-picker";
 import { LowLightControl } from "./low-light";
 import { Button } from "../ui";
 import { CameraIcon, CameraOffIcon, MicIcon, MicOffIcon } from "../icons";
@@ -145,6 +145,7 @@ export function PreJoin({
       }
       onUpdatePrefs({ lowLight: 0 });
     },
+    prefs.backgroundEngine,
   );
 
   /* Enumerate from the start, rather than only after something has been opened.
@@ -181,10 +182,18 @@ export function PreJoin({
   /* The background to open the camera with. A ref, read when the camera opens, because
    * changing the background is a call on the processor already running and must not
    * reopen the camera — which it would as a dependency of startVideo. */
-  const look = useRef({ background: prefs.background, lowLight: prefs.lowLight });
+  const look = useRef({
+    background: prefs.background,
+    lowLight: prefs.lowLight,
+    backgroundEngine: prefs.backgroundEngine,
+  });
   useEffect(() => {
-    look.current = { background: prefs.background, lowLight: prefs.lowLight };
-  }, [prefs.background, prefs.lowLight]);
+    look.current = {
+      background: prefs.background,
+      lowLight: prefs.lowLight,
+      backgroundEngine: prefs.backgroundEngine,
+    };
+  }, [prefs.background, prefs.lowLight, prefs.backgroundEngine]);
 
   const stopVideo = useCallback(() => {
     videoTrack.current?.stop();
@@ -214,13 +223,17 @@ export function PreJoin({
   const startVideo = useCallback(
     async (stale: () => boolean) => {
       stopVideo();
-      const { background, lowLight } = look.current;
-      const track = await openCamera(background, lowLight, (processor) =>
-        createLocalVideoTrack({
-          deviceId: prefs.videoInput,
-          resolution: cameraCapturePreset().resolution,
-          processor,
-        }),
+      const { background, lowLight, backgroundEngine } = look.current;
+      const track = await openCamera(
+        background,
+        lowLight,
+        (processor) =>
+          createLocalVideoTrack({
+            deviceId: prefs.videoInput,
+            resolution: cameraCapturePreset().resolution,
+            processor,
+          }),
+        backgroundEngine,
       );
       if (stale()) {
         track.stop();
@@ -481,28 +494,37 @@ export function PreJoin({
 
             {/* Virtual Background Selection before joining */}
             {backgroundsOk && (
-              <BackgroundTiles
-                heading="Virtual background"
-                choice={prefs.background}
-                disabledReason={cameraEnabled ? undefined : "Camera is off"}
-                onSelect={(bg) => onUpdatePrefs({ background: bg })}
-              />
+              <>
+                <BackgroundEngineToggle
+                  engine={prefs.backgroundEngine}
+                  onChange={(backgroundEngine) => onUpdatePrefs({ backgroundEngine })}
+                />
+                <BackgroundTiles
+                  heading="Virtual background"
+                  choice={prefs.background}
+                  disabledReason={cameraEnabled ? undefined : "Camera is off"}
+                  onSelect={(bg) => onUpdatePrefs({ background: bg })}
+                />
+              </>
             )}
 
             {/* Under the backgrounds, and on this screen rather than only in Settings,
                 because this is the one moment a presenter is looking at their own face on
                 purpose. Finding out you were in shadow belongs here, next to the preview
-                that shows it, not two clicks deep once an audience is already watching. */}
-            <LowLightControl
-              value={prefs.lowLight}
-              disabled={!cameraEnabled}
-              onChange={(lowLight) => onUpdatePrefs({ lowLight })}
-              hint={
-                cameraEnabled
-                  ? "Too dark? This lifts the shadows on you without blowing out the light behind you."
-                  : "Start your camera to see the change. Your choice is saved either way."
-              }
-            />
+                that shows it, not two clicks deep once an audience is already watching.
+                Hidden on the LiveKit engine — that processor has no low-light API. */}
+            {prefs.backgroundEngine !== "livekit" && (
+              <LowLightControl
+                value={prefs.lowLight}
+                disabled={!cameraEnabled}
+                onChange={(lowLight) => onUpdatePrefs({ lowLight })}
+                hint={
+                  cameraEnabled
+                    ? "Too dark? This lifts the shadows on you without blowing out the light behind you."
+                    : "Start your camera to see the change. Your choice is saved either way."
+                }
+              />
+            )}
 
             <Button onClick={join} size="lg" className="w-full">
               Join the webinar

@@ -1,6 +1,9 @@
 "use client";
 
-import type { ProcessorWrapper } from "@livekit/track-processors";
+import type {
+  BackgroundProcessorWrapper,
+  ProcessorWrapper,
+} from "@livekit/track-processors";
 import type {
   LocalParticipant,
   LocalVideoTrack,
@@ -18,12 +21,19 @@ import type {
 
 /* Virtual backgrounds: off, blur, or a bundled image.
  *
- * The pipeline is MediaPipe's selfie segmenter behind @livekit/track-processors: every
- * frame goes camera → segmentation → alpha matte → composite over the chosen
+ * Two pipelines share this file, chosen per browser via `backgroundEngine`:
+ *
+ *   enhanced   SoftSegmenter (MediaPipe selfie model + our compositor) wrapped in
+ *              @livekit/track-processors' ProcessorWrapper. Supports blur, image, and
+ *              the low-light lift in one GPU pass. Default.
+ *   livekit    LiveKit's built-in BackgroundProcessor from the same package (npm name
+ *              @livekit/track-processors; GitHub track-processors-js). Blur and image
+ *              only — no low-light. Opt-in for A/B comparison.
+ *
+ * Every frame goes camera → segmentation → alpha matte → composite over the chosen
  * background → canvas.captureStream(), and the processed stream replaces the published
  * track. Written by hand this is a WebGL program and a WASM loader; the processor does
- * it and plugs into LocalVideoTrack.setProcessor, which is the only reason this file is
- * three hundred lines rather than three thousand.
+ * it and plugs into LocalVideoTrack.setProcessor.
  *
  * Four decisions worth stating:
  *
@@ -37,7 +47,8 @@ import type {
  * The processor is attached once per track and SWITCHED. Tearing it down and rebuilding it
  * to change mode re-initialises the WASM and drops frames on the way through — visible to
  * the audience as a flash of black or of the real room. Changing the choice is a call on
- * the processor that is already running, and so is turning it all off.
+ * the processor that is already running, and so is turning it all off. Switching *engines*
+ * does tear down and rebuild — the two transformers are not interchangeable.
  *
  * The processor belongs to the TRACK, not to the screen that attached it. The pre-join
  * screen hands its camera track to the room, processor and all, and the room adopts it
@@ -55,6 +66,20 @@ import type {
 
 export type BackgroundMode = "none" | "blur" | "image";
 
+/** Which virtual-background pipeline runs. Persisted in media preferences. */
+export type BackgroundEngine = "enhanced" | "livekit";
+
+export const DEFAULT_BACKGROUND_ENGINE: BackgroundEngine = "enhanced";
+
+/** Narrow storage / unknown input to a known engine. Anything else → enhanced. */
+export function asBackgroundEngine(value: unknown): BackgroundEngine {
+  return value === "livekit" ? "livekit" : "enhanced";
+}
+
+/** One-line label for settings rows and the A/B toggle. */
+export function describeBackgroundEngine(engine: BackgroundEngine): string {
+  return engine === "livekit" ? "LiveKit" : "Enhanced";
+}
 
 export type VirtualBackgroundId =
   | "office"
@@ -95,6 +120,10 @@ export const NO_BACKGROUND: BackgroundChoice = { mode: "none" };
  * Half of this is the worst of both: the room is still legible and the person looks cut out.
  */
 const BLUR_RADIUS = 28;
+
+/** Vendored MediaPipe assets — both engines point here so corporate CDNs are not required. */
+const MEDIAPIPE_WASM = "/mediapipe/wasm";
+const MEDIAPIPE_MODEL = "/mediapipe/selfie_segmenter_landscape.tflite";
 
 // ------------------------------------------------------------------- low light
 
@@ -417,7 +446,6 @@ function backgroundFor(choice: BackgroundChoice): Background {
  * createProcessor against a bare-looking track while LiveKit is still inside setProcessor.
  */
 const attaching = new WeakMap<LocalVideoTrack, Promise<unknown>>();
-const retried = new WeakMap<SoftSegmenter, number>();
 let openingCamera: Promise<unknown> | null = null;
 
 let supported: boolean | undefined;
@@ -527,8 +555,8 @@ type Wrapper = Pick<
   "init" | "restart" | "destroy" | "processedTrack" | "source"
 >;
 
-/* The processor LiveKit is handed: the wrapper around our transformer, plus what the wrapper
- * does not do.
+/* The SoftSegmenter processor LiveKit is handed: the wrapper around our transformer, plus
+ * what the wrapper does not do.
  *
  * It waits for a camera that is OFF. Turning the camera off in the room stops the device, and
  * the wrapper cannot start on a stopped track — the browser will not read one — so choosing a
@@ -542,7 +570,7 @@ type Wrapper = Pick<
  *
  * And it knows whether starting it is what went wrong, which openCamera needs to know.
  */
-class BackgroundProcessor implements TrackProcessor<Track.Kind.Video> {
+class SoftBackgroundProcessor implements TrackProcessor<Track.Kind.Video> {
   readonly name = "soft-background";
   readonly soft: SoftSegmenter;
   private readonly inner: Wrapper;
@@ -598,6 +626,60 @@ class BackgroundProcessor implements TrackProcessor<Track.Kind.Video> {
   }
 }
 
+/* LiveKit's built-in BackgroundProcessor, wrapped the same way SoftBackgroundProcessor is
+ * so openCamera / putOn / adopt share one shape. No SoftSegmenter, no low-light — switchTo
+ * is how blur / image / off change without rebuilding the WASM. */
+class LiveKitBackgroundAdapter implements TrackProcessor<Track.Kind.Video> {
+  readonly name = "livekit-background";
+  private readonly inner: BackgroundProcessorWrapper;
+  opening = false;
+  failedToStart = false;
+
+  constructor(inner: BackgroundProcessorWrapper) {
+    this.inner = inner;
+  }
+
+  get processedTrack(): MediaStreamTrack | undefined {
+    return this.inner.processedTrack;
+  }
+
+  get source(): BackgroundProcessorWrapper["source"] {
+    return this.inner.source;
+  }
+
+  async init(opts: VideoProcessorOptions): Promise<void> {
+    if (opts.track.readyState === "ended") return;
+    try {
+      await this.inner.init(opts);
+    } catch (err) {
+      this.failedToStart = true;
+      if (this.opening) opts.track.stop();
+      throw err;
+    }
+  }
+
+  async restart(opts: VideoProcessorOptions): Promise<void> {
+    if (opts.track.readyState === "ended") {
+      await this.inner.destroy({ willProcessorRestart: true });
+      return;
+    }
+    await this.inner.restart(opts);
+  }
+
+  async destroy(): Promise<void> {
+    await this.inner.destroy();
+  }
+
+  async applyChoice(choice: BackgroundChoice): Promise<void> {
+    await this.inner.switchTo(liveKitSwitchFor(choice));
+  }
+}
+
+type AnyBackgroundProcessor = SoftBackgroundProcessor | LiveKitBackgroundAdapter;
+
+const softRetried = new WeakMap<SoftSegmenter, number>();
+const liveKitRetried = new WeakMap<LiveKitBackgroundAdapter, number>();
+
 /* A processor onto a camera that is already showing, without the preview blinking.
  *
  * setProcessor also moves every element showing the camera over to the processed track, and
@@ -624,7 +706,7 @@ class BackgroundProcessor implements TrackProcessor<Track.Kind.Video> {
  * the same element — another device chosen while this was attaching — and that element
  * belongs to the new track now; this one's output going into it would black out the preview.
  */
-async function putOn(track: LocalVideoTrack, processor: BackgroundProcessor): Promise<void> {
+async function putOn(track: LocalVideoTrack, processor: AnyBackgroundProcessor): Promise<void> {
   const inPlace =
     "MediaStreamTrackProcessor" in globalThis && "MediaStreamTrackGenerator" in globalThis;
   await track.setProcessor(processor, !inPlace);
@@ -686,7 +768,26 @@ function reportStatus(lowLightOnly: boolean): (next: SegmenterStatus) => void {
   };
 }
 
-/* A processor for `choice`, attached to nothing yet.
+/* LiveKit BackgroundProcessor mode options for a choice. */
+function liveKitSwitchFor(
+  choice: BackgroundChoice,
+):
+  | { mode: "disabled" }
+  | { mode: "background-blur"; blurRadius: number }
+  | { mode: "virtual-background"; imagePath: string } {
+  if (choice.mode === "blur") {
+    return { mode: "background-blur", blurRadius: BLUR_RADIUS };
+  }
+  if (choice.mode === "image") {
+    const item = VIRTUAL_BACKGROUNDS.find((b) => b.id === choice.id);
+    return item
+      ? { mode: "virtual-background", imagePath: item.src }
+      : { mode: "background-blur", blurRadius: BLUR_RADIUS };
+  }
+  return { mode: "disabled" };
+}
+
+/* SoftSegmenter + ProcessorWrapper ("enhanced" engine).
  *
  * Imported here rather than at the top of the file: between them these two modules pull in
  * MediaPipe's WASM, and an attendee who never opens the picker should not pay for it in their
@@ -697,11 +798,11 @@ function reportStatus(lowLightOnly: boolean): (next: SegmenterStatus) => void {
  * TrackProcessor interface. That part is good and there is no reason to rewrite it. What is
  * replaced is the transformer inside: see lib/segmenter.ts for why.
  */
-async function createProcessor(
+async function createSoftProcessor(
   choice: BackgroundChoice,
   lowLight: number,
   listeners: Pick<SegmenterOptions, "onFrame" | "onStatus">,
-): Promise<BackgroundProcessor> {
+): Promise<SoftBackgroundProcessor> {
   /* SoftSegmenter first, then ProcessorWrapper — not in parallel.
    *
    * `@livekit/track-processors` statically imports `@mediapipe/tasks-vision` for its unused
@@ -718,8 +819,60 @@ async function createProcessor(
     lowLight: lowLightAmount(lowLight),
     ...listeners,
   });
-  retried.set(soft, status.attempt);
-  return new BackgroundProcessor(soft, new ProcessorWrapper(soft as never, "soft-background"));
+  softRetried.set(soft, status.attempt);
+  return new SoftBackgroundProcessor(soft, new ProcessorWrapper(soft as never, "soft-background"));
+}
+
+/* LiveKit's built-in BackgroundProcessor ("livekit" engine).
+ *
+ * Same package as ProcessorWrapper — npm `@livekit/track-processors` (repo track-processors-js).
+ * Points assetPaths at our vendored MediaPipe so corporate CDNs are not required. No low-light.
+ */
+async function createLiveKitProcessor(
+  choice: BackgroundChoice,
+  listeners: { onFrame?: SegmenterOptions["onFrame"] },
+): Promise<LiveKitBackgroundAdapter> {
+  const { BackgroundProcessor } = await import("@livekit/track-processors");
+  const mode = liveKitSwitchFor(choice);
+  const inner = BackgroundProcessor(
+    {
+      ...mode,
+      assetPaths: {
+        tasksVisionFileSet: MEDIAPIPE_WASM,
+        modelAssetPath: MEDIAPIPE_MODEL,
+      },
+      onFrameProcessed: listeners.onFrame
+        ? (stats) => {
+            listeners.onFrame!({
+              totalMs: stats.processingTimeMs,
+              segmentMs: stats.segmentationTimeMs,
+            });
+          }
+        : undefined,
+    },
+    "livekit-background",
+  );
+  const adapter = new LiveKitBackgroundAdapter(inner);
+  liveKitRetried.set(adapter, status.attempt);
+  return adapter;
+}
+
+async function createProcessor(
+  engine: BackgroundEngine,
+  choice: BackgroundChoice,
+  lowLight: number,
+  listeners: Pick<SegmenterOptions, "onFrame" | "onStatus">,
+): Promise<AnyBackgroundProcessor> {
+  if (engine === "livekit") {
+    return createLiveKitProcessor(choice, { onFrame: listeners.onFrame });
+  }
+  return createSoftProcessor(choice, lowLight, listeners);
+}
+
+/** Drop whatever processor is on the track so the other engine can attach cleanly. */
+async function detachProcessor(track: LocalVideoTrack): Promise<void> {
+  if (!track.getProcessor()) return;
+  await track.stopProcessor().catch(() => {});
 }
 
 /**
@@ -734,14 +887,19 @@ async function createProcessor(
  * failed, the camera is opened again without it, and useVirtualBackground's attach has another
  * go and says why if it cannot. Anything else — a refused permission, a camera in use — is the
  * camera's own failure, and goes back to the caller as it was.
+ *
+ * `engine` picks SoftSegmenter vs LiveKit's BackgroundProcessor. Low-light is ignored on the
+ * LiveKit engine (that API has no lift).
  */
 export async function openCamera<T>(
   choice: BackgroundChoice,
   lowLight: number,
   open: (processor?: TrackProcessor<Track.Kind.Video>) => Promise<T>,
+  engine: BackgroundEngine = DEFAULT_BACKGROUND_ENGINE,
 ): Promise<T> {
+  const effectiveLowLight = engine === "livekit" ? 0 : lowLight;
   if (
-    (choice.mode === "none" && asLowLight(lowLight) === 0) ||
+    (choice.mode === "none" && asLowLight(effectiveLowLight) === 0) ||
     !backgroundsAvailable()
   ) {
     return open();
@@ -753,9 +911,9 @@ export async function openCamera<T>(
   const prior = openingCamera;
   const work = (async (): Promise<T> => {
     await prior?.catch(() => {});
-    let processor: BackgroundProcessor;
+    let processor: AnyBackgroundProcessor;
     try {
-      processor = await createProcessor(choice, lowLight, {
+      processor = await createProcessor(engine, choice, effectiveLowLight, {
         onStatus: reportStatus(choice.mode === "none"),
       });
     } catch (err) {
@@ -773,7 +931,8 @@ export async function openCamera<T>(
       console.error("[background] failed to start", err, {
         mode: choice.mode,
         image: choice.mode === "image" ? choice.id : null,
-        lowLight: asLowLight(lowLight),
+        lowLight: asLowLight(effectiveLowLight),
+        engine,
         while: "opening the camera",
       });
       return open();
@@ -795,12 +954,13 @@ export async function openCamera<T>(
  * The first time, that is openCamera. After it the camera stays published while it is off, and
  * LiveKit restarts the processor on it as it comes back on, before it sends a frame — so all
  * there is to do is wait for an attach still on its way. That includes one made while the
- * camera was off, which is waiting for exactly this; see BackgroundProcessor.
+ * camera was off, which is waiting for exactly this; see SoftBackgroundProcessor.
  */
 export async function enableCamera(
   participant: LocalParticipant,
   choice: BackgroundChoice,
   lowLight: number,
+  engine: BackgroundEngine = DEFAULT_BACKGROUND_ENGINE,
 ): Promise<void> {
   const camera = participant.getTrackPublication("camera" as Track.Source)?.track;
   if (camera) {
@@ -808,25 +968,28 @@ export async function enableCamera(
     await participant.setCameraEnabled(true);
     return;
   }
-  await openCamera(choice, lowLight, (processor) =>
-    participant.setCameraEnabled(true, processor ? { processor } : undefined),
+  await openCamera(
+    choice,
+    lowLight,
+    (processor) => participant.setCameraEnabled(true, processor ? { processor } : undefined),
+    engine,
   );
 }
 
 /**
- * Applies a background and a low-light lift to a camera track, and keeps applying them.
+ * Applies a background (and, on the Enhanced engine, a low-light lift) to a camera track.
  *
- * Both, from one hook, because they are one GPU pass. The compositor already has the
- * person's pixels in a register to blend them over a background; lifting them there costs
- * an instruction, and doing it in a second processor would mean a second WebGL context, a
- * second canvas.captureStream and a second frame of latency for something that is four
- * lines of shader. The name stayed `useVirtualBackground` for the same reason it is not
- * two processors: this is where the pass is.
+ * On Enhanced, both ride one GPU pass: the compositor already has the person's pixels in a
+ * register to blend them over a background; lifting them there costs an instruction.
+ * LiveKit's BackgroundProcessor has no low-light API, so that engine ignores `lowLight`.
  *
  * The track changes underneath this: stopping and starting the camera republishes it,
  * switching camera device replaces it, and a promoted attendee gets one for the first
  * time mid-session. Keying the effect on the track's sid means each of those re-applies
  * the processor rather than leaving somebody's room on show.
+ *
+ * Switching `engine` tears down one processor and attaches the other — the transformers
+ * are not interchangeable.
  *
  * `onDegraded` fires when the device cannot keep up. The caller says so and turns it
  * off — this hook does not decide that on its own, because "your laptop is too slow"
@@ -835,11 +998,13 @@ export async function enableCamera(
 export function useVirtualBackground(
   track: LocalVideoTrack | undefined,
   choice: BackgroundChoice,
-  /** The low-light lift in stored units, 0..LOW_LIGHT_MAX. 0 is off. */
+  /** The low-light lift in stored units, 0..LOW_LIGHT_MAX. 0 is off. Ignored on LiveKit. */
   lowLight: number,
   onDegraded?: () => void,
+  engine: BackgroundEngine = DEFAULT_BACKGROUND_ENGINE,
 ) {
-  const current = useRef<SoftSegmenter | null>(null);
+  const softCurrent = useRef<SoftSegmenter | null>(null);
+  const liveKitCurrent = useRef<LiveKitBackgroundAdapter | null>(null);
   const shown = useBackgroundStatus();
 
   /* The latest amount, for the attach path to read at the moment it builds the
@@ -873,14 +1038,15 @@ export function useVirtualBackground(
   }, []);
 
   const sid = track?.sid ?? track?.mediaStreamID;
-  /* Whether the lift is on, NOT how much.
+  /* Whether the lift is on, NOT how much. LiveKit has no lift — treat as off there.
    *
    * The amount must not be in this key. It changes on every pixel of a slider drag, and
    * this key drives the attach effect — so including it would re-enter that effect thirty
    * times on the way from 0 to 60 for nothing. Whether there is anything to attach AT ALL
    * is all this needs, and the amount goes in through setLowLight. */
-  const lit = asLowLight(lowLight) > 0;
+  const lit = engine !== "livekit" && asLowLight(lowLight) > 0;
   const key =
+    `${engine}:` +
     (choice.mode === "image" ? `image:${choice.id}` : choice.mode) +
     (lit ? "+lit" : "");
   const attempt = shown.attempt;
@@ -893,18 +1059,23 @@ export function useVirtualBackground(
    * real import below fails too and says so there.
    */
   useEffect(() => {
-    if (choice.mode === "none" || !backgroundsAvailable()) return;
-    // Same order as createProcessor: SoftSegmenter's module before track-processors'.
+    if ((choice.mode === "none" && !lit) || !backgroundsAvailable()) return;
+    if (engine === "livekit") {
+      void import("@livekit/track-processors").catch(() => {});
+      return;
+    }
+    // Same order as createSoftProcessor: SoftSegmenter's module before track-processors'.
     void import("./segmenter")
       .then(() => import("@livekit/track-processors"))
       .catch(() => {});
-  }, [choice.mode]);
+  }, [choice.mode, engine, lit]);
 
   useEffect(() => {
     if (!track) {
       // No camera, so nothing to be preparing or to have failed at. A failure from the last
       // track would otherwise sit under a picker that says to start the camera first.
-      current.current = null;
+      softCurrent.current = null;
+      liveKitCurrent.current = null;
       publishStatus({ phase: "idle", error: null, retryable: false });
       return;
     }
@@ -946,20 +1117,54 @@ export function useVirtualBackground(
 
     const onStatus = reportStatus(lowLightOnly);
 
-    /* Taking over a processor that is already on the track — this screen's from a moment
+    /* Taking over a SoftSegmenter that is already on the track — this screen's from a moment
      * ago, the pre-join screen's, or the one the camera was opened with. Everything is a call
      * on it: no await, no rebuild, and the next frame out is the new choice. The status
      * listener goes on last, so the first thing it reports is where the processor is after
      * all of that, not before. */
-    const adopt = (soft: SoftSegmenter) => {
-      current.current = soft;
+    const adoptSoft = (soft: SoftSegmenter) => {
+      softCurrent.current = soft;
+      liveKitCurrent.current = null;
       soft.setOnFrame(onFrame);
       soft.setBackground(background);
       soft.setLowLight(lowLightAmount(latestLowLight.current));
-      if ((retried.get(soft) ?? attempt) !== attempt) soft.retry();
-      retried.set(soft, attempt);
+      if ((softRetried.get(soft) ?? attempt) !== attempt) soft.retry();
+      softRetried.set(soft, attempt);
       soft.setOnStatus(onStatus);
       if (!wanted) publishFrameCost(null);
+    };
+
+    const adoptLiveKit = async (adapter: LiveKitBackgroundAdapter) => {
+      softCurrent.current = null;
+      liveKitCurrent.current = adapter;
+      if ((liveKitRetried.get(adapter) ?? attempt) !== attempt) {
+        // Retry: tear down and let the attach path rebuild.
+        await detachProcessor(track);
+        liveKitCurrent.current = null;
+        return false;
+      }
+      liveKitRetried.set(adapter, attempt);
+      if (!track.isMuted) publishStatus({ phase: "preparing", error: null, retryable: false });
+      try {
+        await adapter.applyChoice(choice);
+        if (!cancelled) {
+          publishStatus({
+            phase: wanted ? "ready" : "idle",
+            error: null,
+            retryable: false,
+          });
+          if (!wanted) publishFrameCost(null);
+        }
+      } catch (err) {
+        if (cancelled) return true;
+        publishFrameCost(null);
+        publishStatus({
+          phase: "failed",
+          error: describeBackgroundError(err, lowLightOnly),
+          retryable: true,
+        });
+      }
+      return true;
     };
 
     (async () => {
@@ -971,11 +1176,23 @@ export function useVirtualBackground(
       if (cancelled) return;
 
       const existing = track.getProcessor();
-      if (existing instanceof BackgroundProcessor) {
-        adopt(existing.soft);
+
+      if (engine === "enhanced" && existing instanceof SoftBackgroundProcessor) {
+        adoptSoft(existing.soft);
         return;
       }
-      current.current = null;
+      if (engine === "livekit" && existing instanceof LiveKitBackgroundAdapter) {
+        const kept = await adoptLiveKit(existing);
+        if (cancelled || kept) return;
+        // Retry fell through — rebuild below.
+      } else if (existing) {
+        // Wrong engine (or an unknown processor): tear down before building the other.
+        await detachProcessor(track);
+        if (cancelled) return;
+      }
+
+      softCurrent.current = null;
+      liveKitCurrent.current = null;
 
       /* Nothing to do, and nothing to load: a participant who never turns a background on
        * never downloads nine megabytes of WASM. Once one has been attached it stays, set
@@ -1009,7 +1226,7 @@ export function useVirtualBackground(
       const hadProcessor = existing !== undefined;
 
       const attach = (async () => {
-        const created = await createProcessor(choice, latestLowLight.current, {
+        const created = await createProcessor(engine, choice, latestLowLight.current, {
           onFrame,
           onStatus,
         });
@@ -1035,7 +1252,7 @@ export function useVirtualBackground(
         if ((track as unknown as { manuallyStopped?: boolean }).manuallyStopped) {
           await created.destroy().catch(() => {});
         }
-        return created.soft;
+        return created;
       })();
       attaching.set(track, attach);
 
@@ -1045,7 +1262,18 @@ export function useVirtualBackground(
          * the slider, a Retry — and for one waiting on a camera that is off, which has
          * started nothing yet. Given the choice now, it loads the model while it waits, so
          * the camera comes on to the background rather than to a blur while that happens. */
-        if (!cancelled) adopt(created);
+        if (cancelled) return;
+        if (created instanceof SoftBackgroundProcessor) {
+          adoptSoft(created.soft);
+        } else {
+          liveKitCurrent.current = created;
+          // LiveKit has no onStatus from the transformer; attach success is "ready".
+          // applyChoice covers a choice that moved while we were attaching.
+          await created.applyChoice(choice).catch(() => {});
+          if (!cancelled) {
+            publishStatus({ phase: "ready", error: null, retryable: false });
+          }
+        }
       } catch (err) {
         /* Not a failure. The camera it was starting on was stopped underneath it — another
          * device chosen, or the camera turned off — and the screen that stopped it is moving
@@ -1087,6 +1315,7 @@ export function useVirtualBackground(
           mode: choice.mode,
           image: choice.mode === "image" ? choice.id : null,
           lowLight: asLowLight(lowLight),
+          engine,
           trackId: sid ?? null,
           hadProcessor: hadProcessor,
         });
@@ -1105,23 +1334,23 @@ export function useVirtualBackground(
     return () => {
       cancelled = true;
     };
-    // sid, so republishing the camera re-applies it. key, so changing the choice
+    // sid, so republishing the camera re-applies it. key, so changing the choice or engine
     // switches it. attempt, so Retry retries. The track object itself is deliberately
     // not a dependency: LiveKit hands back a new wrapper on every render for the same
     // underlying track.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sid, key, attempt]);
 
-  /* The amount, straight into the processor that is already running.
+  /* The amount, straight into the SoftSegmenter that is already running.
    *
    * A uniform write, not a restart — see SoftSegmenter.setLowLight. Nothing is awaited
    * and nothing is torn down, so dragging the slider is smooth and the published track
-   * never drops a frame. A no-op before the processor exists, which is fine: the attach
-   * path reads the same ref when it builds one.
+   * never drops a frame. A no-op before the processor exists, or on the LiveKit engine.
    */
   useEffect(() => {
-    current.current?.setLowLight(lowLightAmount(lowLight));
-  }, [lowLight]);
+    if (engine === "livekit") return;
+    softCurrent.current?.setLowLight(lowLightAmount(lowLight));
+  }, [lowLight, engine]);
 
   // The window and the one-shot warning both reset when the mode changes, so a
   // lighter background gets a fair hearing on a device that failed with a heavier one.
