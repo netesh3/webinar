@@ -691,9 +691,12 @@ export function Alert({
     ok: "border-ok/25 bg-ok-soft text-ink-2",
   };
   return (
+    // break-words, because what goes in here is sometimes somebody else's text, and one
+    // unbroken token in it — a file path, an error code — would otherwise set the width of
+    // whatever the alert is in.
     <div
       role={tone === "error" ? "alert" : undefined}
-      className={`rounded-lg border px-3.5 py-3 text-[12.5px] leading-relaxed ${tones[tone]}`}
+      className={`rounded-lg border px-3.5 py-3 text-[12.5px] leading-relaxed break-words ${tones[tone]}`}
     >
       {title && <strong className="mb-0.5 block text-ink">{title}</strong>}
       {children}
