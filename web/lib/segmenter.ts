@@ -92,16 +92,25 @@ const MATTE_LONG_SIDE = 256;
  * Where the picture is still, a quarter. Segmentation is independent per frame, so a still
  * edge flickers by a few percent of confidence frame to frame, and a quarter takes that to
  * about a quarter of itself — 24–29% over four runs of make test-background, on loose hair
- * against a plain wall with a webcam's sensor noise. Where the picture moved, nine tenths, so
- * a hand is not trailed by a ghost of where it was. "Moved" is the largest colour change in
- * the 3×3 neighbourhood between this frame and the last, at the matte's resolution — which
- * averages away sensor noise (well under MOTION_LO even in a dim room) and keeps real
- * movement.
+ * against a plain wall with a webcam's sensor noise.
+ *
+ * Where the picture moved, almost the whole new answer. Nine tenths (K_MOVE 0.9) left a
+ * visible trail on a head turning left/right or leaning toward the camera: at a moderate
+ * colour change of 0.05 — a typical face turn, not a waving hand — the old MOTION_HI of 0.1
+ * only reached ~0.29 along the blend, so k sat near 0.44 and the matte lagged by more than
+ * half a frame of history. Raising K_MOVE to 0.97 and tightening MOTION_HI to 0.065 puts
+ * that same turn near k ≈ 0.8, and a clear move near 0.97, without touching K_STILL (so the
+ * still-edge shimmer trade measured above is unchanged). MOTION_LO drops slightly so a
+ * gentle turn starts leaving the still weight sooner.
+ *
+ * "Moved" is the largest colour change in the 3×3 neighbourhood between this frame and the
+ * last, at the matte's resolution — which averages away sensor noise (well under MOTION_LO
+ * even in a dim room) and keeps real movement.
  */
 const K_STILL = 0.25;
-const K_MOVE = 0.9;
-const MOTION_LO = 0.03;
-const MOTION_HI = 0.1;
+const K_MOVE = 0.97;
+const MOTION_LO = 0.025;
+const MOTION_HI = 0.065;
 
 /* Where the mask becomes opaque, and why it is not centred on a half.
  *
@@ -146,11 +155,15 @@ const MASK_HI = 0.75;
  *  painted over by the wall around it rather than smeared into it. */
 const ROOM_LO = 0.3;
 
-/* The joint upsample. Spatial sigma in matte texels, colour sigma in 0..1 RGB distance:
- * two colours 0.12 apart count 60%, 0.36 apart about 1% — so skin against a wall separates
- * and a shirt's own folds do not. */
-const SIGMA_SPACE = 1.0;
-const SIGMA_COLOR = 0.12;
+/* The joint upsample. Spatial sigma in matte texels, colour sigma in 0..1 RGB distance.
+ *
+ * SIGMA_SPACE 1.15 (was 1.0) gives the edge one more matte texel of neighbourhood to vote
+ * with when the person has moved between frames — the guide colour is still what snaps the
+ * boundary, so this is not a soft blob. SIGMA_COLOR 0.11 (was 0.12) is a touch tighter so
+ * skin against a wall still separates; two colours 0.11 apart count ~60%, 0.33 apart ~1%.
+ */
+const SIGMA_SPACE = 1.15;
+const SIGMA_COLOR = 0.11;
 
 /** How strong the veil is, in the same units as a blur background's radius. Enough that the
  *  room is unreadable while the model starts; this is what a background looks like loading. */
@@ -328,6 +341,19 @@ void main() {
   color = sum / total;
 }`;
 
+/* Subtle polish on the PERSON only, after the low-light lift.
+ *
+ * Not a beauty filter: a mild S-curve so the presenter reads clearer against blur/stills,
+ * plus a light midtone soften so skin is less harsh under webcam noise. Both are applied
+ * inside the composite, after liftShadows and before alpha mix — background pixels never
+ * see them. Contrast is scaled down by lowLight so it does not stack on LOW_LIGHT_CONTRAST
+ * (the restore already in liftShadows): at amount 0 the full FG_CONTRAST applies; at 1 it
+ * is nearly off. Soften likewise backs off when the lift has already flattened midtones.
+ */
+const FG_CONTRAST = 0.12;
+const FG_SOFTEN = 0.28;
+const FG_SOFT_LOD = 1.25;
+
 /** The composite. Foreground over background, with the matte as alpha. */
 const COMPOSITE = `#version 300 es
 precision highp float;
@@ -335,6 +361,9 @@ const float MASK_LO = ${MASK_LO.toFixed(3)};
 const float MASK_HI = ${MASK_HI.toFixed(3)};
 const float SIGMA_SPACE = ${SIGMA_SPACE.toFixed(3)};
 const float SIGMA_COLOR = ${SIGMA_COLOR.toFixed(3)};
+const float FG_CONTRAST = ${FG_CONTRAST.toFixed(3)};
+const float FG_SOFTEN = ${FG_SOFTEN.toFixed(3)};
+const float FG_SOFT_LOD = ${FG_SOFT_LOD.toFixed(3)};
 in vec2 uv;
 uniform sampler2D frame;     // the camera, with mips
 uniform sampler2D matte;     // guide colour, smoothed confidence
@@ -347,6 +376,21 @@ uniform vec2 imageSize;
 uniform float lowLight;      // 0 = off, 1 = the full lift
 out vec4 color;
 ${LOW_LIGHT_GLSL}
+
+/* Mild contrast + skin soften for the lifted person. softSample is the same lift at a
+ * coarser mip — already alpha-gated by the caller, so the room/still is untouched. */
+vec3 polishPerson(vec3 lifted, vec3 softSample) {
+  float contrastAmt = FG_CONTRAST * (1.0 - lowLight * 0.85);
+  vec3 contrasted = lifted * lifted * (3.0 - 2.0 * lifted);
+  vec3 c = mix(lifted, contrasted, contrastAmt);
+  float y = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  // Midtones only: leave dark hair/eyes and bright speculars sharp.
+  float mid = smoothstep(0.12, 0.28, y) * (1.0 - smoothstep(0.62, 0.82, y));
+  // Prefer warm skin-ish chroma over cool walls that leaked into the matte.
+  float warm = smoothstep(0.0, 0.06, c.r - c.b);
+  float softAmt = FG_SOFTEN * mid * warm * (1.0 - 0.5 * lowLight);
+  return mix(c, softSample, softAmt);
+}
 
 /* object-fit: cover. A 16:9 still behind a 4:3 webcam must crop, not squash. */
 vec2 coverUv(vec2 p) {
@@ -407,8 +451,13 @@ void main() {
    * person gets the light and their room does not, which is a key light rather than an
    * exposure change. With no background there is no mask to confine it to, so mode 0
    * lifts the whole frame — still the thing somebody dark on camera asked for. */
-  vec3 fg = liftShadows(textureLod(frame, uv, 0.0).rgb, lowLight);
+  vec3 raw = textureLod(frame, uv, 0.0).rgb;
+  vec3 fg = liftShadows(raw, lowLight);
   if (mode == 0) { color = vec4(fg, 1.0); return; }
+
+  /* Person polish only when a background is on. Mode 0 (low-light alone) stays a pure
+   * lift — no soften, no extra contrast — so Off + low light does not change look. */
+  fg = polishPerson(fg, liftShadows(textureLod(frame, uv, FG_SOFT_LOD).rgb, lowLight));
 
   vec3 bg;
   if (mode == 2 && veil <= 0.0) bg = texture(image, coverUv(uv)).rgb;
