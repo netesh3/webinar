@@ -86,14 +86,15 @@ const BACKGROUND_IDS = new Set<string>(VIRTUAL_BACKGROUNDS.map((b) => b.id));
 
 export const NO_BACKGROUND: BackgroundChoice = { mode: "none" };
 
-/* How hard to blur: a Gaussian sigma of 24 pixels at 720p, scaled for other sizes.
+/* How hard to blur: a Gaussian sigma of 28 pixels at 720p, scaled for other sizes.
  *
  * Strong enough that a room is unreadable — a bookshelf is colour, not titles — which is
- * what somebody choosing "blur" is asking for, and about what Zoom and Meet do. It used to
- * be half this, and a half-strength blur is the worst of both: the room is still legible
- * and the person looks cut out. The halo that made a strong blur look bad is gone because
- * the person is taken out of the room before it is blurred; see lib/segmenter.ts. */
-const BLUR_RADIUS = 24;
+ * what somebody choosing "blur" is asking for, and about what Zoom and Meet do. It was 24;
+ * 28 is one step stronger so the cut-out reads cleaner against the room without changing
+ * the room-only blur path (person is still taken out before the blur; see segmenter.ts).
+ * Half of this is the worst of both: the room is still legible and the person looks cut out.
+ */
+const BLUR_RADIUS = 28;
 
 // ------------------------------------------------------------------- low light
 

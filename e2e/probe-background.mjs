@@ -119,7 +119,14 @@ try {
     platform: "browser",
     write: false,
     nodePaths: [join(web, "node_modules")],
-    define: { "process.env.NODE_ENV": '"development"', global: "globalThis" },
+    define: {
+      "process.env.NODE_ENV": '"development"',
+      /* Kill switch reads this at runtime; without a define, `process` is missing in the
+       * browser bundle and openCamera throws before any scenario can start. Probe always
+       * exercises the effect path — set to "0" only when testing the off switch itself. */
+      "process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS": '"1"',
+      global: "globalThis",
+    },
     logLevel: "silent",
   });
   bundle = built.outputFiles[0].contents;
