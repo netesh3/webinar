@@ -5,6 +5,7 @@ import {
   useLocalParticipant,
   useRemoteParticipants,
   useRoomContext,
+  useTracks,
 } from "@livekit/components-react";
 import { ConnectionState, Track } from "livekit-client";
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
@@ -188,8 +189,16 @@ export function ControlBar() {
    *
    * Allowed in previewChrome, unlike Share. There is no LiveKit behind it there so the window
    * opens with no video in it — which is exactly the empty state worth being able to look at,
-   * and reviewing room chrome is what that mode is for. */
-  const pip = usePictureInPicture({ enabled: !connecting });
+   * and reviewing room chrome is what that mode is for.
+   *
+   * shareActive is any screen share in the room, not only our own: the popped-out stage shows
+   * whoever is sharing, and a dismiss has to stick for a viewer of Amlesh's share the same way
+   * it sticks for Amlesh. */
+  const screenShares = useTracks([Track.Source.ScreenShare], { onlySubscribed: true });
+  const pip = usePictureInPicture({
+    enabled: !connecting,
+    shareActive: screenShares.length > 0,
+  });
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
@@ -898,7 +907,7 @@ export function ControlBar() {
         {pip.supported && (
           <button
             type="button"
-            onClick={() => (pip.active ? pip.close() : pip.open())}
+            onClick={() => (pip.active ? pip.close({ dismiss: true }) : pip.open())}
             disabled={connecting}
             aria-label={pip.active ? "Close the floating window" : "Pop out into a floating window"}
             aria-pressed={pip.active}

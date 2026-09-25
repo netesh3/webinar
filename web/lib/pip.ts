@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { shouldRememberPipDismiss } from "./pip-dismiss";
+
+export { shouldRememberPipDismiss } from "./pip-dismiss";
 
 /* Popping the webinar out into a window that floats over everything else.
  *
@@ -23,6 +26,16 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
  *
  * Coming back needs no gesture, so that half is unconditional: returning to the tab closes the
  * window for everybody, installed or not.
+ *
+ * CLOSING WHILE A SHARE IS LIVE, and why it has to stick.
+ *
+ * Screen share is exactly when people leave the tab — they are looking at the deck they are
+ * presenting, or at another window while someone else shares. Chrome then fires
+ * enterpictureinpicture again on the next switch-away (and sometimes again while the share
+ * keeps the media session alive). Without a memory of the X click, the window they just closed
+ * reappears for the rest of the share. So a dismiss during an active share is remembered until
+ * the share ends or they press Pop out again. Returning to the tab is NOT a dismiss: that close
+ * is the automatic half of the feature, and the next time they leave they may still want it.
  */
 
 /* Declared here because TypeScript's DOM library does not carry it yet.
@@ -91,6 +104,13 @@ function copyStyles(into: Window): void {
   }
 }
 
+export type PipCloseOptions = {
+  /** Remember this close for the rest of the current screen-share session so MediaSession does
+   *  not reopen the window. Returning to the tab must NOT pass this — that close is the
+   *  automatic half of the feature, not a preference. */
+  dismiss?: boolean;
+};
+
 export type PipApi = {
   /** Whether either kind of PiP is available, so the button can be hidden rather than fail. */
   supported: boolean;
@@ -100,7 +120,7 @@ export type PipApi = {
   container: HTMLElement | null;
   active: boolean;
   open: () => void;
-  close: () => void;
+  close: (opts?: PipCloseOptions) => void;
 };
 
 /* Capability read through useSyncExternalStore, with a server snapshot of false.
@@ -122,9 +142,13 @@ export function usePictureInPicture({
   fallbackVideo,
   /** Off while there is nothing to pop out — before a connection, or after the room ends. */
   enabled = true,
+  /** True while any screen share is live in the room. A dismiss sticks only for this session
+   *  and clears when it ends, so the next share can auto-open again. */
+  shareActive = false,
 }: {
   fallbackVideo?: () => HTMLVideoElement | null;
   enabled?: boolean;
+  shareActive?: boolean;
 } = {}): PipApi {
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const composed = useSyncExternalStore(subscribeNothing, documentPipSupported, notOnServer);
@@ -137,7 +161,28 @@ export function usePictureInPicture({
    * re-render for is the container appearing or going away. */
   const win = useRef<Window | null>(null);
 
-  const close = useCallback(() => {
+  /* Closed on purpose during this share — MediaSession must not reopen until the share ends
+   * or open() is called from the Pop out button. A ref, not state: nothing renders from it. */
+  const dismissed = useRef(false);
+  const shareActiveRef = useRef(shareActive);
+
+  // Keep the ref in sync for pagehide/close (which are not render), and clear a dismiss when
+  // the share ends so the next one may auto-open again.
+  useEffect(() => {
+    shareActiveRef.current = shareActive;
+    if (!shareActive) dismissed.current = false;
+  }, [shareActive]);
+
+  const close = useCallback((opts?: PipCloseOptions) => {
+    if (
+      shouldRememberPipDismiss({
+        shareActive: shareActiveRef.current,
+        tabVisible: document.visibilityState === "visible",
+        explicitDismiss: opts?.dismiss === true,
+      })
+    ) {
+      dismissed.current = true;
+    }
     if (win.current) {
       // The pagehide listener below is what clears the container, so closing here and closing
       // from the window's own X button take the same path out.
@@ -151,6 +196,10 @@ export function usePictureInPicture({
 
   const open = useCallback(() => {
     if (!enabled) return;
+
+    // Explicit reopen always wins — the Pop out button is how you take the window back after
+    // dismissing it for this share.
+    dismissed.current = false;
 
     if (!documentPipSupported()) {
       /* Safari and Firefox: the browser's own video PiP, on the one element that matters.
@@ -188,6 +237,17 @@ export function usePictureInPicture({
         // pagehide, not unload: it is the event Chrome fires for a PiP window closing, whether
         // that was the X button, the tab navigating, or close() above.
         pip.addEventListener("pagehide", () => {
+          /* X while the tab is still in the background: they closed it on purpose while
+           * working elsewhere. close() is not on this path — the browser tears the window
+           * down — so the remember decision has to be made here. */
+          if (
+            shouldRememberPipDismiss({
+              shareActive: shareActiveRef.current,
+              tabVisible: document.visibilityState === "visible",
+            })
+          ) {
+            dismissed.current = true;
+          }
           win.current = null;
           setContainer(null);
         });
@@ -207,6 +267,9 @@ export function usePictureInPicture({
    * for everybody rather than only for an installed app. Keyed on visibility rather than on
    * focus: clicking the PiP window itself takes focus away from the tab without the tab
    * becoming hidden, and closing the window somebody just reached for would be absurd.
+   *
+   * Deliberately close() without dismiss: coming back is not "I never want this during the
+   * share", it is the designed return path.
    */
   useEffect(() => {
     if (!container) return;
@@ -224,6 +287,9 @@ export function usePictureInPicture({
    * inside it. Measured on a non-installed page: registering succeeds and the action never
    * fires, which is the graceful half of the deal. Nothing here needs a fallback because
    * nothing here happens at all until somebody installs the app.
+   *
+   * Honour dismissed: without that check the action re-opens the window for the rest of a
+   * screen share every time the user leaves the tab again after closing with X.
    */
   useEffect(() => {
     if (!enabled || !composed || typeof navigator === "undefined") return;
@@ -231,7 +297,10 @@ export function usePictureInPicture({
     try {
       navigator.mediaSession.setActionHandler(
         "enterpictureinpicture" as MediaSessionAction,
-        () => open(),
+        () => {
+          if (dismissed.current) return;
+          open();
+        },
       );
     } catch {
       // An older Chrome that does not know the action. Nothing to do and nothing to say.
