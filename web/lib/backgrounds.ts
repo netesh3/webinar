@@ -409,9 +409,15 @@ function backgroundFor(choice: BackgroundChoice): Background {
  * attach in that window would stop the first and load the model twice. Weak, so it does not
  * keep a stopped track alive. `retried` is the last Retry each processor has seen, so it
  * retries once per click whichever screen is holding it.
+ *
+ * `openingCamera` is the same idea for openCamera: the pre-join screen opens the camera
+ * WITH a processor, then hands the track to useVirtualBackground. Until open() resolves
+ * there is no track to put in `attaching`, so without this the hook can start a second
+ * createProcessor against a bare-looking track while LiveKit is still inside setProcessor.
  */
 const attaching = new WeakMap<LocalVideoTrack, Promise<unknown>>();
 const retried = new WeakMap<SoftSegmenter, number>();
+let openingCamera: Promise<unknown> | null = null;
 
 let supported: boolean | undefined;
 
@@ -420,10 +426,11 @@ let supported: boolean | undefined;
  *  first frame. */
 export function backgroundsSupported(): boolean {
   if (typeof window === "undefined") return false;
-  /* Kill switch for production. Both virtual backgrounds and the low-light lift share this
-   * WebGL path; set NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0 at build time to hide the controls
-   * entirely rather than leave presenters in a broken Retry loop. Unset (or any other
-   * value) keeps them on. See web/public/mediapipe/README.md. */
+  /* Kill switch. Both virtual backgrounds and the low-light lift share this WebGL /
+   * MediaPipe path. Production builds set NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0 (see the
+   * Cloudflare deploy workflow) so a broken effect engine cannot strand presenters in
+   * a Retry loop. Opt back in with =1 at build time. Unset keeps them on for local
+   * `next dev`. See web/public/mediapipe/README.md. */
   if (process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS === "0") return false;
   /* Asked once, and the answer kept.
    *
@@ -713,33 +720,46 @@ export async function openCamera<T>(
     return open();
   }
 
-  let processor: BackgroundProcessor;
-  try {
-    processor = await createProcessor(choice, lowLight, {
-      onStatus: reportStatus(choice.mode === "none"),
-    });
-  } catch (err) {
-    // The code did not arrive. The camera opens as it is, and the attach says why.
-    console.warn("[background] couldn't load; opening the camera without it", err);
-    return open();
-  }
+  /* Publish the in-flight open before any await, so useVirtualBackground's effect
+   * waits on `openingCamera` rather than building a second SoftSegmenter while
+   * LiveKit is still inside setProcessor (getProcessor is unset until init finishes). */
+  const prior = openingCamera;
+  const work = (async (): Promise<T> => {
+    await prior?.catch(() => {});
+    let processor: BackgroundProcessor;
+    try {
+      processor = await createProcessor(choice, lowLight, {
+        onStatus: reportStatus(choice.mode === "none"),
+      });
+    } catch (err) {
+      // The code did not arrive. The camera opens as it is, and the attach says why.
+      console.warn("[background] couldn't load; opening the camera without it", err);
+      return open();
+    }
 
-  processor.opening = true;
-  try {
-    return await open(processor);
-  } catch (err) {
-    await processor.destroy().catch(() => {});
-    if (!processor.failedToStart) throw err;
-    console.error("[background] failed to start", err, {
-      mode: choice.mode,
-      image: choice.mode === "image" ? choice.id : null,
-      lowLight: asLowLight(lowLight),
-      while: "opening the camera",
-    });
-    return open();
-  } finally {
-    processor.opening = false;
-  }
+    processor.opening = true;
+    try {
+      return await open(processor);
+    } catch (err) {
+      await processor.destroy().catch(() => {});
+      if (!processor.failedToStart) throw err;
+      console.error("[background] failed to start", err, {
+        mode: choice.mode,
+        image: choice.mode === "image" ? choice.id : null,
+        lowLight: asLowLight(lowLight),
+        while: "opening the camera",
+      });
+      return open();
+    } finally {
+      processor.opening = false;
+    }
+  })();
+
+  openingCamera = work;
+  void work.finally(() => {
+    if (openingCamera === work) openingCamera = null;
+  });
+  return work;
 }
 
 /**
@@ -914,7 +934,10 @@ export function useVirtualBackground(
     };
 
     (async () => {
-      // One on the way is waited for and then adopted, never raced. See `attaching`.
+      // One on the way is waited for and then adopted, never raced. See `attaching`
+      // and `openingCamera` — openCamera has no track key until open() returns.
+      await openingCamera?.catch(() => {});
+      if (cancelled) return;
       await attaching.get(track)?.catch(() => {});
       if (cancelled) return;
 

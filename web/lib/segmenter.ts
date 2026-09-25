@@ -921,24 +921,29 @@ class Engine {
    * so an in-flight createSegmenter finishes against a live context. The context only goes
    * after that turn.
    */
-  dispose(): void {
-    if (this.disposed) return;
+  dispose(): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     this.disposed = true;
     const segmenter = this.segmenter;
     this.segmenter = null;
-    /* Always go through oneAtATime before loseContext, even with no segmenter yet.
+    /* close AND loseContext must be the same oneAtATime turn.
      *
-     * createSegmenter runs in that same queue against this canvas. Releasing the
-     * context while it is mid-init leaves Emscripten's shared start-up callbacks in a
-     * half-drained state — the next create then throws "callbacks.shift(...) is not a
-     * function", which the UI can only word as the generic "Couldn't start the
-     * background" sentence. An empty turn waits for any in-flight create to finish
-     * (or fail) before the context goes. */
-    void oneAtATime(async () => {
-      if (segmenter) await segmenter.close();
-    })
-      .catch(() => {})
-      .finally(() => this.release());
+     * #175 queued only the close, then called release() from `.finally()` on the
+     * returned promise. That finally runs as a sibling microtask of the *next*
+     * queued createSegmenter — so loseContext could interleave with Module
+     * start-up and leave Emscripten's shared callback arrays half-drained
+     * ("callbacks.shift(...) is not a function"). Putting release inside the
+     * turn means the next create cannot start until this context is gone.
+     *
+     * Returned so SoftSegmenter.destroy can await teardown before openCamera
+     * builds a replacement processor. */
+    return oneAtATime(async () => {
+      try {
+        if (segmenter) await segmenter.close();
+      } finally {
+        this.release();
+      }
+    }).catch(() => {});
   }
 
   /* And then the context itself, explicitly. Deleting every resource in it is not the same
@@ -1320,7 +1325,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   async destroy(options?: TrackTransformerDestroyOptions): Promise<void> {
     await super.destroy();
     if (options?.willProcessorRestart) return;
-    this.dispose();
+    await this.dispose();
   }
 
   transform(frame: VideoFrame, controller: TransformStreamDefaultController<VideoFrame>): void {
@@ -1683,23 +1688,28 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     }
   }
 
-  private dispose(): void {
-    if (this.disposed) return;
+  private dispose(): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     this.disposed = true;
     const engine = this.engine;
     this.engine = null;
+    let teardown = Promise.resolve();
     if (engine) {
       /* A model load still in flight owns the context inside oneAtATime. Disposing it
        * now would loseContext mid-createSegmenter — see Engine.dispose. Wait for the
        * load to settle (it will orphan-close the segmenter because this.engine is
-       * already null), then tear down. Parking is only safe once nothing is loading. */
+       * already null), then tear down. Parking is only safe once nothing is loading.
+       *
+       * Always awaited: openCamera's failed-start path destroys then opens again, and
+       * useVirtualBackground may create a replacement in the same tick — both must see
+       * MediaPipe fully torn down first. */
       const loading = engine.loading;
       if (loading) {
-        void loading.finally(() => engine.dispose());
+        teardown = loading.finally(() => engine.dispose()).then(() => undefined);
       } else if (engine.alive) {
         park(engine);
       } else {
-        engine.dispose();
+        teardown = engine.dispose();
       }
     }
     this.flat = null;
@@ -1708,6 +1718,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     this.refreshStatus();
     this.onFrame = undefined;
     this.onStatus = undefined;
+    return teardown;
   }
 
   private refreshStatus(): void {
