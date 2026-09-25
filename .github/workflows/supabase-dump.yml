@@ -1,0 +1,26 @@
+# One-shot: dump public schema from production DATABASE_URL (webcast-in).
+# Manual only — does not deploy. Artifact is the dump for local restore.
+name: Dump Supabase public
+
+on:
+  workflow_dispatch:
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pg_dump
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+      - name: Dump public schema
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          pg_dump "$DATABASE_URL" --schema=public --no-owner --no-acl --format=custom --file=public.dump
+          ls -lh public.dump
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webcast-in-public
+          path: public.dump
+          retention-days: 1
