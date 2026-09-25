@@ -137,6 +137,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# negative one out of storage inverts the presenter's camera. The curve itself is
 	# GLSL and is checked on a real GPU by `make test-low-light`.
 	cd web && node --experimental-strip-types --no-warnings lib/low-light.test.mts
+	# And remembering a closed pop-out during screen share: without it MediaSession
+	# re-opens the window on every switch-away after the user hit X.
+	cd web && node --experimental-strip-types --no-warnings lib/pip.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
