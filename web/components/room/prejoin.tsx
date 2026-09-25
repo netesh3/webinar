@@ -538,10 +538,20 @@ export function PreJoin({
  */
 function MicMeter({ track }: { track: LocalAudioTrack | null }) {
   const [level, setLevel] = useState(0);
+  /* Sticky hearing state with hysteresis. A single 0.04 threshold flipped the label on every
+   * breath near the noise floor ("Hearing you" / "Say something"), which presenters read as
+   * the pre-join screen thrashing alongside the background flicker. Enter high, leave low. */
+  const [hearing, setHearing] = useState(false);
 
   useEffect(() => {
-    if (!track) return;
-    return measureMicLevel(track.mediaStreamTrack, setLevel);
+    if (!track) {
+      setHearing(false);
+      return;
+    }
+    return measureMicLevel(track.mediaStreamTrack, (next) => {
+      setLevel(next);
+      setHearing((was) => (was ? next > 0.02 : next > 0.06));
+    });
   }, [track]);
 
   /* Zero while there is no track, DERIVED rather than stored.
@@ -569,7 +579,7 @@ function MicMeter({ track }: { track: LocalAudioTrack | null }) {
         />
       </div>
       <span className="shrink-0 text-[11px] text-ink-3">
-        {!track ? "Starting…" : shown > 0.04 ? "Hearing you" : "Say something"}
+        {!track ? "Starting…" : hearing ? "Hearing you" : "Say something"}
       </span>
     </div>
   );

@@ -395,6 +395,11 @@ let supported: boolean | undefined;
  *  first frame. */
 export function backgroundsSupported(): boolean {
   if (typeof window === "undefined") return false;
+  /* Kill switch for production. Both virtual backgrounds and the low-light lift share this
+   * WebGL path; set NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0 at build time to hide the controls
+   * entirely rather than leave presenters in a broken Retry loop. Unset (or any other
+   * value) keeps them on. See web/public/mediapipe/README.md. */
+  if (process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS === "0") return false;
   /* Asked once, and the answer kept.
    *
    * The check makes a WebGL context, and it used to run on every render of every screen that
@@ -553,6 +558,12 @@ class BackgroundProcessor implements TrackProcessor<Track.Kind.Video> {
  * MediaStreamTrackGenerator — Chrome and Edge — which is where that was measured; elsewhere
  * it is a canvas capture, and LiveKit's own way is kept rather than guessed at.
  *
+ * The swap itself waits for the processed track's first frame. setProcessor resolves when
+ * the pipeline is wired, not when it has drawn; swapping then left the element on a
+ * MediaStreamTrackGenerator that was still muted, which read as 1–2 black frames
+ * (luma 0, readyState 0) on the pre-join probe. Keeping the camera in the stream until
+ * unmute means the last live frame stays up until the first processed one is ready.
+ *
  * Only an element still showing this camera, too. The pre-join screen reopens a camera into
  * the same element — another device chosen while this was attaching — and that element
  * belongs to the new track now; this one's output going into it would black out the preview.
@@ -564,12 +575,43 @@ async function putOn(track: LocalVideoTrack, processor: BackgroundProcessor): Pr
   const camera = processor.source;
   const processed = processor.processedTrack;
   if (!inPlace || !camera || !processed) return;
+  await whenTrackHasFrame(processed);
   for (const element of track.attachedElements) {
     const stream = element.srcObject;
     if (!(stream instanceof MediaStream) || !stream.getVideoTracks().includes(camera)) continue;
     stream.addTrack(processed);
     stream.removeTrack(camera);
   }
+}
+
+/** Resolves once `track` has produced a frame, or after a short timeout.
+ *
+ * MediaStreamTrackGenerator starts muted and fires unmute on the first frame. Without
+ * waiting, putOn would hand the element a live-looking track that still has nothing to
+ * paint. */
+function whenTrackHasFrame(track: MediaStreamTrack, ms = 1000): Promise<void> {
+  if (!track.muted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      track.removeEventListener("unmute", done);
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    track.addEventListener("unmute", done);
+  });
+}
+
+/**
+ * True when setProcessor failed because the camera was stopped underneath it — not a
+ * real background failure, so the Retry alert must not mount.
+ *
+ * Exported for the unit test: the sentence is LiveKit's, and matching it is what stops a
+ * camera switch from looking like "Couldn't start the background".
+ */
+export function isBackgroundAttachAbort(err: unknown, trackEnded = false): boolean {
+  if (trackEnded) return true;
+  return /input track cannot be ended/i.test(errorText(err));
 }
 
 /** A processor's status, published for every screen that shows it; see BackgroundStatus.
@@ -926,8 +968,20 @@ export function useVirtualBackground(
          * part was measured). Without this return the catch below would also publish a
          * failed status, which is what mounts the Retry alert — whether that box itself
          * appeared on the old path was not measured. Not `cancelled`: that is set by the
-         * re-render, which can come after this. */
-        if ((track as unknown as { manuallyStopped?: boolean }).manuallyStopped) return;
+         * re-render, which can come after this.
+         *
+         * Match the error text as well as LiveKit's flag: setProcessor can reject with
+         * that sentence before manuallyStopped is visible on this wrapper, and publishing
+         * it as a real failure is the generic Retry box over a raw camera. */
+        if (
+          isBackgroundAttachAbort(
+            err,
+            !!(track as unknown as { manuallyStopped?: boolean }).manuallyStopped ||
+              track.mediaStreamTrack?.readyState === "ended",
+          )
+        ) {
+          return;
+        }
 
         /* The whole error, not just its sentence.
          *
