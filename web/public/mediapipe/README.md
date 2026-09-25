@@ -42,10 +42,9 @@ presenters in a Retry loop:
 NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0
 ```
 
-Production Cloudflare deploys set this to `0` in
-`.github/workflows/cloudflare-workers-deploy.yml`. To turn the controls back on after
-the effect engine is verified: set `NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=1` (or remove the
-var) in that workflow and redeploy.
+Production Cloudflare deploys set this to `1` in
+`.github/workflows/cloudflare-workers-deploy.yml`. To hide the controls if the effect
+path regresses: set `NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0` in that workflow and redeploy.
 
 Unset keeps them enabled for local `next dev`. `virtualBackgroundsEnabled()` reads the
 flag; `backgroundsSupported()` is browser capability only (WebGL2 etc.). The UI hides
