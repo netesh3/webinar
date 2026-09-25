@@ -423,9 +423,9 @@ let supported: boolean | undefined;
 
 /**
  * Build-time kill switch for virtual backgrounds and the low-light lift (shared WebGL /
- * MediaPipe path). Production Cloudflare deploys set NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0
- * so a broken effect engine cannot strand presenters in a Retry loop. Opt back in with
- * =1 at build time. Unset keeps them on for local `next dev`.
+ * MediaPipe path). Set NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0 at build time to hide the
+ * controls if the effect engine regresses. Unset (or =1) keeps them on; production
+ * Cloudflare deploys currently set =1.
  *
  * Distinct from `backgroundsSupported()`: when this is false the UI must hide the
  * controls, not claim the browser needs WebGL2. See web/public/mediapipe/README.md.

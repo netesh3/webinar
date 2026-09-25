@@ -54,10 +54,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       NEXT_PUBLIC_API_BASE: ""
       OPEN_NEXT: "1"
-      # Hide virtual backgrounds / low-light until the MediaPipe effect path is stable
-      # on real Chrome (callbacks.shift interrupt after #175/#177). Re-enable: set to "1"
-      # (or remove) and redeploy. Local `next dev` leaves the flag unset so the UI stays on.
-      NEXT_PUBLIC_VIRTUAL_BACKGROUNDS: "0"
+      # Virtual backgrounds / low-light (MediaPipe + WebGL). Set to "0" to kill-switch
+      # production if the effect path regresses. Unset locally keeps the UI on for `next dev`.
+      NEXT_PUBLIC_VIRTUAL_BACKGROUNDS: "1"
 
     steps:
       - uses: actions/checkout@v4
