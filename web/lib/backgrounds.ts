@@ -922,9 +922,11 @@ export function useVirtualBackground(
         /* Not a failure. The camera it was starting on was stopped underneath it — another
          * device chosen, or the camera turned off — and the screen that stopped it is moving
          * on to whatever replaced it. The wrapper says so as "Input track cannot be ended",
-         * which in a console, with a stack under it, reads as the background breaking. Not
-         * `cancelled`: that is set by the re-render, which can come after this, and until it
-         * does the failure below would be published, Retry and all. */
+         * which landed in the console as "[background] failed to start" with a stack (that
+         * part was measured). Without this return the catch below would also publish a
+         * failed status, which is what mounts the Retry alert — whether that box itself
+         * appeared on the old path was not measured. Not `cancelled`: that is set by the
+         * re-render, which can come after this. */
         if ((track as unknown as { manuallyStopped?: boolean }).manuallyStopped) return;
 
         /* The whole error, not just its sentence.
