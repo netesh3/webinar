@@ -50,10 +50,18 @@ the pre-join picker and room settings both gate on that.
 `wasm/` must match the `@mediapipe/tasks-vision` version actually installed at the
 repo root (see `web/package.json`) — a mismatched runtime and model fail at
 `ImageSegmenter` creation, not at build time. `@livekit/track-processors` pins its own
-exact `@mediapipe/tasks-vision` version as a dependency, which can trail this one; that
-is harmless here because this codebase's transformer (`lib/segmenter.ts`) calls
-`@mediapipe/tasks-vision` directly and never instantiates track-processors' own
-MediaPipe-based `BackgroundTransformer`, the only thing of theirs that would care.
+exact `@mediapipe/tasks-vision` version (currently older) for its unused
+`BackgroundTransformer`. Importing `ProcessorWrapper` still evaluates that package's
+MediaPipe glue, so two versions in `node_modules` meant two Emscripten Module start-ups
+against one vendored `wasm/` — which surfaced as intermittent
+`callbacks.shift(...) is not a function` / the generic Retry box. `web/package.json`
+forces a single copy with:
+
+```json
+"overrides": { "@mediapipe/tasks-vision": "1.0.1" }
+```
+
+Keep that override in lockstep with the top-level dependency when bumping.
 
 After bumping either package:
 

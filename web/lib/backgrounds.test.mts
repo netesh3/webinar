@@ -138,8 +138,18 @@ console.log("\ndescribeBackgroundError");
   );
   eq(
     describeBackgroundError(new Error("callbacks.shift(...) is not a function")),
-    "Couldn't start the background. Try again, or reload the page if it keeps happening.",
-    "anything else is a sentence, never the raw message",
+    "Couldn't start the background: the effect engine was interrupted. Reload the page and try again.",
+    "Emscripten's half-drained callbacks name a reload, not a vague Retry",
+  );
+  eq(
+    describeBackgroundError(new Error("ImageSegmenter: internal assert failed at line 42")),
+    "Couldn't start the background (ImageSegmenter: internal assert failed at line 42). Try again, or reload the page if it keeps happening.",
+    "an unknown failure keeps a short hint for the next screenshot",
+  );
+  eq(
+    describeBackgroundError(new Error("x".repeat(100))),
+    `Couldn't start the background (${"x".repeat(71)}…). Try again, or reload the page if it keeps happening.`,
+    "a long unknown message is clipped rather than shown whole",
   );
   eq(
     describeBackgroundError(new Error("WebGL2 is not available"), true),
@@ -165,17 +175,20 @@ console.log("\ndescribeBackgroundError");
   loop.cause = loop;
   eq(
     describeBackgroundError(loop),
-    "Couldn't start the background. Try again, or reload the page if it keeps happening.",
+    "Couldn't start the background (odd | odd | odd | odd | odd). Try again, or reload the page if it keeps happening.",
     "a cause chain that loops does not hang",
   );
   for (const err of [
     new Error("Unable to initialize EGL context. Error querying for GL extensions. INTERNAL: Service kGpuService, a required service, failed to initialize."),
-    new Error("x".repeat(400)),
   ]) {
     const said = describeBackgroundError(err);
+    ok(!said.includes("kGpuService"), "GPU dumps never reach the screen", said);
+  }
+  {
+    const said = describeBackgroundError(new Error("x".repeat(400)));
     ok(
-      !said.includes("kGpuService") && !said.includes("xxxx"),
-      "the raw message never reaches the screen",
+      said.includes("…") && !said.includes("x".repeat(80)),
+      "a long unknown message is clipped rather than shown whole",
       said,
     );
   }

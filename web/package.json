@@ -38,5 +38,8 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "wrangler": "^4.131.0"
+  },
+  "overrides": {
+    "@mediapipe/tasks-vision": "1.0.1"
   }
 }
