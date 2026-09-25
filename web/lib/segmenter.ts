@@ -191,6 +191,14 @@ const PARK_MS = 30_000;
  *  about 27 pixels across at 720p — nothing in a room survives that. */
 const FLAT_LONG_SIDE = 48;
 
+/* How much the still is zoomed past a plain object-fit: cover.
+ *
+ * 1.0 is edge-to-edge cover. 1.10 leaves ~5% margin on each side after cover crops, which
+ * is enough that leaning or walking toward a frame edge still samples inside the image
+ * when the still is CLAMP_TO_EDGE-wrapped. Higher starts to look like a digital zoom on
+ * the photo; lower lets the clamp band show again. */
+const COVER_OVERSCALE = 1.1;
+
 // ------------------------------------------------------------------- shaders
 
 /* Two vertex shaders, and the difference between them was a bug that took a screenshot
@@ -392,13 +400,25 @@ vec3 polishPerson(vec3 lifted, vec3 softSample) {
   return mix(c, softSample, softAmt);
 }
 
-/* object-fit: cover. A 16:9 still behind a 4:3 webcam must crop, not squash. */
+/* object-fit: cover, then a little overscale.
+ *
+ * Cover alone maps frame UV onto the still so a 16:9 photo behind a 4:3 webcam crops
+ * rather than squashes. Sampling exactly edge-to-edge leaves no slack: any pan (or the
+ * person walking toward a frame edge and revealing more of the still) asks the sampler
+ * for UVs past 0..1. With CLAMP_TO_EDGE that stretches the border texel into a flat band;
+ * with REPEAT it tiles. Neither looks like a background.
+ *
+ * COVER_OVERSCALE zooms in a few percent so typical left/right travel still lands on the
+ * image. Order is load-bearing: scale about the centre, then translate — never the other
+ * way, which walks off one edge while leaving unused margin on the other. */
+const float COVER_OVERSCALE = ${COVER_OVERSCALE.toFixed(3)};
 vec2 coverUv(vec2 p) {
   float frameAspect = frameSize.x / max(frameSize.y, 1.0);
   float imageAspect = imageSize.x / max(imageSize.y, 1.0);
-  vec2 scale = imageAspect > frameAspect
+  vec2 cover = imageAspect > frameAspect
     ? vec2(frameAspect / imageAspect, 1.0)
     : vec2(1.0, imageAspect / frameAspect);
+  vec2 scale = cover / COVER_OVERSCALE;
   return (p - 0.5) * scale + 0.5;
 }
 
@@ -602,7 +622,12 @@ function target(gl: WebGL2RenderingContext, w: number, h: number): Target {
 }
 
 /** A texture with a full mip chain, for the frame and the stills. Immutable storage, so it
- *  is always complete whatever state the levels above zero are in. */
+ *  is always complete whatever state the levels above zero are in.
+ *
+ * CLAMP_TO_EDGE is required for stills: cover UVs can sit near 0/1 after overscale, and any
+ * wrap mode that repeats or mirrors would show a seam if a future pan walked into the
+ * margin. MediaPipe shares this context and may leave wrap state dirty on a bound unit, so
+ * wrap is set here at allocation and again when a still is uploaded. */
 function mipmapped(gl: WebGL2RenderingContext, w: number, h: number): WebGLTexture {
   const texture = gl.createTexture();
   if (!texture) throw new Error("could not allocate a texture");
@@ -901,6 +926,11 @@ class Engine {
     const texture = mipmapped(gl, w, h);
     upload(gl, img);
     gl.generateMipmap(gl.TEXTURE_2D);
+    // Re-assert wrap after upload: the still is sampled with cover UVs that sit near the
+    // edges once overscaled, and a shared-context neighbour leaving REPEAT on this unit
+    // would tile the photo into the margin instead of holding the border texel.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     if (this.image) gl.deleteTexture(this.image);
     this.image = texture;
     this.imageSrc = src;
