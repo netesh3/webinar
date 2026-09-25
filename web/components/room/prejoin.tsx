@@ -7,7 +7,7 @@ import {
   type LocalVideoTrack,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { openCamera, useBackgroundsSupported, useVirtualBackground } from "@/lib/backgrounds";
+import { openCamera, useBackgroundsAvailable, useVirtualBackground } from "@/lib/backgrounds";
 import { cameraCapturePreset, deviceLabel, useDevices, type MediaPreferences } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
@@ -159,7 +159,7 @@ export function PreJoin({
    */
   const [permitted, setPermitted] = useState(false);
   const { devices, refresh: refreshDevices } = useDevices(true);
-  const backgroundsOk = useBackgroundsSupported();
+  const backgroundsOk = useBackgroundsAvailable();
 
   /* Whether this machine really has no camera — a claim, so it needs to be supportable.
    *

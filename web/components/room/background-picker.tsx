@@ -8,6 +8,7 @@ import {
   useBackgroundsSupported,
   useBackgroundStatus,
   useVirtualBackground,
+  useVirtualBackgroundsEnabled,
   VIRTUAL_BACKGROUNDS,
   type BackgroundChoice,
 } from "@/lib/backgrounds";
@@ -92,9 +93,10 @@ export function VirtualBackground() {
 export function BackgroundPicker() {
   const { prefs, updatePrefs, permissions } = useRoomUI();
   const { isCameraEnabled } = useLocalParticipant();
+  const enabled = useVirtualBackgroundsEnabled();
   const supported = useBackgroundsSupported();
 
-  if (!permissions.canShareCamera) return null;
+  if (!permissions.canShareCamera || !enabled) return null;
 
   if (!supported) {
     return (

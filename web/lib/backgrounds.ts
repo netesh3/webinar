@@ -421,17 +421,25 @@ let openingCamera: Promise<unknown> | null = null;
 
 let supported: boolean | undefined;
 
+/**
+ * Build-time kill switch for virtual backgrounds and the low-light lift (shared WebGL /
+ * MediaPipe path). Production Cloudflare deploys set NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0
+ * so a broken effect engine cannot strand presenters in a Retry loop. Opt back in with
+ * =1 at build time. Unset keeps them on for local `next dev`.
+ *
+ * Distinct from `backgroundsSupported()`: when this is false the UI must hide the
+ * controls, not claim the browser needs WebGL2. See web/public/mediapipe/README.md.
+ */
+export function virtualBackgroundsEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS !== "0";
+}
+
 /** Whether this browser can do it at all. WebGL2 and the WASM loader; an old Safari
  *  or a locked-down browser cannot, and the picker says so rather than failing on the
- *  first frame. */
+ *  first frame. Does not consult the kill switch — use `virtualBackgroundsEnabled`
+ *  (or `backgroundsAvailable`) for that. */
 export function backgroundsSupported(): boolean {
   if (typeof window === "undefined") return false;
-  /* Kill switch. Both virtual backgrounds and the low-light lift share this WebGL /
-   * MediaPipe path. Production builds set NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0 (see the
-   * Cloudflare deploy workflow) so a broken effect engine cannot strand presenters in
-   * a Retry loop. Opt back in with =1 at build time. Unset keeps them on for local
-   * `next dev`. See web/public/mediapipe/README.md. */
-  if (process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS === "0") return false;
   /* Asked once, and the answer kept.
    *
    * The check makes a WebGL context, and it used to run on every render of every screen that
@@ -447,6 +455,11 @@ export function backgroundsSupported(): boolean {
   if (supported !== undefined) return supported;
   supported = probeSupport();
   return supported;
+}
+
+/** Kill switch on and this browser can run the effect path. */
+export function backgroundsAvailable(): boolean {
+  return virtualBackgroundsEnabled() && backgroundsSupported();
 }
 
 function probeSupport(): boolean {
@@ -496,6 +509,16 @@ const unsupportedOnServer = () => false;
  *  then the real answer, so hydration matches whatever this browser turns out to be. */
 export function useBackgroundsSupported(): boolean {
   return useSyncExternalStore(subscribeNever, backgroundsSupported, unsupportedOnServer);
+}
+
+/** Build-time kill switch for components. Same on server and client (inlined at build). */
+export function useVirtualBackgroundsEnabled(): boolean {
+  return virtualBackgroundsEnabled();
+}
+
+/** Feature is enabled and this browser can run it. */
+export function useBackgroundsAvailable(): boolean {
+  return useVirtualBackgroundsEnabled() && useBackgroundsSupported();
 }
 
 type Wrapper = Pick<
@@ -716,7 +739,10 @@ export async function openCamera<T>(
   lowLight: number,
   open: (processor?: TrackProcessor<Track.Kind.Video>) => Promise<T>,
 ): Promise<T> {
-  if ((choice.mode === "none" && asLowLight(lowLight) === 0) || !backgroundsSupported()) {
+  if (
+    (choice.mode === "none" && asLowLight(lowLight) === 0) ||
+    !backgroundsAvailable()
+  ) {
     return open();
   }
 
@@ -866,7 +892,7 @@ export function useVirtualBackground(
    * real import below fails too and says so there.
    */
   useEffect(() => {
-    if (choice.mode === "none" || !backgroundsSupported()) return;
+    if (choice.mode === "none" || !backgroundsAvailable()) return;
     // Same order as createProcessor: SoftSegmenter's module before track-processors'.
     void import("./segmenter")
       .then(() => import("@livekit/track-processors"))
@@ -884,7 +910,9 @@ export function useVirtualBackground(
     let cancelled = false;
     const background = backgroundFor(choice);
     const lowLightOnly = choice.mode === "none";
-    const wanted = choice.mode !== "none" || lit;
+    /* Kill-switched prefs may still hold blur/low-light from an earlier build; ignore
+     * them rather than attaching or reporting a fake WebGL2 failure. */
+    const wanted = virtualBackgroundsEnabled() && (choice.mode !== "none" || lit);
 
     const onFrame = ({ totalMs, segmentMs }: { totalMs: number; segmentMs: number }) => {
       if (!mounted.current) return;
