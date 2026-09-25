@@ -2,7 +2,7 @@
 
 import { useRoomContext } from "@livekit/components-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { asLowLight, useBackgroundsSupported } from "@/lib/backgrounds";
+import { asLowLight, useBackgroundsAvailable } from "@/lib/backgrounds";
 import { useCompact, useMediaToggleSize } from "@/lib/compact";
 import {
   deviceLabel,
@@ -82,7 +82,7 @@ export function MediaToggle({
     supportsOutputSelection,
     () => false,
   );
-  const canBackground = useBackgroundsSupported();
+  const canBackground = useBackgroundsAvailable();
 
   const isAudio = deviceKind === "audioinput";
   const inputs = isAudio ? devices.audioInput : devices.videoInput;

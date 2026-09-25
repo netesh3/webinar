@@ -9,10 +9,12 @@
 
 import {
   asBackgroundChoice,
+  backgroundsAvailable,
   describeBackground,
   describeBackgroundError,
   isBackgroundAttachAbort,
   VIRTUAL_BACKGROUNDS,
+  virtualBackgroundsEnabled,
 } from "./backgrounds.ts";
 
 let failures = 0;
@@ -69,6 +71,27 @@ console.log("\nasBackgroundChoice");
   );
   eq(asBackgroundChoice(undefined), { mode: "none" }, "missing prefs are off");
   eq(asBackgroundChoice(null), { mode: "none" }, "null prefs are off");
+}
+
+console.log("\nvirtualBackgroundsEnabled / backgroundsAvailable");
+
+{
+  const prev = process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS;
+  try {
+    delete process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS;
+    ok(virtualBackgroundsEnabled(), "unset flag keeps the feature on");
+    process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS = "0";
+    ok(!virtualBackgroundsEnabled(), "0 kill-switches the feature");
+    ok(
+      !backgroundsAvailable(),
+      "kill switch makes backgrounds unavailable without probing WebGL2",
+    );
+    process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS = "1";
+    ok(virtualBackgroundsEnabled(), "1 turns the feature back on");
+  } finally {
+    if (prev === undefined) delete process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS;
+    else process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS = prev;
+  }
 }
 
 console.log("\ndescribeBackground");

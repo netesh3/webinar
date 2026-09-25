@@ -47,8 +47,10 @@ Production Cloudflare deploys set this to `0` in
 the effect engine is verified: set `NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=1` (or remove the
 var) in that workflow and redeploy.
 
-Unset keeps them enabled for local `next dev`. `backgroundsSupported()` reads the flag;
-the pre-join picker and room settings both gate on that.
+Unset keeps them enabled for local `next dev`. `virtualBackgroundsEnabled()` reads the
+flag; `backgroundsSupported()` is browser capability only (WebGL2 etc.). The UI hides
+controls when the kill switch is off, and only shows the “needs WebGL2” copy when the
+feature is enabled but this browser cannot run it.
 
 ## Refreshing
 
