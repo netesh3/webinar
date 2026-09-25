@@ -917,19 +917,26 @@ class Engine {
 
   /* Gone, and everything in it.
    *
-   * MediaPipe first, in its turn — see oneAtATime — and the context only after it, so its
-   * teardown runs against a live context rather than a dead one.
+   * MediaPipe's turn first — see oneAtATime — including when there is not yet a segmenter,
+   * so an in-flight createSegmenter finishes against a live context. The context only goes
+   * after that turn.
    */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     const segmenter = this.segmenter;
     this.segmenter = null;
-    if (!segmenter) {
-      this.release();
-      return;
-    }
-    void oneAtATime(async () => segmenter.close())
+    /* Always go through oneAtATime before loseContext, even with no segmenter yet.
+     *
+     * createSegmenter runs in that same queue against this canvas. Releasing the
+     * context while it is mid-init leaves Emscripten's shared start-up callbacks in a
+     * half-drained state — the next create then throws "callbacks.shift(...) is not a
+     * function", which the UI can only word as the generic "Couldn't start the
+     * background" sentence. An empty turn waits for any in-flight create to finish
+     * (or fail) before the context goes. */
+    void oneAtATime(async () => {
+      if (segmenter) await segmenter.close();
+    })
       .catch(() => {})
       .finally(() => this.release());
   }
@@ -1499,9 +1506,10 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
           const segmenter = await oneAtATime(() => createSegmenter(engine));
           /* Disposed or replaced while the import was in the air. Closed here rather than
            * kept: nothing else will see this one, and it would hold its GPU memory until
-           * the tab closed. */
+           * the tab closed. Awaited so SoftSegmenter.dispose — which waits on this load —
+           * does not release the context before the close has taken its turn. */
           if (!engine.alive || this.engine !== engine) {
-            void oneAtATime(async () => segmenter.close()).catch(() => {});
+            await oneAtATime(async () => segmenter.close()).catch(() => {});
             return;
           }
           engine.segmenter = segmenter;
@@ -1585,7 +1593,21 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   private easeVeil(hasMatte: boolean, now: number): void {
     const dt = this.lastFrameAt ? Math.min(100, now - this.lastFrameAt) : 0;
     this.lastFrameAt = now;
-    this.veil = hasMatte ? Math.max(0, this.veil - dt / VEIL_FADE_MS) : 1;
+    if (hasMatte) {
+      this.veil = Math.max(0, this.veil - dt / VEIL_FADE_MS);
+      return;
+    }
+    /* Ease back up rather than snap to 1.
+     *
+     * A hard reset was the severe preview flicker with a background (and especially with
+     * low light) on: fit() clears history on a size change, and a single missed mask does
+     * the same, so every drop painted a fully veiled frame between sharp ones. The dissolve
+     * up matches the dissolve down, so a brief miss is a soft pulse instead of a flash. */
+    if (dt === 0) {
+      this.veil = 1;
+      return;
+    }
+    this.veil = Math.min(1, this.veil + dt / VEIL_FADE_MS);
   }
 
   private requestImage(src: string): void {
@@ -1667,8 +1689,18 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     const engine = this.engine;
     this.engine = null;
     if (engine) {
-      if (engine.alive && !engine.loading) park(engine);
-      else engine.dispose();
+      /* A model load still in flight owns the context inside oneAtATime. Disposing it
+       * now would loseContext mid-createSegmenter — see Engine.dispose. Wait for the
+       * load to settle (it will orphan-close the segmenter because this.engine is
+       * already null), then tear down. Parking is only safe once nothing is loading. */
+      const loading = engine.loading;
+      if (loading) {
+        void loading.finally(() => engine.dispose());
+      } else if (engine.alive) {
+        park(engine);
+      } else {
+        engine.dispose();
+      }
     }
     this.flat = null;
     // Said once more, as idle, so no screen is left showing "preparing" for a processor

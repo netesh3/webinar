@@ -11,6 +11,7 @@ import {
   asBackgroundChoice,
   describeBackground,
   describeBackgroundError,
+  isBackgroundAttachAbort,
   VIRTUAL_BACKGROUNDS,
 } from "./backgrounds.ts";
 
@@ -178,6 +179,25 @@ console.log("\ndescribeBackgroundError");
       said,
     );
   }
+}
+
+console.log("\nisBackgroundAttachAbort");
+
+{
+  ok(
+    isBackgroundAttachAbort(
+      new Error("Failed to construct 'MediaStreamTrackProcessor': Input track cannot be ended"),
+    ),
+    "LiveKit's stopped-camera sentence is an attach abort, not a Retry",
+  );
+  ok(
+    isBackgroundAttachAbort(new Error("anything"), true),
+    "an ended track is an attach abort even without that sentence",
+  );
+  ok(
+    !isBackgroundAttachAbort(new Error("callbacks.shift(...) is not a function")),
+    "a real MediaPipe failure is not treated as an attach abort",
+  );
 }
 
 if (failures) {

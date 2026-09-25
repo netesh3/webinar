@@ -32,6 +32,19 @@ silently mattering. `FilesetResolver` picks the SIMD/no-SIMD pair at runtime by 
 for SIMD support, so removing that pair breaks older browsers rather than saving
 anything on modern ones.
 
+## Kill switch
+
+Virtual backgrounds and the low-light lift share the MediaPipe / WebGL path. If that
+path is broken in production, hide both controls at build time rather than leaving
+presenters in a Retry loop:
+
+```sh
+NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0
+```
+
+Unset (or any other value) keeps them enabled. `backgroundsSupported()` reads the flag;
+the pre-join picker and room settings both gate on that.
+
 ## Refreshing
 
 `wasm/` must match the `@mediapipe/tasks-vision` version actually installed at the
