@@ -26,7 +26,7 @@ BIN_DIR="$RUN_DIR/bin"
 mkdir -p "$RUN_DIR" "$LOG_DIR" "$BIN_DIR"
 
 LIVEKIT_BIN="$ROOT/infra/bin/livekit-server"
-LIVEKIT_VER="v1.13.6"
+LIVEKIT_VER="v1.13.7"
 
 PG_PORT=5432
 LK_PORT=7880
