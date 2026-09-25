@@ -42,7 +42,12 @@ presenters in a Retry loop:
 NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=0
 ```
 
-Unset (or any other value) keeps them enabled. `backgroundsSupported()` reads the flag;
+Production Cloudflare deploys set this to `0` in
+`.github/workflows/cloudflare-workers-deploy.yml`. To turn the controls back on after
+the effect engine is verified: set `NEXT_PUBLIC_VIRTUAL_BACKGROUNDS=1` (or remove the
+var) in that workflow and redeploy.
+
+Unset keeps them enabled for local `next dev`. `backgroundsSupported()` reads the flag;
 the pre-join picker and room settings both gate on that.
 
 ## Refreshing
