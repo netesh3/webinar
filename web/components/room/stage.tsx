@@ -213,7 +213,7 @@ export function Stage() {
   const pinned = stage.pinnedParticipantId;
 
   return (
-    <div className="relative flex size-full min-h-0 flex-col">
+    <div className="relative flex size-full min-h-0 min-w-0 flex-col">
       {/* A quick toggle over the stage, alongside the full Layout control in the
           footer. Both write the same one piece of state and neither reinterprets it,
           which is what keeps them honest — see the note on the mode above. One click
@@ -282,8 +282,8 @@ function SpeakerLayout({
   const hidden = rest.length - thumbnails.length;
 
   return (
-    <div className={`relative flex min-h-0 flex-1 flex-col ${sharing ? "" : "gap-2 p-2"}`}>
-      <div className="min-h-0 flex-1">
+    <div className={`relative flex min-h-0 min-w-0 flex-1 flex-col ${sharing ? "" : "gap-2 p-2"}`}>
+      <div className="min-h-0 min-w-0 flex-1">
         <ParticipantTile
           tile={focus}
           size="lg"
@@ -357,8 +357,8 @@ function SpotlightLayout({
   // affordance the strip already offered for the two it did show, just no
   // longer cut off before a third person.
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 lg:flex-row">
-      <div className="min-h-0 flex-1">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-2 lg:flex-row">
+      <div className="min-h-0 min-w-0 flex-1">
         <ParticipantTile
           tile={focus}
           size="lg"
@@ -774,7 +774,12 @@ function PageButton({
  * subscribe to. `track.attach(el)` is the same call that component makes.
  *
  * Muted and mirrored: it is the presenter's own camera, so it must not create an audio
- * loop, and an un-mirrored self-view makes people reach the wrong way. */
+ * loop, and an un-mirrored self-view makes people reach the wrong way.
+ *
+ * object-cover + absolute fill, same as the pre-join preview: object-contain left
+ * stage-coloured bars down each side the moment this track sat in a flex/grid stage
+ * instead of an aspect-video box, and a SoftSegmenter canvas track made Safari eager to
+ * size the element from the stream's intrinsic aspect. */
 function PreviewTile({ track }: { track: LocalVideoTrack }) {
   const ref = useRef<HTMLVideoElement | null>(null);
 
@@ -788,15 +793,15 @@ function PreviewTile({ track }: { track: LocalVideoTrack }) {
   }, [track]);
 
   return (
-    <div className="relative size-full">
+    <div className="relative size-full min-h-0 min-w-0 overflow-hidden">
       <video
         ref={ref}
         muted
         playsInline
         autoPlay
-        className="size-full -scale-x-100 object-contain"
+        className="absolute inset-0 size-full -scale-x-100 object-cover"
       />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-4">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] flex justify-center p-4">
         <span className="rounded-full bg-black/55 px-3 py-1.5 text-[12px] font-medium text-white/85 backdrop-blur">
           Your camera — joining the webinar
         </span>
@@ -846,11 +851,14 @@ function WaitingForStage({
      * The dot remains for the case with no camera: a presenter joining to share their
      * screen has nothing to preview, and a spinner would suggest something is stuck. */
     return (
-      <div className="relative grid size-full place-items-center">
+      <div className="relative size-full min-h-0 min-w-0">
         {preview ? (
           <PreviewTile track={preview} />
         ) : (
-          <span className="size-2.5 animate-pulse rounded-full bg-white/25" aria-hidden />
+          <span
+            className="absolute left-1/2 top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 animate-pulse rounded-full bg-white/25"
+            aria-hidden
+          />
         )}
         <ReactionOverlay />
       </div>
