@@ -261,7 +261,7 @@ export function describeBackgroundError(err: unknown, lowLightOnly = false): str
    * Named rather than folded into the catch-all: Retry alone rarely clears a corrupted
    * Module, and "reload the page" is the action that does. The string is stable across
    * MediaPipe versions and is what the console shows when dispose races create. */
-  if (/callbacks\.shift/.test(text)) {
+  if (isEffectInterrupted(err)) {
     return `Couldn't ${what}: the effect engine was interrupted. Reload the page and try again.`;
   }
   /* Catch-all: keep it short for the presenter, but keep a clipped hint so a screenshot of
@@ -300,6 +300,12 @@ function errorText(err: unknown): string {
     at = rec.cause;
   }
   return parts.join(" | ");
+}
+
+/** Emscripten Module start-up drained mid-create — Chrome/Mac SoftSegmenter often. */
+function isEffectInterrupted(err: unknown): boolean {
+  const text = errorText(err).toLowerCase();
+  return /callbacks\.shift/.test(text) || /runtime.?callback/.test(text);
 }
 
 /* What a frame costs, published for the settings window to read.
@@ -912,6 +918,7 @@ export async function openCamera<T>(
   const work = (async (): Promise<T> => {
     await prior?.catch(() => {});
     let processor: AnyBackgroundProcessor;
+    let usedEngine = engine;
     try {
       processor = await createProcessor(engine, choice, effectiveLowLight, {
         onStatus: reportStatus(choice.mode === "none"),
@@ -932,9 +939,34 @@ export async function openCamera<T>(
         mode: choice.mode,
         image: choice.mode === "image" ? choice.id : null,
         lowLight: asLowLight(effectiveLowLight),
-        engine,
+        engine: usedEngine,
         while: "opening the camera",
       });
+      /* Enhanced interrupted while opening: try Beta once before giving up the effect.
+       * Preference stays Enhanced — this is a session recovery, not a silent setting change. */
+      if (
+        usedEngine === "enhanced" &&
+        choice.mode !== "none" &&
+        isEffectInterrupted(err)
+      ) {
+        try {
+          console.warn("[background] Enhanced interrupted on open; trying Beta");
+          const fallback = await createLiveKitProcessor(choice, {});
+          usedEngine = "livekit";
+          fallback.opening = true;
+          try {
+            return await open(fallback);
+          } catch (fallbackErr) {
+            await fallback.destroy().catch(() => {});
+            if (!fallback.failedToStart) throw fallbackErr;
+            console.error("[background] Beta fallback failed on open", fallbackErr);
+          } finally {
+            fallback.opening = false;
+          }
+        } catch (fallbackLoadErr) {
+          console.warn("[background] Beta fallback could not load", fallbackLoadErr);
+        }
+      }
       return open();
     } finally {
       processor.opening = false;
@@ -1115,7 +1147,58 @@ export function useVirtualBackground(
       }
     };
 
-    const onStatus = reportStatus(lowLightOnly);
+    /* Enhanced → Beta once per attach cycle when SoftSegmenter hits an interrupted Module.
+     * Preference is left on Enhanced; only the running processor switches for this session. */
+    let fallingBackToBeta = false;
+    const fallBackToBeta = async (reason: unknown): Promise<boolean> => {
+      if (fallingBackToBeta || cancelled || engine !== "enhanced" || choice.mode === "none") {
+        return false;
+      }
+      fallingBackToBeta = true;
+      console.warn("[background] Enhanced interrupted; trying Beta", reason);
+      try {
+        await detachProcessor(track);
+        if (cancelled) return false;
+        softCurrent.current = null;
+        const created = await createLiveKitProcessor(choice, { onFrame });
+        try {
+          await putOn(track, created);
+        } catch (putErr) {
+          if (track.getProcessor() === created) await track.stopProcessor().catch(() => {});
+          await created.destroy().catch(() => {});
+          throw putErr;
+        }
+        if (cancelled) {
+          await created.destroy().catch(() => {});
+          return false;
+        }
+        liveKitCurrent.current = created;
+        await created.applyChoice(choice).catch(() => {});
+        if (!cancelled) {
+          publishStatus({ phase: "ready", error: null, retryable: false });
+        }
+        return true;
+      } catch (fallbackErr) {
+        console.error("[background] Beta fallback failed", fallbackErr);
+        return false;
+      }
+    };
+
+    const onStatus = (next: SegmenterStatus) => {
+      if (
+        next.phase === "failed" &&
+        next.error != null &&
+        isEffectInterrupted(next.error) &&
+        wanted &&
+        choice.mode !== "none"
+      ) {
+        void fallBackToBeta(next.error).then((ok) => {
+          if (!ok && !cancelled) reportStatus(lowLightOnly)(next);
+        });
+        return;
+      }
+      reportStatus(lowLightOnly)(next);
+    };
 
     /* Taking over a SoftSegmenter that is already on the track — this screen's from a moment
      * ago, the pre-join screen's, or the one the camera was opened with. Everything is a call
@@ -1320,6 +1403,7 @@ export function useVirtualBackground(
           hadProcessor: hadProcessor,
         });
         if (cancelled) return;
+        if (isEffectInterrupted(err) && (await fallBackToBeta(err))) return;
         publishFrameCost(null);
         publishStatus({
           phase: "failed",
