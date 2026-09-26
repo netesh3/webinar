@@ -574,12 +574,9 @@ function clock(at: number): string {
   return new Date(at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-/* One run of messages from one person to one audience: the avatar and name once,
- * then each message as its own line.
- *
- * Every line keeps its own anchor, highlight and delete button, because each is
- * still its own message: the notification card may point at the third line of a
- * run, and a moderator removing one line must not take the run with it.
+/* One message, drawn on its own: avatar, name, badges and time, then the body.
+ * Consecutive sends from the same person are never folded together — each is a
+ * separate card, with its own anchor, highlight and delete button.
  */
 function MessageGroup({
   group,
@@ -600,7 +597,9 @@ function MessageGroup({
   canDelete: boolean;
   onDelete: (message: ChatMessage) => void;
 }) {
-  const { from, destination, messages } = group;
+  const { from, destination } = group;
+  const [m] = group.messages;
+  const forMe = mentionsMe(m, myIdentity);
   const stage = from.role !== "attendee";
   // Carried on the message rather than read from the current setting, so switching
   // it never rewrites what has already been said.
@@ -609,7 +608,7 @@ function MessageGroup({
 
   return (
     <div
-      // The negative margin pays for the padding, so a tinted run lines up with an
+      // The negative margin pays for the padding, so a tinted card lines up with an
       // untinted one.
       className={`-mx-2 grid grid-cols-[2rem_minmax(0,1fr)] gap-x-2.5 rounded-[10px] px-2 py-1.5 ${
         privateToStage
@@ -626,69 +625,41 @@ function MessageGroup({
           <RoleBadge role={from.role} />
           {privateToStage && <PanelistsOnlyBadge />}
           <span className="shrink-0 text-[10.5px] tabular-nums text-ink-3">
-            {clock(messages[0].at)}
+            {clock(m.at)}
           </span>
         </div>
 
-        {messages.map((m, i) => {
-          // Per line rather than per run: one person's run may tag me in its third line
-          // only, and that is the line the notification points at.
-          const forMe = mentionsMe(m, myIdentity);
-          return (
-            <div
-              key={m.id}
-              // The anchor the notification card scrolls to. Read out of the DOM rather
-              // than held as a list of element refs: the row may not exist yet when the
-              // request arrives, and a query answers that honestly.
-              data-chat-message={m.id}
-              className={`group/line relative -mx-1 flex items-start gap-1.5 rounded-md px-1 motion-safe:transition-colors ${
-                i > 0 ? "mt-0.5" : ""
-              } ${
-                flash === m.id
-                  ? "bg-brand-soft/60 ring-1 ring-brand/40"
-                  : forMe
-                    ? "bg-brand/[0.09] shadow-[inset_2px_0_0_var(--color-brand)]"
-                    : ""
-              }`}
+        <div
+          // The anchor the notification card scrolls to. Read out of the DOM rather
+          // than held as a list of element refs: the row may not exist yet when the
+          // request arrives, and a query answers that honestly.
+          data-chat-message={m.id}
+          className={`-mx-1 flex items-start gap-1.5 rounded-md px-1 motion-safe:transition-colors ${
+            flash === m.id
+              ? "bg-brand-soft/60 ring-1 ring-brand/40"
+              : forMe
+                ? "bg-brand/[0.09] shadow-[inset_2px_0_0_var(--color-brand)]"
+                : ""
+          }`}
+        >
+          <div className="min-w-0 flex-1 text-[13px]">
+            {forMe && <span className="sr-only">Mentions you. </span>}
+            <MessageBody message={m} nameFor={nameFor} myIdentity={myIdentity} />
+          </div>
+          {/* Always visible rather than hover-revealed: half of this room is on a
+              phone, which has no hover to reveal it with. */}
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(m)}
+              aria-label="Delete message"
+              title="Delete message"
+              className="mt-[3px] grid size-5 shrink-0 place-items-center rounded text-ink-3 transition-colors hover:bg-live-soft hover:text-live outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
             >
-              {i > 0 && (
-                // Its own time, in the gutter under the avatar, for whoever wants it.
-                // Hover or keyboard focus reveals it; the run's header already dates it
-                // to the minute for everyone else, phones included.
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute top-[5px] -left-[2.375rem] w-8 text-right text-[9.5px] tabular-nums text-ink-3 opacity-0 group-focus-within/line:opacity-100 group-hover/line:opacity-100 motion-safe:transition-opacity"
-                >
-                  {clock(m.at)}
-                </span>
-              )}
-              <div className="min-w-0 flex-1 text-[13px]">
-                {i > 0 && (
-                  // A continuation line has no visible name. Said for screen readers, so
-                  // one arriving live in the polite region is not announced anonymously.
-                  <span className="sr-only">
-                    {name}, {clock(m.at)}:{" "}
-                  </span>
-                )}
-                {forMe && <span className="sr-only">Mentions you. </span>}
-                <MessageBody message={m} nameFor={nameFor} myIdentity={myIdentity} />
-              </div>
-              {/* Always visible rather than hover-revealed: half of this room is on a
-                  phone, which has no hover to reveal it with. */}
-              {canDelete && (
-                <button
-                  type="button"
-                  onClick={() => onDelete(m)}
-                  aria-label="Delete message"
-                  title="Delete message"
-                  className="mt-[3px] grid size-5 shrink-0 place-items-center rounded text-ink-3 transition-colors hover:bg-live-soft hover:text-live outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                >
-                  <TrashIcon className="size-3.5" />
-                </button>
-              )}
-            </div>
-          );
-        })}
+              <TrashIcon className="size-3.5" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
