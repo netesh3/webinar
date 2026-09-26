@@ -122,6 +122,7 @@ func (s *Server) notifyDecisions(
 	}
 
 	var out dispatch
+	var declined []string
 	for _, row := range rows {
 		in := notify.Invite{
 			Name:     row.Name,
@@ -144,6 +145,7 @@ func (s *Server) notifyDecisions(
 			kind = types.NotifyRegistrationDeclined
 			subject, bodyText = notify.RegistrationDeclined(in)
 			_ = s.store.SkipPendingRemindersForRegistration(ctx, row.ID)
+			declined = append(declined, row.ID)
 		default:
 			continue
 		}
@@ -165,11 +167,8 @@ func (s *Server) notifyDecisions(
 	// Delivery is attempted immediately for responsiveness, and the outbox is what makes it
 	// safe for this to fail. See s.flushOutbox.
 	s.flushOutbox(ctx)
-	/* And the WhatsApp side of the same decision. A confirmation queued when somebody
-	 * registered is held by the sweep until their seat is approved, so this press is
-	 * the moment it becomes sendable — waiting up to 30 seconds for the ticker to
-	 * notice would make the fastest channel the slowest one. */
-	s.flushWhatsAppOutbox(ctx)
+	// And the CRM's side of the same decisions. See Engage.OnRegistrationsDecided.
+	s.engage.OnRegistrationsDecided(ctx, slug, declined)
 	return out
 }
 

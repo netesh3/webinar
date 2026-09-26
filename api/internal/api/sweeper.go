@@ -27,16 +27,8 @@ func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
 			s.sweepSimulive(ctx)
 			s.reconcileEgressRecordings(ctx)
 			s.flushOutbox(ctx)
-			/* Drip steps are queued before the outbox is flushed, so a step that
-			 * came due in the last thirty seconds goes out on this tick rather
-			 * than waiting for the next one. */
-			s.AdvanceDrips(ctx)
-			/* And then the bots, which are the other way round: a woken flow sends
-			 * its own messages inline rather than queueing them, so it goes after
-			 * AdvanceDrips only so that a flow which enrols somebody and then waits
-			 * is not a tick behind the sequence it just put them on. */
-			s.AdvanceBots(ctx)
-			s.flushWhatsAppOutbox(ctx)
+			// The CRM's drips, bots and WhatsApp outbox. See Engage.Tick.
+			s.engage.Tick(ctx)
 		}
 	}
 }

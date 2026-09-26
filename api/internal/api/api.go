@@ -148,6 +148,9 @@ type Server struct {
 
 	invitesMu sync.Mutex
 	invites   map[string]pendingStage
+
+	// engage is the WhatsApp CRM, or NoEngage. See engage.go; set by UseEngage.
+	engage Engage
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {
@@ -193,7 +196,7 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		log.Info("whatsapp connect enabled", "graph", whatsapp.Graph)
 	}
 
-	return &Server{
+	srv := &Server{
 		cfg:        cfg,
 		store:      st,
 		sfu:        sfu,
@@ -205,7 +208,11 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		sayLimit:   httpx.NewRateLimiter(sayPerMin, time.Minute),
 		mail:       mail,
 		invites:    map[string]pendingStage{},
+		engage:     NoEngage{},
 	}
+	// Transitional: the CRM still lives in this package, so it is on by default.
+	srv.engage = crmHooks{s: srv}
+	return srv
 }
 
 func (s *Server) Routes() http.Handler {
@@ -260,16 +267,9 @@ func (s *Server) Routes() http.Handler {
 
 	r.Route("/api", func(r chi.Router) {
 		// ---------------- public ----------------
+		publicAPI := r
 		r.Get("/config", s.handleConfig)
 		r.Post("/webhooks/livekit", s.handleLiveKitWebhook)
-		/* Meta's webhook, and the handshake that registers it.
-		 *
-		 * Public like the LiveKit one and for the same reason — the caller is another
-		 * server, which has no session — and authenticated the same way: by a
-		 * signature over the raw body, in handleWhatsAppWebhook. The GET is the
-		 * one-off subscription confirmation, not a readable endpoint. */
-		r.Get("/webhooks/whatsapp", s.handleWhatsAppWebhookVerify)
-		r.Post("/webhooks/whatsapp", s.handleWhatsAppWebhook)
 
 		/* One webinar BY SLUG stays public; the LIST does not.
 		 *
@@ -446,97 +446,8 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/youtube/connect", s.handleYouTubeConnect)
 				r.Delete("/youtube", s.handleYouTubeDisconnect)
 
-				/* Connect WhatsApp. A POST callback rather than a GET one, because
-				 * Embedded Signup hands the code to the page that opened the dialog
-				 * instead of redirecting a browser back here — so this is our own
-				 * frontend calling us with a session cookie, not Meta. */
-				r.Get("/whatsapp/connect", s.handleWhatsAppConnect)
-				r.Post("/whatsapp/callback", s.handleWhatsAppCallback)
-				r.Post("/whatsapp/register", s.handleWhatsAppRegister)
-				r.Delete("/whatsapp", s.handleWhatsAppDisconnect)
-
-				/* The lead CRM. Outside the per-webinar subtree like the alerts above,
-				 * and for a stronger version of the same reason: a contact is a person,
-				 * not an attendee of one session, and the whole point of the CRM is that
-				 * they outlive the webinar they first registered for. */
-				/* How far along this host is in setting WhatsApp up. First
-				 * because it is what the CRM opens on for a host who has not
-				 * finished — see handleCRMSetup for why the answer is assembled
-				 * here rather than out of the four endpoints below it. */
-				r.Get("/crm/setup", s.handleCRMSetup)
-				r.Get("/crm/contacts", s.handleCRMContacts)
-				r.Get("/crm/contacts/{id}", s.handleCRMThread)
-				r.Post("/crm/contacts/{id}/opt-out", s.handleCRMOptOut)
-				/* Templates are read from the host's own WABA, so they are listed
-				 * beside the contacts rather than under a webinar: the same approved
-				 * template is what a reminder, a broadcast and a typed reply all
-				 * name. */
-				r.Get("/crm/templates", s.handleCRMTemplates)
-				r.Post("/crm/contacts/{id}/send", s.handleCRMSend)
-				/* Which template each automatic message uses. A host-level
-				 * setting, like the templates themselves: the per-webinar part of
-				 * the decision is the switch in the schedule form, and one host
-				 * writing "starting in an hour" once is the point. */
-				r.Get("/crm/reminders", s.handleCRMReminders)
-				r.Put("/crm/reminders", s.handleSetCRMReminders)
-				/* Broadcasts. The audience preview is its own GET because it is
-				 * asked repeatedly while somebody is still choosing — and because
-				 * the one number worth showing before a send is how many people
-				 * it would reach. There is no PATCH: a broadcast's recipients are
-				 * queued the moment it exists, so the only edit left is cancel. */
-				r.Get("/crm/audience", s.handleCRMAudience)
-				r.Get("/crm/broadcasts", s.handleCRMBroadcasts)
-				r.Post("/crm/broadcasts", s.handleCreateCRMBroadcast)
-				r.Get("/crm/broadcasts/{id}", s.handleCRMBroadcast)
-				r.Post("/crm/broadcasts/{id}/cancel", s.handleCancelCRMBroadcast)
-				/* Drip sequences. A PUT here, unlike a broadcast, because a drip
-				 * is a rule rather than a record of something sent: editing the
-				 * steps of a sequence that has been running for a month is the
-				 * normal thing to do with one. Enrollments are a subresource
-				 * because they are people, not settings — added and removed one
-				 * at a time, by a host looking at a name. */
-				r.Get("/crm/drips", s.handleCRMDrips)
-				r.Post("/crm/drips", s.handleCreateCRMDrip)
-				r.Get("/crm/drips/{id}", s.handleCRMDrip)
-				r.Put("/crm/drips/{id}", s.handleUpdateCRMDrip)
-				r.Delete("/crm/drips/{id}", s.handleDeleteCRMDrip)
-				r.Post("/crm/drips/{id}/enrollments", s.handleEnrollCRMDrip)
-				r.Delete("/crm/drips/{id}/enrollments/{enrollmentId}", s.handleRemoveCRMDripEnrollment)
-				/* Bots. Shaped like drips — a rule, edited in place — and with no
-				 * subresource for the conversations: a session is something that
-				 * happened rather than something a host manages, so they come back
-				 * with the bot they belong to and are never addressed on their own.
-				 *
-				 * The handoff is the odd one out, under the CONTACT rather than under
-				 * a bot, because it is a fact about a person: it pauses every bot for
-				 * them, it outlives the flow that set it, and the host toggles it from
-				 * the thread they are reading. */
-				r.Get("/crm/bots", s.handleCRMBots)
-				r.Post("/crm/bots", s.handleCreateCRMBot)
-				r.Get("/crm/bots/{id}", s.handleCRMBot)
-				r.Put("/crm/bots/{id}", s.handleUpdateCRMBot)
-				r.Delete("/crm/bots/{id}", s.handleDeleteCRMBot)
-				r.Put("/crm/contacts/{id}/bot", s.handleCRMContactBot)
-				/* Tags and notes: the two things a host writes about a person rather
-				 * than to them.
-				 *
-				 * The tags themselves are account-level, like templates — one set of
-				 * labels, used by the contacts list, a broadcast audience, a sequence
-				 * trigger and a bot step — while putting one ON somebody is a
-				 * subresource of the contact, because that is a fact about them.
-				 *
-				 * A note is deleted by its own id rather than under the contact: there
-				 * is no edit (see types.CRMNote), so the id is the whole of what
-				 * identifies it. */
-				r.Get("/crm/tags", s.handleCRMTags)
-				r.Post("/crm/tags", s.handleCreateCRMTag)
-				r.Patch("/crm/tags/{id}", s.handleRenameCRMTag)
-				r.Delete("/crm/tags/{id}", s.handleDeleteCRMTag)
-				r.Post("/crm/contacts/{id}/tags", s.handleAddCRMContactTag)
-				r.Delete("/crm/contacts/{id}/tags/{tagId}", s.handleRemoveCRMContactTag)
-				r.Get("/crm/contacts/{id}/notes", s.handleCRMNotes)
-				r.Post("/crm/contacts/{id}/notes", s.handleCreateCRMNote)
-				r.Delete("/crm/notes/{id}", s.handleDeleteCRMNote)
+				// The WhatsApp CRM's routes, mounted by the CRM itself. See Engage.Mount.
+				s.engage.Mount(publicAPI, r)
 
 				/* The notification bell. Outside the per-webinar subtree on purpose:
 				 * an alert's whole job is to tell a host about a webinar they are NOT
@@ -661,7 +572,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		GoogleClientID:          s.cfg.GoogleClientID,
 		GoogleAPIKey:            s.cfg.GoogleAPIKey,
 		YouTubeOAuth:            s.cfg.YouTubeOAuthEnabled(),
-		WhatsAppConnect:         s.whatsapp.Enabled(),
+		WhatsAppConnect:         s.engage.ConnectEnabled(),
 		SupabaseURL:             s.cfg.SupabaseURL,
 		SupabaseAnonKey:         s.cfg.SupabaseAnonKey,
 		GoogleAuth:              s.cfg.GoogleAuthEnabled(),

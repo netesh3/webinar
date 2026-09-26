@@ -91,17 +91,9 @@ func (s *Server) enqueueReplay(ctx context.Context, slug string, rec types.Recor
 		passcode = strings.TrimSpace(wb.Passcode)
 	}
 
-	/* The WhatsApp half is optional and is resolved once, not per recipient: it is the
-	 * same template for all of them, and a host who has not chosen one gets the email
-	 * only rather than an error. */
-	reminder, hasTemplate, err := s.store.ReminderTemplate(ctx, hostID, types.NotifyWhatsAppReplay)
-	if err != nil {
-		s.log.Error("replay: reminder template", "host", hostID, "error", err)
-	}
-	canWhatsApp := err == nil && hasTemplate &&
-		host.WhatsAppToken != "" && host.WhatsAppPhoneNumberID != ""
-
-	var emails, messages int
+	/* WhatsApp is the CRM's half of this, and is handed over rather than done here: see
+	 * Engage.OnRecordingPublished. */
+	var emails int
 	for _, p := range people {
 		in := notify.Invite{
 			Name:      p.Name,
@@ -126,36 +118,14 @@ func (s *Server) enqueueReplay(ctx context.Context, slug string, rec types.Recor
 		} else {
 			emails++
 		}
-
-		if !canWhatsApp || p.ContactID == "" || p.Phone == "" || !p.OptIn {
-			continue
-		}
-		/* A contact built from what the recipients query already returned, rather than
-		 * loaded per person: mergeValue reads the name off it, and five thousand
-		 * single-row lookups to get a name we are holding would be the whole cost of
-		 * this function. */
-		contact := types.CRMContact{ID: p.ContactID, Name: p.Name, Phone: p.Phone, Email: p.Email}
-		if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
-			Kind:             types.NotifyWhatsAppReplay,
-			Channel:          "whatsapp",
-			ContactID:        p.ContactID,
-			WebinarSlug:      slug,
-			RegistrationID:   p.RegistrationID,
-			TemplateName:     reminder.Template,
-			TemplateLanguage: reminder.Language,
-			TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, url),
-		}); err != nil {
-			s.log.Error("replay: could not queue whatsapp", "webinar", slug,
-				"contact", p.ContactID, "error", err)
-		} else {
-			messages++
-		}
 	}
 
 	// The URL is not logged. It is public, but it is also the thing a passcode is
 	// protecting, and this line is otherwise safe to ship anywhere.
 	s.log.Info("replay queued", "host", hostID, "webinar", slug, "recording", rec.ID,
-		"registrants", len(people), "emails", emails, "whatsapp", messages)
+		"registrants", len(people), "emails", emails)
+
+	s.engage.OnRecordingPublished(ctx, wb, host, url)
 }
 
 /* replayURL is the recording's public page — the same link the host copies from the
