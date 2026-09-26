@@ -24,23 +24,21 @@ func TestWhatsAppRemindersFollowWebinar(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
 	setReminders(t, h,
-		types.CRMReminder{Kind: types.NotifyWhatsAppReminder24h, Template: testTemplateUtility,
-			Language: "en_US", Params: []string{"name"}},
-		types.CRMReminder{Kind: types.NotifyWhatsAppReminder1h, Template: testTemplateUtility,
+		types.CRMReminder{Kind: types.NotifyWhatsAppReminder, Template: testTemplateUtility,
 			Language: "en_US", Params: []string{"name"}},
 	)
 	wb := remindersWebinar(t, h, "Follows its webinar", true)
 	registerOptedIn(t, h, wb.ID)
 	ctx := context.Background()
 
-	waRow := func(kind types.NotificationKind) (delivery string, due time.Time) {
+	waRow := func(offset int) (delivery string, due time.Time) {
 		t.Helper()
 		err := h.store.Pool().QueryRow(ctx, `
 			SELECT n.delivery, n.due_at FROM notifications n JOIN webinars w ON w.id = n.webinar_id
-			 WHERE w.slug = $1 AND n.channel = 'whatsapp' AND n.kind = $2`, wb.ID, string(kind)).
+			 WHERE w.slug = $1 AND n.kind = 'wa_reminder' AND n.offset_min = $2`, wb.ID, offset).
 			Scan(&delivery, &due)
 		if err != nil {
-			t.Fatalf("%s row: %v", kind, err)
+			t.Fatalf("reminder %dm row: %v", offset, err)
 		}
 		return delivery, due
 	}
@@ -56,13 +54,10 @@ func TestWhatsAppRemindersFollowWebinar(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("reschedule: status %d body %s", res.StatusCode, raw)
 	}
-	for kind, before := range map[types.NotificationKind]time.Duration{
-		types.NotifyWhatsAppReminder24h: 24 * time.Hour,
-		types.NotifyWhatsAppReminder1h:  time.Hour,
-	} {
-		delivery, due := waRow(kind)
-		if want := moved.Add(-before); !due.Equal(want) || delivery != "pending" {
-			t.Errorf("%s after reschedule: %s due %v, want pending due %v", kind, delivery, due, want)
+	for _, offset := range []int{24 * 60, 60} {
+		delivery, due := waRow(offset)
+		if want := moved.Add(-time.Duration(offset) * time.Minute); !due.Equal(want) || delivery != "pending" {
+			t.Errorf("%dm reminder after reschedule: %s due %v, want pending due %v", offset, delivery, due, want)
 		}
 	}
 
@@ -70,9 +65,9 @@ func TestWhatsAppRemindersFollowWebinar(t *testing.T) {
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/end", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("end: status %d body %s", res.StatusCode, raw)
 	}
-	for _, kind := range []types.NotificationKind{types.NotifyWhatsAppReminder24h, types.NotifyWhatsAppReminder1h} {
-		if delivery, _ := waRow(kind); delivery != "skipped" {
-			t.Errorf("%s after the webinar ended: %s, want skipped", kind, delivery)
+	for _, offset := range []int{24 * 60, 60} {
+		if delivery, _ := waRow(offset); delivery != "skipped" {
+			t.Errorf("%dm reminder after the webinar ended: %s, want skipped", offset, delivery)
 		}
 	}
 }

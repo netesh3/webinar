@@ -4,7 +4,7 @@ package crmstore
  * decision affects, and the per-webinar reminder switch it reports on.
  *
  * The email rows for the same events are the webinar store's, in store/notifications.go.
- * The two halves are split by kind: 'reminder_*' and 'registration_*' are email and
+ * The two halves are split by kind: 'reminder' and 'registration_*' are email and
  * webinar-owned; every 'wa_*' kind is the CRM's. A new kind goes on one side only.
  */
 
@@ -14,7 +14,7 @@ import (
 )
 
 // waReminderKinds are the WhatsApp kinds that promise something about a future session.
-const waReminderKinds = `'wa_reminder_24h','wa_reminder_1h','wa_registration_confirmed'`
+const waReminderKinds = `'wa_reminder','wa_registration_confirmed'`
 
 /* SkipWhatsAppForRegistrations drops unsent WhatsApp reminders when seats are declined.
  *
@@ -34,21 +34,81 @@ func (s *Store) SkipWhatsAppForRegistrations(ctx context.Context, registrationID
 	return err
 }
 
-/* RescheduleWhatsAppReminders moves unsent WhatsApp 24h/1h due times with the webinar.
- * $2 is cast explicitly: without it Postgres types the parameter from `$2 - interval`,
- * decides it is an interval, and rejects the statement. */
-func (s *Store) RescheduleWhatsAppReminders(ctx context.Context, slug string, startsAt time.Time) error {
+/* ReplanWhatsAppReminders is ReplanReminders (store/notifications.go) for the WhatsApp
+ * reminders: times no longer on the list, or that moving put in the past, are deleted
+ * unsent; the rest move with the start. Rows already due are left to the outbox. */
+func (s *Store) ReplanWhatsAppReminders(ctx context.Context, slug string, startsAt time.Time, offsets []int) error {
+	if offsets == nil {
+		offsets = []int{}
+	}
 	_, err := s.pool.Exec(ctx, `
+		WITH w AS (SELECT id FROM webinars WHERE slug = $1)
+		DELETE FROM notifications n
+		 USING w
+		 WHERE n.webinar_id = w.id AND n.kind = 'wa_reminder' AND n.delivery = 'pending'
+		   AND n.due_at > now()
+		   AND (n.offset_min <> ALL($3::int[])
+		        OR $2::timestamptz - make_interval(mins => n.offset_min) <= now())`,
+		slug, startsAt, offsets)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
 		UPDATE notifications n
-		   SET due_at = CASE n.kind
-		                  WHEN 'wa_reminder_24h' THEN $2::timestamptz - interval '24 hours'
-		                  WHEN 'wa_reminder_1h'  THEN $2::timestamptz - interval '1 hour'
-		                END
+		   SET due_at = $2::timestamptz - make_interval(mins => n.offset_min)
 		  FROM webinars w
 		 WHERE n.webinar_id = w.id AND w.slug = $1
-		   AND n.delivery = 'pending'
-		   AND n.kind IN ('wa_reminder_24h','wa_reminder_1h')`, slug, startsAt)
+		   AND n.kind = 'wa_reminder' AND n.delivery = 'pending' AND n.due_at > now()`,
+		slug, startsAt)
 	return err
+}
+
+// WhatsAppReminderGap is one opted-in contact on an approved registration with no WhatsApp
+// reminder row for one time.
+type WhatsAppReminderGap struct {
+	RegistrationID string
+	ContactID      string
+	OffsetMin      int
+}
+
+/* WhatsAppReminderGaps is the WhatsApp half of store.ReminderGaps: for each time on the
+ * list, the approved registrants whose contact has a phone and is opted in, and who have
+ * no wa_reminder row for it. The contact is matched as WhatsAppReplayRecipients matches
+ * it: the registration it came from, else the address. */
+func (s *Store) WhatsAppReminderGaps(ctx context.Context, slug string, offsets []int) ([]WhatsAppReminderGap, error) {
+	if len(offsets) == 0 {
+		return []WhatsAppReminderGap{}, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT ON (r.id, o.offset_min) r.id::text, c.id::text, o.offset_min
+		  FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		  JOIN crm_contacts c
+		    ON c.host_id = w.host_id
+		   AND (c.registration_id = r.id OR (r.email <> '' AND lower(c.email) = lower(r.email)))
+		  CROSS JOIN unnest($2::int[]) AS o(offset_min)
+		 WHERE w.slug = $1 AND r.state = 'approved'
+		   AND c.phone <> '' AND c.whatsapp_opt_in_at IS NOT NULL
+		   AND (c.whatsapp_opt_out_at IS NULL OR c.whatsapp_opt_in_at > c.whatsapp_opt_out_at)
+		   AND NOT EXISTS (
+		         SELECT 1 FROM notifications n
+		          WHERE n.registration_id = r.id AND n.kind = 'wa_reminder'
+		            AND n.offset_min = o.offset_min)
+		 ORDER BY r.id, o.offset_min, (c.registration_id = r.id) DESC NULLS LAST, c.created_at`,
+		slug, offsets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []WhatsAppReminderGap{}
+	for rows.Next() {
+		var g WhatsAppReminderGap
+		if err := rows.Scan(&g.RegistrationID, &g.ContactID, &g.OffsetMin); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
 }
 
 // SkipWhatsAppForEndedWebinar stops WhatsApp reminders about a session that will not happen.

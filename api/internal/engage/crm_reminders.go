@@ -59,6 +59,10 @@ var mergeFields = []types.CRMMergeField{
 	{Token: "when", Label: "When it starts", Example: "Tue 14 Oct, 14:00"},
 	{Token: "host", Label: "Your name", Example: "Acme Coaching"},
 	{
+		Token: "starts_in", Label: "How soon it starts", Example: "in 1 hour",
+		OnlyKind: types.NotifyWhatsAppReminder,
+	},
+	{
 		Token: "replay", Label: "Link to the recording",
 		Example:  "https://webinarliv.com/w/scaling-postgres/recording/…",
 		OnlyKind: types.NotifyWhatsAppReplay,
@@ -243,47 +247,60 @@ func (s *Module) enqueueWhatsAppInvite(
 		return
 	}
 
-	starts, _ := time.Parse(time.RFC3339, wb.StartsAt)
-	type job struct {
-		kind types.NotificationKind
-		due  time.Time
+	s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppConfirmed, 0)
+	for _, offset := range wb.Options.Reminders {
+		s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppReminder, offset)
 	}
-	jobs := []job{
-		{types.NotifyWhatsAppConfirmed, time.Time{}}, // now
-		{types.NotifyWhatsAppReminder24h, starts.Add(-24 * time.Hour)},
-		{types.NotifyWhatsAppReminder1h, starts.Add(-1 * time.Hour)},
-	}
-	now := time.Now()
-	for _, j := range jobs {
-		// A webinar starting in ten minutes must not send a "in 24 hours" message,
-		// and one with no start time has no reminders to place.
-		if j.kind != types.NotifyWhatsAppConfirmed && (starts.IsZero() || !j.due.After(now)) {
-			continue
-		}
-		reminder, ok, err := s.store.ReminderTemplate(ctx, hostID, j.kind)
+}
+
+/* queueWhatsApp writes one confirmation (offset 0, due now) or one timed reminder (due
+ * offset minutes before the start) for one contact, on the template the host chose for
+ * that kind. Nothing is queued for a kind with no template — a row naming none would wait
+ * for ever — or for a reminder whose time has passed: a webinar starting in ten minutes
+ * must not get an "in 24 hours" message.
+ */
+func (s *Module) queueWhatsApp(
+	ctx context.Context,
+	hostID string,
+	wb types.Webinar,
+	contact types.CRMContact,
+	registrationID string,
+	kind types.NotificationKind,
+	offset int,
+) {
+	var due time.Time
+	if kind == types.NotifyWhatsAppReminder {
+		starts, err := time.Parse(time.RFC3339, wb.StartsAt)
 		if err != nil {
-			s.log.Error("whatsapp invite: reminder template", "kind", j.kind, "error", err)
-			continue
+			return
 		}
-		if !ok {
-			// The host has not chosen a template for this one. Nothing to send, and
-			// nothing queued: a row naming no template would wait for ever.
-			continue
+		due = starts.Add(-time.Duration(offset) * time.Minute)
+		if !due.After(time.Now()) {
+			return
 		}
-		if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
-			Kind:             j.kind,
-			Channel:          "whatsapp",
-			ContactID:        contact.ID,
-			WebinarSlug:      wb.ID,
-			RegistrationID:   registrationID,
-			TemplateName:     reminder.Template,
-			TemplateLanguage: reminder.Language,
-			TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, ""),
-			DueAt:            j.due,
-		}); err != nil {
-			s.log.Error("whatsapp invite: could not queue", "kind", j.kind,
-				"contact", contact.ID, "error", err)
-		}
+	}
+	reminder, ok, err := s.store.ReminderTemplate(ctx, hostID, kind)
+	if err != nil {
+		s.log.Error("whatsapp invite: reminder template", "kind", kind, "error", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
+		Kind:             kind,
+		Channel:          "whatsapp",
+		ContactID:        contact.ID,
+		WebinarSlug:      wb.ID,
+		RegistrationID:   registrationID,
+		TemplateName:     reminder.Template,
+		TemplateLanguage: reminder.Language,
+		TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, "", offset),
+		DueAt:            due,
+		OffsetMin:        offset,
+	}); err != nil {
+		s.log.Error("whatsapp invite: could not queue", "kind", kind,
+			"contact", contact.ID, "offsetMin", offset, "error", err)
 	}
 }
 
@@ -293,10 +310,10 @@ func (s *Module) enqueueWhatsAppInvite(
  * what was promised: a webinar renamed an hour before it starts must not silently
  * rewrite the reminder somebody is about to receive.
  */
-func resolveMergeFields(tokens []string, contact types.CRMContact, wb types.Webinar, replayURL string) []string {
+func resolveMergeFields(tokens []string, contact types.CRMContact, wb types.Webinar, replayURL string, offsetMin int) []string {
 	out := make([]string, 0, len(tokens))
 	for _, token := range tokens {
-		out = append(out, mergeValue(token, contact, wb, wb.Host.Name, replayURL))
+		out = append(out, mergeValue(token, contact, wb, wb.Host.Name, replayURL, offsetMin))
 	}
 	return out
 }
@@ -311,7 +328,7 @@ func resolveMergeFields(tokens []string, contact types.CRMContact, wb types.Webi
  * template parameter that is blank or contains a newline, a tab or a run of spaces —
  * and it rejects the whole send, so one missing surname would lose the message.
  */
-func mergeValue(token string, contact types.CRMContact, wb types.Webinar, hostName, replayURL string) string {
+func mergeValue(token string, contact types.CRMContact, wb types.Webinar, hostName, replayURL string, offsetMin int) string {
 	var value string
 	switch token {
 	case "replay":
@@ -333,6 +350,12 @@ func mergeValue(token string, contact types.CRMContact, wb types.Webinar, hostNa
 		value = notify.WhenText(wb.StartsAt, wb.TimeZone)
 	case "host":
 		value = hostName
+	case "starts_in":
+		// Only a timed reminder knows how far ahead it is; everywhere else this is refused
+		// (OnlyKind), and would fall through to the dash below.
+		if offsetMin > 0 {
+			value = notify.StartsIn(offsetMin)
+		}
 	}
 	value = strings.Join(strings.Fields(value), " ")
 	if value == "" {

@@ -42,8 +42,7 @@ import {
   FeatureCRMTags,
   FeatureReplayLinks,
   NotifyWhatsAppConfirmed,
-  NotifyWhatsAppReminder1h,
-  NotifyWhatsAppReminder24h,
+  NotifyWhatsAppReminder,
   NotifyWhatsAppReplay,
 } from "@/lib/api-types";
 import type {
@@ -902,7 +901,7 @@ function Chip({
 // ---------------------------------------------------------------- reminders
 
 /** The automatic messages, in the order they reach somebody, with the host's
- *  words for them: `wa_reminder_24h` is our name for it, not theirs. */
+ *  words for them: `wa_reminder` is our name for it, not theirs. */
 const REMINDER_KINDS: {
   kind: NotificationKind;
   label: string;
@@ -917,14 +916,11 @@ const REMINDER_KINDS: {
     hint: "Sent as soon as they register — or as soon as you approve them, on a webinar that needs approval.",
   },
   {
-    kind: NotifyWhatsAppReminder24h,
-    label: "24 hours before it starts",
-    hint: "Skipped for anyone who registers later than that.",
-  },
-  {
-    kind: NotifyWhatsAppReminder1h,
-    label: "1 hour before it starts",
-    hint: "The one most people act on.",
+    kind: NotifyWhatsAppReminder,
+    label: "Before it starts",
+    /* One template for every reminder time: the times are per webinar, on its
+     * schedule form, and "How soon it starts" fills in "in 1 hour" for each. */
+    hint: "Sent at each of the webinar's reminder times (set on the webinar; a day and an hour before by default). Use “How soon it starts” for “in 1 hour”, “in 24 hours”.",
   },
   {
     kind: NotifyWhatsAppReplay,

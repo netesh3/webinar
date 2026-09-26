@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_REMINDERS, describeReminders } from "./reminder-times";
 import { Fragment, useEffect, useState } from "react";
 import { Alert, CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
@@ -899,6 +900,7 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     // Shown whether or not it is on, because "no WhatsApp message will be sent" is
     // the fact a host is checking here — and the default is off.
     ["WhatsApp reminders", w.options.whatsappReminders === true],
+    ["Reminder times", describeReminders(w.options.reminders ?? DEFAULT_REMINDERS)],
     ["Attendee limit", formatCount(w.attendeeLimit)],
     ["Time zone", w.timeZone],
   ];
