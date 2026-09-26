@@ -197,7 +197,7 @@ export function ParticipantsPanel() {
 // ---------------------------------------------------------------- host view
 
 function HostRoster() {
-  const { slug, join, realtime, controls, roster } = useRoomUI();
+  const { slug, join, realtime, roster } = useRoomUI();
   const { localParticipant } = useLocalParticipant();
   const { notify } = useToast();
   // From the context rather than a poll of its own: the control bar needs the same
@@ -260,7 +260,7 @@ function HostRoster() {
   const empty =
     sections.raised.length + sections.panelists.length + sections.attendees.length === 0;
 
-  // The counts, the search box and the privacy chip render straight away and only
+  // The counts, the search box and Mute all render straight away and only
   // the list waits. Replacing the whole panel with a spinner meant every open —
   // and every one of the five-second refreshes — flashed the chrome away.
   const loading = !live && !error;
@@ -363,19 +363,45 @@ function HostRoster() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 space-y-2.5 border-b border-line px-3 py-3">
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="font-medium text-ink">{live?.onStage ?? 0} on stage</span>
-          <span className="text-ink-3">·</span>
-          <span>{live?.attendees ?? 0} attending</span>
-          {controls.hideAttendees && (
-            <span
-              className="ml-auto inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-ink-2"
-              title="Attendees cannot see each other. You can, because this list comes from the server."
-            >
-              <EyeOffIcon className="size-3" />
-              Hidden
-            </span>
-          )}
+        <div className="flex items-center gap-2">
+          <p className="min-w-0 flex-1 truncate text-[12px] text-ink-2">
+            <span className="font-medium text-ink">{live?.onStage ?? 0} on stage</span>
+            <span className="mx-1.5 text-ink-3">·</span>
+            <span>{live?.attendees ?? 0} attending</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setBusy("mute-all");
+                try {
+                  const { muted } = await api.muteAll(slug);
+                  notify(
+                    muted === 0
+                      ? "Nobody had an open microphone."
+                      : `Muted ${muted} ${muted === 1 ? "microphone" : "microphones"}.`,
+                    "ok",
+                  );
+                  await reload();
+                } catch (err) {
+                  notify(err instanceof Error ? err.message : "That didn't work.", "error");
+                } finally {
+                  setBusy(null);
+                }
+              })();
+            }}
+            disabled={busy !== null}
+            title="Mute everyone except you"
+            aria-label="Mute everyone except you"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-line px-3 text-[12px] font-medium whitespace-nowrap text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-7 md:px-2.5"
+          >
+            {busy === "mute-all" ? (
+              <Spinner className="size-3.5" />
+            ) : (
+              <MicOffIcon className="size-3.5" />
+            )}
+            Mute all
+          </button>
         </div>
 
         {/* The queue, and the one action that clears it.
@@ -420,38 +446,6 @@ function HostRoster() {
             />
           </div>
         )}
-
-        <button
-          type="button"
-          onClick={() => {
-            void (async () => {
-              setBusy("mute-all");
-              try {
-                const { muted } = await api.muteAll(slug);
-                notify(
-                  muted === 0
-                    ? "Nobody had an open microphone."
-                    : `Muted ${muted} ${muted === 1 ? "microphone" : "microphones"}.`,
-                  "ok",
-                );
-                await reload();
-              } catch (err) {
-                notify(err instanceof Error ? err.message : "That didn't work.", "error");
-              } finally {
-                setBusy(null);
-              }
-            })();
-          }}
-          disabled={busy !== null}
-          className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-line px-3 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-surface-2 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-8"
-        >
-          {busy === "mute-all" ? (
-            <Spinner className="size-3.5" />
-          ) : (
-            <MicOffIcon className="size-3.5" />
-          )}
-          Mute everyone except you
-        </button>
 
         {error && (
           <p className="text-[11.5px] text-live">
