@@ -179,6 +179,7 @@ export function PreviewRoom() {
       tools,
       availableTools,
       unread: EMPTY_UNREAD,
+      mentions: 0,
       fileShare: IDLE_FILE_SHARE,
       stage,
       prefs,

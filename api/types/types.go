@@ -469,8 +469,19 @@ type ChatMessage struct {
 	MediaWidth  int    `json:"mediaWidth,omitempty"`
 	MediaHeight int    `json:"mediaHeight,omitempty"`
 
+	// Mentions is who the message tags, by participant identity — never by name, so
+	// a tag survives two people sharing one. Already validated by the server: every
+	// entry is somebody the sender was allowed to mention and who can read the
+	// message. May contain MentionEveryone. Absent on a message that tags nobody,
+	// which is every message sent before mentions existed.
+	Mentions []string `json:"mentions,omitempty"`
+
 	Timestamp string `json:"timestamp"`
 }
+
+// MentionEveryone is the one mention that is not an identity: "@everyone", for the
+// host and co-hosts, notifying everybody who can read the message.
+const MentionEveryone = "@everyone"
 
 // ChatBacklog is the answer to "what have I missed".
 //
@@ -559,6 +570,12 @@ type SendMessageRequest struct {
 	// and the field exists so a panelist who has fallen back to the relay can still
 	// address the stage rather than accidentally broadcasting to the audience.
 	Destination ChatDestination `json:"destination,omitempty"`
+	// Mentions is who a chat message tags, by identity. A request like Destination:
+	// the server drops anybody the sender may not mention or who could not read the
+	// message, caps the list, and delivers only what survives. The text carries a
+	// plain "@Name" for each regardless, so a client that ignores this field still
+	// reads the message correctly.
+	Mentions []string `json:"mentions,omitempty"`
 }
 
 // SendMessageResponse reports what the server actually did, which is not always

@@ -41,6 +41,8 @@ export const DATA_TOPIC = "webcast";
 const MAX_CHAT_CHARS = 2000;
 const MAX_QUESTION_CHARS = 600;
 const MAX_NAME_CHARS = 80;
+/** Mirrors maxMentions in api/internal/api/mentions.go. */
+const MAX_MENTIONS = 10;
 /** Keeps a long session from growing an unbounded array in every tab. */
 const MAX_CHAT_HISTORY = 500;
 const MAX_QUESTIONS = 300;
@@ -115,6 +117,9 @@ export type ChatMessage = {
   seq: number;
   /** An image, when the message is one. A path on our own API — see handleChatMedia. */
   media?: { url: string; mime: string; width: number; height: number };
+  /** Who this message @mentions, by identity, as the server validated it. May include
+   *  "@everyone". Absent when it mentions nobody — see lib/mentions.ts. */
+  mentions?: string[];
 };
 
 export type QuestionMessage = {
@@ -296,6 +301,19 @@ function str(value: unknown, max: number): string | null {
   return trimmed.slice(0, max);
 }
 
+/** A mention list off the wire: identities only, clamped and de-duplicated. Anything
+ *  that is not a list of strings is treated as no mentions at all. */
+function mentionList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: string[] = [];
+  for (const item of value) {
+    const id = str(item, 200);
+    if (id && !out.includes(id)) out.push(id);
+    if (out.length === MAX_MENTIONS) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function sender(value: unknown): Sender | null {
   if (typeof value !== "object" || value === null) return null;
   const raw = value as Record<string, unknown>;
@@ -329,6 +347,7 @@ function decode(bytes: Uint8Array): RoomMessage | null {
       const id = str(msg.id, 64);
       const mediaUrl = typeof msg.mediaUrl === "string" ? msg.mediaUrl : "";
       if (!from || !id || (!text && !mediaUrl)) return null;
+      const mentions = mentionList(msg.mentions);
       return {
         kind: "chat",
         id,
@@ -349,6 +368,7 @@ function decode(bytes: Uint8Array): RoomMessage | null {
               },
             }
           : {}),
+        ...(mentions ? { mentions } : {}),
         // Never trust a remote clock: a browser with a wrong time would sort
         // itself to the top or bottom of everyone's chat forever.
         at: Date.now(),
@@ -530,6 +550,7 @@ export function decodeBacklog(messages: ApiChatMessage[]): ChatMessage[] {
           mediaMime: m.mediaMime,
           mediaWidth: m.mediaWidth,
           mediaHeight: m.mediaHeight,
+          mentions: m.mentions,
         }),
       ),
     );
@@ -635,10 +656,14 @@ export type Realtime = {
    *  server overwrites it with the host's setting. Pass the current setting anyway
    *  so nothing has to special-case the caller. Rejects with the API's error when
    *  the server refuses, which is how "No panelists are currently available."
-   *  reaches the composer. */
+   *  reaches the composer.
+   *
+   *  `mentions` are identities the composer tagged. A request: the server drops any
+   *  the sender may not mention and delivers what survives on the message itself. */
   sendChat: (
     text: string,
     destination: ChatDestination,
+    mentions?: string[],
   ) => Promise<{ delivered: boolean } | undefined>;
   askQuestion: (text: string, anonymous: boolean) => Promise<void>;
   upvote: (questionId: string) => Promise<void>;
@@ -1023,14 +1048,16 @@ export function useRealtime(
   );
 
   const sendChat = useCallback(
-    async (text: string, destination: ChatDestination) => {
+    async (text: string, destination: ChatDestination, mentions?: string[]) => {
       const clean = text.trim().slice(0, MAX_CHAT_CHARS);
       if (!clean) return;
+      const tagged = mentions?.slice(0, MAX_MENTIONS);
       const result = await relayRef.current?.({
         kind: "chat",
         id: newId(),
         text: clean,
         destination,
+        ...(tagged && tagged.length > 0 ? { mentions: tagged } : {}),
       });
       // A stage-only message with nobody on stage is kept and not delivered — it goes
       // into the transcript and the first panelist to connect reads it in their backlog.

@@ -12,12 +12,22 @@ import {
 import { groupChat, recentSpeakers, type ChatGroup } from "@/lib/chat-groups";
 import { textRuns } from "@/lib/chat-text";
 import { FOCUS_TTL_MS, useChatFocus } from "@/lib/chat-notify";
+import {
+  MENTION_EVERYONE,
+  mentionCandidates,
+  mentionSegments,
+  mentionsMe,
+  outgoingMentions,
+  type Draft,
+} from "@/lib/mentions";
 import { chatDestination, type ChatDestination, type ChatMessage } from "@/lib/realtime";
 import { Alert, ConfirmModal, Spinner } from "../controls";
 import { ArrowDownIcon, ImageIcon, SendIcon, TrashIcon } from "../icons";
 import { SenderAvatar } from "../sender-avatar";
 import { PanelistsOnlyBadge, RoleBadge } from "./chat-badges";
 import { useRoomUI } from "./context";
+import { MentionComposer } from "./mention-composer";
+import { useMentionPeople } from "./mention-people";
 
 /* Chat.
  *
@@ -45,7 +55,7 @@ type AudienceChatOption = ChatDestination | "disabled";
 
 export function ChatPanel() {
   const { slug, joinKey, realtime, controls, permissions, isHost, me } = useRoomUI();
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState<Draft>({ text: "", mentions: [] });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Saved but not delivered, which is not an error. See send().
@@ -174,15 +184,40 @@ export function ChatPanel() {
   const canChoose = permissions.canPublish || isHost;
   const destination = canChoose ? stageTo : roomTo;
 
+  /* Who the picker offers, for the audience this message is going to. The same rules
+   * the server applies in filterMentions — see lib/mentions.ts — so nobody is offered
+   * who would be dropped, and a hidden attendee is never offered to another attendee
+   * even if their name is known from something they said. */
+  const { people, nameFor } = useMentionPeople();
+  const mentionable = useMemo(
+    () =>
+      mentionCandidates(
+        {
+          me: { identity: me.identity, role: me.role },
+          canMentionEveryone: isHost,
+          hideAttendees: controls.hideAttendees,
+          destination,
+        },
+        people,
+      ),
+    [people, me.identity, me.role, isHost, controls.hideAttendees, destination],
+  );
+  const pickerNote =
+    me.role === "attendee" && controls.hideAttendees && destination === "everyone"
+      ? "The host has hidden attendees from each other, so you can mention the host and panelists."
+      : destination === "panelists"
+        ? "Only people who can read this message are listed."
+        : undefined;
+
   async function send() {
-    const text = draft.trim();
+    const text = draft.text.trim();
     if (!text || sending) return;
     setSending(true);
     setError(null);
     setNote(null);
     try {
-      const result = await realtime.sendChat(text, destination);
-      setDraft("");
+      const result = await realtime.sendChat(text, destination, outgoingMentions(draft));
+      setDraft({ text: "", mentions: [] });
       // A stage-only message with nobody on the stage is kept and not delivered: it goes
       // into the transcript and the first panelist to connect reads it in their backlog.
       // Said plainly, because a message that appears to vanish is one somebody types
@@ -327,6 +362,8 @@ export function ChatPanel() {
               key={group.messages[0].id}
               group={group}
               mine={group.from.identity === me.identity}
+              myIdentity={me.identity}
+              nameFor={nameFor}
               flash={flash}
               canDelete={canModerate && group.from.role === "attendee"}
               onDelete={setDeleteTarget}
@@ -359,6 +396,12 @@ export function ChatPanel() {
               </span>
               <ArrowDownIcon className="size-3.5" />
               {behind === 1 ? "1 new message" : `${behind} new messages`}
+              {/* The one thing in that run worth scrolling down for right now. */}
+              {realtime.chat.slice(-behind).some((m) => mentionsMe(m, me.identity)) && (
+                <span className="ml-0.5 rounded-full bg-stage/20 px-1.5 leading-4">
+                  @ mentions you
+                </span>
+              )}
             </button>
           </div>
         )}
@@ -450,17 +493,18 @@ export function ChatPanel() {
                 size="sm"
                 className="mb-1.5"
               />
-              <textarea
-                className="field max-h-28 min-h-9 flex-1 resize-none py-2 text-[13px]"
-                rows={1}
+              <MentionComposer
+                draft={draft}
+                onDraft={setDraft}
+                candidates={mentionable}
+                onSubmit={() => void send()}
+                footnote={pickerNote}
                 placeholder={
                   destination === "panelists"
                     ? "Message panelists…"
                     : "Message everyone…"
                 }
                 maxLength={MAX_CHARS}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
                 // Paste to upload. A screenshot arrives on the clipboard as a file with
                 // no name, which is why the items are inspected rather than the text —
                 // and it is the way people actually share one during a call.
@@ -470,15 +514,6 @@ export function ChatPanel() {
                   e.preventDefault();
                   void sendImage(file);
                 }}
-                onKeyDown={(e) => {
-                  // Enter sends, Shift+Enter breaks a line — the convention
-                  // everyone already has muscle memory for.
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-                aria-label="Chat message"
               />
 
               <input
@@ -506,7 +541,7 @@ export function ChatPanel() {
 
               <button
                 type="submit"
-                disabled={!draft.trim() || sending}
+                disabled={!draft.text.trim() || sending}
                 aria-label="Send message"
                 className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand text-stage transition-colors hover:bg-brand-hover disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               >
@@ -549,12 +584,16 @@ function clock(at: number): string {
 function MessageGroup({
   group,
   mine,
+  myIdentity,
+  nameFor,
   flash,
   canDelete,
   onDelete,
 }: {
   group: ChatGroup;
   mine: boolean;
+  myIdentity: string;
+  nameFor: (identity: string) => string | undefined;
   flash: string | null;
   /** Attendee messages only — moderation removes what the audience said, never
    *  another presenter's words. */
@@ -591,53 +630,65 @@ function MessageGroup({
           </span>
         </div>
 
-        {messages.map((m, i) => (
-          <div
-            key={m.id}
-            // The anchor the notification card scrolls to. Read out of the DOM rather
-            // than held as a list of element refs: the row may not exist yet when the
-            // request arrives, and a query answers that honestly.
-            data-chat-message={m.id}
-            className={`group/line relative -mx-1 flex items-start gap-1.5 rounded-md px-1 motion-safe:transition-colors ${
-              i > 0 ? "mt-0.5" : ""
-            } ${flash === m.id ? "bg-brand-soft/60 ring-1 ring-brand/40" : ""}`}
-          >
-            {i > 0 && (
-              // Its own time, in the gutter under the avatar, for whoever wants it.
-              // Hover or keyboard focus reveals it; the run's header already dates it
-              // to the minute for everyone else, phones included.
-              <span
-                aria-hidden
-                className="pointer-events-none absolute top-[5px] -left-[2.375rem] w-8 text-right text-[9.5px] tabular-nums text-ink-3 opacity-0 group-focus-within/line:opacity-100 group-hover/line:opacity-100 motion-safe:transition-opacity"
-              >
-                {clock(m.at)}
-              </span>
-            )}
-            <div className="min-w-0 flex-1 text-[13px]">
+        {messages.map((m, i) => {
+          // Per line rather than per run: one person's run may tag me in its third line
+          // only, and that is the line the notification points at.
+          const forMe = mentionsMe(m, myIdentity);
+          return (
+            <div
+              key={m.id}
+              // The anchor the notification card scrolls to. Read out of the DOM rather
+              // than held as a list of element refs: the row may not exist yet when the
+              // request arrives, and a query answers that honestly.
+              data-chat-message={m.id}
+              className={`group/line relative -mx-1 flex items-start gap-1.5 rounded-md px-1 motion-safe:transition-colors ${
+                i > 0 ? "mt-0.5" : ""
+              } ${
+                flash === m.id
+                  ? "bg-brand-soft/60 ring-1 ring-brand/40"
+                  : forMe
+                    ? "bg-brand/[0.09] shadow-[inset_2px_0_0_var(--color-brand)]"
+                    : ""
+              }`}
+            >
               {i > 0 && (
-                // A continuation line has no visible name. Said for screen readers, so
-                // one arriving live in the polite region is not announced anonymously.
-                <span className="sr-only">
-                  {name}, {clock(m.at)}:{" "}
+                // Its own time, in the gutter under the avatar, for whoever wants it.
+                // Hover or keyboard focus reveals it; the run's header already dates it
+                // to the minute for everyone else, phones included.
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute top-[5px] -left-[2.375rem] w-8 text-right text-[9.5px] tabular-nums text-ink-3 opacity-0 group-focus-within/line:opacity-100 group-hover/line:opacity-100 motion-safe:transition-opacity"
+                >
+                  {clock(m.at)}
                 </span>
               )}
-              <MessageBody message={m} />
+              <div className="min-w-0 flex-1 text-[13px]">
+                {i > 0 && (
+                  // A continuation line has no visible name. Said for screen readers, so
+                  // one arriving live in the polite region is not announced anonymously.
+                  <span className="sr-only">
+                    {name}, {clock(m.at)}:{" "}
+                  </span>
+                )}
+                {forMe && <span className="sr-only">Mentions you. </span>}
+                <MessageBody message={m} nameFor={nameFor} myIdentity={myIdentity} />
+              </div>
+              {/* Always visible rather than hover-revealed: half of this room is on a
+                  phone, which has no hover to reveal it with. */}
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(m)}
+                  aria-label="Delete message"
+                  title="Delete message"
+                  className="mt-[3px] grid size-5 shrink-0 place-items-center rounded text-ink-3 transition-colors hover:bg-live-soft hover:text-live outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                >
+                  <TrashIcon className="size-3.5" />
+                </button>
+              )}
             </div>
-            {/* Always visible rather than hover-revealed: half of this room is on a
-                phone, which has no hover to reveal it with. */}
-            {canDelete && (
-              <button
-                type="button"
-                onClick={() => onDelete(m)}
-                aria-label="Delete message"
-                title="Delete message"
-                className="mt-[3px] grid size-5 shrink-0 place-items-center rounded text-ink-3 transition-colors hover:bg-live-soft hover:text-live outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              >
-                <TrashIcon className="size-3.5" />
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -649,7 +700,15 @@ function MessageGroup({
  * HTML is constructed, so there is no sanitiser to get wrong. See lib/chat-text.ts for
  * why emphasis is not supported and why only http and https become links.
  */
-function MessageBody({ message }: { message: ChatMessage }) {
+function MessageBody({
+  message,
+  nameFor,
+  myIdentity,
+}: {
+  message: ChatMessage;
+  nameFor: (identity: string) => string | undefined;
+  myIdentity: string;
+}) {
   const { joinKey } = useRoomUI();
   // handleChatMedia (api/internal/api/chat.go) needs the same credential as every
   // other room endpoint — a join key, for whoever registered without an account —
@@ -694,24 +753,50 @@ function MessageBody({ message }: { message: ChatMessage }) {
         // wrap-anywhere so a pasted URL cannot widen the panel and push the layout
         // sideways.
         <p className="mt-0.5 leading-relaxed break-words wrap-anywhere text-ink-2">
-          {textRuns(message.text).map((run, i) =>
-            "href" in run ? (
-              <a
-                key={i}
-                href={run.href}
-                target="_blank"
-                // noreferrer as well as noopener: the target should not learn which
-                // session somebody was in from the referrer.
-                rel="noreferrer noopener nofollow"
-                className="text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand"
+          {/* Tags first, then links within the plain runs between them: a name is
+              never a URL, and a URL containing "@" is not a tag. */}
+          {mentionSegments(message.text, message.mentions, nameFor).map((segment, s) =>
+            segment.mention ? (
+              <span
+                key={s}
+                className={`rounded-[4px] font-semibold text-brand ${
+                  segment.mention === myIdentity || segment.mention === MENTION_EVERYONE
+                    ? "bg-brand-soft px-0.5"
+                    : ""
+                }`}
               >
-                {run.text}
-              </a>
+                {segment.text}
+              </span>
             ) : (
-              <span key={i}>{run.text}</span>
+              <TextWithLinks key={s} text={segment.text} />
             ),
           )}
         </p>
+      )}
+    </>
+  );
+}
+
+/** Plain text, with http and https links made clickable. */
+function TextWithLinks({ text }: { text: string }) {
+  return (
+    <>
+      {textRuns(text).map((run, i) =>
+        "href" in run ? (
+          <a
+            key={i}
+            href={run.href}
+            target="_blank"
+            // noreferrer as well as noopener: the target should not learn which
+            // session somebody was in from the referrer.
+            rel="noreferrer noopener nofollow"
+            className="text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand"
+          >
+            {run.text}
+          </a>
+        ) : (
+          <span key={i}>{run.text}</span>
+        ),
       )}
     </>
   );

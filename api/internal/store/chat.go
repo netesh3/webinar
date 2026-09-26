@@ -46,6 +46,8 @@ type ChatEntry struct {
 	Type        types.ChatMessageType
 	Destination types.ChatDestination
 	Content     string
+	// Mentions are identities, already validated by the caller. See 0056_chat_mentions.
+	Mentions []string
 
 	MediaKey    string
 	MediaMime   string
@@ -80,14 +82,16 @@ func (s *Store) AppendChat(ctx context.Context, in ChatEntry) (types.ChatMessage
 		INSERT INTO chat_messages
 			(id, webinar_id, sender_identity, sender_name, sender_role, sender_user_id,
 			 message_type, destination, content,
-			 media_key, media_mime, media_bytes, media_width, media_height)
+			 media_key, media_mime, media_bytes, media_width, media_height, mentions)
 		SELECT $1, w.id, $3, $4, $5, $6::uuid, $7, $8, $9,
-		       nullif($10, ''), nullif($11, ''), nullif($12, 0), nullif($13, 0), nullif($14, 0)
+		       nullif($10, ''), nullif($11, ''), nullif($12, 0), nullif($13, 0), nullif($14, 0),
+		       $15::text[]
 		  FROM webinars w WHERE w.slug = $2
 		ON CONFLICT (id) DO NOTHING`,
 		in.ID, in.Slug, in.SenderID, in.SenderName, string(in.SenderRole), nullUUID(in.UserID),
 		string(in.Type), string(in.Destination.OrDefault()), in.Content,
 		in.MediaKey, in.MediaMime, in.MediaBytes, in.MediaWidth, in.MediaHeight,
+		mentionsOrEmpty(in.Mentions),
 	); err != nil {
 		return types.ChatMessage{}, err
 	}
@@ -294,7 +298,7 @@ const chatSelect = `
 	       coalesce(m.sender_user_id::text, ''), m.message_type, m.destination, m.content,
 	       coalesce(m.media_key, ''), coalesce(m.media_mime, ''),
 	       coalesce(m.media_bytes, 0), coalesce(m.media_width, 0), coalesce(m.media_height, 0),
-	       m.created_at, w.slug
+	       m.created_at, w.slug, m.mentions
 	  FROM chat_messages m JOIN webinars w ON w.id = m.webinar_id`
 
 func scanChat(row scanner) (types.ChatMessage, error) {
@@ -308,9 +312,14 @@ func scanChat(row scanner) (types.ChatMessage, error) {
 		&m.ID, &m.Seq, &m.SenderID, &m.SenderName, &m.SenderRole,
 		&m.UserID, &m.Type, &m.Destination, &m.Message,
 		&mediaKey, &m.MediaMime, &m.MediaBytes, &m.MediaWidth, &m.MediaHeight,
-		&createdAt, &slug,
+		&createdAt, &slug, &m.Mentions,
 	); err != nil {
 		return types.ChatMessage{}, err
+	}
+	// Nil rather than an empty array, so a message that tags nobody serialises exactly
+	// as it did before mentions existed.
+	if len(m.Mentions) == 0 {
+		m.Mentions = nil
 	}
 	m.Timestamp = createdAt.Format(time.RFC3339)
 	// Built here rather than stored, so the route can change without a migration — and
@@ -319,4 +328,12 @@ func scanChat(row scanner) (types.ChatMessage, error) {
 		m.MediaURL = fmt.Sprintf("/api/webinars/%s/chat/media/%s", slug, m.ID)
 	}
 	return m, nil
+}
+
+// mentionsOrEmpty keeps a nil slice from reaching a NOT NULL column as NULL.
+func mentionsOrEmpty(in []string) []string {
+	if in == nil {
+		return []string{}
+	}
+	return in
 }
