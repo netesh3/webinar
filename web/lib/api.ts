@@ -7,6 +7,7 @@ import type {
   AppConfig,
   ApprovalsResponse,
   ChatBacklog,
+  RoomQuestions,
   ChatImageResponse,
   ChatStats,
   CoHostPatch,
@@ -162,6 +163,15 @@ export const api = {
     request<ChatBacklog>(
       `/api/webinars/${seg(slug)}/chat?since=${since}` +
         (joinKey ? `&joinKey=${seg(joinKey)}` : ""),
+      fresh,
+    ),
+
+  /** The room's Q&A as this participant may see it, with their own upvotes — what a
+   *  rejoin or a reconnect reads back. Hidden questions come back to the audience as
+   *  ids only. */
+  roomQuestions: (slug: string, joinKey?: string) =>
+    request<RoomQuestions>(
+      `/api/webinars/${seg(slug)}/questions${joinKey ? `?joinKey=${seg(joinKey)}` : ""}`,
       fresh,
     ),
 

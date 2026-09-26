@@ -1,40 +1,26 @@
 import type { ChatDestination, ChatMessage, Sender } from "./realtime";
 
-/* How the chat panel folds a conversation into runs.
+/* How the chat panel lays a conversation out.
  *
- * Consecutive messages from the same person, to the same audience, a few minutes
- * apart at most, are drawn under one avatar and one name. Audience is part of the
- * key because a panelists-only aside wedged between two public lines must never
- * look like it belongs to them. Pure, so it is tested alongside chat-notify.
+ * Every send is its own message, with its own avatar, name and time — never folded
+ * into the previous one, even from the same person a second later. Folding runs
+ * together made five separate sends read as one message, which is not what the
+ * sender did. Pure, so it is tested alongside chat-notify.
  */
-
-/** A pause longer than this starts a fresh group even from the same person. */
-export const GROUP_GAP_MS = 5 * 60_000;
 
 export type ChatGroup = {
   from: Sender;
   destination: ChatDestination;
-  messages: ChatMessage[];
+  /** Always exactly one message. */
+  messages: [ChatMessage];
 };
 
 export function groupChat(chat: readonly ChatMessage[]): ChatGroup[] {
-  const out: ChatGroup[] = [];
-  for (const message of chat) {
-    const last = out[out.length - 1];
-    const previous = last?.messages[last.messages.length - 1];
-    if (
-      last &&
-      previous &&
-      last.from.identity === message.from.identity &&
-      last.destination === message.destination &&
-      message.at - previous.at <= GROUP_GAP_MS
-    ) {
-      last.messages.push(message);
-    } else {
-      out.push({ from: message.from, destination: message.destination, messages: [message] });
-    }
-  }
-  return out;
+  return chat.map((message) => ({
+    from: message.from,
+    destination: message.destination,
+    messages: [message],
+  }));
 }
 
 /** Who spoke in the last `count` messages, newest first, without you and without

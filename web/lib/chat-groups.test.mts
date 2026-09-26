@@ -1,4 +1,4 @@
-/* Tests for chat avatars (initials, colour) and how the panel groups messages.
+/* Tests for chat avatars (initials, colour) and how the panel lays out messages.
  *
  * Run with `make test-web`.
  *
@@ -8,7 +8,7 @@
  */
 
 import { hueFor, initialsOf } from "./avatar.ts";
-import { GROUP_GAP_MS, groupChat, recentSpeakers } from "./chat-groups.ts";
+import { groupChat, recentSpeakers } from "./chat-groups.ts";
 import type { ChatMessage, Sender } from "./realtime.ts";
 
 let failures = 0;
@@ -60,11 +60,18 @@ function msg(from: Sender, at: number, extra: Partial<ChatMessage> = {}): ChatMe
 }
 
 {
-  const chat = [msg(ana, T0), msg(ana, T0 + 1000), msg(bo, T0 + 2000), msg(ana, T0 + 3000)];
+  const chat = [
+    msg(bo, T0),
+    msg(bo, T0 + 1000),
+    msg(bo, T0 + 2000),
+    msg(bo, T0 + 3000),
+    msg(bo, T0 + 4000),
+    msg(ana, T0 + 5000),
+  ];
   eq(
     groupChat(chat).map((g) => g.messages.map((m) => m.id)),
-    [["m1", "m2"], ["m3"], ["m4"]],
-    "consecutive messages from one person share a group; someone else breaks it",
+    [["m1"], ["m2"], ["m3"], ["m4"], ["m5"], ["m6"]],
+    "five sends in a row from one person stay five separate messages",
   );
 }
 {
@@ -74,17 +81,9 @@ function msg(from: Sender, at: number, extra: Partial<ChatMessage> = {}): ChatMe
     msg(bo, T0 + 2000),
   ];
   eq(
-    groupChat(chat).map((g) => [g.destination, g.messages.length]),
-    [["everyone", 1], ["panelists", 1], ["everyone", 1]],
-    "a panelists-only aside never joins a public run",
-  );
-}
-{
-  const chat = [msg(ana, T0), msg(ana, T0 + GROUP_GAP_MS), msg(ana, T0 + 2 * GROUP_GAP_MS + 1)];
-  eq(
-    groupChat(chat).map((g) => g.messages.length),
-    [2, 1],
-    "a long pause starts a new group",
+    groupChat(chat).map((g) => [g.from.identity, g.destination, g.messages.length]),
+    [["host_bo", "everyone", 1], ["host_bo", "panelists", 1], ["host_bo", "everyone", 1]],
+    "each message carries its own sender and audience",
   );
 }
 eq(groupChat([]), [], "no messages, no groups");

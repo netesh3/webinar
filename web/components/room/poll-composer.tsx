@@ -101,12 +101,16 @@ export function Composer({
               role="radio"
               aria-checked={on}
               onClick={() => set({ quiz })}
-              className={`rounded-md px-2 py-1.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                on ? "bg-surface text-ink shadow-sm" : "text-ink-2 hover:text-ink"
+              // Selection is the brand border + tint; keyboard focus is a separate
+              // offset outline in ink, so the two never read as the same thing.
+              className={`min-w-0 rounded-md border px-2 py-1.5 text-left transition-colors duration-150 motion-reduce:transition-none outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
+                on
+                  ? "border-brand bg-brand-soft"
+                  : "border-transparent text-ink-2 hover:border-line-2 hover:bg-surface hover:text-ink"
               }`}
             >
-              <span className="block text-[12.5px] font-semibold">{label}</span>
-              <span className="block text-[10.5px] text-ink-3">{hint}</span>
+              <span className={`block text-[12.5px] font-semibold ${on ? "text-brand" : ""}`}>{label}</span>
+              <span className={`block text-[10.5px] ${on ? "text-ink-2" : "text-ink-3"}`}>{hint}</span>
             </button>
           );
         })}

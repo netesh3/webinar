@@ -71,9 +71,13 @@ export function useAudiencePolls(
     };
     document.addEventListener("visibilitychange", onVisible);
     room?.on(RoomEvent.Reconnected, request);
+    // The room's own retry ladder rebuilds the connection with connect(), which emits
+    // Connected rather than Reconnected — a nudge sent during that gap is gone too.
+    room?.on(RoomEvent.Connected, request);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       room?.off(RoomEvent.Reconnected, request);
+      room?.off(RoomEvent.Connected, request);
     };
   }, [request, enabled, room]);
 
