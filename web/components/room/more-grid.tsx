@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { ToolId } from "@/lib/tools";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { isPinnable, moreOrder, type ToolId } from "@/lib/tools";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { useCompact } from "@/lib/compact";
 import { badgeText } from "@/lib/mentions";
-import { MoreCircleIcon } from "../icons";
+import { MoreCircleIcon, PlusIcon } from "../icons";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { InviteMenu } from "./invite-panel";
@@ -14,73 +14,97 @@ import { ReactionPicker } from "./reactions";
 import { useToolDrag } from "./tool-drag";
 import { tool } from "./tools";
 
-/* The "More" overflow grid — extras that are not on the standing toolbar.
+/* The "More" menu — every tool that is not on the toolbar right now, in ONE
+ * grid.
  *
- * Zoom meetings: a 3-column card that floats off the ••• at the end of the
- * tool strip, with "Drag to pin or remove from toolbar" and Reset along the
- * bottom. Chat / Q&A / Polls / Participants / Hand / Reactions / Settings sit
- * on that strip on a desktop. On a phone-width room only Chat and Participants
- * stay on the bar, and control-bar.tsx passes the rest in as `panelItems`.
+ * It used to be two or three rows split by dividers, and the split was about
+ * where the code came from, not about anything a host would recognise: Share a
+ * video file and Captions were passed in as ready-made buttons outside the
+ * toolbar system, so they got their own row; the phone's leftover standing
+ * tools got another; the draggable tools a third. Captions and the video file
+ * are now ordinary tools, and everything is shown in lib/tools.ts's
+ * MORE_ORDER.
  *
- * Every cell does double duty: click to open, drag to pin.
+ * Moving tools, three ways, all doing the same thing:
  *
- * Below `md` it is a bottom sheet instead of a card floating off the button —
- * same `compact` boundary and the same shape FloatingWindow already uses for a
- * tool window on a phone (lib/compact.ts), so the room has one mobile-sheet
- * convention rather than two slightly different ones. Dragging to pin still
- * works: touch-and-drag off a bar slot behaves the same either way, it is only
- * this panel's own position and backdrop that change.
+ *   drag      a cell onto the toolbar, or a toolbar button back into this
+ *             panel (tool-drag.tsx — mouse moves 6px, a finger holds 350ms).
+ *   Customize "Customize toolbar" in the footer: every movable cell gets a +,
+ *             every toolbar button a −. The way in for keyboards, screen
+ *             readers and anyone for whom a long-press drag is a guess.
+ *
+ * Nothing that cannot move looks like it can: the standing strip's leftovers
+ * on a phone, and Share, carry no grip and no +.
+ *
+ * On a screen too narrow for any customisable slot (control-bar.tsx's
+ * NARROW_SLOTS) the moving is switched off entirely rather than half-working:
+ * a pin there lands nowhere visible.
+ *
+ * Below `md` it is a bottom sheet instead of a card off the button — the same
+ * `compact` boundary FloatingWindow uses (lib/compact.ts).
  */
+
+/** Everything the menu needs to show and run a tool whose state lives in the
+ *  control bar rather than in the tool layout (Captions, Share a video file). */
+export type ToolAction = {
+  active: boolean;
+  busy: boolean;
+  title: string;
+  onClick: () => void;
+};
+
+type ShareAction = {
+  label: string;
+  icon: React.ReactNode;
+  active: boolean;
+  dimmed: boolean;
+  busy: boolean;
+  onClick: () => void;
+};
+
+/** What an on/off tool says when it is on — words, not an outline, so it can
+ *  never be mistaken for keyboard focus or a selection. */
+const ON_WORD: Partial<Record<ToolId, string>> = {
+  captions: "On",
+  sharefile: "Sharing",
+  hand: "Raised",
+};
 
 export function MoreGrid({
   items,
   panelItems,
   shareAction,
-  shareFileAction,
-  captionsAction,
+  toolActions = {},
+  canCustomize,
+  bumpTarget,
+  editing,
+  onEditingChange,
+  onAdd,
+  onReset,
+  landed,
   onClose,
 }: {
+  /** Movable tools not on the toolbar right now. */
   items: readonly ToolId[];
-  /** Standing-toolbar leftovers on a phone (Q&A, Polls, Hand, …). Unlike
-   *  `items` they are never pinnable — they already have a place on a
-   *  desktop bar. */
+  /** Standing-strip tools a phone has no room for. Shown in the same grid,
+   *  but they do not move — they have a fixed place on a wider screen. */
   panelItems?: readonly ToolId[];
-  /** Share, on the rare phone width where mic+camera both showing leaves no
-   *  room for it on the bar itself (see control-bar.tsx's shareOnBar). Not a
-   *  ToolId — Share has always lived outside that system (its own dimmed/
-   *  busy states, its own click behaviour) — so it's passed in fully formed
-   *  rather than forcing it through a system built for a different kind of
-   *  button. */
-  shareAction?: {
-    label: string;
-    icon: React.ReactNode;
-    active: boolean;
-    dimmed: boolean;
-    busy: boolean;
-    onClick: () => void;
-  };
-  /** "Share a video file" — always tucked in here, never on the bar itself,
-   *  same reasoning as shareAction: not a ToolId, passed in fully formed.
-   *  Rarer than a live share, so it does not need shareAction's `dimmed`
-   *  (browsers that cannot do it at all are simply not offered it — see
-   *  control-bar.tsx's canShareFile() gate). */
-  shareFileAction?: {
-    label: string;
-    icon: React.ReactNode;
-    active: boolean;
-    busy: boolean;
-    onClick: () => void;
-  };
-  /** Live captions — host-only session control, always in More rather than on
-   *  the standing bar (same secondary-action shelf as Share a video file). */
-  captionsAction?: {
-    label: string;
-    icon: React.ReactNode;
-    active: boolean;
-    busy: boolean;
-    title: string;
-    onClick: () => void;
-  };
+  /** Share, on the rare phone width where it does not fit the bar. Not a
+   *  ToolId: it has its own dimmed/busy states and never moves. */
+  shareAction?: ShareAction;
+  /** State and click for the tools the control bar owns. */
+  toolActions?: Partial<Record<ToolId, ToolAction>>;
+  /** False on a screen with no customisable toolbar slots. */
+  canCustomize: boolean;
+  /** What adding one more would push back into More, for the + button's title. */
+  bumpTarget: ToolId | null;
+  editing: boolean;
+  onEditingChange: (editing: boolean) => void;
+  onAdd: (id: ToolId) => void;
+  /** Absent when the toolbar is already the default. */
+  onReset?: () => void;
+  /** A tool that just arrived back here, for the landing animation. */
+  landed?: ToolId | null;
   onClose: () => void;
 }) {
   const { tools, unread, mentions, realtime, stage } = useRoomUI();
@@ -89,28 +113,24 @@ export function MoreGrid({
   const dragging = drag.drag !== null;
   const compact = useCompact();
   const panel = useRef<HTMLDivElement | null>(null);
-  /** The emoji row, revealed in place. Reactions are the one grid item that is
-   *  not a window and not a single action — there are six of them — so it opens
-   *  here rather than in a second popover stacked on this one. */
+  /* Reactions, Layout and Invite open in place, inside this panel, rather
+   * than as a second popover stacked on it. */
   const [showReactions, setShowReactions] = useState(false);
-  /** Layout picker when Layout lives in More (user unpinned it from the bar). */
   const [showLayout, setShowLayout] = useState(false);
-  /** Invite popover, revealed in place — same reasoning as Reactions: it opens
-   *  right here rather than in a second popover stacked on this one. */
   const [showInvite, setShowInvite] = useState(false);
 
-  /** What tapping a tool in this grid actually does — shared by both rows
-   *  (panelItems and items) rather than each carrying its own copy. That
-   *  duplication is exactly how this broke once already: panelItems' own
-   *  inline handler called the generic tools.open(id) for everything,
-   *  which is correct for a real dockable panel (Chat, Q&A, Polls,
-   *  Participants) but wrong for Reactions/Layout/Invite/Raise hand — none
-   *  of those dock, so tools.open() fell through to opening an empty
-   *  floating window for them instead, and tapping Reactions visibly did
-   *  nothing. One function, used everywhere a tool can be tapped from this
-   *  grid, so the two rows can't drift apart like that again. */
+  /** What tapping a tool does — one function for every cell, so rows cannot
+   *  drift apart (panelItems once called tools.open() for Reactions and got
+   *  an empty floating window). */
   const tapTool = useCallback(
     (id: ToolId) => {
+      const action = toolActions[id];
+      if (action) {
+        action.onClick();
+        tools.used(id);
+        onClose();
+        return;
+      }
       if (id === "reactions") {
         setShowReactions((v) => !v);
         setShowLayout(false);
@@ -131,9 +151,6 @@ export function MoreGrid({
         return;
       }
       if (id === "hand") {
-        // A rejection (e.g. the host has raise-hand off) was a silent
-        // unhandled-promise-rejection before this — same fix as
-        // control-bar.tsx's identical call.
         void realtime.toggleHand().catch((err) => {
           notify(
             err instanceof Error ? err.message : "Couldn't raise your hand.",
@@ -146,29 +163,29 @@ export function MoreGrid({
       tools.toggle(id);
       onClose();
     },
-    [tools, realtime, notify, onClose],
+    [toolActions, tools, realtime, notify, onClose],
   );
 
   /* Dismiss on Escape and on a press outside.
    *
    * A press, not a release: a drag that starts on a bar slot lands its release
-   * over the grid, and closing on release would tear the drop target down at the
-   * moment of the drop. Escape is also handled by the drag layer, which takes it
-   * first while a drag is in flight — cancelling the drag rather than closing the
-   * grid is the right response to the first Escape. */
+   * over this panel, and closing on release would remove the drop target at
+   * the moment of the drop. Escape leaves Customize first, then closes; the
+   * drag layer takes it before either while a drag is in flight. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !dragging) onClose();
+      if (e.key !== "Escape" || dragging) return;
+      if (editing) onEditingChange(false);
+      else onClose();
     };
     const onDown = (e: PointerEvent) => {
-      if (panel.current?.contains(e.target as Node)) return;
-      // The More button itself is excluded so its own click can toggle rather
-      // than closing here and immediately reopening.
-      if ((e.target as HTMLElement).closest?.("[data-more-button]")) return;
-      // A press on a bar slot is very likely the start of a drag whose target is
-      // this grid. Closing it here would remove the target before the gesture had
-      // a chance to use it.
-      if ((e.target as HTMLElement).closest?.("[data-tool-slot]")) return;
+      const target = e.target as HTMLElement;
+      if (panel.current?.contains(target)) return;
+      if (target.closest?.("[data-more-button]")) return;
+      // A press on a toolbar button is likely a drag aimed at this panel — or,
+      // in Customize, a tap on its − badge.
+      if (target.closest?.("[data-tool-slot]")) return;
+      if (target.closest?.("[data-toolbar-notice]")) return;
       onClose();
     };
     window.addEventListener("keydown", onKey);
@@ -177,241 +194,230 @@ export function MoreGrid({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onDown);
     };
-  }, [onClose, dragging]);
+  }, [onClose, dragging, editing, onEditingChange]);
+
+  /* Focus: onto the panel itself when the menu opens (Tab then walks the
+   * tools), back to the More button when it closes with focus inside it.
+   * The panel, not the first tool: a focus ring on "Share a video file" the
+   * moment the menu opens reads as that tool being selected — the same
+   * confusion the old Captions outline caused. Layout effect, so the cleanup
+   * runs before the panel leaves the DOM.
+   *
+   * Not when the panel opened itself for a drag off the toolbar: that is not
+   * the user asking for the menu, and moving focus mid-gesture is rude. */
+  const openedForDrag = useRef(drag.drag?.from === "bar");
+  useLayoutEffect(() => {
+    const el = panel.current;
+    if (!openedForDrag.current) el?.focus({ preventScroll: true });
+    return () => {
+      if (el && el.contains(document.activeElement)) {
+        document.querySelector<HTMLElement>("[data-more-button]")?.focus();
+      }
+    };
+  }, []);
 
   const dropping = drag.drag?.over === "grid" && drag.drag.from === "bar";
   const inviting = drag.drag?.from === "bar" && !dropping;
+  const draggingOut = drag.drag?.from === "grid";
+
+  const movable = new Set(canCustomize ? items : []);
+  const entries = moreOrder<string>([
+    ...(shareAction ? ["share"] : []),
+    ...(panelItems ?? []),
+    ...items,
+  ]);
+  const hasMovable = movable.size > 0;
+
+  const hint = dropping
+    ? "Let go to move it to More"
+    : inviting
+      ? "Drop here to move it to More"
+      : draggingOut
+        ? "Drop it on the toolbar below"
+        : editing
+          ? "Tap + to add a tool to your toolbar. Tap − on the toolbar to move one back here."
+          : canCustomize && hasMovable
+            ? "Drag a tool onto the toolbar to keep it handy. Drag it back here to tuck it away."
+            : null;
 
   return (
     <>
-      {/* The dimming backdrop, phone-only. On desktop the card floats off the
-          button with nothing behind it — a full-screen scrim there would dim
-          the stage for a tools popover no bigger than a dropdown. On a phone
-          the sheet fills most of the screen, so it reads as a distinct layer
-          the way it does in every native app. Not itself a click-to-close
-          target: the existing outside-pointerdown listener already covers
-          that (and has to, for the drag-to-pin exclusions above), so this is
-          purely the visual cue. */}
-      {compact && <div aria-hidden className="fixed inset-0 z-40 bg-black/50" />}
+      {/* Phone-only scrim. On desktop the card floats off the button with
+          nothing behind it. Purely visual: the outside-press listener above
+          already closes it. */}
+      {compact && (
+        <div
+          aria-hidden
+          className={`fixed inset-0 z-40 bg-black/50 transition-opacity ${draggingOut ? "opacity-0" : ""}`}
+        />
+      )}
       <div
         ref={(el) => {
           panel.current = el;
           drag.setGrid(el);
         }}
         role="dialog"
+        tabIndex={-1}
         aria-modal={compact || undefined}
         aria-label="More tools"
-        className={
+        aria-describedby={hint ? "more-hint" : undefined}
+        className={`room-dark z-50 bg-surface shadow-2xl outline-none transition-[border-color,box-shadow,opacity,transform] ${
+          // Dragging a tool OUT: the panel steps back so the toolbar below —
+          // the actual target — is what reads as live. A phone sheet covers
+          // the toolbar entirely, so it slides away instead (the drag layer
+          // hit-tests the panel's live rect, so this also uncovers the target).
+          draggingOut
+            ? compact
+              ? "pointer-events-none translate-y-full opacity-0"
+              : "opacity-70"
+            : ""
+        } ${
           compact
-            ? `room-dark fixed inset-x-0 bottom-0 z-50 max-h-[72dvh] overflow-y-auto rounded-t-2xl border-t bg-surface p-2 shadow-2xl transition-colors ${
-                dropping
-                  ? "border-live ring-2 ring-live/40"
-                  : inviting
-                    ? "border-dashed border-live/60"
-                    : "border-line"
-              }`
-            : `room-dark absolute right-0 bottom-full z-50 mb-3 w-[320px] max-w-[calc(100vw-1rem)] rounded-2xl border bg-surface p-2.5 shadow-2xl transition-colors ${
-                dropping
-                  ? "border-live ring-2 ring-live/40"
-                  : // While a bar tool is in flight this grid is a live target, so it
-                    // says so before the pointer arrives rather than only once it is
-                    // over it.
-                    inviting
-                    ? "border-dashed border-live/60"
-                    : "border-line"
-              }`
-        }
-        // Clears the iOS home indicator on a phone, same reasoning as the
-        // control bar itself — the sheet is pinned to the true bottom of the
-        // viewport there, not floating above a button.
+            ? "fixed inset-x-0 bottom-0 max-h-[72dvh] overflow-y-auto rounded-t-2xl border-t p-3"
+            : "absolute right-0 bottom-full mb-3 w-[340px] max-w-[calc(100vw-1rem)] rounded-2xl border p-3"
+        } ${
+          dropping
+            ? "border-brand ring-4 ring-brand/30"
+            : inviting
+              ? "border-dashed border-brand/70"
+              : editing
+                ? "border-brand/50"
+                : "border-line"
+        }`}
         style={
           compact
-            ? { paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }
+            ? { paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }
             : undefined
         }
       >
-        {/* The grab-handle affordance a bottom sheet is recognised by. Purely
-            visual — Escape, the backdrop area, and dragging a bar slot off the
-            grid all already close it without this being interactive. */}
         {compact && (
-          <div className="mb-1 flex justify-center">
+          <div className="-mt-1 mb-2 flex justify-center">
             <span className="h-1 w-9 rounded-full bg-line-2" aria-hidden />
           </div>
         )}
 
-        {(shareAction || shareFileAction || captionsAction) && (
-          <div className="mb-1 grid grid-cols-3 border-b border-line pb-1">
-            {shareAction && (
-              <button
-                type="button"
-                aria-label={shareAction.label}
-                title={shareAction.label}
-                disabled={shareAction.busy}
-                onClick={() => {
-                  shareAction.onClick();
-                  onClose();
-                }}
-                className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 ${
-                  shareAction.active
-                    ? "text-brand"
-                    : shareAction.dimmed
-                      ? "text-ink-3"
-                      : "text-ink-2 hover:text-ink"
-                }`}
-              >
-                {shareAction.icon}
-                <span className="text-[11px] leading-tight font-medium">
-                  {shareAction.label}
-                </span>
-              </button>
-            )}
-            {shareFileAction && (
-              <button
-                type="button"
-                aria-label={shareFileAction.label}
-                title={shareFileAction.label}
-                disabled={shareFileAction.busy}
-                onClick={() => {
-                  shareFileAction.onClick();
-                  onClose();
-                }}
-                className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 ${
-                  shareFileAction.active ? "text-brand" : "text-ink-2 hover:text-ink"
-                }`}
-              >
-                {shareFileAction.icon}
-                <span className="text-[11px] leading-tight font-medium">
-                  {shareFileAction.label}
-                </span>
-              </button>
-            )}
-            {captionsAction && (
-              <button
-                type="button"
-                aria-label={
-                  captionsAction.active
-                    ? "Turn captions off for everyone"
-                    : "Turn captions on for everyone"
-                }
-                aria-pressed={captionsAction.active}
-                title={captionsAction.title}
-                disabled={captionsAction.busy}
-                onClick={() => {
-                  captionsAction.onClick();
-                  onClose();
-                }}
-                className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 ${
-                  captionsAction.active
-                    ? "text-brand ring-2 ring-brand ring-inset"
-                    : "text-ink-2 hover:text-ink"
-                }`}
-              >
-                {captionsAction.icon}
-                <span className="text-[11px] leading-tight font-medium">
-                  {captionsAction.label}
-                </span>
-              </button>
-            )}
-          </div>
-        )}
+        <div className="mb-2 px-1">
+          <h2 className="text-[13px] font-semibold text-ink">
+            {editing ? "Customize toolbar" : "More"}
+          </h2>
+          {hint && (
+            <p
+              id="more-hint"
+              role="status"
+              className={`mt-0.5 text-[11.5px] leading-snug ${
+                dragging && !draggingOut ? "font-medium text-brand" : "text-ink-3"
+              }`}
+            >
+              {hint}
+            </p>
+          )}
+        </div>
 
-        {panelItems && panelItems.length > 0 && (
-          <div className="mb-1 grid grid-cols-3 border-b border-line pb-1">
-            {panelItems.map((id) => {
-              const t = tool(id);
-              const Icon = t.icon;
-              const badge = unread[id];
-              const active =
-                id === "hand"
-                  ? realtime.myHandRaised
-                  : id === "reactions"
-                    ? showReactions
-                    : false;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  aria-label={t.title}
-                  aria-pressed={active}
-                  title={t.title}
-                  onClick={() => tapTool(id)}
-                  className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                    active
-                      ? "text-ink ring-2 ring-brand ring-inset"
-                      : "text-ink-2 hover:bg-surface-2 hover:text-ink"
-                  }`}
-                >
-                  <Icon className="size-5" />
-                  <span className="text-[11px] leading-tight font-medium">{t.label}</span>
-                  {badgeText(badge, id === "chat" ? mentions : 0) && (
-                    <span className="absolute top-1.5 right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
-                      {badgeText(badge, id === "chat" ? mentions : 0)}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {items.length === 0 ? (
+        {entries.length === 0 ? (
           <p className="px-1.5 py-6 text-center text-[12.5px] text-ink-3">
-            Everything is on the bar. Drag an item off it to put it back here.
+            Everything is on your toolbar. Drag a tool back here to tuck it away.
           </p>
         ) : (
-          <div className="grid grid-cols-3">
-            {items.map((id) => {
+          <div
+            role="group"
+            aria-label={editing ? "Tools you can add to the toolbar" : "Tools"}
+            className={`grid grid-cols-3 gap-1 rounded-xl ${
+              inviting || dropping ? "bg-brand/5" : ""
+            }`}
+          >
+            {entries.map((key) => {
+              if (key === "share" && shareAction) {
+                return (
+                  <MoreCell
+                    key="share"
+                    icon={shareAction.icon}
+                    label={shareAction.label}
+                    title={shareAction.label}
+                    busy={shareAction.busy}
+                    dimmed={shareAction.dimmed || editing}
+                    onWord={shareAction.active ? "Sharing" : undefined}
+                    onClick={() => {
+                      if (editing) return;
+                      shareAction.onClick();
+                      onClose();
+                    }}
+                  />
+                );
+              }
+              const id = key as ToolId;
               const t = tool(id);
               const Icon = t.icon;
-              const badge = unread[id];
-              const active =
-                id === "hand"
-                  ? realtime.myHandRaised
-                  : id === "reactions"
-                    ? showReactions
-                    : id === "layout"
-                      ? showLayout
-                      : id === "invite"
-                        ? showInvite
-                        : false;
+              const action = toolActions[id];
+              const canMove = movable.has(id) && isPinnable(id);
+              const on =
+                id === "hand" ? realtime.myHandRaised : (action?.active ?? false);
+              const expanded =
+                id === "reactions"
+                  ? showReactions
+                  : id === "layout"
+                    ? showLayout
+                    : id === "invite"
+                      ? showInvite
+                      : undefined;
+              const name =
+                id === "layout"
+                  ? `Layout · ${LAYOUT_LABEL[stage.mode]}`
+                  : (t.menuLabel ?? t.label);
+              const badge = badgeText(unread[id], id === "chat" ? mentions : 0);
+              const addTitle = bumpTarget
+                ? `Add ${name} to the toolbar (${tool(bumpTarget).label} moves back to More to make room)`
+                : `Add ${name} to the toolbar`;
 
               return (
-                <button
+                <MoreCell
                   key={id}
-                  type="button"
-                  data-tool-cell={id}
-                  aria-label={t.title}
-                  aria-pressed={active}
-                  title={`${t.title} — drag to the bar to pin it`}
-                  {...drag.bind(id, "grid", () => tapTool(id))}
-                  className={`relative flex h-[68px] w-full flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                    active
-                      ? "text-ink ring-2 ring-brand ring-inset"
-                      : "text-ink-2 hover:bg-surface-2 hover:text-ink"
-                  } ${drag.drag?.tool === id ? "opacity-40" : ""}`}
-                >
-                  <Icon className="size-5" />
-                  <span className="text-[11px] leading-tight font-medium">
-                    {id === "layout" ? `Layout · ${LAYOUT_LABEL[stage.mode]}` : t.label}
-                  </span>
-                  {badgeText(badge, id === "chat" ? mentions : 0) && (
-                    <span className="absolute top-1.5 right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
-                      {badgeText(badge, id === "chat" ? mentions : 0)}
-                    </span>
-                  )}
-                </button>
+                  id={id}
+                  icon={<Icon className="size-5" />}
+                  label={name}
+                  title={
+                    editing
+                      ? canMove
+                        ? addTitle
+                        : `${name} always stays in More on this screen`
+                      : canMove
+                        ? `${action?.title ?? t.title} — drag onto the toolbar to keep it handy`
+                        : (action?.title ?? t.title)
+                  }
+                  ariaLabel={editing && canMove ? addTitle : undefined}
+                  pressed={ON_WORD[id] ? on : undefined}
+                  expanded={expanded}
+                  onWord={on ? ON_WORD[id] : undefined}
+                  badge={editing ? null : badge}
+                  mention={id === "chat" && mentions > 0}
+                  busy={action?.busy ?? false}
+                  dimmed={editing && !canMove}
+                  movable={canMove}
+                  editing={editing}
+                  lifted={drag.drag?.tool === id}
+                  landed={landed === id}
+                  dragProps={
+                    canMove && !editing ? drag.bind(id, "grid", () => tapTool(id)) : undefined
+                  }
+                  onClick={() => {
+                    if (editing) {
+                      if (canMove) onAdd(id);
+                      return;
+                    }
+                    tapTool(id);
+                  }}
+                />
               );
             })}
           </div>
         )}
 
-        {showLayout && (
+        {showLayout && !editing && (
           <div className="relative mt-2 border-t border-line pt-2">
             <LayoutMenu onClose={() => setShowLayout(false)} embedded />
           </div>
         )}
 
-        {showReactions && (
+        {showReactions && !editing && (
           <div className="mt-2 border-t border-line pt-2">
             <ReactionPicker
               onPick={(emoji) => {
@@ -424,7 +430,7 @@ export function MoreGrid({
           </div>
         )}
 
-        {showInvite && (
+        {showInvite && !editing && (
           <div className="relative mt-2 border-t border-line pt-2">
             <InviteMenu
               embedded
@@ -437,29 +443,182 @@ export function MoreGrid({
           </div>
         )}
 
-        {dragging ? (
-          <p className="mt-1 border-t border-line px-2 pt-2 text-[11px] text-live">
-            {dropping ? "Release to remove it from the bar" : "Drop here to remove from the toolbar"}
-          </p>
-        ) : (
-          <div className="mt-1 flex items-center justify-between gap-3 border-t border-line px-2 pt-2">
-            <p className="text-[11px] leading-snug text-ink-3">
-              Drag to pin or remove from toolbar
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                tools.reset();
-                onClose();
-              }}
-              className="shrink-0 rounded-md text-[12px] font-medium text-brand transition-colors hover:text-brand/80 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-            >
-              Reset
-            </button>
+        {(canCustomize || onReset) && !dragging && (
+          <div className="mt-2 flex items-center justify-between gap-3 border-t border-line px-1 pt-2.5">
+            {!canCustomize ? (
+              <p className="text-[11px] leading-snug text-ink-3">
+                Your own toolbar buttons show on a wider screen.
+              </p>
+            ) : editing ? (
+              <button
+                type="button"
+                onClick={() => onEditingChange(false)}
+                className="rounded-lg bg-brand px-3 py-1.5 text-[12px] font-semibold text-stage outline-none transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand/50"
+              >
+                Done
+              </button>
+            ) : (
+              <button
+                type="button"
+                aria-pressed={false}
+                onClick={() => {
+                  setShowReactions(false);
+                  setShowLayout(false);
+                  setShowInvite(false);
+                  onEditingChange(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[12px] font-medium text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
+              >
+                <PlusIcon className="size-3.5" />
+                Customize toolbar
+              </button>
+            )}
+            {onReset && (
+              <button
+                type="button"
+                onClick={onReset}
+                title="Put the toolbar back the way it started. You can undo this."
+                className="shrink-0 rounded-md px-1 text-[12px] font-medium text-ink-3 underline-offset-2 outline-none transition-colors hover:text-ink hover:underline focus-visible:ring-2 focus-visible:ring-brand/40"
+              >
+                Reset
+              </button>
+            )}
           </div>
         )}
       </div>
     </>
+  );
+}
+
+/** One tool in the grid. A wrapper div rather than one button so a future
+ *  per-cell control would not have to nest a button inside a button. */
+function MoreCell({
+  id,
+  icon,
+  label,
+  title,
+  ariaLabel,
+  pressed,
+  expanded,
+  onWord,
+  badge = null,
+  mention = false,
+  busy = false,
+  dimmed = false,
+  movable = false,
+  editing = false,
+  lifted = false,
+  landed = false,
+  dragProps,
+  onClick,
+}: {
+  id?: ToolId;
+  icon: React.ReactNode;
+  label: string;
+  title: string;
+  ariaLabel?: string;
+  /** aria-pressed for on/off tools only. */
+  pressed?: boolean;
+  /** aria-expanded for tools that open something in this panel. */
+  expanded?: boolean;
+  /** "On" / "Raised" / "Sharing" while the tool is on. */
+  onWord?: string;
+  badge?: string | null;
+  mention?: boolean;
+  busy?: boolean;
+  dimmed?: boolean;
+  movable?: boolean;
+  editing?: boolean;
+  lifted?: boolean;
+  landed?: boolean;
+  dragProps?: ReturnType<ReturnType<typeof useToolDrag>["bind"]>;
+  onClick: () => void;
+}) {
+  const on = Boolean(onWord);
+  return (
+    <div
+      className={`group relative ${landed ? "motion-safe:animate-[tool-land_420ms_cubic-bezier(0.2,0.9,0.3,1.2)]" : ""}`}
+    >
+      <button
+        type="button"
+        data-more-cell={id ?? "share"}
+        data-tool-cell={id}
+        title={title}
+        aria-label={ariaLabel}
+        aria-pressed={pressed}
+        aria-expanded={expanded}
+        aria-disabled={dimmed || undefined}
+        disabled={busy}
+        {...dragProps}
+        onClick={dragProps ? dragProps.onClick : onClick}
+        className={`relative flex h-[76px] w-full flex-col items-center justify-center gap-1.5 rounded-xl px-1 outline-none transition-[background-color,color,transform,opacity] duration-150 focus-visible:ring-2 focus-visible:ring-brand/60 disabled:opacity-50 ${
+          dimmed
+            ? "cursor-default text-ink-3 opacity-45"
+            : editing
+              ? "border border-dashed border-brand/40 text-ink hover:border-brand hover:bg-brand/10"
+              : expanded
+                ? "bg-surface-2 text-ink"
+                : "text-ink-2 hover:bg-surface-2 hover:text-ink"
+        } ${
+          movable && !editing
+            ? "cursor-grab active:cursor-grabbing motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-[0_6px_16px_-8px_rgba(0,0,0,0.6)]"
+            : ""
+        } ${lifted ? "opacity-30" : ""}`}
+      >
+        <span
+          className={`grid size-8 place-items-center rounded-full transition-colors ${
+            on ? "bg-ok text-stage" : ""
+          }`}
+        >
+          {icon}
+        </span>
+        <span className="line-clamp-2 text-center text-[11px] leading-tight font-medium">
+          {label}
+        </span>
+
+        {/* The drag affordance: grip dots, on hover and keyboard focus only,
+            so a resting grid stays calm. */}
+        {movable && !editing && (
+          <GripIcon className="absolute top-1.5 left-1.5 size-3 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" />
+        )}
+
+        {on && !editing && (
+          <span className="absolute top-1 right-1 rounded-full bg-ok-soft px-1.5 py-px text-[9.5px] font-semibold tracking-wide text-ok uppercase">
+            {onWord}
+          </span>
+        )}
+
+        {!on && badge && (
+          <span
+            className={`absolute top-1.5 right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-stage ${
+              mention ? "ring-2 ring-white/80" : ""
+            }`}
+          >
+            {mention && <span className="sr-only">You were mentioned: </span>}
+            {badge}
+          </span>
+        )}
+
+        {editing && movable && (
+          <span
+            aria-hidden
+            className="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-brand text-stage shadow-md"
+          >
+            <PlusIcon className="size-3" />
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function GripIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 12 12" className={className} fill="currentColor" aria-hidden>
+      {[2.5, 6, 9.5].map((y) =>
+        [4, 8].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r={1} />),
+      )}
+    </svg>
   );
 }
 

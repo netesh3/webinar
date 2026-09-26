@@ -1033,6 +1033,8 @@ function ConnectedRoom({
       layout: 0,
       settings: 0,
       host: 0,
+      captions: 0,
+      sharefile: 0,
     }),
     [chatVisible, qaVisible, chatCount, questionCount, seen, realtime.chat, realtime.questions, mountedAt, me.identity],
   );

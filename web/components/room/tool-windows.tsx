@@ -43,6 +43,8 @@ function Content({ id }: { id: ToolId }) {
     case "hand":
     case "layout":
     case "invite":
+    case "captions":
+    case "sharefile":
       return null;
   }
 }

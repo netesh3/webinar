@@ -37,7 +37,11 @@ export type ToolId =
   | "hand"
   | "layout"
   | "settings"
-  | "host";
+  | "host"
+  /** Live captions for everyone — a host-only on/off session control. */
+  | "captions"
+  /** "Share a video file" — opens the file-share picker. */
+  | "sharefile";
 
 export const TOOL_IDS: readonly ToolId[] = [
   "chat",
@@ -50,6 +54,8 @@ export const TOOL_IDS: readonly ToolId[] = [
   "layout",
   "settings",
   "host",
+  "captions",
+  "sharefile",
 ];
 
 /** Engagement tools that open as an overlay panel (Zoom's Chat / Q&A / Participants).
@@ -229,6 +235,8 @@ const DEFAULT_SIZE: Record<ToolId, { w: number; h: number }> = {
   reactions: { w: 320, h: 200 },
   hand: { w: 320, h: 200 },
   invite: { w: 320, h: 200 },
+  captions: { w: 320, h: 200 },
+  sharefile: { w: 320, h: 200 },
 };
 
 /** Keeps a rect inside the usable area, shrinking it if the area is smaller than
@@ -343,17 +351,23 @@ export function pinTool(
 
 /** Takes a tool off the bar and returns it to the grid.
  *
- *  Appended rather than restored to its old position: there is no old position
- *  to restore — the grid order is itself user-editable — and putting it at the
- *  end is where the user will look for the thing they just moved. */
+ *  Appended to `overflow` rather than restored to its old position — the grid
+ *  is displayed in MORE_ORDER regardless (see gridItems), so `overflow` only
+ *  records membership.
+ *
+ *  Also forgets it from `recent`. A tool that surfaced into a vacant slot from
+ *  recent use was never pinned, so dragging it back to More used to do nothing
+ *  at all — the slot filled itself again from `recent` on the next render. */
 export function unpinTool(layout: ToolLayout, tool: ToolId): ToolLayout {
-  if (!layout.pinned.includes(tool)) return layout;
+  if (!layout.pinned.includes(tool) && !layout.recent.includes(tool)) return layout;
   return {
     ...layout,
     pinned: layout.pinned.filter((id) => id !== tool),
-    overflow: layout.overflow.includes(tool)
-      ? layout.overflow
-      : [...layout.overflow, tool],
+    recent: layout.recent.filter((id) => id !== tool),
+    overflow:
+      layout.overflow.includes(tool) || isBarExcluded(tool)
+        ? layout.overflow
+        : [...layout.overflow, tool],
   };
 }
 
@@ -631,7 +645,11 @@ export function barSlots(
  *  Computed from the bar rather than from `overflow` alone, so a tool surfaced
  *  into a vacant slot is not offered in both places at once. Centre-cluster
  *  tools are omitted — they already sit in the middle of the bar (or, on a
- *  phone, in More's extra row via morePanelTools). */
+ *  phone, in More via morePanelTools).
+ *
+ *  In MORE_ORDER, not in the order things happened to be unpinned: a tool
+ *  dragged back into More returns to the same spot every time, so a host who
+ *  learned where Captions lives finds it there again. */
 export function gridItems(
   layout: ToolLayout,
   slots: readonly BarSlot[],
@@ -654,7 +672,261 @@ export function gridItems(
     seen.add(id);
     out.push(id);
   }
-  return out;
+  return moreOrder(out);
+}
+
+// ------------------------------------------------------------ customising
+
+/** The one order everything in the More menu is shown in, whichever row it
+ *  used to come from: presenting first (share, a video file, captions), then
+ *  the conversation tools a phone moves in here, then people, then the
+ *  host's own controls and device settings last.
+ *
+ *  "share" is not a ToolId — it is the screen-share button, which only moves
+ *  into More on the narrowest phones — so the list is strings. */
+export const MORE_ORDER: readonly string[] = [
+  "share",
+  "sharefile",
+  "captions",
+  "chat",
+  "qa",
+  "polls",
+  "participants",
+  "hand",
+  "reactions",
+  "invite",
+  "layout",
+  "host",
+  "settings",
+];
+
+/** Stable sort into MORE_ORDER. Anything unknown keeps its relative order at
+ *  the end rather than being dropped. */
+export function moreOrder<T extends string>(ids: readonly T[]): T[] {
+  const rank = (id: string) => {
+    const i = MORE_ORDER.indexOf(id);
+    return i === -1 ? MORE_ORDER.length : i;
+  };
+  return ids
+    .map((id, i) => ({ id, i }))
+    .sort((a, b) => rank(a.id) - rank(b.id) || a.i - b.i)
+    .map((e) => e.id);
+}
+
+/** Whether a tool can be moved between the toolbar and More at all. The
+ *  standing strip (Chat, Q&A, …) cannot: it already has a fixed place. */
+export function isPinnable(id: ToolId): boolean {
+  return !isBarExcluded(id);
+}
+
+/** What a toolbar edit did, so the room can say it in words and offer undo. */
+export type ToolbarChange =
+  | { kind: "added"; tool: ToolId; bumped: ToolId[] }
+  | { kind: "kept"; tool: ToolId }
+  | { kind: "moved"; tool: ToolId }
+  | { kind: "removed"; tool: ToolId }
+  | { kind: "reset" };
+
+/** What undo puts back — exactly the persisted part of the layout. */
+export type ToolbarSnapshot = Pick<ToolLayout, "pinned" | "overflow" | "recent">;
+
+export function snapshotToolbar(layout: ToolLayout): ToolbarSnapshot {
+  return {
+    pinned: [...layout.pinned],
+    overflow: [...layout.overflow],
+    recent: [...layout.recent],
+  };
+}
+
+export function restoreToolbar(
+  layout: ToolLayout,
+  snap: ToolbarSnapshot,
+): ToolLayout {
+  return {
+    ...layout,
+    pinned: [...snap.pinned],
+    overflow: [...snap.overflow],
+    recent: [...snap.recent],
+  };
+}
+
+/** Which pinned tools the bar can show right now. */
+function visiblePins(
+  layout: ToolLayout,
+  capacity: number,
+  available: readonly ToolId[],
+): ToolId[] {
+  return barSlots(layout, capacity, available)
+    .filter((s) => s.pinned)
+    .map((s) => s.tool);
+}
+
+/** The tool that adding one more would push back into More, or null when there
+ *  is room. The last pin goes, because it is the one furthest from the
+ *  controls somebody reaches for first. */
+export function wouldBump(
+  layout: ToolLayout,
+  capacity: number,
+  available: readonly ToolId[],
+): ToolId | null {
+  const pins = visiblePins(layout, capacity, available);
+  return capacity > 0 && pins.length >= capacity ? pins[pins.length - 1] : null;
+}
+
+/** Converts a position in the pinned list into the index pinTool expects. The
+ *  two differ by one when a pinned tool moves to the right of where it
+ *  started: pinTool takes it out first, so every later position shifts. */
+export function pinIndexForDrop(
+  pinned: readonly ToolId[],
+  tool: ToolId,
+  position: number,
+): number {
+  const from = pinned.indexOf(tool);
+  const at = Math.max(0, position);
+  return from !== -1 && from < at ? at - 1 : at;
+}
+
+/* Puts a tool on the bar — from a drop, or from an "Add to toolbar" button —
+ * without ever breaking the bar's capacity.
+ *
+ * pinTool alone does not know the capacity, so dropping onto a full bar used
+ * to push the last pin past the edge, where it stayed "pinned" but invisible
+ * and showed up in More looking unpinned. Here the tool that no longer fits is
+ * genuinely moved back to More, and reported, so the room can say so.
+ *
+ * `slotIndex` is the insertion position among the pinned buttons the bar is
+ * showing (what the drag layer measures and the marker is drawn at); omitted
+ * means "at the end". Refuses — same layout, no change — when this screen has
+ * no customisable slots, or the tool is not one that can move.
+ */
+export function placeOnBar(
+  layout: ToolLayout,
+  tool: ToolId,
+  capacity: number,
+  available: readonly ToolId[],
+  slotIndex?: number,
+): { layout: ToolLayout; change: ToolbarChange | null } {
+  if (capacity <= 0 || !isPinnable(tool) || !available.includes(tool)) {
+    return { layout, change: null };
+  }
+  const pinsBefore = visiblePins(layout, capacity, available);
+  const wasPinned = pinsBefore.includes(tool);
+  const wasRecent =
+    !wasPinned &&
+    barSlots(layout, capacity, available).some((s) => s.tool === tool);
+
+  // Slot space -> position in layout.pinned, which may also hold tools this
+  // person cannot use right now, or pins a narrower screen has no room for.
+  const slot = Math.min(
+    Math.max(slotIndex ?? pinsBefore.length, 0),
+    pinsBefore.length,
+  );
+  const position =
+    slot < pinsBefore.length
+      ? layout.pinned.indexOf(pinsBefore[slot])
+      : pinsBefore.length > 0
+        ? layout.pinned.indexOf(pinsBefore[pinsBefore.length - 1]) + 1
+        : 0;
+
+  let next = pinTool(layout, tool, pinIndexForDrop(layout.pinned, tool, position));
+  const bumped: ToolId[] = [];
+
+  if (!wasPinned) {
+    // The new tool must be visible — pinning it out of sight is the bug this
+    // exists to prevent.
+    while (!visiblePins(next, capacity, available).includes(tool)) {
+      const shown = visiblePins(next, capacity, available);
+      const drop = shown[shown.length - 1];
+      if (!drop) break;
+      next = unpinTool(next, drop);
+      bumped.push(drop);
+    }
+    // And anything it pushed off the end goes back to More properly, instead
+    // of lingering as a pin nobody can see.
+    const after = new Set(visiblePins(next, capacity, available));
+    for (const id of pinsBefore) {
+      if (!after.has(id) && !bumped.includes(id)) {
+        next = unpinTool(next, id);
+        bumped.push(id);
+      }
+    }
+  }
+
+  if (wasPinned) {
+    const same = next.pinned.join() === layout.pinned.join();
+    return {
+      layout: same ? layout : next,
+      change: same ? null : { kind: "moved", tool },
+    };
+  }
+  return {
+    layout: next,
+    change: wasRecent ? { kind: "kept", tool } : { kind: "added", tool, bumped },
+  };
+}
+
+/** Moves a tool from the bar back into More — pinned or merely surfaced from
+ *  recent use. No change when it was not on the bar to begin with. */
+export function removeFromBar(
+  layout: ToolLayout,
+  tool: ToolId,
+): { layout: ToolLayout; change: ToolbarChange | null } {
+  const next = unpinTool(layout, tool);
+  return next === layout
+    ? { layout, change: null }
+    : { layout: next, change: { kind: "removed", tool } };
+}
+
+/** The default toolbar, keeping whatever windows are open — a reset is about
+ *  the buttons, and closing somebody's chat along with it would be a surprise. */
+export function resetToolbar(layout: ToolLayout): ToolLayout {
+  const fresh = emptyLayout();
+  return { ...fresh, windows: layout.windows, nextZ: layout.nextZ };
+}
+
+/** Narrows the room-level list to what this browser, right now, can actually
+ *  do — for the tools whose availability depends on things the provider does
+ *  not know (Share a video file needs the share permission, a browser that can
+ *  capture a video element, and a real room rather than the preview). A gate
+ *  that is `false` hides the tool; anything unlisted passes through. Kept apart
+ *  from `availableTools` so a pin survives a permission flicker instead of
+ *  being reconciled away. */
+export function usableTools(
+  available: readonly ToolId[],
+  gates: Partial<Record<ToolId, boolean>>,
+): ToolId[] {
+  return available.filter((id) => gates[id] !== false);
+}
+
+/** Whether the toolbar differs from what a first-time user gets — the only
+ *  time "Reset" has anything to do. */
+export function isCustomised(layout: ToolLayout): boolean {
+  return layout.pinned.length > 0 || layout.recent.length > 0;
+}
+
+/** The sentence the room shows after an edit, in the host's terms rather than
+ *  the code's: "toolbar" and "More", never "pin". Null for a plain reorder,
+ *  which the landing animation already explains. */
+export function describeChange(
+  change: ToolbarChange,
+  label: (id: ToolId) => string,
+): string | null {
+  switch (change.kind) {
+    case "added":
+      return change.bumped.length > 0
+        ? `${label(change.tool)} is on your toolbar. ${change.bumped
+            .map(label)
+            .join(", ")} moved to More to make room.`
+        : `${label(change.tool)} is on your toolbar now.`;
+    case "kept":
+      return `${label(change.tool)} will stay on your toolbar.`;
+    case "removed":
+      return `${label(change.tool)} moved to More.`;
+    case "reset":
+      return "Toolbar is back to how it started.";
+    case "moved":
+      return null;
+  }
 }
 
 // --------------------------------------------------------------- persistence
@@ -766,6 +1038,19 @@ export type ToolApi = {
   maximize: (tool: ToolId) => void;
   pin: (tool: ToolId, index: number) => void;
   unpin: (tool: ToolId) => void;
+  /** Capacity-aware add or reorder — what both a drop on the bar and an
+   *  "Add to toolbar" button use. `slotIndex` is among the pinned buttons on
+   *  screen; omitted means at the end. Returns what happened, for the notice. */
+  place: (
+    tool: ToolId,
+    capacity: number,
+    slotIndex?: number,
+  ) => ToolbarChange | null;
+  /** Back to More, pinned or only surfaced from recent use. */
+  remove: (tool: ToolId) => ToolbarChange | null;
+  /** The persisted part of the layout as it is right now, for undo. */
+  snapshot: () => ToolbarSnapshot;
+  restore: (snap: ToolbarSnapshot) => void;
   /** Records a use for a tool that does not open a window, so reactions and
    *  raise-hand can surface in a vacant slot like everything else. */
   used: (tool: ToolId) => void;
@@ -923,12 +1208,23 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
       maximize: (tool) => setLayout((c) => toggleMaximized(c, tool, bounds())),
       pin: (tool, index) => setLayout((c) => pinTool(c, tool, index)),
       unpin: (tool) => setLayout((c) => unpinTool(c, tool)),
+      // Computed from the reconciled layout this render saw, not inside a
+      // setState updater, so the change can be returned for the notice. Edits
+      // are one user gesture apart, so there is no queue of them to race.
+      place: (tool, capacity, slotIndex) => {
+        const result = placeOnBar(layout, tool, capacity, available, slotIndex);
+        if (result.change) setLayout(result.layout);
+        return result.change;
+      },
+      remove: (tool) => {
+        const result = removeFromBar(layout, tool);
+        if (result.change) setLayout(result.layout);
+        return result.change;
+      },
+      snapshot: () => snapshotToolbar(layout),
+      restore: (snap) => setLayout((c) => restoreToolbar(c, snap)),
       used: (tool) => setLayout((c) => noteUse(c, tool)),
-      reset: () =>
-        setLayout((c) => {
-          const fresh = emptyLayout();
-          return { ...fresh, windows: c.windows, nextZ: c.nextZ };
-        }),
+      reset: () => setLayout((c) => resetToolbar(c)),
       setStage,
     }),
     [layout, panelTab, bounds, setLayout, available],

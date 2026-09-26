@@ -6,6 +6,7 @@ import { TOOL_IDS } from "@/lib/tools";
 import {
   ChatIcon,
   HandIcon,
+  PlayIcon,
   PollIcon,
   QuestionIcon,
   SettingsIcon,
@@ -39,6 +40,9 @@ export type Tool = {
   kind: ToolKind;
   /** On the bar and in the grid. Short: it sits under a 20px icon. */
   label: string;
+  /** In the More menu, where a cell has room for a few more words than a
+   *  toolbar button does. Falls back to `label`. */
+  menuLabel?: string;
   /** In the window's title bar and as the accessible name, where there is room
    *  to be unambiguous. */
   title: string;
@@ -139,7 +143,38 @@ const TOOLS: Record<ToolId, Tool> = {
     icon: SlidersIcon,
     keepMounted: false,
   },
+  captions: {
+    id: "captions",
+    // An on/off switch for the whole room, not a window.
+    kind: "action",
+    label: "Captions",
+    title: "Live captions for everyone",
+    icon: CaptionsIcon,
+    keepMounted: false,
+  },
+  sharefile: {
+    id: "sharefile",
+    // Opens the share picker's own dialog rather than a tool window.
+    kind: "action",
+    label: "Video file",
+    menuLabel: "Share a video file",
+    title: "Share a video file",
+    icon: PlayIcon,
+    keepMounted: false,
+  },
 };
+
+/** "CC" as a glyph, sized like the other 20px icons. */
+function CaptionsIcon({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`grid place-items-center text-[11px] leading-none font-semibold ${className ?? ""}`}
+    >
+      CC
+    </span>
+  );
+}
 
 export function tool(id: ToolId): Tool {
   return TOOLS[id];
@@ -197,6 +232,14 @@ export function availableTools(input: {
   // A host raising their own hand is asking themselves for permission.
   if (input.raiseHandEnabled && !input.isHost) allowed.add("hand");
   if (input.isHost) allowed.add("host");
+  // Captions is the host's switch for the whole room.
+  if (input.isHost) allowed.add("captions");
+  /* Share a video file is offered to everyone here and narrowed in the control
+   * bar (usableTools), because what it needs — the share permission, a browser
+   * that can capture a video element, a real room — is not known at this level,
+   * and the permission arrives after the join. Gating it here would reconcile a
+   * panelist's pin away in the moment before their permission lands. */
+  allowed.add("sharefile");
 
   return TOOL_IDS.filter((id) => allowed.has(id));
 }
