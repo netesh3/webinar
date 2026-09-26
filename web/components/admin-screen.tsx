@@ -397,8 +397,6 @@ function AdminAccounts() {
         )}
       </Card>
 
-      <AdminWebinars />
-
       <Card className="p-4">
         <SectionTitle>Administrators</SectionTitle>
         <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
