@@ -4,11 +4,9 @@ import { Track, type LocalVideoTrack } from "livekit-client";
 import { useLocalParticipant } from "@livekit/components-react";
 import { useEffect, type ReactNode } from "react";
 import {
-  applyMatting,
   retryBackground,
   useBackgroundsSupported,
   useBackgroundStatus,
-  useHdPossible,
   useVirtualBackground,
   useVirtualBackgroundsEnabled,
   VIRTUAL_BACKGROUNDS,
@@ -51,7 +49,6 @@ export function VirtualBackground() {
   const { prefs, updatePrefs } = useRoomUI();
   const { notify } = useToast();
   const track = useCameraTrack();
-  useMattingChoice(prefs.backgroundHd, prefs.presenterOnly);
 
   const { error } = useVirtualBackground(
     track,
@@ -123,12 +120,6 @@ export function BackgroundPicker() {
 
   return (
     <section className="sm:max-w-[22rem]">
-      <BackgroundQualityControls
-        hd={prefs.backgroundHd}
-        presenterOnly={prefs.presenterOnly}
-        onChange={updatePrefs}
-      />
-
       <BackgroundTiles
         heading="Background"
         choice={prefs.background}
@@ -150,93 +141,6 @@ export function BackgroundPicker() {
         publish a stuttering picture.
       </p>
     </section>
-  );
-}
-
-/** Keeps the running background in step with the HD / "only me" choices. Call it
- *  wherever a background is applied, so a change takes effect with no settings open. */
-export function useMattingChoice(hd: boolean, presenterOnly: boolean): void {
-  useEffect(() => {
-    applyMatting({ hd, presenterOnly });
-  }, [hd, presenterOnly]);
-}
-
-/**
- * Our two background choices: how the edge is cut (HD or Standard), and whether anybody
- * other than the presenter stays in the picture. Both apply from the next frame — nothing
- * restarts. Persisted as `backgroundHd` and `presenterOnly` in media preferences.
- */
-export function BackgroundQualityControls({
-  hd,
-  presenterOnly,
-  onChange,
-}: {
-  hd: boolean;
-  presenterOnly: boolean;
-  onChange: (next: { backgroundHd?: boolean; presenterOnly?: boolean }) => void;
-}) {
-  const enabled = useVirtualBackgroundsEnabled();
-  const gpu = useHdPossible();
-  if (!enabled) return null;
-
-  const options: { id: "hd" | "standard"; label: string }[] = [
-    { id: "hd", label: "HD" },
-    { id: "standard", label: "Standard" },
-  ];
-  const current = hd ? "hd" : "standard";
-
-  return (
-    <div className="mb-3">
-      <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-        Edges
-      </h3>
-      <div
-        role="group"
-        aria-label="Background edges"
-        className="flex rounded-lg border border-line bg-surface-2 p-0.5"
-      >
-        {options.map((opt) => {
-          const active = current === opt.id;
-          return (
-            <button
-              key={opt.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => onChange({ backgroundHd: opt.id === "hd" })}
-              className={`flex-1 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-brand/50 ${
-                active
-                  ? "bg-surface text-ink shadow-sm"
-                  : "text-ink-3 hover:text-ink-2"
-              }`}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-      <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-3">
-        {!hd
-          ? "Works on any device and is lighter on it."
-          : gpu
-            ? "Sharper hair and shoulders, using your graphics card. Uses Standard if it can't keep up."
-            : "This browser has no WebGPU, so Standard is used. Chrome or Edge can run HD."}
-      </p>
-
-      <label className="mt-2.5 flex cursor-pointer items-start gap-2.5">
-        <input
-          type="checkbox"
-          checked={presenterOnly}
-          onChange={(e) => onChange({ presenterOnly: e.target.checked })}
-          className="mt-0.5 size-3.5 accent-brand"
-        />
-        <span className="text-[12px] leading-snug text-ink-2">
-          Only me
-          <span className="block text-[11.5px] text-ink-3">
-            Anyone behind you is hidden with the room.
-          </span>
-        </span>
-      </label>
-    </div>
   );
 }
 

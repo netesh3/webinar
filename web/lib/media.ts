@@ -255,10 +255,6 @@ export type MediaPreferences = DeviceChoices & {
    *  LiveKit's built-in BackgroundProcessor ("livekit"). Persisted so A/B comparison
    *  survives a reload. See lib/backgrounds.ts. */
   backgroundEngine: BackgroundEngine;
-  /** HD edges: MODNet on WebGPU where it can run, else Standard (MediaPipe). */
-  backgroundHd: boolean;
-  /** Only the presenter stays in the picture; anybody behind them goes with the room. */
-  presenterOnly: boolean;
   /** How much to lift the shadows on the camera, 0..LOW_LIGHT_MAX. Remembered for the
    *  same reason again, and more strongly: a room's lighting is a property of the room,
    *  so somebody who needed 40% last Thursday needs it again this Thursday. */
@@ -278,9 +274,6 @@ export const DEFAULT_PREFERENCES: MediaPreferences = {
   background: { mode: "none" },
   // SoftSegmenter remains the default; LiveKit is opt-in for A/B comparison.
   backgroundEngine: "enhanced",
-  // Both on: they are what a background is for, and each falls back on its own.
-  backgroundHd: true,
-  presenterOnly: true,
   /* Off by default too, and for a reason that survives the cost argument — the lift
    * costs no download and no segmentation, so it is nearly free. But a webcam in a
    * well-lit room does not need it, and applying it unasked would brighten every
@@ -428,8 +421,6 @@ function readPreferences(): MediaPreferences {
        * the UI to explain why. */
       background: asBackgroundChoice(parsed.background),
       backgroundEngine: asBackgroundEngine(parsed.backgroundEngine),
-      backgroundHd: typeof parsed.backgroundHd === "boolean" ? parsed.backgroundHd : true,
-      presenterOnly: typeof parsed.presenterOnly === "boolean" ? parsed.presenterOnly : true,
       /* And the lift needs it for a sharper version of the same reason: this value is
        * the gamma exponent the shader divides by. A negative one out of hand-edited
        * storage inverts the picture and a huge one flattens it to white, either of which

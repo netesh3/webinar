@@ -1858,20 +1858,8 @@ const LOCK_IDLE_EVERY = 6;
 const PRESENTER_LOCK = process.env.NEXT_PUBLIC_VB_PRESENTER_LOCK !== "0";
 const MODNET = process.env.NEXT_PUBLIC_VB_MODNET !== "0";
 
-/* The presenter's own choices, from the background settings: HD edges (MODNet where it can
- * run) and "only me" (the presenter lock). Page-wide rather than per processor — there is
- * one camera — and read on every frame, so a change applies on the next one with nothing
- * torn down. See setMatting. */
-export type MattingChoice = { hd: boolean; presenterOnly: boolean };
-let matting: MattingChoice = { hd: true, presenterOnly: true };
-
-/** Applies to every running SoftSegmenter from its next frame. */
-export function setMatting(next: MattingChoice): void {
-  matting = { ...next };
-}
-
-const wantLock = () => PRESENTER_LOCK && matting.presenterOnly;
-const wantModnet = () => MODNET && matting.hd;
+const wantLock = () => PRESENTER_LOCK;
+const wantModnet = () => MODNET;
 
 /** MediaPipe's confidence: regions start at half (its low end is noisy). */
 const LOCK_REGION_MEDIAPIPE = 0.5;
