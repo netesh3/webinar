@@ -27,6 +27,26 @@ import (
 type Delivery struct {
 	Messages []Inbound
 	Statuses []Status
+	// Echoes are messages the host typed in the WhatsApp Business app on their phone,
+	// for a number on Coexistence (the smb_message_echoes field).
+	Echoes []Echo
+}
+
+/* Echo is one message the business sent from the WhatsApp Business app.
+ *
+ * Only arrives for a number onboarded with Coexistence, where the phone app and the
+ * Cloud API share the number. Without it a reply typed on the phone would never reach
+ * the inbox, and the conversation would look unanswered here while it was answered
+ * there.
+ */
+type Echo struct {
+	PhoneNumberID string
+	// To is the customer's number, digits as Meta writes it.
+	To    string
+	WAMID string
+	Kind  string
+	Body  string
+	At    time.Time
 }
 
 // Inbound is one message a person sent to a host's WhatsApp number.
@@ -100,7 +120,9 @@ type webhookEnvelope struct {
 					} `json:"profile"`
 				} `json:"contacts"`
 				Messages []webhookMessage `json:"messages"`
-				Statuses []struct {
+				// smb_message_echoes: the same message shape plus `to`.
+				MessageEchoes []webhookEcho `json:"message_echoes"`
+				Statuses      []struct {
 					ID          string         `json:"id"`
 					Status      string         `json:"status"`
 					Timestamp   string         `json:"timestamp"`
@@ -152,6 +174,11 @@ type webhookMessage struct {
 	} `json:"document"`
 }
 
+type webhookEcho struct {
+	webhookMessage
+	To string `json:"to"`
+}
+
 type webhookError struct {
 	Code    int    `json:"code"`
 	Title   string `json:"title"`
@@ -192,6 +219,17 @@ func ParseWebhook(raw []byte) (Delivery, error) {
 					Body:          body,
 					ReplyID:       readReplyID(m),
 					At:            unixSeconds(m.Timestamp),
+				})
+			}
+			for _, e := range v.MessageEchoes {
+				kind, body := readMessageBody(e.webhookMessage)
+				out.Echoes = append(out.Echoes, Echo{
+					PhoneNumberID: v.Metadata.PhoneNumberID,
+					To:            strings.TrimSpace(e.To),
+					WAMID:         strings.TrimSpace(e.ID),
+					Kind:          kind,
+					Body:          body,
+					At:            unixSeconds(e.Timestamp),
 				})
 			}
 			for _, st := range v.Statuses {

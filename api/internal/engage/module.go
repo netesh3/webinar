@@ -27,6 +27,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/httpx"
+	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
 	"github.com/netkumar/webcast/api/types"
@@ -47,6 +48,8 @@ type Module struct {
 	 * credentials, while the token that actually sends belongs to each host's own WABA and
 	 * is read from their user row at send time. */
 	whatsapp *wa.Client
+	// mail sends the coach's reply digest. Nil until UseMail; the digest is skipped.
+	mail notify.Transport
 }
 
 func New(cfg config.Config, st *store.Store, log *slog.Logger) *Module {
@@ -118,6 +121,16 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Get("/crm/reminders", s.handleCRMReminders)
 	host.Put("/crm/reminders", s.handleSetCRMReminders)
 	host.Get("/crm/audience", s.handleCRMAudience)
+	host.Post("/crm/audience", s.handleCRMAudience)
+
+	// Engage v1: Hosting's People and Messages tabs, a webinar's Messages tab, the bell.
+	host.Get("/crm/people", s.handleCRMPeople)
+	host.Get("/crm/people/ids", s.handleCRMPeopleIDs)
+	host.Get("/crm/inbox", s.handleCRMInbox)
+	host.Put("/crm/contacts/{id}/done", s.handleCRMInboxDone)
+	host.Get("/crm/replies", s.handleCRMReplies)
+	host.Get("/crm/webinars/{slug}/messages", s.handleCRMWebinarMessages)
+	host.Post("/crm/test-send", s.handleCRMTestSend)
 	host.Get("/crm/broadcasts", s.handleCRMBroadcasts)
 	host.Post("/crm/broadcasts", s.handleCreateCRMBroadcast)
 	host.Get("/crm/broadcasts/{id}", s.handleCRMBroadcast)
@@ -174,6 +187,7 @@ func (s *Module) OnRegistered(ctx context.Context, wb types.Webinar, reg types.R
 	s.enrollDripsOnRegistration(ctx, wb, contact)
 	// Sent now rather than on the next tick: a confirmation half a minute late reads as unsure.
 	s.flushWhatsAppOutbox(ctx)
+	s.sendReplyDigests(ctx)
 }
 
 /* OnRegistrationsDecided is the WhatsApp side of an approval batch. A confirmation queued
@@ -186,6 +200,7 @@ func (s *Module) OnRegistrationsDecided(ctx context.Context, slug string, declin
 		s.log.Warn("crm: could not skip whatsapp for declined", "slug", slug, "error", err)
 	}
 	s.flushWhatsAppOutbox(ctx)
+	s.sendReplyDigests(ctx)
 }
 
 /* OnRescheduled applies a saved webinar's start time and reminder times to the WhatsApp
@@ -271,4 +286,5 @@ func (s *Module) Tick(ctx context.Context) {
 	s.AdvanceDrips(ctx)
 	s.AdvanceBots(ctx)
 	s.flushWhatsAppOutbox(ctx)
+	s.sendReplyDigests(ctx)
 }

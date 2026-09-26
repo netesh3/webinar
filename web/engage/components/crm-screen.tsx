@@ -944,7 +944,7 @@ const REMINDER_KINDS: {
  * has approved, so a name this application invented would be a rejection rather
  * than a message — a kind with nothing chosen is simply not sent.
  */
-function RemindersSettings({
+export function RemindersSettings({
   templates,
   templatesError,
   syncing,
@@ -1309,7 +1309,7 @@ function ConsentBadge({ contact: c }: { contact: CRMContact }) {
 
 // ------------------------------------------------------------------- thread
 
-function Thread({
+export function Thread({
   contactId,
   fallback,
   tick,

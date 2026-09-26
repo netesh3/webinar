@@ -54,13 +54,18 @@ import (
  * this file would reject.
  */
 var mergeFields = []types.CRMMergeField{
-	{Token: "name", Label: "Contact's name", Example: "Thandi"},
+	{Token: "name", Label: "Contact's name", Example: "Thandi Nkosi"},
+	{Token: "first_name", Label: "First name", Example: "Thandi"},
 	{Token: "topic", Label: "Webinar title", Example: "Scaling Postgres"},
 	{Token: "when", Label: "When it starts", Example: "Tue 14 Oct, 14:00"},
 	{Token: "host", Label: "Your name", Example: "Acme Coaching"},
 	{
 		Token: "starts_in", Label: "How soon it starts", Example: "in 1 hour",
 		OnlyKind: types.NotifyWhatsAppReminder,
+	},
+	{
+		Token: "watched", Label: "Minutes watched", Example: "58 minutes",
+		OnlyKind: types.NotifyWhatsAppBroadcast,
 	},
 	{
 		Token: "replay", Label: "Link to the recording",
@@ -176,7 +181,7 @@ func (s *Module) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
 			}
 			if only := mergeFieldOnlyKind(token); only != "" && only != kind {
 				httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_merge_field",
-					"The "+token+" field only has a value on the replay message, so it cannot fill in this one.")
+					"The "+token+" field has no value on this message, so it cannot fill it in.")
 				return
 			}
 		}
@@ -344,6 +349,12 @@ func mergeValue(token string, contact types.CRMContact, wb types.Webinar, hostNa
 			// registrant who gave a number and no name.
 			value = "there"
 		}
+	case "first_name":
+		if f := strings.Fields(contact.Name); len(f) > 0 {
+			value = f[0]
+		} else {
+			value = "there"
+		}
 	case "topic":
 		value = wb.Topic
 	case "when":
@@ -451,12 +462,14 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 		_ = s.store.MarkDelivered(ctx, m.ID, "sent", "")
 
 		if _, err := s.store.AppendMessage(ctx, m.HostID, m.ContactID, crmstore.MessageInput{
-			Direction:    "out",
-			Status:       "sent",
-			WAMID:        wamid,
-			Body:         wa.Render(tmpl.Body, m.Params),
-			TemplateName: tmpl.Name,
-			BroadcastID:  m.BroadcastID,
+			Direction:      "out",
+			Status:         "sent",
+			WAMID:          wamid,
+			Body:           wa.Render(tmpl.Body, m.Params),
+			TemplateName:   tmpl.Name,
+			BroadcastID:    m.BroadcastID,
+			NotificationID: m.ID,
+			WebinarID:      m.WebinarSlug,
 		}); err != nil {
 			s.log.Error("whatsapp outbox: sent but not recorded", "error", err,
 				"host", m.HostID, "contact", m.ContactID, "wamid", wamid)

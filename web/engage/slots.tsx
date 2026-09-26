@@ -20,11 +20,13 @@ import {
 } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
 
-/** The CRM's home, for links from webinar screens. */
+/** WhatsApp setup and the automations (bots, sequences) — not in the nav; reached
+ *  from Account settings and from a webinar's Messages tab. */
 export const ENGAGE_HOME = "/host/crm";
 
-/** The top-nav entry for the CRM, for an account that may host. */
-export const engageNavItem = { href: ENGAGE_HOME, label: "Contacts" } as const;
+/** People and Messages are tabs on the Hosting page, beside Upcoming and Past. */
+export const PEOPLE_HREF = "/host?tab=people";
+export const MESSAGES_HREF = "/host?tab=messages";
 
 /* The schedule form's WhatsApp reminders switch.
  *
@@ -59,14 +61,8 @@ export function WhatsAppRemindersToggle({
           <>
             Sent from {account?.whatsapp?.displayPhone || "your number"} to
             registrants who tick the WhatsApp box, and billed to your Meta account.
-            Pick the template for each message under{" "}
-            <Link
-              href={`${ENGAGE_HOME}?view=setup`}
-              className="font-medium text-brand hover:underline"
-            >
-              Contacts
-            </Link>
-            .
+            Pick the template for each message on this webinar&apos;s{" "}
+            <span className="font-medium text-ink">Messages</span> tab.
           </>
         ) : (
           <>
@@ -167,8 +163,12 @@ export function WhatsAppAccountRow() {
  * tags and notes work with no number at all. */
 export function RosterContactsLink({ slug }: { slug: string }) {
   return (
-    <ButtonLink href={`${ENGAGE_HOME}?webinar=${slug}`} size="sm" variant="secondary">
-      View in CRM
+    <ButtonLink
+      href={`${PEOPLE_HREF}&webinar=${encodeURIComponent(slug)}`}
+      size="sm"
+      variant="secondary"
+    >
+      Open in People
     </ButtonLink>
   );
 }
@@ -186,7 +186,7 @@ export function RosterWhatsAppHeaders() {
   return (
     <>
       <th className="py-2 pr-3 font-medium">WhatsApp</th>
-      <th className="py-2 pr-3 font-medium">Replied</th>
+      <th className="py-2 pr-3 font-medium">Last message</th>
     </>
   );
 }
@@ -197,13 +197,20 @@ export function RosterWhatsAppCells({ row }: { row: RegistrantRow }) {
       <td className="py-2.5 pr-3">
         <WhatsAppStatusBadge status={row.whatsappStatus} />
       </td>
-      <td className="py-2.5 pr-3 text-ink-2">
-        {/* A date, not a tick: "who has written in" is nearly always asked as "how
-            long ago", and a host deciding whether to chase somebody needs that half. */}
-        {row.lastInboundAt ? (
-          <span className="text-ok">
-            ✓ {formatRelative(row.lastInboundAt, new Date())}
-          </span>
+      <td className="max-w-56 py-2.5 pr-3 text-ink-2">
+        {/* The newest message either way: a reply reads "Replied: …" in green, one of
+            ours reads as its delivery state, which is what a host checks after sending. */}
+        {row.lastMessage ? (
+          <div className="min-w-0">
+            <div className={`truncate ${row.lastMessage.direction === "in" ? "text-ok" : ""}`}>
+              {row.lastMessage.direction === "in" ? "Replied: " : ""}
+              {row.lastMessage.body || row.lastMessage.templateName || "—"}
+            </div>
+            <div className="text-[11px] text-ink-3">
+              {row.lastMessage.direction === "out" && `${row.lastMessage.status} · `}
+              {formatRelative(row.lastMessage.createdAt, new Date())}
+            </div>
+          </div>
         ) : (
           <span className="text-ink-3">—</span>
         )}

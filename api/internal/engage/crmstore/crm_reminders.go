@@ -154,6 +154,8 @@ type WhatsAppOutbound struct {
 	// conversation row so delivered and read — which arrive by webhook, hours later —
 	// can be counted against the broadcast that caused them.
 	BroadcastID string
+	// WebinarSlug is the webinar this message is about, when there is one.
+	WebinarSlug string
 
 	Attempts int
 }
@@ -192,7 +194,10 @@ func (s *Store) PendingWhatsApp(ctx context.Context, limit int) ([]WhatsAppOutbo
 		       u.whatsapp_access_token, u.whatsapp_phone_number_id,
 		       c.id::text, c.phone,
 		       n.template_name, n.template_language, n.template_params,
-		       COALESCE(n.broadcast_id::text,''), n.attempts
+		       COALESCE(n.broadcast_id::text,''), n.attempts,
+		       COALESCE((SELECT w.slug FROM webinars w
+		                  WHERE w.id = COALESCE(n.webinar_id,
+		                        (SELECT b.webinar_id FROM crm_broadcasts b WHERE b.id = n.broadcast_id))), '')
 		  FROM notifications n
 		  JOIN crm_contacts c ON c.id = n.contact_id
 		  JOIN users u        ON u.id = c.host_id
@@ -238,7 +243,7 @@ func (s *Store) PendingWhatsApp(ctx context.Context, limit int) ([]WhatsAppOutbo
 		var m WhatsAppOutbound
 		if err := rows.Scan(&m.ID, &m.Kind, &m.HostID, &m.Token, &m.PhoneNumberID,
 			&m.ContactID, &m.Phone, &m.TemplateName, &m.TemplateLanguage,
-			&m.Params, &m.BroadcastID, &m.Attempts); err != nil {
+			&m.Params, &m.BroadcastID, &m.Attempts, &m.WebinarSlug); err != nil {
 			return nil, err
 		}
 		if m.Params == nil {

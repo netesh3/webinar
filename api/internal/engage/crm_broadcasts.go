@@ -49,20 +49,55 @@ import (
  */
 const maxBroadcastRecipients = 5000
 
+// maxPickedContacts bounds a hand-picked list: a list longer than a page of ticks
+// is a segment and should be sent as one.
+const maxPickedContacts = 2000
+
+/* audienceFromRequest reads an audience from a broadcast request, trimmed. */
+func audienceFromRequest(body types.CRMBroadcastRequest) crmstore.Audience {
+	ids := make([]string, 0, len(body.ContactIDs))
+	seen := map[string]bool{}
+	for _, id := range body.ContactIDs {
+		id = strings.TrimSpace(id)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return crmstore.Audience{
+		Kind:        strings.TrimSpace(body.Audience),
+		WebinarSlug: strings.TrimSpace(body.WebinarID),
+		TagID:       strings.TrimSpace(body.TagID),
+		Segment:     body.Segment,
+		ContactIDs:  ids,
+	}
+}
+
 // handleCRMAudience answers "how many people would this reach", before anybody
-// commits to reaching them.
+// commits to reaching them. GET for the simple audiences; POST with a broadcast body
+// for segments and hand-picked lists, which do not fit a query string.
 func (s *Module) handleCRMAudience(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
 
-	audience := strings.TrimSpace(r.URL.Query().Get("audience"))
-	slug := strings.TrimSpace(r.URL.Query().Get("webinarId"))
-	// tagId, spelled the way webinarId beside it is and the way the request body spells
-	// it — one name for one thing, since the picker posts whichever it previewed.
-	tagID := strings.TrimSpace(r.URL.Query().Get("tagId"))
-	if !s.audienceAllowed(w, r, user, audience, slug, tagID) {
+	var body types.CRMBroadcastRequest
+	if r.Method == http.MethodPost {
+		if err := httpx.DecodeJSON(w, r, &body); err != nil {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+			return
+		}
+	} else {
+		q := r.URL.Query()
+		body.Audience = q.Get("audience")
+		body.WebinarID = q.Get("webinarId")
+		// tagId, spelled the way webinarId beside it is and the way the request body spells
+		// it — one name for one thing, since the picker posts whichever it previewed.
+		body.TagID = q.Get("tagId")
+	}
+	a := audienceFromRequest(body)
+	if !s.audienceAllowed(w, r, user, a) {
 		return
 	}
-	counts, err := s.store.AudienceCounts(r.Context(), user.ID, audience, slug, tagID)
+	counts, err := s.store.AudienceCounts(r.Context(), user.ID, a)
 	if err != nil {
 		s.fail(w, r, "crm audience", err)
 		return
@@ -77,8 +112,8 @@ func (s *Module) handleCRMAudience(w http.ResponseWriter, r *http.Request) {
  * because "which webinar" is the one part of a broadcast that names somebody else's
  * row — and a topic and start time are exactly what a slug guesser would be after.
  */
-func (s *Module) audienceAllowed(w http.ResponseWriter, r *http.Request, user store.User, audience, slug, tagID string) bool {
-	switch audience {
+func (s *Module) audienceAllowed(w http.ResponseWriter, r *http.Request, user store.User, a crmstore.Audience) bool {
+	switch a.Kind {
 	case types.AudienceOptedIn, types.AudienceWebinar:
 	case types.AudienceTag:
 		// The audience the tags feature exists for. Gated, because a host without it has
@@ -87,7 +122,7 @@ func (s *Module) audienceAllowed(w http.ResponseWriter, r *http.Request, user st
 		if !s.featureAllowed(w, user, types.FeatureCRMTags) {
 			return false
 		}
-		if tagID == "" {
+		if a.TagID == "" {
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_tag",
 				"Pick the tag whose contacts should get this.")
 			return false
@@ -95,23 +130,90 @@ func (s *Module) audienceAllowed(w http.ResponseWriter, r *http.Request, user st
 		// Checked here rather than left to the audience query, which would simply find
 		// nobody: "that tag is not one of yours" and "nobody has that tag" are different
 		// answers and the host can only act on one of them.
-		if !s.crmTagAllowed(w, r, user.ID, tagID) {
+		if !s.crmTagAllowed(w, r, user.ID, a.TagID) {
 			return false
+		}
+	case types.AudienceSegment:
+		if a.Segment == nil {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_segment",
+				"Say which of this webinar's people should get this.")
+			return false
+		}
+		g := *a.Segment
+		switch g.Attendance {
+		case "", types.SegmentJoined, types.SegmentNoShow:
+		default:
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_segment",
+				"Attendance is joined, no_show, or left out.")
+			return false
+		}
+		if g.MinWatchMin < 0 || g.MaxWatchMin < 0 || (g.MaxWatchMin > 0 && g.MaxWatchMin <= g.MinWatchMin) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_segment",
+				"The watch-time range is empty — the upper bound has to be above the lower one.")
+			return false
+		}
+		if g.Attendance == types.SegmentNoShow && (g.MinWatchMin > 0 || g.MaxWatchMin > 0) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_segment",
+				"Somebody who didn't join has no watch time to filter on.")
+			return false
+		}
+		if a.WebinarSlug == "" {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_webinar",
+				"Pick the webinar whose people should get this.")
+			return false
+		}
+	case types.AudienceContacts:
+		if len(a.ContactIDs) == 0 {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_contacts",
+				"Tick the people who should get this.")
+			return false
+		}
+		if len(a.ContactIDs) > maxPickedContacts {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_too_many_contacts",
+				"That is over "+strconv.Itoa(maxPickedContacts)+" people. Send to a filter instead.")
+			return false
+		}
+		for _, id := range a.ContactIDs {
+			if !looksLikeUUID(id) {
+				httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_contacts",
+					"One of those people could not be found.")
+				return false
+			}
 		}
 	default:
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_audience",
-			"Send to everyone who opted in, to one webinar's registrants, or to one tag.")
+			"Send to everyone who opted in, to one webinar's people, to one tag, or to people you picked.")
 		return false
 	}
-	if audience == types.AudienceWebinar && slug == "" {
+	if a.Kind == types.AudienceWebinar && a.WebinarSlug == "" {
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_webinar",
 			"Pick the webinar whose registrants should get this.")
 		return false
 	}
-	if slug == "" {
+	if a.WebinarSlug == "" {
 		return true
 	}
-	return s.crmWebinarAllowed(w, r, user.ID, slug)
+	return s.crmWebinarAllowed(w, r, user.ID, a.WebinarSlug)
+}
+
+// looksLikeUUID keeps a malformed id from reaching a ::uuid cast, which would be a 500.
+func looksLikeUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // handleCRMBroadcasts lists the host's broadcasts, newest first, with their stats.
@@ -174,10 +276,9 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	audience := strings.TrimSpace(body.Audience)
-	slug := strings.TrimSpace(body.WebinarID)
-	tagID := strings.TrimSpace(body.TagID)
-	if !s.audienceAllowed(w, r, user, audience, slug, tagID) {
+	a := audienceFromRequest(body)
+	slug := a.WebinarSlug
+	if !s.audienceAllowed(w, r, user, a) {
 		return
 	}
 
@@ -240,7 +341,7 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	contacts, err := s.store.AudienceContacts(r.Context(), user.ID, audience, slug, tagID, maxBroadcastRecipients)
+	contacts, err := s.store.AudienceContacts(r.Context(), user.ID, a, maxBroadcastRecipients)
 	if errors.Is(err, store.ErrConflict) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_audience_too_large",
 			"That audience is over "+strconv.Itoa(maxBroadcastRecipients)+
@@ -260,11 +361,20 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Minutes watched, for the `watched` merge field: only read when a value uses it.
+	var watched map[string]int
+	if slug != "" && usesField(body.Params, "watched") {
+		watched, err = s.store.ContactWatchMinutes(r.Context(), user.ID, slug)
+		if err != nil {
+			s.fail(w, r, "crm broadcast: watch time", err)
+			return
+		}
+	}
 	to := make([]crmstore.BroadcastRecipient, 0, len(contacts))
 	for _, c := range contacts {
 		to = append(to, crmstore.BroadcastRecipient{
 			ContactID: c.ID,
-			Params:    resolveBroadcastParams(body.Params, c, wb, user.Name),
+			Params:    resolveBroadcastParams(body.Params, c, wb, user.Name, watched[c.ID]),
 		})
 	}
 
@@ -279,9 +389,10 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		TemplateName:     tmpl.Name,
 		TemplateLanguage: tmpl.Language,
 		Params:           body.Params,
-		Audience:         audience,
+		Audience:         a.Kind,
 		WebinarSlug:      slug,
-		TagID:            tagID,
+		TagID:            a.TagID,
+		Segment:          segmentToStore(a),
 		ScheduledAt:      scheduled,
 	}, to)
 	if err != nil {
@@ -295,7 +406,7 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.log.Info("whatsapp broadcast queued", "host", user.ID, "broadcast", id,
-		"template", tmpl.Name, "audience", audience, "recipients", len(to),
+		"template", tmpl.Name, "audience", a.Kind, "recipients", len(to),
 		"due", scheduled.Format(time.RFC3339))
 	httpx.JSON(w, http.StatusCreated, created)
 }
@@ -328,6 +439,13 @@ func paramsProblem(params []types.CRMParam, hasWebinar bool, what string) (code,
 		}
 		switch mergeFieldOnlyKind(token) {
 		case "":
+		case types.NotifyWhatsAppBroadcast:
+			// `watched`: a broadcast's own field. A drip step is a broadcast too as far
+			// as values go, but has no single webinar session to measure.
+			if what != "broadcast" {
+				return "crm_bad_merge_field",
+					"Value {{" + at + "}} is " + token + ", which only has a value on a message sent after a webinar."
+			}
 		case types.NotifyWhatsAppReplay:
 			return "crm_bad_merge_field",
 				"Value {{" + at + "}} is " + token + ", which only has a value on the replay " +
@@ -337,7 +455,7 @@ func paramsProblem(params []types.CRMParam, hasWebinar bool, what string) (code,
 				"Value {{" + at + "}} is " + token + ", which only has a value on a timed " +
 					"reminder — a " + what + " is not sent a set time before a webinar."
 		}
-		if (token == "topic" || token == "when") && !hasWebinar {
+		if (token == "topic" || token == "when" || token == "watched") && !hasWebinar {
 			return "crm_no_webinar",
 				"Value {{" + at + "}} is " + token + ", so this " + what +
 					" has to say which webinar it is about."
@@ -363,10 +481,14 @@ func (s *Module) paramsAllowed(w http.ResponseWriter, params []types.CRMParam, s
  * scheduling a broadcast about it has changed the webinar, not the thing four
  * thousand people are about to read.
  */
-func resolveBroadcastParams(params []types.CRMParam, contact types.CRMContact, wb types.Webinar, hostName string) []string {
+func resolveBroadcastParams(params []types.CRMParam, contact types.CRMContact, wb types.Webinar, hostName string, watchedMin int) []string {
 	out := make([]string, 0, len(params))
 	for _, p := range params {
 		if token := strings.TrimSpace(p.Field); token != "" {
+			if token == "watched" {
+				out = append(out, watchedText(watchedMin))
+				continue
+			}
 			out = append(out, mergeValue(token, contact, wb, hostName, "", 0))
 			continue
 		}
@@ -375,6 +497,32 @@ func resolveBroadcastParams(params []types.CRMParam, contact types.CRMContact, w
 		out = append(out, strings.Join(strings.Fields(p.Text), " "))
 	}
 	return out
+}
+
+// segmentToStore is the rule to keep on the broadcast: only a segment audience has one.
+func segmentToStore(a crmstore.Audience) *types.CRMSegment {
+	if a.Kind != types.AudienceSegment {
+		return nil
+	}
+	return a.Segment
+}
+
+// usesField reports whether any {{n}} is filled with the merge field token.
+func usesField(params []types.CRMParam, token string) bool {
+	for _, p := range params {
+		if strings.TrimSpace(p.Field) == token {
+			return true
+		}
+	}
+	return false
+}
+
+// watchedText is the `watched` merge value: "58 minutes", "1 minute", "0 minutes".
+func watchedText(min int) string {
+	if min == 1 {
+		return "1 minute"
+	}
+	return strconv.Itoa(min) + " minutes"
 }
 
 /* handleCancelCRMBroadcast stops whatever has not gone out.

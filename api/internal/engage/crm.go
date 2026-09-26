@@ -146,6 +146,11 @@ func (s *Module) handleCRMThread(w http.ResponseWriter, r *http.Request) {
 		// Never nil on the wire, whether the feature is on or off.
 		Notes: []types.CRMNote{},
 	}
+	if meta, err := s.store.ThreadMeta(r.Context(), user.ID, contact.ID); err != nil {
+		s.log.Warn("crm thread: meta", "error", err, "host", user.ID)
+	} else {
+		res.Meta = meta
+	}
 	/* Tags and notes are read here rather than fetched separately by the screen that
 	 * shows them, because they are read WITH a conversation every time: a host opening a
 	 * thread wants the chips and the notes pane already there. Both are logged and
@@ -418,8 +423,9 @@ func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		wamid    string
-		recorded = crmstore.MessageInput{Direction: "out", Status: "sent"}
+		wamid string
+		// Manual: the host wrote this one, so it answers whatever they were asked.
+		recorded = crmstore.MessageInput{Direction: "out", Status: "sent", Manual: true}
 	)
 	if text != "" {
 		if len(text) > whatsappTextMax {

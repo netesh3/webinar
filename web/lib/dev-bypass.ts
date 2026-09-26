@@ -255,6 +255,8 @@ export const DEV_BYPASS_REGISTRANTS: RegistrantRow[] = [
     state: "pending",
     createdAt: daysFromNow(-1),
     hasAccount: true,
+    joined: true,
+    watchMin: 42,
   },
   {
     id: "reg-2",
@@ -265,6 +267,8 @@ export const DEV_BYPASS_REGISTRANTS: RegistrantRow[] = [
     state: "pending",
     createdAt: daysFromNow(-1),
     hasAccount: false,
+    joined: true,
+    watchMin: 8,
   },
   {
     id: "reg-3",
@@ -274,6 +278,8 @@ export const DEV_BYPASS_REGISTRANTS: RegistrantRow[] = [
     state: "approved",
     createdAt: daysFromNow(-3),
     hasAccount: true,
+    joined: true,
+    watchMin: 55,
   },
   {
     id: "reg-4",
@@ -282,6 +288,8 @@ export const DEV_BYPASS_REGISTRANTS: RegistrantRow[] = [
     state: "approved",
     createdAt: daysFromNow(-2),
     hasAccount: false,
+    joined: false,
+    watchMin: 0,
     isGuest: true,
   },
 ];

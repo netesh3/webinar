@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"github.com/netkumar/webcast/api/internal/notify"
 
 	"github.com/go-chi/chi/v5"
 
@@ -67,6 +68,9 @@ func (NoEngage) Tick(context.Context) {}
 
 /* UseEngage plugs the CRM in. Called once, by main (and the test harness), before Routes.
  * A nil argument means NoEngage. */
+// Mail is the server's email transport, for a module that emails hosts itself.
+func (s *Server) Mail() notify.Transport { return s.mail }
+
 func (s *Server) UseEngage(e Engage) {
 	if e == nil {
 		e = NoEngage{}

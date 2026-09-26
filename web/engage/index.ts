@@ -9,7 +9,8 @@
  */
 export {
   ENGAGE_HOME,
-  engageNavItem,
+  MESSAGES_HREF,
+  PEOPLE_HREF,
   RosterContactsLink,
   RosterWhatsAppCells,
   RosterWhatsAppHeaders,
@@ -19,3 +20,9 @@ export {
   WhatsAppRemindersToggle,
 } from "./slots";
 export { CRMScreen } from "./components/crm-screen";
+export { useRosterMessaging } from "./components/roster";
+export { watchBuckets, type WatchBucket } from "./buckets";
+export { HostPeopleTab } from "./components/people-tab";
+export { HostMessagesTab } from "./components/inbox-tab";
+export { WebinarMessagesTab } from "./components/webinar-messages";
+export { ReplyAlerts, useReplies } from "./components/replies";

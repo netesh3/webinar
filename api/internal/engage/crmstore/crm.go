@@ -515,7 +515,8 @@ func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows 
 	 * stopgap.
 	 */
 	found, err := s.pool.Query(ctx, `
-		SELECT r.id::text, wa.status, wa.last_inbound_at
+		SELECT r.id::text, wa.status, wa.last_inbound_at, wa.contact_id,
+		       m.direction, m.body, m.template_name, m.status, m.created_at
 		  FROM registrations r
 		  JOIN webinars w ON w.id = r.webinar_id
 		  LEFT JOIN LATERAL (
@@ -525,7 +526,8 @@ func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows 
 		                WHEN `+optedOutNow+`  THEN '`+types.CRMStatusOptedOut+`'
 		                ELSE '`+types.CRMStatusNoOptIn+`'
 		              END AS status,
-		              `+lastInboundAt+` AS last_inbound_at
+		              `+lastInboundAt+` AS last_inbound_at,
+		              c.id::text AS contact_id
 		         FROM crm_contacts c
 		        WHERE c.host_id = w.host_id AND `+contactMatchesRegistration+`
 		        -- NULLS LAST is not decoration: registration_id is NULL on every
@@ -536,6 +538,13 @@ func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows 
 		                 c.created_at, c.id
 		        LIMIT 1
 		  ) wa ON true
+		  LEFT JOIN LATERAL (
+		       SELECT direction, body, template_name, status, created_at
+		         FROM crm_messages
+		        WHERE contact_id = wa.contact_id::uuid
+		        ORDER BY created_at DESC, id DESC
+		        LIMIT 1
+		  ) m ON true
 		 WHERE w.slug = $1 AND r.id = ANY($2::uuid[])`, slug, ids)
 	if err != nil {
 		return err
@@ -545,6 +554,8 @@ func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows 
 	type waState struct {
 		status    string
 		inboundAt *time.Time
+		contactID string
+		last      *types.CRMMessage
 	}
 	byID := make(map[string]waState, len(rows))
 	for found.Next() {
@@ -552,15 +563,35 @@ func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows 
 			id        string
 			status    *string
 			inboundAt *time.Time
+			contactID *string
+			mDir      *string
+			mBody     *string
+			mTemplate *string
+			mStatus   *string
+			mAt       *time.Time
 		)
-		if err := found.Scan(&id, &status, &inboundAt); err != nil {
+		if err := found.Scan(&id, &status, &inboundAt, &contactID,
+			&mDir, &mBody, &mTemplate, &mStatus, &mAt); err != nil {
 			return err
 		}
 		// Both null for a registrant with no contact at all — a guest, or somebody whose
 		// email and phone match nothing. Left empty rather than called "not opted in":
 		// see types.RegistrantRow.WhatsAppStatus.
 		if status != nil {
-			byID[id] = waState{status: *status, inboundAt: inboundAt}
+			st := waState{status: *status, inboundAt: inboundAt, contactID: derefString(contactID)}
+			if mDir != nil {
+				st.last = &types.CRMMessage{
+					ContactID:    st.contactID,
+					Direction:    *mDir,
+					Body:         derefString(mBody),
+					TemplateName: derefString(mTemplate),
+					Status:       derefString(mStatus),
+				}
+				if mAt != nil {
+					st.last.CreatedAt = mAt.Format(time.RFC3339)
+				}
+			}
+			byID[id] = st
 		}
 	}
 	if err := found.Err(); err != nil {
@@ -573,6 +604,8 @@ func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows 
 			continue
 		}
 		rows[i].WhatsAppStatus = st.status
+		rows[i].ContactID = st.contactID
+		rows[i].LastMessage = st.last
 		if st.inboundAt != nil {
 			rows[i].LastInboundAt = st.inboundAt.Format(time.RFC3339)
 		}
@@ -605,7 +638,7 @@ func (s *Store) Thread(ctx context.Context, hostID, contactID string) (types.CRM
 	rows, err := s.pool.Query(ctx, `
 		SELECT recent.id::text, recent.contact_id::text, recent.direction, recent.body,
 		       recent.kind, recent.template_name, recent.status, recent.error,
-		       COALESCE(b.name,''), recent.created_at
+		       COALESCE(b.name,''), recent.created_at, COALESCE(w.topic, ''), recent.manual
 		  FROM (
 		       SELECT * FROM crm_messages
 		        WHERE host_id = $1 AND contact_id = $2::uuid
@@ -613,6 +646,7 @@ func (s *Store) Thread(ctx context.Context, hostID, contactID string) (types.CRM
 		        LIMIT $3
 		  ) recent
 		  LEFT JOIN crm_bots b ON b.id = recent.bot_id
+		  LEFT JOIN webinars w ON w.id = recent.webinar_id
 		 ORDER BY recent.created_at, recent.id`, hostID, contactID, crmThreadMax)
 	if err != nil {
 		return types.CRMContact{}, nil, err
@@ -626,7 +660,7 @@ func (s *Store) Thread(ctx context.Context, hostID, contactID string) (types.CRM
 			created time.Time
 		)
 		if err := rows.Scan(&m.ID, &m.ContactID, &m.Direction, &m.Body, &m.Kind,
-			&m.TemplateName, &m.Status, &m.Error, &m.FromBot, &created); err != nil {
+			&m.TemplateName, &m.Status, &m.Error, &m.FromBot, &created, &m.Webinar, &m.Manual); err != nil {
 			return types.CRMContact{}, nil, err
 		}
 		m.CreatedAt = created.Format(time.RFC3339)
@@ -681,6 +715,14 @@ type MessageInput struct {
 	// BotID says a bot wrote this one. Empty for everything a person sent, which is
 	// the default and most of the table.
 	BotID string
+	// NotificationID is the outbox row this was sent from, and WebinarID the webinar it
+	// is about: how a webinar's automatic messages get delivered/read counts, and what
+	// names the day markers in a thread.
+	NotificationID string
+	WebinarID      string
+	// Manual marks a message a person wrote — from the inbox, or on their phone. Only
+	// those count as answering somebody.
+	Manual bool
 	// When it was actually said, from Meta's own timestamp. Zero means "use now",
 	// which is what an outbound message we are about to send wants — and what a
 	// delivery Meta sent no timestamp on has to settle for. Recorded rather than
@@ -730,15 +772,16 @@ func (s *Store) AppendMessage(ctx context.Context, hostID, contactID string, in 
 	err = tx.QueryRow(ctx, `
 		INSERT INTO crm_messages
 			(host_id, contact_id, direction, body, kind, template_name, wamid, status,
-			 error, created_at, broadcast_id, bot_id)
+			 error, created_at, broadcast_id, bot_id, notification_id, webinar_id, manual)
 		VALUES ($1,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,NULLIF($11,'')::uuid,
-		        NULLIF($12,'')::uuid)
+		        NULLIF($12,'')::uuid, NULLIF($13,'')::uuid,
+		        (SELECT id FROM webinars WHERE slug = NULLIF($14,'') AND host_id = $1::uuid), $15)
 		ON CONFLICT (host_id, wamid) WHERE wamid <> '' DO NOTHING
 		RETURNING id::text, contact_id::text, direction, body, kind, template_name,
 		          status, error, created_at`,
 		hostID, contactID, dir, in.Body, strings.TrimSpace(in.Kind),
 		strings.TrimSpace(in.TemplateName), strings.TrimSpace(in.WAMID), status, in.Error, at,
-		in.BroadcastID, in.BotID,
+		in.BroadcastID, in.BotID, in.NotificationID, in.WebinarID, in.Manual,
 	).Scan(&m.ID, &m.ContactID, &m.Direction, &m.Body, &m.Kind, &m.TemplateName,
 		&m.Status, &m.Error, &created)
 	if noRows(err) {

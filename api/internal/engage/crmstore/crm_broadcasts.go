@@ -36,7 +36,9 @@ type BroadcastInput struct {
 	// it only supplies the topic/when merge fields.
 	WebinarSlug string
 	// TagID is required for the tag audience and empty for the others.
-	TagID       string
+	TagID string
+	// Segment is the rule for the segment audience, stored so the broadcast reads back.
+	Segment     *types.CRMSegment
 	ScheduledAt time.Time
 }
 
@@ -53,6 +55,55 @@ type BroadcastRecipient struct {
 	Params    []string
 }
 
+/* Audience is who a broadcast goes to, as the handler has validated it. */
+type Audience struct {
+	// Kind is one of the types.Audience* values.
+	Kind string
+	// WebinarSlug is required for the webinar and segment audiences.
+	WebinarSlug string
+	// TagID is required for the tag audience.
+	TagID string
+	// Segment is required for the segment audience.
+	Segment *types.CRMSegment
+	// ContactIDs is required for the contacts audience.
+	ContactIDs []string
+}
+
+/* pickContactForRegistration is the one contact a registration `r` of webinar `w` is
+ * filed under, as a LATERAL body yielding `id`.
+ *
+ * Shared by the roster's WhatsApp columns (AttachRegistrantWhatsApp) and the segment
+ * audience, so a row the Attendees tab shows as opted in is the person the audience
+ * messages. The ORDER BY is the tiebreak explained there.
+ */
+const pickContactForRegistration = `
+	SELECT c.id FROM crm_contacts c
+	 WHERE c.host_id = w.host_id AND ` + contactMatchesRegistration + `
+	 ORDER BY (` + matchByRegistrationID + `) DESC NULLS LAST,
+	          (` + matchByEmail + `) DESC NULLS LAST,
+	          c.created_at, c.id
+	 LIMIT 1`
+
+/* segmentPredicate is a CRMSegment as conditions on `wt`, the registration's watch row
+ * (NULL when they never joined). The numbers are ints, formatted rather than bound, so
+ * the fragment adds no placeholders. */
+func segmentPredicate(g types.CRMSegment) string {
+	var b strings.Builder
+	switch g.Attendance {
+	case types.SegmentNoShow:
+		b.WriteString(` AND wt.rid IS NULL`)
+	case types.SegmentJoined:
+		b.WriteString(` AND wt.rid IS NOT NULL`)
+	}
+	if g.MinWatchMin > 0 {
+		b.WriteString(` AND wt.watch_min >= ` + strconv.Itoa(g.MinWatchMin))
+	}
+	if g.MaxWatchMin > 0 {
+		b.WriteString(` AND wt.rid IS NOT NULL AND wt.watch_min < ` + strconv.Itoa(g.MaxWatchMin))
+	}
+	return b.String()
+}
+
 /* audienceFrom is the FROM and WHERE that define an audience, without the
  * reachability filters, plus the arguments it needs.
  *
@@ -61,14 +112,10 @@ type BroadcastRecipient struct {
  * than being assembled by each caller, because a query that does not mention $2 and
  * is handed one is an error rather than a harmless extra.
  */
-func audienceFrom(hostID, audience, webinarSlug, tagID string) (string, []any) {
+func audienceFrom(hostID string, a Audience) (string, []any) {
 	base := `FROM crm_contacts c WHERE c.host_id = $1::uuid`
-	switch audience {
-	case types.AudienceWebinar, types.AudienceTag:
-	default:
-		return base, []any{hostID}
-	}
-	if audience == types.AudienceTag {
+	switch a.Kind {
+	case types.AudienceTag:
 		/* The tag is joined through crm_contact_tags rather than compared as a name,
 		 * and the tag's own host is checked as well as the contact's: the two ids
 		 * arrive from the same request, and a tag from another account matching
@@ -77,9 +124,36 @@ func audienceFrom(hostID, audience, webinarSlug, tagID string) (string, []any) {
 			SELECT 1 FROM crm_contact_tags ct
 			  JOIN crm_tags t ON t.id = ct.tag_id
 			 WHERE ct.contact_id = c.id AND t.id = $2::uuid AND t.host_id = c.host_id
-		)`, []any{hostID, tagID}
+		)`, []any{hostID, a.TagID}
+	case types.AudienceWebinar:
+		return base + ` AND ` + contactRegisteredFor(`$2`), []any{hostID, a.WebinarSlug}
+	case types.AudienceContacts:
+		ids := a.ContactIDs
+		if ids == nil {
+			ids = []string{}
+		}
+		return base + ` AND c.id = ANY($2::uuid[])`, []any{hostID, ids}
+	case types.AudienceSegment:
+		/* Driven from the webinar's registrations, each filed under one contact the way
+		 * the roster files it, then narrowed by watch time. */
+		g := types.CRMSegment{}
+		if a.Segment != nil {
+			g = *a.Segment
+		}
+		replied := ""
+		if g.Replied {
+			replied = ` AND ` + contactReplied
+		}
+		return base + replied + ` AND c.id IN (
+			SELECT pick.id FROM registrations r
+			  JOIN webinars w ON w.id = r.webinar_id
+			  LEFT JOIN (` + store.WatchByRegistrationSQL(`w.slug = $2`) + `) wt ON wt.rid = r.id
+			  CROSS JOIN LATERAL (` + pickContactForRegistration + `) pick
+			 WHERE w.slug = $2 AND w.host_id = $1::uuid AND r.state <> 'declined'` +
+			segmentPredicate(g) + `
+		)`, []any{hostID, a.WebinarSlug}
 	}
-	return base + ` AND ` + contactRegisteredFor(`$2`), []any{hostID, webinarSlug}
+	return base, []any{hostID}
 }
 
 /* contactRegisteredFor is "this contact `c` registered for the webinar named by that
@@ -288,9 +362,9 @@ func contactStatusPredicate(status string) (string, error) {
  * three possible reasons applies to the other 860 — and "no opt-in" is the one they
  * can do something about, by asking.
  */
-func (s *Store) AudienceCounts(ctx context.Context, hostID, audience, webinarSlug, tagID string) (types.CRMAudienceResponse, error) {
-	from, args := audienceFrom(hostID, audience, webinarSlug, tagID)
-	out := types.CRMAudienceResponse{Audience: audience}
+func (s *Store) AudienceCounts(ctx context.Context, hostID string, a Audience) (types.CRMAudienceResponse, error) {
+	from, args := audienceFrom(hostID, a)
+	out := types.CRMAudienceResponse{Audience: a.Kind}
 	err := s.pool.QueryRow(ctx, `
 		SELECT
 		  count(*) FILTER (WHERE `+optedInNow+`),
@@ -312,11 +386,11 @@ func (s *Store) AudienceCounts(ctx context.Context, hostID, audience, webinarSlu
  * refuses to create the broadcast when the cap is hit rather than silently sending
  * to a prefix of somebody's list.
  */
-func (s *Store) AudienceContacts(ctx context.Context, hostID, audience, webinarSlug, tagID string, limit int) ([]types.CRMContact, error) {
+func (s *Store) AudienceContacts(ctx context.Context, hostID string, a Audience, limit int) ([]types.CRMContact, error) {
 	if limit <= 0 || limit > 20000 {
 		limit = 20000
 	}
-	from, args := audienceFrom(hostID, audience, webinarSlug, tagID)
+	from, args := audienceFrom(hostID, a)
 	// One more than asked for, so the caller can tell "exactly the cap" from "more
 	// than we are willing to send".
 	args = append(args, limit+1)
@@ -373,13 +447,14 @@ func (s *Store) CreateBroadcast(ctx context.Context, hostID string, in Broadcast
 	err = tx.QueryRow(ctx, `
 		INSERT INTO crm_broadcasts
 			(host_id, name, template_name, template_language, params, audience,
-			 webinar_id, scheduled_at, tag_id)
+			 webinar_id, scheduled_at, tag_id, segment)
 		VALUES ($1::uuid, $2, $3, $4, $5, $6,
 		        (SELECT id FROM webinars WHERE slug = $7 AND host_id = $1::uuid), $8,
-		        (SELECT id FROM crm_tags WHERE id = NULLIF($9,'')::uuid AND host_id = $1::uuid))
+		        (SELECT id FROM crm_tags WHERE id = NULLIF($9,'')::uuid AND host_id = $1::uuid),
+		        $10)
 		RETURNING id::text`,
 		hostID, strings.TrimSpace(in.Name), in.TemplateName, in.TemplateLanguage,
-		params, in.Audience, in.WebinarSlug, due, in.TagID).Scan(&id)
+		params, in.Audience, in.WebinarSlug, due, in.TagID, in.Segment).Scan(&id)
 	if err != nil {
 		return "", err
 	}
@@ -420,7 +495,14 @@ const broadcastSelect = `
 	       + (SELECT count(*) FROM crm_messages m WHERE m.broadcast_id = b.id AND m.status = 'failed'),
 	       (SELECT count(*) FROM notifications n WHERE n.broadcast_id = b.id AND n.delivery = 'skipped'),
 	       (SELECT count(*) FROM crm_messages m WHERE m.broadcast_id = b.id AND m.status IN ('delivered','read')),
-	       (SELECT count(*) FROM crm_messages m WHERE m.broadcast_id = b.id AND m.status = 'read')
+	       (SELECT count(*) FROM crm_messages m WHERE m.broadcast_id = b.id AND m.status = 'read'),
+	       -- Replied: a recipient who wrote in after their copy went out.
+	       (SELECT count(*) FROM crm_messages m WHERE m.broadcast_id = b.id AND EXISTS (
+	           SELECT 1 FROM crm_messages inb
+	            WHERE inb.contact_id = m.contact_id AND inb.direction = 'in'
+	              AND inb.created_at > m.created_at)),
+	       b.segment,
+	       (SELECT count(*) FROM notifications n WHERE n.broadcast_id = b.id)
 	  FROM crm_broadcasts b
 	  LEFT JOIN webinars w ON w.id = b.webinar_id
 	  LEFT JOIN crm_tags t ON t.id = b.tag_id`
@@ -432,13 +514,24 @@ func scanBroadcast(row scanner) (types.CRMBroadcast, error) {
 		createdAt   time.Time
 		canceledAt  *time.Time
 		st          types.CRMBroadcastStats
+		segment     *types.CRMSegment
+		picked      int
 	)
 	if err := row.Scan(&b.ID, &b.Name, &b.Template, &b.Language, &b.Params,
 		&b.Audience, &b.WebinarID, &b.WebinarTopic, &b.TagID, &b.TagName,
 		&scheduledAt, &createdAt, &canceledAt,
 		&st.Recipients, &st.Queued, &st.Sent, &st.Failed, &st.Skipped,
-		&st.Delivered, &st.Read); err != nil {
+		&st.Delivered, &st.Read, &st.Replied, &segment, &picked); err != nil {
 		return types.CRMBroadcast{}, err
+	}
+	switch b.Audience {
+	case types.AudienceSegment:
+		if segment != nil {
+			b.Segment = segment
+			b.SegmentLabel = SegmentLabel(*segment)
+		}
+	case types.AudienceContacts:
+		b.SegmentLabel = strconv.Itoa(picked) + " picked"
 	}
 	if b.Params == nil {
 		b.Params = []types.CRMParam{}
@@ -464,13 +557,46 @@ func scanBroadcast(row scanner) (types.CRMBroadcast, error) {
 
 // Broadcasts lists a host's broadcasts, newest first.
 func (s *Store) Broadcasts(ctx context.Context, hostID string, limit int) ([]types.CRMBroadcast, error) {
+	return s.broadcasts(ctx, hostID, "", limit)
+}
+
+// WebinarBroadcasts lists what was sent about one webinar, newest first.
+func (s *Store) WebinarBroadcasts(ctx context.Context, hostID, slug string) ([]types.CRMBroadcast, error) {
+	return s.broadcasts(ctx, hostID, slug, 100)
+}
+
+/* SegmentLabel says a segment in the host's words: "Watched 45+ min", "Didn't join". */
+func SegmentLabel(g types.CRMSegment) string {
+	var parts []string
+	switch {
+	case g.Attendance == types.SegmentNoShow:
+		parts = append(parts, "Didn't join")
+	case g.MinWatchMin > 0 && g.MaxWatchMin > 0:
+		parts = append(parts, "Watched "+strconv.Itoa(g.MinWatchMin)+"–"+strconv.Itoa(g.MaxWatchMin)+" min")
+	case g.MinWatchMin > 0:
+		parts = append(parts, "Watched "+strconv.Itoa(g.MinWatchMin)+"+ min")
+	case g.MaxWatchMin > 0:
+		parts = append(parts, "Watched under "+strconv.Itoa(g.MaxWatchMin)+" min")
+	case g.Attendance == types.SegmentJoined:
+		parts = append(parts, "Attended")
+	}
+	if g.Replied {
+		parts = append(parts, "Replied")
+	}
+	if len(parts) == 0 {
+		return "Everyone registered"
+	}
+	return strings.Join(parts, " · ")
+}
+
+func (s *Store) broadcasts(ctx context.Context, hostID, slug string, limit int) ([]types.CRMBroadcast, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	rows, err := s.pool.Query(ctx, broadcastSelect+`
-		 WHERE b.host_id = $1::uuid
+		 WHERE b.host_id = $1::uuid AND ($3 = '' OR w.slug = $3)
 		 ORDER BY b.created_at DESC
-		 LIMIT $2`, hostID, limit)
+		 LIMIT $2`, hostID, limit, slug)
 	if err != nil {
 		return nil, err
 	}

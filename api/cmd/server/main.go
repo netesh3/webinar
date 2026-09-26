@@ -170,7 +170,9 @@ func run() error {
 	apiServer := api.NewServer(cfg, st, api.NewSFUPool(pool), recordings, log)
 	/* The WhatsApp CRM, plugged in as a separate module. This is the one place that knows
 	 * both packages; leave it out (or pass nil) and webinars run with no CRM at all. */
-	apiServer.UseEngage(engage.New(cfg, st, log))
+	crm := engage.New(cfg, st, log)
+	crm.UseMail(apiServer.Mail())
+	apiServer.UseEngage(crm)
 	go apiServer.StartMeetingLimitSweeper(ctx)
 	go apiServer.StartRecordingRetentionSweeper(ctx)
 

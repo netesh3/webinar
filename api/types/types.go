@@ -989,6 +989,8 @@ type WhatsAppLink struct {
 	 * before, and every one they migrated in) has nothing here and needs nothing: this
 	 * says "we did this", not "this number works". */
 	RegisteredAt string `json:"registeredAt,omitempty"`
+	/** On the WhatsApp Business app too (Coexistence). Needs no registration step. */
+	Coexistence bool `json:"coexistence,omitempty"`
 }
 
 /* WhatsAppSignup is everything the browser needs to open Meta's Embedded Signup
@@ -1020,6 +1022,9 @@ type WhatsAppCallbackRequest struct {
 	Code          string `json:"code"`
 	WABAID        string `json:"wabaId"`
 	PhoneNumberID string `json:"phoneNumberId"`
+	/** The number was onboarded with Coexistence: it stays on the WhatsApp Business app,
+	 *  is not registered with a PIN, and phone-typed replies arrive as echoes. */
+	Coexistence bool `json:"coexistence,omitempty"`
 }
 
 /* WhatsAppRegisterRequest registers the connected number with Cloud API.
@@ -1116,6 +1121,10 @@ type CRMMessage struct {
 	 *  is how the host tells which half of it they did not write. */
 	FromBot   string `json:"fromBot,omitempty"`
 	CreatedAt string `json:"createdAt"`
+	/** The webinar this message was about, for the thread's day markers. */
+	Webinar string `json:"webinar,omitempty"`
+	/** A person wrote it: from the inbox, or on the phone (Coexistence). */
+	Manual bool `json:"manual,omitempty"`
 }
 
 /* CRMContactScope names the webinar a contacts list was narrowed to.
@@ -1239,6 +1248,8 @@ type CRMThreadResponse struct {
 	/** This contact's notes, newest first. Empty unless the notes feature is on for
 	 *  this account, which is also when the pane is not shown. */
 	Notes []CRMNote `json:"notes"`
+	/** The Messages tab's header: webinars, watch time, whether a reply is owed. */
+	Meta CRMThreadMeta `json:"meta"`
 }
 
 /* CRMTag is one label a host puts on people.
@@ -1528,6 +1539,32 @@ const (
 	 *  segment, and the only audience they define themselves. Needs the tags
 	 *  feature. */
 	AudienceTag = "tag"
+	/** AudienceSegment is one webinar's registrants narrowed by what they did — see
+	 *  CRMSegment. The follow-up audience: "everyone who watched 45 minutes or more". */
+	AudienceSegment = "segment"
+	/** AudienceContacts is people the host picked by hand, by contact id. Only the
+	 *  opted-in ones among them are messaged. */
+	AudienceContacts = "contacts"
+)
+
+/* CRMSegment narrows one webinar's registrants. Every part is optional and they combine
+ * with AND. Watch minutes are the session report's (store.WatchByRegistrationSQL), so the
+ * Attendees tab's chips, the report and the audience count the same people.
+ */
+type CRMSegment struct {
+	/** `joined` (was in the room), `no_show` (registered, never joined) or empty. */
+	Attendance string `json:"attendance,omitempty"`
+	/** Watched at least this many minutes. Implies joined when above zero. */
+	MinWatchMin int `json:"minWatchMin,omitempty"`
+	/** Watched fewer than this many minutes; zero means no upper bound. Implies joined. */
+	MaxWatchMin int `json:"maxWatchMin,omitempty"`
+	/** Has written to the host on WhatsApp. */
+	Replied bool `json:"replied,omitempty"`
+}
+
+const (
+	SegmentJoined = "joined"
+	SegmentNoShow = "no_show"
 )
 
 /* CRMBroadcast is one message the host sent, or will send, to many people.
@@ -1544,8 +1581,12 @@ type CRMBroadcast struct {
 	Language string `json:"language"`
 	/** One entry per `{{n}}`, in order, as configured — merge tokens unresolved. */
 	Params []CRMParam `json:"params"`
-	/** `opted_in`, `webinar` or `tag`. */
+	/** `opted_in`, `webinar`, `tag`, `segment` or `contacts`. */
 	Audience string `json:"audience"`
+	/** The rule, when Audience is `segment`, and the host's words for it — "Watched
+	 *  45+ min" — for the list. SegmentLabel is also set for `contacts` ("12 people"). */
+	Segment      *CRMSegment `json:"segment,omitempty"`
+	SegmentLabel string      `json:"segmentLabel,omitempty"`
 	/** The tag this went to, when Audience is `tag`. The name is sent with it so a
 	 *  list can say which segment was messaged without a second request — and it is
 	 *  the name as it is now, because a renamed tag is the same tag. */
@@ -1589,6 +1630,8 @@ type CRMBroadcastStats struct {
 	/** Not sent, and never will be: the contact opted out, or the template stopped
 	 *  being approved, or the broadcast was cancelled before this one went out. */
 	Skipped int `json:"skipped"`
+	/** Recipients who wrote back after it was sent. */
+	Replied int `json:"replied"`
 }
 
 // CRMBroadcastsResponse is the host's broadcasts, newest first.
@@ -1621,6 +1664,10 @@ type CRMBroadcastRequest struct {
 	WebinarID string `json:"webinarId,omitempty"`
 	/** Required when Audience is `tag`, ignored otherwise. */
 	TagID string `json:"tagId,omitempty"`
+	/** Required when Audience is `segment` (with WebinarID), ignored otherwise. */
+	Segment *CRMSegment `json:"segment,omitempty"`
+	/** Required when Audience is `contacts`, ignored otherwise. */
+	ContactIDs []string `json:"contactIds,omitempty"`
 	/** RFC3339, or empty for now. */
 	ScheduledAt string `json:"scheduledAt,omitempty"`
 }
@@ -2639,6 +2686,16 @@ type RegistrantRow struct {
 	/* RFC3339 of the last message this person sent to the host's WhatsApp number, empty
 	 * when they never have — which is the ordinary case and reads as a dash. */
 	LastInboundAt string `json:"lastInboundAt,omitempty"`
+	/* Joined is whether this registrant was in the room at all, and WatchMin how long
+	 * they watched once it was live — the session report's numbers, per registration
+	 * (store.AttachWatch). Zero and false before the webinar has run. */
+	Joined   bool `json:"joined"`
+	WatchMin int  `json:"watchMin"`
+	/* ContactID is this registrant's CRM contact, which is who a message is addressed to;
+	 * empty for a guest. LastMessage is the latest message either way on WhatsApp, for the
+	 * "Last message" column. Both filled in by the CRM, like WhatsAppStatus. */
+	ContactID   string      `json:"contactId,omitempty"`
+	LastMessage *CRMMessage `json:"lastMessage,omitempty"`
 }
 
 type PanelistRequest struct {

@@ -33,7 +33,17 @@ export type WhatsAppGrant = {
   code: string;
   wabaId: string;
   phoneNumberId: string;
+  /** The number stays on the WhatsApp Business app (Coexistence). */
+  coexistence?: boolean;
 };
+
+/** How the dialog onboards the number.
+ *
+ *  `cloud` is a number that moves to the Cloud API and leaves the phone app.
+ *  `coexistence` keeps it on the WhatsApp Business app too: the coach keeps replying
+ *  from their phone, and those replies arrive as smb_message_echoes and show up in
+ *  the inbox. Meta's featureType for it is whatsapp_business_app_onboarding. */
+export type WhatsAppSignupMode = "cloud" | "coexistence";
 
 /* Narrow declarations for the two globals the SDK installs, rather than pulling
  * in a types package for one dialog. Only the members used below, so a mistake
@@ -149,6 +159,7 @@ const SESSION_INFO_GRACE_MS = 4000;
  *  Must be called from a click handler: it opens a popup. */
 export function openWhatsAppSignup(
   cfg: WhatsAppSignup,
+  mode: WhatsAppSignupMode = "cloud",
 ): Promise<WhatsAppGrant | null> {
   const sdk = fb();
   if (!sdk) {
@@ -180,6 +191,7 @@ export function openWhatsAppSignup(
             code,
             wabaId: session.wabaId,
             phoneNumberId: session.phoneNumberId,
+            coexistence: mode === "coexistence",
           },
         });
         return;
@@ -224,7 +236,8 @@ export function openWhatsAppSignup(
         override_default_response_type: true,
         extras: {
           setup: {},
-          featureType: "",
+          featureType:
+            mode === "coexistence" ? "whatsapp_business_app_onboarding" : "",
           // Version 3 is what carries waba_id and phone_number_id in the
           // postMessage above. Without it the dialog completes and tells us
           // nothing about what it connected.
