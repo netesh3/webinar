@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { hueFor, initialsOf } from "@/lib/avatar";
 
 /* A person's face in the room: their photo when there is one, their initials on
@@ -72,5 +72,46 @@ export function SenderAvatar({
         initialsOf(name)
       )}
     </span>
+  );
+}
+
+/* A stand-in for a face that must not be shown or guessed at.
+ *
+ * Anonymous questions still carry their sender in the realtime packet, so the one
+ * thing this must never do is fall back
+ * to initials or to the identity-keyed colour: a colour that matches the same
+ * person's chat avatar is as good as their name. A neutral surface and a glyph,
+ * the same for everybody. */
+export function GlyphAvatar({
+  children,
+  size = "md",
+  tone = "neutral",
+  className = "",
+}: {
+  children?: ReactNode;
+  size?: keyof typeof SIZES;
+  tone?: "neutral" | "ok";
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden
+      className={`grid shrink-0 select-none place-items-center rounded-full border ${SIZES[size]} ${
+        tone === "ok"
+          ? "border-ok/30 bg-ok-soft text-ok"
+          : "border-line-2 bg-surface-2 text-ink-3"
+      } ${className}`}
+    >
+      {children ?? <PersonGlyph />}
+    </span>
+  );
+}
+
+function PersonGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-[60%]" fill="currentColor" aria-hidden focusable="false">
+      <circle cx="12" cy="8.5" r="4" />
+      <path d="M4 20.5c.9-4 4.1-6.5 8-6.5s7.1 2.5 8 6.5z" />
+    </svg>
   );
 }
