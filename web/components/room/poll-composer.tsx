@@ -101,26 +101,16 @@ export function Composer({
               role="radio"
               aria-checked={on}
               onClick={() => set({ quiz })}
-              // Selection is the brand border + tint + filled dot; keyboard focus is a
-              // separate offset outline in ink, so the two never read as the same thing.
-              className={`flex items-start gap-2 rounded-md border px-2 py-1.5 text-left transition-colors duration-150 motion-reduce:transition-none outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
+              // Selection is the brand border + tint; keyboard focus is a separate
+              // offset outline in ink, so the two never read as the same thing.
+              className={`min-w-0 rounded-md border px-2 py-1.5 text-left transition-colors duration-150 motion-reduce:transition-none outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
                 on
                   ? "border-brand bg-brand-soft"
                   : "border-transparent text-ink-2 hover:border-line-2 hover:bg-surface hover:text-ink"
               }`}
             >
-              <span className="min-w-0 flex-1">
-                <span className={`block text-[12.5px] font-semibold ${on ? "text-brand" : ""}`}>{label}</span>
-                <span className={`block text-[10.5px] ${on ? "text-ink-2" : "text-ink-3"}`}>{hint}</span>
-              </span>
-              <span
-                aria-hidden
-                className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border-2 transition-colors duration-150 motion-reduce:transition-none ${
-                  on ? "border-brand" : "border-line-2"
-                }`}
-              >
-                {on && <span className="size-1.5 rounded-full bg-brand" />}
-              </span>
+              <span className={`block text-[12.5px] font-semibold ${on ? "text-brand" : ""}`}>{label}</span>
+              <span className={`block text-[10.5px] ${on ? "text-ink-2" : "text-ink-3"}`}>{hint}</span>
             </button>
           );
         })}
