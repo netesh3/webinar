@@ -142,6 +142,9 @@ jobs:
       SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
+      WELCOME_EMAIL: ${{ vars.WELCOME_EMAIL }}
+      CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+      CONTACT_PHONE: ${{ vars.CONTACT_PHONE }}
       SEED_DEV: "false"
       # Temporary, for a performance-test window: POST /telemetry (see
       # api/internal/api/telemetry.go). Flip back to "false" and redeploy when

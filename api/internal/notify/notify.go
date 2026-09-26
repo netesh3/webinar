@@ -23,7 +23,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"mime"
+	"mime/quotedprintable"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"time"
@@ -34,6 +37,10 @@ type Message struct {
 	To      string
 	Subject string
 	Body    string
+	// HTML is an optional rich alternative to Body. When set, the message is sent as
+	// multipart/alternative and Body remains the plain-text part, so a client that
+	// cannot or will not render HTML still gets the whole message.
+	HTML string
 	// ICS is an optional iCalendar payload. Empty means a plain-text message.
 	ICS     string
 	ICSName string
@@ -88,45 +95,7 @@ func (s SMTP) Send(ctx context.Context, m Message) error {
 		return fmt.Errorf("smtp: not configured")
 	}
 	addr := net.JoinHostPort(s.Host, fmt.Sprint(s.Port))
-
-	/* The message, assembled by hand and with the header values sanitised.
-	 *
-	 * Newlines are stripped from To and Subject before they reach the headers. That is not
-	 * tidiness: a subject containing CRLF would end the header block early and let the rest
-	 * of the string be interpreted as headers of its own — a Bcc, a different From — which
-	 * is header injection. Both values here derive from a webinar topic and a registrant's
-	 * email, and the topic is host-supplied text.
-	 */
-	var b strings.Builder
-	fmt.Fprintf(&b, "From: %s\r\n", header(s.From))
-	fmt.Fprintf(&b, "To: %s\r\n", header(m.To))
-	fmt.Fprintf(&b, "Subject: %s\r\n", header(m.Subject))
-	fmt.Fprintf(&b, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
-	b.WriteString("MIME-Version: 1.0\r\n")
-	if ics := strings.TrimSpace(m.ICS); ics != "" {
-		name := m.ICSName
-		if name == "" {
-			name = "invite.ics"
-		}
-		boundary := "wl" + fmt.Sprintf("%d", time.Now().UnixNano())
-		fmt.Fprintf(&b, "Content-Type: multipart/mixed; boundary=%s\r\n\r\n", boundary)
-		fmt.Fprintf(&b, "--%s\r\n", boundary)
-		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
-		b.WriteString(strings.ReplaceAll(m.Body, "\n", "\r\n"))
-		b.WriteString("\r\n")
-		fmt.Fprintf(&b, "--%s\r\n", boundary)
-		fmt.Fprintf(&b, "Content-Type: text/calendar; charset=utf-8; method=PUBLISH; name=%q\r\n", header(name))
-		fmt.Fprintf(&b, "Content-Disposition: attachment; filename=%q\r\n\r\n", header(name))
-		b.WriteString(strings.ReplaceAll(ics, "\n", "\r\n"))
-		if !strings.HasSuffix(ics, "\r\n") {
-			b.WriteString("\r\n")
-		}
-		fmt.Fprintf(&b, "--%s--\r\n", boundary)
-	} else {
-		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-		b.WriteString("\r\n")
-		b.WriteString(strings.ReplaceAll(m.Body, "\n", "\r\n"))
-	}
+	msg := s.compose(m, time.Now())
 
 	var auth smtp.Auth
 	if s.Username != "" {
@@ -139,7 +108,7 @@ func (s SMTP) Send(ctx context.Context, m Message) error {
 	// approval request open indefinitely.
 	done := make(chan error, 1)
 	go func() {
-		done <- smtp.SendMail(addr, auth, s.From, []string{m.To}, []byte(b.String()))
+		done <- smtp.SendMail(addr, auth, s.envelopeFrom(), []string{m.To}, []byte(msg))
 	}()
 	select {
 	case err := <-done:
@@ -150,6 +119,99 @@ func (s SMTP) Send(ctx context.Context, m Message) error {
 	case <-ctx.Done():
 		return fmt.Errorf("smtp send: %w", ctx.Err())
 	}
+}
+
+/* envelopeFrom is the bare address for MAIL FROM. SMTP_FROM may carry a display name
+ * ("Webinar Liv <hello@example.com>") so the inbox shows the product rather than an
+ * address; the envelope must not. A value that does not parse is used as given, which is
+ * what this did before display names were accepted. */
+func (s SMTP) envelopeFrom() string {
+	if a, err := mail.ParseAddress(s.From); err == nil {
+		return a.Address
+	}
+	return s.From
+}
+
+// compose assembles the RFC 5322 message. Separate from Send so its shape can be tested
+// without a mail server.
+func (s SMTP) compose(m Message, now time.Time) string {
+	/* The message, assembled by hand and with the header values sanitised.
+	 *
+	 * Newlines are stripped from To and Subject before they reach the headers. That is not
+	 * tidiness: a subject containing CRLF would end the header block early and let the rest
+	 * of the string be interpreted as headers of its own — a Bcc, a different From — which
+	 * is header injection. Both values here derive from a webinar topic and a registrant's
+	 * email, and the topic is host-supplied text.
+	 */
+	from := header(s.From)
+	if a, err := mail.ParseAddress(s.From); err == nil {
+		from = a.String()
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "From: %s\r\n", from)
+	fmt.Fprintf(&b, "To: %s\r\n", header(m.To))
+	// Q-encoded when it is not plain ASCII: a subject carrying a registrant's name in
+	// Devanagari or an accented Latin name is otherwise raw 8-bit in a header, which
+	// some relays reject and some clients show as mojibake. ASCII is left unchanged.
+	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", header(m.Subject)))
+	fmt.Fprintf(&b, "Date: %s\r\n", now.Format(time.RFC1123Z))
+	b.WriteString("MIME-Version: 1.0\r\n")
+	boundary := "wl" + fmt.Sprintf("%d", now.UnixNano())
+	if ics := strings.TrimSpace(m.ICS); ics != "" {
+		name := m.ICSName
+		if name == "" {
+			name = "invite.ics"
+		}
+		fmt.Fprintf(&b, "Content-Type: multipart/mixed; boundary=%s\r\n\r\n", boundary)
+		fmt.Fprintf(&b, "--%s\r\n", boundary)
+		writeBody(&b, m, boundary+"alt")
+		b.WriteString("\r\n")
+		fmt.Fprintf(&b, "--%s\r\n", boundary)
+		fmt.Fprintf(&b, "Content-Type: text/calendar; charset=utf-8; method=PUBLISH; name=%q\r\n", header(name))
+		fmt.Fprintf(&b, "Content-Disposition: attachment; filename=%q\r\n\r\n", header(name))
+		b.WriteString(strings.ReplaceAll(ics, "\n", "\r\n"))
+		if !strings.HasSuffix(ics, "\r\n") {
+			b.WriteString("\r\n")
+		}
+		fmt.Fprintf(&b, "--%s--\r\n", boundary)
+	} else {
+		writeBody(&b, m, boundary)
+	}
+	return b.String()
+}
+
+/* writeBody writes the Content-Type header and the readable content of a message: plain
+ * text alone, or text and HTML as multipart/alternative. Text comes first because
+ * RFC 2046 orders alternatives from least to most preferred, and clients pick the last one
+ * they can render.
+ *
+ * The HTML part is quoted-printable, not raw 8-bit: SMTP caps a line at 998 octets, and a
+ * templated email with inline styles can exceed that on a single line.
+ */
+func writeBody(b *strings.Builder, m Message, boundary string) {
+	if strings.TrimSpace(m.HTML) == "" {
+		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+		b.WriteString(strings.ReplaceAll(m.Body, "\n", "\r\n"))
+		return
+	}
+	fmt.Fprintf(b, "Content-Type: multipart/alternative; boundary=%s\r\n\r\n", boundary)
+	fmt.Fprintf(b, "--%s\r\n", boundary)
+	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+	b.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+	b.WriteString(quotedPrintable(m.Body))
+	fmt.Fprintf(b, "\r\n--%s\r\n", boundary)
+	b.WriteString("Content-Type: text/html; charset=utf-8\r\n")
+	b.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+	b.WriteString(quotedPrintable(m.HTML))
+	fmt.Fprintf(b, "\r\n--%s--\r\n", boundary)
+}
+
+func quotedPrintable(s string) string {
+	var out strings.Builder
+	w := quotedprintable.NewWriter(&out)
+	_, _ = w.Write([]byte(strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n")))
+	_ = w.Close()
+	return out.String()
 }
 
 // header strips CR and LF so a value cannot terminate the header block and inject its own.

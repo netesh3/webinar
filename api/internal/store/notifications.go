@@ -70,9 +70,12 @@ type Notification struct {
 	// Slug, not the uuid. The caller already has the slug on every path that emits one, and
 	// resolving it in the INSERT saves a round trip whose only purpose would be to translate
 	// an identifier the caller was holding anyway.
-	WebinarSlug    string
-	Subject        string
-	Body           string
+	WebinarSlug string
+	Subject     string
+	Body        string
+	// HTML is an optional rich alternative to Body (migration 0058). Empty for every
+	// kind except the welcome email; Body is always the complete plain-text message.
+	HTML           string
 	ICS            string
 	RegistrationID string
 	DueAt          time.Time // zero means send as soon as the outbox is flushed
@@ -111,16 +114,16 @@ func (s *Store) Notify(ctx context.Context, q Querier, n Notification) error {
 	_, err := q.Exec(ctx, `
 		INSERT INTO notifications (user_id, email, kind, webinar_id, subject, body, ics, registration_id, due_at,
 		                           channel, contact_id, template_name, template_language, template_params,
-		                           broadcast_id, drip_enrollment_id, offset_min)
+		                           broadcast_id, drip_enrollment_id, offset_min, html)
 		VALUES (NULLIF($1,'')::uuid, $2, $3,
 		        (SELECT id FROM webinars WHERE slug = $4), $5, $6, $7, NULLIF($8,'')::uuid,
 		        COALESCE($9::timestamptz, now()),
 		        $10, NULLIF($11,'')::uuid, $12, $13, $14, NULLIF($15,'')::uuid,
-		        NULLIF($16,'')::uuid, NULLIF($17, 0))`,
+		        NULLIF($16,'')::uuid, NULLIF($17, 0), $18)`,
 		n.UserID, strings.ToLower(strings.TrimSpace(n.Email)), string(n.Kind),
 		n.WebinarSlug, n.Subject, n.Body, n.ICS, n.RegistrationID, due,
 		channel, n.ContactID, n.TemplateName, n.TemplateLanguage, params, n.BroadcastID,
-		n.DripEnrollmentID, n.OffsetMin)
+		n.DripEnrollmentID, n.OffsetMin, n.HTML)
 	if isUniqueViolation(err) {
 		return nil
 	}
@@ -224,6 +227,7 @@ type Outbound struct {
 	Email    string
 	Subject  string
 	Body     string
+	HTML     string
 	ICS      string
 	Attempts int
 }
@@ -238,7 +242,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, email, subject, body, ics, attempts
+		SELECT id::text, email, subject, body, html, ics, attempts
 		  FROM notifications
 		 WHERE delivery = 'pending' AND email <> '' AND due_at <= now()
 		   AND (webinar_id IS NULL OR EXISTS (
@@ -272,7 +276,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 	out := []Outbound{}
 	for rows.Next() {
 		var o Outbound
-		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.ICS, &o.Attempts); err != nil {
+		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.HTML, &o.ICS, &o.Attempts); err != nil {
 			return nil, err
 		}
 		out = append(out, o)

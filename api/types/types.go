@@ -117,6 +117,11 @@ const (
 	 * the host picks an approved template for it once, and it is sent to the people
 	 * who registered for the webinar it belongs to. */
 	NotifyWhatsAppReplay NotificationKind = "wa_replay"
+
+	/* NotifyWelcome is the one thank-you email a new account gets, from signup or a first
+	 * Google sign-in. Addressed by email, never user_id, so it is not a host alert; one
+	 * per address, enforced by a unique index (migration 0058). */
+	NotifyWelcome NotificationKind = "welcome"
 )
 
 /* WhatsAppReminderKinds are the automatic WhatsApp messages, in the order they

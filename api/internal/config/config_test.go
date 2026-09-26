@@ -406,6 +406,33 @@ func TestSMTPFromFallsBackToSupportEmail(t *testing.T) {
 	}
 }
 
+/* The welcome email is on by default with the team's current contact details, and every
+ * part of it can be changed without a code change. setEnv sets each key to "", which env()
+ * treats as unset, so the first Load sees the defaults. */
+func TestWelcomeEmailDefaultsAndOverrides(t *testing.T) {
+	base := map[string]string{"APP_ENV": "development"}
+	setEnv(t, base)
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !c.WelcomeEmail || c.ContactEmail != "webinarliv@gmail.com" || c.ContactPhone != "+91-9852411280" {
+		t.Errorf("defaults: on=%v email=%q phone=%q", c.WelcomeEmail, c.ContactEmail, c.ContactPhone)
+	}
+
+	base["WELCOME_EMAIL"] = "false"
+	base["CONTACT_EMAIL"] = "hello@example.test"
+	base["CONTACT_PHONE"] = "+1-555-0100"
+	setEnv(t, base)
+	c, err = Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if c.WelcomeEmail || c.ContactEmail != "hello@example.test" || c.ContactPhone != "+1-555-0100" {
+		t.Errorf("overrides: on=%v email=%q phone=%q", c.WelcomeEmail, c.ContactEmail, c.ContactPhone)
+	}
+}
+
 // setEnv clears every variable this package reads before applying the ones the
 // test wants, so a value left over from the developer's own shell cannot change
 // the result. t.Setenv restores everything afterwards.
@@ -421,6 +448,7 @@ func setEnv(t *testing.T, env map[string]string) {
 		"ADMIN_EMAILS", "ADMIN_PASSWORD",
 		"DEFAULT_ATTENDEE_LIMIT",
 		"SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM",
+		"WELCOME_EMAIL", "CONTACT_EMAIL", "CONTACT_PHONE",
 		"LIVEKIT_PROJECTS", "AUTH_BYPASS", "GOOGLE_CLIENT_ID", "GOOGLE_API_KEY",
 		"GOOGLE_CLIENT_SECRET",
 		"SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_JWT_SECRET",

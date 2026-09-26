@@ -190,6 +190,20 @@ type Config struct {
 	SMTPPassword string
 	SMTPFrom     string
 
+	/* The welcome email sent once to every new account (see notify.WelcomeEmail).
+	 *
+	 * ContactEmail / ContactPhone are what the email tells a new customer to use to reach
+	 * the team. Separate from SupportEmail, which is served to the web app and is the
+	 * SMTP_FROM fallback: the people who answer a new customer are not necessarily the
+	 * address mail is sent from. Defaults are the team's current details so a deployment
+	 * that sets nothing still sends a message somebody can reply to.
+	 *
+	 * WelcomeEmail turns the whole thing off. Nothing is queued while it is off, and turning
+	 * it back on does not email the accounts created in between.
+	 */
+	ContactEmail string
+	ContactPhone string
+	WelcomeEmail bool
 	/* Google Drive, for picking a video to share into a session.
 	 *
 	 * Client ID and API key are public values by design — the OAuth client id
@@ -350,6 +364,8 @@ func Load() (Config, error) {
 		// Falls back to SUPPORT_EMAIL, because an operator who has already said where mail
 		// comes from should not have to say it twice.
 		SMTPFrom:                env("SMTP_FROM", env("SUPPORT_EMAIL", "")),
+		ContactEmail:            strings.TrimSpace(env("CONTACT_EMAIL", "webinarliv@gmail.com")),
+		ContactPhone:            strings.TrimSpace(env("CONTACT_PHONE", "+91-9852411280")),
 		GoogleClientID:          env("GOOGLE_CLIENT_ID", ""),
 		GoogleAPIKey:            env("GOOGLE_API_KEY", ""),
 		GoogleClientSecret:      env("GOOGLE_CLIENT_SECRET", ""),
@@ -393,6 +409,7 @@ func Load() (Config, error) {
 	}
 	c.CookieSecure = envBool("COOKIE_SECURE", c.Env != "development")
 	c.SignupOpen = envBool("SIGNUP_OPEN", true)
+	c.WelcomeEmail = envBool("WELCOME_EMAIL", true)
 	c.RecordingsEnabled = envBool("RECORDINGS_ENABLED", true)
 	c.SeedDev = envBool("SEED_DEV", true)
 	c.AuthBypass = envBool("AUTH_BYPASS", false)

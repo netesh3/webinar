@@ -326,6 +326,12 @@ export const NotifyReplayReady: NotificationKind = "replay_ready";
  * 	 * who registered for the webinar it belongs to.
  */
 export const NotifyWhatsAppReplay: NotificationKind = "wa_replay";
+/**
+ *  NotifyWelcome is the one thank-you email a new account gets, from signup or a first
+ * 	 * Google sign-in. Addressed by email, never user_id, so it is not a host alert; one
+ * 	 * per address, enforced by a unique index (migration 0058).
+ */
+export const NotifyWelcome: NotificationKind = "welcome";
 export const MaxReminders = 3;
 export const MinReminderOffset = 1;
 export const MaxReminderOffset = 30 * 24 * 60;
