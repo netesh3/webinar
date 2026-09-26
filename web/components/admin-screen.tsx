@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { AdminUser, Webinar } from "@/lib/api-types";
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
+import { paginate } from "@/lib/paginate";
 import { useAppConfig, useSession, useToast } from "./providers";
 import {
   Alert,
@@ -16,6 +17,7 @@ import {
 } from "./controls";
 import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
+import { ArrowLeftIcon } from "./icons";
 
 /* The admin panel: a dashboard first, then the two lists.
  *
@@ -34,6 +36,8 @@ import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
 
 const ADMIN_TABS = ["dashboard", "accounts", "webinars"] as const;
 type AdminTab = (typeof ADMIN_TABS)[number];
+
+const PAGE_SIZE = 10;
 
 export function AdminScreen() {
   const [tab, setTab] = useState<AdminTab>("dashboard");
@@ -91,6 +95,11 @@ function AdminAccounts() {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
   const [deleting, setDeleting] = useState(false);
+  /* Reset with the query. The page index outlives the filtered list, and
+   * paginate() would clamp onto the last page of a narrower search rather
+   * than the first. A delete that only shortens the current list is left to
+   * that clamp. */
+  const [pageIndex, setPageIndex] = useState(0);
 
   /* Not async, and the state writes are inside .then().
    *
@@ -126,6 +135,11 @@ function AdminAccounts() {
         u.email.toLowerCase().includes(q) || u.name.toLowerCase().includes(q),
     );
   }, [users, query]);
+
+  const view = useMemo(
+    () => paginate(shown ?? [], PAGE_SIZE, pageIndex),
+    [shown, pageIndex],
+  );
 
   async function setHost(u: AdminUser, canHost: boolean) {
     setBusy(u.id);
@@ -234,7 +248,10 @@ function AdminAccounts() {
             className="field max-w-sm flex-1"
             placeholder="Search by name or email…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPageIndex(0);
+            }}
             aria-label="Search accounts"
           />
           <span className="text-[12.5px] text-ink-3">
@@ -254,7 +271,7 @@ function AdminAccounts() {
           />
         ) : (
           <div className="grid gap-2">
-            {shown.map((u) => {
+            {view.items.map((u) => {
               const isSelf = u.id === account?.id;
               return (
                 <div
@@ -375,6 +392,7 @@ function AdminAccounts() {
                 </div>
               );
             })}
+            <ListPager page={view.page} pages={view.pages} onPage={setPageIndex} />
           </div>
         )}
       </Card>
@@ -522,6 +540,11 @@ function AdminWebinars({
   const [query, setQuery] = useState("");
   const [confirmSlug, setConfirmSlug] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  /* Reset with the filter. Each status chip, date range and search is its own
+   * list: staying on page 3 of All and then opening Live should not come back
+   * to page 3. A delete that only shortens the current list is left to
+   * paginate(), which clamps. */
+  const [pageIndex, setPageIndex] = useState(0);
 
   const load = useCallback(() => {
     api
@@ -541,6 +564,11 @@ function AdminWebinars({
   }, [status, from, to, query]);
 
   useEffect(load, [load]);
+
+  const view = useMemo(
+    () => paginate(rows ?? [], PAGE_SIZE, pageIndex),
+    [rows, pageIndex],
+  );
 
   async function remove(slug: string) {
     setDeleting(true);
@@ -575,7 +603,10 @@ function AdminWebinars({
               <button
                 key={s.value}
                 type="button"
-                onClick={() => setStatus(s.value)}
+                onClick={() => {
+                  if (s.value !== status) setPageIndex(0);
+                  setStatus(s.value);
+                }}
                 aria-pressed={status === s.value}
                 className={`rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
                   status === s.value
@@ -594,7 +625,10 @@ function AdminWebinars({
               onClick={openPickerOnClick}
               className="field mt-0.5 block"
               value={from}
-              onChange={(e) => setFrom(e.target.value)}
+              onChange={(e) => {
+                setFrom(e.target.value);
+                setPageIndex(0);
+              }}
             />
           </label>
           <label className="text-[12px] text-ink-3">
@@ -604,7 +638,10 @@ function AdminWebinars({
               onClick={openPickerOnClick}
               className="field mt-0.5 block"
               value={to}
-              onChange={(e) => setTo(e.target.value)}
+              onChange={(e) => {
+                setTo(e.target.value);
+                setPageIndex(0);
+              }}
             />
           </label>
         </div>
@@ -613,7 +650,10 @@ function AdminWebinars({
           className="field mb-3 w-full max-w-sm"
           placeholder="Search by topic…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPageIndex(0);
+          }}
           aria-label="Search webinars"
         />
 
@@ -631,7 +671,7 @@ function AdminWebinars({
           />
         ) : (
           <div className="grid gap-2">
-            {rows.map((w) => (
+            {view.items.map((w) => (
               <div
                 key={w.id}
                 className="flex flex-wrap items-center gap-3 rounded-lg border border-line px-3 py-2.5"
@@ -680,6 +720,7 @@ function AdminWebinars({
                 )}
               </div>
             ))}
+            <ListPager page={view.page} pages={view.pages} onPage={setPageIndex} />
           </div>
         )}
       </Card>
@@ -694,5 +735,66 @@ function AdminWebinars({
         confirmLabel="Delete webinar"
       />
     </div>
+  );
+}
+
+/* Same control as the stage grid's pager: arrow buttons, the page in the
+ * middle, and nothing at all when the list fits on one page. Colours follow
+ * this screen (surface / ink / brand) rather than the room's white-on-dark. */
+function ListPager({
+  page,
+  pages,
+  onPage,
+}: {
+  page: number;
+  pages: number;
+  onPage: (page: number) => void;
+}) {
+  if (pages <= 1) return null;
+  return (
+    <div className="mt-2 flex items-center justify-center gap-2">
+      <PageButton
+        label="Previous page"
+        disabled={page === 0}
+        onClick={() => onPage(page - 1)}
+      >
+        <ArrowLeftIcon className="size-3.5" />
+      </PageButton>
+      <span className="text-[11.5px] font-medium tabular-nums text-ink-2">
+        {page + 1} / {pages}
+      </span>
+      <PageButton
+        label="Next page"
+        disabled={page >= pages - 1}
+        onClick={() => onPage(page + 1)}
+      >
+        <ArrowLeftIcon className="size-3.5 rotate-180" />
+      </PageButton>
+    </div>
+  );
+}
+
+function PageButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="grid size-7 place-items-center rounded-lg bg-surface-2 text-ink-2 transition-colors hover:bg-line hover:text-ink disabled:opacity-35 disabled:hover:bg-surface-2 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+    >
+      {children}
+    </button>
   );
 }
