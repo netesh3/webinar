@@ -1,8 +1,8 @@
 "use client";
 
-import { Spinner } from "./controls";
-import { RotateCwIcon } from "./icons";
-import { Button } from "./ui";
+import { Spinner } from "@/components/controls";
+import { RotateCwIcon } from "@/components/icons";
+import { Button } from "@/components/ui";
 import type { CRMMergeField, CRMTemplate } from "@/lib/api-types";
 
 /* WhatsApp templates, as every screen that names one has to deal with them.

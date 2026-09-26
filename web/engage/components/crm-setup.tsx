@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
-import { Alert, Spinner } from "./controls";
+import { Alert, Spinner } from "@/components/controls";
 import { BlockedList, RefreshTemplates } from "./crm-templates";
-import { CheckIcon } from "./icons";
-import { useSession } from "./providers";
-import { Badge, Card } from "./ui";
+import { CheckIcon } from "@/components/icons";
+import { useSession } from "@/components/providers";
+import { Badge, Card } from "@/components/ui";
 import { WhatsAppCard } from "./whatsapp-card";
 import { api } from "@/lib/api";
 import type { CRMSetup, CRMTemplate, Webinar } from "@/lib/api-types";

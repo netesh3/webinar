@@ -1,8 +1,9 @@
 "use client";
 
+import { engageApi } from "../api";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, ConfirmModal, Select, Spinner, Toggle } from "./controls";
+import { Alert, ConfirmModal, Select, Spinner, Toggle } from "@/components/controls";
 import {
   BlockedList,
   RefreshTemplates,
@@ -11,8 +12,8 @@ import {
   renderTemplate,
   templateKey,
 } from "./crm-templates";
-import { useToast } from "./providers";
-import { Badge, Button, Card, Empty } from "./ui";
+import { useToast } from "@/components/providers";
+import { Badge, Button, Card, Empty } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { DripManual, DripTagAdded } from "@/lib/api-types";
 import type {
@@ -117,7 +118,7 @@ export function Drips({
 
   useEffect(() => {
     let cancelled = false;
-    api
+    engageApi
       .crmDrips()
       .then((res) => {
         if (cancelled) return;
@@ -160,7 +161,7 @@ export function Drips({
   async function setActive(drip: CRMDrip, active: boolean) {
     setBusy(drip.id);
     try {
-      const saved = await api.updateCrmDrip(drip.id, {
+      const saved = await engageApi.updateCrmDrip(drip.id, {
         name: drip.name,
         trigger: drip.trigger,
         webinarId: drip.webinarId,
@@ -190,7 +191,7 @@ export function Drips({
     if (!deleting) return;
     setBusy(deleting.id);
     try {
-      await api.deleteCrmDrip(deleting.id);
+      await engageApi.deleteCrmDrip(deleting.id);
       setDrips((prev) => (prev ?? []).filter((d) => d.id !== deleting.id));
       setDeleting(null);
       notify("Sequence deleted.", "ok");
@@ -486,7 +487,7 @@ function People({ drip }: { drip: CRMDrip }) {
 
   useEffect(() => {
     let cancelled = false;
-    api
+    engageApi
       .crmDrip(drip.id)
       .then((res) => {
         if (cancelled) return;
@@ -510,7 +511,7 @@ function People({ drip }: { drip: CRMDrip }) {
   async function removePerson(row: CRMDripEnrollment) {
     setBusy(row.id);
     try {
-      const res = await api.removeCrmDripEnrollment(drip.id, row.id);
+      const res = await engageApi.removeCrmDripEnrollment(drip.id, row.id);
       setRows(res.enrollments);
       notify(
         "Taken off the sequence. The message that was waiting for them will not be sent.",
@@ -639,7 +640,7 @@ function AddPerson({
 
   useEffect(() => {
     let cancelled = false;
-    api
+    engageApi
       .crmContacts()
       .then((res) => {
         if (!cancelled)
@@ -673,7 +674,7 @@ function AddPerson({
     if (!contactId) return;
     setSaving(true);
     try {
-      const res = await api.enrollCrmDrip(drip.id, {
+      const res = await engageApi.enrollCrmDrip(drip.id, {
         contactId,
         webinarId: webinarId || undefined,
       });
@@ -956,8 +957,8 @@ function Builder({
         }),
       };
       const res = drip
-        ? await api.updateCrmDrip(drip.id, body)
-        : await api.createCrmDrip(body);
+        ? await engageApi.updateCrmDrip(drip.id, body)
+        : await engageApi.createCrmDrip(body);
       setError(null);
       notify(
         res.drip.active

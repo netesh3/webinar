@@ -1,11 +1,12 @@
 "use client";
 
+import { engageApi } from "../api";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, ConfirmModal, Select, Spinner, Toggle } from "./controls";
-import { useToast } from "./providers";
-import { Badge, Button, Card, Empty } from "./ui";
-import { ApiError, api } from "@/lib/api";
+import { Alert, ConfirmModal, Select, Spinner, Toggle } from "@/components/controls";
+import { useToast } from "@/components/providers";
+import { Badge, Button, Card, Empty } from "@/components/ui";
+import { ApiError } from "@/lib/api";
 import {
   BotAnyMessage,
   BotKeyword,
@@ -124,7 +125,7 @@ export function Bots({ whatsappConnected }: { whatsappConnected: boolean }) {
 
   useEffect(() => {
     let cancelled = false;
-    api
+    engageApi
       .crmBots()
       .then((res) => {
         if (cancelled) return;
@@ -171,7 +172,7 @@ export function Bots({ whatsappConnected }: { whatsappConnected: boolean }) {
   async function setActive(bot: CRMBot, active: boolean) {
     setBusy(bot.id);
     try {
-      const saved = await api.updateCrmBot(bot.id, {
+      const saved = await engageApi.updateCrmBot(bot.id, {
         name: bot.name,
         trigger: bot.trigger,
         keywords: bot.keywords,
@@ -204,7 +205,7 @@ export function Bots({ whatsappConnected }: { whatsappConnected: boolean }) {
     if (!deleting) return;
     setBusy(deleting.id);
     try {
-      await api.deleteCrmBot(deleting.id);
+      await engageApi.deleteCrmBot(deleting.id);
       setBots((prev) => (prev ?? []).filter((b) => b.id !== deleting.id));
       setDeleting(null);
       notify("Bot deleted.", "ok");
@@ -470,7 +471,7 @@ function Sessions({ bot }: { bot: CRMBot }) {
 
   useEffect(() => {
     let cancelled = false;
-    api
+    engageApi
       .crmBot(bot.id)
       .then((res) => {
         if (cancelled) return;
@@ -708,8 +709,8 @@ function Builder({
         nodes: nodes.map(clean),
       };
       const res = bot
-        ? await api.updateCrmBot(bot.id, body)
-        : await api.createCrmBot(body);
+        ? await engageApi.updateCrmBot(bot.id, body)
+        : await engageApi.createCrmBot(body);
       setError(null);
       notify(
         res.bot.active

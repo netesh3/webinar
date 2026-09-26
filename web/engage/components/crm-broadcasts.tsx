@@ -1,8 +1,9 @@
 "use client";
 
+import { engageApi } from "../api";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, ConfirmModal, Select, Spinner } from "./controls";
+import { Alert, ConfirmModal, Select, Spinner } from "@/components/controls";
 import {
   BlockedList,
   RefreshTemplates,
@@ -11,9 +12,9 @@ import {
   renderTemplate,
   templateKey,
 } from "./crm-templates";
-import { SendIcon } from "./icons";
-import { useToast } from "./providers";
-import { Badge, Button, Card, Empty } from "./ui";
+import { SendIcon } from "@/components/icons";
+import { useToast } from "@/components/providers";
+import { Badge, Button, Card, Empty } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import {
   AudienceOptedIn,
@@ -103,7 +104,7 @@ export function Broadcasts({
 
   useEffect(() => {
     let cancelled = false;
-    api
+    engageApi
       .crmBroadcasts()
       .then((res) => {
         if (cancelled) return;
@@ -144,7 +145,7 @@ export function Broadcasts({
     if (!cancelling) return;
     setBusy(true);
     try {
-      const updated = await api.cancelCrmBroadcast(cancelling.id);
+      const updated = await engageApi.cancelCrmBroadcast(cancelling.id);
       setBroadcasts((prev) =>
         (prev ?? []).map((b) => (b.id === updated.id ? updated : b)),
       );
@@ -429,7 +430,7 @@ function Composer({
   useEffect(() => {
     if (!askable) return;
     let cancelled = false;
-    api
+    engageApi
       .crmAudience(audience, webinarId, tagId)
       .then((res) => {
         if (!cancelled) setCounted({ key: audienceKey, res });
@@ -515,7 +516,7 @@ function Composer({
     if (!template || blocker) return;
     setSaving(true);
     try {
-      const created = await api.createCrmBroadcast({
+      const created = await engageApi.createCrmBroadcast({
         name: name.trim() || template.name,
         template: template.name,
         language: template.language,

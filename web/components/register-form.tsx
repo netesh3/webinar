@@ -13,6 +13,7 @@ import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import { ApiError, api } from "@/lib/api";
 import type { Account, Registration, Webinar } from "@/lib/api-types";
 import { openRoomTab } from "@/lib/open-room";
+import { WhatsAppOptInCheckbox } from "@/engage";
 
 /* Registration.
  *
@@ -566,11 +567,6 @@ function RegisterFields({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  /* Whether this deployment has WhatsApp at all. Not whether THIS host has
-   * connected a number — that is theirs to know and not a public page's business —
-   * so the box can be offered to somebody whose host has not finished connecting.
-   * The opt-in is still worth recording: it is permission, and it keeps. */
-  const { whatsappConnect } = useAppConfig();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -836,25 +832,11 @@ function RegisterFields({
         </label>
         {fieldError("consent")}
 
-        {/* Only once there is a number to message. A box that asks for WhatsApp
-            permission above an empty phone field is a question with no answer —
-            and ticking it would record a consent that can never be acted on. */}
-        {whatsappConnect && phoneDigits !== "" && (
-          <label className="flex items-start gap-2.5 text-[12px] leading-relaxed text-ink-2">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-3.5 shrink-0 accent-brand"
-              checked={whatsappOptIn}
-              onChange={(e) => setWhatsappOptIn(e.target.checked)}
-            />
-            <span>
-              Send me reminders and updates on{" "}
-              <span className="font-medium text-ink">WhatsApp</span>. You can
-              reply <span className="font-medium text-ink">STOP</span> at any
-              time.
-            </span>
-          </label>
-        )}
+        <WhatsAppOptInCheckbox
+          hasPhone={phoneDigits !== ""}
+          checked={whatsappOptIn}
+          onChange={setWhatsappOptIn}
+        />
 
         {error && (
           <p role="alert" className="text-[12.5px] font-medium text-live">

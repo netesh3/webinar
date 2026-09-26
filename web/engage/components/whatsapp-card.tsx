@@ -1,10 +1,11 @@
 "use client";
 
+import { engageApi } from "../api";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Spinner } from "./controls";
-import { Button } from "./ui";
-import { WhatsAppIcon } from "./icons";
-import { ApiError, api } from "@/lib/api";
+import { Alert, Spinner } from "@/components/controls";
+import { Button } from "@/components/ui";
+import { WhatsAppIcon } from "@/components/icons";
+import { ApiError } from "@/lib/api";
 import { FeatureWhatsAppRegister } from "@/lib/api-types";
 import type { Account, WhatsAppSignup } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
@@ -12,7 +13,7 @@ import {
   openWhatsAppSignup,
   prepareWhatsAppSignup,
   type WhatsAppGrant,
-} from "@/lib/whatsapp-signup";
+} from "../whatsapp-signup";
 
 /* Connect WhatsApp, in Account settings.
  *
@@ -67,7 +68,7 @@ export function WhatsAppCard({
     let cancelled = false;
     (async () => {
       try {
-        const cfg = await api.whatsappSignup();
+        const cfg = await engageApi.whatsappSignup();
         await prepareWhatsAppSignup(cfg);
         if (!cancelled) setSignup(cfg);
       } catch (err) {
@@ -108,7 +109,7 @@ export function WhatsAppCard({
 
     setBusy(true);
     try {
-      await api.connectWhatsApp(grant);
+      await engageApi.connectWhatsApp(grant);
       await onChanged();
       if (alive.current) {
         setNotice(
@@ -133,7 +134,7 @@ export function WhatsAppCard({
     setError(null);
     setNotice(null);
     try {
-      await api.disconnectWhatsApp();
+      await engageApi.disconnectWhatsApp();
       await onChanged();
       if (alive.current) setNotice("WhatsApp disconnected.");
     } catch (err) {
@@ -248,7 +249,7 @@ function RegisterNumber({
     setBusy(true);
     setError(null);
     try {
-      await api.registerWhatsAppNumber(pin);
+      await engageApi.registerWhatsAppNumber(pin);
       // Cleared before anything else happens with it. The host has it; we do not
       // need it again, and holding it would only widen where it can leak from.
       setPin("");

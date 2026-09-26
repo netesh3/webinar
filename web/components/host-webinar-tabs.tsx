@@ -5,24 +5,18 @@ import { Alert, CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
 import { CalendarIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "./icons";
-import { useSession, useShareOrigin, useToast } from "./providers";
+import { useShareOrigin, useToast } from "./providers";
 import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
 import {
   formatCount,
   formatDay,
   formatDuration,
-  formatRelative,
   formatTime,
   formatTimeRange,
   googleCalendarInviteUrl,
   tzLabel,
 } from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
-import {
-  CRMStatusNoNumber,
-  CRMStatusOptedIn,
-  CRMStatusOptedOut,
-} from "@/lib/api-types";
 import type {
   AttendanceRow,
   Recording,
@@ -31,6 +25,12 @@ import type {
   Webinar,
 } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
+import {
+  RosterContactsLink,
+  RosterWhatsAppCells,
+  RosterWhatsAppHeaders,
+  useRosterWhatsAppColumns,
+} from "@/engage";
 
 /* Per-webinar management. Every tab here operates on real data — the share links
  * are built from the operator's configured public URL rather than a placeholder
@@ -192,12 +192,8 @@ function AttendeesTab({
   registrants: RegistrantRow[];
 }) {
   const bypass = isDevAuthBypassActive();
-  /* The two WhatsApp columns only exist for a host who has connected an account.
-   * Read from the session rather than from the rows: a connected host whose
-   * registrants are all guests has every cell empty, and dropping the columns then
-   * would hide the reason — nothing was collected from any of them. */
-  const { account } = useSession();
-  const whatsappOn = Boolean(account?.whatsapp);
+  // The CRM's two columns, when the host has connected WhatsApp. See engage/slots.tsx.
+  const whatsappOn = useRosterWhatsAppColumns();
   const approved = registrants.filter((r) => r.state === "approved");
   const declined = registrants.filter((r) => r.state === "declined");
   const ended = w.status === "ended";
@@ -238,24 +234,9 @@ function AttendeesTab({
             {ended ? "Who registered / attended" : "Registrants"}
           </SectionTitle>
           <div className="flex flex-wrap items-center gap-2">
-            {/* The other thing a host wants to do with this list: talk to it.
-                This table is who holds a seat — a name, a company, a decision —
-                and the CRM is the same people as an ongoing conversation, with
-                the tags, the notes and the message history the table has no
-                business carrying. So one link rather than a second table here.
-                Not hidden behind the WhatsApp connection: registrants become
-                contacts whether or not the host ever connects a number, and the
-                tags and notes about them work with no number at all. Nor behind
-                the dev bypass that hides Export CSV beside it — that one is a
-                download the API has to authorise, this is a route in this app
-                that the preview host already reaches from the nav. */}
-            <ButtonLink
-              href={`/host/crm?webinar=${w.id}`}
-              size="sm"
-              variant="secondary"
-            >
-              View in CRM
-            </ButtonLink>
+            {/* The other thing a host wants to do with this list: talk to it — the
+                same people as contacts, with tags, notes and history. */}
+            <RosterContactsLink slug={w.id} />
             {!bypass && (
               <ButtonLink
                 href={api.registrantsCsvUrl(w.id)}
@@ -280,12 +261,7 @@ function AttendeesTab({
                 <tr className="border-b border-line text-left text-[11.5px] text-ink-3">
                   <th className="py-2 pr-3 font-medium">Name</th>
                   <th className="py-2 pr-3 font-medium">Company</th>
-                  {whatsappOn && (
-                    <>
-                      <th className="py-2 pr-3 font-medium">WhatsApp</th>
-                      <th className="py-2 pr-3 font-medium">Replied</th>
-                    </>
-                  )}
+                  {whatsappOn && <RosterWhatsAppHeaders />}
                   <th className="py-2 pr-3 font-medium">Registered</th>
                   <th className="py-2 font-medium">Status</th>
                 </tr>
@@ -317,25 +293,7 @@ function AttendeesTab({
                         </div>
                       )}
                     </td>
-                    {whatsappOn && (
-                      <>
-                        <td className="py-2.5 pr-3">
-                          <WhatsAppCell status={r.whatsappStatus} />
-                        </td>
-                        <td className="py-2.5 pr-3 text-ink-2">
-                          {/* A date, not a tick: "who has written in" is nearly
-                              always asked as "how long ago", and a host deciding
-                              whether to chase somebody needs the second half. */}
-                          {r.lastInboundAt ? (
-                            <span className="text-ok">
-                              ✓ {formatRelative(r.lastInboundAt, new Date())}
-                            </span>
-                          ) : (
-                            <span className="text-ink-3">—</span>
-                          )}
-                        </td>
-                      </>
-                    )}
+                    {whatsappOn && <RosterWhatsAppCells row={r} />}
                     <td className="py-2.5 pr-3 text-ink-2">
                       {new Date(r.createdAt).toLocaleDateString("en-GB", {
                         day: "numeric",
@@ -360,23 +318,6 @@ function AttendeesTab({
       </Card>
     </div>
   );
-}
-
-/* Where one registrant stands on WhatsApp, in the CRM's own words.
- *
- * The same four phrases the contacts list filters by, from the same server value, so
- * a host who filters the inbox to "opted out" and reads this cell is looking at one
- * fact rather than two descriptions of it. An empty status is a dash and not a "no":
- * a guest gave neither a number nor an email, so nobody ever asked them, and printing
- * "no consent" would send the host chasing somebody who cannot be reached.
- */
-function WhatsAppCell({ status }: { status?: string }) {
-  if (!status) return <span className="text-ink-3">—</span>;
-  if (status === CRMStatusOptedIn) return <Badge tone="ok">Opted in</Badge>;
-  if (status === CRMStatusOptedOut) return <Badge tone="live">Opted out</Badge>;
-  if (status === CRMStatusNoNumber) return <Badge>No number</Badge>;
-  // Everything left is no_opt_in, which is most of a list rather than a fault.
-  return <Badge>No consent</Badge>;
 }
 
 // -------------------------------------------------------------------- share

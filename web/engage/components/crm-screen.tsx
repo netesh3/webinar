@@ -1,5 +1,6 @@
 "use client";
 
+import { engageApi } from "../api";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
@@ -11,7 +12,7 @@ import {
   Select,
   Spinner,
   Tabs,
-} from "./controls";
+} from "@/components/controls";
 import { Bots } from "./crm-bots";
 import { Broadcasts } from "./crm-broadcasts";
 import { Drips } from "./crm-drips";
@@ -26,10 +27,10 @@ import {
   renderTemplate,
   templateKey,
 } from "./crm-templates";
-import { ArrowLeftIcon, SearchIcon, SendIcon, WhatsAppIcon } from "./icons";
-import { useSession, useToast } from "./providers";
-import { Badge, Button, Card, Empty } from "./ui";
-import { ApiError, api } from "@/lib/api";
+import { ArrowLeftIcon, SearchIcon, SendIcon, WhatsAppIcon } from "@/components/icons";
+import { useSession, useToast } from "@/components/providers";
+import { Badge, Button, Card, Empty } from "@/components/ui";
+import { ApiError } from "@/lib/api";
 import {
   CRMStatusNoNumber,
   CRMStatusNoOptIn,
@@ -307,7 +308,7 @@ export function CRMScreen() {
   useEffect(() => {
     if (status !== "signed-in" || !canHost) return;
     let cancelled = false;
-    api
+    engageApi
       .crmTemplates()
       .then((res) => {
         if (cancelled) return;
@@ -334,7 +335,7 @@ export function CRMScreen() {
   const refreshTemplates = useCallback(async () => {
     setSyncing(true);
     try {
-      const res = await api.crmTemplates(true);
+      const res = await engageApi.crmTemplates(true);
       setTemplates(res.templates);
       setTemplatesError(null);
       notify(
@@ -372,7 +373,7 @@ export function CRMScreen() {
     if (status !== "signed-in" || !canHost) return;
     let cancelled = false;
     const run = () => {
-      api
+      engageApi
         .crmContacts(query, webinarSlug, 0, statusFilter)
         .then((res) => {
           if (cancelled) return;
@@ -426,7 +427,7 @@ export function CRMScreen() {
     // Not set back to true on a reload: by then the checklist is on screen, and
     // replacing five answered steps with a spinner because one of them was just
     // finished would hide the very change the host is waiting to see.
-    api
+    engageApi
       .crmSetup()
       .then((res) => {
         if (cancelled) return;
@@ -980,7 +981,7 @@ function RemindersSettings({
 
   useEffect(() => {
     let cancelled = false;
-    api
+    engageApi
       .crmReminders()
       .then((res) => {
         if (cancelled) return;
@@ -1014,7 +1015,7 @@ function RemindersSettings({
     if (rows === null) return;
     setSaving(true);
     try {
-      const res = await api.setCrmReminders({ reminders: rows });
+      const res = await engageApi.setCrmReminders({ reminders: rows });
       setRows(res.reminders);
       setError(null);
       notify("Automatic messages saved.", "ok");
@@ -1359,7 +1360,7 @@ function Thread({
 
   useEffect(() => {
     let cancelled = false;
-    api
+    engageApi
       .crmThread(contactId)
       .then((res) => {
         if (cancelled) return;
@@ -1393,7 +1394,7 @@ function Thread({
   async function setBotPaused(paused: boolean) {
     setBusy(true);
     try {
-      const updated = await api.setCrmContactBot(contactId, { paused });
+      const updated = await engageApi.setCrmContactBot(contactId, { paused });
       setContact(updated);
       onChanged();
       notify(
@@ -1415,7 +1416,7 @@ function Thread({
   async function optOut() {
     setBusy(true);
     try {
-      const updated = await api.crmOptOut(contactId);
+      const updated = await engageApi.crmOptOut(contactId);
       setContact(updated);
       setConfirming(false);
       onChanged();
@@ -1757,7 +1758,7 @@ function Compose({
 
     setBusy(true);
     try {
-      const msg = await api.crmSend(contact.id, request);
+      const msg = await engageApi.crmSend(contact.id, request);
       onSent(msg);
       setText("");
       setParams([]);

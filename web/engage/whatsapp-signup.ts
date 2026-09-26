@@ -26,7 +26,7 @@
  * which exchanges it with the app secret and stores the result against the host.
  */
 
-import type { WhatsAppSignup } from "./api-types";
+import type { WhatsAppSignup } from "@/lib/api-types";
 
 /** What the dialog produced, ready to post to our own API. */
 export type WhatsAppGrant = {

@@ -1,11 +1,12 @@
 "use client";
 
+import { engageApi } from "../api";
 import { useState } from "react";
-import { Alert, ConfirmModal, Menu, Spinner, type MenuItem } from "./controls";
-import { CloseIcon, PlusIcon } from "./icons";
-import { useToast } from "./providers";
-import { Button } from "./ui";
-import { ApiError, api } from "@/lib/api";
+import { Alert, ConfirmModal, Menu, Spinner, type MenuItem } from "@/components/controls";
+import { CloseIcon, PlusIcon } from "@/components/icons";
+import { useToast } from "@/components/providers";
+import { Button } from "@/components/ui";
+import { ApiError } from "@/lib/api";
 import { TagMaxLength, TagMaxPerHost } from "@/lib/api-types";
 import type { CRMTag } from "@/lib/api-types";
 
@@ -71,7 +72,7 @@ export function ContactTags({
   async function add(tagId: string) {
     setBusy(true);
     try {
-      const res = await api.addCrmContactTag(contactId, tagId);
+      const res = await engageApi.addCrmContactTag(contactId, tagId);
       onChanged(res.tags);
     } catch (e) {
       notify(
@@ -86,7 +87,7 @@ export function ContactTags({
   async function remove(tagId: string) {
     setBusy(true);
     try {
-      const res = await api.removeCrmContactTag(contactId, tagId);
+      const res = await engageApi.removeCrmContactTag(contactId, tagId);
       onChanged(res.tags);
     } catch (e) {
       notify(
@@ -190,7 +191,7 @@ export function TagManager({
     setBusy(true);
     setError(null);
     try {
-      await api.createCrmTag(wanted);
+      await engageApi.createCrmTag(wanted);
       setName("");
       onChanged();
     } catch (e) {
@@ -209,7 +210,7 @@ export function TagManager({
     setBusy(true);
     setError(null);
     try {
-      await api.renameCrmTag(tag.id, wanted);
+      await engageApi.renameCrmTag(tag.id, wanted);
       setEditing(null);
       onChanged();
     } catch (e) {
@@ -223,7 +224,7 @@ export function TagManager({
     setBusy(true);
     setError(null);
     try {
-      await api.deleteCrmTag(tag.id);
+      await engageApi.deleteCrmTag(tag.id);
       setConfirmDelete(null);
       onChanged();
       // Said out loud because the row simply vanishes otherwise, and the count is

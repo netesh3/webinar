@@ -1,10 +1,11 @@
 "use client";
 
+import { engageApi } from "../api";
 import { useState } from "react";
-import { Alert, ConfirmModal, Spinner } from "./controls";
-import { useToast } from "./providers";
-import { Button } from "./ui";
-import { ApiError, api } from "@/lib/api";
+import { Alert, ConfirmModal, Spinner } from "@/components/controls";
+import { useToast } from "@/components/providers";
+import { Button } from "@/components/ui";
+import { ApiError } from "@/lib/api";
 import { NoteMaxLength } from "@/lib/api-types";
 import type { CRMNote } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
@@ -45,11 +46,11 @@ export function NotesPane({
     setBusy(true);
     setError(null);
     try {
-      await api.createCrmNote(contactId, wanted);
+      await engageApi.createCrmNote(contactId, wanted);
       setBody("");
       // Re-read rather than prepend the one that came back: the list is the
       // server's order, and a second browser tab may have added one too.
-      onChanged((await api.crmNotes(contactId)).notes);
+      onChanged((await engageApi.crmNotes(contactId)).notes);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not save that note.");
     } finally {
@@ -61,9 +62,9 @@ export function NotesPane({
     setBusy(true);
     setError(null);
     try {
-      await api.deleteCrmNote(note.id);
+      await engageApi.deleteCrmNote(note.id);
       setConfirmDelete(null);
-      onChanged((await api.crmNotes(contactId)).notes);
+      onChanged((await engageApi.crmNotes(contactId)).notes);
     } catch (e) {
       notify(
         e instanceof ApiError ? e.message : "Could not delete that note.",
