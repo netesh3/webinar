@@ -187,8 +187,15 @@ console.log("\ncoalesce");
   const one = coalesce(null, [message("m1", "Ana", "just the one")]);
   eq(
     one,
-    { anchorId: "m1", sender: "Ana", text: "just the one", count: 1 },
-    "a single message names its sender",
+    {
+      anchorId: "m1",
+      sender: "Ana",
+      senderIdentity: "att_Ana",
+      senderRole: "attendee",
+      text: "just the one",
+      count: 1,
+    },
+    "a single message names its sender, and carries who they are for the avatar",
   );
 }
 
@@ -203,6 +210,7 @@ console.log("\ncoalesce");
   eq(burst?.count, 4, "a burst is counted, not stacked");
   eq(burst?.text, "fourth", "the card shows the latest message");
   eq(burst?.sender, "Di", "…and the latest sender");
+  eq(burst?.senderIdentity, "att_Di", "…whose identity the avatar is keyed on");
   /* The anchor stays on the FIRST of the run. Clicking "4 new messages" is an
    * invitation to read those four; the newest is where the panel scrolls by itself. */
   eq(burst?.anchorId, "m1", "the click still lands on the oldest of the run");
@@ -216,13 +224,27 @@ console.log("\ncoalesce");
   preview = coalesce(preview, [message("m3", "Cy", "third")]);
   eq(
     preview,
-    { anchorId: "m1", sender: "Cy", text: "third", count: 3 },
+    {
+      anchorId: "m1",
+      sender: "Cy",
+      senderIdentity: "att_Cy",
+      senderRole: "attendee",
+      text: "third",
+      count: 3,
+    },
     "messages arriving one render apart coalesce like messages arriving together",
   );
 }
 
 {
-  const existing: ChatPreview = { anchorId: "m1", sender: "Ana", text: "first", count: 1 };
+  const existing: ChatPreview = {
+    anchorId: "m1",
+    sender: "Ana",
+    senderIdentity: "att_Ana",
+    senderRole: "attendee",
+    text: "first",
+    count: 1,
+  };
   eq(
     coalesce(existing, []),
     existing,
@@ -254,6 +276,18 @@ console.log("\ncoalesce");
     null,
     "a run of nothing but empty messages produces no card at all",
   );
+}
+
+/* The latest sender's role rides along, so the card can badge a host's line. */
+{
+  const fromHost = coalesce(null, [
+    message("m1", "Ana", "hi"),
+    message("m2", "Pat", "welcome", {
+      from: { identity: "host_pat", name: "Pat", role: "host" },
+    }),
+  ]);
+  eq(fromHost?.senderRole, "host", "the card carries the latest sender's role");
+  eq(fromHost?.senderIdentity, "host_pat", "…and their identity");
 }
 
 console.log(`\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`);

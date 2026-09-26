@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { ControlsPatch } from "@/lib/api-types";
 import {
@@ -9,11 +9,14 @@ import {
   prepareImage,
   ImageError,
 } from "@/lib/chat-images";
+import { groupChat, recentSpeakers, type ChatGroup } from "@/lib/chat-groups";
 import { textRuns } from "@/lib/chat-text";
 import { FOCUS_TTL_MS, useChatFocus } from "@/lib/chat-notify";
 import { chatDestination, type ChatDestination, type ChatMessage } from "@/lib/realtime";
 import { Alert, ConfirmModal, Spinner } from "../controls";
 import { ArrowDownIcon, ImageIcon, SendIcon, TrashIcon } from "../icons";
+import { SenderAvatar } from "../sender-avatar";
+import { PanelistsOnlyBadge, RoleBadge } from "./chat-badges";
 import { useRoomUI } from "./context";
 
 /* Chat.
@@ -104,6 +107,7 @@ export function ChatPanel() {
   /** How much has arrived since they scrolled up. Cleared by getting back to the bottom. */
   const [behind, setBehind] = useState(0);
   const known = useRef(realtime.chat.length);
+  const groups = useMemo(() => groupChat(realtime.chat), [realtime.chat]);
 
   // Follow new messages, but only while the reader is already at the bottom.
   // Yanking someone back down while they scroll up to re-read something is the
@@ -307,7 +311,7 @@ export function ChatPanel() {
           setAtBottom(pinned);
           if (pinned) setBehind(0);
         }}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
+        className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3"
         aria-live="polite"
         aria-atomic="false"
       >
@@ -318,68 +322,16 @@ export function ChatPanel() {
             Say something, or paste a screenshot.
           </p>
         ) : (
-          realtime.chat.map((m) => {
-            const mine = m.from.identity === me.identity;
-            return (
-              <div
-                key={m.id}
-                // The anchor the notification card scrolls to. Read out of the DOM rather
-                // than held as a list of element refs: the row may not exist yet when the
-                // request arrives, and a query answers that honestly.
-                data-chat-message={m.id}
-                // The negative margin pays for the padding, so a highlighted row lines up
-                // with every other one instead of shifting when it flashes.
-                className={`-mx-1 rounded-md px-1 text-[13px] transition-colors ${
-                  flash === m.id ? "bg-brand-soft/60 ring-1 ring-brand/40" : ""
-                }`}
-              >
-                <div className="flex items-baseline gap-1.5">
-                  <span
-                    className={`truncate text-[12px] font-semibold ${
-                      m.from.role === "attendee" ? "text-ink" : "text-brand"
-                    }`}
-                  >
-                    {mine ? "You" : m.from.name}
-                  </span>
-                  {m.from.role !== "attendee" && (
-                    <span className="shrink-0 text-[10.5px] text-ink-3">
-                      {m.from.role === "host" ? "Host" : "Panelist"}
-                    </span>
-                  )}
-                  {/* Carried on the message rather than read from the current
-                      setting, so switching it never rewrites what has already been
-                      said. */}
-                  {m.destination === "panelists" && (
-                    <span className="shrink-0 rounded bg-warn-soft px-1.5 text-[10px] font-medium text-warn">
-                      Panelists only
-                    </span>
-                  )}
-                  <span className="ml-auto shrink-0 text-[10.5px] tabular-nums text-ink-3">
-                    {new Date(m.at).toLocaleTimeString("en-GB", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                  {/* Attendee messages only — moderation removes what the audience
-                      said, never another presenter's words. Always visible rather
-                      than hover-revealed: half of this room is on a phone, which
-                      has no hover to reveal it with. */}
-                  {canModerate && m.from.role === "attendee" && (
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTarget(m)}
-                      aria-label="Delete message"
-                      title="Delete message"
-                      className="grid size-5 shrink-0 place-items-center rounded text-ink-3 transition-colors hover:bg-live-soft hover:text-live outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                    >
-                      <TrashIcon className="size-3.5" />
-                    </button>
-                  )}
-                </div>
-                <MessageBody message={m} />
-              </div>
-            );
-          })
+          groups.map((group) => (
+            <MessageGroup
+              key={group.messages[0].id}
+              group={group}
+              mine={group.from.identity === me.identity}
+              flash={flash}
+              canDelete={canModerate && group.from.role === "attendee"}
+              onDelete={setDeleteTarget}
+            />
+          ))
         )}
       </div>
 
@@ -390,8 +342,21 @@ export function ChatPanel() {
             <button
               type="button"
               onClick={scrollToLatest}
-              className="pointer-events-auto inline-flex min-h-11 items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-[11.5px] font-semibold text-white shadow-lg transition-colors hover:bg-brand-hover outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              className="pointer-events-auto inline-flex min-h-11 items-center gap-1.5 rounded-full bg-brand py-1.5 pr-3 pl-2 text-[11.5px] font-semibold text-stage shadow-lg transition-colors hover:bg-brand-hover outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-8"
             >
+              {/* Who is talking, not just how much. Decorative: the label says the count,
+                  and a list of names read out ahead of it would bury it. */}
+              <span className="flex" aria-hidden>
+                {recentSpeakers(realtime.chat, behind, me.identity).map((s, i) => (
+                  <SenderAvatar
+                    key={s.identity}
+                    name={s.name}
+                    identity={s.identity}
+                    size="xs"
+                    className={`ring-2 ring-brand ${i > 0 ? "-ml-1.5" : ""}`}
+                  />
+                ))}
+              </span>
               <ArrowDownIcon className="size-3.5" />
               {behind === 1 ? "1 new message" : `${behind} new messages`}
             </button>
@@ -478,6 +443,13 @@ export function ChatPanel() {
               }}
               className="flex items-end gap-2"
             >
+              {/* "Posting as". Decorative — the composer's label already says what it is. */}
+              <SenderAvatar
+                name={me.name}
+                identity={me.identity}
+                size="sm"
+                className="mb-1.5"
+              />
               <textarea
                 className="field max-h-28 min-h-9 flex-1 resize-none py-2 text-[13px]"
                 rows={1}
@@ -536,7 +508,7 @@ export function ChatPanel() {
                 type="submit"
                 disabled={!draft.trim() || sending}
                 aria-label="Send message"
-                className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand text-white transition-colors hover:bg-brand-hover disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand text-stage transition-colors hover:bg-brand-hover disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               >
                 {sending ? <Spinner className="size-4" /> : <SendIcon className="size-4" />}
               </button>
@@ -559,6 +531,114 @@ export function ChatPanel() {
         confirmLabel="Delete message"
         dark
       />
+    </div>
+  );
+}
+
+function clock(at: number): string {
+  return new Date(at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+/* One run of messages from one person to one audience: the avatar and name once,
+ * then each message as its own line.
+ *
+ * Every line keeps its own anchor, highlight and delete button, because each is
+ * still its own message: the notification card may point at the third line of a
+ * run, and a moderator removing one line must not take the run with it.
+ */
+function MessageGroup({
+  group,
+  mine,
+  flash,
+  canDelete,
+  onDelete,
+}: {
+  group: ChatGroup;
+  mine: boolean;
+  flash: string | null;
+  /** Attendee messages only — moderation removes what the audience said, never
+   *  another presenter's words. */
+  canDelete: boolean;
+  onDelete: (message: ChatMessage) => void;
+}) {
+  const { from, destination, messages } = group;
+  const stage = from.role !== "attendee";
+  // Carried on the message rather than read from the current setting, so switching
+  // it never rewrites what has already been said.
+  const privateToStage = destination === "panelists";
+  const name = mine ? "You" : from.name;
+
+  return (
+    <div
+      // The negative margin pays for the padding, so a tinted run lines up with an
+      // untinted one.
+      className={`-mx-2 grid grid-cols-[2rem_minmax(0,1fr)] gap-x-2.5 rounded-[10px] px-2 py-1.5 ${
+        privateToStage
+          ? "bg-warn/[0.055] shadow-[inset_2px_0_0_var(--color-warn)]"
+          : mine
+            ? "bg-brand/[0.05]"
+            : ""
+      }`}
+    >
+      <SenderAvatar name={from.name} identity={from.identity} ring={stage} />
+      <div className="min-w-0">
+        <div className="flex min-h-[18px] min-w-0 items-center gap-1.5">
+          <span className="truncate text-[12.5px] font-semibold text-ink">{name}</span>
+          <RoleBadge role={from.role} />
+          {privateToStage && <PanelistsOnlyBadge />}
+          <span className="shrink-0 text-[10.5px] tabular-nums text-ink-3">
+            {clock(messages[0].at)}
+          </span>
+        </div>
+
+        {messages.map((m, i) => (
+          <div
+            key={m.id}
+            // The anchor the notification card scrolls to. Read out of the DOM rather
+            // than held as a list of element refs: the row may not exist yet when the
+            // request arrives, and a query answers that honestly.
+            data-chat-message={m.id}
+            className={`group/line relative -mx-1 flex items-start gap-1.5 rounded-md px-1 motion-safe:transition-colors ${
+              i > 0 ? "mt-0.5" : ""
+            } ${flash === m.id ? "bg-brand-soft/60 ring-1 ring-brand/40" : ""}`}
+          >
+            {i > 0 && (
+              // Its own time, in the gutter under the avatar, for whoever wants it.
+              // Hover or keyboard focus reveals it; the run's header already dates it
+              // to the minute for everyone else, phones included.
+              <span
+                aria-hidden
+                className="pointer-events-none absolute top-[5px] -left-[2.375rem] w-8 text-right text-[9.5px] tabular-nums text-ink-3 opacity-0 group-focus-within/line:opacity-100 group-hover/line:opacity-100 motion-safe:transition-opacity"
+              >
+                {clock(m.at)}
+              </span>
+            )}
+            <div className="min-w-0 flex-1 text-[13px]">
+              {i > 0 && (
+                // A continuation line has no visible name. Said for screen readers, so
+                // one arriving live in the polite region is not announced anonymously.
+                <span className="sr-only">
+                  {name}, {clock(m.at)}:{" "}
+                </span>
+              )}
+              <MessageBody message={m} />
+            </div>
+            {/* Always visible rather than hover-revealed: half of this room is on a
+                phone, which has no hover to reveal it with. */}
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(m)}
+                aria-label="Delete message"
+                title="Delete message"
+                className="mt-[3px] grid size-5 shrink-0 place-items-center rounded text-ink-3 transition-colors hover:bg-live-soft hover:text-live outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              >
+                <TrashIcon className="size-3.5" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

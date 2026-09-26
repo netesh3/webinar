@@ -11,7 +11,9 @@ import {
   type ChatPreview,
 } from "@/lib/chat-notify";
 import { useCompact } from "@/lib/compact";
-import { ChatIcon, CloseIcon } from "../icons";
+import { CloseIcon } from "../icons";
+import { SenderAvatar } from "../sender-avatar";
+import { RoleBadge } from "./chat-badges";
 import { useRoomUI } from "./context";
 
 /* The chat preview card.
@@ -169,17 +171,44 @@ export function ChatNotifications({
             // request up on its first render. See useChatFocus.
             requestChatFocus(anchor);
           }}
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-2 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-2 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
         >
-          <ChatIcon className="size-4 shrink-0 text-brand" />
+          <span className="relative shrink-0">
+            <SenderAvatar
+              name={preview.sender}
+              identity={preview.senderIdentity}
+              size="lg"
+              ring={preview.senderRole !== "attendee"}
+            />
+            {many && (
+              <span
+                aria-hidden
+                className="absolute -right-1 -bottom-[3px] grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[9.5px] font-bold text-stage tabular-nums ring-2 ring-surface"
+              >
+                {preview.count > 99 ? "99+" : preview.count}
+              </span>
+            )}
+          </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-semibold text-ink">
-              {many ? `${preview.count} new messages` : preview.sender}
+            <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-semibold text-ink">
+              <span className="truncate">
+                {many ? `${preview.count} new messages` : preview.sender}
+              </span>
+              {!many && preview.senderRole !== "attendee" && (
+                <RoleBadge role={preview.senderRole} />
+              )}
             </span>
             {/* Clamped rather than truncated: two lines of a real sentence is what makes
                 this worth glancing at, and the text is already cut to a preview length. */}
             <span className="mt-0.5 line-clamp-2 block text-[12px] leading-snug text-ink-2">
-              {many ? `${preview.sender}: ${preview.text}` : preview.text}
+              {many ? (
+                <>
+                  <span className="font-semibold text-ink">{preview.sender}:</span>{" "}
+                  {preview.text}
+                </>
+              ) : (
+                preview.text
+              )}
             </span>
           </span>
         </button>

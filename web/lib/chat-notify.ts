@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import type { ChatMessage } from "./realtime";
+import type { ChatMessage, Sender } from "./realtime";
 
 /* Chat that arrives while the panel is shut.
  *
@@ -35,6 +35,10 @@ export type ChatPreview = {
   anchorId: string;
   /** The latest sender in the run, whose name is on the card. */
   sender: string;
+  /** That sender's identity — what their avatar colour is keyed on. */
+  senderIdentity: string;
+  /** That sender's role, for the Host / Panelist badge and the avatar ring. */
+  senderRole: Sender["role"];
   /** That sender's message, shortened. */
   text: string;
   /** How many messages this one card stands for. */
@@ -95,9 +99,15 @@ export function coalesce(
   for (const message of fresh) {
     const text = previewText(message);
     if (!text) continue;
+    const who = {
+      sender: message.from.name,
+      senderIdentity: message.from.identity,
+      senderRole: message.from.role,
+      text,
+    };
     next = next
-      ? { anchorId: next.anchorId, sender: message.from.name, text, count: next.count + 1 }
-      : { anchorId: message.id, sender: message.from.name, text, count: 1 };
+      ? { anchorId: next.anchorId, ...who, count: next.count + 1 }
+      : { anchorId: message.id, ...who, count: 1 };
   }
   return next;
 }
