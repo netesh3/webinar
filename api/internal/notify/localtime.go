@@ -1,6 +1,9 @@
 package notify
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 /* DefaultTimeZone is the display zone a webinar gets when nobody chose one.
  *
@@ -32,4 +35,36 @@ func WhenText(startsAt, zone string) string {
 		return ""
 	}
 	return LocalTime(at, zone)
+}
+
+/* StartsIn says how long before the start a reminder is, the way the reminder says it:
+ * "in 24 hours", "in 1 hour 30 minutes", "in 2 days", "in 1 minute".
+ *
+ * Whole days up to a week read as days only when they are whole ("in 2 days", but
+ * "in 36 hours" rather than "in 1 day 12 hours"). Used by the email subject and the
+ * WhatsApp `starts_in` merge field, so both channels say the same thing.
+ */
+func StartsIn(minutes int) string {
+	if minutes < 1 {
+		return "now"
+	}
+	unit := func(n int, one string) string {
+		if n == 1 {
+			return "1 " + one
+		}
+		return fmt.Sprintf("%d %ss", n, one)
+	}
+	const day = 24 * 60
+	if minutes >= 2*day && minutes%day == 0 {
+		return "in " + unit(minutes/day, "day")
+	}
+	h, m := minutes/60, minutes%60
+	switch {
+	case h == 0:
+		return "in " + unit(m, "minute")
+	case m == 0:
+		return "in " + unit(h, "hour")
+	default:
+		return "in " + unit(h, "hour") + " " + unit(m, "minute")
+	}
 }

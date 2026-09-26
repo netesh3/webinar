@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/mail"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -195,12 +196,10 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		s.pushRoomMetadata(r, sfu, wb)
 	}
 
-	if starts, err := time.Parse(time.RFC3339, wb.StartsAt); err == nil {
-		if err := s.store.RescheduleRemindersForWebinar(r.Context(), slug, starts); err != nil {
-			s.log.Warn("update webinar: could not reschedule reminders", "slug", slug, "error", err)
-		}
-		s.engage.OnRescheduled(r.Context(), slug, starts)
-	}
+	// Start time and reminder times both apply to what is already queued: see
+	// replanReminders, and the CRM's side in Engage.OnRescheduled.
+	s.replanReminders(r.Context(), wb)
+	s.engage.OnRescheduled(r.Context(), wb)
 	httpx.JSON(w, http.StatusOK, wb)
 }
 
@@ -545,6 +544,11 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool) (ty
 	if len(in.CustomQuestions) > 20 {
 		fields["customQuestions"] = "Twenty questions is the most a registration form can carry."
 	}
+	if list, msg := normalizeReminders(in.Options.Reminders); msg != "" {
+		fields["reminders"] = msg
+	} else {
+		in.Options.Reminders = list
+	}
 	for _, email := range in.PanelistEmails {
 		if e := strings.TrimSpace(email); e != "" {
 			if _, err := mail.ParseAddress(e); err != nil {
@@ -555,6 +559,35 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool) (ty
 	}
 
 	return in, fields
+}
+
+/* normalizeReminders checks a webinar's reminder times and puts them in order.
+ *
+ * nil (the field omitted) is the default list, so an API caller or an old client that
+ * does not know about the setting keeps today's behaviour. An empty list is kept: that
+ * host wants no timed reminders. Duplicates are merged, since two reminders at one time
+ * are one reminder, and the result is largest first — the order they are sent in.
+ */
+func normalizeReminders(in []int) ([]int, string) {
+	if in == nil {
+		return append([]int(nil), types.DefaultReminders...), ""
+	}
+	seen := map[int]bool{}
+	out := make([]int, 0, len(in))
+	for _, m := range in {
+		if m < types.MinReminderOffset || m > types.MaxReminderOffset {
+			return nil, "A reminder has to be between 1 minute and 30 days before the start."
+		}
+		if !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	if len(out) > types.MaxReminders {
+		return nil, fmt.Sprintf("At most %d reminders per webinar.", types.MaxReminders)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(out)))
+	return out, ""
 }
 
 // ------------------------------------------------------------- start and end

@@ -326,10 +326,16 @@ func paramsProblem(params []types.CRMParam, hasWebinar bool, what string) (code,
 			return "crm_bad_merge_field",
 				"There is nothing called " + token + " to fill a template with."
 		}
-		if mergeFieldOnlyKind(token) != "" {
+		switch mergeFieldOnlyKind(token) {
+		case "":
+		case types.NotifyWhatsAppReplay:
 			return "crm_bad_merge_field",
 				"Value {{" + at + "}} is " + token + ", which only has a value on the replay " +
 					"message — a " + what + " has no recording to link to."
+		default:
+			return "crm_bad_merge_field",
+				"Value {{" + at + "}} is " + token + ", which only has a value on a timed " +
+					"reminder — a " + what + " is not sent a set time before a webinar."
 		}
 		if (token == "topic" || token == "when") && !hasWebinar {
 			return "crm_no_webinar",
@@ -361,7 +367,7 @@ func resolveBroadcastParams(params []types.CRMParam, contact types.CRMContact, w
 	out := make([]string, 0, len(params))
 	for _, p := range params {
 		if token := strings.TrimSpace(p.Field); token != "" {
-			out = append(out, mergeValue(token, contact, wb, hostName, ""))
+			out = append(out, mergeValue(token, contact, wb, hostName, "", 0))
 			continue
 		}
 		// Single-spaced for Meta's sake, exactly like a merge value: a parameter with a

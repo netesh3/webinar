@@ -7,6 +7,7 @@ import { useAppConfig, useSession, useToast } from "./providers";
 import { Button, Card, SectionTitle } from "./ui";
 import { PlusIcon, TrashIcon } from "./icons";
 import { WebinarImagePicker } from "./webinar-image-picker";
+import { DEFAULT_REMINDERS, ReminderTimes } from "./reminder-times";
 import { API_BASE, ApiError, api } from "@/lib/api";
 import type {
   AgendaItem,
@@ -152,6 +153,7 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
       options: {
         ...webinar.options,
         emailReminders: webinar.options.emailReminders !== false,
+        reminders: webinar.options.reminders ?? DEFAULT_REMINDERS,
         multistream:
           webinar.options.multistream ||
           Boolean(webinar.streamConfigured) ||
@@ -198,6 +200,7 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
        * account, so messaging a list on it is something they ask for rather than
        * something they discover on an invoice. */
       whatsappReminders: false,
+      reminders: DEFAULT_REMINDERS,
     },
     // The Zoom-webinar defaults: the audience is private and arrives muted.
     controls: {
@@ -763,7 +766,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                     ["captions", "Live captions"],
                     ["multistream", "Stream to YouTube / LinkedIn"],
                     ["postWebinarSurvey", "Post-webinar survey"],
-                    ["emailReminders", "Email reminders (24h and 1h before)"],
+                    ["emailReminders", "Email reminders"],
                   ] as const
                 ).map(([key, label]) => (
                   <Toggle
@@ -779,6 +782,13 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                   onChange={(v) =>
                     set("options", { ...form.options, whatsappReminders: v })
                   }
+                />
+              </div>
+              <div className="mt-3">
+                <ReminderTimes
+                  value={form.options.reminders}
+                  onChange={(r) => set("options", { ...form.options, reminders: r })}
+                  disabled={!form.options.emailReminders && !form.options.whatsappReminders}
                 />
               </div>
               {form.options.multistream && (

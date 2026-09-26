@@ -62,8 +62,13 @@ export const NotifyRegistrationDeclined: NotificationKind = "registration_declin
  * NotifyRegistrationConfirmed is auto-approve signup: they are in without a host review.
  */
 export const NotifyRegistrationConfirmed: NotificationKind = "registration_confirmed";
-export const NotifyReminder24h: NotificationKind = "reminder_24h";
-export const NotifyReminder1h: NotificationKind = "reminder_1h";
+/**
+ *  NotifyReminder is one timed email reminder. A webinar has up to MaxReminders of them,
+ * 	 * each ReminderOffsetMin before its start (WebinarOptions.Reminders), so the offset is
+ * 	 * on the row and uniqueness is (kind, registration, offset). Replaced reminder_24h and
+ * 	 * reminder_1h, which fixed the two times in the kind itself (migration 0052).
+ */
+export const NotifyReminder: NotificationKind = "reminder";
 /**
  *  The same three things said on WhatsApp, which are separate kinds rather than
  * 	 * the same kinds on another channel. A host may well want both — an email with
@@ -72,8 +77,11 @@ export const NotifyReminder1h: NotificationKind = "reminder_1h";
  * 	 * per registration.
  */
 export const NotifyWhatsAppConfirmed: NotificationKind = "wa_registration_confirmed";
-export const NotifyWhatsAppReminder24h: NotificationKind = "wa_reminder_24h";
-export const NotifyWhatsAppReminder1h: NotificationKind = "wa_reminder_1h";
+/**
+ *  NotifyWhatsAppReminder is the same timed reminder on WhatsApp: one template for every
+ * 	 * time, chosen once by the host, with the `starts_in` merge field for "in 30 minutes".
+ */
+export const NotifyWhatsAppReminder: NotificationKind = "wa_reminder";
 /**
  *  NotifyWhatsAppBroadcast is one recipient of one broadcast: the host's own
  * 	 * message, written once and queued per person, rather than anything this
@@ -102,6 +110,9 @@ export const NotifyReplayReady: NotificationKind = "replay_ready";
  * 	 * who registered for the webinar it belongs to.
  */
 export const NotifyWhatsAppReplay: NotificationKind = "wa_replay";
+export const MaxReminders = 3;
+export const MinReminderOffset = 1;
+export const MaxReminderOffset = 30 * 24 * 60;
 /**
  *  HostAlert is one in-app notification as a host's browser sees it.
  *  *
@@ -200,6 +211,14 @@ export interface WebinarOptions {
    * 	 * because a host turning it off does not mean "but keep sending one of them".
    */
   whatsappReminders: boolean;
+  /**
+   *  Reminders is when the timed reminders go, in minutes before the start, largest
+   * 	 * first — [1440, 60] is "a day before and an hour before". Shared by email and
+   * 	 * WhatsApp; each channel's switch above decides whether it sends them. At most
+   * 	 * MaxReminders. Missing from a stored webinar means DefaultReminders; an empty list
+   * 	 * means no timed reminders.
+   */
+  reminders: number /* int */[];
 }
 /**
  * SessionControls are the things a host flips *during* the session.

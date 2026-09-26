@@ -48,7 +48,7 @@ export function WhatsAppRemindersToggle({
       checked={checked}
       onChange={onChange}
       disabled={!connected}
-      label="WhatsApp reminders (confirmation, 24h and 1h before)"
+      label="WhatsApp reminders (confirmation and timed reminders)"
       description={
         connected ? (
           <>

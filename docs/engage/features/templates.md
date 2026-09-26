@@ -34,8 +34,8 @@ body for free-form. Server is source of truth.
 
 ## Coupling
 
-Reminder settings bind kinds (`wa_registration_confirmed`, `wa_reminder_24h`,
-`wa_reminder_1h`, `wa_replay`) to a cached template. Webinar Liv schedule
+Reminder settings bind kinds (`wa_registration_confirmed`, `wa_reminder`,
+`wa_replay`) to a cached template. Webinar Liv schedule
 toggle only decides **whether** those rows are eligible, not which template.
 
 Merge fields: `topic`, `when`, name, etc. Mapping UI:

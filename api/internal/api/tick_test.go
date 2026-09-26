@@ -62,7 +62,7 @@ func TestTickSendsDueReminderAndRespectsLease(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
 	setReminders(t, h, types.CRMReminder{
-		Kind: types.NotifyWhatsAppReminder1h, Template: testTemplateUtility,
+		Kind: types.NotifyWhatsAppReminder, Template: testTemplateUtility,
 		Language: "en_US", Params: []string{"name"},
 	})
 	wb := remindersWebinar(t, h, "Ticked", true)
@@ -74,11 +74,8 @@ func TestTickSendsDueReminderAndRespectsLease(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("take lease: ok=%v err=%v", ok, err)
 	}
-	/* The reminder becomes due a minute ago: "now" by this process's clock can still be
-	 * the future by the database's, which is the clock the sweep reads. */
-	if err := h.crm.RescheduleWhatsAppReminders(ctx, wb.ID, time.Now().Add(59*time.Minute)); err != nil {
-		t.Fatalf("reschedule: %v", err)
-	}
+	// Both reminders (24h, 1h) become due; the lease has to hold them back.
+	makeDue(t, h, wb.ID)
 	if code, body := tick(t, h, testTickSecret); code != http.StatusOK || !strings.Contains(body, `"busy"`) {
 		t.Fatalf("tick under a held lease = %d %s, want 200 busy", code, body)
 	}
@@ -90,13 +87,13 @@ func TestTickSendsDueReminderAndRespectsLease(t *testing.T) {
 	if code, body := tick(t, h, testTickSecret); code != http.StatusOK || !strings.Contains(body, `"ran"`) {
 		t.Fatalf("tick = %d %s, want 200 ran", code, body)
 	}
-	if n := len(g.sent()); n != 1 {
-		t.Fatalf("%d sends after the tick, want the one due reminder", n)
+	if n := len(g.sent()); n != 2 {
+		t.Fatalf("%d sends after the tick, want the two due reminders", n)
 	}
 	// And once only: the next tick finds nothing owed.
 	tick(t, h, testTickSecret)
-	if n := len(g.sent()); n != 1 {
-		t.Errorf("%d sends after a second tick, want still 1", n)
+	if n := len(g.sent()); n != 2 {
+		t.Errorf("%d sends after a second tick, want still 2", n)
 	}
 }
 

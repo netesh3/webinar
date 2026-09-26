@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -36,8 +35,9 @@ type Engage interface {
 	OnRegistered(ctx context.Context, wb types.Webinar, reg types.Registration, whatsappOptIn bool)
 	// OnRegistrationsDecided follows a batch of approve/decline decisions on one webinar.
 	OnRegistrationsDecided(ctx context.Context, slug string, declinedRegistrationIDs []string)
-	// OnRescheduled follows a change to a webinar's start time.
-	OnRescheduled(ctx context.Context, slug string, startsAt time.Time)
+	// OnRescheduled follows a saved change to a webinar: its start time, its reminder
+	// times, or its WhatsApp switch. Called after every save.
+	OnRescheduled(ctx context.Context, wb types.Webinar)
 	// OnEnded follows the end of a session, after attendance has its final answer.
 	OnEnded(ctx context.Context, wb types.Webinar)
 	// OnRecordingPublished follows a recording being made public, for a host who has replay links on.
@@ -58,7 +58,7 @@ func (NoEngage) ConnectEnabled() bool         { return false }
 func (NoEngage) OnRegistered(context.Context, types.Webinar, types.Registration, bool) {
 }
 func (NoEngage) OnRegistrationsDecided(context.Context, string, []string)                {}
-func (NoEngage) OnRescheduled(context.Context, string, time.Time)                        {}
+func (NoEngage) OnRescheduled(context.Context, types.Webinar)                            {}
 func (NoEngage) OnEnded(context.Context, types.Webinar)                                  {}
 func (NoEngage) OnRecordingPublished(context.Context, types.Webinar, store.User, string) {}
 func (NoEngage) DecorateRegistrants(context.Context, store.User, string, []types.RegistrantRow) {

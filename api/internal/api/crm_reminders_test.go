@@ -140,7 +140,7 @@ func TestCRMReminderSettings(t *testing.T) {
 			// endpoint may write: the row it would produce has no template at all.
 			name: "an email kind",
 			in: types.CRMReminder{
-				Kind: types.NotifyReminder1h, Template: testTemplateUtility,
+				Kind: types.NotifyReminder, Template: testTemplateUtility,
 				Language: "en_US", Params: []string{"name"},
 			},
 			code: "crm_bad_kind",
@@ -215,7 +215,7 @@ func TestCRMReminderSettings(t *testing.T) {
 			Language: "en_US", Params: []string{"name"},
 		},
 		types.CRMReminder{
-			Kind: types.NotifyWhatsAppReminder1h, Template: testTemplateUtility,
+			Kind: types.NotifyWhatsAppReminder, Template: testTemplateUtility,
 			Language: "en_US", Params: []string{"topic"},
 		},
 	)
@@ -224,9 +224,9 @@ func TestCRMReminderSettings(t *testing.T) {
 		t.Errorf("confirmation = %+v", got)
 	}
 	// Untouched kinds stay off rather than inheriting another kind's template:
-	// "you're registered" and "starting in 24 hours" are not the same sentence.
-	if got := reminderFor(t, out, types.NotifyWhatsAppReminder24h); got.Template != "" {
-		t.Errorf("24h = %+v, want off", got)
+	// "you're registered" and "watch the replay" are not the same sentence.
+	if got := reminderFor(t, out, types.NotifyWhatsAppReplay); got.Template != "" {
+		t.Errorf("replay = %+v, want off", got)
 	}
 
 	// And it survives the round trip, because a setting that only exists in one
@@ -234,7 +234,7 @@ func TestCRMReminderSettings(t *testing.T) {
 	_, raw = h.do(http.MethodGet, "/api/host/crm/reminders", nil)
 	var reread types.CRMRemindersResponse
 	h.decode(raw, &reread)
-	if got := reminderFor(t, reread, types.NotifyWhatsAppReminder1h); got.Params[0] != "topic" {
+	if got := reminderFor(t, reread, types.NotifyWhatsAppReminder); got.Params[0] != "topic" {
 		t.Errorf("1h after re-reading = %+v", got)
 	}
 
@@ -243,14 +243,14 @@ func TestCRMReminderSettings(t *testing.T) {
 	out = setReminders(t, h,
 		types.CRMReminder{Kind: types.NotifyWhatsAppConfirmed, Template: ""},
 		types.CRMReminder{
-			Kind: types.NotifyWhatsAppReminder1h, Template: testTemplateUtility,
+			Kind: types.NotifyWhatsAppReminder, Template: testTemplateUtility,
 			Language: "en_US", Params: []string{"topic"},
 		},
 	)
 	if got := reminderFor(t, out, types.NotifyWhatsAppConfirmed); got.Template != "" {
 		t.Errorf("confirmation = %+v after being cleared", got)
 	}
-	if got := reminderFor(t, out, types.NotifyWhatsAppReminder1h); got.Template != testTemplateUtility {
+	if got := reminderFor(t, out, types.NotifyWhatsAppReminder); got.Template != testTemplateUtility {
 		t.Errorf("1h = %+v, want it left alone", got)
 	}
 
@@ -260,7 +260,7 @@ func TestCRMReminderSettings(t *testing.T) {
 	_, raw = h.do(http.MethodGet, "/api/host/crm/reminders", nil)
 	var other types.CRMRemindersResponse
 	h.decode(raw, &other)
-	if got := reminderFor(t, other, types.NotifyWhatsAppReminder1h); got.Template != "" {
+	if got := reminderFor(t, other, types.NotifyWhatsAppReminder); got.Template != "" {
 		t.Errorf("another host sees %+v", got)
 	}
 }
@@ -283,12 +283,8 @@ func TestWhatsAppConfirmationOnRegistration(t *testing.T) {
 			Language: "en_US", Params: []string{"name"},
 		},
 		types.CRMReminder{
-			Kind: types.NotifyWhatsAppReminder24h, Template: testTemplateUtility,
-			Language: "en_US", Params: []string{"topic"},
-		},
-		types.CRMReminder{
-			Kind: types.NotifyWhatsAppReminder1h, Template: testTemplateUtility,
-			Language: "en_US", Params: []string{"when"},
+			Kind: types.NotifyWhatsAppReminder, Template: testTemplateUtility,
+			Language: "en_US", Params: []string{"starts_in"},
 		},
 	)
 	wb := remindersWebinar(t, h, "Scaling Postgres", true)
@@ -344,10 +340,7 @@ func TestWhatsAppConfirmationOnRegistration(t *testing.T) {
 	 * inspected without waiting — and the CRM's own reschedule is what a host's date change runs
 	 * (see TestWhatsAppRemindersFollowWebinar for that path end to end). */
 	ctx := context.Background()
-	starts := time.Now().Add(-2 * time.Minute)
-	if err := h.crm.RescheduleWhatsAppReminders(ctx, wb.ID, starts); err != nil {
-		t.Fatalf("reschedule: %v", err)
-	}
+	makeDue(t, h, wb.ID)
 	owed, err := h.crm.PendingWhatsApp(ctx, 10)
 	if err != nil {
 		t.Fatalf("pending: %v", err)
@@ -355,22 +348,36 @@ func TestWhatsAppConfirmationOnRegistration(t *testing.T) {
 	if len(owed) != 2 {
 		t.Fatalf("%d messages owed, want the 24h and 1h reminders: %+v", len(owed), owed)
 	}
-	byKind := map[string][]string{}
+	said := map[string]bool{}
 	for _, m := range owed {
-		byKind[m.Kind] = m.Params
+		if m.Kind != string(types.NotifyWhatsAppReminder) || len(m.Params) != 1 {
+			t.Errorf("owed %+v, want a reminder with one value", m)
+			continue
+		}
+		said[m.Params[0]] = true
 		if m.Token != testMetaHostToken || m.PhoneNumberID != testMetaPhoneID {
 			t.Errorf("%s would be sent with %q/%q, not the host's own credentials",
 				m.Kind, m.Token, m.PhoneNumberID)
 		}
 	}
-	/* Resolved when the row was written, not when it is sent. The row is a record of
-	 * what was promised: a webinar renamed an hour before it starts must not silently
-	 * rewrite a message somebody is about to receive. */
-	if got := byKind[string(types.NotifyWhatsAppReminder24h)]; len(got) != 1 || got[0] != "Scaling Postgres" {
-		t.Errorf("24h params = %v, want the webinar's topic", got)
+	/* One template for both times, and `starts_in` says which: resolved when the row was
+	 * written, so each reminder carries its own distance from the start. */
+	if !said["in 24 hours"] || !said["in 1 hour"] {
+		t.Errorf("starts_in values = %v, want \"in 24 hours\" and \"in 1 hour\"", said)
 	}
-	if got := byKind[string(types.NotifyWhatsAppReminder1h)]; len(got) != 1 || got[0] == "" {
-		t.Errorf("1h params = %v, want the start time; Meta rejects a blank parameter", got)
+}
+
+/* makeDue makes a webinar's unsent reminders due now, which is how the outbox is inspected
+ * without waiting a day. Moving the webinar would not do it: a reminder that moving puts in
+ * the past is dropped, not sent late (see ReplanReminders). */
+func makeDue(t *testing.T, h *harness, slug string) {
+	t.Helper()
+	if _, err := h.store.Pool().Exec(context.Background(), `
+		UPDATE notifications n SET due_at = now() - interval '1 minute'
+		  FROM webinars w
+		 WHERE n.webinar_id = w.id AND w.slug = $1 AND n.delivery = 'pending'
+		   AND n.kind IN ('reminder','wa_reminder')`, slug); err != nil {
+		t.Fatalf("make due: %v", err)
 	}
 }
 
@@ -542,22 +549,20 @@ func TestWhatsAppReminderStopsOnOptOut(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
 	setReminders(t, h, types.CRMReminder{
-		Kind: types.NotifyWhatsAppReminder1h, Template: testTemplateUtility,
+		Kind: types.NotifyWhatsAppReminder, Template: testTemplateUtility,
 		Language: "en_US", Params: []string{"name"},
 	})
 	wb := remindersWebinar(t, h, "Opting out in between", true)
 	contact := registerOptedIn(t, h, wb.ID)
 
 	ctx := context.Background()
-	if err := h.crm.RescheduleWhatsAppReminders(ctx, wb.ID, time.Now()); err != nil {
-		t.Fatalf("reschedule: %v", err)
-	}
+	makeDue(t, h, wb.ID)
 	owed, err := h.crm.PendingWhatsApp(ctx, 10)
 	if err != nil {
 		t.Fatalf("pending: %v", err)
 	}
-	if len(owed) != 1 {
-		t.Fatalf("%d messages owed before the opt-out, want the 1h reminder: %+v", len(owed), owed)
+	if len(owed) != 2 {
+		t.Fatalf("%d messages owed before the opt-out, want the two reminders: %+v", len(owed), owed)
 	}
 
 	// "Stop", however it arrives — here through the host's own inbox control.
@@ -583,7 +588,7 @@ func TestWhatsAppReminderStopsOnOptOut(t *testing.T) {
 	_, raw := h.do(http.MethodGet, "/api/host/crm/reminders", nil)
 	var after types.CRMRemindersResponse
 	h.decode(raw, &after)
-	if got := reminderFor(t, after, types.NotifyWhatsAppReminder1h); got.Template != testTemplateUtility {
+	if got := reminderFor(t, after, types.NotifyWhatsAppReminder); got.Template != testTemplateUtility {
 		t.Errorf("1h = %+v after disconnecting, want the setting kept", got)
 	}
 	if after.WhatsAppConnected {

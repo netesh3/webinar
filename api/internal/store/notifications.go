@@ -76,6 +76,11 @@ type Notification struct {
 	ICS            string
 	RegistrationID string
 	DueAt          time.Time // zero means send as soon as the outbox is flushed
+	/* OffsetMin is how many minutes before the start a reminder is for, and is set on
+	 * exactly the reminder rows (kind reminder / wa_reminder; migration 0052). It is what
+	 * a reschedule recomputes the due time from, and part of the reminder's identity:
+	 * one row per registration per time. */
+	OffsetMin int
 }
 
 /* Notify writes one notification.
@@ -86,9 +91,13 @@ type Notification struct {
  * window where somebody is waiting and nobody was told.
  */
 func (s *Store) Notify(ctx context.Context, q Querier, n Notification) error {
-	due := n.DueAt
-	if due.IsZero() {
-		due = time.Now()
+	/* "Now" is the database's now, not this process's: the sweep compares due_at with
+	 * now() in Postgres, and a server clock a few milliseconds ahead made a row meant
+	 * for the immediate flush not yet due — the confirmation then waited for the next
+	 * tick instead of going out with the registration. */
+	var due *time.Time
+	if !n.DueAt.IsZero() {
+		due = &n.DueAt
 	}
 	channel := n.Channel
 	if channel == "" {
@@ -102,15 +111,16 @@ func (s *Store) Notify(ctx context.Context, q Querier, n Notification) error {
 	_, err := q.Exec(ctx, `
 		INSERT INTO notifications (user_id, email, kind, webinar_id, subject, body, ics, registration_id, due_at,
 		                           channel, contact_id, template_name, template_language, template_params,
-		                           broadcast_id, drip_enrollment_id)
+		                           broadcast_id, drip_enrollment_id, offset_min)
 		VALUES (NULLIF($1,'')::uuid, $2, $3,
-		        (SELECT id FROM webinars WHERE slug = $4), $5, $6, $7, NULLIF($8,'')::uuid, $9,
+		        (SELECT id FROM webinars WHERE slug = $4), $5, $6, $7, NULLIF($8,'')::uuid,
+		        COALESCE($9::timestamptz, now()),
 		        $10, NULLIF($11,'')::uuid, $12, $13, $14, NULLIF($15,'')::uuid,
-		        NULLIF($16,'')::uuid)`,
+		        NULLIF($16,'')::uuid, NULLIF($17, 0))`,
 		n.UserID, strings.ToLower(strings.TrimSpace(n.Email)), string(n.Kind),
 		n.WebinarSlug, n.Subject, n.Body, n.ICS, n.RegistrationID, due,
 		channel, n.ContactID, n.TemplateName, n.TemplateLanguage, params, n.BroadcastID,
-		n.DripEnrollmentID)
+		n.DripEnrollmentID, n.OffsetMin)
 	if isUniqueViolation(err) {
 		return nil
 	}
@@ -241,7 +251,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		            AND (notifications.kind = 'replay_ready' OR (
 		              w.status NOT IN ('ended','draft')
 		              AND (
-		                notifications.kind NOT IN ('reminder_24h','reminder_1h')
+		                notifications.kind <> 'reminder'
 		                OR COALESCE((w.options->>'emailReminders')::boolean, true)
 		              )
 		            ))
@@ -322,30 +332,96 @@ func (s *Store) SkipPendingRemindersForRegistration(ctx context.Context, registr
 		   SET delivery = 'skipped', delivery_error = 'registration declined', delivered_at = now()
 		 WHERE registration_id = $1
 		   AND delivery = 'pending'
-		   AND kind IN ('reminder_24h','reminder_1h')`, registrationID)
+		   AND kind = 'reminder'`, registrationID)
 	return err
 }
 
-/* RescheduleRemindersForWebinar moves unsent email 24h/1h due times when the host changes
- * starts_at. The WhatsApp ones move in the CRM, on Engage.OnRescheduled.
+/* ReplanReminders brings a webinar's unsent email reminders in line with its start time and
+ * its list of reminder times (options.reminders), after the host saved it.
  *
- * $2 is cast explicitly, and it matters: without the cast Postgres resolves the
- * parameter's type from `$2 - interval '24 hours'`, decides it is an interval, and
- * rejects the whole statement — which the caller logs as a warning and carries on
- * from, so every reschedule quietly left the old reminders where they were.
+ *   - a time no longer on the list: its unsent rows are deleted. Deleted, not skipped, so
+ *     that adding the time back queues it again (one row per registration per time).
+ *   - the rest move with the start: due = startsAt - offset.
+ *   - a row that moving put in the past is deleted rather than sent late: "starts in 24
+ *     hours" two hours before the start is wrong, and the nearer reminder covers it.
+ *
+ * Rows already due before this save are left alone: the outbox may be sending them right
+ * now, and deleting one mid-flight is how a re-queue becomes a second copy.
+ *
+ * Adding the times that are new is the caller's (it renders the email); ReminderGaps says
+ * which. $2 is cast explicitly: without it Postgres types it from `$2 - interval` as an
+ * interval and rejects the statement.
  */
-func (s *Store) RescheduleRemindersForWebinar(ctx context.Context, slug string, startsAt time.Time) error {
+func (s *Store) ReplanReminders(ctx context.Context, slug string, startsAt time.Time, offsets []int) error {
+	if offsets == nil {
+		offsets = []int{}
+	}
 	_, err := s.pool.Exec(ctx, `
+		WITH w AS (SELECT id FROM webinars WHERE slug = $1)
+		DELETE FROM notifications n
+		 USING w
+		 WHERE n.webinar_id = w.id AND n.kind = 'reminder' AND n.delivery = 'pending'
+		   AND n.due_at > now()
+		   AND (n.offset_min <> ALL($3::int[])
+		        OR $2::timestamptz - make_interval(mins => n.offset_min) <= now())`,
+		slug, startsAt, offsets)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
 		UPDATE notifications n
-		   SET due_at = CASE n.kind
-		                  WHEN 'reminder_24h'    THEN $2::timestamptz - interval '24 hours'
-		                  WHEN 'reminder_1h'     THEN $2::timestamptz - interval '1 hour'
-		                END
+		   SET due_at = $2::timestamptz - make_interval(mins => n.offset_min)
 		  FROM webinars w
 		 WHERE n.webinar_id = w.id AND w.slug = $1
-		   AND n.delivery = 'pending'
-		   AND n.kind IN ('reminder_24h','reminder_1h')`, slug, startsAt)
+		   AND n.kind = 'reminder' AND n.delivery = 'pending' AND n.due_at > now()`,
+		slug, startsAt)
 	return err
+}
+
+// ReminderGap is one approved registrant who has no email reminder row for one time.
+type ReminderGap struct {
+	RegistrationID string
+	Email          string
+	Name           string
+	JoinKey        string
+	OffsetMin      int
+}
+
+/* ReminderGaps lists, for each time on the webinar's list, the approved registrants with an
+ * address who have no reminder row for it — sent, pending or otherwise. That is exactly the
+ * set a newly added time has to be queued for, and empty when nothing changed, so saving a
+ * webinar without touching its reminders costs one query. Times already in the past are
+ * the caller's to drop. */
+func (s *Store) ReminderGaps(ctx context.Context, slug string, offsets []int) ([]ReminderGap, error) {
+	if len(offsets) == 0 {
+		return []ReminderGap{}, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT r.id::text, r.email,
+		       btrim(btrim(r.first_name) || ' ' || btrim(r.last_name)),
+		       r.join_key, o.offset_min
+		  FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		  CROSS JOIN unnest($2::int[]) AS o(offset_min)
+		 WHERE w.slug = $1 AND r.state = 'approved' AND r.email <> ''
+		   AND NOT EXISTS (
+		         SELECT 1 FROM notifications n
+		          WHERE n.registration_id = r.id AND n.kind = 'reminder'
+		            AND n.offset_min = o.offset_min)
+		 ORDER BY r.created_at, o.offset_min DESC`, slug, offsets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ReminderGap{}
+	for rows.Next() {
+		var g ReminderGap
+		if err := rows.Scan(&g.RegistrationID, &g.Email, &g.Name, &g.JoinKey, &g.OffsetMin); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
 }
 
 // SkipRemindersForEndedWebinar stops emailing people about a session that will not happen.
@@ -357,7 +433,7 @@ func (s *Store) SkipRemindersForEndedWebinar(ctx context.Context, slug string) e
 		  FROM webinars w
 		 WHERE n.webinar_id = w.id AND w.slug = $1
 		   AND n.delivery = 'pending'
-		   AND n.kind IN ('reminder_24h','reminder_1h','registration_confirmed','registration_approved')
+		   AND n.kind IN ('reminder','registration_confirmed','registration_approved')
 		   AND n.due_at > now()`, slug)
 	return err
 }

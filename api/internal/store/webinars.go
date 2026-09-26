@@ -118,6 +118,11 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	if !bytes.Contains(options, []byte(`"emailReminders"`)) {
 		w.Options.EmailReminders = true
 	}
+	// Nor this one; missing means the times every webinar had before it was a setting.
+	// Present and empty is a host who removed them all, and stays empty.
+	if !bytes.Contains(options, []byte(`"reminders"`)) || w.Options.Reminders == nil {
+		w.Options.Reminders = append([]int(nil), types.DefaultReminders...)
+	}
 	if len(report) > 0 {
 		var r types.WebinarReport
 		if err := json.Unmarshal(report, &r); err == nil {

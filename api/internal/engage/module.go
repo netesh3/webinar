@@ -188,10 +188,52 @@ func (s *Module) OnRegistrationsDecided(ctx context.Context, slug string, declin
 	s.flushWhatsAppOutbox(ctx)
 }
 
-// OnRescheduled moves the WhatsApp 24h/1h reminders with the webinar, as the webinar side moves the email ones.
-func (s *Module) OnRescheduled(ctx context.Context, slug string, startsAt time.Time) {
-	if err := s.store.RescheduleWhatsAppReminders(ctx, slug, startsAt); err != nil {
-		s.log.Warn("crm: could not reschedule whatsapp reminders", "slug", slug, "error", err)
+/* OnRescheduled applies a saved webinar's start time and reminder times to the WhatsApp
+ * reminders already queued, and queues the times that are new for the opted-in contacts
+ * who are due them — the CRM's side of the webinar's replanReminders.
+ *
+ * The WhatsApp switch off, or no reminder template chosen, means every unsent reminder is
+ * dropped; turning either back on and saving queues them again.
+ */
+func (s *Module) OnRescheduled(ctx context.Context, wb types.Webinar) {
+	starts, err := time.Parse(time.RFC3339, wb.StartsAt)
+	if err != nil {
+		return
+	}
+	offsets := wb.Options.Reminders
+	if !wb.Options.WhatsAppReminders {
+		offsets = []int{}
+	}
+	if err := s.store.ReplanWhatsAppReminders(ctx, wb.ID, starts, offsets); err != nil {
+		s.log.Warn("crm: could not replan whatsapp reminders", "slug", wb.ID, "error", err)
+		return
+	}
+	if len(offsets) == 0 || wb.Status == types.StatusEnded {
+		return
+	}
+	gaps, err := s.store.WhatsAppReminderGaps(ctx, wb.ID, offsets)
+	if err != nil {
+		s.log.Warn("crm: could not list new whatsapp reminder times", "slug", wb.ID, "error", err)
+		return
+	}
+	if len(gaps) == 0 {
+		return
+	}
+	hostID, err := s.store.HostIDFor(ctx, wb.ID)
+	if err != nil {
+		s.log.Error("crm: replan could not resolve host", "webinar", wb.ID, "error", err)
+		return
+	}
+	contacts := map[string]types.CRMContact{}
+	for _, g := range gaps {
+		c, ok := contacts[g.ContactID]
+		if !ok {
+			if c, err = s.store.Contact(ctx, hostID, g.ContactID); err != nil {
+				continue
+			}
+			contacts[g.ContactID] = c
+		}
+		s.queueWhatsApp(ctx, hostID, wb, c, g.RegistrationID, types.NotifyWhatsAppReminder, g.OffsetMin)
 	}
 }
 
