@@ -119,12 +119,28 @@ const MATTE_LONG_SIDE = 256;
  * partial seed; waving gets the full amount. Furniture stays gated by skin chroma + neighbour
  * person — a warm desk with no solid person in the 3×3 is untouched.
  *
+ * Still-edge outline flicker is a third failure mode. Segmentation is independent per
+ * frame, so confidence along the silhouette chatters by a few percent even when the
+ * person is still. The composite's smoothstep(MASK_LO, MASK_HI) then turns that into a
+ * large alpha swing — the boundary crawls. K_STILL alone is not enough there: webcam
+ * RGB noise can also push the motion metric just over MOTION_LO and briefly unlock a
+ * higher k, which lets the chatter through. So on the transition band, with little
+ * motion, the blend holds history harder (K_EDGE_STILL) and a Schmitt-style hysteresis
+ * resists flipping which side of MASK_LO the texel is on. Under real motion both open
+ * fully, so this is not a ghosting trail.
+ *
  * "Moved" is the largest colour — or significant mask — change in the 3×3 neighbourhood
  * between this frame and the last, at the matte's resolution.
  */
 const K_STILL = 0.25;
+/** Stronger EMA hold on the silhouette band when still — where softstep amplifies chatter. */
+const K_EDGE_STILL = 0.12;
+/** How hard a still silhouette texel sticks to its previous side of MASK_LO (0..1). */
+const EDGE_HYST = 0.5;
 const K_MOVE = 0.97;
-const MOTION_LO = 0.022;
+/** Floor for RGB/mask motion. A touch above typical webcam sensor noise so still edges
+ *  are not unlocked into K_MOVE by grain alone (was 0.022). */
+const MOTION_LO = 0.028;
 const MOTION_HI = 0.055;
 /** Confidence deltas below this are treated as model shimmer, not limb motion. */
 const MASK_MOTION_FLOOR = 0.2;
@@ -360,7 +376,13 @@ void main() {
  * rising confidence is preferred under motion (hand entering this texel).
  *
  * Far outstretched hands that the model zeros are recovered only when a solid person
- * neighbour remains (connected limb) and the texel is warm skin — see EXTREMITY_*. */
+ * neighbour remains (connected limb) and the texel is warm skin — see EXTREMITY_*.
+ *
+ * Still silhouettes need the opposite of a high k: the opacity softstep amplifies a few
+ * percent of confidence chatter into a crawling edge. On the transition band, with little
+ * motion, k is capped at K_EDGE_STILL and a Schmitt pull resists flipping which side of
+ * MASK_LO the texel is on. Extremity seeds disable that pull so a recovered limb is not
+ * immediately glued back to "missing". */
 const TEMPORAL = `#version 300 es
 precision highp float;
 uniform sampler2D current;    // guide colour, raw confidence
@@ -393,6 +415,12 @@ void main() {
   float k = mix(${K_STILL.toFixed(3)}, ${K_MOVE.toFixed(3)}, moveAmt);
   // Quadratic snap: leave still edges alone, chase waving hands to the new mask.
   k = mix(k, 1.0, moveAmt * moveAmt * ${MOTION_SNAP.toFixed(3)});
+  // Silhouette band: where softstep(MASK_LO, MASK_HI) turns small confidence chatter
+  // into large alpha swings. Hold history harder there when the picture is still.
+  float bandSrc = max(before, now.a);
+  float edgeBand = smoothstep(0.48, 0.56, bandSrc) * (1.0 - smoothstep(0.80, 0.90, bandSrc));
+  float still = 1.0 - moveAmt;
+  k = mix(k, min(k, ${K_EDGE_STILL.toFixed(3)}), still * edgeBand);
   float a = mix(before, now.a, max(k, restart));
   // Prefer rising person confidence under motion (hand arriving); clearing uses high k.
   a = mix(a, max(a, now.a), moveAmt * moveAmt);
@@ -418,6 +446,15 @@ void main() {
   // Mild skin-gated dilate: close a finger-width gap without expanding cool chairs.
   float dilate = max(a, nbrPerson * ${EXTREMITY_DILATE_KEEP.toFixed(3)});
   a = mix(a, max(a, dilate), skin * connected * ${EXTREMITY_DILATE.toFixed(3)});
+
+  // Schmitt hold on the furniture/person cut when still. If history was person-side of
+  // MASK_LO and the new blend wants to drop through (or the reverse), pull back toward
+  // history. Opens under motion; skipped where an extremity seed just filled a hole.
+  float cut = ${MASK_LO.toFixed(3)};
+  float histPerson = smoothstep(cut - 0.04, cut + 0.08, before);
+  float nowPerson = smoothstep(cut - 0.04, cut + 0.08, a);
+  float disagree = abs(histPerson - nowPerson);
+  a = mix(a, before, disagree * still * edgeBand * ${EDGE_HYST.toFixed(3)} * (1.0 - seed));
 
   color = vec4(now.rgb, a);
 }`;
