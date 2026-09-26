@@ -365,6 +365,19 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 	if s.whatsapp == nil || !s.whatsapp.Enabled() {
 		return
 	}
+	/* One sender at a time, across instances and between the sweep and the flush a
+	 * registration or approval triggers. A held lease means another runner is sending;
+	 * whatever it missed is due on the next pass. A double send here costs the host a
+	 * Meta template fee and lands twice on somebody's phone. */
+	release, ok, err := s.store.TryLease(ctx, "outbox:whatsapp", 2*time.Minute)
+	if err != nil || !ok {
+		if err != nil {
+			s.log.Error("whatsapp outbox: could not take lease", "error", err)
+		}
+		return
+	}
+	defer release()
+
 	owed, err := s.store.PendingWhatsApp(ctx, 100)
 	if err != nil {
 		s.log.Error("whatsapp outbox: could not read", "error", err)

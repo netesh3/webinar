@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/notify"
@@ -204,6 +205,19 @@ func (s *Server) joinURLFor(ctx context.Context, slug, registrationID string) st
  * be reported as failed.
  */
 func (s *Server) flushOutbox(ctx context.Context) {
+	/* One sender at a time. Called from the sweep and straight after an approval, on any
+	 * instance; without the lease two of them read the same pending row and both send it.
+	 * A caller that finds it held does nothing: the holder is sending, and anything it
+	 * missed is due on the next pass. */
+	release, ok, err := s.store.TryLease(ctx, "outbox:email", outboxLease)
+	if err != nil || !ok {
+		if err != nil {
+			s.log.Error("outbox: could not take lease", "err", err)
+		}
+		return
+	}
+	defer release()
+
 	owed, err := s.store.PendingDeliveries(ctx, 100)
 	if err != nil {
 		s.log.Error("outbox: could not read", "err", err)
@@ -227,6 +241,9 @@ func (s *Server) flushOutbox(ctx context.Context) {
 		_ = s.store.MarkDelivered(ctx, m.ID, "sent", "")
 	}
 }
+
+// outboxLease outlives one flush of 100 messages with a slow SMTP server.
+const outboxLease = 2 * time.Minute
 
 // ------------------------------------------------------------- host alerts
 

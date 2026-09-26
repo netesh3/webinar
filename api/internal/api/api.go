@@ -197,7 +197,9 @@ func (s *Server) Routes() http.Handler {
 	// Streaming a recording is exempt: see httpx.Timeout. Everything else gets a
 	// deadline, because a request that cannot finish in twenty seconds is a request
 	// that is not going to finish.
-	r.Use(httpx.Timeout(20*time.Second, "/recordings/"))
+	// The tick is exempt too: it bounds itself (tickBudget) and a pass cut at 20 s would
+	// leave the rest of the outbox for a minute later.
+	r.Use(httpx.Timeout(20*time.Second, "/recordings/", "/api/internal/tick"))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: s.cfg.CORSOrigins,
 		AllowedMethods: []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
@@ -241,6 +243,11 @@ func (s *Server) Routes() http.Handler {
 		publicAPI := r
 		r.Get("/config", s.handleConfig)
 		r.Post("/webhooks/livekit", s.handleLiveKitWebhook)
+		/* The background job, run on request, for a deployment that scales to zero. Not
+		 * mounted without a secret. See tick.go. */
+		if s.cfg.TickSecret != "" {
+			r.Post("/internal/tick", s.handleInternalTick)
+		}
 
 		/* One webinar BY SLUG stays public; the LIST does not.
 		 *

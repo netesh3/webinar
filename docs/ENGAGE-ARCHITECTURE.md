@@ -461,6 +461,13 @@ It is latent today only because traffic rarely holds a second instance open —
 a rollout is enough to hold two. Fix before Phase 10 (campaigns are when
 volume arrives).
 
+**Interim fix (shipped):** each sweep pass and each outbox flush takes a lease
+row in `sweep_leases` (`store.TryLease`, migration 0051), so one runner at a
+time across instances. The same change added `POST /api/internal/tick`, which
+Cloud Scheduler calls every minute so the pass runs while the service is scaled
+to zero (`deploy/cloud-scheduler-tick.sh`). It holds until volume needs
+parallel senders; then River, below.
+
 **Decision:** move the outbox, drips and bots onto **River** jobs (plan 0 in
 [engage/PLANS.md](engage/PLANS.md)). River claims with `SKIP LOCKED`, rescues
 stuck jobs, and retries with backoff, which covers the “claim the row” option

@@ -172,6 +172,10 @@ fi
 [[ -n "${BROADCAST_HLS_BASE:-}" ]] && ENV_VARS+=("BROADCAST_HLS_BASE=${BROADCAST_HLS_BASE}")
 [[ -n "${RECORDINGS_RETENTION_DAYS:-}" ]] && ENV_VARS+=("RECORDINGS_RETENTION_DAYS=${RECORDINGS_RETENTION_DAYS}")
 [[ -n "${EMPTY_ROOM_CLOSE_MIN:-}" ]] && ENV_VARS+=("EMPTY_ROOM_CLOSE_MIN=${EMPTY_ROOM_CLOSE_MIN}")
+# Turns on POST /api/internal/tick, which Cloud Scheduler calls every minute so that
+# reminders, drips and meeting limits run while the service is scaled to zero. See
+# deploy/cloud-scheduler-tick.sh, which needs the same value.
+[[ -n "${TICK_SECRET:-}" ]] && ENV_VARS+=("TICK_SECRET=${TICK_SECRET}")
 [[ -n "${SUPPORT_EMAIL:-}" ]] && ENV_VARS+=("SUPPORT_EMAIL=${SUPPORT_EMAIL}")
 [[ -n "${SMTP_HOST:-}" ]] && ENV_VARS+=("SMTP_HOST=${SMTP_HOST}")
 [[ -n "${SMTP_PORT:-}" ]] && ENV_VARS+=("SMTP_PORT=${SMTP_PORT}")
