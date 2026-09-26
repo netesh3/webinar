@@ -40,12 +40,11 @@ const API_BASE =
 
 /* How long to wait for the identity lookup.
  *
- * A short timeout on purpose: if the API is slow or down, the answer to "may this person open
- * the host dashboard" should be "no" quickly rather than a hung navigation. Failing closed on
- * a host route is safe — the page would not have worked anyway, since every request it makes
- * needs the same API.
+ * Long enough to absorb a Cloud Run cold start when min-instances is 0 (often
+ * 3–6s for this Go API). Still fails closed: if the API is truly down, the host
+ * page would not work anyway, since every request it makes needs the same API.
  */
-const LOOKUP_TIMEOUT_MS = 2_500;
+const LOOKUP_TIMEOUT_MS = 8_000;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

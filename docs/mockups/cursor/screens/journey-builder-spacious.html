@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Journey builder — spacious canvas · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body
+    data-screen="journey-builder-spacious"
+    data-layout="wide"
+    data-crumb="Journeys / Q4 cohort waitlist nurture"
+  >
+    <main class="page">
+      <div class="builder-bar">
+        <span class="glyph"><svg data-icon="edit" class="icon icon-sm"></svg></span>
+        <div>
+          <div class="t-title">Q4 cohort waitlist nurture</div>
+          <div class="t-sub">Draft · never published</div>
+        </div>
+        <span class="pill">Draft</span>
+
+        <span class="right"></span>
+        <div class="seg">
+          <button aria-selected="true" data-toast="Select tool">
+            <svg data-icon="cursor" class="icon icon-sm"></svg>
+          </button>
+          <button data-toast="Pan tool">
+            <svg data-icon="hand" class="icon icon-sm"></svg>
+          </button>
+        </div>
+        <div class="zoom">
+          <button data-zoom="out" title="Zoom out"><svg data-icon="minus" class="icon icon-sm"></svg></button>
+          <output>100%</output>
+          <button data-zoom="in" title="Zoom in"><svg data-icon="plus" class="icon icon-sm"></svg></button>
+          <button data-zoom="fit" title="Fit to screen"><svg data-icon="maximize" class="icon icon-sm"></svg></button>
+        </div>
+        <button class="btn btn-sm" data-toast="Draft saved.">
+          <svg data-icon="check" class="icon icon-sm"></svg> Save
+        </button>
+        <button class="btn btn-primary btn-sm" data-toast="A draft needs at least one message step before it can publish.">
+          <svg data-icon="publish" class="icon icon-sm"></svg> Publish flow
+        </button>
+      </div>
+
+      <div class="builder builder-l">
+        <!-- Step palette. Same node vocabulary as the built flow on the right. -->
+        <aside class="palette">
+          <label class="search" style="min-width: 0">
+            <svg data-icon="search" class="icon icon-sm"></svg>
+            <input class="input" type="search" placeholder="Find a step" />
+          </label>
+
+          <div class="palette-group mt-16">
+            <h4>Triggers</h4>
+            <button class="palette-item" data-toast="Drag a trigger onto the canvas to start the flow.">
+              <span class="glyph glyph-brand"><svg data-icon="video" class="icon icon-sm"></svg></span>
+              <span>
+                <b>Webinar registration</b>
+                <small>Form or API</small>
+              </span>
+              <svg data-icon="grip" class="icon icon-sm right dim"></svg>
+            </button>
+            <button class="palette-item" data-toast="Drag a trigger onto the canvas to start the flow.">
+              <span class="glyph glyph-brand"><svg data-icon="webhook" class="icon icon-sm"></svg></span>
+              <span>
+                <b>Inbound webhook</b>
+                <small>Custom JSON payload</small>
+              </span>
+              <svg data-icon="grip" class="icon icon-sm right dim"></svg>
+            </button>
+            <button class="palette-item" data-toast="Drag a trigger onto the canvas to start the flow.">
+              <span class="glyph glyph-brand"><svg data-icon="tag" class="icon icon-sm"></svg></span>
+              <span>
+                <b>Tag added</b>
+                <small>Segment change</small>
+              </span>
+              <svg data-icon="grip" class="icon icon-sm right dim"></svg>
+            </button>
+          </div>
+
+          <div class="palette-group">
+            <h4>WhatsApp</h4>
+            <button class="palette-item" data-toast="Drop a message step below a trigger.">
+              <span class="glyph glyph-wa"><svg data-icon="chat" class="icon icon-sm"></svg></span>
+              <span>
+                <b>Approved template</b>
+                <small>HSM template</small>
+              </span>
+              <svg data-icon="grip" class="icon icon-sm right dim"></svg>
+            </button>
+            <button class="palette-item" data-toast="Drop a message step below a trigger.">
+              <span class="glyph glyph-wa"><svg data-icon="inbox" class="icon icon-sm"></svg></span>
+              <span>
+                <b>Quick reply buttons</b>
+                <small>Interactive reply</small>
+              </span>
+              <svg data-icon="grip" class="icon icon-sm right dim"></svg>
+            </button>
+          </div>
+
+          <div class="palette-group">
+            <h4>Logic &amp; timing</h4>
+            <button class="palette-item" data-toast="Drop a branch to split the audience.">
+              <span class="glyph glyph-warn"><svg data-icon="split" class="icon icon-sm"></svg></span>
+              <span>
+                <b>If / else split</b>
+                <small>Branch on an attribute</small>
+              </span>
+              <svg data-icon="grip" class="icon icon-sm right dim"></svg>
+            </button>
+            <button class="palette-item" data-toast="Drop a wait to hold contacts.">
+              <span class="glyph glyph-warn"><svg data-icon="hourglass" class="icon icon-sm"></svg></span>
+              <span>
+                <b>Wait interval</b>
+                <small>Delay or wait-until</small>
+              </span>
+              <svg data-icon="grip" class="icon icon-sm right dim"></svg>
+            </button>
+          </div>
+        </aside>
+
+        <div class="canvas">
+          <div class="flow">
+            <article class="node">
+              <div class="node-head">
+                <span class="glyph glyph-brand"><svg data-icon="bolt" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">Trigger</span>
+                  <b>Webinar registration</b>
+                </span>
+              </div>
+              <div class="node-body">
+                Fires when a new attendee registers on the landing page.
+              </div>
+            </article>
+
+            <div class="rail-add">
+              <span class="rail"></span>
+              <button data-toast="Insert a step here.">
+                <svg data-icon="plus" class="icon icon-sm"></svg>
+              </button>
+            </div>
+
+            <article class="node">
+              <div class="node-head">
+                <span class="glyph glyph-warn"><svg data-icon="split" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">Condition</span>
+                  <b>VIP group member?</b>
+                </span>
+              </div>
+              <div class="node-body">
+                Checks whether the contact has already joined the VIP community.
+              </div>
+              <div class="node-foot">
+                <a class="btn btn-sm" href="step-branch-rules.html">
+                  <svg data-icon="sliders" class="icon icon-sm"></svg> Configure rule
+                </a>
+              </div>
+            </article>
+
+            <span class="rail"></span>
+
+            <div class="branch mt-16">
+              <div class="branch-leg">
+                <span class="leg-label leg-false">False · not in group</span>
+                <article class="node">
+                  <div class="node-head">
+                    <span class="glyph glyph-wa"><svg data-icon="chat" class="icon icon-sm"></svg></span>
+                    <span>
+                      <span class="node-kind">WhatsApp message</span>
+                      <b>Send community invite</b>
+                    </span>
+                  </div>
+                  <div class="node-body">
+                    “Hi Rahul! 🚀 Join our WhatsApp mastermind for the live
+                    slides.”
+                  </div>
+                  <div class="node-foot"><span class="tag">join_community_v2</span></div>
+                </article>
+              </div>
+              <div class="branch-leg">
+                <span class="leg-label leg-true">True · VIP member</span>
+                <article class="node">
+                  <div class="node-head">
+                    <span class="glyph glyph-wa"><svg data-icon="calendar" class="icon icon-sm"></svg></span>
+                    <span>
+                      <span class="node-kind">WhatsApp message</span>
+                      <b>Send calendar passcode</b>
+                    </span>
+                  </div>
+                  <div class="node-body">
+                    “Welcome back! Here’s your one-click reservation and session
+                    passcode.”
+                  </div>
+                  <div class="node-foot"><span class="tag">calendar_invite_direct</span></div>
+                </article>
+              </div>
+            </div>
+
+            <div class="converge">Paths converge</div>
+            <span class="rail"></span>
+
+            <article class="node">
+              <div class="node-head">
+                <span class="glyph glyph-warn"><svg data-icon="hourglass" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">Wait</span>
+                  <b>Until 2 hours before</b>
+                </span>
+              </div>
+              <div class="node-body">
+                Holds each contact until exactly 2 hours before their session
+                starts.
+              </div>
+            </article>
+
+            <div class="rail-add">
+              <span class="rail"></span>
+              <button data-toast="Insert a step here.">
+                <svg data-icon="plus" class="icon icon-sm"></svg>
+              </button>
+            </div>
+
+            <article class="node">
+              <div class="node-head">
+                <span class="glyph glyph-wa"><svg data-icon="bell" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">WhatsApp message</span>
+                  <b>2-hour reminder</b>
+                </span>
+              </div>
+              <div class="node-body">
+                Dynamic join link with a countdown notice.
+              </div>
+              <div class="node-foot"><span class="tag">webinar_2h_countdown</span></div>
+            </article>
+
+            <div class="rail-add">
+              <span class="rail"></span>
+              <button data-toast="Append the next step.">
+                <svg data-icon="plus" class="icon icon-sm"></svg>
+              </button>
+            </div>
+
+            <p class="dim" style="font-size: 12.5px">Add the next step</p>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

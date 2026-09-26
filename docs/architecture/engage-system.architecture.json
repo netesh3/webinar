@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Engage on Webcast",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/netesh3/webinar",
+      "provider": "github",
+      "revision": "0d7b74d6e5cf1bc8e6fc32debced80792641bd28"
+    },
+    "views": [
+      {
+        "id": "host-request",
+        "label": "Host request path",
+        "focus": ["host", "engage", "api", "pg"],
+        "note": "The Engage UI on Cloudflare calls the Cloud Run API. Postgres is the only CRM store."
+      },
+      {
+        "id": "identity",
+        "label": "Identity",
+        "focus": ["host", "auth", "api", "pg"],
+        "note": "Supabase Auth is Google OAuth only. The product session is webcast_session on the Go API."
+      },
+      {
+        "id": "whatsapp",
+        "label": "WhatsApp Cloud API",
+        "focus": ["api", "graph", "waba", "hooks"],
+        "note": "The host WABA pays Meta. Cloud Run sends on Graph and receives signed webhooks."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "host",
+      "type": "external",
+      "label": "Host browser",
+      "sublabel": "Engage + webinars",
+      "pos": [48, 280],
+      "size": [150, 64]
+    },
+    {
+      "id": "engage",
+      "type": "frontend",
+      "label": "Engage UI",
+      "sublabel": "Next.js on Workers",
+      "tag": "webinarliv.com",
+      "pos": [260, 280],
+      "size": [168, 64],
+      "sources": [
+        { "path": "web/app/host/(portal)/crm/page.tsx", "line": 1, "end_line": 29, "label": "CRM route" },
+        { "path": "web/components/crm-screen.tsx", "line": 64, "end_line": 77, "label": "inbox UI" }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Supabase Auth",
+      "sublabel": "Google OAuth PKCE",
+      "tag": "JWKS",
+      "pos": [260, 88],
+      "size": [168, 64],
+      "sources": [
+        { "path": "web/lib/supabase.ts", "line": 4, "end_line": 15, "label": "browser OAuth" },
+        { "path": "api/internal/auth/supabase.go", "line": 19, "end_line": 28, "label": "verify JWT" }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "webcast-api",
+      "sublabel": "Go on Cloud Run",
+      "tag": "asia-south1",
+      "pos": [500, 280],
+      "size": [176, 64],
+      "sources": [
+        { "path": "api/cmd/server/main.go", "line": 1, "label": "server" },
+        { "path": "api/internal/wa/wa.go", "line": 1, "end_line": 16, "label": "Cloud API" },
+        { "path": "docs/DEPLOYMENT-TOPOLOGY.md", "line": 10, "end_line": 12, "label": "topology" }
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "Supabase Postgres",
+      "sublabel": "session pooler :5432",
+      "tag": "ap-south-1",
+      "pos": [760, 280],
+      "size": [176, 64],
+      "sources": [
+        { "path": "api/internal/store/store.go", "line": 63, "end_line": 80, "label": "pgx pool" }
+      ]
+    },
+    {
+      "id": "graph",
+      "type": "external",
+      "label": "WhatsApp Cloud API",
+      "sublabel": "graph.facebook.com",
+      "pos": [500, 88],
+      "size": [176, 64],
+      "sources": [
+        { "path": "api/internal/wa/send.go", "line": 1, "label": "send" }
+      ]
+    },
+    {
+      "id": "hooks",
+      "type": "cloud",
+      "label": "Meta webhooks",
+      "sublabel": "signed POST",
+      "pos": [500, 430],
+      "size": [176, 64],
+      "sources": [
+        { "path": "api/internal/api/api.go", "line": 271, "end_line": 272, "label": "webhook routes" }
+      ]
+    },
+    {
+      "id": "waba",
+      "type": "cloud",
+      "label": "Host WABA",
+      "sublabel": "Meta bills the host",
+      "pos": [760, 88],
+      "size": [176, 64],
+      "sources": [
+        { "path": "api/internal/wa/wa.go", "line": 8, "end_line": 13, "label": "host pays" }
+      ]
+    }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Webcast runtime", "wraps": ["engage", "api"] },
+    { "kind": "region", "label": "Supabase India", "wraps": ["auth", "pg"] },
+    { "kind": "security-group", "label": "Meta Business Platform", "wraps": ["graph", "hooks", "waba"] }
+  ],
+  "connections": [
+    { "id": "host-ui", "from": "host", "to": "engage", "label": "HTTPS UI", "variant": "emphasis" },
+    { "id": "host-api", "from": "host", "to": "api", "label": "webcast_session cookie", "fromSide": "bottom", "toSide": "left" },
+    { "id": "oauth", "from": "host", "to": "auth", "label": "Google PKCE", "variant": "security", "fromSide": "top", "toSide": "left" },
+    { "id": "jwt-exchange", "from": "auth", "to": "api", "label": "POST /api/auth/supabase", "variant": "security" },
+    { "id": "sql", "from": "api", "to": "pg", "label": "SQL via pgx", "variant": "emphasis" },
+    { "id": "send", "from": "api", "to": "graph", "label": "host access token", "fromSide": "top", "toSide": "bottom" },
+    { "id": "graph-waba", "from": "graph", "to": "waba", "label": "send / templates" },
+    { "id": "hook-in", "from": "hooks", "to": "api", "label": "POST /api/webhooks/whatsapp", "fromSide": "top", "toSide": "bottom" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Go vs Supabase",
+      "items": [
+        "Cloud Run is the API; Supabase is Auth plus Postgres, not PostgREST"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Engage UI",
+      "items": [
+        "Next.js on Workers already calls /api/host/crm/*"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "WhatsApp",
+      "items": [
+        "Cloud API and Embedded Signup; the host WABA pays Meta"
+      ]
+    }
+  ]
+}

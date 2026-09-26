@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Messages · Hosting · WebinarLiv (v1 mock)</title><link rel="stylesheet" href="assets/v1.css">
+<style>
+  .tile { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  .tile .ic { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); }
+  .inbox { display: grid; grid-template-columns: 310px 1fr; height: 580px; overflow: hidden; }
+  .pane { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .pane:last-child { border-right: 0; }
+  .scroll { overflow: auto; flex: 1; }
+  .composer { border-top: 1px solid var(--line); padding: 12px; }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:32px">
+    <div class="tile"><span class="ic">▶</span><div class="grow"><div class="name">Instant webinar</div><div class="xs muted">Go live immediately, no form</div></div><span class="faint">›</span></div>
+    <div class="tile"><span class="ic">▦</span><div class="grow"><div class="name">Schedule a webinar</div><div class="xs muted">Pick a date and invite people</div></div><span class="faint">›</span></div>
+  </div>
+
+  <div class="tabs">
+    <a class="tab" href="host.html">Upcoming <span class="count">1</span></a>
+    <a class="tab" href="#">Past <span class="count">6</span></a>
+    <a class="tab" href="#">Drafts</a>
+    <a class="tab" href="#">WatchList</a>
+    <span class="tabsep"></span>
+    <a class="tab" href="host-people.html">People <span class="count">412</span></a>
+    <a class="tab on" href="host-messages.html">Messages <span class="count">3</span></a>
+  </div>
+
+  <div class="card inbox">
+    <div class="pane">
+      <div style="padding:12px;border-bottom:1px solid var(--line);display:grid;gap:10px">
+        <div class="chips" data-chipset><span class="chip on">Needs reply <b>3</b></span><span class="chip">All</span><span class="chip">Done</span></div>
+        <select class="field sm"><option>All webinars</option><option>Scale your coaching practice</option></select>
+      </div>
+      <div class="scroll">
+        <a class="li" data-row="open" href="host-messages.html"><div class="grow"><div class="row between"><span class="name">Rohan Mehta</span><span class="xs faint">40 m</span></div><div class="xs muted truncate">Can I get the slides? And what's the price…</div><div class="xs faint truncate">Scale your coaching practice</div></div><span class="unread"></span></a>
+        <a class="li" href="#"><div class="grow"><div class="row between"><span class="name">Amlesh Kumar</span><span class="xs faint">12 m</span></div><div class="xs muted truncate">4 — loved the part on pricing</div><div class="xs faint truncate">Scale your coaching practice</div></div><span class="unread"></span></a>
+        <a class="li" href="#"><div class="grow"><div class="row between"><span class="name">Kavya Pillai</span><span class="xs faint">2 h</span></div><div class="xs muted truncate">Is there a replay? I dropped at the Q&amp;A</div><div class="xs faint truncate">Scale your coaching practice</div></div><span class="unread"></span></a>
+        <a class="li" data-row="closed" href="host-messages.html#closed"><div class="grow"><div class="row between"><span class="name">Vikram Sharma</span><span class="xs faint">3 d</span></div><div class="xs faint truncate">You: Here's the replay…</div><div class="xs faint truncate">Scale your coaching practice</div></div></a>
+        <a class="li" href="#"><div class="grow"><div class="row between"><span class="name">Neha Iyer</span><span class="xs faint">3 w</span></div><div class="xs faint truncate">Will there be a part 2?</div><div class="xs faint truncate">Morning routines for coaches</div></div></a>
+      </div>
+    </div>
+
+    <div class="pane" data-view="open">
+      <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+        <div class="grow"><div class="name">Rohan Mehta</div><div class="xs faint">+91 90080 44120 · 3 webinars · 93 min watched</div></div>
+        <button class="btn ghost sm">Mark done</button>
+      </div>
+      <div class="thread scroll">
+        <span class="daysep">21 Aug · Morning routines for coaches</span>
+        <div class="bub out">Thanks for joining, Rohan! The replay is up for 7 days.<div class="cta">Watch replay</div><div class="meta">18:10 <span style="color:#53bdeb">✓✓</span></div></div>
+        <span class="daysep">8 Sep · Scale your coaching practice</span>
+        <div class="bub out">Hi Rohan, <b>Scale your coaching practice</b> starts in 1 hour.<div class="cta">Join webinar</div><div class="meta">14:00 <span style="color:#53bdeb">✓✓</span></div></div>
+        <div class="bub out">Thanks for joining, Rohan! How useful was today's session, 1–5?<div class="meta">16:05 <span style="color:#53bdeb">✓✓</span></div></div>
+        <span class="daysep">Today</span>
+        <div class="bub in">5! Super useful.<div class="meta">15:10</div></div>
+        <div class="bub in">Can I get the slides? And what's the price for the 1:1 program?<div class="meta">15:21</div></div>
+      </div>
+      <div class="composer">
+        <div class="row"><input class="field grow" placeholder="Reply to Rohan…"><button class="btn">Send</button></div>
+        <p class="xs faint" style="margin-top:6px">You can also reply from the WhatsApp Business app on your phone.</p>
+      </div>
+    </div>
+
+    <div class="pane" data-view="closed">
+      <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+        <div class="grow"><div class="name">Vikram Sharma</div><div class="xs faint">+91 98111 90876 · 1 webinar · didn't join</div></div>
+      </div>
+      <div class="thread scroll">
+        <span class="daysep">8 Sep · Scale your coaching practice</span>
+        <div class="bub out">Hi Vikram, <b>Scale your coaching practice</b> starts in 1 hour.<div class="cta">Join webinar</div><div class="meta">14:00 ✓✓</div></div>
+        <span class="daysep">23 Sep</span>
+        <div class="bub out">Sorry we missed you, Vikram! Here's the replay. It's up for 7 days.<div class="cta">Watch replay</div><div class="meta">11:10 ✓✓</div></div>
+      </div>
+      <div class="composer">
+        <p class="small muted" style="margin-bottom:8px">Vikram hasn't written in 24 hours, so WhatsApp only allows a template.</p>
+        <div class="row"><select class="field grow"><option>replay_reminder</option><option>feedback_request</option></select><button class="btn">Send</button></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script src="assets/v1.js"></script>
+<script>
+  document.querySelector('[data-row="' + (location.hash === "#closed" ? "closed" : "open") + '"]').classList.add("on");
+  addEventListener("hashchange", () => location.reload());
+</script>
+</body></html>

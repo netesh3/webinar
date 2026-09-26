@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Account · WhatsApp · WebinarLiv (v1 mock)</title><link rel="stylesheet" href="assets/v1.css"></head>
+<body>
+<div data-nav="host"></div>
+<main style="max-width:48rem">
+  <h1>Account settings</h1>
+  <p class="muted" style="margin-top:6px;margin-bottom:20px">Your profile, sign-in and the WhatsApp number your webinars message from.</p>
+
+  <div class="tabs">
+    <a class="tab" href="#">Profile</a>
+    <a class="tab on" href="#">WhatsApp</a>
+    <a class="tab" href="#">Sign-in</a>
+  </div>
+
+  <div class="grid">
+    <div class="card p5" data-view="choose">
+      <h2>Connect WhatsApp</h2>
+      <p class="small muted" style="margin-top:4px;margin-bottom:16px">Reminders, follow-ups and replies go through your own number, so people see your name, not ours.</p>
+      <div class="grid" style="gap:10px">
+        <div class="opt on"><span class="radio on"></span><div class="grow">
+          <div class="row"><span class="t">Use my WhatsApp Business app number</span><span class="badge ok">Recommended</span></div>
+          <div class="d">Keep chatting from the app on your phone. WebinarLiv sends the reminders and follow-ups, and every reply shows up in both places. Your chat history stays.</div>
+        </div></div>
+        <div class="opt"><span class="radio"></span><div class="grow">
+          <div class="t">Use a new number</div>
+          <div class="d">A number not on WhatsApp yet. Replies only in WebinarLiv, not in a phone app. Better for large lists.</div>
+        </div></div>
+      </div>
+      <div class="alert" style="margin-top:14px"><strong>Before you start</strong>The number must be on the <b>WhatsApp Business</b> app (not personal WhatsApp). Keep your phone nearby: Meta shows a QR code to scan from the app. Takes about 3 minutes.</div>
+      <div class="row" style="margin-top:16px"><button class="btn">Continue with Facebook</button><span class="xs faint">Opens Meta's sign-up in a pop-up</span></div>
+    </div>
+
+    <div class="card p5" data-view="connected">
+      <div class="row between">
+        <div class="row"><span class="av lg" style="background:#128c4a">PN</span><div><div class="name" style="font-size:14px">Priya Nair Coaching</div><div class="small faint">+91 98765 43210</div></div></div>
+        <span class="badge ok"><span class="dot"></span>Connected</span>
+      </div>
+      <div class="divider"></div>
+      <div class="xs" style="display:grid;gap:10px;font-size:12.5px">
+        <div class="row between"><span class="muted">Mode</span><span>WhatsApp Business app + WebinarLiv</span></div>
+        <div class="row between"><span class="muted">Replies from your phone</span><span class="badge ok">Synced</span></div>
+        <div class="row between"><span class="muted">Messaging limit</span><span>1,000 people / day</span></div>
+        <div class="row between"><span class="muted">Quality</span><span class="badge ok">High</span></div>
+        <div class="row between"><span class="muted">Approved templates</span><span>6 · <a style="color:var(--brand)" href="#">Manage in WhatsApp Manager ↗</a></span></div>
+        <div class="row between"><span class="muted">Billing</span><span>Meta bills your WhatsApp account directly</span></div>
+      </div>
+      <div class="divider"></div>
+      <div class="st">Tell me when someone replies</div>
+      <div class="grid" style="gap:10px">
+        <div class="row"><span class="toggle on"></span><div><div class="small" style="font-weight:500">Email me</div><div class="xs faint">priya@priyanair.coach · at most once every 15 min</div></div></div>
+        <div class="row"><span class="toggle"></span><div><div class="small" style="font-weight:500">Only for people who watched 45+ min</div><div class="xs faint">Skip the email for everyone else</div></div></div>
+      </div>
+      <div class="row" style="margin-top:16px"><button class="btn danger sm">Disconnect</button></div>
+    </div>
+  </div>
+</main>
+<script src="assets/v1.js"></script>
+</body></html>

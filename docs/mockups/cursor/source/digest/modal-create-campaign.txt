@@ -1,0 +1,158 @@
+E
+Engage
+PRO
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+query_stats
+Analytics
+hub
+Integrations
+settings
+Settings
+Health Status
+HEALTHY
+WABA Connected
+•
++1 555-0192
+G
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help
+notifications
+add
+New Broadcast
+person
+Broadcasting Engine
+Campaigns & Broadcasts
+calendar_today
+Last 30 Days
+add
+New Broadcast
+Total Sent (Month)
+148,920
+arrow_upward
++14.2% vs prev
+Delivery Rate
+99.4%
+Tier 1 Cloud API status
+Read Receipts
+82.1%
+arrow_upward
++3.8%
+CTR on Quick Actions
+34.6%
+High intent cohort
+Recent Dispatches
+Showing 4 of 32 broadcasts
+Onboarding Day-3 Nudge
+Utility • 1,420 sent • Completed
+2 hours ago
+Product Launch Keynote Alert
+Marketing • 4,800 sent • Completed
+Yesterday
+bolt
+New Broadcast Campaign
+Dispatch structured HSM messages via Meta Official Cloud API
+close
+check
+1. Audience
+2
+2. Template
+3
+3. Variables & Preview
+4
+4. Schedule & Send
+Meta-Approved WhatsApp Template
+sync
+Refresh Meta Sync
+mark_chat_read
+we_are_live_urgent
+ID: 89310492810 • Utility HSM
+Approved
+expand_more
+verified
+Utility HSM
+language
+English (en)
+High Quality (0.01% spam)
+Dynamic Variable Resolver
+Pair payload tokens with contact properties
+3 Variables Detected
+{{1}}
+first_name
+Fallback: "there"
+person
+Auto-mapped
+check_circle
+{{2}}
+webinar_name
+Fallback: "our workshop"
+event
+Static Context
+check_circle
+{{3}}
+join_link
+Fallback: Generic Landing
+link
+Dynamic URL
+check_circle
+Target Audience Verification
+Opt-in Audited
+Target Segment
+Webinar-Sep26 Registrants
+Attended + No-Show cohorts
+Recipients Count
+248
+100% verified E.164 formats
+speed
+Throttling: Meta Safe Queue (50 msgs/sec)
+pie_chart
+Tier 1 allowance (24.8% of daily cap)
+Client Device Preview
+smartphone
+iPhone 15 Pro
+arrow_back_ios
+E
+Engage Events
+verified
+Official Business Account
+videocam
+call
+Today 6:45 PM
+Hey Ganesh
+! 🚀
+We are going live in 15 minutes for the AI Marketing Masterclass
+!
+Have your workbook ready. Tap below to jump straight into the live stream room.
+6:45 PM
+done_all
+open_in_new
+Join Live Stream Now
+lock
+Messages are end-to-end encrypted.
+Message Engage Events...
+mic
+check_circle
+High rendering fidelity across iOS & Android WhatsApp builds
+Estimated dispatch duration: < 12 seconds across 248 recipients
+Save Draft
+arrow_back
+Back
+Next: Schedule & Dispatch
+arrow_forward

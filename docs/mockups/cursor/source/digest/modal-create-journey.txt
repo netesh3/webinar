@@ -1,0 +1,160 @@
+forum
+Engage
+Acme
+arrow_drop_down
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+insights
+Analytics
+extension
+Integrations
+settings
+Settings
+WABA Connected
++1 555-0192
+Healthy
+person
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help_outline
+notifications
+add
+New Broadcast
+person
+Automation Journeys
+Multi-step conversational flows triggered by real-time customer behavior
+filter_list
+Filter
+add
+Create Journey
+Active Sequences
+14
+arrow_upward
++2 this wk
+Messages Dispatched (24h)
+38,420
+99.2% Delivered
+Median Response Rate
+42.8%
+Utility HSM
+Conversion Goal
+61.4%
+trending_up
++4.1%
+Journey Title
+Trigger Source
+Steps
+Throughput
+Status
+Live Masterclass - 48h Retention Funnel
+Zoom Webhook
+5 nodes
+12,410 sent
+Active
+Post-Demo Evaluation Re-engagement
+HubSpot Tag
+3 nodes
+3,890 sent
+Active
+alt_route
+Create New Journey
+Step 1 of 2
+Choose what event starts this automated WhatsApp sequence or pick a pre-built blueprint.
+close
+bolt
+Choose Trigger Event (Custom)
+auto_awesome
+Start from Pre-built Blueprint
+Pre-Built Proven Blueprints
+Recommended for fast setup
+Validated sequence graphs designed for maximum WhatsApp delivery and conversion rates.
+5 Blueprints Available
+Webinar Registration & Smart Onboarding
+star
+Recommended
+Blueprint #W-01
+Auto-branches based on WhatsApp status: sends VIP Community link if not joined, or Google Calendar link if already joined. Includes T-2h and T-30m reminders.
+trending_up
+98.4% Show-up uplift
+•
+account_tree
+4 steps
+•
+verified
+Meta Utility HSM
+Webinar 2-Stage Countdown Reminders
+Blueprint #W-02
+Natural-language countdown alerts dispatched at T-2h and T-30m with personalized one-click stream access link.
+touch_app
+High CTR
+•
+linear_scale
+2 steps
+Post-Webinar Attendance Segmentation
+Blueprint #W-03
+Evaluates watch duration (<15 min vs >15 min vs No-show) and triggers tailored replay and offer sequences.
+call_split
+3 branches
+•
+repeat
+Up to 3 follow-ups
+Lead Welcome & PDF Resource Delivery
+Blueprint #L-01
+Instantly sends requested lead magnet guide upon form submission or Google Sheets row addition.
+download
+Lead Capture
+•
+bolt
+Instant
+VIP Strategy Session / Consultation Reminder
+Blueprint #C-01
+Syncs with Calendly / CRM booking to deliver location map, meeting agenda, and 1-hour alert.
+event
+Calendar Sync
+•
+timer
+T-24h & T-1h
+OR START BLANK WITH A TRIGGER
+Select a Custom Trigger Event
+Build from scratch by defining the exact webhook, CRM event, or time window.
+co_present
+Webinar Registration
+API
+Webinar Liv / Zoom API sync
+videocam_off
+Stream Concluded
+Telemetry
+Watch duration & attendance telemetry
+person_add
+Contact Added / Tagged
+CRM
+CRM, segment filter, or CSV import
+webhook
+Inbound Webhook / API Event
+JSON
+Custom payload trigger via REST endpoint
+schedule
+Scheduled Date / Time
+Cron
+Fixed cohort launch or recurring automated campaign check
+account_tree
+Need custom branching? Visual Flow Builder opens next.
+Cancel
+Continue to Journey Builder
+arrow_forward

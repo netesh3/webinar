@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Analytics · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="analytics" data-crumb="Platform / Analytics">
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="chart" class="icon icon-sm"></svg>
+            Intelligence
+          </div>
+          <h1>Analytics &amp; conversions</h1>
+          <p>
+            Throughput, delivery, inbox SLA and what each journey actually
+            converted — for the last 30 days.
+          </p>
+        </div>
+        <div class="actions">
+          <label class="inline-field">
+            <select class="select" data-label="Period">
+              <option>Last 30 days (Aug 27 – Sep 26)</option>
+              <option>Last 7 days</option>
+              <option>This quarter</option>
+              <option>Year to date</option>
+            </select>
+          </label>
+          <label class="inline-field">
+            <select class="select" data-label="Audience">
+              <option>All audiences</option>
+              <option>Webinar-Sep26</option>
+              <option>Paid cohort</option>
+            </select>
+          </label>
+          <button class="btn" data-toast="Export queued — CSV will land in your email.">
+            <svg data-icon="download" class="icon icon-sm"></svg> Export
+          </button>
+        </div>
+      </div>
+
+      <div class="grid g6">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="send"></svg> Messages sent</div>
+          <div class="metric-value">18,420</div>
+          <div class="metric-foot">
+            <span class="delta delta-up">
+              <svg data-icon="arrow-up" class="icon icon-sm"></svg> 14.2%
+            </span>
+          </div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="check-check"></svg> Delivered</div>
+          <div class="metric-value">97.5%</div>
+          <div class="metric-foot">17,959 messages</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="eye"></svg> Read</div>
+          <div class="metric-value">84.6%</div>
+          <div class="metric-foot">15,210 · avg 3.4 min</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="cursor"></svg> Link CTR</div>
+          <div class="metric-value">52.8%</div>
+          <div class="metric-foot">9,485 clicks tracked</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="video"></svg> Show-up rate</div>
+          <div class="metric-value">57.2%</div>
+          <div class="metric-foot">
+            <span class="delta delta-up">
+              <svg data-icon="arrow-up" class="icon icon-sm"></svg> 26%
+            </span>
+            with the 15-min alert
+          </div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="money"></svg> Attributed revenue</div>
+          <div class="metric-value">$18,400</div>
+          <div class="metric-foot">post-webinar offer flow</div>
+        </div>
+      </div>
+
+      <div class="split mt-16">
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>Delivery &amp; read velocity</h2>
+              <p>30-day throughput, sent against read confirmations</p>
+            </div>
+            <div class="legend right">
+              <span><i></i> Sent</span>
+              <span><i class="wa"></i> Read</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <svg class="chart" viewBox="0 0 700 186" role="img"
+              aria-label="Messages sent and read per day from 27 August to 26 September, peaking at 1,840 sent on 16 September.">
+              <line class="grid-line" x1="40" y1="10" x2="695" y2="10" />
+              <line class="grid-line" x1="40" y1="47.5" x2="695" y2="47.5" />
+              <line class="grid-line" x1="40" y1="85" x2="695" y2="85" />
+              <line class="grid-line" x1="40" y1="122.5" x2="695" y2="122.5" />
+              <line class="grid-line" x1="40" y1="160" x2="695" y2="160" />
+              <text class="axis" x="32" y="13" text-anchor="end">2k</text>
+              <text class="axis" x="32" y="50.5" text-anchor="end">1.5k</text>
+              <text class="axis" x="32" y="88" text-anchor="end">1k</text>
+              <text class="axis" x="32" y="125.5" text-anchor="end">500</text>
+              <text class="axis" x="32" y="163" text-anchor="end">0</text>
+              <path class="area-sent"
+                d="M40 113.5 86 107.5 133 103 179 98.5 226 91.8 272 86.5 318 79 365 67 411 71.5 457 53.5 504 22 550 43 597 34 643 46 690 66.4 690 160 40 160Z" />
+              <path class="area-read"
+                d="M40 121 86 115.8 133 112 179 108.3 226 102.3 272 97.8 318 91.8 365 81.3 411 85 457 70 504 43 550 61 597 53.5 643 63.3 690 79 690 160 40 160Z" />
+              <path class="line-sent"
+                d="M40 113.5 86 107.5 133 103 179 98.5 226 91.8 272 86.5 318 79 365 67 411 71.5 457 53.5 504 22 550 43 597 34 643 46 690 66.4" />
+              <path class="line-read"
+                d="M40 121 86 115.8 133 112 179 108.3 226 102.3 272 97.8 318 91.8 365 81.3 411 85 457 70 504 43 550 61 597 53.5 643 63.3 690 79" />
+              <circle cx="504" cy="22" r="3.5" fill="#4f46e5" />
+              <text class="axis" x="504" y="14" text-anchor="middle">peak 1,840</text>
+              <text class="axis" x="40" y="176">Aug 27</text>
+              <text class="axis" x="226" y="176">Sep 05</text>
+              <text class="axis" x="411" y="176">Sep 14</text>
+              <text class="axis" x="643" y="176">Sep 25</text>
+            </svg>
+          </div>
+          <div class="card-foot">
+            <svg data-icon="info" class="icon icon-sm"></svg>
+            Thursday Sep 25: 1,248 sent · 1,215 delivered (97.3%) · 1,080 read (86.5%)
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>Show-up by channel</h2>
+              <p>Attendance conversion per notification route</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="bar-row">
+              <div class="bar-head">
+                WhatsApp 2-stage <span class="dim">T-2h + T-15m</span> <b>84.5%</b>
+              </div>
+              <div class="meter meter-wa"><span style="width: 84.5%"></span></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-head">
+                WhatsApp single alert <span class="dim">T-2h only</span> <b>62.0%</b>
+              </div>
+              <div class="meter meter-wa"><span style="width: 62%"></span></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-head">
+                Email only <span class="dim">control</span> <b>31.2%</b>
+              </div>
+              <div class="meter"><span style="width: 31.2%; background: var(--ink-400)"></span></div>
+            </div>
+
+            <div class="note note-ok mt-16">
+              <svg data-icon="lightbulb" class="icon icon-sm"></svg>
+              <span>
+                Registrants who got the 15-minute WhatsApp alert showed up
+                <b>2.7× more often</b> than the email-only control. The second
+                stage is doing most of the work.
+              </span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="grid g4 mt-16">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="inbox"></svg> Conversations</div>
+          <div class="metric-value">1,842</div>
+          <div class="metric-foot">1,791 resolved · 7 open now</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="clock"></svg> First response</div>
+          <div class="metric-value">2.1 min</div>
+          <div class="metric-foot">median · target 5 min</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="verified"></svg> SLA hit rate</div>
+          <div class="metric-value">96.4%</div>
+          <div class="metric-foot">66 of 1,842 missed the 5 min</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="lock"></svg> Window expired</div>
+          <div class="metric-value">38</div>
+          <div class="metric-foot">no human reply before 24h</div>
+        </div>
+      </div>
+
+      <section class="card mt-16">
+        <div class="card-head">
+          <div>
+            <h2>Inbox by agent</h2>
+            <p>Human replies this period, against the workspace SLA</p>
+          </div>
+          <span class="pill pill-bare right">SLA · first reply in 5 min</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th class="t-num">Assigned</th>
+                <th class="t-num">Open now</th>
+                <th class="t-num">Replied</th>
+                <th class="t-num">Median first reply</th>
+                <th class="t-num">SLA</th>
+                <th>Oldest waiting</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="avatar">GS</span>
+                    <span>
+                      <div class="t-title">Ganesh S P</div>
+                      <div class="t-sub">Owner / Admin</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="t-num">612</td>
+                <td class="t-num">3</td>
+                <td class="t-num">1,840</td>
+                <td class="t-num">1.8 min</td>
+                <td class="t-num"><span class="pill pill-ok pill-bare">98.1%</span></td>
+                <td class="muted">12 min · Rahul Sharma</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="avatar avatar-slate">PI</span>
+                    <span>
+                      <div class="t-title">Priya Iyer</div>
+                      <div class="t-sub">Inbox agent</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="t-num">428</td>
+                <td class="t-num">1</td>
+                <td class="t-num">1,210</td>
+                <td class="t-num">2.4 min</td>
+                <td class="t-num"><span class="pill pill-ok pill-bare">97.2%</span></td>
+                <td class="muted">—</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="avatar avatar-slate">SL</span>
+                    <span>
+                      <div class="t-title">Sarah Lin</div>
+                      <div class="t-sub">Growth marketer</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="t-num">186</td>
+                <td class="t-num">0</td>
+                <td class="t-num">410</td>
+                <td class="t-num">4.1 min</td>
+                <td class="t-num"><span class="pill pill-warn pill-bare">91.4%</span></td>
+                <td class="muted">—</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="avatar avatar-slate">?</span>
+                    <span>
+                      <div class="t-title">Unassigned</div>
+                      <div class="t-sub">Waiting on round-robin</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="t-num">—</td>
+                <td class="t-num">4</td>
+                <td class="t-num">—</td>
+                <td class="t-num">—</td>
+                <td class="t-num"><span class="pill pill-bad pill-bare">Breached</span></td>
+                <td class="muted">4h 12m · Neha Gupta</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot">
+          <svg data-icon="info" class="icon icon-sm"></svg>
+          Human replies pause the journey for 24 hours so an agent is not
+          talking over an automation.
+          <a class="right" href="inbox.html">Open the inbox →</a>
+        </div>
+      </section>
+
+      <section class="card mt-16" data-tabs>
+        <div class="card-head">
+          <div>
+            <h2>Top performing automations</h2>
+            <p>Delivery, read and the goal each sequence was built to hit</p>
+          </div>
+          <label class="search right">
+            <svg data-icon="search" class="icon icon-sm"></svg>
+            <input class="input" type="search" placeholder="Filter" />
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Automation</th>
+                <th>Type</th>
+                <th class="t-num">Reached</th>
+                <th class="t-num">Delivered</th>
+                <th class="t-num">Read</th>
+                <th class="t-num">CTA click</th>
+                <th>Goal</th>
+                <th class="t-num">Conversion</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <span class="t-title">Webinar 2-stage reminder cadence</span>
+                  </div>
+                </td>
+                <td><span class="pill pill-info pill-bare">Journey</span></td>
+                <td class="t-num">248</td>
+                <td class="t-num">99.2%</td>
+                <td class="t-num">95.8%</td>
+                <td class="t-num">84.5%</td>
+                <td class="muted">Attended</td>
+                <td class="t-num">88.7%</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-wa"><svg data-icon="megaphone" class="icon icon-sm"></svg></span>
+                    <span class="t-title">September masterclass live alert</span>
+                  </div>
+                </td>
+                <td><span class="pill pill-ok pill-bare">Campaign</span></td>
+                <td class="t-num">248</td>
+                <td class="t-num">99.2%</td>
+                <td class="t-num">94.8%</td>
+                <td class="t-num">81.2%</td>
+                <td class="muted">Joined live</td>
+                <td class="t-num">94.8%</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <span class="t-title">New lead welcome &amp; PDF magnet</span>
+                  </div>
+                </td>
+                <td><span class="pill pill-info pill-bare">Journey</span></td>
+                <td class="t-num">1,284</td>
+                <td class="t-num">96.9%</td>
+                <td class="t-num">85.8%</td>
+                <td class="t-num">68.4%</td>
+                <td class="muted">Downloaded</td>
+                <td class="t-num">85.8%</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <span class="t-title">Webinar registration &amp; onboarding</span>
+                  </div>
+                </td>
+                <td><span class="pill pill-info pill-bare">Journey</span></td>
+                <td class="t-num">248</td>
+                <td class="t-num">98.4%</td>
+                <td class="t-num">94.2%</td>
+                <td class="t-num">75.0%</td>
+                <td class="muted">Community joined</td>
+                <td class="t-num">75.0%</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <span class="t-title">Post-webinar attendance follow-up</span>
+                  </div>
+                </td>
+                <td><span class="pill pill-info pill-bare">Journey</span></td>
+                <td class="t-num">142</td>
+                <td class="t-num">97.1%</td>
+                <td class="t-num">82.4%</td>
+                <td class="t-num">42.1%</td>
+                <td class="muted">Replay or offer</td>
+                <td class="t-num">61.2%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot">
+          Showing <b>5</b> of 24 automations with traffic in this period
+          <span class="right row">
+            <button class="btn btn-sm" data-toast="Already on the first page.">
+              <svg data-icon="chevron-left" class="icon icon-sm"></svg> Prev
+            </button>
+            <span class="mono">Page 1 of 5</span>
+            <button class="btn btn-sm" data-toast="Pagination is illustrative in this mockup.">
+              Next <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+            </button>
+          </span>
+        </div>
+      </section>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

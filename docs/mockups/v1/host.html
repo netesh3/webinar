@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hosting · WebinarLiv (v1 mock)</title><link rel="stylesheet" href="assets/v1.css">
+<style>
+  .tile { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  .tile .ic { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); }
+  .wcard { padding: 16px 20px; display: flex; gap: 16px; align-items: flex-start; }
+  header.nav { position: relative; }
+</style></head>
+<body>
+<div data-nav></div>
+
+<div data-view="home"></div>
+<div class="pop" data-view="alerts" style="position:absolute;right:max(20px,calc((100vw - 72rem)/2 + 20px));top:50px">
+  <div class="row between" style="padding:12px 16px;border-bottom:1px solid var(--line)"><span class="name">Alerts</span><span class="xs linkish">Mark all read</span></div>
+  <a class="li" href="host-messages.html"><span class="unread"></span><div class="grow"><div class="small"><b>Rohan Mehta</b> replied on WhatsApp</div><div class="xs faint">Scale your coaching practice · 40 m</div></div></a>
+  <a class="li" href="host-messages.html"><span class="unread"></span><div class="grow"><div class="small"><b>Amlesh Kumar</b> replied on WhatsApp</div><div class="xs faint">Scale your coaching practice · 12 m</div></div></a>
+  <a class="li" href="#"><span class="unread" style="background:var(--warn)"></span><div class="grow"><div class="small"><b>2 people</b> waiting to be admitted</div><div class="xs faint">Pricing your coaching offer · 1 h</div></div></a>
+</div>
+
+<main>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:32px">
+    <div class="tile"><span class="ic">▶</span><div class="grow"><div class="name">Instant webinar</div><div class="xs muted">Go live immediately, no form</div></div><span class="faint">›</span></div>
+    <div class="tile"><span class="ic">▦</span><div class="grow"><div class="name">Schedule a webinar</div><div class="xs muted">Pick a date and invite people</div></div><span class="faint">›</span></div>
+  </div>
+
+  <div class="tabs">
+    <a class="tab on" href="#">Upcoming <span class="count">1</span></a>
+    <a class="tab" href="#">Past <span class="count">6</span></a>
+    <a class="tab" href="#">Drafts</a>
+    <a class="tab" href="#">WatchList</a>
+    <span class="tabsep"></span>
+    <a class="tab" href="host-people.html">People <span class="count">412</span></a>
+    <a class="tab" href="host-messages.html">Messages <span class="count" style="background:var(--ok);color:#fff">3</span></a>
+  </div>
+
+  <div class="grid" style="gap:12px">
+    <div class="card wcard">
+      <div class="grow">
+        <div class="row" style="margin-bottom:6px"><span class="badge">Live webinar</span><span class="badge warn">2 waiting to admit</span></div>
+        <div class="name" style="font-size:15px"><a href="reminders.html">Pricing your coaching offer</a></div>
+        <p class="muted" style="margin-top:6px">Tue, 29 Sep · 3:00–4:00 PM IST · 1 h</p>
+        <p class="small faint" style="margin-top:4px">96 registered · 500 seat limit</p>
+      </div>
+      <div class="row"><button class="btn sm">Host</button><button class="btn sec sm">Share</button><a class="btn sec sm" href="reminders.html">Manage</a></div>
+    </div>
+
+    <p class="small faint" style="margin:12px 0 0">Recently ended</p>
+    <div class="card wcard">
+      <div class="grow">
+        <div class="row" style="margin-bottom:6px"><span class="badge">Ended</span></div>
+        <div class="name" style="font-size:15px"><a href="webinar-people.html">Scale your coaching practice</a></div>
+        <p class="muted" style="margin-top:6px">Tue, 8 Sep · 3:00–4:00 PM IST · 1 h</p>
+        <p class="small faint" style="margin-top:4px">248 registered · 142 attended · <a class="linkish" href="host-messages.html">3 replies to answer</a></p>
+      </div>
+      <div class="row"><a class="btn sm" href="webinar-people.html">Follow up</a><a class="btn sec sm" href="webinar-people.html">Manage</a></div>
+    </div>
+  </div>
+</main>
+<script src="assets/v1.js"></script>
+</body></html>

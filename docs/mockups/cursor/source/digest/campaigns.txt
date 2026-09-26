@@ -1,0 +1,217 @@
+E
+Engage
+PRO
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+query_stats
+Analytics
+hub
+Integrations
+settings
+Settings
+Health Status
+HEALTHY
+WABA Connected
+•
++1 555-0192
+G
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help
+notifications
+add
+New Broadcast
+person
+Campaigns
+Broadcast Manager
+One-time and scheduled WhatsApp broadcasts to targeted audience segments.
+history_edu
+View Broadcast Logs
+add
++ Create Campaign
+Total Broadcasts
+send
+42 sent
+trending_up
++4 this mo
+Target delivery queue
+100% WABA SLA
+Recipients Reached
+group
+38,420
+verified opt-ins
+Unique profiles touched
+99.4% Valid
+Avg. Delivery Rate
+done_all
+98.2%
+arrow_upward
+0.4%
+Failed & dropped count
+691 (1.8%)
+Avg. Read Rate
+mark_chat_read
+86.4%
+Tier 1 Bench
+Median open latency
+< 3 mins
+alt_route
+Campaigns vs Multi-Step Journeys
+Guidance
+Campaigns are optimized for immediate or pre-scheduled blast broadcasts. For automated behavioral branching, click replies, and multi-step triggers, construct a visual sequence in Journeys Canvas
+.
+Go to Journeys
+arrow_forward
+All (18)
+Scheduled (3)
+Sent (12)
+Drafts (3)
+search
+Last 30 Days
+Last 7 Days
+This Quarter
+Year to Date
+expand_more
+All Statuses
+Completed
+Scheduled
+Draft
+Failed
+expand_more
+Campaign Name & Message
+Target Audience
+Template Used
+Scheduled / Sent Time
+Recipients
+Sent
+Delivered %
+Read %
+Status
+Actions
+campaign
+September AI Masterclass 15-min Live Alert
+Urgent broadcast: Masterclass starting in 15 minutes with join link
+Webinar-Sep26
+Tag • 248 contacts
+we_are_live_urgent
+Utility
+Sep 25, 2026
+6:45 PM UTC
+248
+99.2%
+246 delivered
+94.8%
+235 read
+Completed
+more_vert
+campaign
+VIP Early-Bird Strategy Session Announcement
+Exclusive invitation for Q4 Cohort enrollment with personal link
+Attended Full Webinar
+Segment • 142 contacts
+vip_offer_exclusive
+Marketing
+Sep 26, 2026
+10:00 AM UTC
+142
+98.6%
+140 delivered
+88.7%
+126 read
+Completed
+more_vert
+schedule_send
+Masterclass HD Replay & Bonus Resources Deck
+48-hour access link for registered participants who missed or left early
+No Show + Brief Attendance
+Segment • 106 contacts
+replay_notes_48h
+Utility
+Tomorrow
+9:00 AM UTC
+106 queued
+—
+Scheduled
+more_vert
+edit_note
+Weekend Flash Q&A Session Broadcast
+Interactive live audio room invitation with Ganesh
+All Active WhatsApp Opt-ins
+Segment • 1,840 contacts
+community_ama_session
+Marketing
+Draft (Not scheduled)
+1,840
+—
+Draft
+more_vert
+campaign
+Q3 Growth Blueprint PDF Lead Magnet
+Automatic delivery of the requested benchmark guide
+Landing Page Form
+Source • 840 contacts
+lead_magnet_delivery
+Utility
+Sep 20, 2026
+2:15 PM UTC
+840
+97.8%
+821 delivered
+82.4%
+692 read
+Completed
+more_vert
+Showing 1–5
+of 18
+campaigns
+chevron_left
+Previous
+1
+2
+3
+4
+Next
+chevron_right
+preview
+Campaign Simulator
+close
+Current Selected Campaign
+September AI Masterclass 15-min Live Alert
+Target: Webinar-Sep26 (248 recipients)
+E
+Engage Masterclass Live
+Official Business Account
+Today
+Hey {{first_name}}
+! 🚨
+We are going live in 15 minutes with Ganesh for the Advanced WhatsApp Automation & AI Conversational Funnel Masterclass .
+Zoom Room Passcode: 849201
+Keep your workbook handy.
+6:45 PM
+done_all
+launch
+Join Live Masterclass Now
+Approved Template ID:
+we_are_live_urgent
+Meta Category:
+UTILITY
+WABA Phone:
++1 555-0192 (Healthy)
+analytics
+Open Full Campaign Telemetry

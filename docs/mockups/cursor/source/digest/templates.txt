@@ -1,0 +1,197 @@
+E
+Engage
+PRO
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+query_stats
+Analytics
+hub
+Integrations
+settings
+Settings
+Health Status
+HEALTHY
+WABA Connected
+•
++1 555-0192
+G
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help
+notifications
+add
+New Broadcast
+person
+Templates
+WABA Production v21.0
+Meta-approved WhatsApp message templates for automated journeys and broadcast campaigns.
+sync
+Sync Meta Status
+add
+Create Template
+All (14)
+Utility (8)
+Marketing (4)
+Authentication (2)
+Status:
+All
+Approved (11)
+Pending (2)
+Rejected (1)
+search
+verified
+Sync Rate: Real-time Webhooks
+Template Name & Category
+Language
+Meta Status
+Last Updated
+Usage
+Actions
+join_community_v2
+visibility
+Utility
+• Standard HSM
+English (en)
+Approved
+Sep 18, 2026
+3 Journeys
+2 Campaigns
+edit
+more_vert
+calendar_invite_direct
+Utility
+• Dynamic Link
+English (en)
+Approved
+Sep 15, 2026
+2 Journeys
+edit
+more_vert
+webinar_2h_countdown
+Utility
+• High CTR
+English (en)
+Approved
+Sep 12, 2026
+1 Journey
+4 Campaigns
+edit
+more_vert
+we_are_live_urgent
+Utility
+• Broadcast Spike
+English (en)
+Approved
+Sep 10, 2026
+2 Journeys
+1 Campaign
+edit
+more_vert
+post_webinar_attended
+Utility
+• Feedback Loop
+English (en)
+Approved
+Sep 08, 2026
+1 Journey
+edit
+more_vert
+vip_coaching_offer
+Marketing
+• High Intent
+English (en)
+Pending Review
+Today, 11:30 AM
+0
+edit
+more_vert
+Showing 1-6
+of 14
+templates
+Previous
+1
+2
+Next
+mark_email_read
+Template Delivery Rate
+99.82%
+speed
+Meta Approval Latency
+< 3.4 mins
+shield
+Account Tier
+Unlimited (Tier 4)
+layers
+Template Inspector: join_community_v2
+content_copy
+Duplicate
+edit
+Edit
+Category:
+Utility
+Tier:
+Standard
+Quality:
+verified
+High (0.01%)
+Dynamic Variable Schema
+Verify Meta Payload
+{{1}} {{first_name}}
+→
+Contact.FirstName
+Fallback: "there"
+{{2}} {{webinar_name}}
+→
+Event.Title
+Auto-resolved
+{{3}} {{community_link}}
+→
+Meta.InviteURL
+Dynamic Shortlink
++ Add {{first_name}}
++ Add {{webinar_date}}
++ Add {{webinar_time}}
++ Add {{join_link}}
+arrow_back
+E
+Engage Events
+check_circle
+Official Business Account
+videocam
+call
+more_vert
+Today
+AI Marketing Masterclass Active Event
+Hey Ganesh! 🚀
+You're registered for the AI Marketing Masterclass
+this Thursday at 7:00 PM IST
+.
+Join our private VIP WhatsApp Community to get backstage notes, prompt cheat sheets, and live Q&A access.
+07:01 PM
+done_all
+group
+Join WhatsApp Community
+open_in_new
+mood
+Type a response...
+mic
+smartphone
+Test on My Phone
+cloud_upload
+Submit Change to Meta

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Templates · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="templates" data-crumb="Platform / Templates">
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="file" class="icon icon-sm"></svg>
+            Cloud API v21.0
+          </div>
+          <h1>Templates</h1>
+          <p>
+            Meta-approved message templates. Outside the 24-hour session window
+            these are the only thing a journey or campaign may send.
+          </p>
+        </div>
+        <div class="actions">
+          <button class="btn" data-toast="Synced 14 templates from Meta just now.">
+            <svg data-icon="sync" class="icon icon-sm"></svg> Sync Meta status
+          </button>
+          <button class="btn btn-primary" data-toast="Template composer is not part of this mockup set.">
+            <svg data-icon="plus" class="icon icon-sm"></svg> Create template
+          </button>
+        </div>
+      </div>
+
+      <div class="grid g3">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="check-check"></svg> Template delivery rate</div>
+          <div class="metric-value">99.8%</div>
+          <div class="metric-foot">across 14 approved templates</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="clock"></svg> Meta approval latency</div>
+          <div class="metric-value">3.4 min</div>
+          <div class="metric-foot">median over the last 10 submissions</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="gauge"></svg> Account tier</div>
+          <div class="metric-value">Tier 1</div>
+          <div class="metric-foot">1,000 business-initiated msgs/day</div>
+        </div>
+      </div>
+
+      <div class="split split-wide mt-16">
+        <section class="card" data-tabs>
+          <div class="tabs">
+            <button aria-selected="true" data-panel="all">All <span class="count">14</span></button>
+            <button data-panel="all">Utility <span class="count">8</span></button>
+            <button data-panel="all">Marketing <span class="count">4</span></button>
+            <button data-panel="all">Authentication <span class="count">2</span></button>
+          </div>
+          <div class="toolbar">
+            <label class="search">
+              <svg data-icon="search" class="icon icon-sm"></svg>
+              <input class="input" type="search" placeholder="Search template names" />
+            </label>
+            <label class="inline-field">
+              Meta status
+              <select class="select" data-label="Meta status">
+                <option>All statuses</option>
+                <option>Approved (11)</option>
+                <option>Pending review (2)</option>
+                <option>Rejected (1)</option>
+              </select>
+            </label>
+            <span class="pill pill-ok right pill-bare">
+              <svg data-icon="webhook" class="icon icon-sm"></svg> Real-time webhook sync
+            </span>
+          </div>
+          <div class="table-wrap" data-tabpanel="all">
+            <table>
+              <thead>
+                <tr>
+                  <th>Template</th>
+                  <th>Language</th>
+                  <th>Meta status</th>
+                  <th>Updated</th>
+                  <th>In use by</th>
+                  <th class="t-actions"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div class="t-title mono">join_community_v2</div>
+                    <div class="t-sub">Utility · standard HSM</div>
+                  </td>
+                  <td class="muted">English (en)</td>
+                  <td><span class="pill pill-ok">Approved</span></td>
+                  <td class="muted nowrap">Sep 18</td>
+                  <td class="muted">3 journeys · 2 campaigns</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Already open in the inspector.">
+                      <svg data-icon="eye" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="t-title mono">calendar_invite_direct</div>
+                    <div class="t-sub">Utility · dynamic link</div>
+                  </td>
+                  <td class="muted">English (en)</td>
+                  <td><span class="pill pill-ok">Approved</span></td>
+                  <td class="muted nowrap">Sep 15</td>
+                  <td class="muted">2 journeys</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Opening calendar_invite_direct.">
+                      <svg data-icon="eye" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="t-title mono">webinar_2h_countdown</div>
+                    <div class="t-sub">Utility · high click-through</div>
+                  </td>
+                  <td class="muted">English (en)</td>
+                  <td><span class="pill pill-ok">Approved</span></td>
+                  <td class="muted nowrap">Sep 12</td>
+                  <td class="muted">1 journey · 4 campaigns</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Opening webinar_2h_countdown.">
+                      <svg data-icon="eye" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="t-title mono">we_are_live_urgent</div>
+                    <div class="t-sub">Utility · broadcast spike</div>
+                  </td>
+                  <td class="muted">English (en)</td>
+                  <td><span class="pill pill-ok">Approved</span></td>
+                  <td class="muted nowrap">Sep 10</td>
+                  <td class="muted">2 journeys · 1 campaign</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Opening we_are_live_urgent.">
+                      <svg data-icon="eye" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="t-title mono">post_webinar_attended</div>
+                    <div class="t-sub">Utility · feedback loop</div>
+                  </td>
+                  <td class="muted">English (en)</td>
+                  <td><span class="pill pill-ok">Approved</span></td>
+                  <td class="muted nowrap">Sep 08</td>
+                  <td class="muted">1 journey</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Opening post_webinar_attended.">
+                      <svg data-icon="eye" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="t-title mono">vip_coaching_offer</div>
+                    <div class="t-sub">Marketing · high intent</div>
+                  </td>
+                  <td class="muted">English (en)</td>
+                  <td><span class="pill pill-warn">Pending review</span></td>
+                  <td class="muted nowrap">Today, 11:30</td>
+                  <td class="dim">Not in use</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Submitted 3h ago — Meta has not answered yet.">
+                      <svg data-icon="eye" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="t-title mono">flash_sale_48h</div>
+                    <div class="t-sub">Marketing · promotional</div>
+                  </td>
+                  <td class="muted">English (en)</td>
+                  <td><span class="pill pill-bad">Rejected</span></td>
+                  <td class="muted nowrap">Sep 05</td>
+                  <td class="dim">Not in use</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Rejected: promotional content in a Utility category.">
+                      <svg data-icon="eye" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-foot">
+            Showing <b>1–7</b> of 14
+            <span class="right row">
+              <button class="btn btn-sm" data-toast="Already on the first page.">
+                <svg data-icon="chevron-left" class="icon icon-sm"></svg> Prev
+              </button>
+              <span class="mono">Page 1 of 2</span>
+              <button class="btn btn-sm" data-toast="Pagination is illustrative in this mockup.">
+                Next <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+              </button>
+            </span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <span class="glyph glyph-brand"><svg data-icon="layers" class="icon icon-sm"></svg></span>
+            <div>
+              <h2>Inspector</h2>
+              <p class="mono">join_community_v2</p>
+            </div>
+          </div>
+          <div class="card-body stack">
+            <dl class="kv">
+              <div><dt>Category</dt><dd>Utility</dd></div>
+              <div><dt>Quality</dt><dd><span class="pill pill-ok">High · 0.01% spam</span></dd></div>
+              <div><dt>Language</dt><dd>English (en)</dd></div>
+            </dl>
+
+            <div>
+              <div class="row">
+                <span class="lbl">Variable schema</span>
+                <span class="pill right pill-bare">3 variables</span>
+              </div>
+              <dl class="kv mt-8">
+                <div>
+                  <dt><span class="tag">{{1}} first_name</span></dt>
+                  <dd class="muted">Contact.first_name · fallback “there”</dd>
+                </div>
+                <div>
+                  <dt><span class="tag">{{2}} webinar_name</span></dt>
+                  <dd class="muted">Event.title · auto-resolved</dd>
+                </div>
+                <div>
+                  <dt><span class="tag">{{3}} community_link</span></dt>
+                  <dd class="muted">Dynamic shortlink</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div class="phone">
+              <div class="phone-head">
+                <svg data-icon="arrow-left" class="icon icon-sm"></svg>
+                <span class="avatar avatar-wa" style="width: 28px; height: 28px">AG</span>
+                <span>
+                  <b>Acme Growth Official</b>
+                  <small>Official business account</small>
+                </span>
+              </div>
+              <div class="thread">
+                <div class="thread-day">Today</div>
+                <div class="bubble">
+                  <p>Hey <b>Rahul</b>! 🚀</p>
+                  <p>
+                    You’re registered for the <b>AI Marketing Masterclass</b>,
+                    Thursday 7:00 PM IST.
+                  </p>
+                  <p>
+                    Join the private VIP community for backstage notes, prompt
+                    sheets and live Q&amp;A access.
+                  </p>
+                  <div class="bubble-meta">
+                    7:01 PM <svg data-icon="check-check" class="icon icon-sm"></svg>
+                  </div>
+                  <div class="bubble-cta">
+                    <svg data-icon="users" class="icon icon-sm"></svg> Join WhatsApp community
+                  </div>
+                </div>
+              </div>
+              <div class="phone-input">
+                <span class="box">Message…</span>
+                <svg data-icon="mic" class="icon icon-sm"></svg>
+              </div>
+            </div>
+          </div>
+          <div class="card-foot">
+            <button class="btn btn-sm" data-toast="Test send queued to +1 555-0192.">
+              <svg data-icon="smartphone" class="icon icon-sm"></svg> Test send
+            </button>
+            <button class="btn btn-primary btn-sm right" data-toast="An edit re-opens Meta review — typically 3–4 minutes.">
+              <svg data-icon="upload" class="icon icon-sm"></svg> Submit change
+            </button>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

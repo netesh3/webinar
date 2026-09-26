@@ -1,0 +1,125 @@
+forum
+Engage
+Acme
+arrow_drop_down
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+insights
+Analytics
+extension
+Integrations
+settings
+Settings
+WABA Connected
++1 555-0192
+Healthy
+person
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help_outline
+notifications
+add
+New Broadcast
+person
+Contacts
+24,892 contacts
+upload_file
+Import
+person_add
+Add Contact
+search
+Status:
+All
+arrow_drop_down
+Source:
+All
+arrow_drop_down
+Contact
+Source
+Status
+RS
+Rahul Sharma
++91 98765 43210
+Webinar
+Opted in
+chevron_right
+PM
+Priya Menon
++91 91234 56789
+Webinar
+Opted in
+chevron_right
+AV
+Amit Verma
++91 99887 77665
+Google Sheets
+Opted in
+chevron_right
+NG
+Neha Gupta
++91 90123 45678
+Webinar
+Pending
+chevron_right
+VR
+Vikram Rao
++91 98765 12340
+Manual Import
+Opted in
+chevron_right
+AD
+Ananya Deshmukh
++91 97112 34567
+API Webhook
+Opted in
+chevron_right
+KM
+Karan Malhotra
++91 98200 99881
+Webinar
+Opted out
+chevron_right
+Showing 1–7
+of 24,892
+contacts
+arrow_back
+Prev
+Page 1 of 3,556
+Next
+arrow_forward
+RS
+Rahul Sharma
++91 98765 43210
+close
+Contact Details
+Email
+rahul@example.com
+Source
+Webinar
+WhatsApp Status
+Opted in
+Recent Activity
+Attended Webinar Session
+Yesterday, 7:00 PM
+Joined Community Group
+Sep 24, 10:30 AM
+Registered via Web Form
+Sep 24, 10:24 AM
+chat
+Send WhatsApp Message

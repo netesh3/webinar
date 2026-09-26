@@ -32,6 +32,9 @@ __MACOSX/
 # Cloud Run local secrets (copy from deploy/cloudrun.env.example)
 deploy/cloudrun.env
 
+# Supabase project cutover (copy from deploy/supabase-cutover.env.example)
+deploy/supabase-cutover.env
+
 # Supabase CLI local temp (project link cache)
 supabase/.temp/
 
@@ -40,3 +43,8 @@ supabase/.temp/
 
 # Firebase CLI debug output
 firebase-debug.log
+
+# Rendered mock images and bundles (regenerate with each mock folder's render script)
+docs/mockups/**/*.png
+docs/mockups/**/*.zip
+docs/architecture/*.visual-check.*.png

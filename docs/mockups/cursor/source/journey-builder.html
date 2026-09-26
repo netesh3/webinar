@@ -1,0 +1,503 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"inverse-surface":"#213145","tertiary-fixed":"#6ffbbe","on-secondary":"#ffffff","primary-fixed-dim":"#c3c0ff","surface-container":"#e5eeff","on-tertiary":"#ffffff","on-tertiary-fixed-variant":"#005236","tertiary":"#005338","on-surface":"#0b1c30","surface-container-lowest":"#ffffff","primary-container":"#4f46e5","outline-variant":"#c7c4d8","surface-tint":"#4d44e3","surface":"#f8f9ff","inverse-primary":"#c3c0ff","primary-fixed":"#e2dfff","primary":"#3525cd","secondary":"#565e74","tertiary-container":"#006e4b","on-surface-variant":"#464555","on-primary-fixed-variant":"#3323cc","surface-dim":"#cbdbf5","surface-variant":"#d3e4fe","background":"#f8f9ff","on-error":"#ffffff","surface-container-highest":"#d3e4fe","secondary-container":"#dae2fd","on-tertiary-container":"#67f4b7","on-primary-container":"#dad7ff","outline":"#777587","tertiary-fixed-dim":"#4edea3","on-primary":"#ffffff","on-secondary-fixed-variant":"#3f465c","surface-container-high":"#dce9ff","error-container":"#ffdad6","secondary-fixed":"#dae2fd","on-tertiary-fixed":"#002113","secondary-fixed-dim":"#bec6e0","inverse-on-surface":"#eaf1ff","on-secondary-fixed":"#131b2e","on-primary-fixed":"#0f0069","surface-bright":"#f8f9ff","error":"#ba1a1a","surface-container-low":"#eff4ff","on-background":"#0b1c30","on-secondary-container":"#5c647a","on-error-container":"#93000a"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"space-lg":"1rem","space-md":"0.75rem","gutter-compact":"0.5rem","gutter":"1rem","margin":"1.5rem","space-xl":"1.5rem","space-xs":"0.25rem","space-sm":"0.5rem","margin-compact":"1rem"},"fontFamily":{"body-lg":["Inter"],"display-lg":["Plus Jakarta Sans"],"headline-md":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"],"code-sm":["Inter"],"body-md":["Inter"],"body-sm":["Inter"],"display-sm":["Plus Jakarta Sans"],"label-md":["Inter"],"label-sm":["Inter"]},"fontSize":{"body-lg":["15px",{"lineHeight":"22px","letterSpacing":"-0.005em","fontWeight":"400"}],"display-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-md":["16px",{"lineHeight":"24px","letterSpacing":"-0.005em","fontWeight":"600"}],"headline-lg":["20px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"600"}],"code-sm":["12px",{"lineHeight":"16px","fontWeight":"500"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"400"}],"body-sm":["13px",{"lineHeight":"18px","fontWeight":"400"}],"display-sm":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"600"}],"label-md":["12px",{"lineHeight":"16px","letterSpacing":"0.01em","fontWeight":"600"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.02em","fontWeight":"600"}]}}}};</script></head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-screen w-60 bg-inverse-surface text-inverse-on-surface z-50 flex flex-col justify-between select-none shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex flex-col min-h-0"><div class="h-14 px-space-lg flex items-center justify-between"><div class="flex items-center gap-space-sm"><div class="w-7 h-7 rounded-lg bg-primary-container flex items-center justify-center text-on-primary"><span class="material-symbols-outlined text-[18px]">forum</span></div><span class="font-headline-md text-headline-md tracking-tight text-white">Engage</span></div><button class="flex items-center gap-space-xs px-space-xs py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" type="button"><span class="font-label-sm text-label-sm tracking-wide uppercase">Acme</span><span class="material-symbols-outlined text-[14px]">arrow_drop_down</span></button></div><div class="px-space-md py-space-xs"><div class="px-space-sm py-space-xs rounded-lg bg-white/5 flex items-center justify-between text-secondary-fixed-dim"><div class="flex items-center gap-space-xs truncate"><span class="material-symbols-outlined text-[14px] text-tertiary-fixed">corporate_fare</span><span class="font-label-sm text-label-sm truncate text-white">Acme Growth Co</span></div><span class="material-symbols-outlined text-[16px]">unfold_more</span></div></div><nav class="flex-1 px-space-sm py-space-sm space-y-0.5 overflow-y-auto" data-active-classes="bg-primary-container text-on-primary rounded-lg font-headline-md"><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="dashboard" href="#"><span class="material-symbols-outlined text-[20px]">grid_view</span><span class="font-body-sm text-body-sm font-medium">Dashboard</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="contacts" href="#"><span class="material-symbols-outlined text-[20px]">group</span><span class="font-body-sm text-body-sm font-medium">Contacts</span></a><a aria-current="page" class="flex items-center gap-space-md px-space-sm py-space-xs transition-colors bg-primary-container text-on-primary rounded-lg font-headline-md" data-path="journeys" href="#"><span class="material-symbols-outlined text-[20px]">alt_route</span><span class="font-body-sm text-body-sm font-medium">Journeys</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="campaigns" href="#"><span class="material-symbols-outlined text-[20px]">campaign</span><span class="font-body-sm text-body-sm font-medium">Campaigns</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="templates" href="#"><span class="material-symbols-outlined text-[20px]">description</span><span class="font-body-sm text-body-sm font-medium">Templates</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="analytics" href="#"><span class="material-symbols-outlined text-[20px]">insights</span><span class="font-body-sm text-body-sm font-medium">Analytics</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="integrations" href="#"><span class="material-symbols-outlined text-[20px]">extension</span><span class="font-body-sm text-body-sm font-medium">Integrations</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="settings" href="#"><span class="material-symbols-outlined text-[20px]">settings</span><span class="font-body-sm text-body-sm font-medium">Settings</span></a></nav></div><div class="p-space-sm space-y-space-xs bg-black/20"><div class="px-space-sm py-space-xs rounded-lg bg-white/5 flex items-center justify-between"><div class="flex items-center gap-space-xs min-w-0"><span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim animate-pulse shrink-0"></span><div class="flex flex-col min-w-0"><span class="font-label-sm text-label-sm text-white font-medium truncate">WABA Connected</span><span class="font-code-sm text-code-sm text-secondary-fixed-dim truncate">+1 555-0192</span></div></div><span class="font-label-sm text-label-sm text-tertiary-fixed px-space-xs py-0.5 rounded bg-tertiary-container/30 uppercase tracking-wider">Healthy</span></div><div class="pt-space-xs flex items-center justify-between"><div class="flex items-center gap-space-sm min-w-0"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div><div class="flex flex-col min-w-0"><span class="font-label-md text-label-md text-white font-medium truncate">Ganesh S P</span><span class="font-label-sm text-label-sm text-secondary-fixed-dim truncate">Owner / Admin</span></div></div><div class="flex items-center"><button class="p-1 text-secondary-fixed-dim hover:text-white hover:bg-white/10 rounded transition-colors" title="Logout or Workspace Switch" type="button"><span class="material-symbols-outlined text-[18px]">logout</span></button></div></div></div></aside><div class="pl-60"><header class="fixed top-0 left-60 right-0 h-14 bg-surface-container-lowest/90 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40"><div class="h-14 w-full px-space-lg flex items-center justify-between gap-space-lg"><div class="flex items-center gap-space-md min-w-0"><div class="flex items-center gap-space-xs text-on-surface-variant font-label-md text-label-md"><span class="text-secondary hover:text-on-surface transition-colors cursor-pointer">Platform</span><span class="text-outline-variant font-body-sm">/</span><span class="text-on-surface font-headline-md text-headline-md tracking-tight">Production</span></div><div class="relative hidden sm:block w-72 md:w-96"><span class="absolute inset-y-0 left-0 flex items-center pl-space-sm pointer-events-none text-on-surface-variant"><span class="material-symbols-outlined text-[18px]">search</span></span><input class="w-full h-8 pl-8 pr-space-md bg-surface-container-low rounded-lg text-on-surface placeholder:text-outline text-body-sm font-body-sm border-0 focus:outline-none focus:ring-1 focus:ring-primary" placeholder="Search contacts, journeys, templates... (/)" type="text"></div></div><div class="flex items-center gap-space-sm shrink-0"><a class="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" href="#" title="Documentation &amp; Help"><span class="material-symbols-outlined text-[20px]">help_outline</span></a><button class="relative w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" title="Notifications" type="button"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-error ring-2 ring-surface-container-lowest"></span></button><div class="h-4 w-px bg-outline-variant mx-space-xs"></div><button class="h-8 px-space-md bg-primary-container hover:bg-primary text-on-primary rounded-lg font-label-md text-label-md flex items-center gap-space-xs transition-colors" type="button"><span class="material-symbols-outlined text-[18px]">add</span><span>New Broadcast</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-xs"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-14 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<!-- Journey Sub-Bar / Operational Controls -->
+<div class="w-full bg-surface-container-lowest px-space-lg py-space-sm flex flex-wrap items-center justify-between gap-space-md shadow-sm">
+<!-- Left Meta & Path -->
+<div class="flex items-center gap-space-md min-w-0">
+<div class="flex items-center gap-space-xs text-on-surface-variant font-label-md text-label-md truncate">
+<span class="text-secondary hover:text-on-surface cursor-pointer">Journeys</span>
+<span class="text-outline-variant">/</span>
+<span class="text-on-surface font-headline-md text-headline-md tracking-tight truncate">Webinar End-to-End Automation &amp; Follow-up</span>
+</div>
+<div class="inline-flex items-center gap-1.5 px-space-sm py-0.5 rounded-full bg-tertiary-fixed/30 text-on-tertiary-fixed font-label-sm text-label-sm font-semibold shrink-0">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span>
+<span>Active • Live (248 enrolled)</span>
+</div>
+</div>
+<!-- Right Actions Bar -->
+<div class="flex items-center gap-space-sm shrink-0">
+<!-- Stop Conditions Trigger Pill -->
+<button class="h-8 px-space-sm rounded-lg bg-surface-container text-on-surface-variant hover:text-on-surface font-label-sm text-label-sm flex items-center gap-space-xs transition-colors" title="View Stop Rules" type="button">
+<span class="material-symbols-outlined text-[16px] text-error">gpp_maybe</span>
+<span>Stop Conditions (3 rules)</span>
+</button>
+<!-- Logs -->
+<button class="h-8 px-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-label-sm text-label-sm flex items-center gap-space-xs transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">receipt_long</span>
+<span class="hidden md:inline">Activity Log</span>
+</button>
+<!-- Test Run -->
+<button class="h-8 px-space-md rounded-lg bg-surface-container-high hover:bg-surface-dim text-on-surface font-label-md text-label-md flex items-center gap-space-xs transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px] text-primary">play_arrow</span>
+<span>Test Journey</span>
+</button>
+<!-- Save Draft -->
+<button class="h-8 px-space-md rounded-lg bg-surface-container text-secondary hover:text-on-surface font-label-md text-label-md transition-colors" type="button">
+        Save Draft
+      </button>
+<!-- Publish Changes -->
+<button class="h-8 px-space-lg rounded-lg bg-primary text-on-primary hover:bg-primary/90 font-label-md text-label-md flex items-center gap-space-xs shadow-sm transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">publish</span>
+<span>Publish Changes</span>
+</button>
+</div>
+</div>
+<!-- Workspace Canvas & Inspector Split View -->
+<div class="w-full grid grid-cols-1 xl:grid-cols-12 gap-0 relative bg-surface">
+<!-- Central Vertical Automation Workflow Canvas (8 cols on XL ~67%) -->
+<div class="xl:col-span-8 p-space-md sm:p-space-lg relative flex flex-col items-center overflow-x-auto min-h-[calc(100vh-112px)]">
+<!-- Canvas Floating Toolbar (Zoom + Center + Minimap toggle) -->
+<div class="sticky top-space-sm z-30 self-start mb-space-md flex items-center gap-0.5 bg-surface-container-lowest/95 backdrop-blur-md rounded-lg shadow-sm px-space-xs py-1">
+<button class="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container" title="Zoom In" type="button">
+<span class="material-symbols-outlined text-[18px]">add</span>
+</button>
+<span class="font-code-sm text-code-sm px-1.5 text-secondary">100%</span>
+<button class="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container" title="Zoom Out" type="button">
+<span class="material-symbols-outlined text-[18px]">remove</span>
+</button>
+<div class="w-px h-4 bg-surface-container-high mx-1"></div>
+<button class="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container" title="Fit Canvas to Viewport" type="button">
+<span class="material-symbols-outlined text-[18px]">crop_free</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container" title="Mini-map overlay" type="button">
+<span class="material-symbols-outlined text-[18px]">map</span>
+</button>
+</div>
+<!-- WORKFLOW TREE -->
+<div class="w-full max-w-2xl flex flex-col items-center">
+<!-- 1. TRIGGER NODE -->
+<div class="w-full bg-surface-container-lowest rounded-xl shadow-sm hover:shadow-md transition-shadow p-space-md relative cursor-pointer group">
+<div class="flex items-start justify-between gap-space-md">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-lg bg-primary-container text-on-primary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[22px]">bolt</span>
+</div>
+<div class="min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-primary uppercase font-bold tracking-wider">Trigger</span>
+<span class="font-code-sm text-code-sm px-2 py-0.5 rounded-full bg-surface-container text-secondary">ID #TRIG-01</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface tracking-tight truncate">Webinar Registration</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5 truncate">Triggered instantly when attendee registers in Webinar Liv (AI Marketing Masterclass)</p>
+</div>
+</div>
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container-low text-secondary font-label-sm text-label-sm shrink-0">
+<span class="material-symbols-outlined text-[14px] text-tertiary">sync</span>
+<span>Webinar Liv Sync</span>
+</span>
+</div>
+<!-- Quick stats metric pill -->
+<div class="mt-space-sm pt-space-xs flex items-center justify-between font-code-sm text-code-sm text-secondary bg-surface-container-low/50 px-space-sm py-1 rounded">
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-tertiary"></span> 1,482 Enrolled Total</span>
+<span>Realtime Webhook active</span>
+</div>
+</div>
+<!-- Connector Stem -->
+<div class="w-0.5 h-7 bg-outline-variant"></div>
+<!-- 2. ACTION STEP: Check Status -->
+<div class="w-full bg-surface-container-lowest rounded-xl shadow-sm p-space-md relative hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-lg bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[20px]">fact_check</span>
+</div>
+<div class="min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-secondary uppercase font-bold tracking-wider">Verification Step</span>
+</div>
+<h4 class="font-headline-md text-headline-md text-on-surface truncate">Check WhatsApp Community Status</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">Verifies if recipient phone number already belongs to VIP Community group</p>
+</div>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container font-code-sm text-code-sm text-secondary shrink-0">Runtime Query</span>
+</div>
+</div>
+<!-- Connector Stem into Dual Decision -->
+<div class="w-0.5 h-7 bg-outline-variant"></div>
+<!-- 3. DECISION DIAMOND / CONDITION SPLIT -->
+<div class="relative flex flex-col items-center">
+<div class="px-space-md py-1.5 rounded-full bg-inverse-surface text-inverse-on-surface shadow-sm font-label-sm text-label-sm flex items-center gap-1.5 z-10">
+<span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">call_split</span>
+<span>Is already in WhatsApp Community?</span>
+</div>
+<!-- Dual Branch Fork Lines SVG -->
+<div class="w-full max-w-xl h-10 flex justify-center -mt-2">
+<svg class="w-full h-10 text-outline-variant" preserveAspectRatio="none" viewBox="0 0 500 40">
+<path d="M 250 8 L 250 20 L 125 20 L 125 40" fill="none" stroke="currentColor" stroke-width="2"></path>
+<path d="M 250 8 L 250 20 L 375 20 L 375 40" fill="none" stroke="currentColor" stroke-width="2"></path>
+</svg>
+</div>
+</div>
+<!-- 3b. DUAL BRANCH CARDS -->
+<div class="w-full grid grid-cols-1 md:grid-cols-2 gap-space-md -mt-1">
+<!-- LEFT BRANCH (Selected state) -->
+<div class="bg-surface-container-lowest rounded-xl shadow-md p-space-md relative ring-2 ring-primary transition-all">
+<div class="absolute -top-3 left-4 px-2 py-0.5 rounded bg-error-container text-on-error-container font-label-sm text-label-sm font-bold uppercase">
+              NO • Not Joined
+            </div>
+<div class="mt-2 flex items-start gap-space-sm">
+<div class="w-9 h-9 rounded-lg bg-primary-container/15 text-primary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[20px]">chat</span>
+</div>
+<div class="min-w-0">
+<div class="flex items-center gap-1">
+<span class="font-label-sm text-label-sm text-primary font-bold">Selected Action</span>
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+</div>
+<h5 class="font-headline-md text-headline-md text-on-surface truncate">Send WhatsApp Utility</h5>
+<p class="font-body-sm text-body-sm text-on-surface-variant font-medium">"Join WhatsApp Community"</p>
+<div class="mt-2 flex flex-wrap gap-1 font-code-sm text-code-sm">
+<span class="px-2 py-0.5 bg-surface-container rounded text-primary">join_community_v2</span>
+<span class="px-2 py-0.5 bg-tertiary-fixed/30 text-on-tertiary-fixed rounded">1-tap group invite</span>
+</div>
+</div>
+</div>
+</div>
+<!-- RIGHT BRANCH -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm hover:shadow-md p-space-md relative opacity-85 hover:opacity-100 transition-all">
+<div class="absolute -top-3 left-4 px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-label-sm text-label-sm font-bold uppercase">
+              YES • Already Joined
+            </div>
+<div class="mt-2 flex items-start gap-space-sm">
+<div class="w-9 h-9 rounded-lg bg-surface-container text-secondary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[20px]">event_available</span>
+</div>
+<div class="min-w-0">
+<span class="font-label-sm text-label-sm text-secondary font-bold">Alternative Path</span>
+<h5 class="font-headline-md text-headline-md text-on-surface truncate">Send Calendar Invite</h5>
+<p class="font-body-sm text-body-sm text-on-surface-variant font-medium">"Add to Google Calendar direct"</p>
+<div class="mt-2 flex flex-wrap gap-1 font-code-sm text-code-sm">
+<span class="px-2 py-0.5 bg-surface-container rounded text-secondary">calendar_invite_direct</span>
+<span class="px-2 py-0.5 bg-surface-container-low rounded text-on-surface-variant">Skip community</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Fork Re-convergence Lines SVG -->
+<div class="w-full max-w-xl h-10 flex justify-center">
+<svg class="w-full h-10 text-outline-variant" preserveAspectRatio="none" viewBox="0 0 500 40">
+<path d="M 125 0 L 125 20 L 250 20 L 250 38" fill="none" stroke="currentColor" stroke-width="2"></path>
+<path d="M 375 0 L 375 20 L 250 20 L 250 38" fill="none" stroke="currentColor" stroke-width="2"></path>
+</svg>
+</div>
+<!-- 4. MERGE POINT & WAIT TIMING STEP -->
+<div class="w-full bg-surface-container-lowest rounded-xl shadow-sm p-space-md relative flex items-center justify-between gap-space-md hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-lg bg-secondary-container/60 text-secondary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[22px]">hourglass_top</span>
+</div>
+<div class="min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-secondary uppercase font-bold tracking-wider">Timing Condition</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container font-code-sm text-code-sm text-primary font-medium">Merged Queue</span>
+</div>
+<h4 class="font-headline-md text-headline-md text-on-surface truncate">Wait until 2 hours before webinar</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">T-2 Hours relative to webinar start time (Sep 25, 7:00 PM IST)</p>
+</div>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant shrink-0">
+<span class="font-label-sm text-label-sm text-secondary font-medium">Calculated Dynamic</span>
+<span class="material-symbols-outlined text-[18px]">expand_more</span>
+</div>
+</div>
+<!-- Connector Stem -->
+<div class="w-0.5 h-7 bg-outline-variant"></div>
+<!-- 5. ACTION STEP: 2h Reminder -->
+<div class="w-full bg-surface-container-lowest rounded-xl shadow-sm p-space-md relative hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[20px]">notifications_active</span>
+</div>
+<div class="min-w-0">
+<span class="font-label-sm text-label-sm text-primary uppercase font-bold tracking-wider">Broadcast Reminder</span>
+<h4 class="font-headline-md text-headline-md text-on-surface truncate">Send Webinar Reminder</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">"Webinar starts in 2 hours. Have your notes ready!" • Template: <span class="font-code-sm text-code-sm font-semibold text-on-surface">webinar_2h_reminder</span></p>
+</div>
+</div>
+<div class="text-right shrink-0">
+<span class="px-2.5 py-1 rounded bg-tertiary-fixed/30 text-on-tertiary-fixed font-label-sm text-label-sm font-semibold">99.4% Delivery</span>
+</div>
+</div>
+</div>
+<!-- Connector Stem -->
+<div class="w-0.5 h-7 bg-outline-variant"></div>
+<!-- 6. WAIT TIMING STEP: 30m -->
+<div class="w-full bg-surface-container-lowest rounded-xl shadow-sm p-space-md relative flex items-center justify-between gap-space-md hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-lg bg-secondary-container/60 text-secondary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[22px]">timer</span>
+</div>
+<div class="min-w-0">
+<span class="font-label-sm text-label-sm text-secondary uppercase font-bold tracking-wider">Timing Condition</span>
+<h4 class="font-headline-md text-headline-md text-on-surface truncate">Wait until 30 minutes before webinar</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">Relative offset T-30 Minutes before launch (Sep 25, 6:30 PM IST)</p>
+</div>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container font-code-sm text-code-sm text-secondary shrink-0">Exact schedule</span>
+</div>
+<!-- Connector Stem -->
+<div class="w-0.5 h-7 bg-outline-variant"></div>
+<!-- 7. ACTION STEP: Live Soon -->
+<div class="w-full bg-surface-container-lowest rounded-xl shadow-sm p-space-md relative hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-lg bg-error-container/40 text-error flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[20px]">sensors</span>
+</div>
+<div class="min-w-0">
+<span class="font-label-sm text-label-sm text-error uppercase font-bold tracking-wider">Urgent Broadcast</span>
+<h4 class="font-headline-md text-headline-md text-on-surface truncate">Send "We're Live Soon" Alert</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">"We are going live in 30 mins! Tap below to join directly." • Template: <span class="font-code-sm text-code-sm font-semibold text-on-surface">webinar_live_soon</span></p>
+</div>
+</div>
+<span class="px-2.5 py-1 rounded bg-surface-container font-label-sm text-label-sm text-secondary font-medium shrink-0">High Priority</span>
+</div>
+</div>
+<!-- Connector Stem -->
+<div class="w-0.5 h-7 bg-outline-variant"></div>
+<!-- 8. POST-WEBINAR ATTENDANCE BRANCHING -->
+<div class="w-full flex flex-col items-center">
+<div class="px-space-md py-1.5 rounded-full bg-inverse-surface text-inverse-on-surface shadow-sm font-label-sm text-label-sm flex items-center gap-1.5 z-10">
+<span class="material-symbols-outlined text-[16px] text-tertiary-fixed">rule</span>
+<span>Webinar Ends → Sync Attendance from Webinar Liv</span>
+</div>
+<!-- Triple Branch Connector SVG -->
+<div class="w-full max-w-xl h-10 flex justify-center -mt-2">
+<svg class="w-full h-10 text-outline-variant" preserveAspectRatio="none" viewBox="0 0 600 40">
+<path d="M 300 8 L 300 20 L 100 20 L 100 40" fill="none" stroke="currentColor" stroke-width="2"></path>
+<path d="M 300 8 L 300 40" fill="none" stroke="currentColor" stroke-width="2"></path>
+<path d="M 300 8 L 300 20 L 500 20 L 500 40" fill="none" stroke="currentColor" stroke-width="2"></path>
+</svg>
+</div>
+<!-- 3 Smart Segments Grid -->
+<div class="w-full grid grid-cols-1 md:grid-cols-3 gap-space-sm -mt-1">
+<!-- Segment A -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm p-space-sm relative hover:shadow-md transition-shadow">
+<div class="flex items-center justify-between gap-1 mb-1">
+<span class="font-label-sm text-label-sm font-bold text-tertiary">Attended (&gt;15 min)</span>
+<span class="font-code-sm text-code-sm text-secondary">64%</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low mb-1.5">
+<p class="font-headline-md text-headline-md text-on-surface text-[13px] leading-tight">Thank You &amp; Resources</p>
+<p class="font-code-sm text-code-sm text-secondary mt-0.5 truncate">post_webinar_attended</p>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant font-code-sm text-code-sm">
+<span class="material-symbols-outlined text-[14px]">arrow_downward</span>
+<span>Wait 24h → Follow-up 1</span>
+</div>
+</div>
+<!-- Segment B -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm p-space-sm relative hover:shadow-md transition-shadow">
+<div class="flex items-center justify-between gap-1 mb-1">
+<span class="font-label-sm text-label-sm font-bold text-primary">Briefly (&lt;15 min)</span>
+<span class="font-code-sm text-code-sm text-secondary">18%</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low mb-1.5">
+<p class="font-headline-md text-headline-md text-on-surface text-[13px] leading-tight">Quick Replay &amp; Notes</p>
+<p class="font-code-sm text-code-sm text-secondary mt-0.5 truncate">post_webinar_brief</p>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant font-code-sm text-code-sm">
+<span class="material-symbols-outlined text-[14px]">play_circle</span>
+<span>Replay bookmark link</span>
+</div>
+</div>
+<!-- Segment C -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm p-space-sm relative hover:shadow-md transition-shadow">
+<div class="flex items-center justify-between gap-1 mb-1">
+<span class="font-label-sm text-label-sm font-bold text-error">No Show (0 min)</span>
+<span class="font-code-sm text-code-sm text-secondary">18%</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low mb-1.5">
+<p class="font-headline-md text-headline-md text-on-surface text-[13px] leading-tight">Missed Session Warning</p>
+<p class="font-code-sm text-code-sm text-secondary mt-0.5 truncate">post_webinar_no_show</p>
+</div>
+<div class="flex items-center gap-1 text-error font-code-sm text-code-sm">
+<span class="material-symbols-outlined text-[14px]">timer_off</span>
+<span>48-hr expiring replay</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Canvas Add Step Button -->
+<div class="mt-space-lg flex items-center justify-center">
+<button class="h-9 px-space-md rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center gap-space-xs transition-colors shadow-sm" type="button">
+<span class="material-symbols-outlined text-[18px] text-primary">add_circle</span>
+<span>Append Next Journey Action</span>
+</button>
+</div>
+</div>
+<!-- 9. STOP CONDITIONS FOOTER BANNER -->
+<div class="w-full max-w-2xl mt-space-xl p-space-md rounded-xl bg-inverse-surface text-inverse-on-surface shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm min-w-0">
+<span class="material-symbols-outlined text-tertiary-fixed text-[20px] shrink-0">verified_user</span>
+<div class="min-w-0">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-tertiary-fixed font-bold">Global Guardrails Active</span>
+<p class="font-body-sm text-body-sm text-secondary-fixed-dim truncate">Stop if attendee purchases / converts • If unsubscribed • If contact blocks WABA</p>
+</div>
+</div>
+<button class="px-space-sm py-1 rounded bg-white/10 hover:bg-white/20 text-white font-label-sm text-label-sm shrink-0 transition-colors" type="button">
+          Configure (3)
+        </button>
+</div>
+</div>
+<!-- Right-side Step Configuration & WhatsApp Simulation Panel (4 cols on XL ~33%) -->
+<div class="xl:col-span-4 bg-surface-container-lowest p-space-lg shadow-sm flex flex-col justify-between min-h-screen">
+<div class="space-y-space-md">
+<!-- Inspector Header -->
+<div class="flex items-center justify-between pb-space-sm">
+<div>
+<div class="flex items-center gap-1.5 text-primary font-label-sm text-label-sm font-bold uppercase">
+<span class="material-symbols-outlined text-[16px]">tune</span>
+<span>Step Configuration</span>
+</div>
+<h3 class="font-headline-lg text-headline-lg text-on-surface tracking-tight mt-0.5">Send WhatsApp Message</h3>
+</div>
+<span class="px-2 py-0.5 rounded bg-tertiary-fixed/30 text-on-tertiary-fixed font-code-sm text-code-sm font-semibold">Approved</span>
+</div>
+<!-- Template Meta Card -->
+<div class="bg-surface-container-low p-space-md rounded-xl space-y-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-secondary">Template Name</span>
+<span class="font-code-sm text-code-sm font-bold text-on-surface">join_community_v2</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-secondary">Category &amp; Meta Status</span>
+<span class="font-body-sm text-body-sm text-on-surface flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span>Utility • En (English)</span>
+</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-secondary">Channel Quality Tier</span>
+<span class="font-body-sm text-body-sm text-tertiary font-medium">High (0.01% spam rate)</span>
+</div>
+</div>
+<!-- Variable Mapping Section -->
+<div>
+<h4 class="font-headline-md text-headline-md text-on-surface mb-space-xs flex items-center justify-between">
+<span>Variable Data Mapping</span>
+<span class="font-code-sm text-code-sm text-secondary font-normal">3 Variables</span>
+</h4>
+<div class="space-y-2">
+<!-- Var 1 -->
+<div class="bg-surface rounded-lg p-space-sm flex items-center justify-between gap-space-sm">
+<div class="min-w-0">
+<span class="font-code-sm text-code-sm px-1.5 py-0.5 rounded bg-surface-container-high text-primary font-bold">{{1}} {{first_name}}</span>
+<p class="font-body-sm text-body-sm text-secondary truncate mt-0.5">Recipient's first name</p>
+</div>
+<div class="flex items-center gap-1 bg-surface-container-lowest px-2 py-1 rounded text-on-surface font-label-sm text-label-sm shrink-0">
+<span class="material-symbols-outlined text-[14px] text-primary">person</span>
+<span>Contact.FirstName</span>
+</div>
+</div>
+<!-- Var 2 -->
+<div class="bg-surface rounded-lg p-space-sm flex items-center justify-between gap-space-sm">
+<div class="min-w-0">
+<span class="font-code-sm text-code-sm px-1.5 py-0.5 rounded bg-surface-container-high text-primary font-bold">{{2}} {{webinar_name}}</span>
+<p class="font-body-sm text-body-sm text-secondary truncate mt-0.5">Event identifier</p>
+</div>
+<span class="bg-surface-container-lowest px-2 py-1 rounded text-on-surface font-label-sm text-label-sm truncate max-w-[130px] shrink-0 font-medium">
+                AI Marketing Masterclass
+              </span>
+</div>
+<!-- Var 3 -->
+<div class="bg-surface rounded-lg p-space-sm flex items-center justify-between gap-space-sm">
+<div class="min-w-0">
+<span class="font-code-sm text-code-sm px-1.5 py-0.5 rounded bg-surface-container-high text-primary font-bold">{{3}} {{community_link}}</span>
+<p class="font-body-sm text-body-sm text-secondary truncate mt-0.5">Group URL Target</p>
+</div>
+<span class="bg-surface-container-lowest px-2 py-1 rounded text-primary font-code-sm text-code-sm truncate max-w-[130px] shrink-0">
+                chat.whatsapp.com/EngageLive
+              </span>
+</div>
+</div>
+</div>
+<!-- Realistic WhatsApp Smartphone Simulator Preview -->
+<div>
+<div class="flex items-center justify-between mb-space-xs">
+<span class="font-headline-md text-headline-md text-on-surface">Interactive Preview</span>
+<span class="font-label-sm text-label-sm text-secondary flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">smartphone</span>
+<span>WhatsApp iOS/Android</span>
+</span>
+</div>
+<!-- Smartphone Shell -->
+<div class="w-full max-w-[340px] mx-auto rounded-2xl overflow-hidden shadow-lg bg-[#efeae2] relative">
+<!-- WhatsApp Chat Header -->
+<div class="bg-inverse-surface px-space-md py-2.5 flex items-center justify-between text-white">
+<div class="flex items-center gap-2 min-w-0">
+<div class="w-7 h-7 rounded-full bg-tertiary-container flex items-center justify-center text-white text-xs font-bold shrink-0">
+                  E
+                </div>
+<div class="min-w-0">
+<div class="flex items-center gap-1">
+<span class="font-label-md text-label-md text-white font-medium truncate">Engage Events</span>
+<span class="material-symbols-outlined text-[14px] text-tertiary-fixed" style="font-variation-settings: 'FILL' 1;">verified</span>
+</div>
+<span class="font-code-sm text-code-sm text-secondary-fixed-dim block -mt-0.5">Official Business Account</span>
+</div>
+</div>
+<div class="flex items-center gap-2 text-secondary-fixed-dim">
+<span class="material-symbols-outlined text-[18px]">videocam</span>
+<span class="material-symbols-outlined text-[18px]">call</span>
+</div>
+</div>
+<!-- Simulated Chat Area with WhatsApp Wallpaper feel -->
+<div class="p-space-md min-h-[260px] flex flex-col justify-end space-y-2">
+<div class="self-center px-2 py-0.5 rounded bg-white/70 backdrop-blur-sm text-secondary font-label-sm text-label-sm text-[10px] uppercase shadow-xs">
+                Today
+              </div>
+<!-- Chat Bubble (Outgoing green WhatsApp style) -->
+<div class="self-end max-w-[92%] bg-[#d9fdd3] rounded-lg p-space-sm shadow-xs space-y-2 text-[#111b21]">
+<!-- Header badge / media banner placeholder -->
+<div class="rounded overflow-hidden relative">
+<img class="w-full h-24 object-cover rounded" data-alt="High quality professional banner for AI Marketing Masterclass with futuristic abstract gradients in indigo and deep emerald green, high-end design conference graphic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDIoXQdJzgTxnaz0ItrHv96FHWp4NnHhs9uoL1J2xQojYjf22R1FwyvdgZ96pEal0wvXx0bwIZAhQhXoK_wP1TKjYckCs3csOc3jPbBIjzKdkTgJqXGaBljGVExNxKH7RGtDrtaD4OFnUl64JZEpGek1-xxySN20p_BCNExOtwX03DVGBvwgsn5XDENVUY5k-IRREtWacTq_jsLkPqBuxz4ReMMf-y5NVKjcqWjKRAmkHOv6Xp8iPnwSA">
+</div>
+<p class="font-body-sm text-body-sm leading-snug">
+                  Hey <span class="bg-surface-container font-semibold px-1 rounded text-primary">Ganesh</span>! 🚀
+                </p>
+<p class="font-body-sm text-body-sm leading-snug">
+                  You're registered for the <span class="font-semibold">AI Marketing Masterclass</span> this Thursday at 7:00 PM IST.
+                </p>
+<p class="font-body-sm text-body-sm leading-snug text-on-surface-variant">
+                  Join our private VIP WhatsApp Community to get backstage notes, prompt cheat sheets, and live Q&amp;A access.
+                </p>
+<!-- Bubble Metadata & Double Ticks -->
+<div class="flex items-center justify-end gap-1 pt-0.5">
+<span class="font-code-sm text-code-sm text-[10px] text-secondary">07:01 PM</span>
+<span class="material-symbols-outlined text-[14px] text-primary">done_all</span>
+</div>
+<!-- WhatsApp Native Action Button in Bubble -->
+<div class="pt-1.5">
+<a class="w-full py-2 px-space-sm rounded bg-white hover:bg-surface-container-low text-primary font-headline-md text-headline-md text-center flex items-center justify-center gap-1.5 shadow-xs transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px]">groups</span>
+<span>Join WhatsApp Community</span>
+</a>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Inspector Footer Action Buttons -->
+<div class="pt-space-lg space-y-space-xs">
+<div class="flex items-center gap-space-sm">
+<button class="flex-1 h-9 px-space-md rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md transition-colors flex items-center justify-center gap-1.5" type="button">
+<span class="material-symbols-outlined text-[16px]">edit</span>
+<span>Edit Template</span>
+</button>
+<button class="flex-1 h-9 px-space-md rounded-lg bg-surface-container-high hover:bg-surface-dim text-on-surface font-label-md text-label-md transition-colors flex items-center justify-center gap-1.5" type="button">
+<span class="material-symbols-outlined text-[16px] text-primary">send_to_mobile</span>
+<span>Test on My Phone</span>
+</button>
+</div>
+<button class="w-full h-9 rounded-lg bg-primary text-on-primary hover:bg-primary/90 font-label-md text-label-md transition-colors flex items-center justify-center gap-1.5 shadow-sm" type="button">
+<span class="material-symbols-outlined text-[18px]">check</span>
+<span>Save Step Configuration</span>
+</button>
+</div>
+</div>
+</div>
+</div></main></div></body></html>

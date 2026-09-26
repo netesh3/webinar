@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Engage v1 mocks · WebinarLiv</title><link rel="stylesheet" href="assets/v1.css">
+<style>
+  .sheet { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+  .shot { display: block; overflow: hidden; }
+  .shot img { display: block; width: 100%; aspect-ratio: 16/10; object-fit: cover; object-position: top; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+  .shot .cap { padding: 12px 16px; }
+  ol { margin: 8px 0 0; padding-left: 18px; line-height: 1.7; color: var(--ink-2); font-size: 13px; }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <h1>Engage v1, inside Hosting</h1>
+  <p class="muted" style="margin-top:6px;max-width:44rem">No new menu. Two new tabs on the Hosting home (People, Messages), plus additions on each webinar page. Same tokens and primitives as <code>web/components/ui.tsx</code>. Spec: <code>docs/engage/V1.md</code>.</p>
+
+  <div class="card p5" style="margin:20px 0">
+    <div class="st">Where each step lives</div>
+    <ol>
+      <li><b>Hosting → People:</b> everyone across all webinars; filter, tick, message.</li>
+      <li><b>Hosting → Messages:</b> one inbox for replies from every webinar; the bell and webinar cards link here.</li>
+      <li><b>Upcoming webinar → Messages:</b> confirmation, 24 h and 1 h reminders.</li>
+      <li><b>Ended webinar → Attendees</b> (existing tab, now with watch time and messaging): filter by watch time, tick rows, message them.</li>
+      <li><b>Ended webinar → Messages:</b> what was sent for that webinar, with read counts.</li>
+      <li><b>Account → WhatsApp:</b> connect the Business app number so replies also work from the phone.</li>
+    </ol>
+  </div>
+
+  <div class="sheet">
+    <a class="card shot" href="host.html"><img src="png/host.png" alt=""><div class="cap"><div class="name">Hosting home</div><div class="xs faint">Replies surface on the webinar card</div></div></a>
+    <a class="card shot" href="host.html#alerts"><img src="png/host-alerts.png" alt=""><div class="cap"><div class="name">Bell</div><div class="xs faint">New replies, next to admit alerts</div></div></a>
+    <a class="card shot" href="reminders.html"><img src="png/upcoming.png" alt=""><div class="cap"><div class="name">Upcoming webinar · Messages</div><div class="xs faint">Before the webinar</div></div></a>
+    <a class="card shot" href="webinar-people.html"><img src="png/people.png" alt=""><div class="cap"><div class="name">Ended webinar · Attendees</div><div class="xs faint">Filter, tick, message</div></div></a>
+    <a class="card shot" href="webinar-people.html#send"><img src="png/send.png" alt=""><div class="cap"><div class="name">Send dialog</div><div class="xs faint">Template, fill-ins, when, preview</div></div></a>
+    <a class="card shot" href="host-people.html"><img src="png/host-people.png" alt=""><div class="cap"><div class="name">Hosting · People</div><div class="xs faint">Everyone, all webinars</div></div></a>
+    <a class="card shot" href="host-messages.html"><img src="png/host-messages.png" alt=""><div class="cap"><div class="name">Hosting · Messages</div><div class="xs faint">One inbox</div></div></a>
+    <a class="card shot" href="webinar-messages.html"><img src="png/messages.png" alt=""><div class="cap"><div class="name">Ended webinar · Messages</div><div class="xs faint">Sent, with read counts</div></div></a>
+    <a class="card shot" href="host-messages.html#closed"><img src="png/messages-closed.png" alt=""><div class="cap"><div class="name">Reply after 24 h</div><div class="xs faint">Template only</div></div></a>
+    <a class="card shot" href="connect.html"><img src="png/connect.png" alt=""><div class="cap"><div class="name">Account · Connect WhatsApp</div><div class="xs faint">Coexistence path</div></div></a>
+  </div>
+</main>
+<script src="assets/v1.js"></script>
+</body></html>

@@ -1,0 +1,162 @@
+[
+  {
+    "id": "c400350eb3d34671b4cbcf752ecc93b5",
+    "slug": "dashboard",
+    "title": "Dashboard - Engage",
+    "width": 2560,
+    "height": 2286,
+    "html_bytes": 24719
+  },
+  {
+    "id": "bf6fb95f044f40c39ecea0c464ae4764",
+    "slug": "contacts",
+    "title": "Contacts & Audience CRM - Engage",
+    "width": 2560,
+    "height": 2350,
+    "html_bytes": 32154
+  },
+  {
+    "id": "dadc6d6d3865474f8535f37f71b6f491",
+    "slug": "journeys",
+    "title": "Automated Journeys - Engage",
+    "width": 2560,
+    "height": 2048,
+    "html_bytes": 40030
+  },
+  {
+    "id": "e25cea4eca3b4db4a7fd33fd9d11fbb7",
+    "slug": "campaigns",
+    "title": "Campaigns & Broadcasts - Engage",
+    "width": 2560,
+    "height": 2048,
+    "html_bytes": 47713
+  },
+  {
+    "id": "4eaad0a1e5684ff0b7431d98d0e71260",
+    "slug": "templates",
+    "title": "Templates & Variable Inspector - Engage",
+    "width": 2560,
+    "height": 2048,
+    "html_bytes": 44257
+  },
+  {
+    "id": "e1c1c74ad49342c9879966a2927d520a",
+    "slug": "analytics",
+    "title": "Analytics & Conversions - Engage",
+    "width": 2560,
+    "height": 2828,
+    "html_bytes": 36868
+  },
+  {
+    "id": "103af104fee941159670bb06927e703b",
+    "slug": "integrations",
+    "title": "Integrations & Webinar Liv Mapping - Engage",
+    "width": 2560,
+    "height": 3484,
+    "html_bytes": 43140
+  },
+  {
+    "id": "43c2c6c61b3a4f6aa99417a10cbc5aa6",
+    "slug": "settings",
+    "title": "Settings - Engage",
+    "width": 2560,
+    "height": 2664,
+    "html_bytes": 38321
+  },
+  {
+    "id": "2a35ba581efc4e369e3d9f1c8ec34805",
+    "slug": "journey-builder",
+    "title": "Visual Journey Builder - Engage",
+    "width": 2560,
+    "height": 2912,
+    "html_bytes": 42133
+  },
+  {
+    "id": "2b4f6065988c4b5a8cd22bf3f3754855",
+    "slug": "journey-builder-spacious",
+    "title": "Engage - Visual Journey Builder (Spacious Canvas)",
+    "width": 2560,
+    "height": 3198,
+    "html_bytes": 30956
+  },
+  {
+    "id": "f09bf71f1678456181040da77eb38269",
+    "slug": "step-branch-rules",
+    "title": "Engage - Step & Branch Rules Configuration",
+    "width": 2560,
+    "height": 2182,
+    "html_bytes": 31143
+  },
+  {
+    "id": "e3ed98420c2e4e189093be00f151b88d",
+    "slug": "modal-create-journey",
+    "title": "Create Journey Modal - Engage",
+    "width": 2560,
+    "height": 2048,
+    "html_bytes": 35826
+  },
+  {
+    "id": "18bda2c9bbac417eaaa706036fdd6236",
+    "slug": "modal-create-campaign",
+    "title": "Create Campaign Wizard Modal - Engage",
+    "width": 2560,
+    "height": 2048,
+    "html_bytes": 35139
+  },
+  {
+    "id": "beeb12f4d6d24947b335a1a591b74e16",
+    "slug": "modal-import-contacts",
+    "title": "Add & Import Contacts Modal - Engage",
+    "width": 2560,
+    "height": 2048,
+    "html_bytes": 30442
+  },
+  {
+    "id": "7ab4567066354bd8a0d66766cc531da2",
+    "slug": "settings-channels",
+    "title": "Settings - Integrations & Channels",
+    "width": 2560,
+    "height": 2476,
+    "html_bytes": 29590
+  },
+  {
+    "id": "9d5a6c3d31494ccd8ce4b32fb7a7c0e0",
+    "slug": "whatsapp-hub",
+    "title": "WhatsApp Channel & Operations Hub",
+    "width": 2560,
+    "height": 2572,
+    "html_bytes": 34196
+  },
+  {
+    "id": "f314e5f2172947a09d54fbf5d3f7e2a5",
+    "slug": "flow-builder",
+    "title": "Flow Builder - Visual Automation Orchestrator",
+    "width": 2560,
+    "height": 3992,
+    "html_bytes": 26445
+  },
+  {
+    "id": "53d46fc4f7994bc5a3863d27e7069f25",
+    "slug": "exec-logs",
+    "title": "Execution & Delivery Logs",
+    "width": 2560,
+    "height": 2948,
+    "html_bytes": 47652
+  },
+  {
+    "id": "1df87d735bba4a4c882145ab11763467",
+    "slug": "attendance",
+    "title": "Attendance & Engagement Telemetry",
+    "width": 2560,
+    "height": 3620,
+    "html_bytes": 57086
+  },
+  {
+    "id": "de4e3c581b124d39a549a6c7199a7a80",
+    "slug": "database-webhooks",
+    "title": "Database & Webhooks Architecture",
+    "width": 2560,
+    "height": 5200,
+    "html_bytes": 75144
+  }
+]

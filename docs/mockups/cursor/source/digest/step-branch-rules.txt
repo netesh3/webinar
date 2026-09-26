@@ -1,0 +1,122 @@
+forum
+Engage
+Acme
+arrow_drop_down
+corporate_fare
+Acme Growth Co
+unfold_more
+Dashboard
+Contacts
+Journeys
+Campaigns
+Templates
+Analytics
+Integrations
+Settings
+WABA Connected
++1 555-0192
+Healthy
+person
+Ganesh S P
+Owner / Admin
+logout
+dock_to_right
+Journeys
+/
+Lead Re-engagement Flow v2.4
+Live Automation
+Active
+14,892
+Exec Rate
+99.4%
+Latency
+142ms
+play_arrow
+Test Run
+publish
+Publish Changes
+Journeys
+/
+Webinar Onboarding
+/
+Step 02: Check VIP Group
+alt_route
+Condition: VIP Community Membership
+ID: stp_cnd_882
+Dynamically route registrants based on real-time community participation to avoid duplicate invites.
+Active in Flow
+content_copy
+delete
+tune
+Evaluation Rule
+Condition 1 of 1
+Trigger Event
+When attendee registers for webinar...
+IF
+Check registrant profile:
+Attribute / Field
+groups
+VIP Community Membership
+WA Status Opt-In
+Community Tier
+Operator
+is equal to
+is not equal to
+Value
+Yes (Active Member)
+No (Not a Member)
+Path A (If Yes)
+Send Calendar Passcode
+Deliver calendar invite & VIP breakout passcode. Skips community invite.
+event_available
+Calendar & Passcode
+Edit Step
+Path B (If No)
+Send Community Invite
+Sends WhatsApp message template with single-click group join link.
+forum
+Template: Community Invite
+Active
+smartphone
+WhatsApp Preview (Path B)
+en_US
+arrow_back
+AG
+Acme Growth
+verified
+Official Business Account
+videocam
+call
+Today
+Webinar Masterclass #41
+Hey Alex
+! 👋
+We noticed you registered for Scaling to $10M ARR
+, but haven't joined the exclusive Founder WhatsApp Community yet.
+Tap below to join 1,200+ venture-backed leaders and claim your VIP breakout pass!
+11:42 AM
+done_all
+group_add
+Join VIP Community
+add
+Type a reply...
+mic
+check_circle
+All rules configured
+Cancel
+check
+Save Step
+science
+Test Condition Execution
+close
+Select a sample lead from your pipeline to simulate how the condition predicates evaluate in real-time.
+Select Test Lead
+Alex Vance (VIP Member = YES) → TRUE
+Sarah Jenkins (VIP Member = NO) → FALSE
+Marcus Cole (Attribute Missing) → DEFAULT FALSE
+Simulation Result
+send
+Branch: When FALSE (Send Community Invite)
+Evaluated in 14ms via Redis Cache
+Close
+Run Evaluation

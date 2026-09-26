@@ -1,0 +1,97 @@
+live_tv
+WebinarLiv
+Beta
+Dashboard
+Webinars
+Templates
+WhatsApp
+Analytics
+Settings
+WebinarLiv Console
+/
+Settings
+notifications
+person
+Ganesh S P
+Host Admin
+expand_more
+Connected Integrations & Channels
+Connect and manage your live stream destinations, WhatsApp sender, and marketing tools.
+Account & Presenter Details
+Workspace & Team
+Integrations & Channels
+Billing & Plan
+videocam
+Live Broadcast & Video
+2 OF 3 READY
+live_tv
+WebinarLiv Live Studio
+Built-in • Active
+Native Broadcast Engine (Primary)
+1080p 60FPS
+Our native browser-based live webinar studio. 1080p HD, instant attendee access with zero downloads, interactive live chat, polls, and automatic cloud recording.
+check_circle
+Ultra-low Latency & Cloud Archiving Active
+settings
+Configure Studio
+smart_display
+YouTube Live
+Active
+Connected as Ganesh S P
+Used for creating unlisted live streams, syndicating audio feeds, and archiving cloud recordings automatically post-session.
+verified
+Primary RTMP Ready
+Disconnect
+video_camera_front
+Zoom Meetings
+Sync attendees & sessions
+Not Connected
+Connect Zoom account to sync webinar attendees, trigger instant join links, and auto-fetch cloud transcripts into WebinarLiv.
+Supports OAuth 2.0
+add_link
+Connect Zoom
+forum
+Communication & Messaging
+Multi-Channel Active
+chat
+WhatsApp Business API
+Verified
++1 (555) 019-2834 (WebinarLiv Official)
+Automated reminders, dynamic join link dispatch, and instant drop-off re-engagement triggers.
+Tier: 250 msgs/sec
+Quality: High Rating
+Manage in WhatsApp Hub
+arrow_forward
+Configure
+mark_email_read
+Email / SMTP Gateway
+Active
+Default Relay Pool
+Sending confirmations via noreply@webinarliv.com
+with managed SPF/DKIM verification.
+format_image_left
+DKIM & DMARC Enforced
+99.8% Inbox Deliverability
+Use Custom Domain
+save_as
+Calendar & CRM (Optional)
+Frictionless Sync
+event
+Google Calendar & Outlook
+One-click attendee calendar invites
+Add to Calendar links auto-generated for Google Calendar, Outlook, and Apple iCal across all registration confirmation screens and reminder emails.
+check_circle
+Auto-generate ICS & Web Links
+Preview Invite
+webhook
+Webhooks / Zapier
+HubSpot, Salesforce & Custom HTTP
+Inactive
+Send attendee registrations and attendance telemetry to your CRM in real time using secured outbound JSON webhooks.
+HTTP POST / Bearer Auth
+bolt
+Setup Webhook
+help
+Need a custom enterprise pipeline?
+Check our API documentation for custom RTMP ingress, private Zoom apps, or dedicated WhatsApp accounts.
+Read API Guides

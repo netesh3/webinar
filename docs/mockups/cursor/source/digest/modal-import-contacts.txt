@@ -1,0 +1,142 @@
+forum
+Engage
+Acme
+arrow_drop_down
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+insights
+Analytics
+extension
+Integrations
+settings
+Settings
+WABA Connected
++1 555-0192
+Healthy
+person
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help_outline
+notifications
+add
+New Broadcast
+person
+Audience & Contacts
+Real-time WhatsApp opt-in directory & lifecycle segments
+tune
+Filter Cohorts
+add
+Add Contacts
+Total Managed Audience
+48,290
+arrow_upward
++12.4% this month
+WhatsApp Opt-In Rate
+96.8%
+46,744 verified WABA
+Active In Journeys
+8,412
+Across 14 automation rules
+Quality Score
+High
+Tier 3 (100k msg/day)
+All Subscribers
+Showing 1-10 of 48,290
+Add Contacts to Engage
+WABA Tier 3
+Import audiences, sync from CRM/Webinar sources, or add single phone numbers with WhatsApp opt-in verification.
+close
+upload_file
+Upload CSV / Spreadsheet
+sync_alt
+Direct Integration Sync
+person_add
+Single Contact Entry
+Source File
+csv
+webinar_registrants_sep26_export.csv
+check_circle
+1.4 MB
+•
+248 clean records detected
+•
+UTF-8 Comma Delimited
+refresh
+Replace file
+Column Auto-Mapping Engine
+4 of 4 mapped
+View Raw Sample Data
+open_in_new
+CSV Header Column
+Match
+Engage Contact Attribute
+Status
+badge
+Full Name
+arrow_forward
+Full Name (System)
+String
+done_all
+Auto-matched
+phone_android
+WhatsApp Phone
+E.164 auto-format
+arrow_forward
+Phone (Primary Identifier)
+E.164
+verified
+Verified
+alternate_email
+Email Address
+arrow_forward
+Email Address
+Email
+done_all
+Auto-matched
+calendar_today
+Join Timestamp
+arrow_forward
+Registration Date
+DateTime
+done_all
+Auto-matched
+Audience Tags & Segmentation
+Webinar-Sep26
+close
+Paid-Cohort
+close
+add
+Add Tag
+Tags will trigger linked audience filters instantly.
+Default Action on Import
+Auto-enroll in: Webinar Registration & Onboarding (Immediate)
+Auto-enroll in: 3-Day WhatsApp Nurture Sequence
+Only update records (Do not trigger Journeys)
+Send instant opt-in verification template message
+alt_route
+expand_more
+Contacts begin Step 1: "Instant Ticket QR & Welcome".
+WhatsApp Compliance & Consent Acknowledgment
+I confirm that all 248 contacts have explicitly opted in to receive WhatsApp communications from this business in accordance with Meta WhatsApp Business Policy
+. High block rates may downgrade tier limits.
+merge_type
+Duplicate Handling: Update existing records by E.164 phone
+Cancel
+bolt
+Import 248 Contacts & Begin Sync

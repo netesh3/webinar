@@ -1,0 +1,560 @@
+<!-- The New Broadcast Campaign wizard draws four steps and Stitch only drew the second one
+     (2. Template). These are the other three, hand-written in the export's own design system —
+     Precision Enterprise Comms tokens, taken from the tailwind.config inlined in the screen
+     itself, so a panel cannot drift from the palette it sits in.
+
+     wire.py injects this file into screens/modal-create-campaign.html inside a fence of
+     "demo-panels" comments (not written out here: a nested comment would end this one and
+     spill the rest onto the screen), immediately BEFORE the export's own body. That ordering
+     is what lets demo.js find the export's panel without marking up Stitch's markup: it is the
+     next element sibling of the wrapper below, and `data-demo-panels="2"` names the step it
+     draws.
+
+     Three attributes are read by demo.js, and only authored markup ever carries them:
+       data-demo-panel="N"        this is step N's panel
+       data-demo-reveals="key"    a chosen card shows [data-demo-shown-when="key"] beside it
+       data-demo-value="N"        a sample row's resolved {{N}}, copied into [data-demo-slot="N"]
+
+     Numbers are consistent across all four steps, and with the step Stitch drew: 290
+     registrants, 9 with no number, 12 opted out, 269 reachable, cohorts 152 + 96 + 21, and
+     the Attended + No-Show selection is the 248 recipients the export's own summary and
+     footer already claim. -->
+<div data-demo-panels="2">
+
+  <!-- ============================================================ 1. Audience ============ -->
+  <div class="p-space-xl grid grid-cols-12 gap-gutter bg-surface" data-demo-panel="1" style="display:none">
+
+    <div class="col-span-7 flex flex-col gap-space-lg">
+
+      <!-- Where the recipients come from -->
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md">
+        <div class="flex items-start justify-between">
+          <div>
+            <h3 class="font-headline-md text-headline-md text-on-surface">Who receives this broadcast</h3>
+            <p class="font-body-sm text-body-sm text-secondary">Contacts who never opted in are never included, whichever source you pick</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-space-sm">
+          <button class="text-left p-space-md rounded-lg bg-primary-fixed ring-2 ring-primary flex flex-col gap-0.5 transition-colors" data-demo-reveals="webinar" type="button">
+            <span class="flex items-center gap-space-xs">
+              <span class="material-symbols-outlined text-[18px] text-primary">event_available</span>
+              <span class="font-body-sm text-body-sm font-semibold text-on-surface">A webinar's registrants</span>
+            </span>
+            <p class="font-label-sm text-label-sm text-secondary">Split by what they did on the day</p>
+          </button>
+          <button class="text-left p-space-md rounded-lg bg-surface-container-low hover:bg-surface-container ring-1 ring-outline-variant flex flex-col gap-0.5 transition-colors" data-demo-reveals="tag" type="button">
+            <span class="flex items-center gap-space-xs">
+              <span class="material-symbols-outlined text-[18px] text-secondary">label</span>
+              <span class="font-body-sm text-body-sm font-semibold text-on-surface">A contact tag</span>
+            </span>
+            <p class="font-label-sm text-label-sm text-secondary">Any segment you keep in the CRM</p>
+          </button>
+          <button class="text-left p-space-md rounded-lg bg-surface-container-low hover:bg-surface-container ring-1 ring-outline-variant flex flex-col gap-0.5 transition-colors" data-demo-reveals="optin" type="button">
+            <span class="flex items-center gap-space-xs">
+              <span class="material-symbols-outlined text-[18px] text-secondary">groups</span>
+              <span class="font-body-sm text-body-sm font-semibold text-on-surface">Everyone opted in</span>
+            </span>
+            <p class="font-label-sm text-label-sm text-secondary">The whole reachable audience</p>
+          </button>
+          <button class="text-left p-space-md rounded-lg bg-surface-container-low hover:bg-surface-container ring-1 ring-outline-variant flex flex-col gap-0.5 transition-colors" data-demo-reveals="upload" type="button">
+            <span class="flex items-center gap-space-xs">
+              <span class="material-symbols-outlined text-[18px] text-secondary">upload_file</span>
+              <span class="font-body-sm text-body-sm font-semibold text-on-surface">A list you upload</span>
+            </span>
+            <p class="font-label-sm text-label-sm text-secondary">CSV with an E.164 phone column</p>
+          </button>
+        </div>
+      </div>
+
+      <!-- One of these four, chosen by the cards above -->
+      <div class="flex flex-col">
+
+        <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md" data-demo-shown-when="webinar">
+          <div class="flex items-center justify-between">
+            <label class="font-headline-md text-headline-md text-on-surface">Webinar</label>
+            <a class="font-label-sm text-label-sm text-primary font-semibold hover:underline" href="campaigns.html">All campaigns</a>
+          </div>
+          <div class="w-full p-space-md bg-surface-container-low rounded-lg flex items-center justify-between cursor-pointer hover:bg-surface-container transition-colors">
+            <div class="flex items-center gap-space-sm">
+              <div class="w-8 h-8 rounded-lg bg-surface-container-lowest flex items-center justify-center text-primary shadow-xs">
+                <span class="material-symbols-outlined text-[20px]">videocam</span>
+              </div>
+              <div class="flex flex-col">
+                <span class="font-body-sm text-body-sm font-semibold text-on-surface">AI Marketing Masterclass</span>
+                <span class="font-label-sm text-label-sm text-secondary">Webinar-Sep26 &bull; 26 Sep, 6:00 PM IST &bull; 290 registrants</span>
+              </div>
+            </div>
+            <span class="material-symbols-outlined text-secondary text-[20px]">expand_more</span>
+          </div>
+
+          <div class="flex flex-col gap-space-xs pt-space-xs">
+            <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold">Cohorts to include</span>
+            <div class="p-space-sm bg-surface-container-low rounded-lg flex items-center justify-between">
+              <div class="flex flex-col">
+                <span class="font-body-sm text-body-sm text-on-surface font-medium">Attended</span>
+                <span class="font-label-sm text-label-sm text-secondary">Joined and stayed past 10 minutes</span>
+              </div>
+              <div class="flex items-center gap-space-md">
+                <span class="font-code-sm text-code-sm text-on-surface">152</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input checked="" class="sr-only peer" type="checkbox"/>
+                  <div class="w-9 h-5 bg-surface-dim peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+            </div>
+            <div class="p-space-sm bg-surface-container-low rounded-lg flex items-center justify-between">
+              <div class="flex flex-col">
+                <span class="font-body-sm text-body-sm text-on-surface font-medium">No-show</span>
+                <span class="font-label-sm text-label-sm text-secondary">Registered and never joined</span>
+              </div>
+              <div class="flex items-center gap-space-md">
+                <span class="font-code-sm text-code-sm text-on-surface">96</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input checked="" class="sr-only peer" type="checkbox"/>
+                  <div class="w-9 h-5 bg-surface-dim peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+            </div>
+            <div class="p-space-sm bg-surface-container-low rounded-lg flex items-center justify-between">
+              <div class="flex flex-col">
+                <span class="font-body-sm text-body-sm text-on-surface font-medium">Watched briefly</span>
+                <span class="font-label-sm text-label-sm text-secondary">Left inside the first 10 minutes</span>
+              </div>
+              <div class="flex items-center gap-space-md">
+                <span class="font-code-sm text-code-sm text-secondary">21</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input class="sr-only peer" type="checkbox"/>
+                  <div class="w-9 h-5 bg-surface-dim peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md" data-demo-shown-when="tag" style="display:none">
+          <div>
+            <h3 class="font-headline-md text-headline-md text-on-surface">Tag</h3>
+            <p class="font-body-sm text-body-sm text-secondary">Tags are maintained on the Contacts screen; a broadcast reads them, never writes them</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-space-xs">
+            <span class="inline-flex items-center gap-1 px-space-sm py-1 rounded-lg bg-primary-fixed text-primary font-label-sm text-label-sm font-semibold">
+              <span class="material-symbols-outlined text-[14px]">check</span> vip-2026 &bull; 84
+            </span>
+            <span class="inline-flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-container-low text-secondary font-label-sm text-label-sm">paid-course &bull; 212</span>
+            <span class="inline-flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-container-low text-secondary font-label-sm text-label-sm">newsletter &bull; 1,024</span>
+            <span class="inline-flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-container-low text-secondary font-label-sm text-label-sm">apac &bull; 318</span>
+          </div>
+          <a class="font-label-sm text-label-sm text-primary font-semibold hover:underline flex items-center gap-0.5" href="contacts.html">
+            <span class="material-symbols-outlined text-[14px]">group</span> Manage tags in the CRM
+          </a>
+        </div>
+
+        <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm" data-demo-shown-when="optin" style="display:none">
+          <h3 class="font-headline-md text-headline-md text-on-surface">Everyone opted in</h3>
+          <p class="font-body-sm text-body-sm text-secondary">1,284 contacts across every webinar and tag. A Utility HSM reaches all of them; a Marketing template reaches only the 1,102 who accepted marketing.</p>
+          <div class="flex items-center gap-1.5 text-secondary font-label-sm text-label-sm pt-space-xs">
+            <span class="material-symbols-outlined text-[16px] text-outline">warning</span>
+            <span>The widest audience in the workspace — one send at this size uses 1,284 of the daily cap.</span>
+          </div>
+        </div>
+
+        <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm" data-demo-shown-when="upload" style="display:none">
+          <h3 class="font-headline-md text-headline-md text-on-surface">Upload a list</h3>
+          <div class="border border-dashed border-outline-variant rounded-lg p-space-xl flex flex-col items-center gap-space-xs text-center">
+            <span class="material-symbols-outlined text-[28px] text-outline">cloud_upload</span>
+            <span class="font-body-sm text-body-sm text-on-surface font-medium">Drop a CSV here</span>
+            <span class="font-label-sm text-label-sm text-secondary">One row per contact, with a phone column in E.164 (+91&hellip;)</span>
+          </div>
+          <a class="font-label-sm text-label-sm text-primary font-semibold hover:underline flex items-center gap-0.5" href="modal-import-contacts.html">
+            <span class="material-symbols-outlined text-[14px]">upload_file</span> Import with column mapping instead
+          </a>
+        </div>
+      </div>
+
+      <!-- Why people fall out of the audience -->
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm">
+        <div class="flex items-center justify-between">
+          <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold">Excluded automatically</span>
+          <span class="font-label-sm text-label-sm text-secondary">42 of 290</span>
+        </div>
+        <div class="grid grid-cols-3 gap-space-sm">
+          <div class="p-space-sm bg-surface-container-low rounded-lg">
+            <p class="font-code-sm text-code-sm text-on-surface">12</p>
+            <p class="font-label-sm text-label-sm text-secondary">Opted out</p>
+            <p class="font-label-sm text-label-sm text-outline">Cannot be re-added</p>
+          </div>
+          <div class="p-space-sm bg-surface-container-low rounded-lg">
+            <p class="font-code-sm text-code-sm text-on-surface">9</p>
+            <p class="font-label-sm text-label-sm text-secondary">No WhatsApp number</p>
+            <p class="font-label-sm text-label-sm text-outline">Email only</p>
+          </div>
+          <div class="p-space-sm bg-surface-container-low rounded-lg">
+            <p class="font-code-sm text-code-sm text-on-surface">21</p>
+            <p class="font-label-sm text-label-sm text-secondary">Cohort not selected</p>
+            <p class="font-label-sm text-label-sm text-outline">Watched briefly</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: what the audience actually adds up to -->
+    <div class="col-span-5 flex flex-col gap-space-lg">
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md">
+        <div class="flex items-center justify-between">
+          <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold">Recipients</span>
+          <span class="font-label-sm text-label-sm text-tertiary font-semibold flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span> Opt-in audited
+          </span>
+        </div>
+        <div>
+          <p class="font-display-lg text-display-lg text-primary leading-none">248</p>
+          <p class="font-body-sm text-body-sm text-secondary pt-space-xs">of 290 registrants &bull; Attended + No-show</p>
+        </div>
+        <div class="flex h-2 w-full overflow-hidden rounded-DEFAULT bg-surface-container">
+          <div class="h-full bg-primary w-[85.5%]"></div>
+          <div class="h-full bg-primary-fixed-dim w-[7.3%]"></div>
+          <div class="h-full bg-error/40 w-[4.1%]"></div>
+          <div class="h-full bg-outline-variant w-[3.1%]"></div>
+        </div>
+        <div class="flex flex-col gap-space-xs">
+          <div class="flex items-center justify-between font-body-sm text-body-sm">
+            <span class="flex items-center gap-space-xs text-on-surface"><span class="w-2 h-2 rounded-DEFAULT bg-primary"></span> Selected cohorts</span>
+            <span class="font-code-sm text-code-sm">248</span>
+          </div>
+          <div class="flex items-center justify-between font-body-sm text-body-sm">
+            <span class="flex items-center gap-space-xs text-secondary"><span class="w-2 h-2 rounded-DEFAULT bg-primary-fixed-dim"></span> Cohort not selected</span>
+            <span class="font-code-sm text-code-sm text-secondary">21</span>
+          </div>
+          <div class="flex items-center justify-between font-body-sm text-body-sm">
+            <span class="flex items-center gap-space-xs text-secondary"><span class="w-2 h-2 rounded-DEFAULT bg-error/40"></span> Opted out</span>
+            <span class="font-code-sm text-code-sm text-secondary">12</span>
+          </div>
+          <div class="flex items-center justify-between font-body-sm text-body-sm">
+            <span class="flex items-center gap-space-xs text-secondary"><span class="w-2 h-2 rounded-DEFAULT bg-outline-variant"></span> No WhatsApp number</span>
+            <span class="font-code-sm text-code-sm text-secondary">9</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm">
+        <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold">Consent and formatting</span>
+        <div class="flex items-center justify-between font-body-sm text-body-sm text-on-surface">
+          <span class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-[16px] text-tertiary">check_circle</span> E.164 validated</span>
+          <span class="font-code-sm text-code-sm text-secondary">248 / 248</span>
+        </div>
+        <div class="flex items-center justify-between font-body-sm text-body-sm text-on-surface">
+          <span class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-[16px] text-tertiary">verified_user</span> Opt-in recorded at signup</span>
+          <span class="font-code-sm text-code-sm text-secondary">248 / 248</span>
+        </div>
+        <div class="flex items-center justify-between font-body-sm text-body-sm text-on-surface">
+          <span class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-[16px] text-outline">block</span> STOP honoured on reply</span>
+          <span class="font-label-sm text-label-sm text-secondary">Always on</span>
+        </div>
+      </div>
+
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm">
+        <div class="flex items-center justify-between">
+          <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold">Meta daily cap</span>
+          <span class="font-label-sm text-label-sm text-secondary">Tier 1 &bull; 1,000 / 24h</span>
+        </div>
+        <div class="h-2 w-full rounded-DEFAULT bg-surface-container overflow-hidden">
+          <div class="h-full bg-tertiary w-[24.8%]"></div>
+        </div>
+        <p class="font-label-sm text-label-sm text-secondary">This send uses 248 &mdash; 24.8% of today's allowance. The tier rises on its own as delivery quality holds.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================== 3. Variables &amp; Preview ====== -->
+  <div class="p-space-xl grid grid-cols-12 gap-gutter bg-surface" data-demo-panel="3" style="display:none">
+
+    <div class="col-span-7 flex flex-col gap-space-lg">
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md">
+        <div class="flex items-start justify-between">
+          <div>
+            <h3 class="font-headline-md text-headline-md text-on-surface">Resolved for real contacts</h3>
+            <p class="font-body-sm text-body-sm text-secondary">Five of the 248 recipients, with the mapping from step 2 applied</p>
+          </div>
+          <span class="font-code-sm text-code-sm text-secondary bg-surface-container-low px-space-sm py-0.5 rounded-DEFAULT">3 variables</span>
+        </div>
+
+        <div class="grid grid-cols-12 gap-space-sm px-space-sm font-label-sm text-label-sm uppercase text-secondary font-semibold">
+          <span class="col-span-4">Recipient</span>
+          <span class="col-span-3">&#123;&#123;1&#125;&#125; first_name</span>
+          <span class="col-span-2">&#123;&#123;2&#125;&#125; webinar</span>
+          <span class="col-span-3">&#123;&#123;3&#125;&#125; join_link</span>
+        </div>
+
+        <div class="flex flex-col gap-space-xs">
+          <button class="w-full text-left p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container grid grid-cols-12 gap-space-sm items-center transition-colors" type="button">
+            <span class="col-span-4 flex flex-col">
+              <span class="font-body-sm text-body-sm text-on-surface font-medium">Priya Raman</span>
+              <span class="font-code-sm text-code-sm text-secondary">+91 98450 11204</span>
+            </span>
+            <span class="col-span-3 font-code-sm text-code-sm text-on-surface truncate" data-demo-value="1">Priya</span>
+            <span class="col-span-2 font-code-sm text-code-sm text-secondary truncate" data-demo-value="2">AI Marketing Masterclass</span>
+            <span class="col-span-3 font-code-sm text-code-sm text-secondary truncate" data-demo-value="3">live.wbnr.io/j/8fa2</span>
+          </button>
+          <button class="w-full text-left p-space-sm rounded-lg bg-primary-fixed ring-2 ring-primary grid grid-cols-12 gap-space-sm items-center transition-colors" type="button">
+            <span class="col-span-4 flex flex-col">
+              <span class="font-body-sm text-body-sm text-on-surface font-medium">Ganesh S P</span>
+              <span class="font-code-sm text-code-sm text-secondary">+1 555 0148</span>
+            </span>
+            <span class="col-span-3 font-code-sm text-code-sm text-on-surface truncate" data-demo-value="1">Ganesh</span>
+            <span class="col-span-2 font-code-sm text-code-sm text-secondary truncate" data-demo-value="2">AI Marketing Masterclass</span>
+            <span class="col-span-3 font-code-sm text-code-sm text-secondary truncate" data-demo-value="3">live.wbnr.io/j/ax91</span>
+          </button>
+          <button class="w-full text-left p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container grid grid-cols-12 gap-space-sm items-center transition-colors" type="button">
+            <span class="col-span-4 flex flex-col">
+              <span class="font-body-sm text-body-sm text-on-surface font-medium">+44 7700 900812</span>
+              <span class="font-label-sm text-label-sm text-outline">No name on the registration</span>
+            </span>
+            <span class="col-span-3 font-code-sm text-code-sm text-error truncate" data-demo-value="1">there</span>
+            <span class="col-span-2 font-code-sm text-code-sm text-secondary truncate" data-demo-value="2">AI Marketing Masterclass</span>
+            <span class="col-span-3 font-code-sm text-code-sm text-secondary truncate" data-demo-value="3">live.wbnr.io/j/7q13</span>
+          </button>
+          <button class="w-full text-left p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container grid grid-cols-12 gap-space-sm items-center transition-colors" type="button">
+            <span class="col-span-4 flex flex-col">
+              <span class="font-body-sm text-body-sm text-on-surface font-medium">Marcus Webb</span>
+              <span class="font-code-sm text-code-sm text-secondary">+1 555 0192</span>
+            </span>
+            <span class="col-span-3 font-code-sm text-code-sm text-on-surface truncate" data-demo-value="1">Marcus</span>
+            <span class="col-span-2 font-code-sm text-code-sm text-secondary truncate" data-demo-value="2">AI Marketing Masterclass</span>
+            <span class="col-span-3 font-code-sm text-code-sm text-secondary truncate" data-demo-value="3">live.wbnr.io/j/k402</span>
+          </button>
+          <button class="w-full text-left p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container grid grid-cols-12 gap-space-sm items-center transition-colors" type="button">
+            <span class="col-span-4 flex flex-col">
+              <span class="font-body-sm text-body-sm text-on-surface font-medium">Aisha Noor</span>
+              <span class="font-code-sm text-code-sm text-secondary">+971 50 123 4477</span>
+            </span>
+            <span class="col-span-3 font-code-sm text-code-sm text-on-surface truncate" data-demo-value="1">Aisha</span>
+            <span class="col-span-2 font-code-sm text-code-sm text-secondary truncate" data-demo-value="2">AI Marketing Masterclass</span>
+            <span class="col-span-3 font-code-sm text-code-sm text-secondary truncate" data-demo-value="3">live.wbnr.io/j/m118</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm">
+        <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold">Fallbacks in use</span>
+        <div class="flex items-center justify-between font-body-sm text-body-sm">
+          <span class="flex items-center gap-space-xs text-on-surface">
+            <span class="material-symbols-outlined text-[16px] text-error">error</span>
+            <span>&#123;&#123;1&#125;&#125; first_name missing &mdash; sent as <span class="font-code-sm text-code-sm text-error">there</span></span>
+          </span>
+          <span class="font-code-sm text-code-sm text-secondary">3 of 248</span>
+        </div>
+        <div class="flex items-center justify-between font-body-sm text-body-sm">
+          <span class="flex items-center gap-space-xs text-on-surface">
+            <span class="material-symbols-outlined text-[16px] text-tertiary">check_circle</span>
+            <span>&#123;&#123;3&#125;&#125; join_link resolved per attendee</span>
+          </span>
+          <span class="font-code-sm text-code-sm text-secondary">248 of 248</span>
+        </div>
+        <p class="font-label-sm text-label-sm text-outline pt-space-xs">A missing value never blocks the send: Meta rejects an empty variable, so the fallback is what keeps the message deliverable.</p>
+      </div>
+
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex items-center justify-between gap-space-md">
+        <div class="flex flex-col">
+          <span class="font-body-sm text-body-sm font-semibold text-on-surface">Send one test first</span>
+          <span class="font-label-sm text-label-sm text-secondary">Goes to the WABA's own number, +1 555-0192, and is not counted as a broadcast</span>
+        </div>
+        <button class="h-9 px-space-md rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-semibold flex items-center gap-space-xs shrink-0 transition-colors" type="button">
+          <span class="material-symbols-outlined text-[18px]">send</span>
+          <span>Send test message</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right: the message as the selected recipient will read it -->
+    <div class="col-span-5 flex flex-col gap-space-lg">
+      <div class="bg-surface-container-low/60 rounded-xl p-space-lg flex flex-col gap-space-md">
+        <div class="flex items-center justify-between">
+          <span class="font-headline-md text-headline-md text-on-surface">Rendered message</span>
+          <span class="font-label-sm text-label-sm text-secondary bg-surface-container-lowest px-space-sm py-1 rounded-lg shadow-xs">As <span class="text-on-surface font-semibold" data-demo-slot="1">Ganesh</span> reads it</span>
+        </div>
+        <div class="bg-[#efeae2] rounded-xl p-space-md flex flex-col gap-space-sm">
+          <div class="self-center">
+            <span class="bg-surface-container-lowest/80 text-secondary px-2.5 py-0.5 rounded-DEFAULT font-code-sm text-[10px] uppercase tracking-wider shadow-xs">Today 6:45 PM</span>
+          </div>
+          <div class="relative max-w-[92%] self-start bg-surface-container-lowest rounded-xl rounded-tl-DEFAULT p-3 shadow-sm flex flex-col gap-2">
+            <div class="font-body-sm text-body-sm text-on-surface leading-snug space-y-1.5">
+              <p class="font-medium">Hey <span class="bg-primary-fixed text-primary px-1 rounded-DEFAULT font-semibold" data-demo-slot="1">Ganesh</span>! &#128640;</p>
+              <p>We are going live in 15 minutes for the <span class="bg-primary-fixed text-primary px-1 rounded-DEFAULT font-semibold" data-demo-slot="2">AI Marketing Masterclass</span>!</p>
+              <p>Have your workbook ready. Tap below to jump straight into the live stream room.</p>
+            </div>
+            <div class="flex items-center justify-end gap-1 -mt-1">
+              <span class="font-code-sm text-[10px] text-secondary">6:45 PM</span>
+              <span class="material-symbols-outlined text-primary text-[14px] leading-none">done_all</span>
+            </div>
+            <div class="pt-2">
+              <button class="w-full py-2 px-3 bg-surface-container-low hover:bg-surface-container rounded-lg flex items-center justify-center gap-1.5 text-primary font-label-md text-label-md font-semibold transition-colors" type="button">
+                <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+                <span>Join Live Stream Now</span>
+              </button>
+            </div>
+          </div>
+          <span class="self-start font-code-sm text-code-sm text-secondary px-1" data-demo-slot="3">live.wbnr.io/j/ax91</span>
+        </div>
+        <p class="font-label-sm text-label-sm text-secondary">Pick a row on the left to render the message for that recipient.</p>
+      </div>
+
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm">
+        <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold">Template limits</span>
+        <div class="flex items-center justify-between font-body-sm text-body-sm text-on-surface">
+          <span>Body length</span>
+          <span class="font-code-sm text-code-sm text-secondary">218 / 1024</span>
+        </div>
+        <div class="flex items-center justify-between font-body-sm text-body-sm text-on-surface">
+          <span>Buttons</span>
+          <span class="font-code-sm text-code-sm text-secondary">1 URL &bull; max 2</span>
+        </div>
+        <div class="flex items-center justify-between font-body-sm text-body-sm text-on-surface">
+          <span>Category</span>
+          <span class="font-label-sm text-label-sm text-tertiary font-semibold">Utility &mdash; no marketing opt-in needed</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================== 4. Schedule &amp; Send ========== -->
+  <div class="p-space-xl grid grid-cols-12 gap-gutter bg-surface" data-demo-panel="4" style="display:none">
+
+    <div class="col-span-7 flex flex-col gap-space-lg">
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md">
+        <div>
+          <h3 class="font-headline-md text-headline-md text-on-surface">When it goes out</h3>
+          <p class="font-body-sm text-body-sm text-secondary">A Utility HSM can be sent at any time; only the pacing is yours to choose</p>
+        </div>
+        <div class="flex flex-col gap-space-sm">
+          <button class="text-left p-space-md rounded-lg bg-primary-fixed ring-2 ring-primary flex flex-col gap-0.5 transition-colors" data-demo-reveals="now" type="button">
+            <span class="flex items-center gap-space-xs">
+              <span class="material-symbols-outlined text-[18px] text-primary">bolt</span>
+              <span class="font-body-sm text-body-sm font-semibold text-on-surface">Immediately, once you confirm</span>
+            </span>
+            <p class="font-label-sm text-label-sm text-secondary">All 248 messages queue at Meta's safe rate</p>
+          </button>
+          <button class="text-left p-space-md rounded-lg bg-surface-container-low hover:bg-surface-container ring-1 ring-outline-variant flex flex-col gap-0.5 transition-colors" data-demo-reveals="later" type="button">
+            <span class="flex items-center gap-space-xs">
+              <span class="material-symbols-outlined text-[18px] text-secondary">schedule</span>
+              <span class="font-body-sm text-body-sm font-semibold text-on-surface">At a set date and time</span>
+            </span>
+            <p class="font-label-sm text-label-sm text-secondary">Held in the queue until then, cancellable</p>
+          </button>
+          <button class="text-left p-space-md rounded-lg bg-surface-container-low hover:bg-surface-container ring-1 ring-outline-variant flex flex-col gap-0.5 transition-colors" data-demo-reveals="stagger" type="button">
+            <span class="flex items-center gap-space-xs">
+              <span class="material-symbols-outlined text-[18px] text-secondary">speed</span>
+              <span class="font-body-sm text-body-sm font-semibold text-on-surface">Staggered across a window</span>
+            </span>
+            <p class="font-label-sm text-label-sm text-secondary">Spreads replies so the inbox stays answerable</p>
+          </button>
+        </div>
+
+        <div class="flex flex-col">
+          <div class="p-space-md bg-surface-container-low rounded-lg flex items-center justify-between" data-demo-shown-when="now">
+            <span class="font-body-sm text-body-sm text-on-surface">Starts the moment you confirm</span>
+            <span class="font-code-sm text-code-sm text-secondary">&lt; 12 s for 248 recipients</span>
+          </div>
+          <div class="p-space-md bg-surface-container-low rounded-lg flex items-center justify-between gap-space-sm" data-demo-shown-when="later" style="display:none">
+            <span class="font-body-sm text-body-sm text-on-surface shrink-0">Send at</span>
+            <input class="h-8 px-space-sm bg-surface-container-lowest rounded-lg font-code-sm text-code-sm text-on-surface focus:outline-none" type="datetime-local" value="2026-09-26T17:45"/>
+            <div class="h-8 px-space-sm bg-surface-container-lowest rounded-lg flex items-center gap-space-xs font-label-sm text-label-sm text-secondary">
+              <span class="material-symbols-outlined text-[16px]">public</span>
+              <span>Asia/Kolkata (IST)</span>
+            </div>
+          </div>
+          <div class="p-space-md bg-surface-container-low rounded-lg flex items-center justify-between gap-space-sm" data-demo-shown-when="stagger" style="display:none">
+            <span class="font-body-sm text-body-sm text-on-surface shrink-0">Spread over</span>
+            <select class="h-8 px-space-sm bg-surface-container-lowest rounded-lg font-code-sm text-code-sm text-on-surface focus:outline-none">
+              <option>30 minutes &bull; ~8 per minute</option>
+              <option>2 hours &bull; ~2 per minute</option>
+              <option>6 hours &bull; ~40 per hour</option>
+            </select>
+            <span class="font-label-sm text-label-sm text-secondary">Order follows the cohort list</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm">
+        <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold">Pacing and guardrails</span>
+        <div class="flex items-center justify-between py-space-xs">
+          <div class="flex flex-col">
+            <span class="font-body-sm text-body-sm text-on-surface font-medium">Hold sends during quiet hours</span>
+            <span class="font-label-sm text-label-sm text-secondary">Nothing leaves between 21:00 and 08:00 local time</span>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input checked="" class="sr-only peer" type="checkbox"/>
+            <div class="w-9 h-5 bg-surface-dim peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-space-xs">
+          <div class="flex flex-col">
+            <span class="font-body-sm text-body-sm text-on-surface font-medium">Stop the rest if failures pass 5%</span>
+            <span class="font-label-sm text-label-sm text-secondary">Protects the WABA quality rating mid-send</span>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input checked="" class="sr-only peer" type="checkbox"/>
+            <div class="w-9 h-5 bg-surface-dim peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-space-xs">
+          <div class="flex flex-col">
+            <span class="font-body-sm text-body-sm text-on-surface font-medium">Skip anyone who replies first</span>
+            <span class="font-label-sm text-label-sm text-secondary">A live conversation is never interrupted by the broadcast</span>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input class="sr-only peer" type="checkbox"/>
+            <div class="w-9 h-5 bg-surface-dim peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: the last look before it costs money -->
+    <div class="col-span-5 flex flex-col gap-space-lg">
+      <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md">
+        <div class="flex items-center justify-between">
+          <span class="font-headline-md text-headline-md text-on-surface">Review</span>
+          <span class="font-label-sm text-label-sm text-tertiary font-semibold flex items-center gap-1">
+            <span class="material-symbols-outlined text-[14px]">check_circle</span> Ready
+          </span>
+        </div>
+        <div class="flex flex-col gap-space-sm">
+          <div class="flex items-start justify-between gap-space-sm">
+            <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold shrink-0">Audience</span>
+            <span class="font-body-sm text-body-sm text-on-surface text-right">248 recipients<br/><span class="font-label-sm text-label-sm text-secondary">Webinar-Sep26 &bull; Attended + No-show</span></span>
+          </div>
+          <div class="flex items-start justify-between gap-space-sm">
+            <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold shrink-0">Template</span>
+            <span class="font-body-sm text-body-sm text-on-surface text-right"><span class="font-code-sm text-code-sm">we_are_live_urgent</span><br/><span class="font-label-sm text-label-sm text-secondary">Utility HSM &bull; English (en) &bull; Approved</span></span>
+          </div>
+          <div class="flex items-start justify-between gap-space-sm">
+            <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold shrink-0">Variables</span>
+            <span class="font-body-sm text-body-sm text-on-surface text-right">3 mapped<br/><span class="font-label-sm text-label-sm text-secondary">3 recipients fall back to &ldquo;there&rdquo;</span></span>
+          </div>
+          <div class="flex items-start justify-between gap-space-sm">
+            <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold shrink-0">Timing</span>
+            <span class="font-body-sm text-body-sm text-on-surface text-right">Immediately<br/><span class="font-label-sm text-label-sm text-secondary">Quiet hours on &bull; 50 msg/s</span></span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between pt-space-sm border-t border-surface-container">
+          <span class="font-label-sm text-label-sm uppercase text-secondary font-semibold">Estimated cost</span>
+          <span class="font-headline-md text-headline-md text-on-surface">$1.98</span>
+        </div>
+        <p class="font-label-sm text-label-sm text-outline">248 &times; $0.008 utility conversation, billed by Meta to the WABA on this workspace.</p>
+      </div>
+
+      <div class="bg-error-container p-space-lg rounded-xl flex flex-col gap-space-sm">
+        <div class="flex items-center gap-space-xs">
+          <span class="material-symbols-outlined text-[18px] text-on-error-container">report</span>
+          <span class="font-body-sm text-body-sm font-semibold text-on-error-container">A broadcast cannot be recalled</span>
+        </div>
+        <p class="font-label-sm text-label-sm text-on-error-container">Once a message is accepted by Meta it is delivered and charged. Only messages still queued can be cancelled, from the campaign's own row.</p>
+      </div>
+
+      <label class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex items-start gap-space-sm cursor-pointer">
+        <input class="mt-0.5 w-4 h-4 accent-primary" type="checkbox"/>
+        <span class="font-body-sm text-body-sm text-on-surface">I have checked the audience, the template and the variable mapping for this send.</span>
+      </label>
+    </div>
+  </div>
+</div>

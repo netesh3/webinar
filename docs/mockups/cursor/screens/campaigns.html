@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Campaigns · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="campaigns" data-crumb="Platform / Campaigns">
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="megaphone" class="icon icon-sm"></svg>
+            Broadcast manager
+          </div>
+          <h1>Campaigns</h1>
+          <p>
+            One-off and scheduled WhatsApp broadcasts to a saved segment. Every
+            send uses a Meta-approved template.
+          </p>
+        </div>
+        <div class="actions">
+          <button class="btn" data-toast="Delivery logs are not part of this mockup set.">
+            <svg data-icon="book" class="icon icon-sm"></svg> Broadcast logs
+          </button>
+          <a class="btn btn-primary" href="modal-create-campaign.html">
+            <svg data-icon="plus" class="icon icon-sm"></svg> Create campaign
+          </a>
+        </div>
+      </div>
+
+      <div class="grid g4">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="send"></svg> Broadcasts sent</div>
+          <div class="metric-value">42</div>
+          <div class="metric-foot">
+            <span class="delta delta-up">
+              <svg data-icon="arrow-up" class="icon icon-sm"></svg> 4
+            </span>
+            this month
+          </div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="users"></svg> Recipients reached</div>
+          <div class="metric-value">38,420</div>
+          <div class="metric-foot">unique verified opt-ins</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="check-check"></svg> Avg delivery rate</div>
+          <div class="metric-value">98.2%</div>
+          <div class="metric-foot">691 failed or dropped (1.8%)</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="eye"></svg> Avg read rate</div>
+          <div class="metric-value">86.4%</div>
+          <div class="metric-foot">median open under 3 minutes</div>
+        </div>
+      </div>
+
+      <section class="card mt-16" data-tabs>
+        <div class="tabs">
+          <button aria-selected="true" data-panel="all">All <span class="count">18</span></button>
+          <button data-panel="all">Sent <span class="count">12</span></button>
+          <button data-panel="all">Scheduled <span class="count">3</span></button>
+          <button data-panel="all">Drafts <span class="count">3</span></button>
+        </div>
+        <div class="toolbar">
+          <label class="search">
+            <svg data-icon="search" class="icon icon-sm"></svg>
+            <input class="input" type="search" placeholder="Search campaigns" />
+          </label>
+          <label class="inline-field">
+            Period
+            <select class="select" data-label="Period">
+              <option>Last 30 days</option>
+              <option>Last 7 days</option>
+              <option>This quarter</option>
+              <option>Year to date</option>
+            </select>
+          </label>
+          <label class="inline-field">
+            Status
+            <select class="select" data-label="Status">
+              <option>All statuses</option>
+              <option>Completed</option>
+              <option>Scheduled</option>
+              <option>Draft</option>
+              <option>Failed</option>
+            </select>
+          </label>
+        </div>
+        <div class="table-wrap" data-tabpanel="all">
+          <table>
+            <thead>
+              <tr>
+                <th>Campaign</th>
+                <th>Audience</th>
+                <th>Template</th>
+                <th>Sent</th>
+                <th class="t-num">Recipients</th>
+                <th class="t-num">Delivered</th>
+                <th class="t-num">Read</th>
+                <th>Status</th>
+                <th class="t-actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-wa"><svg data-icon="megaphone" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">September masterclass 15-min live alert</div>
+                      <div class="t-sub">Urgent: we go live in 15 minutes, with the join link</div>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div class="t-title">Webinar-Sep26</div>
+                  <div class="t-sub">Tag · 248 contacts</div>
+                </td>
+                <td>
+                  <span class="tag">we_are_live_urgent</span>
+                  <div class="t-sub">Utility</div>
+                </td>
+                <td class="muted nowrap">Sep 25, 6:45 PM</td>
+                <td class="t-num">248</td>
+                <td class="t-num">99.2%</td>
+                <td class="t-num">94.8%</td>
+                <td><span class="pill pill-ok">Completed</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Duplicate, export, archive.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-wa"><svg data-icon="megaphone" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">VIP early-bird strategy session</div>
+                      <div class="t-sub">Q4 cohort invitation with a personal booking link</div>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div class="t-title">Attended full webinar</div>
+                  <div class="t-sub">Segment · 142 contacts</div>
+                </td>
+                <td>
+                  <span class="tag">vip_offer_exclusive</span>
+                  <div class="t-sub">Marketing</div>
+                </td>
+                <td class="muted nowrap">Sep 26, 10:00 AM</td>
+                <td class="t-num">142</td>
+                <td class="t-num">98.6%</td>
+                <td class="t-num">88.7%</td>
+                <td><span class="pill pill-ok">Completed</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Duplicate, export, archive.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-warn"><svg data-icon="clock" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">Masterclass replay &amp; bonus deck</div>
+                      <div class="t-sub">48-hour access link for anyone who missed or left early</div>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div class="t-title">No-show + brief attendance</div>
+                  <div class="t-sub">Segment · 106 contacts</div>
+                </td>
+                <td>
+                  <span class="tag">replay_notes_48h</span>
+                  <div class="t-sub">Utility</div>
+                </td>
+                <td class="muted nowrap">Tomorrow, 9:00 AM</td>
+                <td class="t-num">106</td>
+                <td class="t-num">—</td>
+                <td class="t-num">—</td>
+                <td><span class="pill pill-warn">Scheduled</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Reschedule, edit, cancel.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph"><svg data-icon="edit" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">Weekend flash Q&amp;A broadcast</div>
+                      <div class="t-sub">Live audio room invitation with Ganesh</div>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div class="t-title">All active opt-ins</div>
+                  <div class="t-sub">Segment · 1,840 contacts</div>
+                </td>
+                <td>
+                  <span class="tag">community_ama_session</span>
+                  <div class="t-sub">Marketing</div>
+                </td>
+                <td class="muted nowrap">Not scheduled</td>
+                <td class="t-num">1,840</td>
+                <td class="t-num">—</td>
+                <td class="t-num">—</td>
+                <td><span class="pill">Draft</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Edit, duplicate, delete.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-wa"><svg data-icon="megaphone" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">Q3 growth blueprint lead magnet</div>
+                      <div class="t-sub">Automatic delivery of the requested benchmark guide</div>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div class="t-title">Landing page form</div>
+                  <div class="t-sub">Source · 840 contacts</div>
+                </td>
+                <td>
+                  <span class="tag">lead_magnet_delivery</span>
+                  <div class="t-sub">Utility</div>
+                </td>
+                <td class="muted nowrap">Sep 20, 2:15 PM</td>
+                <td class="t-num">840</td>
+                <td class="t-num">97.8%</td>
+                <td class="t-num">82.4%</td>
+                <td><span class="pill pill-ok">Completed</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Duplicate, export, archive.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot">
+          Showing <b>1–5</b> of 18
+          <span class="right row">
+            <button class="btn btn-sm" data-toast="Already on the first page.">
+              <svg data-icon="chevron-left" class="icon icon-sm"></svg> Prev
+            </button>
+            <span class="mono">Page 1 of 4</span>
+            <button class="btn btn-sm" data-toast="Pagination is illustrative in this mockup.">
+              Next <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+            </button>
+          </span>
+        </div>
+      </section>
+
+      <div class="split mt-16">
+        <!--
+          What a campaign row cannot show: where the 248 recipients dropped out.
+          The rendered message itself belongs to Templates and to step 3 of the
+          broadcast wizard, so it is deliberately not repeated here.
+        -->
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>Last broadcast</h2>
+              <p>September masterclass 15-min live alert · Sep 25, 6:45 PM</p>
+            </div>
+            <span class="pill pill-ok right">Completed</span>
+          </div>
+          <div class="card-body">
+            <div class="bar-row">
+              <div class="bar-head">
+                <span>Sent</span><b class="num">248</b>
+              </div>
+              <div class="meter"><span style="width: 100%"></span></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-head">
+                <span>Delivered</span>
+                <span class="muted">99.2%</span><b class="num">246</b>
+              </div>
+              <div class="meter meter-wa"><span style="width: 99.2%"></span></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-head">
+                <span>Read</span>
+                <span class="muted">94.8%</span><b class="num">235</b>
+              </div>
+              <div class="meter meter-wa"><span style="width: 94.8%"></span></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-head">
+                <span>Tapped “Join live now”</span>
+                <span class="muted">81.2%</span><b class="num">201</b>
+              </div>
+              <div class="meter"><span style="width: 81.2%"></span></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-head">
+                <span>Joined the stream</span>
+                <span class="muted">57.3%</span><b class="num">142</b>
+              </div>
+              <div class="meter meter-warn"><span style="width: 57.3%"></span></div>
+            </div>
+          </div>
+          <div class="card-body pad-0">
+            <dl class="kv" style="padding: 0 16px 12px">
+              <div>
+                <dt>Undelivered</dt>
+                <dd>2 · handset unreachable for 24h</dd>
+              </div>
+              <div>
+                <dt>Median time to read</dt>
+                <dd>3.4 min</dd>
+              </div>
+              <div>
+                <dt>Opt-outs from this send</dt>
+                <dd>0</dd>
+              </div>
+            </dl>
+          </div>
+          <div class="card-foot">
+            <a class="btn btn-sm" href="analytics.html">
+              <svg data-icon="chart" class="icon icon-sm"></svg> Full report
+            </a>
+            <a class="btn btn-sm" href="templates.html">
+              <svg data-icon="eye" class="icon icon-sm"></svg> Preview template
+            </a>
+          </div>
+        </section>
+
+        <div class="stack">
+          <div class="note">
+            <svg data-icon="lightbulb" class="icon icon-sm"></svg>
+            <span>
+              <b>Reaching for a branch?</b> Campaigns send once to a fixed
+              list. If the message should depend on what the contact does next
+              — replies, clicks, watch time — build it as a
+              <a href="journeys.html">journey</a> instead.
+            </span>
+          </div>
+
+          <div class="note note-warn">
+            <svg data-icon="gauge" class="icon icon-sm"></svg>
+            <span>
+              <b>57.3% joined.</b> The gap between a tap and a join is almost
+              always the join link opening outside WhatsApp. The two-stage
+              reminder recovers most of it.
+            </span>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

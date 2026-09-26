@@ -1,0 +1,827 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><!-- demo-guard --><script>window.__demoErrors=[];addEventListener('error',function(e){if(e.target===window||e.error)window.__demoErrors.push(String(e.message||e.error));},true);</script><!-- /demo-guard --><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"surface-container":"#eaedff","on-secondary-fixed-variant":"#005137","on-surface":"#131b2e","secondary-container":"#82f5c1","secondary-fixed-dim":"#68dba9","on-secondary":"#ffffff","surface-bright":"#faf8ff","surface-dim":"#d2d9f4","on-secondary-fixed":"#002114","on-primary-fixed":"#0f0069","on-primary-container":"#dad7ff","on-error":"#ffffff","on-surface-variant":"#464555","tertiary-fixed":"#ffddb8","surface-container-highest":"#dae2fd","on-tertiary-container":"#ffd4a4","background":"#faf8ff","secondary":"#006c4a","surface-container-low":"#f2f3ff","inverse-surface":"#283044","primary-fixed-dim":"#c3c0ff","outline-variant":"#c7c4d8","tertiary-fixed-dim":"#ffb95f","error":"#ba1a1a","primary-container":"#4f46e5","on-primary-fixed-variant":"#3323cc","primary":"#3525cd","surface-container-high":"#e2e7ff","surface-variant":"#dae2fd","inverse-primary":"#c3c0ff","tertiary-container":"#885500","tertiary":"#684000","primary-fixed":"#e2dfff","surface-tint":"#4d44e3","inverse-on-surface":"#eef0ff","outline":"#777587","surface-container-lowest":"#ffffff","surface":"#faf8ff","secondary-fixed":"#85f8c4","on-tertiary-fixed":"#2a1700","on-error-container":"#93000a","on-tertiary-fixed-variant":"#653e00","on-background":"#131b2e","on-tertiary":"#ffffff","error-container":"#ffdad6","on-secondary-container":"#00714e","on-primary":"#ffffff"},borderRadius:{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},spacing:{"margin":"1rem","gutter":"1rem","space-md":"1rem","space-xl":"2rem","space-xs":"0.25rem","gutter-desktop":"1.5rem","space-lg":"1.5rem","margin-desktop":"2rem","space-sm":"0.5rem"},fontFamily:{"label-md":["Inter"],"headline-sm":["Plus Jakarta Sans"],"headline-xl":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"],"headline-lg-mobile":["Plus Jakarta Sans"],"label-sm":["Inter"],"code-xs":["JetBrains Mono"],"body-sm":["Inter"],"body-md":["Inter"],"headline-xl-mobile":["Plus Jakarta Sans"],"code-sm":["JetBrains Mono"],"body-lg":["Inter"],"headline-md":["Plus Jakarta Sans"]},fontSize:{"label-md":["13px",{"lineHeight":"18px","fontWeight":"500"}],"headline-sm":["16px",{"lineHeight":"24px","letterSpacing":"-0.005em","fontWeight":"600"}],"headline-xl":["36px",{"lineHeight":"44px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-lg":["28px",{"lineHeight":"36px","letterSpacing":"-0.015em","fontWeight":"600"}],"headline-lg-mobile":["24px",{"lineHeight":"32px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.02em","fontWeight":"600"}],"code-xs":["10px",{"lineHeight":"14px","fontWeight":"500"}],"body-sm":["12px",{"lineHeight":"16px","fontWeight":"400"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"400"}],"headline-xl-mobile":["28px",{"lineHeight":"36px","letterSpacing":"-0.015em","fontWeight":"700"}],"code-sm":["12px",{"lineHeight":"16px","fontWeight":"500"}],"body-lg":["16px",{"lineHeight":"24px","fontWeight":"400"}],"headline-md":["20px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-64 bg-surface-container-low z-50 flex flex-col justify-between shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex flex-col"><div class="h-16 px-space-lg flex items-center gap-space-sm bg-surface-container-lowest"><div class="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center text-on-secondary shadow-sm"><span class="material-symbols-outlined text-[20px]">chat</span></div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none">WebinarLiv</span><span class="font-label-sm text-label-sm text-on-surface-variant leading-tight">Enterprise Flow Engine</span></div></div><div class="px-space-md py-space-sm"><span class="font-label-sm text-label-sm text-outline uppercase tracking-wider px-space-sm">Core Modules</span></div><nav class="flex flex-col px-space-sm gap-space-xs" data-active-classes="bg-primary-container text-on-primary font-label-md"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="flow-builder" href="flow-builder.html"><span class="material-symbols-outlined text-[18px]">account_tree</span>Flow Builder</a><a data-demo-undrawn="Template Library" class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="template-library" href="#"><span class="material-symbols-outlined text-[18px]">dashboard_customize</span>Template Library</a><a data-demo-undrawn="Audience &amp; Segmentation" class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="audience-and-segmentation" href="#"><span class="material-symbols-outlined text-[18px]">group</span>Audience &amp; Segmentation</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="attendance-and-engagement-telemetry" href="#"><span class="material-symbols-outlined text-[18px]">monitoring</span>Attendance &amp; Engagement</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="execution-and-delivery-logs" href="exec-logs.html"><span class="material-symbols-outlined text-[18px]">terminal</span>Execution &amp; Delivery Logs</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="database-and-webhooks" href="database-webhooks.html"><span class="material-symbols-outlined text-[18px]">webhook</span>Database &amp; Webhooks</a></nav></div><div class="p-space-md bg-surface-container-lowest m-space-sm rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.03)]"><div class="flex items-center justify-between mb-space-xs"><span class="font-label-sm text-label-sm text-outline uppercase">Cloud Gateway</span><div class="flex items-center gap-1.5 px-space-xs py-0.5 rounded-full bg-secondary-container"><span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span><span class="font-code-xs text-code-xs text-on-secondary-container font-semibold">99.98%</span></div></div><div class="font-body-sm text-body-sm text-on-surface-variant truncate">WA Business API #0921</div></div></aside><div class="pl-64"><header class="fixed top-0 left-64 right-0 h-16 bg-surface-container-lowest/90 backdrop-blur-xl z-40 flex items-center justify-between px-space-lg shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-sm"><div class="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center text-primary"><span class="material-symbols-outlined text-[20px]">co_present</span></div><div class="flex flex-col"><div class="flex items-center gap-space-sm"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight">AI Marketing Masterclass</span><span class="px-space-sm py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-semibold flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>Live Automation Active</span></div><span class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">schedule</span>25 Sep 2026, 7:00 PM IST</span></div></div></div><div class="flex items-center gap-space-md"><div class="hidden xl:flex items-center gap-space-sm px-space-md py-1.5 rounded-lg bg-surface-container-low"><span class="w-2 h-2 rounded-full bg-secondary animate-ping"></span><span class="font-label-sm text-label-sm text-on-surface">WhatsApp Cloud Gateway</span><span class="font-code-xs text-code-xs text-secondary font-semibold uppercase">Connected</span></div><div class="flex items-center gap-space-sm"><button class="flex items-center gap-space-xs px-space-md h-9 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface transition-colors font-label-md text-label-md" type="button"><span class="material-symbols-outlined text-[16px]">play_arrow</span>Quick Test Simulation</button><button class="flex items-center gap-space-xs px-space-md h-9 rounded-lg bg-primary hover:bg-primary-container text-on-primary transition-colors font-label-md text-label-md shadow-sm" type="button"><span class="material-symbols-outlined text-[16px]">save</span>Save Changes</button></div><div class="h-6 w-px bg-outline-variant mx-space-xs"></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><div class="fixed top-16 left-64 right-0 h-10 bg-surface-container-low/95 backdrop-blur-md z-30 flex items-center px-space-lg shadow-[0_1px_4px_rgba(0,0,0,0.02)]"><div class="flex items-center gap-space-xs font-label-sm text-label-sm text-on-surface-variant"><span class="material-symbols-outlined text-[15px]">alt_route</span><span class="text-on-surface font-semibold">Automation Stages:</span></div><div class="flex items-center gap-space-xs ml-space-md overflow-x-auto"><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md bg-surface-container-lowest text-primary font-label-sm text-label-sm font-semibold shadow-xs" type="button"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span>Flow 1: Registration &amp; Community</button><span class="material-symbols-outlined text-outline-variant text-[14px]">chevron_right</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">Flow 2: Calendar Invite</button><span class="material-symbols-outlined text-outline-variant text-[14px]">chevron_right</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">Flow 3: Live Countdown Reminders</button><span class="material-symbols-outlined text-outline-variant text-[14px]">chevron_right</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">Flow 4: Post-Webinar &amp; Conversion</button></div></div><main class="relative pt-26 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<!-- Top Ambient Banner & Header Bar -->
+<div class="relative w-full px-space-lg pt-space-md pb-space-lg overflow-hidden bg-surface-container-low">
+<div class="absolute -right-24 -top-24 w-96 h-96 rounded-full bg-primary-container/10 blur-3xl pointer-events-none"></div>
+<div class="absolute left-1/3 -bottom-20 w-80 h-80 rounded-full bg-secondary-container/20 blur-2xl pointer-events-none"></div>
+<div class="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-space-md">
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-space-sm flex-wrap">
+<span class="font-code-xs text-code-xs text-primary bg-surface-container px-2 py-0.5 rounded uppercase tracking-wider font-semibold">Live Stage 04: Post-Event Intelligence</span>
+<span class="font-label-sm text-label-sm text-secondary bg-secondary-container/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+            Real-time Ingestion Active
+          </span>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-mono">CRON: T+15m Sync Engine</span>
+</div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight mt-1">Webinar Attendance &amp; Engagement Analytics: AI Marketing Masterclass</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant max-w-3xl">
+          Deterministic participant tracking across Zoom &amp; YouTube Live bridges. Rules evaluate engagement scores dynamically to fire tailored WhatsApp conversion funnels.
+        </p>
+</div>
+<div class="flex items-center gap-space-sm flex-shrink-0">
+<button class="flex items-center gap-1.5 px-space-md h-9 rounded-lg bg-surface-container-lowest hover:bg-surface text-on-surface shadow-sm font-label-md text-label-md transition-all" id="btn-recalc-all" type="button">
+<span class="material-symbols-outlined text-[18px] text-primary">sync</span>
+          Recalculate Cohorts
+        </button>
+<button class="flex items-center gap-1.5 px-space-md h-9 rounded-lg bg-primary hover:bg-primary-container text-on-primary shadow-sm font-label-md text-label-md transition-all" type="button">
+<span class="material-symbols-outlined text-[18px]">bolt</span>
+          Commit Segmentation
+        </button>
+</div>
+</div>
+<!-- Real-time Safety Guard Banner -->
+<div class="relative z-10 mt-space-md bg-surface-container-lowest rounded-xl p-space-sm px-space-md shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface font-semibold flex items-center gap-2">
+            Idempotency &amp; Conversion Hault Active
+            <span class="font-code-xs text-code-xs bg-secondary-container px-2 py-0.5 rounded text-on-secondary-fixed-variant">18 Conversions Shielded</span>
+</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">
+            18 users purchased after Follow-up #1. Automated Follow-up #2 and #3 were instantly cancelled by system idempotency rules.
+          </span>
+</div>
+</div>
+<div class="flex items-center gap-2 self-end md:self-auto font-code-xs text-code-xs text-outline">
+<span>Webinar UUID: <span class="text-on-surface font-semibold">wm-ai-8942-live</span></span>
+</div>
+</div>
+</div>
+<!-- KPI Pulse Rail (Bento Cards) -->
+<div class="px-space-lg -mt-3 mb-space-lg">
+<div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-space-sm">
+<!-- Card 1: Registered -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider">Registered</span>
+<span class="material-symbols-outlined text-outline text-[18px]">how_to_reg</span>
+</div>
+<div class="flex flex-col mt-2">
+<span class="font-headline-xl text-headline-xl text-on-surface font-bold">1,420</span>
+<span class="font-code-xs text-code-xs text-secondary mt-1 flex items-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[14px]">arrow_upward</span>+21% vs Last Cohort
+          </span>
+</div>
+</div>
+<!-- Card 2: Total Attended -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider">Attended Live</span>
+<span class="material-symbols-outlined text-primary text-[18px]">meeting_room</span>
+</div>
+<div class="flex flex-col mt-2">
+<div class="flex items-baseline gap-1">
+<span class="font-headline-xl text-headline-xl text-primary font-bold">984</span>
+<span class="font-label-md text-label-md text-primary font-semibold">/ 69.3%</span>
+</div>
+<div class="w-full bg-surface-container h-1.5 rounded-full mt-2 overflow-hidden">
+<div class="bg-primary h-full rounded-full" style="width: 69.3%"></div>
+</div>
+</div>
+</div>
+<!-- Card 3: High Tier -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider font-semibold">High (&gt;75%)</span>
+<span class="w-2.5 h-2.5 rounded-full bg-secondary"></span>
+</div>
+<div class="flex flex-col mt-2">
+<div class="flex items-baseline gap-1">
+<span class="font-headline-xl text-headline-xl text-on-surface font-bold">412</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-medium">41.8%</span>
+</div>
+<span class="font-code-xs text-code-xs text-secondary mt-1 font-mono">VIP Fast-Track</span>
+</div>
+</div>
+<!-- Card 4: Med Tier -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-sm text-label-sm text-primary uppercase tracking-wider font-semibold">Med (40-74%)</span>
+<span class="w-2.5 h-2.5 rounded-full bg-primary"></span>
+</div>
+<div class="flex flex-col mt-2">
+<div class="flex items-baseline gap-1">
+<span class="font-headline-xl text-headline-xl text-on-surface font-bold">328</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-medium">33.3%</span>
+</div>
+<span class="font-code-xs text-code-xs text-primary mt-1 font-mono">Replay + Q&amp;A Pack</span>
+</div>
+</div>
+<!-- Card 5: Low Tier -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-sm text-label-sm text-tertiary uppercase tracking-wider font-semibold">Low (&lt;40%)</span>
+<span class="w-2.5 h-2.5 rounded-full bg-tertiary-fixed-dim"></span>
+</div>
+<div class="flex flex-col mt-2">
+<div class="flex items-baseline gap-1">
+<span class="font-headline-xl text-headline-xl text-on-surface font-bold">244</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-medium">24.7%</span>
+</div>
+<span class="font-code-xs text-code-xs text-tertiary mt-1 font-mono">10m Micro Cut</span>
+</div>
+</div>
+<!-- Card 6: No Show -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider">No Show (0%)</span>
+<span class="w-2.5 h-2.5 rounded-full bg-outline-variant"></span>
+</div>
+<div class="flex flex-col mt-2">
+<div class="flex items-baseline gap-1">
+<span class="font-headline-xl text-headline-xl text-on-surface-variant font-bold">436</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-medium">30.7%</span>
+</div>
+<span class="font-code-xs text-code-xs text-outline mt-1 font-mono">24h Encore Gate</span>
+</div>
+</div>
+<!-- Card 7: WhatsApp Conversions -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col justify-between col-span-2 md:col-span-4 xl:col-span-1 bg-gradient-to-br from-surface-container-lowest via-surface-container-lowest to-secondary-container/10">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-sm text-label-sm text-secondary font-bold uppercase tracking-wider">WhatsApp Direct</span>
+<span class="material-symbols-outlined text-secondary text-[20px]">payments</span>
+</div>
+<div class="flex flex-col mt-2">
+<span class="font-headline-lg text-headline-lg text-on-surface font-bold">$44,200</span>
+<div class="flex items-center justify-between text-secondary mt-1">
+<span class="font-code-xs text-code-xs font-semibold">148 Closed Deals</span>
+<span class="font-code-xs text-code-xs font-mono bg-secondary-container px-1.5 py-0.5 rounded">15.0% CVR</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Telemetry Graph & Interactive Segment Rule Orchestrator -->
+<div class="px-space-lg space-y-space-lg mb-space-lg">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-lg">
+<!-- Left 5-Cols: Live Engagement Curve Visualizer -->
+<div class="lg:col-span-5 bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between pb-space-sm">
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Drop-off &amp; High-Intent Telemetry</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Synchronized Zoom session time-slice (60 mins)</span>
+</div>
+<span class="font-code-xs text-code-xs bg-surface-container px-2 py-1 rounded text-primary font-semibold">T-Peak: Min 38</span>
+</div>
+<!-- Inline SVG Time-series dropoff chart with intent markers -->
+<div class="relative w-full h-48 my-2">
+<svg class="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 500 160">
+<defs>
+<linearGradient id="areaGradient" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#4f46e5" stop-opacity="0.25"></stop>
+<stop offset="100%" stop-color="#4f46e5" stop-opacity="0.0"></stop>
+</linearGradient>
+</defs>
+<!-- Grid Guides -->
+<line stroke="#eaedff" stroke-dasharray="3 3" stroke-width="1" x1="0" x2="500" y1="30" y2="30"></line>
+<line stroke="#eaedff" stroke-dasharray="3 3" stroke-width="1" x1="0" x2="500" y1="80" y2="80"></line>
+<line stroke="#eaedff" stroke-dasharray="3 3" stroke-width="1" x1="0" x2="500" y1="130" y2="130"></line>
+<!-- Key Event Timers -->
+<!-- Minute 25: Poll 1 -->
+<line stroke="#82f5c1" stroke-dasharray="2 2" stroke-width="1.5" x1="208" x2="208" y1="10" y2="150"></line>
+<!-- Minute 42: Offer CTA -->
+<line stroke="#3525cd" stroke-dasharray="2 2" stroke-width="1.5" x1="350" x2="350" y1="10" y2="150"></line>
+<!-- Attendance Fill Area -->
+<path d="M 0 140 
+                     C 30 50, 60 25, 100 20 
+                     C 150 18, 200 22, 250 28 
+                     C 300 35, 340 40, 380 62 
+                     C 420 85, 460 110, 500 115 
+                     L 500 160 L 0 160 Z" fill="url(#areaGradient)"></path>
+<!-- Main Telemetry Path -->
+<path d="M 0 140 
+                     C 30 50, 60 25, 100 20 
+                     C 150 18, 200 22, 250 28 
+                     C 300 35, 340 40, 380 62 
+                     C 420 85, 460 110, 500 115" fill="none" stroke="#4f46e5" stroke-linecap="round" stroke-width="2.5"></path>
+<!-- Intent High-Water Markers -->
+<circle cx="208" cy="24" fill="#006c4a" r="4" stroke="#ffffff" stroke-width="2"></circle>
+<circle cx="350" cy="46" fill="#3525cd" r="4" stroke="#ffffff" stroke-width="2"></circle>
+</svg>
+<!-- Floating Annotations -->
+<div class="absolute top-2 left-[40%] bg-surface-container-lowest/95 backdrop-blur shadow-sm px-2 py-1 rounded text-left pointer-events-none">
+<span class="font-code-xs text-code-xs text-secondary font-bold block">Poll: 84% Response</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant block">Min 25.0</span>
+</div>
+<div class="absolute top-6 left-[68%] bg-surface-container-lowest/95 backdrop-blur shadow-sm px-2 py-1 rounded text-left pointer-events-none">
+<span class="font-code-xs text-code-xs text-primary font-bold block">CTA Trigger Drop</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant block">Pitch at Min 42</span>
+</div>
+</div>
+<div class="flex items-center justify-between pt-space-xs font-code-xs text-code-xs text-on-surface-variant border-t border-surface-container">
+<span>00:00 (Pre-show)</span>
+<span>15:00 (Intro)</span>
+<span>30:00 (Core Value)</span>
+<span>45:00 (Offer Pitch)</span>
+<span>60:00 (Live Q&amp;A)</span>
+</div>
+<!-- Real-time Cohort Ratio Bar -->
+<div class="mt-space-sm pt-space-xs">
+<div class="flex justify-between items-center mb-1 text-label-sm font-label-sm">
+<span class="text-on-surface font-semibold">Real-time Cohort Dispersion</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">984 Total Active Viewers</span>
+</div>
+<div class="w-full h-3 rounded-full flex overflow-hidden bg-surface-container">
+<div class="bg-secondary" style="width: 41.8%" title="High Intent (41.8%)"></div>
+<div class="bg-primary" style="width: 33.3%" title="Medium Intent (33.3%)"></div>
+<div class="bg-tertiary-fixed-dim" style="width: 24.9%" title="Low Intent (24.9%)"></div>
+</div>
+<div class="flex items-center justify-between text-code-xs font-code-xs mt-1.5 text-on-surface-variant">
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-secondary inline-block"></span> High: 412</span>
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-primary inline-block"></span> Mid: 328</span>
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim inline-block"></span> Low: 244</span>
+</div>
+</div>
+</div>
+<!-- Right 7-Cols: Configurable Engagement Threshold Rules & Branch Controller -->
+<div class="lg:col-span-7 bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col justify-between">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm pb-space-sm">
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Segmentation Rules Engine &amp; Branch Dispatcher</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Adjust logic thresholds to re-route attendees into specialized WhatsApp conversational trees.</p>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="flex items-center gap-1 px-space-sm py-1 rounded bg-surface-container-low hover:bg-surface-container font-label-sm text-label-sm text-on-surface transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">tune</span>
+              Advanced Logic
+            </button>
+<button class="flex items-center gap-1 px-space-sm py-1 rounded bg-primary text-on-primary font-label-sm text-label-sm shadow-xs hover:bg-primary-container transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">save</span>
+              Save Thresholds
+            </button>
+</div>
+</div>
+<!-- 4 Cohort Rule Cards -->
+<div class="space-y-space-sm mt-1">
+<!-- RULE 1: HIGH TIER -->
+<div class="p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 rounded-full bg-secondary"></span>
+<span class="font-headline-sm text-headline-sm text-on-surface">HIGH Tier Segment</span>
+<span class="font-code-xs text-code-xs bg-secondary-container text-on-secondary-fixed-variant px-1.5 py-0.5 rounded font-bold">412 Cohort Members</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-outline">Target Sequence:</span>
+<span class="font-code-xs text-code-xs bg-surface-container-lowest text-primary px-2 py-0.5 rounded shadow-xs font-semibold">VIP High-Intent Offer + WhatsApp Concierge</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-space-sm items-center bg-surface-container-lowest p-space-sm rounded-lg">
+<div class="md:col-span-7 flex flex-col gap-1">
+<div class="flex items-center justify-between font-label-sm text-label-sm text-on-surface">
+<span>Attendance Threshold:</span>
+<span class="font-code-xs text-code-xs font-bold text-secondary" id="high-slider-val">≥ 75%</span>
+</div>
+<input class="w-full accent-secondary h-1.5 bg-surface-container rounded-lg cursor-pointer" id="high-slider" max="95" min="60" type="range" value="75">
+</div>
+<div class="md:col-span-5 flex items-center gap-2 flex-wrap">
+<span class="font-code-xs text-code-xs bg-surface-container px-2 py-1 rounded text-on-surface">OR Questions ≥ 2</span>
+<span class="font-code-xs text-code-xs bg-surface-container px-2 py-1 rounded text-on-surface">OR CTA Clicked</span>
+</div>
+</div>
+</div>
+<!-- RULE 2: MEDIUM TIER -->
+<div class="p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 rounded-full bg-primary"></span>
+<span class="font-headline-sm text-headline-sm text-on-surface">MEDIUM Tier Segment</span>
+<span class="font-code-xs text-code-xs bg-surface-container-highest text-on-primary-fixed-variant px-1.5 py-0.5 rounded font-bold">328 Cohort Members</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-outline">Target Sequence:</span>
+<span class="font-code-xs text-code-xs bg-surface-container-lowest text-primary px-2 py-0.5 rounded shadow-xs font-semibold">Full Replay + Extended Q&amp;A Summary</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-space-sm items-center bg-surface-container-lowest p-space-sm rounded-lg">
+<div class="md:col-span-7 flex flex-col gap-1">
+<div class="flex items-center justify-between font-label-sm text-label-sm text-on-surface">
+<span>Attendance Interval:</span>
+<span class="font-code-xs text-code-xs font-bold text-primary">40% – 74%</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-code-xs text-code-xs text-outline">40%</span>
+<div class="flex-1 bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full rounded-full ml-[40%] w-[35%]"></div>
+</div>
+<span class="font-code-xs text-code-xs text-outline">74%</span>
+</div>
+</div>
+<div class="md:col-span-5 flex items-center gap-2">
+<span class="font-code-xs text-code-xs bg-surface-container px-2 py-1 rounded text-on-surface">Poll Answered: ≥ 1</span>
+<span class="font-code-xs text-code-xs bg-surface-container px-2 py-1 rounded text-on-surface">CTA Not Yet Clicked</span>
+</div>
+</div>
+</div>
+<!-- RULE 3: LOW TIER -->
+<div class="p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 rounded-full bg-tertiary-fixed-dim"></span>
+<span class="font-headline-sm text-headline-sm text-on-surface">LOW Tier Segment</span>
+<span class="font-code-xs text-code-xs bg-tertiary-fixed text-on-tertiary-fixed px-1.5 py-0.5 rounded font-bold">244 Cohort Members</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-outline">Target Sequence:</span>
+<span class="font-code-xs text-code-xs bg-surface-container-lowest text-tertiary px-2 py-0.5 rounded shadow-xs font-semibold">High-Impact 10-min Highlights + Next Cohort Invite</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-space-sm items-center bg-surface-container-lowest p-space-sm rounded-lg">
+<div class="md:col-span-7 flex flex-col gap-1">
+<div class="flex items-center justify-between font-label-sm text-label-sm text-on-surface">
+<span>Attendance Range:</span>
+<span class="font-code-xs text-code-xs font-bold text-tertiary">1% – 39% (Left Early)</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-code-xs text-code-xs text-outline">1%</span>
+<div class="flex-1 bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-tertiary-fixed-dim h-full rounded-full w-[39%]"></div>
+</div>
+<span class="font-code-xs text-code-xs text-outline">39%</span>
+</div>
+</div>
+<div class="md:col-span-5 flex items-center gap-2">
+<span class="font-code-xs text-code-xs bg-surface-container px-2 py-1 rounded text-on-surface">Unmute Event = 0</span>
+<span class="font-code-xs text-code-xs bg-surface-container px-2 py-1 rounded text-on-surface">Feedback Survey Link</span>
+</div>
+</div>
+</div>
+<!-- RULE 4: NO SHOW TIER -->
+<div class="p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 rounded-full bg-outline"></span>
+<span class="font-headline-sm text-headline-sm text-on-surface">NO SHOW Segment</span>
+<span class="font-code-xs text-code-xs bg-surface-container text-on-surface-variant px-1.5 py-0.5 rounded font-bold">436 Registered Leads</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-outline">Target Sequence:</span>
+<span class="font-code-xs text-code-xs bg-surface-container-lowest text-outline px-2 py-0.5 rounded shadow-xs font-semibold">Encore Replay (Expires in 24h) + Urgency Counter</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-space-sm items-center bg-surface-container-lowest p-space-sm rounded-lg">
+<div class="md:col-span-7 flex flex-col gap-1">
+<span class="font-label-sm text-label-sm text-on-surface">Rule: Attendance = 0% (Never joined live room)</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">Matches against Zoom Webhook: <code class="bg-surface-container px-1 py-0.5 rounded">participant.joined = null</code></span>
+</div>
+<div class="md:col-span-5 flex items-center gap-2">
+<span class="font-code-xs text-code-xs bg-surface-container px-2 py-1 rounded text-on-surface">Auto Expire Link in 24h</span>
+<span class="font-code-xs text-code-xs bg-surface-container px-2 py-1 rounded text-on-surface">One-Click Re-register</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Section: Live Attendee Roster & Automation State Inspector -->
+<div class="px-space-lg mb-space-xl">
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
+<!-- Table Filter Bar -->
+<div class="p-space-md flex flex-col lg:flex-row lg:items-center justify-between gap-space-md border-b border-surface-container">
+<div class="flex flex-col sm:flex-row sm:items-center gap-space-sm">
+<div class="flex items-center gap-2">
+<span class="font-headline-sm text-headline-sm text-on-surface">Live Attendee Roster &amp; Node Inspector</span>
+<span class="font-code-xs text-code-xs bg-surface-container px-2 py-0.5 rounded text-primary font-bold">1,420 Records</span>
+</div>
+<div class="flex items-center gap-1 bg-surface-container-low p-1 rounded-lg">
+<button class="tab-filter-btn px-2.5 py-1 rounded font-label-sm text-label-sm font-semibold bg-surface-container-lowest text-primary shadow-xs" data-filter="all" type="button">All (1,420)</button>
+<button class="tab-filter-btn px-2.5 py-1 rounded font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface" data-filter="HIGH" type="button">High (412)</button>
+<button class="tab-filter-btn px-2.5 py-1 rounded font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface" data-filter="MEDIUM" type="button">Med (328)</button>
+<button class="tab-filter-btn px-2.5 py-1 rounded font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface" data-filter="LOW" type="button">Low (244)</button>
+<button class="tab-filter-btn px-2.5 py-1 rounded font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface" data-filter="NOSHOW" type="button">No Show (436)</button>
+</div>
+</div>
+<div class="flex items-center gap-space-sm flex-wrap">
+<div class="relative min-w-[240px]">
+<span class="material-symbols-outlined absolute left-2.5 top-2 text-[18px] text-outline">search</span>
+<input class="w-full pl-9 pr-3 py-1.5 bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container transition-all" id="roster-search" placeholder="Search by name, WhatsApp, or UID..." type="text">
+</div>
+<button class="flex items-center gap-1 px-space-sm py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-label-sm text-label-sm transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">file_download</span>
+            CSV Export
+          </button>
+</div>
+</div>
+<!-- Live Participant Table -->
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low/70 font-label-sm text-label-sm text-outline">
+<th class="py-3 px-space-md font-semibold">Attendee &amp; Phone</th>
+<th class="py-3 px-space-md font-semibold">Join / Leave Time</th>
+<th class="py-3 px-space-md font-semibold">Duration &amp; Engagement</th>
+<th class="py-3 px-space-md font-semibold">Pre-Event WhatsApp State</th>
+<th class="py-3 px-space-md font-semibold">Follow-Up Flow State</th>
+<th class="py-3 px-space-md font-semibold">Conversion Status</th>
+<th class="py-3 px-space-md font-semibold text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-container font-body-sm text-body-sm text-on-surface" id="attendee-table-body">
+<!-- Row 1: High Intent / Converted -->
+<tr class="hover:bg-surface-container-low/50 transition-colors" data-tier="HIGH">
+<td class="py-3 px-space-md">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-secondary/15 flex items-center justify-center font-bold text-secondary text-[12px]">AK</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-on-surface">Aarav Kulkarni</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-mono">+91 98201 44321</span>
+</div>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col font-code-xs text-code-xs">
+<span class="text-on-surface">In: 06:58 PM IST</span>
+<span class="text-on-surface-variant">Out: 08:04 PM IST</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between text-code-xs font-code-xs">
+<span class="font-semibold text-on-surface">58m / 60m</span>
+<span class="text-secondary font-bold">96% High</span>
+</div>
+<div class="w-28 bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-secondary h-full rounded-full" style="width: 96%"></div>
+</div>
+<span class="font-code-xs text-code-xs text-outline">Questions: 3 • CTA Clicked</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col gap-1">
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-secondary-container text-on-secondary-fixed-variant inline-flex items-center gap-1 w-max font-semibold">
+<span class="material-symbols-outlined text-[12px]">group</span> Community VIP
+                  </span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">Cal Sync: Google</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col font-code-xs text-code-xs">
+<span class="text-secondary font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">done_all</span> Follow-up #1 Delivered
+                  </span>
+<span class="text-on-surface-variant">Read at 08:15 PM</span>
+<span class="text-outline">Branch: VIP Concierge</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary text-on-secondary font-code-xs text-code-xs font-bold shadow-xs">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> CONVERTED ($499)
+                </span>
+<span class="block font-code-xs text-code-xs text-secondary mt-1 font-mono">Sequences #2 &amp; #3 Halted</span>
+</td>
+<td class="py-3 px-space-md text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center text-primary transition-colors" title="View WhatsApp Chat Log" type="button">
+<span class="material-symbols-outlined text-[18px]">chat</span>
+</button>
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center text-outline hover:text-on-surface transition-colors" title="Manual Automation Override" type="button">
+<span class="material-symbols-outlined text-[18px]">settings_suggest</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2: High Intent / In Progress -->
+<tr class="hover:bg-surface-container-low/50 transition-colors" data-tier="HIGH">
+<td class="py-3 px-space-md">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-secondary/15 flex items-center justify-center font-bold text-secondary text-[12px]">SM</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-on-surface">Sarah Miller</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-mono">+1 (415) 890-2199</span>
+</div>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col font-code-xs text-code-xs">
+<span class="text-on-surface">In: 07:01 PM IST</span>
+<span class="text-on-surface-variant">Out: 07:54 PM IST</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between text-code-xs font-code-xs">
+<span class="font-semibold text-on-surface">53m / 60m</span>
+<span class="text-secondary font-bold">88% High</span>
+</div>
+<div class="w-28 bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-secondary h-full rounded-full" style="width: 88%"></div>
+</div>
+<span class="font-code-xs text-code-xs text-outline">Questions: 1 • CTA Clicked</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col gap-1">
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-secondary-container text-on-secondary-fixed-variant inline-flex items-center gap-1 w-max font-semibold">
+<span class="material-symbols-outlined text-[12px]">check</span> In WA Community
+                  </span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">Cal Sync: Apple iCal</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col font-code-xs text-code-xs">
+<span class="text-secondary font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">done_all</span> Follow-up #1 Delivered
+                  </span>
+<span class="text-on-surface-variant">Read at 08:22 PM</span>
+<span class="text-primary font-medium">Follow-up #2 Queued: +4h</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container text-primary font-code-xs text-code-xs font-bold">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span> IN PROGRESS
+                </span>
+<span class="block font-code-xs text-code-xs text-outline mt-1 font-mono">Cart Abandoned: Min 48</span>
+</td>
+<td class="py-3 px-space-md text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center text-primary transition-colors" title="View WhatsApp Chat Log" type="button">
+<span class="material-symbols-outlined text-[18px]">chat</span>
+</button>
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center text-outline hover:text-on-surface transition-colors" title="Manual Automation Override" type="button">
+<span class="material-symbols-outlined text-[18px]">settings_suggest</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 3: Medium Tier / Follow-up Queued -->
+<tr class="hover:bg-surface-container-low/50 transition-colors" data-tier="MEDIUM">
+<td class="py-3 px-space-md">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center font-bold text-primary text-[12px]">DR</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-on-surface">Devin Rodriguez</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-mono">+1 (512) 762-0199</span>
+</div>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col font-code-xs text-code-xs">
+<span class="text-on-surface">In: 07:12 PM IST</span>
+<span class="text-on-surface-variant">Out: 07:46 PM IST</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between text-code-xs font-code-xs">
+<span class="font-semibold text-on-surface">34m / 60m</span>
+<span class="text-primary font-bold">56% Medium</span>
+</div>
+<div class="w-28 bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full rounded-full" style="width: 56%"></div>
+</div>
+<span class="font-code-xs text-code-xs text-outline">Poll 1 Answered • No CTA</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col gap-1">
+<span class="font-code-xs text-code-xs text-outline">Joined via SMS Reminder</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">WA Verified: Direct</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col font-code-xs text-code-xs">
+<span class="text-primary font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> Replay Node Triggered
+                  </span>
+<span class="text-on-surface-variant">Sent at 08:30 PM</span>
+<span class="text-outline">Replay Duration: 12m tracked</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface font-code-xs text-code-xs font-medium">
+                  ENGAGING WITH REPLAY
+                </span>
+<span class="block font-code-xs text-code-xs text-outline mt-1 font-mono">No checkout opened</span>
+</td>
+<td class="py-3 px-space-md text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center text-primary transition-colors" title="View WhatsApp Chat Log" type="button">
+<span class="material-symbols-outlined text-[18px]">chat</span>
+</button>
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center text-outline hover:text-on-surface transition-colors" title="Manual Automation Override" type="button">
+<span class="material-symbols-outlined text-[18px]">settings_suggest</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 4: Low Tier / Micro Cut Triggered -->
+<tr class="hover:bg-surface-container-low/50 transition-colors" data-tier="LOW">
+<td class="py-3 px-space-md">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-tertiary-fixed-dim/30 flex items-center justify-center font-bold text-tertiary text-[12px]">PN</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-on-surface">Pooja Nair</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-mono">+91 97412 88401</span>
+</div>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col font-code-xs text-code-xs">
+<span class="text-on-surface">In: 07:05 PM IST</span>
+<span class="text-on-surface-variant">Out: 07:19 PM IST</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between text-code-xs font-code-xs">
+<span class="font-semibold text-on-surface">14m / 60m</span>
+<span class="text-tertiary font-bold">23% Low</span>
+</div>
+<div class="w-28 bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-tertiary-fixed-dim h-full rounded-full" style="width: 23%"></div>
+</div>
+<span class="font-code-xs text-code-xs text-error">Dropped: Early Intro</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col gap-1">
+<span class="font-code-xs text-code-xs text-on-surface-variant">Community Skipped</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">Email Calendar Invited</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col font-code-xs text-code-xs">
+<span class="text-tertiary font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">movie</span> 10m Micro Cut Dispatched
+                  </span>
+<span class="text-on-surface-variant">Template: Highlights_Short_v2</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container text-outline font-code-xs text-code-xs font-medium">
+                  NOT CONVERTED
+                </span>
+<span class="block font-code-xs text-code-xs text-outline mt-1 font-mono">Next Cohort Scheduled</span>
+</td>
+<td class="py-3 px-space-md text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center text-primary transition-colors" title="View WhatsApp Chat Log" type="button">
+<span class="material-symbols-outlined text-[18px]">chat</span>
+</button>
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center text-outline hover:text-on-surface transition-colors" title="Manual Automation Override" type="button">
+<span class="material-symbols-outlined text-[18px]">settings_suggest</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 5: No Show Tier / Encore Follow-up -->
+<tr class="hover:bg-surface-container-low/50 transition-colors" data-tier="NOSHOW">
+<td class="py-3 px-space-md">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center font-bold text-outline text-[12px]">EL</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-on-surface">Ethan Liu</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-mono">+1 (206) 431-7711</span>
+</div>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<span class="font-code-xs text-code-xs text-outline italic">Did not connect</span>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between text-code-xs font-code-xs">
+<span class="font-semibold text-outline">0m</span>
+<span class="text-outline font-bold">0% No Show</span>
+</div>
+<div class="w-28 bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-outline h-full rounded-full" style="width: 0%"></div>
+</div>
+<span class="font-code-xs text-code-xs text-outline">Webhook: No Join Token</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col gap-1">
+<span class="font-code-xs text-code-xs text-outline">Registered: 23 Sep</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">Cal Added: Yes</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<div class="flex flex-col font-code-xs text-code-xs">
+<span class="text-outline font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">hourglass_top</span> 24h Encore Gate Fired
+                  </span>
+<span class="text-on-surface-variant">Expiry: 26 Sep, 7:00 PM</span>
+</div>
+</td>
+<td class="py-3 px-space-md">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container text-outline font-code-xs text-code-xs font-medium">
+                  NO SHOW
+                </span>
+<span class="block font-code-xs text-code-xs text-outline mt-1 font-mono">Unopened Encore Link</span>
+</td>
+<td class="py-3 px-space-md text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center text-primary transition-colors" title="Resend Calendar / Encore WhatsApp Link" type="button">
+<span class="material-symbols-outlined text-[18px]">send</span>
+</button>
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center text-outline hover:text-on-surface transition-colors" title="Manual Automation Override" type="button">
+<span class="material-symbols-outlined text-[18px]">settings_suggest</span>
+</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Table Footer & Pagination -->
+<div class="p-space-sm px-space-md bg-surface-container-low/40 flex flex-col sm:flex-row items-center justify-between gap-space-sm font-label-sm text-label-sm text-on-surface-variant">
+<span id="showing-summary">Showing 5 of 1,420 filtered live telemetry participants</span>
+<div class="flex items-center gap-2">
+<button class="w-8 h-8 rounded-lg bg-surface-container-lowest flex items-center justify-center hover:bg-surface shadow-xs text-outline disabled:opacity-40" disabled="" type="button">
+<span class="material-symbols-outlined text-[16px]">chevron_left</span>
+</button>
+<span class="font-code-xs text-code-xs px-2 text-on-surface font-semibold">Page 1 of 284</span>
+<button class="w-8 h-8 rounded-lg bg-surface-container-lowest flex items-center justify-center hover:bg-surface shadow-xs text-on-surface" type="button">
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Client-side Logic for Filter Tabs & Rule Threshold Slider -->
+<script>
+    (function initTelemetryConsole() {
+      const slider = document.getElementById('high-slider');
+      const sliderVal = document.getElementById('high-slider-val');
+      if (slider && sliderVal) {
+        slider.addEventListener('input', (e) => {
+          sliderVal.textContent = `≥ ${e.target.value}%`;
+        });
+      }
+
+      const tabs = document.querySelectorAll('.tab-filter-btn');
+      const rows = document.querySelectorAll('#attendee-table-body tr');
+      const summaryText = document.getElementById('showing-summary');
+
+      tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => {
+            t.classList.remove('bg-surface-container-lowest', 'text-primary', 'shadow-xs');
+            t.classList.add('text-on-surface-variant');
+          });
+          tab.classList.add('bg-surface-container-lowest', 'text-primary', 'shadow-xs');
+          tab.classList.remove('text-on-surface-variant');
+
+          const filter = tab.getAttribute('data-filter');
+          let visibleCount = 0;
+
+          rows.forEach((row) => {
+            const tier = row.getAttribute('data-tier');
+            if (filter === 'all' || filter === tier) {
+              row.style.display = '';
+              visibleCount++;
+            } else {
+              row.style.display = 'none';
+            }
+          });
+
+          if (summaryText) {
+            summaryText.textContent = `Showing ${visibleCount} matching tier records in current sample`;
+          }
+        });
+      });
+
+      const searchInput = document.getElementById('roster-search');
+      if (searchInput) {
+        searchInput.addEventListener('keyup', (e) => {
+          const q = e.target.value.toLowerCase();
+          let count = 0;
+          rows.forEach((row) => {
+            const text = row.innerText.toLowerCase();
+            if (text.includes(q)) {
+              row.style.display = '';
+              count++;
+            } else {
+              row.style.display = 'none';
+            }
+          });
+          if (summaryText) {
+            summaryText.textContent = `Showing ${count} attendees matching "${q}"`;
+          }
+        });
+      }
+
+      const recalcBtn = document.getElementById('btn-recalc-all');
+      if (recalcBtn) {
+        recalcBtn.addEventListener('click', () => {
+          const originalText = recalcBtn.innerHTML;
+          recalcBtn.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">progress_activity</span> Syncing Zoom Nodes...';
+          recalcBtn.disabled = true;
+          setTimeout(() => {
+            recalcBtn.innerHTML = '<span class="material-symbols-outlined text-[18px] text-secondary">check_circle</span> Cohorts Up to Date';
+            setTimeout(() => {
+              recalcBtn.innerHTML = originalText;
+              recalcBtn.disabled = false;
+            }, 1800);
+          }, 900);
+        });
+      }
+    })();
+  </script>
+</div></main></div><!-- demo-chrome --><style>.sr-only:not(input):not(select):not(textarea){left:0;top:0}</style><div id="demo-switcher" style="position:fixed;right:16px;bottom:16px;z-index:9999;font:500 12px/1.4 Inter,system-ui,sans-serif;"><details style="background:#fff;border:1px solid #c7c4d8;border-radius:10px;box-shadow:0 8px 30px rgba(11,28,48,.18);max-width:340px;overflow:hidden"><summary style="cursor:pointer;padding:9px 13px;list-style:none;color:#3525cd;font-weight:600">All 20 screens</summary><div style="max-height:62vh;overflow:auto;padding:4px 0 8px"><a href="../index.html" style="display:block;padding:6px 13px;color:#464555;text-decoration:none">← Contact sheet</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — the eight main screens</div><a href="dashboard.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Dashboard - Engage</a><a href="contacts.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Contacts & Audience CRM - Engage</a><a href="journeys.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Automated Journeys - Engage</a><a href="campaigns.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Campaigns & Broadcasts - Engage</a><a href="templates.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Templates & Variable Inspector - Engage</a><a href="analytics.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Analytics & Conversions - Engage</a><a href="integrations.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Integrations & Webinar Liv Mapping - Engage</a><a href="settings.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Settings - Engage</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — journey builder</div><a href="journey-builder.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Visual Journey Builder - Engage</a><a href="journey-builder-spacious.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Engage - Visual Journey Builder (Spacious Canvas)</a><a href="step-branch-rules.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Engage - Step & Branch Rules Configuration</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — modals</div><a href="modal-create-journey.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Create Journey Modal - Engage</a><a href="modal-create-campaign.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Create Campaign Wizard Modal - Engage</a><a href="modal-import-contacts.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Add & Import Contacts Modal - Engage</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">WebinarLiv shell</div><a href="settings-channels.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Settings - Integrations & Channels</a><a href="whatsapp-hub.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">WhatsApp Channel & Operations Hub</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Flow Engine shell</div><a href="flow-builder.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Flow Builder - Visual Automation Orchestrator</a><a href="attendance.html" style="display:block;padding:5px 13px;text-decoration:none;color:#3525cd;background:#e5eeff;font-weight:600">Attendance & Engagement Telemetry</a><a href="exec-logs.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Execution & Delivery Logs</a><a href="database-webhooks.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Database & Webhooks Architecture</a><div style="padding:9px 13px 2px;color:#777587;font-size:10.5px;border-top:1px solid #e5eeff;margin-top:6px">Buttons and filters are simulated — nothing is stored. <a href="../README.md" style="color:#3525cd">What is wired</a></div></div></details></div><script src="../demo.js" data-demo></script><!-- /demo-chrome --></body></html>

@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="settings" data-crumb="Platform / Settings">
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="settings" class="icon icon-sm"></svg>
+            Workspace
+          </div>
+          <h1>Settings</h1>
+          <p>
+            Workspace profile, the Meta WhatsApp Business connection, compliance
+            guardrails, team access and billing.
+          </p>
+        </div>
+        <div class="actions">
+          <button class="btn" data-toast="Changes discarded.">Discard</button>
+          <button class="btn btn-primary" data-toast="Settings saved.">
+            <svg data-icon="check" class="icon icon-sm"></svg> Save changes
+          </button>
+        </div>
+      </div>
+
+      <div class="card" data-tabs>
+        <div class="tabs">
+          <button aria-selected="true" data-panel="workspace">
+            <svg data-icon="building" class="icon icon-sm"></svg> Workspace
+          </button>
+          <button data-panel="channel">
+            <svg data-icon="chat" class="icon icon-sm"></svg> WhatsApp &amp; WABA
+          </button>
+          <button data-panel="team">
+            <svg data-icon="badge" class="icon icon-sm"></svg> Team
+          </button>
+          <button data-panel="billing">
+            <svg data-icon="card" class="icon icon-sm"></svg> Billing
+          </button>
+        </div>
+
+        <!-- Workspace -->
+        <div class="card-body stack" data-tabpanel="workspace">
+          <div class="row">
+            <h2 style="font-size: 15px">Workspace profile</h2>
+            <span class="pill right mono pill-bare">ws_acme_89104</span>
+          </div>
+
+          <div class="grid g2">
+            <div class="field">
+              <label for="ws-name">Workspace name</label>
+              <input class="input" id="ws-name" value="Acme Growth Co" />
+            </div>
+            <div class="field">
+              <label for="ws-domain">Primary domain</label>
+              <input class="input" id="ws-domain" value="https://acmegrowth.io" />
+            </div>
+            <div class="field">
+              <label for="ws-email">Support email</label>
+              <input class="input" id="ws-email" value="support@acmegrowth.io" />
+            </div>
+            <div class="field">
+              <label for="ws-tz">Default timezone</label>
+              <select class="select" id="ws-tz" data-label="Timezone">
+                <option>Asia/Kolkata (IST · UTC+05:30)</option>
+                <option>America/New_York (EST · UTC−05:00)</option>
+                <option>Europe/London (GMT · UTC+00:00)</option>
+                <option>Asia/Singapore (SGT · UTC+08:00)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ws-cur">Reporting currency</label>
+              <select class="select" id="ws-cur" data-label="Currency">
+                <option>USD ($ · US dollar)</option>
+                <option>INR (₹ · Indian rupee)</option>
+                <option>EUR (€ · Euro)</option>
+                <option>GBP (£ · Pound sterling)</option>
+              </select>
+              <span class="hint">
+                Campaign analytics and template cost meters report in this
+                currency.
+              </span>
+            </div>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--line)" />
+
+          <div class="row">
+            <h2 style="font-size: 15px">Compliance guardrails</h2>
+            <span class="pill pill-ok right">Enforced</span>
+          </div>
+
+          <div class="grid g2">
+            <div class="card">
+              <div class="card-body">
+                <div class="lbl">Global opt-out keywords</div>
+                <p class="hint mt-4">
+                  An inbound message matching any of these marks the contact as
+                  do-not-disturb immediately.
+                </p>
+                <div class="row wrap mt-12">
+                  <span class="tag tag-plain">STOP<button><svg data-icon="x" class="icon icon-sm"></svg></button></span>
+                  <span class="tag tag-plain">UNSUBSCRIBE<button><svg data-icon="x" class="icon icon-sm"></svg></button></span>
+                  <span class="tag tag-plain">CANCEL<button><svg data-icon="x" class="icon icon-sm"></svg></button></span>
+                  <span class="tag tag-plain">QUIT<button><svg data-icon="x" class="icon icon-sm"></svg></button></span>
+                  <button class="btn btn-sm" data-toast="Keyword matching is case-insensitive.">
+                    <svg data-icon="plus" class="icon icon-sm"></svg> Add
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-body stack-sm">
+                <div class="row">
+                  <span class="glyph glyph-warn"><svg data-icon="gauge" class="icon icon-sm"></svg></span>
+                  <div>
+                    <div class="t-title">Dispatch throttling</div>
+                    <div class="t-sub">Max 50 messages/second into the Meta safe queue</div>
+                  </div>
+                  <button class="switch right" aria-checked="true" role="switch"
+                    data-toast="Dispatch throttling"></button>
+                </div>
+                <div class="row">
+                  <span class="glyph glyph-warn"><svg data-icon="hourglass" class="icon icon-sm"></svg></span>
+                  <div>
+                    <div class="t-title">24-hour session fallback</div>
+                    <div class="t-sub">
+                      Falls back to <code class="mono">engage_utility_reopen</code>
+                      once the free-form window closes
+                    </div>
+                  </div>
+                  <button class="switch right" aria-checked="true" role="switch"
+                    data-toast="Session fallback"></button>
+                </div>
+                <div class="row">
+                  <span class="glyph"><svg data-icon="shield" class="icon icon-sm"></svg></span>
+                  <div>
+                    <div class="t-title">Quiet hours</div>
+                    <div class="t-sub">Suppress sends 10:00 PM – 8:00 AM recipient local time</div>
+                  </div>
+                  <button class="switch right" aria-checked="true" role="switch"
+                    data-toast="Quiet hours"></button>
+                </div>
+                <div class="row">
+                  <span class="glyph"><svg data-icon="key" class="icon icon-sm"></svg></span>
+                  <div>
+                    <div class="t-title">Hash phone numbers in logs</div>
+                    <div class="t-sub">Applies to audit and webhook logs after 90 days</div>
+                  </div>
+                  <button class="switch right" aria-checked="true" role="switch"
+                    data-toast="Phone hashing"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WhatsApp channel -->
+        <div class="card-body stack" data-tabpanel="channel" hidden>
+          <div class="split">
+            <div class="card">
+              <div class="card-head">
+                <span class="glyph glyph-wa glyph-lg"><svg data-icon="chat"></svg></span>
+                <div>
+                  <h3>Acme Growth Official</h3>
+                  <p class="mono">+1 555-0192</p>
+                </div>
+                <span class="pill pill-ok pill-live right">Healthy</span>
+              </div>
+              <div class="card-body">
+                <dl class="kv">
+                  <div><dt>Connection</dt><dd>Meta Cloud API v21.0</dd></div>
+                  <div><dt>Business Manager ID</dt><dd class="mono">894102948102</dd></div>
+                  <div><dt>WABA ID</dt><dd class="mono">1049281903912</dd></div>
+                  <div><dt>Display name status</dt><dd>Approved</dd></div>
+                  <div><dt>Quality rating</dt><dd><span class="pill pill-ok">High (green)</span></dd></div>
+                  <div><dt>Messaging tier</dt><dd>Tier 1 · 1,000 msgs/day</dd></div>
+                </dl>
+              </div>
+              <div class="card-foot">
+                <a class="btn btn-sm" href="settings-channels.html">
+                  <svg data-icon="plug" class="icon icon-sm"></svg> All channels
+                </a>
+                <a class="btn btn-sm" href="templates.html">
+                  <svg data-icon="file" class="icon icon-sm"></svg> Templates
+                </a>
+                <button class="btn btn-danger btn-sm right" data-toast="Disconnecting stops every journey that sends WhatsApp.">
+                  Disconnect
+                </button>
+              </div>
+            </div>
+
+            <div class="stack">
+              <div class="note">
+                <svg data-icon="info" class="icon icon-sm"></svg>
+                <span>
+                  <b>The customer owns this number.</b> Engage connects through
+                  Meta Embedded Signup, so message costs are billed by Meta to
+                  the workspace’s own business account — not to us.
+                </span>
+              </div>
+              <div class="card">
+                <div class="card-body stack-sm">
+                  <div class="lbl">Webhook</div>
+                  <div class="kv">
+                    <div>
+                      <span class="k">Callback URL</span>
+                      <span class="v mono">…/webhooks/whatsapp</span>
+                    </div>
+                    <div>
+                      <span class="k">Verify token</span>
+                      <span class="v mono">•••••••••••• 48 chars</span>
+                    </div>
+                    <div>
+                      <span class="k">Last handshake</span>
+                      <span class="v">200 OK · 6h ago</span>
+                    </div>
+                  </div>
+                  <button class="btn btn-sm" data-toast="Handshake returned 200 with the challenge echoed.">
+                    <svg data-icon="sync" class="icon icon-sm"></svg> Re-verify webhook
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Team -->
+        <div data-tabpanel="team" hidden>
+          <div class="card-body stack">
+            <div class="row">
+              <h2 style="font-size: 15px">Inbox SLA</h2>
+              <span class="pill pill-ok right">Enforced</span>
+            </div>
+            <div class="grid g3">
+              <div class="field">
+                <label for="sla-first">First reply</label>
+                <select class="select" id="sla-first" data-label="First reply SLA">
+                  <option>5 minutes</option>
+                  <option>15 minutes</option>
+                  <option>1 hour</option>
+                </select>
+                <span class="hint">Clock starts when the contact’s message lands.</span>
+              </div>
+              <div class="field">
+                <label for="sla-resolve">Resolve or reopen</label>
+                <select class="select" id="sla-resolve" data-label="Resolve SLA">
+                  <option>24 hours</option>
+                  <option>8 hours</option>
+                  <option>48 hours</option>
+                </select>
+                <span class="hint">Before the WhatsApp window closes on its own.</span>
+              </div>
+              <div class="field">
+                <label for="sla-route">New conversations</label>
+                <select class="select" id="sla-route" data-label="Routing">
+                  <option>Round-robin across inbox agents</option>
+                  <option>Leave unassigned</option>
+                  <option>Always assign to Ganesh S P</option>
+                </select>
+                <span class="hint">4 conversations are currently waiting on this.</span>
+              </div>
+            </div>
+            <div class="row">
+              <span>
+                <span class="lbl">Pause journeys while an agent is in the thread</span>
+                <p class="hint">Holds automated sends for 24 hours after a human reply.</p>
+              </span>
+              <button class="switch right" aria-checked="true" data-toast="Journey pause"></button>
+            </div>
+          </div>
+          <div class="toolbar">
+            <h2 style="font-size: 15px">Team access</h2>
+            <button class="btn btn-primary btn-sm right" data-toast="Invite sent by email.">
+              <svg data-icon="user-plus" class="icon icon-sm"></svg> Invite member
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Member</th>
+                  <th>Role</th>
+                  <th>Inbox</th>
+                  <th>Open now</th>
+                  <th class="t-actions"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar">GS</span>
+                      <span>
+                        <div class="t-title">Ganesh S P</div>
+                        <div class="t-sub">ganesh@acmegrowth.io</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill pill-info">Owner / Admin</span></td>
+                  <td class="muted">Assigned + unassigned</td>
+                  <td class="t-num">3</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="You cannot change your own owner role.">
+                      <svg data-icon="dots" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar avatar-slate">PI</span>
+                      <span>
+                        <div class="t-title">Priya Iyer</div>
+                        <div class="t-sub">priya@acmegrowth.io</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill">Inbox agent</span></td>
+                  <td class="muted">Assigned to her only</td>
+                  <td class="t-num">1</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Change role, resend invite, remove.">
+                      <svg data-icon="dots" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar avatar-slate">SL</span>
+                      <span>
+                        <div class="t-title">Sarah Lin</div>
+                        <div class="t-sub">sarah@acmegrowth.io</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill">Growth marketer</span></td>
+                  <td class="muted">Journeys and campaigns, no inbox</td>
+                  <td class="t-num">0</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Change role, resend invite, remove.">
+                      <svg data-icon="dots" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar avatar-slate">DT</span>
+                      <span>
+                        <div class="t-title">Dev team</div>
+                        <div class="t-sub">webhooks@acmegrowth.io</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill">Engineer</span></td>
+                  <td class="muted">API and integrations only</td>
+                  <td class="t-num">0</td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Change role, resend invite, remove.">
+                      <svg data-icon="dots" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Billing -->
+        <div class="card-body stack" data-tabpanel="billing" hidden>
+          <div class="split">
+            <div class="card">
+              <div class="card-head">
+                <span class="glyph glyph-brand glyph-lg"><svg data-icon="card"></svg></span>
+                <div>
+                  <h3>Engage Growth Pro</h3>
+                  <p>Billed monthly · next charge October 1, 2026</p>
+                </div>
+                <span class="pill pill-ok right">Active</span>
+              </div>
+              <div class="card-body stack-sm">
+                <div class="metric-value">$149<span class="muted" style="font-size: 14px; font-weight: 400"> / month</span></div>
+
+                <div class="mt-12">
+                  <div class="bar-head">
+                    Inbound webhook events <b>31,480 / 50,000</b>
+                  </div>
+                  <div class="meter mt-8"><span style="width: 63%"></span></div>
+                </div>
+                <div class="mt-12">
+                  <div class="bar-head">
+                    Outbound WhatsApp messages <b>18,420 / 30,000</b>
+                  </div>
+                  <div class="meter meter-wa mt-8"><span style="width: 61%"></span></div>
+                </div>
+              </div>
+              <div class="card-foot">
+                <button class="btn btn-sm" data-toast="Plan comparison is not part of this mockup set.">Change plan</button>
+                <button class="btn btn-sm" data-toast="Opens the payment portal.">Payment &amp; invoices</button>
+              </div>
+            </div>
+
+            <div class="note note-warn">
+              <svg data-icon="info" class="icon icon-sm"></svg>
+              <span>
+                <b>Message costs are not on this invoice.</b> Meta bills
+                per-conversation charges directly to the workspace’s own
+                WhatsApp Business account. This subscription covers Engage only.
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

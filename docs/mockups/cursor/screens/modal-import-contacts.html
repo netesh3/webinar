@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Add &amp; import contacts · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="modal-import-contacts" data-crumb="Contacts / Import">
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="users" class="icon icon-sm"></svg>
+            Audience
+          </div>
+          <h1>Contacts</h1>
+          <p>Every WhatsApp-reachable person in the workspace.</p>
+        </div>
+      </div>
+      <div class="grid g4">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="users"></svg> Total audience</div>
+          <div class="metric-value">24,892</div>
+          <div class="metric-foot">12.4% growth this month</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="verified"></svg> Opt-in rate</div>
+          <div class="metric-value">96.8%</div>
+          <div class="metric-foot">24,096 verified on WABA</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="route"></svg> In a journey</div>
+          <div class="metric-value">8,412</div>
+          <div class="metric-foot">across 6 active automations</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="gauge"></svg> Quality rating</div>
+          <div class="metric-value">High</div>
+          <div class="metric-foot">Tier 1 · 1,000 msgs/day</div>
+        </div>
+      </div>
+    </main>
+
+    <div class="overlay">
+      <div class="modal">
+        <div class="modal-head">
+          <span class="glyph glyph-brand glyph-lg"><svg data-icon="user-plus"></svg></span>
+          <div>
+            <h2>Add contacts</h2>
+            <p>
+              Upload a file, sync from a connected source, or add one number by
+              hand. Every route checks opt-in before a journey may message.
+            </p>
+          </div>
+          <button class="icon-btn" data-close title="Close">
+            <svg data-icon="x"></svg>
+          </button>
+        </div>
+
+        <div class="modal-body stack" data-tabs>
+          <div class="seg">
+            <button aria-selected="true" data-panel="csv">Upload a file</button>
+            <button data-panel="sync">Sync an integration</button>
+            <button data-panel="single">Single contact</button>
+          </div>
+
+          <!-- CSV -->
+          <div class="stack" data-tabpanel="csv">
+            <section class="card">
+              <div class="card-head">
+                <span class="glyph glyph-wa glyph-lg"><svg data-icon="sheet"></svg></span>
+                <div>
+                  <h3 class="mono">webinar_registrants_sep26.csv</h3>
+                  <p>1.4 MB · 248 clean records · UTF-8, comma delimited</p>
+                </div>
+                <button class="btn btn-sm right" data-toast="File picker would open here.">
+                  <svg data-icon="sync" class="icon icon-sm"></svg> Replace
+                </button>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <div>
+                  <h3>Column mapping</h3>
+                  <p>Matched against the contact schema</p>
+                </div>
+                <span class="pill pill-ok right">4 of 4 mapped</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>CSV header</th>
+                      <th></th>
+                      <th>Contact attribute</th>
+                      <th>Type</th>
+                      <th>Match</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="mono">Full Name</td>
+                      <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                      <td class="t-title">full_name</td>
+                      <td class="muted">String</td>
+                      <td><span class="pill pill-ok">Auto-matched</span></td>
+                    </tr>
+                    <tr>
+                      <td class="mono">WhatsApp Phone</td>
+                      <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                      <td class="t-title">phone <span class="dim">primary identifier</span></td>
+                      <td class="muted">E.164</td>
+                      <td><span class="pill pill-ok">Reformatted</span></td>
+                    </tr>
+                    <tr>
+                      <td class="mono">Email Address</td>
+                      <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                      <td class="t-title">email</td>
+                      <td class="muted">Email</td>
+                      <td><span class="pill pill-ok">Auto-matched</span></td>
+                    </tr>
+                    <tr>
+                      <td class="mono">Join Timestamp</td>
+                      <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                      <td class="t-title">registered_at</td>
+                      <td class="muted">Datetime</td>
+                      <td><span class="pill pill-ok">Auto-matched</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="card-foot">
+                <button class="btn btn-sm" data-toast="Shows the first 20 rows exactly as parsed.">
+                  <svg data-icon="eye" class="icon icon-sm"></svg> View raw sample
+                </button>
+              </div>
+            </section>
+
+            <div class="grid g2">
+              <section class="card">
+                <div class="card-body stack-sm">
+                  <div class="lbl">Tags to apply</div>
+                  <div class="row wrap">
+                    <span class="tag tag-plain">Webinar-Sep26<button><svg data-icon="x" class="icon icon-sm"></svg></button></span>
+                    <span class="tag tag-plain">Paid-cohort<button><svg data-icon="x" class="icon icon-sm"></svg></button></span>
+                    <button class="btn btn-sm" data-toast="Tags drive audience filters immediately.">
+                      <svg data-icon="plus" class="icon icon-sm"></svg> Add tag
+                    </button>
+                  </div>
+                  <span class="hint">
+                    Tags take effect as soon as the import commits, so any
+                    tag-triggered journey starts straight away.
+                  </span>
+                </div>
+              </section>
+
+              <section class="card">
+                <div class="card-body stack-sm">
+                  <div class="field">
+                    <label for="on-import">On import</label>
+                    <select class="select" id="on-import" data-label="On import">
+                      <option>Enrol in “Webinar registration &amp; onboarding”</option>
+                      <option>Enrol in “New lead welcome &amp; opt-in”</option>
+                      <option>Update records only — do not trigger journeys</option>
+                      <option>Send an opt-in verification message</option>
+                    </select>
+                  </div>
+                  <div class="note">
+                    <svg data-icon="route" class="icon icon-sm"></svg>
+                    <span>
+                      Contacts begin at step 1,
+                      <b>“Send community invite”</b>.
+                    </span>
+                  </div>
+                  <div class="field">
+                    <label for="dupes">Duplicate handling</label>
+                    <select class="select" id="dupes" data-label="Duplicate handling">
+                      <option>Update the existing record, matched on E.164 phone</option>
+                      <option>Skip rows that already exist</option>
+                      <option>Create a second record</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="note note-warn">
+              <button class="check" aria-checked="true" role="checkbox" data-toast="Consent acknowledgement">
+                <svg data-icon="check" class="icon"></svg>
+              </button>
+              <span>
+                <b>Consent acknowledgement.</b> I confirm all 248 contacts
+                explicitly opted in to WhatsApp messages from this business, per
+                Meta’s WhatsApp Business policy. A high block rate downgrades
+                the messaging tier for every journey in the workspace.
+              </span>
+            </div>
+          </div>
+
+          <!-- Integration sync -->
+          <div class="stack-sm" data-tabpanel="sync" hidden data-radiogroup>
+            <button class="radio-card" aria-checked="true">
+              <span class="glyph glyph-brand"><svg data-icon="video" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Webinar Liv</h4>
+                <p>
+                  1,482 registrants across 6 connected webinars. Syncs
+                  attendance and watch duration too.
+                </p>
+              </span>
+            </button>
+            <button class="radio-card">
+              <span class="glyph"><svg data-icon="sheet" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Google Sheets</h4>
+                <p>Not connected — authorise the connector first.</p>
+              </span>
+            </button>
+            <button class="radio-card">
+              <span class="glyph"><svg data-icon="webhook" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Custom webhook</h4>
+                <p>Post JSON to a signed endpoint and contacts appear here.</p>
+              </span>
+            </button>
+          </div>
+
+          <!-- Single -->
+          <div class="grid g2" data-tabpanel="single" hidden>
+            <div class="field">
+              <label for="s-name">Full name</label>
+              <input class="input" id="s-name" placeholder="Rachel Dawson" />
+            </div>
+            <div class="field">
+              <label for="s-phone">WhatsApp number</label>
+              <input class="input" id="s-phone" placeholder="+14155552671" />
+              <span class="hint">Must be E.164, including the country code.</span>
+            </div>
+            <div class="field">
+              <label for="s-email">Email</label>
+              <input class="input" id="s-email" placeholder="rachel@acmegrowth.io" />
+            </div>
+            <div class="field">
+              <label for="s-source">Source</label>
+              <select class="select" id="s-source" data-label="Source">
+                <option>Manual entry</option>
+                <option>Phone call</option>
+                <option>Event booth</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-foot">
+          <button class="btn" data-close>Cancel</button>
+          <a class="btn btn-primary spacer" href="contacts.html">
+            <svg data-icon="bolt" class="icon icon-sm"></svg>
+            Import 248 contacts
+          </a>
+        </div>
+      </div>
+    </div>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

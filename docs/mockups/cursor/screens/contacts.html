@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Contacts · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="contacts" data-crumb="Platform / Contacts">
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="users" class="icon icon-sm"></svg>
+            Audience
+          </div>
+          <h1>Contacts</h1>
+          <p>
+            Every WhatsApp-reachable person in the workspace — opt-in, owner,
+            and the lifecycle stage the team is working.
+          </p>
+        </div>
+        <div class="actions">
+          <a class="btn" href="modal-import-contacts.html">
+            <svg data-icon="upload" class="icon icon-sm"></svg> Import
+          </a>
+          <a class="btn btn-primary" href="modal-import-contacts.html">
+            <svg data-icon="user-plus" class="icon icon-sm"></svg> Add contact
+          </a>
+        </div>
+      </div>
+
+      <div class="grid g4">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="users"></svg> Total audience</div>
+          <div class="metric-value">24,892</div>
+          <div class="metric-foot">
+            <span class="delta delta-up">
+              <svg data-icon="arrow-up" class="icon icon-sm"></svg> 12.4%
+            </span>
+            this month
+          </div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="verified"></svg> Opt-in rate</div>
+          <div class="metric-value">96.8%</div>
+          <div class="metric-foot">24,096 verified on WABA</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="route"></svg> In a journey</div>
+          <div class="metric-value">8,412</div>
+          <div class="metric-foot">across 6 active automations</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="gauge"></svg> Quality rating</div>
+          <div class="metric-value">High</div>
+          <div class="metric-foot">Tier 1 · 1,000 msgs/day</div>
+        </div>
+      </div>
+
+      <div class="split split-wide mt-16">
+        <section class="card" data-tabs>
+          <div class="tabs">
+            <button aria-selected="true" data-panel="all">
+              All <span class="count">24,892</span>
+            </button>
+            <button data-panel="all">Opted in <span class="count">24,096</span></button>
+            <button data-panel="all">Pending <span class="count">634</span></button>
+            <button data-panel="all">Opted out <span class="count">162</span></button>
+          </div>
+          <div class="toolbar">
+            <label class="search">
+              <svg data-icon="search" class="icon icon-sm"></svg>
+              <input class="input" type="search" placeholder="Name, phone or email" />
+            </label>
+            <label class="inline-field">
+              Source
+              <select class="select" data-label="Source">
+                <option>All sources</option>
+                <option>Webinar Liv</option>
+                <option>Landing form</option>
+                <option>Google Sheets</option>
+                <option>API webhook</option>
+                <option>Manual import</option>
+              </select>
+            </label>
+            <label class="inline-field">
+              Owner
+              <select class="select" data-label="Owner">
+                <option>All owners</option>
+                <option>Ganesh S P</option>
+                <option>Priya Iyer</option>
+                <option>Sarah Lin</option>
+                <option>Unassigned</option>
+              </select>
+            </label>
+            <label class="inline-field">
+              Stage
+              <select class="select" data-label="Stage">
+                <option>All stages</option>
+                <option>Lead</option>
+                <option>Registered</option>
+                <option>Attended</option>
+                <option>Customer</option>
+                <option>Churned</option>
+              </select>
+            </label>
+            <button class="btn btn-sm right" data-toast="Export queued — 24,892 rows as CSV.">
+              <svg data-icon="download" class="icon icon-sm"></svg> Export
+            </button>
+          </div>
+          <div class="table-wrap" data-tabpanel="all">
+            <table>
+              <thead>
+                <tr>
+                  <th>Contact</th>
+                  <th>Stage</th>
+                  <th>Owner</th>
+                  <th>Opt-in</th>
+                  <th class="t-actions"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar">RS</span>
+                      <span>
+                        <div class="t-title">Rahul Sharma</div>
+                        <div class="t-sub mono">+91 98765 43210</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill pill-ok pill-bare">Attended</span></td>
+                  <td class="muted">Ganesh S P</td>
+                  <td><span class="pill pill-ok">Opted in</span></td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Opening Rahul Sharma.">
+                      <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar">PM</span>
+                      <span>
+                        <div class="t-title">Priya Menon</div>
+                        <div class="t-sub mono">+91 91234 56789</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill pill-info pill-bare">Customer</span></td>
+                  <td class="muted">Sarah Lin</td>
+                  <td><span class="pill pill-ok">Opted in</span></td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Opening Priya Menon.">
+                      <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar">AV</span>
+                      <span>
+                        <div class="t-title">Amit Verma</div>
+                        <div class="t-sub mono">+91 99887 77665</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill pill-bare">Lead</span></td>
+                  <td class="muted">Ganesh S P</td>
+                  <td><span class="pill pill-ok">Opted in</span></td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Opening Amit Verma.">
+                      <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar">NG</span>
+                      <span>
+                        <div class="t-title">Neha Gupta</div>
+                        <div class="t-sub mono">+91 90123 45678</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill pill-warn pill-bare">Registered</span></td>
+                  <td class="muted">Unassigned</td>
+                  <td><span class="pill pill-warn">Pending</span></td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Opening Neha Gupta.">
+                      <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar">VR</span>
+                      <span>
+                        <div class="t-title">Vikram Rao</div>
+                        <div class="t-sub mono">+91 98765 12340</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill pill-ok pill-bare">Attended</span></td>
+                  <td class="muted">Unassigned</td>
+                  <td><span class="pill pill-ok">Opted in</span></td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Opening Vikram Rao.">
+                      <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar">AD</span>
+                      <span>
+                        <div class="t-title">Ananya Deshmukh</div>
+                        <div class="t-sub mono">+91 97112 34567</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill pill-bare">Lead</span></td>
+                  <td class="muted">Priya Iyer</td>
+                  <td><span class="pill pill-ok">Opted in</span></td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Opening Ananya Deshmukh.">
+                      <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="cell">
+                      <span class="avatar avatar-slate">KM</span>
+                      <span>
+                        <div class="t-title">Karan Malhotra</div>
+                        <div class="t-sub mono">+91 98200 99881</div>
+                      </span>
+                    </div>
+                  </td>
+                  <td><span class="pill pill-bad pill-bare">Churned</span></td>
+                  <td class="muted">Unassigned</td>
+                  <td><span class="pill pill-bad">Opted out</span></td>
+                  <td class="t-actions">
+                    <button class="icon-btn" data-toast="Karan opted out — messaging is blocked.">
+                      <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-foot">
+            Showing <b>1–7</b> of 24,892
+            <span class="right row">
+              <button class="btn btn-sm" data-toast="Already on the first page.">
+                <svg data-icon="chevron-left" class="icon icon-sm"></svg> Prev
+              </button>
+              <span class="mono">Page 1 of 3,556</span>
+              <button class="btn btn-sm" data-toast="Pagination is illustrative in this mockup.">
+                Next <svg data-icon="chevron-right" class="icon icon-sm"></svg>
+              </button>
+            </span>
+          </div>
+        </section>
+
+        <!-- Detail rail. Selecting a row in the real product swaps this panel. -->
+        <section class="card" data-tabs>
+          <div class="card-head">
+            <span class="avatar">RS</span>
+            <div>
+              <h2>Rahul Sharma</h2>
+              <p class="mono">+91 98765 43210</p>
+            </div>
+            <button class="icon-btn right" data-toast="Closing the detail rail.">
+              <svg data-icon="x" class="icon icon-sm"></svg>
+            </button>
+          </div>
+          <div class="tabs">
+            <button aria-selected="true" data-panel="profile">Profile</button>
+            <button data-panel="messages">Messages</button>
+            <button data-panel="activity">Activity</button>
+          </div>
+          <div class="card-body stack" data-tabpanel="profile">
+            <dl class="kv">
+              <div><dt>Email</dt><dd>rahul@example.com</dd></div>
+              <div><dt>Source</dt><dd>Webinar Liv</dd></div>
+              <div>
+                <dt>Stage</dt>
+                <dd>
+                  <select class="select" data-label="Stage" style="width: auto; height: 28px">
+                    <option>Attended</option>
+                    <option>Lead</option>
+                    <option>Registered</option>
+                    <option>Customer</option>
+                    <option>Churned</option>
+                  </select>
+                </dd>
+              </div>
+              <div>
+                <dt>Owner</dt>
+                <dd>
+                  <select class="select" data-label="Owner" style="width: auto; height: 28px">
+                    <option>Ganesh S P</option>
+                    <option>Priya Iyer</option>
+                    <option>Sarah Lin</option>
+                    <option>Unassigned</option>
+                  </select>
+                </dd>
+              </div>
+              <div><dt>WhatsApp</dt><dd><span class="pill pill-ok">Opted in</span></dd></div>
+              <div><dt>Session window</dt><dd>Open · 19h left</dd></div>
+              <div><dt>Lifetime messages</dt><dd>16 sent · 14 read</dd></div>
+            </dl>
+
+            <div>
+              <div class="lbl">Tags</div>
+              <div class="row wrap mt-8">
+                <span class="tag tag-plain">Webinar-Sep26<button><svg data-icon="x" class="icon icon-sm"></svg></button></span>
+                <span class="tag tag-plain">Attended<button><svg data-icon="x" class="icon icon-sm"></svg></button></span>
+                <button class="btn btn-sm" data-toast="Tag picker is not wired in this mockup.">
+                  <svg data-icon="plus" class="icon icon-sm"></svg> Add tag
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-body stack-sm" data-tabpanel="messages" hidden>
+            <p class="hint">Same thread as the inbox, stored on the person.</p>
+            <div class="msg msg-out" style="max-width: 100%">
+              <div class="msg-from">
+                <svg data-icon="route" class="icon icon-sm"></svg>
+                Journey · 2-stage reminder
+              </div>
+              <p>Hey <b>Rahul</b> — we go live in 15 minutes.</p>
+              <div class="msg-meta">6:45 PM · we_are_live_urgent</div>
+            </div>
+            <div class="msg msg-in" style="max-width: 100%">
+              <p>Can I get the workbook before we start?</p>
+              <div class="msg-meta">6:58 PM</div>
+            </div>
+            <div class="msg msg-out" style="max-width: 100%">
+              <div class="msg-from">
+                <svg data-icon="user-plus" class="icon icon-sm"></svg>
+                Ganesh S P
+              </div>
+              <p>Of course — page 4 has the audit framework.</p>
+              <div class="msg-meta">7:00 PM</div>
+            </div>
+            <a class="btn btn-sm btn-block" href="inbox.html">
+              <svg data-icon="inbox" class="icon icon-sm"></svg> Open in inbox
+            </a>
+          </div>
+
+          <div class="card-body" data-tabpanel="activity" hidden>
+            <ul class="feed plain">
+              <li>
+                <span class="glyph glyph-wa">
+                  <svg data-icon="video" class="icon icon-sm"></svg>
+                </span>
+                <p>Attended <b>AI Marketing Masterclass</b> · 47 min</p>
+                <time>Sep 25</time>
+              </li>
+              <li>
+                <span class="glyph glyph-brand">
+                  <svg data-icon="user-check" class="icon icon-sm"></svg>
+                </span>
+                <p>Assigned to <b>Ganesh S P</b> · stage Attended</p>
+                <time>Sep 25</time>
+              </li>
+              <li>
+                <span class="glyph glyph-wa">
+                  <svg data-icon="chat" class="icon icon-sm"></svg>
+                </span>
+                <p>Joined the VIP WhatsApp community</p>
+                <time>Sep 24</time>
+              </li>
+              <li>
+                <span class="glyph glyph-brand">
+                  <svg data-icon="user-plus" class="icon icon-sm"></svg>
+                </span>
+                <p>Registered via Webinar Liv form</p>
+                <time>Sep 18</time>
+              </li>
+            </ul>
+          </div>
+          <div class="card-foot">
+            <a class="btn btn-wa btn-block" href="inbox.html">
+              <svg data-icon="chat" class="icon icon-sm"></svg> Open conversation
+            </a>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

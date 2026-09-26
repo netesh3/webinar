@@ -1,0 +1,182 @@
+forum
+Engage
+Acme
+arrow_drop_down
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+insights
+Analytics
+extension
+Integrations
+settings
+Settings
+WABA Connected
++1 555-0192
+Healthy
+person
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help_outline
+notifications
+add
+New Broadcast
+person
+Journeys
+/
+Webinar End-to-End Automation & Follow-up
+Active • Live (248 enrolled)
+gpp_maybe
+Stop Conditions (3 rules)
+receipt_long
+Activity Log
+play_arrow
+Test Journey
+Save Draft
+publish
+Publish Changes
+add
+100%
+remove
+crop_free
+map
+bolt
+Trigger
+ID #TRIG-01
+Webinar Registration
+Triggered instantly when attendee registers in Webinar Liv (AI Marketing Masterclass)
+sync
+Webinar Liv Sync
+1,482 Enrolled Total
+Realtime Webhook active
+fact_check
+Verification Step
+Check WhatsApp Community Status
+Verifies if recipient phone number already belongs to VIP Community group
+Runtime Query
+call_split
+Is already in WhatsApp Community?
+NO • Not Joined
+chat
+Selected Action
+Send WhatsApp Utility
+"Join WhatsApp Community"
+join_community_v2
+1-tap group invite
+YES • Already Joined
+event_available
+Alternative Path
+Send Calendar Invite
+"Add to Google Calendar direct"
+calendar_invite_direct
+Skip community
+hourglass_top
+Timing Condition
+Merged Queue
+Wait until 2 hours before webinar
+T-2 Hours relative to webinar start time (Sep 25, 7:00 PM IST)
+Calculated Dynamic
+expand_more
+notifications_active
+Broadcast Reminder
+Send Webinar Reminder
+"Webinar starts in 2 hours. Have your notes ready!" • Template: webinar_2h_reminder
+99.4% Delivery
+timer
+Timing Condition
+Wait until 30 minutes before webinar
+Relative offset T-30 Minutes before launch (Sep 25, 6:30 PM IST)
+Exact schedule
+sensors
+Urgent Broadcast
+Send "We're Live Soon" Alert
+"We are going live in 30 mins! Tap below to join directly." • Template: webinar_live_soon
+High Priority
+rule
+Webinar Ends → Sync Attendance from Webinar Liv
+Attended (>15 min)
+64%
+Thank You & Resources
+post_webinar_attended
+arrow_downward
+Wait 24h → Follow-up 1
+Briefly (<15 min)
+18%
+Quick Replay & Notes
+post_webinar_brief
+play_circle
+Replay bookmark link
+No Show (0 min)
+18%
+Missed Session Warning
+post_webinar_no_show
+timer_off
+48-hr expiring replay
+add_circle
+Append Next Journey Action
+verified_user
+Global Guardrails Active
+Stop if attendee purchases / converts • If unsubscribed • If contact blocks WABA
+Configure (3)
+tune
+Step Configuration
+Send WhatsApp Message
+Approved
+Template Name
+join_community_v2
+Category & Meta Status
+Utility • En (English)
+Channel Quality Tier
+High (0.01% spam rate)
+Variable Data Mapping
+3 Variables
+{{1}} {{first_name}}
+Recipient's first name
+person
+Contact.FirstName
+{{2}} {{webinar_name}}
+Event identifier
+AI Marketing Masterclass
+{{3}} {{community_link}}
+Group URL Target
+chat.whatsapp.com/EngageLive
+Interactive Preview
+smartphone
+WhatsApp iOS/Android
+E
+Engage Events
+verified
+Official Business Account
+videocam
+call
+Today
+Hey Ganesh
+! 🚀
+You're registered for the AI Marketing Masterclass
+this Thursday at 7:00 PM IST.
+Join our private VIP WhatsApp Community to get backstage notes, prompt cheat sheets, and live Q&A access.
+07:01 PM
+done_all
+groups
+Join WhatsApp Community
+edit
+Edit Template
+send_to_mobile
+Test on My Phone
+check
+Save Step Configuration
