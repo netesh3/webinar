@@ -9,8 +9,12 @@
 
 import {
   asBackgroundChoice,
+  backgroundsAvailable,
   describeBackground,
+  describeBackgroundError,
+  isBackgroundAttachAbort,
   VIRTUAL_BACKGROUNDS,
+  virtualBackgroundsEnabled,
 } from "./backgrounds.ts";
 
 let failures = 0;
@@ -69,6 +73,27 @@ console.log("\nasBackgroundChoice");
   eq(asBackgroundChoice(null), { mode: "none" }, "null prefs are off");
 }
 
+console.log("\nvirtualBackgroundsEnabled / backgroundsAvailable");
+
+{
+  const prev = process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS;
+  try {
+    delete process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS;
+    ok(virtualBackgroundsEnabled(), "unset flag keeps the feature on");
+    process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS = "0";
+    ok(!virtualBackgroundsEnabled(), "0 kill-switches the feature");
+    ok(
+      !backgroundsAvailable(),
+      "kill switch makes backgrounds unavailable without probing WebGL2",
+    );
+    process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS = "1";
+    ok(virtualBackgroundsEnabled(), "1 turns the feature back on");
+  } finally {
+    if (prev === undefined) delete process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS;
+    else process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS = prev;
+  }
+}
+
 console.log("\ndescribeBackground");
 
 {
@@ -78,6 +103,136 @@ console.log("\ndescribeBackground");
     describeBackground({ mode: "image", id: "office" }),
     "Office",
     "a still uses its label",
+  );
+}
+
+console.log("\ndescribeBackgroundError");
+
+{
+  const GPU =
+    "Couldn't start the background: your browser ran out of graphics capacity. Close a few tabs and try again.";
+
+  // The report that prompted it, verbatim from the pre-join screen.
+  eq(
+    describeBackgroundError(
+      new Error(
+        "Unable to initialize EGL context. Error querying for GL extensions. INTERNAL: Service kGpuService, a required service, failed to initialize.",
+      ),
+    ),
+    GPU,
+    "MediaPipe's GPU start-up failure is a graphics-capacity sentence",
+  );
+  eq(
+    describeBackgroundError(
+      // CONTEXT_LOST in lib/segmenter.ts, wrapped as createSegmenter wraps it.
+      new Error(
+        "your browser ran out of graphics capacity — too many open tabs are using it. Close a few and try again.",
+        { cause: new Error("emscripten threw") },
+      ),
+    ),
+    GPU,
+    "our own context-lost error reads the same",
+  );
+  eq(
+    describeBackgroundError(
+      new Error("the segmentation model did not load", {
+        cause: new TypeError("Cannot read properties of null (reading 'alpha')"),
+      }),
+    ),
+    GPU,
+    "a context loss is found in the cause, not only the message",
+  );
+  eq(
+    describeBackgroundError(new TypeError("Failed to fetch")),
+    "Couldn't download the background effect. Check your connection and try again.",
+    "a failed download says to check the connection",
+  );
+  eq(
+    describeBackgroundError(
+      new TypeError("Failed to fetch dynamically imported module: /_next/static/chunks/x.js"),
+    ),
+    "Couldn't download the background effect. Check your connection and try again.",
+    "a failed chunk load is a download too",
+  );
+  eq(
+    describeBackgroundError(new Error("background image failed to load: /backgrounds/office.jpg")),
+    "Couldn't load that background image. Try again or pick another one.",
+    "a still that did not load says to pick another",
+  );
+  eq(
+    describeBackgroundError(new Error("callbacks.shift(...) is not a function")),
+    "Couldn't start the background: the effect engine was interrupted. Reload the page and try again.",
+    "Emscripten's half-drained callbacks name a reload, not a vague Retry",
+  );
+  eq(
+    describeBackgroundError(new Error("ImageSegmenter: internal assert failed at line 42")),
+    "Couldn't start the background (ImageSegmenter: internal assert failed at line 42). Try again, or reload the page if it keeps happening.",
+    "an unknown failure keeps a short hint for the next screenshot",
+  );
+  eq(
+    describeBackgroundError(new Error("x".repeat(100))),
+    `Couldn't start the background (${"x".repeat(71)}…). Try again, or reload the page if it keeps happening.`,
+    "a long unknown message is clipped rather than shown whole",
+  );
+  eq(
+    describeBackgroundError(new Error("WebGL2 is not available"), true),
+    "Couldn't adjust your video: your browser ran out of graphics capacity. Close a few tabs and try again.",
+    "low light on its own does not mention a background",
+  );
+  eq(
+    describeBackgroundError(new TypeError("NetworkError when attempting to fetch resource."), true),
+    "Couldn't load the video adjustment. Check your connection and try again.",
+    "low light on its own has its own download sentence",
+  );
+  eq(
+    describeBackgroundError("kGpuService failed"),
+    GPU,
+    "a thrown string is read like a message",
+  );
+  eq(
+    describeBackgroundError(undefined),
+    "Couldn't start the background. Try again, or reload the page if it keeps happening.",
+    "nothing at all still gets a sentence",
+  );
+  const loop: { message: string; cause?: unknown } = { message: "odd" };
+  loop.cause = loop;
+  eq(
+    describeBackgroundError(loop),
+    "Couldn't start the background (odd | odd | odd | odd | odd). Try again, or reload the page if it keeps happening.",
+    "a cause chain that loops does not hang",
+  );
+  for (const err of [
+    new Error("Unable to initialize EGL context. Error querying for GL extensions. INTERNAL: Service kGpuService, a required service, failed to initialize."),
+  ]) {
+    const said = describeBackgroundError(err);
+    ok(!said.includes("kGpuService"), "GPU dumps never reach the screen", said);
+  }
+  {
+    const said = describeBackgroundError(new Error("x".repeat(400)));
+    ok(
+      said.includes("…") && !said.includes("x".repeat(80)),
+      "a long unknown message is clipped rather than shown whole",
+      said,
+    );
+  }
+}
+
+console.log("\nisBackgroundAttachAbort");
+
+{
+  ok(
+    isBackgroundAttachAbort(
+      new Error("Failed to construct 'MediaStreamTrackProcessor': Input track cannot be ended"),
+    ),
+    "LiveKit's stopped-camera sentence is an attach abort, not a Retry",
+  );
+  ok(
+    isBackgroundAttachAbort(new Error("anything"), true),
+    "an ended track is an attach abort even without that sentence",
+  );
+  ok(
+    !isBackgroundAttachAbort(new Error("callbacks.shift(...) is not a function")),
+    "a real MediaPipe failure is not treated as an attach abort",
   );
 }
 

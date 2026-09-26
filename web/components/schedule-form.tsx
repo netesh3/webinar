@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useMemo, useState } from "react";
-import { Alert, Disclosure, Select, Spinner, Toggle } from "./controls";
+import { Alert, Disclosure, openPickerOnClick, Select, Spinner, Toggle } from "./controls";
 import { useAppConfig, useSession, useToast } from "./providers";
 import { Button, Card, SectionTitle } from "./ui";
 import { PlusIcon, TrashIcon } from "./icons";
@@ -507,6 +507,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
             <input
               id="date"
               type="date"
+              onClick={openPickerOnClick}
               className="field"
               value={form.date}
               onChange={(e) => set("date", e.target.value)}
@@ -527,6 +528,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
             <input
               id="time"
               type="time"
+              onClick={openPickerOnClick}
               className="field"
               value={form.time}
               onChange={(e) => set("time", e.target.value)}
@@ -724,9 +726,16 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
         </div>
       </Card>
 
-      {/* ---- the long tail ---- */}
+      {/* ---- the long tail, open ----
+           Folded by default until now, on the reasoning that it keeps the form short. It
+           does, and the cost is worse: an agenda, the takeaways and six switches including
+           recording and captions are the parts of a webinar a host most wants to set while
+           they are already thinking about it, and behind a chevron they are easy to finish
+           the form without ever seeing. Still a disclosure rather than a plain section, so
+           anyone who does not want it can put it away — and a `details` element remembers
+           nothing, so it comes back open next time, which is the point. */}
       <Card className="p-5">
-        <Disclosure summary="Agenda, takeaways and other options">
+        <Disclosure summary="Agenda, takeaways and other options" defaultOpen>
           <div className="grid gap-4 pt-1">
             <AgendaEditor agenda={form.agenda} onChange={(a) => set("agenda", a)} />
 

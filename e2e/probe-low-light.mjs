@@ -8,11 +8,13 @@
  * the same formula would assert all of it and prove none of it: the thing that ships is a
  * GLSL string compiled by a driver, and `pow` on a half-precision float is not `Math.pow`.
  *
- * Why it does not transcribe. probe-mask.mjs has to copy segmenter.ts's shaders by hand and
- * says what that costs — "a copy that drifts is worse than no test". For a tone curve a
- * drifted copy is worse still, because it would keep passing while the shipped curve
- * clipped. So the curve lives in web/lib/low-light-curve.ts with no imports, and this file
- * imports the exact string the composite embeds. Nothing here can drift.
+ * Why it does not transcribe. The probe that used to test the segmentation chain copied
+ * segmenter.ts's shaders by hand, and the copy drifted until it tested a pipeline that no
+ * longer shipped — "a copy that drifts is worse than no test". For a tone curve a drifted
+ * copy is worse still, because it would keep passing while the shipped curve clipped. So the
+ * curve lives in web/lib/low-light-curve.ts with no imports, and this file imports the exact
+ * string the composite embeds. Nothing here can drift. (probe-background.mjs, which replaced
+ * that probe, avoids the copy the other way: it bundles segmenter.ts whole.)
  *
  * No server and no MediaPipe: the curve knows nothing about where the person is, so this is
  * one shader, one 1x1 framebuffer, and a page in a temp directory.
@@ -243,7 +245,7 @@ writeFileSync(join(root, "index.html"), PAGE);
  *
  * An image loaded from file:// into a canvas taints it, and a tainted canvas refuses
  * toDataURL — so the strip would throw SecurityError on the last line after all the work.
- * Same reason probe-mask.mjs serves its page. */
+ * probe-background.mjs serves its page for the same reason, among others. */
 const PORT = 8677 + (process.pid % 200);
 server = spawn("python3", ["-m", "http.server", String(PORT), "--bind", "127.0.0.1"], {
   cwd: root,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Track } from "livekit-client";
 import { useLocalParticipant } from "@livekit/components-react";
 import { api } from "@/lib/api";
@@ -94,11 +94,13 @@ export function CaptionOverlay() {
   );
 }
 
-export function CaptionsBarButton() {
-  const { permissions, recording, slug, joinKey, realtime, isHost, controls } = useRoomUI();
+/** Keeps on-device recognition running for every publisher while captions are
+ *  on. Mount once in the control bar — not inside More — so closing the menu
+ *  never tears the recogniser down. Renders nothing. */
+export function CaptionsSession() {
+  const { permissions, slug, joinKey, realtime, controls } = useRoomUI();
   const { notify } = useToast();
   const on = controls.captionsEnabled;
-  const [busy, setBusy] = useState(false);
 
   /* Trouble is reported to whoever it happened to, because it is their machine
    * that has to be fixed — a host cannot grant a panelist's microphone from
@@ -129,16 +131,31 @@ export function CaptionsBarButton() {
     report,
   });
 
-  // Renders nothing for the audience, the way RecordButton beside it renders
-  // nothing for anyone who may not record. Called after the hooks above so the
-  // order is the same on every render.
-  if (!isHost) return null;
+  return null;
+}
 
-  async function toggle() {
+/** Host-only More-menu action. Undefined for everyone else — same gate as
+ *  RecordButton: the audience never sees a captions control of their own. */
+export function useCaptionsMoreAction():
+  | {
+      label: string;
+      icon: ReactNode;
+      active: boolean;
+      busy: boolean;
+      title: string;
+      onClick: () => void;
+    }
+  | undefined {
+  const { recording, slug, isHost, controls } = useRoomUI();
+  const { notify } = useToast();
+  const on = controls.captionsEnabled;
+  const [busy, setBusy] = useState(false);
+
+  const toggle = useCallback(async () => {
     setBusy(true);
     try {
       // Written to the API, which persists it and mirrors it into room metadata.
-      // Nothing local is set: this button reacts to the same broadcast as every
+      // Nothing local is set: this control reacts to the same broadcast as every
       // other browser, which is what keeps them in agreement.
       await api.updateControls(slug, { captionsEnabled: !on } satisfies ControlsPatch);
     } catch (err) {
@@ -146,27 +163,25 @@ export function CaptionsBarButton() {
     } finally {
       setBusy(false);
     }
-  }
+  }, [slug, on, notify]);
 
-  return (
-    <button
-      type="button"
-      aria-pressed={on}
-      disabled={busy}
-      aria-label={on ? "Turn captions off for everyone" : "Turn captions on for everyone"}
-      onClick={() => void toggle()}
-      className={`flex h-10 min-w-10 items-center justify-center rounded-lg px-2 text-[11px] font-semibold disabled:opacity-60 ${
-        on ? "bg-brand-soft text-brand" : "text-ink-3 hover:bg-white/10 hover:text-white"
-      }`}
-      title={
-        on && recording
-          ? "Captions are on for everyone. This session is being recorded."
-          : on
-            ? "Captions are on for everyone"
-            : "Turn on captions for everyone"
-      }
-    >
-      CC
-    </button>
-  );
+  if (!isHost) return undefined;
+
+  return {
+    label: "Captions",
+    icon: (
+      <span className="grid size-5 place-items-center text-[11px] font-semibold leading-none">
+        CC
+      </span>
+    ),
+    active: on,
+    busy,
+    title:
+      on && recording
+        ? "Captions are on for everyone. This session is being recorded."
+        : on
+          ? "Captions are on for everyone"
+          : "Turn on captions for everyone",
+    onClick: () => void toggle(),
+  };
 }

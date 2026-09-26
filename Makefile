@@ -7,7 +7,7 @@ export PATH := /opt/homebrew/bin:/opt/homebrew/opt/postgresql@18/bin:$(PATH)
 DB_URL      ?= postgres://webcast:webcast@localhost:5432/webcast?sslmode=disable
 TEST_DB_URL ?= postgres://webcast:webcast@localhost:5432/webcast_test?sslmode=disable
 LIVEKIT_BIN := infra/bin/livekit-server
-LIVEKIT_VER := v1.13.6
+LIVEKIT_VER := v1.13.7
 
 .PHONY: help
 help: ## Show this help
@@ -137,14 +137,21 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# negative one out of storage inverts the presenter's camera. The curve itself is
 	# GLSL and is checked on a real GPU by `make test-low-light`.
 	cd web && node --experimental-strip-types --no-warnings lib/low-light.test.mts
+	# And remembering a closed pop-out during screen share: without it MediaSession
+	# re-opens the window on every switch-away after the user hit X.
+	cd web && node --experimental-strip-types --no-warnings lib/pip.test.mts
 
-.PHONY: test-mask
-test-mask: ## Virtual-background mask check: make test-mask PHOTO=~/some-photo-of-a-person.jpg
+.PHONY: test-background
+test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
 	# Needs a photograph because Chrome's fake camera has no person in it, so the mask is
-	# ~0 everywhere and every geometry bug looks like "nothing to segment". No server
-	# required — the page is assembled from the vendored MediaPipe assets.
+	# ~0 everywhere, every geometry bug looks like "nothing to segment", and "the room is
+	# never shown" passes on a picture with no room to hide. HAIR, a photo of loose hair
+	# against a plain wall, adds the still-edge flicker check. The app's own lib/ code runs,
+	# bundled out of web/node_modules, so install those first. No server and no LiveKit —
+	# the page is served from the vendored MediaPipe assets, and nothing is downloaded.
 	@test -n "$(PHOTO)" || (echo "set PHOTO=<a photo with a person in it>"; exit 2)
-	node e2e/probe-mask.mjs "$(PHOTO)"
+	@test -d web/node_modules || (echo "run: cd web && npm ci"; exit 2)
+	node e2e/probe-background.mjs "$(PHOTO)" $(if $(HAIR),"$(HAIR)")
 
 .PHONY: test-low-light
 test-low-light: ## Low-light curve on a real GPU. Optional: make test-low-light PHOTO=~/photo.jpg

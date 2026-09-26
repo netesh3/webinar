@@ -2430,6 +2430,87 @@ export interface AdminUser {
    */
   features: string[];
 }
+/**
+ *  AdminStats is the admin dashboard's first read.
+ *  *
+ *  * GET /admin/users stops at 200 rows, so a total added up in the browser is
+ *  * already wrong on a larger instance, and GET /admin/webinars returns every
+ *  * webinar in full — panelists, agenda, the report — which is what the
+ *  * management list renders and far more than "how many are live" needs. These
+ *  * are aggregates, a filled-in daily series, and the few rows a glance list
+ *  * actually draws.
+ */
+export interface AdminStats {
+  accounts: number /* int */;
+  hosts: number /* int */;
+  admins: number /* int */;
+  cdnBroadcast: number /* int */;
+  newAccounts7d: number /* int */;
+  webinars: number /* int */;
+  live: number /* int */;
+  scheduled: number /* int */;
+  ended: number /* int */;
+  drafts: number /* int */;
+  /**
+   * Kind counts are the format of the webinar, not its lifecycle. A scheduled
+   * simulive is KindSimulive and StatusScheduled at once; the dashboard shows
+   * both axes because they answer different questions.
+   */
+  kindLive: number /* int */;
+  kindSimulive: number /* int */;
+  kindRecurring: number /* int */;
+  /**
+   * Registrants excludes declined, matching the count on each webinar.
+   */
+  registrants: number /* int */;
+  /**
+   * Attendees is audience identities that joined a room. The att_ prefix is
+   * the same cut SessionReport makes, so a host sitting in their own session
+   * is not counted as an attendee of it.
+   */
+  attendees: number /* int */;
+  /**
+   * Daily is one bucket per UTC day for the last 28 days, including today,
+   * oldest first. Days with nothing are zeros rather than omissions: a chart
+   * that drops the gaps draws a trend the calendar did not have.
+   */
+  daily: AdminDayCount[];
+  liveNow: AdminWebinarGlance[];
+  upcoming: AdminWebinarGlance[];
+  recent: AdminWebinarGlance[];
+}
+/**
+ *  AdminDayCount is one bar of the dashboard's start-day chart.
+ *  *
+ *  * Day is YYYY-MM-DD in UTC. Webinars carry their own zone for the wall clock
+ *  * an audience sees; the chart needs one axis, and UTC is the one that does
+ *  * not depend on which admin opened the page.
+ */
+export interface AdminDayCount {
+  day: string;
+  count: number /* int */;
+}
+/**
+ *  AdminWebinarGlance is the slice of a webinar a dashboard row can render.
+ *  *
+ *  * Not a Webinar. The management list needs the full record; a row that says
+ *  * the topic, when it is, who is hosting it and how many people registered
+ *  * does not, and shipping the rest would put the dashboard back on the
+ *  * payload this endpoint exists to avoid.
+ */
+export interface AdminWebinarGlance {
+  id: string; // slug
+  topic: string;
+  status: string;
+  kind: string;
+  startsAt: string;
+  durationMin: number /* int */;
+  timeZone: string;
+  startedAt?: string;
+  endedAt?: string;
+  hostName: string;
+  registrantCount: number /* int */;
+}
 export interface LoginRequest {
   email: string;
   password: string;

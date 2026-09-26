@@ -4,11 +4,12 @@ import { Track, type LocalVideoTrack } from "livekit-client";
 import { useLocalParticipant } from "@livekit/components-react";
 import {
   asLowLight,
-  backgroundsSupported,
   describeLowLight,
   LOW_LIGHT_DEFAULT_ON,
   LOW_LIGHT_MAX,
   LOW_LIGHT_STEP,
+  useBackgroundsSupported,
+  useVirtualBackgroundsEnabled,
 } from "@/lib/backgrounds";
 import { Alert, Toggle } from "../controls";
 import { useRoomUI } from "./context";
@@ -102,8 +103,13 @@ export function LowLightControl({
 }) {
   const value = asLowLight(raw);
   const on = value > 0;
+  const enabled = useVirtualBackgroundsEnabled();
+  const supported = useBackgroundsSupported();
 
-  if (!backgroundsSupported()) {
+  /* Kill switch: hide entirely. Do not claim the browser needs WebGL2. */
+  if (!enabled) return null;
+
+  if (!supported) {
     return (
       <Alert tone="warn">
         This browser can&apos;t adjust your video. It needs WebGL2 — Chrome, Edge, Firefox
@@ -171,8 +177,9 @@ export function LowLightControl({
 export function LowLightSetting() {
   const { prefs, updatePrefs, permissions } = useRoomUI();
   const track = useCameraTrack();
+  const enabled = useVirtualBackgroundsEnabled();
 
-  if (!permissions.canShareCamera) return null;
+  if (!permissions.canShareCamera || !enabled) return null;
 
   return (
     <section>

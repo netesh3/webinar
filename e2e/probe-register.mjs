@@ -17,7 +17,7 @@
  *
  *   node e2e/probe-register.mjs <slug> open|closed
  *
- * Raw CDP over one websocket, the same shape as probe-mask.mjs: no test-runner dependency to
+ * Raw CDP over one websocket, the same shape as probe-low-light.mjs: no test-runner dependency to
  * install on a machine that is only ever going to run this by hand.
  */
 import { spawn } from "node:child_process";

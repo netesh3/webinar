@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
+import { enableCamera } from "@/lib/backgrounds";
 import { roomOptions, SCREEN_SHARE_PUBLISH, useMediaPreferences } from "@/lib/media";
 import { publishLedger } from "@/lib/republish";
 import {
@@ -488,6 +489,21 @@ function ConnectedRoom({
     entryTracks.current = { audio: entryAudio, video: entryVideo };
   }, [entryAudio, entryVideo]);
 
+  // The background a camera opened here opens with, in a ref for the same reason: changing
+  // it must not re-run publishing.
+  const look = useRef({
+    background: prefs.background,
+    lowLight: prefs.lowLight,
+    backgroundEngine: prefs.backgroundEngine,
+  });
+  useEffect(() => {
+    look.current = {
+      background: prefs.background,
+      lowLight: prefs.lowLight,
+      backgroundEngine: prefs.backgroundEngine,
+    };
+  }, [prefs.background, prefs.lowLight, prefs.backgroundEngine]);
+
   const liveRole = useLiveRole(room, join.role);
   // A co-host is a panelist the host made their equal — everywhere in this
   // component tree that reads `isHost` to decide what to show or allow, a
@@ -870,9 +886,13 @@ function ConnectedRoom({
 
         // An attendee promoted mid-session, or anyone whose pre-join handed over nothing,
         // still needs the devices opened the ordinary way. Sequential, for the
-        // permission-prompt reason above.
+        // permission-prompt reason above. The camera with its background already on, so
+        // the audience's first frame of it is not the room; see openCamera.
         if (startMic && !audio) await room.localParticipant.setMicrophoneEnabled(true);
-        if (startCamera && !video) await room.localParticipant.setCameraEnabled(true);
+        if (startCamera && !video) {
+          const { background, lowLight, backgroundEngine } = look.current;
+          await enableCamera(room.localParticipant, background, lowLight, backgroundEngine);
+        }
       } catch {
         /* A publish that fails is not a connection that failed, and must not be reported as
          * one: the room still works, chat still works, and the honest recovery is the

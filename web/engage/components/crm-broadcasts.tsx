@@ -3,7 +3,7 @@
 import { engageApi } from "../api";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, ConfirmModal, Select, Spinner } from "@/components/controls";
+import { Alert, ConfirmModal, openPickerOnClick, Select, Spinner } from "@/components/controls";
 import {
   BlockedList,
   RefreshTemplates,
@@ -793,6 +793,7 @@ function Composer({
             <input
               id="broadcast-at"
               type="datetime-local"
+              onClick={openPickerOnClick}
               className="field sm:max-w-64"
               min={localNow()}
               value={when.at}

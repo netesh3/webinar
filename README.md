@@ -7,7 +7,7 @@ only; no meetings. Sized for **500 concurrent attendees** per session.
 |---|---|---|
 | Frontend | Next.js 16 · React 19 · Tailwind 4 | MIT |
 | API | Go 1.27 · chi · pgx | MIT / BSD |
-| Media (SFU) | LiveKit 1.13.6 | Apache-2.0 |
+| Media (SFU) | LiveKit 1.13.7 | Apache-2.0 |
 | Database | PostgreSQL 18 | PostgreSQL |
 | Media transport | WebRTC | — |
 

@@ -268,6 +268,18 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+/** "No effect" — the background picker's first tile. Not CameraOffIcon, which it used to
+ *  be and which reads as "turn my camera off" on the one screen where that is a real
+ *  control. */
+export function NoneIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="5.6" x2="18.4" y1="18.4" y2="5.6" />
+    </Icon>
+  );
+}
+
 export function ChevronDownIcon(props: IconProps) {
   return (
     <Icon {...props}>

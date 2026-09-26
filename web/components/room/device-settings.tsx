@@ -2,6 +2,7 @@
 
 import { useRoomContext } from "@livekit/components-react";
 import { useEffect, useState } from "react";
+import { useVirtualBackgroundsEnabled } from "@/lib/backgrounds";
 import { useChatSound } from "@/lib/chat-notify";
 import { deviceLabel, supportsOutputSelection, useDevices } from "@/lib/media";
 import { useWaitingTune } from "@/lib/waiting-tune";
@@ -28,6 +29,7 @@ import { useRoomUI } from "./context";
 export function DeviceSettings() {
   const room = useRoomContext();
   const { prefs, updatePrefs, permissions } = useRoomUI();
+  const effectsEnabled = useVirtualBackgroundsEnabled();
   const { devices, refresh } = useDevices(true);
   const chatSound = useChatSound();
   const waitingTune = useWaitingTune();
@@ -168,16 +170,24 @@ export function DeviceSettings() {
               upload struggles and comes back when it recovers. The reading is below.
             </p>
 
-            <div className="border-t border-line pt-3">
-              <BackgroundPicker />
-            </div>
+            {effectsEnabled && (
+              <>
+                <div className="border-t border-line pt-3">
+                  <BackgroundPicker />
+                </div>
 
-            {/* Below the background rather than above it, because the two share a
-                processor and the order matches what the lift does: with a background on
-                it lights the person, so the thing it depends on is the thing above it. */}
-            <div className="border-t border-line pt-3">
-              <LowLightSetting />
-            </div>
+                {/* Below the background rather than above it, because the two share a
+                    processor and the order matches what the lift does: with a background on
+                    it lights the person, so the thing it depends on is the thing above it.
+                    LiveKit's built-in processor has no low-light API — hide rather than
+                    leave a control that does nothing. */}
+                {prefs.backgroundEngine !== "livekit" && (
+                  <div className="border-t border-line pt-3">
+                    <LowLightSetting />
+                  </div>
+                )}
+              </>
+            )}
 
             <div className="border-t border-line pt-3">
               <NetworkReadout />

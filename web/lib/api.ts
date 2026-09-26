@@ -1,6 +1,7 @@
 import type {
   ChatMessage as ChatTranscriptMessage,
   Account,
+  AdminStats,
   AdminUser,
   AlertsResponse,
   AppConfig,
@@ -583,6 +584,13 @@ export const api = {
     }),
 
   // ---------------------------------------------------------------- admin
+
+  /** Aggregates for the admin dashboard.
+   *
+   *  Not derived here from adminUsers and adminWebinars. The account list is
+   *  capped, and the webinar list is every full record — both the wrong read
+   *  for "how many are live". */
+  adminStats: () => request<AdminStats>("/api/admin/stats", fresh),
 
   /** Every account, for the admin panel. Admin-only server side; `q` filters by
    *  email or name. */

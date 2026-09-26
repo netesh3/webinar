@@ -5,10 +5,12 @@ import {
   useLocalParticipant,
   useRemoteParticipants,
   useRoomContext,
+  useTracks,
 } from "@livekit/components-react";
 import { ConnectionState, Track } from "livekit-client";
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { enableCamera } from "@/lib/backgrounds";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { barSlots, centerBarTools, gridItems, morePanelTools, type ToolId } from "@/lib/tools";
@@ -42,7 +44,7 @@ import { MoreButton, MoreGrid } from "./more-grid";
 import { ReactionPicker } from "./reactions";
 import { RecordButton } from "./recording";
 import { StreamButton } from "./stream-to-youtube";
-import { CaptionsBarButton } from "./caption-overlay";
+import { CaptionsSession, useCaptionsMoreAction } from "./caption-overlay";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
 import { describeMediaError, isScreenShareCancel } from "@/lib/media-errors";
 import { MediaToggle } from "./media-toggle";
@@ -187,8 +189,17 @@ export function ControlBar() {
    *
    * Allowed in previewChrome, unlike Share. There is no LiveKit behind it there so the window
    * opens with no video in it — which is exactly the empty state worth being able to look at,
-   * and reviewing room chrome is what that mode is for. */
-  const pip = usePictureInPicture({ enabled: !connecting });
+   * and reviewing room chrome is what that mode is for.
+   *
+   * shareActive is any screen share in the room, not only our own: the popped-out stage shows
+   * whoever is sharing, and a dismiss has to stick for a viewer of Amlesh's share the same way
+   * it sticks for Amlesh. */
+  const screenShares = useTracks([Track.Source.ScreenShare], { onlySubscribed: true });
+  const pip = usePictureInPicture({
+    enabled: !connecting,
+    shareActive: screenShares.length > 0,
+  });
+  const captionsAction = useCaptionsMoreAction();
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
@@ -373,11 +384,26 @@ export function ControlBar() {
     isMicrophoneEnabled,
   ]);
 
+  // On with the background already applied, so the audience's first frame is not the room.
   const onCameraClick = useCallback(() => {
     void toggle("camera", "Camera", () =>
-      localParticipant.setCameraEnabled(!isCameraEnabled),
+      isCameraEnabled
+        ? localParticipant.setCameraEnabled(false)
+        : enableCamera(
+            localParticipant,
+            prefs.background,
+            prefs.lowLight,
+            prefs.backgroundEngine,
+          ),
     );
-  }, [toggle, localParticipant, isCameraEnabled]);
+  }, [
+    toggle,
+    localParticipant,
+    isCameraEnabled,
+    prefs.background,
+    prefs.lowLight,
+    prefs.backgroundEngine,
+  ]);
 
   const switchCapture = useCallback(
     async (kind: "audioinput" | "videoinput", deviceId: string) => {
@@ -752,7 +778,9 @@ export function ControlBar() {
               anyone the server has not told they may record. */}
           <RecordButton />
           <StreamButton />
-          <CaptionsBarButton />
+          {/* Captions recognition stays mounted for publishers; the host
+              toggle lives in More (captionsAction), not on the standing bar. */}
+          <CaptionsSession />
 
         {centerTools.map((id) => {
           const Icon = tool(id).icon;
@@ -872,6 +900,7 @@ export function ControlBar() {
                     }
                   : undefined
               }
+              captionsAction={captionsAction}
               // While the grid is only open because a drag is in flight, dismissing
               // it is not something the user can ask for — the drag owns it.
               onClose={() => setMoreOpen(false)}
@@ -894,7 +923,7 @@ export function ControlBar() {
         {pip.supported && (
           <button
             type="button"
-            onClick={() => (pip.active ? pip.close() : pip.open())}
+            onClick={() => (pip.active ? pip.close({ dismiss: true }) : pip.open())}
             disabled={connecting}
             aria-label={pip.active ? "Close the floating window" : "Pop out into a floating window"}
             aria-pressed={pip.active}

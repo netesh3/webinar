@@ -241,3 +241,170 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 	}
 	return out, rows.Err()
 }
+
+/* How far back the dashboard's start-day chart looks, and how many rows a
+ * glance list renders. Both are the server's decision: a client that asked
+ * for "the last 400 days" or "every live session in full" would be rebuilding
+ * the list this endpoint exists to avoid, and the chart has one width. */
+const (
+	adminStatsWindowDays = 28
+	adminGlanceLimit     = 5
+)
+
+/* AdminStats is the dashboard's aggregates.
+ *
+ * One round trip for the scalars, then the series, then three short lists.
+ * Splitting them from AdminUsers and AdminWebinars is the point: those two
+ * are shaped for management (a cap on accounts, a full webinar per row) and
+ * a total computed from either is either truncated or enormous.
+ *
+ * The daily buckets are UTC days, including today, with a zero where nothing
+ * starts. Filling the gaps here means the chart cannot invent a bar for a
+ * day the query never returned, and cannot drop a quiet day and make the
+ * previous week look busier than it was.
+ *
+ * Registrants exclude declined, the same cut as the count on a webinar.
+ * Attendees are att_ identities only — a host in their own room is not an
+ * attendee of it, which is the distinction SessionReport already draws.
+ */
+func (s *Store) AdminStats(ctx context.Context) (types.AdminStats, error) {
+	var out types.AdminStats
+	// Empty, not nil: encoding/json renders a nil slice as null, and the
+	// dashboard maps these.
+	out.Daily = []types.AdminDayCount{}
+	out.LiveNow = []types.AdminWebinarGlance{}
+	out.Upcoming = []types.AdminWebinarGlance{}
+	out.Recent = []types.AdminWebinarGlance{}
+
+	err := s.pool.QueryRow(ctx, `
+		SELECT
+		  (SELECT count(*) FROM users),
+		  (SELECT count(*) FILTER (WHERE can_host) FROM users),
+		  (SELECT count(*) FILTER (WHERE is_admin) FROM users),
+		  (SELECT count(*) FILTER (WHERE can_cdn_broadcast) FROM users),
+		  (SELECT count(*) FILTER (WHERE created_at >= now() - interval '7 days') FROM users),
+		  (SELECT count(*) FROM webinars),
+		  (SELECT count(*) FILTER (WHERE status = 'live') FROM webinars),
+		  (SELECT count(*) FILTER (WHERE status = 'scheduled') FROM webinars),
+		  (SELECT count(*) FILTER (WHERE status = 'ended') FROM webinars),
+		  (SELECT count(*) FILTER (WHERE status = 'draft') FROM webinars),
+		  (SELECT count(*) FILTER (WHERE kind = 'live') FROM webinars),
+		  (SELECT count(*) FILTER (WHERE kind = 'simulive') FROM webinars),
+		  (SELECT count(*) FILTER (WHERE kind = 'recurring') FROM webinars),
+		  (SELECT count(*) FROM registrations WHERE state <> 'declined'),
+		  (SELECT count(*) FROM attendance WHERE starts_with(identity, 'att_'))
+	`).Scan(
+		&out.Accounts, &out.Hosts, &out.Admins, &out.CdnBroadcast, &out.NewAccounts7d,
+		&out.Webinars, &out.Live, &out.Scheduled, &out.Ended, &out.Drafts,
+		&out.KindLive, &out.KindSimulive, &out.KindRecurring,
+		&out.Registrants, &out.Attendees,
+	)
+	if err != nil {
+		return types.AdminStats{}, err
+	}
+
+	now := time.Now().UTC()
+	end := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	start := end.AddDate(0, 0, -(adminStatsWindowDays - 1))
+
+	/* Date strings, not timestamps.
+	 *
+	 * A timestamptz cast to date uses the session TimeZone, which would slide
+	 * the window a day for a connection that isn't UTC and disagree with the
+	 * UTC bucketing of starts_at below. A date literal does not have that
+	 * problem, and AT TIME ZONE 'UTC' then means midnight UTC. */
+	rows, err := s.pool.Query(ctx, `
+		SELECT to_char(gs::date, 'YYYY-MM-DD'), COALESCE(c.n, 0)::int
+		  FROM generate_series($1::date, $2::date, interval '1 day') AS gs
+		  LEFT JOIN (
+		    SELECT (w.starts_at AT TIME ZONE 'UTC')::date AS day, count(*)::int AS n
+		      FROM webinars w
+		     WHERE w.starts_at >= ($1::date AT TIME ZONE 'UTC')
+		       AND w.starts_at <  (($2::date + 1) AT TIME ZONE 'UTC')
+		     GROUP BY 1
+		  ) c ON c.day = gs::date
+		 ORDER BY gs`, start.Format("2006-01-02"), end.Format("2006-01-02"))
+	if err != nil {
+		return types.AdminStats{}, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var d types.AdminDayCount
+		if err := rows.Scan(&d.Day, &d.Count); err != nil {
+			return types.AdminStats{}, err
+		}
+		out.Daily = append(out.Daily, d)
+	}
+	if err := rows.Err(); err != nil {
+		return types.AdminStats{}, err
+	}
+
+	out.LiveNow, err = s.adminGlances(ctx,
+		"w.status = 'live'",
+		"w.started_at DESC NULLS LAST, w.starts_at DESC")
+	if err != nil {
+		return types.AdminStats{}, err
+	}
+	out.Upcoming, err = s.adminGlances(ctx,
+		"w.status = 'scheduled'",
+		"w.starts_at ASC")
+	if err != nil {
+		return types.AdminStats{}, err
+	}
+	out.Recent, err = s.adminGlances(ctx,
+		"w.status = 'ended'",
+		"COALESCE(w.ended_at, w.starts_at) DESC")
+	if err != nil {
+		return types.AdminStats{}, err
+	}
+	return out, nil
+}
+
+/* adminGlances loads the rows a dashboard list actually paints.
+ *
+ * where and order are fixed clauses from AdminStats, not request input — a
+ * filter an admin typed belongs on AdminWebinars, which already has one.
+ * The limit is adminGlanceLimit for the same reason the window is fixed.
+ */
+func (s *Store) adminGlances(ctx context.Context, where, order string) ([]types.AdminWebinarGlance, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT w.slug, w.topic, w.status, w.kind,
+		       w.starts_at, w.duration_min, w.time_zone,
+		       w.started_at, w.ended_at,
+		       COALESCE(u.name, ''),
+		       (SELECT count(*) FROM registrations r
+		         WHERE r.webinar_id = w.id AND r.state <> 'declined')
+		  FROM webinars w
+		  JOIN users u ON u.id = w.host_id
+		 WHERE `+where+`
+		 ORDER BY `+order+`
+		 LIMIT $1`, adminGlanceLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []types.AdminWebinarGlance{}
+	for rows.Next() {
+		var (
+			g       types.AdminWebinarGlance
+			starts  time.Time
+			started *time.Time
+			ended   *time.Time
+		)
+		if err := rows.Scan(&g.ID, &g.Topic, &g.Status, &g.Kind,
+			&starts, &g.DurationMin, &g.TimeZone,
+			&started, &ended, &g.HostName, &g.RegistrantCount); err != nil {
+			return nil, err
+		}
+		g.StartsAt = starts.Format(time.RFC3339)
+		if started != nil {
+			g.StartedAt = started.Format(time.RFC3339)
+		}
+		if ended != nil {
+			g.EndedAt = ended.Format(time.RFC3339)
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}

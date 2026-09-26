@@ -2,7 +2,7 @@
 
 import { useRoomContext } from "@livekit/components-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { asLowLight, backgroundsSupported } from "@/lib/backgrounds";
+import { asLowLight, useBackgroundsAvailable } from "@/lib/backgrounds";
 import { useCompact, useMediaToggleSize } from "@/lib/compact";
 import {
   deviceLabel,
@@ -82,6 +82,7 @@ export function MediaToggle({
     supportsOutputSelection,
     () => false,
   );
+  const canBackground = useBackgroundsAvailable();
 
   const isAudio = deviceKind === "audioinput";
   const inputs = isAudio ? devices.audioInput : devices.videoInput;
@@ -203,7 +204,7 @@ export function MediaToggle({
             </>
           )}
 
-          {!isAudio && backgroundsSupported() && (
+          {!isAudio && canBackground && (
             <>
               <div className="my-1 h-px bg-line" />
               <MenuToggle
@@ -229,14 +230,17 @@ export function MediaToggle({
                   further down, under Video settings, for anybody who wants it. The switch
                   is the case this menu is for: mid-webinar, somebody has told the host
                   they look dark, and the fix should be one click from the camera button
-                  they are already next to. */}
-              <MenuToggle
-                checked={asLowLight(prefs.lowLight) > 0}
-                onChange={() =>
-                  updatePrefs({ lowLight: lowLightToggled(prefs.lowLight) })
-                }
-                label="Adjust for low light"
-              />
+                  they are already next to.
+                  Hidden on LiveKit's built-in processor — no low-light API there. */}
+              {prefs.backgroundEngine !== "livekit" && (
+                <MenuToggle
+                  checked={asLowLight(prefs.lowLight) > 0}
+                  onChange={() =>
+                    updatePrefs({ lowLight: lowLightToggled(prefs.lowLight) })
+                  }
+                  label="Adjust for low light"
+                />
+              )}
             </>
           )}
 

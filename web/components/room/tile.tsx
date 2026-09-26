@@ -164,10 +164,12 @@ export function ParticipantTile({
   return (
     <div
       ref={setBox}
-      // size-full, not just relative: the <video> inside is h-full, and h-full
-      // against an auto-height parent collapses to the stream's intrinsic size —
-      // which is what leaves a band of empty black under the speaker.
-      className={`group relative isolate size-full overflow-hidden bg-stage-tile ${
+      // size-full, not just relative: the tile must own the flex/grid area. The <video>
+      // is positioned absolute below so its intrinsic frame size cannot shrink-wrap the
+      // tile — Safari (especially with a SoftSegmenter / canvas.captureStream track) was
+      // sizing the speaker tile to the stream's aspect and leaving stage-coloured bars
+      // down each side. Pre-join avoids that with an aspect-video box; the stage cannot.
+      className={`group relative isolate size-full min-h-0 min-w-0 overflow-hidden bg-stage-tile ${
         fullBleed ? "" : "rounded-xl"
       } outline outline-2 outline-offset-[-2px] transition-[outline-color] duration-200 ${
         /* An outline rather than a border, always present, and only its COLOUR changes.
@@ -211,7 +213,9 @@ export function ParticipantTile({
                strings and never sees an interpolated one, so the utility would simply not be
                generated and the tile would fall back to the browser default of `fill` —
                stretching the picture, which is worse than either option here. */
-            className={`size-full ${
+            /* absolute inset-0: out of flow so the replaced-element intrinsic size cannot
+               dictate the flex item. object-fit still covers/contains inside that box. */
+            className={`absolute inset-0 size-full ${
               isScreen || fit === "contain" ? "object-contain" : "object-cover"
             } ${mirrored ? "-scale-x-100" : ""}`}
           />
@@ -434,7 +438,7 @@ function ZoomableVideo({
   return (
     <div
       ref={box}
-      className={`relative size-full overflow-hidden ${
+      className={`relative size-full min-h-0 min-w-0 overflow-hidden ${
         zoomed ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
       }`}
       // Zoomed in, this resets. At rest it switches fit and fill — the same two
@@ -482,7 +486,7 @@ function ZoomableVideo({
       }}
     >
       <div
-        className="size-full"
+        className="absolute inset-0 size-full"
         style={{
           transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.scale})`,
           // No transition while dragging, or the picture lags the pointer.
@@ -491,7 +495,7 @@ function ZoomableVideo({
       >
         <VideoTrack
           trackRef={{ participant, source, publication }}
-          className={`size-full ${fill ? "object-cover" : "object-contain"}`}
+          className={`absolute inset-0 size-full ${fill ? "object-cover" : "object-contain"}`}
         />
       </div>
 
