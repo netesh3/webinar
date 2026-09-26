@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/netkumar/webcast/api/internal/authctx"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/httpx"
@@ -19,7 +21,6 @@ import (
 type ctxKey string
 
 const (
-	userCtxKey ctxKey = "user"
 	slugCtxKey ctxKey = "slug"
 	// roleCtxKey carries how the caller is entitled to this webinar's stage —
 	// host or panelist. Set by requireStage.
@@ -30,10 +31,8 @@ const (
 	trueOwnerCtxKey ctxKey = "trueOwner"
 )
 
-func userFromContext(ctx context.Context) store.User {
-	u, _ := ctx.Value(userCtxKey).(store.User)
-	return u
-}
+// userFromContext is authctx.User; kept as the name the webinar handlers already use.
+func userFromContext(ctx context.Context) store.User { return authctx.User(ctx) }
 
 // requireUser rejects anything without a valid session cookie. It says nothing
 // about what the account may do — that is requireHost's job.
@@ -43,7 +42,7 @@ func (s *Server) requireUser(next http.Handler) http.Handler {
 		if !ok {
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userCtxKey, user)))
+		next.ServeHTTP(w, r.WithContext(authctx.WithUser(r.Context(), user)))
 	})
 }
 
@@ -71,7 +70,7 @@ func (s *Server) requireHost(next http.Handler) http.Handler {
 				"This account can't host webinars. An administrator has to grant hosting access.")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userCtxKey, user)))
+		next.ServeHTTP(w, r.WithContext(authctx.WithUser(r.Context(), user)))
 	})
 }
 
@@ -219,7 +218,7 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 				"This account isn't an administrator.")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userCtxKey, user)))
+		next.ServeHTTP(w, r.WithContext(authctx.WithUser(r.Context(), user)))
 	})
 }
 
@@ -343,7 +342,7 @@ func (s *Server) requireStage(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userCtxKey, user)
+		ctx := authctx.WithUser(r.Context(), user)
 		ctx = context.WithValue(ctx, slugCtxKey, slug)
 		ctx = context.WithValue(ctx, roleCtxKey, role)
 		next.ServeHTTP(w, r.WithContext(ctx))

@@ -387,7 +387,7 @@ func TestCRMBotAsksAnswersAndFinishes(t *testing.T) {
 		t.Fatalf("%d sends before the wait was over, want 1 (the question)", n)
 	}
 
-	h.server.AdvanceBots(context.Background())
+	h.engage.AdvanceBots(context.Background())
 
 	if body := lastSend(t, g)["text"]; body == nil {
 		t.Fatalf("the woken flow did not send plain text: %+v", lastSend(t, g))
@@ -417,7 +417,7 @@ func TestCRMBotAsksAnswersAndFinishes(t *testing.T) {
 		t.Errorf("%d of the bot's messages in the thread, want 2", bots)
 	}
 	// A second AdvanceBots must not resend anything: the session is done, not due.
-	h.server.AdvanceBots(context.Background())
+	h.engage.AdvanceBots(context.Background())
 	if n := len(g.sent()); n != 2 {
 		t.Errorf("%d sends after a second sweep, want 2: a finished flow was woken again", n)
 	}
@@ -634,7 +634,7 @@ func TestCRMBotNeverAnswersSomebodyWhoSaidStop(t *testing.T) {
 		t.Fatalf("session = %+v, want it stopped the moment they opted out", session)
 	}
 
-	h.server.AdvanceBots(context.Background())
+	h.engage.AdvanceBots(context.Background())
 	if n := len(g.sent()); n != 1 {
 		t.Fatalf("%d sends, want 1: the sweeper woke a flow for somebody who had opted out", n)
 	}

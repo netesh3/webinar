@@ -14,6 +14,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/api"
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/config"
+	"github.com/netkumar/webcast/api/internal/engage"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -167,6 +168,9 @@ func run() error {
 	}
 
 	apiServer := api.NewServer(cfg, st, api.NewSFUPool(pool), recordings, log)
+	/* The WhatsApp CRM, plugged in as a separate module. This is the one place that knows
+	 * both packages; leave it out (or pass nil) and webinars run with no CRM at all. */
+	apiServer.UseEngage(engage.New(cfg, st, log))
 	go apiServer.StartMeetingLimitSweeper(ctx)
 	go apiServer.StartRecordingRetentionSweeper(ctx)
 

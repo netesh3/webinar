@@ -1,4 +1,4 @@
-package api
+package engage
 
 import (
 	"errors"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -49,8 +50,8 @@ const maxBroadcastRecipients = 5000
 
 // handleCRMAudience answers "how many people would this reach", before anybody
 // commits to reaching them.
-func (s *Server) handleCRMAudience(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMAudience(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	audience := strings.TrimSpace(r.URL.Query().Get("audience"))
 	slug := strings.TrimSpace(r.URL.Query().Get("webinarId"))
@@ -75,7 +76,7 @@ func (s *Server) handleCRMAudience(w http.ResponseWriter, r *http.Request) {
  * because "which webinar" is the one part of a broadcast that names somebody else's
  * row — and a topic and start time are exactly what a slug guesser would be after.
  */
-func (s *Server) audienceAllowed(w http.ResponseWriter, r *http.Request, user store.User, audience, slug, tagID string) bool {
+func (s *Module) audienceAllowed(w http.ResponseWriter, r *http.Request, user store.User, audience, slug, tagID string) bool {
 	switch audience {
 	case types.AudienceOptedIn, types.AudienceWebinar:
 	case types.AudienceTag:
@@ -113,8 +114,8 @@ func (s *Server) audienceAllowed(w http.ResponseWriter, r *http.Request, user st
 }
 
 // handleCRMBroadcasts lists the host's broadcasts, newest first, with their stats.
-func (s *Server) handleCRMBroadcasts(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMBroadcasts(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	list, err := s.store.Broadcasts(r.Context(), user.ID, limit)
@@ -132,8 +133,8 @@ func (s *Server) handleCRMBroadcasts(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCRMBroadcast reads one, which is how the UI watches a send progress.
-func (s *Server) handleCRMBroadcast(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMBroadcast(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	b, err := s.store.Broadcast(r.Context(), user.ID, chi.URLParam(r, "id"))
 	if errors.Is(err, store.ErrNotFound) {
@@ -153,8 +154,8 @@ func (s *Server) handleCRMBroadcast(w http.ResponseWriter, r *http.Request) {
  * is a message nobody has decided to send, and keeping half-written ones would add a
  * state whose only behaviour is "does nothing".
  */
-func (s *Server) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	var body types.CRMBroadcastRequest
 	if err := httpx.DecodeJSON(w, r, &body); err != nil {
@@ -340,7 +341,7 @@ func paramsProblem(params []types.CRMParam, hasWebinar bool, what string) (code,
 
 // paramsAllowed is paramsProblem for a broadcast, which has one set of values and can
 // refuse on the spot.
-func (s *Server) paramsAllowed(w http.ResponseWriter, params []types.CRMParam, slug string) bool {
+func (s *Module) paramsAllowed(w http.ResponseWriter, params []types.CRMParam, slug string) bool {
 	if code, msg := paramsProblem(params, slug != "", "broadcast"); code != "" {
 		httpx.Error(w, http.StatusUnprocessableEntity, code, msg)
 		return false
@@ -377,8 +378,8 @@ func resolveBroadcastParams(params []types.CRMParam, contact types.CRMContact, w
  * trying to stop something, and telling them they managed it would be the one lie
  * they cannot check.
  */
-func (s *Server) handleCancelCRMBroadcast(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCancelCRMBroadcast(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	id := chi.URLParam(r, "id")
 
 	err := s.store.CancelBroadcast(r.Context(), user.ID, id)

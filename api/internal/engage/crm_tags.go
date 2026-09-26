@@ -1,4 +1,4 @@
-package api
+package engage
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -31,8 +32,8 @@ import (
  */
 
 // handleCRMTags lists the host's labels with their contact counts.
-func (s *Server) handleCRMTags(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMTags(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
 		return
 	}
@@ -50,8 +51,8 @@ func (s *Server) handleCRMTags(w http.ResponseWriter, r *http.Request) {
  * they have used before is asking for that label, and the thing they want back in both
  * cases is the tag they are about to apply — see store.CreateTag.
  */
-func (s *Server) handleCreateCRMTag(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCreateCRMTag(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
 		return
 	}
@@ -80,8 +81,8 @@ func (s *Server) handleCreateCRMTag(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRenameCRMTag changes a label's name, keeping it on everybody who has it.
-func (s *Server) handleRenameCRMTag(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleRenameCRMTag(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
 		return
 	}
@@ -122,8 +123,8 @@ func (s *Server) handleRenameCRMTag(w http.ResponseWriter, r *http.Request) {
  * widen the rule to every label rather than break it, and the host would find out by
  * somebody being messaged.
  */
-func (s *Server) handleDeleteCRMTag(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleDeleteCRMTag(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
 		return
 	}
@@ -155,8 +156,8 @@ func (s *Server) handleDeleteCRMTag(w http.ResponseWriter, r *http.Request) {
  * Answers with the contact's labels rather than a status, so the chips on the thread are
  * the server's list and not the browser's guess at what it just became.
  */
-func (s *Server) handleAddCRMContactTag(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleAddCRMContactTag(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
 		return
 	}
@@ -193,8 +194,8 @@ func (s *Server) handleAddCRMContactTag(w http.ResponseWriter, r *http.Request) 
 // handleRemoveCRMContactTag takes a label off somebody. Nothing fires: no trigger in this
 // application listens for a tag being removed, and a sequence already running carries on —
 // the host stops that by exiting the enrollment, which is its own visible action.
-func (s *Server) handleRemoveCRMContactTag(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleRemoveCRMContactTag(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
 		return
 	}
@@ -228,7 +229,7 @@ func (s *Server) handleRemoveCRMContactTag(w http.ResponseWriter, r *http.Reques
  * already written; failing the request would leave the host pressing the button again
  * against a label that is already there.
  */
-func (s *Server) applyTag(ctx context.Context, user store.User, contactID, tagID string) error {
+func (s *Module) applyTag(ctx context.Context, user store.User, contactID, tagID string) error {
 	added, err := s.store.AddContactTag(ctx, user.ID, contactID, tagID)
 	if err != nil {
 		return err
@@ -254,7 +255,7 @@ func (s *Server) applyTag(ctx context.Context, user store.User, contactID, tagID
  * a broadcast or a sequence that names a row, and "not yours" has to be answered before
  * anything is stored against it.
  */
-func (s *Server) crmTagAllowed(w http.ResponseWriter, r *http.Request, hostID, tagID string) bool {
+func (s *Module) crmTagAllowed(w http.ResponseWriter, r *http.Request, hostID, tagID string) bool {
 	_, err := s.store.Tag(r.Context(), hostID, tagID)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_tag", "That tag is not one of yours.")
@@ -274,7 +275,7 @@ func (s *Server) crmTagAllowed(w http.ResponseWriter, r *http.Request, hostID, t
  * failure to read them is logged and returns empty rather than failing the page: the tags
  * are a control on somebody else's screen, and the contacts are what was asked for.
  */
-func (s *Server) hostTags(ctx context.Context, user store.User) []types.CRMTag {
+func (s *Module) hostTags(ctx context.Context, user store.User) []types.CRMTag {
 	if !user.HasFeature(types.FeatureCRMTags) {
 		return []types.CRMTag{}
 	}

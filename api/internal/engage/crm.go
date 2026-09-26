@@ -1,4 +1,4 @@
-package api
+package engage
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
@@ -32,8 +33,8 @@ import (
  */
 
 // handleCRMContacts lists the caller's contacts, most recent activity first.
-func (s *Server) handleCRMContacts(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMContacts(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	// A bad or absent limit is not worth an error: the store clamps it to a page.
@@ -121,8 +122,8 @@ func (s *Server) handleCRMContacts(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCRMThread reads one contact and the conversation with them.
-func (s *Server) handleCRMThread(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMThread(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	id := chi.URLParam(r, "id")
 
 	contact, messages, err := s.store.Thread(r.Context(), user.ID, id)
@@ -183,7 +184,7 @@ func (s *Server) handleCRMThread(w http.ResponseWriter, r *http.Request) {
  * Meta's rule, restated: the 24 hours run from the contact's last inbound
  * message, and nothing the business does extends them.
  */
-func (s *Server) serviceWindow(ctx context.Context, hostID, contactID string) (time.Time, error) {
+func (s *Module) serviceWindow(ctx context.Context, hostID, contactID string) (time.Time, error) {
 	last, err := s.store.LastInboundAt(ctx, hostID, contactID)
 	if err != nil || last.IsZero() {
 		return time.Time{}, err
@@ -206,8 +207,8 @@ func (s *Server) serviceWindow(ctx context.Context, hostID, contactID string) (t
  * has to come from the person, through a form they filled in or a message they
  * sent, not from the party who benefits from having it.
  */
-func (s *Server) handleCRMOptOut(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMOptOut(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	id := chi.URLParam(r, "id")
 
 	// Read first, so an id belonging to another host is a 404 rather than an
@@ -245,8 +246,8 @@ func (s *Server) handleCRMOptOut(w http.ResponseWriter, r *http.Request) {
  * opening the inbox to read a conversation should not be shown a Meta error. An
  * explicit refresh that fails is reported, because they asked.
  */
-func (s *Server) handleCRMTemplates(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMTemplates(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	templates, syncedAt, err := s.store.Templates(r.Context(), user.ID)
 	if err != nil {
@@ -290,7 +291,7 @@ func (s *Server) handleCRMTemplates(w http.ResponseWriter, r *http.Request) {
  * list from a failed call would otherwise delete a host's whole template cache
  * and, with it, the reminders that name one.
  */
-func (s *Server) syncTemplates(ctx context.Context, user store.User) error {
+func (s *Module) syncTemplates(ctx context.Context, user store.User) error {
 	if s.whatsapp == nil {
 		return wa.ErrNotConfigured
 	}
@@ -356,8 +357,8 @@ const whatsappTextMax = 4096
  * invented before the send would either carry no id or claim an outcome that had
  * not happened yet.
  */
-func (s *Server) handleCRMSend(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	id := chi.URLParam(r, "id")
 
 	var body types.CRMSendRequest
@@ -519,7 +520,7 @@ func (s *Server) handleCRMSend(w http.ResponseWriter, r *http.Request) {
  * sync and one re-read, never a loop: a name that is genuinely not theirs must not
  * cost a Graph call on every attempt.
  */
-func (s *Server) templateForSend(ctx context.Context, user store.User, name, language string) (types.CRMTemplate, error) {
+func (s *Module) templateForSend(ctx context.Context, user store.User, name, language string) (types.CRMTemplate, error) {
 	tmpl, err := s.store.Template(ctx, user.ID, name, language)
 	if !errors.Is(err, store.ErrNotFound) {
 		return tmpl, err
@@ -538,7 +539,7 @@ func (s *Server) templateForSend(ctx context.Context, user store.User, name, lan
  * number that is not registered, a template paused an hour ago — and paraphrasing
  * any of those into "sending failed" removes the only useful part.
  */
-func (s *Server) reportSendError(w http.ResponseWriter, r *http.Request, hostID string, err error) {
+func (s *Module) reportSendError(w http.ResponseWriter, r *http.Request, hostID string, err error) {
 	s.log.Warn("whatsapp send failed", "error", err, "host", hostID)
 	if whatsappAPIError(w, err) {
 		return

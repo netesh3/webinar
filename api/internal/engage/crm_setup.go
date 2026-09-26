@@ -1,9 +1,10 @@
-package api
+package engage
 
 import (
 	"net/http"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/types"
 )
@@ -27,8 +28,8 @@ import (
  * Nothing here is a write, and nothing here is a nag. It reports what is true and lets
  * the screen decide what to say about it.
  */
-func (s *Server) handleCRMSetup(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMSetup(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	out := types.CRMSetup{
 		Connected:    user.WhatsAppToken != "",

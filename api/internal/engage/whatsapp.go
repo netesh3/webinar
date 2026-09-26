@@ -1,4 +1,4 @@
-package api
+package engage
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
@@ -34,7 +35,7 @@ import (
  */
 
 // handleWhatsAppConnect hands the browser what it needs to open the dialog.
-func (s *Server) handleWhatsAppConnect(w http.ResponseWriter, r *http.Request) {
+func (s *Module) handleWhatsAppConnect(w http.ResponseWriter, r *http.Request) {
 	if !s.whatsapp.Enabled() {
 		httpx.Error(w, http.StatusServiceUnavailable, "whatsapp_unset",
 			"WhatsApp is not set up on this instance. Ask whoever runs this to set META_APP_ID, META_APP_SECRET and META_WHATSAPP_CONFIG_ID.")
@@ -57,13 +58,13 @@ func (s *Server) handleWhatsAppConnect(w http.ResponseWriter, r *http.Request) {
  * dialog again for no reason. The one exception is a rejected token, which means
  * the thing we would be storing is already useless.
  */
-func (s *Server) handleWhatsAppCallback(w http.ResponseWriter, r *http.Request) {
+func (s *Module) handleWhatsAppCallback(w http.ResponseWriter, r *http.Request) {
 	if !s.whatsapp.Enabled() {
 		httpx.Error(w, http.StatusServiceUnavailable, "whatsapp_unset",
 			"WhatsApp is not set up on this instance.")
 		return
 	}
-	user := userFromContext(r.Context())
+	user := authctx.User(r.Context())
 
 	var body types.WhatsAppCallbackRequest
 	if err := httpx.DecodeJSON(w, r, &body); err != nil {
@@ -164,13 +165,13 @@ func (s *Server) handleWhatsAppCallback(w http.ResponseWriter, r *http.Request) 
  * A host who has forgotten theirs resets it in WhatsApp Manager, which is the same
  * place they set it — this endpoint cannot help with that and does not pretend to.
  */
-func (s *Server) handleWhatsAppRegister(w http.ResponseWriter, r *http.Request) {
+func (s *Module) handleWhatsAppRegister(w http.ResponseWriter, r *http.Request) {
 	if s.whatsapp == nil || !s.whatsapp.Enabled() {
 		httpx.Error(w, http.StatusServiceUnavailable, "whatsapp_unset",
 			"WhatsApp is not set up on this instance.")
 		return
 	}
-	user := userFromContext(r.Context())
+	user := authctx.User(r.Context())
 	if !s.featureAllowed(w, user, types.FeatureWhatsAppRegister) {
 		return
 	}
@@ -241,8 +242,8 @@ func sixDigits(pin string) bool {
 // handleWhatsAppDisconnect drops the grant and stops the webhook traffic it
 // turned on. Unsubscribing first, because after the token is cleared there is
 // nothing left to unsubscribe with.
-func (s *Server) handleWhatsAppDisconnect(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleWhatsAppDisconnect(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	if s.whatsapp != nil && user.WhatsAppToken != "" && user.WhatsAppWABAID != "" {
 		if err := s.whatsapp.UnsubscribeApp(r.Context(), user.WhatsAppToken, user.WhatsAppWABAID); err != nil {
 			// A host who removed our app on Meta's side first lands here, and their
@@ -278,7 +279,7 @@ const whatsappWebhookMaxBytes = 1 << 20
  * in the app dashboard, and expects the hub.challenge echoed back as plain text.
  * Getting this wrong is not subtle: the dashboard simply refuses to save the URL.
  */
-func (s *Server) handleWhatsAppWebhookVerify(w http.ResponseWriter, r *http.Request) {
+func (s *Module) handleWhatsAppWebhookVerify(w http.ResponseWriter, r *http.Request) {
 	want := strings.TrimSpace(s.cfg.MetaWebhookVerifyToken)
 	if want == "" {
 		httpx.Error(w, http.StatusServiceUnavailable, "whatsapp_webhook_unset",
@@ -314,7 +315,7 @@ func (s *Server) handleWhatsAppWebhookVerify(w http.ResponseWriter, r *http.Requ
  * a customer's integration off. The exceptions are the two refusals above — an
  * unsigned request is not a delivery, and there is nothing to retry.
  */
-func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
+func (s *Module) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 	if s.whatsapp == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "whatsapp_unset",
 			"WhatsApp is not set up on this instance.")
@@ -364,7 +365,7 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
  * It is the ordinary consequence of a host disconnecting: Meta keeps delivering
  * for a while, and there is no longer an account those messages belong to.
  */
-func (s *Server) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
+func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 	// One lookup per number per delivery, not per message: a batch is usually
 	// several messages for the same host.
 	hosts := make(map[string]*store.User, 2)

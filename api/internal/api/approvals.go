@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/notify"
@@ -285,10 +284,4 @@ func (s *Server) handleReadHostAlerts(w http.ResponseWriter, r *http.Request) {
  * emailing somebody the word "Invalid". Nothing writes StartsAt except the store, so this is
  * defence rather than an expected path.
  */
-func whenText(startsAt, zone string) string {
-	at, err := time.Parse(time.RFC3339, startsAt)
-	if err != nil {
-		return ""
-	}
-	return localTime(at, zone)
-}
+func whenText(startsAt, zone string) string { return notify.WhenText(startsAt, zone) }

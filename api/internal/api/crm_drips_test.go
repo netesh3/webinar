@@ -70,7 +70,7 @@ func readDrip(t *testing.T, h *harness, id string) types.CRMDripResponse {
  */
 func runDrips(t *testing.T, h *harness, slug string) {
 	t.Helper()
-	h.server.AdvanceDrips(context.Background())
+	h.engage.AdvanceDrips(context.Background())
 	drainWhatsAppOutbox(t, h, slug)
 }
 

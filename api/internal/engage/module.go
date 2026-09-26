@@ -1,27 +1,97 @@
-package api
+/*
+Package engage is the WhatsApp CRM: contacts, threads, templates, reminders, broadcasts,
+drips, bots, tags and notes, and the Meta webhook that feeds them.
+
+It is a separate module from the webinar product (package api) and the two do not import
+each other. The webinar side defines the api.Engage interface and calls it at a handful of
+moments — somebody registered, a seat was decided, a webinar ended, a recording went up.
+Module implements that interface, which Go checks structurally, so the only file that knows
+both packages is cmd/server/main.go.
+
+What this package may use: store (the shared Postgres handle, reading webinar tables but
+writing only its own), wa (the Meta client), types (wire types), httpx, authctx, config.
+The boundary is enforced by boundary_test.go and written down in docs/engage/MODULES.md.
+*/
+package engage
 
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/netkumar/webcast/api/internal/config"
+	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
+	"github.com/netkumar/webcast/api/internal/wa"
 	"github.com/netkumar/webcast/api/types"
 )
 
-/* crmHooks implements Engage with the CRM code that still lives in this package.
- *
- * Transitional: the next step moves every crm_*.go and whatsapp.go file into
- * internal/engage, and this adapter goes with them. Until then it is the single file where
- * the webinar side and the CRM side meet, which is the property the move preserves. */
-type crmHooks struct{ s *Server }
+// Module is the CRM. Build one with New and hand it to api.Server.UseEngage.
+type Module struct {
+	cfg   config.Config
+	store *store.Store
+	log   *slog.Logger
+	/* whatsapp is nil unless all three META_* values are set, and the handlers say so
+	 * rather than offering a Connect button that dead-ends. Every method on it tolerates a
+	 * nil receiver, which is what lets the webhook and the connect endpoint check Enabled()
+	 * without a separate nil test everywhere.
+	 *
+	 * One client for the app, not per host: it holds this deployment's Meta app
+	 * credentials, while the token that actually sends belongs to each host's own WABA and
+	 * is read from their user row at send time. */
+	whatsapp *wa.Client
+}
 
-func (h crmHooks) ConnectEnabled() bool { return h.s.whatsapp.Enabled() }
+func New(cfg config.Config, st *store.Store, log *slog.Logger) *Module {
+	var whatsapp *wa.Client
+	if cfg.WhatsAppConnectEnabled() {
+		whatsapp = wa.New(cfg.MetaAppID, cfg.MetaAppSecret, cfg.MetaWhatsAppConfigID)
+		if cfg.WhatsAppGraphURL != "" {
+			whatsapp.Graph = strings.TrimRight(cfg.WhatsAppGraphURL, "/")
+		}
+		// The verify token is separately optional, and its absence is the one way to end up
+		// with a Connect button that works and a webhook Meta can never confirm — so it is
+		// said out loud at boot rather than discovered in the app dashboard.
+		if strings.TrimSpace(cfg.MetaWebhookVerifyToken) == "" {
+			log.Warn("whatsapp connect enabled without META_WEBHOOK_VERIFY_TOKEN: Meta cannot verify the webhook subscription, so no inbound message or delivery status will arrive")
+		}
+		log.Info("whatsapp connect enabled", "graph", whatsapp.Graph)
+	}
+	return &Module{cfg: cfg, store: st, log: log, whatsapp: whatsapp}
+}
 
-func (h crmHooks) Mount(public, host chi.Router) {
-	s := h.s
+/* featureAllowed is the CRM's copy of the webinar API's per-account switch check: 403
+ * rather than 404, named in the error code, because the route exists and the answer is
+ * "not for this account" — which a host can ask to have changed. */
+func (s *Module) featureAllowed(w http.ResponseWriter, user store.User, key string) bool {
+	if user.HasFeature(key) {
+		return true
+	}
+	label := key
+	for _, f := range types.Features {
+		if f.Key == key {
+			label = f.Label
+		}
+	}
+	httpx.Error(w, http.StatusForbidden, "feature_off", label+" isn't switched on for this account.")
+	return false
+}
+
+/* fail logs an unexpected error and answers with the same generic 500 the webinar API
+ * uses, so a client cannot tell the two modules apart by their failures. */
+func (s *Module) fail(w http.ResponseWriter, r *http.Request, op string, err error) {
+	s.log.Error(op, "error", err, "path", r.URL.Path)
+	httpx.Error(w, http.StatusInternalServerError, "internal", "Something went wrong.")
+}
+
+func (s *Module) ConnectEnabled() bool { return s.whatsapp.Enabled() }
+
+func (s *Module) Mount(public, host chi.Router) {
 	/* Meta's webhook, and the handshake that registers it. Public like the LiveKit one:
 	 * the caller is another server with no session, authenticated by a signature over the
 	 * raw body in handleWhatsAppWebhook. The GET is the one-off subscription check. */
@@ -82,8 +152,7 @@ func (h crmHooks) Mount(public, host chi.Router) {
  * a lead. ErrNotFound is the documented answer for a registrant with neither a phone nor
  * an email (a guest) and is not logged as a problem.
  */
-func (h crmHooks) OnRegistered(ctx context.Context, wb types.Webinar, reg types.Registration, optIn bool) {
-	s := h.s
+func (s *Module) OnRegistered(ctx context.Context, wb types.Webinar, reg types.Registration, optIn bool) {
 	contact, err := s.store.ContactFromRegistration(ctx, wb.ID, reg, optIn)
 	if errors.Is(err, store.ErrNotFound) {
 		return
@@ -108,41 +177,41 @@ func (h crmHooks) OnRegistered(ctx context.Context, wb types.Webinar, reg types.
 /* OnRegistrationsDecided is the WhatsApp side of an approval batch. A confirmation queued
  * at registration is held until the seat is approved, so this press is the moment it
  * becomes sendable — waiting for the ticker would make the fastest channel the slowest. */
-func (h crmHooks) OnRegistrationsDecided(ctx context.Context, slug string, declined []string) {
-	h.s.flushWhatsAppOutbox(ctx)
+func (s *Module) OnRegistrationsDecided(ctx context.Context, slug string, declined []string) {
+	s.flushWhatsAppOutbox(ctx)
 }
 
 // OnRescheduled: the webinar store still moves both channels' reminders (split next step).
-func (h crmHooks) OnRescheduled(context.Context, string, time.Time) {}
+func (s *Module) OnRescheduled(context.Context, string, time.Time) {}
 
 /* OnEnded starts the follow-up sequences: the `attended`, `no_show` and `ended` triggers.
  * Called for a webinar the sweeper closes on the meeting limit too, and after the room is
  * gone, so who attended has its final answer. */
-func (h crmHooks) OnEnded(ctx context.Context, wb types.Webinar) {
-	h.s.enrollDripsOnWebinarEnd(ctx, wb)
+func (s *Module) OnEnded(ctx context.Context, wb types.Webinar) {
+	s.enrollDripsOnWebinarEnd(ctx, wb)
 }
 
-func (h crmHooks) OnRecordingPublished(ctx context.Context, wb types.Webinar, host store.User, url string) {
-	h.s.enqueueWhatsAppReplay(ctx, wb, host, url)
+func (s *Module) OnRecordingPublished(ctx context.Context, wb types.Webinar, host store.User, url string) {
+	s.enqueueWhatsAppReplay(ctx, wb, host, url)
 }
 
 /* DecorateRegistrants adds the two CRM columns to a roster. Skipped for a host who has not
  * connected WhatsApp; a failure is logged, since a roster without the columns is still the
  * roster the host asked for. */
-func (h crmHooks) DecorateRegistrants(ctx context.Context, host store.User, slug string, rows []types.RegistrantRow) {
+func (s *Module) DecorateRegistrants(ctx context.Context, host store.User, slug string, rows []types.RegistrantRow) {
 	if host.WhatsAppToken == "" {
 		return
 	}
-	if err := h.s.store.AttachRegistrantWhatsApp(ctx, slug, rows); err != nil {
-		h.s.log.Warn("registrants: whatsapp", "error", err, "slug", slug)
+	if err := s.store.AttachRegistrantWhatsApp(ctx, slug, rows); err != nil {
+		s.log.Warn("registrants: whatsapp", "error", err, "slug", slug)
 	}
 }
 
 /* Tick is the CRM's share of the sweeper. Drip steps are queued before the outbox is
  * flushed, so a step that came due in the last thirty seconds goes out on this tick; bots
  * go after drips so a flow that enrols somebody and then waits is not a tick behind. */
-func (h crmHooks) Tick(ctx context.Context) {
-	h.s.AdvanceDrips(ctx)
-	h.s.AdvanceBots(ctx)
-	h.s.flushWhatsAppOutbox(ctx)
+func (s *Module) Tick(ctx context.Context) {
+	s.AdvanceDrips(ctx)
+	s.AdvanceBots(ctx)
+	s.flushWhatsAppOutbox(ctx)
 }

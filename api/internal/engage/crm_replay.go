@@ -1,4 +1,4 @@
-package api
+package engage
 
 import (
 	"context"
@@ -15,7 +15,10 @@ import (
  * on a phone. Once per person per webinar for ever, enforced by the 0049 dedupe index on
  * (registration, kind). Every failure is logged and dropped.
  */
-func (s *Server) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, host store.User, url string) {
+// maxReplayRecipients matches the email side's cap: one webinar's registrants, not a mailing list.
+const maxReplayRecipients = 5000
+
+func (s *Module) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, host store.User, url string) {
 	if host.WhatsAppToken == "" || host.WhatsAppPhoneNumberID == "" {
 		return
 	}

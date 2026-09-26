@@ -1,4 +1,4 @@
-package api
+package engage
 
 import (
 	"context"
@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
+	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
 	"github.com/netkumar/webcast/api/types"
@@ -88,8 +90,8 @@ func mergeFieldOnlyKind(token string) types.NotificationKind {
 }
 
 // handleCRMReminders lists the host's automatic-message settings, all kinds, set or not.
-func (s *Server) handleCRMReminders(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMReminders(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	reminders, err := s.store.ReminderTemplates(r.Context(), user.ID)
 	if err != nil {
@@ -110,8 +112,8 @@ func (s *Server) handleCRMReminders(w http.ResponseWriter, r *http.Request) {
  * reminder that turns out to name an unapproved template discovers it at 9am the
  * day before a webinar, with nobody watching.
  */
-func (s *Server) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	var body types.CRMRemindersRequest
 	if err := httpx.DecodeJSON(w, r, &body); err != nil {
@@ -220,7 +222,7 @@ func isWhatsAppReminderKind(kind types.NotificationKind) bool {
  * seat is what the attendee came for — a CRM message that could not be queued must
  * not turn their registration into an error.
  */
-func (s *Server) enqueueWhatsAppInvite(
+func (s *Module) enqueueWhatsAppInvite(
 	ctx context.Context,
 	wb types.Webinar,
 	contact types.CRMContact,
@@ -327,7 +329,7 @@ func mergeValue(token string, contact types.CRMContact, wb types.Webinar, hostNa
 	case "topic":
 		value = wb.Topic
 	case "when":
-		value = whenText(wb.StartsAt, wb.TimeZone)
+		value = notify.WhenText(wb.StartsAt, wb.TimeZone)
 	case "host":
 		value = hostName
 	}
@@ -358,7 +360,7 @@ func mergeValue(token string, contact types.CRMContact, wb types.Webinar, hostNa
  * queued and being due. A send that names it then fails and the cost is a message
  * nobody receives, so the row is skipped with the reason instead.
  */
-func (s *Server) flushWhatsAppOutbox(ctx context.Context) {
+func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 	if s.whatsapp == nil || !s.whatsapp.Enabled() {
 		return
 	}
@@ -430,7 +432,7 @@ func (s *Server) flushWhatsAppOutbox(ctx context.Context) {
 // skipWhatsApp retires a message that can no longer be sent, keeping the reason:
 // 'skipped' rather than 'failed' because nothing went wrong here, and a host asking
 // why their reminder never arrived deserves the sentence rather than a silence.
-func (s *Server) skipWhatsApp(ctx context.Context, m store.WhatsAppOutbound, reason string) {
+func (s *Module) skipWhatsApp(ctx context.Context, m store.WhatsAppOutbound, reason string) {
 	s.log.Warn("whatsapp outbox: skipped", "kind", m.Kind, "host", m.HostID,
 		"contact", m.ContactID, "reason", reason)
 	_ = s.store.MarkDelivered(ctx, m.ID, "skipped", reason)

@@ -1,4 +1,4 @@
-package api
+package engage
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
@@ -76,8 +77,8 @@ const (
 // ---------------------------------------------------------------- the screens
 
 // handleCRMBots lists the host's bots, newest first, with their flows and stats.
-func (s *Server) handleCRMBots(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMBots(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	list, err := s.store.Bots(r.Context(), user.ID, limit)
@@ -131,8 +132,8 @@ func nodeKindsFor(user store.User) []string {
 }
 
 // handleCRMBot reads one bot with the conversations it has had.
-func (s *Server) handleCRMBot(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMBot(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	out, ok := s.botResponse(w, r, user.ID, chi.URLParam(r, "id"))
 	if !ok {
@@ -143,7 +144,7 @@ func (s *Server) handleCRMBot(w http.ResponseWriter, r *http.Request) {
 
 // botResponse reads a bot and its sessions, writing the refusal for one that is not
 // this host's. Shared by every handler here that answers with a bot.
-func (s *Server) botResponse(w http.ResponseWriter, r *http.Request, hostID, id string) (types.CRMBotResponse, bool) {
+func (s *Module) botResponse(w http.ResponseWriter, r *http.Request, hostID, id string) (types.CRMBotResponse, bool) {
 	bot, err := s.store.Bot(r.Context(), hostID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "No such bot.")
@@ -163,7 +164,7 @@ func (s *Server) botResponse(w http.ResponseWriter, r *http.Request, hostID, id 
 
 // handleCreateCRMBot writes a bot. Nothing is sent by this request: a bot does nothing
 // at all until somebody messages the host's number.
-func (s *Server) handleCreateCRMBot(w http.ResponseWriter, r *http.Request) {
+func (s *Module) handleCreateCRMBot(w http.ResponseWriter, r *http.Request) {
 	s.saveBot(w, r, "")
 }
 
@@ -175,12 +176,12 @@ func (s *Server) handleCreateCRMBot(w http.ResponseWriter, r *http.Request) {
  * copy of the flow per conversation would be the alternative, and it would mean a host
  * fixing a typo fixes it for nobody currently reading it.
  */
-func (s *Server) handleUpdateCRMBot(w http.ResponseWriter, r *http.Request) {
+func (s *Module) handleUpdateCRMBot(w http.ResponseWriter, r *http.Request) {
 	s.saveBot(w, r, chi.URLParam(r, "id"))
 }
 
-func (s *Server) saveBot(w http.ResponseWriter, r *http.Request, id string) {
-	user := userFromContext(r.Context())
+func (s *Module) saveBot(w http.ResponseWriter, r *http.Request, id string) {
+	user := authctx.User(r.Context())
 
 	var body types.CRMBotRequest
 	if err := httpx.DecodeJSON(w, r, &body); err != nil {
@@ -320,7 +321,7 @@ func botKeywords(w http.ResponseWriter, trigger string, in []string) ([]string, 
  * cycle check — a flow that loops is not a flow that hangs, it is a flow that sends
  * somebody a message per second until the host's Meta bill says so.
  */
-func (s *Server) flowAllowed(
+func (s *Module) flowAllowed(
 	w http.ResponseWriter,
 	r *http.Request,
 	user store.User,
@@ -578,8 +579,8 @@ func knownBotNodeKind(kind string) bool {
  * stops it and keeps them. The messages it sent stay in each contact's thread either
  * way — they were really sent, and there is no unsend on WhatsApp.
  */
-func (s *Server) handleDeleteCRMBot(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleDeleteCRMBot(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	id := chi.URLParam(r, "id")
 
 	err := s.store.DeleteBot(r.Context(), user.ID, id)
@@ -606,8 +607,8 @@ func (s *Server) handleDeleteCRMBot(w http.ResponseWriter, r *http.Request) {
  * back on for them, and the next message that person sends starts a flow from the top —
  * not from the question they were asked before a human got involved.
  */
-func (s *Server) handleCRMContactBot(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMContactBot(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	id := chi.URLParam(r, "id")
 
 	var body types.CRMBotPauseRequest
@@ -665,7 +666,7 @@ type botTurn struct {
  * and a log line per message would be both noise and, eventually, a record of who
  * writes to whom. Content is never logged; see ingestWhatsApp.
  */
-func (s *Server) runBot(ctx context.Context, host store.User, contact types.CRMContact, in wa.Inbound) {
+func (s *Module) runBot(ctx context.Context, host store.User, contact types.CRMContact, in wa.Inbound) {
 	if s.whatsapp == nil || host.WhatsAppToken == "" || host.WhatsAppPhoneNumberID == "" {
 		return
 	}
@@ -746,7 +747,7 @@ func (s *Server) runBot(ctx context.Context, host store.User, contact types.CRMC
  * arriving together, so a flow that sent first and filed afterwards could answer the
  * same person twice.
  */
-func (s *Server) startBot(ctx context.Context, host store.User, contact types.CRMContact, in wa.Inbound) {
+func (s *Module) startBot(ctx context.Context, host store.User, contact types.CRMContact, in wa.Inbound) {
 	start, err := s.store.BotForMessage(ctx, host.ID, in.Body)
 	if errors.Is(err, store.ErrNotFound) {
 		return
@@ -782,7 +783,7 @@ func (s *Server) startBot(ctx context.Context, host store.User, contact types.CR
 
 // openBotTurn reads the flow and the window. A failure to read either one leaves the
 // session exactly as it was, which is the state a retry can recover from.
-func (s *Server) openBotTurn(
+func (s *Module) openBotTurn(
 	ctx context.Context,
 	host store.User,
 	contact types.CRMContact,
@@ -821,7 +822,7 @@ func (s *Server) openBotTurn(
  * the alternative — repeating the question — is how a customer ends up in a loop with a
  * robot.
  */
-func (s *Server) botAnswer(ctx context.Context, t *botTurn, in wa.Inbound) (string, bool) {
+func (s *Module) botAnswer(ctx context.Context, t *botTurn, in wa.Inbound) (string, bool) {
 	node, ok := t.nodes[t.run.NodeKey]
 	if !ok {
 		// The question they were asked has been edited away.
@@ -861,7 +862,7 @@ func (s *Server) botAnswer(ctx context.Context, t *botTurn, in wa.Inbound) (stri
  * session exactly once — a turn that left the session in two states, or in none, is how
  * a flow ends up answering the same message twice.
  */
-func (s *Server) runFlow(ctx context.Context, t *botTurn, key string) {
+func (s *Module) runFlow(ctx context.Context, t *botTurn, key string) {
 	for ran := 0; ; ran++ {
 		if key == "" {
 			s.saveBotStep(ctx, t, store.BotStep{State: "done"})
@@ -956,7 +957,7 @@ func (s *Server) runFlow(ctx context.Context, t *botTurn, key string) {
  * copy — or when Graph refused the send, which is a reason to stop rather than to press
  * on down a flow whose last message never arrived.
  */
-func (s *Server) botSend(ctx context.Context, t *botTurn, node types.CRMBotNode, buttons []wa.Button) bool {
+func (s *Module) botSend(ctx context.Context, t *botTurn, node types.CRMBotNode, buttons []wa.Button) bool {
 	if t.window.IsZero() {
 		s.saveBotStep(ctx, t, store.BotStep{
 			State: "stopped", NodeKey: node.Key, Reason: "window_closed",
@@ -1020,7 +1021,7 @@ func (s *Server) botSend(ctx context.Context, t *botTurn, node types.CRMBotNode,
  * nothing. In all three the conversation carries on, because the message after this one
  * is the part the person is waiting for.
  */
-func (s *Server) botEnroll(ctx context.Context, t *botTurn, node types.CRMBotNode) {
+func (s *Module) botEnroll(ctx context.Context, t *botTurn, node types.CRMBotNode) {
 	if node.DripID == "" {
 		s.log.Warn("bot: enroll step has no sequence", "bot", t.run.BotID, "node", node.Key)
 		return
@@ -1050,7 +1051,7 @@ func (s *Server) botEnroll(ctx context.Context, t *botTurn, node types.CRMBotNod
  * the alternative is a conversation that stops mid-answer because a label did not
  * stick.
  */
-func (s *Server) botTag(ctx context.Context, t *botTurn, node types.CRMBotNode) {
+func (s *Module) botTag(ctx context.Context, t *botTurn, node types.CRMBotNode) {
 	if node.TagID == "" {
 		s.log.Warn("bot: tag step has no tag", "bot", t.run.BotID, "node", node.Key)
 		return
@@ -1084,7 +1085,7 @@ func (s *Server) botTag(ctx context.Context, t *botTurn, node types.CRMBotNode) 
  * is what keeps every bot — this one and the next message's — out of the host's way
  * until they say otherwise.
  */
-func (s *Server) handOffBot(ctx context.Context, t *botTurn, text string) {
+func (s *Module) handOffBot(ctx context.Context, t *botTurn, text string) {
 	if text != "" {
 		if !s.botSend(ctx, t, types.CRMBotNode{Key: t.run.NodeKey, Text: text}, nil) {
 			return
@@ -1106,7 +1107,7 @@ func (s *Server) handOffBot(ctx context.Context, t *botTurn, text string) {
 // saveBotStep writes the outcome of a turn, carrying the counters and the message it
 // acted on. The single place a session is written from, so a turn cannot leave it in
 // two states.
-func (s *Server) saveBotStep(ctx context.Context, t *botTurn, step store.BotStep) {
+func (s *Module) saveBotStep(ctx context.Context, t *botTurn, step store.BotStep) {
 	step.Steps = t.steps
 	step.WAMID = t.wamid
 	if err := s.store.SaveBotSession(ctx, t.run.SessionID, step); err != nil {
@@ -1117,7 +1118,7 @@ func (s *Server) saveBotStep(ctx context.Context, t *botTurn, step store.BotStep
 
 // endBotSession stops a conversation without a turn to hang it off — the cases decided
 // before the flow was even read.
-func (s *Server) endBotSession(ctx context.Context, run store.BotRun, reason string) {
+func (s *Module) endBotSession(ctx context.Context, run store.BotRun, reason string) {
 	if err := s.store.SaveBotSession(ctx, run.SessionID, store.BotStep{
 		State: "stopped", NodeKey: run.NodeKey, Reason: reason, Steps: run.Steps,
 	}); err != nil {
@@ -1158,7 +1159,7 @@ func botButtonIndex(nodeKey, id string) (int, bool) {
  * read with the session in one query, because the alternative is waking a flow up to
  * discover it should not have been.
  */
-func (s *Server) AdvanceBots(ctx context.Context) {
+func (s *Module) AdvanceBots(ctx context.Context) {
 	due, err := s.store.DueBotSessions(ctx, botSessionsPerSweep)
 	if err != nil {
 		s.log.Error("bot sweep: query failed", "error", err)

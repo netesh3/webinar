@@ -1,4 +1,4 @@
-package api
+package engage
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -25,8 +26,8 @@ import (
  */
 
 // handleCRMNotes lists one contact's notes, newest first.
-func (s *Server) handleCRMNotes(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMNotes(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	if !s.featureAllowed(w, user, types.FeatureCRMNotes) {
 		return
 	}
@@ -51,8 +52,8 @@ func (s *Server) handleCRMNotes(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCreateCRMNote writes one down.
-func (s *Server) handleCreateCRMNote(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCreateCRMNote(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	if !s.featureAllowed(w, user, types.FeatureCRMNotes) {
 		return
 	}
@@ -85,8 +86,8 @@ func (s *Server) handleCreateCRMNote(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteCRMNote removes one. Addressed by note id rather than under the contact,
 // because that is the whole of what identifies it and the host is looking at the note.
-func (s *Server) handleDeleteCRMNote(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleDeleteCRMNote(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	if !s.featureAllowed(w, user, types.FeatureCRMNotes) {
 		return
 	}

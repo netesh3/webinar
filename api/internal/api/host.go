@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
+	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/yt"
 	"github.com/netkumar/webcast/api/types"
@@ -393,7 +394,7 @@ func (s *Server) logWebinarDeleted(slug string, deleted store.Deleted) {
  * picks their own on the form and it is stored per webinar. This is only what happens in its
  * absence — an API client that omitted the field, or a seed row.
  */
-const defaultTimeZone = "Asia/Kolkata"
+const defaultTimeZone = notify.DefaultTimeZone
 
 /* localTime renders an instant the way the webinar's audience reads a clock.
  *
@@ -406,19 +407,7 @@ const defaultTimeZone = "Asia/Kolkata"
  * An empty or unknown zone falls back to defaultTimeZone rather than to UTC, matching what the
  * webinar was created with. `time.LoadLocation` reads the embedded tzdata in the API image.
  */
-func localTime(at time.Time, zone string) string {
-	if zone == "" {
-		zone = defaultTimeZone
-	}
-	loc, err := time.LoadLocation(zone)
-	if err != nil {
-		if loc, err = time.LoadLocation(defaultTimeZone); err != nil {
-			// Neither zone is loadable, which means no tzdata at all. UTC beats no answer.
-			return at.UTC().Format("15:04 on 2 January 2006") + " UTC"
-		}
-	}
-	return at.In(loc).Format("15:04 on 2 January 2006 MST")
-}
+func localTime(at time.Time, zone string) string { return notify.LocalTime(at, zone) }
 
 /* normalizeWebinarInput fills defaults, clamps limits and reports field errors.
  *

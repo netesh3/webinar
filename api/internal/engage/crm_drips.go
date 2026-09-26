@@ -1,4 +1,4 @@
-package api
+package engage
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -56,8 +57,8 @@ const (
 )
 
 // handleCRMDrips lists the host's sequences, newest first, with their steps and stats.
-func (s *Server) handleCRMDrips(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMDrips(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	list, err := s.store.Drips(r.Context(), user.ID, limit)
@@ -77,8 +78,8 @@ func (s *Server) handleCRMDrips(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCRMDrip reads one sequence with the people on it.
-func (s *Server) handleCRMDrip(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleCRMDrip(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 
 	out, ok := s.dripResponse(w, r, user.ID, chi.URLParam(r, "id"))
 	if !ok {
@@ -89,7 +90,7 @@ func (s *Server) handleCRMDrip(w http.ResponseWriter, r *http.Request) {
 
 // dripResponse reads a drip and its enrollments, writing the refusal for a drip that
 // is not this host's. Shared by every handler here that answers with one.
-func (s *Server) dripResponse(w http.ResponseWriter, r *http.Request, hostID, id string) (types.CRMDripResponse, bool) {
+func (s *Module) dripResponse(w http.ResponseWriter, r *http.Request, hostID, id string) (types.CRMDripResponse, bool) {
 	drip, err := s.store.Drip(r.Context(), hostID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "No such sequence.")
@@ -113,18 +114,18 @@ func (s *Server) dripResponse(w http.ResponseWriter, r *http.Request, hostID, id
  * difference from creating a broadcast. A sequence with the `registered` trigger does
  * nothing at all until the next person registers.
  */
-func (s *Server) handleCreateCRMDrip(w http.ResponseWriter, r *http.Request) {
+func (s *Module) handleCreateCRMDrip(w http.ResponseWriter, r *http.Request) {
 	s.saveDrip(w, r, "")
 }
 
 // handleUpdateCRMDrip replaces one. The steps come with it; see store.SaveDrip for
 // what that means for the people already part-way through.
-func (s *Server) handleUpdateCRMDrip(w http.ResponseWriter, r *http.Request) {
+func (s *Module) handleUpdateCRMDrip(w http.ResponseWriter, r *http.Request) {
 	s.saveDrip(w, r, chi.URLParam(r, "id"))
 }
 
-func (s *Server) saveDrip(w http.ResponseWriter, r *http.Request, id string) {
-	user := userFromContext(r.Context())
+func (s *Module) saveDrip(w http.ResponseWriter, r *http.Request, id string) {
+	user := authctx.User(r.Context())
 
 	var body types.CRMDripRequest
 	if err := httpx.DecodeJSON(w, r, &body); err != nil {
@@ -235,7 +236,7 @@ func (s *Server) saveDrip(w http.ResponseWriter, r *http.Request, id string) {
  * sequence has no webinar of its own, but every person on it entered from one, and
  * their enrollment remembers which.
  */
-func (s *Server) stepsAllowed(
+func (s *Module) stepsAllowed(
 	w http.ResponseWriter,
 	r *http.Request,
 	user store.User,
@@ -318,8 +319,8 @@ func (s *Server) stepsAllowed(
  * that already went out stay in each contact's conversation either way; there is no
  * unsend on WhatsApp and nothing here pretends otherwise.
  */
-func (s *Server) handleDeleteCRMDrip(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleDeleteCRMDrip(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	id := chi.URLParam(r, "id")
 
 	err := s.store.DeleteDrip(r.Context(), user.ID, id)
@@ -342,8 +343,8 @@ func (s *Server) handleDeleteCRMDrip(w http.ResponseWriter, r *http.Request) {
  * register for something. Nothing is sent from here — the first step is queued by the
  * next sweep, within thirty seconds.
  */
-func (s *Server) handleEnrollCRMDrip(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleEnrollCRMDrip(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	id := chi.URLParam(r, "id")
 
 	var body types.CRMDripEnrollRequest
@@ -409,8 +410,8 @@ func (s *Server) handleEnrollCRMDrip(w http.ResponseWriter, r *http.Request) {
  * is retired with it. A deleted row would let the same person be enrolled again by the
  * next trigger, which is not what a host removing them meant.
  */
-func (s *Server) handleRemoveCRMDripEnrollment(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
+func (s *Module) handleRemoveCRMDripEnrollment(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
 	id := chi.URLParam(r, "id")
 
 	// The drip is read first, so an enrollment id alone can never reach somebody
@@ -472,7 +473,7 @@ func dripUsesWebinarFields(drip types.CRMDrip) bool {
  * Somebody else's webinar reads the same as one that does not exist, like everywhere
  * else in the CRM: a topic and a start time are exactly what a slug guesser is after.
  */
-func (s *Server) crmWebinarAllowed(w http.ResponseWriter, r *http.Request, hostID, slug string) bool {
+func (s *Module) crmWebinarAllowed(w http.ResponseWriter, r *http.Request, hostID, slug string) bool {
 	owner, err := s.store.HostIDFor(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && owner != hostID) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_webinar",
@@ -497,7 +498,7 @@ func (s *Server) crmWebinarAllowed(w http.ResponseWriter, r *http.Request, hostI
  *
  * Failures are logged and dropped. The seat is what the registrant came for.
  */
-func (s *Server) enrollDripsOnRegistration(ctx context.Context, wb types.Webinar, contact types.CRMContact) {
+func (s *Module) enrollDripsOnRegistration(ctx context.Context, wb types.Webinar, contact types.CRMContact) {
 	if !wb.Options.WhatsAppReminders || !contact.WhatsAppOptIn || contact.Phone == "" {
 		return
 	}
@@ -524,7 +525,7 @@ func (s *Server) enrollDripsOnRegistration(ctx context.Context, wb types.Webinar
  * being written by — so "did they turn up" has its final answer by the time this runs.
  * A webinar that ends twice enrolls nobody twice; entry is one per person per sequence.
  */
-func (s *Server) enrollDripsOnWebinarEnd(ctx context.Context, wb types.Webinar) {
+func (s *Module) enrollDripsOnWebinarEnd(ctx context.Context, wb types.Webinar) {
 	if !wb.Options.WhatsAppReminders {
 		return
 	}
@@ -567,7 +568,7 @@ func (s *Server) enrollDripsOnWebinarEnd(ctx context.Context, wb types.Webinar) 
  * queueing a message the outbox will refuse to send leaves a row pending for ever and
  * a host looking at somebody who is apparently still part-way through.
  */
-func (s *Server) AdvanceDrips(ctx context.Context) {
+func (s *Module) AdvanceDrips(ctx context.Context) {
 	due, err := s.store.DueDripSteps(ctx, dripStepsPerSweep)
 	if err != nil {
 		s.log.Error("drip sweep: query failed", "error", err)

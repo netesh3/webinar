@@ -21,7 +21,6 @@ import (
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
-	"github.com/netkumar/webcast/api/internal/wa"
 	"github.com/netkumar/webcast/api/internal/yt"
 	"github.com/netkumar/webcast/api/types"
 )
@@ -118,15 +117,6 @@ type Server struct {
 	// youtube is nil when GOOGLE_CLIENT_SECRET is unset. Pasted stream keys
 	// still work; Connect YouTube and viaYouTube do not.
 	youtube *yt.Client
-	/* whatsapp is nil unless all three META_* values are set, and the handlers say
-	 * so rather than offering a Connect button that dead-ends. Every method on it
-	 * tolerates a nil receiver, which is what lets the webhook and the connect
-	 * endpoint check Enabled() without a separate nil test everywhere.
-	 *
-	 * One client for the app, not per host: it holds this deployment's Meta app
-	 * credentials, while the token that actually sends belongs to each host's own
-	 * WABA and is read from their user row at send time. */
-	whatsapp *wa.Client
 	// recordings is nil when recording is turned off for this instance, which the
 	// handlers check — an operator who disables it gets a clear 503 rather than a
 	// button that appears to work and drops the bytes.
@@ -180,28 +170,11 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		log.Info("youtube oauth enabled")
 	}
 
-	var whatsapp *wa.Client
-	if cfg.WhatsAppConnectEnabled() {
-		whatsapp = wa.New(cfg.MetaAppID, cfg.MetaAppSecret, cfg.MetaWhatsAppConfigID)
-		if cfg.WhatsAppGraphURL != "" {
-			whatsapp.Graph = strings.TrimRight(cfg.WhatsAppGraphURL, "/")
-		}
-		// The verify token is separately optional, and its absence is the one way
-		// to end up with a Connect button that works and a webhook Meta can never
-		// confirm — so it is said out loud at boot rather than discovered in the
-		// app dashboard.
-		if strings.TrimSpace(cfg.MetaWebhookVerifyToken) == "" {
-			log.Warn("whatsapp connect enabled without META_WEBHOOK_VERIFY_TOKEN: Meta cannot verify the webhook subscription, so no inbound message or delivery status will arrive")
-		}
-		log.Info("whatsapp connect enabled", "graph", whatsapp.Graph)
-	}
-
 	srv := &Server{
 		cfg:        cfg,
 		store:      st,
 		sfu:        sfu,
 		youtube:    youtube,
-		whatsapp:   whatsapp,
 		recordings: rec,
 		sessions:   auth.NewSessions(cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure),
 		log:        log,
@@ -210,8 +183,6 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		invites:    map[string]pendingStage{},
 		engage:     NoEngage{},
 	}
-	// Transitional: the CRM still lives in this package, so it is on by default.
-	srv.engage = crmHooks{s: srv}
 	return srv
 }
 

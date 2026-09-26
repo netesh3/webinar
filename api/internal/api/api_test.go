@@ -23,6 +23,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/api"
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/config"
+	"github.com/netkumar/webcast/api/internal/engage"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -491,6 +492,8 @@ type harness struct {
 	// server is the same server that handler belongs to, for the one piece of
 	// behaviour no request performs: the drip sweep. See crm_drips_test.go.
 	server *api.Server
+	// engage is the CRM module the server was given, for tests that drive a sweep by hand.
+	engage *engage.Module
 	// rooms is the DEFAULT project's fake — the one every single-project test asserts on.
 	// Multi-project tests reach for h.pool instead.
 	rooms *fakeRooms
@@ -682,6 +685,8 @@ func newHarnessWith(
 	 * behaviour that has no HTTP surface at all: see the drip sweep in
 	 * crm_drips_test.go. Everything else goes through the handler. */
 	server := api.NewServer(cfg, st, pool, recordings, log)
+	crm := engage.New(cfg, st, log)
+	server.UseEngage(crm)
 	handler := server.Routes()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -692,7 +697,7 @@ func newHarnessWith(
 		t.Fatal(err)
 	}
 	return &harness{
-		t: t, srv: srv, handler: handler, server: server, rooms: rooms, pool: pool,
+		t: t, srv: srv, handler: handler, server: server, engage: crm, rooms: rooms, pool: pool,
 		client: &http.Client{Jar: jar}, store: st,
 		recordingsDir: recordingsDir,
 	}

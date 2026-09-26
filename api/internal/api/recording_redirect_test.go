@@ -41,10 +41,10 @@ func (oneKeyStore) Append(context.Context, string, io.Reader) (int64, error) { p
 func (oneKeyStore) Open(context.Context, string) (io.ReadSeekCloser, int64, error) {
 	panic("not used")
 }
-func (oneKeyStore) Delete(context.Context, string) error                      { panic("not used") }
-func (oneKeyStore) DeletePrefix(context.Context, string) error                { panic("not used") }
-func (oneKeyStore) Finalize(context.Context, string) error                    { panic("not used") }
-func (oneKeyStore) Describe() string                                          { return "one-key" }
+func (oneKeyStore) Delete(context.Context, string) error       { panic("not used") }
+func (oneKeyStore) DeletePrefix(context.Context, string) error { panic("not used") }
+func (oneKeyStore) Finalize(context.Context, string) error     { panic("not used") }
+func (oneKeyStore) Describe() string                           { return "one-key" }
 func (oneKeyStore) FinalizeWithProgress(context.Context, string, func(int)) error {
 	panic("not used")
 }
