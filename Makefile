@@ -128,6 +128,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the Q&A card's asker line: an anonymous question must never surface its
 	# sender's name, initials or identity, and "answered live" is not a text answer.
 	cd web && node --experimental-strip-types --no-warnings lib/qa-view.test.mts
+	# And the polls panel and pop-up: percentages that must add to 100, a quiz answer
+	# marked after a blank option, and a launch announced mid-read that must not be lost.
+	cd web && node --experimental-strip-types --no-warnings lib/poll-view.test.mts
 	# And the host roster sections: oldest-first hands and a search box that stays
 	# away until the list is too long to scan are not things a three-person room shows.
 	cd web && node --experimental-strip-types --no-warnings lib/roster.test.mts

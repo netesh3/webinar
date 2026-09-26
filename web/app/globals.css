@@ -208,6 +208,17 @@
   }
 }
 
+/* A results bar in the Polls panel grows from the left the first time it is drawn;
+   after that its width transitions, so a refresh of the tally slides rather than jumps. */
+@keyframes poll-bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 body {
   background: var(--color-page);
   color: var(--color-ink);

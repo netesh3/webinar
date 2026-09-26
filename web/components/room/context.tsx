@@ -105,6 +105,9 @@ export type RoomUI = {
    * Null for the host, whose own panel reads the fuller host endpoint. */
   polls: {
     list: Poll[] | null;
+    /** The last read's failure, cleared by the next good one. Optional so a room
+     *  shell without a real fetch (the preview) need not invent one. */
+    error?: string | null;
     reload: () => void;
     /** Replaces one poll in place, after voting. */
     replace: (poll: Poll) => void;
