@@ -158,7 +158,7 @@ func TestPublishingARecordingTellsTheRegistrants(t *testing.T) {
 	}
 
 	// One WhatsApp message, to the one person who gave a number and ticked the box.
-	pending, err := h.store.PendingWhatsApp(context.Background(), 100)
+	pending, err := h.crm.PendingWhatsApp(context.Background(), 100)
 	if err != nil {
 		t.Fatalf("pending whatsapp: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestPublishingARecordingTellsTheRegistrants(t *testing.T) {
 	if again := replayEmails(t, h, topic); len(again) != 2 {
 		t.Errorf("%d replay mails after republishing, want the same two", len(again))
 	}
-	if again, _ := h.store.PendingWhatsApp(context.Background(), 100); len(again) != 1 {
+	if again, _ := h.crm.PendingWhatsApp(context.Background(), 100); len(again) != 1 {
 		t.Errorf("%d WhatsApp replays after republishing, want the same one", len(again))
 	}
 
@@ -239,7 +239,7 @@ func TestReplayStillGoesOutAfterTheWebinarHasEnded(t *testing.T) {
 	if mails := replayEmails(t, h, topic); len(mails) != 1 {
 		t.Errorf("%d replay mails deliverable for an ended webinar, want one", len(mails))
 	}
-	pending, err := h.store.PendingWhatsApp(context.Background(), 100)
+	pending, err := h.crm.PendingWhatsApp(context.Background(), 100)
 	if err != nil {
 		t.Fatalf("pending whatsapp: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestReplayNeedsTheSwitchAndAChosenTemplate(t *testing.T) {
 	if mails := replayEmails(t, h, off); len(mails) != 0 {
 		t.Errorf("%d replay mails with the feature off", len(mails))
 	}
-	if pending, _ := h.store.PendingWhatsApp(context.Background(), 100); len(pending) != 0 {
+	if pending, _ := h.crm.PendingWhatsApp(context.Background(), 100); len(pending) != 0 {
 		t.Errorf("%d WhatsApp replays with the feature off: %+v", len(pending), pending)
 	}
 	// Publishing still worked, which is the point of the feature being about the
@@ -303,7 +303,7 @@ func TestReplayNeedsTheSwitchAndAChosenTemplate(t *testing.T) {
 	if mails := replayEmails(t, h, only); len(mails) != 1 {
 		t.Errorf("%d replay mails without a WhatsApp template, want one", len(mails))
 	}
-	if pending, _ := h.store.PendingWhatsApp(context.Background(), 100); len(pending) != 0 {
+	if pending, _ := h.crm.PendingWhatsApp(context.Background(), 100); len(pending) != 0 {
 		t.Errorf("%d WhatsApp replays with no template chosen: %+v", len(pending), pending)
 	}
 	if sends := g.sent(); len(sends) != 0 {

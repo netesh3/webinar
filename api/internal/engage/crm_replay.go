@@ -30,7 +30,7 @@ func (s *Module) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, ho
 	if !hasTemplate {
 		return
 	}
-	people, err := s.store.ReplayRecipients(ctx, wb.ID, maxReplayRecipients)
+	people, err := s.store.WhatsAppReplayRecipients(ctx, wb.ID, maxReplayRecipients)
 	if err != nil {
 		s.log.Error("replay: could not list whatsapp recipients", "webinar", wb.ID, "error", err)
 		return
@@ -38,7 +38,7 @@ func (s *Module) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, ho
 
 	var messages int
 	for _, p := range people {
-		if p.ContactID == "" || p.Phone == "" || !p.OptIn {
+		if p.Phone == "" || !p.OptIn {
 			continue
 		}
 		/* A contact built from what the recipients query already returned, rather than

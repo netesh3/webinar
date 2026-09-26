@@ -1,10 +1,11 @@
-package store
+package crmstore
 
 import (
 	"context"
 	"strings"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -82,7 +83,7 @@ func (s *Store) SaveDrip(ctx context.Context, hostID, id string, in DripInput) (
 			return "", err
 		}
 		if tag.RowsAffected() == 0 {
-			return "", ErrNotFound
+			return "", store.ErrNotFound
 		}
 		if _, err := tx.Exec(ctx,
 			`DELETE FROM crm_drip_steps WHERE drip_id = $1::uuid`, id); err != nil {
@@ -219,13 +220,13 @@ func (s *Store) Drips(ctx context.Context, hostID string, limit int) ([]types.CR
 	return out, steps.Err()
 }
 
-// Drip reads one. Another host's id is ErrNotFound, like every other CRM read.
+// Drip reads one. Another host's id is store.ErrNotFound, like every other CRM read.
 func (s *Store) Drip(ctx context.Context, hostID, id string) (types.CRMDrip, error) {
 	row := s.pool.QueryRow(ctx, dripSelect+`
 		 WHERE d.host_id = $1::uuid AND d.id = $2::uuid`, hostID, id)
 	d, err := scanDrip(row)
 	if noRows(err) {
-		return types.CRMDrip{}, ErrNotFound
+		return types.CRMDrip{}, store.ErrNotFound
 	}
 	if err != nil {
 		return types.CRMDrip{}, err
@@ -267,7 +268,7 @@ func (s *Store) DeleteDrip(ctx context.Context, hostID, id string) error {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }
@@ -334,7 +335,7 @@ func (s *Store) EnrollOnWebinarEnd(ctx context.Context, hostID, webinarSlug, tri
 		         WHERE a.webinar_id = w.id AND a.registration_id = r.id)`
 	case types.DripEnded:
 	default:
-		return 0, ErrConflict
+		return 0, store.ErrConflict
 	}
 	tag, err := s.pool.Exec(ctx, enrollSelect+`
 		   AND EXISTS (
@@ -386,7 +387,7 @@ func (s *Store) EnrollOnTagAdded(ctx context.Context, hostID, contactID, tagID s
 /* EnrollByHand is the manual trigger, and the one enrollment a person did not earn by
  * doing anything.
  *
- * ErrConflict when nothing was inserted, unlike the automatic paths: a host who picked
+ * store.ErrConflict when nothing was inserted, unlike the automatic paths: a host who picked
  * a contact and pressed a button is owed the reason, and "they are already on it" is
  * the usual one. The others are a drip with no steps and a contact who cannot be
  * messaged, both of which the API checks first so this stays the last word rather than
@@ -408,7 +409,7 @@ func (s *Store) EnrollByHand(ctx context.Context, hostID, dripID, contactID, web
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrConflict
+		return store.ErrConflict
 	}
 	return nil
 }
@@ -484,7 +485,7 @@ func (s *Store) ExitDripEnrollment(ctx context.Context, dripID, enrollmentID, re
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE notifications
@@ -504,7 +505,7 @@ func (s *Store) ExitDripEnrollment(ctx context.Context, dripID, enrollmentID, re
  * its next step means a host reading the list sees "opted out" against them today,
  * instead of an active enrollment that will quietly never send anything.
  */
-func exitDripsForContact(ctx context.Context, q Querier, contactID, reason string) error {
+func exitDripsForContact(ctx context.Context, q store.Querier, contactID, reason string) error {
 	if _, err := q.Exec(ctx, `
 		UPDATE crm_drip_enrollments
 		   SET state = 'exited', exit_reason = $2, updated_at = now()
@@ -607,7 +608,7 @@ func (s *Store) DueDripSteps(ctx context.Context, limit int) ([]DripDue, error) 
  *
  * One transaction, and the position is the guard: the update only matches an
  * enrollment still sitting at the step just queued, so two sweepers racing on the same
- * row produce one message and one ErrConflict rather than two of somebody's phone.
+ * row produce one message and one store.ErrConflict rather than two of somebody's phone.
  * That is also why there is no unique index for this — see migrations/0046.
  *
  * The step's own values are resolved by the caller, per person, exactly like a
@@ -621,7 +622,7 @@ func (s *Store) QueueDripStep(ctx context.Context, due DripDue, params []string)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := s.Notify(ctx, tx, Notification{
+	if err := s.Notify(ctx, tx, store.Notification{
 		Kind:             types.NotifyWhatsAppDrip,
 		Channel:          "whatsapp",
 		ContactID:        due.ContactID,
@@ -658,7 +659,7 @@ func (s *Store) QueueDripStep(ctx context.Context, due DripDue, params []string)
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrConflict
+		return store.ErrConflict
 	}
 	return tx.Commit(ctx)
 }

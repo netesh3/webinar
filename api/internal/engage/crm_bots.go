@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/authctx"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
@@ -237,7 +238,7 @@ func (s *Module) saveBot(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 
-	saved, err := s.store.SaveBot(r.Context(), user.ID, id, store.BotInput{
+	saved, err := s.store.SaveBot(r.Context(), user.ID, id, crmstore.BotInput{
 		Name:     name,
 		Trigger:  trigger,
 		Keywords: keywords,
@@ -645,7 +646,7 @@ func (s *Module) handleCRMContactBot(w http.ResponseWriter, r *http.Request) {
 type botTurn struct {
 	host    store.User
 	contact types.CRMContact
-	run     store.BotRun
+	run     crmstore.BotRun
 	nodes   map[string]types.CRMBotNode
 	// steps is the whole conversation's count, not this turn's.
 	steps int
@@ -768,7 +769,7 @@ func (s *Module) startBot(ctx context.Context, host store.User, contact types.CR
 			"bot", start.BotID, "contact", contact.ID)
 		return
 	}
-	run := store.BotRun{
+	run := crmstore.BotRun{
 		SessionID: id, BotID: start.BotID, BotName: start.BotName,
 		Active: true, State: "waiting", NodeKey: start.Entry,
 	}
@@ -787,7 +788,7 @@ func (s *Module) openBotTurn(
 	ctx context.Context,
 	host store.User,
 	contact types.CRMContact,
-	run store.BotRun,
+	run crmstore.BotRun,
 	wamid string,
 ) (*botTurn, bool) {
 	nodes, err := s.store.BotNodes(ctx, run.BotID)
@@ -865,7 +866,7 @@ func (s *Module) botAnswer(ctx context.Context, t *botTurn, in wa.Inbound) (stri
 func (s *Module) runFlow(ctx context.Context, t *botTurn, key string) {
 	for ran := 0; ; ran++ {
 		if key == "" {
-			s.saveBotStep(ctx, t, store.BotStep{State: "done"})
+			s.saveBotStep(ctx, t, crmstore.BotStep{State: "done"})
 			return
 		}
 		/* Both budgets, checked before the node rather than after: the cost of a step is
@@ -874,14 +875,14 @@ func (s *Module) runFlow(ctx context.Context, t *botTurn, key string) {
 		if ran >= botNodesPerTurn || t.steps >= botNodesPerSession {
 			s.log.Warn("bot: flow stopped on its step budget", "bot", t.run.BotID,
 				"session", t.run.SessionID, "node", key, "steps", t.steps)
-			s.saveBotStep(ctx, t, store.BotStep{
+			s.saveBotStep(ctx, t, crmstore.BotStep{
 				State: "stopped", NodeKey: key, Reason: "too_many_steps",
 			})
 			return
 		}
 		node, ok := t.nodes[key]
 		if !ok {
-			s.saveBotStep(ctx, t, store.BotStep{
+			s.saveBotStep(ctx, t, crmstore.BotStep{
 				State: "stopped", NodeKey: key, Reason: "node_missing",
 			})
 			return
@@ -908,17 +909,17 @@ func (s *Module) runFlow(ctx context.Context, t *botTurn, key string) {
 				return
 			}
 			// Parked at the question, not past it: this is the node the answer is about.
-			s.saveBotStep(ctx, t, store.BotStep{State: "waiting", NodeKey: node.Key})
+			s.saveBotStep(ctx, t, crmstore.BotStep{State: "waiting", NodeKey: node.Key})
 			return
 
 		case types.BotNodeWait:
 			next := node.Next
 			if next == "" {
 				// Nothing to wake up for.
-				s.saveBotStep(ctx, t, store.BotStep{State: "done"})
+				s.saveBotStep(ctx, t, crmstore.BotStep{State: "done"})
 				return
 			}
-			s.saveBotStep(ctx, t, store.BotStep{
+			s.saveBotStep(ctx, t, crmstore.BotStep{
 				State: "sleeping", NodeKey: next,
 				// Where it is going, not where it is: a sleeping session stores the node
 				// to run when it wakes, so waking is one lookup and no special case.
@@ -941,7 +942,7 @@ func (s *Module) runFlow(ctx context.Context, t *botTurn, key string) {
 		default:
 			// A kind written by a newer version of this server. Stopping is the honest
 			// answer: carrying on would skip a step the host meant to happen.
-			s.saveBotStep(ctx, t, store.BotStep{
+			s.saveBotStep(ctx, t, crmstore.BotStep{
 				State: "stopped", NodeKey: key, Reason: "node_missing",
 			})
 			return
@@ -959,7 +960,7 @@ func (s *Module) runFlow(ctx context.Context, t *botTurn, key string) {
  */
 func (s *Module) botSend(ctx context.Context, t *botTurn, node types.CRMBotNode, buttons []wa.Button) bool {
 	if t.window.IsZero() {
-		s.saveBotStep(ctx, t, store.BotStep{
+		s.saveBotStep(ctx, t, crmstore.BotStep{
 			State: "stopped", NodeKey: node.Key, Reason: "window_closed",
 		})
 		return false
@@ -988,13 +989,13 @@ func (s *Module) botSend(ctx context.Context, t *botTurn, node types.CRMBotNode,
 		// with no payment method, a number that is not registered.
 		s.log.Warn("bot: send failed", "error", err, "host", t.host.ID,
 			"bot", t.run.BotID, "node", node.Key)
-		s.saveBotStep(ctx, t, store.BotStep{
+		s.saveBotStep(ctx, t, crmstore.BotStep{
 			State: "stopped", NodeKey: node.Key, Reason: "send_failed",
 		})
 		return false
 	}
 
-	if _, err := s.store.AppendMessage(ctx, t.host.ID, t.contact.ID, store.MessageInput{
+	if _, err := s.store.AppendMessage(ctx, t.host.ID, t.contact.ID, crmstore.MessageInput{
 		Direction: "out",
 		Body:      node.Text,
 		Status:    "sent",
@@ -1091,7 +1092,7 @@ func (s *Module) handOffBot(ctx context.Context, t *botTurn, text string) {
 			return
 		}
 	}
-	s.saveBotStep(ctx, t, store.BotStep{
+	s.saveBotStep(ctx, t, crmstore.BotStep{
 		State: "handoff", NodeKey: t.run.NodeKey, Reason: "handed_over",
 	})
 	if err := s.store.SetContactBotPaused(ctx, t.host.ID, t.contact.ID, true,
@@ -1107,7 +1108,7 @@ func (s *Module) handOffBot(ctx context.Context, t *botTurn, text string) {
 // saveBotStep writes the outcome of a turn, carrying the counters and the message it
 // acted on. The single place a session is written from, so a turn cannot leave it in
 // two states.
-func (s *Module) saveBotStep(ctx context.Context, t *botTurn, step store.BotStep) {
+func (s *Module) saveBotStep(ctx context.Context, t *botTurn, step crmstore.BotStep) {
 	step.Steps = t.steps
 	step.WAMID = t.wamid
 	if err := s.store.SaveBotSession(ctx, t.run.SessionID, step); err != nil {
@@ -1118,8 +1119,8 @@ func (s *Module) saveBotStep(ctx context.Context, t *botTurn, step store.BotStep
 
 // endBotSession stops a conversation without a turn to hang it off — the cases decided
 // before the flow was even read.
-func (s *Module) endBotSession(ctx context.Context, run store.BotRun, reason string) {
-	if err := s.store.SaveBotSession(ctx, run.SessionID, store.BotStep{
+func (s *Module) endBotSession(ctx context.Context, run crmstore.BotRun, reason string) {
+	if err := s.store.SaveBotSession(ctx, run.SessionID, crmstore.BotStep{
 		State: "stopped", NodeKey: run.NodeKey, Reason: reason, Steps: run.Steps,
 	}); err != nil {
 		s.log.Error("bot: could not stop the conversation", "error", err,
@@ -1174,7 +1175,7 @@ func (s *Module) AdvanceBots(ctx context.Context) {
 	hosts := map[string]store.User{}
 	woken, ended := 0, 0
 	for _, d := range due {
-		run := store.BotRun{
+		run := crmstore.BotRun{
 			SessionID: d.SessionID, BotID: d.BotID, BotName: d.BotName,
 			Active: true, State: "sleeping", NodeKey: d.NodeKey, Steps: d.Steps,
 		}

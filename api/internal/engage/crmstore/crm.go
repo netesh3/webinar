@@ -1,4 +1,4 @@
-package store
+package crmstore
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -111,7 +112,7 @@ func (s *Store) UpsertContact(ctx context.Context, hostID string, in ContactInpu
 	phone := normalisePhone(in.Phone)
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	if phone == "" && email == "" {
-		return types.CRMContact{}, ErrNotFound
+		return types.CRMContact{}, store.ErrNotFound
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -121,11 +122,11 @@ func (s *Store) UpsertContact(ctx context.Context, hostID string, in ContactInpu
 	defer func() { _ = tx.Rollback(ctx) }() // no-op once committed
 
 	id, err := findContactID(ctx, tx, hostID, phone, email)
-	if err != nil && err != ErrNotFound {
+	if err != nil && err != store.ErrNotFound {
 		return types.CRMContact{}, err
 	}
 
-	if err == ErrNotFound {
+	if err == store.ErrNotFound {
 		var newID string
 		err = tx.QueryRow(ctx, `
 			INSERT INTO crm_contacts
@@ -235,7 +236,7 @@ func findContactID(ctx context.Context, tx pgx.Tx, hostID, phone, email string) 
 			return "", err
 		}
 	}
-	return "", ErrNotFound
+	return "", store.ErrNotFound
 }
 
 type querier interface {
@@ -249,7 +250,7 @@ func contactByID(ctx context.Context, q querier, hostID, id string) (types.CRMCo
 		  FROM crm_contacts c
 		 WHERE c.id = $1::uuid AND c.host_id = $2::uuid`, id, hostID))
 	if noRows(err) {
-		return types.CRMContact{}, ErrNotFound
+		return types.CRMContact{}, store.ErrNotFound
 	}
 	return c, err
 }
@@ -264,14 +265,14 @@ func (s *Store) Contact(ctx context.Context, hostID, id string) (types.CRMContac
 func (s *Store) ContactByPhone(ctx context.Context, hostID, phone string) (types.CRMContact, error) {
 	p := normalisePhone(phone)
 	if p == "" {
-		return types.CRMContact{}, ErrNotFound
+		return types.CRMContact{}, store.ErrNotFound
 	}
 	c, err := scanContact(s.pool.QueryRow(ctx, `
 		SELECT `+crmContactColumns+`
 		  FROM crm_contacts c
 		 WHERE c.host_id = $1 AND c.phone = $2`, hostID, p))
 	if noRows(err) {
-		return types.CRMContact{}, ErrNotFound
+		return types.CRMContact{}, store.ErrNotFound
 	}
 	return c, err
 }
@@ -699,7 +700,7 @@ type MessageInput struct {
 func (s *Store) AppendMessage(ctx context.Context, hostID, contactID string, in MessageInput) (types.CRMMessage, error) {
 	dir := strings.TrimSpace(in.Direction)
 	if dir != "in" && dir != "out" {
-		return types.CRMMessage{}, ErrConflict
+		return types.CRMMessage{}, store.ErrConflict
 	}
 	status := strings.TrimSpace(in.Status)
 	if status == "" {
@@ -778,7 +779,7 @@ func messageByWAMID(ctx context.Context, q querier, hostID, wamid string) (types
 		Scan(&m.ID, &m.ContactID, &m.Direction, &m.Body, &m.Kind, &m.TemplateName,
 			&m.Status, &m.Error, &created)
 	if noRows(err) {
-		return types.CRMMessage{}, ErrNotFound
+		return types.CRMMessage{}, store.ErrNotFound
 	}
 	if err != nil {
 		return types.CRMMessage{}, err
@@ -876,7 +877,7 @@ func (s *Store) SetContactWhatsAppOptOut(ctx context.Context, hostID, contactID 
  * both. It looks the host up from the webinar rather than taking one, so a caller
  * cannot file somebody else's registrant under the wrong CRM.
  *
- * Returns ErrNotFound for a registrant with neither a phone number nor an email —
+ * Returns store.ErrNotFound for a registrant with neither a phone number nor an email —
  * a guest, in practice. That is the documented behaviour rather than an oversight:
  * a contact with no way to reach them is a row that can never be matched again,
  * and a host's list filling up with anonymous entries from people who tapped
@@ -887,7 +888,7 @@ func (s *Store) ContactFromRegistration(ctx context.Context, slug string, reg ty
 	err := s.pool.QueryRow(ctx,
 		`SELECT host_id::text FROM webinars WHERE slug = $1`, slug).Scan(&hostID)
 	if noRows(err) {
-		return types.CRMContact{}, ErrNotFound
+		return types.CRMContact{}, store.ErrNotFound
 	}
 	if err != nil {
 		return types.CRMContact{}, err

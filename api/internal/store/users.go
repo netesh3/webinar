@@ -164,21 +164,6 @@ func scanUser(row scanner) (User, error) {
 	return u, err
 }
 
-/* SetUserWhatsAppRegistered records that this host's number has been registered with
- * Cloud API. The PIN that did it is not a parameter: see migrations/0048.
- */
-func (s *Store) SetUserWhatsAppRegistered(ctx context.Context, userID string) error {
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE users SET whatsapp_registered_at = now() WHERE id = $1`, userID)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
 func (s *Store) HostCanCdnBroadcast(ctx context.Context, hostID string) (bool, error) {
 	var can bool
 	err := s.pool.QueryRow(ctx, `SELECT can_cdn_broadcast FROM users WHERE id = $1`, hostID).Scan(&can)
@@ -201,33 +186,6 @@ func (s *Store) UserByEmail(ctx context.Context, email string) (User, error) {
 func (s *Store) UserByID(ctx context.Context, id string) (User, error) {
 	u, err := scanUser(s.pool.QueryRow(ctx,
 		`SELECT `+userColumns+` FROM users WHERE id = $1`, id))
-	if noRows(err) {
-		return User{}, ErrNotFound
-	}
-	return u, err
-}
-
-/* UserByWhatsAppPhoneNumberID finds the host a webhook delivery belongs to.
- *
- * Meta says which number a message arrived on and nothing about which account of
- * ours owns it, so this is the whole of the routing: one phone-number id, one
- * host, one CRM. It is also the only user lookup in this package that is driven by
- * a stranger's request rather than a session, which is why the caller treats an
- * unknown id as "not ours, drop it" instead of an error.
- *
- * The id stays unique across accounts by Meta's own arrangement — a WhatsApp
- * number belongs to exactly one WABA — and a host who disconnects has the column
- * cleared, so a former host's traffic stops resolving to them.
- */
-func (s *Store) UserByWhatsAppPhoneNumberID(ctx context.Context, phoneNumberID string) (User, error) {
-	id := strings.TrimSpace(phoneNumberID)
-	if id == "" {
-		return User{}, ErrNotFound
-	}
-	u, err := scanUser(s.pool.QueryRow(ctx,
-		`SELECT `+userColumns+` FROM users
-		  WHERE whatsapp_phone_number_id = $1 AND whatsapp_access_token <> ''
-		  ORDER BY whatsapp_connected_at DESC NULLS LAST LIMIT 1`, id))
 	if noRows(err) {
 		return User{}, ErrNotFound
 	}
@@ -259,7 +217,7 @@ func (s *Store) CreateUser(ctx context.Context, email, hashedPassword, name, tit
 		Org:          strings.TrimSpace(org),
 		// Same normaliser registrations.phone already uses — see its doc
 		// comment for why this is one text column in E.164 shape.
-		Phone:    normalisePhone(phone),
+		Phone:    NormalisePhone(phone),
 		Initials: InitialsOf(name),
 		Hue:      HueFor(email),
 		CanHost:  canHost,
@@ -311,7 +269,7 @@ func (s *Store) UpdateProfile(ctx context.Context, id string, p types.ProfilePat
 	}
 	phone := current.Phone
 	if p.Phone != nil {
-		phone = normalisePhone(*p.Phone)
+		phone = NormalisePhone(*p.Phone)
 	}
 	/* can_host is deliberately NOT in this statement.
 	 *
@@ -442,45 +400,6 @@ func (s *Store) SetUserYouTube(ctx context.Context, userID, refresh, channelID, 
 		       youtube_stream_id = $5
 		 WHERE id = $1`,
 		userID, refresh, channelID, channelTitle, streamID)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-/* SetUserWhatsApp stores the grant Embedded Signup produced, or clears it.
- *
- * An empty token is the disconnect: every other column goes with it, including
- * the ids, so a half-cleared row can never be read as "connected to something,
- * details unknown". whatsapp_connected_at is derived here rather than passed in —
- * it is the time the grant was stored, which is a fact this function owns.
- *
- * expiresAt is nil for the usual non-expiring business token; see wa.Token.
- */
-func (s *Store) SetUserWhatsApp(ctx context.Context, userID, token, wabaID, phoneNumberID, displayPhone, verifiedName string, expiresAt *time.Time) error {
-	connectedAt := (*time.Time)(nil)
-	if strings.TrimSpace(token) != "" {
-		now := time.Now().UTC()
-		connectedAt = &now
-	} else {
-		// Disconnecting: drop everything, not just the token.
-		wabaID, phoneNumberID, displayPhone, verifiedName, expiresAt = "", "", "", "", nil
-	}
-
-	tag, err := s.pool.Exec(ctx, `
-		UPDATE users
-		   SET whatsapp_access_token = $2,
-		       whatsapp_waba_id = $3,
-		       whatsapp_phone_number_id = $4,
-		       whatsapp_display_phone = $5,
-		       whatsapp_verified_name = $6,
-		       whatsapp_token_expires_at = $7,
-		       whatsapp_connected_at = $8
-		 WHERE id = $1`,
-		userID, token, wabaID, phoneNumberID, displayPhone, verifiedName, expiresAt, connectedAt)
 	if err != nil {
 		return err
 	}

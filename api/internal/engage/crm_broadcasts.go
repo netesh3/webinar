@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/authctx"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -259,9 +260,9 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	to := make([]store.BroadcastRecipient, 0, len(contacts))
+	to := make([]crmstore.BroadcastRecipient, 0, len(contacts))
 	for _, c := range contacts {
-		to = append(to, store.BroadcastRecipient{
+		to = append(to, crmstore.BroadcastRecipient{
 			ContactID: c.ID,
 			Params:    resolveBroadcastParams(body.Params, c, wb, user.Name),
 		})
@@ -273,7 +274,7 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		// type one still wants the broadcast in the list.
 		name = tmpl.Name
 	}
-	id, err := s.store.CreateBroadcast(r.Context(), user.ID, store.BroadcastInput{
+	id, err := s.store.CreateBroadcast(r.Context(), user.ID, crmstore.BroadcastInput{
 		Name:             name,
 		TemplateName:     tmpl.Name,
 		TemplateLanguage: tmpl.Language,

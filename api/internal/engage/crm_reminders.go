@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/netkumar/webcast/api/internal/authctx"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -121,7 +122,7 @@ func (s *Module) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	in := make([]store.ReminderInput, 0, len(body.Reminders))
+	in := make([]crmstore.ReminderInput, 0, len(body.Reminders))
 	for _, want := range body.Reminders {
 		kind := types.NotificationKind(strings.TrimSpace(string(want.Kind)))
 		if !isWhatsAppReminderKind(kind) {
@@ -176,7 +177,7 @@ func (s *Module) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		in = append(in, store.ReminderInput{
+		in = append(in, crmstore.ReminderInput{
 			Kind: string(kind), Name: tmpl.Name, Language: tmpl.Language, Params: want.Params,
 		})
 	}
@@ -413,7 +414,7 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 		 * message missing from the inbox, not one sent twice. */
 		_ = s.store.MarkDelivered(ctx, m.ID, "sent", "")
 
-		if _, err := s.store.AppendMessage(ctx, m.HostID, m.ContactID, store.MessageInput{
+		if _, err := s.store.AppendMessage(ctx, m.HostID, m.ContactID, crmstore.MessageInput{
 			Direction:    "out",
 			Status:       "sent",
 			WAMID:        wamid,
@@ -432,7 +433,7 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 // skipWhatsApp retires a message that can no longer be sent, keeping the reason:
 // 'skipped' rather than 'failed' because nothing went wrong here, and a host asking
 // why their reminder never arrived deserves the sentence rather than a silence.
-func (s *Module) skipWhatsApp(ctx context.Context, m store.WhatsAppOutbound, reason string) {
+func (s *Module) skipWhatsApp(ctx context.Context, m crmstore.WhatsAppOutbound, reason string) {
 	s.log.Warn("whatsapp outbox: skipped", "kind", m.Kind, "host", m.HostID,
 		"contact", m.ContactID, "reason", reason)
 	_ = s.store.MarkDelivered(ctx, m.ID, "skipped", reason)

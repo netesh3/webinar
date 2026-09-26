@@ -1,4 +1,4 @@
-package store
+package crmstore
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -277,7 +278,7 @@ func contactStatusPredicate(status string) (string, error) {
 	case types.CRMStatusNoNumber:
 		return ` AND ` + noNumber, nil
 	}
-	return "", ErrInvalid
+	return "", store.ErrInvalid
 }
 
 /* AudienceCounts is how many people an audience reaches, and how many it does not.
@@ -341,7 +342,7 @@ func (s *Store) AudienceContacts(ctx context.Context, hostID, audience, webinarS
 		return nil, err
 	}
 	if len(out) > limit {
-		return out, ErrConflict
+		return out, store.ErrConflict
 	}
 	return out, nil
 }
@@ -384,7 +385,7 @@ func (s *Store) CreateBroadcast(ctx context.Context, hostID string, in Broadcast
 	}
 
 	for _, rec := range to {
-		if err := s.Notify(ctx, tx, Notification{
+		if err := s.Notify(ctx, tx, store.Notification{
 			Kind:             types.NotifyWhatsAppBroadcast,
 			Channel:          "whatsapp",
 			ContactID:        rec.ContactID,
@@ -486,13 +487,13 @@ func (s *Store) Broadcasts(ctx context.Context, hostID string, limit int) ([]typ
 	return out, rows.Err()
 }
 
-// Broadcast reads one. Another host's id is ErrNotFound, like every other CRM read.
+// Broadcast reads one. Another host's id is store.ErrNotFound, like every other CRM read.
 func (s *Store) Broadcast(ctx context.Context, hostID, id string) (types.CRMBroadcast, error) {
 	row := s.pool.QueryRow(ctx, broadcastSelect+`
 		 WHERE b.host_id = $1::uuid AND b.id = $2::uuid`, hostID, id)
 	b, err := scanBroadcast(row)
 	if noRows(err) {
-		return types.CRMBroadcast{}, ErrNotFound
+		return types.CRMBroadcast{}, store.ErrNotFound
 	}
 	if err != nil {
 		return types.CRMBroadcast{}, err
@@ -502,7 +503,7 @@ func (s *Store) Broadcast(ctx context.Context, hostID, id string) (types.CRMBroa
 
 /* CancelBroadcast stops the messages that have not gone out yet.
  *
- * ErrConflict when there is nothing pending, rather than a silent success: a host
+ * store.ErrConflict when there is nothing pending, rather than a silent success: a host
  * cancelling a broadcast is trying to stop something, and "cancelled" on a
  * broadcast that had already finished would tell them they managed it.
  *
@@ -522,13 +523,13 @@ func (s *Store) CancelBroadcast(ctx context.Context, hostID, id string) error {
 		 WHERE host_id = $1::uuid AND id = $2::uuid
 		 FOR UPDATE`, hostID, id).Scan(&canceled)
 	if noRows(err) {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	if err != nil {
 		return err
 	}
 	if canceled != nil {
-		return ErrConflict
+		return store.ErrConflict
 	}
 
 	tag, err := tx.Exec(ctx, `
@@ -539,7 +540,7 @@ func (s *Store) CancelBroadcast(ctx context.Context, hostID, id string) error {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrConflict
+		return store.ErrConflict
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE crm_broadcasts SET canceled_at = now(), updated_at = now()

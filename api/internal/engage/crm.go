@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/authctx"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
@@ -85,7 +86,7 @@ func (s *Module) handleCRMContacts(w http.ResponseWriter, r *http.Request) {
 		scope = &types.CRMContactScope{WebinarID: slug, Topic: topic}
 	}
 
-	contacts, counts, err := s.store.Contacts(r.Context(), user.ID, store.ContactFilter{
+	contacts, counts, err := s.store.Contacts(r.Context(), user.ID, crmstore.ContactFilter{
 		Query:       q,
 		WebinarSlug: slug,
 		Status:      status,
@@ -302,9 +303,9 @@ func (s *Module) syncTemplates(ctx context.Context, user store.User) error {
 	if err != nil {
 		return err
 	}
-	in := make([]store.TemplateInput, 0, len(found))
+	in := make([]crmstore.TemplateInput, 0, len(found))
 	for _, t := range found {
-		in = append(in, store.TemplateInput{
+		in = append(in, crmstore.TemplateInput{
 			Name:        t.Name,
 			Language:    t.Language,
 			Status:      t.Status,
@@ -418,7 +419,7 @@ func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		wamid    string
-		recorded = store.MessageInput{Direction: "out", Status: "sent"}
+		recorded = crmstore.MessageInput{Direction: "out", Status: "sent"}
 	)
 	if text != "" {
 		if len(text) > whatsappTextMax {

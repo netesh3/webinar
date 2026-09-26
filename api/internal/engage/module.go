@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/netkumar/webcast/api/internal/config"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
@@ -33,8 +34,9 @@ import (
 
 // Module is the CRM. Build one with New and hand it to api.Server.UseEngage.
 type Module struct {
-	cfg   config.Config
-	store *store.Store
+	cfg config.Config
+	// store is the CRM's own SQL, with the core store embedded for webinar and user reads.
+	store *crmstore.Store
 	log   *slog.Logger
 	/* whatsapp is nil unless all three META_* values are set, and the handlers say so
 	 * rather than offering a Connect button that dead-ends. Every method on it tolerates a
@@ -62,7 +64,7 @@ func New(cfg config.Config, st *store.Store, log *slog.Logger) *Module {
 		}
 		log.Info("whatsapp connect enabled", "graph", whatsapp.Graph)
 	}
-	return &Module{cfg: cfg, store: st, log: log, whatsapp: whatsapp}
+	return &Module{cfg: cfg, store: crmstore.New(st), log: log, whatsapp: whatsapp}
 }
 
 /* featureAllowed is the CRM's copy of the webinar API's per-account switch check: 403
@@ -178,16 +180,29 @@ func (s *Module) OnRegistered(ctx context.Context, wb types.Webinar, reg types.R
  * at registration is held until the seat is approved, so this press is the moment it
  * becomes sendable — waiting for the ticker would make the fastest channel the slowest. */
 func (s *Module) OnRegistrationsDecided(ctx context.Context, slug string, declined []string) {
+	/* A declined seat's WhatsApp confirmation and reminders are retired first, so the
+	 * flush below cannot send them. */
+	if err := s.store.SkipWhatsAppForRegistrations(ctx, declined); err != nil {
+		s.log.Warn("crm: could not skip whatsapp for declined", "slug", slug, "error", err)
+	}
 	s.flushWhatsAppOutbox(ctx)
 }
 
-// OnRescheduled: the webinar store still moves both channels' reminders (split next step).
-func (s *Module) OnRescheduled(context.Context, string, time.Time) {}
+// OnRescheduled moves the WhatsApp 24h/1h reminders with the webinar, as the webinar side moves the email ones.
+func (s *Module) OnRescheduled(ctx context.Context, slug string, startsAt time.Time) {
+	if err := s.store.RescheduleWhatsAppReminders(ctx, slug, startsAt); err != nil {
+		s.log.Warn("crm: could not reschedule whatsapp reminders", "slug", slug, "error", err)
+	}
+}
 
-/* OnEnded starts the follow-up sequences: the `attended`, `no_show` and `ended` triggers.
- * Called for a webinar the sweeper closes on the meeting limit too, and after the room is
- * gone, so who attended has its final answer. */
+/* OnEnded retires the WhatsApp reminders for a session that is over, then starts the
+ * follow-up sequences: the `attended`, `no_show` and `ended` triggers. Called for a
+ * webinar the sweeper closes on the meeting limit too, and after the room is gone, so who
+ * attended has its final answer. */
 func (s *Module) OnEnded(ctx context.Context, wb types.Webinar) {
+	if err := s.store.SkipWhatsAppForEndedWebinar(ctx, wb.ID); err != nil {
+		s.log.Warn("crm: could not skip whatsapp for ended webinar", "slug", wb.ID, "error", err)
+	}
 	s.enrollDripsOnWebinarEnd(ctx, wb)
 }
 

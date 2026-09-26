@@ -1,10 +1,11 @@
-package store
+package crmstore
 
 import (
 	"context"
 	"strings"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -159,7 +160,7 @@ func (s *Store) Template(ctx context.Context, hostID, name, language string) (ty
 		 WHERE host_id = $1 AND name = $2 AND language = $3`,
 		hostID, strings.TrimSpace(name), strings.TrimSpace(language)))
 	if noRows(err) {
-		return types.CRMTemplate{}, ErrNotFound
+		return types.CRMTemplate{}, store.ErrNotFound
 	}
 	return t, err
 }

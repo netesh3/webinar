@@ -1,10 +1,11 @@
-package store
+package crmstore
 
 import (
 	"context"
 	"strings"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -12,7 +13,7 @@ import (
  *
  * Every function takes hostID and filters on it, for the reason the rest of the CRM does
  * (see crm.go): these rows name other people's phone numbers. A tag id from another
- * account reads as ErrNotFound, and applying one is checked on both sides — the contact
+ * account reads as store.ErrNotFound, and applying one is checked on both sides — the contact
  * and the tag have to belong to the same host, which is what crm_contact_tags does not
  * store and therefore cannot be trusted to enforce.
  *
@@ -69,14 +70,14 @@ func (s *Store) Tags(ctx context.Context, hostID string) ([]types.CRMTag, error)
  * tag. So ON CONFLICT DO NOTHING, then read it back: the caller gets a tag either way and
  * has no case to handle.
  *
- * ErrFull at TagMaxPerHost. The cap is checked before the insert and is therefore racy by
+ * store.ErrFull at TagMaxPerHost. The cap is checked before the insert and is therefore racy by
  * a tag or two under simultaneous requests, which is the right trade: the number exists so
  * the picker stays pickable, not because 101 labels breaks anything.
  */
 func (s *Store) CreateTag(ctx context.Context, hostID, name string) (types.CRMTag, error) {
 	clean := tagName(name)
 	if clean == "" || len(clean) > types.TagMaxLength {
-		return types.CRMTag{}, ErrInvalid
+		return types.CRMTag{}, store.ErrInvalid
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -113,7 +114,7 @@ func (s *Store) CreateTag(ctx context.Context, hostID, name string) (types.CRMTa
 		 * for a label they already have is asking for nothing, and refusing that would
 		 * break the duplicate-is-a-lookup behaviour above. The transaction rolls back,
 		 * so nothing was created. */
-		return types.CRMTag{}, ErrFull
+		return types.CRMTag{}, store.ErrFull
 	}
 
 	t, err := tagByID(ctx, tx, hostID, id)
@@ -135,7 +136,7 @@ func tagByID(ctx context.Context, q querier, hostID, id string) (types.CRMTag, e
 		 WHERE t.id = $1::uuid AND t.host_id = $2::uuid`, id, hostID).
 		Scan(&t.ID, &t.Name, &created, &t.Contacts)
 	if noRows(err) {
-		return types.CRMTag{}, ErrNotFound
+		return types.CRMTag{}, store.ErrNotFound
 	}
 	if err != nil {
 		return types.CRMTag{}, err
@@ -152,7 +153,7 @@ func (s *Store) Tag(ctx context.Context, hostID, id string) (types.CRMTag, error
 
 /* RenameTag changes a label's name, keeping everything it is on.
  *
- * ErrConflict when the new name is another tag's — merging two labels is a different
+ * store.ErrConflict when the new name is another tag's — merging two labels is a different
  * operation with a different cost (every contact on one moves to the other, and the
  * sequences pointing at it change meaning), and silently doing it because the names
  * collided would be the worst possible way to offer it.
@@ -160,20 +161,20 @@ func (s *Store) Tag(ctx context.Context, hostID, id string) (types.CRMTag, error
 func (s *Store) RenameTag(ctx context.Context, hostID, id, name string) (types.CRMTag, error) {
 	clean := tagName(name)
 	if clean == "" || len(clean) > types.TagMaxLength {
-		return types.CRMTag{}, ErrInvalid
+		return types.CRMTag{}, store.ErrInvalid
 	}
 
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE crm_tags SET name = $3
 		 WHERE id = $1::uuid AND host_id = $2::uuid`, id, hostID, clean)
 	if isUniqueViolation(err) {
-		return types.CRMTag{}, ErrConflict
+		return types.CRMTag{}, store.ErrConflict
 	}
 	if err != nil {
 		return types.CRMTag{}, err
 	}
 	if tag.RowsAffected() == 0 {
-		return types.CRMTag{}, ErrNotFound
+		return types.CRMTag{}, store.ErrNotFound
 	}
 	return tagByID(ctx, s.pool, hostID, id)
 }
@@ -184,7 +185,7 @@ func (s *Store) RenameTag(ctx context.Context, hostID, id, name string) (types.C
  * not a fact about anybody. Bot steps that set it survive with nothing to apply (SET
  * NULL), and the builder shows them as broken.
  *
- * ErrInUse when a sequence triggers on it. That one is RESTRICT at the schema level
+ * store.ErrInUse when a sequence triggers on it. That one is RESTRICT at the schema level
  * because NULL in crm_drips.trigger_tag_id means "any tag": clearing it would widen the
  * rule from one label to every label and start messaging people the host never chose. So
  * the sequence has to stop naming it first, and the handler says which sequence.
@@ -193,13 +194,13 @@ func (s *Store) DeleteTag(ctx context.Context, hostID, id string) error {
 	tag, err := s.pool.Exec(ctx,
 		`DELETE FROM crm_tags WHERE id = $1::uuid AND host_id = $2::uuid`, id, hostID)
 	if isForeignKeyViolation(err) {
-		return ErrInUse
+		return store.ErrInUse
 	}
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }
@@ -237,7 +238,7 @@ func (s *Store) DripsUsingTag(ctx context.Context, hostID, tagID string) ([]stri
  * insert. ON CONFLICT DO NOTHING, and a second call returns false.
  *
  * Both ids are checked against the host in one statement — the SELECTs in the VALUES do
- * the scoping, so a tag from another account inserts nothing and comes back ErrNotFound
+ * the scoping, so a tag from another account inserts nothing and comes back store.ErrNotFound
  * rather than being written against a contact it has no business on.
  */
 func (s *Store) AddContactTag(ctx context.Context, hostID, contactID, tagID string) (bool, error) {
@@ -257,7 +258,7 @@ func (s *Store) AddContactTag(ctx context.Context, hostID, contactID, tagID stri
 		SELECT EXISTS (SELECT 1 FROM ins) FROM ok`, hostID, contactID, tagID).Scan(&inserted)
 	if noRows(err) {
 		// The WITH matched nothing: one of the two ids is not this host's.
-		return false, ErrNotFound
+		return false, store.ErrNotFound
 	}
 	if err != nil {
 		return false, err

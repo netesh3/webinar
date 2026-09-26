@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/netkumar/webcast/api/internal/authctx"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
@@ -408,7 +409,7 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 		 * window and this server will honour that when it sends, but it is not
 		 * permission to put somebody in a marketing broadcast next month.
 		 */
-		contact, err := s.store.UpsertContact(ctx, h.ID, store.ContactInput{
+		contact, err := s.store.UpsertContact(ctx, h.ID, crmstore.ContactInput{
 			Phone:  m.From,
 			Name:   m.ProfileName,
 			Source: "whatsapp",
@@ -418,7 +419,7 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 			s.log.Error("whatsapp webhook: contact", "error", err, "host", h.ID)
 			continue
 		}
-		if _, err := s.store.AppendMessage(ctx, h.ID, contact.ID, store.MessageInput{
+		if _, err := s.store.AppendMessage(ctx, h.ID, contact.ID, crmstore.MessageInput{
 			Direction: "in",
 			Body:      m.Body,
 			Kind:      m.Kind,

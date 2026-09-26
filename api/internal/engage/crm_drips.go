@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/authctx"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -194,7 +195,7 @@ func (s *Module) saveDrip(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 
-	saved, err := s.store.SaveDrip(r.Context(), user.ID, id, store.DripInput{
+	saved, err := s.store.SaveDrip(r.Context(), user.ID, id, crmstore.DripInput{
 		Name:        name,
 		Trigger:     trigger,
 		WebinarSlug: slug,

@@ -1837,29 +1837,3 @@ func (s *Store) WebinarYouTubeBroadcast(ctx context.Context, slug string) (strin
 	}
 	return id, err
 }
-
-/* WebinarReminderCounts is how many of a host's live webinars have WhatsApp reminders
- * turned on, out of how many there are.
- *
- * The one setup step nothing else in the product surfaces. Every other part of the
- * WhatsApp setup is host-level and visible on one screen; this switch is per webinar and
- * defaults to off, deliberately — every message is charged to the host's own Meta
- * account, so spending their money has to be something they asked for (see
- * types.WebinarOptions.WhatsAppReminders). The consequence is a host who configures
- * everything correctly and watches nothing send. Reported so a checklist can say so.
- *
- * Drafts and ended webinars are left out. On an ended one the switch no longer means
- * anything, and a draft has nobody registered to message — counting either would make
- * the ratio read worse than the host's actual position. This is the same set the send
- * sweep itself honours: see PendingWhatsApp, which skips `ended` and `draft`.
- */
-func (s *Store) WebinarReminderCounts(ctx context.Context, hostID string) (withReminders, total int, err error) {
-	err = s.pool.QueryRow(ctx, `
-		SELECT count(*) FILTER (
-		         WHERE COALESCE((w.options->>'whatsappReminders')::boolean, false)),
-		       count(*)
-		  FROM webinars w
-		 WHERE w.host_id = $1 AND w.status NOT IN ('ended','draft')`,
-		hostID).Scan(&withReminders, &total)
-	return withReminders, total, err
-}

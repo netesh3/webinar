@@ -1,10 +1,11 @@
-package store
+package crmstore
 
 import (
 	"context"
 	"strings"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -49,7 +50,7 @@ type BotInput struct {
  * stops with a reason. The alternative — refusing the edit, or cancelling everybody
  * mid-flow — is worse in both directions.
  *
- * ErrConflict is the one-active-catch-all index: a host may have several bots that
+ * store.ErrConflict is the one-active-catch-all index: a host may have several bots that
  * answer everything, but only one of them switched on.
  */
 func (s *Store) SaveBot(ctx context.Context, hostID, id string, in BotInput) (string, error) {
@@ -71,7 +72,7 @@ func (s *Store) SaveBot(ctx context.Context, hostID, id string, in BotInput) (st
 			RETURNING id::text`,
 			hostID, name, in.Trigger, keywords, in.Entry, in.Active).Scan(&id)
 		if isUniqueViolation(err) {
-			return "", ErrConflict
+			return "", store.ErrConflict
 		}
 		if err != nil {
 			return "", err
@@ -84,13 +85,13 @@ func (s *Store) SaveBot(ctx context.Context, hostID, id string, in BotInput) (st
 			 WHERE host_id = $1::uuid AND id = $2::uuid`,
 			hostID, id, name, in.Trigger, keywords, in.Entry, in.Active)
 		if isUniqueViolation(err) {
-			return "", ErrConflict
+			return "", store.ErrConflict
 		}
 		if err != nil {
 			return "", err
 		}
 		if tag.RowsAffected() == 0 {
-			return "", ErrNotFound
+			return "", store.ErrNotFound
 		}
 		if _, err := tx.Exec(ctx,
 			`DELETE FROM crm_bot_nodes WHERE bot_id = $1::uuid`, id); err != nil {
@@ -243,13 +244,13 @@ func (s *Store) Bots(ctx context.Context, hostID string, limit int) ([]types.CRM
 	return out, nodes.Err()
 }
 
-// Bot reads one. Another host's id is ErrNotFound, like every other CRM read.
+// Bot reads one. Another host's id is store.ErrNotFound, like every other CRM read.
 func (s *Store) Bot(ctx context.Context, hostID, id string) (types.CRMBot, error) {
 	row := s.pool.QueryRow(ctx, botSelect+`
 		 WHERE b.host_id = $1::uuid AND b.id = $2::uuid`, hostID, id)
 	b, err := scanBot(row)
 	if noRows(err) {
-		return types.CRMBot{}, ErrNotFound
+		return types.CRMBot{}, store.ErrNotFound
 	}
 	if err != nil {
 		return types.CRMBot{}, err
@@ -285,7 +286,7 @@ func (s *Store) DeleteBot(ctx context.Context, hostID, id string) error {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }
@@ -382,7 +383,7 @@ type BotRun struct {
 }
 
 /* LatestBotSession is the last conversation this contact had with any of the host's
- * bots — live or finished — or ErrNotFound if they have never been in one.
+ * bots — live or finished — or store.ErrNotFound if they have never been in one.
  *
  * The finished ones are included for one reason, and it is the retry guard. A session
  * that has just ENDED is exactly the state Meta's redelivery arrives in: the answer
@@ -406,7 +407,7 @@ func (s *Store) LatestBotSession(ctx context.Context, hostID, contactID string) 
 		hostID, contactID).Scan(&run.SessionID, &run.BotID, &run.BotName, &run.Active,
 		&run.State, &run.NodeKey, &run.LastWAMID, &run.Steps)
 	if noRows(err) {
-		return BotRun{}, ErrNotFound
+		return BotRun{}, store.ErrNotFound
 	}
 	return run, err
 }
@@ -418,7 +419,7 @@ type BotStart struct {
 	Entry   string
 }
 
-/* BotForMessage picks the bot that answers this message, or ErrNotFound.
+/* BotForMessage picks the bot that answers this message, or store.ErrNotFound.
  *
  * Keywords beat the catch-all, which is the only ordering a host would predict: a bot
  * on the word "price" exists precisely so it wins over the one that greets everybody.
@@ -445,14 +446,14 @@ func (s *Store) BotForMessage(ctx context.Context, hostID, text string) (BotStar
 		 ORDER BY (b.trigger_kind = 'keyword') DESC, b.created_at
 		 LIMIT 1`, hostID, key).Scan(&out.BotID, &out.BotName, &out.Entry)
 	if noRows(err) {
-		return BotStart{}, ErrNotFound
+		return BotStart{}, store.ErrNotFound
 	}
 	return out, err
 }
 
 /* StartBotSession opens a conversation at a bot's entry node.
  *
- * ErrConflict when this contact is already in one: two messages arriving together
+ * store.ErrConflict when this contact is already in one: two messages arriving together
  * would otherwise start two flows, and the unique index is what decides between them
  * rather than whichever query ran first.
  */
@@ -463,7 +464,7 @@ func (s *Store) StartBotSession(ctx context.Context, botID, contactID, nodeKey, 
 		VALUES ($1::uuid, $2::uuid, $3, 'waiting', $4)
 		RETURNING id::text`, botID, contactID, nodeKey, wamid).Scan(&id)
 	if isUniqueViolation(err) {
-		return "", ErrConflict
+		return "", store.ErrConflict
 	}
 	return id, err
 }
@@ -532,7 +533,7 @@ func (s *Store) SaveBotSession(ctx context.Context, sessionID string, step BotSt
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }
@@ -561,7 +562,7 @@ func (s *Store) SetContactBotPaused(ctx context.Context, hostID, contactID strin
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	if paused {
 		if _, err := tx.Exec(ctx, `
@@ -582,7 +583,7 @@ func (s *Store) SetContactBotPaused(ctx context.Context, hostID, contactID strin
  * up by a wait node tomorrow, and a sweep that discovers the opt-out at wake time
  * would be a day of a host looking at a conversation that is apparently still going.
  */
-func stopBotsForContact(ctx context.Context, q Querier, contactID, reason string) error {
+func stopBotsForContact(ctx context.Context, q store.Querier, contactID, reason string) error {
 	_, err := q.Exec(ctx, `
 		UPDATE crm_bot_sessions
 		   SET state = 'stopped', ended_reason = $2, resume_at = NULL, updated_at = now()

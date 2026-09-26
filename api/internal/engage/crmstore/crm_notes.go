@@ -1,10 +1,11 @@
-package store
+package crmstore
 
 import (
 	"context"
 	"strings"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -60,13 +61,13 @@ const crmNotesMax = 200
 
 /* AddNote writes one down against a contact.
  *
- * ErrNotFound for a contact that is not this host's — checked by the INSERT's own SELECT
+ * store.ErrNotFound for a contact that is not this host's — checked by the INSERT's own SELECT
  * rather than by a read first, so there is no window between the two.
  */
 func (s *Store) AddNote(ctx context.Context, hostID, contactID, authorID, body string) (types.CRMNote, error) {
 	clean := strings.TrimSpace(body)
 	if clean == "" || len(clean) > types.NoteMaxLength {
-		return types.CRMNote{}, ErrInvalid
+		return types.CRMNote{}, store.ErrInvalid
 	}
 
 	var (
@@ -82,7 +83,7 @@ func (s *Store) AddNote(ctx context.Context, hostID, contactID, authorID, body s
 		hostID, contactID, authorID, clean).
 		Scan(&n.ID, &n.ContactID, &n.Body, &created)
 	if noRows(err) {
-		return types.CRMNote{}, ErrNotFound
+		return types.CRMNote{}, store.ErrNotFound
 	}
 	if err != nil {
 		return types.CRMNote{}, err
@@ -99,7 +100,7 @@ func (s *Store) DeleteNote(ctx context.Context, hostID, noteID string) error {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }

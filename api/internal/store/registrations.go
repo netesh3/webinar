@@ -126,7 +126,7 @@ func (s *Store) Register(ctx context.Context, slug string, req types.RegisterReq
 		Company:   strings.TrimSpace(req.Company),
 		JobTitle:  strings.TrimSpace(req.JobTitle),
 		Country:   strings.TrimSpace(req.Country),
-		Phone:     normalisePhone(req.Phone),
+		Phone:     NormalisePhone(req.Phone),
 		Answers:   answers,
 		State:     state,
 		JoinKey:   newJoinKey(),
@@ -259,7 +259,7 @@ func (s *Store) RegisterGuest(ctx context.Context, slug, name string) (types.Reg
  * Everything that is not a digit is dropped. An empty result stays empty rather than becoming
  * a lone `+`, so "no number given" is distinguishable from a broken one.
  */
-func normalisePhone(raw string) string {
+func NormalisePhone(raw string) string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return ""

@@ -24,6 +24,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/internal/engage"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -504,6 +505,8 @@ type harness struct {
 	// The store, for putting a fixture into a state directly. Used by goLive below;
 	// anything that is testing an HTTP contract must go through the HTTP surface.
 	store *store.Store
+	// crm is the CRM's SQL over the same pool, for tests that inspect its queue or tags.
+	crm *crmstore.Store
 	/* Where the disk storage backend writes. Exposed so a test can assert about FILES rather
 	 * than about rows — "deleting a webinar takes its recordings with it" is a claim about
 	 * bytes, and every version of that claim checked against the database alone would have
@@ -698,7 +701,7 @@ func newHarnessWith(
 	}
 	return &harness{
 		t: t, srv: srv, handler: handler, server: server, engage: crm, rooms: rooms, pool: pool,
-		client: &http.Client{Jar: jar}, store: st,
+		client: &http.Client{Jar: jar}, store: st, crm: crmstore.New(st),
 		recordingsDir: recordingsDir,
 	}
 }

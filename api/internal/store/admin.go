@@ -241,4 +241,3 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 	}
 	return out, rows.Err()
 }
-
