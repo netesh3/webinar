@@ -428,6 +428,14 @@ Cloud Run secrets: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (or
 `HETZNER_SSH_PRIVATE_KEY` (never overwrites `/opt/livekit/.env.keys`). Do not
 commit real values — placeholders only in `deploy/cloudrun.env.example`.
 
+Email is optional: set the `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`,
+`SMTP_PASSWORD` and `SMTP_FROM` secrets to deliver approval invitations,
+reminders and the one-time welcome email for new accounts. Without them every
+message is kept in the `notifications` outbox as `skipped`. The welcome email's
+"reach us" details are the `CONTACT_EMAIL` / `CONTACT_PHONE` repository
+variables (defaults `webinarliv@gmail.com` / `+91-9852411280`); `WELCOME_EMAIL=false`
+turns it off.
+
 ```bash
 gh secret set DATABASE_URL -R netesh3/webinar   # paste Supabase URI when prompted
 ```
@@ -448,9 +456,10 @@ would need roughly 40 servers.
 
 Honest list, so nothing here is a surprise:
 
-- **No email.** Registration returns the join link in the page and on the
-  account; nothing is sent. No SES, no reminders, no follow-ups. The UI does not
-  claim otherwise.
+- **Email is optional.** With SMTP configured, approvals, reminders and a
+  one-time welcome email are sent; without it, registration returns the join
+  link in the page and on the account, and the outbox records each message as
+  skipped. The UI does not claim otherwise.
 - **Recording is client-side**, done by the browser of whoever pressed record. It
   works, the file is downloadable and playable, and it stops if that tab closes.
   Server-side capture (LiveKit Egress) is the next step and would remove that

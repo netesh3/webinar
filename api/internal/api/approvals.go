@@ -231,7 +231,7 @@ func (s *Server) flushOutbox(ctx context.Context) {
 			continue
 		}
 		err := s.mail.Send(ctx, notify.Message{
-			To: m.Email, Subject: m.Subject, Body: m.Body, ICS: m.ICS, ICSName: "webinar.ics",
+			To: m.Email, Subject: m.Subject, Body: m.Body, HTML: m.HTML, ICS: m.ICS, ICSName: "webinar.ics",
 		})
 		if err != nil {
 			s.log.Error("outbox: send failed", "to", m.Email, "err", err)

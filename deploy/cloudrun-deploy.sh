@@ -182,6 +182,9 @@ fi
 [[ -n "${SMTP_USERNAME:-}" ]] && ENV_VARS+=("SMTP_USERNAME=${SMTP_USERNAME}")
 [[ -n "${SMTP_PASSWORD:-}" ]] && ENV_VARS+=("SMTP_PASSWORD=${SMTP_PASSWORD}")
 [[ -n "${SMTP_FROM:-}" ]] && ENV_VARS+=("SMTP_FROM=${SMTP_FROM}")
+[[ -n "${WELCOME_EMAIL:-}" ]] && ENV_VARS+=("WELCOME_EMAIL=${WELCOME_EMAIL}")
+[[ -n "${CONTACT_EMAIL:-}" ]] && ENV_VARS+=("CONTACT_EMAIL=${CONTACT_EMAIL}")
+[[ -n "${CONTACT_PHONE:-}" ]] && ENV_VARS+=("CONTACT_PHONE=${CONTACT_PHONE}")
 
 # Write YAML for --env-vars-file so values may contain commas (e.g. CORS_ORIGINS
 # with multiple origins). Comma-joined --set-env-vars breaks on those values.

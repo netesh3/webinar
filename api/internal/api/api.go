@@ -136,6 +136,9 @@ type Server struct {
 	 */
 	mail notify.Transport
 
+	// background tracks after-response work (the welcome email's send). See inBackground.
+	background sync.WaitGroup
+
 	invitesMu sync.Mutex
 	invites   map[string]pendingStage
 
