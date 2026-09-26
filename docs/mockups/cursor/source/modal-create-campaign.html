@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-primary":"#ffffff","on-surface":"#0b1c30","tertiary-fixed":"#6ffbbe","outline":"#777587","surface-container-lowest":"#ffffff","surface":"#f8f9ff","surface-container":"#e5eeff","surface-container-low":"#eff4ff","primary":"#3525cd","error":"#ba1a1a","secondary":"#565e74","on-secondary":"#ffffff","tertiary-container":"#006e4b","on-primary-fixed":"#0f0069","secondary-fixed-dim":"#bec6e0","background":"#f8f9ff","on-tertiary":"#ffffff","primary-fixed-dim":"#c3c0ff","on-secondary-fixed":"#131b2e","surface-container-high":"#dce9ff","on-background":"#0b1c30","on-tertiary-fixed":"#002113","tertiary":"#005338","outline-variant":"#c7c4d8","surface-variant":"#d3e4fe","inverse-on-surface":"#eaf1ff","on-tertiary-container":"#67f4b7","secondary-container":"#dae2fd","on-secondary-fixed-variant":"#3f465c","on-secondary-container":"#5c647a","surface-tint":"#4d44e3","surface-bright":"#f8f9ff","inverse-primary":"#c3c0ff","tertiary-fixed-dim":"#4edea3","surface-container-highest":"#d3e4fe","on-primary-fixed-variant":"#3323cc","inverse-surface":"#213145","on-error":"#ffffff","on-error-container":"#93000a","primary-container":"#4f46e5","on-primary-container":"#dad7ff","primary-fixed":"#e2dfff","surface-dim":"#cbdbf5","error-container":"#ffdad6","on-tertiary-fixed-variant":"#005236","secondary-fixed":"#dae2fd"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"margin-compact":"1rem","space-md":"0.75rem","space-sm":"0.5rem","gutter":"1rem","margin":"1.5rem","space-xl":"1.5rem","space-lg":"1rem","space-xs":"0.25rem","gutter-compact":"0.5rem"},"fontFamily":{"display-lg":["Plus Jakarta Sans"],"body-lg":["Inter"],"body-sm":["Inter"],"code-sm":["Inter"],"headline-lg":["Plus Jakarta Sans"],"display-sm":["Plus Jakarta Sans"],"label-md":["Inter"],"label-sm":["Inter"],"body-md":["Inter"],"headline-md":["Plus Jakarta Sans"]},"fontSize":{"display-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"700"}],"body-lg":["15px",{"lineHeight":"22px","letterSpacing":"-0.005em","fontWeight":"400"}],"body-sm":["13px",{"lineHeight":"18px","fontWeight":"400"}],"code-sm":["12px",{"lineHeight":"16px","fontWeight":"500"}],"headline-lg":["20px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"600"}],"display-sm":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"600"}],"label-md":["12px",{"lineHeight":"16px","letterSpacing":"0.01em","fontWeight":"600"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.02em","fontWeight":"600"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"400"}],"headline-md":["16px",{"lineHeight":"24px","letterSpacing":"-0.005em","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-screen w-64 bg-inverse-surface text-inverse-on-surface z-50 flex flex-col justify-between shadow-[0_1px_8px_rgba(0,0,0,0.06)]"><div class="flex flex-col"><div class="h-14 px-margin flex items-center justify-between"><div class="flex items-center gap-space-sm"><div class="w-8 h-8 rounded-lg bg-primary-container flex items-center justify-center text-on-primary font-headline-md text-headline-md font-bold shadow-sm">E</div><span class="font-headline-md text-headline-md tracking-tight font-bold text-inverse-on-surface">Engage</span></div><span class="font-label-sm text-label-sm text-tertiary-fixed-dim bg-tertiary-container/30 px-space-xs py-0.5 rounded-DEFAULT uppercase tracking-wider font-semibold">PRO</span></div><div class="px-space-md py-space-xs"><button class="w-full flex items-center justify-between px-space-md py-space-sm bg-surface-container-highest/10 hover:bg-surface-container-highest/20 rounded-lg text-left transition-colors" type="button"><div class="flex items-center gap-space-sm overflow-hidden"><div class="w-5 h-5 rounded-DEFAULT bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[14px]">corporate_fare</span></div><span class="font-body-sm text-body-sm font-medium text-inverse-on-surface truncate">Acme Growth Co</span></div><span class="material-symbols-outlined text-outline-variant text-[18px]">unfold_more</span></button></div><nav class="flex flex-col gap-0.5 px-space-md mt-space-sm" data-active-classes="bg-primary-container text-on-primary font-medium shadow-sm"><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="dashboard" href="#"><span class="material-symbols-outlined text-[20px]">grid_view</span><span>Dashboard</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="contacts" href="#"><span class="material-symbols-outlined text-[20px]">group</span><span>Contacts</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="journeys" href="#"><span class="material-symbols-outlined text-[20px]">alt_route</span><span>Journeys</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="campaigns" href="#"><span class="material-symbols-outlined text-[20px]">campaign</span><span>Campaigns</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="templates" href="#"><span class="material-symbols-outlined text-[20px]">description</span><span>Templates</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="analytics" href="#"><span class="material-symbols-outlined text-[20px]">query_stats</span><span>Analytics</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="integrations" href="#"><span class="material-symbols-outlined text-[20px]">hub</span><span>Integrations</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="settings" href="#"><span class="material-symbols-outlined text-[20px]">settings</span><span>Settings</span></a></nav></div><div class="flex flex-col gap-space-md p-space-md"><div class="bg-surface-container-highest/10 rounded-lg p-space-md flex flex-col gap-space-xs"><div class="flex items-center justify-between"><span class="font-label-sm text-label-sm text-outline-variant uppercase tracking-wider font-semibold">Health Status</span><div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-tertiary-fixed-dim animate-pulse"></span><span class="font-label-sm text-label-sm font-semibold text-tertiary-fixed-dim">HEALTHY</span></div></div><div class="flex items-center gap-space-xs text-inverse-on-surface font-body-sm text-body-sm"><span class="truncate">WABA Connected</span><span class="text-outline-variant">•</span><span class="font-code-sm text-code-sm text-outline-variant">+1 555-0192</span></div></div><div class="flex items-center justify-between pt-space-xs"><div class="flex items-center gap-space-md overflow-hidden"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="font-headline-md text-headline-md text-on-primary font-semibold">G</span></div><div class="flex flex-col min-w-0"><span class="font-body-sm text-body-sm font-semibold text-inverse-on-surface truncate">Ganesh S P</span><span class="font-label-sm text-label-sm text-outline-variant truncate">Owner / Admin</span></div></div><a class="p-space-xs text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 rounded-DEFAULT transition-colors" data-path="logout" href="#" title="Sign out"><span class="material-symbols-outlined text-[20px]">logout</span></a></div></div></aside><div class="pl-64 min-h-screen flex flex-col bg-surface"><header class="fixed top-0 left-64 right-0 h-14 bg-surface-container-lowest/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex items-center justify-between px-margin"><div class="flex items-center gap-space-lg flex-1 max-w-xl"><div class="flex items-center gap-space-xs text-on-surface-variant font-body-sm text-body-sm select-none"><span class="hover:text-on-surface cursor-pointer">Platform</span><span class="text-outline-variant">/</span><span class="text-on-surface font-medium">Production</span></div><div class="relative flex-1 hidden md:block"><span class="material-symbols-outlined absolute left-space-md top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span><input class="w-full h-9 pl-9 pr- space-md bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest transition-colors" placeholder="Search contacts, journeys, templates... (/)" type="text"/></div></div><div class="flex items-center gap-space-md shrink-0"><button class="w-9 h-9 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors" title="Help &amp; Documentation" type="button"><span class="material-symbols-outlined text-[20px]">help</span></button><button class="relative w-9 h-9 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors" title="Notifications" type="button"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-error ring-2 ring-surface-container-lowest"></span></button><button class="h-9 px-space-md rounded-lg bg-primary-container text-on-primary font-body-sm text-body-sm font-semibold flex items-center gap-space-xs hover:bg-primary shadow-sm transition-all" type="button"><span class="material-symbols-outlined text-[18px]">add</span><span>New Broadcast</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><main class="relative pt-14 flex-1 w-full px-margin"><div class="flex flex-col w-full">
+<!-- Underlying Campaigns & Broadcasts Dashboard View -->
+<div class="relative w-full pb-16 pointer-events-none select-none filter blur-[2px] opacity-40">
+<!-- Action Bar -->
+<div class="flex items-center justify-between py-space-md mb-space-lg">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-secondary">Broadcasting Engine</span>
+<h1 class="font-display-sm text-display-sm text-on-surface">Campaigns &amp; Broadcasts</h1>
+</div>
+<div class="flex items-center gap-space-sm">
+<div class="h-9 px-space-md bg-surface-container-low rounded-lg flex items-center gap-space-xs text-secondary font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">calendar_today</span>
+<span>Last 30 Days</span>
+</div>
+<button class="h-9 px-space-md bg-primary-container text-on-primary rounded-lg font-body-sm text-body-sm font-semibold flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[18px]">add</span>
+<span>New Broadcast</span>
+</button>
+</div>
+</div>
+<!-- Quick Stats Grid -->
+<div class="grid grid-cols-4 gap-gutter mb-space-xl">
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm uppercase text-secondary">Total Sent (Month)</span>
+<span class="font-display-sm text-display-sm text-on-surface">148,920</span>
+<span class="font-label-sm text-label-sm text-tertiary font-semibold flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[14px]">arrow_upward</span> +14.2% vs prev
+        </span>
+</div>
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm uppercase text-secondary">Delivery Rate</span>
+<span class="font-display-sm text-display-sm text-on-surface">99.4%</span>
+<span class="font-label-sm text-label-sm text-secondary">Tier 1 Cloud API status</span>
+</div>
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm uppercase text-secondary">Read Receipts</span>
+<span class="font-display-sm text-display-sm text-on-surface">82.1%</span>
+<span class="font-label-sm text-label-sm text-tertiary font-semibold flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[14px]">arrow_upward</span> +3.8%
+        </span>
+</div>
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm uppercase text-secondary">CTR on Quick Actions</span>
+<span class="font-display-sm text-display-sm text-on-surface">34.6%</span>
+<span class="font-label-sm text-label-sm text-primary font-semibold">High intent cohort</span>
+</div>
+</div>
+<!-- Mock Campaign Table -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
+<div class="px-space-lg py-space-md bg-surface-container-low flex items-center justify-between">
+<span class="font-headline-md text-headline-md text-on-surface">Recent Dispatches</span>
+<div class="flex items-center gap-space-sm">
+<span class="font-body-sm text-body-sm text-secondary">Showing 4 of 32 broadcasts</span>
+</div>
+</div>
+<div class="divide-y divide-surface-container-low">
+<div class="px-space-lg py-space-md flex items-center justify-between">
+<div class="flex items-center gap-space-md">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<div>
+<p class="font-body-md text-body-md font-semibold text-on-surface">Onboarding Day-3 Nudge</p>
+<p class="font-body-sm text-body-sm text-secondary">Utility • 1,420 sent • Completed</p>
+</div>
+</div>
+<span class="font-code-sm text-code-sm text-secondary">2 hours ago</span>
+</div>
+<div class="px-space-lg py-space-md flex items-center justify-between">
+<div class="flex items-center gap-space-md">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<div>
+<p class="font-body-md text-body-md font-semibold text-on-surface">Product Launch Keynote Alert</p>
+<p class="font-body-sm text-body-sm text-secondary">Marketing • 4,800 sent • Completed</p>
+</div>
+</div>
+<span class="font-code-sm text-code-sm text-secondary">Yesterday</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Modal Scrim & Overlay -->
+<div class="fixed inset-0 z-50 flex items-center justify-center p-space-md bg-on-surface/40 backdrop-blur-sm overflow-y-auto">
+<!-- Wizard Modal Container -->
+<div class="relative w-full max-w-5xl my-auto bg-surface-container-lowest rounded-xl shadow-2xl overflow-hidden flex flex-col transition-all">
+<!-- Wizard Top Header & Stepper -->
+<div class="px-space-xl pt-space-lg pb-space-md bg-surface-container-lowest">
+<div class="flex items-center justify-between pb-space-md">
+<div class="flex items-center gap-space-sm">
+<div class="w-7 h-7 rounded-lg bg-primary-fixed flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[18px]">bolt</span>
+</div>
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">New Broadcast Campaign</h2>
+<p class="font-body-sm text-body-sm text-secondary">Dispatch structured HSM messages via Meta Official Cloud API</p>
+</div>
+</div>
+<button class="w-8 h-8 rounded-lg flex items-center justify-center text-secondary hover:text-on-surface hover:bg-surface-container-low transition-colors" title="Close Wizard" type="button">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+<!-- 4-Step Progress Indicator -->
+<div class="grid grid-cols-4 gap-space-sm pt-space-sm">
+<!-- Step 1: Completed -->
+<div class="flex flex-col gap-1.5">
+<div class="flex items-center gap-space-xs">
+<span class="w-5 h-5 rounded-full bg-tertiary text-on-tertiary flex items-center justify-center text-[12px]">
+<span class="material-symbols-outlined text-[14px]">check</span>
+</span>
+<span class="font-label-sm text-label-sm font-semibold text-on-surface">1. Audience</span>
+</div>
+<div class="h-1 rounded-full bg-tertiary"></div>
+</div>
+<!-- Step 2: Active -->
+<div class="flex flex-col gap-1.5">
+<div class="flex items-center gap-space-xs">
+<span class="w-5 h-5 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-code-sm text-[12px] font-semibold">2</span>
+<span class="font-label-sm text-label-sm font-semibold text-primary">2. Template</span>
+</div>
+<div class="h-1 rounded-full bg-primary-container"></div>
+</div>
+<!-- Step 3: Current Context (Resolving Variables) -->
+<div class="flex flex-col gap-1.5">
+<div class="flex items-center gap-space-xs">
+<span class="w-5 h-5 rounded-full bg-surface-container-high text-secondary flex items-center justify-center font-code-sm text-[12px]">3</span>
+<span class="font-label-sm text-label-sm font-semibold text-secondary">3. Variables &amp; Preview</span>
+</div>
+<div class="h-1 rounded-full bg-primary-fixed-dim"></div>
+</div>
+<!-- Step 4: Upcoming -->
+<div class="flex flex-col gap-1.5">
+<div class="flex items-center gap-space-xs">
+<span class="w-5 h-5 rounded-full bg-surface-container text-outline flex items-center justify-center font-code-sm text-[12px]">4</span>
+<span class="font-label-sm text-label-sm text-outline">4. Schedule &amp; Send</span>
+</div>
+<div class="h-1 rounded-full bg-surface-container"></div>
+</div>
+</div>
+</div>
+<!-- Modal Body (Split 2-Column Wizard Layout) -->
+<div class="p-space-xl grid grid-cols-12 gap-gutter bg-surface">
+<!-- Left Column: Template Selection & Variable Mapping (7 Cols) -->
+<div class="col-span-7 flex flex-col gap-space-lg">
+<!-- Section 1: Template Selection -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<label class="font-headline-md text-headline-md text-on-surface">Meta-Approved WhatsApp Template</label>
+<span class="font-label-sm text-label-sm text-primary font-semibold hover:underline cursor-pointer flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[14px]">sync</span> Refresh Meta Sync
+              </span>
+</div>
+<!-- Custom Picker Box -->
+<div class="relative">
+<div class="w-full p-space-md bg-surface-container-low rounded-lg flex items-center justify-between cursor-pointer hover:bg-surface-container transition-colors">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded-lg bg-surface-container-lowest flex items-center justify-center text-primary shadow-xs">
+<span class="material-symbols-outlined text-[20px]">mark_chat_read</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm font-semibold text-on-surface">we_are_live_urgent</span>
+<span class="font-label-sm text-label-sm text-secondary">ID: 89310492810 • Utility HSM</span>
+</div>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="px-2 py-0.5 rounded-DEFAULT bg-surface-container-highest text-primary font-label-sm text-label-sm uppercase tracking-wider font-semibold">Approved</span>
+<span class="material-symbols-outlined text-secondary text-[20px]">expand_more</span>
+</div>
+</div>
+</div>
+<!-- Meta Telemetry Badges -->
+<div class="flex items-center gap-space-xs pt-space-xs flex-wrap">
+<span class="inline-flex items-center gap-1 px-space-sm py-0.5 bg-surface-container-low rounded-DEFAULT text-secondary font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[14px] text-tertiary">verified</span> Utility HSM
+              </span>
+<span class="inline-flex items-center gap-1 px-space-sm py-0.5 bg-surface-container-low rounded-DEFAULT text-secondary font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[14px]">language</span> English (en)
+              </span>
+<span class="inline-flex items-center gap-1 px-space-sm py-0.5 bg-tertiary-container/10 text-tertiary rounded-DEFAULT font-label-sm text-label-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span> High Quality (0.01% spam)
+              </span>
+</div>
+</div>
+<!-- Section 2: Dynamic Variable Resolver -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface">Dynamic Variable Resolver</h3>
+<p class="font-body-sm text-body-sm text-secondary">Pair payload tokens with contact properties</p>
+</div>
+<span class="font-code-sm text-code-sm text-secondary bg-surface-container-low px-space-sm py-0.5 rounded-DEFAULT">3 Variables Detected</span>
+</div>
+<!-- Variable Rows -->
+<div class="flex flex-col gap-space-sm">
+<!-- Field 1 -->
+<div class="p-space-sm bg-surface-container-low rounded-lg flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-sm text-code-sm font-semibold text-primary bg-primary-fixed px-1.5 py-0.5 rounded-DEFAULT">{{1}}</span>
+<span class="font-body-sm text-body-sm text-on-surface font-medium">first_name</span>
+</div>
+<span class="font-label-sm text-label-sm text-secondary">Fallback: "there"</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<div class="relative flex-1">
+<span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-secondary text-[16px]">person</span>
+<input class="w-full h-8 pl-8 pr-2 bg-surface-container-lowest rounded-lg font-code-sm text-code-sm text-on-surface cursor-default focus:outline-none" readonly="" type="text" value="Contact.FirstName"/>
+</div>
+<div class="w-36 h-8 px-space-sm bg-surface-container rounded-lg flex items-center justify-between text-secondary font-label-sm text-label-sm">
+<span class="truncate">Auto-mapped</span>
+<span class="material-symbols-outlined text-tertiary text-[16px]">check_circle</span>
+</div>
+</div>
+</div>
+<!-- Field 2 -->
+<div class="p-space-sm bg-surface-container-low rounded-lg flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-sm text-code-sm font-semibold text-primary bg-primary-fixed px-1.5 py-0.5 rounded-DEFAULT">{{2}}</span>
+<span class="font-body-sm text-body-sm text-on-surface font-medium">webinar_name</span>
+</div>
+<span class="font-label-sm text-label-sm text-secondary">Fallback: "our workshop"</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<div class="relative flex-1">
+<span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-secondary text-[16px]">event</span>
+<input class="w-full h-8 pl-8 pr-2 bg-surface-container-lowest rounded-lg font-code-sm text-code-sm text-on-surface cursor-default focus:outline-none" readonly="" type="text" value='Event.Title ("AI Marketing Masterclass")'/>
+</div>
+<div class="w-36 h-8 px-space-sm bg-surface-container rounded-lg flex items-center justify-between text-secondary font-label-sm text-label-sm">
+<span class="truncate">Static Context</span>
+<span class="material-symbols-outlined text-tertiary text-[16px]">check_circle</span>
+</div>
+</div>
+</div>
+<!-- Field 3 -->
+<div class="p-space-sm bg-surface-container-low rounded-lg flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-sm text-code-sm font-semibold text-primary bg-primary-fixed px-1.5 py-0.5 rounded-DEFAULT">{{3}}</span>
+<span class="font-body-sm text-body-sm text-on-surface font-medium">join_link</span>
+</div>
+<span class="font-label-sm text-label-sm text-secondary">Fallback: Generic Landing</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<div class="relative flex-1">
+<span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-secondary text-[16px]">link</span>
+<input class="w-full h-8 pl-8 pr-2 bg-surface-container-lowest rounded-lg font-code-sm text-code-sm text-on-surface cursor-default focus:outline-none" readonly="" type="text" value="Attendance.PersonalizedJoinURL"/>
+</div>
+<div class="w-36 h-8 px-space-sm bg-surface-container rounded-lg flex items-center justify-between text-secondary font-label-sm text-label-sm">
+<span class="truncate">Dynamic URL</span>
+<span class="material-symbols-outlined text-tertiary text-[16px]">check_circle</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Section 3: Target Audience Summary Panel -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase text-secondary font-semibold">Target Audience Verification</span>
+<span class="font-label-sm text-label-sm text-tertiary font-semibold flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span> Opt-in Audited
+              </span>
+</div>
+<div class="grid grid-cols-2 gap-space-md">
+<div class="p-space-sm bg-surface-container-low rounded-lg">
+<p class="font-label-sm text-label-sm text-secondary">Target Segment</p>
+<p class="font-body-sm text-body-sm font-semibold text-on-surface truncate">Webinar-Sep26 Registrants</p>
+<p class="font-label-sm text-label-sm text-outline">Attended + No-Show cohorts</p>
+</div>
+<div class="p-space-sm bg-surface-container-low rounded-lg">
+<p class="font-label-sm text-label-sm text-secondary">Recipients Count</p>
+<p class="font-display-sm text-display-sm text-primary leading-tight">248</p>
+<p class="font-label-sm text-label-sm text-tertiary">100% verified E.164 formats</p>
+</div>
+</div>
+<div class="flex items-center justify-between text-secondary font-body-sm text-body-sm pt-space-xs">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-outline text-[16px]">speed</span>
+<span>Throttling: Meta Safe Queue (50 msgs/sec)</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-outline text-[16px]">pie_chart</span>
+<span>Tier 1 allowance (24.8% of daily cap)</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Live WhatsApp Mobile Simulation Card (5 Cols) -->
+<div class="col-span-5 flex flex-col items-center justify-between bg-surface-container-low/60 rounded-xl p-space-lg">
+<div class="w-full flex items-center justify-between mb-space-sm">
+<span class="font-headline-md text-headline-md text-on-surface">Client Device Preview</span>
+<div class="flex items-center gap-space-xs bg-surface-container-lowest px-space-sm py-1 rounded-lg shadow-xs">
+<span class="material-symbols-outlined text-[16px] text-primary">smartphone</span>
+<span class="font-label-sm text-label-sm font-semibold text-on-surface">iPhone 15 Pro</span>
+</div>
+</div>
+<!-- Smartphone Shell Frame -->
+<div class="relative w-[308px] h-[520px] bg-inverse-surface rounded-[32px] p-2.5 shadow-2xl flex flex-col justify-between">
+<!-- Dynamic Island Speaker Bar -->
+<div class="absolute top-4 left-1/2 -translate-x-1/2 w-20 h-4 bg-on-surface rounded-full z-20 flex items-center justify-center">
+<div class="w-2.5 h-2.5 rounded-full bg-secondary-fixed-dim/20 mr-2"></div>
+</div>
+<!-- WhatsApp Interior Display Screen -->
+<div class="w-full h-full bg-[#efeae2] rounded-[24px] overflow-hidden flex flex-col relative">
+<!-- WhatsApp Top App Bar -->
+<div class="bg-surface-container-lowest px-3 pt-6 pb-2.5 flex items-center justify-between shadow-xs z-10">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[18px]">arrow_back_ios</span>
+<div class="relative">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary font-bold text-label-sm">E</div>
+<span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-tertiary ring-1 ring-surface-container-lowest"></span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1">
+<span class="font-label-md text-label-md font-semibold text-on-surface leading-none">Engage Events</span>
+<span class="material-symbols-outlined text-tertiary text-[14px]">verified</span>
+</div>
+<span class="font-code-sm text-[10px] text-secondary leading-tight">Official Business Account</span>
+</div>
+</div>
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-[18px]">videocam</span>
+<span class="material-symbols-outlined text-[18px]">call</span>
+</div>
+</div>
+<!-- Message Stream Canvas -->
+<div class="flex-1 p-3 flex flex-col justify-start overflow-y-auto space-y-3">
+<!-- Date Pill Badge -->
+<div class="self-center my-1">
+<span class="bg-surface-container-lowest/80 backdrop-blur-xs text-secondary px-2.5 py-0.5 rounded-DEFAULT font-code-sm text-[10px] uppercase tracking-wider shadow-xs">
+                    Today 6:45 PM
+                  </span>
+</div>
+<!-- WhatsApp Broadcast Message Bubble -->
+<div class="relative max-w-[92%] self-start bg-surface-container-lowest rounded-xl rounded-tl-DEFAULT p-3 shadow-sm flex flex-col gap-2">
+<!-- Message Body Content -->
+<div class="font-body-sm text-body-sm text-on-surface leading-snug space-y-1.5">
+<p class="font-medium">
+                      Hey <span class="bg-primary-fixed text-primary px-1 rounded-DEFAULT font-semibold">Ganesh</span>! 🚀
+                    </p>
+<p>
+                      We are going live in 15 minutes for the <span class="bg-primary-fixed text-primary px-1 rounded-DEFAULT font-semibold">AI Marketing Masterclass</span>!
+                    </p>
+<p>
+                      Have your workbook ready. Tap below to jump straight into the live stream room.
+                    </p>
+</div>
+<!-- WhatsApp Delivery Timestamp & Double Checkmarks -->
+<div class="flex items-center justify-end gap-1 -mt-1">
+<span class="font-code-sm text-[10px] text-secondary">6:45 PM</span>
+<span class="material-symbols-outlined text-primary text-[14px] leading-none">done_all</span>
+</div>
+<!-- WhatsApp HSM Interactive CTA Button Link -->
+<div class="pt-2">
+<button class="w-full py-2 px-3 bg-surface-container-low hover:bg-surface-container rounded-lg flex items-center justify-center gap-1.5 text-primary font-label-md text-label-md font-semibold transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">open_in_new</span>
+<span>Join Live Stream Now</span>
+</button>
+</div>
+</div>
+<!-- Encryption Notice -->
+<div class="self-center px-4 py-1 text-center">
+<span class="font-code-sm text-[9px] text-secondary/80 flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[11px]">lock</span>
+                    Messages are end-to-end encrypted.
+                  </span>
+</div>
+</div>
+<!-- Mock Client Text Input Field -->
+<div class="p-2 bg-surface-container-lowest flex items-center gap-2">
+<div class="flex-1 h-8 bg-surface-container-low rounded-full px-3 flex items-center text-outline font-body-sm text-[11px]">
+<span>Message Engage Events...</span>
+</div>
+<div class="w-8 h-8 rounded-full bg-surface-container-low flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[16px]">mic</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Simulation Footer Note -->
+<div class="w-full mt-space-sm pt-space-xs text-center">
+<span class="font-code-sm text-code-sm text-secondary flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-tertiary">check_circle</span>
+              High rendering fidelity across iOS &amp; Android WhatsApp builds
+            </span>
+</div>
+</div>
+</div>
+<!-- Wizard Modal Footer Panel -->
+<div class="px-space-xl py-space-md bg-surface-container-lowest flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-2.5 h-2.5 rounded-full bg-tertiary animate-ping"></div>
+<span class="font-body-sm text-body-sm text-on-surface font-medium">
+            Estimated dispatch duration: <strong class="text-primary font-semibold">&lt; 12 seconds</strong> across 248 recipients
+          </span>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="h-9 px-space-md rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary hover:text-on-surface font-body-sm text-body-sm font-semibold transition-colors" type="button">
+            Save Draft
+          </button>
+<button class="h-9 px-space-md rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-semibold flex items-center gap-space-xs transition-colors" type="button">
+<span class="material-symbols-outlined text-[18px]">arrow_back</span>
+<span>Back</span>
+</button>
+<button class="h-9 px-space-lg rounded-lg bg-primary text-on-primary hover:bg-primary-container font-body-sm text-body-sm font-semibold flex items-center gap-space-xs shadow-sm transition-colors" type="button">
+<span>Next: Schedule &amp; Dispatch</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div></main></div></body></html>

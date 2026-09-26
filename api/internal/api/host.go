@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
+	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/yt"
 	"github.com/netkumar/webcast/api/types"
@@ -198,6 +199,7 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		if err := s.store.RescheduleRemindersForWebinar(r.Context(), slug, starts); err != nil {
 			s.log.Warn("update webinar: could not reschedule reminders", "slug", slug, "error", err)
 		}
+		s.engage.OnRescheduled(r.Context(), slug, starts)
 	}
 	httpx.JSON(w, http.StatusOK, wb)
 }
@@ -392,7 +394,7 @@ func (s *Server) logWebinarDeleted(slug string, deleted store.Deleted) {
  * picks their own on the form and it is stored per webinar. This is only what happens in its
  * absence — an API client that omitted the field, or a seed row.
  */
-const defaultTimeZone = "Asia/Kolkata"
+const defaultTimeZone = notify.DefaultTimeZone
 
 /* localTime renders an instant the way the webinar's audience reads a clock.
  *
@@ -405,19 +407,7 @@ const defaultTimeZone = "Asia/Kolkata"
  * An empty or unknown zone falls back to defaultTimeZone rather than to UTC, matching what the
  * webinar was created with. `time.LoadLocation` reads the embedded tzdata in the API image.
  */
-func localTime(at time.Time, zone string) string {
-	if zone == "" {
-		zone = defaultTimeZone
-	}
-	loc, err := time.LoadLocation(zone)
-	if err != nil {
-		if loc, err = time.LoadLocation(defaultTimeZone); err != nil {
-			// Neither zone is loadable, which means no tzdata at all. UTC beats no answer.
-			return at.UTC().Format("15:04 on 2 January 2006") + " UTC"
-		}
-	}
-	return at.In(loc).Format("15:04 on 2 January 2006 MST")
-}
+func localTime(at time.Time, zone string) string { return notify.LocalTime(at, zone) }
 
 /* normalizeWebinarInput fills defaults, clamps limits and reports field errors.
  *
@@ -820,11 +810,10 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	if err := s.store.SkipRemindersForEndedWebinar(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not skip pending mail", "slug", slug, "error", err)
 	}
-	/* The other direction for the CRM: the reminders about this webinar are over, and
-	 * the follow-up sequences start. Here rather than in handleEndWebinar so a webinar
-	 * the sweeper closes on the meeting limit enrolls the same people — and after the
-	 * room is gone, so who attended has its final answer. */
-	s.enrollDripsOnWebinarEnd(ctx, wb)
+	/* The CRM's follow-up sequences start. Here rather than in handleEndWebinar so a
+	 * webinar the sweeper closes on the meeting limit is handed over the same way — and
+	 * after the room is gone, so who attended has its final answer. */
+	s.engage.OnEnded(ctx, wb)
 	/* Before the report, because the report reads what this writes.
 	 *
 	 * A visit left open counts against now() every time anybody opens the report, so the
@@ -1475,26 +1464,8 @@ func (s *Server) handleHostRegistrants(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "registrants", err)
 		return
 	}
-	s.attachRegistrantWhatsApp(r, slug, rows)
+	s.engage.DecorateRegistrants(r.Context(), userFromContext(r.Context()), slug, rows)
 	httpx.JSON(w, http.StatusOK, rows)
-}
-
-/* attachRegistrantWhatsApp adds the two CRM columns to a registrant list, when there is
- * a CRM to add them from.
- *
- * Skipped entirely for a host who has not connected WhatsApp: there is nothing to say,
- * and the columns are not rendered either. A failure is logged rather than fatal, the
- * same choice handleCRMContacts makes about tags — a roster without the WhatsApp columns
- * is still the roster the host asked for, and turning a CRM query into "nobody has
- * registered yet" would be a worse answer than an incomplete one.
- */
-func (s *Server) attachRegistrantWhatsApp(r *http.Request, slug string, rows []types.RegistrantRow) {
-	if userFromContext(r.Context()).WhatsAppToken == "" {
-		return
-	}
-	if err := s.store.AttachRegistrantWhatsApp(r.Context(), slug, rows); err != nil {
-		s.log.Warn("registrants: whatsapp", "error", err, "slug", slug)
-	}
 }
 
 func (s *Server) handleSessionReport(w http.ResponseWriter, r *http.Request) {
@@ -1652,7 +1623,7 @@ func (s *Server) handleExportRegistrants(w http.ResponseWriter, r *http.Request)
 	// The export carries the same columns the tab shows. Following somebody up is what
 	// the export is FOR, and "who has not replied to me on WhatsApp" is the list a host
 	// would otherwise have to rebuild by hand from two screens.
-	s.attachRegistrantWhatsApp(r, slug, rows)
+	s.engage.DecorateRegistrants(r.Context(), userFromContext(r.Context()), slug, rows)
 
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition",

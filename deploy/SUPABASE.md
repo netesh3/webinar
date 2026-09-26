@@ -9,6 +9,13 @@ migrations on every boot (`st.Migrate` in `api/cmd/server`). No separate migrate
 service is required for deploy, but a one-shot migrate before the first traffic
 is useful to fail fast.
 
+**Move to another project (e.g. Pro):** copy `deploy/supabase-cutover.env.example`
+to `deploy/supabase-cutover.env` and run `./deploy/migrate-supabase.sh`. That
+copies `public` only. Then switch GitHub `DATABASE_URL` / `SUPABASE_*` and
+redeploy Cloud Run. Google login links by **email** on `public.users`; you do
+not need to copy `auth.users` if everyone signs in with Google again on the
+new project.
+
 ## Prerequisites
 
 ```bash

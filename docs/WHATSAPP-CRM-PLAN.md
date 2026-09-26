@@ -1,5 +1,9 @@
 # Connect WhatsApp + Marketing CRM
 
+**Engage** is now specified as its own product in [`engage/README.md`](engage/README.md)
+(architecture: [`ENGAGE-ARCHITECTURE.md`](ENGAGE-ARCHITECTURE.md)). This file is
+the historical build log for phases 1–5.
+
 Working copy of the program plan, kept in the repo so the phases and the code
 can be read next to each other. Originally drafted outside it
 (`~/.cursor/plans/whatsapp_crm_webcast_76acbc71.plan.md`); this file is now the

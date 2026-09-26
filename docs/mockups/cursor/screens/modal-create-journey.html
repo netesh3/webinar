@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Create journey · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="modal-create-journey" data-crumb="Journeys / New journey">
+    <!-- The Journeys screen, dimmed behind the dialog. -->
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="route" class="icon icon-sm"></svg>
+            Automations
+          </div>
+          <h1>Journeys</h1>
+          <p>
+            Multi-step WhatsApp sequences that run off attendee behaviour.
+          </p>
+        </div>
+      </div>
+      <div class="grid g4">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="route"></svg> Active journeys</div>
+          <div class="metric-value">6</div>
+          <div class="metric-foot">of 8 built</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="users"></svg> Contacts enrolled</div>
+          <div class="metric-value">8,412</div>
+          <div class="metric-foot">across 6 active automations</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="chat"></svg> Median reply rate</div>
+          <div class="metric-value">42.8%</div>
+          <div class="metric-foot">utility templates only</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="target"></svg> Goal conversion</div>
+          <div class="metric-value">61.4%</div>
+          <div class="metric-foot">vs previous 30 days</div>
+        </div>
+      </div>
+    </main>
+
+    <div class="overlay">
+      <div class="modal">
+        <div class="modal-head">
+          <span class="glyph glyph-brand glyph-lg"><svg data-icon="route"></svg></span>
+          <div>
+            <h2>Create a journey</h2>
+            <p>
+              Pick the event that starts the sequence, or begin from a proven
+              blueprint.
+            </p>
+          </div>
+          <button class="icon-btn" data-close title="Close">
+            <svg data-icon="x"></svg>
+          </button>
+        </div>
+
+        <div class="steps">
+          <span class="step step-now"><i>1</i> Trigger</span>
+          <span class="step-sep"></span>
+          <span class="step"><i>2</i> Build the flow</span>
+        </div>
+
+        <div class="modal-body stack" data-tabs>
+          <div class="seg">
+            <button aria-selected="true" data-panel="blueprints">From a blueprint</button>
+            <button data-panel="custom">From a custom trigger</button>
+          </div>
+
+          <div class="stack-sm" data-tabpanel="blueprints" data-radiogroup>
+            <div class="row">
+              <span class="lbl">Proven blueprints</span>
+              <span class="hint right">5 available</span>
+            </div>
+
+            <button class="radio-card" aria-checked="true">
+              <span class="glyph glyph-brand"><svg data-icon="video" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>
+                  Webinar registration &amp; smart onboarding
+                  <span class="pill pill-info pill-bare">
+                    <svg data-icon="star" class="icon icon-sm"></svg> Recommended
+                  </span>
+                </h4>
+                <p>
+                  Branches on community membership: sends the VIP group link if
+                  they haven’t joined, the calendar link if they have. Includes
+                  the T-2h and T-30m reminders.
+                </p>
+                <span class="row wrap mt-8">
+                  <span class="pill pill-ok pill-bare">98.4% show-up uplift</span>
+                  <span class="pill pill-bare">4 steps</span>
+                  <span class="pill pill-bare">Utility templates</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="radio-card">
+              <span class="glyph glyph-brand"><svg data-icon="clock" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Webinar 2-stage countdown reminders</h4>
+                <p>
+                  Countdown alerts at T-2h and T-30m with a personalised
+                  one-click stream link.
+                </p>
+                <span class="row wrap mt-8">
+                  <span class="pill pill-bare">High click-through</span>
+                  <span class="pill pill-bare">2 steps</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="radio-card">
+              <span class="glyph glyph-brand"><svg data-icon="split" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Post-webinar attendance segmentation</h4>
+                <p>
+                  Evaluates watch duration — over 15 minutes, under 15 minutes,
+                  or no-show — and sends a tailored replay or offer.
+                </p>
+                <span class="row wrap mt-8">
+                  <span class="pill pill-bare">3 branches</span>
+                  <span class="pill pill-bare">Up to 3 follow-ups</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="radio-card">
+              <span class="glyph glyph-brand"><svg data-icon="download" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Lead welcome &amp; resource delivery</h4>
+                <p>
+                  Sends the requested lead magnet the moment a form is submitted
+                  or a spreadsheet row appears.
+                </p>
+                <span class="row wrap mt-8">
+                  <span class="pill pill-bare">Lead capture</span>
+                  <span class="pill pill-bare">Instant</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="radio-card">
+              <span class="glyph glyph-brand"><svg data-icon="calendar" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>VIP strategy session reminder</h4>
+                <p>
+                  Syncs with the calendar booking to deliver the agenda, the
+                  location and a one-hour alert.
+                </p>
+                <span class="row wrap mt-8">
+                  <span class="pill pill-bare">Calendar sync</span>
+                  <span class="pill pill-bare">T-24h &amp; T-1h</span>
+                </span>
+              </span>
+            </button>
+          </div>
+
+          <div class="stack-sm" data-tabpanel="custom" hidden data-radiogroup>
+            <div class="grid g2">
+              <div class="field">
+                <label for="j-name">Journey name</label>
+                <input class="input" id="j-name" value="Q4 cohort waitlist nurture" />
+              </div>
+              <div class="field">
+                <label for="j-sender">Sender</label>
+                <select class="select" id="j-sender" data-label="Sender">
+                  <option>Acme Growth Official · +1 555-0192 · Tier 1</option>
+                  <option>Acme VIP Concierge · +1 555-0188 · Tier 1</option>
+                </select>
+              </div>
+            </div>
+
+            <span class="lbl mt-8">Trigger event</span>
+            <button class="radio-card" aria-checked="true">
+              <span class="glyph glyph-brand"><svg data-icon="video" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Webinar Liv registration <span class="pill pill-bare">Native</span></h4>
+                <p>
+                  Fires the moment someone fills the registration form, or syncs
+                  through the API.
+                </p>
+              </span>
+            </button>
+            <button class="radio-card">
+              <span class="glyph glyph-brand"><svg data-icon="activity" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Stream ended <span class="pill pill-bare">Telemetry</span></h4>
+                <p>
+                  Fires on stream completion and can split the audience on watch
+                  duration thresholds.
+                </p>
+              </span>
+            </button>
+            <button class="radio-card">
+              <span class="glyph glyph-brand"><svg data-icon="user-plus" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Contact added or tagged <span class="pill pill-bare">CRM</span></h4>
+                <p>
+                  A landing page form, a spreadsheet sync, or a segment tag like
+                  <code class="mono">high-intent-lead</code>.
+                </p>
+              </span>
+            </button>
+            <button class="radio-card">
+              <span class="glyph glyph-brand"><svg data-icon="webhook" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Inbound webhook <span class="pill pill-bare">JSON</span></h4>
+                <p>Custom payload posted to a signed REST endpoint.</p>
+              </span>
+            </button>
+            <button class="radio-card">
+              <span class="glyph glyph-brand"><svg data-icon="calendar" class="icon icon-sm"></svg></span>
+              <span>
+                <h4>Scheduled date or time <span class="pill pill-bare">Cron</span></h4>
+                <p>A fixed cohort launch, or a recurring automated check.</p>
+              </span>
+            </button>
+          </div>
+
+          <div class="note">
+            <svg data-icon="shield" class="icon icon-sm"></svg>
+            <span>
+              <b>Guardrails are applied automatically.</b> Quiet hours suppress
+              sends between 10 PM and 8 AM local time, and every contact drops
+              out on unsubscribe, purchase or block.
+            </span>
+          </div>
+        </div>
+
+        <div class="modal-foot">
+          <button class="btn" data-close>Cancel</button>
+          <button class="btn spacer" data-toast="Saved as a draft journey.">Save as draft</button>
+          <a class="btn btn-primary" href="journey-builder-spacious.html">
+            Continue to the builder
+            <svg data-icon="arrow-right" class="icon icon-sm"></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

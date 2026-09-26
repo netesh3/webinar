@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Inbound WhatsApp to inbox",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [960, 640],
+    "views": [
+      {
+        "id": "accept",
+        "label": "Accept the webhook",
+        "focus": ["meta", "api"],
+        "note": "Cloud Run returns 200 after HMAC so Meta does not retry a good delivery into a handler bug."
+      },
+      {
+        "id": "persist",
+        "label": "Write the thread",
+        "focus": ["api", "pg"],
+        "note": "phone_number_id selects the host. Contact upsert and message append are host-scoped SQL."
+      },
+      {
+        "id": "show",
+        "label": "Show it in Engage",
+        "focus": ["ui", "api", "pg"],
+        "note": "The inbox reads GET /api/host/crm/contacts/{id}. The Go API is the only reader."
+      }
+    ]
+  },
+  "participants": [
+    { "id": "lead", "type": "external", "label": "Lead", "sublabel": "WhatsApp" },
+    { "id": "meta", "type": "cloud", "label": "Meta", "sublabel": "Cloud API" },
+    { "id": "api", "type": "backend", "label": "webcast-api", "sublabel": "Cloud Run" },
+    { "id": "pg", "type": "database", "label": "Postgres", "sublabel": "Supabase" },
+    { "id": "ui", "type": "frontend", "label": "Engage", "sublabel": "inbox" }
+  ],
+  "segments": [
+    { "from": 148, "to": 248, "label": "Webhook" },
+    { "from": 264, "to": 376, "label": "Persist" },
+    { "from": 392, "to": 530, "label": "Inbox read" }
+  ],
+  "messages": [
+    { "from": "lead", "to": "meta", "y": 168, "label": "message", "variant": "emphasis" },
+    { "from": "meta", "to": "api", "y": 202, "label": "POST webhook", "variant": "emphasis" },
+    { "from": "api", "to": "meta", "y": 232, "label": "200 after HMAC", "variant": "return" },
+    { "from": "api", "to": "pg", "y": 292, "label": "upsert + append", "variant": "emphasis" },
+    { "from": "pg", "to": "api", "y": 334, "label": "row ids", "variant": "return" },
+    { "from": "ui", "to": "api", "y": 416, "label": "GET thread", "variant": "emphasis" },
+    { "from": "api", "to": "pg", "y": 448, "label": "Thread(host, contact)" },
+    { "from": "api", "to": "ui", "y": 484, "label": "thread + 24h window", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "api", "from": 196, "to": 240, "type": "backend" },
+    { "participant": "api", "from": 286, "to": 342, "type": "backend" },
+    { "participant": "pg", "from": 286, "to": 342, "type": "database" },
+    { "participant": "ui", "from": 410, "to": 492, "type": "frontend" },
+    { "participant": "api", "from": 410, "to": 492, "type": "backend" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Go owns the thread",
+      "items": [
+        "HMAC then SQL on Cloud Run; Engage only GETs the API; inbound is not opt-in"
+      ]
+    }
+  ]
+}

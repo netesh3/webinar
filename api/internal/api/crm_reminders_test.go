@@ -341,14 +341,14 @@ func TestWhatsAppConfirmationOnRegistration(t *testing.T) {
 
 	/* The timed reminders are queued and NOT sent: they are a day and an hour before
 	 * a webinar that is two days out. Moving the webinar to now is how the outbox is
-	 * inspected without waiting — and rescheduling is a real host action, so the same
-	 * call proves the WhatsApp rows move with it. */
+	 * inspected without waiting — and the CRM's own reschedule is what a host's date change runs
+	 * (see TestWhatsAppRemindersFollowWebinar for that path end to end). */
 	ctx := context.Background()
 	starts := time.Now().Add(-2 * time.Minute)
-	if err := h.store.RescheduleRemindersForWebinar(ctx, wb.ID, starts); err != nil {
+	if err := h.crm.RescheduleWhatsAppReminders(ctx, wb.ID, starts); err != nil {
 		t.Fatalf("reschedule: %v", err)
 	}
-	owed, err := h.store.PendingWhatsApp(ctx, 10)
+	owed, err := h.crm.PendingWhatsApp(ctx, 10)
 	if err != nil {
 		t.Fatalf("pending: %v", err)
 	}
@@ -432,7 +432,7 @@ func TestWhatsAppRemindersNeedAllThreeSwitches(t *testing.T) {
 			// And nothing is waiting either: a row queued now is a message sent the
 			// moment the condition changes, which for an opt-in that never happened
 			// would be a surprise weeks later.
-			owed, err := h.store.PendingWhatsApp(context.Background(), 10)
+			owed, err := h.crm.PendingWhatsApp(context.Background(), 10)
 			if err != nil {
 				t.Fatalf("pending: %v", err)
 			}
@@ -486,7 +486,7 @@ func TestWhatsAppConfirmationWaitsForApproval(t *testing.T) {
 	}
 	// Queued, though: the host's decision is what releases it, and no second hook on
 	// the approval path is needed to make that happen.
-	owed, err := h.store.PendingWhatsApp(context.Background(), 10)
+	owed, err := h.crm.PendingWhatsApp(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("pending: %v", err)
 	}
@@ -513,7 +513,7 @@ func TestWhatsAppConfirmationWaitsForApproval(t *testing.T) {
 	}
 	// Retired rather than retried: the reason is on the row, and a message naming a
 	// template that is gone cannot become sendable by waiting.
-	owed, err = h.store.PendingWhatsApp(context.Background(), 10)
+	owed, err = h.crm.PendingWhatsApp(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("pending: %v", err)
 	}
@@ -549,10 +549,10 @@ func TestWhatsAppReminderStopsOnOptOut(t *testing.T) {
 	contact := registerOptedIn(t, h, wb.ID)
 
 	ctx := context.Background()
-	if err := h.store.RescheduleRemindersForWebinar(ctx, wb.ID, time.Now()); err != nil {
+	if err := h.crm.RescheduleWhatsAppReminders(ctx, wb.ID, time.Now()); err != nil {
 		t.Fatalf("reschedule: %v", err)
 	}
-	owed, err := h.store.PendingWhatsApp(ctx, 10)
+	owed, err := h.crm.PendingWhatsApp(ctx, 10)
 	if err != nil {
 		t.Fatalf("pending: %v", err)
 	}
@@ -565,7 +565,7 @@ func TestWhatsAppReminderStopsOnOptOut(t *testing.T) {
 		t.Fatalf("opt-out: status %d body %s", res.StatusCode, raw)
 	}
 
-	owed, err = h.store.PendingWhatsApp(ctx, 10)
+	owed, err = h.crm.PendingWhatsApp(ctx, 10)
 	if err != nil {
 		t.Fatalf("pending: %v", err)
 	}

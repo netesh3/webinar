@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Journeys · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="journeys" data-crumb="Platform / Journeys">
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="route" class="icon icon-sm"></svg>
+            Automations
+          </div>
+          <h1>Journeys</h1>
+          <p>
+            Multi-step WhatsApp sequences that run off attendee behaviour —
+            registration, watch duration, replies, tags.
+          </p>
+        </div>
+        <div class="actions">
+          <a class="btn" href="modal-create-journey.html">
+            <svg data-icon="book" class="icon icon-sm"></svg> Use a blueprint
+          </a>
+          <a class="btn btn-primary" href="modal-create-journey.html">
+            <svg data-icon="plus" class="icon icon-sm"></svg> Create journey
+          </a>
+        </div>
+      </div>
+
+      <div class="grid g4">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="route"></svg> Active journeys</div>
+          <div class="metric-value">6</div>
+          <div class="metric-foot">of 8 built</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="users"></svg> Contacts enrolled</div>
+          <div class="metric-value">8,412</div>
+          <div class="metric-foot">
+            <span class="delta delta-up">
+              <svg data-icon="arrow-up" class="icon icon-sm"></svg> 2
+            </span>
+            journeys added this week
+          </div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="chat"></svg> Median reply rate</div>
+          <div class="metric-value">42.8%</div>
+          <div class="metric-foot">utility templates only</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="target"></svg> Goal conversion</div>
+          <div class="metric-value">61.4%</div>
+          <div class="metric-foot">
+            <span class="delta delta-up">
+              <svg data-icon="arrow-up" class="icon icon-sm"></svg> 4.1%
+            </span>
+            vs previous 30 days
+          </div>
+        </div>
+      </div>
+
+      <section class="card mt-16" data-tabs>
+        <div class="tabs">
+          <button aria-selected="true" data-panel="all">All <span class="count">8</span></button>
+          <button data-panel="all">Active <span class="count">6</span></button>
+          <button data-panel="all">Paused <span class="count">1</span></button>
+          <button data-panel="all">Drafts <span class="count">1</span></button>
+        </div>
+        <div class="toolbar">
+          <label class="search">
+            <svg data-icon="search" class="icon icon-sm"></svg>
+            <input class="input" type="search" placeholder="Search journeys" />
+          </label>
+          <label class="inline-field">
+            Trigger
+            <select class="select" data-label="Trigger">
+              <option>Any trigger</option>
+              <option>Webinar Liv registration</option>
+              <option>Stream ended</option>
+              <option>Landing form</option>
+              <option>Tag added</option>
+              <option>Scheduled time</option>
+            </select>
+          </label>
+          <span class="right muted">Sorted by contacts enrolled</span>
+        </div>
+        <div class="table-wrap" data-tabpanel="all">
+          <table>
+            <thead>
+              <tr>
+                <th>Journey</th>
+                <th>Trigger</th>
+                <th class="t-num">Steps</th>
+                <th class="t-num">Enrolled</th>
+                <th class="t-num">Delivered</th>
+                <th>Status</th>
+                <th class="t-actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">
+                        <a href="journey-builder.html">Webinar registration &amp; onboarding</a>
+                      </div>
+                      <div class="t-sub">Community invite, then calendar confirmation</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="muted">Webinar Liv registration</td>
+                <td class="t-num">4</td>
+                <td class="t-num">248</td>
+                <td class="t-num">98.4%</td>
+                <td><span class="pill pill-ok pill-live">Active</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Duplicate, pause, archive.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">
+                        <a href="journey-builder.html">Webinar 2-stage reminder cadence</a>
+                      </div>
+                      <div class="t-sub">Countdown alerts at T-2h and T-30m with a join link</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="muted">Scheduled time</td>
+                <td class="t-num">2</td>
+                <td class="t-num">248</td>
+                <td class="t-num">99.2%</td>
+                <td><span class="pill pill-ok pill-live">Active</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Duplicate, pause, archive.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">
+                        <a href="journey-builder.html">Post-webinar engagement follow-up</a>
+                      </div>
+                      <div class="t-sub">Branches on watch duration: attended, brief, no-show</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="muted">Stream ended</td>
+                <td class="t-num">5</td>
+                <td class="t-num">142</td>
+                <td class="t-num">97.1%</td>
+                <td><span class="pill pill-ok pill-live">Active</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Duplicate, pause, archive.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">
+                        <a href="journey-builder.html">New lead welcome &amp; WhatsApp opt-in</a>
+                      </div>
+                      <div class="t-sub">Verifies the number, then sends the welcome guide</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="muted">Landing form</td>
+                <td class="t-num">3</td>
+                <td class="t-num">1,284</td>
+                <td class="t-num">96.9%</td>
+                <td><span class="pill pill-ok pill-live">Active</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Duplicate, pause, archive.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">
+                        <a href="journey-builder.html">VIP strategy session reminder</a>
+                      </div>
+                      <div class="t-sub">Booking confirmation, agenda and a calendar pin</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="muted">Calendar booking</td>
+                <td class="t-num">3</td>
+                <td class="t-num">64</td>
+                <td class="t-num">98.4%</td>
+                <td><span class="pill pill-ok pill-live">Active</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Duplicate, pause, archive.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">
+                        <a href="journey-builder.html">Replay nudge for brief attendees</a>
+                      </div>
+                      <div class="t-sub">48-hour expiring replay link with a bookmark</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="muted">Tag added</td>
+                <td class="t-num">2</td>
+                <td class="t-num">406</td>
+                <td class="t-num">95.3%</td>
+                <td><span class="pill pill-ok pill-live">Active</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Duplicate, pause, archive.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph glyph-warn"><svg data-icon="pause" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">
+                        <a href="journey-builder.html">Course launch re-engagement</a>
+                      </div>
+                      <div class="t-sub">Educational value sequence on a 24-hour delay</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="muted">Tag added</td>
+                <td class="t-num">6</td>
+                <td class="t-num">520</td>
+                <td class="t-num">—</td>
+                <td><span class="pill pill-warn">Paused</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Resume, duplicate, archive.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell">
+                    <span class="glyph"><svg data-icon="edit" class="icon icon-sm"></svg></span>
+                    <span>
+                      <div class="t-title">
+                        <a href="journey-builder-spacious.html">Q4 cohort waitlist nurture</a>
+                      </div>
+                      <div class="t-sub">Draft — trigger chosen, no steps published yet</div>
+                    </span>
+                  </div>
+                </td>
+                <td class="muted">Inbound webhook</td>
+                <td class="t-num">1</td>
+                <td class="t-num">0</td>
+                <td class="t-num">—</td>
+                <td><span class="pill">Draft</span></td>
+                <td class="t-actions">
+                  <button class="icon-btn" data-toast="Edit, duplicate, delete.">
+                    <svg data-icon="dots" class="icon icon-sm"></svg>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot">
+          Showing all <b>8</b> journeys
+          <a class="right" href="journey-builder.html">Open the builder →</a>
+        </div>
+      </section>
+
+      <div class="note mt-16">
+        <svg data-icon="lightbulb" class="icon icon-sm"></svg>
+        <span>
+          <b>Journeys against campaigns.</b> A journey reacts to one contact at a
+          time and can branch, wait and re-enter. A one-off blast to a segment is
+          a <a href="campaigns.html">campaign</a> — cheaper to set up and easier
+          to schedule.
+        </span>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

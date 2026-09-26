@@ -172,6 +172,10 @@ fi
 [[ -n "${BROADCAST_HLS_BASE:-}" ]] && ENV_VARS+=("BROADCAST_HLS_BASE=${BROADCAST_HLS_BASE}")
 [[ -n "${RECORDINGS_RETENTION_DAYS:-}" ]] && ENV_VARS+=("RECORDINGS_RETENTION_DAYS=${RECORDINGS_RETENTION_DAYS}")
 [[ -n "${EMPTY_ROOM_CLOSE_MIN:-}" ]] && ENV_VARS+=("EMPTY_ROOM_CLOSE_MIN=${EMPTY_ROOM_CLOSE_MIN}")
+# Turns on POST /api/internal/tick, which Cloud Scheduler calls every minute so that
+# reminders, drips and meeting limits run while the service is scaled to zero. See
+# deploy/cloud-scheduler-tick.sh, which needs the same value.
+[[ -n "${TICK_SECRET:-}" ]] && ENV_VARS+=("TICK_SECRET=${TICK_SECRET}")
 [[ -n "${SUPPORT_EMAIL:-}" ]] && ENV_VARS+=("SUPPORT_EMAIL=${SUPPORT_EMAIL}")
 [[ -n "${SMTP_HOST:-}" ]] && ENV_VARS+=("SMTP_HOST=${SMTP_HOST}")
 [[ -n "${SMTP_PORT:-}" ]] && ENV_VARS+=("SMTP_PORT=${SMTP_PORT}")
@@ -207,20 +211,21 @@ DEPLOY_ARGS=(
   --platform managed
   --allow-unauthenticated
   --port 8080
-  --memory 2Gi
-  --cpu 2
+  # 1Gi / 1 CPU is enough for this Go API (tokens, CRUD, CRM). 2Gi/2 was
+  # over-provisioned; Cloud Run rejects 2 CPU below ~2Gi anyway.
+  --memory "${MEMORY:-1Gi}"
+  --cpu "${CPU:-1}"
+  --cpu-boost
   --timeout 3600
-  # One instance stays warm. At 0 the service scaled to nothing when idle, and
-  # the next request paid a cold start — long enough that the UI middleware's
-  # 2.5s identity lookup timed out and bounced a signed-in host to the login
-  # page. A warm instance costs a always-on CPU but removes that class of bug
-  # and the first-request latency with it. Override with MIN_INSTANCES.
+  # Scale to zero when idle (cost). Cold start can take several seconds; the
+  # Workers middleware identity lookup allows ~8s so a signed-in host is not
+  # bounced to login on the first hit after idle. Override with MIN_INSTANCES=1
+  # if you need always-warm.
   #
-  # Safe only because the DB pool is now sized to share Supabase's 15-client
-  # ceiling across instances (see store.Open): a warm node holding its pool no
-  # longer starves the next one's boot. Raising max-instances means revisiting
-  # DB_MAX_CONNS so instances * DB_MAX_CONNS stays under that ceiling.
-  --min-instances "${MIN_INSTANCES:-1}"
+  # DB pool is sized to share Supabase's 15-client ceiling across instances
+  # (see store.Open). Raising max-instances means revisiting DB_MAX_CONNS so
+  # instances * DB_MAX_CONNS stays under that ceiling.
+  --min-instances "${MIN_INSTANCES:-0}"
   --max-instances "${MAX_INSTANCES:-3}"
   --env-vars-file "$ENV_YAML"
 )

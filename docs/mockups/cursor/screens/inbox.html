@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inbox · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="inbox" data-crumb="Platform / Inbox" data-layout="wide">
+    <main class="page">
+      <div class="inbox">
+        <!-- ------------------------------------------ what is waiting -->
+        <div class="convos">
+          <div class="convos-head">
+            <div class="seg">
+              <button aria-selected="true" data-toast="Showing every open conversation.">All 7</button>
+              <button data-toast="4 conversations have no owner.">Unassigned 4</button>
+              <button data-toast="2 conversations are assigned to you.">Mine 2</button>
+            </div>
+            <label class="search">
+              <svg data-icon="search" class="icon icon-sm"></svg>
+              <input class="input" placeholder="Search name, number or message" />
+            </label>
+          </div>
+
+          <div class="convos-scroll">
+            <button class="convo" aria-selected="true">
+              <span class="avatar avatar-wa">RS</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Rahul Sharma</b>
+                  <time>6:58 PM</time>
+                </span>
+                <span class="convo-snip">Can I get the workbook before we start?</span>
+                <span class="convo-meta">
+                  <span class="pill pill-ok pill-bare">Open · 19h</span>
+                  <span class="pill pill-bare">You</span>
+                  <span class="unread">2</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="Conversation switching is illustrative in this mockup.">
+              <span class="avatar avatar-wa">PM</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Priya Menon</b>
+                  <time>6:51 PM</time>
+                </span>
+                <span class="convo-snip">Is the replay included with the paid cohort?</span>
+                <span class="convo-meta">
+                  <span class="pill pill-ok pill-bare">Open · 18h</span>
+                  <span class="pill pill-warn pill-bare">Unassigned</span>
+                  <span class="unread">1</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="Conversation switching is illustrative in this mockup.">
+              <span class="avatar avatar-wa">AV</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Amit Verma</b>
+                  <time>6:44 PM</time>
+                </span>
+                <span class="convo-snip">👍 Joining in a few minutes</span>
+                <span class="convo-meta">
+                  <span class="pill pill-ok pill-bare">Open · 18h</span>
+                  <span class="pill pill-bare">Ganesh</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="Conversation switching is illustrative in this mockup.">
+              <span class="avatar avatar-wa">NG</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Neha Gupta</b>
+                  <time>5:02 PM</time>
+                </span>
+                <span class="convo-snip">Sorry, something came up — can I watch later?</span>
+                <span class="convo-meta">
+                  <span class="pill pill-warn pill-bare">Open · 2h</span>
+                  <span class="pill pill-warn pill-bare">Unassigned</span>
+                  <span class="unread">1</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="This window has closed — see the expired-session screen.">
+              <span class="avatar avatar-slate">VR</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Vikram Rao</b>
+                  <time>Yesterday</time>
+                </span>
+                <span class="convo-snip">Thanks, that answers it.</span>
+                <span class="convo-meta">
+                  <span class="pill pill-bad pill-bare">Window closed</span>
+                  <span class="pill pill-warn pill-bare">Unassigned</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="Conversation switching is illustrative in this mockup.">
+              <span class="avatar avatar-slate">AD</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Ananya Deshmukh</b>
+                  <time>Yesterday</time>
+                </span>
+                <span class="convo-snip">You: Here is the recording and the deck 📎</span>
+                <span class="convo-meta">
+                  <span class="pill pill-bad pill-bare">Window closed</span>
+                  <span class="pill pill-bare">Priya I.</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="Conversation switching is illustrative in this mockup.">
+              <span class="avatar avatar-slate">KM</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Karan Malhotra</b>
+                  <time>Sep 22</time>
+                </span>
+                <span class="convo-snip">Please stop messaging me</span>
+                <span class="convo-meta">
+                  <span class="pill pill-bad pill-bare">Opted out</span>
+                  <span class="pill pill-warn pill-bare">Unassigned</span>
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ---------------------------------------------- the conversation -->
+        <div class="chat">
+          <div class="chat-head">
+            <span class="avatar avatar-wa">RS</span>
+            <span class="chat-who">
+              <b>Rahul Sharma</b>
+              <small>+91 98765 43210</small>
+            </span>
+            <span class="pill pill-ok right" title="24-hour service window">
+              <svg data-icon="clock" class="icon icon-sm"></svg>
+              Open · 19h 04m
+            </span>
+            <label class="inline-field" title="Assigned to">
+              <svg data-icon="user-check" class="icon icon-sm"></svg>
+              <select class="select" data-label="Assigned to">
+                <option>Ganesh S P</option>
+                <option>Priya Iyer</option>
+                <option>Unassigned</option>
+              </select>
+            </label>
+            <button class="icon-btn" title="Add a tag" data-toast="Tagging from the thread is not wired in this mockup.">
+              <svg data-icon="tag"></svg>
+            </button>
+            <button class="icon-btn" title="Resolve" data-toast="Conversation marked resolved and moved out of the queue.">
+              <svg data-icon="check"></svg>
+            </button>
+          </div>
+
+          <div class="chat-scroll">
+            <div class="sysnote">
+              <svg data-icon="calendar" class="icon icon-sm"></svg>
+              Today
+            </div>
+
+            <div class="msg msg-out">
+              <div class="msg-from">
+                <svg data-icon="route" class="icon icon-sm"></svg>
+                Journey · Webinar 2-stage reminder cadence
+              </div>
+              <p>Hey <b>Rahul</b>! 🚀</p>
+              <p>
+                We go live in 15 minutes for the <b>AI Marketing Masterclass</b>.
+                Have your workbook ready — tap below to jump straight into the
+                room.
+              </p>
+              <div class="msg-cta">
+                <svg data-icon="external" class="icon icon-sm"></svg> Join live stream
+              </div>
+              <div class="msg-meta">
+                <span class="mono">we_are_live_urgent</span>
+                · 6:45 PM
+                <svg data-icon="check-check" class="icon icon-sm"></svg>
+              </div>
+            </div>
+
+            <div class="sysnote">
+              <svg data-icon="chat" class="icon icon-sm"></svg>
+              Rahul replied — the 24-hour service window opened at 6:52 PM
+            </div>
+
+            <div class="msg msg-in">
+              <p>Just joined, thanks! One thing —</p>
+              <div class="msg-meta">6:52 PM</div>
+            </div>
+
+            <div class="msg msg-in">
+              <p>Can I get the workbook before we start?</p>
+              <div class="msg-meta">6:58 PM</div>
+            </div>
+
+            <div class="sysnote">
+              <svg data-icon="user-check" class="icon icon-sm"></svg>
+              Assigned to Ganesh S P by round-robin
+            </div>
+
+            <div class="msg msg-out">
+              <div class="msg-from">
+                <svg data-icon="user-plus" class="icon icon-sm"></svg>
+                Ganesh S P
+              </div>
+              <p>
+                Of course — here it is. We start with the audit framework on
+                page 4, so have that one open.
+              </p>
+              <div class="msg-meta">
+                7:00 PM
+                <svg data-icon="check-check" class="icon icon-sm"></svg>
+              </div>
+            </div>
+
+            <div class="msg msg-in">
+              <p>Perfect 🙏</p>
+              <div class="msg-meta">7:01 PM</div>
+            </div>
+          </div>
+
+          <div class="composer" data-tabs>
+            <div class="tabs">
+              <button aria-selected="true" data-panel="reply">
+                <svg data-icon="chat" class="icon icon-sm"></svg> Reply
+              </button>
+              <button data-panel="note">
+                <svg data-icon="edit" class="icon icon-sm"></svg> Private note
+              </button>
+              <button data-panel="template">
+                <svg data-icon="file" class="icon icon-sm"></svg> Template
+              </button>
+            </div>
+
+            <div class="composer-body" data-tabpanel="reply">
+              <div class="canned">
+                <button class="tag tag-plain" data-toast="Inserted: “Workbook is attached — page 4 has the audit framework.”">
+                  Workbook link
+                </button>
+                <button class="tag tag-plain" data-toast="Inserted: “The replay lands in your WhatsApp within an hour.”">
+                  Replay timing
+                </button>
+                <button class="tag tag-plain" data-toast="Inserted: “Here is the VIP community invite.”">
+                  VIP invite
+                </button>
+                <button class="tag tag-plain" data-toast="Canned reply library is not part of this mockup.">
+                  <svg data-icon="plus" class="icon icon-sm"></svg> Manage
+                </button>
+              </div>
+              <textarea class="input" placeholder="Write a reply — free text is allowed while the window is open"></textarea>
+              <div class="composer-foot">
+                <button class="icon-btn" title="Attach" data-toast="Attachments go out as WhatsApp media messages.">
+                  <svg data-icon="paperclip"></svg>
+                </button>
+                <button class="icon-btn" title="Emoji" data-toast="Emoji picker is not part of this mockup.">
+                  <svg data-icon="smile"></svg>
+                </button>
+                <span class="hint right">Free-form replies are free of charge inside the window.</span>
+                <button class="btn btn-wa" data-toast="Reply sent to +91 98765 43210.">
+                  <svg data-icon="send" class="icon icon-sm"></svg> Send
+                </button>
+              </div>
+            </div>
+
+            <div class="composer-body" data-tabpanel="note" hidden>
+              <textarea class="input" placeholder="Visible to your team only — never sent to the contact"></textarea>
+              <div class="composer-foot">
+                <span class="hint">
+                  Notes are stored on the contact record and show in the thread
+                  as an internal event.
+                </span>
+                <button class="btn right" data-toast="Private note saved to the contact record.">
+                  <svg data-icon="edit" class="icon icon-sm"></svg> Save note
+                </button>
+              </div>
+            </div>
+
+            <!-- Allowed while the window is open, just not required — the
+                 closed-session screen is where this becomes the only option. -->
+            <div class="composer-body" data-tabpanel="template" hidden>
+              <div class="grid g2">
+                <div class="field">
+                  <label for="send-tpl">Approved template</label>
+                  <select class="select" id="send-tpl" data-label="Template">
+                    <option>post_webinar_attended — Utility</option>
+                    <option>join_community_v2 — Utility</option>
+                    <option>replay_notes_48h — Utility</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="send-var">{{1}} first_name</label>
+                  <input class="input" id="send-var" value="Rahul" />
+                </div>
+              </div>
+              <div class="note">
+                <svg data-icon="info" class="icon icon-sm"></svg>
+                <span>
+                  The window is open, so a free-form reply would do the same job
+                  at no cost. Sending a template here still bills one
+                  conversation.
+                </span>
+              </div>
+              <div class="composer-foot">
+                <span class="hint">Preview renders with this contact’s values.</span>
+                <button class="btn right" data-toast="Preview shown in the thread.">
+                  <svg data-icon="eye" class="icon icon-sm"></svg> Preview
+                </button>
+                <button class="btn btn-wa" data-toast="Template sent to +91 98765 43210.">
+                  <svg data-icon="send" class="icon icon-sm"></svg> Send template
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ------------------------------------------------ who it is with -->
+        <aside class="inspector">
+          <div class="inspector-head">
+            <div class="row">
+              <span class="avatar avatar-wa">RS</span>
+              <span>
+                <b style="font-size: 13.5px">Rahul Sharma</b>
+                <div class="hint mono">+91 98765 43210</div>
+              </span>
+              <a class="icon-btn right" href="contacts.html" title="Open contact record">
+                <svg data-icon="external"></svg>
+              </a>
+            </div>
+          </div>
+
+          <div class="inspector-body">
+            <div>
+              <div class="lbl">Conversation</div>
+              <dl class="kv mt-8">
+                <div><dt>Status</dt><dd><span class="pill pill-ok pill-bare">Open</span></dd></div>
+                <div><dt>Window closes</dt><dd>Tomorrow, 6:52 PM</dd></div>
+                <div><dt>Assigned</dt><dd>Ganesh S P</dd></div>
+                <div><dt>Stage</dt><dd>Attended</dd></div>
+                <div><dt>Owner</dt><dd>Ganesh S P</dd></div>
+                <div><dt>First response</dt><dd>2 min · inside SLA</dd></div>
+              </dl>
+            </div>
+
+            <div>
+              <div class="lbl">Contact</div>
+              <dl class="kv mt-8">
+                <div><dt>Email</dt><dd>rahul@example.com</dd></div>
+                <div><dt>Source</dt><dd>Webinar Liv</dd></div>
+                <div><dt>Opt-in</dt><dd><span class="pill pill-ok pill-bare">Opted in</span></dd></div>
+                <div><dt>Lifetime messages</dt><dd>16 sent · 14 read</dd></div>
+              </dl>
+            </div>
+
+            <div>
+              <div class="lbl">Tags</div>
+              <div class="row wrap mt-8">
+                <span class="tag">Webinar-Sep26 <button data-toast="Remove tag">×</button></span>
+                <span class="tag">Attended <button data-toast="Remove tag">×</button></span>
+                <button class="tag tag-plain" data-toast="Tag picker is not part of this mockup.">
+                  <svg data-icon="plus" class="icon icon-sm"></svg> Add tag
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="lbl">In a journey</div>
+              <div class="note mt-8">
+                <svg data-icon="route" class="icon icon-sm"></svg>
+                <span>
+                  <b>Webinar 2-stage reminder cadence</b>, step 3 of 4. A reply
+                  pauses automated sends for 24 hours so a person is not
+                  interrupted mid-conversation.
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <div class="lbl">Recent activity</div>
+              <ul class="feed plain mt-8">
+                <li>
+                  <span class="glyph glyph-wa">
+                    <svg data-icon="video" class="icon icon-sm"></svg>
+                  </span>
+                  <p>Attended <b>AI Marketing Masterclass</b> · 47 min</p>
+                  <time>Today</time>
+                </li>
+                <li>
+                  <span class="glyph glyph-brand">
+                    <svg data-icon="megaphone" class="icon icon-sm"></svg>
+                  </span>
+                  <p>Received <b>September masterclass live alert</b></p>
+                  <time>6:45 PM</time>
+                </li>
+                <li>
+                  <span class="glyph glyph-brand">
+                    <svg data-icon="user-plus" class="icon icon-sm"></svg>
+                  </span>
+                  <p>Registered via Webinar Liv form</p>
+                  <time>Sep 18</time>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

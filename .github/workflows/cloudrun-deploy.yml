@@ -28,6 +28,8 @@
 #   GOOGLE_CLIENT_SECRET — same Web client secret; Connect YouTube / YouTube Data API
 #   META_APP_ID / META_APP_SECRET / META_WHATSAPP_CONFIG_ID — Connect WhatsApp via Meta
 #     Embedded Signup. All three or none: the API refuses to boot on a partial set.
+#   TICK_SECRET — optional, >= 32 chars. Turns on POST /api/internal/tick, which
+#     Cloud Scheduler calls every minute so reminders send while scaled to zero.
 #   META_WEBHOOK_VERIFY_TOKEN — must match the Verify token on the Meta app's
 #     WhatsApp webhook, whose callback is {API}/api/webhooks/whatsapp
 #   TELEMETRY_ENABLED — hardcoded below (not a secret): "true" turns on
@@ -105,6 +107,8 @@ jobs:
       META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
       META_WHATSAPP_CONFIG_ID: ${{ secrets.META_WHATSAPP_CONFIG_ID }}
       META_WEBHOOK_VERIFY_TOKEN: ${{ secrets.META_WEBHOOK_VERIFY_TOKEN }}
+      # Enables POST /api/internal/tick for Cloud Scheduler (deploy/cloud-scheduler-tick.sh).
+      TICK_SECRET: ${{ secrets.TICK_SECRET }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       APP_NAME: ${{ vars.APP_NAME }}

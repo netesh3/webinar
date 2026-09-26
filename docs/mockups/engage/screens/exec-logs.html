@@ -1,0 +1,623 @@
+<!DOCTYPE html><html lang="en" style=""><head><meta charset="utf-8"><!-- demo-guard --><script>window.__demoErrors=[];addEventListener('error',function(e){if(e.target===window||e.error)window.__demoErrors.push(String(e.message||e.error));},true);</script><!-- /demo-guard --><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"surface-container":"#eaedff","on-secondary-fixed-variant":"#005137","on-surface":"#131b2e","secondary-container":"#82f5c1","secondary-fixed-dim":"#68dba9","on-secondary":"#ffffff","surface-bright":"#faf8ff","surface-dim":"#d2d9f4","on-secondary-fixed":"#002114","on-primary-fixed":"#0f0069","on-primary-container":"#dad7ff","on-error":"#ffffff","on-surface-variant":"#464555","tertiary-fixed":"#ffddb8","surface-container-highest":"#dae2fd","on-tertiary-container":"#ffd4a4","background":"#faf8ff","secondary":"#006c4a","surface-container-low":"#f2f3ff","inverse-surface":"#283044","primary-fixed-dim":"#c3c0ff","outline-variant":"#c7c4d8","tertiary-fixed-dim":"#ffb95f","error":"#ba1a1a","primary-container":"#4f46e5","on-primary-fixed-variant":"#3323cc","primary":"#3525cd","surface-container-high":"#e2e7ff","surface-variant":"#dae2fd","inverse-primary":"#c3c0ff","tertiary-container":"#885500","tertiary":"#684000","primary-fixed":"#e2dfff","surface-tint":"#4d44e3","inverse-on-surface":"#eef0ff","outline":"#777587","surface-container-lowest":"#ffffff","surface":"#faf8ff","secondary-fixed":"#85f8c4","on-tertiary-fixed":"#2a1700","on-error-container":"#93000a","on-tertiary-fixed-variant":"#653e00","on-background":"#131b2e","on-tertiary":"#ffffff","error-container":"#ffdad6","on-secondary-container":"#00714e","on-primary":"#ffffff"},borderRadius:{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},spacing:{"margin":"1rem","gutter":"1rem","space-md":"1rem","space-xl":"2rem","space-xs":"0.25rem","gutter-desktop":"1.5rem","space-lg":"1.5rem","margin-desktop":"2rem","space-sm":"0.5rem"},fontFamily:{"label-md":["Inter"],"headline-sm":["Plus Jakarta Sans"],"headline-xl":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"],"headline-lg-mobile":["Plus Jakarta Sans"],"label-sm":["Inter"],"code-xs":["JetBrains Mono"],"body-sm":["Inter"],"body-md":["Inter"],"headline-xl-mobile":["Plus Jakarta Sans"],"code-sm":["JetBrains Mono"],"body-lg":["Inter"],"headline-md":["Plus Jakarta Sans"]},fontSize:{"label-md":["13px",{"lineHeight":"18px","fontWeight":"500"}],"headline-sm":["16px",{"lineHeight":"24px","letterSpacing":"-0.005em","fontWeight":"600"}],"headline-xl":["36px",{"lineHeight":"44px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-lg":["28px",{"lineHeight":"36px","letterSpacing":"-0.015em","fontWeight":"600"}],"headline-lg-mobile":["24px",{"lineHeight":"32px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.02em","fontWeight":"600"}],"code-xs":["10px",{"lineHeight":"14px","fontWeight":"500"}],"body-sm":["12px",{"lineHeight":"16px","fontWeight":"400"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"400"}],"headline-xl-mobile":["28px",{"lineHeight":"36px","letterSpacing":"-0.015em","fontWeight":"700"}],"code-sm":["12px",{"lineHeight":"16px","fontWeight":"500"}],"body-lg":["16px",{"lineHeight":"24px","fontWeight":"400"}],"headline-md":["20px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-64 bg-surface-container-low z-50 flex flex-col justify-between shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex flex-col"><div class="h-16 px-space-lg flex items-center gap-space-sm bg-surface-container-lowest"><div class="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center text-on-secondary shadow-sm"><span class="material-symbols-outlined text-[20px]">chat</span></div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none">WebinarLiv</span><span class="font-label-sm text-label-sm text-on-surface-variant leading-tight">Enterprise Flow Engine</span></div></div><div class="px-space-md py-space-sm"><span class="font-label-sm text-label-sm text-outline uppercase tracking-wider px-space-sm">Core Modules</span></div><nav class="flex flex-col px-space-sm gap-space-xs" data-active-classes="bg-primary-container text-on-primary font-label-md"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="flow-builder" href="flow-builder.html"><span class="material-symbols-outlined text-[18px]">account_tree</span>Flow Builder</a><a data-demo-undrawn="Template Library" class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="template-library" href="#"><span class="material-symbols-outlined text-[18px]">dashboard_customize</span>Template Library</a><a data-demo-undrawn="Audience &amp; Segmentation" class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="audience-and-segmentation" href="#"><span class="material-symbols-outlined text-[18px]">group</span>Audience &amp; Segmentation</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="attendance-and-engagement-telemetry" href="attendance.html"><span class="material-symbols-outlined text-[18px]">monitoring</span>Attendance &amp; Engagement</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="execution-and-delivery-logs" href="#"><span class="material-symbols-outlined text-[18px]">terminal</span>Execution &amp; Delivery Logs</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="database-and-webhooks" href="database-webhooks.html"><span class="material-symbols-outlined text-[18px]">webhook</span>Database &amp; Webhooks</a></nav></div><div class="p-space-md bg-surface-container-lowest m-space-sm rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.03)]"><div class="flex items-center justify-between mb-space-xs"><span class="font-label-sm text-label-sm text-outline uppercase">Cloud Gateway</span><div class="flex items-center gap-1.5 px-space-xs py-0.5 rounded-full bg-secondary-container"><span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span><span class="font-code-xs text-code-xs text-on-secondary-container font-semibold">99.98%</span></div></div><div class="font-body-sm text-body-sm text-on-surface-variant truncate">WA Business API #0921</div></div></aside><div class="pl-64"><header class="fixed top-0 left-64 right-0 h-16 bg-surface-container-lowest/90 backdrop-blur-xl z-40 flex items-center justify-between px-space-lg shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-sm"><div class="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center text-primary"><span class="material-symbols-outlined text-[20px]">co_present</span></div><div class="flex flex-col"><div class="flex items-center gap-space-sm"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight">AI Marketing Masterclass</span><span class="px-space-sm py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-semibold flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>Live Automation Active</span></div><span class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">schedule</span>25 Sep 2026, 7:00 PM IST</span></div></div></div><div class="flex items-center gap-space-md"><div class="hidden xl:flex items-center gap-space-sm px-space-md py-1.5 rounded-lg bg-surface-container-low"><span class="w-2 h-2 rounded-full bg-secondary animate-ping"></span><span class="font-label-sm text-label-sm text-on-surface">WhatsApp Cloud Gateway</span><span class="font-code-xs text-code-xs text-secondary font-semibold uppercase">Connected</span></div><div class="flex items-center gap-space-sm"><button class="flex items-center gap-space-xs px-space-md h-9 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface transition-colors font-label-md text-label-md" type="button"><span class="material-symbols-outlined text-[16px]">play_arrow</span>Quick Test Simulation</button><button class="flex items-center gap-space-xs px-space-md h-9 rounded-lg bg-primary hover:bg-primary-container text-on-primary transition-colors font-label-md text-label-md shadow-sm" type="button"><span class="material-symbols-outlined text-[16px]">save</span>Save Changes</button></div><div class="h-6 w-px bg-outline-variant mx-space-xs"></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><div class="fixed top-16 left-64 right-0 h-10 bg-surface-container-low/95 backdrop-blur-md z-30 flex items-center px-space-lg shadow-[0_1px_4px_rgba(0,0,0,0.02)]"><div class="flex items-center gap-space-xs font-label-sm text-label-sm text-on-surface-variant"><span class="material-symbols-outlined text-[15px]">alt_route</span><span class="text-on-surface font-semibold">Automation Stages:</span></div><div class="flex items-center gap-space-xs ml-space-md overflow-x-auto"><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md bg-surface-container-lowest text-primary font-label-sm text-label-sm font-semibold shadow-xs" type="button"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span>Flow 1: Registration &amp; Community</button><span class="material-symbols-outlined text-outline-variant text-[14px]">chevron_right</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">Flow 2: Calendar Invite</button><span class="material-symbols-outlined text-outline-variant text-[14px]">chevron_right</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">Flow 3: Live Countdown Reminders</button><span class="material-symbols-outlined text-outline-variant text-[14px]">chevron_right</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">Flow 4: Post-Webinar &amp; Conversion</button></div></div><main class="relative pt-26 bg-surface min-h-screen"><div class="flex flex-col w-full px-space-lg py-space-md gap-space-lg"><!-- Top Header Summary -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+  <div class="flex flex-col gap-1">
+    <div class="flex items-center gap-space-xs text-secondary font-label-sm text-label-sm font-semibold uppercase tracking-wider">
+      <span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+      <span class="">Live Gateway Telemetry</span>
+    </div>
+    <h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">
+      Execution &amp; Delivery Activity
+    </h1>
+    <p class="font-body-sm text-body-sm text-on-surface-variant">
+      Monitor real-time WhatsApp dispatches, deliverability health, and duplicate suppression shields.
+    </p>
+  </div>
+  <div class="flex items-center gap-space-sm">
+    <div class="flex items-center gap-1.5 px-space-sm py-1.5 rounded-lg bg-surface-container-high text-on-surface font-label-sm text-label-sm">
+      <span class="material-symbols-outlined text-[16px] text-secondary">autorenew</span>
+      <span class="">Auto-refreshing</span>
+    </div>
+    <button class="flex items-center gap-space-xs px-space-md h-9 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface transition-colors font-label-md text-label-md">
+      <span class="material-symbols-outlined text-[16px]">file_download</span>
+      <span class="">Export Logs</span>
+    </button>
+  </div>
+</div>
+
+<!-- 1. Simplified 4 KPI Cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
+  <!-- 1: Total Dispatched -->
+  <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+    <div class="flex items-center justify-between">
+      <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Total Dispatched</span>
+      <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+        <span class="material-symbols-outlined text-[18px]">send</span>
+      </div>
+    </div>
+    <div class="mt-space-sm flex items-baseline justify-between">
+      <span class="font-headline-lg text-headline-lg text-on-surface tracking-tight">4,892</span>
+      <span class="font-label-sm text-label-sm text-secondary font-semibold flex items-center gap-0.5">
+        <span class="material-symbols-outlined text-[14px]">arrow_upward</span>+12.8%
+      </span>
+    </div>
+    <div class="mt-space-xs text-[12px] text-on-surface-variant">
+      97.8% of daily campaign allocation
+    </div>
+  </div>
+
+  <!-- 2: Delivered -->
+  <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+    <div class="flex items-center justify-between">
+      <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Delivered</span>
+      <div class="w-8 h-8 rounded-lg bg-secondary-container flex items-center justify-center text-secondary">
+        <span class="material-symbols-outlined text-[18px]">done_all</span>
+      </div>
+    </div>
+    <div class="mt-space-sm flex items-baseline justify-between">
+      <span class="font-headline-lg text-headline-lg text-on-surface tracking-tight">99.4%</span>
+      <span class="font-code-xs text-code-xs text-secondary font-semibold bg-secondary-container px-1.5 py-0.5 rounded">4,863 DEL</span>
+    </div>
+    <div class="mt-space-xs text-[12px] text-on-surface-variant">
+      Avg. delivery latency: <strong class="text-on-surface font-semibold">184ms</strong>
+    </div>
+  </div>
+
+  <!-- 3: Read Rate -->
+  <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+    <div class="flex items-center justify-between">
+      <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Read Rate</span>
+      <div class="w-8 h-8 rounded-lg bg-primary-fixed flex items-center justify-center text-primary">
+        <span class="material-symbols-outlined text-[18px]">visibility</span>
+      </div>
+    </div>
+    <div class="mt-space-sm flex items-baseline justify-between">
+      <span class="font-headline-lg text-headline-lg text-on-surface tracking-tight">86.2%</span>
+      <span class="font-code-xs text-code-xs text-primary font-semibold bg-primary-fixed px-1.5 py-0.5 rounded">4,216 READ</span>
+    </div>
+    <div class="mt-space-xs text-[12px] text-on-surface-variant">
+      High audience open engagement
+    </div>
+  </div>
+
+  <!-- 4: Duplicate Shielded -->
+  <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+    <div class="flex items-center justify-between">
+      <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Duplicate Shielded</span>
+      <div class="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center text-on-surface">
+        <span class="material-symbols-outlined text-[18px]">verified_user</span>
+      </div>
+    </div>
+    <div class="mt-space-sm flex items-baseline justify-between">
+      <span class="font-headline-lg text-headline-lg text-on-surface tracking-tight">64</span>
+      <span class="font-label-sm text-label-sm text-secondary font-semibold">100% Protected</span>
+    </div>
+    <div class="mt-space-xs text-[12px] text-on-surface-variant">
+      Saved $4.16 in redundant API dispatches
+    </div>
+  </div>
+</div>
+
+<!-- 2. Clean Search & Segmented Filter Bar -->
+<div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-space-md">
+  <div class="flex flex-wrap items-center gap-space-sm flex-1">
+    <!-- Search Field -->
+    <div class="relative min-w-[260px] flex-1 max-w-md">
+      <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-outline pointer-events-none">search</span>
+      <input class="w-full h-9 pl-9 pr-space-md rounded-lg bg-surface-container-low text-on-surface placeholder:text-outline font-body-sm text-body-sm focus:outline-none focus:bg-surface-container-lowest focus:ring-1 focus:ring-primary transition-all" id="logSearchInput" placeholder="Search by recipient name or phone..." type="text">
+    </div>
+    <!-- Clean Segmented Tabs -->
+    <div class="flex items-center p-1 rounded-lg bg-surface-container-low gap-1">
+      <button class="px-space-md py-1 rounded-md text-label-sm font-label-sm bg-primary text-on-primary transition-colors filter-tab" onclick="filterByTab('all', this)">All (4,968)</button>
+      <button class="px-space-md py-1 rounded-md text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors filter-tab" onclick="filterByTab('Delivered', this)">Delivered</button>
+      <button class="px-space-md py-1 rounded-md text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors filter-tab" onclick="filterByTab('Read', this)">Read</button>
+      <button class="px-space-md py-1 rounded-md text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors filter-tab" onclick="filterByTab('Failed', this)">Failed</button>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-space-sm self-end md:self-auto">
+    <div class="relative">
+      <select class="h-9 pl-space-sm pr-8 rounded-lg bg-surface-container-low text-on-surface font-label-sm text-label-sm appearance-none cursor-pointer focus:outline-none">
+        <option>All Automation Flows</option>
+        <option>Flow 1: Registration</option>
+        <option>Flow 2: Calendar Link</option>
+        <option>Flow 3: Live Countdown</option>
+        <option>Flow 4: Post-Webinar</option>
+      </select>
+      <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-[18px] text-outline pointer-events-none">expand_more</span>
+    </div>
+    <div class="text-label-sm text-on-surface-variant font-code-xs">
+      Showing <strong class="text-on-surface">6</strong> recent events
+    </div>
+  </div>
+</div>
+
+<!-- 3 & 4. Execution Activity List + Health & Protection Card -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-lg items-start">
+  <!-- Activity List (8 cols) -->
+  <div class="xl:col-span-8 flex flex-col gap-space-sm">
+    <!-- Activity Row 1 -->
+    <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-outline-variant flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-md log-card" data-status="Read" onclick="showLogDetails('Vikram Malhotra', '+91 98765 43210', 'Flow 3: Pre-Webinar Countdown', 'utility_30m_countdown_v1', '19:00:02 IST', 'Read', '114ms transit', 'Delivered &amp; opened in WhatsApp within 43s of broadcast.')">
+      <div class="flex items-center gap-space-md">
+        <div class="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-label-md">
+          VM
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-space-xs">
+            <span class="font-label-md text-label-md text-on-surface font-semibold">Vikram Malhotra</span>
+            <span class="px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-semibold flex items-center gap-1">
+              <span class="material-symbols-outlined text-[13px] text-secondary">done_all</span> Read
+            </span>
+          </div>
+          <div class="flex items-center gap-space-sm font-body-sm text-body-sm text-on-surface-variant mt-0.5">
+            <span class="">+91 98765 43210</span>
+            <span class="">•</span>
+            <span class="font-code-xs text-code-xs text-outline">utility_30m_countdown_v1</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex sm:flex-col items-end justify-between w-full sm:w-auto gap-1 text-right">
+        <span class="px-2.5 py-0.5 rounded-md bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold">Pre-Webinar Reminder</span>
+        <div class="font-code-xs text-code-xs text-on-surface-variant flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[14px] text-secondary">schedule</span>
+          <span class="">19:00:02 IST (114ms)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity Row 2 -->
+    <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-outline-variant flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-md log-card" data-status="Delivered" onclick="showLogDetails('Priya Soni', '+91 98221 87654', 'Flow 1: Community Access', 'utility_community_join_v2', '18:58:41 IST', 'Delivered', '92ms transit', 'Successfully received on recipient device.')">
+      <div class="flex items-center gap-space-md">
+        <div class="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-label-md">
+          PS
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-space-xs">
+            <span class="font-label-md text-label-md text-on-surface font-semibold">Priya Soni</span>
+            <span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold flex items-center gap-1">
+              <span class="material-symbols-outlined text-[13px] text-outline">done_all</span> Delivered
+            </span>
+          </div>
+          <div class="flex items-center gap-space-sm font-body-sm text-body-sm text-on-surface-variant mt-0.5">
+            <span class="">+91 98221 87654</span>
+            <span class="">•</span>
+            <span class="font-code-xs text-code-xs text-outline">utility_community_join_v2</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex sm:flex-col items-end justify-between w-full sm:w-auto gap-1 text-right">
+        <span class="px-2.5 py-0.5 rounded-md bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold">Registration &amp; Community</span>
+        <div class="font-code-xs text-code-xs text-on-surface-variant flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[14px] text-outline">schedule</span>
+          <span class="">18:58:41 IST (92ms)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity Row 3 -->
+    <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-outline-variant flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-md log-card" data-status="Idempotent" onclick="showLogDetails('Priya Soni (Retry)', '+91 98221 87654', 'Flow 1: Community Access', 'utility_community_join_v2', '18:58:40 IST', 'Shielded', '0ms API', 'Automatically prevented duplicate send via SHA-256 idempotency key.')">
+      <div class="flex items-center gap-space-md">
+        <div class="w-10 h-10 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center font-bold text-label-md">
+          <span class="material-symbols-outlined text-[18px] text-tertiary">shield</span>
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-space-xs">
+            <span class="font-label-md text-label-md text-on-surface font-semibold">Priya Soni</span>
+            <span class="px-2 py-0.5 rounded-full bg-surface-container text-tertiary font-label-sm text-label-sm font-semibold flex items-center gap-1">
+              <span class="material-symbols-outlined text-[13px] text-tertiary">filter_alt</span> Idempotent Skipped
+            </span>
+          </div>
+          <div class="flex items-center gap-space-sm font-body-sm text-body-sm text-on-surface-variant mt-0.5">
+            <span class="">+91 98221 87654</span>
+            <span class="">•</span>
+            <span class="font-code-xs text-code-xs text-tertiary">Duplicate Webhook Suppressed</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex sm:flex-col items-end justify-between w-full sm:w-auto gap-1 text-right">
+        <span class="px-2.5 py-0.5 rounded-md bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold">Registration &amp; Community</span>
+        <div class="font-code-xs text-code-xs text-tertiary font-semibold flex items-center gap-1.5">
+          <span class="">Prevented double-send</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity Row 4 -->
+    <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-outline-variant flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-md log-card" data-status="Failed" onclick="showLogDetails('Rohan Verma', '+91 00000 00000', 'Flow 2: Calendar Push', 'utility_calendar_invite_v1', '18:55:12 IST', 'Failed', 'Meta Err 131026', 'Recipient phone number is not registered on WhatsApp. Auto-fallback available.')">
+      <div class="flex items-center gap-space-md">
+        <div class="w-10 h-10 rounded-full bg-error-container text-error flex items-center justify-center font-bold text-label-md">
+          RV
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-space-xs">
+            <span class="font-label-md text-label-md text-on-surface font-semibold">Rohan Verma</span>
+            <span class="px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm font-semibold flex items-center gap-1">
+              <span class="material-symbols-outlined text-[13px] text-error">cancel</span> Failed
+            </span>
+          </div>
+          <div class="flex items-center gap-space-sm font-body-sm text-body-sm text-on-surface-variant mt-0.5">
+            <span class="">+91 00000 *****</span>
+            <span class="">•</span>
+            <span class="font-code-xs text-code-xs text-error">ERR_131026 (Not on WhatsApp)</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex sm:flex-col items-end justify-between w-full sm:w-auto gap-1 text-right">
+        <span class="px-2.5 py-0.5 rounded-md bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold">Calendar Link</span>
+        <div class="font-code-xs text-code-xs text-error font-semibold flex items-center gap-1.5">
+          <span class="">Bounced at Meta</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity Row 5 -->
+    <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-outline-variant flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-md log-card" data-status="Read" onclick="showLogDetails('Karthik Reddy', '+91 97412 34567', 'Flow 4: VIP Offer Sequence', 'marketing_vip_offer_v3', '18:30:15 IST', 'Read', '130ms transit', 'VIP discount CTA clicked by recipient.')">
+      <div class="flex items-center gap-space-md">
+        <div class="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-label-md">
+          KR
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-space-xs">
+            <span class="font-label-md text-label-md text-on-surface font-semibold">Karthik Reddy</span>
+            <span class="px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-semibold flex items-center gap-1">
+              <span class="material-symbols-outlined text-[13px] text-secondary">done_all</span> Read
+            </span>
+          </div>
+          <div class="flex items-center gap-space-sm font-body-sm text-body-sm text-on-surface-variant mt-0.5">
+            <span class="">+91 97412 34567</span>
+            <span class="">•</span>
+            <span class="font-code-xs text-code-xs text-outline">marketing_vip_offer_v3</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex sm:flex-col items-end justify-between w-full sm:w-auto gap-1 text-right">
+        <span class="px-2.5 py-0.5 rounded-md bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold">Post-Webinar Follow-up</span>
+        <div class="font-code-xs text-code-xs text-on-surface-variant flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[14px] text-secondary">schedule</span>
+          <span class="">18:30:15 IST (130ms)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity Row 6 -->
+    <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-outline-variant flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-md log-card" data-status="Delivered" onclick="showLogDetails('Sunita Rao', '+91 94480 98765', 'Flow 2: Calendar Push', 'utility_calendar_invite_v1', '18:15:02 IST', 'Delivered', '95ms transit', 'Delivered to handset.')">
+      <div class="flex items-center gap-space-md">
+        <div class="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-label-md">
+          SR
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-space-xs">
+            <span class="font-label-md text-label-md text-on-surface font-semibold">Sunita Rao</span>
+            <span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold flex items-center gap-1">
+              <span class="material-symbols-outlined text-[13px] text-outline">done_all</span> Delivered
+            </span>
+          </div>
+          <div class="flex items-center gap-space-sm font-body-sm text-body-sm text-on-surface-variant mt-0.5">
+            <span class="">+91 94480 98765</span>
+            <span class="">•</span>
+            <span class="font-code-xs text-code-xs text-outline">utility_calendar_invite_v1</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex sm:flex-col items-end justify-between w-full sm:w-auto gap-1 text-right">
+        <span class="px-2.5 py-0.5 rounded-md bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold">Calendar Link</span>
+        <div class="font-code-xs text-code-xs text-on-surface-variant flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[14px] text-outline">schedule</span>
+          <span class="">18:15:02 IST (95ms)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right-side Friendly Diagnostic & Protection Sidebar (4 cols) -->
+  <div class="xl:col-span-4 flex flex-col gap-space-md">
+    <!-- 4. Automation Health & Protection Card -->
+    <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col gap-space-md">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-space-xs">
+          <span class="material-symbols-outlined text-[20px] text-secondary">shield</span>
+          <h2 class="font-headline-sm text-headline-sm text-on-surface">Automation Health &amp; Protection</h2>
+        </div>
+        <span class="px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-semibold">Active</span>
+      </div>
+
+      <div class="flex flex-col gap-space-sm">
+        <!-- Status Item 1: API Status -->
+        <div class="p-space-sm rounded-lg bg-surface-container-low flex items-center justify-between">
+          <div class="flex items-center gap-space-xs">
+            <span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+            <span class="font-label-md text-label-md text-on-surface">Meta Cloud API Status</span>
+          </div>
+          <span class="font-code-xs text-code-xs font-semibold text-secondary">Operational (42ms p95)</span>
+        </div>
+
+        <!-- Status Item 2: Zero Duplicates -->
+        <div class="p-space-sm rounded-lg bg-surface-container-low flex items-center justify-between">
+          <div class="flex items-center gap-space-xs">
+            <span class="material-symbols-outlined text-[16px] text-primary">lock</span>
+            <span class="font-label-md text-label-md text-on-surface">Zero Duplicates Guarantee</span>
+          </div>
+          <span class="font-code-xs text-code-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">Active (100% Guard)</span>
+        </div>
+
+        <!-- Status Item 3: Auto-Halted Conversions -->
+        <div class="p-space-sm rounded-lg bg-surface-container-low flex items-center justify-between">
+          <div class="flex items-center gap-space-xs">
+            <span class="material-symbols-outlined text-[16px] text-tertiary">cancel_presentation</span>
+            <span class="font-label-md text-label-md text-on-surface">Recent Auto-Halted Conversions</span>
+          </div>
+          <span class="font-headline-sm text-headline-sm text-on-surface font-semibold">18</span>
+        </div>
+      </div>
+
+      <div class="p-space-sm rounded-lg bg-surface-container-low/60 border border-outline-variant/30 text-on-surface-variant font-body-sm text-body-sm">
+        <p class="text-[12px] leading-relaxed">
+          The protection circuit automatically halts reminder messages when an attendee completes payment or joins early, preserving customer goodwill.
+        </p>
+      </div>
+    </div>
+
+    <!-- 3. Clean Interactive Details Card (replaces raw JSON) -->
+    <div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col gap-space-sm" id="quickInspectCard">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-space-xs text-on-surface font-label-md text-label-md font-semibold">
+          <span class="material-symbols-outlined text-[18px] text-primary">contact_page</span>
+          <span class="">Selected Dispatch Details</span>
+        </div>
+        <span class="font-code-xs text-code-xs text-primary font-semibold" id="detailStatusBadge">Read</span>
+      </div>
+
+      <div class="p-space-sm rounded-lg bg-surface-container-low flex flex-col gap-2 mt-1">
+        <div class="flex items-center justify-between">
+          <span class="text-[12px] text-on-surface-variant">Recipient:</span>
+          <strong class="font-label-md text-label-md text-on-surface" id="detailRecipient">Vikram Malhotra</strong>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-[12px] text-on-surface-variant">Phone:</span>
+          <span class="font-code-xs text-code-xs text-on-surface" id="detailPhone">+91 98765 43210</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-[12px] text-on-surface-variant">Flow:</span>
+          <span class="font-label-sm text-label-sm text-primary font-semibold" id="detailFlow">Pre-Webinar Countdown</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-[12px] text-on-surface-variant">Template:</span>
+          <span class="font-code-xs text-code-xs text-on-surface" id="detailTemplate">utility_30m_countdown_v1</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-[12px] text-on-surface-variant">Dispatch Time:</span>
+          <span class="font-code-xs text-code-xs text-on-surface-variant" id="detailTime">19:00:02 IST (114ms)</span>
+        </div>
+      </div>
+
+      <div class="p-space-sm rounded-lg bg-surface-container-low/40 text-[12px] text-on-surface-variant leading-relaxed" id="detailSummary">
+        Delivered &amp; opened in WhatsApp within 43s of broadcast.
+      </div>
+
+      <div class="flex items-center gap-space-xs mt-1">
+        <button class="flex-1 flex items-center justify-center gap-1 h-8 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-sm text-label-sm transition-colors">
+          <span class="material-symbols-outlined text-[15px]">replay</span> Resend Message
+        </button>
+        <button class="flex items-center justify-center w-8 h-8 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface transition-colors" title="View Raw Trace">
+          <span class="material-symbols-outlined text-[16px]">terminal</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function filterByTab(status, btn) {
+    document.querySelectorAll('.filter-tab').forEach(b => {
+      b.className = 'px-space-md py-1 rounded-md text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors filter-tab';
+    });
+    btn.className = 'px-space-md py-1 rounded-md text-label-sm font-label-sm bg-primary text-on-primary transition-colors filter-tab';
+
+    const cards = document.querySelectorAll('.log-card');
+    cards.forEach(card => {
+      if (status === 'all' || card.getAttribute('data-status') === status) {
+        card.style.display = 'flex';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  }
+
+  function showLogDetails(recipient, phone, flow, template, time, status, latency, summary) {
+    document.getElementById('detailRecipient').innerText = recipient;
+    document.getElementById('detailPhone').innerText = phone;
+    document.getElementById('detailFlow').innerText = flow;
+    document.getElementById('detailTemplate').innerText = template;
+    document.getElementById('detailTime').innerText = time + ' (' + latency + ')';
+    document.getElementById('detailStatusBadge').innerText = status;
+    document.getElementById('detailSummary').innerText = summary;
+  }
+
+  const searchBox = document.getElementById('logSearchInput');
+  if (searchBox) {
+    searchBox.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      document.querySelectorAll('.log-card').forEach(c => {
+        const t = c.innerText.toLowerCase();
+        c.style.display = (q === '' || t.includes(q)) ? 'flex' : 'none';
+      });
+    });
+  }
+</script></div>
+<script>
+  // Payload Database for interactive record clicks
+  const payloads = {
+    'exec_wm_98213': {
+      execution_id: 'exec_wm_98213',
+      wamid: 'wamid.HBgLMTkwMjg1NTA2MTk1ODQA',
+      flow_id: 'flow_3_countdown',
+      step_index: 2,
+      idempotency_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      recipient: { name: 'Vikram Malhotra', phone: '+919876543210', timezone: 'Asia/Kolkata' },
+      template: 'utility_30m_countdown_v1',
+      category: 'UTILITY',
+      status: 'READ',
+      latency_ms: 114
+    },
+    'exec_wm_98212': {
+      execution_id: 'exec_wm_98212',
+      wamid: 'wamid.HBgLMTgzOTUxMDE3MDU4MAA',
+      flow_id: 'flow_1_community',
+      step_index: 1,
+      idempotency_hash: 'b5a2c91837acb79a836526a0fc40e0be21950e1ef38bb67e17426177112eaee6',
+      recipient: { name: 'Priya Soni', phone: '+919822187654', timezone: 'Asia/Kolkata' },
+      template: 'utility_community_join_v2',
+      category: 'UTILITY',
+      status: 'DELIVERED',
+      latency_ms: 92
+    },
+    'exec_wm_98211_suppressed': {
+      execution_id: 'exec_wm_98211',
+      wamid: null,
+      flow_id: 'flow_1_community',
+      step_index: 1,
+      idempotency_hash: 'b5a2c91837acb79a836526a0fc40e0be21950e1ef38bb67e17426177112eaee6',
+      recipient: { name: 'Priya Soni', phone: '+919822187654' },
+      suppressed_reason: 'IDEMPOTENCY_BREAKER_HIT: Record already locked in Redis for 86400s',
+      status: 'SUPPRESSED'
+    },
+    'exec_wm_98210_failed': {
+      execution_id: 'exec_wm_98210',
+      wamid: 'ERR_131026',
+      flow_id: 'flow_2_calendar',
+      step_index: 1,
+      recipient: { name: 'Rohan Verma', phone: '+910000000000' },
+      error_details: {
+        code: 131026,
+        title: 'Message Undeliverable',
+        message: 'Recipient phone number is not registered with WhatsApp Cloud network'
+      },
+      status: 'FAILED'
+    },
+    'exec_wm_98209': {
+      execution_id: 'exec_wm_98209',
+      wamid: 'wamid.HBgLMTg2MDk5MTYxNzA0MAA',
+      flow_id: 'flow_3_countdown',
+      step_index: 1,
+      recipient: { name: 'Ananya Iyer', phone: '+919980123456' },
+      template: 'utility_1hr_countdown_v1',
+      status: 'SENT'
+    },
+    'exec_wm_98208': {
+      execution_id: 'exec_wm_98208',
+      wamid: 'wamid.HBgLMTk0NjI4MTM2MjYxOAA',
+      flow_id: 'flow_4_postwebinar',
+      step_index: 1,
+      recipient: { name: 'Karthik Reddy', phone: '+919741234567' },
+      template: 'marketing_vip_offer_v3',
+      status: 'READ'
+    },
+    'exec_wm_98207': {
+      execution_id: 'exec_wm_98207',
+      wamid: 'wamid.HBgLMTkxOTU4MDUyNTgwMAA',
+      flow_id: 'flow_2_calendar',
+      step_index: 1,
+      recipient: { name: 'Sunita Rao', phone: '+919448098765' },
+      template: 'utility_calendar_invite_v1',
+      status: 'DELIVERED'
+    },
+    'exec_wm_98206': {
+      execution_id: 'exec_wm_98206',
+      wamid: 'wamid.HBgLMTkxMDUwNTAxOTg0MAA',
+      flow_id: 'flow_1_community',
+      step_index: 1,
+      recipient: { name: 'Deepak Chopra', phone: '+919811012345' },
+      template: 'utility_community_join_v2',
+      status: 'READ'
+    }
+  };
+
+  function selectAuditRecord(execId) {
+    const display = document.getElementById('jsonPayloadDisplay');
+    const badge = document.getElementById('activeExecBadge');
+    if (!display || !badge) return;
+
+    badge.innerText = execId;
+    const data = payloads[execId] || { execution_id: execId, notice: 'Full raw envelope loaded from S3 Cold Archive' };
+    display.innerText = JSON.stringify(data, null, 2);
+  }
+
+  // Filter chips functionality
+  const chips = document.querySelectorAll('.filter-status-chip');
+  const rows = document.querySelectorAll('.log-row');
+  const searchInput = document.getElementById('searchInput');
+  const flowSelect = document.getElementById('flowSelect');
+  const visibleCount = document.getElementById('visibleCount');
+
+  let activeStatus = 'all';
+
+  function applyFilters() {
+    let query = searchInput.value.toLowerCase().trim();
+    let selectedFlow = flowSelect.value;
+    let count = 0;
+
+    rows.forEach(row => {
+      let rowStatus = row.getAttribute('data-status');
+      let rowFlow = row.getAttribute('data-flow');
+      let text = row.innerText.toLowerCase();
+
+      let matchStatus = (activeStatus === 'all' || rowStatus === activeStatus);
+      let matchFlow = (selectedFlow === 'all' || rowFlow === selectedFlow);
+      let matchSearch = (query === '' || text.includes(query));
+
+      if (matchStatus && matchFlow && matchSearch) {
+        row.style.display = '';
+        count++;
+      } else {
+        row.style.display = 'none';
+      }
+    });
+
+    if (visibleCount) visibleCount.innerText = count;
+  }
+
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      chips.forEach(c => {
+        c.className = 'filter-status-chip px-space-sm py-1 rounded-md text-label-sm font-label-sm bg-surface-container-high hover:bg-surface-variant text-on-surface transition-colors';
+      });
+      chip.className = 'filter-status-chip px-space-sm py-1 rounded-md text-label-sm font-label-sm bg-primary text-on-primary transition-colors';
+      activeStatus = chip.getAttribute('data-status');
+      applyFilters();
+    });
+  });
+
+  searchInput.addEventListener('input', applyFilters);
+  flowSelect.addEventListener('change', applyFilters);
+
+  document.getElementById('resetFiltersBtn').addEventListener('click', () => {
+    searchInput.value = '';
+    flowSelect.value = 'all';
+    chips[0].click();
+  });
+
+  // Copy JSON button
+  const copyBtn = document.getElementById('copyJsonBtn');
+  const copyText = document.getElementById('copyText');
+  copyBtn.addEventListener('click', () => {
+    const text = document.getElementById('jsonPayloadDisplay').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      copyText.innerText = 'Copied to Clipboard!';
+      setTimeout(() => { copyText.innerText = 'Copy Payload JSON'; }, 2000);
+    });
+  });
+
+  // Stream Pause toggle
+  const pauseBtn = document.getElementById('pauseStreamBtn');
+  let isPaused = false;
+  pauseBtn.addEventListener('click', () => {
+    isPaused = !isPaused;
+    if (isPaused) {
+      pauseBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]">play_arrow</span><span>Resume Stream</span>';
+      pauseBtn.classList.add('bg-secondary-container', 'text-on-secondary-container');
+    } else {
+      pauseBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]">pause</span><span>Pause Stream</span>';
+      pauseBtn.classList.remove('bg-secondary-container', 'text-on-secondary-container');
+    }
+  });
+</script></main></div><!-- demo-chrome --><style>.sr-only:not(input):not(select):not(textarea){left:0;top:0}</style><div id="demo-switcher" style="position:fixed;right:16px;bottom:16px;z-index:9999;font:500 12px/1.4 Inter,system-ui,sans-serif;"><details style="background:#fff;border:1px solid #c7c4d8;border-radius:10px;box-shadow:0 8px 30px rgba(11,28,48,.18);max-width:340px;overflow:hidden"><summary style="cursor:pointer;padding:9px 13px;list-style:none;color:#3525cd;font-weight:600">All 20 screens</summary><div style="max-height:62vh;overflow:auto;padding:4px 0 8px"><a href="../index.html" style="display:block;padding:6px 13px;color:#464555;text-decoration:none">← Contact sheet</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — the eight main screens</div><a href="dashboard.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Dashboard - Engage</a><a href="contacts.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Contacts & Audience CRM - Engage</a><a href="journeys.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Automated Journeys - Engage</a><a href="campaigns.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Campaigns & Broadcasts - Engage</a><a href="templates.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Templates & Variable Inspector - Engage</a><a href="analytics.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Analytics & Conversions - Engage</a><a href="integrations.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Integrations & Webinar Liv Mapping - Engage</a><a href="settings.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Settings - Engage</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — journey builder</div><a href="journey-builder.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Visual Journey Builder - Engage</a><a href="journey-builder-spacious.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Engage - Visual Journey Builder (Spacious Canvas)</a><a href="step-branch-rules.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Engage - Step & Branch Rules Configuration</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — modals</div><a href="modal-create-journey.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Create Journey Modal - Engage</a><a href="modal-create-campaign.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Create Campaign Wizard Modal - Engage</a><a href="modal-import-contacts.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Add & Import Contacts Modal - Engage</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">WebinarLiv shell</div><a href="settings-channels.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Settings - Integrations & Channels</a><a href="whatsapp-hub.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">WhatsApp Channel & Operations Hub</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Flow Engine shell</div><a href="flow-builder.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Flow Builder - Visual Automation Orchestrator</a><a href="attendance.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Attendance & Engagement Telemetry</a><a href="exec-logs.html" style="display:block;padding:5px 13px;text-decoration:none;color:#3525cd;background:#e5eeff;font-weight:600">Execution & Delivery Logs</a><a href="database-webhooks.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Database & Webhooks Architecture</a><div style="padding:9px 13px 2px;color:#777587;font-size:10.5px;border-top:1px solid #e5eeff;margin-top:6px">Buttons and filters are simulated — nothing is stored. <a href="../README.md" style="color:#3525cd">What is wired</a></div></div></details></div><script src="../demo.js" data-demo></script><!-- /demo-chrome --></body></html>

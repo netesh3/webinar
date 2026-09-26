@@ -1,0 +1,148 @@
+forum
+Engage
+Acme
+arrow_drop_down
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+insights
+Analytics
+extension
+Integrations
+settings
+Settings
+WABA Connected
++1 555-0192
+Healthy
+person
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help_outline
+notifications
+add
+New Broadcast
+person
+Journeys
+Automate WhatsApp messages and follow-ups based on attendee actions.
+auto_stories
+Use template
+add
+Create Journey
+Start from a template
+Choose a pre-built blueprint or start from scratch.
+Showing 6 journeys
+Previous
+Next
+All
+8
+Active
+6
+Paused
+1
+Drafts
+1
+Showing 6 journeys
+Previous
+Next
+Name
+Trigger
+Enrolled
+Status
+Webinar Registration & Onboarding
+Sends Community invite and calendar confirmation
+Webinar Liv
+248
+Active
+more_vert
+Webinar 2-Stage Reminder Cadence
+Dynamic countdown alerts with one-click join link
+Scheduled time
+248
+Active
+more_vert
+Post-Webinar Engagement Follow-up
+Replay links and next steps based on attendance
+Stream ended
+142
+Active
+more_vert
+New Lead Welcome & WhatsApp Opt-in
+Verifies number and sends welcome guide
+Landing form
+1,284
+Active
+more_vert
+VIP Strategy Session Reminder
+Sends WhatsApp booking confirmation and calendar pin
+Calendly
+64
+Active
+more_vert
+Course Launch Re-engagement
+Educational value sequence with 24-hour delay
+AI Tag
+520
+Paused
+more_vert
+Showing 6 journeys
+Previous
+Next
+alt_route
+Create New Journey
+Step 1: Select the behavioral trigger and automation parameters
+close
+Journey Name
+Sender WhatsApp Business Account
+Acme Growth Co Primary (+1 555-0192) • Tier 2
+Acme VIP Concierge (+1 555-0188) • Tier 1
+expand_more
+Select Primary Trigger Event
+Browse webhook catalogue
+Webinar Liv Registration
+Native
+Triggers immediately when a user fills the registration form in Webinar Liv or syncs via direct API.
+Webinar Stream Attendance
+Triggers upon stream completion. Splits audience based on watch duration thresholds (e.g. >45 min).
+New Inbound Contact
+Contact added via Landing Page form, Zapier, Make, or Google Sheets sync.
+Tag Added or Updated
+Fires whenever a contact receives a designated segment tag like "High-Intent-Lead".
+Workflow Initial Flow Blueprint
+3 Actions Auto-Staged
+bolt
+TRIGGER
+Webinar Reg Confirmed
+arrow_forward
+chat
+ACTION 1
+Send WhatsApp Ticket
+arrow_forward
+timer
+DELAY
+Wait until T-2 Hours
+arrow_forward
+notifications_active
+ACTION 2
+Reminder + Calendar Pin
+shield
+Quiet Hours & Anti-Spam Guardrails
+Suppress outbound messages between 10:00 PM and 8:00 AM local recipient time.
+Cancel
+Save as Draft
+Continue to Flow Builder
+east

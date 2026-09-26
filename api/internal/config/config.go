@@ -70,6 +70,14 @@ type Config struct {
 	// tab instead of pressing End otherwise leaves the room live, the meeting
 	// limit counting, and any Egress still encoding. 0 turns the sweep off.
 	EmptyRoomCloseMin int
+	/* TickSecret switches on POST /api/internal/tick, which runs one pass of the background
+	 * job (reminders, drips, bots, outboxes, meeting limits) inside the request.
+	 *
+	 * For Cloud Run scaled to zero, where no background goroutine runs between requests:
+	 * Cloud Scheduler calls it every minute with the secret in X-Tick-Secret (see
+	 * deploy/cloud-scheduler-tick.sh). Empty means the endpoint does not exist, which is
+	 * right for an always-on process whose own ticker is enough. At least 32 characters. */
+	TickSecret string
 
 	// Recording.
 	//
@@ -331,6 +339,7 @@ func Load() (Config, error) {
 		SupportEmail:         env("SUPPORT_EMAIL", ""),
 		DefaultMaxMeetingMin: envInt("DEFAULT_MAX_MEETING_MIN", 180),
 		EmptyRoomCloseMin:    envInt("EMPTY_ROOM_CLOSE_MIN", 10),
+		TickSecret:           strings.TrimSpace(env("TICK_SECRET", "")),
 		AdminEmails:          splitAndTrim(env("ADMIN_EMAILS", "")),
 		AdminPassword:        env("ADMIN_PASSWORD", ""),
 		SMTPHost:             env("SMTP_HOST", ""),
@@ -481,6 +490,10 @@ func (c Config) validate() error {
 	}
 	if c.EmptyRoomCloseMin < 0 {
 		errs = append(errs, errors.New("EMPTY_ROOM_CLOSE_MIN must be >= 0"))
+	}
+	// Short secrets are refused: this endpoint is public and triggers sends.
+	if c.TickSecret != "" && len(c.TickSecret) < 32 {
+		errs = append(errs, errors.New("TICK_SECRET must be at least 32 characters (openssl rand -hex 32)"))
 	}
 	if c.RegisterPerMin < 1 {
 		errs = append(errs, errors.New("REGISTER_RATE_PER_MIN must be >= 1"))

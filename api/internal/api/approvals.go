@@ -122,6 +122,7 @@ func (s *Server) notifyDecisions(
 	}
 
 	var out dispatch
+	var declined []string
 	for _, row := range rows {
 		in := notify.Invite{
 			Name:     row.Name,
@@ -144,6 +145,7 @@ func (s *Server) notifyDecisions(
 			kind = types.NotifyRegistrationDeclined
 			subject, bodyText = notify.RegistrationDeclined(in)
 			_ = s.store.SkipPendingRemindersForRegistration(ctx, row.ID)
+			declined = append(declined, row.ID)
 		default:
 			continue
 		}
@@ -165,11 +167,8 @@ func (s *Server) notifyDecisions(
 	// Delivery is attempted immediately for responsiveness, and the outbox is what makes it
 	// safe for this to fail. See s.flushOutbox.
 	s.flushOutbox(ctx)
-	/* And the WhatsApp side of the same decision. A confirmation queued when somebody
-	 * registered is held by the sweep until their seat is approved, so this press is
-	 * the moment it becomes sendable — waiting up to 30 seconds for the ticker to
-	 * notice would make the fastest channel the slowest one. */
-	s.flushWhatsAppOutbox(ctx)
+	// And the CRM's side of the same decisions. See Engage.OnRegistrationsDecided.
+	s.engage.OnRegistrationsDecided(ctx, slug, declined)
 	return out
 }
 
@@ -206,6 +205,19 @@ func (s *Server) joinURLFor(ctx context.Context, slug, registrationID string) st
  * be reported as failed.
  */
 func (s *Server) flushOutbox(ctx context.Context) {
+	/* One sender at a time. Called from the sweep and straight after an approval, on any
+	 * instance; without the lease two of them read the same pending row and both send it.
+	 * A caller that finds it held does nothing: the holder is sending, and anything it
+	 * missed is due on the next pass. */
+	release, ok, err := s.store.TryLease(ctx, "outbox:email", outboxLease)
+	if err != nil || !ok {
+		if err != nil {
+			s.log.Error("outbox: could not take lease", "err", err)
+		}
+		return
+	}
+	defer release()
+
 	owed, err := s.store.PendingDeliveries(ctx, 100)
 	if err != nil {
 		s.log.Error("outbox: could not read", "err", err)
@@ -229,6 +241,9 @@ func (s *Server) flushOutbox(ctx context.Context) {
 		_ = s.store.MarkDelivered(ctx, m.ID, "sent", "")
 	}
 }
+
+// outboxLease outlives one flush of 100 messages with a slow SMTP server.
+const outboxLease = 2 * time.Minute
 
 // ------------------------------------------------------------- host alerts
 
@@ -286,10 +301,4 @@ func (s *Server) handleReadHostAlerts(w http.ResponseWriter, r *http.Request) {
  * emailing somebody the word "Invalid". Nothing writes StartsAt except the store, so this is
  * defence rather than an expected path.
  */
-func whenText(startsAt, zone string) string {
-	at, err := time.Parse(time.RFC3339, startsAt)
-	if err != nil {
-		return ""
-	}
-	return localTime(at, zone)
-}
+func whenText(startsAt, zone string) string { return notify.WhenText(startsAt, zone) }

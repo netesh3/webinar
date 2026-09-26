@@ -10,10 +10,28 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-// StartMeetingLimitSweeper runs a background loop that checks for live webinars
-// that have exceeded their maximum configured duration, and ends them cleanly.
+/* How often the background job runs, and how long one pass may take.
+ *
+ * The in-process ticker below is one of two ways a pass starts. On an always-on process (a
+ * dedicated server, or Cloud Run with min-instances) it is the only one. On Cloud Run
+ * scaled to zero there is no process and no CPU between requests, so Cloud Scheduler calls
+ * POST /api/internal/tick once a minute and the pass runs inside that request (see
+ * handleInternalTick and deploy/cloud-scheduler-tick.sh). Both run RunTick, which takes the
+ * `sweep` lease, so they never overlap — within an instance or across them.
+ */
+const (
+	tickEvery = 30 * time.Second
+	// tickBudget bounds one pass; the lease outlives it so an overrun cannot start a twin.
+	tickBudget = 90 * time.Second
+	tickLease  = 2 * time.Minute
+	// Recording retention deletes files, and once every five minutes is plenty; its lease
+	// is never released, which is what makes it run at most that often.
+	retentionEvery = 5 * time.Minute
+)
+
+// StartMeetingLimitSweeper runs RunTick every tickEvery until ctx is done.
 func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(tickEvery)
 	defer ticker.Stop()
 
 	for {
@@ -21,24 +39,47 @@ func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.sweepExpiredWebinars(ctx)
-			s.sweepEmptyWebinars(ctx)
-			s.sweepBroadcasts(ctx)
-			s.sweepSimulive(ctx)
-			s.reconcileEgressRecordings(ctx)
-			s.flushOutbox(ctx)
-			/* Drip steps are queued before the outbox is flushed, so a step that
-			 * came due in the last thirty seconds goes out on this tick rather
-			 * than waiting for the next one. */
-			s.AdvanceDrips(ctx)
-			/* And then the bots, which are the other way round: a woken flow sends
-			 * its own messages inline rather than queueing them, so it goes after
-			 * AdvanceDrips only so that a flow which enrols somebody and then waits
-			 * is not a tick behind the sequence it just put them on. */
-			s.AdvanceBots(ctx)
-			s.flushWhatsAppOutbox(ctx)
+			s.RunTick(ctx)
 		}
 	}
+}
+
+/* RunTick is one pass of every job that runs on a clock: meeting limits, empty rooms,
+ * broadcasts, simulive, lost recordings, the email outbox, and the CRM's drips, bots and
+ * WhatsApp outbox. Reports false when another runner held the lease and nothing was done.
+ *
+ * Everything is due-time driven — a row with due_at <= now() — so a late pass catches up
+ * rather than losing anything: the pass after a gap sends what came due during it.
+ */
+func (s *Server) RunTick(ctx context.Context) bool {
+	ctx, cancel := context.WithTimeout(ctx, tickBudget)
+	defer cancel()
+
+	release, ok, err := s.store.TryLease(ctx, "sweep", tickLease)
+	if err != nil {
+		s.log.Error("sweep: could not take lease", "error", err)
+		return false
+	}
+	if !ok {
+		return false
+	}
+	defer release()
+
+	s.sweepExpiredWebinars(ctx)
+	s.sweepEmptyWebinars(ctx)
+	s.sweepBroadcasts(ctx)
+	s.sweepSimulive(ctx)
+	s.reconcileEgressRecordings(ctx)
+	s.flushOutbox(ctx)
+	// The CRM's drips, bots and WhatsApp outbox. See Engage.Tick.
+	s.engage.Tick(ctx)
+
+	if s.cfg.RecordingsRetentionDays > 0 {
+		if _, due, err := s.store.TryLease(ctx, "recording-retention", retentionEvery); err == nil && due {
+			s.sweepExpiredRecordings(ctx)
+		}
+	}
+	return true
 }
 
 func (s *Server) sweepExpiredWebinars(ctx context.Context) {
@@ -213,25 +254,15 @@ func (s *Server) reconcileEgressRecordings(ctx context.Context) {
 // a row marked failed early is one a host stops waiting for.
 const egressUploadWindow = 2 * time.Hour
 
-// StartRecordingRetentionSweeper deletes cloud recordings past RECORDINGS_RETENTION_DAYS.
-// Cloud Run may scale to zero, so this also runs once at boot and whenever a
-// host lists recordings; the ticker covers a long-lived instance.
+/* StartRecordingRetentionSweeper runs recording retention once at boot, under the same
+ * lease RunTick uses, so a fresh instance catches up without waiting for its first tick.
+ * After that RunTick owns it (at most once per retentionEvery, across all instances). */
 func (s *Server) StartRecordingRetentionSweeper(ctx context.Context) {
 	if s.cfg.RecordingsRetentionDays <= 0 {
 		return
 	}
-	s.sweepExpiredRecordings(ctx)
-
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			s.sweepExpiredRecordings(ctx)
-		}
+	if _, due, err := s.store.TryLease(ctx, "recording-retention", retentionEvery); err == nil && due {
+		s.sweepExpiredRecordings(ctx)
 	}
 }
 

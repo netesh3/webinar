@@ -1,0 +1,1110 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><!-- demo-guard --><script>window.__demoErrors=[];addEventListener('error',function(e){if(e.target===window||e.error)window.__demoErrors.push(String(e.message||e.error));},true);</script><!-- /demo-guard --><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"surface-container":"#eaedff","on-secondary-fixed-variant":"#005137","on-surface":"#131b2e","secondary-container":"#82f5c1","secondary-fixed-dim":"#68dba9","on-secondary":"#ffffff","surface-bright":"#faf8ff","surface-dim":"#d2d9f4","on-secondary-fixed":"#002114","on-primary-fixed":"#0f0069","on-primary-container":"#dad7ff","on-error":"#ffffff","on-surface-variant":"#464555","tertiary-fixed":"#ffddb8","surface-container-highest":"#dae2fd","on-tertiary-container":"#ffd4a4","background":"#faf8ff","secondary":"#006c4a","surface-container-low":"#f2f3ff","inverse-surface":"#283044","primary-fixed-dim":"#c3c0ff","outline-variant":"#c7c4d8","tertiary-fixed-dim":"#ffb95f","error":"#ba1a1a","primary-container":"#4f46e5","on-primary-fixed-variant":"#3323cc","primary":"#3525cd","surface-container-high":"#e2e7ff","surface-variant":"#dae2fd","inverse-primary":"#c3c0ff","tertiary-container":"#885500","tertiary":"#684000","primary-fixed":"#e2dfff","surface-tint":"#4d44e3","inverse-on-surface":"#eef0ff","outline":"#777587","surface-container-lowest":"#ffffff","surface":"#faf8ff","secondary-fixed":"#85f8c4","on-tertiary-fixed":"#2a1700","on-error-container":"#93000a","on-tertiary-fixed-variant":"#653e00","on-background":"#131b2e","on-tertiary":"#ffffff","error-container":"#ffdad6","on-secondary-container":"#00714e","on-primary":"#ffffff"},borderRadius:{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},spacing:{"margin":"1rem","gutter":"1rem","space-md":"1rem","space-xl":"2rem","space-xs":"0.25rem","gutter-desktop":"1.5rem","space-lg":"1.5rem","margin-desktop":"2rem","space-sm":"0.5rem"},fontFamily:{"label-md":["Inter"],"headline-sm":["Plus Jakarta Sans"],"headline-xl":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"],"headline-lg-mobile":["Plus Jakarta Sans"],"label-sm":["Inter"],"code-xs":["JetBrains Mono"],"body-sm":["Inter"],"body-md":["Inter"],"headline-xl-mobile":["Plus Jakarta Sans"],"code-sm":["JetBrains Mono"],"body-lg":["Inter"],"headline-md":["Plus Jakarta Sans"]},fontSize:{"label-md":["13px",{"lineHeight":"18px","fontWeight":"500"}],"headline-sm":["16px",{"lineHeight":"24px","letterSpacing":"-0.005em","fontWeight":"600"}],"headline-xl":["36px",{"lineHeight":"44px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-lg":["28px",{"lineHeight":"36px","letterSpacing":"-0.015em","fontWeight":"600"}],"headline-lg-mobile":["24px",{"lineHeight":"32px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.02em","fontWeight":"600"}],"code-xs":["10px",{"lineHeight":"14px","fontWeight":"500"}],"body-sm":["12px",{"lineHeight":"16px","fontWeight":"400"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"400"}],"headline-xl-mobile":["28px",{"lineHeight":"36px","letterSpacing":"-0.015em","fontWeight":"700"}],"code-sm":["12px",{"lineHeight":"16px","fontWeight":"500"}],"body-lg":["16px",{"lineHeight":"24px","fontWeight":"400"}],"headline-md":["20px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-64 bg-surface-container-low z-50 flex flex-col justify-between shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex flex-col"><div class="h-16 px-space-lg flex items-center gap-space-sm bg-surface-container-lowest"><div class="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center text-on-secondary shadow-sm"><span class="material-symbols-outlined text-[20px]">chat</span></div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none">WebinarLiv</span><span class="font-label-sm text-label-sm text-on-surface-variant leading-tight">Enterprise Flow Engine</span></div></div><div class="px-space-md py-space-sm"><span class="font-label-sm text-label-sm text-outline uppercase tracking-wider px-space-sm">Core Modules</span></div><nav class="flex flex-col px-space-sm gap-space-xs" data-active-classes="bg-primary-container text-on-primary font-label-md"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="flow-builder" href="flow-builder.html"><span class="material-symbols-outlined text-[18px]">account_tree</span>Flow Builder</a><a data-demo-undrawn="Template Library" class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="template-library" href="#"><span class="material-symbols-outlined text-[18px]">dashboard_customize</span>Template Library</a><a data-demo-undrawn="Audience &amp; Segmentation" class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="audience-and-segmentation" href="#"><span class="material-symbols-outlined text-[18px]">group</span>Audience &amp; Segmentation</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="attendance-and-engagement-telemetry" href="attendance.html"><span class="material-symbols-outlined text-[18px]">monitoring</span>Attendance &amp; Engagement</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="execution-and-delivery-logs" href="exec-logs.html"><span class="material-symbols-outlined text-[18px]">terminal</span>Execution &amp; Delivery Logs</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-label-md text-label-md" data-path="database-and-webhooks" href="#"><span class="material-symbols-outlined text-[18px]">webhook</span>Database &amp; Webhooks</a></nav></div><div class="p-space-md bg-surface-container-lowest m-space-sm rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.03)]"><div class="flex items-center justify-between mb-space-xs"><span class="font-label-sm text-label-sm text-outline uppercase">Cloud Gateway</span><div class="flex items-center gap-1.5 px-space-xs py-0.5 rounded-full bg-secondary-container"><span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span><span class="font-code-xs text-code-xs text-on-secondary-container font-semibold">99.98%</span></div></div><div class="font-body-sm text-body-sm text-on-surface-variant truncate">WA Business API #0921</div></div></aside><div class="pl-64"><header class="fixed top-0 left-64 right-0 h-16 bg-surface-container-lowest/90 backdrop-blur-xl z-40 flex items-center justify-between px-space-lg shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-sm"><div class="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center text-primary"><span class="material-symbols-outlined text-[20px]">co_present</span></div><div class="flex flex-col"><div class="flex items-center gap-space-sm"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight">AI Marketing Masterclass</span><span class="px-space-sm py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-semibold flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>Live Automation Active</span></div><span class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">schedule</span>25 Sep 2026, 7:00 PM IST</span></div></div></div><div class="flex items-center gap-space-md"><div class="hidden xl:flex items-center gap-space-sm px-space-md py-1.5 rounded-lg bg-surface-container-low"><span class="w-2 h-2 rounded-full bg-secondary animate-ping"></span><span class="font-label-sm text-label-sm text-on-surface">WhatsApp Cloud Gateway</span><span class="font-code-xs text-code-xs text-secondary font-semibold uppercase">Connected</span></div><div class="flex items-center gap-space-sm"><button class="flex items-center gap-space-xs px-space-md h-9 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface transition-colors font-label-md text-label-md" type="button"><span class="material-symbols-outlined text-[16px]">play_arrow</span>Quick Test Simulation</button><button class="flex items-center gap-space-xs px-space-md h-9 rounded-lg bg-primary hover:bg-primary-container text-on-primary transition-colors font-label-md text-label-md shadow-sm" type="button"><span class="material-symbols-outlined text-[16px]">save</span>Save Changes</button></div><div class="h-6 w-px bg-outline-variant mx-space-xs"></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><div class="fixed top-16 left-64 right-0 h-10 bg-surface-container-low/95 backdrop-blur-md z-30 flex items-center px-space-lg shadow-[0_1px_4px_rgba(0,0,0,0.02)]"><div class="flex items-center gap-space-xs font-label-sm text-label-sm text-on-surface-variant"><span class="material-symbols-outlined text-[15px]">alt_route</span><span class="text-on-surface font-semibold">Automation Stages:</span></div><div class="flex items-center gap-space-xs ml-space-md overflow-x-auto"><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md bg-surface-container-lowest text-primary font-label-sm text-label-sm font-semibold shadow-xs" type="button"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span>Flow 1: Registration &amp; Community</button><span class="material-symbols-outlined text-outline-variant text-[14px]">chevron_right</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">Flow 2: Calendar Invite</button><span class="material-symbols-outlined text-outline-variant text-[14px]">chevron_right</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">Flow 3: Live Countdown Reminders</button><span class="material-symbols-outlined text-outline-variant text-[14px]">chevron_right</span><button class="flex items-center gap-space-xs px-space-sm py-1 rounded-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">Flow 4: Post-Webinar &amp; Conversion</button></div></div><main class="relative pt-26 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<!-- Background Ambience Gradients -->
+<div class="relative w-full overflow-hidden px-space-lg lg:px-margin-desktop py-space-lg space-y-space-xl">
+<div class="absolute -top-32 -left-20 w-96 h-96 rounded-full bg-primary-fixed blur-3xl opacity-40 pointer-events-none -z-10"></div>
+<div class="absolute top-80 right-0 w-80 h-80 rounded-full bg-secondary-container blur-3xl opacity-30 pointer-events-none -z-10"></div>
+<!-- Top Architecture Header & Quick Actions -->
+<header class="flex flex-col xl:flex-row xl:items-end justify-between gap-space-lg pb-space-md">
+<div class="space-y-space-xs max-w-4xl">
+<div class="flex items-center gap-space-xs">
+<span class="px-space-sm py-0.5 rounded-full bg-primary/10 text-primary font-code-xs text-code-xs tracking-wider uppercase font-semibold">Postgres 16 + Redis Broker</span>
+<span class="text-outline-variant font-code-xs text-code-xs">•</span>
+<span class="text-secondary font-code-xs text-code-xs font-semibold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span> Idempotency Engine Active
+          </span>
+</div>
+<h1 class="font-headline-xl text-headline-xl text-on-surface tracking-tight">
+          Data Architecture, Entity Relations &amp; Integration Webhooks
+        </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+          Complete schema mapping for Users, Webinars, Registrations, Attendance, Automation Rules, and Message Logs with idempotent execution guarantees.
+        </p>
+</div>
+<!-- Action Group -->
+<div class="flex flex-wrap items-center gap-space-sm shrink-0">
+<button class="group flex items-center gap-space-xs px-space-md h-9 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface transition-all shadow-sm" id="export-ddl-btn" type="button">
+<span class="material-symbols-outlined text-[18px] text-primary group-hover:rotate-12 transition-transform">data_object</span>
+<span class="font-label-md text-label-md font-semibold">Export SQL DDL Schema</span>
+</button>
+<button class="group flex items-center gap-space-xs px-space-md h-9 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface transition-all shadow-sm" id="download-postman-btn" type="button">
+<span class="material-symbols-outlined text-[18px] text-secondary group-hover:scale-110 transition-transform">terminal</span>
+<span class="font-label-md text-label-md font-semibold">Download Postman Collection</span>
+</button>
+<button class="flex items-center gap-space-xs px-space-md h-9 rounded-lg bg-primary hover:bg-primary-container text-on-primary transition-all shadow-md" id="scroll-to-simulator-btn" type="button">
+<span class="material-symbols-outlined text-[18px]">bolt</span>
+<span class="font-label-md text-label-md font-semibold">Test Webhook Endpoint</span>
+</button>
+</div>
+</header>
+<!-- Schema Health & Telemetry Strip -->
+<section class="grid grid-cols-2 md:grid-cols-4 gap-space-md">
+<div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase text-outline">Entities Registered</span>
+<span class="material-symbols-outlined text-primary text-[18px]">database</span>
+</div>
+<div class="mt-space-sm flex items-baseline gap-space-xs">
+<span class="font-headline-lg text-headline-lg text-on-surface font-bold">6 Tables</span>
+<span class="font-code-xs text-code-xs text-secondary bg-secondary-container/40 px-1.5 py-0.5 rounded">3NF Normal</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant mt-1">19 Indexes • 8 FK Constraints</span>
+</div>
+<div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase text-outline">Delivery SLA</span>
+<span class="material-symbols-outlined text-secondary text-[18px]">verified</span>
+</div>
+<div class="mt-space-sm flex items-baseline gap-space-xs">
+<span class="font-headline-lg text-headline-lg text-on-surface font-bold">99.98%</span>
+<span class="font-code-xs text-code-xs text-secondary bg-secondary-container/40 px-1.5 py-0.5 rounded">&lt;140ms</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant mt-1">Zero-duplicate guarantee via Redis hash</span>
+</div>
+<div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase text-outline">Active Inbound Hooks</span>
+<span class="material-symbols-outlined text-tertiary text-[18px]">webhook</span>
+</div>
+<div class="mt-space-sm flex items-baseline gap-space-xs">
+<span class="font-headline-lg text-headline-lg text-on-surface font-bold">4 Endpoints</span>
+<span class="font-code-xs text-code-xs text-tertiary bg-tertiary-fixed/60 px-1.5 py-0.5 rounded">HMAC-SHA256</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant mt-1">Payload signature verified</span>
+</div>
+<div class="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase text-outline">Event Log Volume</span>
+<span class="material-symbols-outlined text-primary text-[18px]">history_toggle_off</span>
+</div>
+<div class="mt-space-sm flex items-baseline gap-space-xs">
+<span class="font-headline-lg text-headline-lg text-on-surface font-bold">2.41M</span>
+<span class="font-code-xs text-code-xs text-primary bg-primary-fixed/70 px-1.5 py-0.5 rounded">30d retention</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant mt-1">Auto-partitioned by `sent_at` month</span>
+</div>
+</section>
+<!-- SECTION 1: ENTITY RELATIONSHIP MODEL (ERD) -->
+<section class="space-y-space-md">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[20px]">account_tree</span>
+<h2 class="font-headline-md text-headline-md text-on-surface">Entity Relationship Model (ERD)</h2>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Schema relational map with constraints, indices, and data types.</p>
+</div>
+<!-- ERD Controls / Legend -->
+<div class="flex items-center gap-space-md bg-surface-container-low px-space-md py-1.5 rounded-lg">
+<div class="flex items-center gap-1 font-label-sm text-label-sm text-on-surface">
+<span class="w-2.5 h-2.5 rounded-sm bg-primary inline-block"></span> PK (Primary Key)
+          </div>
+<div class="flex items-center gap-1 font-label-sm text-label-sm text-on-surface">
+<span class="w-2.5 h-2.5 rounded-sm bg-secondary inline-block"></span> FK (Foreign Key)
+          </div>
+<div class="flex items-center gap-1 font-label-sm text-label-sm text-on-surface">
+<span class="w-2.5 h-2.5 rounded-sm bg-tertiary-fixed-dim inline-block"></span> IDX (Indexed)
+          </div>
+</div>
+</div>
+<!-- 6 Relational Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-space-md">
+<!-- Table 1: users -->
+<div class="rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+<div class="px-space-md py-2.5 bg-surface-container flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]">person</span>
+<span class="font-code-sm text-code-sm font-semibold text-on-surface">users</span>
+</div>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface-variant font-medium">8 Attributes</span>
+</div>
+<div class="p-space-sm space-y-0.5 text-body-sm">
+<div class="flex items-center justify-between p-1.5 rounded bg-primary-fixed/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-primary text-on-primary font-bold">PK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">user_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">UUID (DEFAULT gen_random_uuid())</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">name</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(180) NOT NULL</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container-high/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-tertiary text-on-tertiary font-bold">IDX</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">phone</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(24) UNIQUE</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">email</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(255) UNIQUE</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">timezone</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(64) DEFAULT 'UTC'</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">whatsapp_status</span>
+<span class="font-code-xs text-code-xs text-secondary font-semibold">ENUM('NOT_JOINED','JOINED','UNKNOWN')</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">whatsapp_joined_at</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">TIMESTAMPTZ NULL</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">created_at</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">TIMESTAMPTZ DEFAULT now()</span>
+</div>
+</div>
+</div>
+<!-- Table 2: webinars -->
+<div class="rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+<div class="px-space-md py-2.5 bg-surface-container flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]">co_present</span>
+<span class="font-code-sm text-code-sm font-semibold text-on-surface">webinars</span>
+</div>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface-variant font-medium">12 Attributes</span>
+</div>
+<div class="p-space-sm space-y-0.5 text-body-sm">
+<div class="flex items-center justify-between p-1.5 rounded bg-primary-fixed/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-primary text-on-primary font-bold">PK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">webinar_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">UUID PRIMARY KEY</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">coach_id</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(64) NOT NULL</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">title</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(255) NOT NULL</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">date</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">DATE NOT NULL</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">start_time / end_time</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">TIME WITHOUT TZ</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">webinar_url</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">TEXT NOT NULL</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">automation_enabled</span>
+<span class="font-code-xs text-code-xs text-secondary font-semibold">BOOLEAN DEFAULT true</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">status</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(32) ('DRAFT','LIVE','COMPLETED')</span>
+</div>
+</div>
+</div>
+<!-- Table 3: webinar_registrations -->
+<div class="rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+<div class="px-space-md py-2.5 bg-surface-container flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]">how_to_reg</span>
+<span class="font-code-sm text-code-sm font-semibold text-on-surface">webinar_registrations</span>
+</div>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface-variant font-medium">9 Attributes</span>
+</div>
+<div class="p-space-sm space-y-0.5 text-body-sm">
+<div class="flex items-center justify-between p-1.5 rounded bg-primary-fixed/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-primary text-on-primary font-bold">PK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">registration_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">UUID PRIMARY KEY</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-secondary-container/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-secondary text-on-secondary font-bold">FK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">webinar_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">→ webinars.webinar_id</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-secondary-container/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-secondary text-on-secondary font-bold">FK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">user_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">→ users.user_id</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">registered_at</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">TIMESTAMPTZ DEFAULT now()</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">source / campaign</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(128)</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">calendar_link_sent</span>
+<span class="font-code-xs text-code-xs text-secondary font-semibold">BOOLEAN DEFAULT false</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">calendar_sent_at</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">TIMESTAMPTZ NULL</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container-high/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-tertiary text-on-tertiary font-bold">IDX</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">idx_reg_webinar_user</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">UNIQUE(webinar_id, user_id)</span>
+</div>
+</div>
+</div>
+<!-- Table 4: webinar_attendance -->
+<div class="rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+<div class="px-space-md py-2.5 bg-surface-container flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]">query_stats</span>
+<span class="font-code-sm text-code-sm font-semibold text-on-surface">webinar_attendance</span>
+</div>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface-variant font-medium">12 Attributes</span>
+</div>
+<div class="p-space-sm space-y-0.5 text-body-sm">
+<div class="flex items-center justify-between p-1.5 rounded bg-primary-fixed/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-primary text-on-primary font-bold">PK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">attendance_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">UUID PRIMARY KEY</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-secondary-container/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-secondary text-on-secondary font-bold">FK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">webinar_id / user_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">→ webinars / users</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">joined_at / left_at</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">TIMESTAMPTZ</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">duration_mins</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">INTEGER DEFAULT 0</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">attendance_percentage</span>
+<span class="font-code-xs text-code-xs text-primary font-semibold">NUMERIC(5,2)</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">questions / polls / chats</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">INT, INT, INT (Telemetry)</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container-high/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-tertiary text-on-tertiary font-bold">IDX</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">calculated_tier</span>
+</div>
+<span class="font-code-xs text-code-xs text-tertiary-container font-semibold">ENUM('HIGH','MEDIUM','LOW','NO_SHOW')</span>
+</div>
+</div>
+</div>
+<!-- Table 5: automation_rules -->
+<div class="rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+<div class="px-space-md py-2.5 bg-surface-container flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]">alt_route</span>
+<span class="font-code-sm text-code-sm font-semibold text-on-surface">automation_rules</span>
+</div>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface-variant font-medium">8 Attributes</span>
+</div>
+<div class="p-space-sm space-y-0.5 text-body-sm">
+<div class="flex items-center justify-between p-1.5 rounded bg-primary-fixed/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-primary text-on-primary font-bold">PK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">automation_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">UUID PRIMARY KEY</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-secondary-container/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-secondary text-on-secondary font-bold">FK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">webinar_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">→ webinars.webinar_id</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">automation_type</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(64) ('FLOW1','FLOW2',...)</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">trigger_event</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(64) ('T_MINUS_60M','ROOM_EXIT')</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">offset_minutes</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">INTEGER (e.g. -60, -15, 0, 120)</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">template_id</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(128) (Meta HSM ID)</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">audience_filter</span>
+<span class="font-code-xs text-code-xs text-primary font-semibold">JSONB (Query predicate)</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">is_active</span>
+<span class="font-code-xs text-code-xs text-secondary font-semibold">BOOLEAN DEFAULT true</span>
+</div>
+</div>
+</div>
+<!-- Table 6: message_logs -->
+<div class="rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+<div class="px-space-md py-2.5 bg-surface-container flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]">terminal</span>
+<span class="font-code-sm text-code-sm font-semibold text-on-surface">message_logs</span>
+</div>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface-variant font-medium">12 Attributes</span>
+</div>
+<div class="p-space-sm space-y-0.5 text-body-sm">
+<div class="flex items-center justify-between p-1.5 rounded bg-primary-fixed/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-primary text-on-primary font-bold">PK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">message_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">UUID PRIMARY KEY</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-secondary-container/60">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-secondary text-on-secondary font-bold">UQ</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-secondary-fixed">idempotency_key</span>
+</div>
+<span class="font-code-xs text-code-xs font-semibold text-secondary">VARCHAR(128) UNIQUE NOT NULL</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-secondary-container/40">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-xs text-code-xs px-1 rounded bg-secondary text-on-secondary font-bold">FK</span>
+<span class="font-code-xs text-code-xs font-semibold text-on-surface">automation_id / user_id</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">→ rules / users</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">provider_msg_id</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">VARCHAR(128) (wamid.HBgM...)</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">scheduled_at / sent_at</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">TIMESTAMPTZ</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">delivery_status</span>
+<span class="font-code-xs text-code-xs text-secondary font-semibold">('QUEUED','SENT','DELIVERED','READ')</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded hover:bg-surface-container-low transition-colors">
+<span class="font-code-xs text-code-xs text-on-surface pl-7">failure_reason</span>
+<span class="font-code-xs text-code-xs text-error font-semibold">TEXT NULL</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- SECTION 2: FLOWCHART & PSEUDOCODE ENGINE -->
+<section class="space-y-space-md">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[20px]">code</span>
+<h2 class="font-headline-md text-headline-md text-on-surface">Flowchart Logic &amp; Pseudocode Engine</h2>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Executable branching logic for community acquisition, reminders, and attendee split.</p>
+</div>
+<div class="flex items-center gap-1 p-1 bg-surface-container rounded-lg">
+<span class="px-2 py-0.5 rounded text-primary font-code-xs text-code-xs font-semibold">Parser: v3.4 Engine</span>
+</div>
+</div>
+<!-- Logic Container -->
+<div class="rounded-xl bg-surface-container-lowest shadow-sm overflow-hidden flex flex-col">
+<!-- Flow Tabs -->
+<div class="flex border-b border-surface-container-high overflow-x-auto bg-surface-container-low px-space-sm pt-space-xs">
+<button class="flow-tab-btn flex items-center gap-space-xs px-space-md py-2.5 rounded-t-lg bg-surface-container-lowest text-primary font-label-md text-label-md font-semibold border-b-2 border-primary" data-tab-target="flow-1" type="button">
+<span class="material-symbols-outlined text-[16px]">groups</span>
+<span>Registration (Flow 1 &amp; 2)</span>
+</button>
+<button class="flow-tab-btn flex items-center gap-space-xs px-space-md py-2.5 rounded-t-lg text-on-surface-variant hover:text-on-surface font-label-md text-label-md transition-colors" data-tab-target="flow-2" type="button">
+<span class="material-symbols-outlined text-[16px]">timer</span>
+<span>Countdown Reminders (Flow 3)</span>
+</button>
+<button class="flow-tab-btn flex items-center gap-space-xs px-space-md py-2.5 rounded-t-lg text-on-surface-variant hover:text-on-surface font-label-md text-label-md transition-colors" data-tab-target="flow-3" type="button">
+<span class="material-symbols-outlined text-[16px]">psychology</span>
+<span>Post-Webinar Follow-up (Flow 4)</span>
+</button>
+<button class="flow-tab-btn flex items-center gap-space-xs px-space-md py-2.5 rounded-t-lg text-on-surface-variant hover:text-on-surface font-label-md text-label-md transition-colors" data-tab-target="flow-4" type="button">
+<span class="material-symbols-outlined text-[16px]">crisis_alert</span>
+<span>Conversion Interrupter Logic</span>
+</button>
+</div>
+<!-- Tab Content Panes -->
+<div class="p-space-lg">
+<!-- Flow 1 Pane -->
+<div class="flow-pane space-y-space-md block" id="pane-flow-1">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">
+<!-- Diagram Column -->
+<div class="lg:col-span-5 p-space-md bg-surface-container-low rounded-xl space-y-space-sm">
+<span class="font-label-sm text-label-sm uppercase text-outline tracking-wider">Flow Diagram Visualizer</span>
+<div class="space-y-space-xs">
+<!-- Node 1 -->
+<div class="p-3 bg-surface-container-lowest rounded-lg shadow-xs flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-6 h-6 rounded bg-primary-fixed text-primary flex items-center justify-center font-code-xs font-bold">1</span>
+<span class="font-label-md text-label-md text-on-surface font-medium">Trigger: User Submits Webform</span>
+</div>
+<span class="font-code-xs text-code-xs text-secondary font-semibold">INBOUND POST</span>
+</div>
+<!-- Connector -->
+<div class="flex justify-center -my-1 text-primary">
+<span class="material-symbols-outlined text-[18px]">arrow_downward</span>
+</div>
+<!-- Node 2: Decision -->
+<div class="p-3 bg-surface-container-highest rounded-lg flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-6 h-6 rounded bg-tertiary-fixed text-tertiary flex items-center justify-center font-code-xs font-bold">?</span>
+<span class="font-label-md text-label-md text-on-surface font-medium">Is in WhatsApp Community?</span>
+</div>
+<span class="font-code-xs text-code-xs text-outline">Branch Condition</span>
+</div>
+<!-- Connector split -->
+<div class="grid grid-cols-2 gap-2 text-center text-outline-variant py-0.5">
+<span class="font-code-xs text-code-xs text-error font-semibold">↓ NO (NOT_JOINED)</span>
+<span class="font-code-xs text-code-xs text-secondary font-semibold">↓ YES (JOINED)</span>
+</div>
+<div class="grid grid-cols-2 gap-2">
+<div class="p-2.5 bg-error-container/30 rounded-lg">
+<span class="font-code-xs text-code-xs text-error font-bold block">SEND TEMPLATE</span>
+<span class="font-body-sm text-body-sm text-on-surface">Community Invite Link &amp; Hold Cal</span>
+</div>
+<div class="p-2.5 bg-secondary-container/40 rounded-lg">
+<span class="font-code-xs text-code-xs text-secondary font-bold block">SEND TEMPLATE</span>
+<span class="font-body-sm text-body-sm text-on-surface">Calendar .ics Link with Direct Link</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Pseudocode Column -->
+<div class="lg:col-span-7 bg-inverse-surface rounded-xl p-space-md text-inverse-on-surface font-code-sm text-code-sm overflow-x-auto shadow-md">
+<div class="flex items-center justify-between pb-space-xs mb-space-sm opacity-60">
+<span>pipeline_flow1_registration.py</span>
+<span>Execution: ~38ms</span>
+</div>
+<pre class="font-code-sm text-code-sm leading-relaxed text-inverse-on-surface/90"><span class="text-tertiary-fixed-dim">async def</span> <span class="text-secondary-fixed">handle_registration_event</span>(payload: RegistrationPayload):
+    <span class="text-outline-variant"># 1. Upsert contact record</span>
+    user = <span class="text-tertiary-fixed-dim">await</span> db.users.upsert(
+        where={ <span class="text-primary-fixed-dim">"phone"</span>: payload.phone },
+        update={ <span class="text-primary-fixed-dim">"name"</span>: payload.name, <span class="text-primary-fixed-dim">"email"</span>: payload.email },
+        create={ <span class="text-primary-fixed-dim">"phone"</span>: payload.phone, <span class="text-primary-fixed-dim">"name"</span>: payload.name, <span class="text-primary-fixed-dim">"whatsapp_status"</span>: <span class="text-primary-fixed-dim">'UNKNOWN'</span> }
+    )
+
+    <span class="text-outline-variant"># 2. Check Idempotency before message dispatch</span>
+    idempotency_key = <span class="text-secondary-fixed">f"REG_{payload.webinar_id}_{user.user_id}"</span>
+    <span class="text-tertiary-fixed-dim">if await</span> redis.exists(idempotency_key):
+        <span class="text-tertiary-fixed-dim">return</span> { <span class="text-primary-fixed-dim">"status"</span>: <span class="text-primary-fixed-dim">"SKIPPED_DUPLICATE"</span>, <span class="text-primary-fixed-dim">"key"</span>: idempotency_key }
+
+    <span class="text-outline-variant"># 3. Community Membership Check &amp; Template Selection</span>
+    <span class="text-tertiary-fixed-dim">if</span> user.whatsapp_status != <span class="text-primary-fixed-dim">'JOINED'</span>:
+        template = <span class="text-primary-fixed-dim">"WA_COMMUNITY_ONBOARDING_V2"</span>
+        params = [user.name, payload.community_invite_url]
+    <span class="text-tertiary-fixed-dim">else</span>:
+        template = <span class="text-primary-fixed-dim">"WA_CALENDAR_CONFIRM_DIRECT"</span>
+        params = [user.name, payload.calendar_link]
+        <span class="text-tertiary-fixed-dim">await</span> db.webinar_registrations.mark_calendar_sent(user.user_id)
+
+    <span class="text-outline-variant"># 4. Dispatch via Meta Cloud API Gateway</span>
+    response = <span class="text-tertiary-fixed-dim">await</span> whatsapp_gateway.send_template(user.phone, template, params)
+    <span class="text-tertiary-fixed-dim">await</span> db.message_logs.create(idempotency_key, response.wamid, delivery_status=<span class="text-primary-fixed-dim">'SENT'</span>)
+    <span class="text-tertiary-fixed-dim">await</span> redis.setex(idempotency_key, 86400, <span class="text-primary-fixed-dim">"PROCESSED"</span>)
+</pre>
+</div>
+</div>
+</div>
+<!-- Flow 2 Pane -->
+<div class="flow-pane space-y-space-md hidden" id="pane-flow-2">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">
+<div class="lg:col-span-5 p-space-md bg-surface-container-low rounded-xl space-y-space-sm">
+<span class="font-label-sm text-label-sm uppercase text-outline tracking-wider">Countdown Temporal Ladder</span>
+<div class="space-y-space-xs font-label-md text-label-md">
+<div class="p-2.5 bg-surface-container-lowest rounded-lg flex items-center justify-between">
+<span class="font-semibold text-on-surface">T - 24 Hours</span>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-primary-fixed text-primary">Agenda &amp; Workbook Link</span>
+</div>
+<div class="p-2.5 bg-surface-container-lowest rounded-lg flex items-center justify-between">
+<span class="font-semibold text-on-surface">T - 60 Minutes</span>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-primary-fixed text-primary">Dynamic Join Room Token</span>
+</div>
+<div class="p-2.5 bg-surface-container-lowest rounded-lg flex items-center justify-between">
+<span class="font-semibold text-on-surface">T - 15 Minutes</span>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-tertiary-fixed text-tertiary">Audio/Video Check Prompt</span>
+</div>
+<div class="p-2.5 bg-secondary-container/50 rounded-lg flex items-center justify-between">
+<span class="font-semibold text-on-secondary-container">T - 0 (START)</span>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-secondary text-on-secondary font-bold">LIVE BROADCAST PUSH</span>
+</div>
+</div>
+</div>
+<div class="lg:col-span-7 bg-inverse-surface rounded-xl p-space-md text-inverse-on-surface font-code-sm text-code-sm overflow-x-auto shadow-md">
+<pre class="font-code-sm text-code-sm leading-relaxed text-inverse-on-surface/90"><span class="text-tertiary-fixed-dim">async def</span> <span class="text-secondary-fixed">execute_countdown_scheduler</span>(webinar_id: UUID, offset_min: int):
+    registrants = <span class="text-tertiary-fixed-dim">await</span> db.query(<span class="text-secondary-fixed">f"""
+        SELECT r.user_id, u.phone, u.name 
+        FROM webinar_registrations r
+        JOIN users u ON u.user_id = r.user_id
+        WHERE r.webinar_id = %s AND r.status = 'ACTIVE'
+    """</span>, [webinar_id])
+
+    <span class="text-tertiary-fixed-dim">for</span> attendee <span class="text-tertiary-fixed-dim">in</span> registrants:
+        idem_key = <span class="text-secondary-fixed">f"CD_{webinar_id}_{offset_min}_{attendee.user_id}"</span>
+        <span class="text-tertiary-fixed-dim">if not await</span> redis.set(idem_key, <span class="text-primary-fixed-dim">"LOCKED"</span>, nx=True, ex=3600):
+            <span class="text-tertiary-fixed-dim">continue</span>
+        <span class="text-tertiary-fixed-dim">await</span> message_queue.enqueue(
+            template=<span class="text-secondary-fixed">f"COUNTDOWN_{abs(offset_min)}M"</span>,
+            recipient=attendee.phone,
+            payload={ <span class="text-primary-fixed-dim">"user"</span>: attendee.name, <span class="text-primary-fixed-dim">"url"</span>: generate_magic_link(attendee.user_id) }
+        )
+</pre>
+</div>
+</div>
+</div>
+<!-- Flow 3 Pane -->
+<div class="flow-pane space-y-space-md hidden" id="pane-flow-3">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">
+<div class="lg:col-span-5 p-space-md bg-surface-container-low rounded-xl space-y-space-sm">
+<span class="font-label-sm text-label-sm uppercase text-outline tracking-wider">Attendance Segmentation Routing</span>
+<div class="space-y-space-xs font-label-md text-label-md">
+<div class="p-2.5 bg-surface-container-lowest rounded-lg">
+<div class="flex items-center justify-between">
+<span class="font-semibold text-secondary">Tier: HIGH (&gt;60 mins)</span>
+<span class="font-code-xs text-code-xs">Direct Checkout &amp; Bonus</span>
+</div>
+</div>
+<div class="p-2.5 bg-surface-container-lowest rounded-lg">
+<div class="flex items-center justify-between">
+<span class="font-semibold text-tertiary">Tier: MED (20-60 mins)</span>
+<span class="font-code-xs text-code-xs">Key Highlights + Replay</span>
+</div>
+</div>
+<div class="p-2.5 bg-surface-container-lowest rounded-lg">
+<div class="flex items-center justify-between">
+<span class="font-semibold text-on-surface">Tier: LOW (&lt;20 mins)</span>
+<span class="font-code-xs text-code-xs">Encore Catchup Session</span>
+</div>
+</div>
+<div class="p-2.5 bg-error-container/40 rounded-lg">
+<div class="flex items-center justify-between">
+<span class="font-semibold text-error">Tier: NO_SHOW (0 mins)</span>
+<span class="font-code-xs text-code-xs font-semibold text-error">Missed You / 48hr Replay</span>
+</div>
+</div>
+</div>
+</div>
+<div class="lg:col-span-7 bg-inverse-surface rounded-xl p-space-md text-inverse-on-surface font-code-sm text-code-sm overflow-x-auto shadow-md">
+<pre class="font-code-sm text-code-sm leading-relaxed text-inverse-on-surface/90"><span class="text-tertiary-fixed-dim">def</span> <span class="text-secondary-fixed">classify_and_route_followup</span>(attendance: WebinarAttendance):
+    <span class="text-tertiary-fixed-dim">match</span> attendance.calculated_tier:
+        <span class="text-tertiary-fixed-dim">case</span> <span class="text-primary-fixed-dim">'HIGH'</span>:
+            <span class="text-tertiary-fixed-dim">return</span> send_whatsapp_offer(
+                template=<span class="text-primary-fixed-dim">"POST_OFFER_VIP_FAST_ACTION"</span>,
+                discount_code=<span class="text-primary-fixed-dim">"VIP20"</span>
+            )
+        <span class="text-tertiary-fixed-dim">case</span> <span class="text-primary-fixed-dim">'MEDIUM'</span>:
+            <span class="text-tertiary-fixed-dim">return</span> send_whatsapp_offer(
+                template=<span class="text-primary-fixed-dim">"POST_REPLAY_SLIDES"</span>,
+                summary_url=generate_summary_deck()
+            )
+        <span class="text-tertiary-fixed-dim">case</span> <span class="text-primary-fixed-dim">'NO_SHOW'</span>:
+            <span class="text-tertiary-fixed-dim">return</span> send_whatsapp_offer(
+                template=<span class="text-primary-fixed-dim">"POST_NO_SHOW_REENGAGE"</span>,
+                replay_limit_hrs=48
+            )
+</pre>
+</div>
+</div>
+</div>
+<!-- Flow 4 Pane -->
+<div class="flow-pane space-y-space-md hidden" id="pane-flow-4">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">
+<div class="lg:col-span-5 p-space-md bg-surface-container-low rounded-xl space-y-space-sm">
+<span class="font-label-sm text-label-sm uppercase text-outline tracking-wider">Checkout Interrupter Guard</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                  Immediately halts automated urgency reminders the millisecond a Stripe/Razorpay `charge.successful` webhook arrives.
+                </p>
+<div class="p-3 bg-secondary-container/30 rounded-lg flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[20px]">verified_user</span>
+<span class="font-label-sm text-label-sm font-semibold text-on-secondary-container">Zero awkward post-buy promotional pinging</span>
+</div>
+</div>
+<div class="lg:col-span-7 bg-inverse-surface rounded-xl p-space-md text-inverse-on-surface font-code-sm text-code-sm overflow-x-auto shadow-md">
+<pre class="font-code-sm text-code-sm leading-relaxed text-inverse-on-surface/90"><span class="text-tertiary-fixed-dim">async def</span> <span class="text-secondary-fixed">handle_conversion_webhook</span>(event: PaymentEvent):
+    <span class="text-outline-variant"># 1. Flag User as Converted in DB</span>
+    <span class="text-tertiary-fixed-dim">await</span> db.users.update(
+        where={ <span class="text-primary-fixed-dim">"email"</span>: event.customer_email },
+        data={ <span class="text-primary-fixed-dim">"has_purchased"</span>: True, <span class="text-primary-fixed-dim">"purchased_at"</span>: now() }
+    )
+    <span class="text-outline-variant"># 2. Invalidate pending queued messages in Redis</span>
+    keys = <span class="text-tertiary-fixed-dim">await</span> redis.keys(<span class="text-secondary-fixed">f"MSG_QUEUE_{event.user_id}_*"</span>)
+    <span class="text-tertiary-fixed-dim">if</span> keys:
+        <span class="text-tertiary-fixed-dim">await</span> redis.delete(*keys)
+    
+    <span class="text-outline-variant"># 3. Fire Instant Onboarding WhatsApp Sequence</span>
+    <span class="text-tertiary-fixed-dim">await</span> whatsapp_gateway.send_template(
+        event.phone, 
+        template=<span class="text-primary-fixed-dim">"PURCHASE_RECEIPT_PORTAL_ACCESS"</span>,
+        params=[event.amount, event.login_magic_url]
+    )
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- SECTION 3: WEBHOOK GATEWAY & LIVE INBOUND SIMULATION -->
+<section class="space-y-space-md pt-space-sm" id="simulator-section">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[20px]">hub</span>
+<h2 class="font-headline-md text-headline-md text-on-surface">Webhook Listener &amp; Inbound Simulation</h2>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Active integration gateways with JSON payload testing sandbox.</p>
+</div>
+<span class="font-code-xs text-code-xs text-secondary bg-secondary-container/60 px-space-sm py-1 rounded font-semibold flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-secondary"></span> 4 Inbound Gateways Ready
+        </span>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">
+<!-- Left: 4 Configured Endpoints -->
+<div class="lg:col-span-5 space-y-space-xs">
+<!-- Endpoint 1 -->
+<button class="endpoint-card w-full text-left p-space-md rounded-xl bg-surface-container-lowest hover:bg-surface-container-high transition-all shadow-sm border-l-4 border-primary" data-preset="registration" type="button">
+<div class="flex items-center justify-between mb-1">
+<span class="font-code-xs text-code-xs px-1.5 py-0.5 rounded bg-primary text-on-primary font-bold">POST</span>
+<span class="font-code-xs text-code-xs text-outline">v1.4 • HMAC-SHA256</span>
+</div>
+<div class="font-code-sm text-code-sm font-semibold text-on-surface truncate">/webhooks/registration</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Google Sheets, Landing Pages, Zapier, Webflow</div>
+</button>
+<!-- Endpoint 2 -->
+<button class="endpoint-card w-full text-left p-space-md rounded-xl bg-surface-container-lowest hover:bg-surface-container-high transition-all shadow-sm border-l-4 border-outline-variant" data-preset="whatsapp-status" type="button">
+<div class="flex items-center justify-between mb-1">
+<span class="font-code-xs text-code-xs px-1.5 py-0.5 rounded bg-secondary text-on-secondary font-bold">POST</span>
+<span class="font-code-xs text-code-xs text-outline">Meta Cloud API Callback</span>
+</div>
+<div class="font-code-sm text-code-sm font-semibold text-on-surface truncate">/webhooks/whatsapp-status</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Message deliveries, read receipts, community opt-ins</div>
+</button>
+<!-- Endpoint 3 -->
+<button class="endpoint-card w-full text-left p-space-md rounded-xl bg-surface-container-lowest hover:bg-surface-container-high transition-all shadow-sm border-l-4 border-outline-variant" data-preset="telemetry" type="button">
+<div class="flex items-center justify-between mb-1">
+<span class="font-code-xs text-code-xs px-1.5 py-0.5 rounded bg-tertiary text-on-tertiary font-bold">POST</span>
+<span class="font-code-xs text-code-xs text-outline">WebinarLiv Live Stream</span>
+</div>
+<div class="font-code-sm text-code-sm font-semibold text-on-surface truncate">/webhooks/telemetry</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Live attendee enter/exit pings, polls, questions</div>
+</button>
+<!-- Endpoint 4 -->
+<button class="endpoint-card w-full text-left p-space-md rounded-xl bg-surface-container-lowest hover:bg-surface-container-high transition-all shadow-sm border-l-4 border-outline-variant" data-preset="conversions" type="button">
+<div class="flex items-center justify-between mb-1">
+<span class="font-code-xs text-code-xs px-1.5 py-0.5 rounded bg-primary-container text-on-primary font-bold">POST</span>
+<span class="font-code-xs text-code-xs text-outline">Stripe / Razorpay / CRM</span>
+</div>
+<div class="font-code-sm text-code-sm font-semibold text-on-surface truncate">/webhooks/conversions</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Checkout completions, upsells, cart drops</div>
+</button>
+</div>
+<!-- Right: Simulator Console -->
+<div class="lg:col-span-7 rounded-xl bg-surface-container-lowest shadow-sm p-space-lg space-y-space-md">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm pb-space-xs border-b border-surface-container-high">
+<div class="space-y-0.5">
+<div class="flex items-center gap-space-xs">
+<span class="font-code-sm text-code-sm font-semibold text-primary" id="sim-endpoint-label">/webhooks/registration</span>
+<span class="font-code-xs text-code-xs px-2 py-0.5 rounded bg-surface-container text-on-surface-variant">HTTP 1.1</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Inbound JSON Payload verification &amp; trigger dispatcher</p>
+</div>
+<button class="font-label-sm text-label-sm text-outline hover:text-primary transition-colors flex items-center gap-1" id="reset-payload-btn" type="button">
+<span class="material-symbols-outlined text-[15px]">refresh</span> Reset Default
+            </button>
+</div>
+<!-- Payload Textarea -->
+<div class="space-y-1">
+<div class="flex items-center justify-between">
+<label class="font-label-sm text-label-sm text-outline uppercase font-semibold" for="json-payload-editor">Request Body (JSON)</label>
+<span class="font-code-xs text-code-xs text-secondary bg-secondary-container/50 px-2 py-0.2 rounded font-semibold" id="json-valid-badge">Valid JSON</span>
+</div>
+<textarea class="w-full font-code-sm text-code-sm p-space-md rounded-lg bg-inverse-surface text-inverse-on-surface focus:outline-none focus:ring-2 focus:ring-primary shadow-inner selection:bg-primary-container" id="json-payload-editor" rows="9"></textarea>
+</div>
+<!-- Simulation Actions & Output Response -->
+<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-space-sm pt-space-xs">
+<div class="flex items-center gap-space-xs text-body-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-secondary text-[18px]">lock</span>
+<span class="font-code-xs text-code-xs font-mono">X-Signature: sha256=d3a8f71c...</span>
+</div>
+<button class="flex items-center justify-center gap-space-xs px-space-lg h-10 rounded-lg bg-secondary hover:bg-on-secondary-fixed text-on-secondary transition-all shadow-md active:scale-95" id="fire-event-btn" type="button">
+<span class="material-symbols-outlined text-[18px]">send</span>
+<span class="font-label-md text-label-md font-semibold">Fire Test Event</span>
+</button>
+</div>
+<!-- Live Output Console (Revealed on click) -->
+<div class="hidden rounded-lg bg-surface-container-low p-space-md space-y-space-xs transition-all" id="sim-response-card">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm font-semibold uppercase text-secondary flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-secondary"></span> 200 OK — Dispatched to Engine
+              </span>
+<span class="font-code-xs text-code-xs text-outline font-mono" id="sim-duration">Duration: 42ms</span>
+</div>
+<pre class="font-code-xs text-code-xs text-on-surface bg-surface-container-lowest p-space-sm rounded overflow-x-auto" id="sim-response-body">{
+  "status": "ACCEPTED",
+  "idempotency_key": "REG_WEBINAR_0921_usr_88291",
+  "matched_flow": "FLOW_1_COMMUNITY_ONBOARD",
+  "actions_queued": [
+    "CHECK_COMMUNITY_STATUS",
+    "DISPATCH_WHATSAPP_TEMPLATE_REG_CONFIRM"
+  ],
+  "timestamp": "2026-09-25T14:32:01.819Z"
+}
+            </pre>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+<script>
+  // Presets for the 4 Webhook Endpoints
+  const webhookPresets = {
+    "registration": {
+      endpoint: "/webhooks/registration",
+      payload: {
+        event: "user.registered",
+        webinar_id: "8c7f3b80-1a22-498c-8f92-ec2039da5b01",
+        user: {
+          name: "Dr. Ananya Sharma",
+          phone: "+919876543210",
+          email: "ananya.sharma@research.org",
+          timezone: "Asia/Kolkata"
+        },
+        source: "linkedin_ads_q3",
+        campaign: "ai_masterclass_sep26"
+      },
+      response: {
+        status: "ACCEPTED",
+        idempotency_key: "REG_8c7f3b80_usr_99182",
+        matched_flow: "FLOW_1_COMMUNITY_ONBOARD",
+        actions_queued: [
+          "CHECK_COMMUNITY_STATUS",
+          "DISPATCH_WHATSAPP_TEMPLATE_REG_CONFIRM"
+        ],
+        timestamp: new Date().toISOString()
+      }
+    },
+    "whatsapp-status": {
+      endpoint: "/webhooks/whatsapp-status",
+      payload: {
+        event: "message.status_update",
+        provider_msg_id: "wamid.HBgLMjcxNzQxMDI3MzQ1FQIAERgSMzAyMzRERTgzMzExMDFEOTMA",
+        recipient_id: "+919876543210",
+        status: "delivered",
+        timestamp: "1727271120",
+        conversation: {
+          id: "3487192837192",
+          origin: { type: "user_initiated" }
+        }
+      },
+      response: {
+        status: "UPDATED",
+        entity: "message_logs",
+        records_affected: 1,
+        delivery_status: "DELIVERED",
+        read_latency_tracking: "ENABLED",
+        timestamp: new Date().toISOString()
+      }
+    },
+    "telemetry": {
+      endpoint: "/webhooks/telemetry",
+      payload: {
+        event: "room.session_heartbeat",
+        webinar_id: "8c7f3b80-1a22-498c-8f92-ec2039da5b01",
+        user_id: "usr_99182_ananya",
+        session_duration_minutes: 74,
+        metrics: {
+          chats_sent: 5,
+          polls_participated: 2,
+          questions_asked: 1
+        },
+        calculated_tier: "HIGH"
+      },
+      response: {
+        status: "TELEMETRY_LOGGED",
+        attendance_tier_assigned: "HIGH",
+        scheduled_trigger: "FLOW_4_POST_OFFER_VIP_FAST_ACTION",
+        delay_offset_seconds: 1800,
+        timestamp: new Date().toISOString()
+      }
+    },
+    "conversions": {
+      endpoint: "/webhooks/conversions",
+      payload: {
+        event: "charge.successful",
+        checkout_session_id: "cs_live_99a8sd71b28c",
+        customer_email: "ananya.sharma@research.org",
+        amount_cents: 49900,
+        currency: "usd",
+        product_sku: "AI_MARKETING_ACCELERATOR_VIP"
+      },
+      response: {
+        status: "CONVERTED",
+        conversion_interrupt_executed: true,
+        canceled_reminders_count: 3,
+        immediate_action: "DISPATCH_PURCHASE_PORTAL_RECEIPT",
+        timestamp: new Date().toISOString()
+      }
+    }
+  };
+
+  let currentPresetKey = "registration";
+
+  const payloadEditor = document.getElementById("json-payload-editor");
+  const simEndpointLabel = document.getElementById("sim-endpoint-label");
+  const jsonValidBadge = document.getElementById("json-valid-badge");
+  const simResponseCard = document.getElementById("sim-response-card");
+  const simResponseBody = document.getElementById("sim-response-body");
+  const fireEventBtn = document.getElementById("fire-event-btn");
+  const resetPayloadBtn = document.getElementById("reset-payload-btn");
+
+  // Load Initial JSON
+  function loadPreset(key) {
+    currentPresetKey = key;
+    const item = webhookPresets[key];
+    simEndpointLabel.textContent = item.endpoint;
+    payloadEditor.value = JSON.stringify(item.payload, null, 2);
+    simResponseCard.classList.add("hidden");
+    validateJson();
+
+    // Highlight active card
+    document.querySelectorAll(".endpoint-card").forEach(c => {
+      if (c.getAttribute("data-preset") === key) {
+        c.classList.remove("border-outline-variant");
+        c.classList.add("border-primary");
+      } else {
+        c.classList.remove("border-primary");
+        c.classList.add("border-outline-variant");
+      }
+    });
+  }
+
+  function validateJson() {
+    try {
+      JSON.parse(payloadEditor.value);
+      jsonValidBadge.textContent = "Valid JSON";
+      jsonValidBadge.className = "font-code-xs text-code-xs text-secondary bg-secondary-container/50 px-2 py-0.2 rounded font-semibold";
+      return true;
+    } catch (e) {
+      jsonValidBadge.textContent = "Syntax Error";
+      jsonValidBadge.className = "font-code-xs text-code-xs text-error bg-error-container/50 px-2 py-0.2 rounded font-semibold";
+      return false;
+    }
+  }
+
+  // Interactive Endpoint Presets
+  document.querySelectorAll(".endpoint-card").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const presetKey = btn.getAttribute("data-preset");
+      loadPreset(presetKey);
+    });
+  });
+
+  payloadEditor.addEventListener("input", validateJson);
+
+  resetPayloadBtn.addEventListener("click", () => {
+    loadPreset(currentPresetKey);
+  });
+
+  // Flowchart Logic Tabs
+  const flowTabs = document.querySelectorAll(".flow-tab-btn");
+  flowTabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const targetId = tab.getAttribute("data-tab-target");
+
+      flowTabs.forEach(t => {
+        t.className = "flow-tab-btn flex items-center gap-space-xs px-space-md py-2.5 rounded-t-lg text-on-surface-variant hover:text-on-surface font-label-md text-label-md transition-colors";
+      });
+
+      tab.className = "flow-tab-btn flex items-center gap-space-xs px-space-md py-2.5 rounded-t-lg bg-surface-container-lowest text-primary font-label-md text-label-md font-semibold border-b-2 border-primary";
+
+      document.querySelectorAll(".flow-pane").forEach(pane => {
+        pane.classList.add("hidden");
+        pane.classList.remove("block");
+      });
+
+      const activePane = document.getElementById("pane-" + targetId);
+      if (activePane) {
+        activePane.classList.remove("hidden");
+        activePane.classList.add("block");
+      }
+    });
+  });
+
+  // Fire Webhook Simulation
+  fireEventBtn.addEventListener("click", () => {
+    if (!validateJson()) {
+      alert("Please fix invalid JSON syntax before firing event.");
+      return;
+    }
+
+    fireEventBtn.disabled = true;
+    fireEventBtn.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">refresh</span> Processing...';
+
+    setTimeout(() => {
+      fireEventBtn.disabled = false;
+      fireEventBtn.innerHTML = '<span class="material-symbols-outlined text-[18px]">send</span> <span class="font-label-md text-label-md font-semibold">Fire Test Event</span>';
+      
+      const current = webhookPresets[currentPresetKey];
+      current.response.timestamp = new Date().toISOString();
+      simResponseBody.textContent = JSON.stringify(current.response, null, 2);
+      document.getElementById("sim-duration").textContent = "Duration: " + Math.floor(Math.random() * 28 + 25) + "ms";
+      simResponseCard.classList.remove("hidden");
+    }, 450);
+  });
+
+  // Smooth scroll helper
+  document.getElementById("scroll-to-simulator-btn").addEventListener("click", () => {
+    document.getElementById("simulator-section").scrollIntoView({ behavior: 'smooth' });
+  });
+
+  // Button Mock Alerts
+  document.getElementById("export-ddl-btn").addEventListener("click", () => {
+    const ddl = `-- PostgreSQL 16 Enterprise DDL Schema
+CREATE TYPE whatsapp_status_enum AS ENUM ('NOT_JOINED', 'JOINED', 'UNKNOWN');
+CREATE TYPE attendance_tier_enum AS ENUM ('HIGH', 'MEDIUM', 'LOW', 'NO_SHOW');
+
+CREATE TABLE users (
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(180) NOT NULL,
+    phone VARCHAR(24) UNIQUE,
+    email VARCHAR(255) UNIQUE,
+    timezone VARCHAR(64) DEFAULT 'UTC',
+    whatsapp_status whatsapp_status_enum DEFAULT 'UNKNOWN',
+    whatsapp_joined_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE webinars (
+    webinar_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coach_id VARCHAR(64) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    date DATE NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    timezone VARCHAR(64) NOT NULL,
+    webinar_url TEXT NOT NULL,
+    calendar_url TEXT,
+    automation_enabled BOOLEAN DEFAULT true,
+    status VARCHAR(32) DEFAULT 'SCHEDULED'
+);
+
+CREATE TABLE webinar_registrations (
+    registration_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    webinar_id UUID REFERENCES webinars(webinar_id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+    registered_at TIMESTAMPTZ DEFAULT now(),
+    source VARCHAR(128),
+    campaign VARCHAR(128),
+    status VARCHAR(32) DEFAULT 'ACTIVE',
+    calendar_link_sent BOOLEAN DEFAULT false,
+    calendar_sent_at TIMESTAMPTZ,
+    CONSTRAINT idx_reg_webinar_user UNIQUE(webinar_id, user_id)
+);
+
+CREATE TABLE webinar_attendance (
+    attendance_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    webinar_id UUID REFERENCES webinars(webinar_id),
+    user_id UUID REFERENCES users(user_id),
+    joined_at TIMESTAMPTZ,
+    left_at TIMESTAMPTZ,
+    duration_mins INTEGER DEFAULT 0,
+    attendance_percentage NUMERIC(5,2) DEFAULT 0.00,
+    engagement_score NUMERIC(5,2) DEFAULT 0.00,
+    questions_count INTEGER DEFAULT 0,
+    poll_count INTEGER DEFAULT 0,
+    chat_count INTEGER DEFAULT 0,
+    calculated_tier attendance_tier_enum DEFAULT 'NO_SHOW'
+);
+
+CREATE TABLE automation_rules (
+    automation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    webinar_id UUID REFERENCES webinars(webinar_id),
+    automation_type VARCHAR(64) NOT NULL,
+    trigger_event VARCHAR(64) NOT NULL,
+    offset_minutes INTEGER NOT NULL,
+    template_id VARCHAR(128) NOT NULL,
+    audience_filter JSONB,
+    is_active BOOLEAN DEFAULT true
+);
+
+CREATE TABLE message_logs (
+    message_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    idempotency_key VARCHAR(128) UNIQUE NOT NULL,
+    automation_id UUID REFERENCES automation_rules(automation_id),
+    webinar_id UUID REFERENCES webinars(webinar_id),
+    user_id UUID REFERENCES users(user_id),
+    template_id VARCHAR(128) NOT NULL,
+    scheduled_at TIMESTAMPTZ,
+    sent_at TIMESTAMPTZ,
+    provider_msg_id VARCHAR(128),
+    delivery_status VARCHAR(32) DEFAULT 'QUEUED',
+    read_status BOOLEAN DEFAULT false,
+    failure_reason TEXT
+);
+
+CREATE INDEX idx_message_logs_idem ON message_logs (idempotency_key);
+CREATE INDEX idx_attendance_tier ON webinar_attendance (calculated_tier);
+CREATE INDEX idx_users_phone ON users (phone);`;
+
+    const blob = new Blob([ddl], { type: 'text/sql' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "schema_enterprise_v3.4.sql";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById("download-postman-btn").addEventListener("click", () => {
+    const postman = {
+      info: {
+        name: "WebinarLiv Integration Webhooks",
+        schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+      },
+      item: Object.keys(webhookPresets).map(k => ({
+        name: webhookPresets[k].endpoint,
+        request: {
+          method: "POST",
+          header: [{ key: "Content-Type", value: "application/json" }],
+          body: { mode: "raw", raw: JSON.stringify(webhookPresets[k].payload, null, 2) },
+          url: { raw: "https://api.webinarliv.com" + webhookPresets[k].endpoint }
+        }
+      }))
+    };
+    const blob = new Blob([JSON.stringify(postman, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "WebinarLiv_Webhooks.postman_collection.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Init
+  loadPreset("registration");
+</script></main></div><!-- demo-chrome --><style>.sr-only:not(input):not(select):not(textarea){left:0;top:0}</style><div id="demo-switcher" style="position:fixed;right:16px;bottom:16px;z-index:9999;font:500 12px/1.4 Inter,system-ui,sans-serif;"><details style="background:#fff;border:1px solid #c7c4d8;border-radius:10px;box-shadow:0 8px 30px rgba(11,28,48,.18);max-width:340px;overflow:hidden"><summary style="cursor:pointer;padding:9px 13px;list-style:none;color:#3525cd;font-weight:600">All 20 screens</summary><div style="max-height:62vh;overflow:auto;padding:4px 0 8px"><a href="../index.html" style="display:block;padding:6px 13px;color:#464555;text-decoration:none">← Contact sheet</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — the eight main screens</div><a href="dashboard.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Dashboard - Engage</a><a href="contacts.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Contacts & Audience CRM - Engage</a><a href="journeys.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Automated Journeys - Engage</a><a href="campaigns.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Campaigns & Broadcasts - Engage</a><a href="templates.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Templates & Variable Inspector - Engage</a><a href="analytics.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Analytics & Conversions - Engage</a><a href="integrations.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Integrations & Webinar Liv Mapping - Engage</a><a href="settings.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Settings - Engage</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — journey builder</div><a href="journey-builder.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Visual Journey Builder - Engage</a><a href="journey-builder-spacious.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Engage - Visual Journey Builder (Spacious Canvas)</a><a href="step-branch-rules.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Engage - Step & Branch Rules Configuration</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — modals</div><a href="modal-create-journey.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Create Journey Modal - Engage</a><a href="modal-create-campaign.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Create Campaign Wizard Modal - Engage</a><a href="modal-import-contacts.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Add & Import Contacts Modal - Engage</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">WebinarLiv shell</div><a href="settings-channels.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Settings - Integrations & Channels</a><a href="whatsapp-hub.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">WhatsApp Channel & Operations Hub</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Flow Engine shell</div><a href="flow-builder.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Flow Builder - Visual Automation Orchestrator</a><a href="attendance.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Attendance & Engagement Telemetry</a><a href="exec-logs.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Execution & Delivery Logs</a><a href="database-webhooks.html" style="display:block;padding:5px 13px;text-decoration:none;color:#3525cd;background:#e5eeff;font-weight:600">Database & Webhooks Architecture</a><div style="padding:9px 13px 2px;color:#777587;font-size:10.5px;border-top:1px solid #e5eeff;margin-top:6px">Buttons and filters are simulated — nothing is stored. <a href="../README.md" style="color:#3525cd">What is wired</a></div></div></details></div><script src="../demo.js" data-demo></script><!-- /demo-chrome --></body></html>

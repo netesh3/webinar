@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inbox · session expired · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body
+    data-screen="inbox-session-closed"
+    data-crumb="Inbox / Vikram Rao"
+    data-layout="wide"
+  >
+    <main class="page">
+      <div class="inbox">
+        <!-- ------------------------------------------ what is waiting -->
+        <div class="convos">
+          <div class="convos-head">
+            <div class="seg">
+              <button aria-selected="true" data-toast="Showing every open conversation.">All 7</button>
+              <button data-toast="4 conversations have no owner.">Unassigned 4</button>
+              <button data-toast="2 conversations are assigned to you.">Mine 2</button>
+            </div>
+            <label class="search">
+              <svg data-icon="search" class="icon icon-sm"></svg>
+              <input class="input" placeholder="Search name, number or message" />
+            </label>
+          </div>
+
+          <div class="convos-scroll">
+            <button class="convo" aria-selected="false" data-toast="That window is still open — see the main inbox screen.">
+              <span class="avatar avatar-wa">RS</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Rahul Sharma</b>
+                  <time>6:58 PM</time>
+                </span>
+                <span class="convo-snip">Perfect 🙏</span>
+                <span class="convo-meta">
+                  <span class="pill pill-ok pill-bare">Open · 19h</span>
+                  <span class="pill pill-bare">You</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="Conversation switching is illustrative in this mockup.">
+              <span class="avatar avatar-wa">PM</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Priya Menon</b>
+                  <time>6:51 PM</time>
+                </span>
+                <span class="convo-snip">Is the replay included with the paid cohort?</span>
+                <span class="convo-meta">
+                  <span class="pill pill-ok pill-bare">Open · 18h</span>
+                  <span class="pill pill-warn pill-bare">Unassigned</span>
+                  <span class="unread">1</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="Conversation switching is illustrative in this mockup.">
+              <span class="avatar avatar-wa">AV</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Amit Verma</b>
+                  <time>6:44 PM</time>
+                </span>
+                <span class="convo-snip">👍 Joining in a few minutes</span>
+                <span class="convo-meta">
+                  <span class="pill pill-ok pill-bare">Open · 18h</span>
+                  <span class="pill pill-bare">Ganesh</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="Conversation switching is illustrative in this mockup.">
+              <span class="avatar avatar-wa">NG</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Neha Gupta</b>
+                  <time>5:02 PM</time>
+                </span>
+                <span class="convo-snip">Sorry, something came up — can I watch later?</span>
+                <span class="convo-meta">
+                  <span class="pill pill-warn pill-bare">Open · 2h</span>
+                  <span class="pill pill-warn pill-bare">Unassigned</span>
+                  <span class="unread">1</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="true">
+              <span class="avatar avatar-slate">VR</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Vikram Rao</b>
+                  <time>Yesterday</time>
+                </span>
+                <span class="convo-snip">Thanks, that answers it.</span>
+                <span class="convo-meta">
+                  <span class="pill pill-bad pill-bare">Window closed</span>
+                  <span class="pill pill-warn pill-bare">Unassigned</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="Conversation switching is illustrative in this mockup.">
+              <span class="avatar avatar-slate">AD</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Ananya Deshmukh</b>
+                  <time>Yesterday</time>
+                </span>
+                <span class="convo-snip">You: Here is the recording and the deck 📎</span>
+                <span class="convo-meta">
+                  <span class="pill pill-bad pill-bare">Window closed</span>
+                  <span class="pill pill-bare">Priya I.</span>
+                </span>
+              </span>
+            </button>
+
+            <button class="convo" aria-selected="false" data-toast="Conversation switching is illustrative in this mockup.">
+              <span class="avatar avatar-slate">KM</span>
+              <span class="convo-main">
+                <span class="convo-top">
+                  <b>Karan Malhotra</b>
+                  <time>Sep 22</time>
+                </span>
+                <span class="convo-snip">Please stop messaging me</span>
+                <span class="convo-meta">
+                  <span class="pill pill-bad pill-bare">Opted out</span>
+                  <span class="pill pill-warn pill-bare">Unassigned</span>
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ---------------------------------------------- the conversation -->
+        <div class="chat">
+          <div class="chat-head">
+            <span class="avatar avatar-slate">VR</span>
+            <span class="chat-who">
+              <b>Vikram Rao</b>
+              <small>+91 98765 12340</small>
+            </span>
+            <span class="pill pill-bad right" title="24-hour service window">
+              <svg data-icon="lock" class="icon icon-sm"></svg>
+              Closed · 3h ago
+            </span>
+            <label class="inline-field" title="Assigned to">
+              <svg data-icon="user-check" class="icon icon-sm"></svg>
+              <select class="select" data-label="Assigned to">
+                <option>Unassigned</option>
+                <option>Ganesh S P</option>
+                <option>Priya Iyer</option>
+              </select>
+            </label>
+            <button class="icon-btn" title="Add a tag" data-toast="Tagging from the thread is not wired in this mockup.">
+              <svg data-icon="tag"></svg>
+            </button>
+            <button class="icon-btn" title="Resolve" data-toast="Conversation marked resolved and moved out of the queue.">
+              <svg data-icon="check"></svg>
+            </button>
+          </div>
+
+          <div class="chat-scroll">
+            <div class="sysnote">
+              <svg data-icon="calendar" class="icon icon-sm"></svg>
+              Yesterday
+            </div>
+
+            <div class="msg msg-in">
+              <p>Is the replay going to be available after the session?</p>
+              <div class="msg-meta">7:02 PM</div>
+            </div>
+
+            <div class="msg msg-out">
+              <div class="msg-from">
+                <svg data-icon="user-plus" class="icon icon-sm"></svg>
+                Priya Iyer
+              </div>
+              <p>
+                Yes — it lands in your WhatsApp within an hour of the session
+                ending, and the link stays live for 48 hours.
+              </p>
+              <div class="msg-meta">
+                7:08 PM
+                <svg data-icon="check-check" class="icon icon-sm"></svg>
+              </div>
+            </div>
+
+            <div class="msg msg-in">
+              <p>Thanks, that answers it.</p>
+              <div class="msg-meta">7:14 PM</div>
+            </div>
+
+            <div class="sysnote">
+              <svg data-icon="lock" class="icon icon-sm"></svg>
+              The 24-hour service window closed at 7:14 PM today — 24 hours
+              after Vikram’s last message
+            </div>
+          </div>
+
+          <!--
+            The window has closed, so the composer is replaced rather than
+            greyed out: the way back into the conversation is a different
+            action, not the same one disabled.
+          -->
+          <div class="composer">
+            <div class="composer-locked">
+              <div class="note note-warn">
+                <svg data-icon="lock" class="icon icon-sm"></svg>
+                <span>
+                  <b>Free-form replies are closed.</b> WhatsApp only allows
+                  them for 24 hours after the contact’s last message. An
+                  approved template reopens the window, and Meta bills it as a
+                  business-initiated conversation.
+                </span>
+              </div>
+
+              <div class="grid g2">
+                <div class="field">
+                  <label for="reopen-tpl">Reopen with a template</label>
+                  <select class="select" id="reopen-tpl" data-label="Template">
+                    <option>replay_notes_48h — Utility</option>
+                    <option>post_webinar_attended — Utility</option>
+                    <option>vip_coaching_offer — Marketing</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="reopen-var">{{1}} first_name</label>
+                  <input class="input" id="reopen-var" value="Vikram" />
+                </div>
+              </div>
+
+              <div class="msg msg-out" style="max-width: 100%">
+                <div class="msg-from">
+                  <svg data-icon="eye" class="icon icon-sm"></svg>
+                  Preview · replay_notes_48h
+                </div>
+                <p>
+                  Hi <b>Vikram</b> — the replay of the
+                  <b>AI Marketing Masterclass</b> is ready, along with the slide
+                  deck. Both stay open for the next 48 hours.
+                </p>
+                <div class="msg-cta">
+                  <svg data-icon="external" class="icon icon-sm"></svg> Watch the replay
+                </div>
+              </div>
+
+              <div class="composer-foot">
+                <span class="hint">
+                  Sending this opens a new 24-hour window and costs one utility
+                  conversation.
+                </span>
+                <button class="btn right" data-toast="Conversation marked resolved without a reply.">
+                  Resolve instead
+                </button>
+                <button class="btn btn-wa" data-toast="Template sent — a new 24-hour window is open.">
+                  <svg data-icon="send" class="icon icon-sm"></svg> Send template
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ------------------------------------------------ who it is with -->
+        <aside class="inspector">
+          <div class="inspector-head">
+            <div class="row">
+              <span class="avatar avatar-slate">VR</span>
+              <span>
+                <b style="font-size: 13.5px">Vikram Rao</b>
+                <div class="hint mono">+91 98765 12340</div>
+              </span>
+              <a class="icon-btn right" href="contacts.html" title="Open contact record">
+                <svg data-icon="external"></svg>
+              </a>
+            </div>
+          </div>
+
+          <div class="inspector-body">
+            <div>
+              <div class="lbl">Conversation</div>
+              <dl class="kv mt-8">
+                <div><dt>Status</dt><dd><span class="pill pill-bad pill-bare">Window closed</span></dd></div>
+                <div><dt>Closed</dt><dd>Today, 7:14 PM</dd></div>
+                <div><dt>Reopen with</dt><dd>Approved template</dd></div>
+                <div><dt>Assigned</dt><dd>Unassigned</dd></div>
+                <div><dt>Stage</dt><dd>Attended</dd></div>
+                <div><dt>Owner</dt><dd>Unassigned</dd></div>
+              </dl>
+            </div>
+
+            <div>
+              <div class="lbl">Contact</div>
+              <dl class="kv mt-8">
+                <div><dt>Email</dt><dd>vikram@example.com</dd></div>
+                <div><dt>Source</dt><dd>Manual import</dd></div>
+                <div><dt>Opt-in</dt><dd><span class="pill pill-ok pill-bare">Opted in</span></dd></div>
+                <div><dt>Lifetime messages</dt><dd>9 sent · 8 read</dd></div>
+              </dl>
+            </div>
+
+            <div>
+              <div class="lbl">Tags</div>
+              <div class="row wrap mt-8">
+                <span class="tag">Paid-cohort <button data-toast="Remove tag">×</button></span>
+                <span class="tag">No-show <button data-toast="Remove tag">×</button></span>
+                <button class="tag tag-plain" data-toast="Tag picker is not part of this mockup.">
+                  <svg data-icon="plus" class="icon icon-sm"></svg> Add tag
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="lbl">In a journey</div>
+              <div class="note note-warn mt-8">
+                <svg data-icon="hourglass" class="icon icon-sm"></svg>
+                <span>
+                  <b>Replay nudge for brief attendees</b> is waiting on this
+                  contact. It fires a template at T+48h, which would reopen the
+                  window on its own.
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <div class="lbl">Recent activity</div>
+              <ul class="feed plain mt-8">
+                <li>
+                  <span class="glyph glyph-warn">
+                    <svg data-icon="lock" class="icon icon-sm"></svg>
+                  </span>
+                  <p>Service window closed</p>
+                  <time>7:14 PM</time>
+                </li>
+                <li>
+                  <span class="glyph glyph-wa">
+                    <svg data-icon="video" class="icon icon-sm"></svg>
+                  </span>
+                  <p>Attended <b>AI Marketing Masterclass</b> · 11 min</p>
+                  <time>Sep 25</time>
+                </li>
+                <li>
+                  <span class="glyph glyph-brand">
+                    <svg data-icon="upload" class="icon icon-sm"></svg>
+                  </span>
+                  <p>Imported from <b>paid-cohort.csv</b></p>
+                  <time>Sep 12</time>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

@@ -1,0 +1,99 @@
+forum
+Engage
+Acme
+arrow_drop_down
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+insights
+Analytics
+extension
+Integrations
+settings
+Settings
+WABA Connected
++1 555-0192
+Healthy
+person
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help_outline
+notifications
+add
+New Broadcast
+person
+Telemetry Overview
+·
+WABA Account Live
+Good morning, Ganesh
+Here's what's happening with your WhatsApp engagement across your active audiences and automated customer journeys.
+alt_route
++ New Journey
+add
++ New Campaign
+Total Audience
+contacts
+12,842
+Active verified contacts
+Messages Sent
+send
+18,420
+Delivered this month
+Active Journeys
+play_circle
+8
+Automated active flows
+Delivery Volume
+Message engagement over the past 14 days
+Messages Sent
+Messages Read
+May 01
+May 04
+May 08
+May 11
+Today
+Active Journeys
+Live automated messaging workflows
+View all
+arrow_right_alt
+Journey Name
+Trigger
+Status
+Webinar Registration
+Webinar Liv Registration
+Active
+Masterclass Follow-up
+Live Stream Ended
+Active
+Lead Welcome & Community
+New Contact Added
+Active
+VIP Strategy Session Reminder
+Scheduled Consultation
+Active
+Recent Activity
+sync
+Imported 420 contacts from Webinar signups
+12m ago
+campaign
+Sent broadcast announcement to 142 attendees
+34m ago
+task_alt
+Amit Verma completed Webinar Follow-up
+1h ago
+View Activity Log

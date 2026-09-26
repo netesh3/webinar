@@ -8,6 +8,7 @@ import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Account } from "@/lib/api-types";
 import { YouTubeIcon } from "./icons";
+import { WhatsAppAccountRow } from "@/engage";
 
 /** Account settings. Deliberately small: a name, where they work, and whether
  *  this account may host. Everything else about a person lives on the
@@ -43,7 +44,7 @@ export function AccountScreen() {
 function ProfileForm({ account }: { account: Account }) {
   const router = useRouter();
   const { updateProfile, signOut, refresh } = useSession();
-  const { youtubeOAuth, whatsappConnect } = useAppConfig();
+  const { youtubeOAuth } = useAppConfig();
 
   const [name, setName] = useState(account.name);
   const [title, setTitle] = useState(account.title);
@@ -204,42 +205,8 @@ function ProfileForm({ account }: { account: Account }) {
             </div>
           )}
 
-          {/* A pointer, not the card. Connecting is one of five steps and the other
-              four were never here, so a host who finished this one had no way to
-              learn that nothing would send yet — the checklist in the CRM lists all
-              of them together. Still only for an account that may host, unlike the
-              YouTube card above: the whole feature is a hosting one.
-
-              Whether it is connected is stated here anyway, because that is the
-              question somebody opens account settings to answer. */}
-          {whatsappConnect && account.canHost && (
-            <div className="rounded-lg border border-line px-3 py-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-medium">WhatsApp</span>
-                    {account.whatsapp ? (
-                      <Badge tone="ok">Connected</Badge>
-                    ) : (
-                      <Badge>Not connected</Badge>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-[12px] text-ink-3">
-                    {account.whatsapp?.displayPhone
-                      ? `Sending from ${account.whatsapp.displayPhone}.`
-                      : "Send confirmations and reminders from your own business number."}
-                  </p>
-                </div>
-                <ButtonLink
-                  href="/host/crm?view=setup"
-                  size="sm"
-                  variant="secondary"
-                >
-                  {account.whatsapp ? "Manage" : "Set up"}
-                </ButtonLink>
-              </div>
-            </div>
-          )}
+          {/* The CRM's own row: a pointer to its setup checklist. */}
+          <WhatsAppAccountRow />
 
           {/* Hosting is now READ-ONLY here.
               This was a Toggle wired to wantsHost, which meant any account could grant

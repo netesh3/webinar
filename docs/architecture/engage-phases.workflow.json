@@ -1,0 +1,81 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Engage build phases",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "shipped",
+        "label": "Already in Go",
+        "focus": ["shipped", "shell"],
+        "note": "Phases 1 to 5 already live on Cloud Run: connect, contacts, send, broadcasts, drips, bots, tags, notes."
+      },
+      {
+        "id": "product",
+        "label": "Make it a CRM inbox",
+        "focus": ["shell", "inbox", "pipeline", "team"],
+        "note": "The next work is the Engage shell, shared inbox, stages, and optional agents — still host_id in Postgres."
+      },
+      {
+        "id": "growth",
+        "label": "Campaigns and journeys",
+        "focus": ["campaigns", "journeys", "analytics"],
+        "note": "Upgrade existing broadcast and drip APIs to the mock UX. Do not add a second WhatsApp engine."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "product", "label": "Product" },
+    { "id": "frontend", "label": "Engage UI" },
+    { "id": "backend", "label": "Cloud Run + Postgres" }
+  ],
+  "phases": [
+    { "id": "now", "label": "Shipped", "fromCol": 0, "toCol": 0 },
+    { "id": "crm", "label": "Inbox CRM", "fromCol": 1, "toCol": 3, "variant": "emphasis" },
+    { "id": "growth", "label": "Growth", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "inbox_work", "label": "Inbox product", "lane": "frontend", "fromCol": 1, "toCol": 3, "variant": "emphasis" },
+    { "id": "data_work", "label": "New tables", "lane": "backend", "fromCol": 2, "toCol": 3, "variant": "dashed" }
+  ],
+  "mainPath": ["shipped", "shell", "inbox", "campaigns", "journeys"],
+  "nodes": [
+    { "id": "shipped", "lane": "product", "col": 0, "type": "backend", "label": "Phases 1–5", "sublabel": "CRM already in Go", "width": 140 },
+    { "id": "shell", "lane": "frontend", "col": 1, "type": "frontend", "label": "Phase 6 shell", "sublabel": "Engage nav + mock", "width": 140 },
+    { "id": "inbox", "lane": "frontend", "col": 2, "type": "frontend", "label": "Phase 7 inbox", "sublabel": "queue + 24h lock", "width": 140 },
+    { "id": "pipeline", "lane": "backend", "col": 2, "type": "database", "label": "Phase 8 pipeline", "sublabel": "stage + owner", "width": 140 },
+    { "id": "team", "lane": "backend", "col": 3, "type": "backend", "label": "Phase 9 team", "sublabel": "optional agents", "width": 140 },
+    { "id": "campaigns", "lane": "frontend", "col": 4, "type": "frontend", "label": "Phase 10 campaigns", "sublabel": "five-step wizard", "width": 140 },
+    { "id": "journeys", "lane": "frontend", "col": 5, "type": "frontend", "label": "Phase 11 journeys", "sublabel": "canvas on drips", "width": 140 },
+    { "id": "analytics", "lane": "product", "col": 5, "type": "cloud", "label": "Phase 12 analytics", "sublabel": "SLA + funnel", "width": 140 }
+  ],
+  "edges": [
+    { "id": "e-ship-shell", "from": "shipped", "to": "shell" },
+    { "id": "e-shell-inbox", "from": "shell", "to": "inbox" },
+    { "id": "e-inbox-pipe", "from": "inbox", "to": "pipeline" },
+    { "id": "e-pipe-team", "from": "pipeline", "to": "team" },
+    { "id": "e-inbox-camp", "from": "inbox", "to": "campaigns", "label": "after queue works" },
+    { "id": "e-camp-j", "from": "campaigns", "to": "journeys" },
+    { "id": "e-j-a", "from": "journeys", "to": "analytics", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Do not restart the backend",
+      "items": [
+        "Extend api/internal/store and /api/host/crm on Cloud Run",
+        "Keep WhatsApp tokens and CRM rows in the same Supabase Postgres"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "UI last mile",
+      "items": [
+        "Phase 6 is mostly web/ against APIs that already exist",
+        "New SQL starts at pipeline, assignment, and SLA — not at send/webhook"
+      ]
+    }
+  ]
+}

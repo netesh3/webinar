@@ -1,0 +1,211 @@
+E
+Engage
+PRO
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+query_stats
+Analytics
+hub
+Integrations
+settings
+Settings
+Health Status
+HEALTHY
+WABA Connected
+•
++1 555-0192
+G
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help
+notifications
+add
+New Broadcast
+person
+Automation Pipelines
+/
+Sync Mesh
+Integrations & Data Sources
+Connect Webinar Liv, external CRMs, calendars, and webhooks to trigger automated WhatsApp journeys with millisecond-grade sync reliability.
+key
+API Keys & Webhooks
+add_link
++ Add New Integration
+Inbound Events / Hour
+8,419
+bolt
+Avg Field Transformation
+14.2ms
+timer
+Payload Pipeline Health
+99.99%
+verified
+Triggered WhatsApp Runs
+1,482 today
+chat
+Active Data Connections
+3 Connected
+Meta Graph v19.0 • Auto-Retry Enabled
+videocam
+Webinar Liv
+Native Event Hook
+Endpoint: wnv-prd-us01.engage.io/hook/v1
+Connected • Syncing Realtime
+Native bi-directional webinar integration. Imports registrants, live attendance timestamps, and post-session watch duration automatically into conversational segmentation loops.
+1,482 Registrations synced
+•
+6 Webinars connected
+•
+0 Sync errors (Last 24h)
+tune
+Configure Field Mapping
+sync
+Sync Now
+Disconnect
+forum
+Cloud API v19.0
+WhatsApp Business API
+Direct Meta Graph API link for verified high-throughput template delivery and automated conversational flows.
+Tier 1 Limit
+1,000 msgs/day
+Quality Score
+High Status
+Webhook Latency
+28ms
+call
+Manage Numbers
+monitor_heart
+calendar_today
+Connected
+Google Calendar
+Generates dynamic .ics invite links adjusted to recipient timezones for instant WhatsApp calendar additions.
+Active Sync Rules
+4 Triggers
+Auto Timezone Conv.
+Active
+ICS Deliveries
+912 Links
+settings
+Settings
+hub
+Webinar Liv Data Mapping Engine
+Map incoming Webinar Liv registration and attendance webhook payload attributes to Engage Contact & Attendance properties.
+Payload Format:
+JSON Webhook v2
+Webinar Liv Payload Key (Source)
+Transform
+Engage Unified Property (Target)
+Data Type
+Preview Value
+Required
+data_object
+attendee_name
+arrow_forward
+Contact.Full_Name
+Contact.First_Name
+Contact.Preferred_Alias
+Text
+"Rachel Dawson"
+Required
+data_object
+attendee_phone
+arrow_forward
+Contact.Phone_Number
+Contact.Alt_Phone
+E.164 Format
+"+14155552671"
+Required
+data_object
+attendee_email
+arrow_forward
+Contact.Email
+Contact.Corporate_Email
+Email
+"rachel@acmegrowth.io"
+Optional
+data_object
+webinar_id
+arrow_forward
+Event.Webinar_ID
+Metadata.External_ID
+String
+"wnv_881903"
+Required
+data_object
+webinar_title
+arrow_forward
+Event.Title
+Event.Topic_Heading
+Text
+"Scale WhatsApp Conversions 2025"
+Optional
+data_object
+live_join_time
+arrow_forward
+Attendance.Join_Timestamp
+Attendance.Session_Entry
+Datetime
+"2025-05-18T14:02:11Z"
+Optional
+data_object
+watch_duration
+arrow_forward
+Attendance.Watch_Minutes
+Attendance.Total_Seconds
+Number (Min)
+47
+Optional
+data_object
+attended_flag
+arrow_forward
+Attendance.Status
+Attendance.Engagement_Tier
+Enum (Attended/Brief/Missed)
+"Attended"
+Required
+check_circle
+All 8 critical schema parameters matched without validation conflicts.
+play_circle
+Test Payload Sample
+save
+Save Field Mapping
+Available Integrations Directory
+Expand your customer graph with automated bi-directional touchpoints.
+Category:
+All Connectors (12)
+table_chart
+Google Sheets
+Real-time row appendage for instant attendee broadcasts and dynamic response appending.
+Connect
+chevron_right
+flash_on
+Zapier
+Bridge Engage templates and WhatsApp triggers with 5,000+ business applications effortlessly.
+Connect
+chevron_right
+webhook
+Custom Inbound Webhooks
+Accept arbitrary JSON payloads from backend servers with custom HMAC header validation.
+Setup Endpoint
+arrow_forward
+contact_page
+HubSpot CRM
+Synchronize deals, lifecycle stage updates, and trigger WhatsApp sales reps follow-ups.
+Connect
+chevron_right

@@ -1,0 +1,168 @@
+forum
+Engage
+Acme
+arrow_drop_down
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+insights
+Analytics
+extension
+Integrations
+settings
+Settings
+WABA Connected
++1 555-0192
+Healthy
+person
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help_outline
+notifications
+add
+New Broadcast
+person
+Settings
+Workspace
+Manage your Engage workspace, Meta WhatsApp Business configuration, team access, webhook secrets, and billing.
+Discard
+check
+Save Changes
+business
+Workspace
+chat
+WhatsApp Channel & WABA
+badge
+Team & Permissions
+key
+API & Webhooks
+credit_card
+Billing & Subscription
+corporate_fare
+Workspace Profile
+ID: ws_acme_89104
+domain
+Company Brand Icon
+Recommended 512×512px. Visible across customer verification badges & team notifications.
+upload
+Upload Logo
+Remove
+Workspace Name
+Primary Business Domain
+https://
+Organization Support Email
+Default Timezone
+Asia/Kolkata (IST - UTC+05:30)
+America/New_York (EST - UTC-05:00)
+Europe/London (GMT - UTC+00:00)
+Asia/Singapore (SGT - UTC+08:00)
+America/Los_Angeles (PST - UTC-08:00)
+Platform Reporting Currency
+USD ($ - US Dollar)
+EUR (€ - Euro)
+INR (₹ - Indian Rupee)
+GBP (£ - British Pound)
+All campaign analytics and template billing cost meters will report in this denomination.
+verified_user
+Automation & Compliance Guardrails
+Enforced
+Global Opt-out Keywords
+Incoming messages matching these triggers immediately flag contact as DND.
+STOP
+close
+UNSUBSCRIBE
+close
+CANCEL
+close
+QUIT
+close
+add
+Add Keyword
+speed
+Outbound Dispatch Throttling
+Meta WABA v19.0 Safe Queue prevents temporary quality degradation spikes.
+Max 50 msgs / sec
+Edit Limits
+hourglass_bottom
+24-Hour Session Automation
+Fallback to approved Utility templates when conversational window expires.
+done_all
+Active fallback route: engage_utility_reopen
+security
+Data Privacy & Phone Hash Retention
+Automatically hash MSISDN phone numbers in audit and webhook logs after 90 days of retention.
+group
+Team Access & Permissions
+person_add
+Invite Member
+User
+Role
+Access Scope
+Action
+GS
+Ganesh S P
+ganesh.s.p006@gmail.com
+verified
+Owner / Admin
+Full Access (Billing & API)
+more_vert
+SL
+Sarah Lin
+sarah@acmegrowth.io
+Growth Marketer
+Journeys & Campaigns Manager
+more_vert
+DT
+Dev Team
+webhooks@acmegrowth.io
+Engineer
+API, Events & Integrations Only
+more_vert
+chat
+Meta WABA Status
+Healthy
+Acme Growth Official
+Verified
++1 555-0192
+Direct Cloud API integration via Meta Graph v19.0
+Business Manager ID
+894102948102
+WABA Account ID
+1049281903912
+Quality Rating
+verified
+High (Green)
+Messaging Tier
+Tier 1 (1k msgs/day)
+Manage Numbers & Templates in Hub
+arrow_forward
+payments
+Plan & Metering
+Active
+Engage Growth Pro
+Monthly
+$149
+/ month
+event_repeat
+Next billing date: October 1, 2026
+Inbound Webhook Events
+24,892 / 50,000 (49%)
+Monthly WhatsApp Outbound Quota
+18,420 / 30,000 (61%)
+Change Plan
+Manage Payment Method & Invoices

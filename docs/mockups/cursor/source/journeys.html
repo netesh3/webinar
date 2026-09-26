@@ -1,0 +1,494 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"inverse-surface":"#213145","tertiary-fixed":"#6ffbbe","on-secondary":"#ffffff","primary-fixed-dim":"#c3c0ff","surface-container":"#e5eeff","on-tertiary":"#ffffff","on-tertiary-fixed-variant":"#005236","tertiary":"#005338","on-surface":"#0b1c30","surface-container-lowest":"#ffffff","primary-container":"#4f46e5","outline-variant":"#c7c4d8","surface-tint":"#4d44e3","surface":"#f8f9ff","inverse-primary":"#c3c0ff","primary-fixed":"#e2dfff","primary":"#3525cd","secondary":"#565e74","tertiary-container":"#006e4b","on-surface-variant":"#464555","on-primary-fixed-variant":"#3323cc","surface-dim":"#cbdbf5","surface-variant":"#d3e4fe","background":"#f8f9ff","on-error":"#ffffff","surface-container-highest":"#d3e4fe","secondary-container":"#dae2fd","on-tertiary-container":"#67f4b7","on-primary-container":"#dad7ff","outline":"#777587","tertiary-fixed-dim":"#4edea3","on-primary":"#ffffff","on-secondary-fixed-variant":"#3f465c","surface-container-high":"#dce9ff","error-container":"#ffdad6","secondary-fixed":"#dae2fd","on-tertiary-fixed":"#002113","secondary-fixed-dim":"#bec6e0","inverse-on-surface":"#eaf1ff","on-secondary-fixed":"#131b2e","on-primary-fixed":"#0f0069","surface-bright":"#f8f9ff","error":"#ba1a1a","surface-container-low":"#eff4ff","on-background":"#0b1c30","on-secondary-container":"#5c647a","on-error-container":"#93000a"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"space-lg":"1rem","space-md":"0.75rem","gutter-compact":"0.5rem","gutter":"1rem","margin":"1.5rem","space-xl":"1.5rem","space-xs":"0.25rem","space-sm":"0.5rem","margin-compact":"1rem"},"fontFamily":{"body-lg":["Inter"],"display-lg":["Plus Jakarta Sans"],"headline-md":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"],"code-sm":["Inter"],"body-md":["Inter"],"body-sm":["Inter"],"display-sm":["Plus Jakarta Sans"],"label-md":["Inter"],"label-sm":["Inter"]},"fontSize":{"body-lg":["15px",{"lineHeight":"22px","letterSpacing":"-0.005em","fontWeight":"400"}],"display-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-md":["16px",{"lineHeight":"24px","letterSpacing":"-0.005em","fontWeight":"600"}],"headline-lg":["20px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"600"}],"code-sm":["12px",{"lineHeight":"16px","fontWeight":"500"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"400"}],"body-sm":["13px",{"lineHeight":"18px","fontWeight":"400"}],"display-sm":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"600"}],"label-md":["12px",{"lineHeight":"16px","letterSpacing":"0.01em","fontWeight":"600"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.02em","fontWeight":"600"}]}}}};</script></head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-screen w-60 bg-inverse-surface text-inverse-on-surface z-50 flex flex-col justify-between select-none shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex flex-col min-h-0"><div class="h-14 px-space-lg flex items-center justify-between"><div class="flex items-center gap-space-sm"><div class="w-7 h-7 rounded-lg bg-primary-container flex items-center justify-center text-on-primary"><span class="material-symbols-outlined text-[18px]">forum</span></div><span class="font-headline-md text-headline-md tracking-tight text-white">Engage</span></div><button class="flex items-center gap-space-xs px-space-xs py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" type="button"><span class="font-label-sm text-label-sm tracking-wide uppercase">Acme</span><span class="material-symbols-outlined text-[14px]">arrow_drop_down</span></button></div><div class="px-space-md py-space-xs"><div class="px-space-sm py-space-xs rounded-lg bg-white/5 flex items-center justify-between text-secondary-fixed-dim"><div class="flex items-center gap-space-xs truncate"><span class="material-symbols-outlined text-[14px] text-tertiary-fixed">corporate_fare</span><span class="font-label-sm text-label-sm truncate text-white">Acme Growth Co</span></div><span class="material-symbols-outlined text-[16px]">unfold_more</span></div></div><nav class="flex-1 px-space-sm py-space-sm space-y-0.5 overflow-y-auto" data-active-classes="bg-primary-container text-on-primary rounded-lg font-headline-md"><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="dashboard" href="#"><span class="material-symbols-outlined text-[20px]">grid_view</span><span class="font-body-sm text-body-sm font-medium">Dashboard</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="contacts" href="#"><span class="material-symbols-outlined text-[20px]">group</span><span class="font-body-sm text-body-sm font-medium">Contacts</span></a><a aria-current="page" class="flex items-center gap-space-md px-space-sm py-space-xs transition-colors bg-primary-container text-on-primary rounded-lg font-headline-md" data-path="journeys" href="#"><span class="material-symbols-outlined text-[20px]">alt_route</span><span class="font-body-sm text-body-sm font-medium">Journeys</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="campaigns" href="#"><span class="material-symbols-outlined text-[20px]">campaign</span><span class="font-body-sm text-body-sm font-medium">Campaigns</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="templates" href="#"><span class="material-symbols-outlined text-[20px]">description</span><span class="font-body-sm text-body-sm font-medium">Templates</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="analytics" href="#"><span class="material-symbols-outlined text-[20px]">insights</span><span class="font-body-sm text-body-sm font-medium">Analytics</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="integrations" href="#"><span class="material-symbols-outlined text-[20px]">extension</span><span class="font-body-sm text-body-sm font-medium">Integrations</span></a><a class="flex items-center gap-space-md px-space-sm py-space-xs rounded-lg text-secondary-fixed-dim hover:text-white hover:bg-white/10 transition-colors" data-path="settings" href="#"><span class="material-symbols-outlined text-[20px]">settings</span><span class="font-body-sm text-body-sm font-medium">Settings</span></a></nav></div><div class="p-space-sm space-y-space-xs bg-black/20"><div class="px-space-sm py-space-xs rounded-lg bg-white/5 flex items-center justify-between"><div class="flex items-center gap-space-xs min-w-0"><span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim animate-pulse shrink-0"></span><div class="flex flex-col min-w-0"><span class="font-label-sm text-label-sm text-white font-medium truncate">WABA Connected</span><span class="font-code-sm text-code-sm text-secondary-fixed-dim truncate">+1 555-0192</span></div></div><span class="font-label-sm text-label-sm text-tertiary-fixed px-space-xs py-0.5 rounded bg-tertiary-container/30 uppercase tracking-wider">Healthy</span></div><div class="pt-space-xs flex items-center justify-between"><div class="flex items-center gap-space-sm min-w-0"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div><div class="flex flex-col min-w-0"><span class="font-label-md text-label-md text-white font-medium truncate">Ganesh S P</span><span class="font-label-sm text-label-sm text-secondary-fixed-dim truncate">Owner / Admin</span></div></div><div class="flex items-center"><button class="p-1 text-secondary-fixed-dim hover:text-white hover:bg-white/10 rounded transition-colors" title="Logout or Workspace Switch" type="button"><span class="material-symbols-outlined text-[18px]">logout</span></button></div></div></div></aside><div class="pl-60"><header class="fixed top-0 left-60 right-0 h-14 bg-surface-container-lowest/90 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40"><div class="h-14 w-full px-space-lg flex items-center justify-between gap-space-lg"><div class="flex items-center gap-space-md min-w-0"><div class="flex items-center gap-space-xs text-on-surface-variant font-label-md text-label-md"><span class="text-secondary hover:text-on-surface transition-colors cursor-pointer">Platform</span><span class="text-outline-variant font-body-sm">/</span><span class="text-on-surface font-headline-md text-headline-md tracking-tight">Production</span></div><div class="relative hidden sm:block w-72 md:w-96"><span class="absolute inset-y-0 left-0 flex items-center pl-space-sm pointer-events-none text-on-surface-variant"><span class="material-symbols-outlined text-[18px]">search</span></span><input class="w-full h-8 pl-8 pr-space-md bg-surface-container-low rounded-lg text-on-surface placeholder:text-outline text-body-sm font-body-sm border-0 focus:outline-none focus:ring-1 focus:ring-primary" placeholder="Search contacts, journeys, templates... (/)" type="text"></div></div><div class="flex items-center gap-space-sm shrink-0"><a class="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" href="#" title="Documentation &amp; Help"><span class="material-symbols-outlined text-[20px]">help_outline</span></a><button class="relative w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" title="Notifications" type="button"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-error ring-2 ring-surface-container-lowest"></span></button><div class="h-4 w-px bg-outline-variant mx-space-xs"></div><button class="h-8 px-space-md bg-primary-container hover:bg-primary text-on-primary rounded-lg font-label-md text-label-md flex items-center gap-space-xs transition-colors" type="button"><span class="material-symbols-outlined text-[18px]">add</span><span class="">New Broadcast</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-xs"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-14 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<div class="px-margin py-space-lg flex flex-col gap-space-lg max-w-[1560px] mx-auto w-full">
+<!-- Top Context & Header Row -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex flex-col"><h1 class="font-display-lg text-display-lg text-on-surface tracking-tight">Journeys</h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-3xl mt-1">
+  Automate WhatsApp messages and follow-ups based on attendee actions.
+</p></div>
+<div class="flex items-center gap-space-sm shrink-0">
+<button class="h-9 px-space-md bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-label-md rounded-lg flex items-center gap-space-xs shadow-sm transition-colors" id="open-template-btn" type="button">
+<span class="material-symbols-outlined text-[18px]">auto_stories</span>
+<span class="">Use template</span>
+</button>
+<button class="h-9 px-space-md bg-primary-container hover:bg-primary text-on-primary font-label-md text-label-md rounded-lg flex items-center gap-space-xs shadow-sm transition-colors" id="open-create-modal" type="button">
+<span class="material-symbols-outlined text-[18px]">add</span>
+<span class="">Create Journey</span>
+</button>
+</div>
+</div>
+<!-- Quick Launch Playbooks Bar / Onboarding Grid -->
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md"><div class="flex items-center justify-between">
+  <div>
+    <h2 class="font-headline-md text-headline-md text-on-surface">Start from a template</h2>
+    <p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Choose a pre-built blueprint or start from scratch.</p>
+  </div>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md"><div class="flex items-center gap-space-md">
+  <span class="">Showing 6 journeys</span>
+</div>
+<div class="flex items-center gap-space-xs">
+  <button class="px-2.5 py-1 rounded bg-surface-container text-outline cursor-not-allowed font-label-sm text-label-sm" disabled="" type="button">Previous</button>
+  <button class="px-2.5 py-1 rounded bg-surface-container-lowest text-on-surface hover:bg-surface-container transition-colors font-label-sm text-label-sm shadow-sm" type="button">Next</button>
+</div></div></div>
+<!-- Filter & Analytics Ribbon -->
+<div class="bg-surface-container-lowest rounded-xl p-space-sm shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-space-md">
+<!-- Status Tabs -->
+<div class="flex items-center gap-space-xs overflow-x-auto pb-1 lg:pb-0">
+<button class="journey-tab active px-space-md py-1.5 rounded-lg bg-surface-container text-primary font-label-md text-label-md transition-colors flex items-center gap-space-xs" type="button">
+<span class="">All</span>
+<span class="bg-primary/10 text-primary px-1.5 py-0.2 rounded-full font-code-sm text-[11px]">8</span>
+</button>
+<button class="journey-tab px-space-md py-1.5 rounded-lg hover:bg-surface-container-low text-secondary font-label-md text-label-md transition-colors flex items-center gap-space-xs" type="button">
+<span class="">Active</span>
+<span class="bg-surface-container-high text-secondary px-1.5 py-0.2 rounded-full font-code-sm text-[11px]">6</span>
+</button>
+<button class="journey-tab px-space-md py-1.5 rounded-lg hover:bg-surface-container-low text-secondary font-label-md text-label-md transition-colors flex items-center gap-space-xs" type="button">
+<span class="">Paused</span>
+<span class="bg-surface-container-high text-secondary px-1.5 py-0.2 rounded-full font-code-sm text-[11px]">1</span>
+</button>
+<button class="journey-tab px-space-md py-1.5 rounded-lg hover:bg-surface-container-low text-secondary font-label-md text-label-md transition-colors flex items-center gap-space-xs" type="button">
+<span class="">Drafts</span>
+<span class="bg-surface-container-high text-secondary px-1.5 py-0.2 rounded-full font-code-sm text-[11px]">1</span>
+</button>
+</div>
+<!-- Search & Dropdown Controls -->
+<div class="flex items-center gap-space-sm flex-wrap sm:flex-nowrap"><div class="flex items-center gap-space-md">
+  <span class="">Showing 6 journeys</span>
+</div>
+<div class="flex items-center gap-space-xs">
+  <button class="px-2.5 py-1 rounded bg-surface-container text-outline cursor-not-allowed font-label-sm text-label-sm" disabled="" type="button">Previous</button>
+  <button class="px-2.5 py-1 rounded bg-surface-container-lowest text-on-surface hover:bg-surface-container transition-colors font-label-sm text-label-sm shadow-sm" type="button">Next</button>
+</div></div>
+</div>
+<!-- Journeys High-Density Table View -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead><tr class="h-10 bg-surface-container-low/50 text-secondary font-label-sm text-label-sm uppercase tracking-wider select-none">
+  <th class="py-3 px-space-lg font-semibold">Name</th>
+  <th class="py-3 px-space-md font-semibold">Trigger</th>
+  <th class="py-3 px-space-md font-semibold text-right">Enrolled</th>
+  <th class="py-3 px-space-md font-semibold text-center">Status</th>
+  <th class="py-3 pr-space-lg pl-space-md text-right font-semibold"></th>
+</tr></thead>
+<tbody class="divide-y-0 text-body-sm font-body-sm text-on-surface" id="journeys-table-body"><!-- Row 1 -->
+<tr class="journey-row h-16 hover:bg-surface-container-low/60 transition-colors">
+  <td class="py-space-md px-space-lg">
+    <div class="flex flex-col min-w-0">
+      <span class="font-headline-md text-headline-md text-on-surface hover:text-primary transition-colors cursor-pointer">Webinar Registration &amp; Onboarding</span>
+      <span class="text-on-surface-variant font-body-sm text-body-sm truncate mt-0.5">Sends Community invite and calendar confirmation</span>
+    </div>
+  </td>
+  <td class="py-space-md px-space-md whitespace-nowrap text-secondary">
+    Webinar Liv
+  </td>
+  <td class="py-space-md px-space-md text-right whitespace-nowrap font-body-sm text-body-sm text-on-surface">
+    248
+  </td>
+  <td class="py-space-md px-space-md text-center whitespace-nowrap">
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-sm text-label-sm">
+      <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+      Active
+    </span>
+  </td>
+  <td class="py-space-md pr-space-lg pl-space-md text-right whitespace-nowrap">
+    <button class="p-1.5 rounded-lg text-secondary hover:text-on-surface hover:bg-surface-container transition-colors" title="Options" type="button">
+      <span class="material-symbols-outlined text-[18px]">more_vert</span>
+    </button>
+  </td>
+</tr>
+<!-- Row 2 -->
+<tr class="journey-row h-16 hover:bg-surface-container-low/60 transition-colors">
+  <td class="py-space-md px-space-lg">
+    <div class="flex flex-col min-w-0">
+      <span class="font-headline-md text-headline-md text-on-surface hover:text-primary transition-colors cursor-pointer">Webinar 2-Stage Reminder Cadence</span>
+      <span class="text-on-surface-variant font-body-sm text-body-sm truncate mt-0.5">Dynamic countdown alerts with one-click join link</span>
+    </div>
+  </td>
+  <td class="py-space-md px-space-md whitespace-nowrap text-secondary">
+    Scheduled time
+  </td>
+  <td class="py-space-md px-space-md text-right whitespace-nowrap font-body-sm text-body-sm text-on-surface">
+    248
+  </td>
+  <td class="py-space-md px-space-md text-center whitespace-nowrap">
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-sm text-label-sm">
+      <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+      Active
+    </span>
+  </td>
+  <td class="py-space-md pr-space-lg pl-space-md text-right whitespace-nowrap">
+    <button class="p-1.5 rounded-lg text-secondary hover:text-on-surface hover:bg-surface-container transition-colors" title="Options" type="button">
+      <span class="material-symbols-outlined text-[18px]">more_vert</span>
+    </button>
+  </td>
+</tr>
+<!-- Row 3 -->
+<tr class="journey-row h-16 hover:bg-surface-container-low/60 transition-colors">
+  <td class="py-space-md px-space-lg">
+    <div class="flex flex-col min-w-0">
+      <span class="font-headline-md text-headline-md text-on-surface hover:text-primary transition-colors cursor-pointer">Post-Webinar Engagement Follow-up</span>
+      <span class="text-on-surface-variant font-body-sm text-body-sm truncate mt-0.5">Replay links and next steps based on attendance</span>
+    </div>
+  </td>
+  <td class="py-space-md px-space-md whitespace-nowrap text-secondary">
+    Stream ended
+  </td>
+  <td class="py-space-md px-space-md text-right whitespace-nowrap font-body-sm text-body-sm text-on-surface">
+    142
+  </td>
+  <td class="py-space-md px-space-md text-center whitespace-nowrap">
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-sm text-label-sm">
+      <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+      Active
+    </span>
+  </td>
+  <td class="py-space-md pr-space-lg pl-space-md text-right whitespace-nowrap">
+    <button class="p-1.5 rounded-lg text-secondary hover:text-on-surface hover:bg-surface-container transition-colors" title="Options" type="button">
+      <span class="material-symbols-outlined text-[18px]">more_vert</span>
+    </button>
+  </td>
+</tr>
+<!-- Row 4 -->
+<tr class="journey-row h-16 hover:bg-surface-container-low/60 transition-colors">
+  <td class="py-space-md px-space-lg">
+    <div class="flex flex-col min-w-0">
+      <span class="font-headline-md text-headline-md text-on-surface hover:text-primary transition-colors cursor-pointer">New Lead Welcome &amp; WhatsApp Opt-in</span>
+      <span class="text-on-surface-variant font-body-sm text-body-sm truncate mt-0.5">Verifies number and sends welcome guide</span>
+    </div>
+  </td>
+  <td class="py-space-md px-space-md whitespace-nowrap text-secondary">
+    Landing form
+  </td>
+  <td class="py-space-md px-space-md text-right whitespace-nowrap font-body-sm text-body-sm text-on-surface">
+    1,284
+  </td>
+  <td class="py-space-md px-space-md text-center whitespace-nowrap">
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-sm text-label-sm">
+      <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+      Active
+    </span>
+  </td>
+  <td class="py-space-md pr-space-lg pl-space-md text-right whitespace-nowrap">
+    <button class="p-1.5 rounded-lg text-secondary hover:text-on-surface hover:bg-surface-container transition-colors" title="Options" type="button">
+      <span class="material-symbols-outlined text-[18px]">more_vert</span>
+    </button>
+  </td>
+</tr>
+<!-- Row 5 -->
+<tr class="journey-row h-16 hover:bg-surface-container-low/60 transition-colors">
+  <td class="py-space-md px-space-lg">
+    <div class="flex flex-col min-w-0">
+      <span class="font-headline-md text-headline-md text-on-surface hover:text-primary transition-colors cursor-pointer">VIP Strategy Session Reminder</span>
+      <span class="text-on-surface-variant font-body-sm text-body-sm truncate mt-0.5">Sends WhatsApp booking confirmation and calendar pin</span>
+    </div>
+  </td>
+  <td class="py-space-md px-space-md whitespace-nowrap text-secondary">
+    Calendly
+  </td>
+  <td class="py-space-md px-space-md text-right whitespace-nowrap font-body-sm text-body-sm text-on-surface">
+    64
+  </td>
+  <td class="py-space-md px-space-md text-center whitespace-nowrap">
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-sm text-label-sm">
+      <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+      Active
+    </span>
+  </td>
+  <td class="py-space-md pr-space-lg pl-space-md text-right whitespace-nowrap">
+    <button class="p-1.5 rounded-lg text-secondary hover:text-on-surface hover:bg-surface-container transition-colors" title="Options" type="button">
+      <span class="material-symbols-outlined text-[18px]">more_vert</span>
+    </button>
+  </td>
+</tr>
+<!-- Row 6 -->
+<tr class="journey-row h-16 hover:bg-surface-container-low/60 transition-colors">
+  <td class="py-space-md px-space-lg">
+    <div class="flex flex-col min-w-0">
+      <span class="font-headline-md text-headline-md text-on-surface hover:text-primary transition-colors cursor-pointer">Course Launch Re-engagement</span>
+      <span class="text-on-surface-variant font-body-sm text-body-sm truncate mt-0.5">Educational value sequence with 24-hour delay</span>
+    </div>
+  </td>
+  <td class="py-space-md px-space-md whitespace-nowrap text-secondary">
+    AI Tag
+  </td>
+  <td class="py-space-md px-space-md text-right whitespace-nowrap font-body-sm text-body-sm text-on-surface">
+    520
+  </td>
+  <td class="py-space-md px-space-md text-center whitespace-nowrap">
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm">
+      <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+      Paused
+    </span>
+  </td>
+  <td class="py-space-md pr-space-lg pl-space-md text-right whitespace-nowrap">
+    <button class="p-1.5 rounded-lg text-secondary hover:text-on-surface hover:bg-surface-container transition-colors" title="Options" type="button">
+      <span class="material-symbols-outlined text-[18px]">more_vert</span>
+    </button>
+  </td>
+</tr></tbody>
+</table>
+</div>
+<!-- Table Footer / Telemetry Bar -->
+<div class="px-space-lg py-space-sm bg-surface-container-low flex items-center justify-between font-label-sm text-label-sm text-secondary"><div class="flex items-center gap-space-md">
+  <span class="">Showing 6 journeys</span>
+</div>
+<div class="flex items-center gap-space-xs">
+  <button class="px-2.5 py-1 rounded bg-surface-container text-outline cursor-not-allowed font-label-sm text-label-sm" disabled="" type="button">Previous</button>
+  <button class="px-2.5 py-1 rounded bg-surface-container-lowest text-on-surface hover:bg-surface-container transition-colors font-label-sm text-label-sm shadow-sm" type="button">Next</button>
+</div></div>
+</div>
+</div>
+<!-- CREATE JOURNEY MODAL (OVERLAY SHEET) -->
+<div class="fixed inset-0 z-50 hidden flex items-center justify-center p-space-md sm:p-space-lg bg-on-surface/40 backdrop-blur-sm" id="create-journey-modal">
+<div class="bg-surface-container-lowest rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+<!-- Modal Header -->
+<div class="px-space-xl py-space-lg bg-surface-container-lowest flex items-center justify-between">
+<div class="flex items-center gap-space-md">
+<div class="w-10 h-10 rounded-lg bg-primary-container text-on-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[24px]">alt_route</span>
+</div>
+<div>
+<h3 class="font-headline-lg text-headline-lg text-on-surface">Create New Journey</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Step 1: Select the behavioral trigger and automation parameters</p>
+</div>
+</div>
+<button class="w-8 h-8 rounded-lg flex items-center justify-center text-secondary hover:text-on-surface hover:bg-surface-container transition-colors" id="close-create-modal" type="button">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+<!-- Modal Content Body -->
+<div class="p-space-xl overflow-y-auto space-y-space-lg flex-1">
+<!-- Step: Journey Metadata -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+<div class="flex flex-col gap-1.5">
+<label class="font-label-md text-label-md text-on-surface" for="journey-name-input">Journey Name</label>
+<input class="h-9 px-space-md bg-surface-container-low rounded-lg text-on-surface font-body-sm text-body-sm border-0 focus:outline-none focus:ring-1 focus:ring-primary" id="journey-name-input" placeholder="e.g. Masterclass VIP Post-Show Replay" type="text" value="Webinar Registration &amp; Fast Follow-up">
+</div>
+<div class="flex flex-col gap-1.5">
+<label class="font-label-md text-label-md text-on-surface" for="journey-waba-account">Sender WhatsApp Business Account</label>
+<div class="relative">
+<select class="w-full h-9 px-space-md bg-surface-container-low rounded-lg text-on-surface font-body-sm text-body-sm border-0 focus:outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer" id="journey-waba-account">
+<option selected="">Acme Growth Co Primary (+1 555-0192) • Tier 2</option>
+<option>Acme VIP Concierge (+1 555-0188) • Tier 1</option>
+</select>
+<span class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-secondary">
+<span class="material-symbols-outlined text-[18px]">expand_more</span>
+</span>
+</div>
+</div>
+</div>
+<!-- Trigger Selector Cards -->
+<div class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface">Select Primary Trigger Event</span>
+<span class="font-label-sm text-label-sm text-primary cursor-pointer hover:underline">Browse webhook catalogue</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-space-sm" id="trigger-selection-list">
+<!-- Trigger Option 1 -->
+<label class="trigger-option flex items-start gap-space-md p-space-md rounded-lg bg-surface-container-low hover:bg-surface-container cursor-pointer transition-colors">
+<input checked="" class="mt-1 accent-primary-container" name="trigger_type" type="radio" value="webinar_liv">
+<div class="flex flex-col">
+<div class="flex items-center gap-space-xs">
+<span class="font-headline-md text-headline-md text-on-surface">Webinar Liv Registration</span>
+<span class="font-label-sm text-label-sm text-tertiary bg-tertiary-fixed px-1.5 py-0.2 rounded">Native</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Triggers immediately when a user fills the registration form in Webinar Liv or syncs via direct API.</p>
+</div>
+</label>
+<!-- Trigger Option 2 -->
+<label class="trigger-option flex items-start gap-space-md p-space-md rounded-lg bg-surface-container-low hover:bg-surface-container cursor-pointer transition-colors">
+<input class="mt-1 accent-primary-container" name="trigger_type" type="radio" value="webinar_attendance">
+<div class="flex flex-col">
+<div class="flex items-center gap-space-xs">
+<span class="font-headline-md text-headline-md text-on-surface">Webinar Stream Attendance</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Triggers upon stream completion. Splits audience based on watch duration thresholds (e.g. &gt;45 min).</p>
+</div>
+</label>
+<!-- Trigger Option 3 -->
+<label class="trigger-option flex items-start gap-space-md p-space-md rounded-lg bg-surface-container-low hover:bg-surface-container cursor-pointer transition-colors">
+<input class="mt-1 accent-primary-container" name="trigger_type" type="radio" value="contact_created">
+<div class="flex flex-col">
+<div class="flex items-center gap-space-xs">
+<span class="font-headline-md text-headline-md text-on-surface">New Inbound Contact</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Contact added via Landing Page form, Zapier, Make, or Google Sheets sync.</p>
+</div>
+</label>
+<!-- Trigger Option 4 -->
+<label class="trigger-option flex items-start gap-space-md p-space-md rounded-lg bg-surface-container-low hover:bg-surface-container cursor-pointer transition-colors">
+<input class="mt-1 accent-primary-container" name="trigger_type" type="radio" value="tag_applied">
+<div class="flex flex-col">
+<div class="flex items-center gap-space-xs">
+<span class="font-headline-md text-headline-md text-on-surface">Tag Added or Updated</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Fires whenever a contact receives a designated segment tag like "High-Intent-Lead".</p>
+</div>
+</label>
+</div>
+</div>
+<!-- Pre-configured Steps Canvas Mock Preview -->
+<div class="bg-surface-container-low p-space-md rounded-lg flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-secondary font-semibold">Workflow Initial Flow Blueprint</span>
+<span class="font-code-sm text-code-sm text-tertiary">3 Actions Auto-Staged</span>
+</div>
+<!-- Flowchart step nodes visual -->
+<div class="flex items-center gap-space-sm overflow-x-auto py-2">
+<!-- Step Node 1 -->
+<div class="shrink-0 bg-surface-container-lowest p-space-sm rounded-lg shadow-sm flex items-center gap-space-sm w-56">
+<div class="w-7 h-7 rounded bg-primary-container text-on-primary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[16px]">bolt</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-sm text-label-sm text-secondary">TRIGGER</span>
+<span class="font-label-md text-label-md text-on-surface truncate">Webinar Reg Confirmed</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-[18px] text-outline-variant shrink-0">arrow_forward</span>
+<!-- Step Node 2 -->
+<div class="shrink-0 bg-surface-container-lowest p-space-sm rounded-lg shadow-sm flex items-center gap-space-sm w-56">
+<div class="w-7 h-7 rounded bg-tertiary text-on-tertiary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[16px]">chat</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-sm text-label-sm text-secondary">ACTION 1</span>
+<span class="font-label-md text-label-md text-on-surface truncate">Send WhatsApp Ticket</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-[18px] text-outline-variant shrink-0">arrow_forward</span>
+<!-- Step Node 3 -->
+<div class="shrink-0 bg-surface-container-lowest p-space-sm rounded-lg shadow-sm flex items-center gap-space-sm w-56">
+<div class="w-7 h-7 rounded bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[16px]">timer</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-sm text-label-sm text-secondary">DELAY</span>
+<span class="font-label-md text-label-md text-on-surface truncate">Wait until T-2 Hours</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-[18px] text-outline-variant shrink-0">arrow_forward</span>
+<!-- Step Node 4 -->
+<div class="shrink-0 bg-surface-container-lowest p-space-sm rounded-lg shadow-sm flex items-center gap-space-sm w-56">
+<div class="w-7 h-7 rounded bg-tertiary text-on-tertiary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[16px]">notifications_active</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-sm text-label-sm text-secondary">ACTION 2</span>
+<span class="font-label-md text-label-md text-on-surface truncate">Reminder + Calendar Pin</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Safeguards & Limits -->
+<div class="flex items-center justify-between p-space-md rounded-lg bg-surface-container-high/40">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-secondary text-[20px]">shield</span>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface">Quiet Hours &amp; Anti-Spam Guardrails</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Suppress outbound messages between 10:00 PM and 8:00 AM local recipient time.</span>
+</div>
+</div>
+<div class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" id="guardrail-toggle" type="checkbox">
+<div class="w-9 h-5 bg-secondary-container peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-container"></div>
+</div>
+</div>
+</div>
+<!-- Modal Footer Action Bar -->
+<div class="px-space-xl py-space-md bg-surface-container-low flex items-center justify-between">
+<button class="h-9 px-space-md text-secondary hover:text-on-surface font-label-md text-label-md transition-colors" id="cancel-create-modal" type="button">
+          Cancel
+        </button>
+<div class="flex items-center gap-space-sm">
+<button class="h-9 px-space-md bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md rounded-lg transition-colors" type="button">
+            Save as Draft
+          </button>
+<button class="h-9 px-space-lg bg-primary-container hover:bg-primary text-on-primary font-label-md text-label-md rounded-lg flex items-center gap-space-xs shadow-sm transition-colors" id="continue-builder-btn" type="button">
+<span class="">Continue to Flow Builder</span>
+<span class="material-symbols-outlined text-[16px]">east</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- In-line interaction handler -->
+<script>
+    (function initJourneyInteractions() {
+      const modal = document.getElementById('create-journey-modal');
+      const openBtn = document.getElementById('open-create-modal');
+      const closeBtn = document.getElementById('close-create-modal');
+      const cancelBtn = document.getElementById('cancel-create-modal');
+      const openTemplateBtn = document.getElementById('open-template-btn');
+      const searchInput = document.getElementById('journey-search-input');
+      const rows = document.querySelectorAll('.journey-row');
+      const tabs = document.querySelectorAll('.journey-tab');
+
+      function showModal() {
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+      }
+
+      function hideModal() {
+        if (!modal) return;
+        modal.classList.add('hidden');
+        document.body.style.overflow = '';
+      }
+
+      if (openBtn) openBtn.addEventListener('click', showModal);
+      if (openTemplateBtn) openTemplateBtn.addEventListener('click', showModal);
+      if (closeBtn) closeBtn.addEventListener('click', hideModal);
+      if (cancelBtn) cancelBtn.addEventListener('click', hideModal);
+
+      // Dismiss on backdrop click
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal) hideModal();
+      });
+
+      // Quick trigger blueprint open helper
+      window.openModalWithTrigger = function(triggerVal) {
+        showModal();
+        const radioMap = {
+          'webinar_reg': 'webinar_liv',
+          'lead_welcome': 'contact_created',
+          'webinar_attended': 'webinar_attendance',
+          'scheduled_tag': 'tag_applied'
+        };
+        const mapped = radioMap[triggerVal] || 'webinar_liv';
+        const targetRadio = document.querySelector(`input[name="trigger_type"][value="${mapped}"]`);
+        if (targetRadio) {
+          targetRadio.checked = true;
+        }
+      };
+
+      // Realtime Table Filter
+      if (searchInput) {
+        searchInput.addEventListener('input', function(e) {
+          const query = e.target.value.toLowerCase().trim();
+          rows.forEach(row => {
+            const text = row.innerText.toLowerCase();
+            row.style.display = text.includes(query) ? '' : 'none';
+          });
+        });
+      }
+
+      // Tab switcher simulation
+      tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+          tabs.forEach(t => {
+            t.classList.remove('bg-surface-container', 'text-primary');
+            t.classList.add('text-secondary');
+          });
+          this.classList.add('bg-surface-container', 'text-primary');
+          this.classList.remove('text-secondary');
+        });
+      });
+    })();
+  </script>
+</div></main></div>
+
+</body></html>

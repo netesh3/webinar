@@ -1,0 +1,849 @@
+<!doctype html>
+<!--
+  Engage mockups — the contact sheet.
+
+  Fifteen screens, rebuilt from the Stitch exports in source/ onto one design
+  system. The Stitch originals are kept alongside for provenance, but nothing
+  here is a Stitch export: they disagreed on the sidebar, the brand, the icon
+  set and the numbers, which is the reason this set exists.
+
+  This page uses assets/app.css like every screen does — the tokens below are
+  the live ones, not a picture of them. The only local styles are the gallery
+  grid, which no screen needs.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Engage — WhatsApp automation mockups</title>
+    <link rel="stylesheet" href="assets/app.css" />
+    <style>
+      body {
+        background: var(--canvas);
+      }
+
+      .sheet {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0 24px 72px;
+      }
+
+      .masthead {
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+        padding: 36px 24px 30px;
+        margin-bottom: 32px;
+      }
+
+      .masthead h1 {
+        font-size: 28px;
+        font-weight: 700;
+      }
+
+      .masthead p {
+        max-width: 74ch;
+        margin-top: 8px;
+        color: var(--ink-500);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      section.block {
+        margin-top: 40px;
+      }
+
+      section.block > h2 {
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      section.block > h2 + p {
+        max-width: 78ch;
+        margin-top: 6px;
+        color: var(--ink-500);
+        font-size: 13.5px;
+        line-height: 1.6;
+      }
+
+      .group-label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 26px 0 12px;
+        color: var(--ink-400);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      .group-label::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+
+      .gallery {
+        display: grid;
+        gap: 18px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      /* The wizard strip reads as a sequence, so it gets its own row. */
+      .gallery-flow {
+        gap: 12px;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+
+      .gallery-flow .shot small {
+        font-size: 11.5px;
+      }
+
+      .shot {
+        display: block;
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        background: var(--surface);
+        overflow: hidden;
+        box-shadow: var(--e1);
+        color: inherit;
+        text-decoration: none;
+        transition:
+          box-shadow 0.14s,
+          border-color 0.14s,
+          transform 0.14s;
+      }
+
+      .shot:hover {
+        border-color: var(--brand-200);
+        box-shadow: var(--e3);
+        transform: translateY(-2px);
+        text-decoration: none;
+      }
+
+      .shot img {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1440 / 1000;
+        object-fit: cover;
+        object-position: top center;
+        border-bottom: 1px solid var(--line);
+        background: var(--surface-2);
+      }
+
+      .shot figcaption {
+        padding: 11px 13px;
+      }
+
+      .shot b {
+        display: block;
+        font-family: var(--sans);
+        font-size: 13.5px;
+        font-weight: 600;
+      }
+
+      .shot small {
+        display: block;
+        margin-top: 3px;
+        color: var(--ink-500);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .swatches {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+      }
+
+      .swatch {
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        overflow: hidden;
+        background: var(--surface);
+      }
+
+      .swatch i {
+        display: block;
+        height: 52px;
+      }
+
+      .swatch span {
+        display: block;
+        padding: 7px 9px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        line-height: 1.5;
+      }
+
+      .swatch span b {
+        display: block;
+        font-family: var(--text);
+        font-size: 11.5px;
+        font-weight: 600;
+      }
+
+      .type-row {
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        padding: 11px 0;
+        border-bottom: 1px dashed var(--line);
+      }
+
+      .type-row code {
+        flex: none;
+        width: 190px;
+        color: var(--ink-400);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      @media (max-width: 1000px) {
+        .gallery {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .swatches {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="sheet" style="padding-bottom: 0">
+        <div class="eyebrow">
+          <svg data-icon="layers" class="icon icon-sm"></svg>
+          Webinar Liv · demo mock design
+        </div>
+        <h1>Engage — WhatsApp automation &amp; CRM</h1>
+        <p>
+          Seventeen screens for the WhatsApp module inside Webinar Liv: the
+          shared inbox, contacts, journeys, broadcasts, templates, analytics and
+          the Meta connection. Every screen is built from one stylesheet and one
+          shell, so the chrome, the icon set and the numbers agree across the
+          whole set.
+        </p>
+        <div class="row wrap mt-16">
+          <span class="pill pill-ok">17 screens</span>
+          <span class="pill pill-bare">1 stylesheet, 1 shell script</span>
+          <span class="pill pill-bare">No CDN — works offline</span>
+          <span class="pill pill-bare">Hand-drawn SVG icon set</span>
+          <a class="btn btn-sm" href="screens/dashboard.html">
+            Open the demo
+            <svg data-icon="arrow-right" class="icon icon-sm"></svg>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <div class="sheet">
+      <div class="note">
+        <svg data-icon="info" class="icon icon-sm"></svg>
+        <span>
+          <b>Why a rebuild rather than the Stitch exports.</b> The fifteen
+          Stitch
+          screens in <code class="mono">source/</code> were generated
+          independently, so they disagreed with each other: two different
+          sidebars, two different product names (Engage and WebinarLiv), three
+          different audience sizes for the same workspace and three different
+          messaging tiers. They are kept for reference, and every number here was
+          reconciled against them — see
+          <a href="#dataset">the canonical dataset</a>.
+        </span>
+      </div>
+
+      <section class="block">
+        <h2>Screens</h2>
+        <p>
+          Thumbnails are rendered locally from these files, not taken from
+          Stitch, so the contact sheet is also a check that every screen still
+          displays.
+        </p>
+
+        <div class="group-label">Main navigation</div>
+        <div class="gallery">
+          <a class="shot" href="screens/dashboard.html">
+            <img src="thumbs/dashboard.png" alt="Dashboard" />
+            <figcaption>
+              <b>Dashboard</b>
+              <small>Audience, throughput and delivery at a glance, with the active journeys underneath.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/inbox.html">
+            <img src="thumbs/inbox.png" alt="Team inbox" />
+            <figcaption>
+              <b>Inbox</b>
+              <small>The shared queue: live thread, session timer, assignment, canned replies.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/inbox-session-closed.html">
+            <img src="thumbs/inbox-session-closed.png" alt="Inbox with an expired session" />
+            <figcaption>
+              <b>Inbox — window closed</b>
+              <small>24 hours elapsed, so the composer is replaced by a template that reopens it.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/contacts.html">
+            <img src="thumbs/contacts.png" alt="Contacts" />
+            <figcaption>
+              <b>Contacts</b>
+              <small>The audience table with opt-in state, plus the detail rail for one contact.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/journeys.html">
+            <img src="thumbs/journeys.png" alt="Journeys" />
+            <figcaption>
+              <b>Journeys</b>
+              <small>Every automation, what triggers it and how much of the audience it holds.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/campaigns.html">
+            <img src="thumbs/campaigns.png" alt="Campaigns" />
+            <figcaption>
+              <b>Campaigns</b>
+              <small>One-off broadcasts, their template and delivery, with a message simulator.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/templates.html">
+            <img src="thumbs/templates.png" alt="Templates" />
+            <figcaption>
+              <b>Templates</b>
+              <small>Meta approval state per template, and the variable inspector with a live preview.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/analytics.html">
+            <img src="thumbs/analytics.png" alt="Analytics" />
+            <figcaption>
+              <b>Analytics</b>
+              <small>Read velocity over 30 days and show-up rate per notification route.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/integrations.html">
+            <img src="thumbs/integrations.png" alt="Integrations" />
+            <figcaption>
+              <b>Integrations</b>
+              <small>Connected sources and the Webinar Liv payload-to-contact field mapping.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/settings.html">
+            <img src="thumbs/settings.png" alt="Settings" />
+            <figcaption>
+              <b>Settings</b>
+              <small>Workspace, the WABA connection, compliance guardrails, team and billing.</small>
+            </figcaption>
+          </a>
+        </div>
+
+        <div class="group-label">Journey builder</div>
+        <div class="gallery">
+          <a class="shot" href="screens/journey-builder.html">
+            <img src="thumbs/journey-builder.png" alt="Journey builder" />
+            <figcaption>
+              <b>Builder — inspector open</b>
+              <small>The full published flow, both branches, with the selected step configured on the right.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/journey-builder-spacious.html">
+            <img src="thumbs/journey-builder-spacious.png" alt="Journey builder, spacious canvas" />
+            <figcaption>
+              <b>Builder — spacious canvas</b>
+              <small>A draft being assembled, with the step palette on the left.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/step-branch-rules.html">
+            <img src="thumbs/step-branch-rules.png" alt="Step and branch rules" />
+            <figcaption>
+              <b>Step &amp; branch rules</b>
+              <small>One condition in detail: the predicate, both paths, and a dry-run evaluator.</small>
+            </figcaption>
+          </a>
+        </div>
+
+        <div class="group-label">Dialogs</div>
+        <div class="gallery">
+          <a class="shot" href="screens/modal-create-journey.html">
+            <img src="thumbs/modal-create-journey.png" alt="Create journey dialog" />
+            <figcaption>
+              <b>Create a journey</b>
+              <small>Blueprint picker, or a custom trigger — step one of two.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/modal-create-campaign.html">
+            <img src="thumbs/modal-create-campaign.png" alt="Create campaign wizard" />
+            <figcaption>
+              <b>New broadcast</b>
+              <small>Five-layer wizard. Walkable in both directions — see the flow below.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/modal-import-contacts.html">
+            <img src="thumbs/modal-import-contacts.png" alt="Import contacts dialog" />
+            <figcaption>
+              <b>Add contacts</b>
+              <small>CSV column mapping, tagging, auto-enrolment and the consent acknowledgement.</small>
+            </figcaption>
+          </a>
+        </div>
+
+        <div class="group-label">Settings detail</div>
+        <div class="gallery">
+          <a class="shot" href="screens/settings-channels.html">
+            <img src="thumbs/settings-channels.png" alt="Integrations and channels" />
+            <figcaption>
+              <b>Integrations &amp; channels</b>
+              <small>Broadcast destinations, messaging senders, calendar and CRM in one page.</small>
+            </figcaption>
+          </a>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>The 24-hour window</h2>
+        <p>
+          The one constraint every WhatsApp product is built around, and the
+          reason the Templates screen exists. A contact’s reply opens a
+          24-hour service window; inside it, replies are free-form and free of
+          charge. Outside it, only an approved template can reopen the
+          conversation, and Meta bills that as business-initiated. The inbox
+          shows both states, because a composer that is merely greyed out
+          never explains why.
+        </p>
+
+        <div class="gallery" style="grid-template-columns: repeat(2, minmax(0, 1fr))">
+          <a class="shot" href="screens/inbox.html">
+            <img src="thumbs/inbox.png" alt="Inbox with an open session" />
+            <figcaption>
+              <b>Window open · 19h 04m left</b>
+              <small>
+                Free-text composer, canned replies and private notes. Automated
+                sends stay in the thread, attributed to the journey that sent
+                them, so a human can see what the system already said.
+              </small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/inbox-session-closed.html">
+            <img src="thumbs/inbox-session-closed.png" alt="Inbox with a closed session" />
+            <figcaption>
+              <b>Window closed · 3h ago</b>
+              <small>
+                The composer is replaced, not disabled — pick an approved
+                template, fill its variables, check the preview, and reopen the
+                window at the cost of one utility conversation.
+              </small>
+            </figcaption>
+          </a>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>The broadcast wizard, layer by layer</h2>
+        <p>
+          A dialog that only ever shows one step is the least honest thing a
+          mockup can do, because the steps either side are the part being
+          designed. All five are real and the rail navigates between them. Each
+          also has its own address — <code class="mono">?step=4</code> — so a
+          single layer can be linked to or reviewed on its own.
+        </p>
+
+        <div class="gallery gallery-flow">
+          <a class="shot" href="screens/modal-create-campaign.html?step=1">
+            <img src="flow/broadcast-1.png" alt="Broadcast wizard, audience step" />
+            <figcaption>
+              <b>1 · Audience</b>
+              <small>Segment picker with the opt-in funnel: 312 matched, 248 eligible.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/modal-create-campaign.html?step=2">
+            <img src="flow/broadcast-2.png" alt="Broadcast wizard, template step" />
+            <figcaption>
+              <b>2 · Template</b>
+              <small>Approved templates only, with the body as Meta cleared it.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/modal-create-campaign.html?step=3">
+            <img src="flow/broadcast-3.png" alt="Broadcast wizard, variables step" />
+            <figcaption>
+              <b>3 · Variables &amp; preview</b>
+              <small>Token mapping, fallbacks, a test send and the device preview.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/modal-create-campaign.html?step=4">
+            <img src="flow/broadcast-4.png" alt="Broadcast wizard, schedule step" />
+            <figcaption>
+              <b>4 · Schedule &amp; send</b>
+              <small>Timing, throttle, quiet hours and the last review before dispatch.</small>
+            </figcaption>
+          </a>
+          <a class="shot" href="screens/modal-create-campaign.html?step=5">
+            <img src="flow/broadcast-5.png" alt="Broadcast wizard, queued confirmation" />
+            <figcaption>
+              <b>5 · Queued</b>
+              <small>What was queued, when it releases and what happens without you.</small>
+            </figcaption>
+          </a>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>Design system</h2>
+        <p>
+          These are the live tokens from
+          <code class="mono">assets/app.css</code>, rendered by the same
+          variables the screens use — if a swatch changes colour, so did every
+          screen.
+        </p>
+
+        <div class="group-label">Colour</div>
+        <div class="swatches">
+          <div class="swatch">
+            <i style="background: var(--brand)"></i>
+            <span><b>Brand</b>--brand<br />#4f46e5</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--brand-600)"></i>
+            <span><b>Brand deep</b>--brand-600<br />#4338ca</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--wa)"></i>
+            <span><b>WhatsApp</b>--wa<br />#059669</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--warn)"></i>
+            <span><b>Wait / warn</b>--warn<br />#f59e0b</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--bad)"></i>
+            <span><b>Failure</b>--bad<br />#e11d48</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--ink-900)"></i>
+            <span><b>Ink</b>--ink-900<br />#0f172a</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--ink-500)"></i>
+            <span><b>Muted</b>--ink-500<br />#64748b</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--line-strong)"></i>
+            <span><b>Rule strong</b>--line-strong<br />#cbd5e1</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--line)"></i>
+            <span><b>Rule</b>--line<br />#e2e8f0</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--surface-2)"></i>
+            <span><b>Surface 2</b>--surface-2<br />#f1f5f9</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--canvas)"></i>
+            <span><b>Canvas</b>--canvas<br />#f8fafc</span>
+          </div>
+          <div class="swatch">
+            <i style="background: var(--surface); border-bottom: 1px solid var(--line)"></i>
+            <span><b>Surface</b>--surface<br />#ffffff</span>
+          </div>
+        </div>
+        <p class="hint mt-12">
+          Indigo is structure — triggers, logic, primary actions, selection.
+          Emerald is WhatsApp — dispatch, delivery, a healthy channel. Amber
+          waits, rose fails. Everything else is slate.
+        </p>
+
+        <div class="group-label">Type</div>
+        <div class="card">
+          <div class="card-body">
+            <div class="type-row">
+              <code>Plus Jakarta Sans 700/24</code>
+              <span style="font: 700 24px/1.2 var(--sans); letter-spacing: -0.015em">
+                Page title
+              </span>
+            </div>
+            <div class="type-row">
+              <code>Plus Jakarta Sans 700/26</code>
+              <span class="metric-value" style="margin: 0">24,892</span>
+            </div>
+            <div class="type-row">
+              <code>Inter 600/14.5</code>
+              <span style="font: 600 14.5px var(--text)">Card heading</span>
+            </div>
+            <div class="type-row">
+              <code>Inter 400/14</code>
+              <span>Body copy — the default for everything in a table row.</span>
+            </div>
+            <div class="type-row">
+              <code>Inter 400/12.5 · --ink-500</code>
+              <span class="muted" style="font-size: 12.5px">
+                Supporting line under a title
+              </span>
+            </div>
+            <div class="type-row" style="border-bottom: 0">
+              <code>JetBrains Mono 500/12</code>
+              <span class="mono">join_community_v2 · +1 555-0192</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="group-label">Components</div>
+        <div class="grid g2">
+          <div class="card">
+            <div class="card-head"><h3>Buttons &amp; status</h3></div>
+            <div class="card-body stack-sm">
+              <div class="row wrap">
+                <button class="btn btn-primary" data-toast="Primary action">Primary</button>
+                <button class="btn" data-toast="Secondary action">Secondary</button>
+                <button class="btn btn-wa" data-toast="WhatsApp action">WhatsApp send</button>
+                <button class="btn btn-danger" data-toast="Destructive action">Disconnect</button>
+                <button class="btn btn-ghost" data-toast="Ghost action">Ghost</button>
+              </div>
+              <div class="row wrap">
+                <span class="pill pill-ok pill-live">Active</span>
+                <span class="pill pill-info">Trigger</span>
+                <span class="pill pill-warn">Scheduled</span>
+                <span class="pill pill-bad">Failed</span>
+                <span class="pill">Draft</span>
+                <span class="tag">{{first_name}}</span>
+                <span class="tag tag-plain">Webinar-Sep26</span>
+              </div>
+              <div class="row wrap">
+                <button class="switch" aria-checked="true" role="switch" data-toast="Switch"></button>
+                <button class="check" aria-checked="true" role="checkbox" data-toast="Checkbox">
+                  <svg data-icon="check" class="icon"></svg>
+                </button>
+                <span class="meter" style="width: 160px"><span style="width: 61%"></span></span>
+                <span class="delta delta-up">
+                  <svg data-icon="arrow-up" class="icon icon-sm"></svg> 14.2%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h3>Flow node</h3></div>
+            <div class="card-body">
+              <article class="node node-selected" style="max-width: 100%">
+                <div class="node-head">
+                  <span class="glyph glyph-wa">
+                    <svg data-icon="chat" class="icon icon-sm"></svg>
+                  </span>
+                  <span>
+                    <span class="node-kind">WhatsApp message</span>
+                    <b>Send community invite</b>
+                  </span>
+                </div>
+                <div class="node-body">
+                  One-tap group invite with the session passcode.
+                </div>
+                <div class="node-foot">
+                  <span class="tag">join_community_v2</span>
+                  <span class="muted right mono">98.4%</span>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block" id="dataset">
+        <h2>The canonical dataset</h2>
+        <p>
+          The Stitch screens contradicted each other on almost every figure. One
+          set of values was chosen and applied across every screen; this
+          is that set, so a change to any number has one place to start.
+        </p>
+
+        <div class="card mt-16">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Figure</th>
+                  <th>Value used here</th>
+                  <th>What Stitch had</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="t-title">Product &amp; workspace</td>
+                  <td>Engage, inside Webinar Liv · Acme Growth Co</td>
+                  <td class="muted">“Engage” on 13 screens, “WebinarLiv” on 2</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Total contacts</td>
+                  <td class="mono">24,892</td>
+                  <td class="muted">12,842 · 24,892 · 48,290</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Messages sent, 30 days</td>
+                  <td class="mono">18,420</td>
+                  <td class="muted">18,420 · 38,420 · 148,920</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Delivered / read</td>
+                  <td class="mono">97.5% / 84.6%</td>
+                  <td class="muted">consistent enough to keep</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Journeys</td>
+                  <td class="mono">8 built · 6 active, 1 paused, 1 draft</td>
+                  <td class="muted">8 · 14</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Campaigns</td>
+                  <td class="mono">18 · 12 sent, 3 scheduled, 3 drafts</td>
+                  <td class="muted">18 · 32 · 42</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Templates</td>
+                  <td class="mono">14 · 11 approved, 2 pending, 1 rejected</td>
+                  <td class="muted">14, with the category split unstated</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Messaging tier</td>
+                  <td class="mono">Tier 1 · 1,000 msgs/day</td>
+                  <td class="muted">Tier 1 · Tier 3 · Tier 4 unlimited</td>
+                </tr>
+                <tr>
+                  <td class="t-title">WABA number</td>
+                  <td class="mono">+1 555-0192 · quality High</td>
+                  <td class="muted">+1 555-0192 and +1 (555) 019-2834</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Cloud API version</td>
+                  <td class="mono">v21.0</td>
+                  <td class="muted">v19.0 · v21.0</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Inbox, now</td>
+                  <td class="mono">7 open · 4 unassigned · 5 min first-reply SLA · 96.4% hit</td>
+                  <td class="muted">no inbox in the Stitch set</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Conversations, 30 days</td>
+                  <td class="mono">1,842 opened · 1,791 resolved · median first reply 2.1 min</td>
+                  <td class="muted">not present</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Team</td>
+                  <td>Ganesh S P · Priya Iyer · Sarah Lin · Dev team</td>
+                  <td class="muted">Ganesh only, as the signed-in user</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Lifecycle stages</td>
+                  <td class="mono">Lead · Registered · Attended · Customer · Churned</td>
+                  <td class="muted">tags only</td>
+                </tr>
+                <tr>
+                  <td class="t-title">The webinar</td>
+                  <td>AI Marketing Masterclass · Sep 25, 7:00 PM IST · 248 registered, 142 attended</td>
+                  <td class="muted">four different webinar names</td>
+                </tr>
+                <tr>
+                  <td class="t-title">Plan</td>
+                  <td class="mono">Engage Growth Pro · $149/mo</td>
+                  <td class="muted">as given</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>How this is put together</h2>
+        <div class="grid g2 mt-16">
+          <div class="card">
+            <div class="card-body">
+              <h3 style="font-size: 13.5px">Files</h3>
+              <dl class="kv mt-8">
+                <div>
+                  <dt class="mono">index.html</dt>
+                  <dd class="muted">This sheet</dd>
+                </div>
+                <div>
+                  <dt class="mono">assets/app.css</dt>
+                  <dd class="muted">Tokens and every component</dd>
+                </div>
+                <div>
+                  <dt class="mono">assets/shell.js</dt>
+                  <dd class="muted">Icons, chrome, interactions</dd>
+                </div>
+                <div>
+                  <dt class="mono">screens/*.html</dt>
+                  <dd class="muted">One page each, content only</dd>
+                </div>
+                <div>
+                  <dt class="mono">thumbs/</dt>
+                  <dd class="muted">Local renders for this page</dd>
+                </div>
+                <div>
+                  <dt class="mono">flow/</dt>
+                  <dd class="muted">The wizard, one render per step</dd>
+                </div>
+                <div>
+                  <dt class="mono">source/</dt>
+                  <dd class="muted">Stitch exports and text digests</dd>
+                </div>
+                <div>
+                  <dt class="mono">shots/</dt>
+                  <dd class="muted">Stitch’s own screenshots</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
+              <h3 style="font-size: 13.5px">Notes</h3>
+              <ul class="plain mt-8" style="display: grid; gap: 9px">
+                <li class="row" style="align-items: flex-start">
+                  <svg data-icon="check" class="icon icon-sm" style="color: var(--wa); margin-top: 2px"></svg>
+                  <span class="muted" style="font-size: 12.5px; line-height: 1.5">
+                    A screen file holds only its <code class="mono">&lt;main class="page"&gt;</code>.
+                    The sidebar, topbar and switcher are injected, so the nav
+                    changes in one place.
+                  </span>
+                </li>
+                <li class="row" style="align-items: flex-start">
+                  <svg data-icon="check" class="icon icon-sm" style="color: var(--wa); margin-top: 2px"></svg>
+                  <span class="muted" style="font-size: 12.5px; line-height: 1.5">
+                    No Tailwind, no icon font, no web font request. The Stitch
+                    originals go unstyled without a network; these do not.
+                  </span>
+                </li>
+                <li class="row" style="align-items: flex-start">
+                  <svg data-icon="check" class="icon icon-sm" style="color: var(--wa); margin-top: 2px"></svg>
+                  <span class="muted" style="font-size: 12.5px; line-height: 1.5">
+                    Controls that cannot really work say so in a toast rather
+                    than dead-ending on <code class="mono">href="#"</code>.
+                  </span>
+                </li>
+                <li class="row" style="align-items: flex-start">
+                  <svg data-icon="check" class="icon icon-sm" style="color: var(--wa); margin-top: 2px"></svg>
+                  <span class="muted" style="font-size: 12.5px; line-height: 1.5">
+                    The broadcast wizard is five real layers, not one frozen
+                    step. The rail navigates, and
+                    <code class="mono">?step=4</code> opens a layer directly.
+                  </span>
+                </li>
+                <li class="row" style="align-items: flex-start">
+                  <svg data-icon="sync" class="icon icon-sm" style="color: var(--brand); margin-top: 2px"></svg>
+                  <span class="muted" style="font-size: 12.5px; line-height: 1.5">
+                    Rebuild the thumbnails with
+                    <code class="mono">python3 scripts/render.py</code>.
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- No data-screen on <body>, so shell.js skips the app chrome and only
+         hydrates the icons and wires the sample controls above. -->
+    <script src="assets/shell.js"></script>
+  </body>
+</html>

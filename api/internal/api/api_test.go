@@ -23,6 +23,8 @@ import (
 	"github.com/netkumar/webcast/api/internal/api"
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/config"
+	"github.com/netkumar/webcast/api/internal/engage"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -491,6 +493,8 @@ type harness struct {
 	// server is the same server that handler belongs to, for the one piece of
 	// behaviour no request performs: the drip sweep. See crm_drips_test.go.
 	server *api.Server
+	// engage is the CRM module the server was given, for tests that drive a sweep by hand.
+	engage *engage.Module
 	// rooms is the DEFAULT project's fake — the one every single-project test asserts on.
 	// Multi-project tests reach for h.pool instead.
 	rooms *fakeRooms
@@ -501,6 +505,8 @@ type harness struct {
 	// The store, for putting a fixture into a state directly. Used by goLive below;
 	// anything that is testing an HTTP contract must go through the HTTP surface.
 	store *store.Store
+	// crm is the CRM's SQL over the same pool, for tests that inspect its queue or tags.
+	crm *crmstore.Store
 	/* Where the disk storage backend writes. Exposed so a test can assert about FILES rather
 	 * than about rows — "deleting a webinar takes its recordings with it" is a claim about
 	 * bytes, and every version of that claim checked against the database alone would have
@@ -578,6 +584,11 @@ func (p *fakePool) forget(id string) {
 	}
 	p.ids = kept
 }
+
+/* bootWithoutEngage makes newHarness leave the server on NoEngage, as a deployment with the
+ * CRM switched off would be. Only the test that proves webinars need nothing from the CRM
+ * sets it, and it is not parallel, so a package variable is enough. */
+var bootWithoutEngage bool
 
 func newHarness(t *testing.T, tweak ...func(*config.Config)) *harness {
 	t.Helper()
@@ -678,10 +689,16 @@ func newHarnessWith(
 	 * ENUMERATE the routes rather than call them: see isolation_test.go, which walks the real
 	 * route table so that a host route added tomorrow is covered without anyone remembering
 	 * to add it to a list. */
-	/* The server itself is kept as well as its routes, for the one piece of
-	 * behaviour that has no HTTP surface at all: see the drip sweep in
-	 * crm_drips_test.go. Everything else goes through the handler. */
+	/* The CRM module is kept as well as the routes, for the one piece of behaviour
+	 * that has no HTTP surface at all: the drip and bot sweeps (h.engage). Everything
+	 * else goes through the handler. */
 	server := api.NewServer(cfg, st, pool, recordings, log)
+	// The CRM, plugged in exactly as main does — unless bootWithoutEngage says not to.
+	var crm *engage.Module
+	if !bootWithoutEngage {
+		crm = engage.New(cfg, st, log)
+		server.UseEngage(crm)
+	}
 	handler := server.Routes()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -692,8 +709,8 @@ func newHarnessWith(
 		t.Fatal(err)
 	}
 	return &harness{
-		t: t, srv: srv, handler: handler, server: server, rooms: rooms, pool: pool,
-		client: &http.Client{Jar: jar}, store: st,
+		t: t, srv: srv, handler: handler, server: server, engage: crm, rooms: rooms, pool: pool,
+		client: &http.Client{Jar: jar}, store: st, crm: crmstore.New(st),
 		recordingsDir: recordingsDir,
 	}
 }
@@ -958,7 +975,7 @@ func truncateAll(ctx context.Context, dsn string) error {
 	}
 	defer pool.Close()
 	_, err = pool.Exec(ctx,
-		`TRUNCATE recordings, registrations, custom_questions, webinar_panelists, webinars, users CASCADE`)
+		`TRUNCATE recordings, registrations, custom_questions, webinar_panelists, webinars, users, sweep_leases CASCADE`)
 	return err
 }
 

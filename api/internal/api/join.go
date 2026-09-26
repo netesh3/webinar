@@ -640,8 +640,8 @@ func (s *Server) issueToken(
 		JoinKey:        joinKeyFromIdentity(spec.Identity),
 		MaxDurationMin: wb.MaxDurationMin,
 		CdnBroadcast:   cdnBroadcast,
-		CdnStreamURL:  cdnStreamURL,
-		CdnLowLatency: cdnLowLatency,
+		CdnStreamURL:   cdnStreamURL,
+		CdnLowLatency:  cdnLowLatency,
 	})
 	return true
 }

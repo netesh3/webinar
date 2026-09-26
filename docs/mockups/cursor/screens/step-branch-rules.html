@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Step &amp; branch rules · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body
+    data-screen="step-branch-rules"
+    data-crumb="Journeys / Webinar onboarding / Step 02"
+  >
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="split" class="icon icon-sm"></svg>
+            Condition · stp_cnd_882
+          </div>
+          <h1>VIP community membership</h1>
+          <p>
+            Routes registrants on live community membership, so nobody is
+            invited twice to a group they already joined.
+          </p>
+        </div>
+        <div class="actions">
+          <a class="btn" href="journey-builder.html">
+            <svg data-icon="arrow-left" class="icon icon-sm"></svg> Back to flow
+          </a>
+          <button class="btn" data-toast="Step duplicated below.">
+            <svg data-icon="copy" class="icon icon-sm"></svg> Duplicate
+          </button>
+          <button class="btn btn-danger" data-toast="Deleting a step re-links its two neighbours.">
+            <svg data-icon="trash" class="icon icon-sm"></svg> Delete
+          </button>
+        </div>
+      </div>
+
+      <div class="grid g4">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="activity"></svg> Evaluations</div>
+          <div class="metric-value">14,892</div>
+          <div class="metric-foot">since the step was published</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="check-check"></svg> Execution rate</div>
+          <div class="metric-value">99.4%</div>
+          <div class="metric-foot">88 evaluations fell to default</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="gauge"></svg> Latency</div>
+          <div class="metric-value">14 ms</div>
+          <div class="metric-foot">median, served from cache</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="split"></svg> Split</div>
+          <div class="metric-value">36 / 64</div>
+          <div class="metric-foot">VIP members vs not joined</div>
+        </div>
+      </div>
+
+      <div class="split split-wide mt-16">
+        <div class="stack">
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <h2>Evaluation rule</h2>
+                <p>Condition 1 of 1 · evaluated when the trigger fires</p>
+              </div>
+              <span class="pill pill-ok right pill-live">Active in flow</span>
+            </div>
+            <div class="card-body stack">
+              <div class="note">
+                <svg data-icon="bolt" class="icon icon-sm"></svg>
+                <span>
+                  <b>When</b> an attendee registers for the webinar, check the
+                  registrant profile:
+                </span>
+              </div>
+
+              <div class="grid g3">
+                <div class="field">
+                  <label for="attr">Attribute</label>
+                  <select class="select" id="attr" data-label="Attribute">
+                    <option>VIP community membership</option>
+                    <option>WhatsApp opt-in status</option>
+                    <option>Community tier</option>
+                    <option>Watch duration (minutes)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="op">Operator</label>
+                  <select class="select" id="op" data-label="Operator">
+                    <option>is equal to</option>
+                    <option>is not equal to</option>
+                    <option>is set</option>
+                    <option>is not set</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="val">Value</label>
+                  <select class="select" id="val" data-label="Value">
+                    <option>Yes — active member</option>
+                    <option>No — not a member</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="row">
+                <button class="btn btn-sm" data-toast="A second condition would be ANDed with the first.">
+                  <svg data-icon="plus" class="icon icon-sm"></svg> Add condition
+                </button>
+                <span class="hint">
+                  Contacts missing the attribute follow the false path.
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <div class="grid g2">
+            <section class="card">
+              <div class="card-head">
+                <span class="leg-label leg-true">Path A · true</span>
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <span class="glyph glyph-wa"><svg data-icon="calendar" class="icon icon-sm"></svg></span>
+                  <div>
+                    <div class="t-title">Send calendar passcode</div>
+                    <div class="t-sub">
+                      Calendar invite and VIP breakout passcode. Skips the
+                      community invite entirely.
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-12">
+                  <span class="tag">calendar_invite_direct</span>
+                  <a class="btn btn-sm right" href="journey-builder.html">Edit step</a>
+                </div>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <span class="leg-label leg-false">Path B · false</span>
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <span class="glyph glyph-wa"><svg data-icon="chat" class="icon icon-sm"></svg></span>
+                  <div>
+                    <div class="t-title">Send community invite</div>
+                    <div class="t-sub">
+                      Template message with a single-click group join link.
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-12">
+                  <span class="tag">join_community_v2</span>
+                  <a class="btn btn-sm right" href="journey-builder.html">Edit step</a>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <section class="card">
+            <div class="card-head">
+              <span class="glyph glyph-brand"><svg data-icon="flask" class="icon icon-sm"></svg></span>
+              <div>
+                <h2>Test the condition</h2>
+                <p>Run a real contact through the predicate without sending</p>
+              </div>
+            </div>
+            <div class="card-body stack-sm">
+              <div class="field">
+                <label for="lead">Sample contact</label>
+                <select class="select" id="lead" data-label="Sample contact">
+                  <option>Rahul Sharma — VIP member = yes → true</option>
+                  <option>Neha Gupta — VIP member = no → false</option>
+                  <option>Karan Malhotra — attribute missing → default false</option>
+                </select>
+              </div>
+              <div class="note note-ok">
+                <svg data-icon="check" class="icon icon-sm"></svg>
+                <span>
+                  <b>Branch: true</b> — would send <code class="mono">calendar_invite_direct</code>.
+                  Evaluated in 14 ms.
+                </span>
+              </div>
+            </div>
+            <div class="card-foot">
+              <button class="btn btn-sm" data-toast="No message is sent during a test evaluation.">
+                <svg data-icon="play" class="icon icon-sm"></svg> Run evaluation
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>Preview</h2>
+              <p>Path B · community invite</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="phone">
+              <div class="phone-head">
+                <svg data-icon="arrow-left" class="icon icon-sm"></svg>
+                <span class="avatar avatar-wa" style="width: 28px; height: 28px">AG</span>
+                <span>
+                  <b>Acme Growth Official</b>
+                  <small>Official business account</small>
+                </span>
+              </div>
+              <div class="thread">
+                <div class="thread-day">Today</div>
+                <div class="bubble">
+                  <p>Hey <b>Neha</b>! 👋</p>
+                  <p>
+                    You registered for <b>AI Marketing Masterclass</b> but
+                    haven’t joined the founder WhatsApp community yet.
+                  </p>
+                  <p>
+                    Tap below to join 1,200+ leaders and claim your VIP breakout
+                    pass.
+                  </p>
+                  <div class="bubble-meta">
+                    11:42 AM <svg data-icon="check-check" class="icon icon-sm"></svg>
+                  </div>
+                  <div class="bubble-cta">
+                    <svg data-icon="user-plus" class="icon icon-sm"></svg> Join VIP community
+                  </div>
+                </div>
+              </div>
+              <div class="phone-input">
+                <span class="box">Reply…</span>
+                <svg data-icon="mic" class="icon icon-sm"></svg>
+              </div>
+            </div>
+          </div>
+          <div class="card-foot">
+            <span class="pill pill-ok">All rules configured</span>
+            <button class="btn btn-primary btn-sm right" data-toast="Step saved. Publish the journey to apply it.">
+              <svg data-icon="check" class="icon icon-sm"></svg> Save step
+            </button>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

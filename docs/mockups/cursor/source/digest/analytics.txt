@@ -1,0 +1,184 @@
+E
+Engage
+PRO
+corporate_fare
+Acme Growth Co
+unfold_more
+grid_view
+Dashboard
+group
+Contacts
+alt_route
+Journeys
+campaign
+Campaigns
+description
+Templates
+query_stats
+Analytics
+hub
+Integrations
+settings
+Settings
+Health Status
+HEALTHY
+WABA Connected
+•
++1 555-0192
+G
+Ganesh S P
+Owner / Admin
+logout
+Platform
+/
+Production
+search
+help
+notifications
+add
+New Broadcast
+person
+Intelligence Suite
+•
+WABA Diagnostic Node 04
+Analytics & Conversions
+Throughput performance, delivery metrics, read velocity, and journey conversion intelligence.
+calendar_today
+Last 30 Days (Aug 27 - Sep 26)
+expand_more
+filter_alt
+All Audiences
+expand_more
+download
+Export CSV / Report
+Messages Sent
+outgoing_mail
+18,420
+arrow_upward
+14.2%
+vs prev period
+Delivered Rate
+done_all
+97.5%
+17,959 delivered
+•
+Target >95%
+Read Rate
+visibility
+84.6%
+15,210 read
+•
+Avg: 3.4 mins
+Link CTR / Action
+touch_app
+52.8%
+9,485
+link clicks tracked
+Attended Show-up
+co_present
+57.2%
+trending_up
+↑ 26% higher
+w/ 15m alert
+Conversion Velocity
+payments
+$18,400
+Webinar CTAs
+•
+Post-offer flow
+Message Delivery & Read Velocity Over Time
+30-day temporal throughput tracking sent, delivered, and read confirmations
+Delivered
+Read
+Thursday, Sep 25
+1,248 Sent
+Delivered: 1,215 (97.3%)
+Read: 1,080 (88.9%)
+Aug 27
+Sep 01
+Sep 06
+Sep 11 (Peak: 1,840)
+Sep 16
+Sep 21
+Sep 25 (Peak: 1,840)
+Sep 26
+Show-up by Channel
+Impact
+Comparing live webinar attendance conversion across notification mechanisms.
+WhatsApp 2-Stage (2h + 15m)
+84.5%
+WhatsApp Single Alert (2h only)
+62.0%
+Email Blast Only (Control)
+31.2%
+lightbulb
+Insight Observation
+Attendees who received the 15-minute WhatsApp alert had a 2.7x higher show-up velocity
+compared to standard single-channel notification routines.
+Top Performing Automations & Broadcasts
+Journey and broadcast delivery stats, response thresholds, and final revenue conversion rates.
+search
+tune
+Columns
+Automation Name
+Type
+Enrolled / Sent
+Delivered
+Read Rate
+CTA Click Rate
+Final Conversion
+Health
+alt_route
+Webinar Registration & Community Onboarding
+Journey
+248 contacts
+98.4%
+94.2%
+75.0%
+Community Joined
+75.0%
+Excellent
+alt_route
+Webinar 2-Stage Reminder Cadence (T-2h & T-15m)
+Journey
+248 contacts
+99.2%
+95.8%
+84.5%
+Attended
+88.7%
+Excellent
+alt_route
+Post-Webinar Attendance Segmentation Follow-up
+Journey
+142 contacts
+97.1%
+82.4%
+42.1%
+Replay / Offer
+61.2%
+Good
+campaign
+September AI Masterclass Live Announcement
+Campaign
+248 contacts
+99.2%
+94.8%
+81.2%
+Joined Live
+94.8%
+Excellent
+alt_route
+New Lead Welcome & PDF Magnet Opt-in
+Journey
+1,284 contacts
+96.9%
+85.8%
+68.4%
+Downloaded
+85.8%
+Excellent
+Displaying 5 of 28 active broadcast automations
+chevron_left
+Page 1 of 6
+chevron_right

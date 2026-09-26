@@ -161,7 +161,7 @@ func TestCRMTagsAreCapped(t *testing.T) {
 	// Through the store: this is about the hundred-and-first, and a hundred HTTP round
 	// trips would only slow the suite down to prove the same thing.
 	for i := 0; i < types.TagMaxPerHost; i++ {
-		if _, err := h.store.CreateTag(ctx, me.ID, fmt.Sprintf("Segment %d", i)); err != nil {
+		if _, err := h.crm.CreateTag(ctx, me.ID, fmt.Sprintf("Segment %d", i)); err != nil {
 			t.Fatalf("seed tag %d: %v", i, err)
 		}
 	}

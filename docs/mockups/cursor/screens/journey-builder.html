@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Journey builder · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body
+    data-screen="journey-builder"
+    data-layout="wide"
+    data-crumb="Journeys / Webinar registration &amp; onboarding"
+  >
+    <main class="page">
+      <div class="builder-bar">
+        <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+        <div>
+          <div class="t-title">Webinar registration &amp; onboarding</div>
+          <div class="t-sub">Last published Sep 24, 4:12 PM by Ganesh S P</div>
+        </div>
+        <span class="pill pill-ok pill-live">Active · 248 enrolled</span>
+
+        <span class="right"></span>
+        <div class="zoom">
+          <button data-zoom="out" title="Zoom out"><svg data-icon="minus" class="icon icon-sm"></svg></button>
+          <output>100%</output>
+          <button data-zoom="in" title="Zoom in"><svg data-icon="plus" class="icon icon-sm"></svg></button>
+          <button data-zoom="fit" title="Fit to screen"><svg data-icon="maximize" class="icon icon-sm"></svg></button>
+        </div>
+        <button class="btn btn-sm" data-toast="3 stop conditions: purchased, unsubscribed, blocked the business.">
+          <svg data-icon="shield" class="icon icon-sm"></svg> Stop conditions (3)
+        </button>
+        <button class="btn btn-sm" data-toast="Test run sends to your own number only.">
+          <svg data-icon="play" class="icon icon-sm"></svg> Test journey
+        </button>
+        <button class="btn btn-sm" data-toast="Draft saved.">Save draft</button>
+        <button class="btn btn-primary btn-sm" data-toast="Publishing affects 248 enrolled contacts mid-flight.">
+          <svg data-icon="publish" class="icon icon-sm"></svg> Publish changes
+        </button>
+      </div>
+
+      <div class="builder builder-2">
+        <div class="canvas">
+          <div class="flow flow-wide">
+            <!-- 1. Trigger -->
+            <article class="node">
+              <div class="node-head">
+                <span class="glyph glyph-brand"><svg data-icon="bolt" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">Trigger · TRIG-01</span>
+                  <b>Webinar registration</b>
+                </span>
+              </div>
+              <div class="node-body">
+                Fires the moment an attendee registers in Webinar Liv for
+                <b>AI Marketing Masterclass</b>.
+              </div>
+              <div class="node-foot">
+                <span class="pill pill-ok pill-bare">
+                  <svg data-icon="webhook" class="icon icon-sm"></svg> Webhook live
+                </span>
+                <span class="muted right mono">1,482 all-time</span>
+              </div>
+            </article>
+
+            <div class="rail-add">
+              <span class="rail"></span>
+              <button title="Insert a step" data-toast="Insert a step between the trigger and the check.">
+                <svg data-icon="plus" class="icon icon-sm"></svg>
+              </button>
+            </div>
+
+            <!-- 2. Condition -->
+            <article class="node">
+              <div class="node-head">
+                <span class="glyph glyph-warn"><svg data-icon="split" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">Condition · STP-CND-882</span>
+                  <b>Already in the VIP community?</b>
+                </span>
+              </div>
+              <div class="node-body">
+                Checks the contact’s membership at runtime so nobody gets a
+                second invite to a group they already joined.
+              </div>
+              <div class="node-foot">
+                <a class="btn btn-sm" href="step-branch-rules.html">
+                  <svg data-icon="sliders" class="icon icon-sm"></svg> Edit rule
+                </a>
+                <span class="muted right mono">14 ms avg</span>
+              </div>
+            </article>
+
+            <span class="rail"></span>
+
+            <!-- 3. Two-way split -->
+            <div class="branch mt-16">
+              <div class="branch-leg">
+                <span class="leg-label leg-false">
+                  <svg data-icon="x" class="icon icon-sm"></svg> No · not joined
+                </span>
+                <article class="node node-selected">
+                  <div class="node-head">
+                    <span class="glyph glyph-wa"><svg data-icon="chat" class="icon icon-sm"></svg></span>
+                    <span>
+                      <span class="node-kind">WhatsApp message</span>
+                      <b>Send community invite</b>
+                    </span>
+                  </div>
+                  <div class="node-body">
+                    One-tap group invite with the session passcode.
+                  </div>
+                  <div class="node-foot">
+                    <span class="tag">join_community_v2</span>
+                    <span class="muted right mono">98.4%</span>
+                  </div>
+                </article>
+              </div>
+              <div class="branch-leg">
+                <span class="leg-label leg-true">
+                  <svg data-icon="check" class="icon icon-sm"></svg> Yes · VIP member
+                </span>
+                <article class="node">
+                  <div class="node-head">
+                    <span class="glyph glyph-wa"><svg data-icon="calendar" class="icon icon-sm"></svg></span>
+                    <span>
+                      <span class="node-kind">WhatsApp message</span>
+                      <b>Send calendar invite</b>
+                    </span>
+                  </div>
+                  <div class="node-body">
+                    Skips the community step and sends the calendar link only.
+                  </div>
+                  <div class="node-foot">
+                    <span class="tag">calendar_invite_direct</span>
+                    <span class="muted right mono">99.1%</span>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="converge">Paths converge</div>
+            <span class="rail"></span>
+
+            <!-- 4. Wait -->
+            <article class="node">
+              <div class="node-head">
+                <span class="glyph glyph-warn"><svg data-icon="hourglass" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">Wait</span>
+                  <b>Until 2 hours before the webinar</b>
+                </span>
+              </div>
+              <div class="node-body">
+                Relative to the session start, Sep 25 at 7:00 PM IST. Recomputed
+                if the host moves the webinar.
+              </div>
+            </article>
+
+            <span class="rail"></span>
+
+            <!-- 5. Reminder -->
+            <article class="node">
+              <div class="node-head">
+                <span class="glyph glyph-wa"><svg data-icon="bell" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">WhatsApp message</span>
+                  <b>2-hour reminder</b>
+                </span>
+              </div>
+              <div class="node-body">
+                “Starts in 2 hours — have your notes ready.”
+              </div>
+              <div class="node-foot">
+                <span class="tag">webinar_2h_countdown</span>
+                <span class="muted right mono">99.4%</span>
+              </div>
+            </article>
+
+            <span class="rail"></span>
+
+            <!-- 6. Wait -->
+            <article class="node">
+              <div class="node-head">
+                <span class="glyph glyph-warn"><svg data-icon="clock" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">Wait</span>
+                  <b>Until 30 minutes before</b>
+                </span>
+              </div>
+              <div class="node-body">Fixed offset, Sep 25 at 6:30 PM IST.</div>
+            </article>
+
+            <span class="rail"></span>
+
+            <!-- 7. Urgent alert -->
+            <article class="node">
+              <div class="node-head">
+                <span class="glyph glyph-wa"><svg data-icon="bolt" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">WhatsApp message</span>
+                  <b>“We’re live soon” alert</b>
+                </span>
+              </div>
+              <div class="node-body">
+                Highest-priority send. This is the step the 2.7× show-up lift is
+                attributed to.
+              </div>
+              <div class="node-foot">
+                <span class="tag">we_are_live_urgent</span>
+                <span class="muted right mono">99.2%</span>
+              </div>
+            </article>
+
+            <span class="rail"></span>
+
+            <!-- 8. Attendance split -->
+            <article class="node node-wide">
+              <div class="node-head">
+                <span class="glyph glyph-brand"><svg data-icon="rule" class="icon icon-sm"></svg></span>
+                <span>
+                  <span class="node-kind">Condition</span>
+                  <b>Webinar ends → sync attendance from Webinar Liv</b>
+                </span>
+              </div>
+              <div class="node-body">
+                Splits on watch duration once the stream stops and the egress
+                job reports final timings.
+              </div>
+            </article>
+
+            <span class="rail"></span>
+
+            <div class="branch branch-3 mt-16">
+              <div class="branch-leg">
+                <span class="leg-label leg-true">Attended &gt; 15 min · 64%</span>
+                <article class="node">
+                  <div class="node-head">
+                    <span class="glyph glyph-wa"><svg data-icon="chat" class="icon icon-sm"></svg></span>
+                    <span>
+                      <span class="node-kind">WhatsApp message</span>
+                      <b>Thank you &amp; resources</b>
+                    </span>
+                  </div>
+                  <div class="node-foot">
+                    <span class="tag">post_webinar_attended</span>
+                  </div>
+                </article>
+              </div>
+              <div class="branch-leg">
+                <span class="leg-label">Brief &lt; 15 min · 18%</span>
+                <article class="node">
+                  <div class="node-head">
+                    <span class="glyph glyph-wa"><svg data-icon="play" class="icon icon-sm"></svg></span>
+                    <span>
+                      <span class="node-kind">WhatsApp message</span>
+                      <b>Quick replay &amp; notes</b>
+                    </span>
+                  </div>
+                  <div class="node-foot">
+                    <span class="tag">post_webinar_brief</span>
+                  </div>
+                </article>
+              </div>
+              <div class="branch-leg">
+                <span class="leg-label leg-false">No show · 18%</span>
+                <article class="node">
+                  <div class="node-head">
+                    <span class="glyph glyph-wa"><svg data-icon="clock" class="icon icon-sm"></svg></span>
+                    <span>
+                      <span class="node-kind">WhatsApp message</span>
+                      <b>48-hour expiring replay</b>
+                    </span>
+                  </div>
+                  <div class="node-foot">
+                    <span class="tag">post_webinar_no_show</span>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="rail-add mt-16">
+              <span class="rail"></span>
+              <button title="Append a step" data-toast="Append a step to the end of the journey.">
+                <svg data-icon="plus" class="icon icon-sm"></svg>
+              </button>
+            </div>
+
+            <div class="note note-ok" style="max-width: 560px">
+              <svg data-icon="shield" class="icon icon-sm"></svg>
+              <span>
+                <b>Guardrails active.</b> Every contact drops out of the journey
+                on purchase, unsubscribe, or if they block the business number.
+                Quiet hours suppress sends between 10 PM and 8 AM local time.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inspector for the selected node. -->
+        <aside class="inspector">
+          <div class="inspector-head">
+            <div class="row">
+              <span class="glyph glyph-wa"><svg data-icon="chat" class="icon icon-sm"></svg></span>
+              <div>
+                <h2 style="font-size: 14.5px; font-weight: 600">Send community invite</h2>
+                <p class="muted" style="font-size: 12.5px">WhatsApp message step</p>
+              </div>
+              <span class="pill pill-ok right">Approved</span>
+            </div>
+          </div>
+          <div class="inspector-body">
+            <div class="field">
+              <label for="tpl">Template</label>
+              <select class="select" id="tpl" data-label="Template">
+                <option>join_community_v2 — Utility</option>
+                <option>calendar_invite_direct — Utility</option>
+                <option>webinar_2h_countdown — Utility</option>
+              </select>
+              <span class="hint">Only approved templates appear here.</span>
+            </div>
+
+            <dl class="kv">
+              <div><dt>Category</dt><dd>Utility · en</dd></div>
+              <div><dt>Quality tier</dt><dd>High · 0.01% spam</dd></div>
+              <div><dt>Sends so far</dt><dd>248 · 98.4% delivered</dd></div>
+            </dl>
+
+            <div>
+              <div class="row">
+                <span class="lbl">Variable mapping</span>
+                <span class="pill pill-bare right">3 variables</span>
+              </div>
+              <dl class="kv mt-8">
+                <div>
+                  <dt><span class="tag">{{1}}</span></dt>
+                  <dd class="muted">Contact.first_name</dd>
+                </div>
+                <div>
+                  <dt><span class="tag">{{2}}</span></dt>
+                  <dd class="muted">Event.title</dd>
+                </div>
+                <div>
+                  <dt><span class="tag">{{3}}</span></dt>
+                  <dd class="muted">Community invite URL</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div>
+              <div class="lbl">Preview</div>
+              <div class="phone mt-8">
+                <div class="phone-head">
+                  <svg data-icon="arrow-left" class="icon icon-sm"></svg>
+                  <span class="avatar avatar-wa" style="width: 28px; height: 28px">AG</span>
+                  <span>
+                    <b>Acme Growth Official</b>
+                    <small>Official business account</small>
+                  </span>
+                </div>
+                <div class="thread">
+                  <div class="thread-day">Today</div>
+                  <div class="bubble">
+                    <p>Hey <b>Rahul</b>! 🚀</p>
+                    <p>
+                      You’re registered for the <b>AI Marketing Masterclass</b>,
+                      Thursday 7:00 PM IST.
+                    </p>
+                    <p>
+                      Join the private VIP community for backstage notes and
+                      live Q&amp;A access.
+                    </p>
+                    <div class="bubble-meta">
+                      7:01 PM <svg data-icon="check-check" class="icon icon-sm"></svg>
+                    </div>
+                    <div class="bubble-cta">
+                      <svg data-icon="users" class="icon icon-sm"></svg> Join WhatsApp community
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <button class="btn btn-sm" data-toast="Opens the template editor — an edit re-opens Meta review.">
+                <svg data-icon="edit" class="icon icon-sm"></svg> Edit template
+              </button>
+              <button class="btn btn-sm" data-toast="Test send queued to +1 555-0192.">
+                <svg data-icon="smartphone" class="icon icon-sm"></svg> Test send
+              </button>
+            </div>
+            <button class="btn btn-primary btn-block" data-toast="Step saved. Publish to apply it to live contacts.">
+              <svg data-icon="check" class="icon icon-sm"></svg> Save step
+            </button>
+          </div>
+        </aside>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

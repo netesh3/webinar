@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Integrations · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="integrations" data-crumb="Platform / Integrations">
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="plug" class="icon icon-sm"></svg>
+            Data sources
+          </div>
+          <h1>Integrations</h1>
+          <p>
+            Where contacts and attendance facts come from. Each connection maps
+            an inbound payload onto the fields journeys branch on.
+          </p>
+        </div>
+        <div class="actions">
+          <button class="btn" data-toast="API keys and webhook secrets live in Settings → API.">
+            <svg data-icon="key" class="icon icon-sm"></svg> API keys
+          </button>
+          <button class="btn btn-primary" data-toast="Connector directory is below.">
+            <svg data-icon="plus" class="icon icon-sm"></svg> Add integration
+          </button>
+        </div>
+      </div>
+
+      <div class="grid g4">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="webhook"></svg> Inbound events / hour</div>
+          <div class="metric-value">8,419</div>
+          <div class="metric-foot">across 3 live connections</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="gauge"></svg> Field transform time</div>
+          <div class="metric-value">14 ms</div>
+          <div class="metric-foot">median, payload to contact record</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="verified"></svg> Pipeline health</div>
+          <div class="metric-value">99.99%</div>
+          <div class="metric-foot">0 sync errors in the last 24h</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="chat"></svg> Journeys triggered today</div>
+          <div class="metric-value">1,482</div>
+          <div class="metric-foot">from inbound events</div>
+        </div>
+      </div>
+
+      <div class="sec-head">
+        <span class="glyph glyph-brand"><svg data-icon="plug" class="icon icon-sm"></svg></span>
+        <div>
+          <h2>Connected</h2>
+          <p>3 live connections · Meta Graph v21.0 with auto-retry</p>
+        </div>
+        <span class="pill pill-ok pill-live right">All healthy</span>
+      </div>
+
+      <div class="grid g3">
+          <div class="card">
+            <div class="card-head">
+              <span class="glyph glyph-brand glyph-lg"><svg data-icon="video"></svg></span>
+              <div>
+                <h3>Webinar Liv</h3>
+                <p>Native event hook</p>
+              </div>
+              <span class="pill pill-ok pill-live right">Live</span>
+            </div>
+            <div class="card-body">
+              <p class="muted" style="font-size: 12.5px; line-height: 1.5">
+                Imports registrants, live attendance timestamps and post-session
+                watch duration straight into segmentation.
+              </p>
+              <dl class="kv mt-12">
+                <div><dt>Registrations synced</dt><dd>1,482</dd></div>
+                <div><dt>Webinars connected</dt><dd>6</dd></div>
+                <div><dt>Sync errors (24h)</dt><dd>0</dd></div>
+              </dl>
+            </div>
+            <div class="card-foot">
+              <button class="btn btn-sm" data-reveal="mapping" aria-expanded="false">
+                <svg data-icon="sliders" class="icon icon-sm"></svg> Field mapping
+              </button>
+              <button class="btn btn-sm" data-toast="Re-syncing the last 24 hours.">
+                <svg data-icon="sync" class="icon icon-sm"></svg> Sync now
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <span class="glyph glyph-wa glyph-lg"><svg data-icon="chat"></svg></span>
+              <div>
+                <h3>WhatsApp Business</h3>
+                <p>Cloud API v21.0</p>
+              </div>
+              <span class="pill pill-ok pill-live right">Live</span>
+            </div>
+            <div class="card-body">
+              <p class="muted" style="font-size: 12.5px; line-height: 1.5">
+                Direct Meta Graph link for template delivery, inbound replies
+                and delivery receipts.
+              </p>
+              <dl class="kv mt-12">
+                <div><dt>Messaging tier</dt><dd>Tier 1 · 1,000/day</dd></div>
+                <div><dt>Quality rating</dt><dd>High (green)</dd></div>
+                <div><dt>Webhook latency</dt><dd>28 ms</dd></div>
+              </dl>
+            </div>
+            <div class="card-foot">
+              <a class="btn btn-sm" href="settings.html">
+                <svg data-icon="phone" class="icon icon-sm"></svg> Manage numbers
+              </a>
+              <a class="btn btn-sm" href="templates.html">
+                <svg data-icon="file" class="icon icon-sm"></svg> Templates
+              </a>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <span class="glyph glyph-lg"><svg data-icon="calendar"></svg></span>
+              <div>
+                <h3>Google Calendar</h3>
+                <p>Invite generation</p>
+              </div>
+              <span class="pill pill-ok right">Connected</span>
+            </div>
+            <div class="card-body">
+              <p class="muted" style="font-size: 12.5px; line-height: 1.5">
+                Generates .ics links adjusted to each recipient’s timezone for
+                one-tap calendar adds inside WhatsApp.
+              </p>
+              <dl class="kv mt-12">
+                <div><dt>Active sync rules</dt><dd>4 triggers</dd></div>
+                <div><dt>Timezone conversion</dt><dd>Automatic</dd></div>
+                <div><dt>Invites delivered</dt><dd>912</dd></div>
+              </dl>
+            </div>
+            <div class="card-foot">
+              <button class="btn btn-sm" data-toast="Calendar settings are not part of this mockup set.">
+                <svg data-icon="settings" class="icon icon-sm"></svg> Settings
+              </button>
+            </div>
+          </div>
+      </div>
+
+      <!--
+        Eight rows of payload keys are reference material, not something to read
+        on the way past. It opens from "Field mapping" on the Webinar Liv card.
+      -->
+      <section class="card mt-24" id="mapping" hidden>
+        <div class="card-head">
+          <span class="glyph glyph-brand"><svg data-icon="database" class="icon icon-sm"></svg></span>
+          <div>
+            <h2>Webinar Liv field mapping</h2>
+            <p>JSON webhook v2 · maps payload keys onto contact and attendance properties</p>
+          </div>
+          <span class="pill pill-ok right">8 of 8 matched</span>
+          <button class="btn btn-sm" data-reveal="mapping" aria-expanded="true">
+            <svg data-icon="chevron-up" class="icon icon-sm"></svg> Hide
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Payload key</th>
+                <th></th>
+                <th>Engage property</th>
+                <th>Type</th>
+                <th>Sample</th>
+                <th>Required</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">attendee_name</td>
+                <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                <td class="t-title">Contact.full_name</td>
+                <td class="muted">Text</td>
+                <td class="muted mono">“Rachel Dawson”</td>
+                <td><span class="pill pill-info pill-bare">Required</span></td>
+              </tr>
+              <tr>
+                <td class="mono">attendee_phone</td>
+                <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                <td class="t-title">Contact.phone</td>
+                <td class="muted">E.164</td>
+                <td class="muted mono">“+14155552671”</td>
+                <td><span class="pill pill-info pill-bare">Required</span></td>
+              </tr>
+              <tr>
+                <td class="mono">attendee_email</td>
+                <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                <td class="t-title">Contact.email</td>
+                <td class="muted">Email</td>
+                <td class="muted mono">“rachel@acmegrowth.io”</td>
+                <td class="dim">Optional</td>
+              </tr>
+              <tr>
+                <td class="mono">webinar_id</td>
+                <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                <td class="t-title">Event.webinar_id</td>
+                <td class="muted">String</td>
+                <td class="muted mono">“wnv_881903”</td>
+                <td><span class="pill pill-info pill-bare">Required</span></td>
+              </tr>
+              <tr>
+                <td class="mono">webinar_title</td>
+                <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                <td class="t-title">Event.title</td>
+                <td class="muted">Text</td>
+                <td class="muted mono">“AI Marketing Masterclass”</td>
+                <td class="dim">Optional</td>
+              </tr>
+              <tr>
+                <td class="mono">live_join_time</td>
+                <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                <td class="t-title">Attendance.joined_at</td>
+                <td class="muted">Datetime</td>
+                <td class="muted mono">“2026-09-25T13:32:11Z”</td>
+                <td class="dim">Optional</td>
+              </tr>
+              <tr>
+                <td class="mono">watch_duration</td>
+                <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                <td class="t-title">Attendance.watch_minutes</td>
+                <td class="muted">Number</td>
+                <td class="muted mono">47</td>
+                <td class="dim">Optional</td>
+              </tr>
+              <tr>
+                <td class="mono">attended_flag</td>
+                <td class="t-icon dim"><svg data-icon="arrow-right" class="icon icon-sm"></svg></td>
+                <td class="t-title">Attendance.status</td>
+                <td class="muted">Enum</td>
+                <td class="muted mono">attended | brief | missed</td>
+                <td><span class="pill pill-info pill-bare">Required</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot">
+          <svg data-icon="check" class="icon icon-sm"></svg>
+          All 8 critical parameters matched with no validation conflicts.
+          <span class="right row">
+            <button class="btn btn-sm" data-toast="Replays the most recent payload through the mapper.">
+              <svg data-icon="play" class="icon icon-sm"></svg> Test payload
+            </button>
+            <button class="btn btn-primary btn-sm" data-toast="Mapping saved.">
+              Save mapping
+            </button>
+          </span>
+        </div>
+      </section>
+
+      <div class="sec-head">
+        <span class="glyph"><svg data-icon="grid" class="icon icon-sm"></svg></span>
+        <div>
+          <h2>Available connectors</h2>
+          <p>Not connected yet</p>
+        </div>
+        <label class="inline-field right">
+          Category
+          <select class="select" data-label="Category">
+            <option>All connectors (12)</option>
+            <option>Spreadsheets</option>
+            <option>CRM</option>
+            <option>Automation</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="grid g4">
+          <div class="card">
+            <div class="card-body">
+              <span class="glyph glyph-lg"><svg data-icon="sheet"></svg></span>
+              <h3 class="mt-12" style="font-size: 13.5px">Google Sheets</h3>
+              <p class="muted mt-4" style="font-size: 12.5px; line-height: 1.45">
+                Append rows as contacts and trigger a journey per new row.
+              </p>
+              <button class="btn btn-sm btn-block mt-12" data-toast="OAuth consent screen would open here.">
+                Connect
+              </button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <span class="glyph glyph-lg"><svg data-icon="bolt"></svg></span>
+              <h3 class="mt-12" style="font-size: 13.5px">Zapier</h3>
+              <p class="muted mt-4" style="font-size: 12.5px; line-height: 1.45">
+                Bridge Engage triggers to 5,000+ other applications.
+              </p>
+              <button class="btn btn-sm btn-block mt-12" data-toast="OAuth consent screen would open here.">
+                Connect
+              </button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <span class="glyph glyph-lg"><svg data-icon="webhook"></svg></span>
+              <h3 class="mt-12" style="font-size: 13.5px">Custom webhook</h3>
+              <p class="muted mt-4" style="font-size: 12.5px; line-height: 1.45">
+                Accept arbitrary JSON with HMAC header validation.
+              </p>
+              <button class="btn btn-sm btn-block mt-12" data-toast="Generates an endpoint and a signing secret.">
+                Set up endpoint
+              </button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <span class="glyph glyph-lg"><svg data-icon="badge"></svg></span>
+              <h3 class="mt-12" style="font-size: 13.5px">HubSpot CRM</h3>
+              <p class="muted mt-4" style="font-size: 12.5px; line-height: 1.45">
+                Sync lifecycle stages and trigger sales follow-ups.
+              </p>
+              <button class="btn btn-sm btn-block mt-12" data-toast="OAuth consent screen would open here.">
+                Connect
+              </button>
+            </div>
+          </div>
+      </div>
+    </main>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

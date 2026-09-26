@@ -1,0 +1,480 @@
+<!doctype html>
+<!--
+  Engage mockups — the contact sheet.
+
+  Every screen below is a Stitch export, unmodified except for its dead links and one
+  injected script. The links were all href="#" and now point at each other, so the demo
+  can be WALKED; demo.js handles the controls that are not links, and where one can do the
+  real thing in the browser it does — a CSV is built, a column is hidden, a step is added
+  to the canvas, a reply is appended to the thread. Only where a control could never be
+  anything but faked does it say so in a toast. Each screen also carries a switcher at
+  bottom right that reaches the screens no sidebar item names.
+
+  The thumbnails are rendered locally with headless Chrome rather than taken from
+  Stitch's own screenshots: for this revision several of Stitch's captures came out with
+  the main table blank (Contacts, Journeys) even though the markup is fine.
+
+  This page is hand-written and deliberately plain CSS: it is the one file that has to
+  work with no network, because the screens themselves load Tailwind and Inter from a CDN.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Engage — WhatsApp automation mockups</title>
+    <style>
+      /* Tokens lifted from the screens' own Tailwind config so the index does not look
+         like a different product from the screens it indexes. */
+      :root {
+        --primary: #4f46e5;
+        --primary-deep: #3525cd;
+        --ink: #0b1c30;
+        --ink-2: #464555;
+        --ink-3: #777587;
+        --canvas: #f8f9ff;
+        --surface: #ffffff;
+        --line: #c7c4d8;
+        --line-soft: #e5eeff;
+        --ok: #10b981;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink);
+        font:
+          400 14px/1.5 Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      header {
+        border-bottom: 1px solid var(--line-soft);
+        background: var(--surface);
+        padding: 28px 24px 22px;
+      }
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+      }
+      h1 {
+        margin: 0;
+        font:
+          700 26px/1.2 "Plus Jakarta Sans",
+          Inter,
+          sans-serif;
+        letter-spacing: -0.02em;
+      }
+      .sub {
+        margin: 7px 0 0;
+        max-width: 68ch;
+        color: var(--ink-2);
+        font-size: 13.5px;
+      }
+      .meta {
+        margin-top: 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .pill {
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 3px 9px;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--ink-2);
+        background: var(--canvas);
+      }
+      .pill b {
+        color: var(--primary-deep);
+      }
+      /* content-box on purpose. `.wrap` is a 1180px column; header and footer nest theirs
+         inside the page's side padding, but main IS the wrap and wears the padding itself,
+         so under the global border-box that padding ate into the column — insetting the
+         whole grid 24px from the title above it, which read as the page being crooked. */
+      main {
+        box-sizing: content-box;
+        padding: 26px 24px 64px;
+      }
+      h2 {
+        margin: 34px 0 4px;
+        font:
+          600 15px/1.3 "Plus Jakarta Sans",
+          Inter,
+          sans-serif;
+        letter-spacing: -0.005em;
+      }
+      h2:first-child {
+        margin-top: 6px;
+      }
+      .note {
+        margin: 0 0 14px;
+        max-width: 78ch;
+        color: var(--ink-3);
+        font-size: 12.5px;
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      }
+      a.card {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+        background: var(--surface);
+        border: 1px solid var(--line-soft);
+        border-radius: 8px;
+        overflow: hidden;
+        transition:
+          border-color 0.12s,
+          transform 0.12s;
+      }
+      a.card:hover {
+        border-color: var(--primary);
+        transform: translateY(-1px);
+      }
+      /* A fixed box: the renders are 1600px wide and between 1280 and 2178 tall, so the
+         thumbnails are cropped to one shape from the top rather than letterboxed to
+         fifteen different heights. */
+      .shot {
+        height: 176px;
+        background: var(--canvas);
+        border-bottom: 1px solid var(--line-soft);
+        overflow: hidden;
+      }
+      .shot img {
+        width: 100%;
+        display: block;
+      }
+      .body {
+        padding: 11px 13px 13px;
+      }
+      .title {
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: -0.005em;
+      }
+      .desc {
+        margin-top: 3px;
+        color: var(--ink-2);
+        font-size: 12px;
+      }
+      .dims {
+        margin-top: 7px;
+        color: var(--ink-3);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+      footer {
+        border-top: 1px solid var(--line-soft);
+        background: var(--surface);
+        padding: 20px 24px 40px;
+        color: var(--ink-2);
+        font-size: 12.5px;
+      }
+      footer code {
+        background: var(--canvas);
+        border: 1px solid var(--line-soft);
+        border-radius: 3px;
+        padding: 1px 4px;
+        font-size: 11.5px;
+      }
+      footer a {
+        color: var(--primary-deep);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <h1>Engage — WhatsApp automation mockups</h1>
+        <p class="sub">
+          Twenty screens from the Stitch project <b>Webinar WhatsApp Automation
+          Engine</b>, downloaded whole and then made walkable: sidebars navigate, tabs
+          and filters actually filter, dropdowns are built from the sample data, exports
+          build a real CSV, a row's menu pauses or duplicates that row, the composer
+          sends, the canvas takes a new step, the broadcast wizard walks all four of its
+          steps, modals close. Where a control could only
+          ever be faked it says so rather than doing nothing. Every screen carries a
+          switcher at its bottom right for the ones no sidebar item names.
+        </p>
+        <div class="meta">
+          <span class="pill">Stitch project <b>15634464602460218258</b></span>
+          <span class="pill">20 screens</span>
+          <span class="pill">3 app shells</span>
+          <span class="pill">Fetched <b>24 Sep 2026</b></span>
+          <span class="pill">Mockup only — not shipped code</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <h2>The eight main screens</h2>
+      <p class="note">
+        One per sidebar item. These eight are fully navigable between themselves.
+      </p>
+      <div class="grid">
+        <a class="card" href="screens/dashboard.html">
+          <div class="shot"><img src="shots/dashboard.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Dashboard</div>
+            <div class="desc">
+              Audience, messages sent, active journeys; delivery volume, live journey
+              table, recent activity
+            </div>
+            <div class="dims">2560 × 2286</div>
+          </div>
+        </a>
+        <a class="card" href="screens/contacts.html">
+          <div class="shot"><img src="shots/contacts.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Contacts &amp; Audience CRM</div>
+            <div class="desc">
+              Number, source and opt-in per contact, with a detail pane and its activity
+            </div>
+            <div class="dims">2560 × 2350</div>
+          </div>
+        </a>
+        <a class="card" href="screens/journeys.html">
+          <div class="shot"><img src="shots/journeys.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Automated Journeys</div>
+            <div class="desc">Trigger, enrolled count and state per journey</div>
+            <div class="dims">2560 × 2048</div>
+          </div>
+        </a>
+        <a class="card" href="screens/campaigns.html">
+          <div class="shot"><img src="shots/campaigns.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Campaigns &amp; Broadcasts</div>
+            <div class="desc">
+              One-off sends with audience, template, delivered % and read %
+            </div>
+            <div class="dims">2560 × 2048</div>
+          </div>
+        </a>
+        <a class="card" href="screens/templates.html">
+          <div class="shot"><img src="shots/templates.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Templates &amp; Variable Inspector</div>
+            <div class="desc">
+              Meta status per template, where each is used, and what fills every
+              {{n}}
+            </div>
+            <div class="dims">2560 × 2048</div>
+          </div>
+        </a>
+        <a class="card" href="screens/analytics.html">
+          <div class="shot"><img src="shots/analytics.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Analytics &amp; Conversions</div>
+            <div class="desc">
+              Read velocity over 30 days, and show-up compared across notification
+              channels
+            </div>
+            <div class="dims">2560 × 2828</div>
+          </div>
+        </a>
+        <a class="card" href="screens/integrations.html">
+          <div class="shot"><img src="shots/integrations.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Integrations &amp; Webinar Liv Mapping</div>
+            <div class="desc">
+              Webinar Liv hook, Cloud API, calendar and webhooks; field mapping per source
+            </div>
+            <div class="dims">2560 × 3484</div>
+          </div>
+        </a>
+        <a class="card" href="screens/settings.html">
+          <div class="shot"><img src="shots/settings.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Settings</div>
+            <div class="desc">
+              Workspace, WABA, team, API keys, billing — plus opt-out keywords and send
+              throttling
+            </div>
+            <div class="dims">2560 × 2664</div>
+          </div>
+        </a>
+      </div>
+
+      <h2>Journey builder</h2>
+      <p class="note">
+        The first two are the same canvas treated two ways — docked in the app shell, and
+        full-bleed with a step palette. The third is what sits behind one branch step.
+      </p>
+      <div class="grid">
+        <a class="card" href="screens/journey-builder.html">
+          <div class="shot"><img src="shots/journey-builder.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Visual Journey Builder</div>
+            <div class="desc">
+              Trigger → branch → waits → reminders → attendance split, with a step
+              inspector and WhatsApp preview
+            </div>
+            <div class="dims">2560 × 2912</div>
+          </div>
+        </a>
+        <a class="card" href="screens/journey-builder-spacious.html">
+          <div class="shot">
+            <img src="shots/journey-builder-spacious.png" alt="" />
+          </div>
+          <div class="body">
+            <div class="title">Spacious canvas</div>
+            <div class="desc">
+              Same graph full-bleed, with a draggable palette of triggers, messages and
+              logic
+            </div>
+            <div class="dims">2560 × 3198</div>
+          </div>
+        </a>
+        <a class="card" href="screens/step-branch-rules.html">
+          <div class="shot"><img src="shots/step-branch-rules.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Step &amp; branch rules</div>
+            <div class="desc">
+              One condition, both paths, and the message one path would send
+            </div>
+            <div class="dims">2560 × 2182</div>
+          </div>
+        </a>
+      </div>
+
+      <h2>Modals</h2>
+      <p class="note">
+        Each over its own version of the parent page — those backgrounds are drawn
+        differently from the eight screens above, down to different sample numbers.
+      </p>
+      <div class="grid">
+        <a class="card" href="screens/modal-create-journey.html">
+          <div class="shot"><img src="shots/modal-create-journey.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Create journey</div>
+            <div class="desc">Pick a trigger, or start from a proven blueprint</div>
+            <div class="dims">2560 × 2048</div>
+          </div>
+        </a>
+        <a class="card" href="screens/modal-create-campaign.html">
+          <div class="shot"><img src="shots/modal-create-campaign.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Campaign wizard</div>
+            <div class="desc">
+              Audience → template → variables and preview → schedule
+            </div>
+            <div class="dims">2560 × 2048</div>
+          </div>
+        </a>
+        <a class="card" href="screens/modal-import-contacts.html">
+          <div class="shot"><img src="shots/modal-import-contacts.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Add &amp; import contacts</div>
+            <div class="desc">
+              CSV, integration sync or one number; columns auto-mapped, tags applied
+            </div>
+            <div class="dims">2560 × 2048</div>
+          </div>
+        </a>
+      </div>
+
+      <h2>The WebinarLiv shell</h2>
+      <p class="note">
+        Not Engage screens: these wear the WebinarLiv sidebar, where WhatsApp is one
+        integration among video destinations and calendars. They navigate to each other,
+        and the sidebar items whose screens were never drawn say so when clicked rather
+        than sitting dead. <em>Manage Numbers &amp; Templates in Hub</em> on Engage's
+        Settings crosses over to the hub — the switcher always shows which shell you are
+        in.
+      </p>
+      <div class="grid">
+        <a class="card" href="screens/whatsapp-hub.html">
+          <div class="shot"><img src="shots/whatsapp-hub.png" alt="" /></div>
+          <div class="body">
+            <div class="title">WhatsApp Channel &amp; Operations Hub</div>
+            <div class="desc">
+              The inbox: chats needing a reply, bot-handled threads, senders and quick
+              replies
+            </div>
+            <div class="dims">2560 × 2572</div>
+          </div>
+        </a>
+        <a class="card" href="screens/settings-channels.html">
+          <div class="shot"><img src="shots/settings-channels.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Settings — Integrations &amp; Channels</div>
+            <div class="desc">
+              Live studio, YouTube, Zoom, WhatsApp sender, email, calendar and webhooks
+            </div>
+            <div class="dims">2560 × 2476</div>
+          </div>
+        </a>
+      </div>
+
+      <h2>The Flow Engine shell</h2>
+      <p class="note">
+        A third shell, drawn against the same design system but built around
+        <b>Core Modules</b> rather than Engage's nav — and the answer to “where is the flow
+        builder?”. Four of its six modules exist; Template Library and Audience &amp;
+        Segmentation were never drawn. Engage's <em>View Activity Log</em> and
+        <em>View Broadcast Logs</em> land here, because this is where the logs are.
+      </p>
+      <div class="grid">
+        <a class="card" href="screens/flow-builder.html">
+          <div class="shot"><img src="shots/flow-builder.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Flow Builder — Visual Automation Orchestrator</div>
+            <div class="desc">
+              The four production flows on one board: registration, calendar, countdown,
+              post-webinar
+            </div>
+            <div class="dims">2560 × 3992</div>
+          </div>
+        </a>
+        <a class="card" href="screens/attendance.html">
+          <div class="shot"><img src="shots/attendance.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Attendance &amp; Engagement Telemetry</div>
+            <div class="desc">
+              Cohorts by watch time, with the thresholds that define them editable
+            </div>
+            <div class="dims">2560 × 3620</div>
+          </div>
+        </a>
+        <a class="card" href="screens/exec-logs.html">
+          <div class="shot"><img src="shots/exec-logs.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Execution &amp; Delivery Logs</div>
+            <div class="desc">
+              Every message attempt with its status, and the payload behind each one
+            </div>
+            <div class="dims">2560 × 2948</div>
+          </div>
+        </a>
+        <a class="card" href="screens/database-webhooks.html">
+          <div class="shot"><img src="shots/database-webhooks.png" alt="" /></div>
+          <div class="body">
+            <div class="title">Database &amp; Webhooks Architecture</div>
+            <div class="desc">
+              The schema behind the flows, the webhook endpoints, and a payload simulator
+            </div>
+            <div class="dims">2560 × 5200</div>
+          </div>
+        </a>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        The screens load Tailwind and Inter from a CDN, so open them online. Provenance,
+        what is wired and what only looks wired, and how this relates to the real
+        <code>web/</code> app: <a href="README.md">README.md</a>. Tokens and component
+        rules: <a href="design-system.md">design-system.md</a>.
+      </div>
+    </footer>
+  </body>
+</html>

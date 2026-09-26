@@ -1,0 +1,99 @@
+forum
+Engage
+Acme
+arrow_drop_down
+corporate_fare
+Acme Growth Co
+unfold_more
+Dashboard
+Contacts
+Journeys
+Campaigns
+Templates
+Analytics
+Integrations
+Settings
+WABA Connected
++1 555-0192
+Healthy
+person
+Ganesh S P
+Owner / Admin
+logout
+dock_to_right
+Journeys
+/
+Webinar Onboarding
+save
+Save
+publish
+Publish Flow
+Webinar Onboarding & VIP Conversion
+arrow_selector_tool
+pan_tool
+remove
+100%
+add
+crop_free
+search
+Triggers
+expand_less
+webhook
+Incoming Webhook
+Webhook trigger payload
+drag_indicator
+sell
+Tag Appended
+Contact added to tag
+drag_indicator
+WhatsApp Messages
+expand_less
+mark_chat_unread
+Approved HSM Template
+Official template message
+drag_indicator
+smart_button
+Interactive Quick Reply
+Action button messages
+drag_indicator
+Logic & Timing
+expand_less
+alt_route
+If / Else Rule Split
+Branch by conditions
+drag_indicator
+hourglass_top
+Wait Interval
+Delay or wait until event
+drag_indicator
+bolt
+Webinar Registration
+Triggers when a new attendee registers on the landing page
+arrow_downward
+add
+alt_route
+VIP Group Member?
+Check whether the contact has already joined the VIP community
+False · Not In Group
+True · VIP Member
+add
+chat
+Send Community Invite
+WhatsApp message with group join link
+Hi Ganesh! 🚀 Join our exclusive WhatsApp Mastermind group for live slides.
+calendar_add_on
+Send Calendar Passcode
+Direct calendar reservation and access key
+Welcome back VIP! Here is your 1-click calendar reservation and session passcode.
+Paths Converge
+add
+schedule
+Wait until 2 hours before
+Holds contacts until exactly 2 hours prior to scheduled event start
+arrow_downward
+add
+notifications_active
+2h Reminder Alert
+Sends dynamic join link with countdown notice
+add
+Add next step

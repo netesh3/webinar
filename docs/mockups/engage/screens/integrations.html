@@ -1,0 +1,596 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><!-- demo-guard --><script>window.__demoErrors=[];addEventListener('error',function(e){if(e.target===window||e.error)window.__demoErrors.push(String(e.message||e.error));},true);</script><!-- /demo-guard --><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-primary":"#ffffff","on-surface":"#0b1c30","tertiary-fixed":"#6ffbbe","outline":"#777587","surface-container-lowest":"#ffffff","surface":"#f8f9ff","surface-container":"#e5eeff","surface-container-low":"#eff4ff","primary":"#3525cd","error":"#ba1a1a","secondary":"#565e74","on-secondary":"#ffffff","tertiary-container":"#006e4b","on-primary-fixed":"#0f0069","secondary-fixed-dim":"#bec6e0","background":"#f8f9ff","on-tertiary":"#ffffff","primary-fixed-dim":"#c3c0ff","on-secondary-fixed":"#131b2e","surface-container-high":"#dce9ff","on-background":"#0b1c30","on-tertiary-fixed":"#002113","tertiary":"#005338","outline-variant":"#c7c4d8","surface-variant":"#d3e4fe","inverse-on-surface":"#eaf1ff","on-tertiary-container":"#67f4b7","secondary-container":"#dae2fd","on-secondary-fixed-variant":"#3f465c","on-secondary-container":"#5c647a","surface-tint":"#4d44e3","surface-bright":"#f8f9ff","inverse-primary":"#c3c0ff","tertiary-fixed-dim":"#4edea3","surface-container-highest":"#d3e4fe","on-primary-fixed-variant":"#3323cc","inverse-surface":"#213145","on-error":"#ffffff","on-error-container":"#93000a","primary-container":"#4f46e5","on-primary-container":"#dad7ff","primary-fixed":"#e2dfff","surface-dim":"#cbdbf5","error-container":"#ffdad6","on-tertiary-fixed-variant":"#005236","secondary-fixed":"#dae2fd"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"margin-compact":"1rem","space-md":"0.75rem","space-sm":"0.5rem","gutter":"1rem","margin":"1.5rem","space-xl":"1.5rem","space-lg":"1rem","space-xs":"0.25rem","gutter-compact":"0.5rem"},"fontFamily":{"display-lg":["Plus Jakarta Sans"],"body-lg":["Inter"],"body-sm":["Inter"],"code-sm":["Inter"],"headline-lg":["Plus Jakarta Sans"],"display-sm":["Plus Jakarta Sans"],"label-md":["Inter"],"label-sm":["Inter"],"body-md":["Inter"],"headline-md":["Plus Jakarta Sans"]},"fontSize":{"display-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"700"}],"body-lg":["15px",{"lineHeight":"22px","letterSpacing":"-0.005em","fontWeight":"400"}],"body-sm":["13px",{"lineHeight":"18px","fontWeight":"400"}],"code-sm":["12px",{"lineHeight":"16px","fontWeight":"500"}],"headline-lg":["20px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"600"}],"display-sm":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"600"}],"label-md":["12px",{"lineHeight":"16px","letterSpacing":"0.01em","fontWeight":"600"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.02em","fontWeight":"600"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"400"}],"headline-md":["16px",{"lineHeight":"24px","letterSpacing":"-0.005em","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-screen w-64 bg-inverse-surface text-inverse-on-surface z-50 flex flex-col justify-between shadow-[0_1px_8px_rgba(0,0,0,0.06)]"><div class="flex flex-col"><div class="h-14 px-margin flex items-center justify-between"><div class="flex items-center gap-space-sm"><div class="w-8 h-8 rounded-lg bg-primary-container flex items-center justify-center text-on-primary font-headline-md text-headline-md font-bold shadow-sm">E</div><span class="font-headline-md text-headline-md tracking-tight font-bold text-inverse-on-surface">Engage</span></div><span class="font-label-sm text-label-sm text-tertiary-fixed-dim bg-tertiary-container/30 px-space-xs py-0.5 rounded-DEFAULT uppercase tracking-wider font-semibold">PRO</span></div><div class="px-space-md py-space-xs"><button class="w-full flex items-center justify-between px-space-md py-space-sm bg-surface-container-highest/10 hover:bg-surface-container-highest/20 rounded-lg text-left transition-colors" type="button"><div class="flex items-center gap-space-sm overflow-hidden"><div class="w-5 h-5 rounded-DEFAULT bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[14px]">corporate_fare</span></div><span class="font-body-sm text-body-sm font-medium text-inverse-on-surface truncate">Acme Growth Co</span></div><span class="material-symbols-outlined text-outline-variant text-[18px]">unfold_more</span></button></div><nav class="flex flex-col gap-0.5 px-space-md mt-space-sm" data-active-classes="bg-primary-container text-on-primary font-medium shadow-sm"><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="dashboard" href="dashboard.html"><span class="material-symbols-outlined text-[20px]">grid_view</span><span>Dashboard</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="contacts" href="contacts.html"><span class="material-symbols-outlined text-[20px]">group</span><span>Contacts</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="journeys" href="journeys.html"><span class="material-symbols-outlined text-[20px]">alt_route</span><span>Journeys</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="campaigns" href="campaigns.html"><span class="material-symbols-outlined text-[20px]">campaign</span><span>Campaigns</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="templates" href="templates.html"><span class="material-symbols-outlined text-[20px]">description</span><span>Templates</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="analytics" href="analytics.html"><span class="material-symbols-outlined text-[20px]">query_stats</span><span>Analytics</span></a><a aria-current="page" class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg transition-all bg-primary-container text-on-primary font-medium shadow-sm" data-path="integrations" href="#"><span class="material-symbols-outlined text-[20px]">hub</span><span>Integrations</span></a><a class="flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all" data-path="settings" href="settings.html"><span class="material-symbols-outlined text-[20px]">settings</span><span>Settings</span></a></nav></div><div class="flex flex-col gap-space-md p-space-md"><div class="bg-surface-container-highest/10 rounded-lg p-space-md flex flex-col gap-space-xs"><div class="flex items-center justify-between"><span class="font-label-sm text-label-sm text-outline-variant uppercase tracking-wider font-semibold">Health Status</span><div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full bg-tertiary-fixed-dim animate-pulse"></span><span class="font-label-sm text-label-sm font-semibold text-tertiary-fixed-dim">HEALTHY</span></div></div><div class="flex items-center gap-space-xs text-inverse-on-surface font-body-sm text-body-sm"><span class="truncate">WABA Connected</span><span class="text-outline-variant">•</span><span class="font-code-sm text-code-sm text-outline-variant">+1 555-0192</span></div></div><div class="flex items-center justify-between pt-space-xs"><div class="flex items-center gap-space-md overflow-hidden"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="font-headline-md text-headline-md text-on-primary font-semibold">G</span></div><div class="flex flex-col min-w-0"><span class="font-body-sm text-body-sm font-semibold text-inverse-on-surface truncate">Ganesh S P</span><span class="font-label-sm text-label-sm text-outline-variant truncate">Owner / Admin</span></div></div><a class="p-space-xs text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 rounded-DEFAULT transition-colors" data-path="logout" href="#" title="Sign out"><span class="material-symbols-outlined text-[20px]">logout</span></a></div></div></aside><div class="pl-64 min-h-screen flex flex-col bg-surface"><header class="fixed top-0 left-64 right-0 h-14 bg-surface-container-lowest/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex items-center justify-between px-margin"><div class="flex items-center gap-space-lg flex-1 max-w-xl"><div class="flex items-center gap-space-xs text-on-surface-variant font-body-sm text-body-sm select-none"><span class="hover:text-on-surface cursor-pointer">Platform</span><span class="text-outline-variant">/</span><span class="text-on-surface font-medium">Production</span></div><div class="relative flex-1 hidden md:block"><span class="material-symbols-outlined absolute left-space-md top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span><input class="w-full h-9 pl-9 pr- space-md bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest transition-colors" placeholder="Search contacts, journeys, templates... (/)" type="text"></div></div><div class="flex items-center gap-space-md shrink-0"><button class="w-9 h-9 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors" title="Help &amp; Documentation" type="button"><span class="material-symbols-outlined text-[20px]">help</span></button><button class="relative w-9 h-9 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors" title="Notifications" type="button"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-error ring-2 ring-surface-container-lowest"></span></button><button class="h-9 px-space-md rounded-lg bg-primary-container text-on-primary font-body-sm text-body-sm font-semibold flex items-center gap-space-xs hover:bg-primary shadow-sm transition-all" type="button"><span class="material-symbols-outlined text-[18px]">add</span><span>New Broadcast</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><main class="relative pt-14 flex-1 w-full px-margin"><div class="flex flex-col w-full">
+<div class="py-space-xl flex flex-col gap-space-xl">
+<!-- Top Action & Context Header -->
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md pb-space-lg bg-surface-container-lowest p-space-xl rounded-xl shadow-sm">
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-outline">Automation Pipelines</span>
+<span class="text-outline-variant font-body-sm text-body-sm">/</span>
+<span class="font-label-sm text-label-sm font-semibold text-primary uppercase tracking-wider">Sync Mesh</span>
+</div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface font-bold tracking-tight">Integrations &amp; Data Sources</h1>
+<p class="font-body-md text-body-md text-secondary max-w-3xl">
+          Connect Webinar Liv, external CRMs, calendars, and webhooks to trigger automated WhatsApp journeys with millisecond-grade sync reliability.
+        </p>
+</div>
+<div class="flex items-center gap-space-sm shrink-0">
+<button class="h-9 px-space-md bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-semibold rounded-lg flex items-center gap-space-xs transition-colors shadow-sm" type="button">
+<span class="material-symbols-outlined text-[18px]">key</span>
+<span>API Keys &amp; Webhooks</span>
+</button>
+<button class="h-9 px-space-md bg-primary hover:bg-primary-container text-on-primary font-body-sm text-body-sm font-semibold rounded-lg flex items-center gap-space-xs transition-all shadow-sm" type="button">
+<span class="material-symbols-outlined text-[18px]">add_link</span>
+<span>+ Add New Integration</span>
+</button>
+</div>
+</div>
+<!-- Telemetry Strip -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
+<div class="bg-surface-container-lowest p-space-md rounded-lg shadow-sm flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-secondary">Inbound Events / Hour</span>
+<p class="font-headline-md text-headline-md text-on-surface font-bold mt-0.5">8,419</p>
+</div>
+<div class="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[22px]">bolt</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-space-md rounded-lg shadow-sm flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-secondary">Avg Field Transformation</span>
+<p class="font-headline-md text-headline-md text-on-surface font-bold mt-0.5">14.2ms</p>
+</div>
+<div class="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-[22px]">timer</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-space-md rounded-lg shadow-sm flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-secondary">Payload Pipeline Health</span>
+<p class="font-headline-md text-headline-md text-tertiary font-bold mt-0.5">99.99%</p>
+</div>
+<div class="w-10 h-10 rounded-lg bg-tertiary-container/10 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-[22px]">verified</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-space-md rounded-lg shadow-sm flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-secondary">Triggered WhatsApp Runs</span>
+<p class="font-headline-md text-headline-md text-on-surface font-bold mt-0.5">1,482 today</p>
+</div>
+<div class="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-primary-container">
+<span class="material-symbols-outlined text-[22px]">chat</span>
+</div>
+</div>
+</div>
+<!-- Active Connections Area -->
+<div class="flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<h2 class="font-headline-md text-headline-md text-on-surface font-bold">Active Data Connections</h2>
+<span class="font-label-sm text-label-sm bg-surface-container-high text-on-surface px-space-xs py-0.5 rounded-DEFAULT font-semibold">3 Connected</span>
+</div>
+<span class="font-code-sm text-code-sm text-outline">Meta Graph v19.0 • Auto-Retry Enabled</span>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-md">
+<!-- Highlight Card: Webinar Liv -->
+<div class="lg:col-span-12 xl:col-span-6 bg-surface-container-lowest p-space-lg rounded-xl shadow-sm relative overflow-hidden flex flex-col justify-between">
+<div class="flex flex-col gap-space-md">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-space-md">
+<div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]">videocam</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-space-xs">
+<h3 class="font-headline-md text-headline-md text-on-surface font-bold">Webinar Liv</h3>
+<span class="font-label-sm text-label-sm bg-primary-fixed text-on-primary-fixed px-1.5 py-0.5 rounded-DEFAULT uppercase tracking-wider font-semibold">Native Event Hook</span>
+</div>
+<span class="font-code-sm text-code-sm text-outline">Endpoint: wnv-prd-us01.engage.io/hook/v1</span>
+</div>
+</div>
+<div class="inline-flex items-center gap-1.5 px-space-xs py-1 rounded-DEFAULT bg-tertiary-container/15 text-tertiary font-label-sm text-label-sm font-semibold">
+<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
+<span>Connected • Syncing Realtime</span>
+</div>
+</div>
+<p class="font-body-sm text-body-sm text-secondary">
+              Native bi-directional webinar integration. Imports registrants, live attendance timestamps, and post-session watch duration automatically into conversational segmentation loops.
+            </p>
+<div class="p-space-sm bg-surface-container-low rounded-lg flex flex-wrap items-center gap-space-md text-secondary font-code-sm text-code-sm">
+<span class="text-on-surface font-semibold">1,482 Registrations synced</span>
+<span class="text-outline-variant">•</span>
+<span>6 Webinars connected</span>
+<span class="text-outline-variant">•</span>
+<span class="text-tertiary font-medium">0 Sync errors (Last 24h)</span>
+</div>
+</div>
+<div class="flex flex-wrap items-center justify-between pt-space-lg mt-space-md border-t-0 gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<button class="h-8 px-space-md bg-primary-container hover:bg-primary text-on-primary font-body-sm text-body-sm font-semibold rounded-lg flex items-center gap-space-xs transition-colors shadow-sm" onclick="document.getElementById('mapping-panel').scrollIntoView({ behavior: 'smooth' })" type="button">
+<span class="material-symbols-outlined text-[16px]">tune</span>
+<span>Configure Field Mapping</span>
+</button>
+<button class="h-8 px-space-md bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-semibold rounded-lg flex items-center gap-space-xs transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">sync</span>
+<span>Sync Now</span>
+</button>
+</div>
+<button class="font-body-sm text-body-sm text-error hover:underline px-space-xs font-medium" type="button">
+              Disconnect
+            </button>
+</div>
+</div>
+<!-- Card: WhatsApp Business API -->
+<div class="lg:col-span-6 xl:col-span-3 bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between">
+<div class="flex flex-col gap-space-md">
+<div class="flex items-start justify-between">
+<div class="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-[24px]">forum</span>
+</div>
+<div class="inline-flex items-center gap-1.5 px-space-xs py-0.5 rounded-DEFAULT bg-tertiary-container/15 text-tertiary font-label-sm text-label-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+<span>Cloud API v19.0</span>
+</div>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-bold">WhatsApp Business API</h3>
+<p class="font-body-sm text-body-sm text-secondary mt-1">
+                Direct Meta Graph API link for verified high-throughput template delivery and automated conversational flows.
+              </p>
+</div>
+<div class="p-space-sm bg-surface-container-low rounded-lg flex flex-col gap-1 font-code-sm text-code-sm text-secondary">
+<div class="flex justify-between">
+<span>Tier 1 Limit</span>
+<span class="text-on-surface font-semibold">1,000 msgs/day</span>
+</div>
+<div class="flex justify-between">
+<span>Quality Score</span>
+<span class="text-tertiary font-semibold">High Status</span>
+</div>
+<div class="flex justify-between">
+<span>Webhook Latency</span>
+<span class="text-on-surface font-semibold">28ms</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-space-xs pt-space-md mt-space-sm">
+<button class="flex-1 h-8 bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-semibold rounded-lg flex items-center justify-center gap-1 transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">call</span>
+<span>Manage Numbers</span>
+</button>
+<button class="h-8 px-space-sm bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm rounded-lg flex items-center justify-center transition-colors" title="Channel Health Details" type="button">
+<span class="material-symbols-outlined text-[18px]">monitor_heart</span>
+</button>
+</div>
+</div>
+<!-- Card: Google Calendar -->
+<div class="lg:col-span-6 xl:col-span-3 bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between">
+<div class="flex flex-col gap-space-md">
+<div class="flex items-start justify-between">
+<div class="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[24px]">calendar_today</span>
+</div>
+<div class="inline-flex items-center gap-1.5 px-space-xs py-0.5 rounded-DEFAULT bg-tertiary-container/15 text-tertiary font-label-sm text-label-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+<span>Connected</span>
+</div>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-bold">Google Calendar</h3>
+<p class="font-body-sm text-body-sm text-secondary mt-1">
+                Generates dynamic .ics invite links adjusted to recipient timezones for instant WhatsApp calendar additions.
+              </p>
+</div>
+<div class="p-space-sm bg-surface-container-low rounded-lg flex flex-col gap-1 font-code-sm text-code-sm text-secondary">
+<div class="flex justify-between">
+<span>Active Sync Rules</span>
+<span class="text-on-surface font-semibold">4 Triggers</span>
+</div>
+<div class="flex justify-between">
+<span>Auto Timezone Conv.</span>
+<span class="text-tertiary font-semibold">Active</span>
+</div>
+<div class="flex justify-between">
+<span>ICS Deliveries</span>
+<span class="text-on-surface font-semibold">912 Links</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-space-xs pt-space-md mt-space-sm">
+<button class="w-full h-8 bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-semibold rounded-lg flex items-center justify-center gap-1 transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">settings</span>
+<span>Settings</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Webinar Liv Data Mapping Engine Panel -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm p-space-xl flex flex-col gap-space-lg" id="mapping-panel">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-md pb-space-md bg-surface-container-low/40 -mx-space-xl -mt-space-xl p-space-xl rounded-t-xl">
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[20px]">hub</span>
+<h2 class="font-headline-lg text-headline-lg text-on-surface font-bold">Webinar Liv Data Mapping Engine</h2>
+</div>
+<p class="font-body-md text-body-md text-secondary">
+            Map incoming Webinar Liv registration and attendance webhook payload attributes to Engage Contact &amp; Attendance properties.
+          </p>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm text-secondary">Payload Format:</span>
+<span class="font-code-sm text-code-sm bg-surface-container px-2 py-1 rounded-DEFAULT text-on-surface font-semibold">JSON Webhook v2</span>
+</div>
+</div>
+<!-- Mapping Table Layout -->
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low text-secondary font-label-sm text-label-sm uppercase tracking-wider h-10">
+<th class="px-space-md font-semibold">Webinar Liv Payload Key (Source)</th>
+<th class="px-space-sm w-12 text-center">Transform</th>
+<th class="px-space-md font-semibold">Engage Unified Property (Target)</th>
+<th class="px-space-md font-semibold">Data Type</th>
+<th class="px-space-md text-center font-semibold">Preview Value</th>
+<th class="px-space-md text-right font-semibold">Required</th>
+</tr>
+</thead>
+<tbody class="divide-y-0 text-on-surface font-body-sm text-body-sm">
+<!-- Row 1 -->
+<tr class="h-12 hover:bg-surface-container-low/50 transition-colors">
+<td class="px-space-md font-code-sm text-code-sm text-primary font-medium">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[16px]">data_object</span>
+<span>attendee_name</span>
+</div>
+</td>
+<td class="px-space-sm text-center text-outline-variant">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</td>
+<td class="px-space-md">
+<div class="relative w-full max-w-xs">
+<select class="w-full h-8 px-space-sm bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface focus:outline-none focus:bg-surface-container-lowest">
+<option selected="">Contact.Full_Name</option>
+<option>Contact.First_Name</option>
+<option>Contact.Preferred_Alias</option>
+</select>
+</div>
+</td>
+<td class="px-space-md">
+<span class="font-label-sm text-label-sm bg-surface-container text-secondary px-2 py-0.5 rounded-DEFAULT">Text</span>
+</td>
+<td class="px-space-md text-center font-code-sm text-code-sm text-secondary">
+                "Rachel Dawson"
+              </td>
+<td class="px-space-md text-right">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded-DEFAULT bg-error-container/40 text-on-error-container font-label-sm text-label-sm font-semibold">Required</span>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="h-12 hover:bg-surface-container-low/50 transition-colors bg-surface-container-low/20">
+<td class="px-space-md font-code-sm text-code-sm text-primary font-medium">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[16px]">data_object</span>
+<span>attendee_phone</span>
+</div>
+</td>
+<td class="px-space-sm text-center text-outline-variant">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</td>
+<td class="px-space-md">
+<div class="relative w-full max-w-xs">
+<select class="w-full h-8 px-space-sm bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface focus:outline-none focus:bg-surface-container-lowest">
+<option selected="">Contact.Phone_Number</option>
+<option>Contact.Alt_Phone</option>
+</select>
+</div>
+</td>
+<td class="px-space-md">
+<span class="font-label-sm text-label-sm bg-surface-container text-secondary px-2 py-0.5 rounded-DEFAULT">E.164 Format</span>
+</td>
+<td class="px-space-md text-center font-code-sm text-code-sm text-secondary">
+                "+14155552671"
+              </td>
+<td class="px-space-md text-right">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded-DEFAULT bg-error-container/40 text-on-error-container font-label-sm text-label-sm font-semibold">Required</span>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="h-12 hover:bg-surface-container-low/50 transition-colors">
+<td class="px-space-md font-code-sm text-code-sm text-primary font-medium">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[16px]">data_object</span>
+<span>attendee_email</span>
+</div>
+</td>
+<td class="px-space-sm text-center text-outline-variant">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</td>
+<td class="px-space-md">
+<div class="relative w-full max-w-xs">
+<select class="w-full h-8 px-space-sm bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface focus:outline-none focus:bg-surface-container-lowest">
+<option selected="">Contact.Email</option>
+<option>Contact.Corporate_Email</option>
+</select>
+</div>
+</td>
+<td class="px-space-md">
+<span class="font-label-sm text-label-sm bg-surface-container text-secondary px-2 py-0.5 rounded-DEFAULT">Email</span>
+</td>
+<td class="px-space-md text-center font-code-sm text-code-sm text-secondary">
+                "rachel@acmegrowth.io"
+              </td>
+<td class="px-space-md text-right">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded-DEFAULT bg-surface-container text-secondary font-label-sm text-label-sm">Optional</span>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="h-12 hover:bg-surface-container-low/50 transition-colors bg-surface-container-low/20">
+<td class="px-space-md font-code-sm text-code-sm text-primary font-medium">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[16px]">data_object</span>
+<span>webinar_id</span>
+</div>
+</td>
+<td class="px-space-sm text-center text-outline-variant">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</td>
+<td class="px-space-md">
+<div class="relative w-full max-w-xs">
+<select class="w-full h-8 px-space-sm bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface focus:outline-none focus:bg-surface-container-lowest">
+<option selected="">Event.Webinar_ID</option>
+<option>Metadata.External_ID</option>
+</select>
+</div>
+</td>
+<td class="px-space-md">
+<span class="font-label-sm text-label-sm bg-surface-container text-secondary px-2 py-0.5 rounded-DEFAULT">String</span>
+</td>
+<td class="px-space-md text-center font-code-sm text-code-sm text-secondary">
+                "wnv_881903"
+              </td>
+<td class="px-space-md text-right">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded-DEFAULT bg-error-container/40 text-on-error-container font-label-sm text-label-sm font-semibold">Required</span>
+</td>
+</tr>
+<!-- Row 5 -->
+<tr class="h-12 hover:bg-surface-container-low/50 transition-colors">
+<td class="px-space-md font-code-sm text-code-sm text-primary font-medium">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[16px]">data_object</span>
+<span>webinar_title</span>
+</div>
+</td>
+<td class="px-space-sm text-center text-outline-variant">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</td>
+<td class="px-space-md">
+<div class="relative w-full max-w-xs">
+<select class="w-full h-8 px-space-sm bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface focus:outline-none focus:bg-surface-container-lowest">
+<option selected="">Event.Title</option>
+<option>Event.Topic_Heading</option>
+</select>
+</div>
+</td>
+<td class="px-space-md">
+<span class="font-label-sm text-label-sm bg-surface-container text-secondary px-2 py-0.5 rounded-DEFAULT">Text</span>
+</td>
+<td class="px-space-md text-center font-code-sm text-code-sm text-secondary truncate max-w-[140px]">
+                "Scale WhatsApp Conversions 2025"
+              </td>
+<td class="px-space-md text-right">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded-DEFAULT bg-surface-container text-secondary font-label-sm text-label-sm">Optional</span>
+</td>
+</tr>
+<!-- Row 6 -->
+<tr class="h-12 hover:bg-surface-container-low/50 transition-colors bg-surface-container-low/20">
+<td class="px-space-md font-code-sm text-code-sm text-primary font-medium">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[16px]">data_object</span>
+<span>live_join_time</span>
+</div>
+</td>
+<td class="px-space-sm text-center text-outline-variant">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</td>
+<td class="px-space-md">
+<div class="relative w-full max-w-xs">
+<select class="w-full h-8 px-space-sm bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface focus:outline-none focus:bg-surface-container-lowest">
+<option selected="">Attendance.Join_Timestamp</option>
+<option>Attendance.Session_Entry</option>
+</select>
+</div>
+</td>
+<td class="px-space-md">
+<span class="font-label-sm text-label-sm bg-surface-container text-secondary px-2 py-0.5 rounded-DEFAULT">Datetime</span>
+</td>
+<td class="px-space-md text-center font-code-sm text-code-sm text-secondary">
+                "2025-05-18T14:02:11Z"
+              </td>
+<td class="px-space-md text-right">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded-DEFAULT bg-surface-container text-secondary font-label-sm text-label-sm">Optional</span>
+</td>
+</tr>
+<!-- Row 7 -->
+<tr class="h-12 hover:bg-surface-container-low/50 transition-colors">
+<td class="px-space-md font-code-sm text-code-sm text-primary font-medium">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[16px]">data_object</span>
+<span>watch_duration</span>
+</div>
+</td>
+<td class="px-space-sm text-center text-outline-variant">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</td>
+<td class="px-space-md">
+<div class="relative w-full max-w-xs">
+<select class="w-full h-8 px-space-sm bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface focus:outline-none focus:bg-surface-container-lowest">
+<option selected="">Attendance.Watch_Minutes</option>
+<option>Attendance.Total_Seconds</option>
+</select>
+</div>
+</td>
+<td class="px-space-md">
+<span class="font-label-sm text-label-sm bg-surface-container text-secondary px-2 py-0.5 rounded-DEFAULT">Number (Min)</span>
+</td>
+<td class="px-space-md text-center font-code-sm text-code-sm text-secondary">
+                47
+              </td>
+<td class="px-space-md text-right">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded-DEFAULT bg-surface-container text-secondary font-label-sm text-label-sm">Optional</span>
+</td>
+</tr>
+<!-- Row 8 -->
+<tr class="h-12 hover:bg-surface-container-low/50 transition-colors bg-surface-container-low/20">
+<td class="px-space-md font-code-sm text-code-sm text-primary font-medium">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[16px]">data_object</span>
+<span>attended_flag</span>
+</div>
+</td>
+<td class="px-space-sm text-center text-outline-variant">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</td>
+<td class="px-space-md">
+<div class="relative w-full max-w-xs">
+<select class="w-full h-8 px-space-sm bg-surface-container-low rounded-lg font-body-sm text-body-sm text-on-surface focus:outline-none focus:bg-surface-container-lowest">
+<option selected="">Attendance.Status</option>
+<option>Attendance.Engagement_Tier</option>
+</select>
+</div>
+</td>
+<td class="px-space-md">
+<span class="font-label-sm text-label-sm bg-surface-container text-secondary px-2 py-0.5 rounded-DEFAULT">Enum (Attended/Brief/Missed)</span>
+</td>
+<td class="px-space-md text-center font-code-sm text-code-sm text-secondary">
+                "Attended"
+              </td>
+<td class="px-space-md text-right">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded-DEFAULT bg-error-container/40 text-on-error-container font-label-sm text-label-sm font-semibold">Required</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Action Footer with Dry-Run State -->
+<div class="flex flex-col sm:flex-row items-center justify-between gap-space-md pt-space-lg bg-surface-container-low/30 -mx-space-xl -mb-space-xl p-space-xl rounded-b-xl">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-tertiary text-[20px]">check_circle</span>
+<span class="font-body-sm text-body-sm text-secondary">All 8 critical schema parameters matched without validation conflicts.</span>
+</div>
+<div class="flex items-center gap-space-sm shrink-0">
+<button class="h-9 px-space-md bg-surface-container hover:bg-surface-container-high text-on-surface font-body-sm text-body-sm font-semibold rounded-lg flex items-center gap-space-xs transition-colors shadow-sm" type="button">
+<span class="material-symbols-outlined text-[18px]">play_circle</span>
+<span>Test Payload Sample</span>
+</button>
+<button class="h-9 px-space-lg bg-primary hover:bg-primary-container text-on-primary font-body-sm text-body-sm font-semibold rounded-lg flex items-center gap-space-xs transition-all shadow-sm" type="button">
+<span class="material-symbols-outlined text-[18px]">save</span>
+<span>Save Field Mapping</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Available Integrations Directory -->
+<div class="flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface font-bold">Available Integrations Directory</h2>
+<p class="font-body-sm text-body-sm text-secondary">Expand your customer graph with automated bi-directional touchpoints.</p>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm text-outline">Category:</span>
+<span class="font-label-sm text-label-sm font-semibold text-primary">All Connectors (12)</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-md">
+<!-- Google Sheets Card -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between hover:bg-surface-container-low/30 transition-colors">
+<div class="flex flex-col gap-space-sm">
+<div class="w-10 h-10 rounded-lg bg-tertiary-container/10 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-[24px]">table_chart</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-bold">Google Sheets</h3>
+<p class="font-body-sm text-body-sm text-secondary">
+              Real-time row appendage for instant attendee broadcasts and dynamic response appending.
+            </p>
+</div>
+<div class="pt-space-md mt-space-sm">
+<button class="w-full h-8 bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1" type="button">
+<span>Connect</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Zapier Card -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between hover:bg-surface-container-low/30 transition-colors">
+<div class="flex flex-col gap-space-sm">
+<div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[24px]">flash_on</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-bold">Zapier</h3>
+<p class="font-body-sm text-body-sm text-secondary">
+              Bridge Engage templates and WhatsApp triggers with 5,000+ business applications effortlessly.
+            </p>
+</div>
+<div class="pt-space-md mt-space-sm">
+<button class="w-full h-8 bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1" type="button">
+<span>Connect</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Custom Inbound Webhooks Card -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between hover:bg-surface-container-low/30 transition-colors">
+<div class="flex flex-col gap-space-sm">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[24px]">webhook</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-bold">Custom Inbound Webhooks</h3>
+<p class="font-body-sm text-body-sm text-secondary">
+              Accept arbitrary JSON payloads from backend servers with custom HMAC header validation.
+            </p>
+</div>
+<div class="pt-space-md mt-space-sm">
+<button class="w-full h-8 bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1" type="button">
+<span>Setup Endpoint</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- HubSpot CRM Card -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between hover:bg-surface-container-low/30 transition-colors">
+<div class="flex flex-col gap-space-sm">
+<div class="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[24px]">contact_page</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-bold">HubSpot CRM</h3>
+<p class="font-body-sm text-body-sm text-secondary">
+              Synchronize deals, lifecycle stage updates, and trigger WhatsApp sales reps follow-ups.
+            </p>
+</div>
+<div class="pt-space-md mt-space-sm">
+<button class="w-full h-8 bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1" type="button">
+<span>Connect</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script>
+  // Ensure the sidebar navigation active indicator properly marks Integrations
+  document.addEventListener('DOMContentLoaded', () => {
+    const navLinks = document.querySelectorAll('aside nav a');
+    navLinks.forEach(link => {
+      if (link.getAttribute('data-path') === 'integrations') {
+        link.className = 'flex items-center gap-space-md px-space-md py-space-sm rounded-lg bg-primary-container text-on-primary font-medium shadow-sm transition-all';
+      } else {
+        link.className = 'flex items-center gap-space-md px-space-md py-space-sm rounded-lg text-outline-variant hover:text-inverse-on-surface hover:bg-surface-container-highest/10 font-body-sm text-body-sm transition-all';
+      }
+    });
+  });
+</script></main></div><!-- demo-chrome --><style>.sr-only:not(input):not(select):not(textarea){left:0;top:0}</style><div id="demo-switcher" style="position:fixed;right:16px;bottom:16px;z-index:9999;font:500 12px/1.4 Inter,system-ui,sans-serif;"><details style="background:#fff;border:1px solid #c7c4d8;border-radius:10px;box-shadow:0 8px 30px rgba(11,28,48,.18);max-width:340px;overflow:hidden"><summary style="cursor:pointer;padding:9px 13px;list-style:none;color:#3525cd;font-weight:600">All 20 screens</summary><div style="max-height:62vh;overflow:auto;padding:4px 0 8px"><a href="../index.html" style="display:block;padding:6px 13px;color:#464555;text-decoration:none">← Contact sheet</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — the eight main screens</div><a href="dashboard.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Dashboard - Engage</a><a href="contacts.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Contacts & Audience CRM - Engage</a><a href="journeys.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Automated Journeys - Engage</a><a href="campaigns.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Campaigns & Broadcasts - Engage</a><a href="templates.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Templates & Variable Inspector - Engage</a><a href="analytics.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Analytics & Conversions - Engage</a><a href="integrations.html" style="display:block;padding:5px 13px;text-decoration:none;color:#3525cd;background:#e5eeff;font-weight:600">Integrations & Webinar Liv Mapping - Engage</a><a href="settings.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Settings - Engage</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — journey builder</div><a href="journey-builder.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Visual Journey Builder - Engage</a><a href="journey-builder-spacious.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Engage - Visual Journey Builder (Spacious Canvas)</a><a href="step-branch-rules.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Engage - Step & Branch Rules Configuration</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Engage — modals</div><a href="modal-create-journey.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Create Journey Modal - Engage</a><a href="modal-create-campaign.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Create Campaign Wizard Modal - Engage</a><a href="modal-import-contacts.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Add & Import Contacts Modal - Engage</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">WebinarLiv shell</div><a href="settings-channels.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Settings - Integrations & Channels</a><a href="whatsapp-hub.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">WhatsApp Channel & Operations Hub</a><div style="padding:8px 13px 3px;color:#777587;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Flow Engine shell</div><a href="flow-builder.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Flow Builder - Visual Automation Orchestrator</a><a href="attendance.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Attendance & Engagement Telemetry</a><a href="exec-logs.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Execution & Delivery Logs</a><a href="database-webhooks.html" style="display:block;padding:5px 13px;text-decoration:none;color:#464555">Database & Webhooks Architecture</a><div style="padding:9px 13px 2px;color:#777587;font-size:10.5px;border-top:1px solid #e5eeff;margin-top:6px">Buttons and filters are simulated — nothing is stored. <a href="../README.md" style="color:#3525cd">What is wired</a></div></div></details></div><script src="../demo.js" data-demo></script><!-- /demo-chrome --></body></html>

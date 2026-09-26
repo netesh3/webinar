@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -121,6 +122,9 @@ func (s *Store) Notify(ctx context.Context, q Querier, n Notification) error {
 // Narrow on purpose: it hands out "something you can Exec against", not *pgxpool.Pool, so a
 // caller cannot start reaching past the store for things the store should be doing.
 func (s *Store) DB() Querier { return s.pool }
+
+// Pool is the connection pool itself, for a module that keeps its own SQL (engage/crmstore).
+func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 
 /* HostAlerts returns a host's in-app notifications, newest first.
  *
@@ -296,22 +300,21 @@ func (s *Store) MarkDelivered(ctx context.Context, id, delivery, reason string) 
 	return s.RecordSendAttempt(ctx, id, delivery, reason)
 }
 
-/* The three statements below all name the WhatsApp kinds alongside the email ones.
+/* The three statements below retire or move unsent EMAIL reminders when a webinar decision
+ * changes what they promise.
  *
- * Every one of them is a promise about a message that has not gone out yet, and a
- * WhatsApp message is the one where breaking it costs the host money and lands on
- * somebody's phone: a reminder for a webinar that was cancelled, or one that still
- * says "in an hour" three hours after it was moved. Whenever a kind is added to the
- * outbox it has to be added here too, which is why they are kept together.
+ * Each has a WhatsApp twin in engage/crmstore/webinars.go, run by the CRM on the matching
+ * Engage hook. The split is by kind: every 'wa_*' kind belongs to the CRM. A new email kind
+ * that promises something about a future session goes here; a new WhatsApp one goes there.
+ * The pair is covered by TestWhatsAppRemindersFollowWebinar in package api.
  */
 
-/* SkipPendingRemindersForRegistration drops unsent reminders when a seat is declined.
+/* SkipPendingRemindersForRegistration drops unsent email reminders when a seat is declined.
  *
- * The WhatsApp confirmation is in the list and the email one is not, because they
- * are queued at different moments: the email confirmation is only written once a
- * registration is approved, while the WhatsApp one is written on registration and
- * held by the sweep until the host decides. A decline is that decision, and the row
- * would otherwise wait for an approval that is never coming.
+ * Email kinds only. The WhatsApp rows for the same registration are the CRM's, and it
+ * retires them itself when told about the decision (Engage.OnRegistrationsDecided; see
+ * engage/crmstore/webinars.go). The email confirmation is not in the list because it is
+ * only ever written once a registration is approved.
  */
 func (s *Store) SkipPendingRemindersForRegistration(ctx context.Context, registrationID string) error {
 	_, err := s.pool.Exec(ctx, `
@@ -319,12 +322,12 @@ func (s *Store) SkipPendingRemindersForRegistration(ctx context.Context, registr
 		   SET delivery = 'skipped', delivery_error = 'registration declined', delivered_at = now()
 		 WHERE registration_id = $1
 		   AND delivery = 'pending'
-		   AND kind IN ('reminder_24h','reminder_1h',
-		                'wa_reminder_24h','wa_reminder_1h','wa_registration_confirmed')`, registrationID)
+		   AND kind IN ('reminder_24h','reminder_1h')`, registrationID)
 	return err
 }
 
-/* RescheduleRemindersForWebinar moves unsent 24h/1h due times when the host changes starts_at.
+/* RescheduleRemindersForWebinar moves unsent email 24h/1h due times when the host changes
+ * starts_at. The WhatsApp ones move in the CRM, on Engage.OnRescheduled.
  *
  * $2 is cast explicitly, and it matters: without the cast Postgres resolves the
  * parameter's type from `$2 - interval '24 hours'`, decides it is an interval, and
@@ -337,17 +340,16 @@ func (s *Store) RescheduleRemindersForWebinar(ctx context.Context, slug string, 
 		   SET due_at = CASE n.kind
 		                  WHEN 'reminder_24h'    THEN $2::timestamptz - interval '24 hours'
 		                  WHEN 'reminder_1h'     THEN $2::timestamptz - interval '1 hour'
-		                  WHEN 'wa_reminder_24h' THEN $2::timestamptz - interval '24 hours'
-		                  WHEN 'wa_reminder_1h'  THEN $2::timestamptz - interval '1 hour'
 		                END
 		  FROM webinars w
 		 WHERE n.webinar_id = w.id AND w.slug = $1
 		   AND n.delivery = 'pending'
-		   AND n.kind IN ('reminder_24h','reminder_1h','wa_reminder_24h','wa_reminder_1h')`, slug, startsAt)
+		   AND n.kind IN ('reminder_24h','reminder_1h')`, slug, startsAt)
 	return err
 }
 
-// SkipRemindersForEndedWebinar stops telling people about a session that will not happen.
+// SkipRemindersForEndedWebinar stops emailing people about a session that will not happen.
+// The CRM retires its own WhatsApp rows on Engage.OnEnded.
 func (s *Store) SkipRemindersForEndedWebinar(ctx context.Context, slug string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE notifications n
@@ -355,8 +357,7 @@ func (s *Store) SkipRemindersForEndedWebinar(ctx context.Context, slug string) e
 		  FROM webinars w
 		 WHERE n.webinar_id = w.id AND w.slug = $1
 		   AND n.delivery = 'pending'
-		   AND n.kind IN ('reminder_24h','reminder_1h','registration_confirmed','registration_approved',
-		                  'wa_reminder_24h','wa_reminder_1h','wa_registration_confirmed')
+		   AND n.kind IN ('reminder_24h','reminder_1h','registration_confirmed','registration_approved')
 		   AND n.due_at > now()`, slug)
 	return err
 }

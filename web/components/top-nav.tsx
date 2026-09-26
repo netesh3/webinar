@@ -9,6 +9,7 @@ import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
+import { engageNavItem } from "@/engage";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
@@ -45,7 +46,7 @@ function linksFor(signedIn: boolean, canHost: boolean) {
   // empty and their own registrations are reachable only by typing the URL. Same
   // label as the tab, since it is the same list; the /my-webinars path stays as it
   // is, because renaming a URL breaks the links already sent out to it.
-  if (canHost) return [{ href: "/host/crm", label: "Contacts" }];
+  if (canHost) return [engageNavItem];
   return signedIn ? [{ href: "/my-webinars", label: "WatchList" }] : [];
 }
 

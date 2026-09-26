@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>New broadcast · Engage</title>
+    <link rel="stylesheet" href="../assets/app.css" />
+  </head>
+  <body data-screen="modal-create-campaign" data-crumb="Campaigns / New broadcast">
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">
+            <svg data-icon="megaphone" class="icon icon-sm"></svg>
+            Broadcast manager
+          </div>
+          <h1>Campaigns</h1>
+          <p>One-off and scheduled WhatsApp broadcasts to a saved segment.</p>
+        </div>
+      </div>
+      <div class="grid g4">
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="send"></svg> Broadcasts sent</div>
+          <div class="metric-value">42</div>
+          <div class="metric-foot">4 this month</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="users"></svg> Recipients reached</div>
+          <div class="metric-value">38,420</div>
+          <div class="metric-foot">unique verified opt-ins</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="check-check"></svg> Avg delivery rate</div>
+          <div class="metric-value">98.2%</div>
+          <div class="metric-foot">691 failed or dropped</div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><svg data-icon="eye"></svg> Avg read rate</div>
+          <div class="metric-value">86.4%</div>
+          <div class="metric-foot">median open under 3 minutes</div>
+        </div>
+      </div>
+    </main>
+
+    <!--
+      Five layers, walkable in both directions. The rail is built by shell.js
+      from the panels below, and each panel supplies its own footer, so the
+      primary action always names what the step actually does.
+    -->
+    <div class="overlay">
+      <div class="modal modal-lg" data-wizard>
+        <div class="modal-head">
+          <span class="glyph glyph-wa glyph-lg"><svg data-icon="megaphone"></svg></span>
+          <div>
+            <h2>New broadcast</h2>
+            <p>Send an approved template to a segment through the Cloud API.</p>
+          </div>
+          <button class="icon-btn" data-close title="Close">
+            <svg data-icon="x"></svg>
+          </button>
+        </div>
+
+        <div class="steps" data-steps></div>
+
+        <div class="modal-body">
+          <!-- ------------------------------------------------ 1. audience -->
+          <section class="step-panel" data-step data-step-title="Audience">
+            <div class="step-lede">
+              <svg data-icon="info" class="icon icon-sm"></svg>
+              <span>
+                Name the send and choose who it reaches. Opt-in is audited here,
+                before a template is picked, because the eligible count decides
+                which templates are worth offering.
+              </span>
+            </div>
+
+            <div class="split">
+              <div class="stack">
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Broadcast</h3>
+                      <p>Internal naming, never shown to the recipient</p>
+                    </div>
+                  </div>
+                  <div class="card-body stack-sm">
+                    <div class="field">
+                      <label for="b-name">Broadcast name</label>
+                      <input
+                        class="input"
+                        id="b-name"
+                        value="September masterclass live alert"
+                      />
+                    </div>
+                    <div class="grid g2">
+                      <div class="field">
+                        <label for="b-purpose">Purpose</label>
+                        <select class="select" id="b-purpose" data-label="Purpose">
+                          <option>Utility — event reminder</option>
+                          <option>Marketing — offer or promotion</option>
+                          <option>Authentication — one-time code</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <label for="b-folder">Folder</label>
+                        <select class="select" id="b-folder" data-label="Folder">
+                          <option>Webinar campaigns</option>
+                          <option>Lead magnets</option>
+                          <option>Re-engagement</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Who receives this</h3>
+                      <p>Three routes to a recipient list</p>
+                    </div>
+                  </div>
+                  <div class="card-body stack-sm" data-radiogroup>
+                    <button
+                      class="radio-card"
+                      aria-checked="true"
+                      data-toast="Saved segment selected."
+                    >
+                      <span class="glyph glyph-brand"><svg data-icon="users" class="icon icon-sm"></svg></span>
+                      <span>
+                        <h4>A saved segment</h4>
+                        <p>Reuse an audience already filtered on Contacts. Stays live — new matches are included until the send starts.</p>
+                      </span>
+                    </button>
+                    <button
+                      class="radio-card"
+                      aria-checked="false"
+                      data-toast="Filter builder is not part of this mockup."
+                    >
+                      <span class="glyph"><svg data-icon="filter" class="icon icon-sm"></svg></span>
+                      <span>
+                        <h4>Build a filter now</h4>
+                        <p>Combine tags, source, webinar attendance and watch duration into a one-off audience.</p>
+                      </span>
+                    </button>
+                    <button
+                      class="radio-card"
+                      aria-checked="false"
+                      data-toast="Uploads are audited for opt-in before dispatch."
+                    >
+                      <span class="glyph"><svg data-icon="upload" class="icon icon-sm"></svg></span>
+                      <span>
+                        <h4>Upload a list</h4>
+                        <p>CSV of E.164 numbers. Every row is still checked against the opt-in ledger.</p>
+                      </span>
+                    </button>
+                  </div>
+                </section>
+
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Segment</h3>
+                      <p>312 contacts match right now</p>
+                    </div>
+                    <span class="pill pill-info right">Live</span>
+                  </div>
+                  <div class="card-body stack-sm">
+                    <div class="field">
+                      <label for="b-seg">Saved segment</label>
+                      <select class="select" id="b-seg" data-label="Segment">
+                        <option>Webinar-Sep26 registrants — 312</option>
+                        <option>Attended full webinar — 142</option>
+                        <option>No-show + brief attendance — 106</option>
+                        <option>All active opt-ins — 1,840</option>
+                      </select>
+                    </div>
+                    <div class="row wrap">
+                      <span class="tag tag-plain">Tag is Webinar-Sep26</span>
+                      <span class="tag tag-plain">Source is Webinar Liv</span>
+                      <span class="tag tag-plain">Attendance any</span>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div class="stack">
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Opt-in audit</h3>
+                      <p>Run against the consent ledger</p>
+                    </div>
+                    <span class="pill pill-ok right">248 eligible</span>
+                  </div>
+                  <div class="card-body">
+                    <dl class="kv">
+                      <div><dt>Matched the segment</dt><dd class="num">312</dd></div>
+                      <div><dt>Never opted in</dt><dd class="num">−48</dd></div>
+                      <div><dt>Opted out since</dt><dd class="num">−9</dd></div>
+                      <div><dt>Invalid E.164 number</dt><dd class="num">−7</dd></div>
+                      <div><dt>Eligible to message</dt><dd class="num">248</dd></div>
+                    </dl>
+                    <div class="meter meter-wa mt-12"><span style="width: 79.5%"></span></div>
+                    <p class="hint mt-8">79.5% of the segment is reachable.</p>
+                  </div>
+                </section>
+
+                <div class="note note-warn">
+                  <svg data-icon="shield" class="icon icon-sm"></svg>
+                  <span>
+                    The 48 contacts who never opted in cannot be messaged on any
+                    template, utility included. Collect consent on the
+                    registration form to recover them.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <template data-foot>
+              <button class="btn" data-toast="Saved as a draft campaign.">Save draft</button>
+              <button class="btn btn-primary spacer" data-wiz="next">
+                Next: choose a template
+                <svg data-icon="arrow-right" class="icon icon-sm"></svg>
+              </button>
+            </template>
+          </section>
+
+          <!-- ------------------------------------------------ 2. template -->
+          <section class="step-panel" data-step data-step-title="Template">
+            <div class="step-lede">
+              <svg data-icon="info" class="icon icon-sm"></svg>
+              <span>
+                Outside the 24-hour customer service window, WhatsApp only
+                carries templates Meta has approved. Marketing templates are
+                greyed out here because this audience was collected for
+                event reminders.
+              </span>
+            </div>
+
+            <div class="split">
+              <div class="stack">
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Approved templates</h3>
+                      <p>11 approved, 2 pending review</p>
+                    </div>
+                  </div>
+                  <div class="toolbar">
+                    <label class="search">
+                      <svg data-icon="search" class="icon icon-sm"></svg>
+                      <input class="input" placeholder="Search template names" />
+                    </label>
+                    <label class="inline-field right">
+                      Category
+                      <select class="select" data-label="Category">
+                        <option>Utility (8)</option>
+                        <option>Marketing (4)</option>
+                        <option>Authentication (2)</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="card-body stack-sm" data-radiogroup>
+                    <button class="radio-card" aria-checked="true" data-toast="we_are_live_urgent selected.">
+                      <span class="glyph glyph-wa"><svg data-icon="bolt" class="icon icon-sm"></svg></span>
+                      <span>
+                        <h4 class="mono">we_are_live_urgent</h4>
+                        <p>“We go live in 15 minutes…” — the T-15 alert, 3 variables and a join button.</p>
+                        <span class="row wrap mt-8">
+                          <span class="pill pill-info pill-bare">Utility</span>
+                          <span class="pill pill-ok pill-bare">High quality</span>
+                          <span class="pill pill-bare">94.8% read</span>
+                        </span>
+                      </span>
+                    </button>
+                    <button class="radio-card" aria-checked="false" data-toast="webinar_2h_countdown selected.">
+                      <span class="glyph glyph-wa"><svg data-icon="hourglass" class="icon icon-sm"></svg></span>
+                      <span>
+                        <h4 class="mono">webinar_2h_countdown</h4>
+                        <p>Two-hour warning with an add-to-calendar button.</p>
+                        <span class="row wrap mt-8">
+                          <span class="pill pill-info pill-bare">Utility</span>
+                          <span class="pill pill-ok pill-bare">High quality</span>
+                          <span class="pill pill-bare">91.2% read</span>
+                        </span>
+                      </span>
+                    </button>
+                    <button class="radio-card" aria-checked="false" data-toast="replay_notes_48h selected.">
+                      <span class="glyph glyph-wa"><svg data-icon="video" class="icon icon-sm"></svg></span>
+                      <span>
+                        <h4 class="mono">replay_notes_48h</h4>
+                        <p>48-hour replay link and the slide deck, for no-shows.</p>
+                        <span class="row wrap mt-8">
+                          <span class="pill pill-info pill-bare">Utility</span>
+                          <span class="pill pill-ok pill-bare">High quality</span>
+                          <span class="pill pill-bare">88.1% read</span>
+                        </span>
+                      </span>
+                    </button>
+                    <button class="radio-card" aria-checked="false" data-toast="Marketing templates need marketing opt-in — this audience does not have it.">
+                      <span class="glyph glyph-warn"><svg data-icon="megaphone" class="icon icon-sm"></svg></span>
+                      <span>
+                        <h4 class="mono">vip_coaching_offer</h4>
+                        <p>Paid programme invitation. Needs marketing consent, which this segment was not collected under.</p>
+                        <span class="row wrap mt-8">
+                          <span class="pill pill-warn pill-bare">Marketing</span>
+                          <span class="pill pill-warn pill-bare">Pending review</span>
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                </section>
+              </div>
+
+              <div class="stack">
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Details</h3>
+                      <p class="mono">we_are_live_urgent</p>
+                    </div>
+                    <span class="pill pill-ok right">Approved</span>
+                  </div>
+                  <div class="card-body">
+                    <dl class="kv">
+                      <div><dt>Category</dt><dd>Utility</dd></div>
+                      <div><dt>Language</dt><dd>English (en)</dd></div>
+                      <div><dt>Quality</dt><dd>High · 0.01% spam</dd></div>
+                      <div><dt>Approved</dt><dd>Sep 10, 2026</dd></div>
+                      <div><dt>Variables</dt><dd>3</dd></div>
+                      <div><dt>Buttons</dt><dd>1 · dynamic URL</dd></div>
+                    </dl>
+                  </div>
+                </section>
+
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Body as approved</h3>
+                      <p>Tokens are filled at the next step</p>
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <p class="mono" style="font-size: 12px; line-height: 1.6">
+                      Hey {{1}}! 🚀<br /><br />
+                      We go live in 15 minutes for the {{2}}. Have your workbook
+                      ready — tap below to jump straight into the room.
+                    </p>
+                  </div>
+                  <div class="card-foot">
+                    <svg data-icon="link" class="icon icon-sm"></svg>
+                    Button URL resolves to {{3}}
+                  </div>
+                </section>
+
+                <div class="note note-ok">
+                  <svg data-icon="check" class="icon icon-sm"></svg>
+                  <span>
+                    Utility templates may be sent outside the 24-hour window, so
+                    this reaches all 248 recipients.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <template data-foot>
+              <button class="btn" data-toast="Saved as a draft campaign.">Save draft</button>
+              <button class="btn spacer" data-wiz="back">
+                <svg data-icon="arrow-left" class="icon icon-sm"></svg> Back
+              </button>
+              <button class="btn btn-primary" data-wiz="next">
+                Next: map the variables
+                <svg data-icon="arrow-right" class="icon icon-sm"></svg>
+              </button>
+            </template>
+          </section>
+
+          <!-- ------------------------------------- 3. variables & preview -->
+          <section class="step-panel" data-step data-step-title="Variables &amp; preview">
+            <div class="step-lede">
+              <svg data-icon="info" class="icon icon-sm"></svg>
+              <span>
+                Every token needs a contact property and a fallback. A token
+                that resolves to nothing is what gets a template rejected at
+                send time.
+              </span>
+            </div>
+
+            <div class="split">
+              <div class="stack">
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Variables</h3>
+                      <p>Pair each token with a contact property</p>
+                    </div>
+                    <span class="pill pill-ok right">3 of 3 mapped</span>
+                  </div>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Token</th>
+                          <th>Maps to</th>
+                          <th>Fallback</th>
+                          <th class="t-actions"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td><span class="tag">{{1}} first_name</span></td>
+                          <td>
+                            <span class="inline-field">
+                              <select class="select" data-label="{{1}} maps to">
+                                <option>Contact.first_name</option>
+                                <option>Contact.full_name</option>
+                              </select>
+                            </span>
+                          </td>
+                          <td class="muted">“there”</td>
+                          <td class="t-actions">
+                            <span class="pill pill-ok pill-bare">
+                              <svg data-icon="check" class="icon icon-sm"></svg>
+                            </span>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td><span class="tag">{{2}} webinar_name</span></td>
+                          <td>
+                            <span class="inline-field">
+                              <select class="select" data-label="{{2}} maps to">
+                                <option>Event.title</option>
+                                <option>Event.short_title</option>
+                              </select>
+                            </span>
+                          </td>
+                          <td class="muted">“our workshop”</td>
+                          <td class="t-actions">
+                            <span class="pill pill-ok pill-bare">
+                              <svg data-icon="check" class="icon icon-sm"></svg>
+                            </span>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td><span class="tag">{{3}} join_link</span></td>
+                          <td>
+                            <span class="inline-field">
+                              <select class="select" data-label="{{3}} maps to">
+                                <option>Dynamic stream URL</option>
+                                <option>Event.landing_page</option>
+                              </select>
+                            </span>
+                          </td>
+                          <td class="muted">Generic landing page</td>
+                          <td class="t-actions">
+                            <span class="pill pill-ok pill-bare">
+                              <svg data-icon="check" class="icon icon-sm"></svg>
+                            </span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="card-foot">
+                    <svg data-icon="shield" class="icon icon-sm"></svg>
+                    248 of 248 recipients resolve all three tokens without
+                    falling back.
+                  </div>
+                </section>
+
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Send a test</h3>
+                      <p>Goes to a team number, not to the segment</p>
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <div class="row wrap">
+                      <label class="inline-field">
+                        To
+                        <select class="select" data-label="Test recipient">
+                          <option>Ganesh S P · +91 98765 43210</option>
+                          <option>Priya Menon · +91 91234 56789</option>
+                        </select>
+                      </label>
+                      <button class="btn btn-wa btn-sm right" data-toast="Test message sent to +91 98765 43210.">
+                        <svg data-icon="send" class="icon icon-sm"></svg> Send test
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div class="stack">
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Preview</h3>
+                      <p>Rendered with Rahul Sharma’s values</p>
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <div class="phone">
+                      <div class="phone-head">
+                        <svg data-icon="arrow-left" class="icon icon-sm"></svg>
+                        <span class="avatar avatar-wa" style="width: 28px; height: 28px">AG</span>
+                        <span>
+                          <b>Acme Growth Official</b>
+                          <small>Official business account</small>
+                        </span>
+                      </div>
+                      <div class="thread">
+                        <div class="thread-day">Today 6:45 PM</div>
+                        <div class="bubble">
+                          <p>Hey <b>Rahul</b>! 🚀</p>
+                          <p>
+                            We go live in 15 minutes for the
+                            <b>AI Marketing Masterclass</b>. Have your workbook
+                            ready — tap below to jump straight into the room.
+                          </p>
+                          <div class="bubble-meta">
+                            6:45 PM <svg data-icon="check-check" class="icon icon-sm"></svg>
+                          </div>
+                          <div class="bubble-cta">
+                            <svg data-icon="external" class="icon icon-sm"></svg> Join live stream
+                          </div>
+                        </div>
+                      </div>
+                      <div class="phone-input">
+                        <span class="box">Message Acme Growth Official…</span>
+                        <svg data-icon="mic" class="icon icon-sm"></svg>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-foot">
+                    <svg data-icon="check" class="icon icon-sm"></svg>
+                    Renders identically on iOS and Android.
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <template data-foot>
+              <button class="btn" data-toast="Saved as a draft campaign.">Save draft</button>
+              <button class="btn spacer" data-wiz="back">
+                <svg data-icon="arrow-left" class="icon icon-sm"></svg> Back
+              </button>
+              <button class="btn btn-primary" data-wiz="next">
+                Next: schedule &amp; send
+                <svg data-icon="arrow-right" class="icon icon-sm"></svg>
+              </button>
+            </template>
+          </section>
+
+          <!-- ----------------------------------------- 4. schedule & send -->
+          <section class="step-panel" data-step data-step-title="Schedule &amp; send">
+            <div class="step-lede">
+              <svg data-icon="info" class="icon icon-sm"></svg>
+              <span>
+                The last screen before anything leaves the building. Check the
+                summary on the right — after this the send is queued with Meta
+                and only the unsent remainder can be stopped.
+              </span>
+            </div>
+
+            <div class="split">
+              <div class="stack">
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>When to send</h3>
+                      <p>Times are in the workspace timezone</p>
+                    </div>
+                  </div>
+                  <div class="card-body stack-sm" data-radiogroup>
+                    <button class="radio-card" aria-checked="false" data-toast="Would dispatch immediately.">
+                      <span class="glyph"><svg data-icon="bolt" class="icon icon-sm"></svg></span>
+                      <span>
+                        <h4>Send now</h4>
+                        <p>Starts dispatching the moment you confirm.</p>
+                      </span>
+                    </button>
+                    <button class="radio-card" aria-checked="true" data-toast="Scheduled send selected.">
+                      <span class="glyph glyph-brand"><svg data-icon="calendar" class="icon icon-sm"></svg></span>
+                      <span>
+                        <h4>At a specific time</h4>
+                        <p>Queued with Meta and released at the minute you pick.</p>
+                      </span>
+                    </button>
+                    <button class="radio-card" aria-checked="false" data-toast="Relative scheduling ties the send to the webinar record.">
+                      <span class="glyph"><svg data-icon="hourglass" class="icon icon-sm"></svg></span>
+                      <span>
+                        <h4>Relative to the webinar</h4>
+                        <p>Moves automatically if the session is rescheduled.</p>
+                      </span>
+                    </button>
+                  </div>
+                  <div class="card-body pad-0">
+                    <div class="grid g3" style="padding: 0 16px 16px">
+                      <div class="field">
+                        <label for="b-date">Date</label>
+                        <input class="input" id="b-date" value="25 Sep 2026" />
+                      </div>
+                      <div class="field">
+                        <label for="b-time">Time</label>
+                        <input class="input" id="b-time" value="18:45" />
+                      </div>
+                      <div class="field">
+                        <label for="b-tz">Timezone</label>
+                        <select class="select" id="b-tz" data-label="Timezone">
+                          <option>IST (UTC+5:30)</option>
+                          <option>Recipient’s local time</option>
+                          <option>UTC</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Delivery controls</h3>
+                      <p>Guard rails Meta rewards you for having</p>
+                    </div>
+                  </div>
+                  <div class="card-body stack-sm">
+                    <div class="row">
+                      <span>
+                        <span class="lbl">Throttle</span>
+                        <p class="hint">Spreads the send so a spike cannot dent quality.</p>
+                      </span>
+                      <span class="inline-field right">
+                        <select class="select" data-label="Throttle">
+                          <option>50 msgs/sec — Meta safe queue</option>
+                          <option>20 msgs/sec — conservative</option>
+                          <option>No throttle</option>
+                        </select>
+                      </span>
+                    </div>
+                    <div class="row">
+                      <span>
+                        <span class="lbl">Respect quiet hours</span>
+                        <p class="hint">Holds anything due between 9:00 PM and 8:00 AM local.</p>
+                      </span>
+                      <button class="switch right" aria-checked="true" data-toast="Quiet hours"></button>
+                    </div>
+                    <div class="row">
+                      <span>
+                        <span class="lbl">Retry soft failures once</span>
+                        <p class="hint">Re-attempts unreachable handsets after 10 minutes.</p>
+                      </span>
+                      <button class="switch right" aria-checked="true" data-toast="Retry"></button>
+                    </div>
+                    <div class="row">
+                      <span>
+                        <span class="lbl">Halt if quality drops to Medium</span>
+                        <p class="hint">Stops the remaining queue rather than risking the number.</p>
+                      </span>
+                      <button class="switch right" aria-checked="true" data-toast="Quality halt"></button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div class="stack">
+                <section class="card">
+                  <div class="card-head">
+                    <div>
+                      <h3>Review</h3>
+                      <p>Everything this send will do</p>
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <dl class="kv">
+                      <div><dt>Name</dt><dd>September masterclass live alert</dd></div>
+                      <div><dt>Recipients</dt><dd class="num">248</dd></div>
+                      <div><dt>Template</dt><dd class="mono">we_are_live_urgent</dd></div>
+                      <div><dt>Variables</dt><dd>3 of 3 mapped</dd></div>
+                      <div><dt>Sends at</dt><dd>Sep 25, 6:45 PM IST</dd></div>
+                      <div><dt>Est. dispatch</dt><dd>under 12 seconds</dd></div>
+                      <div><dt>Sender</dt><dd class="mono">+1 555-0192</dd></div>
+                    </dl>
+                  </div>
+                  <div class="card-foot">
+                    <svg data-icon="money" class="icon icon-sm"></svg>
+                    248 utility conversations, billed by Meta to your own WABA.
+                  </div>
+                </section>
+
+                <div class="note note-warn">
+                  <svg data-icon="gauge" class="icon icon-sm"></svg>
+                  <span>
+                    This uses <b>24.8%</b> of today’s Tier 1 allowance. 752
+                    business-initiated messages remain after it sends.
+                  </span>
+                </div>
+
+                <section class="card">
+                  <div class="card-body">
+                    <div class="row">
+                      <button class="check" aria-checked="true" role="checkbox" data-toast="Consent acknowledgement">
+                        <svg data-icon="check" class="icon"></svg>
+                      </button>
+                      <span class="hint">
+                        <b>I confirm</b> all 248 recipients opted in to WhatsApp
+                        messages from this business, and that this template
+                        matches the consent they gave.
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <template data-foot>
+              <button class="btn" data-toast="Saved as a draft campaign.">Save draft</button>
+              <button class="btn spacer" data-wiz="back">
+                <svg data-icon="arrow-left" class="icon icon-sm"></svg> Back
+              </button>
+              <button class="btn btn-wa" data-wiz="next">
+                <svg data-icon="send" class="icon icon-sm"></svg>
+                Schedule 248 messages
+              </button>
+            </template>
+          </section>
+
+          <!-- ---------------------------------------------------- 5. done -->
+          <section class="step-panel" data-step data-step-title="Queued">
+            <div class="done">
+              <span class="glyph glyph-wa glyph-xl"><svg data-icon="check"></svg></span>
+              <h2>Broadcast queued</h2>
+              <p>
+                248 messages are with Meta and will release at 6:45 PM IST on
+                Sep 25. Delivery receipts start arriving within seconds of the
+                first send.
+              </p>
+            </div>
+
+            <div class="grid g3">
+              <div class="metric">
+                <div class="metric-top"><svg data-icon="users"></svg> Recipients</div>
+                <div class="metric-value">248</div>
+                <div class="metric-foot">all opt-in verified</div>
+              </div>
+              <div class="metric">
+                <div class="metric-top"><svg data-icon="clock"></svg> Releases at</div>
+                <div class="metric-value">6:45 PM</div>
+                <div class="metric-foot">Sep 25 · IST</div>
+              </div>
+              <div class="metric">
+                <div class="metric-top"><svg data-icon="gauge"></svg> Est. dispatch</div>
+                <div class="metric-value">12 s</div>
+                <div class="metric-foot">50 msgs/sec throttle</div>
+              </div>
+            </div>
+
+            <section class="card">
+              <div class="card-head">
+                <div>
+                  <h3>What happens next</h3>
+                  <p>Nothing here needs you — it is listed so you know where to look</p>
+                </div>
+              </div>
+              <div class="card-body">
+                <ul class="feed plain">
+                  <li>
+                    <span class="glyph glyph-brand"><svg data-icon="clock" class="icon icon-sm"></svg></span>
+                    <p>
+                      The queue sits with Meta until 6:45 PM. Until then you can
+                      still cancel it from the campaign row.
+                    </p>
+                    <time>Now</time>
+                  </li>
+                  <li>
+                    <span class="glyph glyph-wa"><svg data-icon="send" class="icon icon-sm"></svg></span>
+                    <p>Dispatch runs at 50 msgs/sec and completes in about 12 seconds.</p>
+                    <time>6:45 PM</time>
+                  </li>
+                  <li>
+                    <span class="glyph glyph-wa"><svg data-icon="check-check" class="icon icon-sm"></svg></span>
+                    <p>Delivery and read receipts land on the campaign report as they arrive.</p>
+                    <time>6:45 PM</time>
+                  </li>
+                  <li>
+                    <span class="glyph glyph-brand"><svg data-icon="route" class="icon icon-sm"></svg></span>
+                    <p>
+                      Anyone who taps the join button is tagged
+                      <span class="tag">clicked_live_alert</span> and enters the
+                      post-webinar journey.
+                    </p>
+                    <time>Live</time>
+                  </li>
+                </ul>
+              </div>
+            </section>
+
+            <template data-foot>
+              <button class="btn" data-wiz="restart">
+                <svg data-icon="plus" class="icon icon-sm"></svg> Create another
+              </button>
+              <a class="btn spacer" href="analytics.html">
+                <svg data-icon="chart" class="icon icon-sm"></svg> Open analytics
+              </a>
+              <a class="btn btn-primary" href="campaigns.html">Done</a>
+            </template>
+          </section>
+        </div>
+
+        <div class="modal-foot" data-wizard-foot></div>
+      </div>
+    </div>
+    <script src="../assets/shell.js"></script>
+  </body>
+</html>

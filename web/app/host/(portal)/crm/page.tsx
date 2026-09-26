@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { Spinner } from "@/components/controls";
-import { CRMScreen } from "@/components/crm-screen";
+import { CRMScreen } from "@/engage";
 
 /* Contacts + Inbox, inside the host portal chrome.
  *
