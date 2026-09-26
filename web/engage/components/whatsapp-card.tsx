@@ -13,6 +13,7 @@ import {
   openWhatsAppSignup,
   prepareWhatsAppSignup,
   type WhatsAppGrant,
+  type WhatsAppSignupMode,
 } from "../whatsapp-signup";
 
 /* Connect WhatsApp, in Account settings.
@@ -89,6 +90,11 @@ export function WhatsAppCard({
     };
   }, [connected, attempt]);
 
+  /* Which kind of number: one already on the WhatsApp Business app (Coexistence —
+   * the coach keeps replying from their phone, and those replies show in Messages),
+   * or a fresh number used only through the API. Most coaches have the first. */
+  const [mode, setMode] = useState<WhatsAppSignupMode>("coexistence");
+
   const connect = useCallback(async () => {
     if (!signup) return;
     setError(null);
@@ -96,7 +102,7 @@ export function WhatsAppCard({
     let grant: WhatsAppGrant | null = null;
     try {
       // Synchronous inside the click: see the effect above.
-      grant = await openWhatsAppSignup(signup);
+      grant = await openWhatsAppSignup(signup, mode);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not connect WhatsApp.",
@@ -127,7 +133,7 @@ export function WhatsAppCard({
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [onChanged, signup]);
+  }, [onChanged, signup, mode]);
 
   const disconnect = useCallback(async () => {
     setBusy(true);
@@ -203,10 +209,49 @@ export function WhatsAppCard({
         )}
       </div>
 
+      {!connected && (
+        <fieldset className="grid gap-1.5 text-[12.5px]">
+          <legend className="sr-only">Which number</legend>
+          {(
+            [
+              [
+                "coexistence",
+                "The number on my WhatsApp Business app",
+                "Keep using the app on your phone. Replies you type there show up in Messages too.",
+              ],
+              [
+                "cloud",
+                "A new number, just for this",
+                "Not on the WhatsApp app. You reply from Messages here.",
+              ],
+            ] as const
+          ).map(([id, label, hint]) => (
+            <label key={id} className="flex items-start gap-2">
+              <input
+                type="radio"
+                name="whatsapp-mode"
+                className="mt-0.5 size-4 accent-brand"
+                checked={mode === id}
+                onChange={() => setMode(id)}
+              />
+              <span>
+                <span className="font-medium text-ink">{label}</span>
+                <span className="block text-[11.5px] text-ink-3">{hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {connected && account.whatsapp?.coexistence && (
+        <p className="text-[11.5px] text-ink-3">
+          On your WhatsApp Business app too — replies from your phone appear in Messages.
+        </p>
+      )}
+
       {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="ok">{notice}</Alert>}
 
-      {connected && (account.features ?? []).includes(FeatureWhatsAppRegister) && (
+      {connected && !account.whatsapp?.coexistence && (account.features ?? []).includes(FeatureWhatsAppRegister) && (
         <RegisterNumber account={account} onChanged={onChanged} />
       )}
     </div>

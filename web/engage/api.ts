@@ -20,6 +20,13 @@ import type {
   CRMDripResponse,
   CRMDripsResponse,
   CRMContactTagRequest,
+  CRMContactIDsResponse,
+  CRMDoneRequest,
+  CRMInboxResponse,
+  CRMPeopleResponse,
+  CRMRepliesResponse,
+  CRMTestSendRequest,
+  CRMWebinarMessagesResponse,
   CRMMessage,
   CRMNote,
   CRMNoteRequest,
@@ -348,4 +355,57 @@ export const engageApi = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+
+  // ------------------------------------------------------------- engage v1
+
+  /** The Hosting page's People tab. `filter` is one of the People* values. */
+  crmPeople: (opts: { webinarId?: string; filter?: string; q?: string; offset?: number } = {}) =>
+    request<CRMPeopleResponse>(`/api/host/crm/people${peopleQuery(opts)}`, fresh),
+
+  /** Every messageable contact a People filter matches, for "Message these N". */
+  crmPeopleIds: (opts: { webinarId?: string; filter?: string; q?: string } = {}) =>
+    request<CRMContactIDsResponse>(`/api/host/crm/people/ids${peopleQuery(opts)}`, fresh),
+
+  /** The Messages tab's list. `view` is needs_reply, all or done. */
+  crmInbox: (view = "needs_reply", webinarId = "") => {
+    const params = new URLSearchParams({ view });
+    if (webinarId) params.set("webinarId", webinarId);
+    return request<CRMInboxResponse>(`/api/host/crm/inbox?${params.toString()}`, fresh);
+  },
+
+  /** Mark done, or reopen. A new message reopens it by itself. */
+  setCrmDone: (id: string, done: boolean) =>
+    request<void>(`/api/host/crm/contacts/${seg(id)}/done`, {
+      method: "PUT",
+      body: JSON.stringify({ done } satisfies CRMDoneRequest),
+    }),
+
+  /** The bell's share of the inbox. */
+  crmReplies: () => request<CRMRepliesResponse>("/api/host/crm/replies", fresh),
+
+  /** One webinar's Messages tab. */
+  crmWebinarMessages: (slug: string) =>
+    request<CRMWebinarMessagesResponse>(
+      `/api/host/crm/webinars/${seg(slug)}/messages`,
+      fresh,
+    ),
+
+  /** The audience a broadcast body would reach — for segments and picked lists,
+   *  which do not fit a query string. */
+  crmAudienceFor: (body: CRMBroadcastRequest) =>
+    post<CRMAudienceResponse>("/api/host/crm/audience", body),
+
+  /** Sends the template once to the host's own number. */
+  crmTestSend: (body: CRMTestSendRequest) =>
+    post<void>("/api/host/crm/test-send", body),
 };
+
+function peopleQuery(opts: { webinarId?: string; filter?: string; q?: string; offset?: number }) {
+  const params = new URLSearchParams();
+  if (opts.webinarId) params.set("webinarId", opts.webinarId);
+  if (opts.filter) params.set("filter", opts.filter);
+  if (opts.q?.trim()) params.set("q", opts.q.trim());
+  if (opts.offset) params.set("offset", String(opts.offset));
+  const q = params.toString();
+  return q ? `?${q}` : "";
+}

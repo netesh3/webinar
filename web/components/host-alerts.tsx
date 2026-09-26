@@ -8,6 +8,7 @@ import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { useNow } from "@/lib/clock";
 import { formatRelative } from "@/lib/format";
 import { Button } from "./ui";
+import { ReplyAlerts, useReplies } from "@/engage";
 
 /* The host's notification bell.
  *
@@ -34,6 +35,9 @@ export function HostAlerts() {
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const now = useNow();
+  // WhatsApp replies waiting — owned by Engage, shown in this one bell.
+  const replies = useReplies();
+  const badge = unread + (replies?.needsReply ?? 0);
 
   /* Not an async function, and the state is written inside .then().
    *
@@ -98,12 +102,12 @@ export function HostAlerts() {
         onClick={() => setOpen((v) => !v)}
         className="relative grid size-9 place-items-center rounded-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
         aria-label={
-          unread > 0 ? `Notifications (${unread} unread)` : "Notifications"
+          badge > 0 ? `Notifications (${badge} unread)` : "Notifications"
         }
         aria-expanded={open}
       >
         <BellIcon />
-        {unread > 0 && (
+        {badge > 0 && (
           <span
             className="absolute top-1 right-1 grid min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] leading-4 font-semibold text-white"
             // The count is already in the button's aria-label, so the badge itself is
@@ -111,7 +115,7 @@ export function HostAlerts() {
             // then read it again.
             aria-hidden
           >
-            {unread > 9 ? "9+" : unread}
+            {badge > 9 ? "9+" : badge}
           </span>
         )}
       </button>
@@ -138,6 +142,8 @@ export function HostAlerts() {
                 </Button>
               )}
             </div>
+
+            <ReplyAlerts data={replies} onNavigate={() => setOpen(false)} />
 
             {alerts.length === 0 ? (
               <p className="px-3 py-6 text-center text-[12.5px] text-ink-3">

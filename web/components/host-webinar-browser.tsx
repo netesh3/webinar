@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { HostMessagesTab, HostPeopleTab, useReplies } from "@/engage";
+import { useAppConfig } from "./providers";
 import { HostWebinarRows } from "./host-webinar-list";
 import { MyWebinarsList } from "./my-webinars-list";
 import { useRegistrations } from "./registrations";
@@ -38,15 +41,32 @@ const TABS: readonly HostWebinarTab[] = ["upcoming", "past", "drafts"];
  * /api/me/registrations itself. Everything that fetches below narrows this out
  * first. */
 const REGISTERED = "registered";
-type ViewTab = HostWebinarTab | typeof REGISTERED;
 
-const VIEW_TABS: readonly ViewTab[] = [...TABS, REGISTERED];
+/* People and Messages: Engage's two tabs, rendered by it and only offered when this
+ * deployment can connect WhatsApp. Beside the webinar lists rather than in a separate
+ * CRM, because "who came, and who wrote back" is asked from the same place a host
+ * plans the next session. Like WatchList, neither is a HostWebinarTab. */
+const PEOPLE = "people";
+const MESSAGES = "messages";
+type ViewTab = HostWebinarTab | typeof REGISTERED | typeof PEOPLE | typeof MESSAGES;
+
+const BASE_TABS: readonly ViewTab[] = [...TABS, REGISTERED];
+const ENGAGE_TABS: readonly ViewTab[] = [...BASE_TABS, PEOPLE, MESSAGES];
+
+/** The tabs that do not read the paged webinar endpoint, and so hide its filters. */
+function ownList(
+  t: ViewTab,
+): t is typeof REGISTERED | typeof PEOPLE | typeof MESSAGES {
+  return t === REGISTERED || t === PEOPLE || t === MESSAGES;
+}
 
 const TAB_LABELS: Record<ViewTab, string> = {
   upcoming: "Upcoming",
   past: "Past",
   drafts: "Drafts",
   registered: "WatchList",
+  people: "People",
+  messages: "Messages",
 };
 
 /** Matches store.DefaultHostWebinarLimit. Sent explicitly rather than left to
@@ -111,8 +131,36 @@ export function HostWebinarBrowser({
    * alternative — an unbadged tab — loses the one number that says whether it is
    * worth opening. */
   const { registrations } = useRegistrations();
+  const { whatsappConnect } = useAppConfig();
+  const viewTabs = whatsappConnect ? ENGAGE_TABS : BASE_TABS;
+  const replies = useReplies();
 
-  const [tab, setTab] = useState<ViewTab>("upcoming");
+  /* ?tab= picks the tab, so the bell and People's rows can link straight into
+   * Messages — and followed, not just read once, because those links are usually
+   * clicked while the host is already on this page. */
+  const router = useRouter();
+  const search = useSearchParams();
+  const askedTab = (search.get("tab") ?? "") as ViewTab;
+  const linkedContact = search.get("contact") ?? "";
+  const linkedWebinar = search.get("webinar") ?? "";
+  const [tab, setTabState] = useState<ViewTab>(() =>
+    viewTabs.includes(askedTab) ? askedTab : "upcoming",
+  );
+  // Adjusted while rendering rather than in an effect: a new link is a new tab now.
+  const linkKey = search.toString();
+  const [seenLink, setSeenLink] = useState(linkKey);
+  if (linkKey !== seenLink) {
+    setSeenLink(linkKey);
+    if (viewTabs.includes(askedTab)) setTabState(askedTab);
+  }
+  /* Switching tabs by hand drops whatever a link had narrowed to. */
+  const setTab = useCallback(
+    (next: ViewTab) => {
+      setTabState(next);
+      if (search.toString() !== "") router.replace("/host");
+    },
+    [router, search],
+  );
   // Two search values: what is in the box, and what has been asked for. The
   // gap between them is the debounce.
   const [typed, setTyped] = useState("");
@@ -168,7 +216,7 @@ export function HostWebinarBrowser({
     /* Nothing to ask this endpoint for. Returning before the sequence number is
      * bumped deliberately leaves any reply still in the air free to land: it is
      * the answer for the tab behind this one, which is where a host goes back to. */
-    if (tab === REGISTERED) return;
+    if (ownList(tab)) return;
 
     const mine = ++seq.current;
     fetchPage({ tab, q, from, to })
@@ -200,7 +248,7 @@ export function HostWebinarBrowser({
   useEffect(load, [load, reloadToken]);
 
   function loadMore() {
-    if (!cursor || loadingMore || tab === REGISTERED) return;
+    if (!cursor || loadingMore || ownList(tab)) return;
     const mine = seq.current;
     setLoadingMore(true);
     fetchPage({ tab, q, from, to }, cursor)
@@ -249,25 +297,28 @@ export function HostWebinarBrowser({
           <div className="min-w-0">
             <Tabs
               bare
-              tabs={VIEW_TABS}
+              tabs={viewTabs}
               value={tab}
               /* WatchList has nothing to re-filter and fetches itself, so it
                  skips refilter: that would raise the pending flag for a request
                  this tab never makes, and leave the rows behind it dimmed. */
               onChange={(next) =>
-                next === REGISTERED
-                  ? setTab(next)
-                  : refilter(() => setTab(next))
+                ownList(next) ? setTab(next) : refilter(() => setTab(next))
               }
               labels={TAB_LABELS}
-              counts={{ ...counts, [REGISTERED]: registrations?.length ?? 0 }}
+              counts={{
+                ...counts,
+                [REGISTERED]: registrations?.length ?? 0,
+                // Waiting replies, not every conversation: the number worth a badge.
+                [MESSAGES]: replies?.needsReply ?? 0,
+              }}
             />
           </div>
 
           {/* Hidden on WatchList rather than disabled. Both controls are
               arguments to the host's paged endpoint; leaving them up over a list
               they cannot narrow is a control that lies about what it does. */}
-          {tab !== REGISTERED && (
+          {!ownList(tab) && (
             <div className="flex flex-wrap items-center gap-2 pb-2.5 sm:pb-2">
               <label className="relative">
                 <span className="sr-only">Search webinars by name</span>
@@ -320,7 +371,7 @@ export function HostWebinarBrowser({
         </div>
       </div>
 
-      {error && tab !== REGISTERED && (
+      {error && !ownList(tab) && (
         <div className="mb-4">
           <Alert tone="error">{error}</Alert>
         </div>
@@ -331,6 +382,10 @@ export function HostWebinarBrowser({
            used to be: the rows carry a join key and a calendar link, which is
            what an attendee came for and is nothing like a host row. */
         <MyWebinarsList />
+      ) : tab === PEOPLE ? (
+        <HostPeopleTab key={linkedWebinar} initialWebinar={linkedWebinar} />
+      ) : tab === MESSAGES ? (
+        <HostMessagesTab key={linkedContact} initialContact={linkedContact} />
       ) : items === null ? (
         <div className="grid gap-3">
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />

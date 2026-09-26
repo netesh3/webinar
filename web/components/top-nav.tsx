@@ -9,7 +9,6 @@ import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
-import { engageNavItem } from "@/engage";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
@@ -30,23 +29,20 @@ import { engageNavItem } from "@/engage";
  * /my-webinars is where registering sends somebody and what the account menu's
  * neighbours link to.
  *
- * Contacts is the one entry that survived, and the reasoning above is why rather
- * than an exception to it: all three that went were views of the same person's
- * SESSIONS, each a second door onto a room. A contact is not a session. Somebody
- * who registered for three of them is one person with one conversation, which is
- * also why this is not a tab inside a webinar — burying it under whichever session
- * they came through is how a host ends up messaging them twice. */
+ * Contacts went too. People and Messages are tabs on the Hosting page beside
+ * Upcoming and Past — one person, one row, across every webinar — so a host
+ * has one home rather than a second app bolted onto the first. WhatsApp replies
+ * land on the bell. */
 
 function linksFor(signedIn: boolean, canHost: boolean) {
   // A host reaches their registrations through the tab, and /host through the
   // logo (see homeHrefFor) — nothing left for a nav entry to point at that is
-  // not already the page they are standing on, except Contacts, which is a
-  // different place. An account that cannot host has no Host Webinar page to hold
+  // not already the page they are standing on. An account that cannot host has no Host Webinar page to hold
   // that tab, so the WatchList entry survives for them — otherwise this nav is
   // empty and their own registrations are reachable only by typing the URL. Same
   // label as the tab, since it is the same list; the /my-webinars path stays as it
   // is, because renaming a URL breaks the links already sent out to it.
-  if (canHost) return [engageNavItem];
+  if (canHost) return [];
   return signedIn ? [{ href: "/my-webinars", label: "WatchList" }] : [];
 }
 
@@ -72,9 +68,7 @@ export function TopNav() {
 
   const count = registrations?.length ?? 0;
 
-  /* A plain prefix test again. The special case this used to need was for /host
-   * lighting up on /host/crm, and /host is no longer an entry here — nothing left
-   * in this nav is a prefix of anything else in it. */
+  /* A plain prefix test: nothing in this nav is a prefix of anything else in it. */
   const isActive = (href: string) => pathname.startsWith(href);
 
   return (

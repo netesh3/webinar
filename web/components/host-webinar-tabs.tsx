@@ -30,8 +30,12 @@ import {
   RosterContactsLink,
   RosterWhatsAppCells,
   RosterWhatsAppHeaders,
+  WebinarMessagesTab,
+  useRosterMessaging,
   useRosterWhatsAppColumns,
+  watchBuckets,
 } from "@/engage";
+import { useAppConfig } from "./providers";
 
 /* Per-webinar management. Every tab here operates on real data — the share links
  * are built from the operator's configured public URL rather than a placeholder
@@ -46,19 +50,24 @@ const TABS = [
   "Recordings",
   "Settings",
 ] as const;
-type Tab = (typeof TABS)[number] | "Report";
+type Tab = (typeof TABS)[number] | "Report" | "Messages";
 
 const ENDED_TABS = ["Recordings", "Attendees", "Report"] as const;
 
-function tabsFor(ended: boolean): readonly Tab[] {
-  return ended ? ENDED_TABS : TABS;
+/* Messages — every WhatsApp message this webinar sends — is Engage's tab, placed
+ * after Attendees and only offered when this deployment can connect WhatsApp. */
+function tabsFor(ended: boolean, whatsapp = false): readonly Tab[] {
+  const base: readonly Tab[] = ended ? ENDED_TABS : TABS;
+  if (!whatsapp) return base;
+  const i = base.indexOf("Attendees") + 1;
+  return [...base.slice(0, i), "Messages", ...base.slice(i)];
 }
 
 /** An old link, or the Host list, can still ask for a tab this webinar no
  *  longer has. Anything not on offer resolves to null so the caller can fall
  *  back rather than render an empty page. */
-function allowedTab(tab: Tab | null, ended: boolean): Tab | null {
-  return tab && tabsFor(ended).includes(tab) ? tab : null;
+function allowedTab(tab: Tab | null, ended: boolean, whatsapp = false): Tab | null {
+  return tab && tabsFor(ended, whatsapp).includes(tab) ? tab : null;
 }
 
 function tabFromQuery(raw: string | null | undefined): Tab | null {
@@ -71,6 +80,7 @@ function tabFromQuery(raw: string | null | undefined): Tab | null {
   if (key === "recordings") return "Recordings";
   if (key === "settings") return "Settings";
   if (key === "report") return "Report";
+  if (key === "messages") return "Messages";
   return null;
 }
 
@@ -90,10 +100,11 @@ export function HostWebinarTabs({
 }) {
   const pending = registrants.filter((r) => r.state === "pending");
   const ended = w.status === "ended";
-  const tabs = tabsFor(ended);
+  const { whatsappConnect } = useAppConfig();
+  const tabs = tabsFor(ended, whatsappConnect);
 
   const defaultTab: Tab =
-    allowedTab(tabFromQuery(initialTab), ended) ??
+    allowedTab(tabFromQuery(initialTab), ended, whatsappConnect) ??
     (ended
       ? recordings.length > 0
         ? "Recordings"
@@ -105,9 +116,9 @@ export function HostWebinarTabs({
 
   // Follow ?tab= when the host clicks Admit / Attendees from the list.
   useEffect(() => {
-    const next = allowedTab(tabFromQuery(initialTab), ended);
+    const next = allowedTab(tabFromQuery(initialTab), ended, whatsappConnect);
     if (next) setTab(next);
-  }, [initialTab, ended]);
+  }, [initialTab, ended, whatsappConnect]);
 
   return (
     <>
@@ -129,6 +140,9 @@ export function HostWebinarTabs({
       )}
       {tab === "Attendees" && (
         <AttendeesTab webinar={w} registrants={registrants} />
+      )}
+      {tab === "Messages" && (
+        <WebinarMessagesTab slug={w.id} ended={ended} durationMin={w.durationMin} />
       )}
       {tab === "Share" && <ShareTab webinar={w} />}
       {tab === "Stage" && <StageTab webinar={w} onChanged={onChanged} />}
@@ -199,6 +213,18 @@ function AttendeesTab({
   const declined = registrants.filter((r) => r.state === "declined");
   const ended = w.status === "ended";
 
+  /* After the webinar: chips by how long people watched. The same buckets the
+   * Messages tab offers, so "Message these N" here and there reach the same people. */
+  const buckets = ended ? watchBuckets(w.durationMin) : [];
+  const [bucketId, setBucketId] = useState("");
+  const bucket = buckets.find((b) => b.id === bucketId) ?? null;
+  const rows = bucket ? registrants.filter(bucket.test) : registrants;
+  const messaging = useRosterMessaging({
+    webinarId: w.id,
+    rows,
+    bucket: bucket ? { segment: bucket.segment, label: bucket.label } : null,
+  });
+
   return (
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -237,6 +263,7 @@ function AttendeesTab({
           <div className="flex flex-wrap items-center gap-2">
             {/* The other thing a host wants to do with this list: talk to it — the
                 same people as contacts, with tags, notes and history. */}
+            {messaging.bar}
             <RosterContactsLink slug={w.id} />
             {!bypass && (
               <ButtonLink
@@ -251,25 +278,52 @@ function AttendeesTab({
           </div>
         </div>
 
+        {buckets.length > 0 && registrants.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {[{ id: "", label: "Everyone", test: () => true }, ...buckets].map((b) => (
+              <button
+                key={b.id || "all"}
+                type="button"
+                onClick={() => setBucketId(b.id)}
+                className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${
+                  bucketId === b.id
+                    ? "border-brand bg-brand-soft text-brand"
+                    : "border-line text-ink-2 hover:border-line-2"
+                }`}
+              >
+                {b.label}{" "}
+                <span className="tabular-nums opacity-70">
+                  {registrants.filter(b.test).length}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {registrants.length === 0 ? (
           <p className="py-8 text-center text-[13px] text-ink-3">
             Nobody has registered yet.
           </p>
+        ) : rows.length === 0 ? (
+          <p className="py-8 text-center text-[13px] text-ink-3">Nobody in this group.</p>
         ) : (
           <div className="-mx-4 overflow-x-auto px-4">
             <table className="w-full min-w-[680px] text-[12.5px]">
               <thead>
                 <tr className="border-b border-line text-left text-[11.5px] text-ink-3">
+                  {messaging.headerCell}
                   <th className="py-2 pr-3 font-medium">Name</th>
                   <th className="py-2 pr-3 font-medium">Company</th>
+                  {ended && <th className="py-2 pr-3 font-medium">Watched</th>}
                   {whatsappOn && <RosterWhatsAppHeaders />}
                   <th className="py-2 pr-3 font-medium">Registered</th>
                   <th className="py-2 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {registrants.map((r) => (
+                {rows.map((r) => (
                   <tr key={r.id} className="border-b border-line last:border-0">
+                    {messaging.cell(r)}
                     <td className="py-2.5 pr-3">
                       <div className="flex items-center gap-1.5">
                         <span className="font-medium">{r.name}</span>
@@ -294,6 +348,11 @@ function AttendeesTab({
                         </div>
                       )}
                     </td>
+                    {ended && (
+                      <td className="py-2.5 pr-3 text-ink-2 tabular-nums">
+                        {r.joined ? `${r.watchMin} min` : <span className="text-ink-3">Didn&apos;t join</span>}
+                      </td>
+                    )}
                     {whatsappOn && <RosterWhatsAppCells row={r} />}
                     <td className="py-2.5 pr-3 text-ink-2">
                       {new Date(r.createdAt).toLocaleDateString("en-GB", {
@@ -317,6 +376,7 @@ function AttendeesTab({
           </div>
         )}
       </Card>
+      {messaging.dialog}
     </div>
   );
 }
