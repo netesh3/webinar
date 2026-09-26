@@ -134,6 +134,18 @@ export function ChatIcon(props: IconProps) {
   );
 }
 
+/** ChatIcon with a slash: chat turned off. The bubble is broken where the slash
+ *  crosses it, so the two strokes read apart at 14px. */
+export function ChatOffIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M20.5 15.2A9 9 0 0 0 8.8 3.5" />
+      <path d="M5.6 5.6A9 9 0 0 0 4 16.1L2 22l5.9-2a9 9 0 0 0 10.5-1.6" />
+      <path d="m3 3 18 18" />
+    </Icon>
+  );
+}
+
 export function UsersIcon(props: IconProps) {
   return (
     <Icon {...props}>

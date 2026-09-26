@@ -128,6 +128,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And @mentions: who the picker may offer (hidden attendees must never appear), how a
 	# tag survives edits in a plain textarea, and how a delivered message is highlighted.
 	cd web && node --experimental-strip-types --no-warnings lib/mentions.test.mts
+	# And the host's attendee-chat control: turning chat off must leave the destination
+	# alone, or switching it back on silently widens "Panelists only" to everyone.
+	cd web && node --experimental-strip-types --no-warnings lib/chat-permission.test.mts
 	# And the Q&A card's asker line: an anonymous question must never surface its
 	# sender's name, initials or identity, and "answered live" is not a text answer.
 	cd web && node --experimental-strip-types --no-warnings lib/qa-view.test.mts
