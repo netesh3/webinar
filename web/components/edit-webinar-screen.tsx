@@ -80,7 +80,7 @@ export function EditWebinarScreen({ slug }: { slug: string }) {
       <h1 className="mb-1 text-[22px] font-semibold tracking-[-0.02em] sm:text-[24px]">
         Edit webinar
       </h1>
-      <p className="mb-6 text-[13.5px] text-ink-2">{webinar.topic}</p>
+      <p className="mb-3 text-[13.5px] text-ink-2">{webinar.topic}</p>
 
       {webinar.status === "live" && (
         <div className="mb-4">

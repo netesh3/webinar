@@ -91,6 +91,17 @@
   body:has([data-room]) .toast-viewport {
     bottom: calc(4.75rem + env(safe-area-inset-bottom));
   }
+
+  /* The schedule form pins Schedule to the viewport bottom. Same trade as the
+   * room: a toast in that corner would land on the button. */
+  body:has([data-schedule-bar]) .toast-viewport {
+    bottom: calc(7.5rem + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 1024px) {
+    body:has([data-schedule-bar]) .toast-viewport {
+      bottom: calc(5rem + env(safe-area-inset-bottom));
+    }
+  }
 }
 
 @layer components {
