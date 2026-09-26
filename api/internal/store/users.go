@@ -66,6 +66,8 @@ type User struct {
 	// here, if it ever was. The PIN that did it is deliberately not stored — see
 	// migrations/0048.
 	WhatsAppRegisteredAt *time.Time
+	// WhatsAppCoexistence: the number is on the WhatsApp Business app as well.
+	WhatsAppCoexistence bool
 }
 
 /* HasFeature reports whether a per-account switch is on.
@@ -125,6 +127,7 @@ func (u User) Public() types.Account {
 		if u.WhatsAppRegisteredAt != nil {
 			a.WhatsApp.RegisteredAt = u.WhatsAppRegisteredAt.Format(time.RFC3339)
 		}
+		a.WhatsApp.Coexistence = u.WhatsAppCoexistence
 	}
 	return a
 }
@@ -150,7 +153,8 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 	coalesce(whatsapp_access_token,''), coalesce(whatsapp_waba_id,''),
 	coalesce(whatsapp_phone_number_id,''), coalesce(whatsapp_display_phone,''),
 	coalesce(whatsapp_verified_name,''),
-	whatsapp_token_expires_at, whatsapp_connected_at, whatsapp_registered_at`
+	whatsapp_token_expires_at, whatsapp_connected_at, whatsapp_registered_at,
+	whatsapp_coexistence`
 
 func scanUser(row scanner) (User, error) {
 	var u User
@@ -160,7 +164,7 @@ func scanUser(row scanner) (User, error) {
 		&u.YouTubeRefresh, &u.YouTubeChannelID, &u.YouTubeChannelTitle, &u.YouTubeStreamID,
 		&u.WhatsAppToken, &u.WhatsAppWABAID, &u.WhatsAppPhoneNumberID, &u.WhatsAppDisplayPhone,
 		&u.WhatsAppVerifiedName, &u.WhatsAppTokenExpiresAt, &u.WhatsAppConnectedAt,
-		&u.WhatsAppRegisteredAt)
+		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence)
 	return u, err
 }
 

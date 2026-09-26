@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/netkumar/webcast/api/internal/authctx"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/types"
 )
@@ -107,7 +108,7 @@ func (s *Module) handleCRMSetup(w http.ResponseWriter, r *http.Request) {
 	 * from AudienceCounts rather than a count of its own — the same query the host reads
 	 * before spending their own money on a broadcast. Two ways of counting "who can be
 	 * messaged" is how a checklist ends up disagreeing with the send screen. */
-	audience, err := s.store.AudienceCounts(r.Context(), user.ID, types.AudienceOptedIn, "", "")
+	audience, err := s.store.AudienceCounts(r.Context(), user.ID, crmstore.Audience{Kind: types.AudienceOptedIn})
 	if err != nil {
 		s.fail(w, r, "crm setup: audience", err)
 		return

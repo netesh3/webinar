@@ -612,7 +612,7 @@ func (s *Module) AdvanceDrips(ctx context.Context) {
 		}
 
 		contact := types.CRMContact{ID: step.ContactID, Name: step.ContactName}
-		params := resolveBroadcastParams(step.Params, contact, wb, step.HostName)
+		params := resolveBroadcastParams(step.Params, contact, wb, step.HostName, 0)
 		err := s.store.QueueDripStep(ctx, step, params)
 		if errors.Is(err, store.ErrConflict) {
 			// Another sweep got there first. Nothing to say about it.

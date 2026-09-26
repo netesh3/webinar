@@ -72,7 +72,7 @@ func (s *Store) UserByWhatsAppPhoneNumberID(ctx context.Context, phoneNumberID s
  *
  * expiresAt is nil for the usual non-expiring business token; see wa.Token.
  */
-func (s *Store) SetUserWhatsApp(ctx context.Context, userID, token, wabaID, phoneNumberID, displayPhone, verifiedName string, expiresAt *time.Time) error {
+func (s *Store) SetUserWhatsApp(ctx context.Context, userID, token, wabaID, phoneNumberID, displayPhone, verifiedName string, expiresAt *time.Time, coexistence bool) error {
 	connectedAt := (*time.Time)(nil)
 	if strings.TrimSpace(token) != "" {
 		now := time.Now().UTC()
@@ -80,6 +80,7 @@ func (s *Store) SetUserWhatsApp(ctx context.Context, userID, token, wabaID, phon
 	} else {
 		// Disconnecting: drop everything, not just the token.
 		wabaID, phoneNumberID, displayPhone, verifiedName, expiresAt = "", "", "", "", nil
+		coexistence = false
 	}
 
 	tag, err := s.pool.Exec(ctx, `
@@ -90,9 +91,10 @@ func (s *Store) SetUserWhatsApp(ctx context.Context, userID, token, wabaID, phon
 		       whatsapp_display_phone = $5,
 		       whatsapp_verified_name = $6,
 		       whatsapp_token_expires_at = $7,
-		       whatsapp_connected_at = $8
+		       whatsapp_connected_at = $8,
+		       whatsapp_coexistence = $9
 		 WHERE id = $1`,
-		userID, token, wabaID, phoneNumberID, displayPhone, verifiedName, expiresAt, connectedAt)
+		userID, token, wabaID, phoneNumberID, displayPhone, verifiedName, expiresAt, connectedAt, coexistence)
 	if err != nil {
 		return err
 	}

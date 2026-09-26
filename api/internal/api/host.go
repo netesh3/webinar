@@ -1497,6 +1497,10 @@ func (s *Server) handleHostRegistrants(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "registrants", err)
 		return
 	}
+	// Watch time is the webinar's own fact; a failure leaves the columns at zero.
+	if err := s.store.AttachWatch(r.Context(), slug, rows); err != nil {
+		s.log.Warn("registrants: watch time", "error", err, "slug", slug)
+	}
 	s.engage.DecorateRegistrants(r.Context(), userFromContext(r.Context()), slug, rows)
 	httpx.JSON(w, http.StatusOK, rows)
 }

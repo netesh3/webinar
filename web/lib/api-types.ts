@@ -4,6 +4,222 @@
 // Regenerate with: make types
 
 //////////
+// source: engage_v1.go
+
+/**
+ *  CRMPerson is one row of the People tab: a contact, and what they did across this
+ *  * host's webinars. Watch minutes are the session report's, summed.
+ */
+export interface CRMPerson {
+  contact: CRMContact;
+  /**
+   * * One of the CRMStatus* consent values: opted_in, no_opt_in, opted_out, no_number.
+   */
+  whatsappStatus: string;
+  /**
+   * * How many of this host's webinars they registered for (declined seats excluded).
+   */
+  webinars: number /* int */;
+  /**
+   * * The latest of those, by start time. Empty when there are none.
+   */
+  lastWebinar?: string;
+  lastWebinarId?: string;
+  attended: boolean;
+  watchMin: number /* int */;
+}
+/**
+ *  People filters. Everyone is the empty filter.
+ */
+export const PeopleAttended = "attended";
+/**
+ *  People filters. Everyone is the empty filter.
+ */
+export const PeopleNeverAttended = "never_attended";
+/**
+ *  People filters. Everyone is the empty filter.
+ */
+export const PeopleReplied = "replied";
+/**
+ *  People filters. Everyone is the empty filter.
+ */
+export const PeopleOptedIn = "opted_in";
+/**
+ * CRMPeopleCounts are the chips over the People list, counted through the webinar filter
+ * but not the search box or the chosen chip.
+ */
+export interface CRMPeopleCounts {
+  everyone: number /* int */;
+  attended: number /* int */;
+  neverAttended: number /* int */;
+  replied: number /* int */;
+  optedIn: number /* int */;
+}
+/**
+ * CRMWebinarRef names one of the host's webinars for a filter menu.
+ */
+export interface CRMWebinarRef {
+  id: string;
+  topic: string;
+  startsAt: string;
+}
+export interface CRMPeopleResponse {
+  people: CRMPerson[];
+  counts: CRMPeopleCounts;
+  /**
+   * * Rows matching the chosen chip and search, of which People is one page.
+   */
+  total: number /* int */;
+  offset: number /* int */;
+  filter?: string;
+  webinars: CRMWebinarRef[];
+  /**
+   * * How many of those webinars have anybody registered: "412 people from 6 webinars".
+   */
+  webinarCount: number /* int */;
+  whatsappConnected: boolean;
+}
+/**
+ *  CRMContactIDsResponse is every contact a People filter matches who may be messaged,
+ *  * for "Message these N" on a filter bigger than one page.
+ */
+export interface CRMContactIDsResponse {
+  contactIds: string[];
+}
+/**
+ *  Inbox views. A conversation needs a reply while its newest inbound message is later
+ *  * than both the host's last reply (from here or from their phone) and Mark done.
+ */
+export const InboxNeedsReply = "needs_reply";
+/**
+ *  Inbox views. A conversation needs a reply while its newest inbound message is later
+ *  * than both the host's last reply (from here or from their phone) and Mark done.
+ */
+export const InboxAll = "all";
+/**
+ *  Inbox views. A conversation needs a reply while its newest inbound message is later
+ *  * than both the host's last reply (from here or from their phone) and Mark done.
+ */
+export const InboxDone = "done";
+/**
+ * CRMInboxThread is one row of the Messages tab.
+ */
+export interface CRMInboxThread {
+  contact: CRMContact;
+  lastMessage?: CRMMessage;
+  needsReply: boolean;
+  /**
+   * * The webinar of the last message sent to them — what the line under a name says.
+   * 	 *  Empty when none was about a webinar.
+   */
+  webinar?: string;
+  webinarId?: string;
+}
+export interface CRMInboxCounts {
+  needsReply: number /* int */;
+  all: number /* int */;
+  done: number /* int */;
+}
+export interface CRMInboxResponse {
+  threads: CRMInboxThread[];
+  counts: CRMInboxCounts;
+  view: string;
+  webinars: CRMWebinarRef[];
+  whatsappConnected: boolean;
+  /**
+   * * The number is on the WhatsApp Business app too (Coexistence): replies can also be
+   * 	 *  typed on the phone, and show up here.
+   */
+  coexistence: boolean;
+}
+/**
+ * CRMDoneRequest marks a conversation done, or reopens it.
+ */
+export interface CRMDoneRequest {
+  done: boolean;
+}
+/**
+ *  CRMReplyAlert is one conversation waiting, for the bell.
+ */
+export interface CRMReplyAlert {
+  contactId: string;
+  name: string;
+  webinar?: string;
+  webinarId?: string;
+  at: string;
+}
+/**
+ *  CRMRepliesResponse is the bell's share of the inbox: how many are waiting, the newest
+ *  * few, and the waiting count per webinar for "N replies to answer" on its card.
+ */
+export interface CRMRepliesResponse {
+  needsReply: number /* int */;
+  recent: CRMReplyAlert[];
+  byWebinar: { [key: string]: number /* int */};
+}
+/**
+ *  CRMAutomaticStats is one automatic message for one webinar: the confirmation, one
+ *  * reminder time, or the replay.
+ */
+export interface CRMAutomaticStats {
+  kind: NotificationKind;
+  /**
+   * * Minutes before the start, for a reminder.
+   */
+  offsetMin?: number /* int */;
+  /**
+   * * RFC3339, when a reminder is due. Empty for the others.
+   */
+  dueAt?: string;
+  queued: number /* int */;
+  sent: number /* int */;
+  delivered: number /* int */;
+  read: number /* int */;
+  failed: number /* int */;
+  skipped: number /* int */;
+}
+/**
+ *  CRMWebinarMessagesResponse is one webinar's Messages tab.
+ */
+export interface CRMWebinarMessagesResponse {
+  webinarId: string;
+  /**
+   * * Who this webinar's WhatsApp messages can reach, in the audience's four buckets:
+   * 	 *  "81 of 96 will get WhatsApp messages · 15 didn't give consent".
+   */
+  audience: CRMAudienceResponse;
+  automatic: CRMAutomaticStats[];
+  /**
+   * * The template chosen for each automatic kind. Host-wide, shown here to be changed.
+   */
+  templates: CRMReminder[];
+  broadcasts: CRMBroadcast[];
+  /**
+   * * Conversations with this webinar's people that need a reply, newest first.
+   */
+  waiting: CRMReplyAlert[];
+  whatsappConnected: boolean;
+}
+/**
+ *  CRMTestSendRequest sends a template once to the host's own number, to see it.
+ */
+export interface CRMTestSendRequest {
+  template: string;
+  language: string;
+  params?: CRMParam[];
+  webinarId?: string;
+  phone: string;
+}
+/**
+ *  CRMThreadMeta is what the Messages tab's thread header says about a person.
+ */
+export interface CRMThreadMeta {
+  webinars: number /* int */;
+  watchMin: number /* int */;
+  needsReply: boolean;
+}
+
+//////////
 // source: types.go
 /*
 Package types holds the HTTP wire contract.
@@ -976,6 +1192,10 @@ export interface WhatsAppLink {
    * 	 * says "we did this", not "this number works".
    */
   registeredAt?: string;
+  /**
+   * * On the WhatsApp Business app too (Coexistence). Needs no registration step.
+   */
+  coexistence?: boolean;
 }
 /**
  *  WhatsAppSignup is everything the browser needs to open Meta's Embedded Signup
@@ -1007,6 +1227,11 @@ export interface WhatsAppCallbackRequest {
   code: string;
   wabaId: string;
   phoneNumberId: string;
+  /**
+   * * The number was onboarded with Coexistence: it stays on the WhatsApp Business app,
+   * 	 *  is not registered with a PIN, and phone-typed replies arrive as echoes.
+   */
+  coexistence?: boolean;
 }
 /**
  *  WhatsAppRegisterRequest registers the connected number with Cloud API.
@@ -1132,6 +1357,14 @@ export interface CRMMessage {
    */
   fromBot?: string;
   createdAt: string;
+  /**
+   * * The webinar this message was about, for the thread's day markers.
+   */
+  webinar?: string;
+  /**
+   * * A person wrote it: from the inbox, or on the phone (Coexistence).
+   */
+  manual?: boolean;
 }
 /**
  *  CRMContactScope names the webinar a contacts list was narrowed to.
@@ -1300,6 +1533,10 @@ export interface CRMThreadResponse {
    * 	 *  this account, which is also when the pane is not shown.
    */
   notes: CRMNote[];
+  /**
+   * * The Messages tab's header: webinars, watch time, whether a reply is owed.
+   */
+  meta: CRMThreadMeta;
 }
 /**
  *  CRMTag is one label a host puts on people.
@@ -1662,6 +1899,41 @@ export const AudienceWebinar = "webinar";
  */
 export const AudienceTag = "tag";
 /**
+ * * AudienceSegment is one webinar's registrants narrowed by what they did — see
+ * 	 *  CRMSegment. The follow-up audience: "everyone who watched 45 minutes or more".
+ */
+export const AudienceSegment = "segment";
+/**
+ * * AudienceContacts is people the host picked by hand, by contact id. Only the
+ * 	 *  opted-in ones among them are messaged.
+ */
+export const AudienceContacts = "contacts";
+/**
+ *  CRMSegment narrows one webinar's registrants. Every part is optional and they combine
+ *  * with AND. Watch minutes are the session report's (store.WatchByRegistrationSQL), so the
+ *  * Attendees tab's chips, the report and the audience count the same people.
+ */
+export interface CRMSegment {
+  /**
+   * * `joined` (was in the room), `no_show` (registered, never joined) or empty.
+   */
+  attendance?: string;
+  /**
+   * * Watched at least this many minutes. Implies joined when above zero.
+   */
+  minWatchMin?: number /* int */;
+  /**
+   * * Watched fewer than this many minutes; zero means no upper bound. Implies joined.
+   */
+  maxWatchMin?: number /* int */;
+  /**
+   * * Has written to the host on WhatsApp.
+   */
+  replied?: boolean;
+}
+export const SegmentJoined = "joined";
+export const SegmentNoShow = "no_show";
+/**
  *  CRMBroadcast is one message the host sent, or will send, to many people.
  *  *
  *  * Status is derived rather than stored: it is whatever the queued messages say —
@@ -1681,9 +1953,15 @@ export interface CRMBroadcast {
    */
   params: CRMParam[];
   /**
-   * * `opted_in`, `webinar` or `tag`.
+   * * `opted_in`, `webinar`, `tag`, `segment` or `contacts`.
    */
   audience: string;
+  /**
+   * * The rule, when Audience is `segment`, and the host's words for it — "Watched
+   * 	 *  45+ min" — for the list. SegmentLabel is also set for `contacts` ("12 people").
+   */
+  segment?: CRMSegment;
+  segmentLabel?: string;
   /**
    * * The tag this went to, when Audience is `tag`. The name is sent with it so a
    * 	 *  list can say which segment was messaged without a second request — and it is
@@ -1747,6 +2025,10 @@ export interface CRMBroadcastStats {
    * 	 *  being approved, or the broadcast was cancelled before this one went out.
    */
   skipped: number /* int */;
+  /**
+   * * Recipients who wrote back after it was sent.
+   */
+  replied: number /* int */;
 }
 /**
  * CRMBroadcastsResponse is the host's broadcasts, newest first.
@@ -1788,6 +2070,14 @@ export interface CRMBroadcastRequest {
    * * Required when Audience is `tag`, ignored otherwise.
    */
   tagId?: string;
+  /**
+   * * Required when Audience is `segment` (with WebinarID), ignored otherwise.
+   */
+  segment?: CRMSegment;
+  /**
+   * * Required when Audience is `contacts`, ignored otherwise.
+   */
+  contactIds?: string[];
   /**
    * * RFC3339, or empty for now.
    */
@@ -2984,6 +3274,20 @@ export interface RegistrantRow {
    * 	 * when they never have — which is the ordinary case and reads as a dash.
    */
   lastInboundAt?: string;
+  /**
+   *  Joined is whether this registrant was in the room at all, and WatchMin how long
+   * 	 * they watched once it was live — the session report's numbers, per registration
+   * 	 * (store.AttachWatch). Zero and false before the webinar has run.
+   */
+  joined: boolean;
+  watchMin: number /* int */;
+  /**
+   *  ContactID is this registrant's CRM contact, which is who a message is addressed to;
+   * 	 * empty for a guest. LastMessage is the latest message either way on WhatsApp, for the
+   * 	 * "Last message" column. Both filled in by the CRM, like WhatsAppStatus.
+   */
+  contactId?: string;
+  lastMessage?: CRMMessage;
 }
 export interface PanelistRequest {
   email: string;

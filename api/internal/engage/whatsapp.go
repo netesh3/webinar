@@ -133,7 +133,7 @@ func (s *Module) handleWhatsAppCallback(w http.ResponseWriter, r *http.Request) 
 		expires = &at
 	}
 	if err := s.store.SetUserWhatsApp(r.Context(), user.ID,
-		tok.AccessToken, wabaID, num.ID, num.DisplayPhone, num.VerifiedName, expires); err != nil {
+		tok.AccessToken, wabaID, num.ID, num.DisplayPhone, num.VerifiedName, expires, body.Coexistence); err != nil {
 		s.fail(w, r, "whatsapp connect: save", err)
 		return
 	}
@@ -252,7 +252,7 @@ func (s *Module) handleWhatsAppDisconnect(w http.ResponseWriter, r *http.Request
 			s.log.Warn("whatsapp unsubscribe", "error", err, "user", user.ID, "waba", user.WhatsAppWABAID)
 		}
 	}
-	if err := s.store.SetUserWhatsApp(r.Context(), user.ID, "", "", "", "", "", nil); err != nil {
+	if err := s.store.SetUserWhatsApp(r.Context(), user.ID, "", "", "", "", "", nil, false); err != nil {
 		s.fail(w, r, "whatsapp disconnect", err)
 		return
 	}
@@ -457,6 +457,38 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 		 * which is most messages — see runBot.
 		 */
 		s.runBot(ctx, *h, contact, m)
+	}
+
+	/* Replies the host typed on their phone (Coexistence). Filed as manual outbound
+	 * messages so the conversation reads the same in both places, and so "needs reply"
+	 * clears when the host answers from the phone. AppendMessage is idempotent on the
+	 * wamid, which also makes an echo of a message this server sent a no-op. */
+	for _, e := range d.Echoes {
+		if e.To == "" || e.WAMID == "" {
+			continue
+		}
+		h, ok := host(e.PhoneNumberID)
+		if !ok {
+			continue
+		}
+		contact, err := s.store.UpsertContact(ctx, h.ID, crmstore.ContactInput{
+			Phone: e.To, Source: "whatsapp", Weak: true,
+		})
+		if err != nil {
+			s.log.Error("whatsapp webhook: echo contact", "error", err, "host", h.ID)
+			continue
+		}
+		if _, err := s.store.AppendMessage(ctx, h.ID, contact.ID, crmstore.MessageInput{
+			Direction: "out",
+			Body:      e.Body,
+			Kind:      e.Kind,
+			WAMID:     e.WAMID,
+			Status:    "sent",
+			At:        e.At,
+			Manual:    true,
+		}); err != nil {
+			s.log.Error("whatsapp webhook: echo append", "error", err, "host", h.ID, "wamid", e.WAMID)
+		}
 	}
 
 	for _, st := range d.Statuses {
