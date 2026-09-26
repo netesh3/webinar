@@ -271,6 +271,8 @@ throughput forces it.
 ## 7. Phase-by-phase build
 
 Each phase is shippable. Backend migrations go with the phase that needs them.
+Code goes in `api/internal/engage` (handlers), `api/internal/engage/crmstore`
+(SQL) and `web/engage` (screens); see [`engage/MODULES.md`](engage/MODULES.md).
 Tests: `api/internal/api/crm_*_test.go` pattern (host isolation, 404 other
 host). Frontend: Playwright only when a flow is user-visible; unit the send
 rules in Go.

@@ -28,17 +28,19 @@ There is no second Go service and no second database in v1.
 ## Coupling contract
 
 Webinar Liv may **emit events**. Engage may **subscribe**. That is the whole
-interface.
+interface. In code it is the `api.Engage` interface and the `@/engage` web
+entry point, both enforced by tests and lint: [`MODULES.md`](MODULES.md).
 
 ### Events Webinar Liv already emits (do not invent new ones)
 
 | When | What Engage does today | Code |
 | --- | --- | --- |
-| Guest registers (phone + opt-in) | Upsert `crm_contacts` | `ContactFromRegistration` |
-| Registration approved | WhatsApp confirm may leave the outbox | reminder / notify sweep |
-| Webinar ended | Drips with `ended` / `attended` / `no_show` enroll | `EnrollOnWebinarEnd` |
-| Tag added | Drips with `tag_added` enroll | `EnrollOnTagAdded` |
-| Recording made public | `wa_replay` queued if template chosen | notifications |
+| Guest registers (phone + opt-in) | Upsert `crm_contacts` | `Engage.OnRegistered` |
+| Registration approved / declined | WhatsApp confirm leaves, or is skipped | `Engage.OnRegistrationsDecided` |
+| Webinar rescheduled | WhatsApp 24h / 1h reminders move | `Engage.OnRescheduled` |
+| Webinar ended | Unsent reminders skipped; `ended` / `attended` / `no_show` drips enroll | `Engage.OnEnded` |
+| Tag added | Drips with `tag_added` enroll | inside Engage (not a webinar event) |
+| Recording made public | `wa_replay` queued if template chosen | `Engage.OnRecordingPublished` |
 
 ### UI hooks (Webinar Liv → Engage)
 

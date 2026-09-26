@@ -585,6 +585,11 @@ func (p *fakePool) forget(id string) {
 	p.ids = kept
 }
 
+/* bootWithoutEngage makes newHarness leave the server on NoEngage, as a deployment with the
+ * CRM switched off would be. Only the test that proves webinars need nothing from the CRM
+ * sets it, and it is not parallel, so a package variable is enough. */
+var bootWithoutEngage bool
+
 func newHarness(t *testing.T, tweak ...func(*config.Config)) *harness {
 	t.Helper()
 	return newHarnessWith(t, nil, tweak...)
@@ -684,12 +689,16 @@ func newHarnessWith(
 	 * ENUMERATE the routes rather than call them: see isolation_test.go, which walks the real
 	 * route table so that a host route added tomorrow is covered without anyone remembering
 	 * to add it to a list. */
-	/* The server itself is kept as well as its routes, for the one piece of
-	 * behaviour that has no HTTP surface at all: see the drip sweep in
-	 * crm_drips_test.go. Everything else goes through the handler. */
+	/* The CRM module is kept as well as the routes, for the one piece of behaviour
+	 * that has no HTTP surface at all: the drip and bot sweeps (h.engage). Everything
+	 * else goes through the handler. */
 	server := api.NewServer(cfg, st, pool, recordings, log)
-	crm := engage.New(cfg, st, log)
-	server.UseEngage(crm)
+	// The CRM, plugged in exactly as main does — unless bootWithoutEngage says not to.
+	var crm *engage.Module
+	if !bootWithoutEngage {
+		crm = engage.New(cfg, st, log)
+		server.UseEngage(crm)
+	}
 	handler := server.Routes()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)

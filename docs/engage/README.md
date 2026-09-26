@@ -11,7 +11,8 @@ auth, Postgres, and Cloud Run with Webinar Liv, but it is **not** Webinar Liv.
 | Can run without the other | yes | yes — contacts, inbox, campaigns, bots need no webinar |
 
 **Easy coupling** is a small, named set of events and UI hooks, not a merged
-app. Spec: [`PRODUCT.md`](PRODUCT.md). **Building now:** [`V1.md`](V1.md) —
+app. Spec: [`PRODUCT.md`](PRODUCT.md). In code: [`MODULES.md`](MODULES.md) —
+`api/internal/engage` and `web/engage`, checked by tests and lint. **Building now:** [`V1.md`](V1.md) —
 reminders and post-webinar follow-up. Full target (parked): [`PLANS.md`](PLANS.md).
 Architecture, scale, and call budget: [`../ENGAGE-ARCHITECTURE.md`](../ENGAGE-ARCHITECTURE.md).
 **Cloud Run RAM + Supabase pool:** [`SIZING.md`](SIZING.md).
