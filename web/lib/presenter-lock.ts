@@ -48,8 +48,15 @@ const GROWTH = 1.04;
 const BUSY_MIN_AREA = 0.01;
 /** How far the frozen outline may exceed the presenter's own, in matte texels. */
 const TEMPLATE_GROW = 0;
-/** Growth only counts this soon after a face was near, so leaning in does not freeze it. */
+/** Growth only counts this soon after a face was near, so leaning in or waving does not
+ *  freeze the outline. */
 const GROWTH_WINDOW_MS = 3000;
+/** How recently the presenter's face must have been seen for the lock to act on where it
+ *  is. Moving blurs the face and the detector drops it for a few frames; a position older
+ *  than this may be on a hand, the shoulder, or the wall, and cutting by it is how the
+ *  presenter gets cut. Past it, the lock only does what is safe without knowing: nothing
+ *  to the presenter's region. */
+const FRESH_MS = 350;
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -76,6 +83,13 @@ export class PresenterLock {
   /** How many other people the last frame removed, for logging. */
   removed = 0;
   private lastBlobs = 0;
+
+  /** The presenter's face, 0..1 frame units, if it was seen within FRESH_MS — a position
+   *  that can be trusted about this frame. Null otherwise. */
+  presenterFace(now: number): FaceBox | null {
+    const p = this.presenter;
+    return p && now - p.seen < FRESH_MS ? { x: p.x, y: p.y, w: p.w, h: p.h } : null;
+  }
 
   /** Whether there is anybody to take out, or an outline held for somebody who just was:
    *  the caller then runs apply every frame, and may run it less often otherwise. */
@@ -172,48 +186,46 @@ export class PresenterLock {
       return false;
     }
 
-    // 1. The presenter's region: most of the face box, else the largest bottom-touching one.
+    /* 1. The presenter's region is the biggest person in the picture — the one at the
+     * camera, usually touching the bottom edge. The body, not the face: a face box is lost
+     * the moment somebody turns or moves quickly, and a stale one lands on a hand, a
+     * shoulder or the wall. Choosing the region by it is what erased the presenter while
+     * they gestured. So the face only has a say when it agrees with the body. */
+    const score = (b: Blob) => b.area * (b.bottom >= h - 2 ? 2 : 1);
+    const main = blobs.reduce((a, b) => (score(b) > score(a) ? b : a));
+    const inMain = (f: FaceBox) => {
+      const c = centre(f);
+      const x = Math.min(w - 1, Math.max(0, Math.floor(c.x * w)));
+      const y = Math.min(h - 1, Math.max(0, Math.floor(c.y * h)));
+      return labels[y * w + x] === main.id;
+    };
+    /* A presenter face outside the presenter's region is following the wrong thing. If one
+     * of the other faces is on the body, that is the presenter; otherwise nobody is. */
+    if (this.presenter && !inMain(this.presenter)) {
+      const onBody = this.others.filter(inMain).sort((a, b) => b.w * b.h - a.w * a.h)[0];
+      this.others = this.others.filter((o) => o !== onBody);
+      this.presenter = onBody ? { ...onBody } : null;
+      this.templateAt = null;
+      this.nearUntil = 0;
+    }
     const P = this.presenter;
-    let main: Blob | null = null;
-    if (P) {
-      const votes = new Map<number, number>();
-      const x0 = Math.max(0, Math.floor(P.x * w));
-      const x1 = Math.min(w, Math.ceil((P.x + P.w) * w));
-      const y0 = Math.max(0, Math.floor(P.y * h));
-      const y1 = Math.min(h, Math.ceil((P.y + P.h) * h));
-      for (let y = y0; y < y1; y++) {
-        for (let x = x0; x < x1; x++) {
-          const l = labels[y * w + x]!;
-          if (l) votes.set(l, (votes.get(l) ?? 0) + 1);
-        }
-      }
-      let best = 0;
-      for (const [id, v] of votes) {
-        if (v > best) {
-          best = v;
-          main = blobs[id - 1]!;
-        }
-      }
-    }
-    if (!main) {
-      const score = (b: Blob) => b.area * (b.bottom >= h - 2 ? 2 : 1);
-      main = blobs.reduce((a, b) => (score(b) > score(a) ? b : a));
-    }
+    const fresh = !!P && now - P.seen < FRESH_MS;
+    if (!fresh) this.nearUntil = Math.min(this.nearUntil, now);
 
     // 2. Template: remembered while clear, frozen while somebody is near.
     const pc = P ? centre(P) : null;
     const others = this.others;
     const faceNear =
-      !!P && !!pc && others.some((o) => Math.abs(centre(o).x - pc.x) < (P.w + o.w) * 2.2);
+      fresh && !!pc && others.some((o) => Math.abs(centre(o).x - pc.x) < (P!.w + o.w) * 2.2);
     if (faceNear) this.faceNearAt = now;
     const grew =
       !!this.templateAt &&
       main.area > this.templateArea * GROWTH &&
       now - this.faceNearAt < GROWTH_WINDOW_MS;
     if (faceNear || grew) this.nearUntil = now + NEAR_HOLD_MS;
-    const near = !!P && now < this.nearUntil;
+    const near = fresh && now < this.nearUntil;
     const template = this.template!;
-    if (P && pc && !near) {
+    if (fresh && pc && !near) {
       const fresh = !this.templateAt;
       for (let i = 0; i < n; i++) {
         const v = labels[i] === main.id ? matte[i]! : 0;
@@ -238,21 +250,20 @@ export class PresenterLock {
         }
         let a = matte[i]!;
         if (a <= 0) continue;
+        if (!fresh || !pc) continue;
+        const fx = (x + 0.5) / w;
         if (useTemplate) {
+          // The presenter's own outline, carried with their face: nothing added to it.
           const tx = x - sdx;
           const ty = y - sdy;
           const t = tx >= 0 && tx < w && ty >= 0 && ty < h ? template[ty * w + tx]! : 0;
           a = Math.min(a, t);
         } else if (others.length) {
-          const fx = (x + 0.5) / w;
-          let protect = 0;
-          let dP = Infinity;
-          if (P && pc) {
-            const hx = Math.abs(fx - pc.x) / P.w;
-            const hy = fy < pc.y ? (pc.y - fy) / (P.h * 1.25) : (fy - pc.y) / (P.h * 1.5);
-            protect = 1 - smooth(0.9, 1.1, Math.max(hx, hy));
-            dP = Math.hypot((fx - pc.x) / P.w, (fy - pc.y) / P.h);
-          }
+          /* The presenter's own head is never cut by somebody else's head box. */
+          const hx = Math.abs(fx - pc.x) / P!.w;
+          const hy = fy < pc.y ? (pc.y - fy) / (P!.h * 1.25) : (fy - pc.y) / (P!.h * 1.5);
+          const protect = 1 - smooth(0.9, 1.1, Math.max(hx, hy));
+          const dP = Math.hypot((fx - pc.x) / P!.w, (fy - pc.y) / P!.h);
           const a0 = a;
           for (const o of others) {
             const oc = centre(o);
