@@ -132,15 +132,42 @@ const MATTE_LONG_SIDE = 256;
  * "Moved" is the largest colour — or significant mask — change in the 3×3 neighbourhood
  * between this frame and the last, at the matte's resolution.
  */
-const K_STILL = 0.25;
+/* Production matte hyperparameters (Enhanced / SoftSegmenter).
+ *
+ * Tuned against Zoom/Meet-class expectations: stable still outlines, responsive limbs,
+ * soft feather without furniture leaks, and no person-colour halo into blur/stills.
+ *
+ *   Temporal EMA (matte resolution)
+ *     K_STILL        α toward new mask when still (interior)
+ *     K_EDGE_STILL   α on the silhouette band when still (stronger hold)
+ *     K_MOVE         α when motion is high
+ *     MOTION_*       RGB/mask motion → blend amount
+ *     EDGE_HYST      Schmitt pull across MASK_LO when still
+ *
+ *   Confidence → opacity
+ *     MASK_LO/HI     cool pixels (furniture cut); softstep feather
+ *     HAND_MASK_*    warm uncertain pixels (palms / seeded limbs)
+ *     ROOM_LO        person exclusion from the room-blur prepass
+ *
+ *   Guided upsample (full resolution)
+ *     SIGMA_SPACE    matte-texel neighbourhood for joint bilateral
+ *     SIGMA_COLOR    RGB guide tightness (smaller = snappier to colour edges)
+ *
+ *   Display alpha (after softstep)
+ *     ALPHA_TEMP_*   second EMA on the composited alpha to kill residual crawl
+ *     SPILL_*        edge decontamination so FG lighting does not fringe onto BG
+ *
+ *   Blur / veil: BLUR_RADIUS lives in backgrounds.ts (720p-referenced sigma).
+ */
+const K_STILL = 0.2;
 /** Stronger EMA hold on the silhouette band when still — where softstep amplifies chatter. */
-const K_EDGE_STILL = 0.12;
+const K_EDGE_STILL = 0.1;
 /** How hard a still silhouette texel sticks to its previous side of MASK_LO (0..1). */
-const EDGE_HYST = 0.5;
+const EDGE_HYST = 0.55;
 const K_MOVE = 0.97;
-/** Floor for RGB/mask motion. A touch above typical webcam sensor noise so still edges
- *  are not unlocked into K_MOVE by grain alone (was 0.022). */
-const MOTION_LO = 0.028;
+/** Floor for RGB/mask motion. Above typical webcam sensor noise so still edges
+ *  are not unlocked into K_MOVE by grain alone. */
+const MOTION_LO = 0.03;
 const MOTION_HI = 0.055;
 /** Confidence deltas below this are treated as model shimmer, not limb motion. */
 const MASK_MOTION_FLOOR = 0.2;
@@ -186,11 +213,12 @@ const EXTREMITY_DILATE = 0.55;
  *
  *                  chair kept        face at 80% confidence
  *   0.35 - 0.65       76%                    83%
- *   0.62 - 0.75       41%                    82%      <- here
+ *   0.62 - 0.75       41%                    82%      <- MASK_LO stays here
  *   0.68 - 0.88       33%                    52%
  *   0.75 - 0.92       30%                    17%      <- erases people in bad light
  *
- * Reaching full opacity by 0.75 is what keeps a less-confident person solid. Erosion was
+ * MASK_HI is a little higher than the measured 0.75 cut (0.80) so the softstep feather
+ * is ~Zoom-soft without lowering MASK_LO (which would reopen the chair). Erosion was
  * measured as the alternative and is worse at both ends: 14 mask pixels of it took the
  * chair to 36% but the face to 73%.
  *
@@ -203,7 +231,7 @@ const EXTREMITY_DILATE = 0.55;
  * pass first; the composite band alone cannot invent confidence from nothing.
  */
 const MASK_LO = 0.62;
-const MASK_HI = 0.75;
+const MASK_HI = 0.8;
 /** Soften the person threshold on warm mid-confidence pixels (hands), not on cool chairs. */
 const HAND_MASK_LO = 0.42;
 const HAND_MASK_HI = 0.70;
@@ -221,21 +249,31 @@ const HAND_UNCERTAIN_MID = 0.50;
 /** Below this the blur counts a pixel wholly as room. Between it and MASK_LO the pixel is
  *  shown as room but kept out of the blur, so furniture the model half-believes in is
  *  painted over by the wall around it rather than smeared into it. */
-const ROOM_LO = 0.3;
+const ROOM_LO = 0.28;
 
 /* The joint upsample. Spatial sigma in matte texels, colour sigma in 0..1 RGB distance.
  *
- * SIGMA_SPACE 1.15 (was 1.0) gives the edge one more matte texel of neighbourhood to vote
- * with when the person has moved between frames — the guide colour is still what snaps the
- * boundary, so this is not a soft blob. SIGMA_COLOR 0.11 (was 0.12) is a touch tighter so
- * skin against a wall still separates; two colours 0.11 apart count ~60%, 0.33 apart ~1%.
+ * SIGMA_SPACE 1.3 gives the edge a useful neighbourhood without turning into a soft blob —
+ * the guide colour still snaps the boundary. SIGMA_COLOR 0.10: two colours 0.10 apart
+ * count ~60%, 0.30 apart ~1%, so skin against a wall separates cleanly.
  */
-const SIGMA_SPACE = 1.15;
-const SIGMA_COLOR = 0.11;
+const SIGMA_SPACE = 1.3;
+const SIGMA_COLOR = 0.1;
+
+/** Display-alpha temporal filter (after softstep + bilateral). Small |Δα| → chatter → hold
+ *  history (ALPHA_TEMP_STILL); large |Δα| → real motion → take the new alpha. */
+const ALPHA_TEMP_STILL = 0.32;
+const ALPHA_TEMP_LO = 0.04;
+const ALPHA_TEMP_HI = 0.22;
+
+/** Edge decontamination: mix FG toward BG on soft edges so person lighting does not fringe
+ *  onto a still (stronger) or the room blur (lighter — colours are already related). */
+const SPILL_IMAGE = 0.55;
+const SPILL_BLUR = 0.32;
 
 /** How strong the veil is, in the same units as a blur background's radius. Enough that the
  *  room is unreadable while the model starts; this is what a background looks like loading. */
-const VEIL_RADIUS = 24;
+const VEIL_RADIUS = 28;
 /** How long the veil takes to lift once the matte is ready. A cut from a blurred frame to a
  *  sharp one reads as a glitch; a third of a second reads as it coming into focus. */
 const VEIL_FADE_MS = 300;
@@ -553,13 +591,20 @@ const float SIGMA_COLOR = ${SIGMA_COLOR.toFixed(3)};
 const float FG_CONTRAST = ${FG_CONTRAST.toFixed(3)};
 const float FG_SOFTEN = ${FG_SOFTEN.toFixed(3)};
 const float FG_SOFT_LOD = ${FG_SOFT_LOD.toFixed(3)};
+const float ALPHA_TEMP_STILL = ${ALPHA_TEMP_STILL.toFixed(3)};
+const float ALPHA_TEMP_LO = ${ALPHA_TEMP_LO.toFixed(3)};
+const float ALPHA_TEMP_HI = ${ALPHA_TEMP_HI.toFixed(3)};
+const float SPILL_IMAGE = ${SPILL_IMAGE.toFixed(3)};
+const float SPILL_BLUR = ${SPILL_BLUR.toFixed(3)};
 in vec2 uv;
 uniform sampler2D frame;     // the camera, with mips
-uniform sampler2D matte;     // guide colour, smoothed confidence
+uniform sampler2D matte;     // guide colour, smoothed confidence (this frame)
 uniform sampler2D room;      // the room blur, premultiplied
 uniform sampler2D image;     // a still
+uniform sampler2D prevMatte; // previous smoothed confidence (display-alpha EMA)
 uniform int mode;            // 0 = low light only, 1 = blur, 2 = image
 uniform float veil;          // 1 = nothing usable yet: show the room blur, person and all
+uniform float hasHistory;    // 0 on the first usable matte frame
 uniform vec2 frameSize;
 uniform vec2 imageSize;
 uniform vec2 bgPan;          // smoothed person-centre offset applied to still UVs
@@ -695,7 +740,20 @@ void main() {
   float handAmt = warm * uncertain;
   float lo = mix(MASK_LO, HAND_MASK_LO, handAmt);
   float hi = mix(MASK_HI, HAND_MASK_HI, handAmt);
-  float alpha = smoothstep(lo, hi, conf) * (1.0 - veil);
+  float alphaRaw = smoothstep(lo, hi, conf) * (1.0 - veil);
+  // Second temporal stage on the *display* alpha. Bilateral upsample can reintroduce a
+  // little crawl even when the matte-res EMA is calm; small |Δα| holds history, large
+  // jumps (real motion) take the new alpha so limbs do not ghost.
+  float prevConf = texture(prevMatte, uv).a;
+  float alphaPrev = smoothstep(lo, hi, prevConf) * (1.0 - veil);
+  float dA = abs(alphaRaw - alphaPrev);
+  float takeNew = smoothstep(ALPHA_TEMP_LO, ALPHA_TEMP_HI, dA);
+  float alpha = mix(mix(alphaPrev, alphaRaw, ALPHA_TEMP_STILL), alphaRaw, max(takeNew, 1.0 - hasHistory));
+  // Edge decontamination: on soft edges, pull FG toward BG so person lighting / chroma
+  // does not fringe onto a still or the blurred room (Zoom/Teams-style spill kill).
+  float spillStr = mode == 2 ? SPILL_IMAGE : SPILL_BLUR;
+  float spill = (1.0 - alpha) * smoothstep(0.04, 0.42, alpha) * spillStr;
+  fg = mix(fg, bg, spill);
   color = vec4(mix(bg, fg, alpha), 1.0);
 }`;
 
@@ -957,6 +1015,9 @@ class Engine {
   /** Whether the matte holds a mask of the current picture, rather than of nothing or of
    *  a stream that has since changed. */
   hasHistory = false;
+  /** Whether composite has a previous display alpha worth blending (lags hasHistory by one
+   *  frame so the first composite does not EMA against an empty spare). */
+  private displayHistory = false;
   disposed = false;
 
   private lastTimestamp = 0;
@@ -1028,8 +1089,8 @@ class Engine {
         gl,
         VERTEX_PRESENT,
         COMPOSITE,
-        ["frame", "matte", "room", "image"],
-        ["mode", "veil", "frameSize", "imageSize", "bgPan", "lowLight"],
+        ["frame", "matte", "room", "image", "prevMatte"],
+        ["mode", "veil", "hasHistory", "frameSize", "imageSize", "bgPan", "lowLight"],
       );
       gl.useProgram(null);
 
@@ -1077,6 +1138,7 @@ class Engine {
 
   forgetHistory(): void {
     this.hasHistory = false;
+    this.displayHistory = false;
     this.panX = 0;
     this.panY = 0;
     this.panAt = 0;
@@ -1192,6 +1254,8 @@ class Engine {
     gl.useProgram(c.program);
     gl.uniform1i(c.u.mode, mode);
     gl.uniform1f(c.u.veil, veil);
+    // spare holds the previous smoothed matte after the temporal ping-pong swap.
+    gl.uniform1f(c.u.hasHistory, this.displayHistory ? 1 : 0);
     gl.uniform2f(c.u.frameSize, this.w, this.h);
     gl.uniform2f(c.u.imageSize, this.imageW, this.imageH);
     gl.uniform2f(c.u.bgPan, this.panX, this.panY);
@@ -1199,8 +1263,15 @@ class Engine {
     gl.uniform1f(c.u.lowLight, lowLight);
     // Every unit the program samples gets a real texture, even ones this mode ignores:
     // an empty unit is a console warning per frame.
-    this.bindTextures(this.frame, matte.texture, this.roomA!.texture, this.image ?? this.frame);
+    this.bindTextures(
+      this.frame,
+      matte.texture,
+      this.roomA!.texture,
+      this.image ?? this.frame,
+      this.spare!.texture,
+    );
     this.draw();
+    this.displayHistory = this.hasHistory;
   }
 
   /* Gone, and everything in it.
@@ -1302,6 +1373,7 @@ class Engine {
     this.trackPixels = new Uint8Array(tw * th * 4);
 
     this.hasHistory = false;
+    this.displayHistory = false;
     this.panX = 0;
     this.panY = 0;
     this.panAt = 0;

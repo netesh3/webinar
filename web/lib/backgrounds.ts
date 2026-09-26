@@ -114,12 +114,12 @@ export const NO_BACKGROUND: BackgroundChoice = { mode: "none" };
 /* How hard to blur: a Gaussian sigma of 28 pixels at 720p, scaled for other sizes.
  *
  * Strong enough that a room is unreadable — a bookshelf is colour, not titles — which is
- * what somebody choosing "blur" is asking for, and about what Zoom and Meet do. It was 24;
- * 28 is one step stronger so the cut-out reads cleaner against the room without changing
- * the room-only blur path (person is still taken out before the blur; see segmenter.ts).
- * Half of this is the worst of both: the room is still legible and the person looks cut out.
+ * what somebody choosing "blur" is asking for, and about what Zoom and Meet do. Sigma in
+ * pixels of a 720p frame (scaled with resolution in the shader). 34 reads as a shallow
+ * depth-of-field without turning the room into a flat wash; person colours are still
+ * excluded before the blur (ROOM_LO / prep pass in segmenter.ts), so there is no halo.
  */
-const BLUR_RADIUS = 28;
+const BLUR_RADIUS = 34;
 
 /** Vendored MediaPipe assets — both engines point here so corporate CDNs are not required. */
 const MEDIAPIPE_WASM = "/mediapipe/wasm";
