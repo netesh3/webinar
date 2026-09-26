@@ -79,6 +79,18 @@ type fakeGraph struct {
 	// two-step PIN is not the one it has on file.
 	registerStatus int
 	registerError  map[string]any
+
+	// debug is what /debug_token answers (Meta's `data` object); valid, never
+	// expiring, until a test says otherwise. debugCalls counts the checks.
+	debug      map[string]any
+	debugCalls int
+}
+
+// tokenHealth sets what Meta's /debug_token reports about the host's token.
+func (g *fakeGraph) tokenHealth(data map[string]any) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.debug = data
 }
 
 func newFakeGraph(t *testing.T) *fakeGraph {
@@ -89,6 +101,13 @@ func newFakeGraph(t *testing.T) *fakeGraph {
 		defer g.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case r.URL.Path == "/debug_token":
+			g.debugCalls++
+			data := g.debug
+			if data == nil {
+				data = map[string]any{"is_valid": true, "expires_at": 0}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
 		case r.URL.Path == "/oauth/access_token":
 			g.exchanged = r.URL.Query().Get("code")
 			_, g.redirectURI = r.URL.Query()["redirect_uri"]

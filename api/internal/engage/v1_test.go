@@ -3,6 +3,7 @@ package engage
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/types"
@@ -43,5 +44,16 @@ func TestSegmentLabel(t *testing.T) {
 func TestWatchedText(t *testing.T) {
 	if watchedText(1) != "1 minute" || watchedText(58) != "58 minutes" || watchedText(0) != "0 minutes" {
 		t.Error("watchedText wrong")
+	}
+}
+
+func TestTokenExpiryMessage(t *testing.T) {
+	when := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	m := tokenExpiryMessage("coach@example.com", when, "https://webinarliv.com/")
+	if m.To != "coach@example.com" || !strings.Contains(m.Subject, "Thu 12 Nov") {
+		t.Errorf("message = %+v", m)
+	}
+	if !strings.Contains(m.Body, "https://webinarliv.com/account") {
+		t.Errorf("body has no link to Account settings: %s", m.Body)
 	}
 }

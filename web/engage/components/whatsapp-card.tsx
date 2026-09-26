@@ -8,6 +8,7 @@ import { WhatsAppIcon } from "@/components/icons";
 import { ApiError } from "@/lib/api";
 import { FeatureWhatsAppRegister } from "@/lib/api-types";
 import type { Account, WhatsAppSignup } from "@/lib/api-types";
+import { useNow } from "@/lib/clock";
 import { formatRelative } from "@/lib/format";
 import {
   openWhatsAppSignup,
@@ -217,6 +218,13 @@ export function WhatsAppCard({
         )}
       </div>
 
+      {/* A token Meta issued for a limited time (the Embedded Signup configuration is
+          set to 60 days, not Never). It can't be renewed from here — reconnecting is
+          the renewal — so the date is shown, and turns into a warning in the last week. */}
+      {connected && !needsReconnect && account.whatsapp?.tokenExpiresAt && (
+        <ExpiryNote at={account.whatsapp.tokenExpiresAt} />
+      )}
+
       {needsReconnect && (
         <Alert tone="warn">
           Meta stopped accepting this connection, so nothing can be sent. That happens
@@ -401,5 +409,29 @@ function RegisterNumber({
         </Alert>
       )}
     </div>
+  );
+}
+
+function ExpiryNote({ at }: { at: string }) {
+  const now = useNow();
+  if (!now) return null;
+  const when = new Date(at);
+  const days = Math.ceil((when.getTime() - now) / 86_400_000);
+  const day = when.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  if (days <= 7) {
+    return (
+      <Alert tone="warn">
+        This connection stops working on {day}
+        {days > 0 ? ` (in ${days} ${days === 1 ? "day" : "days"})` : ""}. Meta can&apos;t
+        renew it automatically — disconnect and connect again before then, with the same
+        number. Nothing is lost.
+      </Alert>
+    );
+  }
+  return (
+    <p className="text-[11.5px] text-ink-3">
+      Meta issued this connection until {day}. You&apos;ll get an email a week before to
+      reconnect.
+    </p>
   );
 }

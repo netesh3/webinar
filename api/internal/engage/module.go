@@ -287,4 +287,5 @@ func (s *Module) Tick(ctx context.Context) {
 	s.AdvanceBots(ctx)
 	s.flushWhatsAppOutbox(ctx)
 	s.sendReplyDigests(ctx)
+	s.checkWhatsAppTokens(ctx)
 }
