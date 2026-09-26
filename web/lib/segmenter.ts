@@ -1067,7 +1067,11 @@ class Engine {
       antialias: false,
       depth: false,
       stencil: false,
-      desynchronized: true,
+      /* desynchronized:false — MediaPipe shares this context. A desynchronized hint on
+       * Chrome/Mac (ANGLE Metal) has been seen to race createFromOptions and surface as
+       * callbacks.shift / "effect engine was interrupted". Latency here is one composite
+       * frame, not input lag that needs the hint. */
+      desynchronized: false,
     }) as WebGL2RenderingContext | null;
     if (!gl) throw new Error("WebGL2 is not available");
     this.canvas = canvas;
@@ -1579,6 +1583,24 @@ function unpark(): Engine | null {
   return null;
 }
 
+/** True when MediaPipe/Emscripten start-up was corrupted mid-create (Chrome Mac often). */
+export function isMediaPipeInterrupted(err: unknown): boolean {
+  const text = (err instanceof Error ? `${err.name} ${err.message}` : String(err ?? "")).toLowerCase();
+  /* Narrow on purpose: a bare "is not a function" is too common in unrelated JS errors.
+   * callbacks.shift is the stable Emscripten signature we map to the presenter copy in
+   * describeBackgroundError. */
+  return /callbacks\.shift/.test(text) || /runtime.?callback/.test(text);
+}
+
+/* One shared module evaluation. Parallel `import("@mediapipe/tasks-vision")` from two
+ * SoftSegmenters (or SoftSegmenter + LiveKit BackgroundProcessor) can race Emscripten
+ * glue before oneAtATime even runs createFromOptions. */
+let visionModule: Promise<typeof import("@mediapipe/tasks-vision")> | null = null;
+function loadVision() {
+  visionModule ??= import("@mediapipe/tasks-vision");
+  return visionModule;
+}
+
 async function createSegmenter(engine: Engine): Promise<Segmenter> {
   /* Checked before and after the download, because a download is seconds and the context
    * can be taken in between. MediaPipe is handed our context below; if it is dead, the
@@ -1587,28 +1609,46 @@ async function createSegmenter(engine: Engine): Promise<Segmenter> {
   if (!engine.alive) throw new Error(CONTEXT_LOST);
   // Loaded here rather than at module scope: 9MB of WASM that nobody who never
   // turns a background on should download.
-  const vision = await import("@mediapipe/tasks-vision");
+  const vision = await loadVision();
   const fileset = await vision.FilesetResolver.forVisionTasks(WASM_PATH);
   if (!engine.alive) throw new Error(CONTEXT_LOST);
+
+  const options = {
+    runningMode: "VIDEO" as const,
+    outputConfidenceMasks: true,
+    outputCategoryMask: false,
+    /* Our canvas — the reason the mask never leaves the GPU.
+     *
+     * A second getContext("webgl2") on a canvas returns the context it already has, so
+     * MediaPipe renders into OUR context and `getAsWebGLTexture()` hands back a texture we
+     * can sample. The alternative is `getAsFloat32Array()`, which is a readPixels — a full
+     * GPU pipeline stall, every frame. */
+    canvas: engine.canvas,
+  };
+
   try {
     return (await vision.ImageSegmenter.createFromOptions(fileset, {
+      ...options,
       baseOptions: { modelAssetPath: MODEL_PATH, delegate: "GPU" },
-      runningMode: "VIDEO",
-      // The whole point. A confidence mask is a float 0..1 per pixel; the category
-      // mask the previous implementation used is a hard 0/1 with no edge to soften.
-      outputConfidenceMasks: true,
-      outputCategoryMask: false,
-      /* Our canvas — the reason the mask never leaves the GPU.
-       *
-       * A second getContext("webgl2") on a canvas returns the context it already has, so
-       * MediaPipe renders into OUR context and `getAsWebGLTexture()` hands back a texture we
-       * can sample. The alternative is `getAsFloat32Array()`, which is a readPixels — a full
-       * GPU pipeline stall, every frame. */
-      canvas: engine.canvas,
     })) as unknown as Segmenter;
-  } catch (err) {
-    if (engine.gl.isContextLost()) throw new Error(CONTEXT_LOST, { cause: err });
-    throw err;
+  } catch (gpuErr) {
+    if (engine.gl.isContextLost()) throw new Error(CONTEXT_LOST, { cause: gpuErr });
+    /* A half-drained Emscripten Module will fail CPU the same way — skip the second
+     * createFromOptions so we do not dig the hole deeper. Reload / Beta is the recovery. */
+    if (isMediaPipeInterrupted(gpuErr)) throw gpuErr;
+    /* GPU create fails on some Chrome/Mac Metal setups with a quieter GL init error.
+     * CPU on the same canvas still feeds getAsWebGLTexture. */
+    console.warn("[background] GPU segmenter failed; trying CPU delegate", gpuErr);
+    if (!engine.alive) throw new Error(CONTEXT_LOST, { cause: gpuErr });
+    try {
+      return (await vision.ImageSegmenter.createFromOptions(fileset, {
+        ...options,
+        baseOptions: { modelAssetPath: MODEL_PATH, delegate: "CPU" },
+      })) as unknown as Segmenter;
+    } catch (cpuErr) {
+      if (engine.gl.isContextLost()) throw new Error(CONTEXT_LOST, { cause: cpuErr });
+      throw cpuErr;
+    }
   }
 }
 
@@ -1701,6 +1741,14 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
 
   /** Forgets every failure and tries again: the presenter's "Retry". */
   retry(): void {
+    /* An interrupted MediaPipe Module may have half-initialized into this engine's
+     * context. createFromOptions on the same canvas fails forever — drop the engine
+     * (do not park it) so the next liveEngine builds a clean WebGL2 context. */
+    const hardReset =
+      isMediaPipeInterrupted(this.modelFailure) || isMediaPipeInterrupted(this.engineFailure);
+    const stale = hardReset ? this.engine : null;
+    if (hardReset) this.engine = null;
+
     this.engineFailure = null;
     this.modelFailure = null;
     this.imageFailure = null;
@@ -1709,6 +1757,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     this.segmentErrors = 0;
     this.segmenterRestarts = 0;
     this.reportedFrameFailure = false;
+    if (stale) void stale.dispose();
     const { background } = this.options;
     if (background.kind === "image") this.requestImage(background.src);
     if (this.needsEngine()) {
@@ -1936,11 +1985,24 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
    */
   private async loadModel(engine: Engine): Promise<void> {
     const began = performance.now();
-    const warm = setInterval(() => engine.keepWarm(), 100);
+    /* keepWarm only BETWEEN attempts — never during createFromOptions.
+     *
+     * The interval used to flush the shared WebGL context every 100 ms while MediaPipe was
+     * still inside ImageSegmenter.createFromOptions on that same context. On Chrome/Mac
+     * (ANGLE Metal) that interleave can half-drain Emscripten's start-up callbacks and
+     * surface as callbacks.shift(...) / "effect engine was interrupted". Holding the
+     * context with flushes between retries is enough to stop eviction during the download. */
     let failure: unknown = null;
     try {
       for (const delay of MODEL_RETRY_MS) {
-        if (delay) await sleep(delay);
+        if (delay) {
+          const warm = setInterval(() => engine.keepWarm(), 100);
+          try {
+            await sleep(delay);
+          } finally {
+            clearInterval(warm);
+          }
+        }
         if (!engine.alive || this.engine !== engine) return;
         try {
           // In MediaPipe's turn as well as behind the per-engine guard: the two answer
@@ -1964,11 +2026,18 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
           if (!engine.alive) return;
           failure = err;
           console.warn("[background] segmentation model failed to load", err);
+          /* Interrupted Module: further retries on this context will not recover. Drop the
+           * engine now so Retry / a later SoftSegmenter does not unpark poisoned GL state. */
+          if (isMediaPipeInterrupted(err)) {
+            if (this.engine === engine) this.engine = null;
+            await engine.dispose().catch(() => {});
+            break;
+          }
         }
       }
       this.modelFailure = failure ?? new Error("the segmentation model did not load");
     } finally {
-      clearInterval(warm);
+      /* no persistent warm interval */
     }
   }
 
