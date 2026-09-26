@@ -5,12 +5,25 @@ import { api } from "@/lib/api";
 import type { AdminUser, Webinar } from "@/lib/api-types";
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { useAppConfig, useSession, useToast } from "./providers";
-import { Alert, ConfirmModal, Disclosure, openPickerOnClick, Spinner, Toggle } from "./controls";
+import {
+  Alert,
+  ConfirmModal,
+  Disclosure,
+  openPickerOnClick,
+  Spinner,
+  Tabs,
+  Toggle,
+} from "./controls";
 import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
+import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
 
-/* The admin panel: who may host, every webinar on the instance, and the two
- * things only an admin can do to either — delete an account, delete a
- * webinar that isn't theirs.
+/* The admin panel: a dashboard first, then the two lists.
+ *
+ * Dashboard is the landing view because an operator opening this page is
+ * asking "is anything on air, and is the instance healthy" before they are
+ * asking to edit a row. Accounts and Webinars are the same screens this page
+ * used to show stacked — hosting, the per-account switches, deletion, and
+ * the webinar filters — reached from the tabs rather than scrolled to.
  *
  * There is still no control here for making somebody an admin, and that is
  * the design rather than a missing feature. A privilege that can be granted
@@ -19,7 +32,57 @@ import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
  * server, which needs access to the machine to change.
  */
 
+const ADMIN_TABS = ["dashboard", "accounts", "webinars"] as const;
+type AdminTab = (typeof ADMIN_TABS)[number];
+
 export function AdminScreen() {
+  const [tab, setTab] = useState<AdminTab>("dashboard");
+  /* n remounts the webinar list. A drill-down from the dashboard ("upcoming")
+   * and a click on the Webinars tab are not the same arrival: the first
+   * should open already filtered, the second should open on every webinar,
+   * and neither should inherit whatever filter was left selected last time. */
+  const [webinarView, setWebinarView] = useState<{
+    status: WebinarStatusFilter;
+    n: number;
+  }>({ status: "", n: 0 });
+
+  function openWebinars(status: WebinarStatusFilter) {
+    setWebinarView((v) => ({ status, n: v.n + 1 }));
+    setTab("webinars");
+  }
+
+  return (
+    <div>
+      <Tabs
+        tabs={ADMIN_TABS}
+        value={tab}
+        onChange={(next) => {
+          if (next === tab) return;
+          if (next === "webinars") {
+            setWebinarView((v) => ({ status: "", n: v.n + 1 }));
+          }
+          setTab(next);
+        }}
+        labels={{
+          dashboard: "Dashboard",
+          accounts: "Accounts",
+          webinars: "Webinars",
+        }}
+      />
+      <div className="mt-5">
+        {tab === "dashboard" && (
+          <AdminDashboard onAccounts={() => setTab("accounts")} onWebinars={openWebinars} />
+        )}
+        {tab === "accounts" && <AdminAccounts />}
+        {tab === "webinars" && (
+          <AdminWebinars key={webinarView.n} initialStatus={webinarView.status} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminAccounts() {
   const { account } = useSession();
   const { notify } = useToast();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
@@ -442,11 +505,18 @@ function statusTone(status: string): "neutral" | "brand" | "ok" | "live" {
   }
 }
 
-function AdminWebinars() {
+function AdminWebinars({
+  initialStatus = "",
+}: {
+  /* From a dashboard drill-down. The list remounts when this changes — see
+   * webinarView in AdminScreen — so the chips open on the status that was
+   * asked for rather than remembering a previous visit. */
+  initialStatus?: WebinarStatusFilter;
+}) {
   const { notify } = useToast();
   const [rows, setRows] = useState<Webinar[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<(typeof STATUSES)[number]["value"]>("");
+  const [status, setStatus] = useState<WebinarStatusFilter>(initialStatus);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [query, setQuery] = useState("");
