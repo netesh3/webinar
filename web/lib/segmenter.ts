@@ -1936,6 +1936,34 @@ const MODNET_DISAGREE = 3;
 /** Slower than this on average and the video would visibly drop frames: use MediaPipe. */
 const MODNET_MAX_MS = 45;
 const MODNET_WINDOW = 30;
+/* MODNet's one failure that matters: on some frames of fast movement it loses the person —
+ * the face and chest go to zero while the hands stay. Seen on a real webcam, not in the
+ * synthetic tests. The face detector does not lose them on those frames, so it is the check:
+ * a matte with a known face in it that is mostly not person is not sent. The last good matte
+ * carries the frame instead (the frame itself is new; only the cut-out is a frame old). A
+ * run of them is let through rather than frozen, and a device where it keeps happening goes
+ * to MediaPipe, whose masks do not do this. */
+const MODNET_FACE_MIN = 0.5;
+const MODNET_MISS_RUN = 6;
+const MODNET_MISS_WINDOW = 90;
+const MODNET_MISS_MAX = 0.12;
+
+/** Mean alpha over the middle of a face box: how much of the face the matte kept. */
+function faceCoverage(alpha: Float32Array, w: number, h: number, f: FaceBox): number {
+  const x0 = Math.max(0, Math.floor((f.x + f.w * 0.2) * w));
+  const x1 = Math.min(w, Math.ceil((f.x + f.w * 0.8) * w));
+  const y0 = Math.max(0, Math.floor((f.y + f.h * 0.15) * h));
+  const y1 = Math.min(h, Math.ceil((f.y + f.h * 0.85) * h));
+  let sum = 0;
+  let n = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      sum += alpha[y * w + x]!;
+      n++;
+    }
+  }
+  return n ? sum / n : 1;
+}
 
 type FaceDetector = {
   detectForVideo: (
@@ -2025,6 +2053,9 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   private modnetAgree = 0;
   private modnetDisagree = 0;
   private modnetMs: number[] = [];
+  /** Consecutive MODNet mattes that lost the face, and the recent ones (1 = lost). */
+  private modnetMissRun = 0;
+  private modnetMisses: number[] = [];
   /** MediaPipe's own mask of the frame MODNet is being checked on. */
   private modnetReference: { data: Float32Array; w: number; h: number } | null = null;
   /** The last frame sent, so a late MODNet frame never goes out behind a newer one. */
@@ -2454,9 +2485,11 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     let output: VideoFrame | null = null;
     try {
       const { alpha, w, h } = matte;
-      if (this.lockActive()) this.lock.apply(alpha, w, h, performance.now(), LOCK_REGION_MODNET);
+      const lost = this.modnetLostFace(alpha, w, h) && engine.hasHistory;
+      if (!lost && this.lockActive()) this.lock.apply(alpha, w, h, performance.now(), LOCK_REGION_MODNET);
       engine.upload(frame, true);
-      engine.ingestMatte(alpha, w, h);
+      // Lost the face: the last matte stands for this frame; see MODNET_FACE_MIN.
+      if (!lost) engine.ingestMatte(alpha, w, h);
       const mode = this.modeFor(engine, background);
       this.easeVeil(engine.hasHistory, started);
       engine.render(mode, this.veil, lowLight, background.kind === "blur" ? background.radius : VEIL_RADIUS);
@@ -2491,6 +2524,30 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
      * noteModnetTime instead — it falls back to MediaPipe rather than turning the
      * background off. */
     safely(() => this.onFrame?.({ totalMs: performance.now() - started, segmentMs: inferMs }));
+  }
+
+  /* Whether this matte dropped the presenter's face, as the face detector sees it. Also
+   * keeps the tally that sends a device to MediaPipe when it keeps happening. */
+  private modnetLostFace(alpha: Float32Array, w: number, h: number): boolean {
+    const face = this.lockActive() ? this.lock.presenterFace(performance.now()) : null;
+    if (!face) return false;
+    const miss = faceCoverage(alpha, w, h, face) < MODNET_FACE_MIN;
+    const recent = this.modnetMisses;
+    recent.push(miss ? 1 : 0);
+    if (recent.length > MODNET_MISS_WINDOW) recent.shift();
+    if (recent.length === MODNET_MISS_WINDOW) {
+      const rate = recent.reduce((a, b) => a + b, 0) / recent.length;
+      if (rate > MODNET_MISS_MAX) {
+        this.rejectModnet(new Error(`MODNet keeps losing the face here (${Math.round(rate * 100)}% of frames)`));
+      }
+    }
+    if (!miss) {
+      this.modnetMissRun = 0;
+      return false;
+    }
+    this.modnetMissRun += 1;
+    // Held too long, a frozen cut-out is worse than the model's own answer.
+    return this.modnetMissRun <= MODNET_MISS_RUN;
   }
 
   private noteModnetTime(ms: number): void {
