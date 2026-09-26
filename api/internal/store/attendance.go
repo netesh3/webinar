@@ -132,20 +132,21 @@ func (s *Store) UpsertSessionQuestion(ctx context.Context, slug string, q types.
 	if q.ID == "" || q.Text == "" {
 		return nil
 	}
+	role := q.Role
+	if role == "" {
+		role = types.RoleAttendee
+	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO session_questions (id, webinar_id, identity, name, body, anonymous)
-		SELECT $1, w.id, $3, $4, $5, $6
+		INSERT INTO session_questions (id, webinar_id, identity, name, body, anonymous, role)
+		SELECT $1, w.id, $3, $4, $5, $6, $7
 		  FROM webinars w WHERE w.slug = $2
 		ON CONFLICT (id) DO NOTHING`,
-		q.ID, slug, q.Identity, q.Name, q.Text, q.Anonymous)
+		q.ID, slug, q.Identity, q.Name, q.Text, q.Anonymous, string(role))
 	return err
 }
 
-func (s *Store) AddQuestionUpvote(ctx context.Context, id string) error {
-	_, err := s.pool.Exec(ctx, `
-		UPDATE session_questions SET upvotes = upvotes + 1 WHERE id = $1`, id)
-	return err
-}
+// Upvotes are in questions.go (UpvoteQuestion): one row per voter, so a rejoin can
+// tell somebody they already voted and a second click is not a second vote.
 
 func (s *Store) UpdateSessionQuestion(ctx context.Context, slug, id string, patch types.QuestionPatch) error {
 	_, err := s.pool.Exec(ctx, `

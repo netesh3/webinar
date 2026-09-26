@@ -131,6 +131,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the polls panel and pop-up: percentages that must add to 100, a quiz answer
 	# marked after a blank option, and a launch announced mid-read that must not be lost.
 	cd web && node --experimental-strip-types --no-warnings lib/poll-view.test.mts
+	# And what a rejoin reads back: a long session's backlog paged to the present, a
+	# double upvote from a reloaded tab counted once, and history raising no badge.
+	cd web && node --experimental-strip-types --no-warnings lib/room-history.test.mts
 	# And the host roster sections: oldest-first hands and a search box that stays
 	# away until the list is too long to scan are not things a three-person room shows.
 	cd web && node --experimental-strip-types --no-warnings lib/roster.test.mts

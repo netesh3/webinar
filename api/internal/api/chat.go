@@ -120,6 +120,13 @@ func (s *Server) handleChatBacklog(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "chat backlog", err)
 		return
 	}
+	// A reconnect also needs to hear about removals it missed while the socket was down.
+	if since > 0 {
+		if backlog.Deleted, err = s.store.DeletedChatIDs(r.Context(), slug, since); err != nil {
+			s.fail(w, r, "chat backlog: deleted", err)
+			return
+		}
+	}
 	httpx.JSON(w, http.StatusOK, backlog)
 }
 

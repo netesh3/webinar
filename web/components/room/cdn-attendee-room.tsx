@@ -21,12 +21,13 @@ import {
   type MediaPermissions,
 } from "@/lib/permissions";
 import {
-  decodeBacklog,
   useRealtime,
   useSessionControls,
   type Relay,
   type Sender,
 } from "@/lib/realtime";
+import { countSince } from "@/lib/room-history";
+import { useRoomHistory } from "@/lib/room-history-sync";
 import { useAudiencePolls } from "@/lib/polls";
 import { useHostRoster } from "./participants";
 import { useNetworkHealth } from "@/lib/network";
@@ -202,36 +203,18 @@ export function CdnAttendeeRoom({
     setStage(stageEl);
   }, [setStage, stageEl]);
 
-  // Chat backlog sync
-  useEffect(() => {
-    let cancelled = false;
+  // Chat and Q&A history, on joining and after every reconnect. See useRoomHistory.
+  useRoomHistory(room, slug, joinKey, realtime);
 
-    const sync = () => {
-      api
-        .chatBacklog(slug, realtime.chatCursor, joinKey)
-        .then((backlog) => {
-          if (!cancelled) realtime.mergeBacklog(decodeBacklog(backlog.messages));
-        })
-        .catch(() => {});
-    };
-
-    sync();
-    room.on(RoomEvent.Reconnected, sync);
-    room.on(RoomEvent.Connected, sync);
-    return () => {
-      cancelled = true;
-      room.off(RoomEvent.Reconnected, sync);
-      room.off(RoomEvent.Connected, sync);
-    };
-  }, [room, slug, joinKey, realtime.mergeBacklog, realtime.chatCursor]);
-
-  // Unread badge counters
+  // Unread badge counters. History read back on mount predates this page and is not
+  // counted — see the same watermark in webinar-room.tsx.
   const chatCount = realtime.chat.length;
   const questionCount = realtime.questions.length;
   const chatVisible = isToolVisible(tools.layout, tools.panelTab, "chat");
   const qaVisible = isToolVisible(tools.layout, tools.panelTab, "qa");
 
   const [seen, setSeen] = useState({ chat: 0, qa: 0 });
+  const [mountedAt] = useState(() => Date.now());
   const wantSeen = {
     chat: chatVisible ? chatCount : seen.chat,
     qa: qaVisible ? questionCount : seen.qa,
@@ -240,8 +223,18 @@ export function CdnAttendeeRoom({
 
   const unread = useMemo<Record<ToolId, number>>(
     () => ({
-      chat: chatVisible ? 0 : Math.max(0, chatCount - seen.chat),
-      qa: qaVisible ? 0 : Math.max(0, questionCount - seen.qa),
+      chat: chatVisible
+        ? 0
+        : Math.min(
+            Math.max(0, chatCount - seen.chat),
+            countSince(realtime.chat, mountedAt, me.identity),
+          ),
+      qa: qaVisible
+        ? 0
+        : Math.min(
+            Math.max(0, questionCount - seen.qa),
+            countSince(realtime.questions, mountedAt, me.identity),
+          ),
       polls: 0,
       participants: 0,
       invite: 0,
@@ -251,7 +244,7 @@ export function CdnAttendeeRoom({
       settings: 0,
       host: 0,
     }),
-    [chatVisible, qaVisible, chatCount, questionCount, seen],
+    [chatVisible, qaVisible, chatCount, questionCount, seen, realtime.chat, realtime.questions, mountedAt, me.identity],
   );
 
   const leave = useCallback(() => {

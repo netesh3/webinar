@@ -251,6 +251,29 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	/* Q&A is written down before it is delivered, like chat, so a rejoin can read it
+	 * back (see handleRoomQuestions). An upvote the store already holds for this person
+	 * — a rejoined tab clicking again — is acknowledged and NOT re-broadcast, or every
+	 * other browser would count it twice. A vote on a question with no row (asked
+	 * before questions were persisted) is still delivered live. */
+	switch packet.Kind {
+	case types.MsgQuestion:
+		if packet.ID == "" {
+			packet.ID = fmt.Sprintf("q-%d", packet.At)
+		}
+		_ = s.store.UpsertSessionQuestion(r.Context(), slug, types.SessionQuestion{
+			ID: packet.ID, Identity: from.Identity, Name: from.Name,
+			Text: packet.Text, Anonymous: packet.Anonymous, Role: from.Role,
+		})
+	case types.MsgUpvote:
+		if added, err := s.store.UpvoteQuestion(
+			r.Context(), slug, packet.QuestionID, from.Identity,
+		); err == nil && !added {
+			httpx.JSON(w, http.StatusOK, types.SendMessageResponse{})
+			return
+		}
+	}
+
 	body, err := json.Marshal(packet)
 	if err != nil {
 		s.fail(w, r, "say: marshal packet", err)
@@ -259,19 +282,6 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 	if err := sfu.SendData(r.Context(), room, dataTopic, body, to); err != nil {
 		s.fail(w, r, "say: send data", err)
 		return
-	}
-
-	switch packet.Kind {
-	case types.MsgQuestion:
-		if packet.ID == "" {
-			packet.ID = fmt.Sprintf("q-%d", packet.At)
-		}
-		_ = s.store.UpsertSessionQuestion(r.Context(), slug, types.SessionQuestion{
-			ID: packet.ID, Identity: from.Identity, Name: from.Name,
-			Text: packet.Text, Anonymous: packet.Anonymous,
-		})
-	case types.MsgUpvote:
-		_ = s.store.AddQuestionUpvote(r.Context(), packet.QuestionID)
 	}
 
 	httpx.JSON(w, http.StatusOK, types.SendMessageResponse{

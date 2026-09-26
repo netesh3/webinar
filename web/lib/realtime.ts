@@ -6,10 +6,12 @@ import type {
   ChatMessage as ApiChatMessage,
   Role,
   RoomMeta,
+  RoomQuestions,
   SendMessageRequest,
   SendMessageResponse,
   SessionControls,
 } from "./api-types";
+import { mergeQuestions as mergeQuestionList, questionSnapshot, tallyVotes } from "./room-history";
 
 /* Chat, Q&A, raised hands and reactions, carried on the WebRTC data channel.
  *
@@ -668,8 +670,12 @@ export type Realtime = {
   /** Bumped when the server says the polls changed. A dependency to re-read on,
    *  not the polls themselves — see PollsChangedMessage. */
   pollsRevision: number;
-  /** Merges a history batch into the conversation, de-duplicating by id. */
-  mergeBacklog: (messages: ChatMessage[]) => void;
+  /** Merges a history batch into the conversation, de-duplicating by id. `deleted`
+   *  is the ids moderation removed while this client was away (see ChatBacklog). */
+  mergeBacklog: (messages: ChatMessage[], deleted?: readonly string[]) => void;
+  /** Folds the room's Q&A, as read back from the server, into what is on screen —
+   *  on joining and after a reconnect. See questionSnapshot. */
+  mergeQuestions: (list: RoomQuestions) => void;
   /** The highest sequence this client holds, which is what it asks the server for
    *  "everything after". Zero before anything has arrived. */
   chatCursor: number;
@@ -706,6 +712,9 @@ export function useRealtime(
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [rawQuestions, setRawQuestions] = useState<QuestionMessage[]>([]);
   const [votes, setVotes] = useState<Record<string, Set<string>>>({});
+  // The server's count per question at the last Q&A read, and whether it includes me.
+  // Live voters in `votes` are those heard since; see tallyVotes.
+  const [voteBase, setVoteBase] = useState<Record<string, { count: number; mine: boolean }>>({});
   const [answered, setAnswered] = useState<Set<string>>(new Set());
   const [qMods, setQMods] = useState<
     Record<string, { pinned: boolean; dismissed: boolean; answer: string }>
@@ -1050,9 +1059,66 @@ export function useRealtime(
    * the socket drained atomically — appears once. Sorted by seq, so a batch that arrives
    * out of order with the live stream still reads in the order it was said.
    */
-  const mergeBacklog = useCallback((messages: ChatMessage[]) => {
-    setChat((current) => mergeChat(current, messages));
+  const mergeBacklog = useCallback((messages: ChatMessage[], deleted?: readonly string[]) => {
+    setChat((current) => {
+      const merged = mergeChat(current, messages);
+      if (!deleted?.length) return merged;
+      const gone = new Set(deleted);
+      return merged.filter((m) => !gone.has(m.id));
+    });
   }, []);
+
+  /* The room's Q&A read back from the server — the only way a question asked before
+   * this page loaded, or while its connection was down, reaches it at all.
+   *
+   * The snapshot is authoritative for what it contains: its vote count replaces the
+   * live voters heard so far for those questions (they are in the count), and its
+   * answered / pinned / hidden state replaces ours. Questions heard live and not yet
+   * in the snapshot are kept. */
+  const mergeQuestions = useCallback((list: RoomQuestions) => {
+    const snap = questionSnapshot(list);
+    setRawQuestions((current) => mergeQuestionList(current, snap.questions, MAX_QUESTIONS));
+    setVoteBase((current) => ({ ...current, ...snap.base }));
+    setVotes((current) => {
+      const next = { ...current };
+      for (const id of Object.keys(snap.base)) delete next[id];
+      return next;
+    });
+    if (snap.answered.length) {
+      setAnswered((current) => {
+        const next = new Set(current);
+        for (const id of snap.answered) next.add(id);
+        return next;
+      });
+    }
+    setQMods((current) => ({ ...current, ...snap.mods }));
+  }, []);
+
+  /* Questions and upvotes go through the relay for EVERYONE, like chat.
+   *
+   * The server is what writes them down (session_questions, one vote row per voter), and
+   * the stage used to publish these straight onto the data channel — so a host's or a
+   * panelist's question, and their upvotes, were never recorded and vanished for anybody
+   * who reloaded. The relay broadcasts to the whole room including the sender, so there
+   * is no optimistic echo to apply. Falls back to the data channel only when there is no
+   * relay at all. */
+  const sendRecorded = useCallback(
+    async (msg: RoomMessage, relayed: RelayRequest): Promise<void> => {
+      const via = relayRef.current;
+      if (via) {
+        try {
+          await via(relayed);
+          return;
+        } catch (err) {
+          // The stage can still reach the room directly — before the session is live,
+          // say, when the relay refuses everything. Unrecorded, but not lost live.
+          if (room?.localParticipant?.permissions?.canPublishData !== true) throw err;
+        }
+      }
+      await send(msg, relayed);
+    },
+    [send, room],
+  );
 
   const askQuestion = useCallback(
     async (text: string, anonymous: boolean) => {
@@ -1066,17 +1132,17 @@ export function useRealtime(
         anonymous,
         at: Date.now(),
       };
-      await send(msg, { kind: "question", id: msg.id, text: clean, anonymous });
+      await sendRecorded(msg, { kind: "question", id: msg.id, text: clean, anonymous });
     },
-    [send],
+    [sendRecorded],
   );
 
   const upvote = useCallback(
     async (questionId: string) => {
       const msg: UpvoteMessage = { kind: "upvote", questionId, from: meRef.current };
-      await send(msg, { kind: "upvote", questionId });
+      await sendRecorded(msg, { kind: "upvote", questionId });
     },
-    [send],
+    [sendRecorded],
   );
 
   // Published directly, not relayed: only the stage can mark a question answered,
@@ -1208,13 +1274,13 @@ export function useRealtime(
     const host = me.role !== "attendee";
     return rawQuestions
       .map((q) => {
-        const voters = votes[q.id];
         const mod = qMods[q.id];
+        const { votes: count, votedByMe } = tallyVotes(voteBase[q.id], votes[q.id], me.identity);
         return {
           ...q,
-          votes: voters?.size ?? 0,
+          votes: count,
           answered: answered.has(q.id),
-          votedByMe: voters?.has(me.identity) ?? false,
+          votedByMe,
           pinned: mod?.pinned ?? false,
           dismissed: mod?.dismissed ?? false,
           answer: mod?.answer ?? "",
@@ -1227,7 +1293,7 @@ export function useRealtime(
         if (a.votes !== b.votes) return b.votes - a.votes;
         return a.at - b.at;
       });
-  }, [rawQuestions, votes, answered, qMods, me.identity, me.role]);
+  }, [rawQuestions, votes, voteBase, answered, qMods, me.identity, me.role]);
 
   const hands = useMemo(
     () => Object.values(handMap).sort((a, b) => a.at - b.at),
@@ -1257,6 +1323,7 @@ export function useRealtime(
     clearHands,
     pollsRevision,
     mergeBacklog,
+    mergeQuestions,
     chatCursor,
     react,
     askToUnmute,

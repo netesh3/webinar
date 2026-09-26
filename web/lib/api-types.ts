@@ -672,6 +672,13 @@ export interface ChatBacklog {
    * messages. A session with ten thousand lines must not arrive in one response.
    */
   more: boolean;
+  /**
+   * Deleted lists messages at or below `since` that moderation has since removed, so a
+   * client catching up after a dropped connection — which missed the live chat-deleted
+   * packet — can take them off screen too. Ids only; empty on a fresh join (since=0),
+   * where deleted messages are simply not returned.
+   */
+  deleted?: string[];
 }
 /**
  * ChatImageResponse is returned after an upload. The message has already been created
@@ -842,6 +849,26 @@ export interface SessionQuestion {
   dismissed?: boolean;
   upvotes: number /* int */;
   createdAt?: string;
+  /**
+   * Role is the asker's role when they asked, for the badge on a reloaded list.
+   */
+  role?: Role;
+  /**
+   * VotedByMe is set only on the room's list (RoomQuestions), for the caller.
+   */
+  votedByMe?: boolean;
+}
+/**
+ *  RoomQuestions is the Q&A as one participant is entitled to see it, for a rejoin.
+ *  *
+ *  * Questions the stage hid are left out for the audience, and their ids are listed in
+ *  * Hidden instead, so a client that still holds one from before a dropped connection
+ *  * can drop it without the text of a hidden question ever being sent to the audience.
+ *  * An anonymous question carries no asker identity or name unless it is the caller's own.
+ */
+export interface RoomQuestions {
+  questions: SessionQuestion[];
+  hidden: string[];
 }
 export interface QuestionPatch {
   answered?: boolean;
