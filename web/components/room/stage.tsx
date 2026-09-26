@@ -211,6 +211,10 @@ export function Stage() {
     ordered.find((t) => t.key === stage.pinnedParticipantId) ?? screenShare ?? ordered[0] ?? tiles[0];
   const rest = ordered.filter((t) => t.key !== focus.key);
   const pinned = stage.pinnedParticipantId;
+  // One publisher has nothing to grid. A 16:9 cell centered in a wider stage leaves
+  // stage-coloured bars on both sides — the picture looks cropped in from the left and
+  // right the moment you connect, while pre-join (a 16:9 card) still looked full.
+  const solo = ordered.length === 1 ? ordered[0] : null;
 
   return (
     <div className="relative flex size-full min-h-0 min-w-0 flex-col">
@@ -238,7 +242,9 @@ export function Stage() {
         </div>
       )}
 
-      {mode === "grid" ? (
+      {solo ? (
+        <SoloStage tile={solo} pinned={pinned} onTogglePin={stage.togglePin} />
+      ) : mode === "grid" ? (
         <GridLayout page={page} pinned={pinned} onTogglePin={stage.togglePin} onPage={stage.setPage} />
       ) : mode === "spotlight" ? (
         <SpotlightLayout focus={focus} rest={rest} pinned={pinned} onTogglePin={stage.togglePin} />
@@ -247,6 +253,42 @@ export function Stage() {
       )}
 
       <ReactionOverlay />
+    </div>
+  );
+}
+
+/* One camera (or one share) owns the stage.
+ *
+ * The grid packs every tile at 16:9 and centers the result. With a single camera that
+ * is the largest 16:9 rectangle that fits, so a laptop window — wider than 16:9 once
+ * the control bar takes its strip — shows the feed floating between two dark margins.
+ * Covering the whole column removes those margins. The camera still uses tileFit, so
+ * a wildly tall window letterboxes instead of slicing the face off; a normal window
+ * covers and meets both edges. A lone screen share stays contain inside this same
+ * full-bleed box, so slides are not cropped to make the margins disappear.
+ */
+function SoloStage({
+  tile,
+  pinned,
+  onTogglePin,
+}: {
+  tile: Tile;
+  pinned: string | null;
+  onTogglePin: (key: string) => void;
+}) {
+  const sharing = tile.source === Track.Source.ScreenShare;
+  // Absolute, not a flex child: Safari sizes a canvas/captureStream tile from the
+  // track's own aspect and would otherwise center a 16:9 box between the margins again.
+  return (
+    <div className="absolute inset-0">
+      <ParticipantTile
+        tile={tile}
+        size="lg"
+        fullBleed
+        zoomable={sharing}
+        pinned={pinned === tile.key}
+        onTogglePin={sharing ? undefined : () => onTogglePin(tile.key)}
+      />
     </div>
   );
 }
