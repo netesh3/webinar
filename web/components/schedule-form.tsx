@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { Alert, openPickerOnClick, Select, Spinner, Toggle } from "./controls";
 import { useAppConfig, useSession, useToast } from "./providers";
 import { Button, Card } from "./ui";
@@ -491,18 +491,14 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
       {/* The bar is position:fixed, so it does not take a row. This padding
           is what keeps the last fields from sitting underneath it. */}
       <div className="grid gap-5 pb-48 lg:pb-24">
-        <div className="grid gap-3">
-          <p className="text-[13px] text-ink-2">
-            You can change everything after scheduling.
-          </p>
-          <JumpLinks />
-        </div>
+        <p className="text-[13px] text-ink-2">
+          You can change everything after scheduling.
+        </p>
 
         {error && <Alert tone="error">{error}</Alert>}
 
         <FormGroup label="The webinar">
           <FormSection
-            id="basics"
             title="Basics"
             description="What people see on the browse and registration pages."
             first
@@ -600,7 +596,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
           </FormSection>
 
           <FormSection
-            id="when"
             title="When"
             description="Defaults to today, at the next five-minute mark."
           >
@@ -695,7 +690,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
 
         <FormGroup label="Who can join">
           <FormSection
-            id="registration"
             title="Registration"
             description="Who gets in, and what you ask them first."
             first
@@ -762,7 +756,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
           {/* Email, WhatsApp and the times they share. They used to sit in
               Other options, which hid the switches from the times they control. */}
           <FormSection
-            id="reminders"
             title="Reminders"
             description="The same times drive email and WhatsApp."
           >
@@ -795,7 +788,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
           </FormSection>
 
           <FormSection
-            id="stage"
             title="Who is on the stage"
             description="Panelists can share their camera and screen."
           >
@@ -833,7 +825,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
 
         <FormGroup label="In the room">
           <FormSection
-            id="session"
             title="How the session starts"
             description="You can change any of these live from the host controls once the webinar is running."
             first
@@ -879,7 +870,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
           </FormSection>
 
           <FormSection
-            id="extras"
             title="Agenda and extras"
             description="What people will get, and what happens around the session."
           >
@@ -1002,59 +992,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
   );
 }
 
-const JUMPS = [
-  { id: "basics", label: "Basics" },
-  { id: "when", label: "When" },
-  { id: "registration", label: "Registration" },
-  { id: "reminders", label: "Reminders" },
-  { id: "stage", label: "Stage" },
-  { id: "session", label: "Session" },
-  { id: "extras", label: "Agenda" },
-] as const;
-
-function JumpLinks() {
-  const [active, setActive] = useState<string>(JUMPS[0].id);
-
-  useEffect(() => {
-    const nodes = JUMPS.map((jump) => document.getElementById(jump.id)).filter(
-      (node): node is HTMLElement => node !== null,
-    );
-    if (nodes.length === 0) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const hit = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-        if (hit) setActive(hit.target.id);
-      },
-      { rootMargin: "-80px 0px -55% 0px", threshold: [0, 0.15] },
-    );
-    for (const node of nodes) observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <nav aria-label="On this page" className="-mx-1 flex gap-1 overflow-x-auto px-1">
-      {JUMPS.map((jump) => {
-        const on = active === jump.id;
-        return (
-          <a
-            key={jump.id}
-            href={`#${jump.id}`}
-            onClick={() => setActive(jump.id)}
-            aria-current={on ? "location" : undefined}
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-              on ? "bg-brand-soft font-medium text-brand" : "text-ink-2 hover:bg-surface-2"
-            }`}
-          >
-            {jump.label}
-          </a>
-        );
-      })}
-    </nav>
-  );
-}
-
 function FormGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
@@ -1067,13 +1004,11 @@ function FormGroup({ label, children }: { label: string; children: ReactNode }) 
 }
 
 function FormSection({
-  id,
   title,
   description,
   first,
   children,
 }: {
-  id: string;
   title: string;
   description: string;
   first?: boolean;
@@ -1081,9 +1016,7 @@ function FormSection({
 }) {
   return (
     <section
-      id={id}
-      tabIndex={-1}
-      className={`scroll-mt-20 grid gap-3 px-4 py-5 outline-none lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start lg:gap-8 lg:px-6 lg:py-6 ${
+      className={`grid gap-3 px-4 py-5 lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start lg:gap-8 lg:px-6 lg:py-6 ${
         first ? "" : "border-t border-line"
       }`}
     >

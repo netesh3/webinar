@@ -3,23 +3,14 @@
  * has finished downloading and hydrating. Without it the click felt like it
  * had done nothing for a beat; this is what fills that beat.
  *
- * Shaped like the real form (title, jump links, three grouped cards) rather
+ * Shaped like the real form (title, three grouped cards) rather
  * than a spinner, so there's no layout jump when ScheduleForm actually mounts. */
 export default function Loading() {
   return (
     <>
       <div className="mb-4 h-[17px] w-28 animate-pulse rounded bg-surface-2" />
       <div className="mb-1 h-7 w-64 animate-pulse rounded bg-surface-2" />
-      <div className="mt-3 mb-3 h-4 w-72 animate-pulse rounded bg-surface-2" />
-      <div className="mb-5 flex gap-1 overflow-hidden">
-        {[72, 56, 96, 88, 56, 72, 68].map((w) => (
-          <div
-            key={w}
-            className="h-7 shrink-0 animate-pulse rounded-full bg-surface-2"
-            style={{ width: w }}
-          />
-        ))}
-      </div>
+      <div className="mt-3 mb-5 h-4 w-72 animate-pulse rounded bg-surface-2" />
       <div className="grid gap-5 pb-48 lg:pb-24">
         {[320, 420, 280].map((h) => (
           <div
