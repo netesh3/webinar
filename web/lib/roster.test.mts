@@ -9,8 +9,10 @@
 import type { LiveParticipant } from "./api-types.ts";
 import type { RaisedHand } from "./realtime.ts";
 import {
+  handWaitLabel,
   matchRosterQuery,
   partitionHostRoster,
+  rosterBadge,
   withLocalOnRoster,
   ROSTER_SEARCH_AFTER,
   shouldShowRosterSearch,
@@ -165,6 +167,34 @@ console.log("\nwithLocalOnRoster");
     ["user_h"],
     "an already-listed host is not duplicated",
   );
+}
+
+console.log("\nrosterBadge");
+eq(rosterBadge(person("user_h", "H", { role: "host" })), { label: "Host", tone: "stage" }, "host");
+eq(
+  rosterBadge(person("user_c", "C", { role: "panelist", coHost: true })),
+  { label: "Co-host", tone: "stage" },
+  "a co-host outranks panelist",
+);
+eq(
+  rosterBadge(person("user_p", "P", { role: "panelist" })),
+  { label: "Panelist", tone: "neutral" },
+  "panelist",
+);
+eq(
+  rosterBadge(person("att_s", "S", { role: "panelist", audioOnly: true })),
+  { label: "Speaker", tone: "neutral" },
+  "an attendee allowed to speak is a Speaker, not a Panelist",
+);
+eq(rosterBadge(person("att_a", "A")), null, "attendees get no badge");
+
+console.log("\nhandWaitLabel");
+{
+  const t = 1_700_000_000_000;
+  eq(handWaitLabel(t, t + 30_000), "just now", "under a minute");
+  eq(handWaitLabel(t, t + 5 * 60_000 + 59_000), "5 min", "whole minutes, rounded down");
+  eq(handWaitLabel(t, t + 125 * 60_000), "2 h 5 min", "hours past the hour");
+  eq(handWaitLabel(t, t - 10_000), "just now", "a clock slightly behind never goes negative");
 }
 
 console.log(`\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`);

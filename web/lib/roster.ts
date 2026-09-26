@@ -108,3 +108,28 @@ export function withLocalOnRoster(
     ...rows,
   ];
 }
+
+/** The pill beside a name on the host's roster. Mirrors the one-word role line
+ *  the row used to print, just drawn as a badge: brand for the people who run the
+ *  room, neutral for the stage, nothing for the audience. */
+export function rosterBadge(
+  p: Pick<LiveParticipant, "role" | "coHost" | "audioOnly">,
+): { label: string; tone: "stage" | "neutral" } | null {
+  if (p.role === "host") return { label: "Host", tone: "stage" };
+  if (p.role !== "panelist") return null;
+  if (p.coHost) return { label: "Co-host", tone: "stage" };
+  // An attendee the host allowed to speak: on the stage in LiveKit's terms, but
+  // only with a microphone — the row used to say "Allowed to speak" here.
+  return p.audioOnly ? { label: "Speaker", tone: "neutral" } : { label: "Panelist", tone: "neutral" };
+}
+
+/** How long a hand has been up, as the queue shows it: "just now" under a
+ *  minute, then whole minutes, then hours. Read at render time, which the roster's
+ *  own refresh keeps within a few seconds of true. */
+export function handWaitLabel(raisedAt: number, now: number): string {
+  const minutes = Math.floor(Math.max(0, now - raisedAt) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} h ${minutes % 60} min`;
+}

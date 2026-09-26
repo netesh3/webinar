@@ -10,8 +10,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { LiveParticipant, LiveRoom, Role } from "@/lib/api-types";
 import {
+  handWaitLabel,
   matchRosterQuery,
   partitionHostRoster,
+  rosterBadge,
   shouldShowRosterSearch,
   withLocalOnRoster,
 } from "@/lib/roster";
@@ -28,6 +30,8 @@ import {
   SearchIcon,
   TrashIcon,
 } from "../icons";
+import { SenderAvatar } from "../sender-avatar";
+import { Pill, RoleBadge } from "./chat-badges";
 import { useRoomUI } from "./context";
 
 /* The participants panel.
@@ -204,9 +208,20 @@ function HostRoster() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const handIdentities = useMemo(
-    () => new Set(realtime.hands.map((h) => h.identity)),
+    () => new Map(realtime.hands.map((h) => [h.identity, h.at])),
     [realtime.hands],
   );
+
+  // The queue's clock, for "waiting 3 min". Ticks only while somebody's hand is up,
+  // and only every half minute: the label is whole minutes, and a roster that
+  // re-rendered every second for it would be paying for nothing.
+  const [now, setNow] = useState(() => Date.now());
+  const anyHands = realtime.hands.length > 0;
+  useEffect(() => {
+    if (!anyHands) return;
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [anyHands]);
 
   // `label` is what usually gets said; an action that learns something more
   // specific from the response returns its own string instead.
@@ -256,6 +271,8 @@ function HostRoster() {
       participant={p}
       isMe={p.identity === join.identity}
       handRaised={handIdentities.has(p.identity)}
+      handRaisedAt={handIdentities.get(p.identity)}
+      now={now}
       busy={busy === p.identity}
       onMute={(muted) =>
         p.identity === join.identity
@@ -455,11 +472,11 @@ function HostRoster() {
         ) : (
           <>
             {sections.raised.length > 0 && (
-              <Group title={`Raised hands · ${sections.raised.length}`}>
+              <Group title="Raised hands" count={sections.raised.length}>
                 {sections.raised.map(row)}
               </Group>
             )}
-            <Group title={`Panelists · ${sections.panelists.length}`}>
+            <Group title="Panelists" count={sections.panelists.length}>
               {sections.panelists.length === 0 ? (
                 <li className="px-3 py-4 text-[12.5px] text-ink-3">
                   Nobody on the stage.
@@ -468,7 +485,7 @@ function HostRoster() {
                 sections.panelists.map(row)
               )}
             </Group>
-            <Group title={`Attendees · ${sections.attendees.length}`}>
+            <Group title="Attendees" count={sections.attendees.length}>
               {sections.attendees.length === 0 ? (
                 <li className="px-3 py-4 text-[12.5px] text-ink-3">
                   {query ? "No attendees match that." : "No attendees yet."}
@@ -505,6 +522,8 @@ function HostRosterRow({
   participant: p,
   isMe,
   handRaised,
+  handRaisedAt,
+  now,
   busy,
   onMute,
   onAskToUnmute,
@@ -516,6 +535,9 @@ function HostRosterRow({
   participant: LiveParticipant;
   isMe: boolean;
   handRaised: boolean;
+  /** When the hand went up, for the queue's "waiting 3 min". */
+  handRaisedAt?: number;
+  now: number;
   busy: boolean;
   onMute: (muted: boolean) => void;
   onAskToUnmute: () => void;
@@ -544,64 +566,74 @@ function HostRosterRow({
   // Gating the menu item on the prefix means the rare mis-click never reaches
   // the server at all, instead of surfacing as a confusing error toast.
   const canBeCoHost = onStageNow && p.identity.startsWith("user_");
+  const badge = rosterBadge(p);
 
   return (
-    <li className="flex min-h-12 items-center gap-2.5 px-3 py-2">
+    <li
+      className={`flex min-h-12 items-center gap-2.5 px-3 py-2 ${
+        handRaised ? "bg-warn/[0.05]" : isMe ? "bg-brand/[0.05]" : ""
+      }`}
+    >
+      <SenderAvatar name={p.name || p.identity} identity={p.identity} ring={p.role !== "attendee"} />
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
+        <span className="flex min-w-0 items-center gap-1.5">
           <span className="truncate text-[13px] font-medium text-ink">
             {p.name || p.identity}
           </span>
-          {isMe && <span className="text-[11px] text-ink-3">(Me)</span>}
+          {/* Your own name stays — it is how you check what everyone else sees you
+              as — with "You" beside it, as the chat and Q&A put it. */}
+          {isMe && <span className="shrink-0 text-[11px] text-ink-3">(You)</span>}
+          {badge && <Pill tone={badge.tone}>{badge.label}</Pill>}
           {handRaised && (
-            <HandIcon className="size-3.5 shrink-0 text-warn" aria-label="Hand raised" />
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-warn/25 bg-warn-soft px-1.5 text-[10px] leading-4 font-semibold text-warn">
+              <HandIcon className="size-2.5" />
+              {handRaisedAt !== undefined ? handWaitLabel(handRaisedAt, now) : "Hand"}
+              <span className="sr-only"> — hand raised</span>
+            </span>
           )}
         </span>
-        <span className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-ink-3">
-          {isHost
-            ? "Host"
-            : p.coHost
-              ? "Co-host"
-              : p.role === "panelist"
-                ? speakingOnly
-                  ? "Allowed to speak"
-                  : "Panelist"
-                : "Attendee"}
-          {sharing && <span className="text-brand">· sharing screen</span>}
-          {silenced && <span className="text-warn">· muted by you</span>}
-          {canSpeak && hasMic && !p.audioMuted && <span className="text-ok">· live</span>}
-          {canSpeak && !hasMic && <span>· hasn&apos;t unmuted</span>}
-        </span>
+        {/* What they are doing right now. The role that used to open this line is
+            the badge above; an attendee with nothing going on gets no second line. */}
+        {(sharing || silenced || canSpeak) && (
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-ink-3">
+            {sharing && <span className="text-brand">Sharing screen</span>}
+            {silenced && <span className="text-warn">Muted by you</span>}
+            {canSpeak && hasMic && !p.audioMuted && <span className="text-ok">Live</span>}
+            {canSpeak && hasMic && p.audioMuted && <span>Mic off</span>}
+            {canSpeak && !hasMic && <span>Hasn&apos;t unmuted</span>}
+          </span>
+        )}
+
+        {/* A raised hand is time-sensitive — one click each, not buried behind
+            the overflow menu everything else lives in. Under the name rather than
+            beside it, so the two buttons never squeeze the name out of a 360px
+            panel. Attendee-only: a panelist/co-host raising a hand (rare, but the
+            control isn't role-gated) still gets "Lower Hand" from the menu below,
+            since "Allow to speak" makes no sense for someone already on stage. */}
+        {!busy && handRaised && p.role === "attendee" && (
+          <span className="mt-1.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => onStage("panelist", true)}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-brand px-3 text-[12.5px] font-medium text-stage transition-colors hover:bg-brand-hover outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-7 md:py-0"
+            >
+              Allow to Speak
+            </button>
+            <button
+              type="button"
+              onClick={onDismissHand}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-line-2 px-3 text-[12.5px] font-medium text-ink transition-colors hover:bg-surface-2 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-7 md:py-0"
+            >
+              Lower Hand
+            </button>
+          </span>
+        )}
       </span>
 
       {busy ? (
         <Spinner className="size-4 text-ink-3" />
       ) : (
         <>
-          {/* A raised hand is time-sensitive — one click each, not buried behind
-              the overflow menu everything else lives in. Attendee-only: a
-              panelist/co-host raising a hand (rare, but the control isn't
-              role-gated) still gets "Lower Hand" from the menu below, since
-              "Allow to speak" makes no sense for someone already on stage. */}
-          {handRaised && p.role === "attendee" && (
-            <>
-              <button
-                type="button"
-                onClick={() => onStage("panelist", true)}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-brand px-3 text-[12.5px] font-medium text-white transition-colors hover:bg-brand-hover outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-8 md:py-0"
-              >
-                Allow to Speak
-              </button>
-              <button
-                type="button"
-                onClick={onDismissHand}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-line-2 px-3 text-[12.5px] font-medium text-ink transition-colors hover:bg-surface-2 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-8 md:py-0"
-              >
-                Lower Hand
-              </button>
-            </>
-          )}
-
           {silenced ? (
             // The one-click way back. Nothing they can do restores it themselves,
             // which is the point of the mute — so the host needs it in reach.
@@ -856,11 +888,12 @@ function AudienceRoster() {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto">
-      <Group title={`Panelists · ${stage.length}`}>
+      <Group title="Panelists" count={stage.length}>
         {stage.map((p) => (
           <AudienceRow
             key={p.identity}
             name={p.name || p.identity}
+            identity={p.identity}
             role={roleOf(p)}
             isMe={p.identity === join.identity || p.isLocal}
             muted={!p.getTrackPublication(Track.Source.Microphone) ||
@@ -892,11 +925,12 @@ function AudienceRoster() {
             </p>
           </div>
         ) : (
-          <Group title={`Attendees · ${audience.length}`}>
+          <Group title="Attendees" count={audience.length}>
             {audience.map((p) => (
               <AudienceRow
                 key={p.identity}
                 name={p.name || p.identity}
+                identity={p.identity}
                 role="attendee"
                 isMe={p.identity === join.identity || p.isLocal}
                 muted
@@ -916,11 +950,22 @@ function AudienceRoster() {
   );
 }
 
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
+function Group({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <p className="sticky top-0 z-10 border-b border-line bg-surface/95 px-3 py-2 text-[10.5px] font-semibold tracking-[0.06em] text-ink-3 uppercase backdrop-blur">
+      <p className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-line bg-surface/95 px-3 py-2 text-[10.5px] font-semibold tracking-[0.06em] text-ink-3 uppercase backdrop-blur">
         {title}
+        <span className="rounded-full bg-surface-2 px-1.5 text-[10px] leading-4 tracking-normal text-ink-2 tabular-nums">
+          {count}
+        </span>
       </p>
       <ul className="divide-y divide-line">{children}</ul>
     </div>
@@ -929,27 +974,24 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 
 function AudienceRow({
   name,
+  identity,
   role,
   isMe,
   muted,
 }: {
   name: string;
+  identity: string;
   role: Role;
   isMe: boolean;
   muted: boolean;
 }) {
   return (
-    <li className="flex items-center gap-2.5 px-3 py-2.5">
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-[13px] text-ink">{name}</span>
-          {isMe && <span className="text-[11px] text-ink-3">(Me)</span>}
-        </span>
-        {role !== "attendee" && (
-          <span className="text-[11.5px] text-ink-3">
-            {role === "host" ? "Host" : "Panelist"}
-          </span>
-        )}
+    <li className={`flex items-center gap-2.5 px-3 py-2.5 ${isMe ? "bg-brand/[0.05]" : ""}`}>
+      <SenderAvatar name={name} identity={identity} ring={role !== "attendee"} />
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="truncate text-[13px] text-ink">{name}</span>
+        {isMe && <span className="shrink-0 text-[11px] text-ink-3">(You)</span>}
+        <RoleBadge role={role} />
       </span>
       {role !== "attendee" &&
         (muted ? (
