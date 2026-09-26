@@ -1033,7 +1033,14 @@ function ConnectedRoom({
   // the panel because a launched poll has to reach somebody who is not looking at the
   // panel — the pop-up is the point — and because the pop-up and the panel should agree
   // rather than each fetching.
-  const polls = useAudiencePolls(slug, joinKey, realtime.pollsRevision, !isHost);
+  const polls = useAudiencePolls(
+    slug,
+    joinKey,
+    realtime.pollsRevision,
+    !isHost,
+    controls.pollsEnabled,
+    room,
+  );
 
   /* The connection, sampled from getStats, and the publish ladder held where it belongs.
    *

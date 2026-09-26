@@ -1,8 +1,12 @@
 "use client";
 
+import { RoomEvent, type Room } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { Poll } from "./api-types";
+import { coalescingReader } from "./poll-view";
+
+export { activePoll } from "./poll-view";
 
 /* The audience's copy of the polls.
  *
@@ -18,47 +22,81 @@ import type { Poll } from "./api-types";
  * `revision` is the announcement. A counter rather than the poll itself, because the
  * host's copy of a poll carries the tally and the correct answers and this one must
  * not — so each side fetches its own.
+ *
+ * Three more things re-read, because each is a way to miss an announcement:
+ *
+ *   pollsEnabled  The server answers an empty list while polls are off, and turning
+ *                 them on is a controls change, not a polls change — nothing is
+ *                 announced. Without this, a poll launched before the switch never
+ *                 reaches the attendees at all.
+ *   a reconnect   A nudge sent while the data channel was down is simply gone.
+ *   the tab coming back
+ *                 A phone that backgrounded the page can sleep through one.
  */
 export function useAudiencePolls(
   slug: string,
   joinKey: string | undefined,
   revision: number,
   enabled: boolean,
+  pollsEnabled: boolean,
+  room?: Room | null,
 ) {
   const [list, setList] = useState<Poll[] | null>(null);
-  // Guards against a slow response overlapping the next announcement.
-  const inFlight = useRef(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(() => {
-    if (!enabled || inFlight.current) return;
-    inFlight.current = true;
-    api
-      .polls(slug, joinKey)
-      .then(setList)
-      // Left as-is on failure rather than blanked: an open poll already on screen is
-      // more useful than an error where it used to be, and the next announcement
-      // retries. The panel surfaces a message of its own.
-      .catch(() => {})
-      .finally(() => {
-        inFlight.current = false;
-      });
+  const read = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      setList(await api.polls(slug, joinKey));
+      setError(null);
+    } catch (err) {
+      // Left as-is on failure rather than blanked: an open poll already on screen
+      // is more useful than an error where it used to be, and the next
+      // announcement retries.
+      setError(err instanceof Error ? err.message : "Could not load the polls.");
+    }
   }, [enabled, slug, joinKey]);
+  const request = useCoalescingReader(read);
 
-  useEffect(reload, [reload, revision]);
+  const reload = request;
+
+  useEffect(() => {
+    request();
+  }, [request, read, revision, pollsEnabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") request();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    room?.on(RoomEvent.Reconnected, request);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      room?.off(RoomEvent.Reconnected, request);
+    };
+  }, [request, enabled, room]);
 
   const replace = useCallback((poll: Poll) => {
     setList((current) => (current ?? []).map((p) => (p.id === poll.id ? poll : p)));
   }, []);
 
-  return { list, reload, replace };
+  return { list, error, reload, replace };
 }
 
-/** The poll the audience should be answering right now, if there is one.
- *
- *  Open, and not already answered. A closed poll is history and an answered one is
- *  done, and re-presenting either as a modal would be a pop-up that will not go away. */
-export function activePoll(list: Poll[] | null): Poll | null {
-  return (list ?? []).find((p) => p.state === "open" && p.myChoice < 0) ?? null;
+/** A stable `request()` that runs `run` through a coalescingReader: never two reads
+ *  at once, and never a request dropped. `run` may change between renders (a new
+ *  slug); the next read uses the latest one. */
+export function useCoalescingReader(run: () => Promise<void>): () => void {
+  const runRef = useRef(run);
+  useEffect(() => {
+    runRef.current = run;
+  }, [run]);
+  const readerRef = useRef<ReturnType<typeof coalescingReader> | null>(null);
+  return useCallback(() => {
+    readerRef.current ??= coalescingReader(() => runRef.current());
+    readerRef.current.request();
+  }, []);
 }
 
 // ------------------------------------------------------------------ the sound cue

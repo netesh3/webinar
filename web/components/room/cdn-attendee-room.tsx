@@ -260,7 +260,14 @@ export function CdnAttendeeRoom({
   }, [disconnect]);
 
   const roster = useHostRoster(slug, false, room);
-  const polls = useAudiencePolls(slug, joinKey, realtime.pollsRevision, true);
+  const polls = useAudiencePolls(
+    slug,
+    joinKey,
+    realtime.pollsRevision,
+    true,
+    controls.pollsEnabled,
+    room,
+  );
   const network = useNetworkHealth(room, false);
 
   const ui = useMemo<RoomUI>(
