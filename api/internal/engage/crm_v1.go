@@ -234,6 +234,7 @@ func (s *Module) handleCRMTestSend(w http.ResponseWriter, r *http.Request) {
 	params := resolveBroadcastParams(body.Params, me, wb, user.Name, 58)
 	if _, err := s.whatsapp.SendTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppPhoneNumberID,
 		wa.OutgoingTemplate{To: phone, Name: tmpl.Name, Language: tmpl.Language, BodyParams: params}); err != nil {
+		s.noteWhatsAppError(r.Context(), user.ID, user.WhatsAppToken, err)
 		s.reportSendError(w, r, user.ID, err)
 		return
 	}

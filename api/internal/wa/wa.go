@@ -260,6 +260,53 @@ func (c *Client) UnsubscribeApp(ctx context.Context, token, wabaID string) error
  * than the exchange below expects. Read off the pinned base URL rather than
  * written out twice.
  */
+/* TokenHealth is Meta's own verdict on a stored token, from /debug_token. */
+type TokenHealth struct {
+	Valid bool
+	// ExpiresAt is zero for a token that never expires.
+	ExpiresAt time.Time
+	// Reason is Meta's words when Valid is false, for the log.
+	Reason string
+}
+
+/* CheckToken asks Meta whether a host's token still works, without sending
+ * anything. Authenticated as the app (app id | secret), which is what
+ * /debug_token requires — so it answers even for a token that is already dead,
+ * where a call made WITH that token would only return 190.
+ */
+func (c *Client) CheckToken(ctx context.Context, token string) (TokenHealth, error) {
+	if !c.Enabled() {
+		return TokenHealth{}, ErrNotConfigured
+	}
+	q := url.Values{
+		"input_token":  {token},
+		"access_token": {c.AppID + "|" + c.AppSecret},
+	}
+	var out struct {
+		Data struct {
+			IsValid   bool  `json:"is_valid"`
+			ExpiresAt int64 `json:"expires_at"`
+			Error     struct {
+				Message string `json:"message"`
+				Code    int    `json:"code"`
+				Sub     int    `json:"subcode"`
+			} `json:"error"`
+		} `json:"data"`
+	}
+	if err := c.get(ctx, "", "/debug_token?"+q.Encode(), &out); err != nil {
+		return TokenHealth{}, err
+	}
+	h := TokenHealth{Valid: out.Data.IsValid}
+	if out.Data.ExpiresAt > 0 {
+		h.ExpiresAt = time.Unix(out.Data.ExpiresAt, 0).UTC()
+	}
+	if !h.Valid {
+		h.Reason = fmt.Sprintf("%s (code %d, subcode %d)",
+			strings.TrimSpace(out.Data.Error.Message), out.Data.Error.Code, out.Data.Error.Sub)
+	}
+	return h, nil
+}
+
 func (c *Client) Version() string {
 	segments := strings.Split(strings.TrimRight(c.base(), "/"), "/")
 	last := segments[len(segments)-1]
@@ -381,7 +428,11 @@ func graphError(raw []byte, status int) error {
 	}
 	_ = json.Unmarshal(raw, &parsed)
 	if parsed.Error.Code == 190 {
-		return ErrTokenRejected
+		/* Meta's reason is kept, for the log: the subcode says WHY — 458 app removed
+		 * from the business, 460 password changed, 463 expired, 467 invalid. The
+		 * host is shown only ErrTokenRejected's own sentence (see whatsappAPIError). */
+		return fmt.Errorf("%w (meta: %s; subcode %d; fbtrace %s)",
+			ErrTokenRejected, strings.TrimSpace(parsed.Error.Message), parsed.Error.Sub, parsed.Error.Trace)
 	}
 	msg := strings.TrimSpace(parsed.Error.Message)
 	if msg == "" {

@@ -92,7 +92,10 @@ func (s *Store) SetUserWhatsApp(ctx context.Context, userID, token, wabaID, phon
 		       whatsapp_verified_name = $6,
 		       whatsapp_token_expires_at = $7,
 		       whatsapp_connected_at = $8,
-		       whatsapp_coexistence = $9
+		       whatsapp_coexistence = $9,
+		       whatsapp_token_rejected_at = NULL,
+		       whatsapp_token_checked_at = NULL,
+		       whatsapp_expiry_warned_at = NULL
 		 WHERE id = $1`,
 		userID, token, wabaID, phoneNumberID, displayPhone, verifiedName, expiresAt, connectedAt, coexistence)
 	if err != nil {
@@ -102,4 +105,70 @@ func (s *Store) SetUserWhatsApp(ctx context.Context, userID, token, wabaID, phon
 		return store.ErrNotFound
 	}
 	return nil
+}
+
+/* MarkWhatsAppTokenRejected records that Meta refused this host's token, unless it
+ * has changed since: a send that started with the old token must not flag the new
+ * one a reconnect has just stored. */
+func (s *Store) MarkWhatsAppTokenRejected(ctx context.Context, userID, token string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE users SET whatsapp_token_rejected_at = now()
+		 WHERE id = $1 AND whatsapp_access_token = $2 AND whatsapp_token_rejected_at IS NULL`,
+		userID, token)
+	return err
+}
+
+// TokenCheck is one host whose WhatsApp token is due its daily look.
+type TokenCheck struct {
+	HostID    string
+	Email     string
+	Token     string
+	ExpiresAt *time.Time
+	Warned    bool
+}
+
+/* TokensDueCheck is connected hosts whose token has not been checked for `every`,
+ * and is not already known to be dead. Oldest check first, capped, so a large
+ * install spreads the calls across the day rather than making them all at once. */
+func (s *Store) TokensDueCheck(ctx context.Context, every time.Duration, limit int) ([]TokenCheck, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id::text, email, whatsapp_access_token, whatsapp_token_expires_at,
+		       whatsapp_expiry_warned_at IS NOT NULL
+		  FROM users
+		 WHERE coalesce(whatsapp_access_token, '') <> ''
+		   AND whatsapp_token_rejected_at IS NULL
+		   AND (whatsapp_token_checked_at IS NULL
+		        OR whatsapp_token_checked_at < now() - make_interval(secs => $1))
+		 ORDER BY whatsapp_token_checked_at NULLS FIRST
+		 LIMIT $2`, every.Seconds(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TokenCheck
+	for rows.Next() {
+		var c TokenCheck
+		if err := rows.Scan(&c.HostID, &c.Email, &c.Token, &c.ExpiresAt, &c.Warned); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+/* RecordTokenCheck stores the result of a check: when it ran, and the expiry Meta
+ * reported (nil for never). Guarded on the token, like MarkWhatsAppTokenRejected. */
+func (s *Store) RecordTokenCheck(ctx context.Context, userID, token string, expiresAt *time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE users SET whatsapp_token_checked_at = now(), whatsapp_token_expires_at = $3
+		 WHERE id = $1 AND whatsapp_access_token = $2`, userID, token, expiresAt)
+	return err
+}
+
+// MarkExpiryWarned records that the "reconnect before it expires" email went out.
+func (s *Store) MarkExpiryWarned(ctx context.Context, userID, token string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE users SET whatsapp_expiry_warned_at = now()
+		 WHERE id = $1 AND whatsapp_access_token = $2`, userID, token)
+	return err
 }

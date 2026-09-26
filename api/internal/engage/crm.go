@@ -264,6 +264,7 @@ func (s *Module) handleCRMTemplates(w http.ResponseWriter, r *http.Request) {
 	refresh := r.URL.Query().Get("refresh") != ""
 	if user.WhatsAppToken != "" && (refresh || len(templates) == 0) {
 		if err := s.syncTemplates(r.Context(), user); err != nil {
+			s.noteWhatsAppError(r.Context(), user.ID, user.WhatsAppToken, err)
 			if refresh {
 				if whatsappAPIError(w, err) {
 					s.log.Warn("crm templates sync", "error", err, "host", user.ID)
@@ -446,6 +447,7 @@ func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
 		wamid, err = s.whatsapp.SendText(r.Context(), user.WhatsAppToken,
 			user.WhatsAppPhoneNumberID, contact.Phone, text)
 		if err != nil {
+			s.noteWhatsAppError(r.Context(), user.ID, user.WhatsAppToken, err)
 			s.reportSendError(w, r, user.ID, err)
 			return
 		}
@@ -494,6 +496,7 @@ func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
 				BodyParams: body.Params,
 			})
 		if err != nil {
+			s.noteWhatsAppError(r.Context(), user.ID, user.WhatsAppToken, err)
 			s.reportSendError(w, r, user.ID, err)
 			return
 		}

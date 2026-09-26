@@ -138,7 +138,9 @@ export function WhatsAppAccountRow() {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-[13px] font-medium">WhatsApp</span>
-            {account.whatsapp ? (
+            {account.whatsapp?.needsReconnect ? (
+              <Badge tone="warn">Needs reconnecting</Badge>
+            ) : account.whatsapp ? (
               <Badge tone="ok">Connected</Badge>
             ) : (
               <Badge>Not connected</Badge>
@@ -151,7 +153,7 @@ export function WhatsAppAccountRow() {
           </p>
         </div>
         <ButtonLink href={`${ENGAGE_HOME}?view=setup`} size="sm" variant="secondary">
-          {account.whatsapp ? "Manage" : "Set up"}
+          {account.whatsapp?.needsReconnect ? "Reconnect" : account.whatsapp ? "Manage" : "Set up"}
         </ButtonLink>
       </div>
     </div>

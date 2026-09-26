@@ -991,6 +991,9 @@ type WhatsAppLink struct {
 	RegisteredAt string `json:"registeredAt,omitempty"`
 	/** On the WhatsApp Business app too (Coexistence). Needs no registration step. */
 	Coexistence bool `json:"coexistence,omitempty"`
+	/** Meta refused the stored token (removed from the business, secret reset, token
+	 *  expired). Still "connected" on paper; nothing will send until they reconnect. */
+	NeedsReconnect bool `json:"needsReconnect,omitempty"`
 }
 
 /* WhatsAppSignup is everything the browser needs to open Meta's Embedded Signup

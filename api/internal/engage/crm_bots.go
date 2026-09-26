@@ -987,6 +987,7 @@ func (s *Module) botSend(ctx context.Context, t *botTurn, node types.CRMBotNode,
 	if err != nil {
 		// Meta's own words, at Warn: the usual causes are the host's to fix — a WABA
 		// with no payment method, a number that is not registered.
+		s.noteWhatsAppError(ctx, t.host.ID, t.host.WhatsAppToken, err)
 		s.log.Warn("bot: send failed", "error", err, "host", t.host.ID,
 			"bot", t.run.BotID, "node", node.Key)
 		s.saveBotStep(ctx, t, crmstore.BotStep{

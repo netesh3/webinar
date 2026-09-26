@@ -117,3 +117,54 @@ func TestLeaseExclusive(t *testing.T) {
 		t.Fatal("take after expiry failed: a crashed holder would block the sweep for ever")
 	}
 }
+
+/* The daily token check: a token Meta says is dead is marked for Reconnect before any
+ * send fails, and each host is checked once a day however often the tick runs. */
+func TestTickChecksWhatsAppTokenDaily(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL), withTickSecret)
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+
+	me := func() *types.WhatsAppLink {
+		t.Helper()
+		_, raw := h.do(http.MethodGet, "/api/auth/me", nil)
+		var a types.Account
+		h.decode(raw, &a)
+		return a.WhatsApp
+	}
+
+	// Healthy: checked once, nothing flagged, and a second tick does not ask again.
+	for i := 0; i < 2; i++ {
+		if code, body := tick(t, h, testTickSecret); code != http.StatusOK {
+			t.Fatalf("tick %d: %d %s", i, code, body)
+		}
+	}
+	g.mu.Lock()
+	calls := g.debugCalls
+	g.mu.Unlock()
+	if calls != 1 {
+		t.Errorf("debug_token calls = %d, want 1 (daily, not per tick)", calls)
+	}
+	if w := me(); w == nil || w.NeedsReconnect || w.TokenExpiresAt != "" {
+		t.Fatalf("healthy token: %+v", w)
+	}
+
+	// Reconnecting resets the schedule; this time Meta says the token is dead.
+	g.tokenHealth(map[string]any{"is_valid": false, "error": map[string]any{
+		"code": 190, "subcode": 458, "message": "The user has not authorized application.",
+	}})
+	connectWhatsApp(t, h)
+	tick(t, h, testTickSecret)
+	if w := me(); w == nil || !w.NeedsReconnect {
+		t.Fatalf("dead token not flagged: %+v", w)
+	}
+
+	// An expiring token has its date recorded, so the account can show it.
+	g.tokenHealth(map[string]any{"is_valid": true, "expires_at": time.Now().Add(5 * 24 * time.Hour).Unix()})
+	connectWhatsApp(t, h)
+	tick(t, h, testTickSecret)
+	if w := me(); w == nil || w.NeedsReconnect || w.TokenExpiresAt == "" {
+		t.Errorf("expiring token: %+v, want an expiry date and no reconnect", w)
+	}
+}
