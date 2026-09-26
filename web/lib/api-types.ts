@@ -656,8 +656,21 @@ export interface ChatMessage {
   mediaBytes?: number /* int64 */;
   mediaWidth?: number /* int */;
   mediaHeight?: number /* int */;
+  /**
+   * Mentions is who the message tags, by participant identity — never by name, so
+   * a tag survives two people sharing one. Already validated by the server: every
+   * entry is somebody the sender was allowed to mention and who can read the
+   * message. May contain MentionEveryone. Absent on a message that tags nobody,
+   * which is every message sent before mentions existed.
+   */
+  mentions?: string[];
   timestamp: string;
 }
+/**
+ * MentionEveryone is the one mention that is not an identity: "@everyone", for the
+ * host and co-hosts, notifying everybody who can read the message.
+ */
+export const MentionEveryone = "@everyone";
 /**
  * ChatBacklog is the answer to "what have I missed".
  * Returned on joining and on every reconnect. `cursor` is the highest seq in the
@@ -769,6 +782,14 @@ export interface SendMessageRequest {
    * address the stage rather than accidentally broadcasting to the audience.
    */
   destination?: ChatDestination;
+  /**
+   * Mentions is who a chat message tags, by identity. A request like Destination:
+   * the server drops anybody the sender may not mention or who could not read the
+   * message, caps the list, and delivers only what survives. The text carries a
+   * plain "@Name" for each regardless, so a client that ignores this field still
+   * reads the message correctly.
+   */
+  mentions?: string[];
 }
 /**
  * SendMessageResponse reports what the server actually did, which is not always

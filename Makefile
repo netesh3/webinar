@@ -125,6 +125,12 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And chat avatars and grouping: the initials and colour must match the server's
 	# InitialsOf/HueFor, and a panelists-only aside must never join a public run.
 	cd web && node --experimental-strip-types --no-warnings lib/chat-groups.test.mts
+	# And @mentions: who the picker may offer (hidden attendees must never appear), how a
+	# tag survives edits in a plain textarea, and how a delivered message is highlighted.
+	cd web && node --experimental-strip-types --no-warnings lib/mentions.test.mts
+	# And the host's attendee-chat control: turning chat off must leave the destination
+	# alone, or switching it back on silently widens "Panelists only" to everyone.
+	cd web && node --experimental-strip-types --no-warnings lib/chat-permission.test.mts
 	# And the Q&A card's asker line: an anonymous question must never surface its
 	# sender's name, initials or identity, and "answered live" is not a text answer.
 	cd web && node --experimental-strip-types --no-warnings lib/qa-view.test.mts
@@ -152,6 +158,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And remembering a closed pop-out during screen share: without it MediaSession
 	# re-opens the window on every switch-away after the user hit X.
 	cd web && node --experimental-strip-types --no-warnings lib/pip.test.mts
+	# And reaction bursts appearing one at a time, 500–1000 ms apart, with a bounded
+	# backlog — so one click never reads as several and a flood never queues a minute.
+	cd web && node --experimental-strip-types --no-warnings lib/reaction-queue.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

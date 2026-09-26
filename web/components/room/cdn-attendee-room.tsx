@@ -37,6 +37,7 @@ import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
 import { useFullscreen } from "@/lib/fullscreen";
 import { useStageLayout } from "@/lib/layout";
+import { useMentionBadge } from "@/lib/use-mentions";
 import { useToast } from "../providers";
 import { Spinner } from "../controls";
 import { FullscreenExitIcon, FullscreenIcon, VolumeIcon, VolumeMuteIcon } from "../icons";
@@ -221,6 +222,9 @@ export function CdnAttendeeRoom({
   };
   if (wantSeen.chat !== seen.chat || wantSeen.qa !== seen.qa) setSeen(wantSeen);
 
+  // By id, not by count — see useMentionBadge.
+  const mentions = useMentionBadge(realtime.chat, me.identity, chatVisible);
+
   const unread = useMemo<Record<ToolId, number>>(
     () => ({
       chat: chatVisible
@@ -288,6 +292,7 @@ export function CdnAttendeeRoom({
       tools,
       availableTools,
       unread,
+      mentions,
       fileShare,
       stage,
       cdnStage: true,
@@ -317,6 +322,7 @@ export function CdnAttendeeRoom({
       tools,
       availableTools,
       unread,
+      mentions,
       fileShare,
       stage,
       prefs,

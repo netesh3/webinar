@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { badgeText } from "@/lib/mentions";
 import { MIN_H, MIN_W, type Rect, type WindowState } from "@/lib/tools";
 import { CloseIcon, ExpandIcon, FitIcon, MinusIcon } from "../icons";
 
@@ -79,6 +80,8 @@ export type WindowChromeProps = {
    * muted. There are at most eight tools, so a rank is bounded by construction. */
   level: number;
   badge?: number;
+  /** Unseen @mentions: the badge reads "@" while any are waiting. */
+  mentions?: number;
   onFocus: () => void;
   onMove: (rect: Rect) => void;
   onMinimize: () => void;
@@ -104,6 +107,7 @@ export function FloatingWindow({
   collapsedIndex,
   level,
   badge,
+  mentions = 0,
   onFocus,
   onMove,
   onMinimize,
@@ -234,9 +238,9 @@ export function FloatingWindow({
       >
         {title}
       </span>
-      {badge !== undefined && badge > 0 && (
+      {badgeText(badge, mentions) && (
         <span className="grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
-          {badge > 99 ? "99+" : badge}
+          {badgeText(badge, mentions)}
         </span>
       )}
       <div className="flex shrink-0 items-center" onPointerDown={(e) => e.stopPropagation()}>

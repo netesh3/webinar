@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ToolId } from "@/lib/tools";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { useCompact } from "@/lib/compact";
+import { badgeText } from "@/lib/mentions";
 import { MoreCircleIcon } from "../icons";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
@@ -82,7 +83,7 @@ export function MoreGrid({
   };
   onClose: () => void;
 }) {
-  const { tools, unread, realtime, stage } = useRoomUI();
+  const { tools, unread, mentions, realtime, stage } = useRoomUI();
   const { notify } = useToast();
   const drag = useToolDrag();
   const dragging = drag.drag !== null;
@@ -342,9 +343,9 @@ export function MoreGrid({
                 >
                   <Icon className="size-5" />
                   <span className="text-[11px] leading-tight font-medium">{t.label}</span>
-                  {badge !== undefined && badge > 0 && (
+                  {badgeText(badge, id === "chat" ? mentions : 0) && (
                     <span className="absolute top-1.5 right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
-                      {badge > 99 ? "99+" : badge}
+                      {badgeText(badge, id === "chat" ? mentions : 0)}
                     </span>
                   )}
                 </button>
@@ -393,9 +394,9 @@ export function MoreGrid({
                   <span className="text-[11px] leading-tight font-medium">
                     {id === "layout" ? `Layout · ${LAYOUT_LABEL[stage.mode]}` : t.label}
                   </span>
-                  {badge !== undefined && badge > 0 && (
+                  {badgeText(badge, id === "chat" ? mentions : 0) && (
                     <span className="absolute top-1.5 right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
-                      {badge > 99 ? "99+" : badge}
+                      {badgeText(badge, id === "chat" ? mentions : 0)}
                     </span>
                   )}
                 </button>
@@ -467,12 +468,17 @@ export function MoreGrid({
 export function MoreButton({
   open,
   count,
+  mentions = 0,
   onToggle,
 }: {
   open: boolean;
   count: number;
+  /** A mention waiting inside the grid makes this "@" too, or unpinning Chat would
+   *  hide the one arrival worth opening it for. */
+  mentions?: number;
   onToggle: () => void;
 }) {
+  const text = badgeText(count, mentions);
   return (
     <button
       type="button"
@@ -492,9 +498,9 @@ export function MoreButton({
         <MoreCircleIcon className="size-5" />
         <span className="hidden text-[9.5px] leading-none font-medium sm:block">More</span>
       </span>
-      {count > 0 && (
+      {text && (
         <span className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
-          {count > 99 ? "99+" : count}
+          {text}
         </span>
       )}
     </button>

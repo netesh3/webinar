@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import type { ControlsPatch } from "@/lib/api-types";
 import {
   imageFromPaste,
   isSupportedImage,
@@ -12,12 +11,27 @@ import {
 import { groupChat, recentSpeakers, type ChatGroup } from "@/lib/chat-groups";
 import { textRuns } from "@/lib/chat-text";
 import { FOCUS_TTL_MS, useChatFocus } from "@/lib/chat-notify";
+import {
+  MENTION_EVERYONE,
+  mentionCandidates,
+  mentionSegments,
+  mentionsMe,
+  outgoingMentions,
+  type Draft,
+} from "@/lib/mentions";
 import { chatDestination, type ChatDestination, type ChatMessage } from "@/lib/realtime";
 import { Alert, ConfirmModal, Spinner } from "../controls";
 import { ArrowDownIcon, ImageIcon, SendIcon, TrashIcon } from "../icons";
 import { SenderAvatar } from "../sender-avatar";
 import { PanelistsOnlyBadge, RoleBadge } from "./chat-badges";
+import {
+  AttendeeAudience,
+  AttendeeChatOffNotice,
+  HostChatPermission,
+} from "./chat-permission-control";
 import { useRoomUI } from "./context";
+import { MentionComposer } from "./mention-composer";
+import { useMentionPeople } from "./mention-people";
 
 /* Chat.
  *
@@ -38,14 +52,9 @@ import { useRoomUI } from "./context";
 
 const MAX_CHARS = 2000;
 
-/** The host's segmented control offers one more choice than `ChatDestination`
- *  carries: turning attendee chat off is a separate flag (`chatEnabled`), not
- *  a third destination, but the picker presents all three as one choice. */
-type AudienceChatOption = ChatDestination | "disabled";
-
 export function ChatPanel() {
   const { slug, joinKey, realtime, controls, permissions, isHost, me } = useRoomUI();
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState<Draft>({ text: "", mentions: [] });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Saved but not delivered, which is not an error. See send().
@@ -54,9 +63,6 @@ export function ChatPanel() {
   // The host and the panelists pick per message; theirs is local state. Everyone
   // else follows the room, so there is nothing local to hold.
   const [stageTo, setStageTo] = useState<ChatDestination>("everyone");
-  // Which switch the host is currently flipping, so the segmented control can show
-  // it landing rather than appearing to do nothing for a round trip.
-  const [switching, setSwitching] = useState<AudienceChatOption | null>(null);
 
   const [uploading, setUploading] = useState(false);
 
@@ -162,27 +168,49 @@ export function ChatPanel() {
   const muted = !controls.chatEnabled && !permissions.canPublish;
 
   // The room's setting, as the host last left it. Narrowed here because the
-  // generated type is a bare string.
+  // generated type is a bare string. The host's control over it is
+  // HostChatPermission, in chat-permission-control.tsx.
   const roomTo = chatDestination(controls.chatDestination);
-  // What the segmented control below shows as selected: "disabled" swallows
-  // whatever destination was last chosen, so switching chat back on returns to
-  // it rather than defaulting to "everyone" every time.
-  const roomOption: AudienceChatOption = controls.chatEnabled ? roomTo : "disabled";
   // A publisher chooses; the audience is told. `permissions.canPublish` rather than
   // the joined role, so an attendee the host promotes gains the choice without a
   // rejoin — and loses it again if they are sent back.
   const canChoose = permissions.canPublish || isHost;
   const destination = canChoose ? stageTo : roomTo;
 
+  /* Who the picker offers, for the audience this message is going to. The same rules
+   * the server applies in filterMentions — see lib/mentions.ts — so nobody is offered
+   * who would be dropped, and a hidden attendee is never offered to another attendee
+   * even if their name is known from something they said. */
+  const { people, nameFor } = useMentionPeople();
+  const mentionable = useMemo(
+    () =>
+      mentionCandidates(
+        {
+          me: { identity: me.identity, role: me.role },
+          canMentionEveryone: isHost,
+          hideAttendees: controls.hideAttendees,
+          destination,
+        },
+        people,
+      ),
+    [people, me.identity, me.role, isHost, controls.hideAttendees, destination],
+  );
+  const pickerNote =
+    me.role === "attendee" && controls.hideAttendees && destination === "everyone"
+      ? "The host has hidden attendees from each other, so you can mention the host and panelists."
+      : destination === "panelists"
+        ? "Only people who can read this message are listed."
+        : undefined;
+
   async function send() {
-    const text = draft.trim();
+    const text = draft.text.trim();
     if (!text || sending) return;
     setSending(true);
     setError(null);
     setNote(null);
     try {
-      const result = await realtime.sendChat(text, destination);
-      setDraft("");
+      const result = await realtime.sendChat(text, destination, outgoingMentions(draft));
+      setDraft({ text: "", mentions: [] });
       // A stage-only message with nobody on the stage is kept and not delivered: it goes
       // into the transcript and the first panelist to connect reads it in their backlog.
       // Said plainly, because a message that appears to vanish is one somebody types
@@ -239,65 +267,9 @@ export function ChatPanel() {
     }
   }
 
-  /** The host changing where the AUDIENCE's chat goes.
-   *
-   *  Written to the API, which persists it and mirrors it into room metadata — so
-   *  it reaches every browser in the room at once and still applies to somebody who
-   *  joins ten minutes later. Nothing local is updated: this tab reacts to the same
-   *  broadcast as everyone else, which is what keeps them in agreement. */
-  async function setRoomDestination(to: AudienceChatOption) {
-    if (to === roomOption || switching) return;
-    setSwitching(to);
-    setError(null);
-    try {
-      const patch: ControlsPatch =
-        to === "disabled"
-          ? { chatEnabled: false }
-          : { chatEnabled: true, chatDestination: to };
-      await api.updateControls(slug, patch);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "That didn't apply.");
-    } finally {
-      setSwitching(null);
-    }
-  }
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* ---- the host's control over the audience's chat ---- */}
-      {isHost && (
-        <div className="shrink-0 border-b border-line px-3 py-2.5">
-          <p className="text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-            Attendees can chat with
-          </p>
-          <div className="mt-1.5 flex items-center gap-1">
-            {(["everyone", "panelists", "disabled"] as const).map((to) => (
-              <button
-                key={to}
-                type="button"
-                onClick={() => void setRoomDestination(to)}
-                disabled={switching !== null}
-                aria-pressed={roomOption === to}
-                className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-7 md:px-2.5 ${
-                  roomOption === to
-                    ? "bg-brand-soft text-brand"
-                    : "text-ink-2 hover:bg-surface-2"
-                }`}
-              >
-                {switching === to && <Spinner className="size-3" />}
-                {to === "everyone" ? "Everyone" : to === "panelists" ? "Panelists" : "Disabled"}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-3">
-            {roomOption === "disabled"
-              ? "Attendees can't send messages. Turn it back on anytime."
-              : roomOption === "panelists"
-                ? "Attendees' messages reach you and the panelists only. They cannot see each other's."
-                : "Attendees' messages are visible to the whole room."}
-          </p>
-        </div>
-      )}
+      {isHost && <HostChatPermission />}
 
       {/* Relative so the catch-up pill can sit over the foot of the conversation
           rather than in the composer, where it would push the box around. */}
@@ -327,6 +299,8 @@ export function ChatPanel() {
               key={group.messages[0].id}
               group={group}
               mine={group.from.identity === me.identity}
+              myIdentity={me.identity}
+              nameFor={nameFor}
               flash={flash}
               canDelete={canModerate && group.from.role === "attendee"}
               onDelete={setDeleteTarget}
@@ -359,6 +333,12 @@ export function ChatPanel() {
               </span>
               <ArrowDownIcon className="size-3.5" />
               {behind === 1 ? "1 new message" : `${behind} new messages`}
+              {/* The one thing in that run worth scrolling down for right now. */}
+              {realtime.chat.slice(-behind).some((m) => mentionsMe(m, me.identity)) && (
+                <span className="ml-0.5 rounded-full bg-stage/20 px-1.5 leading-4">
+                  @ mentions you
+                </span>
+              )}
             </button>
           </div>
         )}
@@ -366,7 +346,7 @@ export function ChatPanel() {
 
       <div className="shrink-0 border-t border-line p-2.5">
         {muted ? (
-          <Alert tone="warn">The host has turned off chat for attendees.</Alert>
+          <AttendeeChatOffNotice />
         ) : (
           <>
             {error && (
@@ -421,19 +401,7 @@ export function ChatPanel() {
                * cannot deliver. The destination is still named explicitly rather than
                * left implied: a private question sent to the whole room is not a mistake
                * anybody makes twice, and it is not one they should be able to make once. */
-              <div className="mb-2 text-[11.5px]">
-                <p className="flex items-center gap-1">
-                  <span className="text-ink-3">To</span>
-                  <span className="rounded-md bg-surface-2 px-2 py-0.5 font-medium text-ink-2">
-                    {destination === "panelists" ? "Host and panelists" : "Everyone"}
-                  </span>
-                </p>
-                <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
-                  {destination === "panelists"
-                    ? "Only the host and panelists will see this. Other attendees will not."
-                    : "Everyone in the webinar will see this."}
-                </p>
-              </div>
+              <AttendeeAudience destination={destination} />
             )}
 
             <form
@@ -450,17 +418,18 @@ export function ChatPanel() {
                 size="sm"
                 className="mb-1.5"
               />
-              <textarea
-                className="field max-h-28 min-h-9 flex-1 resize-none py-2 text-[13px]"
-                rows={1}
+              <MentionComposer
+                draft={draft}
+                onDraft={setDraft}
+                candidates={mentionable}
+                onSubmit={() => void send()}
+                footnote={pickerNote}
                 placeholder={
                   destination === "panelists"
                     ? "Message panelists…"
                     : "Message everyone…"
                 }
                 maxLength={MAX_CHARS}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
                 // Paste to upload. A screenshot arrives on the clipboard as a file with
                 // no name, which is why the items are inspected rather than the text —
                 // and it is the way people actually share one during a call.
@@ -470,15 +439,6 @@ export function ChatPanel() {
                   e.preventDefault();
                   void sendImage(file);
                 }}
-                onKeyDown={(e) => {
-                  // Enter sends, Shift+Enter breaks a line — the convention
-                  // everyone already has muscle memory for.
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-                aria-label="Chat message"
               />
 
               <input
@@ -506,7 +466,7 @@ export function ChatPanel() {
 
               <button
                 type="submit"
-                disabled={!draft.trim() || sending}
+                disabled={!draft.text.trim() || sending}
                 aria-label="Send message"
                 className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand text-stage transition-colors hover:bg-brand-hover disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               >
@@ -539,29 +499,32 @@ function clock(at: number): string {
   return new Date(at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-/* One run of messages from one person to one audience: the avatar and name once,
- * then each message as its own line.
- *
- * Every line keeps its own anchor, highlight and delete button, because each is
- * still its own message: the notification card may point at the third line of a
- * run, and a moderator removing one line must not take the run with it.
+/* One message, drawn on its own: avatar, name, badges and time, then the body.
+ * Consecutive sends from the same person are never folded together — each is a
+ * separate card, with its own anchor, highlight and delete button.
  */
 function MessageGroup({
   group,
   mine,
+  myIdentity,
+  nameFor,
   flash,
   canDelete,
   onDelete,
 }: {
   group: ChatGroup;
   mine: boolean;
+  myIdentity: string;
+  nameFor: (identity: string) => string | undefined;
   flash: string | null;
   /** Attendee messages only — moderation removes what the audience said, never
    *  another presenter's words. */
   canDelete: boolean;
   onDelete: (message: ChatMessage) => void;
 }) {
-  const { from, destination, messages } = group;
+  const { from, destination } = group;
+  const [m] = group.messages;
+  const forMe = mentionsMe(m, myIdentity);
   const stage = from.role !== "attendee";
   // Carried on the message rather than read from the current setting, so switching
   // it never rewrites what has already been said.
@@ -570,7 +533,7 @@ function MessageGroup({
 
   return (
     <div
-      // The negative margin pays for the padding, so a tinted run lines up with an
+      // The negative margin pays for the padding, so a tinted card lines up with an
       // untinted one.
       className={`-mx-2 grid grid-cols-[2rem_minmax(0,1fr)] gap-x-2.5 rounded-[10px] px-2 py-1.5 ${
         privateToStage
@@ -587,57 +550,41 @@ function MessageGroup({
           <RoleBadge role={from.role} />
           {privateToStage && <PanelistsOnlyBadge />}
           <span className="shrink-0 text-[10.5px] tabular-nums text-ink-3">
-            {clock(messages[0].at)}
+            {clock(m.at)}
           </span>
         </div>
 
-        {messages.map((m, i) => (
-          <div
-            key={m.id}
-            // The anchor the notification card scrolls to. Read out of the DOM rather
-            // than held as a list of element refs: the row may not exist yet when the
-            // request arrives, and a query answers that honestly.
-            data-chat-message={m.id}
-            className={`group/line relative -mx-1 flex items-start gap-1.5 rounded-md px-1 motion-safe:transition-colors ${
-              i > 0 ? "mt-0.5" : ""
-            } ${flash === m.id ? "bg-brand-soft/60 ring-1 ring-brand/40" : ""}`}
-          >
-            {i > 0 && (
-              // Its own time, in the gutter under the avatar, for whoever wants it.
-              // Hover or keyboard focus reveals it; the run's header already dates it
-              // to the minute for everyone else, phones included.
-              <span
-                aria-hidden
-                className="pointer-events-none absolute top-[5px] -left-[2.375rem] w-8 text-right text-[9.5px] tabular-nums text-ink-3 opacity-0 group-focus-within/line:opacity-100 group-hover/line:opacity-100 motion-safe:transition-opacity"
-              >
-                {clock(m.at)}
-              </span>
-            )}
-            <div className="min-w-0 flex-1 text-[13px]">
-              {i > 0 && (
-                // A continuation line has no visible name. Said for screen readers, so
-                // one arriving live in the polite region is not announced anonymously.
-                <span className="sr-only">
-                  {name}, {clock(m.at)}:{" "}
-                </span>
-              )}
-              <MessageBody message={m} />
-            </div>
-            {/* Always visible rather than hover-revealed: half of this room is on a
-                phone, which has no hover to reveal it with. */}
-            {canDelete && (
-              <button
-                type="button"
-                onClick={() => onDelete(m)}
-                aria-label="Delete message"
-                title="Delete message"
-                className="mt-[3px] grid size-5 shrink-0 place-items-center rounded text-ink-3 transition-colors hover:bg-live-soft hover:text-live outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              >
-                <TrashIcon className="size-3.5" />
-              </button>
-            )}
+        <div
+          // The anchor the notification card scrolls to. Read out of the DOM rather
+          // than held as a list of element refs: the row may not exist yet when the
+          // request arrives, and a query answers that honestly.
+          data-chat-message={m.id}
+          className={`-mx-1 flex items-start gap-1.5 rounded-md px-1 motion-safe:transition-colors ${
+            flash === m.id
+              ? "bg-brand-soft/60 ring-1 ring-brand/40"
+              : forMe
+                ? "bg-brand/[0.09] shadow-[inset_2px_0_0_var(--color-brand)]"
+                : ""
+          }`}
+        >
+          <div className="min-w-0 flex-1 text-[13px]">
+            {forMe && <span className="sr-only">Mentions you. </span>}
+            <MessageBody message={m} nameFor={nameFor} myIdentity={myIdentity} />
           </div>
-        ))}
+          {/* Always visible rather than hover-revealed: half of this room is on a
+              phone, which has no hover to reveal it with. */}
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(m)}
+              aria-label="Delete message"
+              title="Delete message"
+              className="mt-[3px] grid size-5 shrink-0 place-items-center rounded text-ink-3 transition-colors hover:bg-live-soft hover:text-live outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              <TrashIcon className="size-3.5" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -649,7 +596,15 @@ function MessageGroup({
  * HTML is constructed, so there is no sanitiser to get wrong. See lib/chat-text.ts for
  * why emphasis is not supported and why only http and https become links.
  */
-function MessageBody({ message }: { message: ChatMessage }) {
+function MessageBody({
+  message,
+  nameFor,
+  myIdentity,
+}: {
+  message: ChatMessage;
+  nameFor: (identity: string) => string | undefined;
+  myIdentity: string;
+}) {
   const { joinKey } = useRoomUI();
   // handleChatMedia (api/internal/api/chat.go) needs the same credential as every
   // other room endpoint — a join key, for whoever registered without an account —
@@ -694,24 +649,50 @@ function MessageBody({ message }: { message: ChatMessage }) {
         // wrap-anywhere so a pasted URL cannot widen the panel and push the layout
         // sideways.
         <p className="mt-0.5 leading-relaxed break-words wrap-anywhere text-ink-2">
-          {textRuns(message.text).map((run, i) =>
-            "href" in run ? (
-              <a
-                key={i}
-                href={run.href}
-                target="_blank"
-                // noreferrer as well as noopener: the target should not learn which
-                // session somebody was in from the referrer.
-                rel="noreferrer noopener nofollow"
-                className="text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand"
+          {/* Tags first, then links within the plain runs between them: a name is
+              never a URL, and a URL containing "@" is not a tag. */}
+          {mentionSegments(message.text, message.mentions, nameFor).map((segment, s) =>
+            segment.mention ? (
+              <span
+                key={s}
+                className={`rounded-[4px] font-semibold text-brand ${
+                  segment.mention === myIdentity || segment.mention === MENTION_EVERYONE
+                    ? "bg-brand-soft px-0.5"
+                    : ""
+                }`}
               >
-                {run.text}
-              </a>
+                {segment.text}
+              </span>
             ) : (
-              <span key={i}>{run.text}</span>
+              <TextWithLinks key={s} text={segment.text} />
             ),
           )}
         </p>
+      )}
+    </>
+  );
+}
+
+/** Plain text, with http and https links made clickable. */
+function TextWithLinks({ text }: { text: string }) {
+  return (
+    <>
+      {textRuns(text).map((run, i) =>
+        "href" in run ? (
+          <a
+            key={i}
+            href={run.href}
+            target="_blank"
+            // noreferrer as well as noopener: the target should not learn which
+            // session somebody was in from the referrer.
+            rel="noreferrer noopener nofollow"
+            className="text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand"
+          >
+            {run.text}
+          </a>
+        ) : (
+          <span key={i}>{run.text}</span>
+        ),
       )}
     </>
   );

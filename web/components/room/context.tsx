@@ -126,6 +126,9 @@ export type RoomUI = {
   availableTools: ToolId[];
   /** Unread counts for the tools that are not currently in front of you. */
   unread: Record<ToolId, number>;
+  /** Messages that @mention you and you have not seen — drawn as "@" on Chat's badge,
+   *  in place of its count. See useMentionBadge. */
+  mentions: number;
 
   /* Sharing a recorded video as the presenter's screen.
    *

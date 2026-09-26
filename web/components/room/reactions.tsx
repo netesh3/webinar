@@ -5,7 +5,8 @@ import { useRoomUI } from "./context";
 
 /* Floating reactions.
  *
- * One tap sends one message and floats one emoji up the RIGHT-HAND EDGE of the video
+ * One tap sends one message and floats a short trickle of that emoji — one at a time,
+ * 500–1000 ms apart (see lib/reaction-queue.ts) — up the RIGHT-HAND EDGE of the video
  * area.
  *
  * The right-hand column is the change that matters. They used to rise across the full width,

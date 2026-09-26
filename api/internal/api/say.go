@@ -115,6 +115,9 @@ type wirePacket struct {
 	From        wireSender            `json:"from"`
 	Text        string                `json:"text,omitempty"`
 	Destination types.ChatDestination `json:"destination,omitempty"`
+	// Mentions is who a chat message tags, by identity, after filterMentions. Omitted
+	// when it tags nobody, so a message without mentions is byte-for-byte what it was.
+	Mentions []string `json:"mentions,omitempty"`
 	// The image, for a chat message that is one. A URL to our own API, checked on
 	// read — see handleChatMedia.
 	MediaURL    string `json:"mediaUrl,omitempty"`
@@ -200,6 +203,9 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 	 * path below unchanged.
 	 */
 	if packet.Kind == types.MsgChat {
+		// After the destination is settled, because who can be mentioned depends on
+		// who will be able to read it.
+		mentions := s.resolveMentions(r.Context(), sfu, wb, from, packet.Destination, req.Mentions)
 		msg, err := s.store.AppendChat(r.Context(), store.ChatEntry{
 			ID: packet.ID, Slug: slug,
 			SenderID: from.Identity, SenderName: from.Name, SenderRole: from.Role,
@@ -207,6 +213,7 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 			Type:        types.ChatText,
 			Destination: packet.Destination,
 			Content:     packet.Text,
+			Mentions:    mentions,
 		})
 		if errors.Is(err, store.ErrInvalid) {
 			httpx.Error(w, http.StatusUnprocessableEntity, "invalid", err.Error())

@@ -73,6 +73,7 @@ import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
 import { useTelemetry } from "@/lib/telemetry";
+import { useMentionBadge } from "@/lib/use-mentions";
 import { MeetingLimitBanner } from "./meeting-limit-banner";
 import { CdnAttendeeRoom } from "./cdn-attendee-room";
 
@@ -1003,6 +1004,9 @@ function ConnectedRoom({
   };
   if (wantSeen.chat !== seen.chat || wantSeen.qa !== seen.qa) setSeen(wantSeen);
 
+  // By id, not by count — see useMentionBadge.
+  const mentions = useMentionBadge(realtime.chat, me.identity, chatVisible);
+
   const unread = useMemo<Record<ToolId, number>>(
     () => ({
       chat: chatVisible
@@ -1115,6 +1119,7 @@ function ConnectedRoom({
       tools,
       availableTools,
       unread,
+      mentions,
       fileShare,
       stage,
       prefs,
@@ -1146,6 +1151,7 @@ function ConnectedRoom({
       tools,
       availableTools,
       unread,
+      mentions,
       fileShare,
       stage,
       prefs,

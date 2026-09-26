@@ -386,6 +386,16 @@ export function bypassRealtime(): Realtime {
       at: Date.now() - 60_000,
       seq: 2,
     },
+    {
+      kind: "chat",
+      id: "c3",
+      from: { identity: "panel-1", name: "Alex Chen", role: "panelist" },
+      destination: "everyone",
+      text: `@${DEV_BYPASS_ME.name} can you share the portal link? @Priya Shah asked earlier.`,
+      mentions: [DEV_BYPASS_ME.identity, "att-1"],
+      at: Date.now() - 30_000,
+      seq: 3,
+    },
   ];
   const questions: Question[] = [
     {
