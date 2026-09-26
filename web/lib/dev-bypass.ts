@@ -437,6 +437,7 @@ export function bypassRealtime(): Realtime {
     clearHands: noopAsync,
     pollsRevision: 0,
     mergeBacklog: () => undefined,
+    mergeQuestions: () => undefined,
     chatCursor: 2,
     react: noopAsync,
     askToUnmute: noopAsync,
