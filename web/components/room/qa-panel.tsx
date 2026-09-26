@@ -14,9 +14,6 @@ export function QAPanel() {
   const [draft, setDraft] = useState("");
   const [anonymous, setAnonymous] = useState(false);
   const [sending, setSending] = useState(false);
-  const [ctaTitle, setCtaTitle] = useState("");
-  const [ctaUrl, setCtaUrl] = useState("");
-  const [ctaLabel, setCtaLabel] = useState("Open");
 
   const off = !controls.qaEnabled;
   const visible = realtime.questions.filter((q) => isHost || !q.dismissed);
@@ -107,55 +104,6 @@ export function QAPanel() {
           </div>
         )}
       </div>
-
-      {isHost && (
-        <div className="shrink-0 border-t border-line p-2.5">
-          <p className="mb-1.5 text-[10.5px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-            Mid-session link
-          </p>
-          <form
-            className="space-y-1.5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const title = ctaTitle.trim();
-              const url = ctaUrl.trim();
-              if (!title || !/^https?:\/\//i.test(url)) return;
-              void realtime.launchCta({
-                title,
-                url,
-                label: ctaLabel.trim() || "Open",
-              });
-            }}
-          >
-            <input
-              className="field h-8 w-full text-[12.5px]"
-              placeholder="Title"
-              value={ctaTitle}
-              onChange={(e) => setCtaTitle(e.target.value)}
-            />
-            <input
-              className="field h-8 w-full text-[12.5px]"
-              placeholder="https://…"
-              value={ctaUrl}
-              onChange={(e) => setCtaUrl(e.target.value)}
-            />
-            <div className="flex gap-2">
-              <input
-                className="field h-8 flex-1 text-[12.5px]"
-                placeholder="Button label"
-                value={ctaLabel}
-                onChange={(e) => setCtaLabel(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="h-8 shrink-0 rounded-lg bg-brand px-3 text-[12px] font-medium text-white"
-              >
-                Show
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {!off && (
         <div className="shrink-0 border-t border-line p-2.5">
