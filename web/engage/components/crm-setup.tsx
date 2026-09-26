@@ -161,8 +161,14 @@ export function SetupChecklist({
       <Card className="divide-y divide-line">
         <Step
           n={1}
-          done={state.connect === true}
-          title="Connect your WhatsApp Business account"
+          // A connection Meta has stopped accepting is not done — it is the one
+          // step to redo, and the Reconnect button is inside it.
+          done={state.connect === true && !account?.whatsapp?.needsReconnect}
+          title={
+            account?.whatsapp?.needsReconnect
+              ? "Reconnect your WhatsApp Business account"
+              : "Connect your WhatsApp Business account"
+          }
           hint="Meta's own dialog. You can create a number in it, or bring one you already use — either way it stays yours, and disconnecting here leaves your contacts untouched."
         >
           {/* The same card that used to live in account settings, unchanged — the

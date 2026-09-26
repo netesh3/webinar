@@ -531,6 +531,18 @@ func isWhatsAppStop(body string) bool {
 	return false
 }
 
+/* noteWhatsAppError records a refused token, so Account settings can show Reconnect.
+ * Every other failure is left to the caller's own logging. */
+func (s *Module) noteWhatsAppError(ctx context.Context, hostID, token string, err error) {
+	if err == nil || !errors.Is(err, wa.ErrTokenRejected) || token == "" {
+		return
+	}
+	s.log.Warn("whatsapp token rejected: host must reconnect", "host", hostID, "error", err)
+	if e := s.store.MarkWhatsAppTokenRejected(ctx, hostID, token); e != nil {
+		s.log.Error("whatsapp: could not record rejected token", "host", hostID, "error", e)
+	}
+}
+
 // whatsappAPIError maps the wa package's named failures onto statuses, so a host
 // is told which of "not set up here", "connect first" and "your connection is
 // gone" applies. Reports whether it handled the error, like youtubeAPIError.
@@ -543,7 +555,7 @@ func whatsappAPIError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, wa.ErrNotConnected):
 		httpx.Error(w, http.StatusUnprocessableEntity, "whatsapp_not_connected", err.Error())
 	case errors.Is(err, wa.ErrTokenRejected):
-		httpx.Error(w, http.StatusUnprocessableEntity, "whatsapp_token_rejected", err.Error())
+		httpx.Error(w, http.StatusUnprocessableEntity, "whatsapp_token_rejected", wa.ErrTokenRejected.Error())
 	default:
 		return false
 	}

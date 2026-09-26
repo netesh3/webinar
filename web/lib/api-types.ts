@@ -1196,6 +1196,11 @@ export interface WhatsAppLink {
    * * On the WhatsApp Business app too (Coexistence). Needs no registration step.
    */
   coexistence?: boolean;
+  /**
+   * * Meta refused the stored token (removed from the business, secret reset, token
+   * 	 *  expired). Still "connected" on paper; nothing will send until they reconnect.
+   */
+  needsReconnect?: boolean;
 }
 /**
  *  WhatsAppSignup is everything the browser needs to open Meta's Embedded Signup

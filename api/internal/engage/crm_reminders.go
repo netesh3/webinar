@@ -453,6 +453,7 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 			// actionable thing, and usually about the host's account.
 			s.log.Error("whatsapp outbox: send failed", "kind", m.Kind,
 				"host", m.HostID, "contact", m.ContactID, "error", err)
+			s.noteWhatsAppError(ctx, m.HostID, m.Token, err)
 			_ = s.store.MarkDelivered(ctx, m.ID, "failed", err.Error())
 			continue
 		}

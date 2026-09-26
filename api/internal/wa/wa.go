@@ -381,7 +381,11 @@ func graphError(raw []byte, status int) error {
 	}
 	_ = json.Unmarshal(raw, &parsed)
 	if parsed.Error.Code == 190 {
-		return ErrTokenRejected
+		/* Meta's reason is kept, for the log: the subcode says WHY — 458 app removed
+		 * from the business, 460 password changed, 463 expired, 467 invalid. The
+		 * host is shown only ErrTokenRejected's own sentence (see whatsappAPIError). */
+		return fmt.Errorf("%w (meta: %s; subcode %d; fbtrace %s)",
+			ErrTokenRejected, strings.TrimSpace(parsed.Error.Message), parsed.Error.Sub, parsed.Error.Trace)
 	}
 	msg := strings.TrimSpace(parsed.Error.Message)
 	if msg == "" {

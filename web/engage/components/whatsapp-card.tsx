@@ -39,6 +39,12 @@ export function WhatsAppCard({
   onChanged: () => Promise<void> | void;
 }) {
   const connected = account.whatsapp?.connected ?? false;
+  /* Meta refused the stored token — our app was removed from the business, the
+   * token expired, or the Facebook password behind it changed. Still "connected" on
+   * paper, but nothing sends; connecting again over the top is the fix. */
+  const needsReconnect = connected && (account.whatsapp?.needsReconnect ?? false);
+  // Whether the Connect button (and Meta's SDK behind it) is wanted.
+  const canConnect = !connected || needsReconnect;
 
   const [signup, setSignup] = useState<WhatsAppSignup | null>(null);
   // Bumped by Retry, which is the only way out of a blocked script or a network
@@ -65,7 +71,7 @@ export function WhatsAppCard({
    * there is nothing left to open.
    */
   useEffect(() => {
-    if (connected) return;
+    if (!canConnect) return;
     let cancelled = false;
     (async () => {
       try {
@@ -88,7 +94,7 @@ export function WhatsAppCard({
     return () => {
       cancelled = true;
     };
-  }, [connected, attempt]);
+  }, [canConnect, attempt]);
 
   /* Which kind of number: one already on the WhatsApp Business app (Coexistence —
    * the coach keeps replying from their phone, and those replies show in Messages),
@@ -119,7 +125,9 @@ export function WhatsAppCard({
       await onChanged();
       if (alive.current) {
         setNotice(
-          "WhatsApp connected. Messages you send from here are billed to your own WhatsApp Business account by Meta.",
+          needsReconnect
+            ? "WhatsApp reconnected. Messages will send again."
+            : "WhatsApp connected. Messages you send from here are billed to your own WhatsApp Business account by Meta.",
         );
       }
     } catch (err) {
@@ -133,7 +141,7 @@ export function WhatsAppCard({
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [onChanged, signup, mode]);
+  }, [onChanged, signup, mode, needsReconnect]);
 
   const disconnect = useCallback(async () => {
     setBusy(true);
@@ -173,7 +181,7 @@ export function WhatsAppCard({
               : "Connect your own WhatsApp Business account to message registrants. Meta bills every conversation to that account, at their rates, using the payment method on it — we never charge you for messages and never send from our number."}
           </div>
         </div>
-        {connected ? (
+        {connected && !needsReconnect ? (
           <Button
             type="button"
             variant="ghost"
@@ -204,12 +212,31 @@ export function WhatsAppCard({
             onClick={connect}
           >
             {busy || !signup ? <Spinner className="size-4" /> : null}
-            Connect
+            {needsReconnect ? "Reconnect" : "Connect"}
           </Button>
         )}
       </div>
 
-      {!connected && (
+      {needsReconnect && (
+        <Alert tone="warn">
+          Meta stopped accepting this connection, so nothing can be sent. That happens
+          when the app is removed from your Meta Business account, the access expires,
+          or the Facebook password behind it changes. Press Reconnect and sign in with
+          the same business and number — your contacts, templates and messages stay as
+          they are.
+          {busy ? null : (
+            <button
+              type="button"
+              className="ml-1 font-medium underline"
+              onClick={disconnect}
+            >
+              Or disconnect.
+            </button>
+          )}
+        </Alert>
+      )}
+
+      {canConnect && (
         <fieldset className="grid gap-1.5 text-[12.5px]">
           <legend className="sr-only">Which number</legend>
           {(

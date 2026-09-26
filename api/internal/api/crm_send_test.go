@@ -424,3 +424,48 @@ func TestCRMSendReportsMetasReason(t *testing.T) {
 		t.Errorf("%d messages filed for a send Meta refused", len(thread.Messages))
 	}
 }
+
+/* A token Meta refuses (code 190) is remembered, so Account settings can offer
+ * Reconnect rather than every screen saying "reconnect" with no button — and
+ * connecting again clears it. */
+func TestWhatsAppRejectedTokenAsksForReconnect(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	h.login("neeraj@acme.dev")
+	wb := autoWebinar(t, h, "Token refused")
+	contact := registerOptedIn(t, h, wb.ID)
+	connectWhatsApp(t, h)
+
+	me := func() types.Account {
+		t.Helper()
+		_, raw := h.do(http.MethodGet, "/api/auth/me", nil)
+		var a types.Account
+		h.decode(raw, &a)
+		return a
+	}
+	if a := me(); a.WhatsApp == nil || a.WhatsApp.NeedsReconnect {
+		t.Fatalf("fresh connection: %+v", a.WhatsApp)
+	}
+
+	g.failSends(http.StatusUnauthorized, map[string]any{
+		"code": 190, "error_subcode": 458, "message": "Error validating access token: The user has not authorized application.",
+	})
+	res, raw := h.do(http.MethodPost, "/api/host/crm/contacts/"+contact.ID+"/send",
+		types.CRMSendRequest{Template: testTemplateUtility, Language: "en_US", Params: []string{"Thandi"}})
+	if code := errorCode(t, raw); code != "whatsapp_token_rejected" {
+		t.Fatalf("status %d code %q, want whatsapp_token_rejected", res.StatusCode, code)
+	}
+	// Meta's internals (subcode, trace) are for the log, not the host.
+	if strings.Contains(string(raw), "subcode") {
+		t.Errorf("Meta's diagnostic leaked to the browser: %s", raw)
+	}
+	if a := me(); a.WhatsApp == nil || !a.WhatsApp.NeedsReconnect {
+		t.Fatalf("after a 190: needsReconnect not set: %+v", a.WhatsApp)
+	}
+
+	g.failSends(0, nil)
+	connectWhatsApp(t, h)
+	if a := me(); a.WhatsApp == nil || a.WhatsApp.NeedsReconnect {
+		t.Errorf("after reconnecting: still asks to reconnect: %+v", a.WhatsApp)
+	}
+}

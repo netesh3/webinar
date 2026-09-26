@@ -68,6 +68,9 @@ type User struct {
 	WhatsAppRegisteredAt *time.Time
 	// WhatsAppCoexistence: the number is on the WhatsApp Business app as well.
 	WhatsAppCoexistence bool
+	// WhatsAppTokenRejectedAt is when Meta last refused the stored token. Set means
+	// the host has to reconnect; cleared by connecting again. See migrations/0054.
+	WhatsAppTokenRejectedAt *time.Time
 }
 
 /* HasFeature reports whether a per-account switch is on.
@@ -128,6 +131,7 @@ func (u User) Public() types.Account {
 			a.WhatsApp.RegisteredAt = u.WhatsAppRegisteredAt.Format(time.RFC3339)
 		}
 		a.WhatsApp.Coexistence = u.WhatsAppCoexistence
+		a.WhatsApp.NeedsReconnect = u.WhatsAppTokenRejectedAt != nil
 	}
 	return a
 }
@@ -154,7 +158,7 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 	coalesce(whatsapp_phone_number_id,''), coalesce(whatsapp_display_phone,''),
 	coalesce(whatsapp_verified_name,''),
 	whatsapp_token_expires_at, whatsapp_connected_at, whatsapp_registered_at,
-	whatsapp_coexistence`
+	whatsapp_coexistence, whatsapp_token_rejected_at`
 
 func scanUser(row scanner) (User, error) {
 	var u User
@@ -164,7 +168,7 @@ func scanUser(row scanner) (User, error) {
 		&u.YouTubeRefresh, &u.YouTubeChannelID, &u.YouTubeChannelTitle, &u.YouTubeStreamID,
 		&u.WhatsAppToken, &u.WhatsAppWABAID, &u.WhatsAppPhoneNumberID, &u.WhatsAppDisplayPhone,
 		&u.WhatsAppVerifiedName, &u.WhatsAppTokenExpiresAt, &u.WhatsAppConnectedAt,
-		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence)
+		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence, &u.WhatsAppTokenRejectedAt)
 	return u, err
 }
 

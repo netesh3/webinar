@@ -92,7 +92,8 @@ func (s *Store) SetUserWhatsApp(ctx context.Context, userID, token, wabaID, phon
 		       whatsapp_verified_name = $6,
 		       whatsapp_token_expires_at = $7,
 		       whatsapp_connected_at = $8,
-		       whatsapp_coexistence = $9
+		       whatsapp_coexistence = $9,
+		       whatsapp_token_rejected_at = NULL
 		 WHERE id = $1`,
 		userID, token, wabaID, phoneNumberID, displayPhone, verifiedName, expiresAt, connectedAt, coexistence)
 	if err != nil {
@@ -102,4 +103,15 @@ func (s *Store) SetUserWhatsApp(ctx context.Context, userID, token, wabaID, phon
 		return store.ErrNotFound
 	}
 	return nil
+}
+
+/* MarkWhatsAppTokenRejected records that Meta refused this host's token, unless it
+ * has changed since: a send that started with the old token must not flag the new
+ * one a reconnect has just stored. */
+func (s *Store) MarkWhatsAppTokenRejected(ctx context.Context, userID, token string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE users SET whatsapp_token_rejected_at = now()
+		 WHERE id = $1 AND whatsapp_access_token = $2 AND whatsapp_token_rejected_at IS NULL`,
+		userID, token)
+	return err
 }
