@@ -263,13 +263,12 @@ const ROOM_LO = 0.28;
 
 /* The joint upsample. Spatial sigma in matte texels, colour sigma in 0..1 RGB distance.
  *
- * SIGMA_SPACE 1.45 gives the edge a useful neighbourhood without turning into a soft blob —
- * the guide colour still snaps the boundary. SIGMA_COLOR 0.12: a little looser than 0.10 so
- * webcam grain does not flip the bilateral vote every frame (that crawl is the outline
- * jitter), while two colours 0.30 apart still count ~4% and skin/wall stay separated.
+ * SIGMA_SPACE 1.15 keeps the vote on the nearest matte texels so the head does not
+ * smear a skin-coloured shell onto the background. SIGMA_COLOR 0.09 snaps that
+ * vote to the real colour boundary (skin against a wall) instead of averaging across it.
  */
-const SIGMA_SPACE = 1.45;
-const SIGMA_COLOR = 0.12;
+const SIGMA_SPACE = 1.15;
+const SIGMA_COLOR = 0.09;
 
 /** Display-alpha temporal filter (after softstep + bilateral), in the edge pass.
  *  |Δα| below ALPHA_TEMP_LO is a deadzone: the outline holds still instead of crawling.
@@ -279,17 +278,19 @@ const ALPHA_TEMP_STILL = 0.15;
 const ALPHA_TEMP_LO = 0.08;
 const ALPHA_TEMP_HI = 0.38;
 
-/** Soft rim on the silhouette only, in output pixels. Interior (α≈0 or α≈1) is left
- *  binary; the transition band is mixed toward a 5-tap cross so residual chatter reads
- *  as a blur rather than a moving line. Wide enough to hide a 1px crawl, narrow enough
- *  that a virtual background does not grow a halo. */
-const EDGE_FEATHER_PX = 2.0;
-const EDGE_FEATHER_MIX = 0.7;
+/** Soft rim, in output pixels, applied only after the faint shell is choked off.
+ *  Small on purpose: a wider blur copies the face onto the background beside the head. */
+const EDGE_FEATHER_PX = 1.25;
+const EDGE_FEATHER_MIX = 0.35;
+/** Display alpha below LO is background (kills the skin-coloured shell around the head).
+ *  Above HI the person is solid. The band between them is the only soft edge. */
+const ALPHA_CHOKE_LO = 0.28;
+const ALPHA_CHOKE_HI = 0.62;
 
-/** Edge decontamination: mix FG toward BG on soft edges so person lighting does not fringe
- *  onto a still (stronger) or the room blur (lighter — colours are already related). */
-const SPILL_IMAGE = 0.55;
-const SPILL_BLUR = 0.32;
+/** Edge decontamination: mix FG toward BG on the remaining soft rim so skin does not
+ *  fringe onto a still (stronger — the office is a different colour) or the room blur. */
+const SPILL_IMAGE = 0.72;
+const SPILL_BLUR = 0.45;
 
 /** How strong the veil is, in the same units as a blur background's radius. Enough that the
  *  room is unreadable while the model starts; this is what a background looks like loading. */
@@ -501,9 +502,11 @@ void main() {
   float seed = skin * connected * missing * limbMotion
              * mix(1.0, 1.2, side) * ${EXTREMITY_SEED.toFixed(3)};
   a = max(a, mix(a, ${EXTREMITY_FLOOR.toFixed(3)}, seed));
-  // Mild skin-gated dilate: close a finger-width gap without expanding cool chairs.
+  // Close a finger-width hole only. The same dilate on a solid neighbour grows the
+  // head: every warm texel beside the skull inherits the skull and the face appears
+  // again, faint, on the background at the sides and above the hair.
   float dilate = max(a, nbrPerson * ${EXTREMITY_DILATE_KEEP.toFixed(3)});
-  a = mix(a, max(a, dilate), skin * connected * ${EXTREMITY_DILATE.toFixed(3)});
+  a = mix(a, max(a, dilate), skin * connected * missing * ${EXTREMITY_DILATE.toFixed(3)});
 
   // Schmitt hold on the furniture/person cut when still. History must be crossed by a
   // gap (~0.07 confidence) before a still texel is allowed to flip; a few percent of
@@ -659,12 +662,28 @@ float matteAt(vec2 p) {
 void main() {
   vec3 raw = textureLod(frame, uv, 0.0).rgb;
   float conf = matteAt(uv);
+  // A solid person in this matte neighbourhood is the head or torso. The confidence
+  // falloff around that core is warm skin, and the palm threshold would treat it as a
+  // hand — widening the mask so the face shows through on the left, the right, and
+  // above the hair. Palms stay on the lower threshold: their neighbours are mid
+  // confidence, not a solid core.
+  vec2 mTex = 1.0 / vec2(textureSize(matte, 0));
+  float core = texture(matte, uv).a;
+  core = max(core, texture(matte, uv + vec2(mTex.x, 0.0)).a);
+  core = max(core, texture(matte, uv - vec2(mTex.x, 0.0)).a);
+  core = max(core, texture(matte, uv + vec2(0.0, mTex.y)).a);
+  core = max(core, texture(matte, uv - vec2(0.0, mTex.y)).a);
+  core = max(core, texture(matte, uv + vec2(mTex.x, mTex.y)).a);
+  core = max(core, texture(matte, uv + vec2(-mTex.x, mTex.y)).a);
+  core = max(core, texture(matte, uv + vec2(mTex.x, -mTex.y)).a);
+  core = max(core, texture(matte, uv + vec2(-mTex.x, -mTex.y)).a);
+  float notHead = 1.0 - smoothstep(0.88, 0.97, core);
   // Skin-like: red above blue AND red above green. Wood desks often fail the second.
   float warm = smoothstep(HAND_WARM_LO, HAND_WARM_HI, raw.r - raw.b)
              * smoothstep(0.0, 0.05, raw.r - raw.g);
   float uncertain = smoothstep(HAND_UNCERTAIN_LO, HAND_UNCERTAIN_MID, conf)
                   * (1.0 - smoothstep(0.72, 0.88, conf));
-  float handAmt = warm * uncertain;
+  float handAmt = warm * uncertain * notHead;
   float lo = mix(MASK_LO, HAND_MASK_LO, handAmt);
   float hi = mix(MASK_HI, HAND_MASK_HI, handAmt);
   float alphaRaw = smoothstep(lo, hi, conf);
@@ -689,6 +708,8 @@ const float SPILL_IMAGE = ${SPILL_IMAGE.toFixed(3)};
 const float SPILL_BLUR = ${SPILL_BLUR.toFixed(3)};
 const float EDGE_FEATHER_PX = ${EDGE_FEATHER_PX.toFixed(3)};
 const float EDGE_FEATHER_MIX = ${EDGE_FEATHER_MIX.toFixed(3)};
+const float ALPHA_CHOKE_LO = ${ALPHA_CHOKE_LO.toFixed(3)};
+const float ALPHA_CHOKE_HI = ${ALPHA_CHOKE_HI.toFixed(3)};
 in vec2 uv;
 uniform sampler2D frame;     // the camera, with mips
 uniform sampler2D room;      // the room blur, premultiplied
@@ -750,18 +771,23 @@ vec3 roomAt(vec2 p) {
   return mix(textureLod(frame, p, 5.0).rgb, r.rgb / max(r.a, 1e-4), smoothstep(0.02, 0.2, r.a));
 }
 
-/* Soft rim. The edge pass already froze small alpha changes; this spreads the remaining
- * silhouette across a couple of pixels so a 1px residual reads as feather, not a line.
- * Solid person and solid room are unchanged — a 5-tap of all ones is one. */
+/* Coverage with the faint shell removed, then a 1px antialias.
+ *
+ * smoothstep(CHOKE) turns a wide semi-transparent ring — the face showing again just
+ * outside the head — into background. The feather is narrower than that ring so it
+ * softens the cut without painting the face back onto the office. */
+float coverage(vec2 p) {
+  return smoothstep(ALPHA_CHOKE_LO, ALPHA_CHOKE_HI, texture(alphaMap, p).r);
+}
 float featherAlpha(vec2 p) {
-  float a0 = texture(alphaMap, p).r;
+  float a0 = coverage(p);
   vec2 px = vec2(EDGE_FEATHER_PX) / frameSize;
-  float soft = a0 * 0.40;
-  soft += texture(alphaMap, p + vec2(px.x, 0.0)).r * 0.15;
-  soft += texture(alphaMap, p - vec2(px.x, 0.0)).r * 0.15;
-  soft += texture(alphaMap, p + vec2(0.0, px.y)).r * 0.15;
-  soft += texture(alphaMap, p - vec2(0.0, px.y)).r * 0.15;
-  float rim = smoothstep(0.05, 0.18, a0) * (1.0 - smoothstep(0.82, 0.95, a0));
+  float soft = a0 * 0.52;
+  soft += coverage(p + vec2(px.x, 0.0)) * 0.12;
+  soft += coverage(p - vec2(px.x, 0.0)) * 0.12;
+  soft += coverage(p + vec2(0.0, px.y)) * 0.12;
+  soft += coverage(p - vec2(0.0, px.y)) * 0.12;
+  float rim = smoothstep(0.04, 0.18, a0) * (1.0 - smoothstep(0.82, 0.96, a0));
   return mix(a0, soft, rim * EDGE_FEATHER_MIX);
 }
 
