@@ -38,6 +38,10 @@
 /onnxruntime/*
   Cache-Control: public,max-age=2592000
 
+# MODNet for the Enhanced background on WebGPU (~25 MB). Same reasoning, same unversioned path.
+/matting/*
+  Cache-Control: public,max-age=2592000
+
 /rnnoise/*
   Cache-Control: public,max-age=2592000
 

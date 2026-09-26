@@ -20,6 +20,11 @@ asset requests.
 | `wasm/` | `node_modules/@mediapipe/tasks-vision/wasm` | ~34 MB |
 | `selfie_segmenter.tflite` | [MediaPipe model garden][model] | ~250 KB |
 | `selfie_segmenter_landscape.tflite` | [MediaPipe model garden][model], same task, `selfie_segmenter_landscape` slug | ~250 KB |
+| `blaze_face_short_range.tflite` | [MediaPipe face detector][face] (`face_detector/blaze_face_short_range/float16/latest`, Apache-2.0) | ~230 KB |
+
+The face detector is the presenter lock's: it finds which person is presenting so
+everybody else can be taken out of the matte (`lib/presenter-lock.ts`). It is loaded
+only once a background is on and the segmenter is up.
 
 `lib/segmenter.ts` only loads the landscape model — see its own comment for why
 (the square model squashes a 16:9 frame). The plain one is kept vendored anyway,
@@ -84,3 +89,5 @@ The directory is excluded from ESLint: the `.js` files are Emscripten output, no
 to lint and not ours to fix.
 
 [model]: https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter
+
+[face]: https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite

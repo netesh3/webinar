@@ -24,6 +24,7 @@
     "hls.js": "^1.7.3",
     "livekit-client": "^2.22.3",
     "next": "16.3.4",
+    "onnxruntime-web": "1.22.0-dev.20250409-89f8206ba4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.10.1"
