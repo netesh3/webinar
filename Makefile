@@ -149,6 +149,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And remembering a closed pop-out during screen share: without it MediaSession
 	# re-opens the window on every switch-away after the user hit X.
 	cd web && node --experimental-strip-types --no-warnings lib/pip.test.mts
+	# And reaction bursts appearing one at a time, 500–1000 ms apart, with a bounded
+	# backlog — so one click never reads as several and a flood never queues a minute.
+	cd web && node --experimental-strip-types --no-warnings lib/reaction-queue.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

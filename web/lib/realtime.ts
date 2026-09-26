@@ -10,6 +10,7 @@ import type {
   SendMessageResponse,
   SessionControls,
 } from "./api-types";
+import { planReactionBurst, reactionBurstCount } from "./reaction-queue";
 
 /* Chat, Q&A, raised hands and reactions, carried on the WebRTC data channel.
  *
@@ -45,30 +46,22 @@ const MAX_NAME_CHARS = 80;
 const MAX_CHAT_HISTORY = 500;
 const MAX_QUESTIONS = 300;
 
-/* Reactions: one tap, one or two emoji.
+/* Reactions: one tap, one message, a short trickle of emoji.
  *
- * One tap is still one message on the wire — every client draws its own copy, so
- * fanning out extra packets to do this would be the wrong trade. Drawing exactly
- * one every time reads as mechanical; a burst of five to ten copies of the same
- * emoji is what makes a single tap look like it landed with some weight behind it.
+ * One tap is still one message on the wire — every client draws its own copies, so
+ * fanning out extra packets to do this would be the wrong trade. Each tap draws a
+ * burst of five to ten copies of the same emoji, released ONE AT A TIME: the first on
+ * the same frame as the event, each next one 500–1000 ms after the previous. They
+ * used to start 75 ms apart, which read as a pile landing from a single click. The
+ * timing, and how a flood is bounded, lives in reaction-queue.ts.
  *
- * Those copies (and concurrent taps/wire events) are staggered into the display
- * queue a few tens of milliseconds apart so they read as many people clicking
- * rather than a synchronized stack. The first emoji in a quiet queue still starts
- * on the same frame as the event — only subsequent ones wait.
- *
- * The cap matters more than any one tap. Five hundred people applauding at the end of
- * a talk is the moment this feature is for and also the moment it could put ten
- * thousand animated spans on the stage, so the oldest are dropped once the screen is
- * already full of them — nobody can tell, and the tab stays alive. */
+ * Two caps. `REACTION_MAX_PENDING` bounds what is still WAITING to appear, so five
+ * hundred people applauding cannot queue a minute of clapping; `MAX_FLOATING` bounds
+ * what is on screen, dropping the oldest once the stage is already full of them —
+ * nobody can tell, and the tab stays alive. */
 
-/** One tap draws a random count in this range, chosen fresh each time. */
-const REACTION_COPIES_MIN = 5;
-const REACTION_COPIES_MAX = 10;
 /** How long one emoji takes to cross the stage, before per-emoji variation. */
 const REACTION_MS = 4200;
-/** Gap between successive floating emoji starts (burst copies and concurrent events). */
-const REACTION_STAGGER_MS = 75;
 const MAX_FLOATING = 240;
 
 export type Sender = {
@@ -736,10 +729,9 @@ export function useRealtime(
   }, [me]);
 
   const reactionTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  /** performance.now() when the next floating emoji may start. Shared across
-   *  local taps and wire events so a simultaneous group is sequential, while a
-   *  quiet queue still starts the first emoji immediately. */
-  const reactionNextSlot = useRef(0);
+  /** Emoji scheduled but not yet shown, across every burst in flight. What
+   *  planReactionBurst trims a new burst against. */
+  const reactionPending = useRef(0);
 
   // Through a ref so `apply` keeps a stable identity: it is a dependency of the
   // DataReceived subscription, and re-subscribing on every render would drop
@@ -762,13 +754,12 @@ export function useRealtime(
 
   const pushReaction = useCallback(
     (emoji: string) => {
-      const copies =
-        REACTION_COPIES_MIN +
-        Math.floor(Math.random() * (REACTION_COPIES_MAX - REACTION_COPIES_MIN + 1));
-      const now = performance.now();
-      let slot = Math.max(now, reactionNextSlot.current);
+      const delays = planReactionBurst({
+        count: reactionBurstCount(),
+        pending: reactionPending.current,
+      });
 
-      for (let i = 0; i < copies; i++) {
+      for (const delay of delays) {
         const item: FloatingReaction = {
           id: newId(),
           emoji,
@@ -778,32 +769,32 @@ export function useRealtime(
           drift: Math.round((Math.random() - 0.5) * 90),
           size: 22 + Math.round(Math.random() * 16),
         };
-        const delay = Math.max(0, Math.round(slot - now));
-        slot += REACTION_STAGGER_MS;
-
         if (delay === 0) {
           showFloating(item);
         } else {
           const pendingKey = `pending:${item.id}`;
+          reactionPending.current++;
           reactionTimers.current.set(
             pendingKey,
             setTimeout(() => {
               reactionTimers.current.delete(pendingKey);
+              reactionPending.current--;
               showFloating(item);
-            }, delay),
+            }, Math.round(delay)),
           );
         }
       }
-      reactionNextSlot.current = slot;
     },
     [showFloating],
   );
 
   useEffect(() => {
     const timers = reactionTimers.current;
+    const pending = reactionPending;
     return () => {
       timers.forEach(clearTimeout);
       timers.clear();
+      pending.current = 0;
     };
   }, []);
 
