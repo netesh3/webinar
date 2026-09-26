@@ -160,8 +160,24 @@ export function MediaToggle({
           id={menuId}
           role="menu"
           aria-label={isAudio ? "Audio devices" : "Video devices"}
-          className="room-dark absolute bottom-full left-0 z-50 mb-2 w-[18.5rem] max-w-[calc(100vw-1rem)] max-h-[min(24rem,calc(100dvh-6rem))] overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-xl"
+          className={`room-dark absolute bottom-full left-0 z-50 mb-2 w-[18.5rem] max-w-[calc(100vw-1rem)] max-h-[min(24rem,calc(100dvh-6rem))] overflow-y-auto rounded-xl border border-line bg-surface shadow-xl ${
+            isAudio ? "pb-1" : "py-1"
+          }`}
         >
+          {/* Noise suppression heads the mic menu and stays pinned while a long
+              device list scrolls under it. The sticky header owns the top padding
+              (the container drops its pt) so nothing peeks through above it. */}
+          {isAudio && (
+            <div className="sticky top-0 z-10 bg-surface pt-1">
+              <MenuToggle
+                checked={prefs.noiseSuppression}
+                onChange={(on) => updatePrefs({ noiseSuppression: on })}
+                label="Noise suppression"
+              />
+              <div className="mt-1 h-px bg-line" />
+            </div>
+          )}
+
           <p className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-[0.04em] text-ink-3">
             {isAudio ? "Select a microphone" : "Select a camera"}
           </p>
@@ -189,17 +205,6 @@ export function MediaToggle({
                   void selectOutput(id);
                   setOpen(false);
                 }}
-              />
-            </>
-          )}
-
-          {isAudio && (
-            <>
-              <div className="my-1 h-px bg-line" />
-              <MenuToggle
-                checked={prefs.noiseSuppression}
-                onChange={(on) => updatePrefs({ noiseSuppression: on })}
-                label="Noise suppression"
               />
             </>
           )}
