@@ -329,6 +329,9 @@ func (s *Server) Routes() http.Handler {
 		// "what was said before I arrived" — one is a cursor of zero — and the backlog is
 		// filtered by the same audience rule live delivery used.
 		r.Get("/webinars/{slug}/chat", s.handleChatBacklog)
+		// Q&A history, the same way: the room's questions as this caller may see them,
+		// with their own upvotes, so a rejoin gets the panel back as it was.
+		r.Get("/webinars/{slug}/questions", s.handleRoomQuestions)
 		// An image and the message carrying it, in one request: an upload endpoint that
 		// hands back a handle for a second call leaves orphaned bytes every time the second
 		// call does not happen.

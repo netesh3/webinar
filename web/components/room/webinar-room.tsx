@@ -32,12 +32,13 @@ import {
   type MediaPermissions,
 } from "@/lib/permissions";
 import {
-  decodeBacklog,
   useRealtime,
   useSessionControls,
   type Relay,
   type Sender,
 } from "@/lib/realtime";
+import { countSince } from "@/lib/room-history";
+import { useRoomHistory } from "@/lib/room-history-sync";
 import { prioritiseAudio, useNetworkHealth } from "@/lib/network";
 import { formatElapsed } from "@/lib/format";
 import { Alert, Spinner } from "../controls";
@@ -980,6 +981,10 @@ function ConnectedRoom({
   const qaVisible = isToolVisible(tools.layout, tools.panelTab, "qa");
 
   const [seen, setSeen] = useState({ chat: 0, qa: 0 });
+  /* When this page started listening. History read back on a reload or a new tab was
+   * said before it, so it is not "arrived while you weren't looking" — without this the
+   * watermark starting at zero put the whole session's chat and Q&A on the badges. */
+  const [mountedAt] = useState(() => Date.now());
 
   /* While a panel tab is in front of you, everything arriving in it counts as read.
    *
@@ -1004,8 +1009,18 @@ function ConnectedRoom({
 
   const unread = useMemo<Record<ToolId, number>>(
     () => ({
-      chat: chatVisible ? 0 : Math.max(0, chatCount - seen.chat),
-      qa: qaVisible ? 0 : Math.max(0, questionCount - seen.qa),
+      chat: chatVisible
+        ? 0
+        : Math.min(
+            Math.max(0, chatCount - seen.chat),
+            countSince(realtime.chat, mountedAt, me.identity),
+          ),
+      qa: qaVisible
+        ? 0
+        : Math.min(
+            Math.max(0, questionCount - seen.qa),
+            countSince(realtime.questions, mountedAt, me.identity),
+          ),
       // No watermark for the rest. A poll is not a stream of messages, and the
       // thing worth a badge is that one is OPEN right now — which the bar reads
       // from the poll list. Participants carries the raised-hand queue instead,
@@ -1018,8 +1033,10 @@ function ConnectedRoom({
       layout: 0,
       settings: 0,
       host: 0,
+      captions: 0,
+      sharefile: 0,
     }),
-    [chatVisible, qaVisible, chatCount, questionCount, seen],
+    [chatVisible, qaVisible, chatCount, questionCount, seen, realtime.chat, realtime.questions, mountedAt, me.identity],
   );
 
   const leave = useCallback(() => {
@@ -1064,46 +1081,9 @@ function ConnectedRoom({
     if (micTrackSid) void prioritiseAudio(room);
   }, [room, micTrackSid]);
 
-  /* Chat history: on joining, and again after every reconnect.
-   *
-   * Two triggers, one request. Joining asks from cursor zero and gets the conversation
-   * so far, which is what makes arriving twenty minutes late useful rather than
-   * disorienting. Reconnecting asks from the highest sequence already held and gets only
-   * the gap — the SFU's data channel does not replay what it delivered while the socket
-   * was down, so without this a dropped connection silently loses everything said during
-   * it.
-   *
-   * Merged by message id, so the overlap between the backlog and the live stream — which
-   * is expected, because a cursor cannot be advanced and a socket drained in the same
-   * instant — appears once.
-   */
-  useEffect(() => {
-    let cancelled = false;
-
-    const sync = () => {
-      api
-        .chatBacklog(slug, realtime.chatCursor, joinKey)
-        .then((backlog) => {
-          if (!cancelled) realtime.mergeBacklog(decodeBacklog(backlog.messages));
-        })
-        // Silent: the conversation on screen is more useful than an error where it used
-        // to be, and the next reconnect tries again.
-        .catch(() => {});
-    };
-
-    sync();
-    room.on(RoomEvent.Reconnected, sync);
-    room.on(RoomEvent.Connected, sync);
-    return () => {
-      cancelled = true;
-      room.off(RoomEvent.Reconnected, sync);
-      room.off(RoomEvent.Connected, sync);
-    };
-    // chatCursor is deliberately NOT a dependency: it changes on every message, and
-    // re-subscribing per message would re-fetch the backlog per message. It is read
-    // through the closure at the moment a sync actually runs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room, slug, joinKey, realtime.mergeBacklog]);
+  /* Chat and Q&A history: on joining, and again after every reconnect — including the
+   * Connected that this component's own retry ladder produces. See useRoomHistory. */
+  useRoomHistory(room, slug, joinKey, realtime);
 
   const ui = useMemo<RoomUI>(
     () => ({
