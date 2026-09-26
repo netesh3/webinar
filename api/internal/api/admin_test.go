@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -126,6 +127,7 @@ func TestNonAdminCannotReachAdminEndpoints(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	for _, ep := range []struct{ method, path string }{
 		{http.MethodGet, "/api/admin/users"},
+		{http.MethodGet, "/api/admin/stats"},
 		{http.MethodPatch, "/api/admin/users/00000000-0000-0000-0000-000000000000/host"},
 	} {
 		res, raw := h.do(ep.method, ep.path, map[string]any{"canHost": true})
@@ -137,9 +139,11 @@ func TestNonAdminCannotReachAdminEndpoints(t *testing.T) {
 
 	// And anonymously.
 	h2 := newHarness(t)
-	res, raw := h2.do(http.MethodGet, "/api/admin/users", nil)
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Errorf("anonymous: status %d body %s, want 401", res.StatusCode, raw)
+	for _, path := range []string{"/api/admin/users", "/api/admin/stats"} {
+		res, raw := h2.do(http.MethodGet, path, nil)
+		if res.StatusCode != http.StatusUnauthorized {
+			t.Errorf("anonymous %s: status %d body %s, want 401", path, res.StatusCode, raw)
+		}
 	}
 }
 
@@ -513,5 +517,177 @@ func TestNameFromEmail(t *testing.T) {
 		if got := store.NameFromEmail(in); got != want {
 			t.Errorf("NameFromEmail(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+/* TestAdminStats checks the dashboard read against the seeded instance, then
+ * against one account and one webinar this test creates.
+ *
+ * The seed counts are asserted on purpose. A handler that returned zeros for
+ * every field would still satisfy "the numbers moved by one" if the baseline
+ * was also zero, and the glance lists are only proven if they name a webinar
+ * the seed actually inserted.
+ */
+func TestAdminStats(t *testing.T) {
+	h := newHarness(t)
+	if _, _, err := h.store.PromoteAdmins(t.Context(), []string{"neeraj@acme.dev"}); err != nil {
+		t.Fatalf("promote admin: %v", err)
+	}
+	h.login("neeraj@acme.dev")
+
+	before := h.adminStats(t)
+	if strings.Contains(string(before.raw), `"liveNow":null`) ||
+		strings.Contains(string(before.raw), `"daily":null`) ||
+		strings.Contains(string(before.raw), `"upcoming":null`) ||
+		strings.Contains(string(before.raw), `"recent":null`) {
+		t.Fatalf("empty lists encoded as null: %s", before.raw)
+	}
+
+	st := before.stats
+	if st.Accounts != 6 || st.Hosts != 6 || st.Admins != 1 || st.CdnBroadcast != 0 || st.NewAccounts7d != 6 {
+		t.Errorf("accounts = %+v, want 6 accounts / 6 hosts / 1 admin / 0 cdn / 6 new", st)
+	}
+	if st.Webinars != 6 || st.Live != 0 || st.Scheduled != 4 || st.Ended != 1 || st.Drafts != 1 {
+		t.Errorf("webinars live/scheduled/ended/drafts = %d/%d/%d/%d (total %d), want 0/4/1/1 (total 6)",
+			st.Live, st.Scheduled, st.Ended, st.Drafts, st.Webinars)
+	}
+	if st.KindLive+st.KindSimulive+st.KindRecurring != st.Webinars {
+		t.Errorf("kinds %d+%d+%d != webinars %d", st.KindLive, st.KindSimulive, st.KindRecurring, st.Webinars)
+	}
+	if st.KindSimulive != 1 || st.KindRecurring != 0 {
+		t.Errorf("kinds simulive/recurring = %d/%d, want 1/0", st.KindSimulive, st.KindRecurring)
+	}
+	if st.Live+st.Scheduled+st.Ended+st.Drafts != st.Webinars {
+		t.Errorf("status counts do not add up to webinars")
+	}
+	if st.Registrants != 0 || st.Attendees != 0 {
+		t.Errorf("registrants/attendees = %d/%d, want 0/0 before this test adds any", st.Registrants, st.Attendees)
+	}
+	if len(st.LiveNow) != 0 {
+		t.Errorf("liveNow = %d rows, want 0", len(st.LiveNow))
+	}
+	if len(st.Upcoming) != 4 || st.Upcoming[0].ID != "scaling-webrtc-10k" {
+		t.Errorf("upcoming = %+v, want 4 rows starting at scaling-webrtc-10k", st.Upcoming)
+	}
+	if len(st.Recent) != 1 || st.Recent[0].ID != "egress-tuning" {
+		t.Errorf("recent = %+v, want just egress-tuning", st.Recent)
+	}
+	assertDailySeries(t, st.Daily)
+
+	viewer, err := h.store.CreateUser(t.Context(), "stats-viewer@test.dev", "x", "Stats Viewer", "", "", "", false)
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	if _, err := h.store.SetCdnBroadcastCapability(t.Context(), viewer.ID, true); err != nil {
+		t.Fatalf("cdn: %v", err)
+	}
+
+	wb := h.newWebinar("Stats glance session", nil)
+	start, err := time.Parse(time.RFC3339, wb.StartsAt)
+	if err != nil {
+		t.Fatalf("parse startsAt: %v", err)
+	}
+	day := start.UTC().Format("2006-01-02")
+
+	h.goLive(wb.ID)
+	if _, err := h.store.Register(t.Context(), wb.ID, types.RegisterRequest{
+		FirstName: "Ada", LastName: "Lovelace", Email: "ada-stats@test.dev",
+		Phone: testPhone, Consent: true,
+	}, ""); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := h.store.TouchAttendance(t.Context(), wb.ID, "att_statsglance", "", "Ada Lovelace"); err != nil {
+		t.Fatalf("attendance: %v", err)
+	}
+
+	after := h.adminStats(t).stats
+	if after.Accounts != st.Accounts+1 || after.Hosts != st.Hosts || after.CdnBroadcast != st.CdnBroadcast+1 || after.NewAccounts7d != st.NewAccounts7d+1 {
+		t.Errorf("after account create: accounts %d hosts %d cdn %d new %d, before %+v",
+			after.Accounts, after.Hosts, after.CdnBroadcast, after.NewAccounts7d, st)
+	}
+	if after.Webinars != st.Webinars+1 || after.Live != st.Live+1 || after.Scheduled != st.Scheduled {
+		t.Errorf("after go-live: webinars %d live %d scheduled %d, before webinars %d live %d scheduled %d",
+			after.Webinars, after.Live, after.Scheduled, st.Webinars, st.Live, st.Scheduled)
+	}
+	if after.KindLive != st.KindLive+1 {
+		t.Errorf("kindLive = %d, want %d", after.KindLive, st.KindLive+1)
+	}
+	if after.Registrants != st.Registrants+1 || after.Attendees != st.Attendees+1 {
+		t.Errorf("registrants/attendees = %d/%d, want %d/%d",
+			after.Registrants, after.Attendees, st.Registrants+1, st.Attendees+1)
+	}
+	if len(after.LiveNow) != 1 || after.LiveNow[0].ID != wb.ID || after.LiveNow[0].RegistrantCount != 1 {
+		t.Errorf("liveNow = %+v, want %s with 1 registrant", after.LiveNow, wb.ID)
+	} else if after.LiveNow[0].HostName != "Neeraj Kumar" {
+		t.Errorf("live host = %q, want Neeraj Kumar", after.LiveNow[0].HostName)
+	}
+	for _, u := range after.Upcoming {
+		if u.ID == wb.ID {
+			t.Errorf("live webinar %s still listed as upcoming", wb.ID)
+		}
+	}
+	beforeDay, afterDay := -1, -1
+	for _, d := range st.Daily {
+		if d.Day == day {
+			beforeDay = d.Count
+		}
+	}
+	var sumBefore, sumAfter int
+	for _, d := range st.Daily {
+		sumBefore += d.Count
+	}
+	for _, d := range after.Daily {
+		sumAfter += d.Count
+		if d.Day == day {
+			afterDay = d.Count
+		}
+	}
+	if beforeDay < 0 || afterDay != beforeDay+1 || sumAfter != sumBefore+1 {
+		t.Errorf("day %s count %d -> %d, series sum %d -> %d", day, beforeDay, afterDay, sumBefore, sumAfter)
+	}
+}
+
+type adminStatsResponse struct {
+	stats types.AdminStats
+	raw   []byte
+}
+
+func (h *harness) adminStats(t *testing.T) adminStatsResponse {
+	t.Helper()
+	res, raw := h.do(http.MethodGet, "/api/admin/stats", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("admin stats: status %d body %s", res.StatusCode, raw)
+	}
+	var stats types.AdminStats
+	h.decode(raw, &stats)
+	return adminStatsResponse{stats: stats, raw: raw}
+}
+
+func assertDailySeries(t *testing.T, daily []types.AdminDayCount) {
+	t.Helper()
+	if len(daily) != 28 {
+		t.Fatalf("daily length = %d, want 28", len(daily))
+	}
+	zeros := 0
+	var prev time.Time
+	for i, d := range daily {
+		cur, err := time.Parse("2006-01-02", d.Day)
+		if err != nil {
+			t.Fatalf("daily[%d] day %q: %v", i, d.Day, err)
+		}
+		if i > 0 && !cur.Equal(prev.AddDate(0, 0, 1)) {
+			t.Fatalf("daily gap: %s then %s", prev.Format("2006-01-02"), d.Day)
+		}
+		if d.Count == 0 {
+			zeros++
+		}
+		prev = cur
+	}
+	today := time.Now().UTC().Format("2006-01-02")
+	if daily[len(daily)-1].Day != today {
+		t.Errorf("series ends %s, want today %s", daily[len(daily)-1].Day, today)
+	}
+	if zeros == 0 {
+		t.Error("28-day series had no empty day; quiet days should be zeros, not dropped")
 	}
 }

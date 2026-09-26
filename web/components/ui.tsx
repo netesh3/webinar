@@ -99,6 +99,44 @@ export function SectionTitle({ children }: { children: ReactNode }) {
   );
 }
 
+/* A top-line number, the kind a dashboard leads with.
+ *
+ * The value is the number and the note is the only sentence, so a tile never
+ * has to be read twice to find the figure. Tone colours the figure alone:
+ * a red tile around a zero would look like an alarm about a quiet instance. */
+export function Stat({
+  label,
+  value,
+  note,
+  tone = "neutral",
+  className = "",
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: "neutral" | "brand" | "ok" | "warn" | "live";
+  className?: string;
+}) {
+  const valueTone = {
+    neutral: "text-ink",
+    brand: "text-brand",
+    ok: "text-ok",
+    warn: "text-warn",
+    live: "text-live",
+  }[tone];
+  return (
+    <Card className={`p-4 ${className}`}>
+      <div className="text-[12px] text-ink-2">{label}</div>
+      <div
+        className={`mt-1.5 text-[22px] font-semibold tracking-[-0.02em] tabular-nums ${valueTone}`}
+      >
+        {value}
+      </div>
+      {note && <div className="mt-0.5 text-[11.5px] text-ink-3">{note}</div>}
+    </Card>
+  );
+}
+
 /** Empty state, used by browse-with-no-matches and each host tab. */
 export function Empty({
   title,

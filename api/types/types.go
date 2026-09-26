@@ -2114,6 +2114,84 @@ type AdminUser struct {
 	Features []string `json:"features"`
 }
 
+/* AdminStats is the admin dashboard's first read.
+ *
+ * GET /admin/users stops at 200 rows, so a total added up in the browser is
+ * already wrong on a larger instance, and GET /admin/webinars returns every
+ * webinar in full — panelists, agenda, the report — which is what the
+ * management list renders and far more than "how many are live" needs. These
+ * are aggregates, a filled-in daily series, and the few rows a glance list
+ * actually draws.
+ */
+type AdminStats struct {
+	Accounts      int `json:"accounts"`
+	Hosts         int `json:"hosts"`
+	Admins        int `json:"admins"`
+	CdnBroadcast  int `json:"cdnBroadcast"`
+	NewAccounts7d int `json:"newAccounts7d"`
+
+	Webinars  int `json:"webinars"`
+	Live      int `json:"live"`
+	Scheduled int `json:"scheduled"`
+	Ended     int `json:"ended"`
+	Drafts    int `json:"drafts"`
+
+	// Kind counts are the format of the webinar, not its lifecycle. A scheduled
+	// simulive is KindSimulive and StatusScheduled at once; the dashboard shows
+	// both axes because they answer different questions.
+	KindLive      int `json:"kindLive"`
+	KindSimulive  int `json:"kindSimulive"`
+	KindRecurring int `json:"kindRecurring"`
+
+	// Registrants excludes declined, matching the count on each webinar.
+	Registrants int `json:"registrants"`
+	// Attendees is audience identities that joined a room. The att_ prefix is
+	// the same cut SessionReport makes, so a host sitting in their own session
+	// is not counted as an attendee of it.
+	Attendees int `json:"attendees"`
+
+	// Daily is one bucket per UTC day for the last 28 days, including today,
+	// oldest first. Days with nothing are zeros rather than omissions: a chart
+	// that drops the gaps draws a trend the calendar did not have.
+	Daily []AdminDayCount `json:"daily"`
+
+	LiveNow  []AdminWebinarGlance `json:"liveNow"`
+	Upcoming []AdminWebinarGlance `json:"upcoming"`
+	Recent   []AdminWebinarGlance `json:"recent"`
+}
+
+/* AdminDayCount is one bar of the dashboard's start-day chart.
+ *
+ * Day is YYYY-MM-DD in UTC. Webinars carry their own zone for the wall clock
+ * an audience sees; the chart needs one axis, and UTC is the one that does
+ * not depend on which admin opened the page.
+ */
+type AdminDayCount struct {
+	Day   string `json:"day"`
+	Count int    `json:"count"`
+}
+
+/* AdminWebinarGlance is the slice of a webinar a dashboard row can render.
+ *
+ * Not a Webinar. The management list needs the full record; a row that says
+ * the topic, when it is, who is hosting it and how many people registered
+ * does not, and shipping the rest would put the dashboard back on the
+ * payload this endpoint exists to avoid.
+ */
+type AdminWebinarGlance struct {
+	ID              string `json:"id"` // slug
+	Topic           string `json:"topic"`
+	Status          string `json:"status"`
+	Kind            string `json:"kind"`
+	StartsAt        string `json:"startsAt"`
+	DurationMin     int    `json:"durationMin"`
+	TimeZone        string `json:"timeZone"`
+	StartedAt       string `json:"startedAt,omitempty"`
+	EndedAt         string `json:"endedAt,omitempty"`
+	HostName        string `json:"hostName"`
+	RegistrantCount int    `json:"registrantCount"`
+}
+
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`

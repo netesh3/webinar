@@ -387,6 +387,7 @@ func (s *Server) Routes() http.Handler {
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(s.requireAdmin)
 
+			r.Get("/stats", s.handleAdminStats)
 			r.Get("/users", s.handleAdminUsers)
 			r.Patch("/users/{id}/host", s.handleSetHostCapability)
 			r.Patch("/users/{id}/max-duration", s.handleSetUserMaxDuration)

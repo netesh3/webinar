@@ -12,17 +12,22 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-/* Administration: who may host.
+/* Administration.
  *
- * Two endpoints, because there is exactly one privilege to administer. Hosting used to be
- * self-service — a checkbox at signup and a toggle on the profile form — so any visitor could
- * create webinars and start taking strangers' names, emails and phone numbers. That is now a
- * grant, and this is where it is made.
+ * The privilege this package exists to grant is hosting. Hosting used to be
+ * self-service — a checkbox at signup and a toggle on the profile form — so any
+ * visitor could create webinars and start taking strangers' names, emails and
+ * phone numbers. That is now a grant, and the writes below are where it is made.
  *
- * There is no endpoint here that creates another admin. That is not an omission to be filled in
- * later: a privilege which can be granted through the API can be granted by whoever takes over
- * one admin account, and the property worth having is that the chain starts outside the
- * application. Admins come from ADMIN_EMAILS, reconciled at boot.
+ * There is no endpoint here that creates another admin. That is not an omission
+ * to be filled in later: a privilege which can be granted through the API can be
+ * granted by whoever takes over one admin account, and the property worth having
+ * is that the chain starts outside the application. Admins come from ADMIN_EMAILS,
+ * reconciled at boot.
+ *
+ * The reads (accounts, webinars, stats) are what an operator looks at before
+ * granting or revoking anything. Stats is its own read because the two lists
+ * are the wrong shape for a dashboard — see handleAdminStats.
  */
 
 // handleAdminUsers is GET /api/admin/users?q=…
@@ -246,6 +251,24 @@ func (s *Server) handleAdminWebinars(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, list)
+}
+
+/* handleAdminStats is GET /api/admin/stats.
+ *
+ * A dashboard that added up GET /admin/users and GET /admin/webinars would be
+ * wrong twice: users are capped at 200, so the total stops meaning "every
+ * account" the moment the instance passes that, and webinars come back as the
+ * full record the management list renders. Neither is a cheap way to learn
+ * that one session is live. This returns the aggregates, a 28-day series with
+ * the quiet days filled in, and the handful of rows the glance lists draw.
+ */
+func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.store.AdminStats(r.Context())
+	if err != nil {
+		s.fail(w, r, "admin stats", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, stats)
 }
 
 // handleAdminDeleteWebinar is DELETE /api/admin/webinars/{slug} — the same
