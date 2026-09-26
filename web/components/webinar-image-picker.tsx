@@ -13,8 +13,8 @@ import {
 /* The cover image picker on the schedule form.
  *
  * Compression happens here, entirely client-side (see lib/webinar-image.ts), so
- * the preview on the right is the ACTUAL optimized image — not a promise about
- * what will happen on save. The parent only ever receives an already-cropped,
+ * the preview under the drop zone is the ACTUAL optimized image — not a promise
+ * about what will happen on save. The parent only ever receives an already-cropped,
  * already-under-1MB blob; it does not know or care how large the original file
  * was.
  *
@@ -71,7 +71,7 @@ export function WebinarImagePicker({
         Upload a cover image for your webinar.
       </p>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-3">
         {/* ---- dropzone ---- */}
         <div>
           <button

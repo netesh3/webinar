@@ -413,57 +413,70 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
     >
       {error && <Alert tone="error">{error}</Alert>}
 
-      {/* ---- basics ---- */}
+      {/* ---- basics ----
+          Text on the left, cover on the right from `lg` up, so this card is
+          not one stretched column of empty boxes. The description takes the
+          leftover height of that row; below `lg` the same fields stack. */}
       <Card className="p-5">
         <SectionTitle>Basics</SectionTitle>
         <div className="grid gap-3.5">
-          <Text
-            label="Topic"
-            value={form.topic}
-            onChange={(v) => set("topic", v)}
-            error={fields.topic}
-            placeholder="What is this webinar called?"
-            required
-            large
-          />
+          <div className="grid gap-3.5 lg:grid-cols-2 lg:items-stretch lg:gap-6">
+            <div className="flex flex-col gap-3.5 lg:h-full">
+              <Text
+                label="Topic"
+                value={form.topic}
+                onChange={(v) => set("topic", v)}
+                error={fields.topic}
+                placeholder="What is this webinar called?"
+                required
+                large
+              />
 
-          <Text
-            label="One-line summary"
-            value={form.summary}
-            onChange={(v) => set("summary", v)}
-            hint="Shown on the browse page, under the title."
-          />
+              <Text
+                label="One-line summary"
+                value={form.summary}
+                onChange={(v) => set("summary", v)}
+                hint="Shown on the browse page, under the title."
+              />
 
-          <div>
-            <label className="label" htmlFor="description">
-              Description
-            </label>
-            <textarea
-              id="description"
-              className="field"
-              rows={4}
-              placeholder="Shown on the registration page."
-              value={form.description}
-              onChange={(e) => set("description", e.target.value)}
+              <div className="flex min-h-28 flex-col lg:min-h-0 lg:flex-1">
+                <label className="label" htmlFor="description">
+                  Description
+                </label>
+                {/* Fills the column only from `lg`, where the cover beside it
+                    is the taller sibling. Absolute so `textarea.field`'s
+                    `height: auto` still stretches between the label and the
+                    bottom of the row. */}
+                <div className="min-h-28 lg:relative lg:min-h-0 lg:flex-1">
+                  <textarea
+                    id="description"
+                    className="field lg:absolute lg:inset-0 lg:!resize-none"
+                    rows={4}
+                    placeholder="Shown on the registration page."
+                    value={form.description}
+                    onChange={(e) => set("description", e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <WebinarImagePicker
+              previewUrl={imagePreview}
+              onChange={(prepared, preview) => {
+                setPendingImage(prepared);
+                setImageRemoved(false);
+                setImagePreview(preview);
+              }}
+              onRemove={() => {
+                setPendingImage(null);
+                setImagePreview(null);
+                // Only worth telling the server about if there was something
+                // persisted to remove — a pending, never-uploaded selection being
+                // cleared is not a change the webinar has ever seen.
+                setImageRemoved(Boolean(webinar?.imageUrl));
+              }}
             />
           </div>
-
-          <WebinarImagePicker
-            previewUrl={imagePreview}
-            onChange={(prepared, preview) => {
-              setPendingImage(prepared);
-              setImageRemoved(false);
-              setImagePreview(preview);
-            }}
-            onRemove={() => {
-              setPendingImage(null);
-              setImagePreview(null);
-              // Only worth telling the server about if there was something
-              // persisted to remove — a pending, never-uploaded selection being
-              // cleared is not a change the webinar has ever seen.
-              setImageRemoved(Boolean(webinar?.imageUrl));
-            }}
-          />
 
           <div className="grid gap-3.5 sm:grid-cols-2">
             {/* Free text with suggestions from what already exists, rather than a
