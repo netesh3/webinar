@@ -96,6 +96,8 @@ const MODEL_PATH = "/mediapipe/selfie_segmenter_landscape.tflite";
 /** The matte's long side: the landscape model's own width. More would be interpolation
  *  the model did not do; the joint upsample in the composite is what adds resolution. */
 const MATTE_LONG_SIDE = 256;
+/** MODNet's matte: its own output size, 512×288 on a 16:9 camera. */
+const MATTE_LONG_SIDE_DIRECT = 512;
 
 /* How much of the new mask each frame takes, and what decides it.
  *
@@ -452,12 +454,24 @@ precision highp float;
 uniform sampler2D current;    // guide colour, raw confidence
 uniform sampler2D previous;   // guide colour, smoothed confidence
 uniform float restart;        // 1 when there is no previous worth blending with
+uniform float direct;         // 1: a matting model's alpha (MODNet), not MediaPipe's confidence
 out vec4 color;
 void main() {
   ivec2 p = ivec2(gl_FragCoord.xy);
   ivec2 last = textureSize(current, 0) - 1;
   vec4 now = texelFetch(current, p, 0);
   float before = texelFetch(previous, p, 0).a;
+  /* A matting model's alpha is already the edge: none of what follows is for it. The hand
+   * recovery, the silhouette hysteresis and the band hold all exist to repair MediaPipe's
+   * coarse confidence, and on a clean matte they only move a good edge. What it does get
+   * is a light blend against flicker, let go where the picture moves so nothing trails. */
+  if (direct > 0.5) {
+    vec3 d = abs(now.rgb - texelFetch(previous, p, 0).rgb);
+    float moved = smoothstep(0.03, 0.12, max(d.r, max(d.g, d.b)) + abs(now.a - before));
+    float kd = mix(0.6, 1.0, moved);
+    color = vec4(now.rgb, mix(before, now.a, max(kd, restart)));
+    return;
+  }
   float motion = 0.0;
   float nbrPerson = 0.0;
   for (int y = -1; y <= 1; y++) {
@@ -639,6 +653,7 @@ uniform sampler2D frame;
 uniform sampler2D matte;
 uniform sampler2D prevAlpha;
 uniform float hasHistory;
+uniform float direct;
 out vec4 color;
 
 /* Joint bilateral upsample. 4×4 matte texels vote by distance and by colour match to
@@ -671,6 +686,12 @@ float matteAt(vec2 p) {
 void main() {
   vec3 raw = textureLod(frame, uv, 0.0).rgb;
   float conf = matteAt(uv);
+  if (direct > 0.5) {
+    // The alpha is the coverage. No softstep, no hand band: those turn a confidence into an
+    // edge, and this is already one. Temporal smoothing was done on the matte.
+    color = vec4(conf, 0.0, 0.0, 1.0);
+    return;
+  }
   // Skin-like: red above blue AND red above green. Wood desks often fail the second.
   // This band is the cheeks, jaw, and ears. Gating it off next to a solid head cut
   // those away and let the blur show through the face. The limb dilate stays limited
@@ -719,6 +740,7 @@ uniform vec2 frameSize;
 uniform vec2 imageSize;
 uniform vec2 bgPan;          // smoothed person-centre offset applied to still UVs
 uniform float lowLight;      // 0 = off, 1 = the full lift
+uniform float direct;        // 1: coverage is a matting model's alpha, used as it is
 out vec4 color;
 ${LOW_LIGHT_GLSL}
 
@@ -777,6 +799,9 @@ float skinAmt(vec2 p) {
 }
 float coverage(vec2 p) {
   float a = texture(alphaMap, p).r;
+  // The choke pulls MediaPipe's loose outline in off the wall. MODNet's is where the
+  // person is; choking it shaves their hair and shoulders.
+  if (direct > 0.5) return a;
   float warm = skinAmt(p);
   float lo = mix(ALPHA_CHOKE_LO, FACE_CHOKE_LO, warm);
   float hi = mix(ALPHA_CHOKE_HI, FACE_CHOKE_HI, warm);
@@ -784,6 +809,7 @@ float coverage(vec2 p) {
 }
 float featherAlpha(vec2 p) {
   float a0 = coverage(p);
+  if (direct > 0.5) return a0;
   vec2 px = vec2(EDGE_FEATHER_PX) / frameSize;
   float soft = a0 * 0.52;
   soft += coverage(p + vec2(px.x, 0.0)) * 0.12;
@@ -1131,6 +1157,8 @@ class Engine {
   private cpuMaskW = 0;
   private cpuMaskH = 0;
   private cpuMaskBytes: Uint8Array | null = null;
+  /** The matte is a matting model's alpha (MODNet), used as it is. See useDirect. */
+  private direct = false;
   private image: WebGLTexture | null = null;
   private imageW = 1;
   private imageH = 1;
@@ -1168,7 +1196,7 @@ class Engine {
       if (gl.isContextLost()) throw new Error(CONTEXT_LOST);
 
       this.ingest = pass(gl, VERTEX_PASS, INGEST, ["frame", "confidence"], ["lod"]);
-      this.temporal = pass(gl, VERTEX_PASS, TEMPORAL, ["current", "previous"], ["restart"]);
+      this.temporal = pass(gl, VERTEX_PASS, TEMPORAL, ["current", "previous"], ["restart", "direct"]);
       this.prep = pass(gl, VERTEX_PASS, PREP, ["frame", "matte"], ["lod", "veil"]);
       this.blur = pass(gl, VERTEX_PASS, BLUR, ["source"], ["texel", "sigma"]);
       this.track = pass(gl, VERTEX_PASS, TRACK, ["matte"], []);
@@ -1178,7 +1206,7 @@ class Engine {
         VERTEX_PASS,
         EDGE,
         ["frame", "matte", "prevAlpha"],
-        ["hasHistory"],
+        ["hasHistory", "direct"],
       );
       // The only pass that reaches the canvas, so the only one that flips.
       this.composite = pass(
@@ -1186,7 +1214,7 @@ class Engine {
         VERTEX_PRESENT,
         COMPOSITE,
         ["frame", "room", "image", "alphaMap"],
-        ["mode", "veil", "frameSize", "imageSize", "bgPan", "lowLight"],
+        ["mode", "veil", "frameSize", "imageSize", "bgPan", "lowLight", "direct"],
       );
       gl.useProgram(null);
 
@@ -1260,6 +1288,7 @@ class Engine {
    * Timestamps must strictly increase for as long as the MediaPipe instance lives, which is
    * longer than any one track — hence the engine keeps the counter, not the processor. */
   segment(segmenter: Segmenter, frame: VideoFrame, edit?: MaskEdit): boolean {
+    this.useDirect(false);
     const timestamp = Math.max(performance.now(), this.lastTimestamp + 1);
     this.lastTimestamp = timestamp;
     let got = false;
@@ -1293,6 +1322,7 @@ class Engine {
   /** A mask from the CPU — MODNet's — straight into the matte, as segment() does for
    *  MediaPipe's. `data` is w×h, 0..1, row 0 at the top. */
   ingestMatte(data: Float32Array, w: number, h: number): void {
+    this.useDirect(true);
     this.uploadMatte(data, w, h);
     this.ingestMask(this.cpuMask!);
     this.smooth();
@@ -1428,6 +1458,7 @@ class Engine {
     gl.uniform2f(c.u.bgPan, this.panX, this.panY);
     // Read fresh every frame, which is what makes setLowLight free.
     gl.uniform1f(c.u.lowLight, lowLight);
+    gl.uniform1f(c.u.direct, this.direct ? 1 : 0);
     // Every unit the program samples gets a real texture, even ones this mode ignores:
     // an empty unit is a console warning per frame.
     this.bindTextures(this.frame, this.roomA!.texture, this.image ?? this.frame, coverage);
@@ -1443,6 +1474,7 @@ class Engine {
     this.bindTarget(next);
     gl.useProgram(this.edge.program);
     gl.uniform1f(this.edge.u.hasHistory, this.alphaHistory ? 1 : 0);
+    gl.uniform1f(this.edge.u.direct, this.direct ? 1 : 0);
     this.bindTextures(this.frame, this.matte!.texture, prev.texture);
     this.draw();
     this.alphaA = prev;
@@ -1531,13 +1563,7 @@ class Engine {
     /* The matte at the model's resolution, not the frame's. It carries 256×144 of
      * information however large the frame is; the joint upsample is what brings it to the
      * frame, and filtering four times as many pixels first would add nothing. */
-    const long = Math.min(MATTE_LONG_SIDE, Math.max(w, h));
-    const mw = w >= h ? long : Math.max(1, Math.round((long * w) / h));
-    const mh = w >= h ? Math.max(1, Math.round((long * h) / w)) : long;
-    this.current = target(gl, mw, mh);
-    this.matte = target(gl, mw, mh);
-    this.spare = target(gl, mw, mh);
-    this.matteLod = Math.max(0, Math.log2(w / mw));
+    this.allocMatte();
 
     const rw = Math.max(1, Math.round(w / 4));
     const rh = Math.max(1, Math.round(h / 4));
@@ -1545,6 +1571,8 @@ class Engine {
     this.roomB = target(gl, rw, rh);
     this.roomLod = Math.max(0, Math.log2(w / rw));
 
+    const mw = this.current!.w;
+    const mh = this.current!.h;
     const trackLong = Math.min(TRACK_LONG_SIDE, Math.max(mw, mh));
     const tw = mw >= mh ? trackLong : Math.max(1, Math.round((trackLong * mw) / mh));
     const th = mw >= mh ? Math.max(1, Math.round((trackLong * mh) / mw)) : trackLong;
@@ -1561,6 +1589,40 @@ class Engine {
     this.panX = 0;
     this.panY = 0;
     this.panAt = 0;
+  }
+
+  /* The matte at the model's resolution, not the frame's: 256 on the long side for
+   * MediaPipe, 512 for MODNet. It carries that much information however large the frame is;
+   * the joint upsample is what brings it to the frame. MODNet's used to be squeezed onto
+   * MediaPipe's grid — every other texel, nearest-sampled — which threw away exactly the
+   * hair and shoulder detail it is there for. */
+  private allocMatte(): void {
+    const gl = this.gl;
+    for (const t of [this.current, this.matte, this.spare]) {
+      if (!t) continue;
+      gl.deleteTexture(t.texture);
+      gl.deleteFramebuffer(t.framebuffer);
+    }
+    const w = this.w;
+    const h = this.h;
+    const long = Math.min(this.direct ? MATTE_LONG_SIDE_DIRECT : MATTE_LONG_SIDE, Math.max(w, h));
+    const mw = w >= h ? long : Math.max(1, Math.round((long * w) / h));
+    const mh = w >= h ? Math.max(1, Math.round((long * h) / w)) : long;
+    this.current = target(gl, mw, mh);
+    this.matte = target(gl, mw, mh);
+    this.spare = target(gl, mw, mh);
+    this.matteLod = Math.max(0, Math.log2(w / mw));
+    this.hasHistory = false;
+    this.alphaHistory = false;
+  }
+
+  /* Which kind of mask feeds the matte: MediaPipe's confidence, or a matting model's alpha
+   * used as it is. Switching rebuilds the matte at the other size and starts it afresh —
+   * one is not the other's history. */
+  private useDirect(direct: boolean): void {
+    if (this.direct === direct) return;
+    this.direct = direct;
+    if (this.frame) this.allocMatte();
   }
 
   private releaseTargets(): void {
@@ -1620,6 +1682,7 @@ class Engine {
       this.bindTarget(next);
       gl.useProgram(this.temporal.program);
       gl.uniform1f(this.temporal.u.restart, this.hasHistory ? 0 : 1);
+      gl.uniform1f(this.temporal.u.direct, this.direct ? 1 : 0);
       this.bindTextures(this.current!.texture, previous.texture);
       this.draw();
     } finally {
@@ -1873,20 +1936,6 @@ const MODNET_DISAGREE = 3;
 /** Slower than this on average and the video would visibly drop frames: use MediaPipe. */
 const MODNET_MAX_MS = 45;
 const MODNET_WINDOW = 30;
-
-/* MODNet's alpha, into the confidence scale the rest of the pipeline is tuned for.
- *
- * The edge pass softsteps confidence between MASK_LO and MASK_HI, and the room blur and hand
- * recovery key off ROOM_LO and the mid band — all numbers for MediaPipe. Piecewise linear, so
- * that MODNet's own soft edge — alpha 0.3 to 0.7 — is the visible edge, MASK_LO to MASK_HI,
- * and background (alpha near 0) stays near 0. Straight alpha would sit a half-covered hair
- * strand under MASK_LO and cut it; a mapping that puts the edge lower (alpha 0.1) was
- * measured to widen the outline onto the real room behind the person. */
-function modnetToConfidence(a: number): number {
-  if (a <= 0.3) return (a / 0.3) * MASK_LO;
-  if (a <= 0.7) return MASK_LO + ((a - 0.3) / 0.4) * (MASK_HI - MASK_LO);
-  return MASK_HI + ((a - 0.7) / 0.3) * (1 - MASK_HI);
-}
 
 type FaceDetector = {
   detectForVideo: (
@@ -2406,7 +2455,6 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     try {
       const { alpha, w, h } = matte;
       if (this.lockActive()) this.lock.apply(alpha, w, h, performance.now(), LOCK_REGION_MODNET);
-      for (let i = 0; i < alpha.length; i++) alpha[i] = modnetToConfidence(alpha[i]!);
       engine.upload(frame, true);
       engine.ingestMatte(alpha, w, h);
       const mode = this.modeFor(engine, background);
