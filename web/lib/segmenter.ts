@@ -28,13 +28,21 @@ import { LOW_LIGHT_GLSL } from "./low-light-curve";
  *               hardly at all where it did. A fixed blend has to trade a shimmer on a still
  *               shoulder against a smear on a moving hand; measured, this lets through about
  *               a quarter of the model's own shimmer at a still edge where the fixed 0.6
- *               let through half, and follows movement as closely.
+ *               let through half, and follows movement as closely. On the silhouette band
+ *               the hold is tighter still, with a Schmitt gap so a few percent of confidence
+ *               cannot flip the cut.
+ *   edge        Joint-bilateral upsample to full resolution, softstep to opacity, then a
+ *               second EMA on THAT alpha (not on the coarse confidence). Small frame-to-frame
+ *               alpha changes are a deadzone — outline chatter freezes — while a limb crossing
+ *               a pixel still takes the new value. Ping-ponged so the next frame blends the
+ *               smoothed edge, not a fresh snap.
  *   room blur   The frame with the PERSON TAKEN OUT, blurred, and divided by how much room
  *               each neighbourhood had in it. A plain blur drags the person's own colours
  *               into the room around them, and that smear is the halo round their head.
- *   composite   The mask upsampled against the full-resolution frame with a joint bilateral
- *               filter, so the edge lands where the edge is in the picture rather than on a
- *               256-pixel grid. Then the person over the room.
+ *   composite   Person over the room, using the smoothed full-res alpha. The silhouette band
+ *               is then feathered a couple of pixels (a soft rim) so whatever crawl the model
+ *               still produces reads as a blur rather than a crawling line. Spill suppression
+ *               keeps that rim from painting the real room onto a still.
  *
  * And around the frames, the three things that made the old version look broken rather than
  * merely soft:
@@ -153,17 +161,19 @@ const MATTE_LONG_SIDE = 256;
  *     SIGMA_SPACE    matte-texel neighbourhood for joint bilateral
  *     SIGMA_COLOR    RGB guide tightness (smaller = snappier to colour edges)
  *
- *   Display alpha (after softstep)
- *     ALPHA_TEMP_*   second EMA on the composited alpha to kill residual crawl
+ *   Display alpha (full-res, after bilateral + softstep — the edge pass)
+ *     ALPHA_TEMP_*   EMA + deadzone on the upsampled alpha. Small |Δα| freezes (chatter);
+ *                    large |Δα| takes the new edge (a limb actually moved).
+ *     EDGE_FEATHER_* soft rim in screen pixels, silhouette band only
  *     SPILL_*        edge decontamination so FG lighting does not fringe onto BG
  *
  *   Blur / veil: BLUR_RADIUS lives in backgrounds.ts (720p-referenced sigma).
  */
 const K_STILL = 0.2;
 /** Stronger EMA hold on the silhouette band when still — where softstep amplifies chatter. */
-const K_EDGE_STILL = 0.1;
+const K_EDGE_STILL = 0.07;
 /** How hard a still silhouette texel sticks to its previous side of MASK_LO (0..1). */
-const EDGE_HYST = 0.55;
+const EDGE_HYST = 0.72;
 const K_MOVE = 0.97;
 /** Floor for RGB/mask motion. Above typical webcam sensor noise so still edges
  *  are not unlocked into K_MOVE by grain alone. */
@@ -253,18 +263,28 @@ const ROOM_LO = 0.28;
 
 /* The joint upsample. Spatial sigma in matte texels, colour sigma in 0..1 RGB distance.
  *
- * SIGMA_SPACE 1.3 gives the edge a useful neighbourhood without turning into a soft blob —
- * the guide colour still snaps the boundary. SIGMA_COLOR 0.10: two colours 0.10 apart
- * count ~60%, 0.30 apart ~1%, so skin against a wall separates cleanly.
+ * SIGMA_SPACE 1.45 gives the edge a useful neighbourhood without turning into a soft blob —
+ * the guide colour still snaps the boundary. SIGMA_COLOR 0.12: a little looser than 0.10 so
+ * webcam grain does not flip the bilateral vote every frame (that crawl is the outline
+ * jitter), while two colours 0.30 apart still count ~4% and skin/wall stay separated.
  */
-const SIGMA_SPACE = 1.3;
-const SIGMA_COLOR = 0.1;
+const SIGMA_SPACE = 1.45;
+const SIGMA_COLOR = 0.12;
 
-/** Display-alpha temporal filter (after softstep + bilateral). Small |Δα| → chatter → hold
- *  history (ALPHA_TEMP_STILL); large |Δα| → real motion → take the new alpha. */
-const ALPHA_TEMP_STILL = 0.32;
-const ALPHA_TEMP_LO = 0.04;
-const ALPHA_TEMP_HI = 0.22;
+/** Display-alpha temporal filter (after softstep + bilateral), in the edge pass.
+ *  |Δα| below ALPHA_TEMP_LO is a deadzone: the outline holds still instead of crawling.
+ *  |Δα| above ALPHA_TEMP_HI takes the new alpha in full, so a moving limb does not ghost.
+ *  ALPHA_TEMP_STILL is the slow blend in between. */
+const ALPHA_TEMP_STILL = 0.15;
+const ALPHA_TEMP_LO = 0.08;
+const ALPHA_TEMP_HI = 0.38;
+
+/** Soft rim on the silhouette only, in output pixels. Interior (α≈0 or α≈1) is left
+ *  binary; the transition band is mixed toward a 5-tap cross so residual chatter reads
+ *  as a blur rather than a moving line. Wide enough to hide a 1px crawl, narrow enough
+ *  that a virtual background does not grow a halo. */
+const EDGE_FEATHER_PX = 2.0;
+const EDGE_FEATHER_MIX = 0.7;
 
 /** Edge decontamination: mix FG toward BG on soft edges so person lighting does not fringe
  *  onto a still (stronger) or the room blur (lighter — colours are already related). */
@@ -485,14 +505,17 @@ void main() {
   float dilate = max(a, nbrPerson * ${EXTREMITY_DILATE_KEEP.toFixed(3)});
   a = mix(a, max(a, dilate), skin * connected * ${EXTREMITY_DILATE.toFixed(3)});
 
-  // Schmitt hold on the furniture/person cut when still. If history was person-side of
-  // MASK_LO and the new blend wants to drop through (or the reverse), pull back toward
-  // history. Opens under motion; skipped where an extremity seed just filled a hole.
+  // Schmitt hold on the furniture/person cut when still. History must be crossed by a
+  // gap (~0.07 confidence) before a still texel is allowed to flip; a few percent of
+  // model chatter stays on the side it already chose. Opens under motion; skipped where
+  // an extremity seed just filled a hole.
   float cut = ${MASK_LO.toFixed(3)};
-  float histPerson = smoothstep(cut - 0.04, cut + 0.08, before);
-  float nowPerson = smoothstep(cut - 0.04, cut + 0.08, a);
-  float disagree = abs(histPerson - nowPerson);
-  a = mix(a, before, disagree * still * edgeBand * ${EDGE_HYST.toFixed(3)} * (1.0 - seed));
+  float histOn = smoothstep(cut - 0.015, cut + 0.015, before);
+  float dip = histOn * (1.0 - smoothstep(cut - 0.07, cut + 0.015, a));
+  float hyst = still * edgeBand * ${EDGE_HYST.toFixed(3)} * clamp(1.0 - seed, 0.0, 1.0);
+  a = mix(a, max(a, before), dip * hyst);
+  float rise = (1.0 - histOn) * smoothstep(cut - 0.015, cut + 0.07, a);
+  a = mix(a, min(a, before), rise * hyst);
 
   color = vec4(now.rgb, a);
 }`;
@@ -575,8 +598,16 @@ const FG_CONTRAST = 0.12;
 const FG_SOFTEN = 0.28;
 const FG_SOFT_LOD = 1.25;
 
-/** The composite. Foreground over background, with the matte as alpha. */
-const COMPOSITE = `#version 300 es
+/* Full-resolution person coverage, temporally filtered.
+ *
+ * The matte-resolution EMA cannot see the bilateral snap: that snap is recomputed from
+ * this frame's RGB, so a still shoulder crawls by a pixel even when confidence is calm.
+ * This pass is where that coverage is born (joint upsample → softstep → EMA), and the
+ * result is what the next frame blends against. Veil is NOT baked in — the composite
+ * applies it — so a loading fade does not poison the history.
+ *
+ * Offscreen, so VERTEX_PASS: same orientation as the matte. The composite flips once. */
+const EDGE = `#version 300 es
 precision highp float;
 const float MASK_LO = ${MASK_LO.toFixed(3)};
 const float MASK_HI = ${MASK_HI.toFixed(3)};
@@ -588,23 +619,83 @@ const float HAND_UNCERTAIN_LO = ${HAND_UNCERTAIN_LO.toFixed(3)};
 const float HAND_UNCERTAIN_MID = ${HAND_UNCERTAIN_MID.toFixed(3)};
 const float SIGMA_SPACE = ${SIGMA_SPACE.toFixed(3)};
 const float SIGMA_COLOR = ${SIGMA_COLOR.toFixed(3)};
-const float FG_CONTRAST = ${FG_CONTRAST.toFixed(3)};
-const float FG_SOFTEN = ${FG_SOFTEN.toFixed(3)};
-const float FG_SOFT_LOD = ${FG_SOFT_LOD.toFixed(3)};
 const float ALPHA_TEMP_STILL = ${ALPHA_TEMP_STILL.toFixed(3)};
 const float ALPHA_TEMP_LO = ${ALPHA_TEMP_LO.toFixed(3)};
 const float ALPHA_TEMP_HI = ${ALPHA_TEMP_HI.toFixed(3)};
+in vec2 uv;
+uniform sampler2D frame;
+uniform sampler2D matte;
+uniform sampler2D prevAlpha;
+uniform float hasHistory;
+out vec4 color;
+
+/* Joint bilateral upsample. 4×4 matte texels vote by distance and by colour match to
+ * this pixel, so a shoulder lands on the shirt/wall boundary rather than the 256-grid. */
+float matteAt(vec2 p) {
+  float coarse = texture(matte, p).a;
+  if (coarse < 0.02 || coarse > 0.98) return coarse;
+  vec2 size = vec2(textureSize(matte, 0));
+  vec2 pos = p * size - 0.5;
+  vec2 base = floor(pos);
+  vec2 f = pos - base;
+  ivec2 last = ivec2(size) - 1;
+  vec3 ref = textureLod(frame, p, 1.0).rgb;
+  float sum = 0.0;
+  float total = 0.0;
+  for (int y = -1; y <= 2; y++) {
+    for (int x = -1; x <= 2; x++) {
+      vec4 t = texelFetch(matte, clamp(ivec2(base) + ivec2(x, y), ivec2(0), last), 0);
+      vec2 d = vec2(float(x), float(y)) - f;
+      vec3 dc = t.rgb - ref;
+      float w = exp(-dot(d, d) / (2.0 * SIGMA_SPACE * SIGMA_SPACE)
+                    - dot(dc, dc) / (2.0 * SIGMA_COLOR * SIGMA_COLOR));
+      sum += t.a * w;
+      total += w;
+    }
+  }
+  return mix(coarse, sum / max(total, 1e-6), smoothstep(0.02, 0.2, total));
+}
+
+void main() {
+  vec3 raw = textureLod(frame, uv, 0.0).rgb;
+  float conf = matteAt(uv);
+  // Skin-like: red above blue AND red above green. Wood desks often fail the second.
+  float warm = smoothstep(HAND_WARM_LO, HAND_WARM_HI, raw.r - raw.b)
+             * smoothstep(0.0, 0.05, raw.r - raw.g);
+  float uncertain = smoothstep(HAND_UNCERTAIN_LO, HAND_UNCERTAIN_MID, conf)
+                  * (1.0 - smoothstep(0.72, 0.88, conf));
+  float handAmt = warm * uncertain;
+  float lo = mix(MASK_LO, HAND_MASK_LO, handAmt);
+  float hi = mix(MASK_HI, HAND_MASK_HI, handAmt);
+  float alphaRaw = smoothstep(lo, hi, conf);
+  float prevA = texture(prevAlpha, uv).r;
+  float dA = abs(alphaRaw - prevA);
+  float takeNew = smoothstep(ALPHA_TEMP_LO, ALPHA_TEMP_HI, dA);
+  // Deadzone: changes smaller than ALPHA_TEMP_LO are outline chatter, not motion.
+  float hold = 1.0 - smoothstep(0.0, ALPHA_TEMP_LO, dA);
+  float k = mix(ALPHA_TEMP_STILL, 1.0, takeNew);
+  k = mix(k, 0.0, hold * (1.0 - takeNew));
+  float alpha = mix(prevA, alphaRaw, max(k, 1.0 - hasHistory));
+  color = vec4(alpha, 0.0, 0.0, 1.0);
+}`;
+
+/** The composite. Foreground over background, with the edge-pass alpha as coverage. */
+const COMPOSITE = `#version 300 es
+precision highp float;
+const float FG_CONTRAST = ${FG_CONTRAST.toFixed(3)};
+const float FG_SOFTEN = ${FG_SOFTEN.toFixed(3)};
+const float FG_SOFT_LOD = ${FG_SOFT_LOD.toFixed(3)};
 const float SPILL_IMAGE = ${SPILL_IMAGE.toFixed(3)};
 const float SPILL_BLUR = ${SPILL_BLUR.toFixed(3)};
+const float EDGE_FEATHER_PX = ${EDGE_FEATHER_PX.toFixed(3)};
+const float EDGE_FEATHER_MIX = ${EDGE_FEATHER_MIX.toFixed(3)};
 in vec2 uv;
 uniform sampler2D frame;     // the camera, with mips
-uniform sampler2D matte;     // guide colour, smoothed confidence (this frame)
 uniform sampler2D room;      // the room blur, premultiplied
 uniform sampler2D image;     // a still
-uniform sampler2D prevMatte; // previous smoothed confidence (display-alpha EMA)
+uniform sampler2D alphaMap;  // smoothed person coverage, 0..1 in R
 uniform int mode;            // 0 = low light only, 1 = blur, 2 = image
 uniform float veil;          // 1 = nothing usable yet: show the room blur, person and all
-uniform float hasHistory;    // 0 on the first usable matte frame
 uniform vec2 frameSize;
 uniform vec2 imageSize;
 uniform vec2 bgPan;          // smoothed person-centre offset applied to still UVs
@@ -651,46 +742,27 @@ vec2 coverUv(vec2 p) {
   return (p - 0.5) * scale + 0.5 - bgPan;
 }
 
-/* The matte at full resolution: a joint bilateral upsample.
- *
- * Each of the 4×4 matte texels around this pixel votes with its confidence, weighted by how
- * near it is and by how close ITS colour is to THIS pixel's colour. At a shoulder the texels
- * on the wall side are wall-coloured and the pixel is shirt-coloured, so the wall's votes
- * barely count and the edge snaps to where the colours change — at full resolution, from a
- * 256-pixel mask. Where nothing nearby matches (a highlight, say) it falls back to plain
- * bilinear rather than trusting a vote nobody cast. Away from any edge the answer is the
- * same either way, so it is skipped there. */
-float matteAt(vec2 p) {
-  float coarse = texture(matte, p).a;
-  if (coarse < 0.02 || coarse > 0.98) return coarse;
-  vec2 size = vec2(textureSize(matte, 0));
-  vec2 pos = p * size - 0.5;
-  vec2 base = floor(pos);
-  vec2 f = pos - base;
-  ivec2 last = ivec2(size) - 1;
-  vec3 ref = textureLod(frame, p, 1.0).rgb;
-  float sum = 0.0;
-  float total = 0.0;
-  for (int y = -1; y <= 2; y++) {
-    for (int x = -1; x <= 2; x++) {
-      vec4 t = texelFetch(matte, clamp(ivec2(base) + ivec2(x, y), ivec2(0), last), 0);
-      vec2 d = vec2(float(x), float(y)) - f;
-      vec3 dc = t.rgb - ref;
-      float w = exp(-dot(d, d) / (2.0 * SIGMA_SPACE * SIGMA_SPACE)
-                    - dot(dc, dc) / (2.0 * SIGMA_COLOR * SIGMA_COLOR));
-      sum += t.a * w;
-      total += w;
-    }
-  }
-  return mix(coarse, sum / max(total, 1e-6), smoothstep(0.02, 0.2, total));
-}
-
 /* The room behind the person: their neighbourhood's room colour, or — deep inside the
  * person, where there is no room nearby to average — a very coarse mip of the frame. That
  * only shows where the person is anyway, so it only has to be the right sort of colour. */
 vec3 roomAt(vec2 p) {
   vec4 r = texture(room, p);
   return mix(textureLod(frame, p, 5.0).rgb, r.rgb / max(r.a, 1e-4), smoothstep(0.02, 0.2, r.a));
+}
+
+/* Soft rim. The edge pass already froze small alpha changes; this spreads the remaining
+ * silhouette across a couple of pixels so a 1px residual reads as feather, not a line.
+ * Solid person and solid room are unchanged — a 5-tap of all ones is one. */
+float featherAlpha(vec2 p) {
+  float a0 = texture(alphaMap, p).r;
+  vec2 px = vec2(EDGE_FEATHER_PX) / frameSize;
+  float soft = a0 * 0.40;
+  soft += texture(alphaMap, p + vec2(px.x, 0.0)).r * 0.15;
+  soft += texture(alphaMap, p - vec2(px.x, 0.0)).r * 0.15;
+  soft += texture(alphaMap, p + vec2(0.0, px.y)).r * 0.15;
+  soft += texture(alphaMap, p - vec2(0.0, px.y)).r * 0.15;
+  float rim = smoothstep(0.05, 0.18, a0) * (1.0 - smoothstep(0.82, 0.95, a0));
+  return mix(a0, soft, rim * EDGE_FEATHER_MIX);
 }
 
 void main() {
@@ -714,43 +786,10 @@ void main() {
   else bg = roomAt(uv);
   if (veil >= 1.0) { color = vec4(bg, 1.0); return; }
 
-  /* The mask is a confidence, not a decision — and it is the PERSON's confidence.
-   *
-   * Worth stating because the obvious assumption is wrong and it inverts the image.
-   * The selfie segmenter emits ONE confidence channel, not one per category:
-   * measured against both the landscape and the square model, confidenceMasks has
-   * length 1 and its value is the probability that a pixel is the person. So this is
-   * the alpha directly; reading it as background confidence and subtracting from one
-   * composites the person into the background and the background over the person,
-   * which looks -- confusingly -- like the feature simply not working.
-   *
-   * The transition band is narrow and sits above the middle rather than across it, which
-   * is a measured choice about what the model is confidently wrong about rather than a
-   * feel — see MASK_LO. On warm mid-confidence pixels (hands) the band dips toward
-   * HAND_MASK_* so palms are not translucent while cool furniture keeps the hard cut.
-   * Extremity-seeded limbs land in this warm uncertain band after the temporal pass.
-   * The softness of the edge comes from matteAt. */
-  float conf = matteAt(uv);
-  // Skin-like: red above blue AND red above green. Wood desks often fail the second.
-  float warm = smoothstep(HAND_WARM_LO, HAND_WARM_HI, raw.r - raw.b)
-             * smoothstep(0.0, 0.05, raw.r - raw.g);
-  // Uncertain band includes weak limb fringe / seeded extremities, not only mid palms.
-  float uncertain = smoothstep(HAND_UNCERTAIN_LO, HAND_UNCERTAIN_MID, conf)
-                  * (1.0 - smoothstep(0.72, 0.88, conf));
-  float handAmt = warm * uncertain;
-  float lo = mix(MASK_LO, HAND_MASK_LO, handAmt);
-  float hi = mix(MASK_HI, HAND_MASK_HI, handAmt);
-  float alphaRaw = smoothstep(lo, hi, conf) * (1.0 - veil);
-  // Second temporal stage on the *display* alpha. Bilateral upsample can reintroduce a
-  // little crawl even when the matte-res EMA is calm; small |Δα| holds history, large
-  // jumps (real motion) take the new alpha so limbs do not ghost.
-  float prevConf = texture(prevMatte, uv).a;
-  float alphaPrev = smoothstep(lo, hi, prevConf) * (1.0 - veil);
-  float dA = abs(alphaRaw - alphaPrev);
-  float takeNew = smoothstep(ALPHA_TEMP_LO, ALPHA_TEMP_HI, dA);
-  float alpha = mix(mix(alphaPrev, alphaRaw, ALPHA_TEMP_STILL), alphaRaw, max(takeNew, 1.0 - hasHistory));
-  // Edge decontamination: on soft edges, pull FG toward BG so person lighting / chroma
-  // does not fringe onto a still or the blurred room (Zoom/Teams-style spill kill).
+  /* Coverage comes from the edge pass (bilateral + softstep + temporal deadzone).
+   * Feather only the silhouette, then spill-kill so the soft rim does not paint the
+   * presenter's real room onto a still or smear person colour into the blur. */
+  float alpha = featherAlpha(uv) * (1.0 - veil);
   float spillStr = mode == 2 ? SPILL_IMAGE : SPILL_BLUR;
   float spill = (1.0 - alpha) * smoothstep(0.04, 0.42, alpha) * spillStr;
   fg = mix(fg, bg, spill);
@@ -1015,9 +1054,9 @@ class Engine {
   /** Whether the matte holds a mask of the current picture, rather than of nothing or of
    *  a stream that has since changed. */
   hasHistory = false;
-  /** Whether composite has a previous display alpha worth blending (lags hasHistory by one
-   *  frame so the first composite does not EMA against an empty spare). */
-  private displayHistory = false;
+  /** Whether the edge pass has a previous full-res alpha worth blending. Reset with the
+   *  matte history: a new camera must not EMA against the last person's outline. */
+  private alphaHistory = false;
   disposed = false;
 
   private lastTimestamp = 0;
@@ -1030,6 +1069,7 @@ class Engine {
   private readonly prep: Pass;
   private readonly blur: Pass;
   private readonly track: Pass;
+  private readonly edge: Pass;
   private readonly composite: Pass;
 
   private frame: WebGLTexture | null = null;
@@ -1041,6 +1081,9 @@ class Engine {
   /** The latest smoothed matte, and the one the next frame writes into. */
   private matte: Target | null = null;
   private spare: Target | null = null;
+  /** Full-res coverage ping-pong. After renderEdge, alphaB is the latest smoothed alpha. */
+  private alphaA: Target | null = null;
+  private alphaB: Target | null = null;
   /** The room blur's two halves. The result always ends in roomA. */
   private roomA: Target | null = null;
   private roomB: Target | null = null;
@@ -1088,13 +1131,21 @@ class Engine {
       this.prep = pass(gl, VERTEX_PASS, PREP, ["frame", "matte"], ["lod", "veil"]);
       this.blur = pass(gl, VERTEX_PASS, BLUR, ["source"], ["texel", "sigma"]);
       this.track = pass(gl, VERTEX_PASS, TRACK, ["matte"], []);
+      // Bilateral + temporal coverage. Offscreen, so it does not flip.
+      this.edge = pass(
+        gl,
+        VERTEX_PASS,
+        EDGE,
+        ["frame", "matte", "prevAlpha"],
+        ["hasHistory"],
+      );
       // The only pass that reaches the canvas, so the only one that flips.
       this.composite = pass(
         gl,
         VERTEX_PRESENT,
         COMPOSITE,
-        ["frame", "matte", "room", "image", "prevMatte"],
-        ["mode", "veil", "hasHistory", "frameSize", "imageSize", "bgPan", "lowLight"],
+        ["frame", "room", "image", "alphaMap"],
+        ["mode", "veil", "frameSize", "imageSize", "bgPan", "lowLight"],
       );
       gl.useProgram(null);
 
@@ -1142,7 +1193,7 @@ class Engine {
 
   forgetHistory(): void {
     this.hasHistory = false;
-    this.displayHistory = false;
+    this.alphaHistory = false;
     this.panX = 0;
     this.panY = 0;
     this.panAt = 0;
@@ -1252,14 +1303,23 @@ class Engine {
       this.draw();
     }
 
+    // Coverage for blur/image. Low-light-only skips the bilateral: nothing on screen uses
+    // it. Drop the history too, so coming back to a background does not feather against
+    // an outline from before the person moved.
+    let coverage: WebGLTexture | null;
+    if (mode === 0) {
+      this.alphaHistory = false;
+      coverage = this.alphaB?.texture ?? this.frame;
+    } else {
+      coverage = this.renderEdge();
+    }
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.w, this.h);
     const c = this.composite;
     gl.useProgram(c.program);
     gl.uniform1i(c.u.mode, mode);
     gl.uniform1f(c.u.veil, veil);
-    // spare holds the previous smoothed matte after the temporal ping-pong swap.
-    gl.uniform1f(c.u.hasHistory, this.displayHistory ? 1 : 0);
     gl.uniform2f(c.u.frameSize, this.w, this.h);
     gl.uniform2f(c.u.imageSize, this.imageW, this.imageH);
     gl.uniform2f(c.u.bgPan, this.panX, this.panY);
@@ -1267,15 +1327,25 @@ class Engine {
     gl.uniform1f(c.u.lowLight, lowLight);
     // Every unit the program samples gets a real texture, even ones this mode ignores:
     // an empty unit is a console warning per frame.
-    this.bindTextures(
-      this.frame,
-      matte.texture,
-      this.roomA!.texture,
-      this.image ?? this.frame,
-      this.spare!.texture,
-    );
+    this.bindTextures(this.frame, this.roomA!.texture, this.image ?? this.frame, coverage);
     this.draw();
-    this.displayHistory = this.hasHistory;
+  }
+
+  /** Bilateral upsample + temporal deadzone into the alpha ping-pong. Returns the texture
+   *  the composite should sample (the one just written). */
+  private renderEdge(): WebGLTexture {
+    const gl = this.gl;
+    const next = this.alphaA!;
+    const prev = this.alphaB!;
+    this.bindTarget(next);
+    gl.useProgram(this.edge.program);
+    gl.uniform1f(this.edge.u.hasHistory, this.alphaHistory ? 1 : 0);
+    this.bindTextures(this.frame, this.matte!.texture, prev.texture);
+    this.draw();
+    this.alphaA = prev;
+    this.alphaB = next;
+    this.alphaHistory = true;
+    return next.texture;
   }
 
   /* Gone, and everything in it.
@@ -1325,7 +1395,7 @@ class Engine {
     try {
       if (!gl.isContextLost()) {
         this.releaseTargets();
-        for (const p of [this.ingest, this.temporal, this.prep, this.blur, this.track, this.composite]) {
+        for (const p of [this.ingest, this.temporal, this.prep, this.blur, this.track, this.edge, this.composite]) {
           gl.deleteProgram(p.program);
         }
         gl.deleteVertexArray(this.vao);
@@ -1376,8 +1446,13 @@ class Engine {
     this.trackTarget = target(gl, tw, th);
     this.trackPixels = new Uint8Array(tw * th * 4);
 
+    // Full-res coverage history. Two buffers: the edge pass cannot sample the texture
+    // it is writing. RGBA8 is enough — sub-1/255 alpha steps are the chatter we want to drop.
+    this.alphaA = target(gl, w, h);
+    this.alphaB = target(gl, w, h);
+
     this.hasHistory = false;
-    this.displayHistory = false;
+    this.alphaHistory = false;
     this.panX = 0;
     this.panY = 0;
     this.panAt = 0;
@@ -1386,13 +1461,22 @@ class Engine {
   private releaseTargets(): void {
     const gl = this.gl;
     if (this.frame) gl.deleteTexture(this.frame);
-    for (const t of [this.current, this.matte, this.spare, this.roomA, this.roomB, this.trackTarget]) {
+    for (const t of [
+      this.current,
+      this.matte,
+      this.spare,
+      this.alphaA,
+      this.alphaB,
+      this.roomA,
+      this.roomB,
+      this.trackTarget,
+    ]) {
       if (!t) continue;
       gl.deleteTexture(t.texture);
       gl.deleteFramebuffer(t.framebuffer);
     }
     this.frame = null;
-    this.current = this.matte = this.spare = this.roomA = this.roomB = this.trackTarget = null;
+    this.current = this.matte = this.spare = this.alphaA = this.alphaB = this.roomA = this.roomB = this.trackTarget = null;
     this.trackPixels = null;
     this.w = 0;
     this.h = 0;
