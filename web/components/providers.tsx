@@ -113,12 +113,37 @@ export function useSession(): SessionValue {
 
 // ------------------------------------------------------------------- toasts
 
-export type Toast = { id: number; message: string; tone: "info" | "ok" | "error" };
+export type Toast = {
+  id: number;
+  message: string;
+  tone: "info" | "ok" | "error";
+  /** Set for a toast placed with `upsert`, which the caller updates in place. */
+  key?: string;
+  /** Custom content, drawn instead of `message` inside the toast's own card. */
+  node?: ReactNode;
+  /** On its way out: drawn fading for a beat, then removed. */
+  leaving?: boolean;
+  onDismiss?: () => void;
+};
+
+export type KeyedToast = {
+  /** Plain text for the fallback card — also what a custom node should say. */
+  message: string;
+  tone?: Toast["tone"];
+  node?: ReactNode;
+  /** Called when the person clicks it away (not when the caller dismisses it). */
+  onDismiss?: () => void;
+};
 
 type ToastValue = {
   toasts: Toast[];
   notify: (message: string, tone?: Toast["tone"]) => void;
   dismiss: (id: number) => void;
+  /** Show or update the toast with this key, in place. It stays until the caller
+   *  calls `dismissKey` — keyed toasts have a lifecycle of their own (a join that is
+   *  still in progress), so there is no timer here to fight it. */
+  upsert: (key: string, toast: KeyedToast) => void;
+  dismissKey: (key: string) => void;
 };
 
 const ToastContext = createContext<ToastValue | null>(null);
@@ -132,6 +157,8 @@ export function useToast(): ToastValue {
 }
 
 const TOAST_MS = 4500;
+/** Long enough for the fade in globals.css (toast-out) to finish. */
+const TOAST_LEAVE_MS = 200;
 
 // ------------------------------------------------------------------ provider
 
@@ -151,13 +178,19 @@ export function AppProviders({
   const nextToastId = useRef(0);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
+  // Marks the toast as leaving and removes it once the fade has run. The timer map
+  // holds either its auto-dismiss or its removal, never both.
   const dismiss = useCallback((id: number) => {
-    setToasts((current) => current.filter((t) => t.id !== id));
     const timer = timers.current.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timers.current.delete(id);
-    }
+    if (timer) clearTimeout(timer);
+    setToasts((current) => current.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
+    timers.current.set(
+      id,
+      setTimeout(() => {
+        timers.current.delete(id);
+        setToasts((current) => current.filter((t) => t.id !== id || !t.leaving));
+      }, TOAST_LEAVE_MS),
+    );
   }, []);
 
   const notify = useCallback(
@@ -168,6 +201,48 @@ export function AppProviders({
         id,
         setTimeout(() => dismiss(id), TOAST_MS),
       );
+    },
+    [dismiss],
+  );
+
+  // Keyed toasts keep their id — and so their place in the stack and their DOM node —
+  // across updates, which is what lets "joining…" turn into "joined" rather than one
+  // toast vanishing as another appears.
+  const keyed = useRef(new Map<string, number>());
+
+  const upsert = useCallback((key: string, toast: KeyedToast) => {
+    let id = keyed.current.get(key);
+    if (id !== undefined) {
+      const pending = timers.current.get(id);
+      if (pending) {
+        clearTimeout(pending);
+        timers.current.delete(id);
+      }
+    } else {
+      id = ++nextToastId.current;
+      keyed.current.set(key, id);
+    }
+    const next: Toast = {
+      id,
+      key,
+      message: toast.message,
+      tone: toast.tone ?? "info",
+      node: toast.node,
+      onDismiss: toast.onDismiss,
+    };
+    setToasts((current) =>
+      current.some((t) => t.id === id)
+        ? current.map((t) => (t.id === id ? next : t))
+        : [...current, next],
+    );
+  }, []);
+
+  const dismissKey = useCallback(
+    (key: string) => {
+      const id = keyed.current.get(key);
+      if (id === undefined) return;
+      keyed.current.delete(key);
+      dismiss(id);
     },
     [dismiss],
   );
@@ -304,8 +379,8 @@ export function AppProviders({
   );
 
   const toastValue = useMemo<ToastValue>(
-    () => ({ toasts, notify, dismiss }),
-    [toasts, notify, dismiss],
+    () => ({ toasts, notify, dismiss, upsert, dismissKey }),
+    [toasts, notify, dismiss, upsert, dismissKey],
   );
 
   return (
@@ -327,8 +402,14 @@ const toastTone: Record<Toast["tone"], string> = {
 };
 
 function ToastViewport() {
-  const { toasts, dismiss } = useToast();
+  const { toasts, dismiss, dismissKey } = useToast();
   if (toasts.length === 0) return null;
+
+  const close = (t: Toast) => {
+    t.onDismiss?.();
+    if (t.key) dismissKey(t.key);
+    else dismiss(t.id);
+  };
 
   return (
     // Above the room's own overlays, and inset-x on small screens so a long
@@ -338,15 +419,30 @@ function ToastViewport() {
       role="status"
       aria-live="polite"
     >
-      {toasts.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => dismiss(t.id)}
-          className={`pointer-events-auto w-full max-w-sm rounded-xl border px-4 py-2.5 text-left text-[13px] font-medium shadow-lg backdrop-blur transition-opacity hover:opacity-90 sm:w-auto ${toastTone[t.tone]}`}
-        >
-          {t.message}
-        </button>
-      ))}
+      {toasts.map((t) =>
+        t.node ? (
+          // The custom card draws its own surface; this is only the click target.
+          // tabIndex -1: a toast arriving must never pull focus or join the tab order
+          // in the middle of somebody presenting.
+          <button
+            key={t.id}
+            type="button"
+            tabIndex={-1}
+            onClick={() => close(t)}
+            className={`toast-item pointer-events-auto w-full max-w-sm text-left sm:w-auto ${t.leaving ? "toast-leaving" : ""}`}
+          >
+            {t.node}
+          </button>
+        ) : (
+          <button
+            key={t.id}
+            onClick={() => close(t)}
+            className={`toast-item pointer-events-auto w-full max-w-sm rounded-xl border px-4 py-2.5 text-left text-[13px] font-medium shadow-lg backdrop-blur transition-opacity hover:opacity-90 sm:w-auto ${toastTone[t.tone]} ${t.leaving ? "toast-leaving" : ""}`}
+          >
+            {t.message}
+          </button>
+        ),
+      )}
     </div>
   );
 }

@@ -164,6 +164,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And reaction bursts appearing one at a time, 500–1000 ms apart, with a bounded
 	# backlog — so one click never reads as several and a flood never queues a minute.
 	cd web && node --experimental-strip-types --no-warnings lib/reaction-queue.test.mts
+	# And the host's join toasts: "joining…" must only turn into "joined" once the roster
+	# shows the person, and a reconnect or the host's own first roster must not burst.
+	cd web && node --experimental-strip-types --no-warnings lib/join-toasts.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

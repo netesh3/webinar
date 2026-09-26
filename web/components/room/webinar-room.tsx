@@ -54,6 +54,7 @@ import { PreJoin } from "./prejoin";
 import { RecorderProvider, RecordingBanner, RecordingIndicator } from "./recording";
 import { useAudiencePolls } from "@/lib/polls";
 import { useHostRoster } from "./participants";
+import { useJoinToasts } from "./join-toasts";
 import { VirtualBackground } from "./background-picker";
 import { NoiseSuppression } from "./noise-suppression";
 import { PollPopup } from "./poll-popup";
@@ -528,10 +529,10 @@ function ConnectedRoom({
     join.maxDurationMin,
   );
   const { notify } = useToast();
-  // Attendee identities already announced to the host this room session —
-  // see onAttendeeJoined below. A ref, not state: recording who has already
-  // been announced must never itself trigger a re-render.
-  const seenJoins = useRef(new Set<string>());
+  // The host's join toasts are fed from two places declared far apart: the server's
+  // "joined" packet arrives through useRealtime (below), and the roster they turn
+  // green against is read further down. This carries the first to the second.
+  const announceJoining = useRef<((from: Sender) => void) | null>(null);
 
   // Temporary, for one performance-test window — see lib/telemetry.ts. `room`
   // is passed as null rather than skipping the call when the flag is off, so
@@ -595,20 +596,14 @@ function ConnectedRoom({
             notify("The host dismissed your request to speak for now.", "info");
           }
         },
-        // The server addresses this to the host alone, but the check is kept
-        // here anyway — the same defensive habit as onHandRaised — rather than
-        // trusting that nothing else could ever deliver this packet.
-        //
-        // seenJoins (below) is what keeps this to one toast per attendee: the
-        // server fires this on every joinAsAttendee call, including a
-        // reconnect (dropped wifi, a reloaded tab) for someone already in the
-        // room, which is a real join as far as the API is concerned but not
-        // news to the host a second time.
+        // The server sends this when it ISSUES an attendee's token — before their
+        // browser has connected, and seconds before the Participants panel can list
+        // them. So it is a "joining" hint, not a "joined" fact: useJoinToasts shows
+        // "X is joining…" and turns it into "X joined" only once the roster the panel
+        // draws contains them. Reconnects, the host-only audience and a crowd filling
+        // up are handled there (lib/join-toasts.ts).
         onAttendeeJoined: (from: Sender) => {
-          if (!isHost) return;
-          if (seenJoins.current.has(from.identity)) return;
-          seenJoins.current.add(from.identity);
-          notify(`${from.name} joined.`, "info");
+          announceJoining.current?.(from);
         },
       }),
       [notify, isHost, liveRole],
@@ -1050,6 +1045,12 @@ function ConnectedRoom({
   // so the control bar's badge is right whether or not the panel is open.
   const roster = useHostRoster(slug, isHost, room);
 
+  // "X is joining…" → "X joined", for the host and co-hosts. The hook ignores the
+  // hint unless `isHost`, the same audience the old toast had.
+  const onJoining = useJoinToasts(room, join.identity, isHost, roster.live);
+  useEffect(() => {
+    announceJoining.current = onJoining;
+  }, [onJoining]);
   // The audience's polls, for everyone who is not the host. Read here rather than in
   // the panel because a launched poll has to reach somebody who is not looking at the
   // panel — the pop-up is the point — and because the pop-up and the panel should agree

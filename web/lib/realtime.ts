@@ -187,7 +187,10 @@ type PollsChangedMessage = { kind: "polls-changed" };
  * in join.go) — not broadcast to the room, the way the join itself is not something
  * the audience needs to hear about one another. A host's own client never receives
  * this for anyone but the audience: the host and panelists connecting are visible
- * on screen the moment they do, so there is nothing this would add for them. */
+ * on screen the moment they do, so there is nothing this would add for them.
+ *
+ * Sent when the token is ISSUED, so it means "on their way", not "here": the client
+ * treats it as the joining hint and waits for the roster (see lib/join-toasts.ts). */
 type AttendeeJoinedMessage = { kind: "joined"; from: Sender };
 
 /* The host clearing the whole queue at once.
