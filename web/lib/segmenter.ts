@@ -263,12 +263,12 @@ const ROOM_LO = 0.28;
 
 /* The joint upsample. Spatial sigma in matte texels, colour sigma in 0..1 RGB distance.
  *
- * SIGMA_SPACE 1.15 keeps the vote on the nearest matte texels so the head does not
- * smear a skin-coloured shell onto the background. SIGMA_COLOR 0.09 snaps that
- * vote to the real colour boundary (skin against a wall) instead of averaging across it.
+ * SIGMA_SPACE 1.22 is a short neighbourhood: enough to follow a cheek, not enough to
+ * smear skin onto the wall. SIGMA_COLOR 0.12 ignores cheek shading and beard texture
+ * so those are not treated as the edge of the person.
  */
-const SIGMA_SPACE = 1.15;
-const SIGMA_COLOR = 0.09;
+const SIGMA_SPACE = 1.22;
+const SIGMA_COLOR = 0.12;
 
 /** Display-alpha temporal filter (after softstep + bilateral), in the edge pass.
  *  |Δα| below ALPHA_TEMP_LO is a deadzone: the outline holds still instead of crawling.
@@ -282,15 +282,18 @@ const ALPHA_TEMP_HI = 0.38;
  *  Small on purpose: a wider blur copies the face onto the background beside the head. */
 const EDGE_FEATHER_PX = 1.25;
 const EDGE_FEATHER_MIX = 0.35;
-/** Display alpha below LO is background (kills the skin-coloured shell around the head).
- *  Above HI the person is solid. The band between them is the only soft edge. */
+/** Cool pixels (shirt, hair against a wall): faint coverage is background, so the
+ *  body outline stays tight. Warm skin uses FACE_CHOKE_*, which becomes solid much
+ *  sooner — a cheek at partial confidence is still the face, not the blur. */
 const ALPHA_CHOKE_LO = 0.28;
 const ALPHA_CHOKE_HI = 0.62;
+const FACE_CHOKE_LO = 0.05;
+const FACE_CHOKE_HI = 0.28;
 
 /** Edge decontamination: mix FG toward BG on the remaining soft rim so skin does not
  *  fringe onto a still (stronger — the office is a different colour) or the room blur. */
-const SPILL_IMAGE = 0.72;
-const SPILL_BLUR = 0.45;
+const SPILL_IMAGE = 0.55;
+const SPILL_BLUR = 0.28;
 
 /** How strong the veil is, in the same units as a blur background's radius. Enough that the
  *  room is unreadable while the model starts; this is what a background looks like loading. */
@@ -662,28 +665,15 @@ float matteAt(vec2 p) {
 void main() {
   vec3 raw = textureLod(frame, uv, 0.0).rgb;
   float conf = matteAt(uv);
-  // A solid person in this matte neighbourhood is the head or torso. The confidence
-  // falloff around that core is warm skin, and the palm threshold would treat it as a
-  // hand — widening the mask so the face shows through on the left, the right, and
-  // above the hair. Palms stay on the lower threshold: their neighbours are mid
-  // confidence, not a solid core.
-  vec2 mTex = 1.0 / vec2(textureSize(matte, 0));
-  float core = texture(matte, uv).a;
-  core = max(core, texture(matte, uv + vec2(mTex.x, 0.0)).a);
-  core = max(core, texture(matte, uv - vec2(mTex.x, 0.0)).a);
-  core = max(core, texture(matte, uv + vec2(0.0, mTex.y)).a);
-  core = max(core, texture(matte, uv - vec2(0.0, mTex.y)).a);
-  core = max(core, texture(matte, uv + vec2(mTex.x, mTex.y)).a);
-  core = max(core, texture(matte, uv + vec2(-mTex.x, mTex.y)).a);
-  core = max(core, texture(matte, uv + vec2(mTex.x, -mTex.y)).a);
-  core = max(core, texture(matte, uv + vec2(-mTex.x, -mTex.y)).a);
-  float notHead = 1.0 - smoothstep(0.88, 0.97, core);
   // Skin-like: red above blue AND red above green. Wood desks often fail the second.
+  // This band is the cheeks, jaw, and ears. Gating it off next to a solid head cut
+  // those away and let the blur show through the face. The limb dilate stays limited
+  // to real holes, so this does not grow a second outline outside the skull.
   float warm = smoothstep(HAND_WARM_LO, HAND_WARM_HI, raw.r - raw.b)
              * smoothstep(0.0, 0.05, raw.r - raw.g);
   float uncertain = smoothstep(HAND_UNCERTAIN_LO, HAND_UNCERTAIN_MID, conf)
                   * (1.0 - smoothstep(0.72, 0.88, conf));
-  float handAmt = warm * uncertain * notHead;
+  float handAmt = warm * uncertain;
   float lo = mix(MASK_LO, HAND_MASK_LO, handAmt);
   float hi = mix(MASK_HI, HAND_MASK_HI, handAmt);
   float alphaRaw = smoothstep(lo, hi, conf);
@@ -710,6 +700,8 @@ const float EDGE_FEATHER_PX = ${EDGE_FEATHER_PX.toFixed(3)};
 const float EDGE_FEATHER_MIX = ${EDGE_FEATHER_MIX.toFixed(3)};
 const float ALPHA_CHOKE_LO = ${ALPHA_CHOKE_LO.toFixed(3)};
 const float ALPHA_CHOKE_HI = ${ALPHA_CHOKE_HI.toFixed(3)};
+const float FACE_CHOKE_LO = ${FACE_CHOKE_LO.toFixed(3)};
+const float FACE_CHOKE_HI = ${FACE_CHOKE_HI.toFixed(3)};
 in vec2 uv;
 uniform sampler2D frame;     // the camera, with mips
 uniform sampler2D room;      // the room blur, premultiplied
@@ -771,13 +763,18 @@ vec3 roomAt(vec2 p) {
   return mix(textureLod(frame, p, 5.0).rgb, r.rgb / max(r.a, 1e-4), smoothstep(0.02, 0.2, r.a));
 }
 
-/* Coverage with the faint shell removed, then a 1px antialias.
- *
- * smoothstep(CHOKE) turns a wide semi-transparent ring — the face showing again just
- * outside the head — into background. The feather is narrower than that ring so it
- * softens the cut without painting the face back onto the office. */
+/* Cool outline stays choked (shirt, hair against the wall). Warm skin uses a much
+ * lower choke so a cheek, jaw, or ear at partial confidence stays the person. */
+float skinAmt(vec2 p) {
+  vec3 raw = textureLod(frame, p, 0.0).rgb;
+  return smoothstep(0.080, 0.160, raw.r - raw.b) * smoothstep(0.0, 0.050, raw.r - raw.g);
+}
 float coverage(vec2 p) {
-  return smoothstep(ALPHA_CHOKE_LO, ALPHA_CHOKE_HI, texture(alphaMap, p).r);
+  float a = texture(alphaMap, p).r;
+  float warm = skinAmt(p);
+  float lo = mix(ALPHA_CHOKE_LO, FACE_CHOKE_LO, warm);
+  float hi = mix(ALPHA_CHOKE_HI, FACE_CHOKE_HI, warm);
+  return smoothstep(lo, hi, a);
 }
 float featherAlpha(vec2 p) {
   float a0 = coverage(p);
@@ -816,7 +813,9 @@ void main() {
    * Feather only the silhouette, then spill-kill so the soft rim does not paint the
    * presenter's real room onto a still or smear person colour into the blur. */
   float alpha = featherAlpha(uv) * (1.0 - veil);
-  float spillStr = mode == 2 ? SPILL_IMAGE : SPILL_BLUR;
+  // Spill kills a skin fringe on the office. On the face itself it was painting the
+  // blur back onto the cheek, so warm pixels keep their colour.
+  float spillStr = (mode == 2 ? SPILL_IMAGE : SPILL_BLUR) * mix(1.0, 0.20, skinAmt(uv));
   float spill = (1.0 - alpha) * smoothstep(0.04, 0.42, alpha) * spillStr;
   fg = mix(fg, bg, spill);
   color = vec4(mix(bg, fg, alpha), 1.0);
