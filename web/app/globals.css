@@ -186,6 +186,28 @@
   }
 }
 
+/* The poll pop-up (components/room/poll-popup.tsx): the scrim fades, the card lifts
+   in with a slight overshoot so a new question is noticed without being jarring. */
+@keyframes poll-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes poll-card-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
 body {
   background: var(--color-page);
   color: var(--color-ink);

@@ -1,55 +1,55 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { Poll } from "@/lib/api-types";
 import { activePoll, playPollCue } from "@/lib/polls";
 import { Alert, Spinner } from "../controls";
+import { useToast } from "../providers";
 import { CheckIcon, CloseIcon, PollIcon } from "../icons";
 import { useRoomUI } from "./context";
 
 /* The poll that comes to you.
  *
  * When the host launches one, the server announces it on the data channel and this
- * appears — a slide-over on the stage, not a badge on a button nobody was looking at.
- * The point is that answering takes no navigation: a poll a presenter has to ask the
- * room to go and find is a poll half the room does not answer.
+ * appears — a centred card over the room, not a badge on a button nobody was looking
+ * at. The point is that answering takes no navigation: a poll a presenter has to ask
+ * the room to go and find is a poll half the room does not answer.
  *
  * Three rules keep it from becoming the thing people hate about pop-ups:
  *
  *   it appears once   Dismissing is remembered per poll for this session. The host
  *                     relaunching the same question brings it back, which is
  *                     deliberate — that is a second ask.
- *   it never nags     Answered polls do not reappear, and neither do closed ones.
- *   it is escapable   Escape and the close button both work, and the Polls panel still
- *                     has everything. Trapping somebody in a modal during a talk they
- *                     are trying to watch is worse than a missed vote.
+ *   it never nags     Answered polls do not reappear, and neither do closed ones. The
+ *                     card goes the moment the answer is in; a toast confirms it.
+ *   it is escapable   Escape, the close button and "Answer later" all work, and the
+ *                     Polls panel still has everything. Trapping somebody in a modal
+ *                     during a talk they are trying to watch is worse than a missed vote.
  *
- * No tally, at any point. The audience is shown the question, the options, and — once
- * they have answered — that their answer was recorded. The numbers are the presenter's.
- * Nothing here filters them out either: they are not in the response.
+ * No tally, at any point. The audience is shown the question and the options. The
+ * numbers are the presenter's. Nothing here filters them out either: they are not in
+ * the response.
  */
 
 export function PollPopup() {
-  const { isHost, controls, polls } = useRoomUI();
+  const { isHost, controls, me, polls } = useRoomUI();
+  const { notify } = useToast();
   // Dismissals are per poll id and last for this page: the host launching the same
   // question again is a fresh ask and should reach somebody who waved the first one
   // away.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  // The poll whose "recorded" confirmation is still on screen. Kept after the vote so
-  // the answer is acknowledged rather than the panel just vanishing.
-  const [recorded, setRecorded] = useState<Poll | null>(null);
 
   const open = activePoll(polls.list);
-  const showing = recorded ?? (open && !dismissed.has(open.id) ? open : null);
+  const showing = open && !dismissed.has(open.id) ? open : null;
 
   // isHost already covers a co-host (see webinar-room.tsx, where it is derived as
-  // liveRole === "host" || isCoHost) — a co-host runs polls from the same panel a
-  // host does and should not have it fight for their attention either. An ordinary
-  // panelist has no such panel: they are staged to speak, not to run the session,
-  // and are exactly the audience this popup exists for. Gating on canPublish
-  // instead used to exclude them too, along with anyone else on stage.
-  const canSee = !isHost && controls.pollsEnabled;
+  // liveRole === "host" || isCoHost) — they launch polls from the host panel and
+  // should not have it fight for their attention. Everyone else — attendees and
+  // panelists — is exactly the audience this popup exists for. A panelist can vote
+  // even while polls are switched off for the audience (the server's onStage rule in
+  // api/internal/api/polls.go), so the control only gates attendees.
+  const canSee = !isHost && (controls.pollsEnabled || me.role === "panelist");
 
   // One chime per poll, the moment it first has somebody to reach — not on every
   // render this effect happens to run. See lib/polls.ts for why this plays
@@ -61,43 +61,33 @@ export function PollPopup() {
     playPollCue();
   }, [canSee, open, dismissed]);
 
-  // The confirmation clears itself, quickly: it is three words and a checkmark, not
-  // the question — there is nothing left to read past the first second. The Polls
-  // panel keeps the answer if they want another look.
-  useEffect(() => {
-    if (!recorded) return;
-    const timer = setTimeout(() => setRecorded(null), 1400);
-    return () => clearTimeout(timer);
-  }, [recorded]);
-
-  // The host runs the polls from their own panel, where the tally is. A modal over
-  // their own stage would be in the way of the thing they are presenting.
   if (!canSee || !showing) return null;
 
   return (
-    <PollCard
+    <PollDialog
+      // Keyed so a second poll arriving straight after the first starts with a clean
+      // selection rather than inheriting the previous one's radio index.
+      key={showing.id}
       poll={showing}
-      answered={recorded !== null}
-      onClose={() => {
-        if (recorded) setRecorded(null);
-        else setDismissed((current) => new Set(current).add(showing.id));
-      }}
+      onClose={() => setDismissed((current) => new Set(current).add(showing.id))}
       onVoted={(updated) => {
+        // The server's copy replaces ours; with myChoice set, activePoll no longer
+        // returns it, so the dialog unmounts on this same render.
         polls.replace(updated);
-        setRecorded(updated);
+        notify("Your answer was recorded", "ok");
       }}
     />
   );
 }
 
-function PollCard({
+const LETTERS = "ABCDEFGHIJ";
+
+function PollDialog({
   poll,
-  answered,
   onClose,
   onVoted,
 }: {
   poll: Poll;
-  answered: boolean;
   onClose: () => void;
   onVoted: (poll: Poll) => void;
 }) {
@@ -106,12 +96,33 @@ function PollCard({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const card = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const isQuiz = poll.kind === "quiz";
 
-  // Escape closes it. A modal during a live talk that cannot be escaped is a modal
-  // that stops somebody watching the talk.
+  // Escape closes it, and Tab stays inside the card while it is up: aria-modal is a
+  // promise to assistive tech that the rest of the page is inert.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !card.current) return;
+      const focusable = card.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === card.current)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -139,102 +150,131 @@ function PollCard({
   }
 
   return (
-    <div
-      // Bottom-right on a desktop, a bottom sheet on a phone. Not centred and not
-      // scrimmed: this is a session in progress and covering the speaker to ask a
-      // question about the speaker is self-defeating.
-      className="room-dark pointer-events-auto fixed inset-x-2 bottom-2 z-50 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[352px]"
-      role="dialog"
-      aria-modal="false"
-      aria-label={answered ? "Your answer was recorded" : "A poll from the host"}
-    >
+    <div className="room-dark fixed inset-0 z-[55] grid place-items-center p-4">
+      {/* The scrim does not dismiss on click: a stray click on the video should not
+          throw away a half-picked answer. Close, Escape and "Answer later" do. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-black/55 backdrop-blur-[3px] motion-safe:animate-[poll-scrim-in_180ms_ease-out]"
+      />
+
       <div
         ref={card}
         tabIndex={-1}
-        className="rounded-2xl border border-line bg-surface p-3.5 shadow-2xl outline-none"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative w-full max-w-[460px] overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_24px_80px_-12px_rgba(0,0,0,0.6)] outline-none motion-safe:animate-[poll-card-in_240ms_cubic-bezier(0.2,0.9,0.3,1.15)]"
       >
-        <div className="flex items-start gap-2">
-          <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-brand-soft text-brand">
-            {answered ? <CheckIcon className="size-3.5" /> : <PollIcon className="size-3.5" />}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-              {answered ? "Response recorded" : poll.kind === "quiz" ? "Quiz" : "Poll"}
-            </p>
-            <p className="mt-1 text-[13.5px] leading-snug font-medium break-words text-ink">
-              {poll.question}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={answered ? "Dismiss" : "Close — you can answer from the Polls panel"}
-            className="grid size-7 shrink-0 place-items-center rounded-md text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-          >
-            <CloseIcon className="size-3.5" />
-          </button>
-        </div>
+        {/* A thin brand edge, so the card reads as "from the host" at a glance. */}
+        <div aria-hidden className="h-1 w-full bg-gradient-to-r from-brand via-brand/70 to-brand/30" />
 
-        {answered ? (
-          <div className="mt-2.5">
-            {/* Their own answer, read back. The one number the audience gets is which
-                option was theirs — the tally is the presenter's. */}
-            <div className="flex items-center gap-1.5 rounded-lg border border-ok/30 bg-ok-soft px-2.5 py-2 text-[12.5px] font-medium text-ok">
-              <CheckIcon className="size-3.5 shrink-0" />
-              <span className="min-w-0 flex-1 break-words">
-                {poll.options[poll.myChoice] ?? "Your answer"}
+        <div className="max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6">
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
+              <PollIcon className="size-[18px]" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-2 py-0.5 text-[10.5px] font-semibold tracking-[0.08em] text-brand uppercase">
+                <span className="relative flex size-1.5">
+                  <span className="absolute inline-flex size-full rounded-full bg-brand opacity-70 motion-safe:animate-ping" />
+                  <span className="relative inline-flex size-1.5 rounded-full bg-brand" />
+                </span>
+                {isQuiz ? "Live quiz" : "Live poll"}
               </span>
+              <p className="mt-1 text-[12px] text-ink-3">The host is asking the room</p>
             </div>
-            <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-3">
-              Thanks — that&apos;s in. Results are shown by the host.
-            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close — you can answer later from the Polls panel"
+              className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              <CloseIcon className="size-4" />
+            </button>
           </div>
-        ) : (
+
+          <h2
+            id={titleId}
+            className="mt-4 text-[17px] leading-snug font-semibold break-words text-ink sm:text-[18px]"
+          >
+            {poll.question}
+          </h2>
+          <p className="mt-1 text-[12.5px] text-ink-3">Choose one answer</p>
+
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void submit();
             }}
-            className="mt-2.5"
+            className="mt-4"
           >
             {error && (
-              <div className="mb-2">
+              <div className="mb-3">
                 <Alert tone="error">{error}</Alert>
               </div>
             )}
 
-            <div className="space-y-1.5">
-              {poll.options.map((option, i) => (
-                <label
-                  key={i}
-                  className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-line px-2.5 py-2 text-[13px] text-ink transition-colors has-checked:border-brand has-checked:bg-brand-soft hover:bg-surface-2"
-                >
-                  <input
-                    type="radio"
-                    name={`popup-${poll.id}`}
-                    className="size-3.5 accent-brand"
-                    checked={choice === i}
-                    disabled={sending}
-                    onChange={() => setChoice(i)}
-                  />
-                  <span className="min-w-0 flex-1 break-words">{option}</span>
-                </label>
-              ))}
+            <div role="radiogroup" aria-labelledby={titleId} className="space-y-2">
+              {poll.options.map((option, i) => {
+                const selected = choice === i;
+                return (
+                  <label
+                    key={i}
+                    className={`group flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-[13.5px] transition-all has-focus-visible:ring-2 has-focus-visible:ring-brand/40 ${
+                      selected
+                        ? "border-brand bg-brand-soft text-ink shadow-[0_0_0_1px_var(--color-brand)]"
+                        : "border-line text-ink hover:border-ink-3/40 hover:bg-surface-2"
+                    } ${sending ? "pointer-events-none opacity-70" : ""}`}
+                  >
+                    <input
+                      type="radio"
+                      name={`popup-${poll.id}`}
+                      className="sr-only"
+                      checked={selected}
+                      disabled={sending}
+                      onChange={() => setChoice(i)}
+                    />
+                    <span
+                      aria-hidden
+                      className={`grid size-7 shrink-0 place-items-center rounded-lg text-[12px] font-semibold transition-colors ${
+                        selected
+                          ? "bg-brand text-white"
+                          : "bg-surface-2 text-ink-2 group-hover:text-ink"
+                      }`}
+                    >
+                      {selected ? <CheckIcon className="size-3.5" /> : (LETTERS[i] ?? i + 1)}
+                    </span>
+                    <span className="min-w-0 flex-1 leading-snug break-words">{option}</span>
+                  </label>
+                );
+              })}
             </div>
 
-            <button
-              type="submit"
-              disabled={choice === null || sending}
-              className="mt-2.5 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-brand text-[13px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-            >
-              {sending && <Spinner className="size-4" />}
-              Submit
-            </button>
-            <p className="mt-1.5 text-center text-[11px] text-ink-3">
-              One answer each. You can&apos;t change it once it&apos;s in.
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={sending}
+                className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              >
+                Answer later
+              </button>
+              <button
+                type="submit"
+                disabled={choice === null || sending}
+                className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-brand text-[13.5px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              >
+                {sending && <Spinner className="size-4" />}
+                {sending ? "Submitting…" : "Submit answer"}
+              </button>
+            </div>
+            <p className="mt-3 text-center text-[11.5px] text-ink-3">
+              One answer each — you can&apos;t change it once it&apos;s in. Results are
+              shown by the host.
             </p>
           </form>
-        )}
+        </div>
       </div>
     </div>
   );
