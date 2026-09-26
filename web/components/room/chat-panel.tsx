@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import type { ControlsPatch } from "@/lib/api-types";
 import {
   imageFromPaste,
   isSupportedImage,
@@ -25,6 +24,11 @@ import { Alert, ConfirmModal, Spinner } from "../controls";
 import { ArrowDownIcon, ImageIcon, SendIcon, TrashIcon } from "../icons";
 import { SenderAvatar } from "../sender-avatar";
 import { PanelistsOnlyBadge, RoleBadge } from "./chat-badges";
+import {
+  AttendeeAudience,
+  AttendeeChatOffNotice,
+  HostChatPermission,
+} from "./chat-permission-control";
 import { useRoomUI } from "./context";
 import { MentionComposer } from "./mention-composer";
 import { useMentionPeople } from "./mention-people";
@@ -48,11 +52,6 @@ import { useMentionPeople } from "./mention-people";
 
 const MAX_CHARS = 2000;
 
-/** The host's segmented control offers one more choice than `ChatDestination`
- *  carries: turning attendee chat off is a separate flag (`chatEnabled`), not
- *  a third destination, but the picker presents all three as one choice. */
-type AudienceChatOption = ChatDestination | "disabled";
-
 export function ChatPanel() {
   const { slug, joinKey, realtime, controls, permissions, isHost, me } = useRoomUI();
   const [draft, setDraft] = useState<Draft>({ text: "", mentions: [] });
@@ -64,9 +63,6 @@ export function ChatPanel() {
   // The host and the panelists pick per message; theirs is local state. Everyone
   // else follows the room, so there is nothing local to hold.
   const [stageTo, setStageTo] = useState<ChatDestination>("everyone");
-  // Which switch the host is currently flipping, so the segmented control can show
-  // it landing rather than appearing to do nothing for a round trip.
-  const [switching, setSwitching] = useState<AudienceChatOption | null>(null);
 
   const [uploading, setUploading] = useState(false);
 
@@ -172,12 +168,9 @@ export function ChatPanel() {
   const muted = !controls.chatEnabled && !permissions.canPublish;
 
   // The room's setting, as the host last left it. Narrowed here because the
-  // generated type is a bare string.
+  // generated type is a bare string. The host's control over it is
+  // HostChatPermission, in chat-permission-control.tsx.
   const roomTo = chatDestination(controls.chatDestination);
-  // What the segmented control below shows as selected: "disabled" swallows
-  // whatever destination was last chosen, so switching chat back on returns to
-  // it rather than defaulting to "everyone" every time.
-  const roomOption: AudienceChatOption = controls.chatEnabled ? roomTo : "disabled";
   // A publisher chooses; the audience is told. `permissions.canPublish` rather than
   // the joined role, so an attendee the host promotes gains the choice without a
   // rejoin — and loses it again if they are sent back.
@@ -274,65 +267,9 @@ export function ChatPanel() {
     }
   }
 
-  /** The host changing where the AUDIENCE's chat goes.
-   *
-   *  Written to the API, which persists it and mirrors it into room metadata — so
-   *  it reaches every browser in the room at once and still applies to somebody who
-   *  joins ten minutes later. Nothing local is updated: this tab reacts to the same
-   *  broadcast as everyone else, which is what keeps them in agreement. */
-  async function setRoomDestination(to: AudienceChatOption) {
-    if (to === roomOption || switching) return;
-    setSwitching(to);
-    setError(null);
-    try {
-      const patch: ControlsPatch =
-        to === "disabled"
-          ? { chatEnabled: false }
-          : { chatEnabled: true, chatDestination: to };
-      await api.updateControls(slug, patch);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "That didn't apply.");
-    } finally {
-      setSwitching(null);
-    }
-  }
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* ---- the host's control over the audience's chat ---- */}
-      {isHost && (
-        <div className="shrink-0 border-b border-line px-3 py-2.5">
-          <p className="text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-            Attendees can chat with
-          </p>
-          <div className="mt-1.5 flex items-center gap-1">
-            {(["everyone", "panelists", "disabled"] as const).map((to) => (
-              <button
-                key={to}
-                type="button"
-                onClick={() => void setRoomDestination(to)}
-                disabled={switching !== null}
-                aria-pressed={roomOption === to}
-                className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-7 md:px-2.5 ${
-                  roomOption === to
-                    ? "bg-brand-soft text-brand"
-                    : "text-ink-2 hover:bg-surface-2"
-                }`}
-              >
-                {switching === to && <Spinner className="size-3" />}
-                {to === "everyone" ? "Everyone" : to === "panelists" ? "Panelists" : "Disabled"}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-3">
-            {roomOption === "disabled"
-              ? "Attendees can't send messages. Turn it back on anytime."
-              : roomOption === "panelists"
-                ? "Attendees' messages reach you and the panelists only. They cannot see each other's."
-                : "Attendees' messages are visible to the whole room."}
-          </p>
-        </div>
-      )}
+      {isHost && <HostChatPermission />}
 
       {/* Relative so the catch-up pill can sit over the foot of the conversation
           rather than in the composer, where it would push the box around. */}
@@ -409,7 +346,7 @@ export function ChatPanel() {
 
       <div className="shrink-0 border-t border-line p-2.5">
         {muted ? (
-          <Alert tone="warn">The host has turned off chat for attendees.</Alert>
+          <AttendeeChatOffNotice />
         ) : (
           <>
             {error && (
@@ -464,19 +401,7 @@ export function ChatPanel() {
                * cannot deliver. The destination is still named explicitly rather than
                * left implied: a private question sent to the whole room is not a mistake
                * anybody makes twice, and it is not one they should be able to make once. */
-              <div className="mb-2 text-[11.5px]">
-                <p className="flex items-center gap-1">
-                  <span className="text-ink-3">To</span>
-                  <span className="rounded-md bg-surface-2 px-2 py-0.5 font-medium text-ink-2">
-                    {destination === "panelists" ? "Host and panelists" : "Everyone"}
-                  </span>
-                </p>
-                <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
-                  {destination === "panelists"
-                    ? "Only the host and panelists will see this. Other attendees will not."
-                    : "Everyone in the webinar will see this."}
-                </p>
-              </div>
+              <AttendeeAudience destination={destination} />
             )}
 
             <form
