@@ -13,7 +13,19 @@ import { createPortal } from "react-dom";
 import { enableCamera } from "@/lib/backgrounds";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
-import { barSlots, centerBarTools, gridItems, morePanelTools, type ToolId } from "@/lib/tools";
+import {
+  barSlots,
+  centerBarTools,
+  describeChange,
+  gridItems,
+  isCustomised,
+  morePanelTools,
+  usableTools,
+  wouldBump,
+  type ToolbarChange,
+  type ToolbarSnapshot,
+  type ToolId,
+} from "@/lib/tools";
 import {
   MEDIA_TOGGLE_SMALL,
   useCompact,
@@ -30,8 +42,9 @@ import {
   MIC_CAPSULE_PATH,
   MicIcon,
   MicOffIcon,
+  MinusIcon,
   PipIcon,
-  PlayIcon,
+  PlusIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
 } from "../icons";
@@ -57,7 +70,7 @@ import {
 } from "./host-leave-dialog";
 import { LeaveConfirm } from "./leave-confirm";
 import { PipStage } from "./pip-stage";
-import { useToolDrag } from "./tool-drag";
+import { useToolDrag, type DropHandler } from "./tool-drag";
 import { tool } from "./tools";
 
 /* The control bar.
@@ -205,8 +218,18 @@ export function ControlBar() {
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
-  const slots = barSlots(tools.layout, capacity, availableTools);
-  const grid = gridItems(tools.layout, slots, availableTools);
+  // Screen share support, read here (not further down) because Share a video
+  // file's availability depends on it.
+  const canShare = useSyncExternalStore(subscribeNothing, readCanShare, readCanShareOnServer);
+  /* What this browser can actually use right now. Share a video file needs the
+   * share permission, a browser that can capture a video element and a real
+   * room; Captions needs the host's switch. See usableTools. */
+  const usable = usableTools(availableTools, {
+    sharefile: !previewChrome && canShare && permissions.canShareScreen && canShareFile(),
+    captions: captionsAction !== undefined,
+  });
+  const slots = barSlots(tools.layout, capacity, usable);
+  const grid = gridItems(tools.layout, slots, usable);
   const compact = useCompact();
   const toggleSize = useMediaToggleSize();
 
@@ -287,6 +310,66 @@ export function ControlBar() {
   useEffect(() => {
     setBar(barEl);
   }, [setBar, barEl]);
+
+  /* Customising the toolbar.
+   *
+   * `editing` is the non-drag way in ("Customize toolbar" in More): + on each
+   * movable tool in More, − on each toolbar button. It lives here rather than
+   * in MoreGrid because both halves of it render here.
+   *
+   * Every edit — drop, +, −, Reset — goes through `edit`, which snapshots the
+   * layout first so the notice can offer an exact undo, and marks where the
+   * tool landed for the settle animation. */
+  const [editing, setEditing] = useState(false);
+  const [landed, setLanded] = useState<ToolId | null>(null);
+  const [notice, setNotice] = useState<{
+    key: number;
+    text: string;
+    snap: ToolbarSnapshot;
+  } | null>(null);
+
+  // Not wrapped in useCallback: the React Compiler memoises it, and a manual
+  // wrapper on `tools` is one it cannot preserve.
+  const edit = (run: () => ToolbarChange | null) => {
+    const snap = tools.snapshot();
+    const change = run();
+    if (!change) return;
+    if (change.kind !== "reset") setLanded(change.tool);
+    const text = describeChange(change, (id) => tool(id).label);
+    if (text) setNotice({ key: Date.now(), text, snap });
+  };
+
+  useEffect(() => {
+    if (!landed) return;
+    const t = setTimeout(() => setLanded(null), 700);
+    return () => clearTimeout(t);
+  }, [landed]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  // Drops go through the same capacity-aware path as the + button, rather
+  // than the provider's plain pin — which could pin a tool past the end of a
+  // full bar, out of sight. Through a ref so the handler is registered once
+  // rather than re-registered on every render.
+  const dropRef = useRef<DropHandler>({ pin: () => {}, unpin: () => {} });
+  useEffect(() => {
+    dropRef.current = {
+      pin: (id, index) => edit(() => tools.place(id, capacity, index)),
+      unpin: (id) => edit(() => tools.remove(id)),
+    };
+  });
+  const setDropHandler = drag.setDropHandler;
+  useEffect(() => {
+    setDropHandler({
+      pin: (id, index) => dropRef.current.pin(id, index),
+      unpin: (id) => dropRef.current.unpin(id),
+    });
+    return () => setDropHandler(null);
+  }, [setDropHandler]);
 
   /* The headcount under the Participants button.
    *
@@ -480,10 +563,9 @@ export function ControlBar() {
   ]);
 
   // Screen share is not something any mobile browser supports, so the button is
-  // hidden rather than offered and then failing. Read through useSyncExternalStore
-  // because it cannot be answered during a server render and never changes
-  // afterwards — false on the server, the real answer on the client.
-  const canShare = useSyncExternalStore(subscribeNothing, readCanShare, readCanShareOnServer);
+  // hidden rather than offered and then failing. `canShare` (read above through
+  // useSyncExternalStore) cannot be answered during a server render and never
+  // changes afterwards — false on the server, the real answer on the client.
 
   /* One button for both kinds of share.
    *
@@ -569,6 +651,8 @@ export function ControlBar() {
     // Says which layout is in use, so the footer answers the question without
     // being opened.
     if (id === "layout") return `Layout · ${LAYOUT_LABEL[stage.mode]}`;
+    if (id === "captions") return captionsAction?.active ? "Captions on" : "Captions off";
+    if (id === "sharefile") return fileShare.active ? "Sharing a video file" : "Share a video file";
     return t.label;
   };
 
@@ -577,6 +661,8 @@ export function ControlBar() {
     if (id === "reactions") return reactionsOpen;
     if (id === "invite") return inviteOpen;
     if (id === "layout") return layoutOpen;
+    if (id === "captions") return captionsAction?.active ?? false;
+    if (id === "sharefile") return fileShare.active;
     if (tools.panelTab === id) return true;
     const win = tools.layout.windows[id];
     return !!win && !win.minimized;
@@ -610,6 +696,14 @@ export function ControlBar() {
       tools.used("layout");
       return;
     }
+    if (id === "captions") {
+      captionsAction?.onClick();
+      return;
+    }
+    if (id === "sharefile") {
+      setShareFileOpen(true);
+      return;
+    }
     tools.toggle(id);
   };
 
@@ -633,6 +727,11 @@ export function ControlBar() {
    * Derived rather than stored, so the grid closes itself again when the drag ends
    * and `moreOpen` — the user's own choice — is what remains. */
   const gridVisible = moreOpen || drag.drag?.from === "bar";
+  const editingNow = editing && moreOpen;
+  const closeMore = useCallback(() => {
+    setMoreOpen(false);
+    setEditing(false);
+  }, []);
 
   const onShareClick = useCallback(() => {
     if (!previewChrome && !canShare) {
@@ -810,55 +909,114 @@ export function ControlBar() {
           );
         })}
 
-        {/* Customisable extras (Invite, Layout, Host, …) sit in the same strip
-            they overflow from, not across the bar next to Leave. */}
-        <div
-          className={`flex items-center gap-1 rounded-xl px-0.5 transition-colors sm:gap-2 ${
-            drag.drag
-              ? dropIndex !== null
-                ? "bg-brand/15 outline-2 outline-brand outline-offset-2"
-                : "outline-1 outline-dashed outline-white/30 outline-offset-2"
-              : ""
-          }`}
-        >
-          {slots.map((slot, i) => (
-            <div key={slot.tool} className="flex items-center">
-              {dropIndex === i && <DropMarker />}
-              <div data-tool-slot={slot.tool} className="relative">
-                <ToolSlotButton
-                  id={slot.tool}
-                  label={labelFor(slot.tool)}
-                  active={activeFor(slot.tool)}
-                  badge={countFor(slot.tool)}
-                  mentions={slot.tool === "chat" ? mentions : 0}
-                  pinned={slot.pinned}
-                  dragging={drag.drag?.tool === slot.tool}
-                  onActivate={() => activate(slot.tool)}
-                />
-                {slot.tool === "layout" && layoutOpen && (
-                  <LayoutMenu onClose={() => setLayoutOpen(false)} />
-                )}
-                {slot.tool === "reactions" && reactionsOpen && (
-                  <ReactionTray
-                    onPick={(emoji) => {
-                      void realtime.react(emoji);
-                      tools.used("reactions");
-                      setReactionsOpen(false);
-                    }}
-                    onClose={() => setReactionsOpen(false)}
-                  />
-                )}
-                {slot.tool === "invite" && inviteOpen && (
-                  <InviteMenu
-                    onUsed={() => tools.used("invite")}
-                    onClose={() => setInviteOpen(false)}
-                  />
-                )}
-              </div>
+        {/* Customisable extras (Invite, Host tools, Captions, …) sit in the
+            same strip they overflow from, not across the bar next to Leave.
+            While a tool is in flight from More this strip is the drop zone,
+            and says so in words — a dashed outline alone meant nothing to a
+            host who had never dragged a toolbar button before. */}
+        {(() => {
+          const fromGrid = drag.drag?.from === "grid";
+          const bump = fromGrid ? wouldBump(tools.layout, capacity, usable) : null;
+          const zoneLabel =
+            dropIndex !== null
+              ? fromGrid
+                ? bump
+                  ? `Drop to add · ${tool(bump).label} goes to More`
+                  : "Drop to add to toolbar"
+                : "Drop to move it here"
+              : fromGrid
+                ? "Drop here to add"
+                : null;
+          return (
+            <div
+              className={`relative flex items-center gap-1 rounded-xl px-0.5 transition-colors sm:gap-2 ${
+                drag.drag
+                  ? dropIndex !== null
+                    ? "bg-brand/15 outline-2 outline-brand outline-offset-2"
+                    : "outline-1 outline-dashed outline-white/40 outline-offset-2"
+                  : editingNow && slots.length > 0
+                    ? "outline-1 outline-dashed outline-white/30 outline-offset-2"
+                    : ""
+              }`}
+            >
+              {zoneLabel && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute -top-9 left-1/2 z-[60] -translate-x-1/2 rounded-md bg-brand px-2 py-1 text-[11px] font-semibold whitespace-nowrap text-stage shadow-lg"
+                >
+                  {zoneLabel}
+                </span>
+              )}
+              {slots.map((slot, i) => (
+                <div key={slot.tool} className="flex items-center">
+                  {dropIndex === i && <DropMarker />}
+                  <div
+                    data-tool-slot={slot.tool}
+                    data-tool-pin={slot.tool}
+                    className={`relative ${
+                      landed === slot.tool
+                        ? "motion-safe:animate-[tool-land_420ms_cubic-bezier(0.2,0.9,0.3,1.2)]"
+                        : ""
+                    }`}
+                  >
+                    <ToolSlotButton
+                      id={slot.tool}
+                      label={labelFor(slot.tool)}
+                      active={activeFor(slot.tool)}
+                      badge={countFor(slot.tool)}
+                      mentions={slot.tool === "chat" ? mentions : 0}
+                      pinned={slot.pinned}
+                      dragging={drag.drag?.tool === slot.tool}
+                      onActivate={() => activate(slot.tool)}
+                    />
+                    {editingNow && (
+                      <button
+                        type="button"
+                        aria-label={`Move ${tool(slot.tool).label} to More`}
+                        title={`Move ${tool(slot.tool).label} to More`}
+                        onClick={() => edit(() => tools.remove(slot.tool))}
+                        className="absolute -top-1.5 -right-1.5 z-10 grid size-5 place-items-center rounded-full bg-white text-stage shadow-md outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-brand"
+                      >
+                        <MinusIcon className="size-3" />
+                      </button>
+                    )}
+                    {slot.tool === "layout" && layoutOpen && (
+                      <LayoutMenu onClose={() => setLayoutOpen(false)} />
+                    )}
+                    {slot.tool === "reactions" && reactionsOpen && (
+                      <ReactionTray
+                        onPick={(emoji) => {
+                          void realtime.react(emoji);
+                          tools.used("reactions");
+                          setReactionsOpen(false);
+                        }}
+                        onClose={() => setReactionsOpen(false)}
+                      />
+                    )}
+                    {slot.tool === "invite" && inviteOpen && (
+                      <InviteMenu
+                        onUsed={() => tools.used("invite")}
+                        onClose={() => setInviteOpen(false)}
+                      />
+                    )}
+                  </div>
+                </div>
+              ))}
+              {/* An empty toolbar still needs somewhere to aim at. */}
+              {fromGrid && slots.length === 0 && (
+                <span
+                  aria-hidden
+                  className={`grid h-10 w-14 place-items-center rounded-lg border-2 border-dashed motion-safe:animate-[tool-slot-breathe_1.6s_ease-in-out_infinite] ${
+                    dropIndex !== null ? "border-brand bg-brand/20 text-brand" : "border-white/40 text-white/60"
+                  }`}
+                >
+                  <PlusIcon className="size-4" />
+                </span>
+              )}
+              {dropIndex !== null && slots.length > 0 && dropIndex >= slots.length && <DropMarker />}
             </div>
-          ))}
-          {dropIndex !== null && dropIndex >= slots.length && <DropMarker />}
-        </div>
+          );
+        })()}
 
         <div className="relative">
           <MoreButton
@@ -870,7 +1028,10 @@ export function ControlBar() {
                 ? mentions
                 : 0
             }
-            onToggle={() => setMoreOpen((v) => !v)}
+            onToggle={() => {
+              if (moreOpen) closeMore();
+              else setMoreOpen(true);
+            }}
           />
           {gridVisible && (
             <MoreGrid
@@ -892,32 +1053,66 @@ export function ControlBar() {
                     }
                   : undefined
               }
-              // A deliberate, rarer choice than Share itself (which now hands
-              // straight off to the browser's own picker) — always tucked away
-              // here rather than sat on the bar next to it, whether or not Share
-              // itself is on the bar. This is the only door into SharePicker, and
-              // the gate matters because of it: where the browser cannot capture a
-              // video element there is nothing behind the dialog, so the entry is
-              // hidden rather than opening onto an explanation.
-              shareFileAction={
-                !previewChrome && permissions.canShareScreen && canShareFile()
+              // Share a video file and Captions are ordinary tools now (they can
+              // move to the toolbar like the rest); their state and click still
+              // live here, because this is where the share picker and the host's
+              // captions switch are. Share a video file is only offered where
+              // the browser can capture a video element — see `usable` above.
+              toolActions={{
+                sharefile: {
+                  active: fileShare.active,
+                  busy: fileShare.starting,
+                  title: fileShare.active ? "Sharing a video file" : "Share a video file",
+                  onClick: () => setShareFileOpen(true),
+                },
+                ...(captionsAction
                   ? {
-                      label: "Share a video file",
-                      icon: <PlayIcon className="size-5" />,
-                      active: fileShare.active,
-                      busy: fileShare.starting,
-                      onClick: () => setShareFileOpen(true),
+                      captions: {
+                        active: captionsAction.active,
+                        busy: captionsAction.busy,
+                        title: captionsAction.title,
+                        onClick: captionsAction.onClick,
+                      },
                     }
+                  : {}),
+              }}
+              canCustomize={capacity > 0}
+              bumpTarget={wouldBump(tools.layout, capacity, usable)}
+              editing={editingNow}
+              onEditingChange={setEditing}
+              onAdd={(id) => edit(() => tools.place(id, capacity))}
+              onReset={
+                isCustomised(tools.layout)
+                  ? () =>
+                      edit(() => {
+                        tools.reset();
+                        return { kind: "reset" };
+                      })
                   : undefined
               }
-              captionsAction={captionsAction}
+              landed={landed}
               // While the grid is only open because a drag is in flight, dismissing
               // it is not something the user can ask for — the drag owns it.
-              onClose={() => setMoreOpen(false)}
+              onClose={closeMore}
             />
           )}
         </div>
       </div>
+
+      {/* The undo notice, over the bar's left end: the More panel owns the
+          right, and a notice on top of the panel it is describing covers the
+          very tool it is talking about. */}
+      {notice && (
+        <ToolbarNotice
+          key={notice.key}
+          text={notice.text}
+          onUndo={() => {
+            tools.restore(notice.snap);
+            setNotice(null);
+          }}
+          onDismiss={() => setNotice(null)}
+        />
+      )}
 
       {/* Leave stays on the far right, alone, the way Zoom parks End/Leave.
           Out of flow so it does not pull the centred strip toward the left. */}
@@ -1052,6 +1247,46 @@ function DropMarker() {
       aria-hidden
       className="mx-0.5 h-9 w-0.5 shrink-0 rounded-full bg-brand shadow-[0_0_8px_var(--color-brand)]"
     />
+  );
+}
+
+/** "Captions is on your toolbar now. Undo" — above the More button, for six
+ *  seconds. Not the app-wide toast: that has no action slot, and an undo that
+ *  lives somewhere else from the thing it undoes is one nobody finds. A polite
+ *  live region, so a screen reader hears what the + or − did. */
+function ToolbarNotice({
+  text,
+  onUndo,
+  onDismiss,
+}: {
+  text: string;
+  onUndo: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      data-toolbar-notice
+      role="status"
+      aria-live="polite"
+      className="room-dark absolute bottom-full left-2 z-[60] mb-3 flex w-max max-w-[min(360px,calc(100vw-1rem))] items-center gap-3 rounded-xl border border-line-2 bg-surface-2 py-2 pr-2 pl-3 text-[12px] text-ink shadow-2xl motion-safe:animate-[poll-card-in_200ms_ease-out] sm:left-3"
+    >
+      <span className="min-w-0">{text}</span>
+      <button
+        type="button"
+        onClick={onUndo}
+        className="shrink-0 rounded-md px-2 py-1 font-semibold text-brand outline-none hover:bg-brand/10 focus-visible:ring-2 focus-visible:ring-brand/50"
+      >
+        Undo
+      </button>
+      <button
+        type="button"
+        aria-label="Dismiss"
+        onClick={onDismiss}
+        className="grid size-6 shrink-0 place-items-center rounded-md text-ink-3 outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/50"
+      >
+        ×
+      </button>
+    </div>
   );
 }
 

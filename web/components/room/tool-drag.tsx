@@ -90,10 +90,19 @@ type DragApi = {
     onClick: () => void;
     style: { touchAction: "none" };
   };
-  /** The bar registers itself as a drop zone. Its slot elements are found by
-   *  `data-tool-slot`, so it does not have to report them separately. */
+  /** The bar registers itself as a drop zone. Its pin slots are found by
+   *  `data-tool-pin`, so it does not have to report them separately. */
   setBar: (el: HTMLElement | null) => void;
   setGrid: (el: HTMLElement | null) => void;
+  /** Lets the control bar take over what a drop does — it is the one place
+   *  that knows the bar's capacity and can say what happened. Null restores
+   *  the provider's own onPin / onUnpin. */
+  setDropHandler: (handler: DropHandler | null) => void;
+};
+
+export type DropHandler = {
+  pin: (tool: ToolId, index: number) => void;
+  unpin: (tool: ToolId) => void;
 };
 
 const DragContext = createContext<DragApi | null>(null);
@@ -104,9 +113,12 @@ export function useToolDrag(): DragApi {
   return value;
 }
 
-/** What the bar's insertion index is under a given x, from the slots on screen. */
+/** What the bar's insertion index is under a given x, among the customisable
+ *  pin slots only. Counting every `data-tool-slot` — which the standing
+ *  Chat / Q&A / … buttons also carry — offset the index by the whole standing
+ *  strip, so the marker drew at the end and a drop could never reorder. */
 function indexAt(bar: HTMLElement, x: number): number {
-  const slots = [...bar.querySelectorAll<HTMLElement>("[data-tool-slot]")];
+  const slots = [...bar.querySelectorAll<HTMLElement>("[data-tool-pin]")];
   for (let i = 0; i < slots.length; i++) {
     const r = slots[i].getBoundingClientRect();
     if (x < r.left + r.width / 2) return i;
@@ -158,6 +170,7 @@ export function ToolDragProvider({
   // mid-gesture — re-attaching drops the drag.
   const pin = useRef(onPin);
   const unpin = useRef(onUnpin);
+  const handler = useRef<DropHandler | null>(null);
   useEffect(() => {
     pin.current = onPin;
     unpin.current = onUnpin;
@@ -241,9 +254,9 @@ export function ToolDragProvider({
       if (g.active) {
         const { over, index } = resolve(e.clientX, e.clientY);
         if (over === "bar") {
-          pin.current(g.tool, index ?? 0);
+          (handler.current?.pin ?? pin.current)(g.tool, index ?? 0);
         } else if (over === "grid" && g.from === "bar") {
-          unpin.current(g.tool);
+          (handler.current?.unpin ?? unpin.current)(g.tool);
         }
         // Released on neither: a cancel. Leaving it as an implicit unpin meant a
         // drag abandoned over the video quietly rearranged the bar.
@@ -339,6 +352,9 @@ export function ToolDragProvider({
       setGrid: (el) => {
         grid.current = el;
       },
+      setDropHandler: (h) => {
+        handler.current = h;
+      },
     }),
     [drag, bind],
   );
@@ -373,16 +389,19 @@ function DragGhost({
   const t = tool(drag.tool);
   const Icon = t.icon;
 
+  // Plain words for a non-technical host: "toolbar" and "More", never "pin".
+  // Null over the toolbar: the toolbar labels itself then, and two identical
+  // captions stacked on top of each other read as a glitch.
   const hint =
     drag.over === "bar"
-      ? "Release to pin to the bar"
+      ? null
       : drag.over === "grid"
         ? drag.from === "bar"
-          ? "Release to take it off the bar"
-          : "Already here"
+          ? "Drop to move to More"
+          : "Drag it down onto the toolbar"
         : drag.from === "bar"
-          ? "Drop on the bar to move it, or on the grid to remove it"
-          : "Drop on the bar to pin it";
+          ? "Drag into More to tuck it away"
+          : "Drag onto the toolbar below";
 
   return (
     <div
@@ -393,19 +412,21 @@ function DragGhost({
       <div className="flex flex-col items-center">
         <div
           className={`flex flex-col items-center gap-1 rounded-xl border px-3 py-2 shadow-2xl transition-colors ${
-            drag.over === "bar"
-              ? "border-brand bg-brand text-white"
-              : drag.over === "grid" && drag.from === "bar"
-                ? "border-live bg-live/90 text-white"
-                : "border-white/25 bg-ink/90 text-white"
+            drag.over === "bar" || (drag.over === "grid" && drag.from === "bar")
+              ? // Brand for both real targets. It used to go red over the grid,
+                // which read as "delete" for what is only tucking a tool away.
+                "border-brand bg-brand text-white"
+              : "border-white/25 bg-ink/90 text-white"
           }`}
         >
           <Icon className="size-5" />
           <span className="text-[10px] leading-none font-semibold">{t.label}</span>
         </div>
-        <div className="mt-1.5 rounded-md bg-ink/90 px-2 py-1 text-center text-[10px] font-medium whitespace-nowrap text-white/85">
-          {hint}
-        </div>
+        {hint && (
+          <div className="mt-1.5 rounded-md bg-ink/90 px-2 py-1 text-center text-[10px] font-medium whitespace-nowrap text-white/85">
+            {hint}
+          </div>
+        )}
       </div>
     </div>
   );

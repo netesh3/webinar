@@ -142,6 +142,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/media-hotkeys.test.mts
 	# And which tools sit in Zoom's standing centre cluster vs More on a phone.
 	cd web && node --experimental-strip-types --no-warnings lib/tools-bar.test.mts
+	# And customising it: adding from More never pins a tool out of sight on a full
+	# bar, a recently used slot can be moved back, and undo puts exactly it back.
+	cd web && node --experimental-strip-types --no-warnings lib/tools-edit.test.mts
 	# And the virtual-background catalogue: an old stored image id must not reach
 	# the compositor as a missing texture.
 	cd web && node --experimental-strip-types --no-warnings lib/backgrounds.test.mts

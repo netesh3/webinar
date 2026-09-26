@@ -186,6 +186,36 @@
   }
 }
 
+/* A tool landing on the toolbar or back in More (control-bar.tsx, more-grid.tsx):
+   a small drop-and-settle, so the eye follows the button to where it went. Used
+   only behind `motion-safe:`. */
+@keyframes tool-land {
+  0% {
+    opacity: 0.2;
+    transform: translate3d(0, -10px, 0) scale(0.7);
+  }
+  60% {
+    opacity: 1;
+    transform: translate3d(0, 1px, 0) scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* The "Drop here" slot on the toolbar while a tool is in flight: a slow breathe
+   so an empty target reads as waiting rather than broken. */
+@keyframes tool-slot-breathe {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* The poll pop-up (components/room/poll-popup.tsx): the scrim fades, the card lifts
    in with a slight overshoot so a new question is noticed without being jarring. */
 @keyframes poll-scrim-in {
