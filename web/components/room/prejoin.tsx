@@ -12,7 +12,7 @@ import { cameraCapturePreset, deviceLabel, useDevices, type MediaPreferences } f
 import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
 import { Alert, Select, Spinner } from "../controls";
-import { BackgroundEngineToggle, BackgroundTiles } from "./background-picker";
+import { BackgroundQualityControls, BackgroundTiles, useMattingChoice } from "./background-picker";
 import { LowLightControl } from "./low-light";
 import { Button } from "../ui";
 import { CameraIcon, CameraOffIcon, MicIcon, MicOffIcon } from "../icons";
@@ -120,6 +120,9 @@ export function PreJoin({
     setCameraFailure(null);
     setCameraEnabled(next);
   }, [cameraEnabled]);
+
+  // HD / "only me" into the running background; see BackgroundQualityControls.
+  useMattingChoice(prefs.backgroundHd, prefs.presenterOnly);
 
   /* Applied to the preview track so the presenter sees both in real time — which for the
    * low-light lift is the whole point of having it here: the right amount is whatever
@@ -495,9 +498,10 @@ export function PreJoin({
             {/* Virtual Background Selection before joining */}
             {backgroundsOk && (
               <>
-                <BackgroundEngineToggle
-                  engine={prefs.backgroundEngine}
-                  onChange={(backgroundEngine) => onUpdatePrefs({ backgroundEngine })}
+                <BackgroundQualityControls
+                  hd={prefs.backgroundHd}
+                  presenterOnly={prefs.presenterOnly}
+                  onChange={onUpdatePrefs}
                 />
                 <BackgroundTiles
                   heading="Virtual background"

@@ -1858,6 +1858,21 @@ const LOCK_IDLE_EVERY = 6;
 const PRESENTER_LOCK = process.env.NEXT_PUBLIC_VB_PRESENTER_LOCK !== "0";
 const MODNET = process.env.NEXT_PUBLIC_VB_MODNET !== "0";
 
+/* The presenter's own choices, from the background settings: HD edges (MODNet where it can
+ * run) and "only me" (the presenter lock). Page-wide rather than per processor — there is
+ * one camera — and read on every frame, so a change applies on the next one with nothing
+ * torn down. See setMatting. */
+export type MattingChoice = { hd: boolean; presenterOnly: boolean };
+let matting: MattingChoice = { hd: true, presenterOnly: true };
+
+/** Applies to every running SoftSegmenter from its next frame. */
+export function setMatting(next: MattingChoice): void {
+  matting = { ...next };
+}
+
+const wantLock = () => PRESENTER_LOCK && matting.presenterOnly;
+const wantModnet = () => MODNET && matting.hd;
+
 /** MediaPipe's confidence: regions start at half (its low end is noisy). */
 const LOCK_REGION_MEDIAPIPE = 0.5;
 /** MODNet's alpha: clean near zero. */
@@ -1956,6 +1971,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   private faceTs = 0;
   private frameNo = 0;
   private maskFrame = 0;
+  private lockWasOn = false;
 
   /* MODNet: off until loaded, then checked against MediaPipe, then on — or rejected, which
    * is MediaPipe with the lock for the rest of this processor's life. */
@@ -2156,7 +2172,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
         if (segmenter) this.startExtras();
         /* MODNet, once trusted: its frame goes out when its matte is back, and frames that
          * arrive meanwhile are dropped, so the matte is always of the frame it cuts. */
-        if (segmenter && this.modnetState === "on" && this.modnet) {
+        if (segmenter && this.modnetState === "on" && this.modnet && wantModnet()) {
           this.modnetFrame(engine, this.modnet, frame, controller);
           return;
         }
@@ -2215,13 +2231,13 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   /* Presenter lock and MODNet, started once MediaPipe is up so neither delays the first
    * background. Each is optional: whatever fails to load, the background carries on. */
   private startExtras(): void {
-    if (PRESENTER_LOCK && !this.facesAsked) {
+    if (wantLock() && !this.facesAsked) {
       this.facesAsked = true;
       void loadFaceDetector().then((d) => {
         if (!this.disposed) this.faces = d;
       });
     }
-    if (MODNET && this.modnetState === "off") {
+    if (wantModnet() && this.modnetState === "off") {
       this.modnetState = "loading";
       void loadModnet().then((m) => {
         if (this.modnetState !== "loading") return;
@@ -2232,7 +2248,11 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   }
 
   private lockActive(): boolean {
-    return PRESENTER_LOCK && this.faces !== null;
+    const on = wantLock() && this.faces !== null;
+    // Turned back on: whoever it was following before may not be the presenter now.
+    if (on && !this.lockWasOn) this.lock.reset();
+    this.lockWasOn = on;
+    return on;
   }
 
   /** This frame's faces into the lock. Every FACE_EVERY frames; the lock carries between. */
@@ -2271,7 +2291,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     const lock =
       this.lockActive() &&
       (this.lock.busy(performance.now()) || this.maskFrame % LOCK_IDLE_EVERY === 0);
-    const check = this.modnetState === "checking" && !this.modnetBusy;
+    const check = wantModnet() && this.modnetState === "checking" && !this.modnetBusy;
     if (!lock && !check) return undefined;
     return (data, w, h) => {
       if (check) this.modnetReference = { data: Float32Array.from(data), w, h };
@@ -2347,7 +2367,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       const waiting = this.modnetWaiting;
       this.modnetWaiting = null;
       if (!waiting) return;
-      if (this.modnetState === "on" && !this.disposed) {
+      if (this.modnetState === "on" && wantModnet() && !this.disposed) {
         this.modnetFrame(waiting.engine, waiting.modnet, waiting.frame, waiting.controller);
       } else {
         waiting.frame.close();

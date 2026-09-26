@@ -71,9 +71,33 @@ export type BackgroundEngine = "enhanced" | "livekit";
 
 export const DEFAULT_BACKGROUND_ENGINE: BackgroundEngine = "enhanced";
 
-/** Narrow storage / unknown input to a known engine. Anything else → enhanced. */
+/** Narrow storage to the engine to run: always ours now.
+ *
+ * The Enhanced / Beta picker is gone — the choice in the settings is HD / Standard and
+ * "only me", which are ours (see MattingChoice). A browser that picked Beta while the
+ * picker existed still has "livekit" in storage and would otherwise stay on it with no way
+ * back. LiveKit's processor is still used, but only as the automatic recovery when ours is
+ * interrupted — see fallBackToBeta. */
 export function asBackgroundEngine(value: unknown): BackgroundEngine {
-  return value === "livekit" ? "livekit" : "enhanced";
+  void value;
+  return "enhanced";
+}
+
+/* HD edges and "only me", as chosen in the settings. Held here so a processor made later —
+ * the pre-join screen's, the room's, one rebuilt by Retry — starts with them, and pushed
+ * into the segmenter module when it is loaded so running ones change on their next frame. */
+export type MattingChoice = { hd: boolean; presenterOnly: boolean };
+let mattingChoice: MattingChoice = { hd: true, presenterOnly: true };
+let segmenterModule: typeof import("./segmenter") | null = null;
+
+export function applyMatting(next: MattingChoice): void {
+  mattingChoice = { hd: next.hd, presenterOnly: next.presenterOnly };
+  segmenterModule?.setMatting(mattingChoice);
+}
+
+/** Whether HD can run here at all: it needs WebGPU. Otherwise HD quietly means Standard. */
+export function hdPossible(): boolean {
+  return typeof navigator !== "undefined" && "gpu" in navigator;
 }
 
 /** One-line label for settings rows and the A/B toggle. */
@@ -546,6 +570,12 @@ export function useBackgroundsSupported(): boolean {
   return useSyncExternalStore(subscribeNever, backgroundsSupported, unsupportedOnServer);
 }
 
+/** hdPossible for a component, hydration-safe the same way. True on the server, so the
+ *  first render does not flash "no WebGPU" at everybody. */
+export function useHdPossible(): boolean {
+  return useSyncExternalStore(subscribeNever, hdPossible, () => true);
+}
+
 /** Build-time kill switch for components. Same on server and client (inlined at build). */
 export function useVirtualBackgroundsEnabled(): boolean {
   return virtualBackgroundsEnabled();
@@ -818,7 +848,10 @@ async function createSoftProcessor(
    * function" that oneAtATime alone could not cover: module evaluation itself was racing.
    * npm overrides pin a single version; loading them one after the other keeps evaluation
    * ordered even if a bundler still emits two chunks. */
-  const { SoftSegmenter } = await import("./segmenter");
+  const segmenter = await import("./segmenter");
+  segmenterModule = segmenter;
+  segmenter.setMatting(mattingChoice);
+  const { SoftSegmenter } = segmenter;
   const { ProcessorWrapper } = await import("@livekit/track-processors");
   const soft = new SoftSegmenter({
     background: backgroundFor(choice),
