@@ -125,6 +125,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And chat avatars and grouping: the initials and colour must match the server's
 	# InitialsOf/HueFor, and a panelists-only aside must never join a public run.
 	cd web && node --experimental-strip-types --no-warnings lib/chat-groups.test.mts
+	# And @mentions: who the picker may offer (hidden attendees must never appear), how a
+	# tag survives edits in a plain textarea, and how a delivered message is highlighted.
+	cd web && node --experimental-strip-types --no-warnings lib/mentions.test.mts
 	# And the Q&A card's asker line: an anonymous question must never surface its
 	# sender's name, initials or identity, and "answered live" is not a text answer.
 	cd web && node --experimental-strip-types --no-warnings lib/qa-view.test.mts

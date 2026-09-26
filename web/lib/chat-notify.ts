@@ -174,11 +174,31 @@ export function useChatSound(): {
 export const SOUND_GAP_MS = 3000;
 
 let lastCueAt = 0;
+let lastMentionCueAt = 0;
 let cueContext: AudioContext | null = null;
 
-/** A short, quiet two-note blip. Synthesised rather than loaded: no asset to fetch,
- *  nothing to decode, and nothing to get wrong on a browser that blocks autoplay. */
-export function playChatCue(): void {
+/** The notes of each cue, as [frequency, offset]. A mention rises a third note higher,
+ *  so it is recognisable without looking — and it is not a louder version of the same
+ *  sound, which is how a notification turns into an alarm. */
+const CUES = {
+  chat: [
+    [660, 0],
+    [880, 0.09],
+  ],
+  mention: [
+    [660, 0],
+    [880, 0.08],
+    [1175, 0.16],
+  ],
+} as const;
+
+/** A short, quiet blip. Synthesised rather than loaded: no asset to fetch, nothing to
+ *  decode, and nothing to get wrong on a browser that blocks autoplay.
+ *
+ *  Each kind keeps its own gap, so a mention landing a second after an ordinary
+ *  message still sounds — it is the one worth hearing — while a burst of either kind
+ *  still gets one cue. */
+export function playChatCue(kind: keyof typeof CUES = "chat"): void {
   if (typeof window === "undefined") return;
   const Ctor =
     window.AudioContext ??
@@ -186,8 +206,15 @@ export function playChatCue(): void {
   if (!Ctor) return;
 
   const now = Date.now();
-  if (now - lastCueAt < SOUND_GAP_MS) return;
-  lastCueAt = now;
+  if (kind === "mention") {
+    if (now - lastMentionCueAt < SOUND_GAP_MS) return;
+    lastMentionCueAt = now;
+    // The ordinary cue for the same arrival would only muddy this one.
+    lastCueAt = now;
+  } else {
+    if (now - lastCueAt < SOUND_GAP_MS) return;
+    lastCueAt = now;
+  }
 
   try {
     cueContext ??= new Ctor();
@@ -204,12 +231,9 @@ export function playChatCue(): void {
     // this reading as a notification rather than an alarm.
     gain.gain.setValueAtTime(0.0001, start);
     gain.gain.exponentialRampToValueAtTime(0.05, start + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.3);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + (kind === "mention" ? 0.4 : 0.3));
 
-    for (const [frequency, offset] of [
-      [660, 0],
-      [880, 0.09],
-    ] as const) {
+    for (const [frequency, offset] of CUES[kind]) {
       const osc = ctx.createOscillator();
       osc.type = "sine";
       osc.frequency.value = frequency;

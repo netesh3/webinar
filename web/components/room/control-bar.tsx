@@ -47,6 +47,7 @@ import { StreamButton } from "./stream-to-youtube";
 import { CaptionsSession, useCaptionsMoreAction } from "./caption-overlay";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
 import { describeMediaError, isScreenShareCancel } from "@/lib/media-errors";
+import { badgeText } from "@/lib/mentions";
 import { MediaToggle } from "./media-toggle";
 import { displayMediaOptions, SharePicker } from "./share-picker";
 import {
@@ -139,6 +140,7 @@ export function ControlBar() {
     tools,
     availableTools,
     unread,
+    mentions,
     fileShare,
     stage,
     leave,
@@ -790,6 +792,7 @@ export function ControlBar() {
                 label={tool(id).label}
                 active={activeFor(id)}
                 badge={countFor(id)}
+                mentions={id === "chat" ? mentions : 0}
                 onClick={() => activate(id)}
                 icon={<Icon className="size-5" />}
               />
@@ -827,6 +830,7 @@ export function ControlBar() {
                   label={labelFor(slot.tool)}
                   active={activeFor(slot.tool)}
                   badge={countFor(slot.tool)}
+                  mentions={slot.tool === "chat" ? mentions : 0}
                   pinned={slot.pinned}
                   dragging={drag.drag?.tool === slot.tool}
                   onActivate={() => activate(slot.tool)}
@@ -860,6 +864,12 @@ export function ControlBar() {
           <MoreButton
             open={gridVisible}
             count={gridVisible ? 0 : gridBadge}
+            mentions={
+              !gridVisible &&
+              (grid.includes("chat") || (panelItems?.includes("chat") ?? false))
+                ? mentions
+                : 0
+            }
             onToggle={() => setMoreOpen((v) => !v)}
           />
           {gridVisible && (
@@ -1051,6 +1061,7 @@ function ToolSlotButton({
   label,
   active,
   badge,
+  mentions = 0,
   pinned,
   dragging,
   onActivate,
@@ -1059,6 +1070,8 @@ function ToolSlotButton({
   label: string;
   active: boolean;
   badge?: number;
+  /** Unseen @mentions, which turn the badge into "@". Chat only. */
+  mentions?: number;
   /** False for a tool surfaced into a vacant slot from recent use. Marked, because
    *  a button that appeared on its own needs to be explicable — and because
    *  dragging it is what makes it stay. */
@@ -1084,11 +1097,7 @@ function ToolSlotButton({
       <BarButtonShell label={t.label} active={active}>
         <Icon className="size-5" />
       </BarButtonShell>
-      {badge !== undefined && badge > 0 && (
-        <span className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
-          {badge > 99 ? "99+" : badge}
-        </span>
-      )}
+      <ToolBadge count={badge} mentions={mentions} />
       {!pinned && (
         <span
           aria-hidden
@@ -1126,6 +1135,23 @@ function ReactionTray({
 }
 
 // ------------------------------------------------------------------- buttons
+
+/** The count in a bar button's corner — or "@" while a mention is waiting, with a
+ *  ring so it reads as a different thing from a number, not just a different number. */
+function ToolBadge({ count, mentions = 0 }: { count?: number; mentions?: number }) {
+  const text = badgeText(count, mentions);
+  if (!text) return null;
+  return (
+    <span
+      className={`absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white ${
+        mentions > 0 ? "ring-2 ring-white/80" : ""
+      }`}
+    >
+      {mentions > 0 && <span className="sr-only">You were mentioned: </span>}
+      {text}
+    </span>
+  );
+}
 
 /** The visual shell, shared so every button on the bar is the same object
  *  whatever renders it. */
@@ -1180,6 +1206,7 @@ function BarButton({
   dimmed = false,
   busy = false,
   badge,
+  mentions = 0,
   meterRef,
   className = "",
 }: {
@@ -1191,6 +1218,8 @@ function BarButton({
   dimmed?: boolean;
   busy?: boolean;
   badge?: number;
+  /** Unseen @mentions, which turn the badge into "@". Chat only. */
+  mentions?: number;
   /** Attach a live audio meter to this button. The element's `--mic-level` is written every
    *  frame by useMicMeter; only the microphone passes this. */
   meterRef?: React.RefObject<SVGRectElement | null>;
@@ -1215,11 +1244,7 @@ function BarButton({
           icon
         )}
       </BarButtonShell>
-      {badge !== undefined && badge > 0 && (
-        <span className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
-          {badge > 99 ? "99+" : badge}
-        </span>
-      )}
+      <ToolBadge count={badge} mentions={mentions} />
     </button>
   );
 }

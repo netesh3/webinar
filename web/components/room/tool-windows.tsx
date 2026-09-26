@@ -48,7 +48,7 @@ function Content({ id }: { id: ToolId }) {
 }
 
 export function ToolWindows() {
-  const { tools, unread } = useRoomUI();
+  const { tools, unread, mentions } = useRoomUI();
   const compact = useCompact();
 
   /* Sorted by stacking order, so the DOM order matches the visual order.
@@ -92,6 +92,7 @@ export function ToolWindows() {
             collapsedIndex={index}
             level={i}
             badge={unread[win.tool]}
+            mentions={win.tool === "chat" ? mentions : 0}
             keepMounted={t.keepMounted}
             onFocus={() => tools.focus(win.tool)}
             onMove={(rect) => tools.move(win.tool, rect)}

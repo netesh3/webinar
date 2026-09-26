@@ -512,3 +512,167 @@ func TestSayPacketWireFormat(t *testing.T) {
 		}
 	}
 }
+
+// ------------------------------------------------------------ mentions
+
+// packetMentions reads the mentions off a delivered packet, as the browser would.
+func packetMentions(packet map[string]any) []string {
+	raw, _ := packet["mentions"].([]any)
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+/* An attendee's mentions, end to end: validated against the room, delivered on the
+ * packet, and persisted so the backlog keeps the highlight after a reload.
+ *
+ * The request mixes every kind of entry the server has to cope with — the host (always
+ * allowed), another attendee (allowed while the audience is visible), somebody who is
+ * not in the room, and an @everyone the attendee has no right to. The message is sent
+ * regardless; only the valid tags survive.
+ */
+func TestChatMentionsAreValidatedAndPersisted(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Mention Host", "mention-host@test.dev", true)
+	// Visible audience: the one setting under which attendees may tag each other.
+	wb := h.liveWebinar("Mentions", func(in *types.WebinarInput) {
+		in.Controls.HideAttendees = false
+	})
+	host := "user_" + wb.Host.ID
+
+	reg := h.registerAsGuest(wb.ID, "mention-a@test.dev")
+	other := h.registerAsGuest(wb.ID, "mention-b@test.dev")
+	h.rooms.setRoster(
+		types.LiveParticipant{Identity: host, Role: types.RoleHost},
+		types.LiveParticipant{Identity: "user_panelist", Role: types.RolePanelist},
+		types.LiveParticipant{Identity: "att_" + reg.JoinKey, Role: types.RoleAttendee},
+		types.LiveParticipant{Identity: "att_" + other.JoinKey, Role: types.RoleAttendee},
+	)
+
+	res, raw := h.sayAsGuest(wb.ID, types.SendMessageRequest{
+		JoinKey: reg.JoinKey,
+		Kind:    types.MsgChat,
+		ID:      "msg-mention-1",
+		Text:    "@Mention Host @Guest User @Ghost thoughts?",
+		Mentions: []string{
+			host, "att_" + other.JoinKey, "att_GHOST", types.MentionEveryone,
+		},
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("say: status %d body %s", res.StatusCode, raw)
+	}
+	packet, _ := h.rooms.lastSent(t)
+	want := []string{host, "att_" + other.JoinKey}
+	if got := packetMentions(packet); !slices.Equal(got, want) {
+		t.Errorf("delivered mentions = %v, want %v", got, want)
+	}
+	if packet["text"] != "@Mention Host @Guest User @Ghost thoughts?" {
+		t.Errorf("text was altered: %v", packet["text"])
+	}
+
+	backlog := h.backlogAsGuest(wb.ID, other.JoinKey, 0)
+	if len(backlog.Messages) != 1 || !slices.Equal(backlog.Messages[0].Mentions, want) {
+		t.Errorf("backlog mentions = %+v, want %v — a reload would lose the highlight",
+			backlog.Messages, want)
+	}
+}
+
+// Hiding attendees from each other has to hold in the mention list too: the audience
+// must not be able to tag — and so confirm the presence of — somebody hidden from them.
+func TestAttendeeCannotMentionHiddenAttendee(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Hidden Host", "mention-hidden@test.dev", true)
+	wb := h.liveWebinar("Hidden mentions", func(in *types.WebinarInput) {
+		in.Controls.HideAttendees = true
+	})
+	host := "user_" + wb.Host.ID
+	reg := h.registerAsGuest(wb.ID, "mention-hidden-a@test.dev")
+	other := h.registerAsGuest(wb.ID, "mention-hidden-b@test.dev")
+	h.rooms.setRoster(
+		types.LiveParticipant{Identity: host, Role: types.RoleHost},
+		types.LiveParticipant{Identity: "att_" + reg.JoinKey, Role: types.RoleAttendee},
+		types.LiveParticipant{Identity: "att_" + other.JoinKey, Role: types.RoleAttendee, Hidden: true},
+	)
+
+	res, raw := h.sayAsGuest(wb.ID, types.SendMessageRequest{
+		JoinKey: reg.JoinKey, Kind: types.MsgChat, ID: "msg-mention-2",
+		Text:     "@Guest User @Hidden Host",
+		Mentions: []string{"att_" + other.JoinKey, host},
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("say: status %d body %s", res.StatusCode, raw)
+	}
+	packet, _ := h.rooms.lastSent(t)
+	if got := packetMentions(packet); !slices.Equal(got, []string{host}) {
+		t.Errorf("mentions = %v, want only the host", got)
+	}
+
+	// The host, on the other hand, can see and tag the whole room.
+	res, raw = h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/say", types.SendMessageRequest{
+		Kind: types.MsgChat, ID: "msg-mention-3", Text: "@Guest User welcome",
+		Mentions: []string{"att_" + other.JoinKey},
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("host say: status %d body %s", res.StatusCode, raw)
+	}
+	packet, _ = h.rooms.lastSent(t)
+	if got := packetMentions(packet); !slices.Equal(got, []string{"att_" + other.JoinKey}) {
+		t.Errorf("host mentions = %v, want the attendee", got)
+	}
+}
+
+// A panelists-only message may only tag people who will receive it.
+func TestPanelistsOnlyMessageDropsAttendeeMentions(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Stage Host", "mention-stage@test.dev", true)
+	wb := h.liveWebinar("Stage mentions", nil)
+	h.rooms.setRoster(
+		types.LiveParticipant{Identity: "user_" + wb.Host.ID, Role: types.RoleHost},
+		types.LiveParticipant{Identity: "user_panelist", Role: types.RolePanelist},
+		types.LiveParticipant{Identity: "att_AUDIENCE", Role: types.RoleAttendee},
+	)
+
+	res, raw := h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/say", types.SendMessageRequest{
+		Kind: types.MsgChat, ID: "msg-mention-4", Text: "@Pat @Audience heads up",
+		Destination: types.ChatToPanelists,
+		Mentions:    []string{"user_panelist", "att_AUDIENCE", types.MentionEveryone},
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("say: status %d body %s", res.StatusCode, raw)
+	}
+	packet, to := h.rooms.lastSent(t)
+	want := []string{"user_panelist", types.MentionEveryone}
+	if got := packetMentions(packet); !slices.Equal(got, want) {
+		t.Errorf("mentions = %v, want %v", got, want)
+	}
+	if slices.Contains(to, "att_AUDIENCE") {
+		t.Errorf("a stage-only message reached the audience: %v", to)
+	}
+}
+
+// A message that mentions nobody is exactly what it was before mentions existed.
+func TestChatWithoutMentionsIsUnchanged(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Plain Host", "mention-plain@test.dev", true)
+	wb := h.liveWebinar("No mentions", nil)
+	reg := h.registerAsGuest(wb.ID, "mention-plain-a@test.dev")
+
+	res, raw := h.sayAsGuest(wb.ID, types.SendMessageRequest{
+		JoinKey: reg.JoinKey, Kind: types.MsgChat, ID: "msg-mention-5", Text: "hello @nobody",
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("say: status %d body %s", res.StatusCode, raw)
+	}
+	packet, _ := h.rooms.lastSent(t)
+	if _, present := packet["mentions"]; present {
+		t.Errorf("packet carries mentions for a message that asked for none: %v", packet)
+	}
+	backlog := h.backlogAsGuest(wb.ID, reg.JoinKey, 0)
+	if len(backlog.Messages) != 1 || backlog.Messages[0].Mentions != nil {
+		t.Errorf("stored mentions = %+v, want none", backlog.Messages)
+	}
+}

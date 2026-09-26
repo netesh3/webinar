@@ -343,7 +343,7 @@ func (s *Server) handleChatTranscript(w http.ResponseWriter, r *http.Request) {
 		"sessionId", "messageId", "seq", "timestamp",
 		"senderId", "userId", "senderName", "senderRole",
 		"messageType", "destination", "messageContent",
-		"mediaUrl", "mediaMime", "mediaBytes",
+		"mediaUrl", "mediaMime", "mediaBytes", "mentions",
 	})
 	for _, m := range messages {
 		_ = out.Write([]string{
@@ -351,6 +351,7 @@ func (s *Server) handleChatTranscript(w http.ResponseWriter, r *http.Request) {
 			m.SenderID, m.UserID, m.SenderName, string(m.SenderRole),
 			string(m.Type), string(m.Destination), m.Message,
 			m.MediaURL, m.MediaMime, strconv.FormatInt(m.MediaBytes, 10),
+			strings.Join(m.Mentions, " "),
 		})
 	}
 	out.Flush()
@@ -451,6 +452,7 @@ func (s *Server) deliverChat(
 		},
 		Text:        msg.Message,
 		Destination: msg.Destination,
+		Mentions:    msg.Mentions,
 		MediaURL:    msg.MediaURL,
 		MediaMime:   msg.MediaMime,
 		MediaWidth:  msg.MediaWidth,
