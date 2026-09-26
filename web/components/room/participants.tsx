@@ -29,6 +29,7 @@ import {
   MoreIcon,
   SearchIcon,
   TrashIcon,
+  UsersIcon,
 } from "../icons";
 import { SenderAvatar } from "../sender-avatar";
 import { Pill, RoleBadge } from "./chat-badges";
@@ -197,7 +198,7 @@ export function ParticipantsPanel() {
 // ---------------------------------------------------------------- host view
 
 function HostRoster() {
-  const { slug, join, realtime, controls, roster } = useRoomUI();
+  const { slug, join, realtime, roster } = useRoomUI();
   const { localParticipant } = useLocalParticipant();
   const { notify } = useToast();
   // From the context rather than a poll of its own: the control bar needs the same
@@ -250,6 +251,21 @@ function HostRoster() {
     return rows.filter((p) => matchRosterQuery(p, query));
   }, [live, query, join.identity, join.displayName, join.role]);
 
+  // Faces for the header, off the whole roster rather than `matching`, so typing
+  // in the search box does not change who the summary says is on stage.
+  const stageFaces = useMemo(() => {
+    const rows = withLocalOnRoster(live?.participants ?? [], {
+      identity: join.identity,
+      name: join.displayName,
+      role: join.role,
+    });
+    return rows
+      .filter((p) => p.role !== "attendee")
+      .sort((a, b) => Number(b.role === "host") - Number(a.role === "host"))
+      .slice(0, 3)
+      .map((p) => ({ name: p.name || p.identity, identity: p.identity }));
+  }, [live, join.identity, join.displayName, join.role]);
+
   const sections = useMemo(
     () => partitionHostRoster(matching, realtime.hands),
     [matching, realtime.hands],
@@ -260,7 +276,7 @@ function HostRoster() {
   const empty =
     sections.raised.length + sections.panelists.length + sections.attendees.length === 0;
 
-  // The counts, the search box and the privacy chip render straight away and only
+  // The counts, the search box and Mute all render straight away and only
   // the list waits. Replacing the whole panel with a spinner meant every open —
   // and every one of the five-second refreshes — flashed the chrome away.
   const loading = !live && !error;
@@ -363,19 +379,48 @@ function HostRoster() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 space-y-2.5 border-b border-line px-3 py-3">
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="font-medium text-ink">{live?.onStage ?? 0} on stage</span>
-          <span className="text-ink-3">·</span>
-          <span>{live?.attendees ?? 0} attending</span>
-          {controls.hideAttendees && (
-            <span
-              className="ml-auto inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-ink-2"
-              title="Attendees cannot see each other. You can, because this list comes from the server."
-            >
-              <EyeOffIcon className="size-3" />
-              Hidden
-            </span>
-          )}
+        {/* One row: who is here on the left, the room-wide action on the right.
+            The "Hidden" chip that used to sit here was only an indicator of the
+            hide-attendees privacy setting, which is toggled in Host controls. */}
+        <div className="@container flex items-center gap-2">
+          <RosterStats onStage={live?.onStage ?? 0} attending={live?.attendees ?? 0} faces={stageFaces} />
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setBusy("mute-all");
+                try {
+                  const { muted } = await api.muteAll(slug);
+                  notify(
+                    muted === 0
+                      ? "Nobody had an open microphone."
+                      : `Muted ${muted} ${muted === 1 ? "microphone" : "microphones"}.`,
+                    "ok",
+                  );
+                  await reload();
+                } catch (err) {
+                  notify(err instanceof Error ? err.message : "That didn't work.", "error");
+                } finally {
+                  setBusy(null);
+                }
+              })();
+            }}
+            disabled={busy !== null}
+            aria-busy={busy === "mute-all"}
+            title="Mute everyone except you"
+            aria-label="Mute everyone except you"
+            // 32px to look at, 44px to hit on touch — the header is one line and a
+            // full-height touch button would make it the tallest thing in it.
+            className="relative ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line-2 px-2 text-[12px] font-medium whitespace-nowrap text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-1.5 max-md:before:content-[''] @[17rem]:px-2.5 md:h-7"
+          >
+            {busy === "mute-all" ? (
+              <Spinner className="size-3.5" />
+            ) : (
+              <MicOffIcon className="size-3.5" />
+            )}
+            {/* Icon-only when the row is too narrow for the words. */}
+            <span className="hidden @[17rem]:inline">Mute all</span>
+          </button>
         </div>
 
         {/* The queue, and the one action that clears it.
@@ -420,38 +465,6 @@ function HostRoster() {
             />
           </div>
         )}
-
-        <button
-          type="button"
-          onClick={() => {
-            void (async () => {
-              setBusy("mute-all");
-              try {
-                const { muted } = await api.muteAll(slug);
-                notify(
-                  muted === 0
-                    ? "Nobody had an open microphone."
-                    : `Muted ${muted} ${muted === 1 ? "microphone" : "microphones"}.`,
-                  "ok",
-                );
-                await reload();
-              } catch (err) {
-                notify(err instanceof Error ? err.message : "That didn't work.", "error");
-              } finally {
-                setBusy(null);
-              }
-            })();
-          }}
-          disabled={busy !== null}
-          className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-line px-3 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-surface-2 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-8"
-        >
-          {busy === "mute-all" ? (
-            <Spinner className="size-3.5" />
-          ) : (
-            <MicOffIcon className="size-3.5" />
-          )}
-          Mute everyone except you
-        </button>
 
         {error && (
           <p className="text-[11.5px] text-live">
@@ -946,6 +959,50 @@ function AudienceRoster() {
           </Group>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** The host header's headcount: a number for the stage and one for the
+ *  audience, with the stage's faces when the row is wide enough to keep both
+ *  labels whole. The counts are the server's, so they include anybody the room
+ *  is hiding; the faces are capped at three and are only ever the stage. */
+function RosterStats({
+  onStage,
+  attending,
+  faces,
+}: {
+  onStage: number;
+  attending: number;
+  faces: { name: string; identity: string }[];
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2.5 overflow-hidden">
+      <span className="flex min-w-0 items-center gap-1.5">
+        {faces.length > 0 && (
+          <span className="hidden shrink-0 -space-x-1.5 @[22rem]:flex">
+            {faces.map((f) => (
+              <SenderAvatar
+                key={f.identity}
+                name={f.name}
+                identity={f.identity}
+                size="xs"
+                className="ring-2 ring-surface"
+              />
+            ))}
+          </span>
+        )}
+        <span className="truncate text-[12px] text-ink-3">
+          <span className="font-semibold text-ink tabular-nums">{onStage}</span> on stage
+        </span>
+      </span>
+      <span aria-hidden className="h-3.5 w-px shrink-0 bg-line-2" />
+      <span className="flex min-w-0 items-center gap-1.5">
+        <UsersIcon className="size-3.5 shrink-0 text-ink-3" />
+        <span className="truncate text-[12px] text-ink-3">
+          <span className="font-semibold text-ink tabular-nums">{attending}</span> attending
+        </span>
+      </span>
     </div>
   );
 }
