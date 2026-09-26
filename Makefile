@@ -122,6 +122,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the chat preview card: a burst of arrivals, a reconnect merging history, and
 	# your own echo coming back off the wire cannot be produced by hand in a live room.
 	cd web && node --experimental-strip-types --no-warnings lib/chat-notify.test.mts
+	# And chat avatars and grouping: the initials and colour must match the server's
+	# InitialsOf/HueFor, and a panelists-only aside must never join a public run.
+	cd web && node --experimental-strip-types --no-warnings lib/chat-groups.test.mts
 	# And the host roster sections: oldest-first hands and a search box that stays
 	# away until the list is too long to scan are not things a three-person room shows.
 	cd web && node --experimental-strip-types --no-warnings lib/roster.test.mts
