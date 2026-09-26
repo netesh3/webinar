@@ -35,15 +35,20 @@ export const engageNavItem = { href: ENGAGE_HOME, label: "Contacts" } as const;
 export function WhatsAppRemindersToggle({
   checked,
   onChange,
+  boxed = false,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
+  /** Draw the same boxed switch the schedule form uses for email. Absent
+   *  entirely when this deployment cannot connect WhatsApp, so the caller
+   *  never has to leave an empty box behind. */
+  boxed?: boolean;
 }) {
   const config = useAppConfig();
   const { account } = useSession();
   if (!config.whatsappConnect) return null;
   const connected = Boolean(account?.whatsapp?.connected);
-  return (
+  const toggle = (
     <Toggle
       checked={checked}
       onChange={onChange}
@@ -73,6 +78,16 @@ export function WhatsAppRemindersToggle({
         )
       }
     />
+  );
+  if (!boxed) return toggle;
+  return (
+    <div
+      className={`rounded-[10px] border px-1.5 py-0.5 ${
+        checked ? "border-brand-line bg-brand-soft" : "border-line bg-surface"
+      }`}
+    >
+      {toggle}
+    </div>
   );
 }
 

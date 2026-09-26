@@ -10,7 +10,7 @@ export default function ScheduleWebinarPage() {
       >
         ← Host Webinar
       </Link>
-      <h1 className="mb-6 text-[24px] font-semibold tracking-[-0.02em]">
+      <h1 className="mb-1 text-[24px] font-semibold tracking-[-0.02em]">
         Schedule a webinar
       </h1>
       <ScheduleForm />

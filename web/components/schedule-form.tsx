@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useMemo, useState } from "react";
-import { Alert, Disclosure, openPickerOnClick, Select, Spinner, Toggle } from "./controls";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { Alert, openPickerOnClick, Select, Spinner, Toggle } from "./controls";
 import { useAppConfig, useSession, useToast } from "./providers";
-import { Button, Card, SectionTitle } from "./ui";
-import { PlusIcon, TrashIcon } from "./icons";
+import { Button, Card } from "./ui";
+import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
 import { WebinarImagePicker } from "./webinar-image-picker";
-import { DEFAULT_REMINDERS, ReminderTimes } from "./reminder-times";
+import { DEFAULT_REMINDERS, describeReminders, ReminderTimes } from "./reminder-times";
 import { API_BASE, ApiError, api } from "@/lib/api";
 import type {
   AgendaItem,
@@ -232,6 +232,77 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
   };
 }
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The wall clock the host picked, as the sticky bar reads it. Built from the
+ *  input strings so it does not depend on the viewer's zone. */
+function formatScheduleWhen(date: string, time: string, zoneLabel: string): string | null {
+  const [y, m, d] = date.split("-").map(Number);
+  const [hh, mm] = time.split(":").map(Number);
+  if (![y, m, d, hh, mm].every((n) => Number.isFinite(n))) return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31 || hh > 23 || mm > 59) return null;
+  const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const ampm = hh >= 12 ? "PM" : "AM";
+  const h12 = hh % 12 || 12;
+  const clock = `${h12}:${String(mm).padStart(2, "0")} ${ampm}`;
+  const when = `${weekday} ${d} ${MONTHS[m - 1]}, ${clock}`;
+  return zoneLabel ? `${when} ${zoneLabel}` : when;
+}
+
+function formatDuration(minutes: number): string | null {
+  if (!minutes) return null;
+  return minutes >= 60
+    ? `${minutes / 60} hour${minutes > 60 ? "s" : ""}`
+    : `${minutes} minutes`;
+}
+
+function shortTimeZone(timeZone: string, at: Date): string {
+  try {
+    return (
+      new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" })
+        .formatToParts(at)
+        .find((p) => p.type === "timeZoneName")?.value ?? ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+/** One line for the action bar, from the form as it stands. A part that is
+ *  still empty is left out; a switch that is off is said, because off is a
+ *  choice the host already made. */
+function scheduleSummary(
+  form: FormState,
+  zoneLabel: string,
+): { lead: string | null; rest: string } {
+  const parts: string[] = [];
+  const duration = formatDuration(form.durationMin);
+  if (duration) parts.push(duration);
+  parts.push(
+    form.registrationRequired
+      ? form.approval === "manual"
+        ? "Registration on, manual approval"
+        : "Registration on, auto-approve"
+      : "Registration off",
+  );
+  if (form.attendeeLimit > 0) {
+    parts.push(`${form.attendeeLimit.toLocaleString()} seats`);
+  }
+  const remindersOn = form.options.emailReminders || form.options.whatsappReminders;
+  if (!remindersOn) {
+    parts.push("Reminders off");
+  } else if (form.options.reminders.length > 0) {
+    parts.push(`Reminders ${describeReminders(form.options.reminders)}`);
+  } else {
+    parts.push("Reminders on");
+  }
+  return {
+    lead: formatScheduleWhen(form.date, form.time, zoneLabel),
+    rest: parts.join(" · "),
+  };
+}
+
 export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
   const router = useRouter();
   const config = useAppConfig();
@@ -403,498 +474,761 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
     return instant;
   }, [form.date, form.time, form.timeZone]);
 
+  const summaryZone =
+    hydrated && startsAtPreview && form.timeZone
+      ? shortTimeZone(form.timeZone, startsAtPreview)
+      : "";
+  const summary = scheduleSummary(form, summaryZone);
+  const showDraft = !editing || webinar.status === "draft";
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         void submit("scheduled");
       }}
-      className="grid gap-4"
     >
-      {error && <Alert tone="error">{error}</Alert>}
+      {/* The bar is position:fixed, so it does not take a row. This padding
+          is what keeps the last fields from sitting underneath it. */}
+      <div className="grid gap-5 pb-48 lg:pb-24">
+        <div className="grid gap-3">
+          <p className="text-[13px] text-ink-2">
+            You can change everything after scheduling.
+          </p>
+          <JumpLinks />
+        </div>
 
-      {/* ---- basics ----
-          Text on the left, cover on the right from `lg` up, so this card is
-          not one stretched column of empty boxes. The description takes the
-          leftover height of that row; below `lg` the same fields stack. */}
-      <Card className="p-5">
-        <SectionTitle>Basics</SectionTitle>
-        <div className="grid gap-3.5">
-          <div className="grid gap-3.5 lg:grid-cols-2 lg:items-stretch lg:gap-6">
-            <div className="flex flex-col gap-3.5 lg:h-full">
-              <Text
-                label="Topic"
-                value={form.topic}
-                onChange={(v) => set("topic", v)}
-                error={fields.topic}
-                placeholder="What is this webinar called?"
-                required
-                large
-              />
+        {error && <Alert tone="error">{error}</Alert>}
 
-              <Text
-                label="One-line summary"
-                value={form.summary}
-                onChange={(v) => set("summary", v)}
-                hint="Shown on the browse page, under the title."
-              />
+        <FormGroup label="The webinar">
+          <FormSection
+            id="basics"
+            title="Basics"
+            description="What people see on the browse and registration pages."
+            first
+          >
+            <div className="grid gap-3.5">
+              {/* Topic and summary, then the cover, then the description, so a
+                  narrow screen reads in that order. `contents` lets those
+                  fields join this grid below `lg`; from `lg` they stack in the
+                  left column and the description takes the leftover height. */}
+              <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-stretch lg:gap-x-5">
+                <div className="contents lg:flex lg:h-full lg:flex-col lg:gap-3.5">
+                  <div className="order-1 lg:order-none">
+                    <Text
+                      label="Topic"
+                      value={form.topic}
+                      onChange={(v) => set("topic", v)}
+                      error={fields.topic}
+                      placeholder="What is this webinar called?"
+                      required
+                      large
+                    />
+                  </div>
 
-              <div className="flex min-h-28 flex-col lg:min-h-0 lg:flex-1">
-                <label className="label" htmlFor="description">
-                  Description
-                </label>
-                {/* Fills the column only from `lg`, where the cover beside it
-                    is the taller sibling. Absolute so `textarea.field`'s
-                    `height: auto` still stretches between the label and the
-                    bottom of the row. */}
-                <div className="min-h-28 lg:relative lg:min-h-0 lg:flex-1">
-                  <textarea
-                    id="description"
-                    className="field lg:absolute lg:inset-0 lg:!resize-none"
-                    rows={4}
-                    placeholder="Shown on the registration page."
-                    value={form.description}
-                    onChange={(e) => set("description", e.target.value)}
+                  <div className="order-2 lg:order-none">
+                    <Text
+                      label="One-line summary"
+                      value={form.summary}
+                      onChange={(v) => set("summary", v)}
+                      hint="Shown on the browse page, under the title."
+                    />
+                  </div>
+
+                  <div className="order-4 flex min-h-28 flex-col lg:order-none lg:min-h-0 lg:flex-1">
+                    <label className="label" htmlFor="description">
+                      Description
+                    </label>
+                    <div className="min-h-28 lg:relative lg:min-h-0 lg:flex-1">
+                      <textarea
+                        id="description"
+                        className="field lg:absolute lg:inset-0 lg:!resize-none"
+                        rows={4}
+                        placeholder="Shown on the registration page."
+                        value={form.description}
+                        onChange={(e) => set("description", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="order-3 lg:order-none lg:self-start">
+                  <WebinarImagePicker
+                    previewUrl={imagePreview}
+                    onChange={(prepared, preview) => {
+                      setPendingImage(prepared);
+                      setImageRemoved(false);
+                      setImagePreview(preview);
+                    }}
+                    onRemove={() => {
+                      setPendingImage(null);
+                      setImagePreview(null);
+                      // Only worth telling the server about if there was something
+                      // persisted to remove — a pending, never-uploaded selection being
+                      // cleared is not a change the webinar has ever seen.
+                      setImageRemoved(Boolean(webinar?.imageUrl));
+                    }}
                   />
                 </div>
               </div>
-            </div>
 
-            <WebinarImagePicker
-              previewUrl={imagePreview}
-              onChange={(prepared, preview) => {
-                setPendingImage(prepared);
-                setImageRemoved(false);
-                setImagePreview(preview);
-              }}
-              onRemove={() => {
-                setPendingImage(null);
-                setImagePreview(null);
-                // Only worth telling the server about if there was something
-                // persisted to remove — a pending, never-uploaded selection being
-                // cleared is not a change the webinar has ever seen.
-                setImageRemoved(Boolean(webinar?.imageUrl));
-              }}
-            />
-          </div>
-
-          <div className="grid gap-3.5 sm:grid-cols-2">
-            {/* Free text with suggestions from what already exists, rather than a
-                fixed list nobody can extend without a deploy. */}
-            <div>
-              <label className="label" htmlFor="track">
-                Topic tag
-              </label>
-              <input
-                id="track"
-                className="field"
-                list="track-suggestions"
-                placeholder="e.g. Architecture"
-                value={form.track}
-                onChange={(e) => set("track", e.target.value)}
-              />
-              <datalist id="track-suggestions">
-                {config.tracks.map((t) => (
-                  <option key={t} value={t} />
-                ))}
-              </datalist>
-            </div>
-
-            <Select
-              label="Type"
-              value={form.kind}
-              onChange={(v) => set("kind", v as FormState["kind"])}
-            >
-              <option value="live">Live webinar</option>
-              <option value="recurring">Recurring series</option>
-            </Select>
-          </div>
-        </div>
-      </Card>
-
-      {/* ---- when ---- */}
-      <Card className="p-5">
-        <SectionTitle>When</SectionTitle>
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="date">
-              Date
-            </label>
-            <input
-              id="date"
-              type="date"
-              onClick={openPickerOnClick}
-              className="field"
-              value={form.date}
-              onChange={(e) => set("date", e.target.value)}
-              // Only on a NEW webinar — an existing one may legitimately show a
-              // past date (it already ran, or it's a draft nobody finished), and
-              // an edit that touches an unrelated field must not be blocked by a
-              // date the host never touched. The server enforces the real rule
-              // (see normalizeWebinarInput's isCreate); this is a nudge so the
-              // native picker does not even offer a date that will be refused.
-              min={editing ? undefined : todayInputValue()}
-              required
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="time">
-              Start time
-            </label>
-            <input
-              id="time"
-              type="time"
-              onClick={openPickerOnClick}
-              className="field"
-              value={form.time}
-              onChange={(e) => set("time", e.target.value)}
-              required
-            />
-          </div>
-          <Select
-            label="Duration"
-            value={String(form.durationMin)}
-            onChange={(v) => set("durationMin", Number(v))}
-          >
-            {DURATIONS.map((m) => (
-              <option key={m} value={m}>
-                {m >= 60 ? `${m / 60} hour${m > 60 ? "s" : ""}` : `${m} minutes`}
-              </option>
-            ))}
-          </Select>
-
-          {/* Every IANA zone the browser knows. A four-city list is wrong for most
-              of the world and stale the next time a country changes its rules. */}
-          <Select
-            label="Time zone"
-            value={form.timeZone}
-            onChange={(v) => set("timeZone", v)}
-          >
-            {zones.map((z) => (
-              <option key={z} value={z}>
-                {timeZoneLabel(z)}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        {fields.startsAt && (
-          <p className="mt-2 text-[12px] font-medium text-live">{fields.startsAt}</p>
-        )}
-        {fields.timeZone && (
-          <p className="mt-2 text-[12px] font-medium text-live">{fields.timeZone}</p>
-        )}
-
-        {startsAtPreview && hydrated && (
-          <p className="mt-3 text-[12px] text-ink-3">
-            Starts{" "}
-            <strong className="font-medium text-ink-2">
-              {startsAtPreview.toLocaleString(undefined, {
-                dateStyle: "full",
-                timeStyle: "short",
-              })}
-            </strong>{" "}
-            in your local time
-            {form.timeZone !== localTimeZone() && ` (${localTimeZone()})`}.
-          </p>
-        )}
-      </Card>
-
-      {/* ---- registration ---- */}
-      <Card className="p-5">
-        <SectionTitle>Registration</SectionTitle>
-        <div className="grid gap-3.5">
-          <Toggle
-            checked={form.registrationRequired}
-            onChange={(v) => set("registrationRequired", v)}
-            label="Require registration"
-            description="Attendees fill in a form and get a personal join link. Signed-in accounts get it on their account instead."
-          />
-
-          <div className="grid gap-3.5 sm:grid-cols-2">
-            <Select
-              label="Approval"
-              value={form.approval}
-              onChange={(v) => set("approval", v as FormState["approval"])}
-              hint={
-                form.approval === "manual"
-                  ? "Registrants wait in a queue until you approve them."
-                  : undefined
-              }
-            >
-              <option value="automatic">Automatically approve</option>
-              <option value="manual">Manually approve each one</option>
-            </Select>
-
-            <Select
-              id="limit"
-              label="Attendee limit"
-              value={String(form.attendeeLimit)}
-              onChange={(v) => set("attendeeLimit", Number(v))}
-              hint={
-                config.maxAttendees
-                  ? `This server is sized for up to ${config.maxAttendees.toLocaleString()} concurrent attendees.`
-                  : undefined
-              }
-            >
-              {limitOptions(config.maxAttendees, form.attendeeLimit).map((n) => (
-                <option key={n} value={n}>
-                  {n.toLocaleString()} attendees
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          <Text
-            label="Passcode (optional)"
-            value={form.passcode}
-            onChange={(v) => set("passcode", v)}
-            hint="Shown alongside the webinar ID for anyone dialling in from a calendar invite."
-            error={fields.passcode}
-          />
-
-          <QuestionEditor
-            questions={form.questions}
-            onChange={(q) => set("questions", q)}
-          />
-        </div>
-      </Card>
-
-      {/* ---- the stage ---- */}
-      <Card className="p-5">
-        <SectionTitle>Who is on the stage</SectionTitle>
-        <div>
-          <label className="label" htmlFor="panelists">
-            Panelist emails
-          </label>
-          <textarea
-            id="panelists"
-            className="field"
-            rows={2}
-            placeholder="one@example.com, two@example.com"
-            value={form.panelistEmails}
-            onChange={(e) => set("panelistEmails", e.target.value)}
-          />
-          <p className="mt-1 text-[11.5px] leading-relaxed text-ink-3">
-            Panelists can share their camera and screen. They need an account,
-            because a publishing token is minted from a signed-in session — addresses
-            without one are skipped.
-          </p>
-          {fields.panelistEmails && (
-            <p className="mt-1 text-[12px] font-medium text-live">
-              {fields.panelistEmails}
-            </p>
-          )}
-          {editing && webinar.panelists.length > 0 && (
-            <p className="mt-2 text-[12px] text-ink-2">
-              Currently on the stage:{" "}
-              {webinar.panelists.map((p) => p.name).join(", ")}. Leave the box empty to
-              remove them all.
-            </p>
-          )}
-        </div>
-      </Card>
-
-      {/* ---- in-session defaults ---- */}
-      <Card className="p-5">
-        <SectionTitle>How the session starts</SectionTitle>
-        <p className="mb-2 text-[12px] leading-relaxed text-ink-2">
-          You can change any of these live from the host controls once the webinar
-          is running.
-        </p>
-        <div className="grid gap-1 sm:grid-cols-2">
-          <Toggle
-            checked={form.controls.hideAttendees}
-            onChange={(v) => set("controls", { ...form.controls, hideAttendees: v })}
-            label="Hide attendees from each other"
-            description="Attendees see only you and the panelists. Enforced by the media server."
-          />
-          <Toggle
-            checked={form.controls.muteOnEntry}
-            onChange={(v) => set("controls", { ...form.controls, muteOnEntry: v })}
-            label="Mute panelists on entry"
-          />
-          <Toggle
-            checked={form.controls.allowUnmute}
-            onChange={(v) => set("controls", { ...form.controls, allowUnmute: v })}
-            label="Panelists may unmute themselves"
-          />
-          <Toggle
-            checked={form.controls.chatEnabled}
-            onChange={(v) => set("controls", { ...form.controls, chatEnabled: v })}
-            label="Attendee chat"
-          />
-          <Toggle
-            checked={form.controls.qaEnabled}
-            onChange={(v) => set("controls", { ...form.controls, qaEnabled: v })}
-            label="Q&A"
-          />
-          <Toggle
-            checked={form.controls.raiseHandEnabled}
-            onChange={(v) => set("controls", { ...form.controls, raiseHandEnabled: v })}
-            label="Raise hand"
-          />
-          <Toggle
-            checked={form.controls.reactionsEnabled}
-            onChange={(v) => set("controls", { ...form.controls, reactionsEnabled: v })}
-            label="Reactions"
-          />
-        </div>
-      </Card>
-
-      {/* ---- the long tail, open ----
-           Folded by default until now, on the reasoning that it keeps the form short. It
-           does, and the cost is worse: an agenda, the takeaways and six switches including
-           recording and captions are the parts of a webinar a host most wants to set while
-           they are already thinking about it, and behind a chevron they are easy to finish
-           the form without ever seeing. Still a disclosure rather than a plain section, so
-           anyone who does not want it can put it away — and a `details` element remembers
-           nothing, so it comes back open next time, which is the point. */}
-      <Card className="p-5">
-        <Disclosure summary="Agenda, takeaways and other options" defaultOpen>
-          <div className="grid gap-4 pt-1">
-            <AgendaEditor agenda={form.agenda} onChange={(a) => set("agenda", a)} />
-
-            <div>
-              <label className="label" htmlFor="takeaways">
-                What attendees will learn
-              </label>
-              <textarea
-                id="takeaways"
-                className="field"
-                rows={3}
-                placeholder="One per line."
-                value={form.takeaways}
-                onChange={(e) => set("takeaways", e.target.value)}
-              />
-            </div>
-
-            <div>
-              <span className="label">Other options</span>
-              <div className="grid gap-1 sm:grid-cols-2">
-                {(
-                  [
-                    ["practiceSession", "Practice session (backstage)"],
-                    ["autoRecord", "Record automatically"],
-                    ["captions", "Live captions"],
-                    ["multistream", "Stream to YouTube / LinkedIn"],
-                    ["postWebinarSurvey", "Post-webinar survey"],
-                    ["emailReminders", "Email reminders"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <Toggle
-                    key={key}
-                    checked={Boolean(form.options[key])}
-                    onChange={(v) => set("options", { ...form.options, [key]: v })}
-                    label={label}
+              <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-5">
+                {/* Free text with suggestions from what already exists, rather than a
+                    fixed list nobody can extend without a deploy. */}
+                <div>
+                  <label className="label" htmlFor="track">
+                    Topic tag
+                  </label>
+                  <input
+                    id="track"
+                    className="field"
+                    list="track-suggestions"
+                    placeholder="e.g. Architecture"
+                    value={form.track}
+                    onChange={(e) => set("track", e.target.value)}
                   />
+                  <datalist id="track-suggestions">
+                    {config.tracks.map((t) => (
+                      <option key={t} value={t} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <KindControl value={form.kind} onChange={(v) => set("kind", v)} />
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection
+            id="when"
+            title="When"
+            description="Defaults to today, at the next five-minute mark."
+          >
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.5fr)]">
+              <div>
+                <label className="label" htmlFor="date">
+                  Date
+                </label>
+                <input
+                  id="date"
+                  type="date"
+                  onClick={openPickerOnClick}
+                  className="field"
+                  value={form.date}
+                  onChange={(e) => set("date", e.target.value)}
+                  // Only on a NEW webinar — an existing one may legitimately show a
+                  // past date (it already ran, or it's a draft nobody finished), and
+                  // an edit that touches an unrelated field must not be blocked by a
+                  // date the host never touched. The server enforces the real rule
+                  // (see normalizeWebinarInput's isCreate); this is a nudge so the
+                  // native picker does not even offer a date that will be refused.
+                  min={editing ? undefined : todayInputValue()}
+                  required
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="time">
+                  Start time
+                </label>
+                <input
+                  id="time"
+                  type="time"
+                  onClick={openPickerOnClick}
+                  className="field"
+                  value={form.time}
+                  onChange={(e) => set("time", e.target.value)}
+                  required
+                />
+              </div>
+              <Select
+                label="Duration"
+                value={String(form.durationMin)}
+                onChange={(v) => set("durationMin", Number(v))}
+              >
+                {DURATIONS.map((m) => (
+                  <option key={m} value={m}>
+                    {m >= 60 ? `${m / 60} hour${m > 60 ? "s" : ""}` : `${m} minutes`}
+                  </option>
                 ))}
-                {/* The CRM's switch, which knows when it cannot apply. */}
+              </Select>
+
+              {/* Every IANA zone the browser knows. A four-city list is wrong for most
+                  of the world and stale the next time a country changes its rules. */}
+              <Select
+                label="Time zone"
+                value={form.timeZone}
+                onChange={(v) => set("timeZone", v)}
+              >
+                {zones.map((z) => (
+                  <option key={z} value={z}>
+                    {timeZoneLabel(z)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            {fields.startsAt && (
+              <p className="mt-2 text-[12px] font-medium text-live">{fields.startsAt}</p>
+            )}
+            {fields.timeZone && (
+              <p className="mt-2 text-[12px] font-medium text-live">{fields.timeZone}</p>
+            )}
+
+            {startsAtPreview && hydrated && (
+              <p className="mt-3 flex items-start gap-2 rounded-lg bg-surface-2 px-3 py-2.5 text-[12px] text-ink-3">
+                <CalendarIcon className="mt-0.5 size-3.5 shrink-0 text-ink-2" />
+                <span>
+                  Starts{" "}
+                  <strong className="font-medium text-ink-2">
+                    {startsAtPreview.toLocaleString(undefined, {
+                      dateStyle: "full",
+                      timeStyle: "short",
+                    })}
+                  </strong>{" "}
+                  in your local time
+                  {form.timeZone !== localTimeZone() && ` (${localTimeZone()})`}.
+                </span>
+              </p>
+            )}
+          </FormSection>
+        </FormGroup>
+
+        <FormGroup label="Who can join">
+          <FormSection
+            id="registration"
+            title="Registration"
+            description="Who gets in, and what you ask them first."
+            first
+          >
+            <div className="grid gap-3.5">
+              <Boxed on={form.registrationRequired}>
+                <Toggle
+                  checked={form.registrationRequired}
+                  onChange={(v) => set("registrationRequired", v)}
+                  label="Require registration"
+                  description="Attendees fill in a form and get a personal join link. Signed-in accounts get it on their account instead."
+                />
+              </Boxed>
+
+              <div className="grid gap-3.5 lg:grid-cols-3">
+                <Select
+                  label="Approval"
+                  value={form.approval}
+                  onChange={(v) => set("approval", v as FormState["approval"])}
+                  hint={
+                    form.approval === "manual"
+                      ? "Registrants wait in a queue until you approve them."
+                      : undefined
+                  }
+                >
+                  <option value="automatic">Automatically approve</option>
+                  <option value="manual">Manually approve each one</option>
+                </Select>
+
+                <Select
+                  id="limit"
+                  label="Attendee limit"
+                  value={String(form.attendeeLimit)}
+                  onChange={(v) => set("attendeeLimit", Number(v))}
+                  hint={
+                    config.maxAttendees
+                      ? `This server is sized for up to ${config.maxAttendees.toLocaleString()} concurrent attendees.`
+                      : undefined
+                  }
+                >
+                  {limitOptions(config.maxAttendees, form.attendeeLimit).map((n) => (
+                    <option key={n} value={n}>
+                      {n.toLocaleString()} attendees
+                    </option>
+                  ))}
+                </Select>
+
+                <Text
+                  label="Passcode (optional)"
+                  value={form.passcode}
+                  onChange={(v) => set("passcode", v)}
+                  hint="Shown alongside the webinar ID for anyone dialling in from a calendar invite."
+                  error={fields.passcode}
+                />
+              </div>
+
+              <QuestionEditor
+                questions={form.questions}
+                onChange={(q) => set("questions", q)}
+              />
+            </div>
+          </FormSection>
+
+          {/* Email, WhatsApp and the times they share. They used to sit in
+              Other options, which hid the switches from the times they control. */}
+          <FormSection
+            id="reminders"
+            title="Reminders"
+            description="The same times drive email and WhatsApp."
+          >
+            <div className="grid gap-3.5">
+              <div className="grid gap-2.5 lg:grid-cols-2">
+                <Boxed
+                  on={Boolean(form.options.emailReminders)}
+                  className="lg:only:col-span-2"
+                >
+                  <Toggle
+                    checked={Boolean(form.options.emailReminders)}
+                    onChange={(v) => set("options", { ...form.options, emailReminders: v })}
+                    label="Email reminders"
+                  />
+                </Boxed>
                 <WhatsAppRemindersToggle
+                  boxed
                   checked={Boolean(form.options.whatsappReminders)}
                   onChange={(v) =>
                     set("options", { ...form.options, whatsappReminders: v })
                   }
                 />
               </div>
-              <div className="mt-3">
-                <ReminderTimes
-                  value={form.options.reminders}
-                  onChange={(r) => set("options", { ...form.options, reminders: r })}
-                  disabled={!form.options.emailReminders && !form.options.whatsappReminders}
-                />
-              </div>
-              {form.options.multistream && (
-                <div className="mt-3 grid gap-2">
-                  {config.youtubeOAuth && account?.youtube?.connected ? (
-                    <p className="text-[12.5px] text-ink-2">
-                      Linked channel:{" "}
-                      <span className="font-medium text-ink">
-                        {account.youtube.channelTitle || "YouTube"}
-                      </span>
-                      . We create an Unlisted live when you start, and put the
-                      watch link in Recordings. Paste a Studio key below only if
-                      you want a different destination.
-                    </p>
-                  ) : config.youtubeOAuth ? (
-                    <p className="text-[12.5px] text-ink-2">
-                      <a
-                        href={api.youtubeConnectURL(
-                          typeof window === "undefined"
-                            ? "/host/schedule"
-                            : window.location.pathname,
-                        )}
-                        className="font-medium text-brand hover:underline"
-                      >
-                        Connect YouTube
-                      </a>{" "}
-                      to create the live automatically, or paste a stream key
-                      from Studio.
-                    </p>
-                  ) : null}
-                  <div className="grid gap-2 sm:grid-cols-2">
-                  <label className="grid gap-1">
-                    <span className="text-[12.5px] font-medium text-ink">YouTube watch link</span>
-                    <input
-                      type="url"
-                      value={form.streamWatchUrl}
-                      onChange={(e) => set("streamWatchUrl", e.target.value)}
-                      placeholder="https://youtu.be/…"
-                      className="h-10 rounded-lg border border-line bg-surface px-3 text-[13px]"
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="text-[12.5px] font-medium text-ink">Stream key</span>
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      value={form.streamKey}
-                      onChange={(e) => set("streamKey", e.target.value)}
-                      placeholder={
-                        webinar?.streamKeySaved
-                          ? "Already saved — paste a new key to replace"
-                          : "From YouTube Studio → Go live"
-                      }
-                      className="h-10 rounded-lg border border-line bg-surface px-3 font-mono text-[13px]"
-                    />
-                  </label>
-                  </div>
-                  <p className="text-[12px] text-ink-3">
-                    We push the same mix attendees see. Set the YouTube live to Unlisted or
-                    Private if you want it as a recording. The watch link shows in the
-                    recordings tab after the session.
-                  </p>
-                </div>
+              <ReminderTimes
+                value={form.options.reminders}
+                onChange={(r) => set("options", { ...form.options, reminders: r })}
+                disabled={!form.options.emailReminders && !form.options.whatsappReminders}
+              />
+            </div>
+          </FormSection>
+
+          <FormSection
+            id="stage"
+            title="Who is on the stage"
+            description="Panelists can share their camera and screen."
+          >
+            <div>
+              <label className="label" htmlFor="panelists">
+                Panelist emails
+              </label>
+              <textarea
+                id="panelists"
+                className="field"
+                rows={2}
+                placeholder="one@example.com, two@example.com"
+                value={form.panelistEmails}
+                onChange={(e) => set("panelistEmails", e.target.value)}
+              />
+              <p className="mt-1 text-[11.5px] leading-relaxed text-ink-3">
+                They need an account, because a publishing token is minted from a
+                signed-in session — addresses without one are skipped.
+              </p>
+              {fields.panelistEmails && (
+                <p className="mt-1 text-[12px] font-medium text-live">
+                  {fields.panelistEmails}
+                </p>
+              )}
+              {editing && webinar.panelists.length > 0 && (
+                <p className="mt-2 text-[12px] text-ink-2">
+                  Currently on the stage:{" "}
+                  {webinar.panelists.map((p) => p.name).join(", ")}. Leave the box empty to
+                  remove them all.
+                </p>
               )}
             </div>
-          </div>
-        </Disclosure>
-      </Card>
+          </FormSection>
+        </FormGroup>
 
-      <div className="flex flex-wrap items-center gap-2.5 pb-6">
-        <Button type="submit" size="lg" disabled={busy !== null}>
-          {busy === "scheduled" && <Spinner className="size-4" />}
-          {editing ? "Save changes" : "Schedule"}
-        </Button>
-        {(!editing || webinar.status === "draft") && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="lg"
-            disabled={busy !== null}
-            onClick={() => void submit("draft")}
+        <FormGroup label="In the room">
+          <FormSection
+            id="session"
+            title="How the session starts"
+            description="You can change any of these live from the host controls once the webinar is running."
+            first
           >
-            {busy === "draft" && <Spinner className="size-4" />}
-            Save as draft
-          </Button>
-        )}
-        <span className="text-[12px] text-ink-3">
-          You can change everything after scheduling.
-        </span>
+            <div className="grid gap-1 lg:grid-cols-2">
+              <Toggle
+                checked={form.controls.hideAttendees}
+                onChange={(v) => set("controls", { ...form.controls, hideAttendees: v })}
+                label="Hide attendees from each other"
+                description="Attendees see only you and the panelists. Enforced by the media server."
+              />
+              <Toggle
+                checked={form.controls.muteOnEntry}
+                onChange={(v) => set("controls", { ...form.controls, muteOnEntry: v })}
+                label="Mute panelists on entry"
+              />
+              <Toggle
+                checked={form.controls.allowUnmute}
+                onChange={(v) => set("controls", { ...form.controls, allowUnmute: v })}
+                label="Panelists may unmute themselves"
+              />
+              <Toggle
+                checked={form.controls.chatEnabled}
+                onChange={(v) => set("controls", { ...form.controls, chatEnabled: v })}
+                label="Attendee chat"
+              />
+              <Toggle
+                checked={form.controls.qaEnabled}
+                onChange={(v) => set("controls", { ...form.controls, qaEnabled: v })}
+                label="Q&A"
+              />
+              <Toggle
+                checked={form.controls.raiseHandEnabled}
+                onChange={(v) => set("controls", { ...form.controls, raiseHandEnabled: v })}
+                label="Raise hand"
+              />
+              <Toggle
+                checked={form.controls.reactionsEnabled}
+                onChange={(v) => set("controls", { ...form.controls, reactionsEnabled: v })}
+                label="Reactions"
+              />
+            </div>
+          </FormSection>
+
+          <FormSection
+            id="extras"
+            title="Agenda and extras"
+            description="What people will get, and what happens around the session."
+          >
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-7">
+              <div className="grid content-start gap-4">
+                <AgendaEditor agenda={form.agenda} onChange={(a) => set("agenda", a)} />
+
+                <div>
+                  <label className="label" htmlFor="takeaways">
+                    What attendees will learn
+                  </label>
+                  <textarea
+                    id="takeaways"
+                    className="field"
+                    rows={3}
+                    placeholder="One per line."
+                    value={form.takeaways}
+                    onChange={(e) => set("takeaways", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <span className="label">Other options</span>
+                <div className="rounded-[10px] border border-line px-2 py-1">
+                  {(
+                    [
+                      ["practiceSession", "Practice session (backstage)"],
+                      ["autoRecord", "Record automatically"],
+                      ["captions", "Live captions"],
+                      ["multistream", "Stream to YouTube / LinkedIn"],
+                      ["postWebinarSurvey", "Post-webinar survey"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <Toggle
+                      key={key}
+                      checked={Boolean(form.options[key])}
+                      onChange={(v) => set("options", { ...form.options, [key]: v })}
+                      label={label}
+                    />
+                  ))}
+                </div>
+                {form.options.multistream && (
+                  <div className="mt-3 grid gap-2">
+                    {config.youtubeOAuth && account?.youtube?.connected ? (
+                      <p className="text-[12.5px] text-ink-2">
+                        Linked channel:{" "}
+                        <span className="font-medium text-ink">
+                          {account.youtube.channelTitle || "YouTube"}
+                        </span>
+                        . We create an Unlisted live when you start, and put the
+                        watch link in Recordings. Paste a Studio key below only if
+                        you want a different destination.
+                      </p>
+                    ) : config.youtubeOAuth ? (
+                      <p className="text-[12.5px] text-ink-2">
+                        <a
+                          href={api.youtubeConnectURL(
+                            typeof window === "undefined"
+                              ? "/host/schedule"
+                              : window.location.pathname,
+                          )}
+                          className="font-medium text-brand hover:underline"
+                        >
+                          Connect YouTube
+                        </a>{" "}
+                        to create the live automatically, or paste a stream key
+                        from Studio.
+                      </p>
+                    ) : null}
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="grid gap-1">
+                        <span className="text-[12.5px] font-medium text-ink">YouTube watch link</span>
+                        <input
+                          type="url"
+                          value={form.streamWatchUrl}
+                          onChange={(e) => set("streamWatchUrl", e.target.value)}
+                          placeholder="https://youtu.be/…"
+                          className="h-10 rounded-lg border border-line bg-surface px-3 text-[13px]"
+                        />
+                      </label>
+                      <label className="grid gap-1">
+                        <span className="text-[12.5px] font-medium text-ink">Stream key</span>
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          value={form.streamKey}
+                          onChange={(e) => set("streamKey", e.target.value)}
+                          placeholder={
+                            webinar?.streamKeySaved
+                              ? "Already saved — paste a new key to replace"
+                              : "From YouTube Studio → Go live"
+                          }
+                          className="h-10 rounded-lg border border-line bg-surface px-3 font-mono text-[13px]"
+                        />
+                      </label>
+                    </div>
+                    <p className="text-[12px] text-ink-3">
+                      We push the same mix attendees see. Set the YouTube live to Unlisted or
+                      Private if you want it as a recording. The watch link shows in the
+                      recordings tab after the session.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </FormSection>
+        </FormGroup>
       </div>
+
+      <ActionBar
+        lead={summary.lead}
+        rest={summary.rest}
+        editing={editing}
+        showDraft={showDraft}
+        busy={busy}
+        onDraft={() => void submit("draft")}
+      />
     </form>
   );
 }
+
+const JUMPS = [
+  { id: "basics", label: "Basics" },
+  { id: "when", label: "When" },
+  { id: "registration", label: "Registration" },
+  { id: "reminders", label: "Reminders" },
+  { id: "stage", label: "Stage" },
+  { id: "session", label: "Session" },
+  { id: "extras", label: "Agenda" },
+] as const;
+
+function JumpLinks() {
+  const [active, setActive] = useState<string>(JUMPS[0].id);
+
+  useEffect(() => {
+    const nodes = JUMPS.map((jump) => document.getElementById(jump.id)).filter(
+      (node): node is HTMLElement => node !== null,
+    );
+    if (nodes.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const hit = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (hit) setActive(hit.target.id);
+      },
+      { rootMargin: "-80px 0px -55% 0px", threshold: [0, 0.15] },
+    );
+    for (const node of nodes) observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <nav aria-label="On this page" className="-mx-1 flex gap-1 overflow-x-auto px-1">
+      {JUMPS.map((jump) => {
+        const on = active === jump.id;
+        return (
+          <a
+            key={jump.id}
+            href={`#${jump.id}`}
+            onClick={() => setActive(jump.id)}
+            aria-current={on ? "location" : undefined}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+              on ? "bg-brand-soft font-medium text-brand" : "text-ink-2 hover:bg-surface-2"
+            }`}
+          >
+            {jump.label}
+          </a>
+        );
+      })}
+    </nav>
+  );
+}
+
+function FormGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <h2 className="mb-2 text-[11px] font-semibold tracking-[0.07em] text-ink-3 uppercase">
+        {label}
+      </h2>
+      <Card>{children}</Card>
+    </div>
+  );
+}
+
+function FormSection({
+  id,
+  title,
+  description,
+  first,
+  children,
+}: {
+  id: string;
+  title: string;
+  description: string;
+  first?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      id={id}
+      tabIndex={-1}
+      className={`scroll-mt-20 grid gap-3 px-4 py-5 outline-none lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start lg:gap-8 lg:px-6 lg:py-6 ${
+        first ? "" : "border-t border-line"
+      }`}
+    >
+      <div>
+        <h3 className="text-[14px] font-semibold tracking-[-0.005em] text-ink">{title}</h3>
+        <p className="mt-1 text-[12px] leading-normal text-ink-3">{description}</p>
+      </div>
+      <div className="min-w-0">{children}</div>
+    </section>
+  );
+}
+
+function Boxed({
+  on,
+  className = "",
+  children,
+}: {
+  on: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`rounded-[10px] border px-1.5 py-0.5 ${
+        on ? "border-brand-line bg-brand-soft" : "border-line bg-surface"
+      } ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function KindControl({
+  value,
+  onChange,
+}: {
+  value: FormState["kind"];
+  onChange: (next: FormState["kind"]) => void;
+}) {
+  const name = useId();
+  const labelId = useId();
+  const options = [
+    ["live", "Live webinar"],
+    ["recurring", "Recurring series"],
+  ] as const;
+  return (
+    <div>
+      <span className="label" id={labelId}>
+        Type
+      </span>
+      <div
+        role="radiogroup"
+        aria-labelledby={labelId}
+        className="flex h-10 gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5"
+      >
+        {options.map(([option, label]) => {
+          const active = value === option;
+          return (
+            <label
+              key={option}
+              className={`flex flex-1 cursor-pointer items-center justify-center rounded-md text-[13px] font-medium has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand/40 ${
+                active
+                  ? "border border-line bg-surface text-ink"
+                  : "border border-transparent text-ink-2"
+              }`}
+            >
+              <input
+                type="radio"
+                name={name}
+                value={option}
+                checked={active}
+                onChange={() => onChange(option)}
+                className="sr-only"
+              />
+              {label}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ActionBar({
+  lead,
+  rest,
+  editing,
+  showDraft,
+  busy,
+  onDraft,
+}: {
+  lead: string | null;
+  rest: string;
+  editing: boolean;
+  showDraft: boolean;
+  busy: "scheduled" | "draft" | null;
+  onDraft: () => void;
+}) {
+  return (
+    <div
+      data-schedule-bar
+      className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]"
+    >
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-2.5 px-4 py-2.5 sm:px-5 lg:flex-row lg:items-center lg:gap-4 lg:py-3">
+        <p className="flex min-w-0 flex-1 items-start gap-2 text-[12.5px] leading-snug text-ink-2 lg:items-center">
+          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ok lg:mt-0" aria-hidden />
+          <span className="min-w-0 lg:truncate">
+            {lead && <strong className="font-semibold text-ink">{lead}</strong>}
+            {rest && (
+              <span>
+                {lead ? " · " : ""}
+                {rest}
+              </span>
+            )}
+          </span>
+        </p>
+        <div className="flex gap-2 lg:shrink-0">
+          {showDraft && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              className="flex-1 lg:flex-none"
+              disabled={busy !== null}
+              onClick={onDraft}
+            >
+              {busy === "draft" && <Spinner className="size-4" />}
+              Save as draft
+            </Button>
+          )}
+          <Button
+            type="submit"
+            size="lg"
+            className="flex-1 lg:flex-none"
+            disabled={busy !== null}
+          >
+            {busy === "scheduled" && <Spinner className="size-4" />}
+            {editing ? "Save changes" : "Schedule"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // ------------------------------------------------------------------- fields
 

@@ -1,23 +1,39 @@
 /* Next.js shows this the instant the "Schedule a webinar" link is clicked —
- * before ScheduleForm's own JS chunk (951 lines, the timezone list, the
- * image picker) has finished downloading and hydrating. Without it the click
- * felt like it had done nothing for a beat; this is what fills that beat.
+ * before ScheduleForm's own JS chunk (the timezone list, the image picker)
+ * has finished downloading and hydrating. Without it the click felt like it
+ * had done nothing for a beat; this is what fills that beat.
  *
- * Shaped like the real form (title, then stacked card sections) rather than
- * a spinner, so there's no layout jump when ScheduleForm actually mounts. */
+ * Shaped like the real form (title, jump links, three grouped cards) rather
+ * than a spinner, so there's no layout jump when ScheduleForm actually mounts. */
 export default function Loading() {
   return (
     <>
-      <div className="mb-4 h-[17px] w-20 animate-pulse rounded bg-surface-2" />
-      <div className="mb-6 h-[29px] w-64 animate-pulse rounded bg-surface-2" />
-      <div className="grid gap-5">
-        {[168, 220, 140, 110, 96].map((h, i) => (
+      <div className="mb-4 h-[17px] w-28 animate-pulse rounded bg-surface-2" />
+      <div className="mb-1 h-7 w-64 animate-pulse rounded bg-surface-2" />
+      <div className="mt-3 mb-3 h-4 w-72 animate-pulse rounded bg-surface-2" />
+      <div className="mb-5 flex gap-1 overflow-hidden">
+        {[72, 56, 96, 88, 56, 72, 68].map((w) => (
           <div
-            key={i}
-            className="animate-pulse rounded-xl border border-line bg-surface p-5"
+            key={w}
+            className="h-7 shrink-0 animate-pulse rounded-full bg-surface-2"
+            style={{ width: w }}
+          />
+        ))}
+      </div>
+      <div className="grid gap-5 pb-48 lg:pb-24">
+        {[320, 420, 280].map((h) => (
+          <div
+            key={h}
+            className="animate-pulse rounded-xl border border-line bg-surface"
             style={{ height: h }}
           />
         ))}
+      </div>
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface">
+        <div className="mx-auto flex w-full max-w-6xl justify-end gap-2 px-4 py-2.5 sm:px-5 lg:py-3">
+          <div className="h-11 flex-1 animate-pulse rounded-lg bg-surface-2 lg:flex-none lg:w-32" />
+          <div className="h-11 flex-1 animate-pulse rounded-lg bg-surface-2 lg:flex-none lg:w-28" />
+        </div>
       </div>
     </>
   );
