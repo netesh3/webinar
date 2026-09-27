@@ -12,7 +12,8 @@ import {
 import { CheckIcon, CloseIcon, RotateCwIcon, SpinnerIcon } from "../icons";
 import { useToast } from "../providers";
 
-/* The room's connection toast: "Reconnecting…" → "You're back online", or "Connection lost"
+/* The room's connection toast: "You're connected" when a presenter first reaches the stage,
+ * "Reconnecting…" → "You're back online", or "Connection lost"
  * with Rejoin. When each shows is lib/connection-toast.ts; this feeds it the SDK's state and
  * the room's own retry ladder, and draws the card in the join toasts' style — the same dark
  * surface, a ring that breathes while something is in progress and a check that pops in when
@@ -54,7 +55,7 @@ export function useConnectionToast(
   recovering: number | null,
   attempts: number,
   publisher: boolean,
-): void {
+): { greet: () => void } {
   const { upsert, dismissKey } = useToast();
   const state = useConnectionState(room);
   const offline = useSyncExternalStore(subscribeOnline, readOffline, readOfflineOnServer);
@@ -76,7 +77,7 @@ export function useConnectionToast(
       };
       upsert(KEY, {
         message: `${title} ${detail}`,
-        tone: view.phase === "back" ? "ok" : view.phase === "lost" ? "error" : "info",
+        tone: view.phase === "back" || view.phase === "connected" ? "ok" : view.phase === "lost" ? "error" : "info",
         node: <ConnectionToastCard view={view} publisher={publisher} onClose={onClose} />,
         interactive: true,
         urgent: view.phase === "lost",
@@ -106,6 +107,12 @@ export function useConnectionToast(
     },
     [dismissKey],
   );
+
+  // Called by the room when a host or panelist first reaches the stage on joining.
+  const greet = useCallback(() => {
+    if (tracker.greet(Date.now())) syncRef.current();
+  }, [tracker]);
+  return { greet };
 }
 
 // ------------------------------------------------------------------ the card
@@ -123,11 +130,13 @@ export function ConnectionToastCard({
 }) {
   const { title, detail } = connectionToastText(view, publisher);
   const tone = view.phase;
+  // "You're connected" and "You're back online" are the same card: green, a check, done.
+  const good = tone === "back" || tone === "connected";
   return (
     <div
       data-phase={tone}
       className={`join-card conn-card room-dark flex w-full items-start gap-3 rounded-xl border bg-surface/95 py-2.5 pr-2 pl-3 text-left shadow-xl backdrop-blur sm:w-[20rem] ${
-        tone === "back" ? "border-ok/35" : tone === "lost" ? "border-live/40" : "border-warn/35"
+        good ? "border-ok/35" : tone === "lost" ? "border-live/40" : "border-warn/35"
       }`}
     >
       <ConnectionBadge phase={tone} />
@@ -135,7 +144,7 @@ export function ConnectionToastCard({
         <p className={`text-[13px] leading-snug font-semibold ${tone === "lost" ? "text-live" : "text-ink"}`}>
           {title}
         </p>
-        <p className={`mt-0.5 text-[12px] leading-snug ${tone === "back" ? "font-medium text-ok" : "text-ink-2"}`}>
+        <p className={`mt-0.5 text-[12px] leading-snug ${good ? "font-medium text-ok" : "text-ink-2"}`}>
           {detail}
         </p>
         {tone === "lost" && (
@@ -164,12 +173,12 @@ export function ConnectionToastCard({
 }
 
 /** The round badge on the left: a spinner in a breathing amber ring while reconnecting,
- *  a red ring with the rejoin arrow when lost, a green disc with a check when back. */
+ *  a red ring with the rejoin arrow when lost, a green disc with a check when back or connected. */
 function ConnectionBadge({ phase }: { phase: ConnectionToastView["phase"] }) {
   return (
     <span className="conn-badge join-avatar rounded-full" data-phase={phase} aria-hidden>
       <span className="conn-disc grid size-8 place-items-center rounded-full">
-        {phase === "back" ? (
+        {phase === "back" || phase === "connected" ? (
           <CheckIcon className="conn-check size-4" />
         ) : phase === "lost" ? (
           <RotateCwIcon className="size-4" />
