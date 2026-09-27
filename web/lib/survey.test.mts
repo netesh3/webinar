@@ -17,7 +17,9 @@ import {
   moveItem,
   previewSurvey,
   scaleFor,
+  sendSummary,
   shares,
+  suggestedSendMinute,
   starLabel,
   surveyMoment,
   toAnswers,
@@ -47,6 +49,7 @@ const survey = (over: Partial<Survey> = {}): Survey => ({
   askRating: true,
   status: "live",
   sendAt: "on_end",
+  sendAfterMin: 0,
   questions: [
     { id: "nps", kind: "nps_10", prompt: "Recommend?", required: true, options: [] },
     { id: "pace", kind: "single_choice", prompt: "Pace", required: false, options: ["Slow", "Right", "Fast"] },
@@ -182,3 +185,17 @@ test("shares add to 100 and bars scale to the largest", () => {
 
 console.log(failed ? `\n${failed} failed` : "\nall passed");
 process.exit(failed ? 1 : 0);
+
+// Timing: "at a set time" needs a minute; the other two carry none on the wire.
+{
+  const base = { ...emptyInput(), sendAt: "at_minute" as const };
+  assert.equal(emptyInput().sendAt, "manual", "the recommended way is the default");
+  assert.ok(validateInput({ ...base, sendAfterMin: 0 }).sendAfterMin);
+  assert.ok(validateInput({ ...base, sendAfterMin: 601 }).sendAfterMin);
+  assert.equal(validateInput({ ...base, sendAfterMin: 50 }).sendAfterMin, undefined);
+  assert.equal(cleanInput({ ...emptyInput(), sendAt: "on_end", sendAfterMin: 50 }).sendAfterMin, 0);
+  assert.equal(cleanInput({ ...base, sendAfterMin: 50 }).sendAfterMin, 50);
+  assert.equal(suggestedSendMinute(60), 50);
+  assert.equal(suggestedSendMinute(5), 1);
+  assert.equal(sendSummary({ sendAt: "at_minute", sendAfterMin: 50 }), "Pops up 50 min in");
+}

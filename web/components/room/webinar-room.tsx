@@ -63,6 +63,7 @@ import { VirtualBackground } from "./background-picker";
 import { NoiseSuppression } from "./noise-suppression";
 import { PollPopup } from "./poll-popup";
 import { SurveyPopup } from "./survey-popup";
+import { HostSurveyPill, HostSurveyProvider } from "./host-survey";
 import { SessionSurvey } from "../survey/session-survey";
 import { useAudienceSurvey } from "@/lib/use-audience-survey";
 import { CtaPopup } from "./cta-popup";
@@ -1232,6 +1233,7 @@ function ConnectedRoom({
   return (
     <RoomContext.Provider value={room}>
       <RoomUIProvider value={ui}>
+        <HostSurveyProvider enabled={isHost}>
         <RecorderProvider>
           {/* The one subscription to voice activity in the app, publishing a single debounced
               identity for the green border. Wraps the tree rather than sitting inside the stage
@@ -1297,6 +1299,8 @@ function ConnectedRoom({
                     onChange={survey.replace}
                     enabled={!isHost}
                   />
+                  {/* The host's side of it: answers coming in, and End. */}
+                  {isHost && <HostSurveyPill />}
                 <CtaPopup />
                 <CaptionOverlay />
 
@@ -1342,6 +1346,7 @@ function ConnectedRoom({
           <AutoStartAudio room={room} />
           </ActiveSpeakerProvider>
         </RecorderProvider>
+        </HostSurveyProvider>
       </RoomUIProvider>
     </RoomContext.Provider>
   );

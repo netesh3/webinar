@@ -1,87 +1,47 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import type { HostSurvey } from "@/lib/api-types";
+import { sendSummary } from "@/lib/survey";
 import { Spinner } from "../controls";
 import { ClipboardIcon, PlayIcon, StopIcon } from "../icons";
-import { useToast } from "../providers";
 import { useRoomUI } from "./context";
+import { useHostSurvey } from "./host-survey";
 
-/* The post-event survey, from inside the room: where it stands and one button.
+/* The feedback survey's row in the host's Polls panel: where it stands and one button.
  *
- * Setup lives on the webinar's Survey tab (host-survey-tab.tsx); mid-session a host only
- * needs "Send now" and "Close", so that is all this is. Sits at the top of the host's
- * Polls panel because that is where a host already goes to put a question to the room. */
+ * Setup lives in the schedule form (Edit webinar); here a host only sends it, or takes it
+ * down. Once it is up, the pill on the stage (HostSurveyPill) takes over the counting. */
 
 export function SurveyRoomControls() {
-  const { slug, realtime } = useRoomUI();
-  const { notify } = useToast();
-  const [host, setHost] = useState<HostSurvey | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { slug } = useRoomUI();
+  const s = useHostSurvey();
+  if (!s?.host) return null;
 
-  const read = useCallback(() => {
-    api
-      .hostSurvey(slug)
-      .then(setHost)
-      .catch(() => undefined);
-  }, [slug]);
-
-  useEffect(() => {
-    read();
-  }, [read, realtime.surveyRevision]);
-
-  const sv = host?.survey;
-  useEffect(() => {
-    if (sv?.status !== "live") return;
-    const t = window.setInterval(read, 15000);
-    return () => window.clearInterval(t);
-  }, [sv?.status, read]);
-
-  if (!host) return null;
-
-  const manage = `/host/${encodeURIComponent(slug)}?tab=survey`;
+  const sv = s.host.survey;
+  const edit = `/host/${encodeURIComponent(slug)}/edit#survey`;
 
   if (!sv) {
     return (
       <div className="mb-3 flex items-center gap-2.5 rounded-xl border border-dashed border-line-2 px-3 py-2.5">
         <ClipboardIcon className="size-4 shrink-0 text-ink-3" />
-        <p className="min-w-0 flex-1 text-[12.5px] text-ink-2">No post-event survey yet.</p>
+        <p className="min-w-0 flex-1 text-[12.5px] text-ink-2">No feedback survey for this webinar.</p>
         <a
-          href={manage}
+          href={edit}
           target="_blank"
           rel="noopener"
           className="shrink-0 text-[12.5px] font-medium text-brand hover:underline"
         >
-          Set up
+          Add one
         </a>
       </div>
     );
   }
 
-  async function run(action: "launch" | "close") {
-    setBusy(true);
-    setError(null);
-    try {
-      const next = action === "launch" ? await api.launchSurvey(slug) : await api.closeSurvey(slug);
-      setHost((h) => ({ attended: h?.attended ?? 0, survey: next }));
-      notify(action === "launch" ? "Survey sent — attendees see it now" : "Survey closed", "ok");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "That didn't work.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const live = sv.status === "live";
   const line = live
-    ? `Live · ${sv.responses} of ${host.attended} answered${sv.mode === "link" ? ` · ${sv.linkClicks} opened` : ""}`
+    ? `On screen · ${sv.responses} of ${s.host.attended} answered`
     : sv.status === "closed"
       ? `Closed · ${sv.responses} answered`
-      : sv.sendAt === "on_end"
-        ? "Sends when you end the webinar"
-        : "Draft — not sent yet";
+      : `Ready · ${sendSummary(sv)}`;
 
   return (
     <div className={`mb-3 rounded-xl border px-3 py-2.5 ${live ? "border-ok/30 bg-ok-soft/40" : "border-line bg-surface-2/40"}`}>
@@ -92,27 +52,26 @@ export function SurveyRoomControls() {
           <ClipboardIcon className="size-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[12.5px] font-semibold text-ink">
-            Survey · {sv.mode === "link" ? "link" : "rating"}
-          </p>
+          <p className="truncate text-[12.5px] font-semibold text-ink">Feedback survey</p>
           <p className="truncate text-[11.5px] text-ink-3">{line}</p>
         </div>
         <button
           type="button"
-          disabled={busy}
-          onClick={() => void run(live ? "close" : "launch")}
+          disabled={s.busy}
+          onClick={() => void (live ? s.close() : s.send())}
           className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-semibold transition-colors disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
             live ? "border border-line-2 text-ink hover:bg-surface-2" : "bg-brand text-stage hover:bg-brand-hover"
           }`}
         >
-          {busy ? <Spinner className="size-3.5" /> : live ? <StopIcon className="size-3.5" /> : <PlayIcon className="size-3.5" />}
-          {live ? "Close" : sv.status === "closed" ? "Reopen" : "Send now"}
+          {s.busy ? <Spinner className="size-3.5" /> : live ? <StopIcon className="size-3.5" /> : <PlayIcon className="size-3.5" />}
+          {live ? "Take down" : sv.status === "closed" ? "Show again" : "Send survey"}
         </button>
       </div>
-      {error && <p className="mt-1.5 text-[11.5px] text-live">{error}</p>}
-      <a href={manage} target="_blank" rel="noopener" className="mt-1.5 inline-block text-[11.5px] font-medium text-brand hover:underline">
-        Edit questions &amp; see results
-      </a>
+      {!live && (
+        <a href={edit} target="_blank" rel="noopener" className="mt-1.5 inline-block text-[11.5px] font-medium text-brand hover:underline">
+          Edit questions
+        </a>
+      )}
     </div>
   );
 }

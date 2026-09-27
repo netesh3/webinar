@@ -403,3 +403,16 @@ func (s *Server) launchSurveyOnEnd(ctx context.Context, slug string) {
 		s.log.Info("survey launched on end", "slug", slug)
 	}
 }
+
+// sweepDueSurveys puts timed surveys on screen once their minute comes. Run by RunTick.
+func (s *Server) sweepDueSurveys(ctx context.Context) {
+	slugs, err := s.store.LaunchDueSurveys(ctx)
+	if err != nil {
+		s.log.Error("survey sweeper: launch failed", "error", err)
+		return
+	}
+	for _, slug := range slugs {
+		s.announceSurvey(ctx, slug)
+		s.log.Info("survey launched at its minute", "slug", slug)
+	}
+}

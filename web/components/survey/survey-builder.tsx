@@ -7,8 +7,10 @@ import {
   DEFAULT_TITLE,
   KIND_LABELS,
   LIMITS,
+  SEND_CHOICES,
   blankQuestion,
   moveItem,
+  suggestedSendMinute,
 } from "@/lib/survey";
 import { Toggle } from "../controls";
 import { ArrowDownIcon, ArrowUpIcon, ExternalLinkIcon, PlusIcon, StarIcon, TrashIcon } from "../icons";
@@ -25,11 +27,14 @@ export function SurveyBuilder({
   onChange,
   errors,
   locked,
+  durationMin = 60,
 }: {
   value: SurveyInput;
   onChange: (next: SurveyInput) => void;
   errors: Record<string, string>;
   locked: boolean;
+  /** The webinar's scheduled length, for the "at a set time" suggestion. */
+  durationMin?: number;
 }) {
   const id = useId();
   const set = (patch: Partial<SurveyInput>) => onChange({ ...value, ...patch });
@@ -115,21 +120,55 @@ export function SurveyBuilder({
       )}
 
       <fieldset>
-        <legend className="label">When to send it</legend>
-        <div role="radiogroup" aria-label="When to send it" className="grid gap-2 sm:grid-cols-2">
-          <SendCard
-            active={value.sendAt === "on_end"}
-            onPick={() => set({ sendAt: "on_end" })}
-            title="When the webinar ends"
-            body="Pops up for everyone as you end it. People who leave early are asked on the way out."
-          />
-          <SendCard
-            active={value.sendAt === "manual"}
-            onPick={() => set({ sendAt: "manual" })}
-            title="When I send it"
-            body="Stays a draft until you press Send now — here or in the room's Polls panel."
-          />
+        <legend className="label">When attendees see it</legend>
+        <div role="radiogroup" aria-label="When attendees see it" className="grid gap-2">
+          {SEND_CHOICES.map((c) => (
+            <SendCard
+              key={c.id}
+              active={value.sendAt === c.id}
+              onPick={() =>
+                set({
+                  sendAt: c.id,
+                  sendAfterMin:
+                    c.id === "at_minute" && !value.sendAfterMin
+                      ? suggestedSendMinute(durationMin)
+                      : value.sendAfterMin,
+                })
+              }
+              title={c.title}
+              body={c.body}
+              recommended={c.recommended}
+            >
+              {c.id === "at_minute" && value.sendAt === "at_minute" && (
+                <span className="mt-2.5 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-2">
+                  <label htmlFor={`${id}-minute`}>Pop up</label>
+                  <input
+                    id={`${id}-minute`}
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={LIMITS.sendAfterMin}
+                    value={value.sendAfterMin || ""}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    onChange={(e) => set({ sendAfterMin: Math.trunc(Number(e.target.value)) || 0 })}
+                    aria-invalid={Boolean(errors.sendAfterMin)}
+                    className={`field h-8 w-20 py-1 text-center tabular-nums ${errors.sendAfterMin ? "border-live/60" : ""}`}
+                  />
+                  <span>minutes after you go live</span>
+                  {durationMin > 0 && (
+                    <span className="text-ink-3">· the session is {durationMin} min</span>
+                  )}
+                </span>
+              )}
+            </SendCard>
+          ))}
         </div>
+        {errors.sendAfterMin && <p className="mt-1.5 text-[12px] text-live">{errors.sendAfterMin}</p>}
+        <p className="mt-2 text-[11.5px] text-ink-3">
+          Whichever you pick, you can still send it earlier from the room, and anyone who leaves
+          early is asked on the way out.
+        </p>
       </fieldset>
     </div>
   );
@@ -420,19 +459,30 @@ function SendCard({
   onPick,
   title,
   body,
+  recommended,
+  children,
 }: {
   active: boolean;
   onPick: () => void;
   title: string;
   body: string;
+  recommended?: boolean;
+  children?: React.ReactNode;
 }) {
+  // A div with radio semantics rather than a <button>: the minute field sits inside it.
   return (
-    <button
-      type="button"
+    <div
       role="radio"
+      tabIndex={0}
       aria-checked={active}
       onClick={onPick}
-      className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+      onKeyDown={(e) => {
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault();
+          onPick();
+        }
+      }}
+      className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
         active ? "border-brand bg-brand-soft" : "border-line hover:border-line-2 hover:bg-surface-2"
       }`}
     >
@@ -444,10 +494,18 @@ function SendCard({
       >
         {active && <span className="size-2 rounded-full bg-brand" />}
       </span>
-      <span className="min-w-0">
-        <span className="block text-[13px] font-semibold text-ink">{title}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-ink">
+          {title}
+          {recommended && (
+            <span className="rounded-full bg-ok-soft px-2 py-0.5 text-[10.5px] font-semibold tracking-wide text-ok uppercase">
+              Recommended
+            </span>
+          )}
+        </span>
         <span className="mt-0.5 block text-[12px] leading-snug text-ink-2">{body}</span>
+        {children}
       </span>
-    </button>
+    </div>
   );
 }

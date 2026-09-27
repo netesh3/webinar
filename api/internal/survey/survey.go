@@ -28,13 +28,14 @@ func invalid(field, format string, args ...any) error {
 
 // Config is a validated, normalised SurveyInput.
 type Config struct {
-	Mode        types.SurveyMode
-	Title       string
-	ButtonLabel string
-	ExternalURL string
-	AskRating   bool
-	SendAt      types.SurveySendAt
-	Questions   []types.SurveyQuestionInput
+	Mode         types.SurveyMode
+	Title        string
+	ButtonLabel  string
+	ExternalURL  string
+	AskRating    bool
+	SendAt       types.SurveySendAt
+	SendAfterMin int
+	Questions    []types.SurveyQuestionInput
 }
 
 // Defaults the builder shows and the attendee card falls back to when a field is blank.
@@ -65,8 +66,15 @@ func Normalize(in types.SurveyInput) (Config, error) {
 	if c.SendAt == "" {
 		c.SendAt = types.SurveyOnEnd
 	}
-	if c.SendAt != types.SurveyOnEnd && c.SendAt != types.SurveyManual {
-		return c, invalid("sendAt", "Send the survey when the webinar ends, or manually.")
+	switch c.SendAt {
+	case types.SurveyOnEnd, types.SurveyManual:
+	case types.SurveyAtMinute:
+		if in.SendAfterMin < 1 || in.SendAfterMin > types.MaxSurveySendAfterMin {
+			return c, invalid("sendAfterMin", "Pick a minute between 1 and %d.", types.MaxSurveySendAfterMin)
+		}
+		c.SendAfterMin = in.SendAfterMin
+	default:
+		return c, invalid("sendAt", "Send the survey yourself, at a set minute, or when the webinar ends.")
 	}
 	if n := utf8.RuneCountInString(c.Title); n > types.MaxSurveyTitleChars {
 		return c, invalid("title", "Keep the title under %d characters.", types.MaxSurveyTitleChars)

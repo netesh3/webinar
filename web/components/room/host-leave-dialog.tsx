@@ -4,7 +4,7 @@ import { useRemoteParticipants } from "@livekit/components-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { mergeHostCandidates } from "@/lib/host-transfer";
-import { Alert, ConfirmModal, Modal, Spinner } from "../controls";
+import { Alert, Modal, Spinner } from "../controls";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { participantRole } from "./participants";
@@ -274,53 +274,5 @@ export function HostAssignDialog({
         </ul>
       )}
     </Modal>
-  );
-}
-
-/** Confirm ending the webinar for everyone (from the Leave menu). */
-export function HostEndConfirm({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const { slug } = useRoomUI();
-  const { notify } = useToast();
-  const [busy, setBusy] = useState(false);
-
-  // Clear a stuck "ending…" once the dialog closes, on the close edge during
-  // render rather than in an effect after it.
-  const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (!open) setBusy(false);
-  }
-
-  async function endForEveryone() {
-    setBusy(true);
-    try {
-      await api.endWebinar(slug);
-      onClose();
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Could not end the webinar.", "error");
-      setBusy(false);
-    }
-  }
-
-  return (
-    <ConfirmModal
-      dark
-      open={open}
-      busy={busy}
-      onClose={() => {
-        if (busy) return;
-        onClose();
-      }}
-      onConfirm={() => void endForEveryone()}
-      title="End this webinar for everyone?"
-      body="Everyone is disconnected and the webinar is marked as ended. Registrations and the attendance record are kept, but nobody can rejoin."
-      confirmLabel="End for everyone"
-    />
   );
 }

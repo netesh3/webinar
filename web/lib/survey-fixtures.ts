@@ -14,6 +14,7 @@ export const FIXTURE_HOST_SURVEY: HostSurvey = {
     askRating: true,
     status: "live",
     sendAt: "on_end",
+    sendAfterMin: 0,
     launchedAt: "2026-09-27T16:02:00Z",
     updatedAt: "2026-09-27T16:02:00Z",
     responses: 31,

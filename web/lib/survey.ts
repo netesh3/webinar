@@ -25,6 +25,7 @@ export const LIMITS = {
   button: 40,
   url: 2048,
   text: 1000,
+  sendAfterMin: 600,
 } as const;
 
 export const DEFAULT_TITLE = "How was the session?";
@@ -72,9 +73,47 @@ export function emptyInput(): SurveyInput {
     buttonLabel: "",
     externalUrl: "",
     askRating: true,
-    sendAt: "on_end",
+    sendAt: "manual",
+    sendAfterMin: 0,
     questions: [blankQuestion("nps_10"), blankQuestion("text")],
   };
+}
+
+/* The three ways a survey reaches the room, in the order the builder offers them. The first
+ * is the recommendation: the host puts it on screen while everyone is still there, waits for
+ * the answers, and only then ends. Timing is not a lock-in — any of them can be sent early
+ * from the room. */
+export const SEND_CHOICES = [
+  {
+    id: "manual",
+    title: "I'll put it on screen",
+    body: "You press Send survey in the room, usually just before you wrap up. It pops up in the middle of everyone's screen, and you end once they've answered.",
+    recommended: true,
+  },
+  {
+    id: "at_minute",
+    title: "At a set time",
+    body: "Pops up on its own at the minute you pick. If you finish before then, it goes out as you end.",
+    recommended: false,
+  },
+  {
+    id: "on_end",
+    title: "When I end the webinar",
+    body: "Pops up for everyone the moment you press End. Quickest for you, but some people will already have closed the tab.",
+    recommended: false,
+  },
+] as const;
+
+/** A suggested minute for "at a set time": ten minutes before the scheduled end. */
+export function suggestedSendMinute(durationMin: number): number {
+  return Math.max(1, Math.min(LIMITS.sendAfterMin, durationMin - 10));
+}
+
+/** "Pops up 50 min in", "Goes out when you end", "You put it on screen". */
+export function sendSummary(s: Pick<SurveyInput, "sendAt" | "sendAfterMin">): string {
+  if (s.sendAt === "at_minute") return `Pops up ${s.sendAfterMin ?? 0} min in`;
+  if (s.sendAt === "on_end") return "Pops up when you end";
+  return "You put it on screen";
 }
 
 /** The saved survey as the builder edits it: the input the PUT takes, ids kept. */
@@ -86,6 +125,7 @@ export function toInput(s: Survey): SurveyInput {
     externalUrl: s.externalUrl,
     askRating: s.askRating,
     sendAt: s.sendAt,
+    sendAfterMin: s.sendAfterMin,
     questions: s.questions.map((q) => ({
       id: q.id,
       kind: q.kind,
@@ -122,6 +162,12 @@ export function validateInput(i: SurveyInput): Record<string, string> {
   const out: Record<string, string> = {};
   if (chars(collapse(i.title)) > LIMITS.title) out.title = `Keep the title under ${LIMITS.title} characters.`;
   if (chars(collapse(i.buttonLabel)) > LIMITS.button) out.buttonLabel = `Keep the button label under ${LIMITS.button} characters.`;
+  if (i.sendAt === "at_minute") {
+    const m = i.sendAfterMin ?? 0;
+    if (!Number.isInteger(m) || m < 1 || m > LIMITS.sendAfterMin) {
+      out.sendAfterMin = `Pick a minute between 1 and ${LIMITS.sendAfterMin}.`;
+    }
+  }
   if (i.mode === "link") {
     const p = urlProblem(i.externalUrl);
     if (p) out.externalUrl = p;
@@ -152,6 +198,7 @@ export function cleanInput(i: SurveyInput): SurveyInput {
     buttonLabel: collapse(i.buttonLabel),
     externalUrl: link ? i.externalUrl.trim() : "",
     askRating: link ? i.askRating : true,
+    sendAfterMin: i.sendAt === "at_minute" ? (i.sendAfterMin ?? 0) : 0,
     questions: link
       ? []
       : i.questions.map((q) => ({
@@ -182,6 +229,7 @@ export function previewSurvey(i: SurveyInput): Survey {
     askRating: c.askRating,
     status: "live",
     sendAt: c.sendAt,
+    sendAfterMin: c.sendAfterMin ?? 0,
     questions: c.questions.map((q, n) => ({
       id: q.id || `preview-${n}`,
       kind: q.kind,
