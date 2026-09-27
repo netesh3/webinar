@@ -11,6 +11,14 @@ for (const q of ["report", "Report", " REPORT ", "engagement", "insights", "anal
 assert.equal(tabFromQuery("registrants"), "Admit");
 assert.equal(tabFromQuery("attendance"), "Attendees");
 assert.equal(tabFromQuery("nope"), null);
+
+// ?tab=survey (and the older "feedback") open the Survey tab, before and after the event.
+assert.equal(tabFromQuery("survey"), "Survey");
+assert.equal(tabFromQuery("Feedback"), "Survey");
+for (const s of ["draft", "scheduled", "live", "ended"]) {
+  assert.equal(allowedTab(tabFromQuery("survey"), s), "Survey", s);
+}
+assert.equal(defaultTab("ended", { pending: 0, requested: "survey" }), "Survey");
 assert.equal(tabFromQuery(""), null);
 assert.equal(tabFromQuery(null), null);
 
@@ -20,7 +28,7 @@ for (const s of ["draft", "scheduled", "live", "ended"]) {
 }
 
 // Ended leads with Engagement; live and scheduled offer it last; a draft does not.
-assert.deepEqual(tabsFor("ended"), ["Engagement", "Recordings", "Attendees"]);
+assert.deepEqual(tabsFor("ended"), ["Engagement", "Recordings", "Attendees", "Survey"]);
 assert.equal(tabsFor("live").at(-1), "Engagement");
 assert.equal(tabsFor("scheduled").at(-1), "Engagement");
 assert.ok(!tabsFor("draft").includes("Engagement"));

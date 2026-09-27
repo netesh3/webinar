@@ -10,6 +10,7 @@ import { CopyIcon, PlayIcon, PlusIcon, RotateCcwIcon, StopIcon, TrashIcon } from
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { Composer } from "./poll-composer";
+import { SurveyRoomControls } from "./survey-room-controls";
 import {
   EmptySlot,
   KindPill,
@@ -140,6 +141,7 @@ export function HostPolls() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <SurveyRoomControls />
         {error && view.body !== "failed" && (
           <div className="mb-3">
             <Alert tone="error">{error}</Alert>

@@ -20,14 +20,22 @@ type EngagementWebinar struct {
 	Status    string
 	StartedAt *time.Time
 	EndedAt   *time.Time
+	// SurveyAt is the survey's last change (launch, close, edit) or its latest submission or
+	// link click. Survey answers arrive after the end, so an ended webinar's snapshot is only
+	// fresh if it was computed after this too.
+	SurveyAt *time.Time
 }
 
 func (s *Store) EngagementWebinar(ctx context.Context, slug string) (EngagementWebinar, error) {
 	var w EngagementWebinar
 	err := s.pool.QueryRow(ctx, `
-		SELECT id::text, slug, host_id::text, status, started_at, ended_at
-		  FROM webinars WHERE slug = $1`, slug).
-		Scan(&w.ID, &w.Slug, &w.HostID, &w.Status, &w.StartedAt, &w.EndedAt)
+		SELECT w.id::text, w.slug, w.host_id::text, w.status, w.started_at, w.ended_at,
+		       (SELECT GREATEST(sv.updated_at,
+		                        (SELECT max(GREATEST(r.submitted_at, r.link_clicked_at))
+		                           FROM survey_responses r WHERE r.survey_id = sv.id))
+		          FROM surveys sv WHERE sv.webinar_id = w.id)
+		  FROM webinars w WHERE w.slug = $1`, slug).
+		Scan(&w.ID, &w.Slug, &w.HostID, &w.Status, &w.StartedAt, &w.EndedAt, &w.SurveyAt)
 	if noRows(err) {
 		return w, ErrNotFound
 	}
@@ -145,6 +153,40 @@ func (s *Store) EngagementInput(ctx context.Context, webinarID string, now time.
 		Query(scanAll(&in.Events, func(rows pgx.Rows, e *engagement.EventCount) error {
 			return rows.Scan(&e.Identity, &e.Kind, &e.Value, &e.Minute, &e.Count)
 		}))
+
+	/* The post-event survey, through the Extra channel: which attendees submitted, which only
+	 * opened a link survey, and their 1–5 rating. The tool counts as used once the survey has
+	 * actually gone out (live or closed); a draft nobody was sent never costs anyone points. */
+	b.Queue(`
+		SELECT r.identity, r.submitted_at IS NOT NULL, r.link_clicked_at IS NOT NULL, COALESCE(r.rating, 0)
+		  FROM surveys sv JOIN survey_responses r ON r.survey_id = sv.id
+		 WHERE sv.webinar_id = $1 AND sv.status <> 'draft' AND starts_with(r.identity, 'att_')`, webinarID).
+		Query(func(rows pgx.Rows) error {
+			for rows.Next() {
+				var identity string
+				var done, clicked bool
+				var rating int
+				if err := rows.Scan(&identity, &done, &clicked, &rating); err != nil {
+					return err
+				}
+				in.AddSurvey(identity, done, clicked, rating)
+			}
+			return rows.Err()
+		})
+	b.Queue(`SELECT EXISTS (SELECT 1 FROM surveys WHERE webinar_id = $1 AND status <> 'draft')`, webinarID).
+		QueryRow(func(row pgx.Row) error {
+			var used bool
+			if err := row.Scan(&used); err != nil {
+				return err
+			}
+			if used {
+				if in.ExtraUsage == nil {
+					in.ExtraUsage = engagement.Usage{}
+				}
+				in.ExtraUsage[engagement.KeySurvey] = true
+			}
+			return nil
+		})
 
 	if err := tx.SendBatch(ctx, b).Close(); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

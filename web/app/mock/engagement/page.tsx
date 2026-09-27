@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { TopNav } from "@/components/top-nav";
 import { SampleEngagement } from "@/components/engagement/sample-engagement";
+import type { SectionId } from "@/lib/engagement/sections";
 
 /* The Engagement dashboard over fixture data, for design review and screenshots.
  *
@@ -13,12 +14,18 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function EngagementMockPage() {
+const LINKABLE: readonly SectionId[] = ["overview", "attendance", "activity", "attendees", "chat", "qa", "polls", "reactions", "survey", "follow-up"];
+
+export default async function EngagementMockPage({ searchParams }: PageProps<"/mock/engagement">) {
+  // ?tab= is the older spelling, from when the details were tabs; ?section= reads better now.
+  const params = await searchParams;
+  const raw = params.section ?? params.tab;
+  const initialSection = LINKABLE.find((id) => id === raw);
   return (
     <>
       <TopNav />
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-5 sm:py-8">
-        <SampleEngagement />
+        <SampleEngagement initialSection={initialSection} />
       </main>
     </>
   );

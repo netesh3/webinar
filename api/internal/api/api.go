@@ -329,6 +329,11 @@ func (s *Server) Routes() http.Handler {
 		// five hundred browsers waiting to be read out of a response.
 		r.Get("/webinars/{slug}/polls", s.handleAudiencePolls)
 		r.Post("/webinars/{slug}/polls/{id}/vote", s.handleVote)
+		// The post-event survey as the audience sees it, and their one response. Same
+		// credential as polls; the stage is told there is nothing to answer.
+		r.Get("/webinars/{slug}/survey", s.handleAudienceSurvey)
+		r.Post("/webinars/{slug}/survey/responses", s.handleSubmitSurvey)
+		r.Post("/webinars/{slug}/survey/click", s.handleSurveyClick)
 		r.Post("/webinars/{slug}/stage-invite", s.handleStageInviteRespond)
 		r.Post("/webinars/{slug}/captions", s.handleAppendCaption)
 
@@ -492,6 +497,14 @@ func (s *Server) Routes() http.Handler {
 					r.Post("/polls/{id}/open", s.handleOpenPoll)
 					r.Post("/polls/{id}/close", s.handleClosePoll)
 					r.Delete("/polls/{id}", s.handleDeletePoll)
+
+					r.Get("/survey", s.handleGetSurvey)
+					r.Put("/survey", s.handlePutSurvey)
+					r.Delete("/survey", s.handleDeleteSurvey)
+					r.Post("/survey/launch", s.handleLaunchSurvey)
+					r.Post("/survey/close", s.handleCloseSurvey)
+					r.Get("/survey/results", s.handleSurveyResults)
+					r.Get("/survey/answers", s.handleSurveyAnswers)
 
 					r.Get("/registrants", s.handleHostRegistrants)
 					r.Get("/registrants.csv", s.handleExportRegistrants)

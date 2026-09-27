@@ -11,7 +11,9 @@ import type {
   EngagementAttendeePage,
   EngagementSummary,
   SessionQuestion,
+  SurveyResults,
 } from "../api-types.ts";
+import { FIXTURE_SURVEY_RESULTS } from "../survey-fixtures.ts";
 import { summarise } from "./fixture-summary.ts";
 import { WEBINAR } from "./fixture-data.ts";
 import { generateWorld, AXIS, type FixtureWorld } from "./fixtures.ts";
@@ -25,6 +27,10 @@ export interface EngagementSource {
   attendee(identity: string, signal?: AbortSignal): Promise<EngagementAttendeeDetail>;
   /** Plain download link; absent when there is nothing to download (sample data). */
   csvUrl?: string;
+  /** The post-event survey's results, for the Survey tab. */
+  surveyResults(signal?: AbortSignal): Promise<SurveyResults>;
+  /** The webinar the survey belongs to, for paging comments; absent for sample data. */
+  slug?: string;
   /** Present only where recomputing means something (the real API). */
   recompute?(): Promise<EngagementSummary>;
   /** The old Report's downloads, offered beside the engagement CSV in the Export menu. */
@@ -94,6 +100,7 @@ export function fixtureSource(status: "ended" | "live" | "scheduled" = "ended"):
         if (!found) throw new NotFoundError("That attendee");
         return found.detail;
       }),
+    surveyResults: (signal) => abortable(signal, () => FIXTURE_SURVEY_RESULTS),
     record: (signal) =>
       abortable(signal, () => ({
         stage: SAMPLE_STAGE,

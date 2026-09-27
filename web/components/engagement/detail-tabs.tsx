@@ -1,10 +1,14 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
-import type { EngagementSummary } from "@/lib/api-types";
+import Link from "next/link";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import type { EngagementSummary, SurveyResults } from "@/lib/api-types";
+import type { EngagementSource } from "@/lib/engagement/source";
+import { Spinner } from "../controls";
+import { SurveyResultsView } from "../survey/survey-results";
 import { pct } from "@/lib/engagement/viz";
 import { Bars, HBar } from "./charts";
-import { MiniStat, SoonBadge } from "./primitives";
+import { MiniStat } from "./primitives";
 
 const TABS = [
   { id: "chat", label: "Chat" },
@@ -13,7 +17,8 @@ const TABS = [
   { id: "reactions", label: "Reactions" },
   { id: "survey", label: "Survey" },
 ] as const;
-type TabId = (typeof TABS)[number]["id"];
+export type DetailTabId = (typeof TABS)[number]["id"];
+type TabId = DetailTabId;
 
 const None = ({ children }: { children: string }) => <p className="py-8 text-center text-[13px] text-ink-3">{children}</p>;
 
@@ -217,21 +222,58 @@ function ReactionsPanel({ s }: { s: EngagementSummary }) {
   );
 }
 
-function SurveyPanel() {
-  return (
-    <div className="rounded-xl border border-dashed border-line-2 px-6 py-12 text-center">
-      <SoonBadge />
-      <p className="mt-3 text-[14px] font-semibold">Coming soon — post-event surveys</p>
-      <p className="mx-auto mt-1.5 max-w-md text-[13px] text-ink-2">
-        Ask attendees to rate the session when it ends. Ratings, NPS and comments will appear here, and completing the
-        survey will count towards each person&apos;s engagement score.
-      </p>
-    </div>
-  );
+/* The post-event survey's results — the same view as the webinar's Survey tab, read through
+ * the page's source so the sample dashboard shows sample answers. Read when the tab opens. */
+function SurveyPanel({ source }: { source: EngagementSource }) {
+  const [state, setState] = useState<{ id: string; data?: SurveyResults; error?: string } | null>(null);
+
+  useEffect(() => {
+    const ctl = new AbortController();
+    source
+      .surveyResults(ctl.signal)
+      .then((data) => setState({ id: source.id, data }))
+      .catch((e: unknown) => {
+        if (!ctl.signal.aborted) setState({ id: source.id, error: e instanceof Error ? e.message : "Could not load the survey." });
+      });
+    return () => ctl.abort();
+  }, [source]);
+
+  const current = state?.id === source.id ? state : null;
+  if (!current) return <div className="grid place-items-center py-10"><Spinner className="size-5 text-ink-3" /></div>;
+  if (current.error) return <None>{current.error}</None>;
+  const r = current.data!;
+  if (!r.configured) {
+    return (
+      <div className="rounded-xl border border-dashed border-line-2 px-6 py-12 text-center">
+        <p className="text-[14px] font-semibold">No survey for this webinar</p>
+        <p className="mx-auto mt-1.5 max-w-md text-[13px] text-ink-2">
+          Ask attendees to rate the session or send them to your own form. Completing it counts towards each
+          person&apos;s engagement score.
+        </p>
+        {source.slug && (
+          <Link
+            href={`/host/${encodeURIComponent(source.slug)}?tab=survey`}
+            className="mt-4 inline-flex h-9 items-center rounded-lg bg-brand px-3.5 text-[13px] font-medium text-white hover:bg-brand-hover"
+          >
+            Set up a survey
+          </Link>
+        )}
+      </div>
+    );
+  }
+  return <SurveyResultsView slug={source.slug ?? ""} results={r} preview={!source.slug} />;
 }
 
-export function DetailTabs({ summary }: { summary: EngagementSummary }) {
-  const [tab, setTab] = useState<TabId>("polls");
+export function DetailTabs({
+  summary,
+  source,
+  initialTab = "polls",
+}: {
+  summary: EngagementSummary;
+  source: EngagementSource;
+  initialTab?: TabId;
+}) {
+  const [tab, setTab] = useState<TabId>(initialTab);
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const onKey = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
@@ -273,7 +315,7 @@ export function DetailTabs({ summary }: { summary: EngagementSummary }) {
         {tab === "qa" && <QAPanel s={summary} />}
         {tab === "polls" && <PollsPanel s={summary} />}
         {tab === "reactions" && <ReactionsPanel s={summary} />}
-        {tab === "survey" && <SurveyPanel />}
+        {tab === "survey" && <SurveyPanel source={source} />}
       </div>
     </div>
   );

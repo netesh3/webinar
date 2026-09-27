@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { EngagementAttendeeRow, EngagementSummary } from "@/lib/api-types";
 import { Spinner } from "@/components/controls";
 import { useToast } from "@/components/providers";
@@ -8,7 +8,7 @@ import { Badge, Button, Card } from "@/components/ui";
 import { formatTime } from "@/lib/format";
 import { useEngagementSummary, useSessionRecord, LIVE_REFRESH_MS } from "@/lib/engagement/hooks";
 import { exportOptions } from "@/lib/engagement/exports";
-import type { SectionId } from "@/lib/engagement/sections";
+import { sectionDomId, type SectionId } from "@/lib/engagement/sections";
 import type { EngagementSource } from "@/lib/engagement/source";
 import { pct } from "@/lib/engagement/viz";
 import { AttendeeDrawer } from "./attendee-drawer";
@@ -39,6 +39,7 @@ export function EngagementDashboard({
   showTitle = true,
   notStartedDetail,
   onOpenAttendees,
+  initialSection,
 }: {
   source: EngagementSource;
   sample?: boolean;
@@ -51,6 +52,8 @@ export function EngagementDashboard({
   notStartedDetail?: string;
   /** Jump to the host screen's registrant list — where no-shows are listed by name. */
   onOpenAttendees?: () => void;
+  /** Scroll to this section once the numbers are in; deep links such as ?tab=survey. */
+  initialSection?: SectionId;
 }) {
   const { notify } = useToast();
   const summary = useEngagementSummary(source);
@@ -67,6 +70,17 @@ export function EngagementDashboard({
   const ended = s?.webinar.status === "ended";
   const ready = s?.state === "ready";
   const started = !!s?.webinar.startedAt;
+
+  // Once, when the dashboard first has numbers, a frame later so the sections exist.
+  const landed = useRef(false);
+  useEffect(() => {
+    if (!initialSection || !ready || landed.current) return;
+    landed.current = true;
+    const raf = requestAnimationFrame(() => {
+      document.getElementById(sectionDomId(initialSection))?.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [initialSection, ready]);
 
   const exports = useMemo(
     () =>
@@ -275,7 +289,7 @@ export function EngagementDashboard({
       </DetailSection>
 
       <DetailSection id="survey" title="Survey" hint="What attendees said about the session afterwards.">
-        <SurveyPanel />
+        <SurveyPanel source={source} />
       </DetailSection>
 
       <PageSection id="follow-up" title="Follow up" hint="Everyone lands in one group by how they took part. Message each group what fits.">

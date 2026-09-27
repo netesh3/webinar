@@ -6,6 +6,7 @@ import { Alert, CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
 import { EngagementTab } from "./engagement/engagement-tab";
+import { HostSurveyTab } from "./survey/host-survey-tab";
 import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
 import { useShareOrigin, useToast } from "./providers";
 import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
@@ -114,6 +115,7 @@ export function HostWebinarTabs({
           onChanged={onChanged}
         />
       )}
+      {tab === "Survey" && <HostSurveyTab webinar={w} />}
       {tab === "Settings" && <SettingsTab webinar={w} />}
       {tab === "Engagement" && (
         <EngagementTab

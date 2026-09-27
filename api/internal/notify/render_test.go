@@ -32,3 +32,14 @@ func TestDeclinedHasNoJoinLink(t *testing.T) {
 		t.Fatal("decline must not include the join link")
 	}
 }
+
+func TestReplayReadyCarriesALiveSurveyLink(t *testing.T) {
+	_, without := ReplayReady(Invite{Topic: "T", ReplayURL: "https://x.test/r"})
+	if strings.Contains(without, "survey") {
+		t.Fatalf("no survey link was given, but the mail mentions one:\n%s", without)
+	}
+	_, body := ReplayReady(Invite{Topic: "T", ReplayURL: "https://x.test/r", SurveyURL: "https://forms.gle/abc"})
+	if !strings.Contains(body, "https://forms.gle/abc") || !strings.Contains(body, "How was the session?") {
+		t.Fatalf("survey link missing:\n%s", body)
+	}
+}

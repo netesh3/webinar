@@ -44,6 +44,9 @@ import { ControlBar } from "./control-bar";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, type RoomUI } from "./context";
 import { PollPopup } from "./poll-popup";
+import { SurveyPopup } from "./survey-popup";
+import { SessionSurvey } from "../survey/session-survey";
+import { useAudienceSurvey } from "@/lib/use-audience-survey";
 import { CtaPopup } from "./cta-popup";
 import { CaptionOverlay } from "./caption-overlay";
 import { useSelfHandToasts, type SelfHandEvent } from "./self-hand-toasts";
@@ -287,6 +290,7 @@ export function CdnAttendeeRoom({
     controls.pollsEnabled,
     room,
   );
+  const survey = useAudienceSurvey(slug, joinKey, realtime.surveyRevision, true);
   const network = useNetworkHealth(room, false);
 
   const ui = useMemo<RoomUI>(
@@ -355,8 +359,8 @@ export function CdnAttendeeRoom({
 
   if (exit) {
     return (
-      <main className="grid min-h-dvh place-items-center bg-stage p-6 text-center">
-        <div className="max-w-sm">
+      <main className="grid min-h-dvh place-items-center bg-stage p-4 text-center sm:p-6">
+        <div className="flex w-full max-w-[460px] flex-col items-center">
           <h1 className="text-[18px] font-semibold text-white">The webinar has ended</h1>
           <p className="mt-2 text-[13.5px] leading-relaxed text-white/60">
             Thanks for coming — the host closed the session.
@@ -369,6 +373,7 @@ export function CdnAttendeeRoom({
               Back to webinars
             </button>
           </div>
+          <SessionSurvey slug={slug} joinKey={joinKey} className="mt-6" />
         </div>
       </main>
     );
@@ -432,6 +437,13 @@ export function CdnAttendeeRoom({
                   </div>
 
                   <PollPopup />
+                  <SurveyPopup
+                    slug={slug}
+                    joinKey={joinKey}
+                    survey={survey.data}
+                    onChange={survey.replace}
+                    enabled
+                  />
                   <CtaPopup />
                   <CaptionOverlay />
                   <RoomHeader />

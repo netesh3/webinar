@@ -64,7 +64,7 @@ const table = JSON.parse(
 ) as { formulaVersion: number; cases: ScoreCase[] };
 
 console.log("\nscore_cases.json");
-await test("the table is formula v1", () => assert.equal(table.formulaVersion, 1));
+await test("the table is formula v2", () => assert.equal(table.formulaVersion, 2));
 for (const c of table.cases) {
   await test(c.name, () => {
     const score = engagementScore(c.session, c.input);
@@ -91,9 +91,14 @@ await test("applied weights always sum to 100 (to display precision)", () => {
     assert.ok(Math.abs(total - 100) < 0.2, `got ${total}`);
   }
 });
-await test("survey never applies in v1", () => {
+await test("survey applies only once one was sent", () => {
   assert.ok(!scoreComponents(ALL, zero).some((c) => c.key === "survey"));
   assert.equal(sessionWeights(ALL).find((w) => w.key === "survey")?.weight, 0);
+  const sent = { ...ALL, survey: true };
+  assert.ok(sessionWeights(sent).find((w) => w.key === "survey")!.weight > 0);
+  const part = scoreComponents(sent, { ...zero, surveyClicked: true }).find((c) => c.key === "survey");
+  assert.equal(part?.ratio, 0.5);
+  assert.equal(part?.detail, "Opened the survey link");
 });
 await test("session weights zero an unused tool and keep its base", () => {
   const w = sessionWeights({ ...ALL, quiz: false });

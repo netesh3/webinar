@@ -41,6 +41,14 @@ import type {
   StageAllResponse,
   StatusResponse,
   SetStreamRequest,
+  AudienceSurvey,
+  HostSurvey,
+  Survey,
+  SurveyClickRequest,
+  SurveyInput,
+  SurveyResults,
+  SurveySubmitRequest,
+  SurveyTextPage,
   Webinar,
   WebinarInput,
 } from "./api-types";
@@ -71,6 +79,7 @@ import {
   fresh,
   patch,
   post,
+  put,
   request,
   seg,
 } from "./http";
@@ -154,6 +163,19 @@ export const api = {
 
   vote: (slug: string, id: string, body: PollVoteRequest) =>
     post<Poll>(`/api/webinars/${seg(slug)}/polls/${seg(id)}/vote`, body),
+
+  /** The post-event survey as this attendee may see it, with their own response. */
+  audienceSurvey: (slug: string, joinKey?: string, signal?: AbortSignal) =>
+    request<AudienceSurvey>(
+      `/api/webinars/${seg(slug)}/survey${joinKey ? `?joinKey=${seg(joinKey)}` : ""}`,
+      { ...fresh, signal },
+    ),
+
+  submitSurvey: (slug: string, body: SurveySubmitRequest) =>
+    post<AudienceSurvey>(`/api/webinars/${seg(slug)}/survey/responses`, body),
+
+  surveyClick: (slug: string, body: SurveyClickRequest) =>
+    post<StatusResponse>(`/api/webinars/${seg(slug)}/survey/click`, body),
 
   /** What this participant has not seen.
    *
@@ -568,6 +590,32 @@ export const api = {
    *  "Hosts & panelists" list); its CSV twin is the Export menu's attendance log. */
   sessionReport: (slug: string, signal?: AbortSignal) =>
     request<SessionReport>(`/api/host/webinars/${seg(slug)}/report`, { ...fresh, signal }),
+
+  hostSurvey: (slug: string) =>
+    request<HostSurvey>(`/api/host/webinars/${seg(slug)}/survey`, fresh),
+
+  saveSurvey: (slug: string, body: SurveyInput) =>
+    put<Survey>(`/api/host/webinars/${seg(slug)}/survey`, body),
+
+  deleteSurvey: (slug: string) =>
+    del<StatusResponse>(`/api/host/webinars/${seg(slug)}/survey`),
+
+  launchSurvey: (slug: string) =>
+    post<Survey>(`/api/host/webinars/${seg(slug)}/survey/launch`),
+
+  closeSurvey: (slug: string) =>
+    post<Survey>(`/api/host/webinars/${seg(slug)}/survey/close`),
+
+  surveyResults: (slug: string, signal?: AbortSignal) =>
+    request<SurveyResults>(`/api/host/webinars/${seg(slug)}/survey/results`, { ...fresh, signal }),
+
+  surveyAnswers: (slug: string, question: string, cursor?: string, limit = 20) =>
+    request<SurveyTextPage>(
+      `/api/host/webinars/${seg(slug)}/survey/answers?question=${seg(question)}&limit=${limit}${
+        cursor ? `&cursor=${seg(cursor)}` : ""
+      }`,
+      fresh,
+    ),
 
   reportCsvUrl: (slug: string) =>
     `${API_BASE}/api/host/webinars/${seg(slug)}/report.csv`,

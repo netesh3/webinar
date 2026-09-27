@@ -9,10 +9,11 @@ export const PRE_EVENT_TABS = [
   "Share",
   "Stage",
   "Recordings",
+  "Survey",
   "Settings",
 ] as const;
 
-export const ENDED_TABS = ["Engagement", "Recordings", "Attendees"] as const;
+export const ENDED_TABS = ["Engagement", "Recordings", "Attendees", "Survey"] as const;
 
 export type HostTab =
   | (typeof PRE_EVENT_TABS)[number]
@@ -43,6 +44,8 @@ const QUERY: Record<string, HostTab> = {
   stage: "Stage",
   recordings: "Recordings",
   settings: "Settings",
+  survey: "Survey",
+  feedback: "Survey",
   messages: "Messages",
   engagement: "Engagement",
   // The tab this one replaced, and the words people used for it.

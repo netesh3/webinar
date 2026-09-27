@@ -554,6 +554,12 @@ export interface EngagementCounts {
   quizPresent: number /* int */;
   reactions: number /* int */;
   hands: number /* int */;
+  /**
+   * * Post-event survey: submitted, or (link mode) only opened; Rating is 1–5, 0 for none.
+   */
+  surveyDone?: boolean;
+  surveyClicked?: boolean;
+  rating?: number /* int */;
 }
 /**
  * * `early`, `on_time` or `late`.
@@ -657,6 +663,281 @@ export interface EngagementAttendeeDetail {
   whatsAppOptIn?: boolean;
   reactions: EngagementCount[];
   sessionMin: number /* int */;
+}
+
+//////////
+// source: survey.go
+
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyQuestions = 5;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyOptions = 6;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyPromptChars = 200;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyOptionChars = 80;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyTitleChars = 120;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyButtonChars = 40;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyURLChars = 2048;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyTextAnswerChars = 1000;
+/**
+ * * `builtin` (rating + questions) or `link` (an external form).
+ */
+export type SurveyMode = string;
+export const SurveyBuiltin: SurveyMode = "builtin";
+export const SurveyLink: SurveyMode = "link";
+/**
+ * * `draft` (not sent), `live` (attendees can answer) or `closed` (no more answers).
+ */
+export type SurveyStatus = string;
+export const SurveyDraft: SurveyStatus = "draft";
+export const SurveyLive: SurveyStatus = "live";
+export const SurveyClosed: SurveyStatus = "closed";
+/**
+ * * `on_end`: sent when the host ends the webinar (and offered to anyone who leaves early);
+ *  *  `manual`: only when the host presses Send.
+ */
+export type SurveySendAt = string;
+export const SurveyOnEnd: SurveySendAt = "on_end";
+export const SurveyManual: SurveySendAt = "manual";
+/**
+ * * `rating_5` (1–5), `nps_10` (0–10), `single_choice` (an option index) or `text`.
+ */
+export type SurveyQuestionKind = string;
+export const SurveyRating5: SurveyQuestionKind = "rating_5";
+export const SurveyNPS10: SurveyQuestionKind = "nps_10";
+export const SurveySingleChoice: SurveyQuestionKind = "single_choice";
+export const SurveyText: SurveyQuestionKind = "text";
+export interface SurveyQuestion {
+  id: string;
+  kind: SurveyQuestionKind;
+  prompt: string;
+  required: boolean;
+  /**
+   * * Only for single_choice; empty otherwise.
+   */
+  options: string[];
+}
+export interface Survey {
+  id: string;
+  mode: SurveyMode;
+  title: string;
+  buttonLabel: string;
+  externalUrl: string;
+  askRating: boolean;
+  status: SurveyStatus;
+  sendAt: SurveySendAt;
+  /**
+   * * Only in builtin mode; always empty for link mode.
+   */
+  questions: SurveyQuestion[];
+  launchedAt?: string;
+  closedAt?: string;
+  updatedAt: string;
+  /**
+   * * Host view only: submitted responses and link clicks. Zero for the audience.
+   */
+  responses: number /* int */;
+  linkClicks: number /* int */;
+  /**
+   * * Host view only: once anyone has answered, the mode, the rating toggle and the questions
+   * 	 *  are fixed so every answer means what it meant when it was given.
+   */
+  locked: boolean;
+}
+export interface SurveyQuestionInput {
+  /**
+   * * The id of an existing question being kept; empty for a new one.
+   */
+  id?: string;
+  kind: SurveyQuestionKind;
+  prompt: string;
+  required: boolean;
+  options?: string[];
+}
+/**
+ * * PUT /api/host/webinars/{slug}/survey. The whole configuration, replacing what was there.
+ */
+export interface SurveyInput {
+  mode: SurveyMode;
+  title: string;
+  buttonLabel: string;
+  externalUrl: string;
+  askRating: boolean;
+  sendAt: SurveySendAt;
+  questions: SurveyQuestionInput[];
+}
+/**
+ * * GET /api/host/webinars/{slug}/survey. Survey is absent when none has been set up.
+ */
+export interface HostSurvey {
+  survey?: Survey;
+  /**
+   * * Attendees who have been in the room: the response-rate denominator.
+   */
+  attended: number /* int */;
+}
+/**
+ * * One answer as sent: Number for rating_5, nps_10 and single_choice (the option index),
+ *  *  Text for text.
+ */
+export interface SurveyAnswerInput {
+  questionId: string;
+  number?: number /* int */;
+  text?: string;
+}
+/**
+ * * POST /api/webinars/{slug}/survey/responses.
+ */
+export interface SurveySubmitRequest {
+  joinKey?: string;
+  /**
+   * * 1–5. Required in builtin mode and in link mode with AskRating.
+   */
+  rating?: number /* int */;
+  answers: SurveyAnswerInput[];
+}
+/**
+ * * POST /api/webinars/{slug}/survey/click.
+ */
+export interface SurveyClickRequest {
+  joinKey?: string;
+}
+/**
+ * * What the caller has already done, so a reload never asks twice.
+ */
+export interface MySurveyResponse {
+  submitted: boolean;
+  rating?: number /* int */;
+  linkClicked: boolean;
+  submittedAt?: string;
+}
+/**
+ * * GET /api/webinars/{slug}/survey — the audience's view.
+ *  *
+ *  *  Survey is present when it is live, or when it is armed to go out at the end (status draft,
+ *  *  sendAt on_end): an attendee leaving early is offered it then. Live says which, so the room
+ *  *  only pops it up once it is really sent. Absent otherwise, and always for the stage.
+ */
+export interface AudienceSurvey {
+  survey?: Survey;
+  live: boolean;
+  mine: MySurveyResponse;
+}
+export interface SurveyChoiceCount {
+  label: string;
+  count: number /* int */;
+}
+/**
+ * * NPS: the percentage of promoters (9–10) minus the percentage of detractors (0–6).
+ */
+export interface SurveyNPS {
+  score: number /* int */;
+  promoters: number /* int */;
+  passives: number /* int */;
+  detractors: number /* int */;
+  responses: number /* int */;
+}
+export interface SurveyQuestionResult {
+  id: string;
+  kind: SurveyQuestionKind;
+  prompt: string;
+  answered: number /* int */;
+  /**
+   * * rating_5 and nps_10: the mean, one decimal; -1 when nobody answered.
+   */
+  average: number /* float64 */;
+  /**
+   * * rating_5: counts for 1..5; nps_10: counts for 0..10; single_choice: one per option.
+   */
+  distribution: number /* int */[];
+  /**
+   * * single_choice only.
+   */
+  choices?: SurveyChoiceCount[];
+  /**
+   * * nps_10 only.
+   */
+  nps?: SurveyNPS;
+}
+export interface SurveyTextAnswer {
+  name: string;
+  text: string;
+  submittedAt: string;
+}
+/**
+ * * GET /api/host/webinars/{slug}/survey/results.
+ */
+export interface SurveyResults {
+  configured: boolean;
+  mode?: SurveyMode;
+  status?: SurveyStatus;
+  title?: string;
+  launchedAt?: string;
+  attended: number /* int */;
+  responses: number /* int */;
+  /**
+   * * responses / attended, 0..100; -1 when nobody attended.
+   */
+  responseRatePct: number /* int */;
+  /**
+   * * Link mode: attendees who pressed Open survey.
+   */
+  linkClicks: number /* int */;
+  /**
+   * * linkClicks / attended, 0..100; -1 when nobody attended.
+   */
+  clickThroughPct: number /* int */;
+  /**
+   * * The overall 1–5 rating: mean (one decimal, -1 when none) and counts for 1..5.
+   */
+  ratings: number /* int */;
+  averageRating: number /* float64 */;
+  ratingDistribution: number /* int */[];
+  /**
+   * * The first nps_10 question's score, when there is one.
+   */
+  nps?: SurveyNPS;
+  questions: SurveyQuestionResult[];
+  /**
+   * * The newest few answers to text questions, across all of them; the rest are paged.
+   */
+  comments: SurveyComment[];
+}
+export interface SurveyComment {
+  questionId: string;
+  prompt: string;
+  name: string;
+  text: string;
+  submittedAt: string;
+}
+/**
+ * * GET /api/host/webinars/{slug}/survey/answers?question=&cursor=&limit=
+ */
+export interface SurveyTextPage {
+  answers: SurveyTextAnswer[];
+  total: number /* int */;
+  nextCursor?: string;
 }
 
 //////////

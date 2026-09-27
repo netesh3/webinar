@@ -266,6 +266,10 @@ type EngagementCSVRow struct {
 	FirstJoinMin, LastLeaveMin    *int
 	Counts                        types.EngagementCounts
 	Attended                      bool
+	// Survey is completed, clicked (opened a survey link only) or empty; Rating 1–5 and NPS
+	// 0–10 (the survey's first NPS question) are nil when not given.
+	Survey      string
+	Rating, NPS *int
 }
 
 /* EachEngagementCSVRow streams the export: every registrant (no-shows included) and every
@@ -278,9 +282,16 @@ func (s *Store) EachEngagementCSVRow(ctx context.Context, webinarID string, fn f
 		       COALESCE(es.tier, 'no_show'), COALESCE(es.join_timing, ''),
 		       COALESCE(es.score, 0), COALESCE(es.watch_seconds, 0), COALESCE(es.visits, 0),
 		       es.first_join_min, NULLIF(es.last_leave_min, -1), COALESCE(es.counts, '{}'::jsonb),
-		       es.identity IS NOT NULL
+		       es.identity IS NOT NULL,
+		       CASE WHEN sr.submitted_at IS NOT NULL THEN 'completed'
+		            WHEN sr.link_clicked_at IS NOT NULL THEN 'clicked' ELSE '' END,
+		       sr.rating::int,
+		       (SELECT a.number::int FROM survey_answers a JOIN survey_questions q ON q.id = a.question_id
+		         WHERE a.response_id = sr.id AND q.kind = 'nps_10' ORDER BY q.position LIMIT 1)
 		  FROM (SELECT * FROM registrations WHERE webinar_id = $1 AND state <> 'declined') r
 		  FULL JOIN (SELECT * FROM engagement_scores WHERE webinar_id = $1) es ON es.registration_id = r.id
+		  LEFT JOIN surveys sv ON sv.webinar_id = $1
+		  LEFT JOIN survey_responses sr ON sr.survey_id = sv.id AND sr.identity = es.identity
 		 ORDER BY es.score DESC NULLS LAST, 1`, webinarID)
 	if err != nil {
 		return err
@@ -293,7 +304,7 @@ func (s *Store) EachEngagementCSVRow(ctx context.Context, webinarID string, fn f
 			counts []byte
 		)
 		if err := rows.Scan(&c.Name, &c.Email, &c.Tier, &c.JoinTiming, &c.Score, &watch, &c.Visits,
-			&c.FirstJoinMin, &c.LastLeaveMin, &counts, &c.Attended); err != nil {
+			&c.FirstJoinMin, &c.LastLeaveMin, &counts, &c.Attended, &c.Survey, &c.Rating, &c.NPS); err != nil {
 			return err
 		}
 		c.WatchMin = (watch + 30) / 60

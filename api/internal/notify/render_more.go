@@ -46,6 +46,13 @@ func ReplayReady(in Invite) (subject, body string) {
 	if p := strings.TrimSpace(in.Passcode); p != "" {
 		fmt.Fprintf(&b, "Passcode: %s\n\n", p)
 	}
+	if u := strings.TrimSpace(in.SurveyURL); u != "" {
+		title := strings.TrimSpace(in.SurveyTitle)
+		if title == "" {
+			title = "How was the session?"
+		}
+		fmt.Fprintf(&b, "%s The host would love your feedback in a short survey:\n%s\n\n", title, u)
+	}
 	// No "don't forward this" line, and its absence is the point: this one may be
 	// shared, and saying otherwise would train people to ignore the warning on the
 	// message where it is true.

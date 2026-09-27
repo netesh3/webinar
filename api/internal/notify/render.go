@@ -31,6 +31,10 @@ type Invite struct {
 	 * message goes to are the ones the host already approved — sending them a link they
 	 * cannot open would be a notification about a door that is locked. */
 	Passcode string
+	/* SurveyURL is the host's external survey (https, validated when saved), included in the
+	 * replay mail when one is live. Public like ReplayURL; SurveyTitle is its heading. */
+	SurveyURL   string
+	SurveyTitle string
 }
 
 // greeting avoids "Hi ," for a registrant who gave no name.
