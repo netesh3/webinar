@@ -170,9 +170,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the host's join toasts: "joining…" must only turn into "joined" once the roster
 	# shows the person, and a reconnect or the host's own first roster must not burst.
 	cd web && node --experimental-strip-types --no-warnings lib/join-toasts.test.mts
-	# And the connection toast: a sub-second blip must stay silent, a shown drop must turn
-	# into "back online" in place, and a long one must escalate to "Connection lost".
-	cd web && node --experimental-strip-types --no-warnings lib/connection-toast.test.mts
+	# And where a recording goes: a remembered target that is no longer available must
+	# ask rather than start somewhere else, and Stop must never become a popup.
+	cd web && node --experimental-strip-types --no-warnings lib/record-target.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
