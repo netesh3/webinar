@@ -15,7 +15,7 @@ import type { HostWebinarCounts, HostWebinarPage, Webinar } from "@/lib/api-type
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
-/* The host's own list: Upcoming / Past / Drafts, searchable, date-filtered, and
+/* The host's own list: Upcoming / Completed / Drafts, searchable, date-filtered, and
  * read one page at a time.
  *
  * All four of those are the server's job, which is the whole reason this
@@ -62,7 +62,7 @@ function ownList(
 
 const TAB_LABELS: Record<ViewTab, string> = {
   upcoming: "Upcoming",
-  past: "Past",
+  past: "Completed",
   drafts: "Drafts",
   registered: "WatchList",
   people: "People",
@@ -499,7 +499,14 @@ function EmptyList({
   }
 
   if (tab === "drafts") return <Empty title="No drafts" />;
-  if (tab === "past") return <Empty title="No past webinars" />;
+  if (tab === "past") {
+    return (
+      <Empty
+        title="No completed webinars yet"
+        hint="Once a session ends, it moves here with who came and how it went."
+      />
+    );
+  }
   return (
     <Empty
       title="Nothing upcoming"

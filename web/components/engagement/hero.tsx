@@ -90,7 +90,7 @@ export function Hero({ summary: s, showTitle = true }: { summary: EngagementSumm
         <div className="p-5 sm:p-6">
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-ink-3">
             <Badge tone={live ? "live" : "neutral"} dot={live}>
-              {live ? "Live now" : "Ended"}
+              {live ? "Live now" : "Completed"}
             </Badge>
             {w.startedAt && (
               <span>
