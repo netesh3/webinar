@@ -15,10 +15,13 @@ import {
   bypassWebinar,
   DEV_BYPASS_REGISTRANTS,
 } from "@/lib/dev-bypass";
-import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
+import { isDevAuthBypassActive, useDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
+
+const NONE: RegistrantRow[] = [];
+const NO_RECORDINGS: Recording[] = [];
 
 /** Manage one webinar: Host it, admit people, see who registered / attended. */
 export function HostWebinarScreen({ slug }: { slug: string }) {
@@ -28,30 +31,35 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const origin = useShareOrigin();
   const bypass = isDevAuthBypassActive();
 
-  const [webinar, setWebinar] = useState<Webinar | null>(null);
-  const [registrants, setRegistrants] = useState<RegistrantRow[]>([]);
-  const [recordings, setRecordings] = useState<Recording[]>([]);
+  const [fetchedWebinar, setWebinar] = useState<Webinar | null>(null);
+  const [fetchedRegistrants, setRegistrants] = useState<RegistrantRow[]>([]);
+  const [fetchedRecordings, setRecordings] = useState<Recording[]>([]);
   const [needsLogin, setNeedsLogin] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fetchError, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Local preview reads fixtures, derived here rather than copied into state by
+  // the load effect. The hook is false on the server and while hydrating, the
+  // same moment that effect first ran, so the first paint still matches.
+  const showPreview = useDevAuthBypassActive();
+  const preview = showPreview ? bypassWebinar(slug) : undefined;
+  const webinar = showPreview ? (preview ?? null) : fetchedWebinar;
+  const registrants = showPreview
+    ? preview && preview.status !== "draft"
+      ? DEV_BYPASS_REGISTRANTS
+      : NONE
+    : fetchedRegistrants;
+  const recordings = showPreview ? NO_RECORDINGS : fetchedRecordings;
+  const error = showPreview
+    ? preview
+      ? null
+      : "Unknown preview webinar."
+    : fetchError;
+
   const load = useCallback(() => {
-    if (bypass) {
-      const w = bypassWebinar(slug);
-      if (!w) {
-        setError("Unknown preview webinar.");
-        return Promise.resolve();
-      }
-      setWebinar(w);
-      setRegistrants(
-        w.status === "draft" ? [] : DEV_BYPASS_REGISTRANTS,
-      );
-      setRecordings([]);
-      setError(null);
-      return Promise.resolve();
-    }
+    if (bypass) return Promise.resolve();
 
     return Promise.all([
       api.hostWebinar(slug),

@@ -48,9 +48,8 @@ export default async function WebinarDetailPage({
                   accent otherwise — never both, and never a layout that leaves a
                   visible gap for a webinar that has no image. */}
               {w.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- a
-                // cross-origin API URL, not something next/image's loader
-                // can optimize.
+                // A cross-origin API URL, not something next/image's loader can optimize.
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={`${API_BASE}${w.imageUrl}`}
                   alt=""

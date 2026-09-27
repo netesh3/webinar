@@ -569,11 +569,16 @@ function MicMeter({ track }: { track: LocalAudioTrack | null }) {
    * the pre-join screen thrashing alongside the background flicker. Enter high, leave low. */
   const [hearing, setHearing] = useState(false);
 
+  // Losing the track drops the label, on that edge during render rather than
+  // in the effect below.
+  const [seenTrack, setSeenTrack] = useState(track);
+  if (track !== seenTrack) {
+    setSeenTrack(track);
+    if (!track) setHearing(false);
+  }
+
   useEffect(() => {
-    if (!track) {
-      setHearing(false);
-      return;
-    }
+    if (!track) return;
     return measureMicLevel(track.mediaStreamTrack, (next) => {
       setLevel(next);
       setHearing((was) => (was ? next > 0.02 : next > 0.06));

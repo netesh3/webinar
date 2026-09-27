@@ -17,7 +17,6 @@ import { useMediaPreferences } from "@/lib/media";
 import {
   useMediaPermissions,
   useLiveRole,
-  useLiveCoHost,
   type MediaPermissions,
 } from "@/lib/permissions";
 import {
@@ -87,7 +86,7 @@ export function CdnAttendeeRoom({
 
   const [failure, setFailure] = useState<string | null>(null);
   const [exit, setExit] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [, setConnected] = useState(false);
 
   const onLeaveRef = useRef(onLeave);
   useEffect(() => {
@@ -105,7 +104,6 @@ export function CdnAttendeeRoom({
 
   // Live roles & permissions
   const liveRole = useLiveRole(room, join.role);
-  const liveCoHost = useLiveCoHost(room);
 
   // Real-time chat relay
   const relay = useCallback<Relay>(
@@ -666,6 +664,10 @@ function WhepPlayer({
   );
 }
 
+function isPlaylistUrl(url: string): boolean {
+  return /\.m3u8(\?|$)/i.test(url);
+}
+
 function HlsPlayer({
   streamUrl,
   lowLatency,
@@ -678,7 +680,10 @@ function HlsPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
+  // A plain file is muted before it plays (see the effect below); starting in
+  // that state is what the effect used to set on mount. Later URL changes are
+  // covered by the element's volumechange event, wired to onMutedChange.
+  const [isMuted, setIsMuted] = useState(() => !isPlaylistUrl(streamUrl));
   const activeUrl = streamUrl;
   const ll = Boolean(lowLatency);
 
@@ -698,12 +703,11 @@ function HlsPlayer({
       video.play().catch(() => {});
     };
 
-    const isPlaylist = /\.m3u8(\?|$)/i.test(activeUrl);
+    const isPlaylist = isPlaylistUrl(activeUrl);
     if (!isPlaylist) {
       video.playsInline = true;
       video.setAttribute("playsinline", "");
       video.muted = true;
-      setIsMuted(true);
       video.src = activeUrl;
       const onLoaded = () => {
         setLoading(false);
