@@ -860,6 +860,7 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	if _, err := s.store.ComputeAndSaveReport(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not write report", "slug", slug, "error", err)
 	}
+	s.computeEngagementOnEnd(ctx, slug)
 
 	if stats, err := s.store.ChatStats(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not summarise chat", "slug", slug, "error", err)
@@ -1455,6 +1456,7 @@ func (s *Server) applyStageGrant(ctx context.Context, sfu RoomManager, wb types.
 		s.log.Warn("set stage: could not record grant",
 			"slug", slug, "identity", identity, "error", err)
 	}
+	s.recordStage(slug, identity, promoting)
 	return nil
 }
 

@@ -1606,6 +1606,9 @@ type CRMSegment struct {
 	MaxWatchMin int `json:"maxWatchMin,omitempty"`
 	/** Has written to the host on WhatsApp. */
 	Replied bool `json:"replied,omitempty"`
+	/** Engagement tiers from the webinar's latest score (engagement_scores). Implies joined.
+	 * `no_show` is expressed with Attendance, not here. */
+	Tiers []EngagementTier `json:"tiers,omitempty"`
 }
 
 const (

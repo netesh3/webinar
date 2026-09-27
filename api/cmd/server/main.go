@@ -207,6 +207,10 @@ func run() error {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return err
 	}
+	// After the server, so no request can record an event the drain would miss.
+	if err := apiServer.CloseEngagement(shutdownCtx); err != nil {
+		log.Warn("engagement capture did not drain before the deadline", "error", err)
+	}
 	log.Info("stopped cleanly")
 	return nil
 }
