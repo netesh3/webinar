@@ -63,11 +63,13 @@ func (r *run) collectPolls() {
 		}
 	}
 
+	voters := map[string]bool{}
 	for _, v := range r.in.Votes {
 		i, ok := byID[v.PollID]
 		if !ok || !IsAttendee(v.Identity) {
 			continue
 		}
+		voters[v.Identity] = true
 		pl := &r.sum.Polls[i]
 		if v.Choice >= 0 && v.Choice < len(pl.Votes) {
 			pl.Votes[v.Choice]++
@@ -97,6 +99,7 @@ func (r *run) collectPolls() {
 			p.sig.PollsAnswered++
 		}
 	}
+	r.sum.KPIs.PollVoters = len(voters)
 }
 
 func (r *run) markPresent(p *person, pollID string, quiz bool) {

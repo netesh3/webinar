@@ -10,5 +10,13 @@ export function apiSource(slug: string): EngagementSource {
     attendee: (identity, signal) => api.engagementAttendee(slug, identity, signal),
     csvUrl: api.engagementCsvUrl(slug),
     recompute: () => api.recomputeEngagement(slug),
+    attendanceCsvUrl: api.reportCsvUrl(slug),
+    chatCsvUrl: api.chatTranscriptCsvUrl(slug),
+    transcriptUrl: api.transcriptUrl(slug),
+    record: (signal) =>
+      api.sessionReport(slug, signal).then((r) => ({
+        stage: r.attendees.filter((a) => a.role !== "attendee"),
+        questions: r.questionRows,
+      })),
   };
 }

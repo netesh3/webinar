@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { EngagementAttendeeDetail, EngagementAttendeeRow, EngagementAxis, EngagementSummary } from "@/lib/api-types";
 import type { AttendeeFilters, AttendeeQuery } from "./query";
 import type { Tier } from "./score";
-import type { EngagementSource } from "./source";
+import type { EngagementSource, SessionRecord } from "./source";
 
 export const LIVE_REFRESH_MS = 30_000;
 export const SEARCH_DEBOUNCE_MS = 250;
@@ -196,4 +196,41 @@ export function useAttendeeDetail(source: EngagementSource, identity: string | n
   const mine = key && state?.key === key ? state : null;
   const retry = useCallback(() => setTick((n) => n + 1), []);
   return { data: mine?.data ?? null, error: mine?.error ?? null, loading: !!key && !mine, retry };
+}
+
+interface RecordState {
+  key: string;
+  data: SessionRecord | null;
+  error: unknown;
+}
+
+/** The attendance log (stage rows, every question), fetched the first time `wanted` turns
+ *  true and then kept: two lists open it, and the second must not ask again. */
+export function useSessionRecord(source: EngagementSource, wanted: boolean) {
+  const [tick, setTick] = useState(0);
+  const key = `${source.id}#${tick}`;
+  const [state, setState] = useState<RecordState | null>(null);
+  const asked = wanted && !!source.record;
+
+  useEffect(() => {
+    if (!asked || !source.record) return;
+    const ctrl = new AbortController();
+    source.record(ctrl.signal).then(
+      (data) => setState({ key, data, error: null }),
+      (error: unknown) => {
+        if (!ctrl.signal.aborted) setState({ key, data: null, error });
+      },
+    );
+    return () => ctrl.abort();
+  }, [source, asked, key]);
+
+  const mine = state?.key === key ? state : null;
+  const retry = useCallback(() => setTick((n) => n + 1), []);
+  return {
+    available: !!source.record,
+    data: mine?.data ?? null,
+    error: mine?.error ?? null,
+    loading: asked && !mine,
+    retry,
+  };
 }

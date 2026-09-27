@@ -278,3 +278,7 @@ export function DetailTabs({ summary }: { summary: EngagementSummary }) {
     </div>
   );
 }
+
+/* Each panel on its own, for the Engagement tab's one-section-per-topic layout. DetailTabs
+ * stays as the tabbed composition of the same panels. */
+export { ChatPanel, QAPanel, PollsPanel, ReactionsPanel, SurveyPanel };
