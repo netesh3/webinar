@@ -199,9 +199,9 @@ func TestTemplatesReadsComponents(t *testing.T) {
 				},
 			},
 			{
-				"name": "promo_image", "language": "en", "status": "APPROVED", "category": "MARKETING",
+				"name": "promo_video", "language": "en", "status": "APPROVED", "category": "MARKETING",
 				"components": []map[string]any{
-					{"type": "HEADER", "format": "IMAGE"},
+					{"type": "HEADER", "format": "VIDEO"},
 					{"type": "BODY", "text": "Our new course is live."},
 				},
 			},
@@ -233,11 +233,11 @@ func TestTemplatesReadsComponents(t *testing.T) {
 		t.Errorf("Unsupported = %q, want sendable", first.Unsupported)
 	}
 
-	/* An image header needs a media upload before the send, which a text compose box
-	 * cannot supply — so it is listed with a reason rather than silently offered and
-	 * then rejected by Meta. */
-	if !strings.Contains(got[1].Unsupported, "image") {
-		t.Errorf("promo_image Unsupported = %q, want it to say the header is an image", got[1].Unsupported)
+	/* A video header needs a file of its own for every send, which nothing here has —
+	 * so it is listed with a reason rather than silently offered and then rejected by
+	 * Meta. (An image header is filled with the webinar's cover; see TestRichTemplate.) */
+	if !strings.Contains(got[1].Unsupported, "video") {
+		t.Errorf("promo_video Unsupported = %q, want it to say the header is a video", got[1].Unsupported)
 	}
 	// Status is Meta's and is kept as-is: a host needs to see that the template
 	// they submitted is still waiting rather than missing.
@@ -310,5 +310,98 @@ func TestRenderFillsPlaceholdersInOrder(t *testing.T) {
 	}
 	if got := Render("No variables here.", []string{"unused"}); got != "No variables here." {
 		t.Errorf("Render with no placeholders = %q", got)
+	}
+}
+
+/* A rich template: an image header and buttons are read, and a send fills the image
+ * link, the body, and the variable part of the link button in Graph's shape. */
+func TestRichTemplate(t *testing.T) {
+	tpl := readTemplate(graphTemplateFromJSON(t, `{
+		"name":"wl_reminder","language":"en","status":"APPROVED","category":"UTILITY",
+		"components":[
+			{"type":"HEADER","format":"IMAGE"},
+			{"type":"BODY","text":"Hi {{1}}, it starts soon."},
+			{"type":"BUTTONS","buttons":[
+				{"type":"URL","text":"Join","url":"https://webinarliv.com/{{1}}"},
+				{"type":"QUICK_REPLY","text":"Can't make it"}]}]}`))
+	if tpl.Unsupported != "" || tpl.HeaderFormat != "IMAGE" || len(tpl.Buttons) != 2 ||
+		!tpl.Buttons[0].Dynamic || tpl.Buttons[1].Type != "QUICK_REPLY" {
+		t.Fatalf("template = %+v", tpl)
+	}
+	mid := readTemplate(graphTemplateFromJSON(t, `{"name":"x","language":"en","status":"APPROVED",
+		"components":[{"type":"BODY","text":"b"},{"type":"BUTTONS","buttons":[
+			{"type":"URL","text":"Go","url":"https://a.com/{{1}}/x"}]}]}`))
+	if mid.Unsupported == "" {
+		t.Errorf("a variable in the middle of a link should be unsupported")
+	}
+
+	if s, ok := URLSuffix("https://webinarliv.com/{{1}}", "https://webinarliv.com/webinars/a/room?k=K"); !ok || s != "webinars/a/room?k=K" {
+		t.Errorf("suffix = %q %v", s, ok)
+	}
+	if _, ok := URLSuffix("https://webinarliv.com/{{1}}", "https://evil.com/x"); ok {
+		t.Errorf("a link outside the approved address must not fit the button")
+	}
+
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		writeJSON(w, map[string]any{"messages": []map[string]string{{"id": "wamid.R"}}})
+	}))
+	defer srv.Close()
+	if _, err := newTestClient(srv.URL).SendTemplate(context.Background(), "tok", "p1", OutgoingTemplate{
+		To: "+27831112222", Name: "wl_reminder", Language: "en", BodyParams: []string{"Thandi"},
+		HeaderImage: "https://webinarliv.com/api/webinars/a/image?v=1",
+		URLButtons:  []URLButtonParam{{Index: 0, Suffix: "webinars/a/room?k=K"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	comps, _ := body["template"].(map[string]any)["components"].([]any)
+	if len(comps) != 3 {
+		t.Fatalf("components = %v", comps)
+	}
+	h := comps[0].(map[string]any)
+	img := h["parameters"].([]any)[0].(map[string]any)["image"].(map[string]any)["link"]
+	if h["type"] != "header" || img != "https://webinarliv.com/api/webinars/a/image?v=1" {
+		t.Errorf("header = %v", h)
+	}
+	b := comps[2].(map[string]any)
+	if b["type"] != "button" || b["sub_type"] != "url" || b["index"] != "0" ||
+		b["parameters"].([]any)[0].(map[string]any)["text"] != "webinars/a/room?k=K" {
+		t.Errorf("button = %v", b)
+	}
+}
+
+func graphTemplateFromJSON(t *testing.T, s string) graphTemplate {
+	t.Helper()
+	var g graphTemplate
+	if err := json.Unmarshal([]byte(s), &g); err != nil {
+		t.Fatal(err)
+	}
+	return g
+}
+
+func TestCreateTemplateBody(t *testing.T) {
+	var (
+		path string
+		body map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		writeJSON(w, map[string]any{"id": "123", "status": "PENDING"})
+	}))
+	defer srv.Close()
+	status, err := newTestClient(srv.URL).CreateTemplate(context.Background(), "tok", "waba-1", NewTemplate{
+		Name: "wl_replay", Language: "en", Category: "UTILITY", Body: "Hi {{1}}", Examples: []string{"Priya"},
+		Buttons: []NewButton{{Type: "URL", Text: "Watch", URL: "https://x.com/{{1}}", Example: "https://x.com/r"}},
+	})
+	if err != nil || status != "PENDING" || path != "/waba-1/message_templates" {
+		t.Fatalf("status %q err %v path %q", status, err, path)
+	}
+	comps := body["components"].([]any)
+	if body["category"] != "UTILITY" || len(comps) != 2 {
+		t.Errorf("body = %v", body)
 	}
 }

@@ -517,6 +517,33 @@ export interface CRMRecipeRequest {
   keywords?: CRMRecipeKeyword[];
   words?: string[];
 }
+/**
+ *  CRMStarterTemplate is one of the ready-made templates a host can submit to Meta from
+ *  * the Templates tab. Params are the merge fields to fill each {{n}} with.
+ */
+export interface CRMStarterTemplate {
+  name: string;
+  category: string;
+  /**
+   * * What it is for: Confirmation, Reminder, Replay, Follow up.
+   */
+  use: string;
+  body: string;
+  params: string[];
+  examples: string[];
+  buttons: CRMTemplateButton[];
+  /**
+   * * Meta's status once created (PENDING, APPROVED, REJECTED); empty when not yet.
+   */
+  status?: string;
+  /**
+   * * Meta's refusal, when submitting it failed.
+   */
+  error?: string;
+}
+export interface CRMStarterTemplatesResponse {
+  templates: CRMStarterTemplate[];
+}
 
 //////////
 // source: engagement.go
@@ -2688,6 +2715,28 @@ export interface CRMTemplate {
    * * Why not, in words, when Sendable is false.
    */
   unsupported?: string;
+  /**
+   * * IMAGE when the header is a picture — the webinar's cover is sent in it.
+   */
+  headerFormat?: string;
+  /**
+   * * Buttons, in order, as Meta approved them.
+   */
+  buttons: CRMTemplateButton[];
+}
+/**
+ *  CRMTemplateButton is one button on a template. A quick reply's tap comes back as a
+ *  * message with its text; a link opens the URL — for a dynamic one, the person's own join
+ *  * or replay link, filled in at send time.
+ */
+export interface CRMTemplateButton {
+  /**
+   * * QUICK_REPLY, URL or PHONE_NUMBER.
+   */
+  type: string;
+  text: string;
+  url?: string;
+  dynamic?: boolean;
 }
 /**
  * CRMTemplatesResponse is the host's cached template list, alphabetical.

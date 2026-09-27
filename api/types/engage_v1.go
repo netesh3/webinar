@@ -355,3 +355,24 @@ type CRMRecipeRequest struct {
 	Keywords []CRMRecipeKeyword `json:"keywords,omitempty"`
 	Words    []string           `json:"words,omitempty"`
 }
+
+/* CRMStarterTemplate is one of the ready-made templates a host can submit to Meta from
+ * the Templates tab. Params are the merge fields to fill each {{n}} with. */
+type CRMStarterTemplate struct {
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	/** What it is for: Confirmation, Reminder, Replay, Follow up. */
+	Use      string              `json:"use"`
+	Body     string              `json:"body"`
+	Params   []string            `json:"params"`
+	Examples []string            `json:"examples"`
+	Buttons  []CRMTemplateButton `json:"buttons"`
+	/** Meta's status once created (PENDING, APPROVED, REJECTED); empty when not yet. */
+	Status string `json:"status,omitempty"`
+	/** Meta's refusal, when submitting it failed. */
+	Error string `json:"error,omitempty"`
+}
+
+type CRMStarterTemplatesResponse struct {
+	Templates []CRMStarterTemplate `json:"templates"`
+}

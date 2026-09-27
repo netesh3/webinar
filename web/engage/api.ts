@@ -29,6 +29,7 @@ import type {
   CRMTestSendRequest,
   CRMWebinarMessagesResponse,
   CRMFollowupsResponse,
+  CRMStarterTemplatesResponse,
   CRMSnippet,
   CRMSnippetRequest,
   CRMSnippetsResponse,
@@ -426,6 +427,12 @@ export const engageApi = {
       `/api/host/crm/webinars/${seg(slug)}/followups`,
       fresh,
     ),
+
+  /** The ready-made templates a host can submit to Meta from here. */
+  crmStarterTemplates: () =>
+    request<CRMStarterTemplatesResponse>("/api/host/crm/templates/starters", fresh),
+  createCrmStarterTemplates: () =>
+    post<CRMStarterTemplatesResponse>("/api/host/crm/templates/starters"),
 
   /** The Automations page: ready-made recipes over the drip and bot engines. */
   crmRecipes: () => request<CRMRecipesResponse>("/api/host/crm/recipes", fresh),

@@ -57,6 +57,8 @@ type Notification struct {
 	// TemplateParams fill the template's {{1}}, {{2}} … in order, already resolved
 	// for this recipient.
 	TemplateParams []string
+	// LinkURL is where a dynamic link button on the template goes (migrations/0064).
+	LinkURL string
 	/* BroadcastID is set on exactly the broadcast rows, and on nothing else — the
 	 * constraint in 0045 enforces the "exactly". The reminder sweeps use its absence
 	 * to mean "this is not part of a broadcast", so moving a webinar cannot rewrite
@@ -114,16 +116,16 @@ func (s *Store) Notify(ctx context.Context, q Querier, n Notification) error {
 	_, err := q.Exec(ctx, `
 		INSERT INTO notifications (user_id, email, kind, webinar_id, subject, body, ics, registration_id, due_at,
 		                           channel, contact_id, template_name, template_language, template_params,
-		                           broadcast_id, drip_enrollment_id, offset_min, html)
+		                           broadcast_id, drip_enrollment_id, offset_min, html, link_url)
 		VALUES (NULLIF($1,'')::uuid, $2, $3,
 		        (SELECT id FROM webinars WHERE slug = $4), $5, $6, $7, NULLIF($8,'')::uuid,
 		        COALESCE($9::timestamptz, now()),
 		        $10, NULLIF($11,'')::uuid, $12, $13, $14, NULLIF($15,'')::uuid,
-		        NULLIF($16,'')::uuid, NULLIF($17, 0), $18)`,
+		        NULLIF($16,'')::uuid, NULLIF($17, 0), $18, $19)`,
 		n.UserID, strings.ToLower(strings.TrimSpace(n.Email)), string(n.Kind),
 		n.WebinarSlug, n.Subject, n.Body, n.ICS, n.RegistrationID, due,
 		channel, n.ContactID, n.TemplateName, n.TemplateLanguage, params, n.BroadcastID,
-		n.DripEnrollmentID, n.OffsetMin, n.HTML)
+		n.DripEnrollmentID, n.OffsetMin, n.HTML, n.LinkURL)
 	if isUniqueViolation(err) {
 		return nil
 	}

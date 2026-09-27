@@ -84,6 +84,24 @@ type Template struct {
 	 * becomes sendable when this grows support for headers says so after the next
 	 * refresh. */
 	Unsupported string
+	// HeaderFormat is TEXT, IMAGE, VIDEO or DOCUMENT, or empty for no header. An IMAGE
+	// header is filled at send time with the webinar's cover.
+	HeaderFormat string
+	// Buttons are the template's buttons in order: quick replies (fixed text, the tap
+	// comes back in the webhook) and links (a fixed URL, or one ending in a variable that
+	// is filled with the person's own link).
+	Buttons []TemplateButton
+}
+
+// TemplateButton is one button on a template.
+type TemplateButton struct {
+	// Type is QUICK_REPLY, URL or PHONE_NUMBER (upper-case, as Meta sends it).
+	Type string
+	Text string
+	// URL is the approved link, with `{{1}}` left in for a dynamic one.
+	URL string
+	// Dynamic is a URL button whose last part is a variable.
+	Dynamic bool
 }
 
 // placeholder matches Meta's {{1}} / {{name}} variable syntax.
@@ -193,10 +211,14 @@ func readTemplate(t graphTemplate) Template {
 			out.Footer = comp.Text
 		case "HEADER":
 			format := strings.ToUpper(strings.TrimSpace(comp.Format))
+			out.HeaderFormat = format
+			if format == "IMAGE" {
+				// Filled with the webinar's cover at send time.
+				continue
+			}
 			if format != "" && format != "TEXT" {
-				// An image, video or document header needs a media id or a link
-				// uploaded before the send, which is not something a text compose box
-				// can supply.
+				// A video or document header needs a file of its own for every send,
+				// which nothing here has.
 				reasons = append(reasons, "its header is "+strings.ToLower(format))
 				continue
 			}
@@ -205,11 +227,26 @@ func readTemplate(t graphTemplate) Template {
 				reasons = append(reasons, "its header has a variable in it")
 			}
 		case "BUTTONS":
+			dynamic := 0
 			for _, b := range comp.Buttons {
-				if placeholder.MatchString(b.URL) {
-					reasons = append(reasons, "one of its buttons has a variable in it")
-					break
+				bt := TemplateButton{
+					Type: strings.ToUpper(strings.TrimSpace(b.Type)),
+					Text: b.Text,
+					URL:  b.URL,
 				}
+				if bt.Type == "URL" && placeholder.MatchString(b.URL) {
+					bt.Dynamic = true
+					dynamic++
+					// Only a variable at the very end can be filled: it is the part of
+					// the link Meta lets a send supply.
+					if !strings.HasSuffix(strings.TrimSpace(b.URL), "}}") {
+						reasons = append(reasons, "one of its link buttons has a variable in the middle")
+					}
+				}
+				if bt.Type != "QUICK_REPLY" && bt.Type != "URL" && bt.Type != "PHONE_NUMBER" {
+					reasons = append(reasons, "it has a "+strings.ToLower(bt.Type)+" button")
+				}
+				out.Buttons = append(out.Buttons, bt)
 			}
 		}
 	}
@@ -255,6 +292,18 @@ type OutgoingTemplate struct {
 	// count does not match the approved template, so the caller checks first —
 	// see store.Template's Variables.
 	BodyParams []string
+	// HeaderImage is a public https link to the image, for a template with an IMAGE
+	// header. Meta fetches it when the message is sent.
+	HeaderImage string
+	// URLButtons fills dynamic link buttons: the button's index on the template, and
+	// the text that replaces its `{{1}}`.
+	URLButtons []URLButtonParam
+}
+
+// URLButtonParam is the variable part of one dynamic link button.
+type URLButtonParam struct {
+	Index  int
+	Suffix string
 }
 
 /* SendTemplate sends an approved template and returns Meta's message id.
@@ -278,24 +327,12 @@ func (c *Client) SendTemplate(ctx context.Context, token, phoneNumberID string, 
 		return "", errors.New("that template has no language code")
 	}
 
-	type param struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	type component struct {
-		Type       string  `json:"type"`
-		Parameters []param `json:"parameters"`
-	}
 	tmpl := map[string]any{
 		"name":     strings.TrimSpace(msg.Name),
 		"language": map[string]string{"code": lang},
 	}
-	if len(msg.BodyParams) > 0 {
-		params := make([]param, 0, len(msg.BodyParams))
-		for _, v := range msg.BodyParams {
-			params = append(params, param{Type: "text", Text: v})
-		}
-		tmpl["components"] = []component{{Type: "body", Parameters: params}}
+	if comps := templateComponents(msg); len(comps) > 0 {
+		tmpl["components"] = comps
 	}
 	return c.send(ctx, token, phoneNumberID, map[string]any{
 		"messaging_product": "whatsapp",
@@ -304,6 +341,53 @@ func (c *Client) SendTemplate(ctx context.Context, token, phoneNumberID string, 
 		"type":              "template",
 		"template":          tmpl,
 	})
+}
+
+/* templateComponents is the parameters a send supplies: the header image, the body's
+ * values, and the dynamic part of each link button — in the shape Graph expects. */
+func templateComponents(msg OutgoingTemplate) []map[string]any {
+	var out []map[string]any
+	if img := strings.TrimSpace(msg.HeaderImage); img != "" {
+		out = append(out, map[string]any{
+			"type": "header",
+			"parameters": []map[string]any{{
+				"type": "image", "image": map[string]string{"link": img},
+			}},
+		})
+	}
+	if len(msg.BodyParams) > 0 {
+		params := make([]map[string]any, 0, len(msg.BodyParams))
+		for _, v := range msg.BodyParams {
+			params = append(params, map[string]any{"type": "text", "text": v})
+		}
+		out = append(out, map[string]any{"type": "body", "parameters": params})
+	}
+	for _, b := range msg.URLButtons {
+		out = append(out, map[string]any{
+			"type":     "button",
+			"sub_type": "url",
+			"index":    fmt.Sprint(b.Index),
+			"parameters": []map[string]any{{
+				"type": "text", "text": b.Suffix,
+			}},
+		})
+	}
+	return out
+}
+
+/* URLSuffix is the part of link that fills a dynamic button approved as buttonURL: what
+ * follows the fixed part before `{{1}}`. False when link does not start with it — the
+ * button can only send people somewhere under the address Meta approved. */
+func URLSuffix(buttonURL, link string) (string, bool) {
+	loc := placeholder.FindStringIndex(buttonURL)
+	if loc == nil {
+		return "", false
+	}
+	prefix := buttonURL[:loc[0]]
+	if !strings.HasPrefix(link, prefix) || len(link) == len(prefix) {
+		return "", false
+	}
+	return link[len(prefix):], true
 }
 
 /* SendText sends free-form text, which Meta only allows inside the 24-hour
@@ -476,4 +560,77 @@ func recipient(s string) string {
 		}
 	}
 	return b.String()
+}
+
+/* NewTemplate is one message template to submit to Meta for approval: the starter set
+ * a host can create from here instead of writing each one in WhatsApp Manager. */
+type NewTemplate struct {
+	Name     string
+	Language string
+	// Category is UTILITY or MARKETING.
+	Category string
+	// Body with `{{1}}`-style variables, and one example value for each — Meta requires
+	// them to review the template.
+	Body     string
+	Examples []string
+	Footer   string
+	Buttons  []NewButton
+}
+
+// NewButton is one button on a template to submit.
+type NewButton struct {
+	// QUICK_REPLY or URL.
+	Type string
+	Text string
+	// For URL: the fixed address ending in `{{1}}`, and an example of the full link.
+	URL     string
+	Example string
+}
+
+/* CreateTemplate submits a template for approval on the host's WhatsApp Business
+ * Account and returns Meta's status for it (usually PENDING, sometimes APPROVED at once).
+ * A name that already exists in that language comes back as Graph's own error. */
+func (c *Client) CreateTemplate(ctx context.Context, token, wabaID string, t NewTemplate) (string, error) {
+	if strings.TrimSpace(token) == "" {
+		return "", ErrNotConnected
+	}
+	id := strings.TrimSpace(wabaID)
+	if id == "" {
+		return "", errors.New("no WhatsApp Business Account id to create the template on")
+	}
+	body := map[string]any{"type": "BODY", "text": t.Body}
+	if len(t.Examples) > 0 {
+		body["example"] = map[string]any{"body_text": [][]string{t.Examples}}
+	}
+	comps := []map[string]any{body}
+	if t.Footer != "" {
+		comps = append(comps, map[string]any{"type": "FOOTER", "text": t.Footer})
+	}
+	if len(t.Buttons) > 0 {
+		btns := make([]map[string]any, 0, len(t.Buttons))
+		for _, b := range t.Buttons {
+			m := map[string]any{"type": b.Type, "text": b.Text}
+			if b.Type == "URL" {
+				m["url"] = b.URL
+				if b.Example != "" {
+					m["example"] = []string{b.Example}
+				}
+			}
+			btns = append(btns, m)
+		}
+		comps = append(comps, map[string]any{"type": "BUTTONS", "buttons": btns})
+	}
+	var res struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := c.post(ctx, token, "/"+url.PathEscape(id)+"/message_templates", map[string]any{
+		"name":       t.Name,
+		"language":   t.Language,
+		"category":   t.Category,
+		"components": comps,
+	}, &res); err != nil {
+		return "", err
+	}
+	return strings.ToUpper(res.Status), nil
 }

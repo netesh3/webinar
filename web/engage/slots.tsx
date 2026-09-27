@@ -60,13 +60,16 @@ export function WhatsAppRemindersToggle({
         connected ? (
           <>
             Sent from {account?.whatsapp?.displayPhone || "your number"} to
-            registrants who tick the WhatsApp box, and billed to your Meta account.
-            Pick the template for each message on this webinar&apos;s{" "}
+            registrants who tick the WhatsApp box, and billed to your Meta
+            account. Pick the template for each message on this webinar&apos;s{" "}
             <span className="font-medium text-ink">Messages</span> tab.
           </>
         ) : (
           <>
-            <Link href="/account" className="font-medium text-brand hover:underline">
+            <Link
+              href="/account"
+              className="font-medium text-brand hover:underline"
+            >
               Connect WhatsApp
             </Link>{" "}
             to message registrants on their phone.
@@ -116,9 +119,11 @@ export function WhatsAppOptInCheckbox({
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        Send me reminders and updates on{" "}
-        <span className="font-medium text-ink">WhatsApp</span>. You can reply{" "}
-        <span className="font-medium text-ink">STOP</span> at any time.
+        Send me updates on{" "}
+        <span className="font-medium text-ink">WhatsApp</span>: a confirmation,
+        a reminder before it starts with a one-tap Join, and the replay if I
+        miss it. Reply <span className="font-medium text-ink">STOP</span> at any
+        time.
       </span>
     </label>
   );
@@ -152,8 +157,16 @@ export function WhatsAppAccountRow() {
               : "Send confirmations and reminders from your own business number."}
           </p>
         </div>
-        <ButtonLink href={`${ENGAGE_HOME}?view=setup`} size="sm" variant="secondary">
-          {account.whatsapp?.needsReconnect ? "Reconnect" : account.whatsapp ? "Manage" : "Set up"}
+        <ButtonLink
+          href={`${ENGAGE_HOME}?view=setup`}
+          size="sm"
+          variant="secondary"
+        >
+          {account.whatsapp?.needsReconnect
+            ? "Reconnect"
+            : account.whatsapp
+              ? "Manage"
+              : "Set up"}
         </ButtonLink>
       </div>
     </div>
@@ -204,12 +217,15 @@ export function RosterWhatsAppCells({ row }: { row: RegistrantRow }) {
             ours reads as its delivery state, which is what a host checks after sending. */}
         {row.lastMessage ? (
           <div className="min-w-0">
-            <div className={`truncate ${row.lastMessage.direction === "in" ? "text-ok" : ""}`}>
+            <div
+              className={`truncate ${row.lastMessage.direction === "in" ? "text-ok" : ""}`}
+            >
               {row.lastMessage.direction === "in" ? "Replied: " : ""}
               {row.lastMessage.body || row.lastMessage.templateName || "—"}
             </div>
             <div className="text-[11px] text-ink-3">
-              {row.lastMessage.direction === "out" && `${row.lastMessage.status} · `}
+              {row.lastMessage.direction === "out" &&
+                `${row.lastMessage.status} · `}
               {formatRelative(row.lastMessage.createdAt, new Date())}
             </div>
           </div>

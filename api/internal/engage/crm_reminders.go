@@ -301,6 +301,7 @@ func (s *Module) queueWhatsApp(
 		TemplateName:     reminder.Template,
 		TemplateLanguage: reminder.Language,
 		TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, "", offset),
+		LinkURL:          s.joinLink(ctx, wb.ID, registrationID),
 		DueAt:            due,
 		OffsetMin:        offset,
 	}); err != nil {
@@ -417,6 +418,8 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 		s.log.Error("whatsapp outbox: could not read", "error", err)
 		return
 	}
+	// Webinars read once per flush, for the cover image and page link.
+	webinars := map[string]*types.Webinar{}
 	for _, m := range owed {
 		tmpl, err := s.store.Template(ctx, m.HostID, m.TemplateName, m.TemplateLanguage)
 		if errors.Is(err, store.ErrNotFound) {
@@ -441,12 +444,17 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 			continue
 		}
 
-		wamid, err := s.whatsapp.SendTemplate(ctx, m.Token, m.PhoneNumberID, wa.OutgoingTemplate{
+		out := wa.OutgoingTemplate{
 			To:         m.Phone,
 			Name:       tmpl.Name,
 			Language:   tmpl.Language,
 			BodyParams: m.Params,
-		})
+		}
+		if reason := s.fillRich(ctx, &out, tmpl, m, webinars); reason != "" {
+			s.skipWhatsApp(ctx, m, reason)
+			continue
+		}
+		wamid, err := s.whatsapp.SendTemplate(ctx, m.Token, m.PhoneNumberID, out)
 		if err != nil {
 			// Retried with backoff by RecordSendAttempt until the attempts run out.
 			// Meta's own sentence is kept as the reason: it is usually the only
