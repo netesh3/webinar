@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ConfirmModal, Menu, Spinner } from "./controls";
-import { MoreIcon, PlayIcon, StarIcon, TrashIcon, UsersIcon } from "./icons";
+import { ConfirmModal, Spinner } from "./controls";
 import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, kindLabel } from "./ui";
 import {
@@ -105,12 +104,7 @@ export function HostWebinarRows({
       <div className="grid gap-3">
         {webinars.map((w) =>
           w.status === "ended" && !readOnly ? (
-            <CompletedCard
-              key={w.id}
-              webinar={w}
-              busy={busy === w.id}
-              onDelete={() => setConfirmDelete(w)}
-            />
+            <CompletedCard key={w.id} webinar={w} />
           ) : (
             <HostCard
               key={w.id}
@@ -303,19 +297,10 @@ function HostCard({
  * It used to offer "View attendance" and "Manage" side by side, and both went to the
  * same page — one to its Attendees tab, the other to Engagement — so the choice asked
  * a host to know the page's tabs before seeing it. Now the card answers the first
- * question itself (did people come, and did they stay?) and the whole card is one way
- * in. The other tabs are a menu away, and Delete sits behind that menu with its own
- * confirmation, rather than beside the button people press most. */
-function CompletedCard({
-  webinar: w,
-  busy,
-  onDelete,
-}: {
-  webinar: Webinar;
-  busy: boolean;
-  onDelete: () => void;
-}) {
-  const router = useRouter();
+ * question itself (did people come, and did they stay?) and has one way in: the card,
+ * or See results. Attendees, recording, survey and Delete are all on that page, so the
+ * list does not repeat them. */
+function CompletedCard({ webinar: w }: { webinar: Webinar }) {
   const href = `/host/${w.id}`;
   const r = w.report;
   const registered = w.registrantCount;
@@ -368,51 +353,11 @@ function CompletedCard({
           </dl>
         </div>
 
-        {/* Positioned but no z-index: later in the DOM than the stretched link, so it
-            paints above it, without a stacking context that would trap the menu under
-            the next card. */}
-        <div className="relative flex shrink-0 items-center gap-1.5">
+        {/* Positioned so it paints above the stretched link that comes before it. */}
+        <div className="relative shrink-0">
           <ButtonLink href={href} size="sm">
             See results
           </ButtonLink>
-          <Menu
-            label={`More for ${w.topic}`}
-            trigger={
-              <span className="inline-grid size-8 place-items-center rounded-lg text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink">
-                <MoreIcon className="size-4" />
-              </span>
-            }
-            items={[
-              {
-                kind: "action",
-                label: "Attendee list",
-                hint: "Who came, and for how long",
-                icon: <UsersIcon className="size-4" />,
-                onSelect: () => router.push(`${href}?tab=attendees`),
-              },
-              {
-                kind: "action",
-                label: "Recording",
-                icon: <PlayIcon className="size-4" />,
-                onSelect: () => router.push(`${href}?tab=recordings`),
-              },
-              {
-                kind: "action",
-                label: "Feedback survey",
-                icon: <StarIcon className="size-4" />,
-                onSelect: () => router.push(`${href}?tab=survey`),
-              },
-              { kind: "separator" },
-              {
-                kind: "action",
-                label: "Delete webinar",
-                icon: <TrashIcon className="size-4" />,
-                danger: true,
-                disabled: busy,
-                onSelect: onDelete,
-              },
-            ]}
-          />
         </div>
       </div>
     </Card>
