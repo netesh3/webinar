@@ -2,12 +2,65 @@
 
 import type { Poll } from "@/lib/api-types";
 import { letterFor, pollResults } from "@/lib/poll-view";
-import { CheckIcon } from "../icons";
+import { Spinner } from "../controls";
+import { CheckIcon, PollIcon } from "../icons";
 import { Pill } from "./chat-badges";
 
 /* The pieces the host's and the audience's Polls views share: section headers,
  * the kind/state pills, and the results rows. One definition each, so the bars a
  * panelist sees and the bars the host sees cannot drift apart. */
+
+/** The centered spot a Polls view shows when it has no list: empty, still loading,
+ *  or a first read that failed. One shape for all three, so the loading state becomes
+ *  the empty state in place — the icon tile stays where it is and the words fill in
+ *  under it — rather than one layout replacing another. */
+export function EmptySlot({
+  title,
+  children,
+  action,
+  loading = false,
+  brand = false,
+  className = "px-4",
+}: {
+  title: string;
+  children?: React.ReactNode;
+  action?: React.ReactNode;
+  loading?: boolean;
+  brand?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      role={loading ? "status" : undefined}
+      className={`flex flex-col items-center py-10 text-center ${className}`}
+    >
+      <span
+        className={`grid size-11 place-items-center rounded-2xl ${
+          brand ? "bg-brand-soft text-brand" : "bg-surface-2 text-ink-3"
+        }`}
+      >
+        {loading ? <Spinner className="size-5" /> : <PollIcon className="size-5" />}
+      </span>
+      <p className={`mt-3 text-[13px] font-semibold ${loading ? "text-ink-3" : "text-ink"}`}>{title}</p>
+      {children && (
+        <p className="mt-1 max-w-[16rem] text-[12px] leading-relaxed text-ink-3">{children}</p>
+      )}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
+
+export function RetryButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-9 items-center rounded-lg border border-line-2 px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+    >
+      Try again
+    </button>
+  );
+}
 
 export function SectionLabel({
   title,
