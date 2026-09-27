@@ -92,12 +92,17 @@ function useCameraTrack(): LocalVideoTrack | undefined {
 export function LowLightControl({
   value: raw,
   onChange,
+  auto,
+  onAutoChange,
   /** Shown when there is no live camera to judge the effect against. */
   hint,
   disabled = false,
 }: {
   value: number;
   onChange: (next: number) => void;
+  /** Auto: the amount comes from how bright the face is, and the slider is hidden. */
+  auto: boolean;
+  onAutoChange: (next: boolean) => void;
   hint?: string;
   disabled?: boolean;
 }) {
@@ -133,8 +138,47 @@ export function LowLightControl({
 
       {/* Only once it is on. A slider for a feature that is off is a control with nothing
           to control, and it would make the common case — one click — look like a decision
-          about a number. */}
+          about a number. Auto or Manual first, as Zoom and Teams have it: Auto meters the
+          face and picks the amount, so the common case stays one click. */}
       {on && (
+        <div className="mt-1.5 pl-1 sm:max-w-[22rem]">
+          <div
+            role="group"
+            aria-label="Low light amount"
+            className="flex rounded-lg border border-line bg-surface-2 p-0.5"
+          >
+            {(
+              [
+                { id: true, label: "Auto" },
+                { id: false, label: "Manual" },
+              ] as const
+            ).map((opt) => {
+              const active = auto === opt.id;
+              return (
+                <button
+                  key={opt.label}
+                  type="button"
+                  aria-pressed={active}
+                  disabled={disabled}
+                  onClick={() => onAutoChange(opt.id)}
+                  className={`flex-1 rounded-md px-3 py-1 text-[12px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-brand/50 ${
+                    active ? "bg-surface text-ink shadow-sm" : "text-ink-3 hover:text-ink-2"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          {auto && (
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-3">
+              Brightens your face only as much as it needs, and not at all in a well-lit room.
+            </p>
+          )}
+        </div>
+      )}
+
+      {on && !auto && (
         <div className="mt-1 pl-1">
           <div className="mb-1 flex items-baseline justify-between gap-3 sm:max-w-[22rem]">
             <span className="text-[11.5px] text-ink-3">Amount</span>
@@ -188,6 +232,8 @@ export function LowLightSetting() {
       </h3>
       <LowLightControl
         value={prefs.lowLight}
+        auto={prefs.lowLightAuto}
+        onAutoChange={(lowLightAuto) => updatePrefs({ lowLightAuto })}
         onChange={(lowLight) => updatePrefs({ lowLight })}
         hint={
           track
