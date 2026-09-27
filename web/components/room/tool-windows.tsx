@@ -45,6 +45,7 @@ function Content({ id }: { id: ToolId }) {
     case "invite":
     case "captions":
     case "sharefile":
+    case "youtube":
       return null;
   }
 }

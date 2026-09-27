@@ -19,7 +19,9 @@ import {
   describeChange,
   gridItems,
   isCustomised,
+  isHomeTool,
   morePanelTools,
+  tuckedTools,
   usableTools,
   wouldBump,
   type ToolbarChange,
@@ -57,7 +59,7 @@ import { LayoutMenu } from "./layout-menu";
 import { MoreButton, MoreGrid } from "./more-grid";
 import { ReactionPicker } from "./reactions";
 import { RecordButton } from "./recording";
-import { StreamButton } from "./stream-to-youtube";
+import { useYouTubeStream } from "./stream-to-youtube";
 import { CaptionsSession, useCaptionsMoreAction } from "./caption-overlay";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
 import { describeMediaError, isScreenShareCancel } from "@/lib/media-errors";
@@ -216,6 +218,7 @@ export function ControlBar() {
     shareActive: screenShares.length > 0,
   });
   const captionsAction = useCaptionsMoreAction();
+  const youtube = useYouTubeStream();
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
@@ -231,6 +234,10 @@ export function ControlBar() {
   });
   const slots = barSlots(tools.layout, capacity, usable);
   const grid = gridItems(tools.layout, slots, usable);
+  /* YouTube and Settings: on the bar in their own place unless tucked into
+   * More (lib/tools.ts HOME_BAR_TOOLS). */
+  const tucked = tuckedTools(tools.layout);
+  const youtubeHome = usable.includes("youtube") && !tucked.includes("youtube");
   const compact = useCompact();
   const toggleSize = useMediaToggleSize();
 
@@ -286,11 +293,13 @@ export function ControlBar() {
     availableTools,
     compact,
     isAttendee && attendeeHasRoomForReactions,
+    tucked,
   );
   const panelItems = morePanelTools(
     availableTools,
     compact,
     isAttendee && attendeeHasRoomForReactions,
+    tucked,
   );
   // Once the host brings an attendee on stage, mic+camera claim the left —
   // and Chat / Raise hand / More move to hug the right edge instead of
@@ -654,6 +663,7 @@ export function ControlBar() {
     if (id === "layout") return `Layout · ${LAYOUT_LABEL[stage.mode]}`;
     if (id === "captions") return captionsAction?.active ? "Captions on" : "Captions off";
     if (id === "sharefile") return fileShare.active ? "Sharing a video file" : "Share a video file";
+    if (id === "youtube") return youtube.configured ? "YouTube stream is on" : "Stream to YouTube";
     return t.label;
   };
 
@@ -664,6 +674,7 @@ export function ControlBar() {
     if (id === "layout") return layoutOpen;
     if (id === "captions") return captionsAction?.active ?? false;
     if (id === "sharefile") return fileShare.active;
+    if (id === "youtube") return youtube.configured;
     if (tools.panelTab === id) return true;
     const win = tools.layout.windows[id];
     return !!win && !win.minimized;
@@ -719,6 +730,10 @@ export function ControlBar() {
     }
     if (id === "sharefile") {
       setShareFileOpen(true);
+      return;
+    }
+    if (id === "youtube") {
+      youtube.open();
       return;
     }
     tools.toggle(id);
@@ -890,13 +905,44 @@ export function ControlBar() {
               a capture control, not a mute/video twin. It renders nothing for
               anyone the server has not told they may record. */}
           <RecordButton />
-          <StreamButton />
+          {/* YouTube's home, beside Record. It moves into More like any other
+              tool; its dialog is rendered once below either way. */}
+          {youtubeHome && (
+            <HomeToolSlot
+              id="youtube"
+              label={labelFor("youtube")}
+              active={activeFor("youtube")}
+              live={youtube.configured}
+              movable={capacity > 0}
+              editing={editingNow}
+              landed={landed === "youtube"}
+              dragging={drag.drag?.tool === "youtube"}
+              onActivate={() => activate("youtube")}
+              onRemove={() => edit(() => tools.remove("youtube"))}
+            />
+          )}
           {/* Captions recognition stays mounted for publishers; the host
               toggle lives in More (captionsAction), not on the standing bar. */}
           <CaptionsSession />
 
         {centerTools.map((id) => {
           const Icon = tool(id).icon;
+          if (isHomeTool(id)) {
+            return (
+              <HomeToolSlot
+                key={id}
+                id={id}
+                label={labelFor(id)}
+                active={activeFor(id)}
+                movable={capacity > 0}
+                editing={editingNow}
+                landed={landed === id}
+                dragging={drag.drag?.tool === id}
+                onActivate={() => activate(id)}
+                onRemove={() => edit(() => tools.remove(id))}
+              />
+            );
+          }
           return (
             <div key={id} className="relative" data-tool-slot={id}>
               <BarButton
@@ -928,9 +974,15 @@ export function ControlBar() {
             host who had never dragged a toolbar button before. */}
         {(() => {
           const fromGrid = drag.drag?.from === "grid";
-          const bump = fromGrid ? wouldBump(tools.layout, capacity, usable) : null;
-          const zoneLabel =
-            dropIndex !== null
+          // A home tool returns to its own place wherever it is dropped, so
+          // there is no insertion point to draw and nothing to bump.
+          const homeDrag = drag.drag ? isHomeTool(drag.drag.tool) : false;
+          const bump = fromGrid ? wouldBump(tools.layout, capacity, usable, drag.drag?.tool) : null;
+          const zoneLabel = homeDrag
+            ? fromGrid
+              ? "Drop to put it back on the toolbar"
+              : null
+            : dropIndex !== null
               ? fromGrid
                 ? bump
                   ? `Drop to add · ${tool(bump).label} goes to More`
@@ -939,6 +991,7 @@ export function ControlBar() {
               : fromGrid
                 ? "Drop here to add"
                 : null;
+          const markerAt = homeDrag ? null : dropIndex;
           return (
             <div
               className={`relative flex items-center gap-1 rounded-xl px-0.5 transition-colors sm:gap-2 ${
@@ -961,7 +1014,7 @@ export function ControlBar() {
               )}
               {slots.map((slot, i) => (
                 <div key={slot.tool} className="flex items-center">
-                  {dropIndex === i && <DropMarker />}
+                  {markerAt === i && <DropMarker />}
                   <div
                     data-tool-slot={slot.tool}
                     data-tool-pin={slot.tool}
@@ -1015,7 +1068,7 @@ export function ControlBar() {
                 </div>
               ))}
               {/* An empty toolbar still needs somewhere to aim at. */}
-              {fromGrid && slots.length === 0 && (
+              {fromGrid && !homeDrag && slots.length === 0 && (
                 <span
                   aria-hidden
                   className={`grid h-10 w-14 place-items-center rounded-lg border-2 border-dashed motion-safe:animate-[tool-slot-breathe_1.6s_ease-in-out_infinite] ${
@@ -1025,7 +1078,7 @@ export function ControlBar() {
                   <PlusIcon className="size-4" />
                 </span>
               )}
-              {dropIndex !== null && slots.length > 0 && dropIndex >= slots.length && <DropMarker />}
+              {markerAt !== null && slots.length > 0 && markerAt >= slots.length && <DropMarker />}
             </div>
           );
         })()}
@@ -1092,8 +1145,22 @@ export function ControlBar() {
                       },
                     }
                   : {}),
+                youtube: {
+                  active: youtube.configured,
+                  busy: false,
+                  title: youtube.configured
+                    ? "YouTube stream is on — click to change"
+                    : "Stream to YouTube",
+                  onClick: youtube.open,
+                },
               }}
-              canCustomize={capacity > 0}
+              // A tucked home tool can go back even on a screen with no pin
+              // slots — it returns to its own place, not a slot. So a phone
+              // that tucked Settings can always put it back.
+              canCustomize={capacity > 0 || tucked.length > 0}
+              movableIds={
+                capacity > 0 ? undefined : grid.filter((id) => isHomeTool(id))
+              }
               bumpTarget={wouldBump(tools.layout, capacity, usable)}
               editing={editingNow}
               onEditingChange={setEditing}
@@ -1251,6 +1318,10 @@ export function ControlBar() {
           onScreenShare={startScreenShare}
         />
       )}
+
+      {/* Mounted here whether YouTube's button is on the bar or in More, so
+          opening it from either place — and More closing behind it — works. */}
+      {youtube.dialog}
     </div>
   );
 }
@@ -1361,6 +1432,80 @@ function ToolSlotButton({
   );
 }
 
+/** YouTube or Settings in its home on the bar (lib/tools.ts HOME_BAR_TOOLS).
+ *
+ *  Draggable into More and, in Customize, carries the same − as a pin. Not a
+ *  `data-tool-pin`: the drag layer counts those to place the insertion marker,
+ *  and a home tool is not in that run of slots. `live` is YouTube's red
+ *  "On YT" look, kept from the button it replaces. On a screen with no pin
+ *  slots it is a plain button, because a tool tucked there could only come
+ *  back on a wider screen. */
+function HomeToolSlot({
+  id,
+  label,
+  active,
+  live = false,
+  movable,
+  editing,
+  landed,
+  dragging,
+  onActivate,
+  onRemove,
+}: {
+  id: ToolId;
+  label: string;
+  active: boolean;
+  live?: boolean;
+  movable: boolean;
+  editing: boolean;
+  landed: boolean;
+  dragging: boolean;
+  onActivate: () => void;
+  onRemove: () => void;
+}) {
+  const t = tool(id);
+  const Icon = t.icon;
+  const drag = useToolDrag();
+  const caption = id === "youtube" && live ? "On YT" : t.label;
+  const title = live ? `${label} — click to change` : label;
+
+  return (
+    <div
+      data-tool-slot={id}
+      data-tool-home={id}
+      className={`relative ${
+        landed ? "motion-safe:animate-[tool-land_420ms_cubic-bezier(0.2,0.9,0.3,1.2)]" : ""
+      }`}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={active}
+        title={movable && !editing ? `${title}. Drag into More to tuck it away.` : title}
+        {...(movable ? drag.bind(id, "bar", onActivate) : { onClick: onActivate })}
+        className={`relative shrink-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-white/50 ${
+          dragging ? "opacity-40" : ""
+        }`}
+      >
+        <BarButtonShell label={caption} active={active} live={live}>
+          <Icon className="size-5" />
+        </BarButtonShell>
+      </button>
+      {editing && movable && (
+        <button
+          type="button"
+          aria-label={`Move ${t.label} to More`}
+          title={`Move ${t.label} to More`}
+          onClick={onRemove}
+          className="absolute -top-1.5 -right-1.5 z-10 grid size-5 place-items-center rounded-full bg-white text-stage shadow-md outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-brand"
+        >
+          <MinusIcon className="size-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** The emoji row, above whichever slot holds Reactions. */
 function ReactionTray({
   onPick,
@@ -1425,6 +1570,7 @@ function BarButtonShell({
   active = false,
   danger = false,
   dimmed = false,
+  live = false,
   className = "",
   children,
 }: {
@@ -1432,12 +1578,16 @@ function BarButtonShell({
   active?: boolean;
   danger?: boolean;
   dimmed?: boolean;
+  /** YouTube's "stream is on" look — red, like the live badge. */
+  live?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
   const tone = dimmed
     ? "text-white/35"
-    : danger
+    : live
+      ? "bg-live/20 text-live-soft"
+      : danger
       ? // Every other "soft" badge in the room uses bg-X-soft text-X — a pale
         // tint behind a fully saturated icon. This one had it backwards:
         // bg-live/15 text-live-soft put the FAINT maroon (--color-live-soft,
