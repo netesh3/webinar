@@ -5,7 +5,7 @@ import {
   type TrackTransformerDestroyOptions,
   type VideoTransformerInitOptions,
 } from "@livekit/track-processors";
-import { LOW_LIGHT_GLSL } from "./low-light-curve";
+import { LOW_LIGHT_GLSL, LOW_LIGHT_LIFT } from "./low-light-curve";
 import { agreesWithReference, loadModnet, type Matte, type Modnet } from "./modnet";
 import { PresenterLock, type FaceBox } from "./presenter-lock";
 
@@ -1924,6 +1924,47 @@ const MODNET = process.env.NEXT_PUBLIC_VB_MODNET !== "0";
 const wantLock = () => PRESENTER_LOCK;
 const wantModnet = () => MODNET;
 
+/* Auto low light on or off (Manual). Page-wide, like the camera it is about, and read on
+ * every frame, so a change applies on the next one. Set through lib/backgrounds.ts. */
+let autoLowLight = true;
+export function setAutoLowLight(on: boolean): void {
+  autoLowLight = on;
+}
+
+/* Auto low light: the lift chosen from how bright the presenter's face is, as Zoom's and
+ * Teams' "auto" do.
+ *
+ * Metered on the face — BlazeFace's box from the presenter lock when there is one, else the
+ * middle of the frame where a webcam puts a face — because the room is the wrong thing to
+ * expose for: a bright window behind somebody makes a frame "bright" while their face is in
+ * shadow, and that is exactly when they need the lift.
+ *
+ * The amount is the one that takes the face's mean to AUTO_TARGET through the same gamma the
+ * shader applies (pow(y, 1/(1+a·LIFT)) = target, so a = (ln y / ln target − 1) / LIFT), not
+ * a new effect: the tone curve in low-light-curve.ts is what does the work, highlights
+ * protected as before. A face at or above AUTO_TARGET gets nothing. Small amounts are not
+ * worth the contrast they cost and are dropped (AUTO_MIN). The amount eases over AUTO_TAU_MS
+ * so a hand passing in front of the lens or somebody turning a light on does not pump the
+ * picture; the first reading is applied at once so nobody joins dark and fades up.
+ *
+ * Metering is a 64×36 draw and readback every AUTO_METER_EVERY frames: well under a
+ * millisecond, a few times a second. */
+const AUTO_TARGET = 0.46;
+const AUTO_MIN = 0.08;
+const AUTO_TAU_MS = 1500;
+const AUTO_METER_EVERY = 12;
+const AUTO_METER_W = 64;
+const AUTO_METER_H = 36;
+/** Where to meter with no face known: the centre, upper-middle — where a webcam frames one. */
+const AUTO_CENTRE: FaceBox = { x: 0.34, y: 0.16, w: 0.32, h: 0.46 };
+
+/** The lift that takes a face of mean brightness `y` (0..1) to AUTO_TARGET. 0..1. */
+function autoLiftFor(y: number): number {
+  if (!(y > 0.01) || y >= AUTO_TARGET) return 0;
+  const a = (Math.log(y) / Math.log(AUTO_TARGET) - 1) / LOW_LIGHT_LIFT;
+  return a < AUTO_MIN ? 0 : Math.min(1, a);
+}
+
 /** MediaPipe's confidence: regions start at half (its low end is noisy). */
 const LOCK_REGION_MEDIAPIPE = 0.5;
 /** MODNet's alpha: clean near zero. */
@@ -2037,6 +2078,15 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   private frameNo = 0;
   private maskFrame = 0;
   private lockWasOn = false;
+
+  /* Auto low light: the lift actually applied, eased toward what the face calls for. */
+  private liftApplied = 0;
+  private autoTarget = 0;
+  private autoMetered = false;
+  private autoFrame = 0;
+  private autoAt = 0;
+  private meter: Canvas2D | null = null;
+
 
   /* MODNet: off until loaded, then checked against MediaPipe, then on — or rejected, which
    * is MediaPipe with the lock for the rest of this processor's life. */
@@ -2195,8 +2245,9 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       frame.close();
       return;
     }
-    const { background, lowLight } = this.options;
+    const { background } = this.options;
     const wantsBackground = background.kind !== "none";
+    const lowLight = this.liftFor(frame);
 
     /* Nothing asked for, so the frame goes straight through without touching the GPU. The
      * processor stays attached for this — taking it off and putting it back is a flash of
@@ -2312,6 +2363,70 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
         this.modnet = m;
         this.modnetState = m ? "checking" : "rejected";
       });
+    }
+  }
+
+  /* The lift for this frame, 0..1: the chosen amount, or with Auto on, what the face needs.
+   *
+   * Auto only acts while low light is switched on: the switch is still what says "adjust
+   * me", and Auto answers "by how much". Off, this is 0 and nothing is metered. */
+  private liftFor(frame: VideoFrame): number {
+    const chosen = this.options.lowLight;
+    if (chosen <= 0 || !autoLowLight) {
+      this.autoMetered = false;
+      this.liftApplied = chosen;
+      return chosen;
+    }
+    const now = performance.now();
+    this.autoFrame += 1;
+    if (!this.autoMetered || this.autoFrame % AUTO_METER_EVERY === 0) {
+      const y = this.meterFace(frame);
+      if (y !== null) {
+        this.autoTarget = autoLiftFor(y);
+        if (!this.autoMetered) {
+          // The first reading at once: nobody should join dark and fade up.
+          this.liftApplied = this.autoTarget;
+          this.autoMetered = true;
+          this.autoAt = now;
+          console.info("[background] auto low light", {
+            face: +y.toFixed(3),
+            lift: +this.autoTarget.toFixed(2),
+          });
+        }
+      }
+    }
+    const dt = Math.max(0, now - this.autoAt);
+    this.autoAt = now;
+    this.liftApplied += (this.autoTarget - this.liftApplied) * (1 - Math.exp(-dt / AUTO_TAU_MS));
+    // Close enough to none is none, so a lit room goes back to the untouched camera.
+    if (this.autoTarget === 0 && this.liftApplied < 0.01) this.liftApplied = 0;
+    return this.liftApplied;
+  }
+
+  /** Mean brightness (0..1) of the presenter's face, or of where one usually is. */
+  private meterFace(frame: VideoFrame): number | null {
+    try {
+      const fw = frame.displayWidth;
+      const fh = frame.displayHeight;
+      if (!fw || !fh) return null;
+      const face = (this.lockActive() && this.lock.presenterFace(performance.now())) || AUTO_CENTRE;
+      // The face box is forehead to chin; a little inside it, to keep hair and background out.
+      const sx = Math.max(0, (face.x + face.w * 0.15) * fw);
+      const sy = Math.max(0, (face.y + face.h * 0.15) * fh);
+      const sw = Math.min(fw - sx, face.w * 0.7 * fw);
+      const sh = Math.min(fh - sy, face.h * 0.7 * fh);
+      if (sw < 4 || sh < 4) return null;
+      this.meter ??= canvas2d(AUTO_METER_W, AUTO_METER_H);
+      const { ctx } = this.meter;
+      ctx.drawImage(frame, sx, sy, sw, sh, 0, 0, AUTO_METER_W, AUTO_METER_H);
+      const px = ctx.getImageData(0, 0, AUTO_METER_W, AUTO_METER_H).data;
+      let sum = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        sum += 0.2126 * px[i]! + 0.7152 * px[i + 1]! + 0.0722 * px[i + 2]!;
+      }
+      return sum / (px.length / 4) / 255;
+    } catch {
+      return null;
     }
   }
 
@@ -2469,7 +2584,8 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     matte: Matte,
     inferMs: number,
   ): void {
-    const { background, lowLight } = this.options;
+    const { background } = this.options;
+    const lowLight = this.liftApplied;
     if (
       this.disposed ||
       this.engine !== engine ||

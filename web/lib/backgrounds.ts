@@ -83,6 +83,25 @@ export function asBackgroundEngine(value: unknown): BackgroundEngine {
   return "enhanced";
 }
 
+/* Auto low light, as chosen in the settings. Held here so a processor made later — the
+ * pre-join screen's, the room's, one rebuilt by Retry — starts with it, and pushed into the
+ * segmenter module once it is loaded so running ones change on their next frame. */
+let autoLowLight = true;
+let segmenterModule: typeof import("./segmenter") | null = null;
+
+export function applyAutoLowLight(on: boolean): void {
+  autoLowLight = on;
+  segmenterModule?.setAutoLowLight(on);
+}
+
+/** Keeps the running background in step with the Auto / Manual low-light choice. Call it
+ *  wherever a background is applied, so a change takes effect with no settings open. */
+export function useAutoLowLight(on: boolean): void {
+  useEffect(() => {
+    applyAutoLowLight(on);
+  }, [on]);
+}
+
 /** One-line label for settings rows and the A/B toggle. */
 export function describeBackgroundEngine(engine: BackgroundEngine): string {
   return engine === "livekit" ? "Beta" : "Enhanced";
@@ -825,7 +844,10 @@ async function createSoftProcessor(
    * function" that oneAtATime alone could not cover: module evaluation itself was racing.
    * npm overrides pin a single version; loading them one after the other keeps evaluation
    * ordered even if a bundler still emits two chunks. */
-  const { SoftSegmenter } = await import("./segmenter");
+  const segmenter = await import("./segmenter");
+  segmenterModule = segmenter;
+  segmenter.setAutoLowLight(autoLowLight);
+  const { SoftSegmenter } = segmenter;
   const { ProcessorWrapper } = await import("@livekit/track-processors");
   const soft = new SoftSegmenter({
     background: backgroundFor(choice),
