@@ -179,6 +179,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the connection toast: a sub-second blip must stay silent, a shown drop must turn
 	# into "back online" in place, and a long one must escalate to "Connection lost".
 	cd web && node --experimental-strip-types --no-warnings lib/connection-toast.test.mts
+	# And the requester's own hand and stage toast: raised → lowered by the host must
+	# replace in place, an open invite must not be talked over or time out.
+	cd web && node --experimental-strip-types --no-warnings lib/self-hand-toasts.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

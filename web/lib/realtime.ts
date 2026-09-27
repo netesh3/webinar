@@ -725,6 +725,9 @@ export function useRealtime(
     onHandRaised?: (from: Sender) => void;
     /** Fires on the local participant's own hand being lowered by the host. */
     onHandLowered?: (reason: "granted" | "dismissed") => void;
+    /** Fires when the host lowers every hand at once. Whether this participant's own
+     *  hand was among them is the caller's to know. */
+    onHandsCleared?: () => void;
     /** Fires when an attendee joins. Only ever delivered to the host — see
      *  AttendeeJoinedMessage — so a caller need not check the role itself. */
     onAttendeeJoined?: (from: Sender) => void;
@@ -922,6 +925,7 @@ export function useRealtime(
           break;
         case "hands-cleared":
           setHandMap({});
+          notify.current?.onHandsCleared?.();
           break;
         case "lower-hand":
           setHandMap((current) => {
