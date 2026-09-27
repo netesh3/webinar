@@ -12,11 +12,13 @@ assert.equal(tabFromQuery("registrants"), "Admit");
 assert.equal(tabFromQuery("attendance"), "Attendees");
 assert.equal(tabFromQuery("nope"), null);
 
-// ?tab=survey (and the older "feedback") open the Survey tab, before and after the event.
+// ?tab=survey (and the older "feedback") open the Survey tab once the webinar is over; before
+// that the survey lives in the schedule form, so the link falls back to the default tab.
 assert.equal(tabFromQuery("survey"), "Survey");
 assert.equal(tabFromQuery("Feedback"), "Survey");
-for (const s of ["draft", "scheduled", "live", "ended"]) {
-  assert.equal(allowedTab(tabFromQuery("survey"), s), "Survey", s);
+assert.equal(allowedTab(tabFromQuery("survey"), "ended"), "Survey");
+for (const s of ["draft", "scheduled", "live"]) {
+  assert.equal(allowedTab(tabFromQuery("survey"), s), null, s);
 }
 assert.equal(defaultTab("ended", { pending: 0, requested: "survey" }), "Survey");
 assert.equal(tabFromQuery(""), null);

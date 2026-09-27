@@ -14,23 +14,23 @@ import (
 
 /* Post-event surveys. The rules are in api/internal/survey; this file loads and writes.
  *
- * A survey is "available" to the audience when it is live, or when it is armed to go out at
- * the end (draft + on_end) while the webinar itself is live: an attendee leaving early is
- * offered it then, and their answer counts exactly as it would after the end. That
- * condition is written once, as availableSQL, and used by every read and write on the
+ * A survey is "available" to the audience when it is live, or when it is set up but not yet
+ * sent (draft, any timing) while the webinar itself is live: an attendee leaving early is
+ * offered it then, and their answer counts exactly as it would after the host sends it.
+ * That condition is written once, as availableSQL, and used by every read and write on the
  * audience's side so the offer and the acceptance cannot disagree. */
 
-const availableSQL = `(s.status = 'live' OR (s.status = 'draft' AND s.send_at = 'on_end' AND w.status = 'live'))`
+const availableSQL = `(s.status = 'live' OR (s.status = 'draft' AND w.status = 'live'))`
 
 const surveyColumns = `s.id::text, s.mode, s.title, s.button_label, s.external_url, s.ask_rating,
-	s.status, s.send_at, s.launched_at, s.closed_at, s.updated_at`
+	s.status, s.send_at, s.send_after_min, s.launched_at, s.closed_at, s.updated_at`
 
 func scanSurvey(row pgx.Row, sv *types.Survey) error {
 	var launched, closed *time.Time
 	var updated time.Time
 	var mode, status, sendAt string
 	if err := row.Scan(&sv.ID, &mode, &sv.Title, &sv.ButtonLabel, &sv.ExternalURL, &sv.AskRating,
-		&status, &sendAt, &launched, &closed, &updated); err != nil {
+		&status, &sendAt, &sv.SendAfterMin, &launched, &closed, &updated); err != nil {
 		return err
 	}
 	sv.Mode, sv.Status, sv.SendAt = types.SurveyMode(mode), types.SurveyStatus(status), types.SurveySendAt(sendAt)
@@ -150,14 +150,14 @@ func (s *Store) SaveSurvey(ctx context.Context, slug string, c survey.Config) (t
 
 	var id string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO surveys (webinar_id, mode, title, button_label, external_url, ask_rating, send_at)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
+		INSERT INTO surveys (webinar_id, mode, title, button_label, external_url, ask_rating, send_at, send_after_min)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (webinar_id) DO UPDATE SET
 		       mode = EXCLUDED.mode, title = EXCLUDED.title, button_label = EXCLUDED.button_label,
 		       external_url = EXCLUDED.external_url, ask_rating = EXCLUDED.ask_rating,
-		       send_at = EXCLUDED.send_at, updated_at = now()
+		       send_at = EXCLUDED.send_at, send_after_min = EXCLUDED.send_after_min, updated_at = now()
 		RETURNING id::text`,
-		webinarID, string(c.Mode), c.Title, c.ButtonLabel, c.ExternalURL, c.AskRating, string(c.SendAt),
+		webinarID, string(c.Mode), c.Title, c.ButtonLabel, c.ExternalURL, c.AskRating, string(c.SendAt), c.SendAfterMin,
 	).Scan(&id); err != nil {
 		return types.Survey{}, err
 	}
@@ -264,14 +264,33 @@ func (s *Store) SetSurveyStatus(ctx context.Context, slug string, status types.S
 	return s.HostSurvey(ctx, slug)
 }
 
-// LaunchSurveyOnEnd sends a survey armed for the end. Reports whether one went out.
+/* LaunchSurveyOnEnd sends, as the webinar ends, a survey armed for the end — and a timed one
+ * whose minute never came because the host finished early. Reports whether one went out. */
 func (s *Store) LaunchSurveyOnEnd(ctx context.Context, slug string) (bool, error) {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE surveys s SET status = 'live', launched_at = now(), updated_at = now()
 		  FROM webinars w
-		 WHERE w.id = s.webinar_id AND w.slug = $1 AND s.status = 'draft' AND s.send_at = 'on_end'`, slug)
+		 WHERE w.id = s.webinar_id AND w.slug = $1 AND s.status = 'draft'
+		   AND s.send_at IN ('on_end', 'at_minute')`, slug)
 	if err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+/* LaunchDueSurveys sends every timed survey whose minute has come in a live webinar, and
+ * returns their webinars' slugs so the rooms can be told. Due-time driven like the rest of
+ * the tick: a late pass sends what came due during the gap. */
+func (s *Store) LaunchDueSurveys(ctx context.Context) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		UPDATE surveys s SET status = 'live', launched_at = now(), updated_at = now()
+		  FROM webinars w
+		 WHERE w.id = s.webinar_id AND s.status = 'draft' AND s.send_at = 'at_minute'
+		   AND w.status = 'live' AND w.started_at IS NOT NULL
+		   AND w.started_at + make_interval(mins => s.send_after_min) <= now()
+		RETURNING w.slug`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }

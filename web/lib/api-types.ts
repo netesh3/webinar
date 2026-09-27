@@ -964,12 +964,20 @@ export const SurveyDraft: SurveyStatus = "draft";
 export const SurveyLive: SurveyStatus = "live";
 export const SurveyClosed: SurveyStatus = "closed";
 /**
- * * `on_end`: sent when the host ends the webinar (and offered to anyone who leaves early);
- *  *  `manual`: only when the host presses Send.
+ * * `manual`: the host puts it on screen from the room, usually just before ending (the
+ *  *  recommended way: people answer while they are still there);
+ *  *  `at_minute`: sent automatically SendAfterMin minutes after the webinar goes live;
+ *  *  `on_end`: sent when the host ends the webinar (and offered to anyone who leaves early).
+ *  *  Whichever is chosen, the host can still send it early from the room.
  */
 export type SurveySendAt = string;
 export const SurveyOnEnd: SurveySendAt = "on_end";
 export const SurveyManual: SurveySendAt = "manual";
+export const SurveyAtMinute: SurveySendAt = "at_minute";
+/**
+ * * The latest minute an at_minute survey may be set for: ten hours.
+ */
+export const MaxSurveySendAfterMin = 600;
 /**
  * * `rating_5` (1–5), `nps_10` (0–10), `single_choice` (an option index) or `text`.
  */
@@ -997,6 +1005,10 @@ export interface Survey {
   askRating: boolean;
   status: SurveyStatus;
   sendAt: SurveySendAt;
+  /**
+   * * at_minute only: minutes after going live; 0 otherwise.
+   */
+  sendAfterMin: number /* int */;
   /**
    * * Only in builtin mode; always empty for link mode.
    */
@@ -1035,6 +1047,10 @@ export interface SurveyInput {
   externalUrl: string;
   askRating: boolean;
   sendAt: SurveySendAt;
+  /**
+   * * Required for at_minute (1..MaxSurveySendAfterMin); ignored otherwise.
+   */
+  sendAfterMin?: number /* int */;
   questions: SurveyQuestionInput[];
 }
 /**

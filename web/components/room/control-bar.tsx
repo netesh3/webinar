@@ -68,9 +68,9 @@ import { MediaToggle } from "./media-toggle";
 import { displayMediaOptions, SharePicker } from "./share-picker";
 import {
   HostAssignDialog,
-  HostEndConfirm,
   HostLeaveMenu,
 } from "./host-leave-dialog";
+import { EndWebinarDialog, SendSurveyButton } from "./host-survey";
 import { LeaveConfirm } from "./leave-confirm";
 import { PipStage } from "./pip-stage";
 import { useToolDrag, type DropHandler } from "./tool-drag";
@@ -1226,6 +1226,7 @@ export function ControlBar() {
             <PipIcon className="size-4.5" />
           </button>
         )}
+        {isHost && <SendSurveyButton disabled={connecting} />}
         <div className="relative">
           <button
             type="button"
@@ -1278,7 +1279,7 @@ export function ControlBar() {
             onClose={() => setAssignOpen(false)}
             onLeave={leave}
           />
-          <HostEndConfirm
+          <EndWebinarDialog
             open={endConfirmOpen}
             onClose={() => setEndConfirmOpen(false)}
           />

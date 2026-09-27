@@ -9,9 +9,11 @@ export const PRE_EVENT_TABS = [
   "Share",
   "Stage",
   "Recordings",
-  "Survey",
   "Settings",
 ] as const;
+
+/* Survey is a completed webinar's tab only: it is set up in the schedule form and sent from
+ * the room, so before the end there is nothing for a tab to show. */
 
 export const ENDED_TABS = ["Engagement", "Recordings", "Attendees", "Survey"] as const;
 

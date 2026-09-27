@@ -1,10 +1,14 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/netkumar/webcast/api/types"
 )
@@ -35,15 +39,12 @@ func TestSurveyBuiltinLifecycle(t *testing.T) {
 		t.Fatal("the audience copy must carry no counts")
 	}
 
-	// A manual draft is not offered at all.
+	// A survey the host will send by hand is offered to early leavers too, not popped up.
 	manual := ratingSurvey()
 	manual.SendAt = types.SurveyManual
 	h.mustPutSurvey(wb.ID, manual)
-	if got := h.audienceSurvey(wb.ID, a.JoinKey); got.Survey != nil {
-		t.Fatal("a manual draft must not be offered")
-	}
-	if res, raw := h.submitSurvey(wb.ID, types.SurveySubmitRequest{JoinKey: a.JoinKey, Rating: num(5)}); res.StatusCode != http.StatusConflict {
-		t.Fatalf("answering an unsent survey: status %d body %s", res.StatusCode, raw)
+	if got := h.audienceSurvey(wb.ID, a.JoinKey); got.Survey == nil || got.Live {
+		t.Fatalf("a manual draft in a live room should be offered, not live: %+v", got)
 	}
 
 	before := h.surveyAnnouncements()
@@ -254,5 +255,74 @@ func TestSurveyLaunchesWhenTheWebinarEnds(t *testing.T) {
 	got := h.audienceSurvey(wb.ID, a.JoinKey)
 	if got.Survey == nil || !got.Live || got.Survey.LaunchedAt == "" {
 		t.Fatalf("after end: %+v", got)
+	}
+}
+
+/* A survey timed for minute N goes out on the first tick after N minutes of the session,
+ * once. One set for a minute the host never reaches goes out when they end instead. */
+func TestSurveyLaunchesAtItsMinute(t *testing.T) {
+	h := newHarness(t, withTickSecret)
+	h.signup("Survey Host", "survey-minute@test.dev", true)
+	wb := h.liveWebinar("Survey at minute", nil)
+	a := h.registerAsGuest(wb.ID, "survey-minute-a@test.dev")
+
+	timed := ratingSurvey()
+	timed.SendAt = types.SurveyAtMinute
+	if res, _, raw := h.putSurvey(wb.ID, timed); res.StatusCode != http.StatusUnprocessableEntity ||
+		!strings.Contains(string(raw), "sendAfterMin") {
+		t.Fatalf("at_minute with no minute: %d %s", res.StatusCode, raw)
+	}
+	timed.SendAfterMin = 45
+	if sv := h.mustPutSurvey(wb.ID, timed); sv.SendAt != types.SurveyAtMinute || sv.SendAfterMin != 45 {
+		t.Fatalf("saved timing: %+v", sv)
+	}
+
+	// Ten minutes in: not yet.
+	now := time.Now()
+	startedAgo(t, wb.ID, now.Add(-10*time.Minute))
+	tick(t, h, testTickSecret)
+	if got := h.audienceSurvey(wb.ID, a.JoinKey); got.Live {
+		t.Fatal("sent before its minute")
+	}
+
+	// Forty-six minutes in: out, announced, and only once.
+	startedAgo(t, wb.ID, now.Add(-46*time.Minute))
+	before := h.surveyAnnouncements()
+	tick(t, h, testTickSecret)
+	tick(t, h, testTickSecret)
+	if got := h.audienceSurvey(wb.ID, a.JoinKey); !got.Live {
+		t.Fatalf("not sent at its minute: %+v", got)
+	}
+	if n := h.surveyAnnouncements() - before; n != 1 {
+		t.Fatalf("%d announcements, want 1", n)
+	}
+}
+
+func TestTimedSurveyFallsBackToEnd(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Survey Host", "survey-minute-end@test.dev", true)
+	wb := h.liveWebinar("Short session", nil)
+	a := h.registerAsGuest(wb.ID, "survey-minute-end-a@test.dev")
+	timed := ratingSurvey()
+	timed.SendAt, timed.SendAfterMin = types.SurveyAtMinute, 90
+	h.mustPutSurvey(wb.ID, timed)
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/end", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("end: %d %s", res.StatusCode, raw)
+	}
+	if got := h.audienceSurvey(wb.ID, a.JoinKey); got.Survey == nil || !got.Live {
+		t.Fatalf("ending early should send the timed survey: %+v", got)
+	}
+}
+
+func startedAgo(t *testing.T, slug string, at time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+	if _, err := pool.Exec(ctx, `UPDATE webinars SET started_at = $2 WHERE slug = $1`, slug, at); err != nil {
+		t.Fatalf("set started_at: %v", err)
 	}
 }

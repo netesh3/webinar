@@ -27,6 +27,7 @@ import {
   zonedToInstant,
 } from "@/lib/format";
 import { WhatsAppRemindersToggle } from "@/engage";
+import { useScheduleSurvey } from "./survey/schedule-survey";
 
 /* Schedule or edit a webinar.
  *
@@ -346,6 +347,8 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  const survey = useScheduleSurvey(webinar, form.durationMin);
+
   function toInput(status: "scheduled" | "draft"): WebinarInput | null {
     const startsAt = zonedToInstant(form.date, form.time, form.timeZone);
     if (!startsAt) {
@@ -376,7 +379,8 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
         .split(/[\n,;]/)
         .map((e) => e.trim())
         .filter(Boolean),
-      options: form.options,
+      // Mirrors whether a survey is set up, for the places that only read the webinar.
+      options: { ...form.options, postWebinarSurvey: survey.on },
       controls: form.controls,
     };
   }
@@ -388,6 +392,13 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
 
     const input = toInput(status);
     if (!input) {
+      setBusy(null);
+      return;
+    }
+    const surveyProblem = survey.problem();
+    if (surveyProblem) {
+      setError(surveyProblem);
+      document.getElementById("survey")?.scrollIntoView({ behavior: "smooth", block: "start" });
       setBusy(null);
       return;
     }
@@ -447,6 +458,9 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
           "info",
         );
       }
+
+      const surveyWarning = await survey.persist(saved.id);
+      if (surveyWarning) notify(surveyWarning, "info");
 
       notify(
         editing
@@ -901,7 +915,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                       ["autoRecord", "Record automatically"],
                       ["captions", "Live captions"],
                       ["multistream", "Stream to YouTube / LinkedIn"],
-                      ["postWebinarSurvey", "Post-webinar survey"],
                     ] as const
                   ).map(([key, label]) => (
                     <Toggle
@@ -976,6 +989,13 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                 )}
               </div>
             </div>
+          </FormSection>
+
+          <FormSection
+            title="Feedback survey"
+            description="Set it up now; in the room it's one button. Results land on the webinar's page afterwards."
+          >
+            {survey.node}
           </FormSection>
         </FormGroup>
       </div>

@@ -113,12 +113,19 @@ export function SurveyForm({
     return <ThankYou titleId={titleId} onDone={onDone ?? onLater} preview={preview} />;
   }
 
+  /* The preview sits inside the schedule form, and a <form> inside a <form> is invalid HTML
+   * whose submit button would save the webinar. So the preview is a plain box. */
+  const Shell = preview ? "div" : "form";
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        void submit();
-      }}
+    <Shell
+      onSubmit={
+        preview
+          ? undefined
+          : (e: React.FormEvent) => {
+              e.preventDefault();
+              void submit();
+            }
+      }
     >
       <div className="flex items-center gap-2.5">
         <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
@@ -224,7 +231,8 @@ export function SurveyForm({
         )}
         {needsSubmit && (
           <button
-            type="submit"
+            type={preview ? "button" : "submit"}
+            onClick={preview ? () => void submit() : undefined}
             disabled={Boolean(problem) || sending}
             title={problem ?? undefined}
             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand text-[13.5px] font-semibold text-stage shadow-sm transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 sm:h-10 sm:w-auto sm:flex-1"
@@ -239,7 +247,7 @@ export function SurveyForm({
           {problem && !sending ? problem : "Only the host sees your answers."}
         </p>
       )}
-    </form>
+    </Shell>
   );
 }
 

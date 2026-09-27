@@ -46,14 +46,21 @@ const (
 	SurveyClosed SurveyStatus = "closed"
 )
 
-/** `on_end`: sent when the host ends the webinar (and offered to anyone who leaves early);
- *  `manual`: only when the host presses Send. */
+/** `manual`: the host puts it on screen from the room, usually just before ending (the
+ *  recommended way: people answer while they are still there);
+ *  `at_minute`: sent automatically SendAfterMin minutes after the webinar goes live;
+ *  `on_end`: sent when the host ends the webinar (and offered to anyone who leaves early).
+ *  Whichever is chosen, the host can still send it early from the room. */
 type SurveySendAt string
 
 const (
-	SurveyOnEnd  SurveySendAt = "on_end"
-	SurveyManual SurveySendAt = "manual"
+	SurveyOnEnd    SurveySendAt = "on_end"
+	SurveyManual   SurveySendAt = "manual"
+	SurveyAtMinute SurveySendAt = "at_minute"
 )
+
+/** The latest minute an at_minute survey may be set for: ten hours. */
+const MaxSurveySendAfterMin = 600
 
 /** `rating_5` (1–5), `nps_10` (0–10), `single_choice` (an option index) or `text`. */
 type SurveyQuestionKind string
@@ -83,6 +90,8 @@ type Survey struct {
 	AskRating   bool         `json:"askRating"`
 	Status      SurveyStatus `json:"status"`
 	SendAt      SurveySendAt `json:"sendAt"`
+	/** at_minute only: minutes after going live; 0 otherwise. */
+	SendAfterMin int `json:"sendAfterMin"`
 	/** Only in builtin mode; always empty for link mode. */
 	Questions  []SurveyQuestion `json:"questions"`
 	LaunchedAt string           `json:"launchedAt,omitempty"`
@@ -107,13 +116,15 @@ type SurveyQuestionInput struct {
 
 /** PUT /api/host/webinars/{slug}/survey. The whole configuration, replacing what was there. */
 type SurveyInput struct {
-	Mode        SurveyMode            `json:"mode"`
-	Title       string                `json:"title"`
-	ButtonLabel string                `json:"buttonLabel"`
-	ExternalURL string                `json:"externalUrl"`
-	AskRating   bool                  `json:"askRating"`
-	SendAt      SurveySendAt          `json:"sendAt"`
-	Questions   []SurveyQuestionInput `json:"questions"`
+	Mode        SurveyMode   `json:"mode"`
+	Title       string       `json:"title"`
+	ButtonLabel string       `json:"buttonLabel"`
+	ExternalURL string       `json:"externalUrl"`
+	AskRating   bool         `json:"askRating"`
+	SendAt      SurveySendAt `json:"sendAt"`
+	/** Required for at_minute (1..MaxSurveySendAfterMin); ignored otherwise. */
+	SendAfterMin int                   `json:"sendAfterMin,omitempty"`
+	Questions    []SurveyQuestionInput `json:"questions"`
 }
 
 /** GET /api/host/webinars/{slug}/survey. Survey is absent when none has been set up. */

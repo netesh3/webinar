@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { EngagementSummary, SurveyResults } from "@/lib/api-types";
 import type { EngagementSource } from "@/lib/engagement/source";
@@ -247,17 +246,9 @@ function SurveyPanel({ source }: { source: EngagementSource }) {
       <div className="rounded-xl border border-dashed border-line-2 px-6 py-12 text-center">
         <p className="text-[14px] font-semibold">No survey for this webinar</p>
         <p className="mx-auto mt-1.5 max-w-md text-[13px] text-ink-2">
-          Ask attendees to rate the session or send them to your own form. Completing it counts towards each
-          person&apos;s engagement score.
+          Switch on &ldquo;Ask attendees for feedback&rdquo; when you schedule a webinar. Completing it counts
+          towards each person&apos;s engagement score.
         </p>
-        {source.slug && (
-          <Link
-            href={`/host/${encodeURIComponent(source.slug)}?tab=survey`}
-            className="mt-4 inline-flex h-9 items-center rounded-lg bg-brand px-3.5 text-[13px] font-medium text-white hover:bg-brand-hover"
-          >
-            Set up a survey
-          </Link>
-        )}
       </div>
     );
   }

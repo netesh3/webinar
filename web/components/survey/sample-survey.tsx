@@ -1,9 +1,13 @@
 "use client";
 
-import type { Survey, Webinar } from "@/lib/api-types";
+import { useState } from "react";
+import type { Survey, SurveyInput, Webinar } from "@/lib/api-types";
+import { cleanInput, emptyInput, previewSurvey, validateInput } from "@/lib/survey";
 import { FIXTURE_HOST_SURVEY, FIXTURE_SURVEY_RESULTS } from "@/lib/survey-fixtures";
 import { SurveyDialog } from "../room/survey-popup";
+import { Card } from "../ui";
 import { HostSurveyTab } from "./host-survey-tab";
+import { SurveyBuilder } from "./survey-builder";
 import { SurveyForm } from "./survey-form";
 
 /* The survey's screens over fixture data, for design review and screenshots — the same
@@ -49,19 +53,43 @@ export function SampleSurvey({ view, webinar }: { view: SampleView; webinar: Web
     );
   }
 
-  const host =
-    view === "setup-link"
-      ? { attended: 48, survey: { ...LINK, status: "draft", sendAt: "manual", launchedAt: undefined } }
-      : view === "setup"
-        ? { attended: 48, survey: { ...RATING, status: "draft", launchedAt: undefined } }
-        : FIXTURE_HOST_SURVEY;
+  const host = FIXTURE_HOST_SURVEY;
+  if (view === "setup" || view === "setup-link") {
+    return (
+      <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-5 sm:py-8">
+        <SampleScheduleSurvey link={view === "setup-link"} />
+      </main>
+    );
+  }
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5 sm:py-8">
-      <HostSurveyTab
-        webinar={webinar}
-        sample={{ host, results: FIXTURE_SURVEY_RESULTS, view: view === "results" ? "results" : "setup" }}
-      />
+      <HostSurveyTab webinar={webinar} sample={{ host, results: FIXTURE_SURVEY_RESULTS }} />
     </main>
+  );
+}
+
+/** The schedule form's survey section on its own, over a fresh draft. */
+function SampleScheduleSurvey({ link }: { link: boolean }) {
+  const [draft, setDraft] = useState<SurveyInput>(() =>
+    link ? { ...emptyInput(), mode: "link", externalUrl: "https://forms.gle/Wk3ExampleSurvey" } : emptyInput(),
+  );
+  return (
+    <Card className="p-5">
+      <h3 className="mb-4 text-[14px] font-semibold">Feedback survey</h3>
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <SurveyBuilder value={draft} onChange={setDraft} errors={validateInput(draft)} locked={false} durationMin={60} />
+        <div className="room-dark rounded-2xl border border-line-2 bg-surface p-5">
+          <SurveyForm
+            key={JSON.stringify(cleanInput(draft))}
+            preview
+            survey={previewSurvey(draft)}
+            mine={MINE}
+            slug="preview"
+            onLater={() => undefined}
+          />
+        </div>
+      </div>
+    </Card>
   );
 }
 
