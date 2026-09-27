@@ -220,6 +220,365 @@ export interface CRMThreadMeta {
 }
 
 //////////
+// source: engagement.go
+
+/**
+ * * `high`, `engaged`, `passive`, `risk`; `no_show` only ever appears as a count.
+ */
+export type EngagementTier = string;
+export const TierHigh: EngagementTier = "high";
+export const TierEngaged: EngagementTier = "engaged";
+export const TierPassive: EngagementTier = "passive";
+export const TierRisk: EngagementTier = "risk";
+export const TierNoShow: EngagementTier = "no_show";
+/**
+ * * `excellent`, `strong`, `good`, `attention` — the band of the session index.
+ */
+export type EngagementBand = string;
+export const BandExcellent: EngagementBand = "excellent";
+export const BandStrong: EngagementBand = "strong";
+export const BandGood: EngagementBand = "good";
+export const BandAttention: EngagementBand = "attention";
+/**
+ * * Why a summary has no numbers yet. Empty when it does.
+ */
+export type EngagementState = string;
+export const EngagementReady: EngagementState = "ready";
+export const EngagementNotStarted: EngagementState = "not_started";
+export const EngagementNoAudience: EngagementState = "no_audience";
+export interface EngagementWebinar {
+  slug: string;
+  title: string;
+  hostName: string;
+  timeZone: string;
+  status: string;
+  startedAt?: string;
+  endedAt?: string;
+  /**
+   * * Length of the live window in whole minutes (at least 1 once started).
+   */
+  sessionMin: number /* int */;
+}
+export interface EngagementKPIs {
+  registered: number /* int */;
+  attended: number /* int */;
+  noShows: number /* int */;
+  attendanceRatePct: number /* int */;
+  avgWatchMin: number /* int */;
+  medianWatchMin: number /* int */;
+  avgWatchPct: number /* int */;
+  stayedPastHalfPct: number /* int */;
+  peakLive: number /* int */;
+  peakMinute: number /* int */;
+  chatMessages: number /* int */;
+  chatters: number /* int */;
+  questions: number /* int */;
+  answeredQuestions: number /* int */;
+  upvotes: number /* int */;
+  /**
+   * * -1 when no poll ran.
+   */
+  pollResponsePct: number /* int */;
+  /**
+   * * -1 when no quiz ran.
+   */
+  quizAccuracyPct: number /* int */;
+  reactions: number /* int */;
+  handRaises: number /* int */;
+}
+/**
+ * * One retention sample: people in the room at Minute.
+ */
+export interface EngagementPoint {
+  minute: number /* int */;
+  live: number /* int */;
+}
+/**
+ * * Arrivals whose first join fell in [FromMin, FromMin+width). Open means "and later".
+ */
+export interface EngagementJoinBucket {
+  fromMin: number /* int */;
+  count: number /* int */;
+  open?: boolean;
+}
+export interface EngagementJoinSplit {
+  early: number /* int */;
+  onTime: number /* int */;
+  late: number /* int */;
+}
+/**
+ * * Interactions per bucket of BucketMin minutes from minute 0, one array per type.
+ */
+export interface EngagementActivity {
+  bucketMin: number /* int */;
+  chat: number /* int */[];
+  qa: number /* int */[];
+  poll: number /* int */[];
+  reaction: number /* int */[];
+}
+/**
+ * * `poll`, `quiz`, `qa`, `offer`, `rating`.
+ */
+export interface EngagementMarker {
+  minute: number /* int */;
+  kind: string;
+  label: string;
+}
+export interface EngagementTierCounts {
+  high: number /* int */;
+  engaged: number /* int */;
+  passive: number /* int */;
+  risk: number /* int */;
+  noShow: number /* int */;
+}
+export interface EngagementMoment {
+  minute: number /* int */;
+  actions: number /* int */;
+  /**
+   * * The type that contributed most: chat, qa, poll or reaction.
+   */
+  kind: string;
+}
+export interface EngagementDrop {
+  minute: number /* int */;
+  lost: number /* int */;
+}
+export interface EngagementRecap {
+  pollId: string;
+  question: string;
+  correctPct: number /* int */;
+}
+export interface EngagementCallouts {
+  bestMoment?: EngagementMoment;
+  biggestDrop?: EngagementDrop;
+  needsRecap?: EngagementRecap;
+}
+export interface EngagementPoll {
+  id: string;
+  kind: string;
+  question: string;
+  options: string[];
+  correct?: number /* int */;
+  votes: number /* int */[];
+  minute: number /* int */;
+  /**
+   * * Attendees in the room when it opened: the response-rate denominator.
+   */
+  liveAtOpen: number /* int */;
+}
+export interface EngagementCount {
+  label: string;
+  count: number /* int */;
+}
+/**
+ * * One emoji's reactions per bucket of the enclosing BucketMin.
+ */
+export interface EngagementEmojiSeries {
+  emoji: string;
+  total: number /* int */;
+  counts: number /* int */[];
+}
+export interface EngagementReactions {
+  bucketMin: number /* int */;
+  series: EngagementEmojiSeries[];
+}
+export interface EngagementChatLine {
+  minute: number /* int */;
+  name: string;
+  text: string;
+}
+export interface EngagementChat {
+  bucketMin: number /* int */;
+  perBucket: number /* int */[];
+  topChatters: EngagementCount[];
+  latest: EngagementChatLine[];
+}
+/**
+ * * A question as the dashboard lists it. Name is empty for an anonymous question.
+ */
+export interface EngagementQuestion {
+  id: string;
+  minute: number /* int */;
+  name: string;
+  text: string;
+  upvotes: number /* int */;
+  answered: boolean;
+}
+/**
+ * * One score component as configured for this session, after redistribution.
+ */
+export interface EngagementWeight {
+  key: string;
+  label: string;
+  baseWeight: number /* float64 */;
+  /**
+   * * Zero when the tool was not used in this session.
+   */
+  weight: number /* float64 */;
+  /**
+   * * Plain-language rule, e.g. "max at 5 messages".
+   */
+  rule: string;
+}
+/**
+ * * The column layout the attendee heatmap rows are bucketed on.
+ */
+export interface EngagementAxis {
+  bucketMin: number /* int */;
+  /**
+   * * Minute offset of column 0 (negative when lobby columns are included).
+   */
+  startMin: number /* int */;
+  columns: number /* int */;
+  /**
+   * * Columns before minute 0.
+   */
+  lobbyColumns: number /* int */;
+}
+/**
+ * * GET /api/host/webinars/{slug}/engagement
+ */
+export interface EngagementSummary {
+  formulaVersion: number /* int */;
+  computedAt: string;
+  state: EngagementState;
+  webinar: EngagementWebinar;
+  index: number /* int */;
+  band: EngagementBand;
+  kpis: EngagementKPIs;
+  retentionStep: number /* int */;
+  retention: EngagementPoint[];
+  joinHistogram: EngagementJoinBucket[];
+  joinBucketMin: number /* int */;
+  joinSplit: EngagementJoinSplit;
+  activity: EngagementActivity;
+  markers: EngagementMarker[];
+  tiers: EngagementTierCounts;
+  callouts: EngagementCallouts;
+  polls: EngagementPoll[];
+  reactions: EngagementReactions;
+  chat: EngagementChat;
+  questions: EngagementQuestion[];
+  weights: EngagementWeight[];
+  axis: EngagementAxis;
+}
+export interface EngagementCounts {
+  chats: number /* int */;
+  questions: number /* int */;
+  upvotes: number /* int */;
+  polls: number /* int */;
+  pollsPresent: number /* int */;
+  quizCorrect: number /* int */;
+  quizAnswered: number /* int */;
+  quizPresent: number /* int */;
+  reactions: number /* int */;
+  hands: number /* int */;
+}
+/**
+ * * `early`, `on_time` or `late`.
+ */
+export type JoinTiming = string;
+export const JoinEarly: JoinTiming = "early";
+export const JoinOnTime: JoinTiming = "on_time";
+export const JoinLate: JoinTiming = "late";
+/**
+ * * One heatmap row. Presence is percent of each Axis column present (0..100).
+ */
+export interface EngagementAttendeeRow {
+  identity: string;
+  name: string;
+  email?: string;
+  score: number /* int */;
+  tier: EngagementTier;
+  watchMin: number /* int */;
+  firstJoinMin: number /* int */;
+  lastLeaveMin: number /* int */;
+  joinTiming: JoinTiming;
+  visits: number /* int */;
+  counts: EngagementCounts;
+  presence: number /* int */[];
+  intensity: number /* int */[];
+}
+/**
+ * * `score`, `name`, `watch`, `join`.
+ */
+export type EngagementSort = string;
+export const SortScore: EngagementSort = "score";
+export const SortName: EngagementSort = "name";
+export const SortWatch: EngagementSort = "watch";
+export const SortJoin: EngagementSort = "join";
+/**
+ * * GET /engagement/attendees?sort=&dir=&tier=&q=&cursor=&limit=
+ */
+export interface EngagementAttendeePage {
+  rows: EngagementAttendeeRow[];
+  /**
+   * * Rows matching the filters, across every page.
+   */
+  total: number /* int */;
+  nextCursor?: string;
+  axis: EngagementAxis;
+}
+export interface EngagementComponent {
+  key: string;
+  label: string;
+  weight: number /* float64 */;
+  ratio: number /* float64 */;
+  points: number /* float64 */;
+  detail: string;
+}
+/**
+ * * `join`, `leave`, `chat`, `question`, `upvote`, `poll`, `quiz`, `reaction`, `hand`, `stage`.
+ */
+export type EngagementEventKind = string;
+export const EventJoin: EngagementEventKind = "join";
+export const EventLeave: EngagementEventKind = "leave";
+export const EventChat: EngagementEventKind = "chat";
+export const EventQuestion: EngagementEventKind = "question";
+export const EventUpvote: EngagementEventKind = "upvote";
+export const EventPoll: EngagementEventKind = "poll";
+export const EventQuiz: EngagementEventKind = "quiz";
+export const EventReaction: EngagementEventKind = "reaction";
+export const EventHand: EngagementEventKind = "hand";
+export const EventStage: EngagementEventKind = "stage";
+export interface EngagementTimelineEvent {
+  /**
+   * * Seconds from the start, so sub-minute order survives.
+   */
+  atSec: number /* int */;
+  kind: EngagementEventKind;
+  text: string;
+  correct?: boolean;
+  emoji?: string;
+}
+export interface EngagementVisitSpan {
+  fromMin: number /* int */;
+  /**
+   * * Absent (-1) while still in the room.
+   */
+  toMin: number /* int */;
+}
+/**
+ * * GET /engagement/attendees/{identity}
+ */
+export interface EngagementAttendeeDetail {
+  row: EngagementAttendeeRow;
+  components: EngagementComponent[];
+  visits: EngagementVisitSpan[];
+  timeline: EngagementTimelineEvent[];
+  /**
+   * * True when the timeline hit its cap and older entries were dropped.
+   */
+  truncated?: boolean;
+  /**
+   * * Nil when the person has no CRM contact to consult.
+   */
+  whatsAppOptIn?: boolean;
+  reactions: EngagementCount[];
+  sessionMin: number /* int */;
+}
+
+//////////
 // source: types.go
 /*
 Package types holds the HTTP wire contract.
@@ -1989,6 +2348,11 @@ export interface CRMSegment {
    * * Has written to the host on WhatsApp.
    */
   replied?: boolean;
+  /**
+   * * Engagement tiers from the webinar's latest score (engagement_scores). Implies joined.
+   * 	 * `no_show` is expressed with Attendance, not here.
+   */
+  tiers?: EngagementTier[];
 }
 export const SegmentJoined = "joined";
 export const SegmentNoShow = "no_show";

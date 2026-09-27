@@ -16,6 +16,8 @@ import (
 	"github.com/livekit/protocol/livekit"
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/config"
+	"github.com/netkumar/webcast/api/internal/engagement/capture"
+	"github.com/netkumar/webcast/api/internal/engagement/service"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
@@ -144,6 +146,10 @@ type Server struct {
 
 	// engage is the WhatsApp CRM, or NoEngage. See engage.go; set by UseEngage.
 	engage Engage
+
+	// capture buffers realtime interactions for the Engagement page; engagement serves it.
+	capture    *capture.Recorder
+	engagement *service.Service
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {
@@ -186,6 +192,7 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		invites:    map[string]pendingStage{},
 		engage:     NoEngage{},
 	}
+	srv.initEngagement()
 	return srv
 }
 
@@ -490,6 +497,11 @@ func (s *Server) Routes() http.Handler {
 					r.Get("/registrants.csv", s.handleExportRegistrants)
 					r.Get("/report", s.handleSessionReport)
 					r.Get("/report.csv", s.handleExportReport)
+					r.Get("/engagement", s.handleEngagementSummary)
+					r.Post("/engagement/recompute", s.handleRecomputeEngagement)
+					r.Get("/engagement/attendees", s.handleEngagementAttendees)
+					r.Get("/engagement/attendees/{identity}", s.handleEngagementAttendee)
+					r.Get("/engagement.csv", s.handleEngagementCSV)
 					r.Get("/transcript.txt", s.handleTranscript)
 					r.Patch("/questions/{id}", s.handlePatchQuestion)
 					r.Post("/registrants/approve-all", s.handleApproveAll)

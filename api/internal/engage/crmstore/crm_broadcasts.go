@@ -101,7 +101,29 @@ func segmentPredicate(g types.CRMSegment) string {
 	if g.MaxWatchMin > 0 {
 		b.WriteString(` AND wt.rid IS NOT NULL AND wt.watch_min < ` + strconv.Itoa(g.MaxWatchMin))
 	}
+	b.WriteString(tierPredicate(g.Tiers))
 	return b.String()
+}
+
+/* tierPredicate narrows `r` to registrations whose latest engagement score falls in one
+ * of the tiers, served by engagement_scores_registration_idx. Only known tier names are
+ * written into the SQL — anything else is dropped here as well as rejected by the handler —
+ * so the fragment is a fixed literal list and adds no placeholders. A webinar with no
+ * computed scores matches nobody, which is the honest answer before the numbers exist. */
+func tierPredicate(tiers []types.EngagementTier) string {
+	var names []string
+	for _, t := range tiers {
+		switch t {
+		case types.TierHigh, types.TierEngaged, types.TierPassive, types.TierRisk:
+			names = append(names, `'`+string(t)+`'`)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return ` AND EXISTS (SELECT 1 FROM engagement_scores es
+	          WHERE es.registration_id = r.id AND es.webinar_id = w.id
+	            AND es.tier IN (` + strings.Join(names, ", ") + `))`
 }
 
 /* audienceFrom is the FROM and WHERE that define an audience, without the
@@ -565,6 +587,21 @@ func (s *Store) WebinarBroadcasts(ctx context.Context, hostID, slug string) ([]t
 	return s.broadcasts(ctx, hostID, slug, 100)
 }
 
+// TierLabel is an engagement tier as the dashboard names it.
+func TierLabel(t types.EngagementTier) string {
+	switch t {
+	case types.TierHigh:
+		return "Highly engaged"
+	case types.TierEngaged:
+		return "Engaged"
+	case types.TierPassive:
+		return "Passive"
+	case types.TierRisk:
+		return "At risk"
+	}
+	return string(t)
+}
+
 /* SegmentLabel says a segment in the host's words: "Watched 45+ min", "Didn't join". */
 func SegmentLabel(g types.CRMSegment) string {
 	var parts []string
@@ -579,6 +616,13 @@ func SegmentLabel(g types.CRMSegment) string {
 		parts = append(parts, "Watched under "+strconv.Itoa(g.MaxWatchMin)+" min")
 	case g.Attendance == types.SegmentJoined:
 		parts = append(parts, "Attended")
+	}
+	if len(g.Tiers) > 0 {
+		names := make([]string, 0, len(g.Tiers))
+		for _, t := range g.Tiers {
+			names = append(names, TierLabel(t))
+		}
+		parts = append(parts, strings.Join(names, " or "))
 	}
 	if g.Replied {
 		parts = append(parts, "Replied")

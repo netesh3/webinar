@@ -157,6 +157,20 @@ func (s *Module) audienceAllowed(w http.ResponseWriter, r *http.Request, user st
 				"Somebody who didn't join has no watch time to filter on.")
 			return false
 		}
+		for _, t := range g.Tiers {
+			switch t {
+			case types.TierHigh, types.TierEngaged, types.TierPassive, types.TierRisk:
+			default:
+				httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_segment",
+					"Engagement tiers are high, engaged, passive or risk. No-shows are chosen with attendance.")
+				return false
+			}
+		}
+		if g.Attendance == types.SegmentNoShow && len(g.Tiers) > 0 {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_segment",
+				"Somebody who didn't join has no engagement score to filter on.")
+			return false
+		}
 		if a.WebinarSlug == "" {
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_webinar",
 				"Pick the webinar whose people should get this.")

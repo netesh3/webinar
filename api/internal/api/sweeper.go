@@ -79,6 +79,9 @@ func (s *Server) RunTick(ctx context.Context) bool {
 			s.sweepExpiredRecordings(ctx)
 		}
 	}
+	if _, due, err := s.store.TryLease(ctx, "engagement-retention", retentionEvery); err == nil && due {
+		s.sweepEngagementEvents(ctx)
+	}
 	return true
 }
 

@@ -182,6 +182,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the requester's own hand and stage toast: raised → lowered by the host must
 	# replace in place, an open invite must not be talked over or time out.
 	cd web && node --experimental-strip-types --no-warnings lib/self-hand-toasts.test.mts
+	# And the engagement score, against the same table the Go formula is tested with
+	# (api/internal/engagement/testdata/score_cases.json), so the fixture page and the
+	# server can never disagree about a number — plus the attendee paging and heatmap maths.
+	cd web && node --experimental-strip-types --no-warnings lib/engagement/score.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
