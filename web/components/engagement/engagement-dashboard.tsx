@@ -13,7 +13,7 @@ import { pct } from "@/lib/engagement/viz";
 import { AttendeeDrawer } from "./attendee-drawer";
 import { AttendeeHeatmap } from "./attendee-heatmap";
 import { ActivityHeatmap, Bars, RetentionChart } from "./charts";
-import { DetailTabs } from "./detail-tabs";
+import { DetailTabs, type DetailTabId } from "./detail-tabs";
 import { FollowUpPanel, TierLevels, WhatsAppComposer, type SegmentId } from "./follow-up";
 import { Hero } from "./hero";
 import { KpiGrid } from "./kpi-grid";
@@ -29,9 +29,12 @@ export function EngagementDashboard({
   sample = false,
   backHref,
   signInHref,
+  initialTab,
 }: {
   source: EngagementSource;
   sample?: boolean;
+  /** Which interaction tab opens first; deep links such as ?tab=survey. */
+  initialTab?: DetailTabId;
   /** The webinar's own page; the breadcrumb and back link point here. */
   backHref?: string;
   signInHref?: string;
@@ -216,7 +219,7 @@ export function EngagementDashboard({
       </Section>
 
       <Section id="eng-details" title="Interaction details">
-        <DetailTabs summary={s} />
+        <DetailTabs summary={s} source={source} initialTab={initialTab} />
       </Section>
 
       <AttendeeDrawer source={source} row={open} lobbyMin={Math.max(0, -s.axis.startMin)} onClose={closeDrawer} />

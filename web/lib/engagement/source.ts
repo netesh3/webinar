@@ -5,7 +5,13 @@
  * `apiSource(slug)` lives in api-source.ts, apart from this file, so node can test this one
  * without resolving the app's HTTP client. Components only ever see the interface. */
 
-import type { EngagementAttendeeDetail, EngagementAttendeePage, EngagementSummary } from "../api-types.ts";
+import type {
+  EngagementAttendeeDetail,
+  EngagementAttendeePage,
+  EngagementSummary,
+  SurveyResults,
+} from "../api-types.ts";
+import { FIXTURE_SURVEY_RESULTS } from "../survey-fixtures.ts";
 import { summarise } from "./fixture-summary.ts";
 import { generateWorld, AXIS, type FixtureWorld } from "./fixtures.ts";
 import { pageOf, type AttendeeQuery } from "./query.ts";
@@ -18,6 +24,10 @@ export interface EngagementSource {
   attendee(identity: string, signal?: AbortSignal): Promise<EngagementAttendeeDetail>;
   /** Plain download link; absent when there is nothing to download (sample data). */
   csvUrl?: string;
+  /** The post-event survey's results, for the Survey tab. */
+  surveyResults(signal?: AbortSignal): Promise<SurveyResults>;
+  /** The webinar the survey belongs to, for paging comments; absent for sample data. */
+  slug?: string;
   /** Present only where recomputing means something (the real API). */
   recompute?(): Promise<EngagementSummary>;
 }
@@ -62,5 +72,6 @@ export function fixtureSource(): EngagementSource {
         if (!found) throw new NotFoundError("That attendee");
         return found.detail;
       }),
+    surveyResults: (signal) => abortable(signal, () => FIXTURE_SURVEY_RESULTS),
   };
 }

@@ -5,6 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Alert, CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
+import { HostSurveyTab } from "./survey/host-survey-tab";
 import { CalendarIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "./icons";
 import { useShareOrigin, useToast } from "./providers";
 import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
@@ -48,11 +49,12 @@ const TABS = [
   "Share",
   "Stage",
   "Recordings",
+  "Survey",
   "Settings",
 ] as const;
 type Tab = (typeof TABS)[number] | "Report" | "Messages";
 
-const ENDED_TABS = ["Recordings", "Attendees", "Report"] as const;
+const ENDED_TABS = ["Recordings", "Attendees", "Report", "Survey"] as const;
 
 /* Messages — every WhatsApp message this webinar sends — is Engage's tab, placed
  * after Attendees and only offered when this deployment can connect WhatsApp. */
@@ -79,6 +81,7 @@ function tabFromQuery(raw: string | null | undefined): Tab | null {
   if (key === "stage") return "Stage";
   if (key === "recordings") return "Recordings";
   if (key === "settings") return "Settings";
+  if (key === "survey" || key === "feedback") return "Survey";
   if (key === "report") return "Report";
   if (key === "messages") return "Messages";
   return null;
@@ -157,6 +160,7 @@ export function HostWebinarTabs({
           onChanged={onChanged}
         />
       )}
+      {tab === "Survey" && <HostSurveyTab webinar={w} />}
       {tab === "Settings" && <SettingsTab webinar={w} />}
       {tab === "Report" && <ReportTab webinar={w} />}
     </>

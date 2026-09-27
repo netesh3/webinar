@@ -1,4 +1,4 @@
-/* Engagement Score, formula v1 — the TypeScript twin of api/internal/engagement.
+/* Engagement Score, formula v2 — the TypeScript twin of api/internal/engagement.
  *
  * Both implementations are checked against api/internal/engagement/testdata/score_cases.json,
  * so the fixture page and the server can never disagree about what a number means.
@@ -6,7 +6,7 @@
 
 import type { EngagementComponent, EngagementWeight } from "../api-types.ts";
 
-export const FORMULA_VERSION = 1;
+export const FORMULA_VERSION = 2;
 
 export type Tier = "high" | "engaged" | "passive" | "risk";
 export type Band = "excellent" | "strong" | "good" | "attention";
@@ -20,6 +20,8 @@ export interface SessionTools {
   qa: boolean;
   reactions: boolean;
   hands: boolean;
+  /** A post-event survey was sent (live or closed). Absent means no. */
+  survey?: boolean;
 }
 
 export interface ScoreInput {
@@ -34,9 +36,15 @@ export interface ScoreInput {
   quizCorrect: number;
   reactions: number;
   hands: number;
+  /** Submitted the survey (full credit), or only opened a survey link (half). */
+  surveyDone?: boolean;
+  surveyClicked?: boolean;
 }
 
 export const CAPS = { chat: 5, questions: 2, upvotes: 5, reactions: 10, hands: 1 } as const;
+
+/** Credit for opening a link survey without submitting the rating. */
+export const SURVEY_CLICK_CREDIT = 0.5;
 
 interface Definition {
   key: ComponentKey;
@@ -53,13 +61,13 @@ export const COMPONENTS: readonly Definition[] = [
   { key: "qa", label: "Q&A", base: 10, rule: "asking counts double an upvote" },
   { key: "reactions", label: "Reactions", base: 5, rule: `max at ${CAPS.reactions}` },
   { key: "hands", label: "Raised hand", base: 5, rule: "once is enough" },
-  { key: "survey", label: "Survey", base: 5, rule: "post-event surveys are coming soon" },
+  { key: "survey", label: "Survey", base: 5, rule: "completed the post-event survey; opening a survey link counts half" },
 ];
 
 const clamp01 = (n: number) => (Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-/** Survey never applies in v1; polls and quiz also need the person present for one. */
+/** Survey applies once one was sent; polls and quiz also need the person present for one. */
 function applies(key: ComponentKey, tools: SessionTools, i: ScoreInput): boolean {
   switch (key) {
     case "watch":
@@ -69,7 +77,7 @@ function applies(key: ComponentKey, tools: SessionTools, i: ScoreInput): boolean
     case "quiz":
       return tools.quiz && i.quizPresent > 0;
     case "survey":
-      return false;
+      return tools.survey === true;
     default:
       return tools[key];
   }
@@ -92,7 +100,7 @@ function ratioOf(key: ComponentKey, i: ScoreInput): number {
     case "hands":
       return Math.min(i.hands, CAPS.hands);
     case "survey":
-      return 0;
+      return i.surveyDone ? 1 : i.surveyClicked ? SURVEY_CLICK_CREDIT : 0;
   }
 }
 
@@ -113,7 +121,7 @@ function detailOf(key: ComponentKey, i: ScoreInput): string {
     case "hands":
       return i.hands > 0 ? "Yes" : "No";
     case "survey":
-      return "Coming soon";
+      return i.surveyDone ? "Completed" : i.surveyClicked ? "Opened the survey link" : "Not completed";
   }
 }
 
@@ -149,7 +157,7 @@ export function engagementScore(tools: SessionTools, input: ScoreInput): number 
 
 /** Session-level weights as the formula strip shows them: 0 for a tool that wasn't used. */
 export function sessionWeights(tools: SessionTools): EngagementWeight[] {
-  const on = (key: ComponentKey) => key === "watch" || (key !== "survey" && tools[key]);
+  const on = (key: ComponentKey) => key === "watch" || tools[key] === true;
   const total = COMPONENTS.filter((c) => on(c.key)).reduce((s, c) => s + c.base, 0);
   return COMPONENTS.map((c) => ({
     key: c.key,

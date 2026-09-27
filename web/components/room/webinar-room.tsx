@@ -62,6 +62,9 @@ import { useSelfHandToasts, type SelfHandEvent } from "./self-hand-toasts";
 import { VirtualBackground } from "./background-picker";
 import { NoiseSuppression } from "./noise-suppression";
 import { PollPopup } from "./poll-popup";
+import { SurveyPopup } from "./survey-popup";
+import { SessionSurvey } from "../survey/session-survey";
+import { useAudienceSurvey } from "@/lib/use-audience-survey";
 import { CtaPopup } from "./cta-popup";
 import { CaptionOverlay } from "./caption-overlay";
 import { FileShareBar } from "./file-share-bar";
@@ -1116,6 +1119,8 @@ function ConnectedRoom({
     controls.pollsEnabled,
     room,
   );
+  // The post-event survey, for the audience only (the server hides it from the stage).
+  const survey = useAudienceSurvey(slug, joinKey, realtime.surveyRevision, !isHost);
 
   /* The connection, sampled from getStats, and the publish ladder held where it belongs.
    *
@@ -1217,7 +1222,7 @@ function ConnectedRoom({
   );
 
   if (exit) {
-    return <SessionOver reason={exit} onLeave={onLeave} />;
+    return <SessionOver reason={exit} onLeave={onLeave} slug={slug} joinKey={joinKey} />;
   }
 
   if (failure) {
@@ -1285,6 +1290,13 @@ function ConnectedRoom({
                     behind a button. Renders nothing for the stage and nothing when there is
                     no open poll they have yet to answer. */}
                   <PollPopup />
+                  <SurveyPopup
+                    slug={slug}
+                    joinKey={joinKey}
+                    survey={survey.data}
+                    onChange={survey.replace}
+                    enabled={!isHost}
+                  />
                 <CtaPopup />
                 <CaptionOverlay />
 
@@ -1671,11 +1683,21 @@ const EXIT_COPY: Record<ExitReason, { title: string; body: string }> = {
   },
 };
 
-function SessionOver({ reason, onLeave }: { reason: ExitReason; onLeave: () => void }) {
+function SessionOver({
+  reason,
+  onLeave,
+  slug,
+  joinKey,
+}: {
+  reason: ExitReason;
+  onLeave: () => void;
+  slug: string;
+  joinKey?: string;
+}) {
   const copy = EXIT_COPY[reason];
   return (
-    <main className="grid min-h-dvh place-items-center bg-stage p-6 text-center">
-      <div className="max-w-sm">
+    <main className="grid min-h-dvh place-items-center bg-stage p-4 text-center sm:p-6">
+      <div className="flex w-full max-w-[460px] flex-col items-center">
         <h1 className="text-[18px] font-semibold text-white">{copy.title}</h1>
         <p className="mt-2 text-[13.5px] leading-relaxed text-white/60">{copy.body}</p>
         <div className="mt-5 flex flex-wrap justify-center gap-2">
@@ -1694,6 +1716,9 @@ function SessionOver({ reason, onLeave }: { reason: ExitReason; onLeave: () => v
             Back to webinars
           </button>
         </div>
+        {/* Ended for everyone is when the host's "send at the end" survey goes out, and
+            this screen is where everybody still in the room lands. */}
+        {reason === "ended" && <SessionSurvey slug={slug} joinKey={joinKey} className="mt-6" />}
       </div>
     </main>
   );

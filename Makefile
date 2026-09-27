@@ -186,6 +186,7 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# (api/internal/engagement/testdata/score_cases.json), so the fixture page and the
 	# server can never disagree about a number — plus the attendee paging and heatmap maths.
 	cd web && node --experimental-strip-types --no-warnings lib/engagement/score.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/survey.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

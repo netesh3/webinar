@@ -8,6 +8,8 @@ export function apiSource(slug: string): EngagementSource {
     summary: (signal) => api.engagementSummary(slug, signal),
     attendees: (query, signal) => api.engagementAttendees(slug, query, signal),
     attendee: (identity, signal) => api.engagementAttendee(slug, identity, signal),
+    surveyResults: (signal) => api.surveyResults(slug, signal),
+    slug,
     csvUrl: api.engagementCsvUrl(slug),
     recompute: () => api.recomputeEngagement(slug),
   };
