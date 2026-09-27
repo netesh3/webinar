@@ -54,8 +54,19 @@ const CONFIG_FALLBACK: AppConfig = {
 
 const ConfigContext = createContext<AppConfig>(CONFIG_FALLBACK);
 
+/** Whether useAppConfig() is the real config yet: "ready" once the server
+ *  render or the client fetch supplied it, "loading" while CONFIG_FALLBACK's
+ *  guesses are standing in, "failed" when the API could not be reached. */
+export type ConfigStatus = "loading" | "ready" | "failed";
+
+const ConfigStatusContext = createContext<ConfigStatus>("ready");
+
 export function useAppConfig(): AppConfig {
   return useContext(ConfigContext);
+}
+
+export function useAppConfigStatus(): ConfigStatus {
+  return useContext(ConfigStatusContext);
 }
 
 /* The browser's own origin, read through useSyncExternalStore.
@@ -181,6 +192,7 @@ export function AppProviders({
   initialConfig?: AppConfig | null;
 }) {
   const [config, setConfig] = useState<AppConfig>(initialConfig ?? CONFIG_FALLBACK);
+  const [configStatus, setConfigStatus] = useState<ConfigStatus>(initialConfig ? "ready" : "loading");
   const [account, setAccount] = useState<Account | null>(null);
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -337,10 +349,13 @@ export function AppProviders({
     api
       .config()
       .then((c) => {
-        if (active) setConfig(c);
+        if (!active) return;
+        setConfig(c);
+        setConfigStatus("ready");
       })
       .catch(() => {
         // Keep whatever we already have. The shell must still render.
+        if (active) setConfigStatus((s) => (s === "loading" ? "failed" : s));
       });
     return () => {
       active = false;
@@ -402,12 +417,14 @@ export function AppProviders({
 
   return (
     <ConfigContext.Provider value={config}>
-      <SessionContext.Provider value={session}>
-        <ToastContext.Provider value={toastValue}>
-          {children}
-          <ToastViewport />
-        </ToastContext.Provider>
-      </SessionContext.Provider>
+      <ConfigStatusContext.Provider value={configStatus}>
+        <SessionContext.Provider value={session}>
+          <ToastContext.Provider value={toastValue}>
+            {children}
+            <ToastViewport />
+          </ToastContext.Provider>
+        </SessionContext.Provider>
+      </ConfigStatusContext.Provider>
     </ConfigContext.Provider>
   );
 }
