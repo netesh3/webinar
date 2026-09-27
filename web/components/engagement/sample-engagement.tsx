@@ -2,11 +2,11 @@
 
 import { useMemo } from "react";
 import { fixtureSource } from "@/lib/engagement/source";
-import type { DetailTabId } from "./detail-tabs";
+import type { SectionId } from "@/lib/engagement/sections";
 import { EngagementDashboard } from "./engagement-dashboard";
 
 /** The Engagement dashboard over the seeded sample webinar, for review without a backend. */
-export function SampleEngagement({ initialTab }: { initialTab?: DetailTabId }) {
+export function SampleEngagement({ initialSection }: { initialSection?: SectionId }) {
   const source = useMemo(() => fixtureSource(), []);
-  return <EngagementDashboard source={source} sample initialTab={initialTab} />;
+  return <EngagementDashboard source={source} sample initialSection={initialSection} />;
 }

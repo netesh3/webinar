@@ -102,6 +102,9 @@ func TestComputeHeadlineFigures(t *testing.T) {
 	if k.PollResponsePct != 50 || k.QuizAccuracyPct != 0 {
 		t.Fatalf("poll %d%% quiz %d%%", k.PollResponsePct, k.QuizAccuracyPct)
 	}
+	if k.PollVoters != 1 {
+		t.Fatalf("poll voters %d; Ann answered a poll and a quiz and is one voter", k.PollVoters)
+	}
 	if s.Webinar.SessionMin != 60 || s.Axis.LobbyColumns != 2 || s.Axis.StartMin != -10 {
 		t.Fatalf("axis %+v session %d", s.Axis, s.Webinar.SessionMin)
 	}
@@ -113,6 +116,21 @@ func TestComputeHeadlineFigures(t *testing.T) {
 	}
 	if s.Callouts.NeedsRecap == nil || s.Callouts.NeedsRecap.PollID != "z1" {
 		t.Fatalf("recap %+v", s.Callouts.NeedsRecap)
+	}
+}
+
+func TestComputePollVotersIsDistinctAudience(t *testing.T) {
+	in := scenario()
+	in.Votes = append(in.Votes,
+		Vote{PollID: "p1", Identity: "att_b", Choice: 1, At: at(8.6)},
+		Vote{PollID: "p1", Identity: "user_host", Choice: 1, At: at(8.7)},
+	)
+	if n := Compute(in, Current()).Summary.KPIs.PollVoters; n != 2 {
+		t.Fatalf("poll voters %d; want Ann and Bob, not the host", n)
+	}
+	in.Votes, in.Polls = nil, nil
+	if n := Compute(in, Current()).Summary.KPIs.PollVoters; n != 0 {
+		t.Fatalf("poll voters %d with no polls", n)
 	}
 }
 

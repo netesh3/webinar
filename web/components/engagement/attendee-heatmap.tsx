@@ -9,6 +9,8 @@ import { DEFAULT_FILTERS, nextSort, type AttendeeFilters, type SortKey } from "@
 import { TIER_META, TIER_ORDER, asTier, type Tier } from "@/lib/engagement/score";
 import type { EngagementSource } from "@/lib/engagement/source";
 import { HEAT_LEGEND, cellColor, columnLabels, columnStartMin, joinLabel, pct } from "@/lib/engagement/viz";
+import { clockAt, leaveState } from "@/lib/engagement/sections";
+import { formatTime } from "@/lib/format";
 import { Initials, ScorePill, TierChip } from "./primitives";
 import { ErrorState } from "./states";
 
@@ -73,6 +75,35 @@ function HeatCells({ row, axis }: { row: EngagementAttendeeRow; axis: Engagement
   );
 }
 
+export interface HeatmapClock {
+  startedAt?: string;
+  timeZone: string;
+  live: boolean;
+}
+
+function InOut({ row, sessionMin, clock }: { row: EngagementAttendeeRow; sessionMin: number; clock?: HeatmapClock }) {
+  const at = (m: number) => {
+    const iso = clock ? clockAt(clock.startedAt, m) : null;
+    return iso && clock ? formatTime(iso, clock.timeZone) : null;
+  };
+  const leave = leaveState(row.lastLeaveMin, sessionMin, clock?.live ?? false);
+  const inAt = at(row.firstJoinMin);
+  return (
+    <>
+      <div className="text-ink tabular-nums">
+        {inAt ?? joinLabel(row.firstJoinMin)}
+        <span aria-hidden className="px-1 text-ink-3">→</span>
+        <span className="sr-only"> to </span>
+        {leave.kind === "left" ? (at(leave.minute) ?? `${leave.minute}m`) : leave.kind === "still_in" ? <span className="text-live">still in</span> : <span className="text-ink-2">end</span>}
+      </div>
+      <div className="text-[11px] text-ink-3 tabular-nums">
+        {inAt ? `${joinLabel(row.firstJoinMin)} · ` : ""}
+        {row.visits} {row.visits === 1 ? "visit" : "visits"}
+      </div>
+    </>
+  );
+}
+
 export function AttendeeHeatmap({
   source,
   axis: summaryAxis,
@@ -80,6 +111,7 @@ export function AttendeeHeatmap({
   sessionMin,
   refreshKey,
   onOpen,
+  clock,
 }: {
   source: EngagementSource;
   axis: EngagementAxis;
@@ -87,6 +119,8 @@ export function AttendeeHeatmap({
   sessionMin: number;
   refreshKey?: string;
   onOpen: (row: EngagementAttendeeRow) => void;
+  /** Turns minute offsets into the clock times the old attendance table showed. */
+  clock?: HeatmapClock;
 }) {
   const [filters, setFilters] = useState<AttendeeFilters>(DEFAULT_FILTERS);
   const list = useEngagementAttendees(source, filters, refreshKey);
@@ -128,14 +162,14 @@ export function AttendeeHeatmap({
       </div>
 
       <div className="mt-3 max-h-[560px] overflow-auto rounded-lg border border-line" aria-busy={list.loading || list.stale}>
-        <table className={`w-full min-w-[860px] border-collapse text-[12.5px] transition-opacity ${list.stale ? "opacity-60" : ""}`}>
-          <caption className="sr-only">Attendees and their presence across the session</caption>
+        <table className={`w-full min-w-[940px] border-collapse text-[12.5px] transition-opacity ${list.stale ? "opacity-60" : ""}`}>
+          <caption className="sr-only">Attendees, when they were in the room, and their presence across the session</caption>
           <thead className="sticky top-0 z-10 bg-surface-2 text-left text-[11.5px] text-ink-2 shadow-[0_1px_0_#e5e9ec]">
             <tr>
               <SortHeader label="Attendee" column="name" filters={filters} onSort={onSort} className="pl-3" />
               <SortHeader label="Score" column="score" filters={filters} onSort={onSort} />
               <SortHeader label="Watched" column="watch" filters={filters} onSort={onSort} />
-              <SortHeader label="Joined" column="join" filters={filters} onSort={onSort} />
+              <SortHeader label="In → Out" column="join" filters={filters} onSort={onSort} />
               <th scope="col" className="px-2 py-2 font-medium">
                 <span className="sr-only">Presence by {axis.bucketMin}-minute bucket</span>
                 <div className="grid gap-[2px] tabular-nums text-ink-3" aria-hidden style={{ gridTemplateColumns: `repeat(${axis.columns}, minmax(0, 1fr))` }}>
@@ -181,7 +215,7 @@ export function AttendeeHeatmap({
                   <div className="flex items-center gap-2.5">
                     <Initials name={r.name} seed={r.identity} size={28} />
                     <div className="min-w-0">
-                      <div className="truncate font-medium text-ink">{r.name}</div>
+                      <div className="truncate font-medium text-ink" title={r.email || undefined}>{r.name}</div>
                       <TierChip tier={r.tier} />
                     </div>
                   </div>
@@ -192,8 +226,10 @@ export function AttendeeHeatmap({
                 <td className="px-2 whitespace-nowrap tabular-nums">
                   {r.watchMin}m <span className="text-ink-3">· {pct(r.watchMin, sessionMin)}%</span>
                 </td>
-                <td className="px-2 whitespace-nowrap tabular-nums text-ink-2">{joinLabel(r.firstJoinMin)}</td>
-                <td className="w-[52%] px-2">
+                <td className="px-2 whitespace-nowrap">
+                  <InOut row={r} sessionMin={sessionMin} clock={clock} />
+                </td>
+                <td className="w-[48%] px-2">
                   <HeatCells row={r} axis={axis} />
                 </td>
               </tr>

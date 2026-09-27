@@ -70,8 +70,11 @@ type EngagementKPIs struct {
 	PollResponsePct int `json:"pollResponsePct"`
 	/** -1 when no quiz ran. */
 	QuizAccuracyPct int `json:"quizAccuracyPct"`
-	Reactions       int `json:"reactions"`
-	HandRaises      int `json:"handRaises"`
+	/** Distinct attendees who answered at least one poll or quiz — the old Report's "poll
+	 * voters". Absent from snapshots stored before it existed. */
+	PollVoters int `json:"pollVoters,omitempty"`
+	Reactions  int `json:"reactions"`
+	HandRaises int `json:"handRaises"`
 }
 
 /** One retention sample: people in the room at Minute. */

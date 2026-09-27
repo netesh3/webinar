@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { TopNav } from "@/components/top-nav";
 import { SampleEngagement } from "@/components/engagement/sample-engagement";
-import type { DetailTabId } from "@/components/engagement/detail-tabs";
+import { SECTIONS } from "@/lib/engagement/sections";
 
 /* The Engagement dashboard over fixture data, for design review and screenshots.
  *
@@ -14,16 +14,16 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const DETAIL_TABS: readonly DetailTabId[] = ["chat", "qa", "polls", "reactions", "survey"];
-
 export default async function EngagementMockPage({ searchParams }: PageProps<"/mock/engagement">) {
-  const raw = (await searchParams).tab;
-  const initialTab = DETAIL_TABS.find((t) => t === raw);
+  // ?tab= is the older spelling, from when the details were tabs; ?section= reads better now.
+  const params = await searchParams;
+  const raw = params.section ?? params.tab;
+  const initialSection = SECTIONS.find((x) => x.id === raw)?.id;
   return (
     <>
       <TopNav />
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-5 sm:py-8">
-        <SampleEngagement initialTab={initialTab} />
+        <SampleEngagement initialSection={initialSection} />
       </main>
     </>
   );

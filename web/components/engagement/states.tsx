@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Button, ButtonLink, Card } from "@/components/ui";
 import { ApiError } from "@/lib/http";
 import { Icon } from "./primitives";
@@ -60,8 +61,8 @@ export function ErrorState({
 const EMPTY: Record<string, { icon: string; title: string; hint: string }> = {
   not_started: {
     icon: "hourglass_empty",
-    title: "Engagement is calculated once the webinar starts",
-    hint: "Come back when you go live — the numbers update every 30 seconds during the session.",
+    title: "Nothing to show yet — the webinar hasn't started",
+    hint: "Once you go live, this tab fills in by itself and refreshes every 30 seconds. After the webinar it becomes your full report: who came, who stayed, and who to follow up with.",
   },
   no_audience: {
     icon: "person_off",
@@ -70,17 +71,36 @@ const EMPTY: Record<string, { icon: string; title: string; hint: string }> = {
   },
 };
 
-export function EmptyState({ state, backHref }: { state: string; backHref?: string }) {
+export function EmptyState({
+  state,
+  backHref,
+  detail,
+  action,
+}: {
+  state: string;
+  backHref?: string;
+  /** One more line under the hint, e.g. when the webinar is scheduled to start. */
+  detail?: string;
+  action?: ReactNode;
+}) {
   const e = EMPTY[state] ?? EMPTY.not_started;
   return (
-    <div className="rounded-xl border border-dashed border-line-2 bg-surface px-6 py-16 text-center">
-      <Icon name={e.icon} className="!text-[28px] text-ink-3" />
-      <p className="mt-2 text-[15px] font-semibold text-ink">{e.title}</p>
-      <p className="mx-auto mt-1.5 max-w-md text-[13px] text-ink-2">{e.hint}</p>
-      {backHref && (
-        <ButtonLink href={backHref} variant="secondary" size="sm" className="mt-5">
-          Back to the webinar
-        </ButtonLink>
+    <div className="rounded-xl border border-dashed border-line-2 bg-surface px-6 py-14 text-center sm:py-16">
+      <span className="mx-auto grid size-12 place-items-center rounded-full bg-surface-2">
+        <Icon name={e.icon} className="!text-[24px] text-ink-3" />
+      </span>
+      <p className="mt-3 text-[15px] font-semibold text-ink">{e.title}</p>
+      <p className="mx-auto mt-1.5 max-w-md text-[13px] leading-relaxed text-ink-2">{e.hint}</p>
+      {detail && <p className="mt-2 text-[12.5px] font-medium text-ink">{detail}</p>}
+      {(action || backHref) && (
+        <div className="mt-5 flex justify-center gap-2">
+          {action}
+          {backHref && (
+            <ButtonLink href={backHref} variant="secondary" size="sm">
+              Back to the webinar
+            </ButtonLink>
+          )}
+        </div>
       )}
     </div>
   );

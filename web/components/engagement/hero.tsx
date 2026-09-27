@@ -77,7 +77,7 @@ function FormulaStrip({ weights }: { weights: EngagementWeight[] }) {
   );
 }
 
-export function Hero({ summary: s }: { summary: EngagementSummary }) {
+export function Hero({ summary: s, showTitle = true }: { summary: EngagementSummary; showTitle?: boolean }) {
   const [showFormula, setShowFormula] = useState(false);
   const formulaId = useId();
   const band = asBand(s.band, s.index);
@@ -106,8 +106,11 @@ export function Hero({ summary: s }: { summary: EngagementSummary }) {
               </>
             )}
           </div>
-          <h1 className="mt-2 text-[22px] leading-tight font-semibold tracking-[-0.02em] sm:text-[24px]">{w.title}</h1>
-          <p className="mt-2 max-w-2xl text-[14px] text-ink-2">
+          {/* Inside the host screen the webinar's title is already the page heading. */}
+          {showTitle && (
+            <h1 className="mt-2 text-[22px] leading-tight font-semibold tracking-[-0.02em] sm:text-[24px]">{w.title}</h1>
+          )}
+          <p className={`${showTitle ? "mt-2" : "mt-3"} max-w-2xl text-[14px] text-ink-2`}>
             <strong className="text-ink">{BAND_META[band].label} session</strong> — {s.kpis.stayedPastHalfPct}% of attendees
             stayed past the halfway mark, and {pct(s.kpis.chatters, s.kpis.attended)}% joined the conversation.
           </p>

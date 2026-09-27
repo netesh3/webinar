@@ -7,6 +7,9 @@ import { useAttendeeDetail } from "@/lib/engagement/hooks";
 import { TIER_META, asTier } from "@/lib/engagement/score";
 import type { EngagementSource } from "@/lib/engagement/source";
 import { joinLabel, minuteLabel } from "@/lib/engagement/viz";
+import { clockAt } from "@/lib/engagement/sections";
+import { formatTime } from "@/lib/format";
+import type { HeatmapClock } from "./attendee-heatmap";
 import { Initials, MiniStat, TierChip } from "./primitives";
 import { ErrorState } from "./states";
 
@@ -63,10 +66,14 @@ function useDialogFocus(open: boolean, onClose: () => void) {
   return panel;
 }
 
-function Presence({ d, lobbyMin }: { d: EngagementAttendeeDetail; lobbyMin: number }) {
+function Presence({ d, lobbyMin, clock }: { d: EngagementAttendeeDetail; lobbyMin: number; clock?: HeatmapClock }) {
   const total = d.sessionMin + lobbyMin;
   const pos = (m: number) => ((Math.max(-lobbyMin, Math.min(d.sessionMin, m)) + lobbyMin) / total) * 100;
   const last = d.row.lastLeaveMin;
+  const at = (m: number) => {
+    const iso = clock ? clockAt(clock.startedAt, m) : null;
+    return iso && clock ? formatTime(iso, clock.timeZone) : minuteLabel(m);
+  };
   return (
     <section aria-labelledby="att-presence">
       <h3 id="att-presence" className="mb-2 text-[12.5px] font-semibold">
@@ -98,6 +105,19 @@ function Presence({ d, lobbyMin }: { d: EngagementAttendeeDetail; lobbyMin: numb
             ? "Stayed to the end."
             : `Left at ${last}m and did not return.`}
       </p>
+      {/* Each visit with its clock times — what the old attendance table's expanded row showed. */}
+      <ol className="mt-2 grid gap-1 text-[12px] text-ink-2 tabular-nums" aria-label="Visits">
+        {d.visits.map((v, i) => (
+          <li key={`${v.fromMin}-${v.toMin}-${i}`} className="flex items-center gap-2">
+            <span className="w-4 text-ink-3">{i + 1}.</span>
+            <span>{at(v.fromMin)}</span>
+            <span aria-hidden className="text-ink-3">→</span>
+            <span className="sr-only">to</span>
+            <span>{v.toMin < 0 ? <span className="text-ink-3">still in</span> : at(v.toMin)}</span>
+            {v.toMin >= 0 && <span className="text-ink-3">({Math.max(0, v.toMin - Math.max(0, v.fromMin))}m)</span>}
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }
@@ -189,11 +209,13 @@ export function AttendeeDrawer({
   row,
   lobbyMin,
   onClose,
+  clock,
 }: {
   source: EngagementSource;
   row: EngagementAttendeeRow | null;
   lobbyMin: number;
   onClose: () => void;
+  clock?: HeatmapClock;
 }) {
   const detail = useAttendeeDetail(source, row?.identity ?? null);
   const panel = useDialogFocus(!!row, onClose);
@@ -247,7 +269,7 @@ export function AttendeeDrawer({
           {detail.error != null && <ErrorState error={detail.error} onRetry={detail.retry} compact />}
           {d && (
             <>
-              <Presence d={d} lobbyMin={lobbyMin} />
+              <Presence d={d} lobbyMin={lobbyMin} clock={clock} />
               <Breakdown d={d} />
               {d.reactions.length > 0 && (
                 <section aria-labelledby="att-reactions">
