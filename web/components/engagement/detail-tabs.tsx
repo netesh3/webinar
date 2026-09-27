@@ -4,7 +4,10 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { EngagementSummary, SurveyResults } from "@/lib/api-types";
 import type { EngagementSource } from "@/lib/engagement/source";
 import { Spinner } from "../controls";
+import { ClipboardIcon } from "../icons";
+import { useToast } from "../providers";
 import { SurveyResultsView } from "../survey/survey-results";
+import { Badge, Button, ButtonLink } from "../ui";
 import { pct } from "@/lib/engagement/viz";
 import { Bars, HBar } from "./charts";
 import { MiniStat } from "./primitives";
@@ -221,38 +224,122 @@ function ReactionsPanel({ s }: { s: EngagementSummary }) {
   );
 }
 
-/* The post-event survey's results — the same view as the webinar's Survey tab, read through
- * the page's source so the sample dashboard shows sample answers. Read when the tab opens. */
-function SurveyPanel({ source }: { source: EngagementSource }) {
+/* The feedback survey's results — the same view the room's host sees, read through the page's
+ * source so the sample dashboard shows sample answers. Read when the section first opens.
+ *
+ * This is the survey's only home after a webinar (there is no separate Survey tab), so the
+ * two things a host might still do here live here too: send a survey that never went out,
+ * and stop or reopen answers. */
+function SurveyPanel({ source, ended }: { source: EngagementSource; ended: boolean }) {
+  const { notify } = useToast();
   const [state, setState] = useState<{ id: string; data?: SurveyResults; error?: string } | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const status = state?.id === source.id ? state.data?.status : undefined;
 
   useEffect(() => {
     const ctl = new AbortController();
-    source
-      .surveyResults(ctl.signal)
-      .then((data) => setState({ id: source.id, data }))
-      .catch((e: unknown) => {
-        if (!ctl.signal.aborted) setState({ id: source.id, error: e instanceof Error ? e.message : "Could not load the survey." });
-      });
-    return () => ctl.abort();
-  }, [source]);
+    const read = () =>
+      source
+        .surveyResults(ctl.signal)
+        .then((data) => setState({ id: source.id, data }))
+        .catch((e: unknown) => {
+          if (!ctl.signal.aborted) setState({ id: source.id, error: e instanceof Error ? e.message : "Could not load the survey." });
+        });
+    void read();
+    // Late answers keep arriving from the ended screen while it is open.
+    const t = status === "live" && source.slug ? window.setInterval(read, 15000) : undefined;
+    return () => {
+      ctl.abort();
+      if (t) window.clearInterval(t);
+    };
+  }, [source, revision, status]);
+
+  async function run(action: "launch" | "close") {
+    if (!source.setSurvey) return;
+    setBusy(true);
+    try {
+      await source.setSurvey(action);
+      notify(action === "launch" ? "Survey sent" : "Survey closed — no new answers", "ok");
+      setRevision((r) => r + 1);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const current = state?.id === source.id ? state : null;
   if (!current) return <div className="grid place-items-center py-10"><Spinner className="size-5 text-ink-3" /></div>;
   if (current.error) return <None>{current.error}</None>;
   const r = current.data!;
+
   if (!r.configured) {
     return (
-      <div className="rounded-xl border border-dashed border-line-2 px-6 py-12 text-center">
-        <p className="text-[14px] font-semibold">No survey for this webinar</p>
-        <p className="mx-auto mt-1.5 max-w-md text-[13px] text-ink-2">
-          Switch on &ldquo;Ask attendees for feedback&rdquo; when you schedule a webinar. Completing it counts
-          towards each person&apos;s engagement score.
+      <div className="grid justify-items-center gap-2 px-6 py-10 text-center">
+        <span className="grid size-10 place-items-center rounded-xl bg-surface-2 text-ink-3">
+          <ClipboardIcon className="size-5" />
+        </span>
+        <p className="text-[14px] font-semibold">No feedback survey for this webinar</p>
+        <p className="max-w-md text-[13px] text-ink-2">
+          Next time, switch on &ldquo;Ask attendees for feedback&rdquo; when you schedule — ratings and comments
+          show up here, and answering counts towards each person&apos;s engagement score.
         </p>
+        {source.slug && (
+          <ButtonLink href="/host/new" size="sm" variant="secondary" className="mt-2">
+            Schedule a webinar
+          </ButtonLink>
+        )}
       </div>
     );
   }
-  return <SurveyResultsView slug={source.slug ?? ""} results={r} preview={!source.slug} />;
+
+  if (r.status === "draft") {
+    return (
+      <div className="flex flex-wrap items-center gap-4">
+        <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${ended ? "bg-warn-soft text-warn" : "bg-brand-soft text-brand"}`}>
+          <ClipboardIcon className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[14px] font-semibold">{ended ? "The survey wasn't sent" : "Not sent yet"}</p>
+          <p className="mt-0.5 text-[13px] text-ink-2">
+            {ended
+              ? "The webinar ended before it went out. Send it now and attendees see it on the ended page and the replay."
+              : "Send it from the room when you're ready — answers appear here as they come in."}
+          </p>
+        </div>
+        {ended && source.setSurvey && (
+          <Button size="sm" onClick={() => void run("launch")} disabled={busy}>
+            {busy && <Spinner className="size-3.5" />}
+            Send survey now
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  const live = r.status === "live";
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {live ? <Badge tone="ok" dot>Taking answers</Badge> : <Badge>Closed</Badge>}
+          <p className="text-[12.5px] text-ink-2">
+            {live
+              ? "People who missed it can still answer from the ended page."
+              : "No new answers are being collected."}
+          </p>
+        </div>
+        {source.setSurvey && (
+          <Button size="sm" variant="secondary" onClick={() => void run(live ? "close" : "launch")} disabled={busy}>
+            {busy && <Spinner className="size-3.5" />}
+            {live ? "Stop taking answers" : "Reopen"}
+          </Button>
+        )}
+      </div>
+      <SurveyResultsView slug={source.slug ?? ""} results={r} preview={!source.slug} />
+    </div>
+  );
 }
 
 export function DetailTabs({
@@ -306,7 +393,7 @@ export function DetailTabs({
         {tab === "qa" && <QAPanel s={summary} />}
         {tab === "polls" && <PollsPanel s={summary} />}
         {tab === "reactions" && <ReactionsPanel s={summary} />}
-        {tab === "survey" && <SurveyPanel source={source} />}
+        {tab === "survey" && <SurveyPanel source={source} ended={summary.webinar.status === "ended"} />}
       </div>
     </div>
   );

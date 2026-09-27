@@ -27,10 +27,12 @@ export interface EngagementSource {
   attendee(identity: string, signal?: AbortSignal): Promise<EngagementAttendeeDetail>;
   /** Plain download link; absent when there is nothing to download (sample data). */
   csvUrl?: string;
-  /** The post-event survey's results, for the Survey tab. */
+  /** The feedback survey's results, for the Engagement tab's Survey section. */
   surveyResults(signal?: AbortSignal): Promise<SurveyResults>;
   /** The webinar the survey belongs to, for paging comments; absent for sample data. */
   slug?: string;
+  /** Put the survey on screen (send, reopen) or stop taking answers. Absent for sample data. */
+  setSurvey?(action: "launch" | "close"): Promise<unknown>;
   /** Present only where recomputing means something (the real API). */
   recompute?(): Promise<EngagementSummary>;
   /** The old Report's downloads, offered beside the engagement CSV in the Export menu. */

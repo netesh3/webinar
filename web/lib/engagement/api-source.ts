@@ -10,6 +10,7 @@ export function apiSource(slug: string): EngagementSource {
     attendee: (identity, signal) => api.engagementAttendee(slug, identity, signal),
     surveyResults: (signal) => api.surveyResults(slug, signal),
     slug,
+    setSurvey: (action) => (action === "launch" ? api.launchSurvey(slug) : api.closeSurvey(slug)),
     csvUrl: api.engagementCsvUrl(slug),
     recompute: () => api.recomputeEngagement(slug),
     attendanceCsvUrl: api.reportCsvUrl(slug),
