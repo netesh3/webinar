@@ -26,6 +26,7 @@ import {
   type ToolbarSnapshot,
   type ToolId,
 } from "@/lib/tools";
+import { closesMoreOnToolActivate } from "@/lib/bar-popover";
 import {
   MEDIA_TOGGLE_SMALL,
   useCompact,
@@ -668,7 +669,23 @@ export function ControlBar() {
     return !!win && !win.minimized;
   };
 
+  const editingNow = editing && moreOpen;
+  const closeMore = useCallback(() => {
+    setMoreOpen(false);
+    setEditing(false);
+  }, []);
+
   const activate = (id: ToolId) => {
+    // The same click that runs this tool takes More out of the way; the press
+    // itself could not, since it might have been a drag aimed at the panel.
+    if (closesMoreOnToolActivate({ moreOpen, editing: editingNow, dragging: drag.drag !== null })) {
+      closeMore();
+    }
+    // Pointer presses already close these via their outside-press handlers;
+    // this covers Enter / Space, which fires no pointerdown.
+    if (id !== "reactions") setReactionsOpen(false);
+    if (id !== "invite") setInviteOpen(false);
+    if (id !== "layout") setLayoutOpen(false);
     if (id === "reactions") {
       setReactionsOpen((v) => !v);
       return;
@@ -727,11 +744,6 @@ export function ControlBar() {
    * Derived rather than stored, so the grid closes itself again when the drag ends
    * and `moreOpen` — the user's own choice — is what remains. */
   const gridVisible = moreOpen || drag.drag?.from === "bar";
-  const editingNow = editing && moreOpen;
-  const closeMore = useCallback(() => {
-    setMoreOpen(false);
-    setEditing(false);
-  }, []);
 
   const onShareClick = useCallback(() => {
     if (!previewChrome && !canShare) {
@@ -1030,7 +1042,12 @@ export function ControlBar() {
             }
             onToggle={() => {
               if (moreOpen) closeMore();
-              else setMoreOpen(true);
+              else {
+                setMoreOpen(true);
+                setReactionsOpen(false);
+                setInviteOpen(false);
+                setLayoutOpen(false);
+              }
             }}
           />
           {gridVisible && (
@@ -1352,20 +1369,33 @@ function ReactionTray({
   onPick: (emoji: Reaction) => void;
   onClose: () => void;
 }) {
+  const wrap = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    /* An outside press, like every other bar popover — not a full-screen
+     * catcher, which swallowed the press meant for More or Chat and made the
+     * host click twice. The Reactions button itself toggles the tray. */
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (wrap.current?.contains(target)) return;
+      if (target?.closest?.("[data-tool-slot='reactions']")) return;
+      onClose();
+    };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onDown);
+    };
   }, [onClose]);
 
   return (
-    <>
-      {/* A full-screen catcher, which is the only reliable outside-click on touch. */}
-      <button className="fixed inset-0 z-40 cursor-default" aria-label="Close reactions" onClick={onClose} />
-      <div className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-xl border border-line bg-surface p-1 shadow-xl">
-        <ReactionPicker onPick={onPick} />
-      </div>
-    </>
+    <div
+      ref={wrap}
+      className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-xl border border-line bg-surface p-1 shadow-xl"
+    >
+      <ReactionPicker onPick={onPick} />
+    </div>
   );
 }
 
