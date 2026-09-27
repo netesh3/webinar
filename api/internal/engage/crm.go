@@ -263,7 +263,9 @@ func (s *Module) handleCRMTemplates(w http.ResponseWriter, r *http.Request) {
 
 	refresh := r.URL.Query().Get("refresh") != ""
 	if user.WhatsAppToken != "" && (refresh || len(templates) == 0) {
-		if err := s.syncTemplates(r.Context(), user); err != nil {
+		if err := s.syncTemplates(r.Context(), user); errors.Is(err, wa.ErrDemo) {
+			// The demo account's templates are the seeded ones; there is no Meta to ask.
+		} else if err != nil {
 			s.noteWhatsAppError(r.Context(), user.ID, user.WhatsAppToken, err)
 			if refresh {
 				if whatsappAPIError(w, err) {

@@ -57,6 +57,10 @@ api: ## Run the Go API (terminal 2)
 migrate: ## Apply embedded SQL migrations (override: make migrate DB_URL='postgres://…?sslmode=require')
 	@cd api && DATABASE_URL="$(DB_URL)" go run ./cmd/migrate
 
+.PHONY: seed-demo
+seed-demo: ## Demo coach with a full WhatsApp CRM (demo@webinarliv.com); safe to re-run
+	@cd api && DATABASE_URL="$(DB_URL)" go run ./cmd/seed-demo
+
 .PHONY: web
 web: ## Run the Next.js frontend (terminal 3)
 	cd web && npm run dev

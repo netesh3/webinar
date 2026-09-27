@@ -53,6 +53,9 @@ var (
 	 * ErrNotConnected because the two need different words in the UI: one asks
 	 * somebody to connect for the first time, the other tells them a connection
 	 * they believe they have is gone. */
+	// ErrDemo is the demo account asking for something only Meta has (its template
+	// list): the caller keeps what it has rather than treating it as a failure.
+	ErrDemo          = errors.New("this is the demo account: nothing is fetched from Meta")
 	ErrTokenRejected = errors.New("Meta rejected this WhatsApp connection. Reconnect WhatsApp in Account settings")
 )
 
@@ -187,6 +190,9 @@ func (c *Client) Number(ctx context.Context, token, phoneNumberID string) (Numbe
  * ingest.
  */
 func (c *Client) SubscribeApp(ctx context.Context, token, wabaID string) error {
+	if IsDemoToken(token) {
+		return nil
+	}
 	if strings.TrimSpace(token) == "" {
 		return ErrNotConnected
 	}
@@ -242,6 +248,9 @@ func (c *Client) Register(ctx context.Context, token, phoneNumberID, pin string)
  * for must still happen.
  */
 func (c *Client) UnsubscribeApp(ctx context.Context, token, wabaID string) error {
+	if IsDemoToken(token) {
+		return nil
+	}
 	if strings.TrimSpace(token) == "" {
 		return ErrNotConnected
 	}
@@ -275,6 +284,9 @@ type TokenHealth struct {
  * where a call made WITH that token would only return 190.
  */
 func (c *Client) CheckToken(ctx context.Context, token string) (TokenHealth, error) {
+	if IsDemoToken(token) {
+		return demoHealth(), nil
+	}
 	if !c.Enabled() {
 		return TokenHealth{}, ErrNotConfigured
 	}

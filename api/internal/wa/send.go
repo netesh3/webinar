@@ -108,6 +108,9 @@ func (c *Client) Templates(ctx context.Context, token, wabaID string) ([]Templat
 	if strings.TrimSpace(token) == "" {
 		return nil, ErrNotConnected
 	}
+	if IsDemoToken(token) {
+		return nil, ErrDemo
+	}
 	id := strings.TrimSpace(wabaID)
 	if id == "" {
 		return nil, errors.New("no WhatsApp Business Account id to read templates from")
@@ -440,6 +443,9 @@ func (c *Client) SendButtons(ctx context.Context, token, phoneNumberID string, m
 func (c *Client) send(ctx context.Context, token, phoneNumberID string, body map[string]any) (string, error) {
 	if strings.TrimSpace(token) == "" {
 		return "", ErrNotConnected
+	}
+	if IsDemoToken(token) {
+		return demoMessageID(), nil
 	}
 	id := strings.TrimSpace(phoneNumberID)
 	if id == "" {
