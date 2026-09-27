@@ -12,7 +12,9 @@ import {
   FeatureCRMTags,
   InboxAll,
   InboxDone,
+  InboxHotLeads,
   InboxNeedsReply,
+  InboxSnoozed,
   type CRMInboxResponse,
   type CRMInboxThread,
   type CRMTag,
@@ -20,6 +22,14 @@ import {
 } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
 import { DoneButton, InboxThread } from "./inbox-thread";
+import {
+  KeysHelp,
+  SnippetsDialog,
+  SnoozeButton,
+  tomorrowNineISO,
+  useInboxKeys,
+  useSnippets,
+} from "./inbox-speed";
 import { PersonAvatar } from "./wa-kit";
 
 /* Hosting → Messages: the WhatsApp conversations, with the ones waiting on you first.
@@ -34,6 +44,8 @@ const POLL_MS = 20_000;
 
 const VIEWS = [
   { id: InboxNeedsReply, label: "Needs reply" },
+  { id: InboxHotLeads, label: "Hot leads" },
+  { id: InboxSnoozed, label: "Snoozed" },
   { id: InboxAll, label: "All" },
   { id: InboxDone, label: "Done" },
 ] as const;
@@ -67,6 +79,9 @@ export function HostMessagesTab({
   const [syncing, setSyncing] = useState(false);
   const [tags, setTags] = useState<CRMTag[] | null>(null);
   const [marking, setMarking] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const [help, setHelp] = useState(false);
+  const { snippets, reload: reloadSnippets } = useSnippets();
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
@@ -143,13 +158,21 @@ export function HostMessagesTab({
   const selected =
     data?.threads.find((t) => t.contact.id === selectedId) ?? null;
 
+  const threads = data?.threads ?? [];
+  const at = threads.findIndex((t) => t.contact.id === selectedId);
+  /* After done or snooze in a view it no longer belongs to, move on to the next one —
+   * the way an inbox is worked through. */
+  const nextAfter = () =>
+    threads[at + 1]?.contact.id ?? threads[at - 1]?.contact.id ?? null;
+
   async function markDone(done: boolean) {
     if (!selectedId) return;
     setMarking(true);
     try {
       await engageApi.setCrmDone(selectedId, done);
       notify(done ? "Marked done." : "Reopened.", "ok");
-      if (done && view === InboxNeedsReply) setSelectedId(null);
+      if (done && view !== InboxAll && view !== InboxHotLeads)
+        setSelectedId(nextAfter());
       refresh();
     } catch (e: unknown) {
       notify(
@@ -160,6 +183,41 @@ export function HostMessagesTab({
       setMarking(false);
     }
   }
+
+  async function snooze(until: string) {
+    if (!selectedId) return;
+    try {
+      await engageApi.setCrmSnooze(selectedId, until);
+      notify(
+        until
+          ? `Snoozed until ${new Date(until).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}.`
+          : "Back in Needs reply.",
+        "ok",
+      );
+      if (until && view === InboxNeedsReply) setSelectedId(nextAfter());
+      refresh();
+    } catch (e: unknown) {
+      notify(
+        e instanceof ApiError ? e.message : "Could not snooze that.",
+        "error",
+      );
+    }
+  }
+
+  useInboxKeys({
+    next: () => {
+      const id = threads[Math.min(at + 1, threads.length - 1)]?.contact.id;
+      if (id) setSelectedId(id);
+    },
+    prev: () => {
+      const id = threads[Math.max(at - 1, 0)]?.contact.id;
+      if (id) setSelectedId(id);
+    },
+    done: () => void markDone(view !== InboxDone),
+    snooze: () => void snooze(tomorrowNineISO()),
+    reply: () => document.getElementById("crm-reply")?.focus(),
+    help: () => setHelp(true),
+  });
 
   if (error && !data) return <Empty title={error} />;
   if (!data)
@@ -188,15 +246,24 @@ export function HostMessagesTab({
 
   const counts: Record<string, number> = {
     [InboxNeedsReply]: data.counts.needsReply,
+    [InboxHotLeads]: data.counts.hotLeads,
+    [InboxSnoozed]: data.counts.snoozed,
     [InboxAll]: data.counts.all,
     [InboxDone]: data.counts.done,
   };
+  // Hot leads and Snoozed only show once there is something in them.
+  const views = VIEWS.filter(
+    (v) =>
+      (v.id !== InboxHotLeads && v.id !== InboxSnoozed) ||
+      counts[v.id] > 0 ||
+      view === v.id,
+  );
 
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap gap-1.5">
-          {VIEWS.map((v) => (
+          {views.map((v) => (
             <button
               key={v.id}
               type="button"
@@ -224,12 +291,22 @@ export function HostMessagesTab({
         </div>
       </div>
 
-      {data.coexistence && (
-        <p className="text-[12px] text-ink-3">
-          Replies you type in the WhatsApp Business app on your phone show up
-          here too.
-        </p>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-3">
+        <span>
+          {data.coexistence &&
+            "Replies you type in the WhatsApp Business app on your phone show up here too."}
+        </span>
+        <button
+          type="button"
+          onClick={() => setHelp(true)}
+          className="hidden items-center gap-1.5 hover:text-ink sm:inline-flex"
+        >
+          <kbd className="rounded border border-line-2 bg-surface px-1 font-mono text-[11px]">
+            ?
+          </kbd>
+          Keyboard shortcuts
+        </button>
+      </div>
 
       {data.threads.length === 0 && !selectedId ? (
         <Empty
@@ -279,12 +356,20 @@ export function HostMessagesTab({
                 onRefreshTemplates={refreshTemplates}
                 onChanged={refresh}
                 onBack={() => setSelectedId(null)}
+                snippets={snippets}
+                onManageSnippets={() => setManaging(true)}
                 actions={
-                  <DoneButton
-                    done={view === InboxDone}
-                    busy={marking}
-                    onClick={() => markDone(view !== InboxDone)}
-                  />
+                  <>
+                    <SnoozeButton
+                      snoozedUntil={selected?.snoozedUntil}
+                      onSnooze={(u) => void snooze(u)}
+                    />
+                    <DoneButton
+                      done={view === InboxDone}
+                      busy={marking}
+                      onClick={() => markDone(view !== InboxDone)}
+                    />
+                  </>
                 }
               />
             ) : (
@@ -297,6 +382,14 @@ export function HostMessagesTab({
           </div>
         </div>
       )}
+      {managing && (
+        <SnippetsDialog
+          snippets={snippets}
+          onClose={() => setManaging(false)}
+          onChanged={reloadSnippets}
+        />
+      )}
+      {help && <KeysHelp onClose={() => setHelp(false)} />}
     </div>
   );
 }
@@ -329,6 +422,11 @@ function InboxRow({
           >
             {name}
           </span>
+          {t.hotLead && (
+            <span className="shrink-0 rounded bg-[#fff1e6] px-1.5 text-[10px] font-semibold text-[#c2410c]">
+              Hot
+            </span>
+          )}
           {m && (
             <span
               className={`ml-auto shrink-0 text-[11px] ${t.needsReply ? "font-medium text-ok" : "text-ink-3"}`}
@@ -353,9 +451,11 @@ function InboxRow({
             )}
           </span>
         )}
-        {t.webinar && (
+        {(t.webinar || t.snoozedUntil) && (
           <span className="mt-0.5 block truncate text-[11px] text-ink-3">
-            {t.webinar}
+            {t.snoozedUntil
+              ? `Snoozed until ${new Date(t.snoozedUntil).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}`
+              : t.webinar}
           </span>
         )}
       </span>

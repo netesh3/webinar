@@ -45,6 +45,10 @@ export const PeopleReplied = "replied";
  */
 export const PeopleOptedIn = "opted_in";
 /**
+ * * Tagged by the hot-lead recipe.
+ */
+export const PeopleHotLeads = "hot_leads";
+/**
  * CRMPeopleCounts are the chips over the People list, counted through the webinar filter
  * but not the search box or the chosen chip.
  */
@@ -54,6 +58,7 @@ export interface CRMPeopleCounts {
   neverAttended: number /* int */;
   replied: number /* int */;
   optedIn: number /* int */;
+  hotLeads: number /* int */;
 }
 /**
  * CRMWebinarRef names one of the host's webinars for a filter menu.
@@ -102,6 +107,14 @@ export const InboxAll = "all";
  */
 export const InboxDone = "done";
 /**
+ * * Waiting on the host but snoozed until later.
+ */
+export const InboxSnoozed = "snoozed";
+/**
+ * * Tagged by the hot-lead recipe.
+ */
+export const InboxHotLeads = "hot_leads";
+/**
  * CRMInboxThread is one row of the Messages tab.
  */
 export interface CRMInboxThread {
@@ -114,11 +127,51 @@ export interface CRMInboxThread {
    */
   webinar?: string;
   webinarId?: string;
+  /**
+   * * RFC3339 when a snooze is running, else empty.
+   */
+  snoozedUntil?: string;
+  /**
+   * * Tagged by the hot-lead recipe.
+   */
+  hotLead: boolean;
 }
 export interface CRMInboxCounts {
   needsReply: number /* int */;
   all: number /* int */;
   done: number /* int */;
+  snoozed: number /* int */;
+  hotLeads: number /* int */;
+}
+/**
+ * CRMSnoozeRequest snoozes a conversation until a time, or wakes it with an empty until.
+ */
+export interface CRMSnoozeRequest {
+  /**
+   * * RFC3339, in the future and within 30 days; empty wakes it now.
+   */
+  until: string;
+}
+/**
+ *  CRMSnippet is one of the host's saved quick replies.
+ */
+export interface CRMSnippet {
+  id: string;
+  title: string;
+  body: string;
+}
+/**
+ * CRMSnippetsResponse is the host's quick replies, in their order.
+ */
+export interface CRMSnippetsResponse {
+  snippets: CRMSnippet[];
+}
+/**
+ * CRMSnippetRequest writes one quick reply.
+ */
+export interface CRMSnippetRequest {
+  title: string;
+  body: string;
 }
 export interface CRMInboxResponse {
   threads: CRMInboxThread[];

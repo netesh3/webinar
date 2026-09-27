@@ -9,6 +9,7 @@ import { Badge, Button, Card, Empty } from "@/components/ui";
 import {
   PeopleAttended,
   PeopleNeverAttended,
+  PeopleHotLeads,
   PeopleOptedIn,
   PeopleReplied,
   type CRMPeopleCounts,
@@ -33,6 +34,7 @@ const FILTERS: { id: string; label: string; count: (c: CRMPeopleCounts) => numbe
   { id: PeopleNeverAttended, label: "Never attended", count: (c) => c.neverAttended },
   { id: PeopleReplied, label: "Replied", count: (c) => c.replied },
   { id: PeopleOptedIn, label: "WhatsApp opted in", count: (c) => c.optedIn },
+  { id: PeopleHotLeads, label: "Hot leads", count: (c) => c.hotLeads },
 ];
 
 const PAGE = 50;
@@ -183,7 +185,9 @@ export function HostPeopleTab({ initialWebinar = "" }: { initialWebinar?: string
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        {FILTERS.map((f) => (
+        {FILTERS.filter(
+          (f) => f.id !== PeopleHotLeads || data.counts.hotLeads > 0 || filter === f.id,
+        ).map((f) => (
           <button
             key={f.id || "all"}
             type="button"

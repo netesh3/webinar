@@ -29,6 +29,10 @@ import type {
   CRMTestSendRequest,
   CRMWebinarMessagesResponse,
   CRMFollowupsResponse,
+  CRMSnippet,
+  CRMSnippetRequest,
+  CRMSnippetsResponse,
+  CRMSnoozeRequest,
   CRMRecipesResponse,
   CRMRecipeRequest,
   CRMMessage,
@@ -383,6 +387,25 @@ export const engageApi = {
       method: "PUT",
       body: JSON.stringify({ done } satisfies CRMDoneRequest),
     }),
+
+  /** Snooze a conversation until a time; an empty until wakes it now. */
+  setCrmSnooze: (id: string, until: string) =>
+    request<void>(`/api/host/crm/contacts/${seg(id)}/snooze`, {
+      method: "PUT",
+      body: JSON.stringify({ until } satisfies CRMSnoozeRequest),
+    }),
+
+  /** The host's saved quick replies, in order. */
+  crmSnippets: () => request<CRMSnippetsResponse>("/api/host/crm/snippets", fresh),
+  createCrmSnippet: (body: CRMSnippetRequest) =>
+    post<CRMSnippet>("/api/host/crm/snippets", body),
+  updateCrmSnippet: (id: string, body: CRMSnippetRequest) =>
+    request<CRMSnippet>(`/api/host/crm/snippets/${seg(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteCrmSnippet: (id: string) =>
+    del<StatusResponse>(`/api/host/crm/snippets/${seg(id)}`),
 
   /** The bell's share of the inbox. */
   crmReplies: () => request<CRMRepliesResponse>("/api/host/crm/replies", fresh),

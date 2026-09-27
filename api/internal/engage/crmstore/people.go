@@ -60,6 +60,8 @@ func peopleFilterPredicate(filter string) (string, error) {
 		return ` AND ` + contactReplied, nil
 	case types.PeopleOptedIn:
 		return ` AND ` + optedInNow, nil
+	case types.PeopleHotLeads:
+		return ` AND ` + hotLead, nil
 	}
 	return "", store.ErrInvalid
 }
@@ -103,12 +105,13 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		       count(*) FILTER (WHERE COALESCE(per.attended, false)),
 		       count(*) FILTER (WHERE NOT COALESCE(per.attended, false)),
 		       count(*) FILTER (WHERE `+contactReplied+`),
-		       count(*) FILTER (WHERE `+optedInNow+`)
+		       count(*) FILTER (WHERE `+optedInNow+`),
+		       count(*) FILTER (WHERE `+hotLead+`)
 		  FROM crm_contacts c
 		  LEFT JOIN per ON per.contact_id = c.id
 		 WHERE c.host_id = $1::uuid`+peopleScope, hostID, slug).Scan(
 		&out.Counts.Everyone, &out.Counts.Attended, &out.Counts.NeverAttended,
-		&out.Counts.Replied, &out.Counts.OptedIn); err != nil {
+		&out.Counts.Replied, &out.Counts.OptedIn, &out.Counts.HotLeads); err != nil {
 		return out, err
 	}
 

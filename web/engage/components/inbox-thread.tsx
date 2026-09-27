@@ -11,6 +11,7 @@ import type {
   CRMContact,
   CRMMessage,
   CRMNote,
+  CRMSnippet,
   CRMTag,
   CRMTemplate,
   CRMThreadMeta,
@@ -43,6 +44,8 @@ export function InboxThread({
   onChanged,
   onBack,
   actions,
+  snippets,
+  onManageSnippets,
 }: {
   contactId: string;
   fallback: CRMContact | null;
@@ -57,6 +60,8 @@ export function InboxThread({
   onBack: () => void;
   /** Mark done / Reopen, from the parent, in the chat header. */
   actions?: React.ReactNode;
+  snippets?: CRMSnippet[];
+  onManageSnippets?: () => void;
 }) {
   const { notify } = useToast();
   const [contact, setContact] = useState<CRMContact | null>(fallback);
@@ -222,6 +227,8 @@ export function InboxThread({
             templatesError={templatesError}
             syncing={syncing}
             onRefreshTemplates={onRefreshTemplates}
+            snippets={snippets}
+            onManageSnippets={onManageSnippets}
             onSent={(msg) => {
               setMessages((prev) => [...(prev ?? []), msg]);
               onChanged();

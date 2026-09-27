@@ -25,6 +25,8 @@ const (
 	PeopleNeverAttended = "never_attended"
 	PeopleReplied       = "replied"
 	PeopleOptedIn       = "opted_in"
+	/** Tagged by the hot-lead recipe. */
+	PeopleHotLeads = "hot_leads"
 )
 
 // CRMPeopleCounts are the chips over the People list, counted through the webinar filter
@@ -35,6 +37,7 @@ type CRMPeopleCounts struct {
 	NeverAttended int `json:"neverAttended"`
 	Replied       int `json:"replied"`
 	OptedIn       int `json:"optedIn"`
+	HotLeads      int `json:"hotLeads"`
 }
 
 // CRMWebinarRef names one of the host's webinars for a filter menu.
@@ -69,6 +72,10 @@ const (
 	InboxNeedsReply = "needs_reply"
 	InboxAll        = "all"
 	InboxDone       = "done"
+	/** Waiting on the host but snoozed until later. */
+	InboxSnoozed = "snoozed"
+	/** Tagged by the hot-lead recipe. */
+	InboxHotLeads = "hot_leads"
 )
 
 // CRMInboxThread is one row of the Messages tab.
@@ -80,12 +87,42 @@ type CRMInboxThread struct {
 	 *  Empty when none was about a webinar. */
 	Webinar   string `json:"webinar,omitempty"`
 	WebinarID string `json:"webinarId,omitempty"`
+	/** RFC3339 when a snooze is running, else empty. */
+	SnoozedUntil string `json:"snoozedUntil,omitempty"`
+	/** Tagged by the hot-lead recipe. */
+	HotLead bool `json:"hotLead"`
 }
 
 type CRMInboxCounts struct {
 	NeedsReply int `json:"needsReply"`
 	All        int `json:"all"`
 	Done       int `json:"done"`
+	Snoozed    int `json:"snoozed"`
+	HotLeads   int `json:"hotLeads"`
+}
+
+// CRMSnoozeRequest snoozes a conversation until a time, or wakes it with an empty until.
+type CRMSnoozeRequest struct {
+	/** RFC3339, in the future and within 30 days; empty wakes it now. */
+	Until string `json:"until"`
+}
+
+/* CRMSnippet is one of the host's saved quick replies. */
+type CRMSnippet struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+// CRMSnippetsResponse is the host's quick replies, in their order.
+type CRMSnippetsResponse struct {
+	Snippets []CRMSnippet `json:"snippets"`
+}
+
+// CRMSnippetRequest writes one quick reply.
+type CRMSnippetRequest struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
 }
 
 type CRMInboxResponse struct {
