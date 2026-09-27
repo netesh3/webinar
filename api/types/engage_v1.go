@@ -27,6 +27,8 @@ const (
 	PeopleNeverAttended = "never_attended"
 	PeopleReplied       = "replied"
 	PeopleOptedIn       = "opted_in"
+	/** Tagged by the hot-lead recipe. */
+	PeopleHotLeads = "hot_leads"
 )
 
 // CRMPeopleCounts are the chips over the People list, counted through the webinar filter
@@ -37,6 +39,7 @@ type CRMPeopleCounts struct {
 	NeverAttended int `json:"neverAttended"`
 	Replied       int `json:"replied"`
 	OptedIn       int `json:"optedIn"`
+	HotLeads      int `json:"hotLeads"`
 }
 
 // CRMWebinarRef names one of the host's webinars for a filter menu.
@@ -71,6 +74,10 @@ const (
 	InboxNeedsReply = "needs_reply"
 	InboxAll        = "all"
 	InboxDone       = "done"
+	/** Waiting on the host but snoozed until later. */
+	InboxSnoozed = "snoozed"
+	/** Tagged by the hot-lead recipe. */
+	InboxHotLeads = "hot_leads"
 )
 
 // CRMInboxThread is one row of the Messages tab.
@@ -82,12 +89,42 @@ type CRMInboxThread struct {
 	 *  Empty when none was about a webinar. */
 	Webinar   string `json:"webinar,omitempty"`
 	WebinarID string `json:"webinarId,omitempty"`
+	/** RFC3339 when a snooze is running, else empty. */
+	SnoozedUntil string `json:"snoozedUntil,omitempty"`
+	/** Tagged by the hot-lead recipe. */
+	HotLead bool `json:"hotLead"`
 }
 
 type CRMInboxCounts struct {
 	NeedsReply int `json:"needsReply"`
 	All        int `json:"all"`
 	Done       int `json:"done"`
+	Snoozed    int `json:"snoozed"`
+	HotLeads   int `json:"hotLeads"`
+}
+
+// CRMSnoozeRequest snoozes a conversation until a time, or wakes it with an empty until.
+type CRMSnoozeRequest struct {
+	/** RFC3339, in the future and within 30 days; empty wakes it now. */
+	Until string `json:"until"`
+}
+
+/* CRMSnippet is one of the host's saved quick replies. */
+type CRMSnippet struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+// CRMSnippetsResponse is the host's quick replies, in their order.
+type CRMSnippetsResponse struct {
+	Snippets []CRMSnippet `json:"snippets"`
+}
+
+// CRMSnippetRequest writes one quick reply.
+type CRMSnippetRequest struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
 }
 
 type CRMInboxResponse struct {
@@ -247,4 +284,74 @@ type CRMFollowupsResponse struct {
 	Scored            bool               `json:"scored"`
 	Groups            []CRMFollowupGroup `json:"groups"`
 	WhatsAppConnected bool               `json:"whatsappConnected"`
+}
+
+/* A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ * missed it" rather than an empty builder. See migrations/0062. */
+const (
+	RecipeReminders = "reminders"
+	RecipeNoShow    = "replay_no_show"
+	RecipeHigh      = "offer_high"
+	RecipeEngaged   = "thanks_engaged"
+	RecipePassive   = "replay_passive"
+	RecipeRisk      = "replay_risk"
+	RecipeKeywords  = "keyword_replies"
+	RecipeHotLeads  = "hot_leads"
+)
+
+/* CRMRecipe is one card on the Automations page. */
+type CRMRecipe struct {
+	/** One of the Recipe constants. */
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	/** The flow in a few words, one per step: "Didn't join", "2 h after end", "Replay link". */
+	Flow []string `json:"flow"`
+	/** `followup` (a drip after every webinar), `reminders` (the reminder settings),
+	 *  `keywords` (a bot) or `hot_leads` (a tagging rule). */
+	Kind string `json:"kind"`
+	/** The Follow up group a `followup` recipe is for: an engagement tier or `no_show`. */
+	Group EngagementTier `json:"group,omitempty"`
+	/** Whether it is running. */
+	Active bool `json:"active"`
+	/** Set up but paused, so turning it on keeps what was chosen. */
+	Configured bool `json:"configured"`
+	/** A line from the coach's own data: "Would have reached 4 people from Morning Routines". */
+	Hint string `json:"hint,omitempty"`
+	/** For `followup`: the template, its params, and minutes after the end. */
+	Template string     `json:"template,omitempty"`
+	Language string     `json:"language,omitempty"`
+	Params   []CRMParam `json:"params,omitempty"`
+	DelayMin int        `json:"delayMin,omitempty"`
+	/** For `keywords`: word → reply. For `hot_leads`: the words. */
+	Keywords []CRMRecipeKeyword `json:"keywords,omitempty"`
+	Words    []string           `json:"words,omitempty"`
+	/** The drip or bot behind it, for "Open in builder". */
+	DripID string `json:"dripId,omitempty"`
+	BotID  string `json:"botId,omitempty"`
+	/** Sent so far by the drip, or people tagged by the rule. */
+	Sent int `json:"sent"`
+}
+
+/* CRMRecipeKeyword is one keyword reply: a word someone sends and what is sent back. */
+type CRMRecipeKeyword struct {
+	Word  string `json:"word"`
+	Reply string `json:"reply"`
+}
+
+/* CRMRecipesResponse is the Automations page. */
+type CRMRecipesResponse struct {
+	Recipes           []CRMRecipe `json:"recipes"`
+	WhatsAppConnected bool        `json:"whatsappConnected"`
+}
+
+/* CRMRecipeRequest turns a recipe on or off, with the choices it needs. */
+type CRMRecipeRequest struct {
+	Active   bool               `json:"active"`
+	Template string             `json:"template,omitempty"`
+	Language string             `json:"language,omitempty"`
+	Params   []CRMParam         `json:"params,omitempty"`
+	DelayMin int                `json:"delayMin,omitempty"`
+	Keywords []CRMRecipeKeyword `json:"keywords,omitempty"`
+	Words    []string           `json:"words,omitempty"`
 }

@@ -35,6 +35,20 @@ type DripInput struct {
 	TagID  string
 	Active bool
 	Steps  []types.CRMDripStep
+	// Tiers narrows the attended trigger to engagement tiers (a Follow up recipe). Empty
+	// means everybody who attended.
+	Tiers []types.EngagementTier
+	// Recipe is the recipe this drip was made from, set only on creation; empty for one
+	// the host built.
+	Recipe string
+}
+
+func tierNames(ts []types.EngagementTier) []string {
+	out := []string{}
+	for _, t := range ts {
+		out = append(out, string(t))
+	}
+	return out
 }
 
 /* SaveDrip writes a sequence, creating it when id is empty and replacing it otherwise.
@@ -61,12 +75,18 @@ func (s *Store) SaveDrip(ctx context.Context, hostID, id string, in DripInput) (
 	name := strings.Join(strings.Fields(in.Name), " ")
 	if id == "" {
 		err = tx.QueryRow(ctx, `
-			INSERT INTO crm_drips (host_id, name, trigger_kind, webinar_id, active, trigger_tag_id)
+			INSERT INTO crm_drips (host_id, name, trigger_kind, webinar_id, active, trigger_tag_id,
+			                       trigger_tiers, recipe)
 			VALUES ($1::uuid, $2, $3,
 			        (SELECT id FROM webinars WHERE slug = $4 AND host_id = $1::uuid), $5,
-			        (SELECT id FROM crm_tags WHERE id = NULLIF($6,'')::uuid AND host_id = $1::uuid))
+			        (SELECT id FROM crm_tags WHERE id = NULLIF($6,'')::uuid AND host_id = $1::uuid),
+			        $7, NULLIF($8,''))
 			RETURNING id::text`,
-			hostID, name, in.Trigger, in.WebinarSlug, in.Active, in.TagID).Scan(&id)
+			hostID, name, in.Trigger, in.WebinarSlug, in.Active, in.TagID,
+			tierNames(in.Tiers), in.Recipe).Scan(&id)
+		if isUniqueViolation(err) {
+			return "", store.ErrConflict
+		}
 		if err != nil {
 			return "", err
 		}
@@ -76,9 +96,10 @@ func (s *Store) SaveDrip(ctx context.Context, hostID, id string, in DripInput) (
 			   SET name = $3, trigger_kind = $4, active = $5, updated_at = now(),
 			       webinar_id = (SELECT id FROM webinars WHERE slug = $6 AND host_id = $1::uuid),
 			       trigger_tag_id = (SELECT id FROM crm_tags
-			                          WHERE id = NULLIF($7,'')::uuid AND host_id = $1::uuid)
+			                          WHERE id = NULLIF($7,'')::uuid AND host_id = $1::uuid),
+			       trigger_tiers = $8
 			 WHERE host_id = $1::uuid AND id = $2::uuid`,
-			hostID, id, name, in.Trigger, in.Active, in.WebinarSlug, in.TagID)
+			hostID, id, name, in.Trigger, in.Active, in.WebinarSlug, in.TagID, tierNames(in.Tiers))
 		if err != nil {
 			return "", err
 		}
@@ -116,7 +137,7 @@ func (s *Store) SaveDrip(ctx context.Context, hostID, id string, in DripInput) (
 const dripSelect = `
 	SELECT d.id::text, d.name, d.trigger_kind, COALESCE(w.slug,''), COALESCE(w.topic,''),
 	       COALESCE(t.id::text,''), COALESCE(t.name,''),
-	       d.active, d.created_at,
+	       d.active, d.created_at, d.trigger_tiers, COALESCE(d.recipe,''),
 	       (SELECT count(*) FROM crm_drip_enrollments e
 	         WHERE e.drip_id = d.id AND e.state = 'active'),
 	       (SELECT count(*) FROM crm_drip_enrollments e
@@ -141,13 +162,17 @@ func scanDrip(row scanner) (types.CRMDrip, error) {
 		d         types.CRMDrip
 		createdAt time.Time
 		st        types.CRMDripStats
+		tiers     []string
 	)
 	if err := row.Scan(&d.ID, &d.Name, &d.Trigger, &d.WebinarID, &d.WebinarTopic,
-		&d.TagID, &d.TagName, &d.Active, &createdAt,
+		&d.TagID, &d.TagName, &d.Active, &createdAt, &tiers, &d.Recipe,
 		&st.Active, &st.Done, &st.Exited, &st.Queued, &st.Sent, &st.Failed); err != nil {
 		return types.CRMDrip{}, err
 	}
 	d.CreatedAt = createdAt.Format(time.RFC3339)
+	for _, t := range tiers {
+		d.Tiers = append(d.Tiers, types.EngagementTier(t))
+	}
 	d.Stats = st
 	d.Steps = []types.CRMDripStep{}
 	return d, nil
@@ -338,6 +363,7 @@ func (s *Store) EnrollOnWebinarEnd(ctx context.Context, hostID, webinarSlug, tri
 		return 0, store.ErrConflict
 	}
 	tag, err := s.pool.Exec(ctx, enrollSelect+`
+		   AND cardinality(d.trigger_tiers) = 0
 		   AND EXISTS (
 		     SELECT 1 FROM registrations r
 		      WHERE r.webinar_id = w.id AND r.state <> 'declined'
@@ -345,6 +371,29 @@ func (s *Store) EnrollOnWebinarEnd(ctx context.Context, hostID, webinarSlug, tri
 		   )
 		ON CONFLICT DO NOTHING`,
 		hostID, trigger, webinarSlug)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+/* EnrollOnScored is the `attended` trigger narrowed to engagement tiers: the Follow up
+ * recipes. Run once the webinar's engagement has been computed, which is when the tiers
+ * exist — after the room is gone and every visit closed. A recompute runs it again, and
+ * only people newly in a group are added: entry is one per person per sequence.
+ */
+func (s *Store) EnrollOnScored(ctx context.Context, hostID, webinarSlug string) (int, error) {
+	tag, err := s.pool.Exec(ctx, enrollSelect+`
+		   AND cardinality(d.trigger_tiers) > 0
+		   AND EXISTS (
+		     SELECT 1 FROM registrations r
+		       JOIN engagement_scores es ON es.registration_id = r.id AND es.webinar_id = w.id
+		      WHERE r.webinar_id = w.id AND r.state <> 'declined'
+		        AND es.tier = ANY(d.trigger_tiers)
+		        AND `+contactMatchesRegistration+`
+		   )
+		ON CONFLICT DO NOTHING`,
+		hostID, types.DripAttended, webinarSlug)
 	if err != nil {
 		return 0, err
 	}

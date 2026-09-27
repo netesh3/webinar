@@ -1827,7 +1827,12 @@ type CRMDrip struct {
 	Active bool `json:"active"`
 	/** In order. A drip with no steps cannot be saved. */
 	Steps []CRMDripStep `json:"steps"`
-	Stats CRMDripStats  `json:"stats"`
+	/** The engagement tiers an `attended` sequence is narrowed to, empty for everybody
+	 *  who attended. Such a sequence starts once the webinar's engagement is computed. */
+	Tiers []EngagementTier `json:"tiers,omitempty"`
+	/** The recipe this sequence was made from (CRMRecipe.ID), empty for one built by hand. */
+	Recipe string       `json:"recipe,omitempty"`
+	Stats  CRMDripStats `json:"stats"`
 	/** RFC3339. */
 	CreatedAt string `json:"createdAt"`
 }
@@ -1913,6 +1918,8 @@ type CRMDripRequest struct {
 	WebinarID string `json:"webinarId,omitempty"`
 	/** Optional for `tag_added`, where empty means any tag. Ignored otherwise. */
 	TagID string `json:"tagId,omitempty"`
+	/** Optional for `attended`: only these engagement tiers. Ignored otherwise. */
+	Tiers []EngagementTier `json:"tiers,omitempty"`
 	/** Whether it runs. Absent is false, so a request that forgets it creates a
 	 *  paused sequence rather than one that starts messaging people. */
 	Active bool          `json:"active"`

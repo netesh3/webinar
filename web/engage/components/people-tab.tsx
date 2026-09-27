@@ -12,6 +12,7 @@ import {
   CRMStatusOptedOut,
   PeopleAttended,
   PeopleNeverAttended,
+  PeopleHotLeads,
   PeopleReplied,
   type CRMPeopleCounts,
   type CRMPeopleResponse,
@@ -39,6 +40,7 @@ const FILTERS: { id: string; label: string; count: (c: CRMPeopleCounts) => numbe
   { id: PeopleAttended, label: "Came", count: (c) => c.attended },
   { id: PeopleNeverAttended, label: "Didn't come", count: (c) => c.neverAttended },
   { id: PeopleReplied, label: "Replied", count: (c) => c.replied },
+  { id: PeopleHotLeads, label: "Hot leads", count: (c) => c.hotLeads },
 ];
 
 const PAGE = 50;
@@ -244,7 +246,10 @@ export function HostPeopleTab({ initialWebinar = "" }: { initialWebinar?: string
       </div>
 
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show">
-        {FILTERS.map((f) => {
+        {FILTERS.filter(
+          // Hot leads only once the hot-lead automation has tagged someone.
+          (f) => f.id !== PeopleHotLeads || c.hotLeads > 0 || filter === f.id,
+        ).map((f) => {
           const on = filter === f.id;
           return (
             <button

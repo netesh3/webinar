@@ -51,6 +51,7 @@ import type {
   CRMContactScope,
   CRMMergeField,
   CRMMessage,
+  CRMSnippet,
   CRMNote,
   CRMReminder,
   CRMSendRequest,
@@ -1661,6 +1662,8 @@ export function Compose({
   syncing,
   onRefreshTemplates,
   onSent,
+  snippets,
+  onManageSnippets,
 }: {
   contact: CRMContact;
   /** RFC3339, or empty when no window is open. */
@@ -1671,6 +1674,9 @@ export function Compose({
   syncing: boolean;
   onRefreshTemplates: () => void;
   onSent: (msg: CRMMessage) => void;
+  /** Saved quick replies, as chips above the reply box. Absent hides the row. */
+  snippets?: CRMSnippet[];
+  onManageSnippets?: () => void;
 }) {
   const { notify } = useToast();
   const [mode, setMode] = useState<ComposeMode>("reply");
@@ -1792,6 +1798,34 @@ export function Compose({
           <label className="sr-only" htmlFor="crm-reply">
             Your reply
           </label>
+          {snippets && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {snippets.map((sn) => (
+                <button
+                  key={sn.id}
+                  type="button"
+                  title={sn.body}
+                  onClick={() =>
+                    setText((prev) =>
+                      prev.trim() ? `${prev.trimEnd()}\n${sn.body}` : sn.body,
+                    )
+                  }
+                  className="h-7 rounded-full border border-line-2 bg-surface px-2.5 text-[12px] text-ink-2 hover:border-brand hover:text-brand"
+                >
+                  {sn.title}
+                </button>
+              ))}
+              {onManageSnippets && (
+                <button
+                  type="button"
+                  onClick={onManageSnippets}
+                  className="h-7 px-1.5 text-[12px] font-medium text-brand hover:underline"
+                >
+                  {snippets.length ? "Edit quick replies" : "+ Save a quick reply"}
+                </button>
+              )}
+            </div>
+          )}
           <textarea
             id="crm-reply"
             className="field min-h-20 resize-y py-2"
@@ -1799,12 +1833,20 @@ export function Compose({
             placeholder={`Reply to ${displayName(contact)}…`}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              // ⌘↵ / Ctrl↵ sends, as in every chat app with a multi-line box.
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                if (canSend && !busy) void send();
+              }
+            }}
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11.5px] text-ink-3">
               WhatsApp&apos;s 24-hour window closes{" "}
               {formatRelative(windowUntil, new Date())}. After that, only an
-              approved template can be sent.
+              approved template can be sent.{" "}
+              <span className="hidden sm:inline">⌘↵ to send.</span>
             </p>
             <SendButton busy={busy} disabled={!canSend} onClick={send} />
           </div>

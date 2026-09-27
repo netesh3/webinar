@@ -19,7 +19,7 @@ export {
   WhatsAppOptInCheckbox,
   WhatsAppRemindersToggle,
 } from "./slots";
-export { CRMScreen } from "./components/crm-screen";
+export { WhatsAppScreen } from "./components/whatsapp-screen";
 export { useRosterMessaging } from "./components/roster";
 export { followupGroups, type FollowupGroup } from "./buckets";
 export { HostPeopleTab } from "./components/people-tab";

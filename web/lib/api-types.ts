@@ -49,6 +49,10 @@ export const PeopleReplied = "replied";
  */
 export const PeopleOptedIn = "opted_in";
 /**
+ * * Tagged by the hot-lead recipe.
+ */
+export const PeopleHotLeads = "hot_leads";
+/**
  * CRMPeopleCounts are the chips over the People list, counted through the webinar filter
  * but not the search box or the chosen chip.
  */
@@ -58,6 +62,7 @@ export interface CRMPeopleCounts {
   neverAttended: number /* int */;
   replied: number /* int */;
   optedIn: number /* int */;
+  hotLeads: number /* int */;
 }
 /**
  * CRMWebinarRef names one of the host's webinars for a filter menu.
@@ -106,6 +111,14 @@ export const InboxAll = "all";
  */
 export const InboxDone = "done";
 /**
+ * * Waiting on the host but snoozed until later.
+ */
+export const InboxSnoozed = "snoozed";
+/**
+ * * Tagged by the hot-lead recipe.
+ */
+export const InboxHotLeads = "hot_leads";
+/**
  * CRMInboxThread is one row of the Messages tab.
  */
 export interface CRMInboxThread {
@@ -118,11 +131,51 @@ export interface CRMInboxThread {
    */
   webinar?: string;
   webinarId?: string;
+  /**
+   * * RFC3339 when a snooze is running, else empty.
+   */
+  snoozedUntil?: string;
+  /**
+   * * Tagged by the hot-lead recipe.
+   */
+  hotLead: boolean;
 }
 export interface CRMInboxCounts {
   needsReply: number /* int */;
   all: number /* int */;
   done: number /* int */;
+  snoozed: number /* int */;
+  hotLeads: number /* int */;
+}
+/**
+ * CRMSnoozeRequest snoozes a conversation until a time, or wakes it with an empty until.
+ */
+export interface CRMSnoozeRequest {
+  /**
+   * * RFC3339, in the future and within 30 days; empty wakes it now.
+   */
+  until: string;
+}
+/**
+ *  CRMSnippet is one of the host's saved quick replies.
+ */
+export interface CRMSnippet {
+  id: string;
+  title: string;
+  body: string;
+}
+/**
+ * CRMSnippetsResponse is the host's quick replies, in their order.
+ */
+export interface CRMSnippetsResponse {
+  snippets: CRMSnippet[];
+}
+/**
+ * CRMSnippetRequest writes one quick reply.
+ */
+export interface CRMSnippetRequest {
+  title: string;
+  body: string;
 }
 export interface CRMInboxResponse {
   threads: CRMInboxThread[];
@@ -333,6 +386,136 @@ export interface CRMFollowupsResponse {
   scored: boolean;
   groups: CRMFollowupGroup[];
   whatsappConnected: boolean;
+}
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeReminders = "reminders";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeNoShow = "replay_no_show";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeHigh = "offer_high";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeEngaged = "thanks_engaged";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipePassive = "replay_passive";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeRisk = "replay_risk";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeKeywords = "keyword_replies";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeHotLeads = "hot_leads";
+/**
+ *  CRMRecipe is one card on the Automations page.
+ */
+export interface CRMRecipe {
+  /**
+   * * One of the Recipe constants.
+   */
+  id: string;
+  title: string;
+  /**
+   * * The flow in a few words, one per step: "Didn't join", "2 h after end", "Replay link".
+   */
+  flow: string[];
+  /**
+   * * `followup` (a drip after every webinar), `reminders` (the reminder settings),
+   * 	 *  `keywords` (a bot) or `hot_leads` (a tagging rule).
+   */
+  kind: string;
+  /**
+   * * The Follow up group a `followup` recipe is for: an engagement tier or `no_show`.
+   */
+  group?: EngagementTier;
+  /**
+   * * Whether it is running.
+   */
+  active: boolean;
+  /**
+   * * Set up but paused, so turning it on keeps what was chosen.
+   */
+  configured: boolean;
+  /**
+   * * A line from the coach's own data: "Would have reached 4 people from Morning Routines".
+   */
+  hint?: string;
+  /**
+   * * For `followup`: the template, its params, and minutes after the end.
+   */
+  template?: string;
+  language?: string;
+  params?: CRMParam[];
+  delayMin?: number /* int */;
+  /**
+   * * For `keywords`: word → reply. For `hot_leads`: the words.
+   */
+  keywords?: CRMRecipeKeyword[];
+  words?: string[];
+  /**
+   * * The drip or bot behind it, for "Open in builder".
+   */
+  dripId?: string;
+  botId?: string;
+  /**
+   * * Sent so far by the drip, or people tagged by the rule.
+   */
+  sent: number /* int */;
+}
+/**
+ *  CRMRecipeKeyword is one keyword reply: a word someone sends and what is sent back.
+ */
+export interface CRMRecipeKeyword {
+  word: string;
+  reply: string;
+}
+/**
+ *  CRMRecipesResponse is the Automations page.
+ */
+export interface CRMRecipesResponse {
+  recipes: CRMRecipe[];
+  whatsappConnected: boolean;
+}
+/**
+ *  CRMRecipeRequest turns a recipe on or off, with the choices it needs.
+ */
+export interface CRMRecipeRequest {
+  active: boolean;
+  template?: string;
+  language?: string;
+  params?: CRMParam[];
+  delayMin?: number /* int */;
+  keywords?: CRMRecipeKeyword[];
+  words?: string[];
 }
 
 //////////
@@ -3039,6 +3222,15 @@ export interface CRMDrip {
    * * In order. A drip with no steps cannot be saved.
    */
   steps: CRMDripStep[];
+  /**
+   * * The engagement tiers an `attended` sequence is narrowed to, empty for everybody
+   * 	 *  who attended. Such a sequence starts once the webinar's engagement is computed.
+   */
+  tiers?: EngagementTier[];
+  /**
+   * * The recipe this sequence was made from (CRMRecipe.ID), empty for one built by hand.
+   */
+  recipe?: string;
   stats: CRMDripStats;
   /**
    * * RFC3339.
@@ -3163,6 +3355,10 @@ export interface CRMDripRequest {
    * * Optional for `tag_added`, where empty means any tag. Ignored otherwise.
    */
   tagId?: string;
+  /**
+   * * Optional for `attended`: only these engagement tiers. Ignored otherwise.
+   */
+  tiers?: EngagementTier[];
   /**
    * * Whether it runs. Absent is false, so a request that forgets it creates a
    * 	 *  paused sequence rather than one that starts messaging people.

@@ -43,6 +43,7 @@ only calls webinar code makes into the CRM:
 | `OnRegistrationsDecided` | approvals batch | skip declined seats' WhatsApp rows, flush the now-sendable ones |
 | `OnRescheduled` | webinar PATCH | apply the webinar's start and reminder times to `wa_reminder` rows (move, drop, queue new) |
 | `OnEnded` | end handler and meeting-limit sweeper | skip unsent WhatsApp reminders, `ended` / `attended` / `no_show` drips |
+| `OnScored` | after engagement is computed (end of session, recompute) | `attended` drips narrowed to engagement tiers (Follow up recipes) |
 | `OnRecordingPublished` | recording made public | queue `wa_replay` for opted-in contacts |
 | `DecorateRegistrants` | roster GET | fill `whatsappStatus` and `lastInboundAt` |
 | `Tick` | 30 s sweeper | advance drips, advance bots, flush the WhatsApp outbox |

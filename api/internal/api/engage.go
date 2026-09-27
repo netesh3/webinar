@@ -41,6 +41,9 @@ type Engage interface {
 	OnRescheduled(ctx context.Context, wb types.Webinar)
 	// OnEnded follows the end of a session, after attendance has its final answer.
 	OnEnded(ctx context.Context, wb types.Webinar)
+	// OnScored follows the webinar's engagement being computed and saved, at the end of a
+	// session or on a recompute: each attendee's tier now exists to follow up by.
+	OnScored(ctx context.Context, slug string)
 	// OnRecordingPublished follows a recording being made public, for a host who has replay links on.
 	OnRecordingPublished(ctx context.Context, wb types.Webinar, host store.User, replayURL string)
 
@@ -61,6 +64,7 @@ func (NoEngage) OnRegistered(context.Context, types.Webinar, types.Registration,
 func (NoEngage) OnRegistrationsDecided(context.Context, string, []string)                {}
 func (NoEngage) OnRescheduled(context.Context, types.Webinar)                            {}
 func (NoEngage) OnEnded(context.Context, types.Webinar)                                  {}
+func (NoEngage) OnScored(context.Context, string)                                        {}
 func (NoEngage) OnRecordingPublished(context.Context, types.Webinar, store.User, string) {}
 func (NoEngage) DecorateRegistrants(context.Context, store.User, string, []types.RegistrantRow) {
 }

@@ -238,3 +238,38 @@ export function pct(part: number, whole: number): string {
   if (!whole) return "–";
   return `${Math.round((part / whole) * 100)}%`;
 }
+
+/** A compact on/off switch with its label for screen readers only — for a card whose
+ *  title already says what it switches. */
+export function Switch({
+  checked,
+  onChange,
+  label,
+  disabled = false,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-[18px] w-[32px] shrink-0 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? "bg-ok" : "bg-line-2"
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`absolute top-[2px] left-[2px] size-[14px] rounded-full bg-white shadow-sm transition-transform ${
+          checked ? "translate-x-[14px]" : ""
+        }`}
+      />
+    </button>
+  );
+}
