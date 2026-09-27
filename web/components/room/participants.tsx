@@ -859,8 +859,11 @@ function AudienceRoster() {
   const room = useRoomContext();
   const participants = useParticipants();
   const [query, setQuery] = useState("");
-  const self = { identity: join.identity, role: join.role };
-  const roleOf = (p: Participant) => participantRole(p, self);
+  const roleOf = useCallback(
+    (p: Participant) =>
+      participantRole(p, { identity: join.identity, role: join.role }),
+    [join.identity, join.role],
+  );
 
   const stage = useMemo(
     () =>
@@ -877,7 +880,7 @@ function AudienceRoster() {
           };
           return rank(a) - rank(b) || (a.name ?? "").localeCompare(b.name ?? "");
         }),
-    [participants, query, join.identity, join.role],
+    [participants, query, join.identity, roleOf],
   );
 
   // Other attendees are withheld when the host hid the audience. You still see
@@ -895,7 +898,7 @@ function AudienceRoster() {
         .filter((p) =>
           matchRosterQuery({ name: p.name || p.identity, identity: p.identity }, query),
         ),
-    [participants, controls.hideAttendees, query, join.identity, join.role],
+    [participants, controls.hideAttendees, query, join.identity, roleOf],
   );
 
   const showSearch = shouldShowRosterSearch(participants.length, query);

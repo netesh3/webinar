@@ -1228,9 +1228,9 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
   );
 
   // Drop a panel tab that is no longer available (host turned polls off, etc.).
-  useEffect(() => {
-    if (panelTab && !available.includes(panelTab)) setPanelTab(null);
-  }, [available, panelTab]);
+  // During render, not in an effect: the check is its own guard, so it settles
+  // in one extra pass instead of a committed render with a dead tab.
+  if (panelTab && !available.includes(panelTab)) setPanelTab(null);
 
   // The derived layout is what gets saved, so a tool that appeared mid-session
   // keeps the position it was given.

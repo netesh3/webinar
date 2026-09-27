@@ -194,6 +194,8 @@ export function useRegistrations() {
   // Bumped by retry() to re-run both fetches. A rate-limited or briefly offline
   // attendee needs a way back without reloading the page.
   const [attempt, setAttempt] = useState(0);
+  // Local UI preview has no account registrations to fetch; see the effect below.
+  const bypass = isDevAuthBypassActive();
 
   const retry = useCallback(() => {
     setError(null);
@@ -240,11 +242,8 @@ export function useRegistrations() {
     if (!accountId) return;
 
     // Local UI preview: mock host has no API session cookie — skip the call
-    // so the badge does not spin on 401 noise.
-    if (isDevAuthBypassActive()) {
-      setOwned({ accountId, rows: [] });
-      return;
-    }
+    // so the badge does not spin on 401 noise. The empty list is derived below.
+    if (isDevAuthBypassActive()) return;
 
     let active = true;
     api
@@ -281,9 +280,11 @@ export function useRegistrations() {
     // unknown until a response tagged with THAT account arrives.
     const fromAccount = !account
       ? []
-      : owned?.accountId === account.id
-        ? owned.rows
-        : null;
+      : bypass
+        ? []
+        : owned?.accountId === account.id
+          ? owned.rows
+          : null;
 
     // Either source still loading means the answer is not yet known.
     if (held === null || fromAccount === null) return null;
@@ -294,7 +295,7 @@ export function useRegistrations() {
     for (const reg of held) merged.set(reg.webinarId, reg);
     for (const reg of fromAccount) merged.set(reg.webinarId, reg);
     return [...merged.values()];
-  }, [keys, fetched, owned, account, status]);
+  }, [keys, fetched, owned, account, status, bypass]);
 
   const isRegistered = useCallback(
     (slug: string) => !!registrations?.some((r) => r.webinarId === slug),

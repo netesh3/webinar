@@ -146,11 +146,14 @@ function useRecorder(): RecorderContextValue {
   const [stoppedRecently, setStoppedRecently] = useState(false);
   const { recording: serverRecording } = useRoomUI();
 
-  useEffect(() => {
-    if (!serverRecording) {
-      setStoppedRecently(false);
-    }
-  }, [serverRecording]);
+  // Cleared when the server stops reporting a recording — on that edge, during
+  // render, rather than in an effect after it. Only the edge: stop() raising the
+  // flag while the server already says "not recording" must not clear it.
+  const [seenServerRecording, setSeenServerRecording] = useState(serverRecording);
+  if (serverRecording !== seenServerRecording) {
+    setSeenServerRecording(serverRecording);
+    if (!serverRecording) setStoppedRecently(false);
+  }
 
   // Local recording is a ScreenRecorder (lib/screen-recorder.ts), not a
   // SessionRecorder — no canvas compositing, see recording.tsx's module

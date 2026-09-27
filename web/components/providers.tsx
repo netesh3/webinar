@@ -66,6 +66,8 @@ export function useAppConfig(): AppConfig {
 const subscribeNothing = () => () => {};
 const readOrigin = () => window.location.origin;
 const readOriginOnServer = () => "";
+const readHydrated = () => true;
+const readNotHydrated = () => false;
 
 /** The public URL to build share links from. Falls back to this browser's own
  *  origin, which is right in every single-origin deployment and never produces a
@@ -292,19 +294,24 @@ export function AppProviders({
     }
   }, []);
 
+  // Local preview settles the session from sessionStorage, which the server
+  // cannot read. That happens during the first render after hydration rather
+  // than in the effect below; status never returns to "loading", so it runs once.
+  const hydrated = useSyncExternalStore(subscribeNothing, readHydrated, readNotHydrated);
+  if (hydrated && status === "loading" && isDevAuthBypass()) {
+    if (isDevAuthBypassActive()) {
+      setAccount(DEV_BYPASS_ACCOUNT);
+      setStatus("signed-in");
+    } else {
+      setAccount(null);
+      setStatus("anonymous");
+    }
+  }
+
   // The promise chain is inline rather than a call to `refresh`, so every state
   // write happens in a callback instead of synchronously inside the effect.
   useEffect(() => {
-    if (isDevAuthBypass()) {
-      if (isDevAuthBypassActive()) {
-        setAccount(DEV_BYPASS_ACCOUNT);
-        setStatus("signed-in");
-      } else {
-        setAccount(null);
-        setStatus("anonymous");
-      }
-      return;
-    }
+    if (isDevAuthBypass()) return;
     let active = true;
     api
       .me()

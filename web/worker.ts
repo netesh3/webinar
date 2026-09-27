@@ -17,7 +17,7 @@ interface ApiEnv {
   API_INTERNAL_URL?: string;
 }
 
-export default {
+const worker = {
   async fetch(
     request: Request,
     env: ApiEnv,
@@ -43,6 +43,8 @@ export default {
     return withFedcmPermission(res);
   },
 };
+
+export default worker;
 
 // Re-export OpenNext Durable Object handlers when caching features are enabled.
 // @ts-expect-error generated at build time

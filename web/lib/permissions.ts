@@ -174,9 +174,13 @@ export function useMediaPermissions(
 export function useLiveRole(room: Room | null, joinRole: string): string {
   const [role, setRole] = useState(joinRole);
 
-  useEffect(() => {
+  // A new join role replaces whatever metadata said before, adjusted during
+  // render when the prop changes rather than in an effect after it.
+  const [seenJoinRole, setSeenJoinRole] = useState(joinRole);
+  if (joinRole !== seenJoinRole) {
+    setSeenJoinRole(joinRole);
     setRole(joinRole);
-  }, [joinRole]);
+  }
 
   useEffect(() => {
     if (!room) return;
