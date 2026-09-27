@@ -57,6 +57,7 @@ import { handAudience } from "@/lib/hand-toasts";
 import { participantRole, useHostRoster } from "./participants";
 import { useJoinToasts } from "./join-toasts";
 import { useHandToasts } from "./hand-toasts";
+import { useConnectionToast } from "./connection-toast";
 import { VirtualBackground } from "./background-picker";
 import { NoiseSuppression } from "./noise-suppression";
 import { PollPopup } from "./poll-popup";
@@ -602,6 +603,9 @@ function ConnectedRoom({
   // Being handed a microphone mid-session is easy to miss — the button simply
   // appears. Saying so is the difference between an attendee answering the host
   // and the host wondering why nobody replied.
+  // Set when the host moves this presenter to the audience, so getting the stage back is
+  // announced while getting it on joining (or re-reading it after a reconnect) is not.
+  const movedOffStage = useRef(false);
   const announcePermissions = useCallback(
     (next: MediaPermissions, previous: MediaPermissions) => {
       // A host mute first: it also takes the microphone out of the grant, so
@@ -611,24 +615,32 @@ function ConnectedRoom({
         return;
       }
       if (next.canSpeak && !previous.canSpeak) {
+        /* A host or panelist reaching the stage on joining says nothing. They arrived with
+         * publish rights and pressed Join; the room appearing with their own tile in it is
+         * the feedback, and the "Connected" toast this used to raise sat over the Leave
+         * button saying so again. Connection trouble has its own toast (connection-toast.tsx).
+         * A panelist moved to the audience and back is a change somebody else made, and is
+         * told so below. */
+        if (join.canPublish && !previous.mutedByHost && !movedOffStage.current) {
+          return;
+        }
+        movedOffStage.current = false;
         notify(
           previous.mutedByHost
             ? "The host has allowed you to speak again."
             : next.audioOnly
               ? "The host has invited you to speak. Unmute yourself when you're ready."
-              /* A host or panelist reaching the stage is just "connected" — they arrived with
-               * publish rights and pressed Join, so a sentence about where the buttons are
-               * tells them something already on screen. A PROMOTED attendee is a different
-               * event: they did not ask for it and their bar has just grown two controls, so
-               * that case still says what happened. */
+              /* A PROMOTED attendee did not ask for it and their bar has just grown two
+               * controls, so that case says what happened. */
               : join.canPublish
-                ? "Connected"
+                ? "You're back on the stage. Your microphone and camera controls are below."
                 : "You're on the stage. Your microphone and camera controls are below.",
           "ok",
         );
         return;
       }
       if (!next.canPublish && !next.mutedByHost && previous.canPublish) {
+        movedOffStage.current = true;
         notify("The host has moved you back to the audience.", "info");
         onDemotedRef.current?.();
       }
@@ -1066,6 +1078,8 @@ function ConnectedRoom({
     openParticipants: useCallback(() => openTool("participants"), [openTool]),
     panelVisible: tools.panelTab === "participants",
   });
+  // "Reconnecting…" → "You're back online" / "Connection lost", for everyone in this room.
+  useConnectionToast(room, recovering, RECOVERY_BACKOFF_MS.length, permissions.canPublish);
   // The audience's polls, for everyone who is not the host. Read here rather than in
   // the panel because a launched poll has to reach somebody who is not looking at the
   // panel — the pop-up is the point — and because the pop-up and the panel should agree
@@ -1230,7 +1244,7 @@ function ConnectedRoom({
                       audience receives is captured from a hidden element elsewhere, so
                       none of this can reach a subscriber. */}
                   <FileShareBar />
-                  <ConnectionBanner />
+                  {!connected && <ConnectionBanner />}
                   <MeetingLimitBanner
                     startedAt={startedAt}
                     maxDurationMin={maxDurationMin}
@@ -1479,9 +1493,11 @@ function LiveClock() {
   );
 }
 
-/** Reconnection state, shown over the stage.
+/** The first connect, shown over the stage.
  *
- *  A silent reconnect is worse than a visible one: people start clicking things
+ *  Only until this browser has been in the room once: after that a drop is the connection
+ *  toast's job (connection-toast.tsx), which waits out blips and says when it is over.
+ *  A silent connect is worse than a visible one: people start clicking things
  *  and end up rejoining, which drops them from the SFU and makes it slower. */
 function ConnectionBanner() {
   const state = useConnectionState();

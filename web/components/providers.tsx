@@ -121,11 +121,13 @@ export type Toast = {
   key?: string;
   /** Custom content, drawn instead of `message` inside the toast's own card. */
   node?: ReactNode;
-  /** The node has buttons of its own, so it is not wrapped in a click-to-close one. */
+  /** The node has buttons of its own, so the toast is not one big dismiss button. */
   interactive?: boolean;
   /** On its way out: drawn fading for a beat, then removed. */
   leaving?: boolean;
   onDismiss?: () => void;
+  /** Announced assertively rather than politely. For "you have lost the room", not news. */
+  urgent?: boolean;
 };
 
 export type KeyedToast = {
@@ -138,6 +140,7 @@ export type KeyedToast = {
   interactive?: boolean;
   /** Called when the person clicks it away (not when the caller dismisses it). */
   onDismiss?: () => void;
+  urgent?: boolean;
 };
 
 type ToastValue = {
@@ -235,6 +238,7 @@ export function AppProviders({
       node: toast.node,
       interactive: toast.interactive,
       onDismiss: toast.onDismiss,
+      urgent: toast.urgent,
     };
     setToasts((current) =>
       current.some((t) => t.id === id)
@@ -409,7 +413,6 @@ const toastTone: Record<Toast["tone"], string> = {
 
 function ToastViewport() {
   const { toasts, dismiss, dismissKey } = useToast();
-  if (toasts.length === 0) return null;
 
   const close = (t: Toast) => {
     t.onDismiss?.();
@@ -417,45 +420,62 @@ function ToastViewport() {
     else dismiss(t.id);
   };
 
+  /* Both live regions are rendered even when empty: a region that appears together with
+   * its first message is often not announced at all. An urgent toast is announced through
+   * the assertive one and muted in the polite stack (aria-live="off" on its item), so it is
+   * said once, immediately — while its card, and any button on it, stays in the tree. */
+  const urgent = toasts.filter((t) => t.urgent && !t.leaving);
+
   return (
-    // Above the room's own overlays, and inset-x on small screens so a long
-    // message wraps instead of running off the side of a phone.
-    <div
-      className="toast-viewport pointer-events-none fixed inset-x-3 z-[100] flex flex-col items-center gap-2 sm:inset-x-auto sm:right-4 sm:items-end"
-      role="status"
-      aria-live="polite"
-    >
-      {toasts.map((t) =>
-        t.node && t.interactive ? (
-          <div
-            key={t.id}
-            className={`toast-item pointer-events-auto w-full max-w-sm sm:w-auto ${t.leaving ? "toast-leaving" : ""}`}
-          >
-            {t.node}
-          </div>
-        ) : t.node ? (
-          // The custom card draws its own surface; this is only the click target.
-          // tabIndex -1: a toast arriving must never pull focus or join the tab order
-          // in the middle of somebody presenting.
-          <button
-            key={t.id}
-            type="button"
-            tabIndex={-1}
-            onClick={() => close(t)}
-            className={`toast-item pointer-events-auto w-full max-w-sm text-left sm:w-auto ${t.leaving ? "toast-leaving" : ""}`}
-          >
-            {t.node}
-          </button>
-        ) : (
-          <button
-            key={t.id}
-            onClick={() => close(t)}
-            className={`toast-item pointer-events-auto w-full max-w-sm rounded-xl border px-4 py-2.5 text-left text-[13px] font-medium shadow-lg backdrop-blur transition-opacity hover:opacity-90 sm:w-auto ${toastTone[t.tone]} ${t.leaving ? "toast-leaving" : ""}`}
-          >
-            {t.message}
-          </button>
-        ),
-      )}
-    </div>
+    <>
+      <div className="sr-only" role="alert" aria-live="assertive" aria-atomic="true">
+        {urgent.map((t) => (
+          <p key={t.id}>{t.message}</p>
+        ))}
+      </div>
+      {/* Above the room's own overlays, and inset-x on small screens so a long
+          message wraps instead of running off the side of a phone. */}
+      <div
+        className="toast-viewport pointer-events-none fixed inset-x-3 z-[100] flex flex-col items-center gap-2 sm:inset-x-auto sm:right-4 sm:items-end"
+        role="status"
+        aria-live="polite"
+      >
+        {toasts.map((t) =>
+          t.node && t.interactive ? (
+            // The card has buttons of its own, and a button inside a button is not a
+            // button anybody can press — so this one is a plain box.
+            <div
+              key={t.id}
+              aria-live={t.urgent ? "off" : undefined}
+              className={`toast-item pointer-events-auto w-full max-w-sm text-left sm:w-auto ${t.leaving ? "toast-leaving" : ""}`}
+            >
+              {t.node}
+            </div>
+          ) : t.node ? (
+            // The custom card draws its own surface; this is only the click target.
+            // tabIndex -1: a toast arriving must never pull focus or join the tab order
+            // in the middle of somebody presenting.
+            <button
+              key={t.id}
+              type="button"
+              tabIndex={-1}
+              aria-live={t.urgent ? "off" : undefined}
+              onClick={() => close(t)}
+              className={`toast-item pointer-events-auto w-full max-w-sm text-left sm:w-auto ${t.leaving ? "toast-leaving" : ""}`}
+            >
+              {t.node}
+            </button>
+          ) : (
+            <button
+              key={t.id}
+              onClick={() => close(t)}
+              className={`toast-item pointer-events-auto w-full max-w-sm rounded-xl border px-4 py-2.5 text-left text-[13px] font-medium shadow-lg backdrop-blur transition-opacity hover:opacity-90 sm:w-auto ${toastTone[t.tone]} ${t.leaving ? "toast-leaving" : ""}`}
+            >
+              {t.message}
+            </button>
+          ),
+        )}
+      </div>
+    </>
   );
 }
