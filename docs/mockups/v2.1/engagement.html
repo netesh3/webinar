@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1280">
+<title>Webinar · Engagement with real follow-up (v2.1 mock)</title><link rel="stylesheet" href="assets/v21.css">
+<style>
+  body { background: rgb(247,249,250); margin: 0; }
+  .real { display: block; width: 1280px; }
+  .wrap-fu { width: 1112px; margin: 0 0 0 84px; padding-bottom: 56px; }
+  .fu-h { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+  .fu-h h2 { font-size: 17px; font-weight: 600; margin: 0; } .fu-h p { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-2); }
+  .seg.empty { background: #fbfcfc; box-shadow: none; }
+  .seg.empty .n { color: var(--ink-3); }
+  .seg.empty .sugg { background: transparent; padding: 0; color: var(--ink-3); }
+  .newtag { position: absolute; left: 12px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; background: var(--brand); color: #fff; padding: 3px 8px; border-radius: 5px; }
+  .cut { position: relative; height: 0; } .cut span { position: absolute; left: 84px; top: -14px; font-size: 11px; color: var(--ink-3); background: rgb(247,249,250); padding: 2px 8px; border: 1px dashed var(--line-2); border-radius: 99px; }
+</style></head>
+<body>
+<!-- Everything above Follow up is the live page on webinarliv.com, unchanged -->
+<img class="real" src="assets/prod-engagement.png" alt="Engagement tab as it is today">
+<div class="cut"><span>↑ live Engagement tab, unchanged · ↓ new Follow up</span></div>
+
+<div class="wrap-fu" style="margin-top:28px">
+  <div class="fu-h">
+    <div>
+      <h2>Follow up</h2>
+      <p>Everyone lands in one group by how they took part. Message each group on WhatsApp — sent from your number, replies come to Messages.</p>
+    </div>
+    <label class="row small muted" style="gap:8px"><span class="toggle"></span>Do this automatically after every webinar</label>
+  </div>
+
+  <!-- Next step, now inside Follow up instead of on the Messages tab -->
+  <div class="nudge" style="margin-bottom:14px">
+    <span class="ic">✦</span>
+    <div class="grow">
+      <div class="name">2 engaged people haven't heard from you yet</div>
+      <div class="xs muted">Both stayed past halfway and answered the quiz — only 50% got it right. Thank them and send the replay with the recap.</div>
+    </div>
+    <button class="btn sm sec">Preview</button>
+    <button class="btn sm">Message 2</button>
+  </div>
+
+  <div class="card" style="padding:16px 18px; margin-bottom:14px">
+    <div class="row between small" style="margin-bottom:8px"><b>Engagement levels</b><span class="xs faint">Based on each attendee's score · 2 attended · 0 didn't join</span></div>
+    <div style="display:flex; height:10px; border-radius:99px; overflow:hidden; background:var(--surface-2)"><i style="width:100%; background:var(--t-eng)"></i></div>
+  </div>
+
+  <div class="segs five">
+    <div class="card seg empty">
+      <div class="h"><span class="lab"><span class="tdot high"></span>Highly engaged</span></div>
+      <span class="n">0</span>
+      <div class="sugg xs">Score 75+. Send the offer while interest is hot.</div>
+      <span class="xs faint">Nobody in this group</span>
+    </div>
+    <div class="card seg">
+      <div class="h"><span class="lab"><span class="tdot eng"></span>Engaged</span><span class="tag sugg">Suggested</span></div>
+      <div class="row between"><span class="n">2</span><span class="faces"><span class="av sm a3">NK</span><span class="av sm a2">A</span></span></div>
+      <div class="sugg">Thank them and share the replay + offer.<br><b style="color:var(--ink)">Thanks for attending</b> · marketing · 2 on WhatsApp</div>
+      <button class="btn sm">Review &amp; send</button>
+    </div>
+    <div class="card seg empty">
+      <div class="h"><span class="lab"><span class="tdot pas"></span>Passive</span></div>
+      <span class="n">0</span>
+      <div class="sugg xs">Score 25–49. Replay with the key moment.</div>
+      <span class="xs faint">Nobody in this group</span>
+    </div>
+    <div class="card seg empty">
+      <div class="h"><span class="lab"><span class="tdot risk"></span>At risk</span></div>
+      <span class="n">0</span>
+      <div class="sugg xs">Under 25. Replay from where they left.</div>
+      <span class="xs faint">Nobody in this group</span>
+    </div>
+    <div class="card seg empty">
+      <div class="h"><span class="lab"><span class="tdot none"></span>No-shows</span></div>
+      <span class="n">0</span>
+      <div class="sugg xs">"We missed you" with the replay link.</div>
+      <span class="xs faint">Everyone joined 🎉</span>
+    </div>
+  </div>
+
+  <p class="xs faint" style="margin-top:12px">After sending, a card shows <span class="seg" style="display:inline"><span class="tag sent">Sent</span></span> with read / replied, or <span class="seg" style="display:inline"><span class="tag sched">Tomorrow 9 AM</span></span> with Edit. <a class="xlink" href="webinar-messages.html">Every message for this webinar is on Messages →</a></p>
+</div>
+<script src="../v2/assets/v2.js"></script>
+</body></html>

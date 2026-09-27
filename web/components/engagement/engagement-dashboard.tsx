@@ -16,7 +16,7 @@ import { AttendeeHeatmap, type HeatmapClock } from "./attendee-heatmap";
 import { ActivityHeatmap, Bars, RetentionChart } from "./charts";
 import { ChatPanel, PollsPanel, QAPanel, ReactionsPanel, SurveyPanel } from "./detail-tabs";
 import { ExportMenu } from "./export-menu";
-import { FollowUpPanel, TierLevels, WhatsAppComposer, type SegmentId } from "./follow-up";
+import { TierLevels } from "./follow-up";
 import { Hero } from "./hero";
 import { KpiGrid } from "./kpi-grid";
 import { Icon } from "./primitives";
@@ -40,6 +40,7 @@ export function EngagementDashboard({
   notStartedDetail,
   onOpenAttendees,
   initialSection,
+  followUp,
 }: {
   source: EngagementSource;
   sample?: boolean;
@@ -54,11 +55,13 @@ export function EngagementDashboard({
   onOpenAttendees?: () => void;
   /** Scroll to this section once the numbers are in; deep links such as ?tab=survey. */
   initialSection?: SectionId;
+  /** The Follow up section's actions — the CRM's slot, handed the tier counts. Without
+   *  it the section shows the engagement levels only. */
+  followUp?: (tiers: EngagementSummary["tiers"], levels: ReactNode) => ReactNode;
 }) {
   const { notify } = useToast();
   const summary = useEngagementSummary(source);
   const [open, setOpen] = useState<EngagementAttendeeRow | null>(null);
-  const [compose, setCompose] = useState<SegmentId | null>(null);
   const [recomputing, setRecomputing] = useState(false);
   const [wantRecord, setWantRecord] = useState(false);
   const closeDrawer = useCallback(() => setOpen(null), []);
@@ -132,7 +135,10 @@ export function EngagementDashboard({
         </Button>
       )}
       {ready && (
-        <Button size="sm" onClick={() => setCompose("engaged")}>
+        <Button
+          size="sm"
+          onClick={() => document.getElementById(sectionDomId("follow-up"))?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        >
           <Icon name="schedule_send" />
           Follow up
         </Button>
@@ -293,19 +299,18 @@ export function EngagementDashboard({
       </DetailSection>
 
       <PageSection id="follow-up" title="Follow up" hint="Everyone lands in one group by how they took part. Message each group what fits.">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card className={card}>
-            <SubTitle title="Engagement levels" hint="Based on each attendee's score." />
-            <TierLevels tiers={s.tiers} />
-          </Card>
-          <Card className={card}>
-            <FollowUpPanel tiers={s.tiers} onCompose={setCompose} />
-          </Card>
-        </div>
+        {(() => {
+          const levels = (
+            <Card className={card}>
+              <SubTitle title="Engagement levels" hint="Based on each attendee's score." />
+              <TierLevels tiers={s.tiers} />
+            </Card>
+          );
+          return followUp ? followUp(s.tiers, levels) : levels;
+        })()}
       </PageSection>
 
       <AttendeeDrawer source={source} row={open} lobbyMin={Math.max(0, -s.axis.startMin)} onClose={closeDrawer} clock={clock} />
-      {compose && <WhatsAppComposer initial={compose} tiers={s.tiers} webinarTitle={s.webinar.title} onClose={() => setCompose(null)} />}
     </div>
   );
 }

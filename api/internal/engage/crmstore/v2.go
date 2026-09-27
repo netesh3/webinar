@@ -160,3 +160,13 @@ func (s *Store) Summary(ctx context.Context, hostID string, days int) (types.CRM
 	}
 	return out, nil
 }
+
+// WebinarScored is whether a webinar's engagement has been computed, so tiers mean anything.
+func (s *Store) WebinarScored(ctx context.Context, hostID, slug string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM engagement_scores es
+		                 JOIN webinars w ON w.id = es.webinar_id
+		                WHERE w.slug = $1 AND w.host_id = $2::uuid)`, slug, hostID).Scan(&ok)
+	return ok, err
+}

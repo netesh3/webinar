@@ -2755,6 +2755,9 @@ type RegistrantRow struct {
 	 * (store.AttachWatch). Zero and false before the webinar has run. */
 	Joined   bool `json:"joined"`
 	WatchMin int  `json:"watchMin"`
+	/* Tier is their engagement level from the webinar's latest score (engagement_scores),
+	 * empty until it has been computed or when they never joined. */
+	Tier EngagementTier `json:"tier,omitempty"`
 	/* ContactID is this registrant's CRM contact, which is who a message is addressed to;
 	 * empty for a guest. LastMessage is the latest message either way on WhatsApp, for the
 	 * "Last message" column. Both filled in by the CRM, like WhatsAppStatus. */

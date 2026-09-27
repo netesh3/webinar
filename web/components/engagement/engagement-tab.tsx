@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useSyncExternalStore } from "react";
+import { EngagementFollowUp } from "@/engage";
 import type { RegistrantRow, Webinar } from "@/lib/api-types";
 import { apiSource } from "@/lib/engagement/api-source";
 import { fixtureSource } from "@/lib/engagement/source";
@@ -46,6 +47,11 @@ export function EngagementTab({
       showTitle={false}
       notStartedDetail={`Scheduled for ${formatDay(w.startsAt, w.timeZone)}, ${formatTime(w.startsAt, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}`}
       onOpenAttendees={onOpenAttendees}
+      followUp={
+        bypass
+          ? undefined
+          : (tiers, levels) => <EngagementFollowUp slug={w.id} tiers={tiers} fallback={levels} />
+      }
       signInHref={`/login?next=${encodeURIComponent(`/host/${w.id}?tab=engagement`)}`}
     />
   );

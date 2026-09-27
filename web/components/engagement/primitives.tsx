@@ -75,14 +75,6 @@ export function Initials({ name, seed, size = 30 }: { name: string; seed: string
   );
 }
 
-export function SoonBadge() {
-  return (
-    <span className="rounded-full border border-brand-line bg-brand-soft px-2 py-0.5 text-[10.5px] font-semibold tracking-wide text-brand uppercase">
-      Coming soon
-    </span>
-  );
-}
-
 export function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg bg-surface-2 px-3 py-2">

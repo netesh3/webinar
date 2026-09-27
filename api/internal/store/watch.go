@@ -33,7 +33,7 @@ func WatchByRegistrationSQL(webinarWhere string) string {
 	 GROUP BY a.registration_id`
 }
 
-/* AttachWatch fills in Joined and WatchMin on a webinar's roster rows.
+/* AttachWatch fills in Joined, WatchMin and Tier on a webinar's roster rows.
  *
  * Its own query rather than columns on Registrants, which also runs inside a
  * registration request that has no use for them.
@@ -67,6 +67,34 @@ func (s *Store) AttachWatch(ctx context.Context, slug string, rows []types.Regis
 			rows[i].Joined = true
 			rows[i].WatchMin = min
 		}
+	}
+	return s.attachTier(ctx, slug, rows)
+}
+
+/* attachTier is each row's engagement tier, the one the Engagement tab files them under,
+ * so the Attendees chips and the Follow up cards count the same people. */
+func (s *Store) attachTier(ctx context.Context, slug string, rows []types.RegistrantRow) error {
+	found, err := s.pool.Query(ctx, `
+		SELECT es.registration_id::text, es.tier
+		  FROM engagement_scores es JOIN webinars w ON w.id = es.webinar_id
+		 WHERE w.slug = $1 AND es.registration_id IS NOT NULL`, slug)
+	if err != nil {
+		return err
+	}
+	defer found.Close()
+	by := map[string]types.EngagementTier{}
+	for found.Next() {
+		var id, tier string
+		if err := found.Scan(&id, &tier); err != nil {
+			return err
+		}
+		by[id] = types.EngagementTier(tier)
+	}
+	if err := found.Err(); err != nil {
+		return err
+	}
+	for i := range rows {
+		rows[i].Tier = by[rows[i].ID]
 	}
 	return nil
 }
