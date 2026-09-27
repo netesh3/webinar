@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ConfirmModal, Spinner } from "./controls";
+import { ConfirmModal, Menu, Spinner } from "./controls";
+import { MoreIcon, PlayIcon, StarIcon, TrashIcon, UsersIcon } from "./icons";
 import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, kindLabel } from "./ui";
 import {
@@ -102,16 +103,25 @@ export function HostWebinarRows({
   return (
     <>
       <div className="grid gap-3">
-        {webinars.map((w) => (
-          <HostCard
-            key={w.id}
-            webinar={w}
-            readOnly={readOnly}
-            busy={busy === w.id}
-            onStart={() => void start(w)}
-            onDelete={() => setConfirmDelete(w)}
-          />
-        ))}
+        {webinars.map((w) =>
+          w.status === "ended" && !readOnly ? (
+            <CompletedCard
+              key={w.id}
+              webinar={w}
+              busy={busy === w.id}
+              onDelete={() => setConfirmDelete(w)}
+            />
+          ) : (
+            <HostCard
+              key={w.id}
+              webinar={w}
+              readOnly={readOnly}
+              busy={busy === w.id}
+              onStart={() => void start(w)}
+              onDelete={() => setConfirmDelete(w)}
+            />
+          ),
+        )}
       </div>
 
       <ConfirmModal
@@ -226,15 +236,6 @@ function HostCard({
             <ButtonLink href={`/host/${w.id}/edit`} size="sm">
               Finish setup
             </ButtonLink>
-          ) : isEnded ? (
-            <>
-              <ButtonLink href={`/host/${w.id}?tab=attendees`} size="sm">
-                View attendance
-              </ButtonLink>
-              <ButtonLink href={`/host/${w.id}`} variant="secondary" size="sm">
-                Manage
-              </ButtonLink>
-            </>
           ) : (
             <>
               {isLive ? (
@@ -294,5 +295,151 @@ function HostCard({
         </div>
       </div>
     </Card>
+  );
+}
+
+/* A session that is over, as a coach or teacher looks for it afterwards.
+ *
+ * It used to offer "View attendance" and "Manage" side by side, and both went to the
+ * same page — one to its Attendees tab, the other to Engagement — so the choice asked
+ * a host to know the page's tabs before seeing it. Now the card answers the first
+ * question itself (did people come, and did they stay?) and the whole card is one way
+ * in. The other tabs are a menu away, and Delete sits behind that menu with its own
+ * confirmation, rather than beside the button people press most. */
+function CompletedCard({
+  webinar: w,
+  busy,
+  onDelete,
+}: {
+  webinar: Webinar;
+  busy: boolean;
+  onDelete: () => void;
+}) {
+  const router = useRouter();
+  const href = `/host/${w.id}`;
+  const r = w.report;
+  const registered = w.registrantCount;
+  // Walk-ins on an open link can outnumber registrations; a turnout over 100% reads as a bug.
+  const turnout =
+    r && registered > 0 ? Math.min(100, Math.round((r.attended / registered) * 100)) : null;
+
+  return (
+    <Card className="group relative p-4 transition-colors hover:border-line-2 hover:bg-surface-2/40 sm:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[15px] font-semibold tracking-[-0.01em]">
+            {/* Stretched over the card so anywhere on it opens the results. */}
+            <Link
+              href={href}
+              className="outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] group-hover:text-brand focus-visible:after:ring-2 focus-visible:after:ring-brand/40"
+            >
+              {w.topic}
+            </Link>
+          </h3>
+          <p className="mt-1 text-[13px] text-ink-2">
+            {formatDayShort(w.startsAt, w.timeZone)} ·{" "}
+            {formatTimeRange(w.startsAt, w.durationMin, w.timeZone)}{" "}
+            {tzLabel(w.startsAt, w.timeZone)}
+          </p>
+
+          <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+            <Figure
+              label="Attended"
+              value={r ? formatCount(r.attended) : "—"}
+              note={`of ${formatCount(registered)} registered`}
+            />
+            {turnout !== null && (
+              <Figure
+                label="Turnout"
+                value={`${turnout}%`}
+                tone={turnout >= 50 ? "ok" : turnout >= 25 ? "neutral" : "warn"}
+              />
+            )}
+            {r && r.attended > 0 && (
+              <Figure
+                label="Avg. time watched"
+                value={formatDuration(r.avgWatchMin)}
+                note={`of ${formatDuration(w.durationMin)}`}
+              />
+            )}
+            {r && r.questions > 0 && (
+              <Figure label="Questions" value={formatCount(r.questions)} />
+            )}
+          </dl>
+        </div>
+
+        {/* Positioned but no z-index: later in the DOM than the stretched link, so it
+            paints above it, without a stacking context that would trap the menu under
+            the next card. */}
+        <div className="relative flex shrink-0 items-center gap-1.5">
+          <ButtonLink href={href} size="sm">
+            See results
+          </ButtonLink>
+          <Menu
+            label={`More for ${w.topic}`}
+            trigger={
+              <span className="inline-grid size-8 place-items-center rounded-lg text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink">
+                <MoreIcon className="size-4" />
+              </span>
+            }
+            items={[
+              {
+                kind: "action",
+                label: "Attendee list",
+                hint: "Who came, and for how long",
+                icon: <UsersIcon className="size-4" />,
+                onSelect: () => router.push(`${href}?tab=attendees`),
+              },
+              {
+                kind: "action",
+                label: "Recording",
+                icon: <PlayIcon className="size-4" />,
+                onSelect: () => router.push(`${href}?tab=recordings`),
+              },
+              {
+                kind: "action",
+                label: "Feedback survey",
+                icon: <StarIcon className="size-4" />,
+                onSelect: () => router.push(`${href}?tab=survey`),
+              },
+              { kind: "separator" },
+              {
+                kind: "action",
+                label: "Delete webinar",
+                icon: <TrashIcon className="size-4" />,
+                danger: true,
+                disabled: busy,
+                onSelect: onDelete,
+              },
+            ]}
+          />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function Figure({
+  label,
+  value,
+  note,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: "neutral" | "ok" | "warn";
+}) {
+  const valueTone = { neutral: "text-ink", ok: "text-ok", warn: "text-warn" }[tone];
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11.5px] text-ink-3">{label}</dt>
+      <dd className="mt-0.5 flex items-baseline gap-1.5">
+        <span className={`text-[16px] font-semibold tracking-[-0.01em] tabular-nums ${valueTone}`}>
+          {value}
+        </span>
+        {note && <span className="text-[12px] text-ink-3">{note}</span>}
+      </dd>
+    </div>
   );
 }
