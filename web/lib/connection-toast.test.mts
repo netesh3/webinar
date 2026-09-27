@@ -40,14 +40,92 @@ function connected(): ConnectionToastTracker {
   return t;
 }
 
-// ---- first connect is silent
+// ---- first connect is silent until the room greets a presenter
 {
   const t = new ConnectionToastTracker();
   t.update({ link: "connecting", recovering: null, attempts: A }, 0);
   ok(phase(t.view()) === "none", "connecting before first join shows nothing");
   t.update(up, 500);
-  ok(phase(t.view()) === "none", "first connect shows no 'Connected' toast");
+  ok(phase(t.view()) === "none", "first connect alone (an attendee) shows no toast");
   ok(t.nextDeadline() === null, "nothing scheduled after first connect");
+}
+
+// ---- a presenter reaching the stage: "You're connected", then gone after BACK_MS
+{
+  const t = connected();
+  ok(t.greet(200) === true, "greet shows");
+  ok(phase(t.view()) === "connected", "greeting is the connected phase", phase(t.view()));
+  ok(t.nextDeadline() === 200 + BACK_MS, "greeting auto-dismiss scheduled");
+  t.tick(200 + BACK_MS - 1);
+  ok(phase(t.view()) === "connected", "greeting still up before deadline");
+  t.tick(200 + BACK_MS);
+  ok(phase(t.view()) === "none", "greeting gone after BACK_MS");
+  ok(t.nextDeadline() === null, "nothing scheduled after greeting");
+  const text = connectionToastText({ phase: "connected" });
+  ok(text.title === "You're connected", "greeting title");
+  ok(text.detail.includes("see and hear you"), "greeting says they are live");
+  ok(connectionToastText({ phase: "connected" }, false).detail === text.detail, "greeting copy is stage copy regardless of a lagging publisher flag");
+}
+
+// ---- the greeting is said once per room: back on stage, or a re-read after a reconnect, is quiet
+{
+  const t = connected();
+  t.greet(200);
+  t.tick(200 + BACK_MS);
+  ok(t.greet(10_000) === false, "second greet is ignored");
+  ok(phase(t.view()) === "none", "no second greeting");
+}
+
+// ---- permissions arriving a render before the connection state: greeting held until connected
+{
+  const t = new ConnectionToastTracker();
+  t.update({ link: "connecting", recovering: null, attempts: A }, 0);
+  t.greet(50);
+  ok(phase(t.view()) === "none", "early greet shows nothing while connecting");
+  t.update(up, 100);
+  ok(phase(t.view()) === "connected", "early greet shows once connected");
+  ok(t.nextDeadline() === 100 + BACK_MS, "early greet timed from the connect");
+}
+
+// ---- greeting can be clicked away
+{
+  const t = connected();
+  t.greet(200);
+  t.dismiss();
+  ok(phase(t.view()) === "none", "greeting can be dismissed");
+  ok(t.nextDeadline() === null, "dismissed greeting leaves nothing scheduled");
+}
+
+// ---- a drop while the greeting is up flips straight to reconnecting, then says back online
+{
+  const t = connected();
+  t.greet(200);
+  t.update(sdk, 1_000);
+  ok(phase(t.view()) === "reconnecting", "drop during greeting shows reconnecting at once");
+  t.update(up, 2_000);
+  ok(phase(t.view()) === "back", "and recovers to back online, not connected");
+}
+
+// ---- a greeting raised during an outage is spent silently; the outage flow is unchanged
+{
+  const t = connected();
+  t.update(sdk, 1_000);
+  ok(t.greet(1_200) === false, "greet during outage does not show");
+  t.tick(1_000 + SHOW_AFTER_MS);
+  ok(phase(t.view()) === "reconnecting", "outage still shown");
+  t.update(up, 3_000);
+  ok(phase(t.view()) === "back", "outage still ends in back online");
+}
+
+// ---- after a reconnect, "back online" is not relabelled as a greeting
+{
+  const t = connected();
+  t.greet(200);
+  t.tick(200 + BACK_MS);
+  t.update(sdk, 5_000);
+  t.tick(5_000 + SHOW_AFTER_MS);
+  t.update(up, 7_000);
+  ok(phase(t.view()) === "back", "reconnect after greeting says back online");
 }
 
 // ---- a failed first connect retried by the ladder is the banner's job, not a toast

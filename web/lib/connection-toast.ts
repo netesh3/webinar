@@ -6,9 +6,12 @@
  *
  * The rules:
  *
- *  - The first connect says nothing. The room appearing, with your own tile in it, is the
- *    feedback; a "Connected" toast on top of it was noise over the Leave button. (Before the
- *    first connect the room's own "Connecting…" banner covers the wait.)
+ *  - The first connect says nothing by itself. A host or panelist reaching the stage on joining
+ *    is confirmed by the room calling `greet()` — "You're connected", the same green card as
+ *    "back online", gone after BACK_MS. Once per tracker (per room), so re-reading permissions
+ *    after a reconnect, or a panelist returned to the stage, never says it again; attendees
+ *    are never greeted. (Before the first connect the room's "Connecting…" banner covers the
+ *    wait.)
  *  - An outage is only mentioned once it has lasted SHOW_AFTER_MS. LiveKit resumes most drops
  *    in well under a second, and a toast that flashes up and away reads as something broken.
  *  - Once mentioned, it is closed: the same toast turns into "You're back online" and leaves
@@ -38,7 +41,8 @@ export type ConnectionSignal = {
 export type ConnectionToastView =
   | { phase: "reconnecting"; attempt: number | null; attempts: number; offline: boolean }
   | { phase: "lost"; attempt: number | null; attempts: number; offline: boolean }
-  | { phase: "back" };
+  | { phase: "back" }
+  | { phase: "connected" };
 
 export const SHOW_AFTER_MS = 1_000;
 export const BACK_MS = 2_500;
@@ -71,6 +75,10 @@ export class ConnectionToastTracker {
   /** Dismissed during this outage: stay hidden unless it escalates. */
   private dismissedPhase: "reconnecting" | "lost" | null = null;
   private backUntil: number | null = null;
+  /** What the green card that `backUntil` times says: back after an outage, or the greeting. */
+  private settled: "back" | "connected" = "back";
+  private greeted = false;
+  private greetPending = false;
   private now = 0;
 
   constructor(timing: Partial<ConnectionToastTiming> = {}) {
@@ -85,7 +93,10 @@ export class ConnectionToastTracker {
     if (!this.everConnected) {
       // Before the first connect the room's banner is the feedback, including the ladder
       // retrying a first connect that failed. Nothing to close later, either.
-      if (healthy) this.everConnected = true;
+      if (healthy) {
+        this.everConnected = true;
+        if (this.greetPending) this.showGreeting(now);
+      }
       return;
     }
 
@@ -96,6 +107,7 @@ export class ConnectionToastTracker {
         this.shown = false;
         this.dismissedPhase = null;
         this.backUntil = wasVisible ? now + this.timing.backMs : null;
+        this.settled = "back";
       }
       return;
     }
@@ -121,11 +133,34 @@ export class ConnectionToastTracker {
   dismiss(): void {
     const view = this.view();
     if (!view) return;
-    if (view.phase === "back") {
+    if (view.phase === "back" || view.phase === "connected") {
       this.backUntil = null;
       return;
     }
     this.dismissedPhase = view.phase;
+  }
+
+  /** A presenter has just reached the stage on joining: say "You're connected", once.
+   *  Returns whether it will (or, before the first connect, may) show. Ignored while an outage
+   *  is in progress — the outage's own toast is the truth then — and spent either way. */
+  greet(now: number): boolean {
+    if (this.greeted) return false;
+    this.greeted = true;
+    this.now = now;
+    if (!this.everConnected) {
+      // Permissions can land a render before the connection state does: hold it until then.
+      this.greetPending = true;
+      return true;
+    }
+    return this.showGreeting(now);
+  }
+
+  private showGreeting(now: number): boolean {
+    this.greetPending = false;
+    if (this.outageSince !== null || !this.signal || !isHealthy(this.signal)) return false;
+    this.settled = "connected";
+    this.backUntil = now + this.timing.backMs;
+    return true;
   }
 
   view(): ConnectionToastView | null {
@@ -145,7 +180,7 @@ export class ConnectionToastTracker {
       };
     }
 
-    return this.backVisible(this.now) ? { phase: "back" } : null;
+    return this.backVisible(this.now) ? { phase: this.settled } : null;
   }
 
   /** When the view next changes with no new signal, for the caller's timer. */
@@ -181,6 +216,13 @@ export function connectionToastText(
   publisher = true,
 ): { title: string; detail: string } {
   switch (view.phase) {
+    case "connected":
+      // Only a host or panelist reaching the stage is greeted, so this is always stage copy —
+      // and must be: `publisher` can still be a render behind when the greeting is raised.
+      return {
+        title: "You're connected",
+        detail: "You're live — everyone can see and hear you.",
+      };
     case "back":
       return {
         title: "You're back online",

@@ -46,12 +46,17 @@ export function MeetingLimitBanner({ startedAt, maxDurationMin, endedByLimit }: 
     return limitMs - Date.now();
   }, [startedAt, maxDurationMin]);
 
-  useEffect(() => {
-    if (!startedAt || !maxDurationMin) {
-      setRemaining(null);
-      return;
-    }
+  // Recomputed during render when the inputs change (null when there is no
+  // limit), then ticked by the interval. Not set synchronously in the effect.
+  const inputsKey = `${startedAt}|${maxDurationMin}`;
+  const [seenInputsKey, setSeenInputsKey] = useState<string | null>(null);
+  if (inputsKey !== seenInputsKey) {
+    setSeenInputsKey(inputsKey);
     setRemaining(computeRemaining());
+  }
+
+  useEffect(() => {
+    if (!startedAt || !maxDurationMin) return;
     intervalRef.current = setInterval(() => {
       setRemaining(computeRemaining());
     }, 1000);

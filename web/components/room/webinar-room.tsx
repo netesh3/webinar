@@ -608,8 +608,10 @@ function ConnectedRoom({
   // appears. Saying so is the difference between an attendee answering the host
   // and the host wondering why nobody replied.
   // Set when the host moves this presenter to the audience, so getting the stage back is
-  // announced while getting it on joining (or re-reading it after a reconnect) is not.
+  // announced as such rather than greeted as a first connect.
   const movedOffStage = useRef(false);
+  // The connection toast's greeting, set once that hook is running further down.
+  const greetConnected = useRef<() => void>(() => {});
   const announcePermissions = useCallback(
     (next: MediaPermissions, previous: MediaPermissions) => {
       // A host mute first: it also takes the microphone out of the grant, so
@@ -619,13 +621,13 @@ function ConnectedRoom({
         return;
       }
       if (next.canSpeak && !previous.canSpeak) {
-        /* A host or panelist reaching the stage on joining says nothing. They arrived with
-         * publish rights and pressed Join; the room appearing with their own tile in it is
-         * the feedback, and the "Connected" toast this used to raise sat over the Leave
-         * button saying so again. Connection trouble has its own toast (connection-toast.tsx).
-         * A panelist moved to the audience and back is a change somebody else made, and is
-         * told so below. */
+        /* A host or panelist reaching the stage on joining gets the connection toast's
+         * "You're connected" — the same card as "back online", polite and gone on its own —
+         * rather than a sentence about controls already on screen. The tracker says it once
+         * per room, so re-reading permissions after a reconnect stays quiet. A panelist moved
+         * to the audience and back is a change somebody else made, and is told so below. */
         if (join.canPublish && !previous.mutedByHost && !movedOffStage.current) {
+          greetConnected.current();
           return;
         }
         movedOffStage.current = false;
@@ -1080,8 +1082,12 @@ function ConnectedRoom({
     openParticipants: useCallback(() => openTool("participants"), [openTool]),
     panelVisible: tools.panelTab === "participants",
   });
-  // "Reconnecting…" → "You're back online" / "Connection lost", for everyone in this room.
-  useConnectionToast(room, recovering, RECOVERY_BACKOFF_MS.length, permissions.canPublish);
+  // "You're connected" on joining the stage, then "Reconnecting…" → "You're back online" /
+  // "Connection lost", for everyone in this room.
+  const { greet } = useConnectionToast(room, recovering, RECOVERY_BACKOFF_MS.length, permissions.canPublish);
+  useEffect(() => {
+    greetConnected.current = greet;
+  }, [greet]);
   // This person's own hand and stage: "Your hand is raised", the host lowering it, the
   // stage invitation (Join stage / Not now), arriving on stage and leaving it. See
   // lib/self-hand-toasts.ts. Never overlaps the toasts above: those skip your own hand.

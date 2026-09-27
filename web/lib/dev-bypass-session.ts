@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import {
   DEV_BYPASS_OFF_COOKIE,
   DEV_BYPASS_OFF_STORAGE_KEY,
@@ -9,6 +10,16 @@ import {
 /** True when env bypass is on and this tab has not opted out via Sign out. */
 export function isDevAuthBypassActive(): boolean {
   return isDevAuthBypass() && !isDevBypassOptedOut();
+}
+
+const subscribeNothing = () => () => {};
+const inactiveOnServer = () => false;
+
+/** isDevAuthBypassActive for render output that must hydrate: false on the
+ *  server and during hydration (sessionStorage is not readable there), the live
+ *  value after. The same moment a mount effect would have seen it. */
+export function useDevAuthBypassActive(): boolean {
+  return useSyncExternalStore(subscribeNothing, isDevAuthBypassActive, inactiveOnServer);
 }
 
 export function isDevBypassOptedOut(): boolean {

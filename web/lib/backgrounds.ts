@@ -579,7 +579,10 @@ export function useVirtualBackgroundsEnabled(): boolean {
 
 /** Feature is enabled and this browser can run it. */
 export function useBackgroundsAvailable(): boolean {
-  return useVirtualBackgroundsEnabled() && useBackgroundsSupported();
+  // Both hooks every render: `&&` would skip the second whenever the first is false.
+  const enabled = useVirtualBackgroundsEnabled();
+  const supported = useBackgroundsSupported();
+  return enabled && supported;
 }
 
 type Wrapper = Pick<

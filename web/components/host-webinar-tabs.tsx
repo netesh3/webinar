@@ -114,11 +114,15 @@ export function HostWebinarTabs({
         : "Attendees");
   const [tab, setTab] = useState<Tab>(defaultTab);
 
-  // Follow ?tab= when the host clicks Admit / Attendees from the list.
-  useEffect(() => {
+  // Follow ?tab= when the host clicks Admit / Attendees from the list. Adjusted
+  // during render when the inputs change, not in an effect after it.
+  const queryInputs = JSON.stringify([initialTab ?? null, ended, whatsappConnect]);
+  const [seenQueryInputs, setSeenQueryInputs] = useState(queryInputs);
+  if (queryInputs !== seenQueryInputs) {
+    setSeenQueryInputs(queryInputs);
     const next = allowedTab(tabFromQuery(initialTab), ended, whatsappConnect);
     if (next) setTab(next);
-  }, [initialTab, ended, whatsappConnect]);
+  }
 
   return (
     <>
@@ -603,30 +607,13 @@ function StageTab({
 
 function ReportTab({ webinar: w }: { webinar: Webinar }) {
   const bypass = isDevAuthBypassActive();
-  const [rep, setRep] = useState<SessionReport | null>(null);
+  const [fetchedRep, setRep] = useState<SessionReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Local preview shows a fixture report, derived rather than set by the effect.
+  const rep = bypass ? BYPASS_REPORT : fetchedRep;
 
   useEffect(() => {
-    if (bypass) {
-      setRep({
-        registered: 4,
-        approved: 4,
-        attended: 3,
-        avgWatchMin: 18,
-        questions: 2,
-        pollVoters: 2,
-        questionRows: [],
-        /* Not an empty list any more, and each row is here for a reason: the table has four
-         * states worth looking at and none of them were reachable in preview.
-         *
-         * A rejoiner whose total is much less than their brackets (the case the whole change
-         * exists for), an early arrival whose waiting time is not counted, somebody still in
-         * the room, and the host — listed, labelled, and deliberately absent from the
-         * attended count above. */
-        attendees: BYPASS_ATTENDANCE,
-      });
-      return;
-    }
+    if (bypass) return;
     void api
       .sessionReport(w.id)
       .then(setRep)
@@ -783,6 +770,24 @@ const BYPASS_ATTENDANCE: AttendanceRow[] = [
     ],
   },
 ];
+
+const BYPASS_REPORT: SessionReport = {
+  registered: 4,
+  approved: 4,
+  attended: 3,
+  avgWatchMin: 18,
+  questions: 2,
+  pollVoters: 2,
+  questionRows: [],
+  /* Not an empty list any more, and each row is here for a reason: the table has four
+   * states worth looking at and none of them were reachable in preview.
+   *
+   * A rejoiner whose total is much less than their brackets (the case the whole change
+   * exists for), an early arrival whose waiting time is not counted, somebody still in
+   * the room, and the host — listed, labelled, and deliberately absent from the
+   * attended count above. */
+  attendees: BYPASS_ATTENDANCE,
+};
 
 /* Who was in the room, when, and for how long.
  *

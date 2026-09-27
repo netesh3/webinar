@@ -50,23 +50,20 @@ function ProfileForm({ account }: { account: Account }) {
   const [title, setTitle] = useState(account.title);
   const [org, setOrg] = useState(account.org);
   const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // The ?youtube= result of the OAuth round trip seeds the messages as initial
+  // state. This form only mounts on the client, once the session has loaded.
+  const [error, setError] = useState<string | null>(
+    () => youtubeReturnMessages(readYouTubeReturn()).error,
+  );
   const [busy, setBusy] = useState(false);
   const [ytBusy, setYtBusy] = useState(false);
-  const [ytNotice, setYtNotice] = useState<string | null>(null);
+  const [ytNotice, setYtNotice] = useState<string | null>(
+    () => youtubeReturnMessages(readYouTubeReturn()).notice,
+  );
 
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    const result = q.get("youtube");
-    if (!result) return;
+    if (!readYouTubeReturn()) return;
     void refresh();
-    if (result === "connected") {
-      setYtNotice("YouTube connected. You can go live from a webinar without pasting a stream key.");
-    } else if (result === "denied") {
-      setError("YouTube access was not granted.");
-    } else if (result === "error") {
-      setError("Could not connect YouTube. Try again, or paste a stream key in the room.");
-    }
     window.history.replaceState({}, "", window.location.pathname);
   }, [refresh]);
 
@@ -253,4 +250,32 @@ function ProfileForm({ account }: { account: Account }) {
       </Card>
     </div>
   );
+}
+
+/** The ?youtube= flag the OAuth callback redirects back with, if any. */
+function readYouTubeReturn(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("youtube");
+}
+
+function youtubeReturnMessages(result: string | null): {
+  notice: string | null;
+  error: string | null;
+} {
+  switch (result) {
+    case "connected":
+      return {
+        notice: "YouTube connected. You can go live from a webinar without pasting a stream key.",
+        error: null,
+      };
+    case "denied":
+      return { notice: null, error: "YouTube access was not granted." };
+    case "error":
+      return {
+        notice: null,
+        error: "Could not connect YouTube. Try again, or paste a stream key in the room.",
+      };
+    default:
+      return { notice: null, error: null };
+  }
 }

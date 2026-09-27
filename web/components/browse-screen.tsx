@@ -18,17 +18,12 @@ import { Button, ButtonLink, Empty } from "./ui";
 export function BrowseScreen() {
   const { account, status } = useSession();
   const bypass = isDevAuthBypassActive();
-  const [webinars, setWebinars] = useState<Webinar[] | null>(null);
-  const [state, setState] = useState<
+  const [fetchedWebinars, setWebinars] = useState<Webinar[] | null>(null);
+  const [fetchState, setState] = useState<
     "loading" | "ok" | "signed-out" | "unreachable"
   >("loading");
 
   const load = useCallback(() => {
-    if (bypass) {
-      setWebinars(DEV_BYPASS_WEBINARS.filter((w) => w.status !== "draft"));
-      setState("ok");
-      return;
-    }
     api
       .listWebinars()
       .then((rows) => {
@@ -42,12 +37,19 @@ export function BrowseScreen() {
             : "unreachable",
         );
       });
-  }, [bypass]);
+  }, []);
 
+  // Local preview has nothing to fetch: the fixture list is derived below
+  // rather than copied into state by this effect.
   useEffect(() => {
-    if (status === "loading") return;
+    if (status === "loading" || bypass) return;
     load();
-  }, [status, load]);
+  }, [status, bypass, load]);
+
+  const webinars = bypass
+    ? DEV_BYPASS_WEBINARS.filter((w) => w.status !== "draft")
+    : fetchedWebinars;
+  const state = bypass ? (status === "loading" ? "loading" : "ok") : fetchState;
 
   const signedOut = state === "signed-out" || (state !== "loading" && !account);
   const canHost = account?.canHost === true;

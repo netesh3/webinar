@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import type { SetStreamRequest, Webinar } from "@/lib/api-types";
 import { CopyField, Modal, Spinner } from "../controls";
@@ -44,21 +44,21 @@ export function useYouTubeStream(): YouTubeStream {
   const connected = Boolean(account?.youtube?.connected);
   const channel = account?.youtube?.channelTitle;
 
-  const load = useCallback(async () => {
-    try {
-      const next = await api.hostWebinar(slug);
-      setWb(next);
-      setWatch(next.streamWatchUrl ?? "");
-    } catch {
-      // The host view is the only source of streamConfigured. Failure here
-      // just leaves the button in its idle state.
-    }
-  }, [slug]);
-
+  // Inline promise chain rather than an async helper, so every state write is
+  // visibly in a callback instead of looking synchronous to the effect.
   useEffect(() => {
     if (!isHost) return;
-    void load();
-  }, [isHost, load]);
+    api
+      .hostWebinar(slug)
+      .then((next) => {
+        setWb(next);
+        setWatch(next.streamWatchUrl ?? "");
+      })
+      .catch(() => {
+        // The host view is the only source of streamConfigured. Failure here
+        // just leaves the button in its idle state.
+      });
+  }, [isHost, slug]);
 
   const configured = Boolean(wb?.streamConfigured);
   // A key from an earlier take in this session is still on file, so going live
