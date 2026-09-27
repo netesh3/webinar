@@ -283,6 +283,11 @@ export interface EngagementKPIs {
    * * -1 when no quiz ran.
    */
   quizAccuracyPct: number /* int */;
+  /**
+   * * Distinct attendees who answered at least one poll or quiz — the old Report's "poll
+   * 	 * voters". Absent from snapshots stored before it existed.
+   */
+  pollVoters?: number /* int */;
   reactions: number /* int */;
   handRaises: number /* int */;
 }

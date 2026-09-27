@@ -234,9 +234,9 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
             <ButtonLink href={`/host/${slug}/edit`}>Finish setup</ButtonLink>
           ) : isEnded ? (
             <ButtonLink
-              href={`/host/${slug}?tab=${recordings.length > 0 ? "recordings" : "attendees"}`}
+              href={`/host/${slug}?tab=${recordings.length > 0 ? "recordings" : "engagement"}`}
             >
-              {recordings.length > 0 ? "Watch the recording" : "View attendance"}
+              {recordings.length > 0 ? "Watch the recording" : "See engagement"}
             </ButtonLink>
           ) : (
             <>

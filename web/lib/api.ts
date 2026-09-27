@@ -564,8 +564,10 @@ export const api = {
   registrantsCsvUrl: (slug: string) =>
     `${API_BASE}/api/host/webinars/${seg(slug)}/registrants.csv`,
 
-  sessionReport: (slug: string) =>
-    request<SessionReport>(`/api/host/webinars/${seg(slug)}/report`, fresh),
+  /** The attendance report, now read only for the stage's own rows (the Engagement tab's
+   *  "Hosts & panelists" list); its CSV twin is the Export menu's attendance log. */
+  sessionReport: (slug: string, signal?: AbortSignal) =>
+    request<SessionReport>(`/api/host/webinars/${seg(slug)}/report`, { ...fresh, signal }),
 
   reportCsvUrl: (slug: string) =>
     `${API_BASE}/api/host/webinars/${seg(slug)}/report.csv`,

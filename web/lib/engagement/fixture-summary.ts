@@ -108,6 +108,7 @@ export function summarise(world: FixtureWorld): EngagementSummary {
       upvotes: sum(questions.map((q) => q.upvotes)),
       pollResponsePct: pctOf(sum(pollOnly.map((p) => sum(p.votes))), sum(pollOnly.map((p) => p.liveAtOpen))),
       quizAccuracyPct: pctOf(sum(quizOnly.map(correctVotes)), sum(quizOnly.map((p) => sum(p.votes)))),
+      pollVoters: rows.filter((r) => r.counts.polls + r.counts.quizAnswered > 0).length,
       reactions: sum(activity.reaction),
       handRaises: sum(rows.map((r) => r.counts.hands)),
     },
