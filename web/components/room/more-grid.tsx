@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { isPinnable, moreOrder, type ToolId } from "@/lib/tools";
+import { isHomeTool, isPinnable, moreOrder, type ToolId } from "@/lib/tools";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { useCompact } from "@/lib/compact";
 import { badgeText } from "@/lib/mentions";
@@ -67,6 +67,7 @@ type ShareAction = {
 const ON_WORD: Partial<Record<ToolId, string>> = {
   captions: "On",
   sharefile: "Sharing",
+  youtube: "On",
   hand: "Raised",
 };
 
@@ -76,6 +77,7 @@ export function MoreGrid({
   shareAction,
   toolActions = {},
   canCustomize,
+  movableIds,
   bumpTarget,
   editing,
   onEditingChange,
@@ -96,6 +98,10 @@ export function MoreGrid({
   toolActions?: Partial<Record<ToolId, ToolAction>>;
   /** False on a screen with no customisable toolbar slots. */
   canCustomize: boolean;
+  /** Which items can move, when not all of them can — on a screen with no pin
+   *  slots, only a tucked YouTube or Settings can (it has its own place to go
+   *  back to). Omitted means every item. */
+  movableIds?: readonly ToolId[];
   /** What adding one more would push back into More, for the + button's title. */
   bumpTarget: ToolId | null;
   editing: boolean;
@@ -220,7 +226,7 @@ export function MoreGrid({
   const inviting = drag.drag?.from === "bar" && !dropping;
   const draggingOut = drag.drag?.from === "grid";
 
-  const movable = new Set(canCustomize ? items : []);
+  const movable = new Set(canCustomize ? (movableIds ?? items) : []);
   const entries = moreOrder<string>([
     ...(shareAction ? ["share"] : []),
     ...(panelItems ?? []),
@@ -364,9 +370,10 @@ export function MoreGrid({
                   ? `Layout · ${LAYOUT_LABEL[stage.mode]}`
                   : (t.menuLabel ?? t.label);
               const badge = badgeText(unread[id], id === "chat" ? mentions : 0);
-              const addTitle = bumpTarget
-                ? `Add ${name} to the toolbar (${tool(bumpTarget).label} moves back to More to make room)`
-                : `Add ${name} to the toolbar`;
+              const addTitle =
+                bumpTarget && !isHomeTool(id)
+                  ? `Add ${name} to the toolbar (${tool(bumpTarget).label} moves back to More to make room)`
+                  : `Add ${name} to the toolbar`;
 
               return (
                 <MoreCell

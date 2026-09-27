@@ -113,6 +113,7 @@ const EMPTY_UNREAD: Record<ToolId, number> = {
   host: 0,
   captions: 0,
   sharefile: 0,
+  youtube: 0,
 };
 
 export function PreviewRoom() {
