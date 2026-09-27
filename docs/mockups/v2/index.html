@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Engage v2 mocks · WebinarLiv</title><link rel="stylesheet" href="assets/v2.css">
+<style>
+  .pair { margin-top: 28px; }
+  .pair h2 { font-size: 16px; } .pair .why { font-size: 13px; color: var(--ink-2); margin: 4px 0 12px; max-width: 60rem; line-height: 1.55; }
+  .ba img { aspect-ratio: 16/10; object-fit: cover; object-position: top; background: var(--surface-2); }
+  .ba .cap { padding: 10px 14px; display: flex; gap: 8px; align-items: center; font-size: 12.5px; }
+  ul.pts { margin: 10px 0 0; padding-left: 18px; line-height: 1.7; color: var(--ink-2); font-size: 13px; }
+  .phases { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }
+  .phases .card { padding: 12px 14px; } .phases .n { font-size: 11px; font-weight: 700; color: var(--brand); letter-spacing: .06em; }
+</style></head>
+<body>
+<div data-nav></div>
+<main class="wide">
+  <h1>WhatsApp CRM v2: from working to great</h1>
+  <p class="muted" style="margin-top:6px;max-width:52rem">Each pair shows today's screen (demo coach, running locally) next to the redesign. Same WebinarLiv design system, no new menu. Full plan: <code>docs/engage/V2.md</code>.</p>
+
+  <div class="phases">
+    <div class="card"><div class="n">PHASE 1</div><div class="name">Polish</div><div class="xs muted">WhatsApp-true inbox, profile panel, avatars, better send dialog</div></div>
+    <div class="card"><div class="n">PHASE 2</div><div class="name">Story + next step</div><div class="xs muted">Journey view, suggested follow-ups, results, home card</div></div>
+    <div class="card"><div class="n">PHASE 3</div><div class="name">Speed</div><div class="xs muted">Quick replies, shortcuts, snooze, hot leads</div></div>
+    <div class="card"><div class="n">PHASE 4</div><div class="name">Recipes</div><div class="xs muted">One-toggle automations over the existing engines</div></div>
+    <div class="card"><div class="n">PHASE 5</div><div class="name">Attendee side</div><div class="xs muted">Buttons, images, calendar, quick-reply actions</div></div>
+  </div>
+
+  <section class="pair">
+    <h2>1 · Ended webinar → Messages</h2>
+    <p class="why">Today it's five plain lists. v2 shows what happened before, during and after, gives one card per watch-time group with a ready message, and puts a single next action at the top.</p>
+    <div class="ba">
+      <div class="card"><img src="png/now/webinar-messages.png" alt=""><div class="cap"><span class="lbl now">Now</span> Lists, equal weight, no results</div></div>
+      <a class="card" href="webinar-messages.html"><img src="png/webinar-messages.png" alt=""><div class="cap"><span class="lbl new">v2</span> Journey · next step · segment cards · results</div></a>
+    </div>
+  </section>
+
+  <section class="pair">
+    <h2>2 · Messages (inbox)</h2>
+    <p class="why">It should feel like WhatsApp: green bubbles, ticks, the 24h window as a pill, and the three automatic reminders folded into one line so the real conversation stands out. A profile panel shows who the person is.</p>
+    <div class="ba">
+      <div class="card"><img src="png/now/inbox.png" alt=""><div class="cap"><span class="lbl now">Now</span> Blue bubbles, reminders bury the chat</div></div>
+      <a class="card" href="inbox.html"><img src="png/inbox.png" alt=""><div class="cap"><span class="lbl new">v2</span> WhatsApp look · profile panel · quick replies</div></a>
+    </div>
+  </section>
+
+  <section class="pair">
+    <h2>3 · Send dialog</h2>
+    <p class="why">Template cards with friendly names instead of <code>missed_you · en · marketing</code>, the best one for the group first, a preview for each real recipient in a phone frame, and the Meta cost before sending.</p>
+    <div class="ba">
+      <div class="card"><img src="png/now/send.png" alt=""><div class="cap"><span class="lbl now">Now</span> Raw names, sample preview</div></div>
+      <a class="card" href="send.html"><img src="png/send.png" alt=""><div class="cap"><span class="lbl new">v2</span> Cards · real preview · cost</div></a>
+    </div>
+  </section>
+
+  <section class="pair">
+    <h2>4 · People</h2>
+    <p class="why">See who is worth talking to: avatars, a dot per webinar, watch bars, an engagement meter, saved groups like "Hot leads", and a floating bar for bulk actions.</p>
+    <div class="ba">
+      <div class="card"><img src="png/now/people.png" alt=""><div class="cap"><span class="lbl now">Now</span> Plain table</div></div>
+      <a class="card" href="people.html"><img src="png/people.png" alt=""><div class="cap"><span class="lbl new">v2</span> Engagement at a glance</div></a>
+    </div>
+  </section>
+
+  <section class="pair">
+    <h2>5 · Hosting home and bell</h2>
+    <p class="why">Show the payoff. "WhatsApp this week" has read rate, show-up lift, replies and leads; each webinar card shows its next scheduled send; the bell has one-tap actions.</p>
+    <div class="ba">
+      <div class="card"><img src="png/now/home.png" alt=""><div class="cap"><span class="lbl now">Now</span> Counts only</div></div>
+      <a class="card" href="home.html"><img src="png/home.png" alt=""><div class="cap"><span class="lbl new">v2</span> Results + actionable bell</div></a>
+    </div>
+  </section>
+
+  <section class="pair">
+    <h2>6 · Automations</h2>
+    <p class="why">Coaches don't build flows from a blank page. Recipes turn on in one click on top of the existing sequence and bot engines, each with a hint from the coach's own data.</p>
+    <div class="ba">
+      <div class="card"><img src="png/now/automations.png" alt=""><div class="cap"><span class="lbl now">Now</span> Empty page</div></div>
+      <a class="card" href="automations.html"><img src="png/automations.png" alt=""><div class="cap"><span class="lbl new">v2</span> Recipes</div></a>
+    </div>
+  </section>
+
+  <section class="pair">
+    <h2>7 · What the attendee sees</h2>
+    <p class="why">Opt-in that says what to expect, then templates with the webinar's image, Join / Add to calendar buttons, and quick-reply buttons that tag and route people automatically.</p>
+    <a class="card" href="attendee.html" style="display:block"><img src="png/attendee.png" alt="" style="width:100%;display:block;border-radius:12px 12px 0 0"><div class="cap" style="padding:10px 14px"><span class="lbl new">v2</span> New: nothing like this today</div></a>
+  </section>
+</main>
+<script src="assets/v2.js"></script>
+</body></html>

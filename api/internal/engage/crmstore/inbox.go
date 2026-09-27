@@ -26,6 +26,11 @@ const (
 	 AND ` + lastInboundAt + ` > COALESCE(` + lastManualReplyAt + `, '-infinity'::timestamptz)
 	 AND ` + lastInboundAt + ` > COALESCE(c.inbox_done_at, '-infinity'::timestamptz))`
 
+	// lastInboundBody is their newest message's text, for a one-line preview.
+	lastInboundBody = `COALESCE((SELECT inb.body FROM crm_messages inb
+	 WHERE inb.contact_id = c.id AND inb.direction = 'in'
+	 ORDER BY inb.created_at DESC LIMIT 1), '')`
+
 	hasThread = `EXISTS (SELECT 1 FROM crm_messages t WHERE t.contact_id = c.id)`
 
 	// inboxScope narrows to one webinar's people when $2 is set.
@@ -158,9 +163,10 @@ func (s *Store) ThreadMeta(ctx context.Context, hostID, contactID string) (types
 	err = s.pool.QueryRow(ctx, peopleWith()+`
 		SELECT COALESCE(per.webinars, 0), COALESCE(per.watch_min, 0)
 		  FROM per WHERE per.contact_id = $3::uuid`, hostID, "", contactID).Scan(&meta.Webinars, &meta.WatchMin)
-	if noRows(err) {
-		return meta, nil
+	if err != nil && !noRows(err) {
+		return meta, err
 	}
+	meta.History, err = s.ContactHistory(ctx, hostID, contactID)
 	return meta, err
 }
 
@@ -168,7 +174,8 @@ func (s *Store) ThreadMeta(ctx context.Context, hostID, contactID string) (types
 func (s *Store) Replies(ctx context.Context, hostID string) (types.CRMRepliesResponse, error) {
 	out := types.CRMRepliesResponse{Recent: []types.CRMReplyAlert{}, ByWebinar: map[string]int{}}
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.id::text, c.name, c.phone, COALESCE(tw.slug, ''), COALESCE(tw.topic, ''), `+lastInboundAt+`
+		SELECT c.id::text, c.name, c.phone, COALESCE(tw.slug, ''), COALESCE(tw.topic, ''), `+lastInboundAt+`,
+		       `+lastInboundBody+`
 		  FROM crm_contacts c
 		  `+threadWebinar+`
 		 WHERE c.host_id = $1::uuid AND `+needsReply+`
@@ -184,7 +191,7 @@ func (s *Store) Replies(ctx context.Context, hostID string) (types.CRMRepliesRes
 			phone string
 			at    time.Time
 		)
-		if err := rows.Scan(&a.ContactID, &a.Name, &phone, &a.WebinarID, &a.Webinar, &at); err != nil {
+		if err := rows.Scan(&a.ContactID, &a.Name, &phone, &a.WebinarID, &a.Webinar, &at, &a.Preview); err != nil {
 			return out, err
 		}
 		if a.Name == "" {
@@ -205,7 +212,7 @@ func (s *Store) Replies(ctx context.Context, hostID string) (types.CRMRepliesRes
 // WebinarWaiting is the replies waiting from one webinar's people, newest first.
 func (s *Store) WebinarWaiting(ctx context.Context, hostID, slug string) ([]types.CRMReplyAlert, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.id::text, COALESCE(NULLIF(c.name, ''), c.phone), `+lastInboundAt+`
+		SELECT c.id::text, COALESCE(NULLIF(c.name, ''), c.phone), `+lastInboundAt+`, `+lastInboundBody+`
 		  FROM crm_contacts c
 		 WHERE c.host_id = $1::uuid AND `+contactRegisteredFor(`$2`)+` AND `+needsReply+`
 		 ORDER BY 3 DESC LIMIT 50`, hostID, slug)
@@ -219,7 +226,7 @@ func (s *Store) WebinarWaiting(ctx context.Context, hostID, slug string) ([]type
 			a  types.CRMReplyAlert
 			at time.Time
 		)
-		if err := rows.Scan(&a.ContactID, &a.Name, &at); err != nil {
+		if err := rows.Scan(&a.ContactID, &a.Name, &at, &a.Preview); err != nil {
 			return nil, err
 		}
 		a.WebinarID = slug

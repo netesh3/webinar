@@ -25,6 +25,7 @@ import type {
   CRMInboxResponse,
   CRMPeopleResponse,
   CRMRepliesResponse,
+  CRMSummaryResponse,
   CRMTestSendRequest,
   CRMWebinarMessagesResponse,
   CRMMessage,
@@ -382,6 +383,9 @@ export const engageApi = {
 
   /** The bell's share of the inbox. */
   crmReplies: () => request<CRMRepliesResponse>("/api/host/crm/replies", fresh),
+
+  /** The Hosting home's "WhatsApp this week" card. */
+  crmSummary: () => request<CRMSummaryResponse>("/api/host/crm/summary", fresh),
 
   /** One webinar's Messages tab. */
   crmWebinarMessages: (slug: string) =>

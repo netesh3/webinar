@@ -144,6 +144,10 @@ export interface CRMDoneRequest {
 export interface CRMReplyAlert {
   contactId: string;
   name: string;
+  /**
+   * * Their last message, for a one-line preview.
+   */
+  preview?: string;
   webinar?: string;
   webinarId?: string;
   at: string;
@@ -198,6 +202,7 @@ export interface CRMWebinarMessagesResponse {
    * * Conversations with this webinar's people that need a reply, newest first.
    */
   waiting: CRMReplyAlert[];
+  results: CRMWebinarResults;
   whatsappConnected: boolean;
 }
 /**
@@ -217,6 +222,77 @@ export interface CRMThreadMeta {
   webinars: number /* int */;
   watchMin: number /* int */;
   needsReply: boolean;
+  /**
+   * * Their webinars with this host, newest first: the profile panel's watch bars and
+   * 	 *  the thread's day markers ("Joined live, watched 55 of 60 min").
+   */
+  history: CRMThreadWebinar[];
+}
+/**
+ *  CRMThreadWebinar is one webinar a person registered for.
+ */
+export interface CRMThreadWebinar {
+  id: string;
+  topic: string;
+  startsAt: string;
+  durationMin: number /* int */;
+  ended: boolean;
+  joined: boolean;
+  watchMin: number /* int */;
+}
+/**
+ *  CRMWebinarResults is what WhatsApp did for one webinar: the Messages tab's results
+ *  * panel and the journey's Live step. Show-up is split by whether a WhatsApp reminder
+ *  * actually reached the registrant, which is the comparison a coach is paying for.
+ */
+export interface CRMWebinarResults {
+  registered: number /* int */;
+  joined: number /* int */;
+  avgWatchMin: number /* int */;
+  /**
+   * * Registrants a WhatsApp reminder was sent to, and how many of them joined.
+   */
+  reminded: number /* int */;
+  remindedJoined: number /* int */;
+  /**
+   * * Everybody else (email only), and how many of them joined.
+   */
+  others: number /* int */;
+  othersJoined: number /* int */;
+  /**
+   * * Messages about this webinar that left: automatic and follow-ups.
+   */
+  sent: number /* int */;
+  read: number /* int */;
+  /**
+   * * Of those, template messages — the ones Meta bills — by category.
+   */
+  marketing: number /* int */;
+  utility: number /* int */;
+  /**
+   * * People who wrote back after the first message about this webinar.
+   */
+  replied: number /* int */;
+}
+/**
+ *  CRMSummaryResponse is the Hosting home's "WhatsApp this week" card.
+ */
+export interface CRMSummaryResponse {
+  days: number /* int */;
+  sent: number /* int */;
+  read: number /* int */;
+  /**
+   * * People who wrote in during the period.
+   */
+  replied: number /* int */;
+  needsReply: number /* int */;
+  newOptIns: number /* int */;
+  connected: boolean;
+  /**
+   * * The next thing that will go out: a reminder or a scheduled follow-up.
+   */
+  nextSendAt?: string;
+  nextSendLabel?: string;
 }
 
 //////////
@@ -1783,6 +1859,12 @@ export interface CRMMessage {
    * * A person wrote it: from the inbox, or on the phone (Coexistence).
    */
   manual?: boolean;
+  /**
+   * * Sent by the outbox on its own: a confirmation, reminder or replay. The thread
+   * 	 *  folds these into one line so the conversation stays readable.
+   */
+  automatic?: boolean;
+  webinarId?: string;
 }
 /**
  *  CRMContactScope names the webinar a contacts list was narrowed to.
@@ -2528,6 +2610,20 @@ export interface CRMAudienceResponse {
   noOptIn: number /* int */;
   optedOut: number /* int */;
   noNumber: number /* int */;
+  /**
+   * * The first few recipients with their values filled in, for the send preview.
+   * 	 *  Only when the request carries params; each Params lines up with the template's
+   * 	 *  {{1}}, {{2}} … the way the broadcast will send them.
+   */
+  samples?: CRMAudienceSample[];
+}
+/**
+ * * One recipient as the send preview shows them.
+ */
+export interface CRMAudienceSample {
+  contactId: string;
+  name: string;
+  params: string[];
 }
 /**
  * * DripManual is a sequence the host puts people on themselves.

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hosting home (v2 mock)</title><link rel="stylesheet" href="assets/v2.css">
+<style>
+  .tile { display: flex; align-items: center; gap: 12px; padding: 14px; }
+  .tile .ic { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); }
+  .wcard { display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 16px; align-items: center; }
+  .wa-strip { display: flex; gap: 16px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--line); background: #fbfcfd; border-radius: 0 0 12px 12px; font-size: 12px; color: var(--ink-2); }
+  .pop2 { position: absolute; right: calc((100vw - 72rem) / 2 + 20px); top: 52px; width: 360px; }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+    <div class="card tile"><span class="ic">▶</span><div class="grow"><div class="name">Instant webinar</div><div class="xs muted">Go live immediately, no form</div></div><span class="faint">›</span></div>
+    <div class="card tile"><span class="ic">▦</span><div class="grow"><div class="name">Schedule a webinar</div><div class="xs muted">Pick a date and invite people</div></div><span class="faint">›</span></div>
+  </div>
+
+  <!-- WhatsApp this week -->
+  <div class="card p5" style="margin-bottom:20px">
+    <div class="row between" style="margin-bottom:14px">
+      <div class="row"><span style="width:28px;height:28px;border-radius:8px;background:var(--ok-soft);color:var(--wa);display:grid;place-items:center">✆</span><div class="st" style="margin:0">WhatsApp this week</div></div>
+      <a class="small linkish" href="inbox.html">4 replies waiting →</a>
+    </div>
+    <div class="kpis">
+      <div><div class="small muted">Messages read</div><div class="kpi v" style="padding:0">84%</div><div class="spark"><i style="height:40%"></i><i style="height:55%"></i><i style="height:48%"></i><i style="height:70%"></i><i style="height:62%"></i><i class="on" style="height:88%"></i><i class="on" style="height:80%"></i></div></div>
+      <div><div class="small muted">Show-up rate with WhatsApp</div><div class="kpi v" style="padding:0">82%</div><div class="xs up" style="color:var(--ok)">vs 50% email only</div></div>
+      <div><div class="small muted">Replies</div><div class="kpi v" style="padding:0">12</div><div class="xs faint">4 need you · avg reply 2 h</div></div>
+      <div><div class="small muted">New hot leads</div><div class="kpi v" style="padding:0;color:#c2410c">2</div><div class="row" style="margin-top:4px"><span class="av sm a2">RV</span><span class="av sm a7" style="margin-left:-6px;border:2px solid #fff">SR</span></div></div>
+    </div>
+  </div>
+
+  <div data-hosttabs="upcoming"></div>
+
+  <div class="card p0">
+    <div class="wcard">
+      <div><span class="badge brand">Wed 30 Sept · 6:30 PM</span><div class="name" style="font-size:15px;margin-top:8px">Mindful Money: Budgeting Without Guilt</div><div class="xs muted" style="margin-top:2px">9 registered · in 3 days</div></div>
+      <div class="row"><button class="btn sm sec">Share</button><button class="btn sm">Host webinar</button></div>
+    </div>
+    <div class="wa-strip">
+      <span class="st-dot ok">WhatsApp on</span>
+      <span>✓ 9 confirmations · 7 read</span>
+      <span>⏱ Next: 1-day reminder to 8, Tue 6:30 PM</span>
+      <span class="grow"></span>
+      <span style="color:var(--ok);font-weight:500">↩ 3 replies</span>
+    </div>
+  </div>
+
+  <div class="card pop pop2">
+    <div class="row between" style="padding:10px 14px;border-bottom:1px solid var(--line)"><b class="small">Notifications</b><span class="xs linkish">Mark all read</span></div>
+    <div style="padding:8px 14px;background:var(--ok-soft)" class="row between"><span class="small" style="color:var(--ok);font-weight:600">4 WhatsApp replies</span><span class="xs linkish">Open Messages</span></div>
+    <div class="li"><span class="av sm a2">RV</span><div class="grow"><div class="small"><b>Rahul</b> asked about your paid program</div><div class="xs faint">Hot lead · 18 h</div></div><button class="btn sm sec">Reply</button></div>
+    <div class="li"><span class="av sm a7">SR</span><div class="grow"><div class="small"><b>Siddharth</b>: "Will the slides be shared?"</div><div class="xs faint">1 h</div></div><button class="btn sm sec">Reply</button></div>
+    <div class="li"><span class="av sm a1">DK</span><div class="grow"><div class="small"><b>Divya</b> wants the replay link</div><div class="xs" style="color:var(--warn)">Window closes in 3 h</div></div><button class="btn sm sec">Send link</button></div>
+  </div>
+</main>
+<div class="note"><b>Hosting home.</b> A small "WhatsApp this week" card shows the payoff: read rate, show-up lift, replies and leads. Each webinar card gets a WhatsApp strip with the next scheduled send. The bell summarises each reply and has a one-tap action.</div>
+<script src="assets/v2.js"></script>
+</body></html>

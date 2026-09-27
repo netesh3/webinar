@@ -81,7 +81,7 @@ export function Modal({
   description?: string;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
   /** Use the room's dark surface. A white dialog over a near-black video stage is
    *  a flashbang in a session someone has been sitting in for an hour. */
   dark?: boolean;
@@ -110,7 +110,7 @@ export function Modal({
 
   if (!open) return null;
 
-  const width = { sm: "sm:max-w-sm", md: "sm:max-w-lg", lg: "sm:max-w-2xl" }[size];
+  const width = { sm: "sm:max-w-sm", md: "sm:max-w-lg", lg: "sm:max-w-2xl", xl: "sm:max-w-4xl" }[size];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">

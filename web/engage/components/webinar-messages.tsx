@@ -4,9 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { engageApi } from "../api";
 import { Disclosure, Spinner } from "@/components/controls";
-import { SendIcon } from "@/components/icons";
 import { useToast } from "@/components/providers";
-import { Badge, Button, Card, Empty } from "@/components/ui";
+import { Card, Empty } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import {
   NotifyWhatsAppConfirmed,
@@ -17,8 +16,20 @@ import {
   type CRMTemplate,
   type CRMWebinarMessagesResponse,
 } from "@/lib/api-types";
+import { AudienceSegment, type CRMAudienceResponse } from "@/lib/api-types";
+import { useNow } from "@/lib/clock";
 import { formatRelative } from "@/lib/format";
-import { watchBuckets } from "../buckets";
+import { watchBuckets, type WatchBucket } from "../buckets";
+import {
+  BucketCard,
+  Journey,
+  NextStepCard,
+  ResultsPanel,
+  WaitingList,
+  journeySteps,
+  nextStep,
+  sameSegment,
+} from "./journey";
 import { RemindersSettings } from "./crm-screen";
 import { SendDialog, type SendTarget } from "./send-dialog";
 
@@ -46,7 +57,53 @@ export function WebinarMessagesTab({
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
+  const [audiences, setAudiences] = useState<
+    Record<string, CRMAudienceResponse>
+  >({});
+  const now = useNow();
+  const buckets = watchBuckets(durationMin);
+
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+
+  // Each group's count and first few faces, for the cards. Only once it has ended.
+  useEffect(() => {
+    if (!ended) return;
+    let cancelled = false;
+    Promise.all(
+      watchBuckets(durationMin).map((b) =>
+        engageApi
+          .crmAudienceFor({
+            name: "",
+            template: "",
+            language: "",
+            audience: AudienceSegment,
+            webinarId: slug,
+            segment: b.segment,
+            params: [{ field: "first_name" }],
+          })
+          .then((a) => [b.id, a] as const)
+          .catch(() => null),
+      ),
+    ).then((all) => {
+      if (cancelled) return;
+      const next: Record<string, CRMAudienceResponse> = {};
+      for (const x of all) if (x) next[x[0]] = x[1];
+      setAudiences(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, ended, durationMin, tick]);
+
+  function openBucket(b: WatchBucket) {
+    setTarget({
+      kind: "segment",
+      webinarId: slug,
+      segment: b.segment,
+      label: b.label,
+      hints: b.hints,
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +117,11 @@ export function WebinarMessagesTab({
       })
       .catch((e: unknown) => {
         if (!cancelled)
-          setError(e instanceof ApiError ? e.message : "Could not load this webinar's messages.");
+          setError(
+            e instanceof ApiError
+              ? e.message
+              : "Could not load this webinar's messages.",
+          );
       });
     return () => {
       cancelled = true;
@@ -83,7 +144,9 @@ export function WebinarMessagesTab({
       })
       .catch((e: unknown) => {
         setTemplates([]);
-        setTemplatesError(e instanceof ApiError ? e.message : "Could not load templates.");
+        setTemplatesError(
+          e instanceof ApiError ? e.message : "Could not load templates.",
+        );
         if (refresh) notify("Could not reach WhatsApp.", "error");
       })
       .finally(() => setSyncing(false));
@@ -103,7 +166,10 @@ export function WebinarMessagesTab({
         title="WhatsApp isn't connected"
         hint="Connect your WhatsApp Business number to send confirmations, reminders and follow-ups for this webinar."
         action={
-          <Link href="/account" className="font-medium text-brand hover:underline">
+          <Link
+            href="/account"
+            className="font-medium text-brand hover:underline"
+          >
             Account settings
           </Link>
         }
@@ -111,116 +177,139 @@ export function WebinarMessagesTab({
     );
   }
 
-  const a = data.audience;
-  const buckets = watchBuckets(durationMin);
+  const steps = journeySteps({
+    automatic: data.automatic,
+    results: data.results,
+    broadcasts: data.broadcasts,
+    buckets,
+    ended,
+  });
+  const next =
+    now === null
+      ? null
+      : nextStep({
+          ended,
+          buckets,
+          audiences,
+          broadcasts: data.broadcasts,
+          waiting: data.waiting,
+          now,
+          onSend: openBucket,
+        });
+  const replies = data.broadcasts.reduce((n, b) => n + b.stats.replied, 0);
 
   return (
     <div className="grid gap-5">
-      <Card className="px-4 py-3 text-[13px]">
-        <span className="font-medium text-ink">
-          {a.recipients} of {a.recipients + a.noOptIn + a.optedOut + a.noNumber} registrants
-        </span>{" "}
-        <span className="text-ink-2">
-          can get WhatsApp messages
-          {a.noOptIn + a.optedOut + a.noNumber > 0 &&
-            ` · ${a.noOptIn} didn't opt in, ${a.optedOut} opted out, ${a.noNumber} no number`}
-        </span>
-      </Card>
+      {next && <NextStepCard step={next} />}
+
+      <Journey steps={steps} audience={data.audience} />
 
       {ended && (
         <section className="grid gap-2">
-          <h3 className="text-[13px] font-semibold text-ink">Follow up</h3>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { id: "all", label: "Everyone registered", segment: {} },
-              ...buckets,
-            ].map((b) => (
-              <Card key={b.id} className="flex items-center justify-between gap-2 px-4 py-3">
-                <span className="text-[13px] font-medium text-ink">{b.label}</span>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() =>
-                    setTarget({ kind: "segment", webinarId: slug, segment: b.segment, label: b.label })
-                  }
-                >
-                  <SendIcon className="size-3.5" />
-                  Message
-                </Button>
-              </Card>
+          <h3 className="text-[13px] font-semibold text-ink">
+            Follow up, by how long they watched
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {buckets.map((b) => (
+              <BucketCard
+                key={b.id}
+                bucket={b}
+                audience={audiences[b.id]}
+                sent={data.broadcasts.find((x) =>
+                  sameSegment(x.segment, b.segment),
+                )}
+                onSend={() => openBucket(b)}
+              />
             ))}
           </div>
+          <button
+            type="button"
+            className="justify-self-start text-[12px] font-medium text-brand hover:underline"
+            onClick={() =>
+              setTarget({
+                kind: "segment",
+                webinarId: slug,
+                segment: {},
+                label: "Everyone registered",
+              })
+            }
+          >
+            Or message everyone registered
+          </button>
         </section>
       )}
 
-      {data.waiting.length > 0 && (
-        <section className="grid gap-2">
-          <h3 className="text-[13px] font-semibold text-ink">
-            Waiting for your reply <Badge tone="brand">{data.waiting.length}</Badge>
-          </h3>
-          <Card className="divide-y divide-line p-0">
-            {data.waiting.map((w) => (
-              <Link
-                key={w.contactId}
-                href={`/host?tab=messages&contact=${encodeURIComponent(w.contactId)}`}
-                className="flex items-center gap-3 px-4 py-2.5 text-[13px] hover:bg-surface-2"
-              >
-                <span className="font-medium text-ink">{w.name}</span>
-                <span className="min-w-0 flex-1 truncate text-ink-3">Open the conversation</span>
-                <span className="shrink-0 text-[11px] text-ink-3">
-                  {formatRelative(w.at, new Date())}
-                </span>
-              </Link>
-            ))}
-          </Card>
-        </section>
+      {(data.waiting.length > 0 || ended) && (
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          {data.waiting.length > 0 ? (
+            <WaitingList waiting={data.waiting} />
+          ) : (
+            <Card className="px-4 py-6 text-center text-[12.5px] text-ink-3">
+              No replies waiting. When people answer, they show up here and on
+              the bell.
+            </Card>
+          )}
+          {ended && <ResultsPanel r={data.results} replies={replies} />}
+        </div>
       )}
 
-      <section className="grid gap-2">
-        <h3 className="text-[13px] font-semibold text-ink">Automatic messages</h3>
-        <Card className="divide-y divide-line p-0">
-          {data.automatic.map((s, i) => (
-            <AutomaticRow
-              key={`${s.kind}-${s.offsetMin ?? i}`}
-              stats={s}
-              template={data.templates.find((t) => t.kind === s.kind)?.template ?? ""}
-            />
-          ))}
-        </Card>
-        <p className="text-[11.5px] text-ink-3">
-          Reminder times and the WhatsApp switch for this webinar are in its Settings.
-        </p>
-        <Disclosure summary="Change which template each message uses">
-          <p className="mb-3 text-[12px] text-ink-3">
-            These apply to all your webinars — the facts in each message (topic, time) come
-            from the webinar.
-          </p>
-          <RemindersSettings
-            templates={templates}
-            templatesError={templatesError}
-            syncing={syncing}
-            onRefreshTemplates={() => loadTemplates(true)}
-            onSaved={refresh}
-          />
-        </Disclosure>
-      </section>
+      <Disclosure summary="Every message, in detail">
+        <div className="grid gap-5 pt-2">
+          <section className="grid gap-2">
+            <h3 className="text-[13px] font-semibold text-ink">
+              Automatic messages
+            </h3>
+            <Card className="divide-y divide-line p-0">
+              {data.automatic.map((s, i) => (
+                <AutomaticRow
+                  key={`${s.kind}-${s.offsetMin ?? i}`}
+                  stats={s}
+                  template={
+                    data.templates.find((t) => t.kind === s.kind)?.template ??
+                    ""
+                  }
+                />
+              ))}
+            </Card>
+            <p className="text-[11.5px] text-ink-3">
+              Reminder times and the WhatsApp switch for this webinar are in its
+              Settings.
+            </p>
+            <Disclosure summary="Change which template each message uses">
+              <p className="mb-3 text-[12px] text-ink-3">
+                These apply to all your webinars — the facts in each message
+                (topic, time) come from the webinar.
+              </p>
+              <RemindersSettings
+                templates={templates}
+                templatesError={templatesError}
+                syncing={syncing}
+                onRefreshTemplates={() => loadTemplates(true)}
+                onSaved={refresh}
+              />
+            </Disclosure>
+          </section>
 
-      <section className="grid gap-2">
-        <h3 className="text-[13px] font-semibold text-ink">Follow-ups sent</h3>
-        {data.broadcasts.length === 0 ? (
-          <p className="text-[12.5px] text-ink-3">
-            {ended
-              ? "None yet. Pick who to message above."
-              : "After the webinar ends you can message people by how long they watched."}
-          </p>
-        ) : (
-          <Card className="divide-y divide-line p-0">
-            {data.broadcasts.map((b) => (
-              <BroadcastRow key={b.id} broadcast={b} />
-            ))}
-          </Card>
-        )}
-      </section>
+          <section className="grid gap-2">
+            <h3 className="text-[13px] font-semibold text-ink">
+              Follow-ups sent
+            </h3>
+            {data.broadcasts.length === 0 ? (
+              <p className="text-[12.5px] text-ink-3">
+                {ended
+                  ? "None yet. Pick who to message above."
+                  : "After the webinar ends you can message people by how long they watched."}
+              </p>
+            ) : (
+              <Card className="divide-y divide-line p-0">
+                {data.broadcasts.map((b) => (
+                  <BroadcastRow key={b.id} broadcast={b} />
+                ))}
+              </Card>
+            )}
+          </section>
+        </div>
+      </Disclosure>
 
       <SendDialog
         open={target !== null}
@@ -251,7 +340,13 @@ export function offsetText(min: number): string {
   return min === 1 ? "1 minute" : `${min} minutes`;
 }
 
-function AutomaticRow({ stats: s, template }: { stats: CRMAutomaticStats; template: string }) {
+function AutomaticRow({
+  stats: s,
+  template,
+}: {
+  stats: CRMAutomaticStats;
+  template: string;
+}) {
   const sent = s.sent;
   const due = s.dueAt ? new Date(s.dueAt) : null;
   return (
@@ -260,7 +355,9 @@ function AutomaticRow({ stats: s, template }: { stats: CRMAutomaticStats; templa
         <div className="font-medium text-ink">{automaticLabel(s)}</div>
         <div className="text-[11.5px] text-ink-3">
           {template ? `Template: ${template}` : "Off — no template chosen"}
-          {due && due > new Date() && ` · sends ${formatRelative(s.dueAt!, new Date())}`}
+          {due &&
+            due > new Date() &&
+            ` · sends ${formatRelative(s.dueAt!, new Date())}`}
         </div>
       </div>
       <div className="flex gap-3 text-[12px] tabular-nums text-ink-2">
@@ -281,7 +378,8 @@ function BroadcastRow({ broadcast: b }: { broadcast: CRMBroadcast }) {
       <div className="min-w-0 flex-1">
         <div className="font-medium text-ink">{b.segmentLabel || b.name}</div>
         <div className="text-[11.5px] text-ink-3">
-          {b.template} · {b.status} · {formatRelative(b.scheduledAt || b.createdAt, new Date())}
+          {b.template} · {b.status} ·{" "}
+          {formatRelative(b.scheduledAt || b.createdAt, new Date())}
         </div>
       </div>
       <div className="flex gap-3 text-[12px] tabular-nums text-ink-2">

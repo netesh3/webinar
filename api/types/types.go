@@ -1171,6 +1171,10 @@ type CRMMessage struct {
 	Webinar string `json:"webinar,omitempty"`
 	/** A person wrote it: from the inbox, or on the phone (Coexistence). */
 	Manual bool `json:"manual,omitempty"`
+	/** Sent by the outbox on its own: a confirmation, reminder or replay. The thread
+	 *  folds these into one line so the conversation stays readable. */
+	Automatic bool   `json:"automatic,omitempty"`
+	WebinarID string `json:"webinarId,omitempty"`
 }
 
 /* CRMContactScope names the webinar a contacts list was narrowed to.
@@ -1738,6 +1742,17 @@ type CRMAudienceResponse struct {
 	NoOptIn  int `json:"noOptIn"`
 	OptedOut int `json:"optedOut"`
 	NoNumber int `json:"noNumber"`
+	/** The first few recipients with their values filled in, for the send preview.
+	 *  Only when the request carries params; each Params lines up with the template's
+	 *  {{1}}, {{2}} … the way the broadcast will send them. */
+	Samples []CRMAudienceSample `json:"samples,omitempty"`
+}
+
+/** One recipient as the send preview shows them. */
+type CRMAudienceSample struct {
+	ContactID string   `json:"contactId"`
+	Name      string   `json:"name"`
+	Params    []string `json:"params"`
 }
 
 /* How somebody enters a drip.

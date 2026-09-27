@@ -169,6 +169,22 @@ func (s *Module) handleCRMWebinarMessages(w http.ResponseWriter, r *http.Request
 		s.fail(w, r, "crm webinar messages: waiting", err)
 		return
 	}
+	if out.Results, err = s.store.WebinarResults(ctx, user.ID, slug); err != nil {
+		s.fail(w, r, "crm webinar messages: results", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// handleCRMSummary is the Hosting home's "WhatsApp this week" card.
+func (s *Module) handleCRMSummary(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
+	out, err := s.store.Summary(r.Context(), user.ID, 7)
+	if err != nil {
+		s.fail(w, r, "crm summary", err)
+		return
+	}
+	out.Connected = user.WhatsAppToken != "" && user.WhatsAppPhoneNumberID != ""
 	httpx.JSON(w, http.StatusOK, out)
 }
 

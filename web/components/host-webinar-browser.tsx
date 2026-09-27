@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { HostMessagesTab, HostPeopleTab, useReplies } from "@/engage";
+import { HostMessagesTab, HostPeopleTab, WhatsAppWeekCard, useReplies } from "@/engage";
 import { useAppConfig } from "./providers";
 import { HostWebinarRows } from "./host-webinar-list";
 import { MyWebinarsList } from "./my-webinars-list";
@@ -376,6 +376,8 @@ export function HostWebinarBrowser({
           <Alert tone="error">{error}</Alert>
         </div>
       )}
+
+      {tab === "upcoming" && <WhatsAppWeekCard />}
 
       {tab === REGISTERED ? (
         /* Its own loading, empty and error states, unchanged from the page this

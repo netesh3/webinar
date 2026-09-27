@@ -26,3 +26,4 @@ export { HostPeopleTab } from "./components/people-tab";
 export { HostMessagesTab } from "./components/inbox-tab";
 export { WebinarMessagesTab } from "./components/webinar-messages";
 export { ReplyAlerts, useReplies } from "./components/replies";
+export { WhatsAppWeekCard } from "./components/week-card";

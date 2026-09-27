@@ -12,6 +12,10 @@ export type WatchBucket = {
   id: string;
   label: string;
   segment: CRMSegment;
+  /** Words a template for this group tends to use, to put the best one first. */
+  hints: string[];
+  /** What to say to them, as the suggestion on the Messages tab's card. */
+  suggestion: string;
   test: (r: RegistrantRow) => boolean;
 };
 
@@ -22,18 +26,24 @@ export function watchBuckets(durationMin: number): WatchBucket[] {
       id: "stayed",
       label: `Watched ${stayed}+ min`,
       segment: { attendance: SegmentJoined, minWatchMin: stayed },
+      hints: ["thank", "stay", "offer", "workbook", "program"],
+      suggestion: "Thank them for staying and make your offer.",
       test: (r) => r.joined && r.watchMin >= stayed,
     },
     {
       id: "left",
       label: `Left before ${stayed} min`,
       segment: { attendance: SegmentJoined, maxWatchMin: stayed - 1 },
+      hints: ["missed", "left", "replay", "part"],
+      suggestion: "Send the replay, starting from the part they missed.",
       test: (r) => r.joined && r.watchMin < stayed,
     },
     {
       id: "no_show",
       label: "Didn't join",
       segment: { attendance: SegmentNoShow },
+      hints: ["missed", "sorry", "replay", "recording"],
+      suggestion: "Sorry we missed you — here's the replay.",
       test: (r) => !r.joined,
     },
   ];
