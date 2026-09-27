@@ -73,8 +73,8 @@ export const DEFAULT_BACKGROUND_ENGINE: BackgroundEngine = "enhanced";
 
 /** Narrow storage to the engine to run: always ours now.
  *
- * The Enhanced / Beta picker is gone: there is one background, ours, with MODNet where
- * WebGPU can run it and the presenter lock always on. A browser that picked Beta while the
+ * The Enhanced / Beta picker is gone: there is one background, ours — PP-HumanSeg on the
+ * CPU (lib/humanseg.ts) with the presenter lock always on. A browser that picked Beta while the
  * picker existed still has "livekit" in storage and would otherwise stay on it with no way
  * back. LiveKit's processor is still used, but only as the automatic recovery when ours is
  * interrupted — see fallBackToBeta. */
