@@ -15,7 +15,7 @@ import {
 import { useToast } from "@/components/providers";
 import { Badge, Button, Card, Empty } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { DripManual, DripTagAdded } from "@/lib/api-types";
+import { DripAttended, DripManual, DripTagAdded } from "@/lib/api-types";
 import type {
   CRMContact,
   CRMDrip,
@@ -165,6 +165,8 @@ export function Drips({
         name: drip.name,
         trigger: drip.trigger,
         webinarId: drip.webinarId,
+        tagId: drip.tagId || undefined,
+        tiers: drip.tiers,
         active,
         steps: drip.steps,
       });
@@ -945,6 +947,8 @@ function Builder({
         /* Empty means any tag, which is a real choice and not a missing one — "any
          * tag I add" is how a host who labels people one way uses this. */
         tagId: byTag ? tagId || undefined : undefined,
+        // A Follow up recipe's engagement groups, kept while it is still "attended".
+        tiers: trigger === DripAttended ? drip?.tiers : undefined,
         active,
         steps: steps.map((s): CRMDripStep => {
           const tmpl = templateFor(s);

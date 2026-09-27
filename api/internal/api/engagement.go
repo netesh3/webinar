@@ -81,7 +81,9 @@ func (s *Server) computeEngagementOnEnd(ctx context.Context, slug string) {
 	}
 	if _, err := s.engagement.Compute(ctx, w); err != nil {
 		s.log.Warn("end webinar: could not compute engagement", "slug", slug, "error", err)
+		return
 	}
+	s.engage.OnScored(ctx, slug)
 }
 
 func (s *Server) sweepEngagementEvents(ctx context.Context) {
