@@ -55,7 +55,7 @@ export function ExportMenu({ options }: { options: ExportOption[] }) {
         className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-2 bg-surface px-3 text-[12.5px] font-medium text-ink outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40"
       >
         <Icon name="download" />
-        <span className="hidden sm:inline">Export</span>
+        Export
         <ChevronDownIcon className="size-3.5 text-ink-3" />
       </button>
       {open && (
