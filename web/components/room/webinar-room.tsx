@@ -53,8 +53,10 @@ import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
 import { PreJoin } from "./prejoin";
 import { RecorderProvider, RecordingBanner, RecordingIndicator } from "./recording";
 import { useAudiencePolls } from "@/lib/polls";
-import { useHostRoster } from "./participants";
+import { handAudience } from "@/lib/hand-toasts";
+import { participantRole, useHostRoster } from "./participants";
 import { useJoinToasts } from "./join-toasts";
+import { useHandToasts } from "./hand-toasts";
 import { useConnectionToast } from "./connection-toast";
 import { VirtualBackground } from "./background-picker";
 import { NoiseSuppression } from "./noise-suppression";
@@ -572,24 +574,11 @@ function ConnectedRoom({
             `${from.name} would like you to unmute. Use the microphone button when you're ready.`,
             "info",
           ),
-        // Host, co-host, AND ordinary panelists are asked to notice — a badge
-        // alone means someone watching the video misses the person waiting to
-        // speak, which is the whole point of raising a hand. Panelists get a
-        // plain heads-up rather than the host's "open Participants to let them
-        // in" instruction: ParticipantsPanel gates its action buttons on isHost,
-        // not role, so an ordinary panelist has no roster action to take here —
-        // telling them to go act on it would be pointing at a button that isn't
-        // there.
-        onHandRaised: (from: Sender) => {
-          if (isHost) {
-            notify(
-              `${from.name} wants to speak — open Participants to let them in or dismiss it.`,
-              "info",
-            );
-          } else if (liveRole === "panelist") {
-            notify(`${from.name} raised their hand.`, "info");
-          }
-        },
+        // A raised hand is announced by useHandToasts (hand-toasts.tsx), from the
+        // queue itself rather than from this packet: the queue is what the
+        // Participants panel draws, and reading it is what lets the toast go the
+        // moment another host handles the hand. "X wants to speak" and "X raised
+        // their hand" were always this one event, worded for two audiences.
         onHandLowered: (reason: "granted" | "dismissed") => {
           // Being granted the microphone announces itself through the permission
           // change, so saying it twice would be noise.
@@ -607,7 +596,7 @@ function ConnectedRoom({
           announceJoining.current?.(from);
         },
       }),
-      [notify, isHost, liveRole],
+      [notify],
     ),
   );
 
@@ -1065,6 +1054,30 @@ function ConnectedRoom({
     announceJoining.current = onJoining;
   }, [onJoining]);
 
+  // "Asha wants to speak", with the roster row's buttons, for the host and co-hosts;
+  // a plain heads-up for ordinary panelists, as before. See lib/hand-toasts.ts.
+  const openTool = tools.open;
+  const roleOfHand = useCallback(
+    (identity: string) => {
+      const p = room.getParticipantByIdentity(identity);
+      if (!p) return null;
+      const role = participantRole(p);
+      return role === "host" || role === "panelist" ? role : "attendee";
+    },
+    [room],
+  );
+  useHandToasts({
+    slug,
+    selfIdentity: join.identity,
+    audience: handAudience({ isHost, role: liveRole }),
+    hands: realtime.hands,
+    live: roster.live,
+    roleOf: roleOfHand,
+    lowerHand: realtime.lowerHand,
+    reloadRoster: roster.reload,
+    openParticipants: useCallback(() => openTool("participants"), [openTool]),
+    panelVisible: tools.panelTab === "participants",
+  });
   // "Reconnecting…" → "You're back online" / "Connection lost", for everyone in this room.
   useConnectionToast(room, recovering, RECOVERY_BACKOFF_MS.length, permissions.canPublish);
   // The audience's polls, for everyone who is not the host. Read here rather than in

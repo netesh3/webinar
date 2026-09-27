@@ -121,11 +121,11 @@ export type Toast = {
   key?: string;
   /** Custom content, drawn instead of `message` inside the toast's own card. */
   node?: ReactNode;
+  /** The node has buttons of its own, so the toast is not one big dismiss button. */
+  interactive?: boolean;
   /** On its way out: drawn fading for a beat, then removed. */
   leaving?: boolean;
   onDismiss?: () => void;
-  /** The node has buttons of its own, so the toast is not one big dismiss button. */
-  interactive?: boolean;
   /** Announced assertively rather than politely. For "you have lost the room", not news. */
   urgent?: boolean;
 };
@@ -135,9 +135,11 @@ export type KeyedToast = {
   message: string;
   tone?: Toast["tone"];
   node?: ReactNode;
+  /** The node has its own buttons (and its own close): drawn in a plain wrapper
+   *  instead of a click-anywhere-to-close button, which could not contain them. */
+  interactive?: boolean;
   /** Called when the person clicks it away (not when the caller dismisses it). */
   onDismiss?: () => void;
-  interactive?: boolean;
   urgent?: boolean;
 };
 
@@ -234,8 +236,8 @@ export function AppProviders({
       message: toast.message,
       tone: toast.tone ?? "info",
       node: toast.node,
-      onDismiss: toast.onDismiss,
       interactive: toast.interactive,
+      onDismiss: toast.onDismiss,
       urgent: toast.urgent,
     };
     setToasts((current) =>
