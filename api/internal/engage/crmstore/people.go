@@ -33,6 +33,7 @@ WITH reg AS (
 ), per AS (
 	SELECT contact_id,
 	       count(DISTINCT webinar_id) AS webinars,
+	       count(DISTINCT webinar_id) FILTER (WHERE joined) AS attended_webinars,
 	       bool_or(joined) AS attended,
 	       sum(watch_min)::int AS watch_min,
 	       (array_agg(topic ORDER BY starts_at DESC NULLS LAST))[1] AS last_topic,
@@ -126,7 +127,8 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 
 	rows, err := s.pool.Query(ctx, with+`
 		SELECT `+crmContactColumns+`, `+contactStatusCase+`,
-		       COALESCE(per.webinars, 0), COALESCE(per.last_topic, ''), COALESCE(per.last_slug, ''),
+		       COALESCE(per.webinars, 0), COALESCE(per.attended_webinars, 0),
+		       COALESCE(per.last_topic, ''), COALESCE(per.last_slug, ''),
 		       COALESCE(per.attended, false), COALESCE(per.watch_min, 0),
 		       `+lastInboundAt+`,
 		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status, m.created_at
@@ -157,7 +159,7 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		c := &p.Contact
 		if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
 			&optIn, &optOut, &lastSeen, &created, &botPaused,
-			&p.WhatsAppStatus, &p.Webinars, &p.LastWebinar, &p.LastWebinarID, &p.Attended, &p.WatchMin,
+			&p.WhatsAppStatus, &p.Webinars, &p.AttendedWebinars, &p.LastWebinar, &p.LastWebinarID, &p.Attended, &p.WatchMin,
 			&inbound, &mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mAt); err != nil {
 			return out, err
 		}
