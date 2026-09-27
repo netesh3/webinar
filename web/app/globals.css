@@ -346,6 +346,48 @@
   .conn-card[data-phase="lost"] {
     background-color: color-mix(in srgb, var(--color-live-soft) 55%, var(--color-surface));
   }
+
+  /* The requester's own hand and stage card (self-hand-toasts.tsx), on the same ring:
+   * amber round a waving hand while raised, grey once it is down or off the stage, blue
+   * and breathing while an invitation waits for an answer, green with the join check on
+   * the stage. */
+  .self-badge::before {
+    border-color: var(--color-line-2);
+    opacity: 0.8;
+  }
+  .self-badge[data-phase="raised"]::before {
+    border-color: var(--color-warn);
+    opacity: 0.75;
+  }
+  .self-badge[data-phase="invited"]::before {
+    border-color: var(--color-brand);
+    opacity: 0.55;
+    animation: join-ring 1.6s ease-out infinite;
+  }
+  .self-badge[data-phase="stage"]::before {
+    border-color: var(--color-ok);
+    opacity: 0.9;
+  }
+  .self-disc {
+    background: var(--color-surface-2);
+    color: var(--color-ink-2);
+    transition: background-color 250ms ease, color 250ms ease;
+  }
+  .self-badge[data-phase="raised"] .self-disc {
+    background: var(--color-warn-soft);
+    color: var(--color-warn);
+  }
+  .self-badge[data-phase="invited"] .self-disc {
+    background: var(--color-brand-soft);
+    color: var(--color-brand);
+  }
+  .self-badge[data-phase="stage"] .self-disc {
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
+  }
+  .self-card[data-phase="invited"] {
+    background-color: color-mix(in srgb, var(--color-brand-soft) 45%, var(--color-surface));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -358,6 +400,7 @@
   }
   .join-avatar[data-phase="joining"]::before,
   .conn-badge[data-phase="reconnecting"]::before,
+  .self-badge[data-phase="invited"]::before,
   .join-dots > span,
   .hand-wave {
     animation: none !important;

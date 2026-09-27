@@ -58,12 +58,12 @@ import { participantRole, useHostRoster } from "./participants";
 import { useJoinToasts } from "./join-toasts";
 import { useHandToasts } from "./hand-toasts";
 import { useConnectionToast } from "./connection-toast";
+import { useSelfHandToasts, type SelfHandEvent } from "./self-hand-toasts";
 import { VirtualBackground } from "./background-picker";
 import { NoiseSuppression } from "./noise-suppression";
 import { PollPopup } from "./poll-popup";
 import { CtaPopup } from "./cta-popup";
 import { CaptionOverlay } from "./caption-overlay";
-import { StageInviteDialog } from "./stage-invite-dialog";
 import { FileShareBar } from "./file-share-bar";
 import { MeetingInfo } from "./meeting-info";
 import { ViewsMenu } from "./views-menu";
@@ -536,6 +536,9 @@ function ConnectedRoom({
   // "joined" packet arrives through useRealtime (below), and the roster they turn
   // green against is read further down. This carries the first to the second.
   const announceJoining = useRef<((from: Sender) => void) | null>(null);
+  // The same bridge for this person's own hand and stage toasts (self-hand-toasts.tsx),
+  // whose hook needs `realtime` and so is called below the handlers that feed it.
+  const selfHand = useRef<((event: SelfHandEvent) => void) | null>(null);
 
   // Temporary, for one performance-test window — see lib/telemetry.ts. `room`
   // is passed as null rather than skipping the call when the flag is off, so
@@ -581,10 +584,11 @@ function ConnectedRoom({
         // their hand" were always this one event, worded for two audiences.
         onHandLowered: (reason: "granted" | "dismissed") => {
           // Being granted the microphone announces itself through the permission
-          // change, so saying it twice would be noise.
-          if (reason === "dismissed") {
-            notify("The host dismissed your request to speak for now.", "info");
-          }
+          // change; the self-hand toast only clears a lingering "raised" card for it.
+          selfHand.current?.({ kind: "lowered", reason });
+        },
+        onHandsCleared: () => {
+          selfHand.current?.({ kind: "lowered", reason: "cleared" });
         },
         // The server sends this when it ISSUES an attendee's token — before their
         // browser has connected, and seconds before the Participants panel can list
@@ -627,23 +631,21 @@ function ConnectedRoom({
           return;
         }
         movedOffStage.current = false;
-        notify(
-          previous.mutedByHost
-            ? "The host has allowed you to speak again."
-            : next.audioOnly
-              ? "The host has invited you to speak. Unmute yourself when you're ready."
-              /* A PROMOTED attendee did not ask for it and their bar has just grown two
-               * controls, so that case says what happened. */
-              : join.canPublish
-                ? "You're back on the stage. Your microphone and camera controls are below."
-                : "You're on the stage. Your microphone and camera controls are below.",
-          "ok",
-        );
+        if (previous.mutedByHost) {
+          notify("The host has allowed you to speak again.", "ok");
+          return;
+        }
+        selfHand.current?.({
+          kind: "stage",
+          // An audio-only grant is "you can speak"; a PROMOTED attendee did not ask for
+          // the camera and their bar has just grown two controls, so that says so.
+          arrival: next.audioOnly ? "speak" : join.canPublish ? "back" : "stage",
+        });
         return;
       }
       if (!next.canPublish && !next.mutedByHost && previous.canPublish) {
         movedOffStage.current = true;
-        notify("The host has moved you back to the audience.", "info");
+        selfHand.current?.({ kind: "audience" });
         onDemotedRef.current?.();
       }
     },
@@ -1086,6 +1088,22 @@ function ConnectedRoom({
   useEffect(() => {
     greetConnected.current = greet;
   }, [greet]);
+  // This person's own hand and stage: "Your hand is raised", the host lowering it, the
+  // stage invitation (Join stage / Not now), arriving on stage and leaving it. See
+  // lib/self-hand-toasts.ts. Never overlaps the toasts above: those skip your own hand.
+  const announceSelfHand = useSelfHandToasts({
+    slug,
+    joinKey,
+    handRaised: realtime.myHandRaised,
+    invite: realtime.stageInvite,
+    recording,
+    canRaise: controls.raiseHandEnabled,
+    toggleHand: realtime.toggleHand,
+    dismissInvite: realtime.dismissStageInvite,
+  });
+  useEffect(() => {
+    selfHand.current = announceSelfHand;
+  }, [announceSelfHand]);
   // The audience's polls, for everyone who is not the host. Read here rather than in
   // the panel because a launched poll has to reach somebody who is not looking at the
   // panel — the pop-up is the point — and because the pop-up and the panel should agree
@@ -1269,7 +1287,6 @@ function ConnectedRoom({
                   <PollPopup />
                 <CtaPopup />
                 <CaptionOverlay />
-                <StageInviteDialog />
 
                 {/* Applies the stored virtual background to whatever camera track is
                     published, and re-applies it when the track is replaced. Renders nothing;

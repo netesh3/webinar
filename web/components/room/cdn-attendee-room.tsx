@@ -46,7 +46,7 @@ import { RoomUIProvider, type RoomUI } from "./context";
 import { PollPopup } from "./poll-popup";
 import { CtaPopup } from "./cta-popup";
 import { CaptionOverlay } from "./caption-overlay";
-import { StageInviteDialog } from "./stage-invite-dialog";
+import { useSelfHandToasts, type SelfHandEvent } from "./self-hand-toasts";
 import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
@@ -80,7 +80,6 @@ export function CdnAttendeeRoom({
   onPromoted: () => void;
 }) {
   const { prefs, update: updatePrefs } = useMediaPreferences();
-  const { notify } = useToast();
 
   const [room] = useState(() => new Room());
 
@@ -120,6 +119,9 @@ export function CdnAttendeeRoom({
     [join.identity, join.displayName, join.role, liveRole],
   );
 
+  // Filled in below, once `realtime` exists: the hand and stage toasts' bridge.
+  const selfHand = useRef<((event: SelfHandEvent) => void) | null>(null);
+
   // Realtime hook for chat, Q&A, polls, reactions, hand-raising
   const realtime = useRealtime(
     room,
@@ -128,24 +130,43 @@ export function CdnAttendeeRoom({
     useMemo(
       () => ({
         onHandLowered: (reason: "granted" | "dismissed") => {
-          if (reason !== "granted") {
-            notify("The host dismissed your request to speak for now.", "info");
-          }
+          selfHand.current?.({ kind: "lowered", reason });
+        },
+        onHandsCleared: () => {
+          selfHand.current?.({ kind: "lowered", reason: "cleared" });
         },
       }),
-      [notify],
+      [],
     ),
   );
+
+  // This person's own hand and stage, as the WebRTC room shows them (self-hand-toasts.tsx).
+  // On accepting an invite this room is replaced by the stage and nothing after the
+  // remount announces it, so the card says "You're on stage" here.
+  const announceSelfHand = useSelfHandToasts({
+    slug,
+    joinKey,
+    handRaised: realtime.myHandRaised,
+    invite: realtime.stageInvite,
+    recording,
+    canRaise: controls.raiseHandEnabled,
+    toggleHand: realtime.toggleHand,
+    dismissInvite: realtime.dismissStageInvite,
+    onAccepted: useCallback(() => onPromotedRef.current(), []),
+  });
+  useEffect(() => {
+    selfHand.current = announceSelfHand;
+  }, [announceSelfHand]);
 
   // Watch permissions: upgrade dynamically to stage if promoted
   const announcePermissions = useCallback(
     (next: MediaPermissions) => {
       if (next.canPublish || next.canSpeak) {
-        notify("You're on the stage!", "ok");
+        selfHand.current?.({ kind: "stage", arrival: next.canPublish ? "stage" : "speak" });
         onPromotedRef.current();
       }
     },
-    [notify],
+    [],
   );
 
   const permissions = useMediaPermissions(room, announcePermissions);
@@ -413,7 +434,6 @@ export function CdnAttendeeRoom({
                   <PollPopup />
                   <CtaPopup />
                   <CaptionOverlay />
-                  <StageInviteDialog onAccepted={() => onPromotedRef.current()} />
                   <RoomHeader />
                   <SidePanel />
                 </div>
