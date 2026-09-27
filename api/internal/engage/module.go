@@ -129,6 +129,7 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Get("/crm/inbox", s.handleCRMInbox)
 	host.Put("/crm/contacts/{id}/done", s.handleCRMInboxDone)
 	host.Get("/crm/replies", s.handleCRMReplies)
+	host.Get("/crm/summary", s.handleCRMSummary)
 	host.Get("/crm/webinars/{slug}/messages", s.handleCRMWebinarMessages)
 	host.Post("/crm/test-send", s.handleCRMTestSend)
 	host.Get("/crm/broadcasts", s.handleCRMBroadcasts)

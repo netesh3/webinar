@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { engageApi } from "../api";
 import { Select, Spinner } from "@/components/controls";
 import { useSession, useToast } from "@/components/providers";
-import { Button, Card, Empty } from "@/components/ui";
+import { Card, Empty } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import {
   FeatureCRMNotes,
@@ -19,7 +19,8 @@ import {
   type CRMTemplate,
 } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
-import { Thread } from "./crm-screen";
+import { DoneButton, InboxThread } from "./inbox-thread";
+import { PersonAvatar } from "./wa-kit";
 
 /* Hosting → Messages: the WhatsApp conversations, with the ones waiting on you first.
  *
@@ -51,11 +52,15 @@ export function HostMessagesTab({
   const notesOn = features.includes(FeatureCRMNotes);
 
   // Opening a named person from People shows every conversation, not just waiting ones.
-  const [view, setView] = useState<string>(initialContact ? InboxAll : InboxNeedsReply);
+  const [view, setView] = useState<string>(
+    initialContact ? InboxAll : InboxNeedsReply,
+  );
   const [webinar, setWebinar] = useState(initialWebinar);
   const [data, setData] = useState<CRMInboxResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(initialContact || null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialContact || null,
+  );
   const [tick, setTick] = useState(0);
   const [templates, setTemplates] = useState<CRMTemplate[] | null>(null);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
@@ -102,7 +107,9 @@ export function HostMessagesTab({
         if (cancelled) return;
         setTemplates([]);
         setTemplatesError(
-          e instanceof ApiError ? e.message : "Could not load your WhatsApp templates.",
+          e instanceof ApiError
+            ? e.message
+            : "Could not load your WhatsApp templates.",
         );
       });
     if (tagsOn)
@@ -124,13 +131,17 @@ export function HostMessagesTab({
       setTemplates(res.templates);
       setTemplatesError(null);
     } catch (e: unknown) {
-      notify(e instanceof ApiError ? e.message : "Could not reach WhatsApp.", "error");
+      notify(
+        e instanceof ApiError ? e.message : "Could not reach WhatsApp.",
+        "error",
+      );
     } finally {
       setSyncing(false);
     }
   }
 
-  const selected = data?.threads.find((t) => t.contact.id === selectedId) ?? null;
+  const selected =
+    data?.threads.find((t) => t.contact.id === selectedId) ?? null;
 
   async function markDone(done: boolean) {
     if (!selectedId) return;
@@ -141,7 +152,10 @@ export function HostMessagesTab({
       if (done && view === InboxNeedsReply) setSelectedId(null);
       refresh();
     } catch (e: unknown) {
-      notify(e instanceof ApiError ? e.message : "Could not change that.", "error");
+      notify(
+        e instanceof ApiError ? e.message : "Could not change that.",
+        "error",
+      );
     } finally {
       setMarking(false);
     }
@@ -161,7 +175,10 @@ export function HostMessagesTab({
         title="Connect WhatsApp to see replies here"
         hint="When people answer your confirmations, reminders and follow-ups, their replies land here and you can answer from this tab."
         action={
-          <Link href="/account" className="font-medium text-brand hover:underline">
+          <Link
+            href="/account"
+            className="font-medium text-brand hover:underline"
+          >
             Account settings
           </Link>
         }
@@ -190,7 +207,8 @@ export function HostMessagesTab({
                   : "border-line text-ink-2 hover:border-line-strong"
               }`}
             >
-              {v.label} <span className="tabular-nums opacity-70">{counts[v.id]}</span>
+              {v.label}{" "}
+              <span className="tabular-nums opacity-70">{counts[v.id]}</span>
             </button>
           ))}
         </div>
@@ -208,13 +226,18 @@ export function HostMessagesTab({
 
       {data.coexistence && (
         <p className="text-[12px] text-ink-3">
-          Replies you type in the WhatsApp Business app on your phone show up here too.
+          Replies you type in the WhatsApp Business app on your phone show up
+          here too.
         </p>
       )}
 
       {data.threads.length === 0 && !selectedId ? (
         <Empty
-          title={view === InboxNeedsReply ? "You're all caught up" : "No conversations here"}
+          title={
+            view === InboxNeedsReply
+              ? "You're all caught up"
+              : "No conversations here"
+          }
           hint={
             view === InboxNeedsReply
               ? "Nobody is waiting on a reply. New ones show up here, and on the bell."
@@ -222,7 +245,7 @@ export function HostMessagesTab({
           }
         />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
           <Card
             className={`divide-y divide-line overflow-hidden p-0 ${selectedId ? "hidden lg:block" : ""}`}
           >
@@ -241,48 +264,34 @@ export function HostMessagesTab({
             )}
           </Card>
 
-          <div className={selectedId ? "grid gap-2" : "hidden lg:block"}>
+          <div className={selectedId ? "min-w-0" : "hidden lg:block"}>
             {selectedId ? (
-              <>
-                <div className="flex items-center justify-end gap-2">
-                  {view !== InboxDone ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => markDone(true)}
-                      disabled={marking}
-                    >
-                      Mark done
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => markDone(false)}
-                      disabled={marking}
-                    >
-                      Reopen
-                    </Button>
-                  )}
-                </div>
-                <Thread
-                  key={selectedId}
-                  contactId={selectedId}
-                  fallback={selected?.contact ?? null}
-                  tick={tick}
-                  allTags={tagsOn ? (tags ?? []) : null}
-                  notesOn={notesOn}
-                  templates={templates}
-                  templatesError={templatesError}
-                  syncing={syncing}
-                  onRefreshTemplates={refreshTemplates}
-                  onChanged={refresh}
-                  onBack={() => setSelectedId(null)}
-                />
-              </>
+              <InboxThread
+                key={selectedId}
+                contactId={selectedId}
+                fallback={selected?.contact ?? null}
+                tick={tick}
+                allTags={tagsOn ? (tags ?? []) : null}
+                notesOn={notesOn}
+                templates={templates}
+                templatesError={templatesError}
+                syncing={syncing}
+                onRefreshTemplates={refreshTemplates}
+                onChanged={refresh}
+                onBack={() => setSelectedId(null)}
+                actions={
+                  <DoneButton
+                    done={view === InboxDone}
+                    busy={marking}
+                    onClick={() => markDone(view !== InboxDone)}
+                  />
+                }
+              />
             ) : (
-              <Card className="grid place-items-center px-6 py-20 text-center">
-                <p className="text-[13.5px] text-ink-2">Pick a conversation to read it.</p>
+              <Card className="grid min-h-[34rem] place-items-center px-6 py-20 text-center">
+                <p className="text-[13.5px] text-ink-2">
+                  Pick a conversation to read it.
+                </p>
               </Card>
             )}
           </div>
@@ -308,28 +317,48 @@ function InboxRow({
     <button
       type="button"
       onClick={onSelect}
-      className={`block w-full px-4 py-3 text-left transition ${
+      className={`flex w-full gap-3 px-3.5 py-3 text-left transition ${
         active ? "bg-brand-soft/50" : "hover:bg-surface-2"
       }`}
     >
-      <div className="flex items-center gap-2">
-        {t.needsReply && <span className="size-2 shrink-0 rounded-full bg-brand" aria-label="Needs reply" />}
-        <span className={`truncate text-[13px] ${t.needsReply ? "font-semibold" : "font-medium"}`}>
-          {name}
+      <PersonAvatar name={name} seed={c.id} size={36} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span
+            className={`truncate text-[13px] ${t.needsReply ? "font-semibold text-ink" : "font-medium text-ink-2"}`}
+          >
+            {name}
+          </span>
+          {m && (
+            <span
+              className={`ml-auto shrink-0 text-[11px] ${t.needsReply ? "font-medium text-ok" : "text-ink-3"}`}
+            >
+              {formatRelative(m.createdAt, new Date())}
+            </span>
+          )}
         </span>
         {m && (
-          <span className="ml-auto shrink-0 text-[11px] text-ink-3">
-            {formatRelative(m.createdAt, new Date())}
+          <span className="mt-0.5 flex items-center gap-2">
+            <span
+              className={`min-w-0 flex-1 truncate text-[12px] ${t.needsReply ? "text-ink" : "text-ink-3"}`}
+            >
+              {m.direction === "out" ? "You: " : ""}
+              {m.body || m.templateName || (m.kind ? `[${m.kind}]` : "")}
+            </span>
+            {t.needsReply && (
+              <span
+                className="size-2 shrink-0 rounded-full bg-ok"
+                aria-label="Needs reply"
+              />
+            )}
           </span>
         )}
-      </div>
-      {m && (
-        <p className="mt-0.5 truncate text-[12px] text-ink-2">
-          {m.direction === "out" ? "You: " : ""}
-          {m.body || m.templateName || (m.kind ? `[${m.kind}]` : "")}
-        </p>
-      )}
-      {t.webinar && <p className="mt-0.5 truncate text-[11px] text-ink-3">{t.webinar}</p>}
+        {t.webinar && (
+          <span className="mt-0.5 block truncate text-[11px] text-ink-3">
+            {t.webinar}
+          </span>
+        )}
+      </span>
     </button>
   );
 }

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Messages · Hosting (v2 mock)</title><link rel="stylesheet" href="assets/v2.css">
+<style>
+  main { max-width: 80rem; }
+  .inbox { display: grid; grid-template-columns: 300px 1fr 280px; height: 640px; overflow: hidden; }
+  .pane { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .pane:last-child { border-right: 0; }
+  .scroll { overflow: auto; flex: 1; }
+  .li { align-items: flex-start; }
+  .li .grow { display: grid; gap: 2px; }
+  .composer { border-top: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 8px; background: var(--surface); }
+  .cbox { display: flex; align-items: flex-end; gap: 8px; border: 1px solid var(--line-2); border-radius: 12px; padding: 6px 6px 6px 12px; }
+  .cbox textarea { border: 0; outline: 0; resize: none; flex: 1; font: inherit; font-size: 13.5px; padding: 6px 0; height: 36px; }
+  .ico { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--ink-3); }
+  .send { width: 36px; height: 36px; border-radius: 99px; background: var(--wa); color: #fff; display: grid; place-items: center; border: 0; }
+  .shortcut { font-size: 11px; color: var(--ink-3); display: flex; gap: 12px; }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <div data-hosttabs="messages"></div>
+
+  <div class="row between" style="margin-bottom:12px">
+    <div class="chips" data-chipset><span class="chip on">Needs reply <b>4</b></span><span class="chip">Hot leads <b>2</b></span><span class="chip">All <b>12</b></span><span class="chip">Done <b>3</b></span></div>
+    <div class="row"><div class="search" style="width:240px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input class="field sm" placeholder="Search messages"></div><select class="field sm" style="width:200px"><option>All webinars</option></select></div>
+  </div>
+
+  <div class="card inbox">
+    <!-- list -->
+    <div class="pane">
+      <div class="scroll">
+        <a class="li on" href="#"><span class="av a2">RV</span><div class="grow"><div class="row between"><span class="name">Rahul Verma</span><span class="xs faint">18 h</span></div><div class="xs truncate" style="color:var(--ink)">Yes. Also — do you run a paid program?…</div><div class="row" style="gap:6px"><span class="tagp t1">Hot lead</span><span class="xs faint truncate">Morning Routines</span></div></div><span class="unread" style="margin-top:6px"></span></a>
+        <a class="li" href="#"><span class="av a7">SR</span><div class="grow"><div class="row between"><span class="name">Siddharth Rao</span><span class="xs faint">1 h</span></div><div class="xs truncate" style="color:var(--ink)">Just registered for the budgeting one. Will…</div><div class="xs faint truncate">Mindful Money · registered</div></div><span class="unread" style="margin-top:6px"></span></a>
+        <a class="li" href="#"><span class="av a2">NJ</span><div class="grow"><div class="row between"><span class="name">Neha Joshi</span><span class="xs faint">16 h</span></div><div class="xs truncate" style="color:var(--ink)">Watched it! Is the budgeting one also free?</div><div class="xs faint truncate">Morning Routines · watched replay</div></div><span class="unread" style="margin-top:6px"></span></a>
+        <a class="li" href="#"><span class="av a1">DK</span><div class="grow"><div class="row between"><span class="name">Divya Krishnan</span><span class="xs" style="color:var(--warn)">3 h left</span></div><div class="xs truncate" style="color:var(--ink)">Can you send the link? I had a work call 😞</div><div class="xs faint truncate">Morning Routines · didn't join</div></div><span class="unread" style="margin-top:6px"></span></a>
+        <a class="li" href="#" style="opacity:.7"><span class="av a4">VN</span><div class="grow"><div class="row between"><span class="name">Vikram Nair</span><span class="xs faint">1 d</span></div><div class="xs faint truncate">You: Here you go Vikram 📘</div><div class="xs faint truncate">Morning Routines</div></div></a>
+        <a class="li" href="#" style="opacity:.7"><span class="av a1">PS</span><div class="grow"><div class="row between"><span class="name">Priya Sharma</span><span class="xs faint">2 d</span></div><div class="xs faint truncate">Got it, thank you so much</div><div class="xs faint truncate">Done</div></div></a>
+      </div>
+    </div>
+
+    <!-- thread -->
+    <div class="pane">
+      <div class="row" style="padding:10px 16px;border-bottom:1px solid var(--line)">
+        <span class="av a2">RV</span>
+        <div class="grow"><div class="name">Rahul Verma</div><div class="xs faint">+91 98200 34512 · online on WhatsApp 18 h ago</div></div>
+        <button class="btn sm sec">Snooze</button><button class="btn sm sec">✓ Done</button>
+      </div>
+      <div class="wa scroll">
+        <span class="daysep">12 Sept · Registered for Morning Routines</span>
+        <div class="auto">⚙ <span><b>3 automatic messages</b> · confirmation, 1-day and 1-hour reminders · all read</span><span class="grow"></span><span class="linkish">Show</span></div>
+        <span class="daysep">Fri 25 Sept · Joined live, watched 55 of 60 min</span>
+        <div class="bub out"><div class="tpl">Follow-up · Stayed 30+ min</div>Hi Rahul, thank you for spending 55 minutes with me at <b>Morning Routines That Stick</b>. Reply YES and I'll send you the workbook.<div class="meta">21:01 <span class="ticks">✓✓</span></div></div>
+        <div class="bub in">Yes. Also — do you run a paid program? I want accountability.<div class="meta">21:26</div></div>
+        <span class="win">● You can reply freely for 6 more hours</span>
+      </div>
+      <div class="composer">
+        <div class="qr"><span>⚡ <b>Workbook link</b></span><span>⚡ <b>8-week program details</b></span><span>⚡ <b>Book a free call</b></span><span>⚡ <b>Replay link</b></span><span style="border-style:dashed">+ Save a reply</span></div>
+        <div class="cbox">
+          <span class="ico">☺</span>
+          <textarea placeholder="Reply to Rahul…">Hi Rahul! Yes — the 8-week accountability program starts 5 Oct. Want me to send you the details?</textarea>
+          <span class="ico">📎</span>
+          <button class="send">➤</button>
+        </div>
+        <div class="shortcut"><span><span class="kbd">⌘</span> <span class="kbd">↵</span> send</span><span><span class="kbd">E</span> done</span><span><span class="kbd">J</span> / <span class="kbd">K</span> next / previous</span><span class="grow"></span><span>Replies from your phone show here too</span></div>
+      </div>
+    </div>
+
+    <!-- profile -->
+    <div class="pane prof">
+      <div class="scroll">
+        <div class="sec" style="text-align:center">
+          <span class="av lg a2" style="width:56px;height:56px;font-size:18px">RV</span>
+          <div class="name" style="margin-top:8px;font-size:14px">Rahul Verma</div>
+          <div class="xs faint">Infosys · rahul.verma@example.com</div>
+          <div class="row" style="justify-content:center;margin-top:8px"><span class="badge ok"><span class="dot"></span>Opted in</span><span class="heat"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></div>
+        </div>
+        <div class="sec">
+          <div class="k">Webinars</div>
+          <div class="wrow"><span>Morning Routines</span><span class="xs muted tnum">55 / 60 min</span><div class="bar"><i style="width:92%"></i></div></div>
+          <div class="wrow"><span>Mindful Money</span><span class="xs faint">Wed 30 Sept</span><div class="bar"><i style="width:0"></i></div></div>
+        </div>
+        <div class="sec">
+          <div class="k">Tags</div>
+          <div class="row wrap" style="gap:6px"><span class="tagp t1">Hot lead</span><span class="tagp t3">Paid program interest</span><span class="tagp" style="border:1px dashed var(--line-2);color:var(--ink-3)">+ Tag</span></div>
+        </div>
+        <div class="sec">
+          <div class="k">Note</div>
+          <div class="small" style="background:#fffbea;border:1px solid #f5e6a8;border-radius:8px;padding:8px 10px;line-height:1.5">Works at Infosys, wants 1:1 accountability. Send paid program details after the budgeting webinar.</div>
+        </div>
+        <div class="sec">
+          <div class="k">Sequences</div>
+          <div class="row small"><span class="st-dot ok">Workbook follow-up</span><span class="grow"></span><span class="xs faint">step 2 of 3</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="note"><b>Messages.</b> The thread looks like WhatsApp: green bubbles, blue ticks, day markers that say what happened ("Joined live, watched 55 min"). The automatic messages fold into one line. The right-hand panel replaces the notes box under the composer. Quick replies and keyboard shortcuts speed up replying.</div>
+<script src="assets/v2.js"></script>
+</body></html>

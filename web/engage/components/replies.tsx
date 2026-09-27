@@ -6,6 +6,7 @@ import { engageApi } from "../api";
 import { useSession } from "@/components/providers";
 import type { CRMRepliesResponse } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
+import { PersonAvatar } from "./wa-kit";
 
 /* WhatsApp replies waiting on the host, for the top bar's bell.
  *
@@ -72,17 +73,21 @@ export function ReplyAlerts({
             <Link
               href={`/host?tab=messages&contact=${encodeURIComponent(r.contactId)}`}
               onClick={onNavigate}
-              className="block bg-ok/5 px-3 py-2 hover:bg-surface-2"
+              className="flex gap-2.5 bg-ok/5 px-3 py-2 hover:bg-surface-2"
             >
-              <div className="flex items-center gap-2 text-[12.5px]">
-                <span className="truncate font-medium">{r.name} replied</span>
-                <span className="ml-auto shrink-0 text-[11px] text-ink-3">
-                  {formatRelative(r.at, new Date())}
+              <PersonAvatar name={r.name} seed={r.contactId} size={28} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-[12.5px]">
+                  <span className="truncate font-medium">{r.name}</span>
+                  <span className="ml-auto shrink-0 text-[11px] text-ink-3">
+                    {formatRelative(r.at, new Date())}
+                  </span>
                 </span>
-              </div>
-              {r.webinar && (
-                <div className="mt-0.5 truncate text-[11.5px] text-ink-3">{r.webinar}</div>
-              )}
+                <span className="block truncate text-[11.5px] text-ink-2">
+                  {r.preview ? `“${r.preview}”` : r.webinar || "Replied on WhatsApp"}
+                </span>
+              </span>
+              <span className="self-center text-[11px] font-semibold text-brand">Reply</span>
             </Link>
           </li>
         ))}

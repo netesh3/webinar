@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Automations (v2 mock)</title><link rel="stylesheet" href="assets/v2.css">
+<style>
+  .setup { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .setup > div { background: var(--surface); padding: 12px 14px; display: flex; gap: 10px; align-items: center; }
+  .setup .n { width: 22px; height: 22px; border-radius: 99px; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--ok); color: #fff; flex-shrink: 0; }
+  .setup .n.todo { background: var(--surface-2); color: var(--ink-2); }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <a class="back" href="home.html">← Hosting</a>
+  <h1>WhatsApp</h1>
+  <p class="muted" style="margin-top:4px">Your number, your templates, and what happens on its own.</p>
+
+  <div class="tabs" style="margin-top:18px">
+    <a class="tab on" href="#">Automations</a><a class="tab" href="#">Templates <span class="count">5</span></a><a class="tab" href="#">Number & billing</a>
+  </div>
+
+  <div class="setup" style="margin-bottom:24px">
+    <div><span class="n">✓</span><div><div class="small name">Number connected</div><div class="xs faint">+91 98200 11223 · on your phone too</div></div></div>
+    <div><span class="n">✓</span><div><div class="small name">5 templates approved</div><div class="xs faint">Checked 4 h ago</div></div></div>
+    <div><span class="n">✓</span><div><div class="small name">Reminders set</div><div class="xs faint">Confirmation, 1 day, 1 hour</div></div></div>
+    <div><span class="n todo">4</span><div class="grow"><div class="small name">Turn on 1 recipe</div><div class="xs faint">Most coaches start with "Replay"</div></div></div>
+  </div>
+
+  <div class="row between" style="margin-bottom:10px"><div class="st" style="margin:0">Recipes — turn on, adjust the words, done</div><span class="xs faint">Each uses one of your approved templates</span></div>
+  <div class="recipes">
+    <div class="card recipe on">
+      <div class="row between"><span class="name">Reminders</span><span class="toggle on"></span></div>
+      <div class="flow"><span>Registers</span><em>→</em><span>Confirmation</span><em>→</em><span>1 day before</span><em>→</em><span>1 hour before</span></div>
+      <div class="xs muted">Running on 3 webinars · 84% read</div>
+    </div>
+    <div class="card recipe">
+      <div class="row between"><span class="name">Replay for people who missed it</span><span class="toggle"></span></div>
+      <div class="flow"><span>Didn't join</span><em>→</em><span>2 h after end</span><em>→</em><span>Replay link</span><em>→</em><span>Day 2 nudge</span></div>
+      <div class="xs muted">Would have reached 4 people from Morning Routines</div>
+      <button class="btn sm" style="align-self:flex-start">Turn on</button>
+    </div>
+    <div class="card recipe">
+      <div class="row between"><span class="name">Thank-you + offer</span><span class="toggle"></span></div>
+      <div class="flow"><span>Watched 30+ min</span><em>→</em><span>Next morning</span><em>→</em><span>Thanks + "reply YES"</span><em>→</em><span>Auto-send workbook</span></div>
+      <div class="xs muted">You sent this by hand last time · 3 replied YES</div>
+      <button class="btn sm" style="align-self:flex-start">Turn on</button>
+    </div>
+    <div class="card recipe">
+      <div class="row between"><span class="name">Keyword replies</span><span class="toggle"></span></div>
+      <div class="flow"><span>"PRICE"</span><em>→</em><span>Program details</span><em>·</em><span>"REPLAY"</span><em>→</em><span>Replay link</span></div>
+      <div class="xs muted">Answers common questions at any hour</div>
+      <button class="btn sm sec" style="align-self:flex-start">Set up</button>
+    </div>
+    <div class="card recipe">
+      <div class="row between"><span class="name">Tag hot leads</span><span class="toggle"></span></div>
+      <div class="flow"><span>Reply mentions price, program, 1:1</span><em>→</em><span>Tag "Hot lead"</span><em>→</em><span>Tell you</span></div>
+      <div class="xs muted">Would have tagged Rahul and Siddharth</div>
+      <button class="btn sm sec" style="align-self:flex-start">Turn on</button>
+    </div>
+    <div class="card recipe" style="border-style:dashed;align-items:center;justify-content:center;text-align:center">
+      <div class="name">Build your own</div>
+      <div class="xs muted">Sequences and bots, step by step</div>
+      <button class="btn sm sec">Open builder</button>
+    </div>
+  </div>
+</main>
+<div class="note"><b>Automations.</b> Today "Sequences" and "Bots" open on empty pages that explain the concept. v2 opens on ready-made recipes built from coaching flows, each with a toggle, a short flow description and a hint from the coach's own data ("would have reached 4 people"). The full builders are still available under "Build your own".</div>
+<script src="assets/v2.js"></script>
+</body></html>

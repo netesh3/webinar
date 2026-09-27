@@ -1291,7 +1291,7 @@ function ContactRow({
 
 /** The one fact about a contact that decides what a host may do with them, so it
  *  is on every row rather than only in the detail pane. */
-function ConsentBadge({ contact: c }: { contact: CRMContact }) {
+export function ConsentBadge({ contact: c }: { contact: CRMContact }) {
   if (!c.phone) return <Badge>Email only</Badge>;
   if (c.whatsappOptOutAt) return <Badge tone="live">Opted out</Badge>;
   if (c.whatsappOptIn) {
@@ -1652,7 +1652,7 @@ type ComposeMode = "reply" | "template";
  * the server, which is what actually enforces them; what they do here is explain
  * themselves before the press instead of after it.
  */
-function Compose({
+export function Compose({
   contact,
   windowUntil,
   connected,
@@ -1992,7 +1992,7 @@ function previewOf(m: CRMMessage): string {
 
 /** What to show for a message whose content is not text. Meta's own vocabulary,
  *  turned into a sentence rather than left as a bare `document`. */
-function kindText(kind?: string): string {
+export function kindText(kind?: string): string {
   switch (kind) {
     case "image":
       return "Sent a photo";

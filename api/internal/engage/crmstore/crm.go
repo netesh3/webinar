@@ -638,7 +638,8 @@ func (s *Store) Thread(ctx context.Context, hostID, contactID string) (types.CRM
 	rows, err := s.pool.Query(ctx, `
 		SELECT recent.id::text, recent.contact_id::text, recent.direction, recent.body,
 		       recent.kind, recent.template_name, recent.status, recent.error,
-		       COALESCE(b.name,''), recent.created_at, COALESCE(w.topic, ''), recent.manual
+		       COALESCE(b.name,''), recent.created_at, COALESCE(w.topic, ''), recent.manual,
+		       recent.notification_id IS NOT NULL, COALESCE(w.slug, '')
 		  FROM (
 		       SELECT * FROM crm_messages
 		        WHERE host_id = $1 AND contact_id = $2::uuid
@@ -660,7 +661,8 @@ func (s *Store) Thread(ctx context.Context, hostID, contactID string) (types.CRM
 			created time.Time
 		)
 		if err := rows.Scan(&m.ID, &m.ContactID, &m.Direction, &m.Body, &m.Kind,
-			&m.TemplateName, &m.Status, &m.Error, &m.FromBot, &created, &m.Webinar, &m.Manual); err != nil {
+			&m.TemplateName, &m.Status, &m.Error, &m.FromBot, &created, &m.Webinar, &m.Manual,
+			&m.Automatic, &m.WebinarID); err != nil {
 			return types.CRMContact{}, nil, err
 		}
 		m.CreatedAt = created.Format(time.RFC3339)

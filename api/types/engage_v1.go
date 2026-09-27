@@ -108,6 +108,8 @@ type CRMDoneRequest struct {
 type CRMReplyAlert struct {
 	ContactID string `json:"contactId"`
 	Name      string `json:"name"`
+	/** Their last message, for a one-line preview. */
+	Preview   string `json:"preview,omitempty"`
 	Webinar   string `json:"webinar,omitempty"`
 	WebinarID string `json:"webinarId,omitempty"`
 	At        string `json:"at"`
@@ -148,8 +150,9 @@ type CRMWebinarMessagesResponse struct {
 	Templates  []CRMReminder  `json:"templates"`
 	Broadcasts []CRMBroadcast `json:"broadcasts"`
 	/** Conversations with this webinar's people that need a reply, newest first. */
-	Waiting           []CRMReplyAlert `json:"waiting"`
-	WhatsAppConnected bool            `json:"whatsappConnected"`
+	Waiting           []CRMReplyAlert   `json:"waiting"`
+	Results           CRMWebinarResults `json:"results"`
+	WhatsAppConnected bool              `json:"whatsappConnected"`
 }
 
 /* CRMTestSendRequest sends a template once to the host's own number, to see it. */
@@ -166,4 +169,56 @@ type CRMThreadMeta struct {
 	Webinars   int  `json:"webinars"`
 	WatchMin   int  `json:"watchMin"`
 	NeedsReply bool `json:"needsReply"`
+	/** Their webinars with this host, newest first: the profile panel's watch bars and
+	 *  the thread's day markers ("Joined live, watched 55 of 60 min"). */
+	History []CRMThreadWebinar `json:"history"`
+}
+
+/* CRMThreadWebinar is one webinar a person registered for. */
+type CRMThreadWebinar struct {
+	ID          string `json:"id"`
+	Topic       string `json:"topic"`
+	StartsAt    string `json:"startsAt"`
+	DurationMin int    `json:"durationMin"`
+	Ended       bool   `json:"ended"`
+	Joined      bool   `json:"joined"`
+	WatchMin    int    `json:"watchMin"`
+}
+
+/* CRMWebinarResults is what WhatsApp did for one webinar: the Messages tab's results
+ * panel and the journey's Live step. Show-up is split by whether a WhatsApp reminder
+ * actually reached the registrant, which is the comparison a coach is paying for. */
+type CRMWebinarResults struct {
+	Registered  int `json:"registered"`
+	Joined      int `json:"joined"`
+	AvgWatchMin int `json:"avgWatchMin"`
+	/** Registrants a WhatsApp reminder was sent to, and how many of them joined. */
+	Reminded       int `json:"reminded"`
+	RemindedJoined int `json:"remindedJoined"`
+	/** Everybody else (email only), and how many of them joined. */
+	Others       int `json:"others"`
+	OthersJoined int `json:"othersJoined"`
+	/** Messages about this webinar that left: automatic and follow-ups. */
+	Sent int `json:"sent"`
+	Read int `json:"read"`
+	/** Of those, template messages — the ones Meta bills — by category. */
+	Marketing int `json:"marketing"`
+	Utility   int `json:"utility"`
+	/** People who wrote back after the first message about this webinar. */
+	Replied int `json:"replied"`
+}
+
+/* CRMSummaryResponse is the Hosting home's "WhatsApp this week" card. */
+type CRMSummaryResponse struct {
+	Days int `json:"days"`
+	Sent int `json:"sent"`
+	Read int `json:"read"`
+	/** People who wrote in during the period. */
+	Replied    int  `json:"replied"`
+	NeedsReply int  `json:"needsReply"`
+	NewOptIns  int  `json:"newOptIns"`
+	Connected  bool `json:"connected"`
+	/** The next thing that will go out: a reminder or a scheduled follow-up. */
+	NextSendAt    string `json:"nextSendAt,omitempty"`
+	NextSendLabel string `json:"nextSendLabel,omitempty"`
 }

@@ -16,6 +16,7 @@ import {
   type CRMPerson,
 } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
+import { PersonAvatar } from "./wa-kit";
 import { SendDialog, type SendTarget } from "./send-dialog";
 
 /* Hosting → People: everybody who has registered for any of your webinars, once each.
@@ -325,13 +326,18 @@ function PersonRow({
         />
       </td>
       <td className="py-2.5 pr-3">
-        <Link
-          href={`/host?tab=messages&contact=${encodeURIComponent(c.id)}`}
-          className="font-medium text-ink hover:text-brand"
-        >
-          {name}
-        </Link>
-        <div className="text-[11.5px] text-ink-3">{c.phone || c.email}</div>
+        <div className="flex items-center gap-2.5">
+          <PersonAvatar name={name} seed={c.id} size={30} />
+          <div className="min-w-0">
+            <Link
+              href={`/host?tab=messages&contact=${encodeURIComponent(c.id)}`}
+              className="font-medium text-ink hover:text-brand"
+            >
+              {name}
+            </Link>
+            <div className="text-[11.5px] text-ink-3">{c.phone || c.email}</div>
+          </div>
+        </div>
       </td>
       <td className="py-2.5 pr-3 tabular-nums text-ink-2">{p.webinars}</td>
       <td className="max-w-56 py-2.5 pr-3 text-ink-2">

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Attendee side (v2 mock)</title><link rel="stylesheet" href="assets/v2.css">
+<style>
+  .stage { display: flex; gap: 28px; align-items: flex-start; justify-content: center; }
+  .reg { width: 380px; }
+  .optin { display: flex; gap: 10px; align-items: flex-start; border: 1px solid rgba(18,140,74,.3); background: #f1fbf5; border-radius: 10px; padding: 12px; }
+  .optin .ex { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .optin .ex span { font-size: 11px; background: #fff; border: 1px solid rgba(18,140,74,.2); border-radius: 99px; padding: 2px 8px; color: var(--wa); }
+  .cap { text-align: center; font-size: 12px; color: var(--ink-2); margin-top: 10px; max-width: 300px; }
+</style></head>
+<body>
+<div data-nav></div>
+<main class="wide">
+  <h1>What the attendee sees</h1>
+  <p class="muted" style="margin:4px 0 24px">Opting in on the form, then the messages on their phone. These should look as polished as the host's screens.</p>
+
+  <div class="stage">
+    <div>
+      <div class="card p5 reg">
+        <div class="name" style="font-size:15px">Register · Mindful Money</div>
+        <div class="xs muted" style="margin-bottom:14px">Wed 30 Sept · 6:30 PM IST · free</div>
+        <div class="grid" style="gap:10px">
+          <input class="field" value="Rohit Gupta">
+          <input class="field" value="rohit.gupta@example.com">
+          <div class="row"><select class="field" style="width:90px"><option>🇮🇳 +91</option></select><input class="field grow" value="98110 90178"></div>
+          <label class="optin">
+            <span class="check on" style="background:var(--wa);border-color:var(--wa)">✓</span>
+            <span><b class="small">Get reminders on WhatsApp</b><div class="xs muted" style="margin-top:2px">From Aarti Menon Coaching. Reply STOP any time.</div>
+              <div class="ex"><span>✓ Confirmation</span><span>⏰ 1 day &amp; 1 hour before</span><span>▶ Replay link</span></div></span>
+          </label>
+          <button class="btn" style="width:100%;height:44px">Register &amp; join</button>
+        </div>
+      </div>
+      <div class="cap">The opt-in shows which messages to expect. People tick a box more readily when they know what they'll get.</div>
+    </div>
+
+    <div>
+      <div class="phone"><div class="scr">
+        <div class="bar"><span class="av a1">AM</span><div><div style="font-size:13px;font-weight:600">Aarti Menon Coaching ✓</div><div style="font-size:10.5px;opacity:.8">Business account</div></div></div>
+        <div class="body">
+          <span class="daysep" style="font-size:10.5px">Today</span>
+          <div class="bub in"><div style="height:90px;margin:-8px -10px 6px;border-radius:10px 10px 0 0;background:linear-gradient(135deg,#0f766e,#14b8a6);display:grid;place-items:center;color:#fff;font-weight:600;font-size:13px">Mindful Money<br><span style="font-weight:400;font-size:11px;opacity:.9">Wed 30 Sept · 6:30 PM</span></div>You're in, Rohit! 🎉 I'll remind you the day before and an hour before.<div class="meta">18:02</div>
+            <div class="btnrow"><span>📅 Add to calendar</span><span>Can't make it</span></div></div>
+          <span class="daysep" style="font-size:10.5px">Wed 30 Sept</span>
+          <div class="bub in">Starting in 1 hour, Rohit. Bring a notebook — we'll build your budget live.<div class="meta">17:30</div>
+            <div class="btnrow"><span>▶ Join the webinar</span></div></div>
+        </div>
+      </div></div>
+      <div class="cap">Templates with a header image and buttons: <b>Add to calendar</b>, <b>Join</b>, and <b>Can't make it</b>, which tags them and sends the replay later.</div>
+    </div>
+
+    <div>
+      <div class="phone"><div class="scr">
+        <div class="bar"><span class="av a1">AM</span><div><div style="font-size:13px;font-weight:600">Aarti Menon Coaching ✓</div><div style="font-size:10.5px;opacity:.8">Business account</div></div></div>
+        <div class="body">
+          <span class="daysep" style="font-size:10.5px">Thu 1 Oct</span>
+          <div class="bub in">Thanks for staying 55 minutes, Rohit 🙏 Here's your budget workbook. Want the next step?<div class="meta">09:00</div>
+            <div class="btnrow"><span>📘 Get the workbook</span><span>Tell me about the program</span><span>Not now</span></div></div>
+          <div class="bub out" style="align-self:flex-end">Tell me about the program<div class="meta">09:12 <span style="color:var(--wa-tick)">✓✓</span></div></div>
+          <div class="bub in">It's 8 weeks, starting 5 Oct. Aarti will message you personally in a few minutes 😊<div class="meta">09:12</div></div>
+        </div>
+      </div></div>
+      <div class="cap">The follow-up gives quick-reply buttons. Tapping "program" tags them Hot lead, and the coach sees it at the top of Messages.</div>
+    </div>
+  </div>
+</main>
+<script src="assets/v2.js"></script>
+</body></html>
