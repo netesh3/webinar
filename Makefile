@@ -173,6 +173,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the raised-hand toasts: one per new hand, gone when anyone handles it, a burst
 	# folded into one summary, and the hands already up when a host arrives left alone.
 	cd web && node --experimental-strip-types --no-warnings lib/hand-toasts.test.mts
+	# And where a recording goes: a remembered target that is no longer available must
+	# ask rather than start somewhere else, and Stop must never become a popup.
+	cd web && node --experimental-strip-types --no-warnings lib/record-target.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
