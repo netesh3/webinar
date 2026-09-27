@@ -21,9 +21,10 @@ export {
 } from "./slots";
 export { CRMScreen } from "./components/crm-screen";
 export { useRosterMessaging } from "./components/roster";
-export { watchBuckets, type WatchBucket } from "./buckets";
+export { followupGroups, type FollowupGroup } from "./buckets";
 export { HostPeopleTab } from "./components/people-tab";
 export { HostMessagesTab } from "./components/inbox-tab";
 export { WebinarMessagesTab } from "./components/webinar-messages";
 export { ReplyAlerts, useReplies } from "./components/replies";
 export { WhatsAppWeekCard } from "./components/week-card";
+export { EngagementFollowUp } from "./components/engagement-follow-up";

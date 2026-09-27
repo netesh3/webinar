@@ -28,7 +28,7 @@ import {
   WebinarMessagesTab,
   useRosterMessaging,
   useRosterWhatsAppColumns,
-  watchBuckets,
+  followupGroups,
 } from "@/engage";
 import { useAppConfig } from "./providers";
 
@@ -182,16 +182,17 @@ function AttendeesTab({
   const declined = registrants.filter((r) => r.state === "declined");
   const ended = w.status === "ended";
 
-  /* After the webinar: chips by how long people watched. The same buckets the
-   * Messages tab offers, so "Message these N" here and there reach the same people. */
-  const buckets = ended ? watchBuckets(w.durationMin) : [];
+  /* After the webinar: chips by engagement level, the Engagement tab's Follow up groups,
+   * so "Message these N" here and there reach the same people. Empty groups are left
+   * out; before the scores are computed only "Didn't join" can have anyone in it. */
+  const buckets = ended ? followupGroups().filter((g) => registrants.some(g.test)) : [];
   const [bucketId, setBucketId] = useState("");
   const bucket = buckets.find((b) => b.id === bucketId) ?? null;
   const rows = bucket ? registrants.filter(bucket.test) : registrants;
   const messaging = useRosterMessaging({
     webinarId: w.id,
     rows,
-    bucket: bucket ? { segment: bucket.segment, label: bucket.label } : null,
+    bucket: bucket ? { segment: bucket.segment, label: bucket.label, hints: bucket.hints } : null,
   });
 
   return (

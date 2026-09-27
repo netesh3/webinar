@@ -131,6 +131,7 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Get("/crm/replies", s.handleCRMReplies)
 	host.Get("/crm/summary", s.handleCRMSummary)
 	host.Get("/crm/webinars/{slug}/messages", s.handleCRMWebinarMessages)
+	host.Get("/crm/webinars/{slug}/followups", s.handleCRMFollowups)
 	host.Post("/crm/test-send", s.handleCRMTestSend)
 	host.Get("/crm/broadcasts", s.handleCRMBroadcasts)
 	host.Post("/crm/broadcasts", s.handleCreateCRMBroadcast)

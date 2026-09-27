@@ -294,6 +294,42 @@ export interface CRMSummaryResponse {
   nextSendAt?: string;
   nextSendLabel?: string;
 }
+/**
+ *  CRMFollowupGroup is one card of the Engagement tab's Follow up: an engagement tier, or
+ *  * the no-shows, as the segment a send resolves — so the card, the count in the send
+ *  * dialog and the people messaged are the same.
+ */
+export interface CRMFollowupGroup {
+  /**
+   * * `high`, `engaged`, `passive`, `risk` or `no_show`.
+   */
+  id: EngagementTier;
+  segment: CRMSegment;
+  /**
+   * * Who in the group WhatsApp can reach, in the audience's four buckets.
+   */
+  audience: CRMAudienceResponse;
+  /**
+   * * A few reachable people, for the card's faces. Params is empty.
+   */
+  faces: CRMAudienceSample[];
+  /**
+   * * The latest follow-up sent or scheduled to exactly this group; nil when none.
+   */
+  broadcast?: CRMBroadcast;
+}
+/**
+ *  CRMFollowupsResponse is the Engagement tab's Follow up section.
+ */
+export interface CRMFollowupsResponse {
+  webinarId: string;
+  /**
+   * * False until the webinar's engagement has been computed: tiers match nobody yet.
+   */
+  scored: boolean;
+  groups: CRMFollowupGroup[];
+  whatsappConnected: boolean;
+}
 
 //////////
 // source: engagement.go
@@ -4086,6 +4122,11 @@ export interface RegistrantRow {
    */
   joined: boolean;
   watchMin: number /* int */;
+  /**
+   *  Tier is their engagement level from the webinar's latest score (engagement_scores),
+   * 	 * empty until it has been computed or when they never joined.
+   */
+  tier?: EngagementTier;
   /**
    *  ContactID is this registrant's CRM contact, which is who a message is addressed to;
    * 	 * empty for a guest. LastMessage is the latest message either way on WhatsApp, for the

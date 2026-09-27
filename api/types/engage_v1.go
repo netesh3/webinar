@@ -222,3 +222,27 @@ type CRMSummaryResponse struct {
 	NextSendAt    string `json:"nextSendAt,omitempty"`
 	NextSendLabel string `json:"nextSendLabel,omitempty"`
 }
+
+/* CRMFollowupGroup is one card of the Engagement tab's Follow up: an engagement tier, or
+ * the no-shows, as the segment a send resolves — so the card, the count in the send
+ * dialog and the people messaged are the same. */
+type CRMFollowupGroup struct {
+	/** `high`, `engaged`, `passive`, `risk` or `no_show`. */
+	ID      EngagementTier `json:"id"`
+	Segment CRMSegment     `json:"segment"`
+	/** Who in the group WhatsApp can reach, in the audience's four buckets. */
+	Audience CRMAudienceResponse `json:"audience"`
+	/** A few reachable people, for the card's faces. Params is empty. */
+	Faces []CRMAudienceSample `json:"faces"`
+	/** The latest follow-up sent or scheduled to exactly this group; nil when none. */
+	Broadcast *CRMBroadcast `json:"broadcast,omitempty"`
+}
+
+/* CRMFollowupsResponse is the Engagement tab's Follow up section. */
+type CRMFollowupsResponse struct {
+	WebinarID string `json:"webinarId"`
+	/** False until the webinar's engagement has been computed: tiers match nobody yet. */
+	Scored            bool               `json:"scored"`
+	Groups            []CRMFollowupGroup `json:"groups"`
+	WhatsAppConnected bool               `json:"whatsappConnected"`
+}

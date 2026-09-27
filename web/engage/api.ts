@@ -28,6 +28,7 @@ import type {
   CRMSummaryResponse,
   CRMTestSendRequest,
   CRMWebinarMessagesResponse,
+  CRMFollowupsResponse,
   CRMMessage,
   CRMNote,
   CRMNoteRequest,
@@ -391,6 +392,13 @@ export const engageApi = {
   crmWebinarMessages: (slug: string) =>
     request<CRMWebinarMessagesResponse>(
       `/api/host/crm/webinars/${seg(slug)}/messages`,
+      fresh,
+    ),
+
+  /** The Engagement tab's Follow up: each engagement group's reach and last send. */
+  crmFollowups: (slug: string) =>
+    request<CRMFollowupsResponse>(
+      `/api/host/crm/webinars/${seg(slug)}/followups`,
       fresh,
     ),
 
