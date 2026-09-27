@@ -176,6 +176,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And where a recording goes: a remembered target that is no longer available must
 	# ask rather than start somewhere else, and Stop must never become a popup.
 	cd web && node --experimental-strip-types --no-warnings lib/record-target.test.mts
+	# And the connection toast: a sub-second blip must stay silent, a shown drop must turn
+	# into "back online" in place, and a long one must escalate to "Connection lost".
+	cd web && node --experimental-strip-types --no-warnings lib/connection-toast.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
