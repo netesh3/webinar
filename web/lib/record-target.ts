@@ -4,10 +4,12 @@
  * subtly wrong are pinned by lib/record-target.test.mts rather than by clicking:
  *
  *   - which targets this browser + instance can actually use, and why not,
- *   - what the main Record button does (stop / start directly / ask),
- *   - how a remembered choice survives storage (a stale or hand-edited value, or
- *     a target that has since become unavailable, must fall back to asking —
- *     never start a recording somewhere the host did not pick).
+ *   - what each destination says in the compact Record menu,
+ *   - how the menu's arrow keys move.
+ *
+ * There is no remembered choice any more: Record always opens the small
+ * destination menu and one click there starts. `clearLegacyRememberedTarget`
+ * removes what an older build may have stored so it can never resurface.
  *
  * The capture pipelines themselves live in lib/recorder.ts (cloud, composited)
  * and lib/screen-recorder.ts + lib/local-recording.ts (this computer).
@@ -19,15 +21,22 @@ export const RECORD_TARGETS: readonly RecordTarget[] = ["cloud", "local"];
 
 export type TargetAvailability = {
   available: boolean;
-  /** Why not, in words a host can act on. Null when available. */
+  /** Why not, in words a host can act on. Null when available or pending. */
   reason: string | null;
+  /** Not known yet (the instance config is still loading). Not available, but
+   *  not to be presented as unavailable either. */
+  pending?: boolean;
 };
 
 export type RecordAvailability = Record<RecordTarget, TargetAvailability>;
 
+/** Whether the instance has cloud recording: AppConfig.cloudRecordingEnabled
+ *  once the config has arrived, "checking" while it is still loading, and
+ *  "unknown" when it could not be fetched at all. */
+export type CloudSetting = boolean | "checking" | "unknown";
+
 export type RecordCapabilities = {
-  /** AppConfig.cloudRecordingEnabled — the instance has recording storage. */
-  cloudEnabled: boolean;
+  cloudEnabled: CloudSetting;
   /** AppConfig.recordingMode === "egress": the server records, the browser does nothing. */
   isEgress: boolean;
   /** lib/recorder.ts canRecord(): this browser can composite + encode the stage. */
@@ -39,23 +48,29 @@ export type RecordCapabilities = {
 };
 
 export function recordAvailability(caps: RecordCapabilities): RecordAvailability {
-  let cloudReason: string | null = null;
-  if (!caps.cloudEnabled) {
-    cloudReason = "Cloud recording isn't turned on for this server.";
+  let cloud: TargetAvailability;
+  if (caps.cloudEnabled === "checking") {
+    // isEgress also comes from the config, so which pipeline Cloud would use is
+    // not known yet either — wait rather than guess.
+    cloud = { available: false, reason: null, pending: true };
+  } else if (caps.cloudEnabled === "unknown") {
+    cloud = { available: false, reason: "Couldn't check cloud recording. Reload to try again." };
+  } else if (!caps.cloudEnabled) {
+    cloud = { available: false, reason: "Cloud recording isn't turned on for this server." };
   } else if (!caps.isEgress && !caps.canComposite) {
     // Client mode composites the stage in this tab, so the browser has to be able to.
-    cloudReason = "This browser can't record the session. Try a current Chrome, Edge or Safari.";
+    cloud = { available: false, reason: "This browser can't record the session. Try Chrome, Edge or Safari." };
+  } else {
+    cloud = { available: true, reason: null };
   }
 
-  let localReason: string | null = null;
-  if (!caps.canCaptureScreen) {
-    localReason = "This browser can't capture your screen. Use Chrome or Edge on a computer.";
-  } else if (!caps.canSaveLocally) {
-    localReason = "Saving straight to disk needs Chrome or Edge on a computer.";
-  }
+  // Screen capture and saving straight to disk are both Chrome/Edge-on-desktop
+  // features in practice, so one short reason covers either missing.
+  const localReason =
+    caps.canCaptureScreen && caps.canSaveLocally ? null : "Needs Chrome or Edge on a computer.";
 
   return {
-    cloud: { available: cloudReason === null, reason: cloudReason },
+    cloud,
     local: { available: localReason === null, reason: localReason },
   };
 }
@@ -64,76 +79,19 @@ export function anyTargetAvailable(availability: RecordAvailability): boolean {
   return RECORD_TARGETS.some((t) => availability[t].available);
 }
 
-export function parseRecordTarget(raw: unknown): RecordTarget | null {
-  return raw === "cloud" || raw === "local" ? raw : null;
-}
-
-export type MainClickAction =
-  | { kind: "stop" }
-  | { kind: "start"; target: RecordTarget }
-  | { kind: "choose"; initial: RecordTarget | null };
-
-/** What pressing the main Record button does.
- *
- *  Recording → stop, always, with no popup: stopping must be one click.
- *  A remembered target that is still available → start there directly.
- *  Otherwise → ask, pre-selecting the remembered/last target if usable, else the
- *  first available one. With nothing available the chooser still opens (both
- *  options disabled, each with its reason) — a button that silently does nothing
- *  is worse than one that says why. */
-export function resolveMainClick(input: {
-  recording: boolean;
-  remembered: RecordTarget | null;
-  lastUsed?: RecordTarget | null;
-  availability: RecordAvailability;
-}): MainClickAction {
-  if (input.recording) return { kind: "stop" };
-  const { remembered, availability } = input;
-  if (remembered && availability[remembered].available) {
-    return { kind: "start", target: remembered };
-  }
-  return {
-    kind: "choose",
-    initial: initialSelection(remembered ?? input.lastUsed ?? null, availability),
-  };
-}
-
-/** Which option the chooser opens with selected. */
-export function initialSelection(
-  preferred: RecordTarget | null,
-  availability: RecordAvailability,
-): RecordTarget | null {
-  if (preferred && availability[preferred].available) return preferred;
-  return RECORD_TARGETS.find((t) => availability[t].available) ?? null;
-}
-
 // ------------------------------------------------------------------ storage
 
-export const REMEMBER_KEY = "webcast.record-target.v1";
+/** Where "Remember my choice" used to live. Read by nothing now. */
+export const LEGACY_REMEMBER_KEY = "webcast.record-target.v1";
 
-type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+type StorageLike = Pick<Storage, "removeItem">;
 
-/** The remembered target, or null. Storage can throw (Safari private mode,
- *  blocked cookies) and can hold anything — both read as "not remembered". */
-export function readRememberedTarget(storage: StorageLike | null | undefined): RecordTarget | null {
-  if (!storage) return null;
-  try {
-    return parseRecordTarget(storage.getItem(REMEMBER_KEY));
-  } catch {
-    return null;
-  }
-}
-
-/** Remembers `target`, or forgets when null. Failing to persist is not an
- *  error worth surfacing — the host is simply asked again next time. */
-export function writeRememberedTarget(
-  storage: StorageLike | null | undefined,
-  target: RecordTarget | null,
-): void {
+/** Drops a choice remembered by an older build. Storage can be missing or
+ *  throw (Safari private mode, blocked cookies); neither is worth surfacing. */
+export function clearLegacyRememberedTarget(storage: StorageLike | null | undefined): void {
   if (!storage) return;
   try {
-    if (target) storage.setItem(REMEMBER_KEY, target);
-    else storage.removeItem(REMEMBER_KEY);
+    storage.removeItem(LEGACY_REMEMBER_KEY);
   } catch {
     // ignore — see above
   }
@@ -145,12 +103,23 @@ export function targetLabel(target: RecordTarget): string {
   return target === "cloud" ? "Cloud" : "This computer";
 }
 
-/** The main button's tooltip while idle. */
-export function recordButtonTitle(remembered: RecordTarget | null, availability: RecordAvailability): string {
-  if (remembered && availability[remembered].available) {
-    return remembered === "cloud" ? "Record to the Cloud" : "Record on this computer";
-  }
-  return "Record — choose where to save";
+/** The menu item's title. */
+export function menuTitle(target: RecordTarget): string {
+  return target === "cloud" ? "Record to the Cloud" : "Record on this Computer";
+}
+
+/** The one-line subline under a menu item: what happens, or why it can't. */
+export function menuSubline(
+  target: RecordTarget,
+  availability: TargetAvailability,
+  keepDays: number,
+): string {
+  if (availability.pending) return "Checking if cloud recording is on…";
+  if (!availability.available) return availability.reason ?? "Not available here.";
+  if (target === "local") return "Saved as a local file. Attendees aren't notified.";
+  return keepDays > 0
+    ? `Stored for ${keepDays} days. Download a copy if you need it longer.`
+    : "Saved to your recordings list.";
 }
 
 /** The short destination tag — used in the Stop button's label. The pill
@@ -171,4 +140,30 @@ export function recordingDetail(
   if (elapsed) parts.push(elapsed);
   if (target === "local" && size) parts.push(size);
   return parts.join(" · ");
+}
+
+// -------------------------------------------------------------- menu keys
+
+/** Which item a menu opens focused on: the first usable one, else the first
+ *  (so a disabled item's reason is still read out), else none. */
+export function initialMenuIndex(enabled: readonly boolean[]): number {
+  if (enabled.length === 0) return -1;
+  const i = enabled.indexOf(true);
+  return i === -1 ? 0 : i;
+}
+
+/** Arrow / Home / End movement in the menu. Wraps, and — as the ARIA menu
+ *  pattern recommends — lands on disabled items too, so their reason can be
+ *  heard; activating one does nothing. */
+export function moveMenuIndex(
+  current: number,
+  key: "ArrowDown" | "ArrowUp" | "Home" | "End",
+  count: number,
+): number {
+  if (count <= 0) return -1;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  if (current < 0) return key === "ArrowDown" ? 0 : count - 1;
+  const step = key === "ArrowDown" ? 1 : -1;
+  return (current + step + count) % count;
 }

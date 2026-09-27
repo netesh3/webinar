@@ -1,23 +1,24 @@
-/* Where a recording goes: availability, the main button, and the remembered choice.
+/* Where a recording goes: availability, the compact menu's copy and keys, and
+ * clearing the choice an older build remembered.
  *
  * Run with `make test-web`.
  *
- * The failure worth pinning is starting a recording somewhere the host did not
- * pick — a remembered target that has since become unavailable, or junk in
- * storage — and a Stop that turns into a popup.
+ * The failures worth pinning: offering a destination that cannot work (or
+ * calling Cloud unavailable while the config is merely still loading), a menu
+ * subline that grows into a paragraph, and junk storage breaking Record.
  */
 
 import {
-  initialSelection,
-  parseRecordTarget,
-  readRememberedTarget,
+  anyTargetAvailable,
+  clearLegacyRememberedTarget,
+  initialMenuIndex,
+  LEGACY_REMEMBER_KEY,
+  menuSubline,
+  menuTitle,
+  moveMenuIndex,
   recordAvailability,
-  recordButtonTitle,
   recordingDetail,
   recordingTag,
-  REMEMBER_KEY,
-  resolveMainClick,
-  writeRememberedTarget,
   type RecordCapabilities,
 } from "./record-target.ts";
 
@@ -44,12 +45,24 @@ const all: RecordCapabilities = {
   const a = recordAvailability(all);
   ok(a.cloud.available && a.local.available, "everything available");
   ok(a.cloud.reason === null && a.local.reason === null, "no reasons when available");
+  ok(!a.cloud.pending && !a.local.pending, "nothing pending once config is in");
 }
 {
   const a = recordAvailability({ ...all, cloudEnabled: false });
   ok(!a.cloud.available, "cloud off on the instance → unavailable");
   ok(/server/i.test(a.cloud.reason ?? ""), "cloud reason names the server");
   ok(a.local.available, "local unaffected by instance storage");
+}
+{
+  const a = recordAvailability({ ...all, cloudEnabled: "checking" });
+  ok(!a.cloud.available, "config loading → cloud cannot be started yet");
+  ok(a.cloud.pending === true, "…but is pending, not unavailable");
+  ok(a.cloud.reason === null, "…with no 'isn't turned on' reason");
+  ok(a.local.available, "local does not wait for the config");
+
+  const u = recordAvailability({ ...all, cloudEnabled: "unknown" });
+  ok(!u.cloud.available && !u.cloud.pending, "config fetch failed → unavailable, not pending");
+  ok(!/turned on/.test(u.cloud.reason ?? "") && /check/i.test(u.cloud.reason ?? ""), "…and says it couldn't check, not that it's off");
 }
 {
   const a = recordAvailability({ ...all, canComposite: false });
@@ -60,104 +73,89 @@ const all: RecordCapabilities = {
 {
   const a = recordAvailability({ ...all, canSaveLocally: false });
   ok(!a.local.available, "no File System Access → local unavailable");
-  ok(/Chrome or Edge/.test(a.local.reason ?? ""), "local reason names the browsers that work");
+  ok(a.local.reason === "Needs Chrome or Edge on a computer.", "local reason is the short one");
   const b = recordAvailability({ ...all, canCaptureScreen: false });
   ok(!b.local.available, "no getDisplayMedia → local unavailable");
-  ok(/capture/i.test(b.local.reason ?? ""), "capture reason wins when both are missing");
+  ok(b.local.reason === a.local.reason, "same short reason either way");
 }
-
-// ------------------------------------------------------------ main button
 {
-  const availability = recordAvailability(all);
+  ok(anyTargetAvailable(recordAvailability(all)), "any: both");
   ok(
-    resolveMainClick({ recording: true, remembered: "local", availability }).kind === "stop",
-    "while recording the main button stops, even with a remembered choice",
+    !anyTargetAvailable(recordAvailability({ ...all, cloudEnabled: "checking", canSaveLocally: false })),
+    "any: pending cloud does not count as available",
   );
+}
+
+// ------------------------------------------------------------ menu copy
+{
+  const a = recordAvailability(all);
+  ok(menuTitle("cloud") === "Record to the Cloud" && menuTitle("local") === "Record on this Computer", "titles");
   ok(
-    resolveMainClick({ recording: true, remembered: null, availability: recordAvailability({ ...all, cloudEnabled: false, canSaveLocally: false }) }).kind === "stop",
-    "stop works even when nothing could be started now",
+    menuSubline("cloud", a.cloud, 30) === "Stored for 30 days. Download a copy if you need it longer.",
+    "cloud subline with retention",
+  );
+  ok(menuSubline("cloud", a.cloud, 0) === "Saved to your recordings list.", "cloud subline, kept forever");
+  ok(
+    menuSubline("local", a.local, 30) === "Saved as a local file. Attendees aren't notified.",
+    "local subline warns attendees aren't notified",
   );
 
-  const ask = resolveMainClick({ recording: false, remembered: null, availability });
-  ok(ask.kind === "choose", "nothing remembered → ask");
-  ok(ask.kind === "choose" && ask.initial === "cloud", "ask pre-selects cloud first");
+  const off = recordAvailability({ ...all, cloudEnabled: false, canSaveLocally: false });
+  ok(menuSubline("cloud", off.cloud, 30) === off.cloud.reason, "unavailable cloud → its reason");
+  ok(menuSubline("local", off.local, 30) === "Needs Chrome or Edge on a computer.", "unavailable local → its reason");
 
-  const direct = resolveMainClick({ recording: false, remembered: "local", availability });
-  ok(direct.kind === "start" && direct.target === "local", "remembered + available → start directly");
+  const pending = recordAvailability({ ...all, cloudEnabled: "checking" });
+  ok(/checking/i.test(menuSubline("cloud", pending.cloud, 30)), "pending cloud → checking, not a reason");
 
-  const last = resolveMainClick({ recording: false, remembered: null, lastUsed: "local", availability });
-  ok(last.kind === "choose" && last.initial === "local", "last used is pre-selected but still asked");
+  for (const [what, line] of [
+    ["cloud", menuSubline("cloud", a.cloud, 30)],
+    ["local", menuSubline("local", a.local, 30)],
+    ["cloud off", menuSubline("cloud", off.cloud, 30)],
+    ["local off", menuSubline("local", off.local, 30)],
+    ["browser", menuSubline("cloud", recordAvailability({ ...all, canComposite: false }).cloud, 30)],
+  ] as const) {
+    ok(line.length <= 70, `${what} subline stays one short line (${line.length})`);
+  }
 }
+
+// ------------------------------------------------------------ menu keys
 {
-  const noLocal = recordAvailability({ ...all, canSaveLocally: false });
-  const r = resolveMainClick({ recording: false, remembered: "local", availability: noLocal });
-  ok(r.kind === "choose", "remembered target now unavailable → ask, never start elsewhere");
-  ok(r.kind === "choose" && r.initial === "cloud", "…with the available one selected");
+  ok(initialMenuIndex([true, true]) === 0, "opens on the first item");
+  ok(initialMenuIndex([false, true]) === 1, "skips a disabled first item");
+  ok(initialMenuIndex([false, false]) === 0, "all disabled → still focus one so its reason is read");
+  ok(initialMenuIndex([]) === -1, "empty menu → nothing");
 
-  const noCloud = recordAvailability({ ...all, cloudEnabled: false });
-  const c = resolveMainClick({ recording: false, remembered: null, availability: noCloud });
-  ok(c.kind === "choose" && c.initial === "local", "cloud off → local pre-selected");
-
-  const none = recordAvailability({ ...all, cloudEnabled: false, canSaveLocally: false });
-  const n = resolveMainClick({ recording: false, remembered: "cloud", availability: none });
-  ok(n.kind === "choose" && n.initial === null, "nothing available → ask with nothing selected (reasons shown)");
-  ok(initialSelection("cloud", none) === null, "no selection when nothing is available");
+  ok(moveMenuIndex(0, "ArrowDown", 2) === 1, "down");
+  ok(moveMenuIndex(1, "ArrowDown", 2) === 0, "down wraps");
+  ok(moveMenuIndex(0, "ArrowUp", 2) === 1, "up wraps");
+  ok(moveMenuIndex(-1, "ArrowDown", 2) === 0 && moveMenuIndex(-1, "ArrowUp", 2) === 1, "from nothing");
+  ok(moveMenuIndex(1, "Home", 3) === 0 && moveMenuIndex(0, "End", 3) === 2, "home / end");
+  ok(moveMenuIndex(0, "ArrowDown", 0) === -1, "no items");
 }
 
-// ------------------------------------------------------------ storage
-function memoryStorage(initial: Record<string, string> = {}) {
-  const data = new Map(Object.entries(initial));
-  return {
-    getItem: (k: string) => data.get(k) ?? null,
-    setItem: (k: string, v: string) => void data.set(k, v),
-    removeItem: (k: string) => void data.delete(k),
-    data,
-  };
-}
+// ------------------------------------------------------------ legacy storage
 {
-  const s = memoryStorage();
-  ok(readRememberedTarget(s) === null, "empty storage → not remembered");
-  writeRememberedTarget(s, "local");
-  ok(s.data.get(REMEMBER_KEY) === "local", "writes the target");
-  ok(readRememberedTarget(s) === "local", "reads it back");
-  writeRememberedTarget(s, null);
-  ok(!s.data.has(REMEMBER_KEY), "null forgets");
+  const data = new Map([[LEGACY_REMEMBER_KEY, "cloud"], ["other", "x"]]);
+  clearLegacyRememberedTarget({ removeItem: (k: string) => void data.delete(k) });
+  ok(!data.has(LEGACY_REMEMBER_KEY), "stale remembered choice is cleared");
+  ok(data.get("other") === "x", "…and nothing else");
 
-  ok(readRememberedTarget(memoryStorage({ [REMEMBER_KEY]: "dropbox" })) === null, "junk → not remembered");
-  ok(readRememberedTarget(null) === null, "no storage → not remembered");
-
-  const throwing = {
-    getItem: () => {
-      throw new Error("SecurityError");
-    },
-    setItem: () => {
-      throw new Error("QuotaExceeded");
-    },
-    removeItem: () => {
-      throw new Error("SecurityError");
-    },
-  };
-  ok(readRememberedTarget(throwing) === null, "throwing storage reads as not remembered");
   let threw = false;
   try {
-    writeRememberedTarget(throwing, "cloud");
+    clearLegacyRememberedTarget({
+      removeItem: () => {
+        throw new Error("SecurityError");
+      },
+    });
+    clearLegacyRememberedTarget(null);
   } catch {
     threw = true;
   }
-  ok(!threw, "throwing storage never breaks Record");
+  ok(!threw, "throwing or missing storage never breaks Record");
 }
 
-// ------------------------------------------------------------ copy
+// ------------------------------------------------------------ pill copy
 {
-  ok(parseRecordTarget("cloud") === "cloud" && parseRecordTarget(1) === null, "parse");
-  const availability = recordAvailability(all);
-  ok(recordButtonTitle(null, availability) === "Record — choose where to save", "idle title asks");
-  ok(recordButtonTitle("cloud", availability) === "Record to the Cloud", "remembered cloud title");
-  ok(recordButtonTitle("local", availability) === "Record on this computer", "remembered local title");
-  ok(
-    recordButtonTitle("local", recordAvailability({ ...all, canSaveLocally: false })) === "Record — choose where to save",
-    "unavailable remembered target → asking title",
-  );
   ok(recordingTag("local") === "Local" && recordingTag("cloud") === "Cloud", "tags");
   ok(recordingTag(null) === "Cloud", "someone else's server recording reads as Cloud");
 
