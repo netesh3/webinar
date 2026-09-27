@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { TopNav } from "@/components/top-nav";
 import { SampleEngagement } from "@/components/engagement/sample-engagement";
-import { SECTIONS } from "@/lib/engagement/sections";
+import type { SectionId } from "@/lib/engagement/sections";
 
 /* The Engagement dashboard over fixture data, for design review and screenshots.
  *
@@ -14,11 +14,13 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+const LINKABLE: readonly SectionId[] = ["overview", "attendance", "activity", "attendees", "chat", "qa", "polls", "reactions", "survey", "follow-up"];
+
 export default async function EngagementMockPage({ searchParams }: PageProps<"/mock/engagement">) {
   // ?tab= is the older spelling, from when the details were tabs; ?section= reads better now.
   const params = await searchParams;
   const raw = params.section ?? params.tab;
-  const initialSection = SECTIONS.find((x) => x.id === raw)?.id;
+  const initialSection = LINKABLE.find((id) => id === raw);
   return (
     <>
       <TopNav />

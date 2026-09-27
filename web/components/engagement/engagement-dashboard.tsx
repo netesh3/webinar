@@ -21,13 +21,13 @@ import { Hero } from "./hero";
 import { KpiGrid } from "./kpi-grid";
 import { Icon } from "./primitives";
 import { StageAttendance, useFullQuestions } from "./record-panels";
-import { Deferred, PageSection, SectionNav } from "./section-nav";
+import { Deferred, PageSection } from "./page-section";
 import { DashboardSkeleton, EmptyState, ErrorState, errorMessage } from "./states";
 
 /* One webinar's engagement, read top to bottom in the order a coach asks: how did it go,
  * who came and stayed, when people took part, who took part (table → drawer), what they
- * said, and what to do next. A sticky nav jumps between those sections. Composition only —
- * every number arrives through `source`. */
+ * said, and what to do next — one section under the next, in a single scroll. Composition
+ * only — every number arrives through `source`. */
 
 const card = "p-4 sm:p-5";
 
@@ -60,10 +60,8 @@ export function EngagementDashboard({
   const [open, setOpen] = useState<EngagementAttendeeRow | null>(null);
   const [compose, setCompose] = useState<SegmentId | null>(null);
   const [recomputing, setRecomputing] = useState(false);
-  const [jumped, setJumped] = useState(false);
   const [wantRecord, setWantRecord] = useState(false);
   const closeDrawer = useCallback(() => setOpen(null), []);
-  const onJump = useCallback(() => setJumped(true), []);
   const loadRecord = useCallback(() => setWantRecord(true), []);
   const record = useSessionRecord(source, wantRecord);
 
@@ -73,17 +71,13 @@ export function EngagementDashboard({
   const ready = s?.state === "ready";
   const started = !!s?.webinar.startedAt;
 
-  // Once, when the dashboard first has numbers: render every deferred section so the
-  // target sits at its real offset, then scroll to it a frame later.
+  // Once, when the dashboard first has numbers, a frame later so the sections exist.
   const landed = useRef(false);
   useEffect(() => {
     if (!initialSection || !ready || landed.current) return;
     landed.current = true;
-    setJumped(true);
     const raf = requestAnimationFrame(() => {
-      const el = document.getElementById(sectionDomId(initialSection));
-      el?.scrollIntoView({ block: "start" });
-      el?.focus({ preventScroll: true });
+      document.getElementById(sectionDomId(initialSection))?.scrollIntoView({ block: "start" });
     });
     return () => cancelAnimationFrame(raf);
   }, [initialSection, ready]);
@@ -131,19 +125,20 @@ export function EngagementDashboard({
 
   const actions = (
     <>
-      <ExportMenu options={exports} />
       {source.recompute && ended && (
-        <Button size="sm" variant="secondary" onClick={() => void recompute()} disabled={recomputing} aria-label="Recompute engagement">
+        <Button size="sm" variant="secondary" onClick={() => void recompute()} disabled={recomputing}>
           {recomputing ? <Spinner className="size-3.5" /> : <Icon name="refresh" />}
-          <span className="hidden lg:inline">Recompute</span>
+          Recompute
         </Button>
       )}
       {ready && (
-        <Button size="sm" onClick={() => setCompose("engaged")} aria-label="Schedule follow-up">
+        <Button size="sm" onClick={() => setCompose("engaged")}>
           <Icon name="schedule_send" />
-          <span className="hidden md:inline">Follow up</span>
+          Follow up
         </Button>
       )}
+      {/* Last, so its right-anchored menu stays on screen when the row wraps on a phone. */}
+      <ExportMenu options={exports} />
     </>
   );
 
@@ -185,10 +180,11 @@ export function EngagementDashboard({
 
   return (
     <div className="grid grid-cols-1 gap-8">
-      {/* A direct child of the whole dashboard, so it stays stuck for its full height. */}
-      <SectionNav actions={actions} onJump={onJump} />
-      <div className="-mt-5 grid gap-3">
-        <StatusLine s={s} live={summary.live} sample={sample} refreshing={summary.loading} onRefresh={summary.refresh} />
+      <div className="grid gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <StatusLine s={s} live={summary.live} sample={sample} refreshing={summary.loading} onRefresh={summary.refresh} />
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">{actions}</div>
+        </div>
         {summary.error != null && <ErrorState error={summary.error} onRetry={summary.refresh} compact />}
       </div>
 
@@ -236,7 +232,7 @@ export function EngagementDashboard({
       </PageSection>
 
       <PageSection id="activity" title="Activity" hint="Interactions per minute. Darker means busier — your best moments stand out.">
-        <Deferred force={jumped} minHeight={220}>
+        <Deferred minHeight={220}>
           <Card className={card}>
             <ActivityHeatmap activity={s.activity} markers={s.markers} sessionMin={s.webinar.sessionMin} />
           </Card>
@@ -248,7 +244,7 @@ export function EngagementDashboard({
         title="Attendees"
         hint={`One row per person across the ${s.webinar.sessionMin}-minute session, with when they came in and left. Sort, filter, or open a row for their full timeline.`}
       >
-        <Deferred force={jumped} minHeight={480}>
+        <Deferred minHeight={480}>
           <Card className={card}>
             <AttendeeHeatmap
               source={source}
@@ -264,7 +260,7 @@ export function EngagementDashboard({
         </Deferred>
       </PageSection>
 
-      <DetailSection id="chat" title="Chat" hint="How much people talked, and who talked most." force={jumped}>
+      <DetailSection id="chat" title="Chat" hint="How much people talked, and who talked most.">
         <ChatPanel s={s} />
       </DetailSection>
 
@@ -272,7 +268,6 @@ export function EngagementDashboard({
         id="qa"
         title="Q&A"
         hint="Every question, most upvoted first. Unanswered ones make a great follow-up."
-        force={jumped}
         action={
           capped && (
             <Button size="sm" variant="secondary" onClick={loadRecord} disabled={record.loading}>
@@ -285,15 +280,15 @@ export function EngagementDashboard({
         <QAPanel s={questionsSummary} />
       </DetailSection>
 
-      <DetailSection id="polls" title="Polls & quizzes" hint="What people answered, and how many of those in the room took part." force={jumped}>
+      <DetailSection id="polls" title="Polls & quizzes" hint="What people answered, and how many of those in the room took part.">
         <PollsPanel s={s} />
       </DetailSection>
 
-      <DetailSection id="reactions" title="Reactions" hint="Emoji reactions over the session." force={jumped}>
+      <DetailSection id="reactions" title="Reactions" hint="Emoji reactions over the session.">
         <ReactionsPanel s={s} />
       </DetailSection>
 
-      <DetailSection id="survey" title="Survey" hint="What attendees said about the session afterwards." force={jumped}>
+      <DetailSection id="survey" title="Survey" hint="What attendees said about the session afterwards.">
         <SurveyPanel source={source} />
       </DetailSection>
 
@@ -329,19 +324,17 @@ function DetailSection({
   title,
   hint,
   action,
-  force,
   children,
 }: {
   id: SectionId;
   title: string;
   hint: string;
   action?: ReactNode;
-  force: boolean;
   children: ReactNode;
 }) {
   return (
     <PageSection id={id} title={title} hint={hint} action={action}>
-      <Deferred force={force} minHeight={200}>
+      <Deferred minHeight={200}>
         <Card className={card}>{children}</Card>
       </Deferred>
     </PageSection>

@@ -1,7 +1,7 @@
 "use client";
 
 import { DEFAULT_REMINDERS, describeReminders } from "./reminder-times";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { Alert, CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
@@ -46,6 +46,7 @@ export function HostWebinarTabs({
   recordings,
   onChanged,
   initialTab,
+  onTabChange,
 }: {
   webinar: Webinar;
   registrants: RegistrantRow[];
@@ -53,6 +54,9 @@ export function HostWebinarTabs({
   onChanged: () => void | Promise<void>;
   /** Deep-link from Host list: admit | attendees | share | engagement | … */
   initialTab?: string | null;
+  /** Tells the page header which tab is open. A layout effect, so the header never paints
+   *  a stale button first. */
+  onTabChange?: (tab: HostTab) => void;
 }) {
   const pending = registrants.filter((r) => r.state === "pending");
   const { whatsappConnect } = useAppConfig();
@@ -73,6 +77,10 @@ export function HostWebinarTabs({
     // A status change (the webinar just ended) can take the open tab away.
     else if (!tabs.includes(tab)) setTab(defaultTab(w.status, { pending: pending.length, whatsapp: whatsappConnect }));
   }
+
+  useLayoutEffect(() => {
+    onTabChange?.(tab);
+  }, [tab, onTabChange]);
 
   return (
     <>
