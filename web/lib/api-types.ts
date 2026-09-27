@@ -21,6 +21,10 @@ export interface CRMPerson {
    */
   webinars: number /* int */;
   /**
+   * * How many of those they joined: "came to 2 of 3".
+   */
+  attendedWebinars: number /* int */;
+  /**
    * * The latest of those, by start time. Empty when there are none.
    */
   lastWebinar?: string;

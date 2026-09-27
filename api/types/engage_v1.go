@@ -12,6 +12,8 @@ type CRMPerson struct {
 	WhatsAppStatus string `json:"whatsappStatus"`
 	/** How many of this host's webinars they registered for (declined seats excluded). */
 	Webinars int `json:"webinars"`
+	/** How many of those they joined: "came to 2 of 3". */
+	AttendedWebinars int `json:"attendedWebinars"`
 	/** The latest of those, by start time. Empty when there are none. */
 	LastWebinar   string `json:"lastWebinar,omitempty"`
 	LastWebinarID string `json:"lastWebinarId,omitempty"`
