@@ -121,6 +121,8 @@ export type Toast = {
   key?: string;
   /** Custom content, drawn instead of `message` inside the toast's own card. */
   node?: ReactNode;
+  /** The node has buttons of its own, so it is not wrapped in a click-to-close one. */
+  interactive?: boolean;
   /** On its way out: drawn fading for a beat, then removed. */
   leaving?: boolean;
   onDismiss?: () => void;
@@ -131,6 +133,9 @@ export type KeyedToast = {
   message: string;
   tone?: Toast["tone"];
   node?: ReactNode;
+  /** The node has its own buttons (and its own close): drawn in a plain wrapper
+   *  instead of a click-anywhere-to-close button, which could not contain them. */
+  interactive?: boolean;
   /** Called when the person clicks it away (not when the caller dismisses it). */
   onDismiss?: () => void;
 };
@@ -228,6 +233,7 @@ export function AppProviders({
       message: toast.message,
       tone: toast.tone ?? "info",
       node: toast.node,
+      interactive: toast.interactive,
       onDismiss: toast.onDismiss,
     };
     setToasts((current) =>
@@ -420,7 +426,14 @@ function ToastViewport() {
       aria-live="polite"
     >
       {toasts.map((t) =>
-        t.node ? (
+        t.node && t.interactive ? (
+          <div
+            key={t.id}
+            className={`toast-item pointer-events-auto w-full max-w-sm sm:w-auto ${t.leaving ? "toast-leaving" : ""}`}
+          >
+            {t.node}
+          </div>
+        ) : t.node ? (
           // The custom card draws its own surface; this is only the click target.
           // tabIndex -1: a toast arriving must never pull focus or join the tab order
           // in the middle of somebody presenting.

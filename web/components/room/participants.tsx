@@ -9,6 +9,7 @@ import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { LiveParticipant, LiveRoom, Role } from "@/lib/api-types";
+import type { Realtime } from "@/lib/realtime";
 import {
   handWaitLabel,
   matchRosterQuery,
@@ -195,6 +196,27 @@ export function ParticipantsPanel() {
   return isHost ? <HostRoster /> : <AudienceRoster />;
 }
 
+/** Moves somebody on or off the stage and settles their raised hand to match. The
+ *  one path for the roster row and the raised-hand toast (hand-toasts.tsx), so the
+ *  two cannot drift. Returns "invited" when the server sent an invite rather than
+ *  granting outright — the hand then stays up until they accept. */
+export async function setStageSettlingHand(
+  slug: string,
+  lowerHand: Realtime["lowerHand"],
+  identity: string,
+  role: Role,
+  audioOnly: boolean,
+  handUp: boolean,
+): Promise<"invited" | "done"> {
+  const res = await api.setStage(slug, identity, role, audioOnly);
+  // An invite is still pending — leave the hand up. Lowering it as "granted" used
+  // to remount CDN attendees onto WebRTC before they had publish permission (or a
+  // consent dialog).
+  if (res.status === "invited") return "invited";
+  if (handUp) await lowerHand(identity, role === "panelist" ? "granted" : "dismissed");
+  return "done";
+}
+
 // ---------------------------------------------------------------- host view
 
 function HostRoster() {
@@ -334,17 +356,14 @@ function HostRoster() {
               ? `Waiting for ${p.name} to accept`
               : `Waiting for ${p.name} to join the stage`,
           async () => {
-            const res = await api.setStage(slug, p.identity, role, audioOnly);
-            // An invite is still pending — leave the hand up. Lowering it as
-            // "granted" used to remount CDN attendees onto WebRTC before they
-            // had publish permission (or a consent dialog).
-            if (res.status === "invited") return;
-            if (handIdentities.has(p.identity)) {
-              await realtime.lowerHand(
-                p.identity,
-                role === "panelist" ? "granted" : "dismissed",
-              );
-            }
+            await setStageSettlingHand(
+              slug,
+              realtime.lowerHand,
+              p.identity,
+              role,
+              audioOnly,
+              handIdentities.has(p.identity),
+            );
           },
         )
       }
