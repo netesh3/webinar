@@ -456,6 +456,7 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 		 * sweep happens to run is not a conversation. Silent when no bot matches,
 		 * which is most messages — see runBot.
 		 */
+		s.tagHotLead(ctx, *h, contact.ID, m.Body)
 		s.runBot(ctx, *h, contact, m)
 	}
 

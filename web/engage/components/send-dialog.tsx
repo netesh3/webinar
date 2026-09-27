@@ -59,7 +59,31 @@ export type SendTarget =
       webinarId?: string;
       label: string;
       hints?: string[];
+    }
+  | {
+      /** A recipe with no webinar to count against (the Automations page). */
+      kind: "recipe";
+      webinarId?: undefined;
+      label: string;
+      hints?: string[];
     };
+
+/* The dialog's other job: saving a follow-up recipe — the same message, sent to this
+ * group after every webinar — instead of sending it now. The template and blanks are
+ * picked the same way; "When" becomes how long after the end. */
+export type Automate = {
+  recipeId: string;
+  delayMin: number;
+  template?: string;
+  language?: string;
+  params?: CRMParam[];
+};
+
+const DELAYS = [
+  { min: 60, title: "1 hour after", hint: "While it's fresh" },
+  { min: 120, title: "2 hours after", hint: "Most coaches pick this" },
+  { min: 1440, title: "Next day", hint: "Same time, a day later" },
+] as const;
 
 const LITERAL = "\u0000text";
 
@@ -71,18 +95,28 @@ export function SendDialog({
   target,
   onClose,
   onSent,
+  automate,
 }: {
   open: boolean;
   target: SendTarget | null;
   onClose: () => void;
   onSent?: () => void;
+  /** Save as an automatic follow-up after every webinar instead of sending. */
+  automate?: Automate;
 }) {
   if (!open || !target) return null;
-  return <SendDialogBody target={target} onClose={onClose} onSent={onSent} />;
+  return (
+    <SendDialogBody
+      target={target}
+      onClose={onClose}
+      onSent={onSent}
+      automate={automate}
+    />
+  );
 }
 
 function audienceBody(
-  target: SendTarget,
+  target: Exclude<SendTarget, { kind: "recipe" }>,
   params: CRMParam[] = [],
 ): CRMBroadcastRequest {
   const base = { name: "", template: "", language: "", params };
@@ -113,10 +147,12 @@ function SendDialogBody({
   target,
   onClose,
   onSent,
+  automate,
 }: {
   target: SendTarget;
   onClose: () => void;
   onSent?: () => void;
+  automate?: Automate;
 }) {
   const { notify } = useToast();
   const { account } = useSession();
@@ -128,6 +164,7 @@ function SendDialogBody({
   const [best, setBest] = useState("");
   const [params, setParams] = useState<CRMParam[]>([]);
   const [timing, setTiming] = useState<"now" | "tomorrow" | "later">("now");
+  const [delayMin, setDelayMin] = useState(automate?.delayMin ?? 120);
   const [at, setAt] = useState("");
   const [testOpen, setTestOpen] = useState(false);
   const [testPhone, setTestPhone] = useState("");
@@ -138,7 +175,8 @@ function SendDialogBody({
   const from =
     account?.whatsapp?.verifiedName || account?.name || "Your business";
 
-  const hasWebinar = Boolean(target.webinarId);
+  // A recipe's message is always about the webinar that just ended.
+  const hasWebinar = Boolean(target.webinarId) || Boolean(automate);
   const offered = fields.filter(
     (f) => hasWebinar || !["topic", "when", "watched"].includes(f.token),
   );
@@ -173,7 +211,16 @@ function SendDialogBody({
             (x.onlyKind !== NotifyWhatsAppReplay &&
               x.onlyKind !== NotifyWhatsAppReminder),
         );
-        const top = bestTemplate(sendable, target.hints ?? []);
+        const saved = automate?.template
+          ? sendable.find(
+              (x) =>
+                x.name === automate.template &&
+                x.language === automate.language,
+            )
+          : undefined;
+        const top = saved
+          ? templateKey(saved)
+          : bestTemplate(sendable, target.hints ?? []);
         // The best one first, then the order Meta returned them in.
         setTemplates(
           [...sendable].sort(
@@ -186,10 +233,12 @@ function SendDialogBody({
         if (top) {
           setChosen(top);
           setParams(
-            paramsFor(
-              sendable.find((x) => templateKey(x) === top),
-              f,
-            ),
+            saved && automate?.params?.length === saved.variables
+              ? automate.params
+              : paramsFor(
+                  sendable.find((x) => templateKey(x) === top),
+                  f,
+                ),
           );
         }
       })
@@ -209,6 +258,7 @@ function SendDialogBody({
   const ready = params.every((p) => p.field || (p.text ?? "").trim());
   const paramsKey = JSON.stringify(params);
   useEffect(() => {
+    if (target.kind === "recipe") return;
     const mine = ++seq.current;
     const handle = setTimeout(() => {
       engageApi
@@ -276,6 +326,8 @@ function SendDialogBody({
 
   async function send() {
     if (blocker || !template) return;
+    if (automate) return turnOn();
+    if (target.kind === "recipe") return;
     setSaving(true);
     try {
       const b = await engageApi.createCrmBroadcast({
@@ -294,6 +346,27 @@ function SendDialogBody({
       onClose();
     } catch (e: unknown) {
       setError(e instanceof ApiError ? e.message : "Could not send that.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function turnOn() {
+    if (!template || !automate) return;
+    setSaving(true);
+    try {
+      await engageApi.saveCrmRecipe(automate.recipeId, {
+        active: true,
+        template: template.name,
+        language: template.language,
+        params,
+        delayMin,
+      });
+      notify(`On — ${target.label} get this after every webinar.`, "ok");
+      onSent?.();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof ApiError ? e.message : "Could not turn that on.");
     } finally {
       setSaving(false);
     }
@@ -326,7 +399,11 @@ function SendDialogBody({
       open
       onClose={onClose}
       size="xl"
-      title={`Message · ${target.label}`}
+      title={
+        automate
+          ? `After every webinar · ${target.label}`
+          : `Message · ${target.label}`
+      }
       description={`Sent on WhatsApp from ${account?.whatsapp?.displayPhone || "your number"}, billed to your Meta account.`}
       footer={
         <div className="flex w-full flex-wrap items-center gap-2">
@@ -353,9 +430,11 @@ function SendDialogBody({
             ) : (
               <WhatsAppIcon className="size-4" />
             )}
-            {timing === "now"
-              ? `Send to ${reach} on WhatsApp`
-              : `Schedule for ${reach}`}
+            {automate
+              ? "Turn on for every webinar"
+              : timing === "now"
+                ? `Send to ${reach} on WhatsApp`
+                : `Schedule for ${reach}`}
           </button>
         </div>
       }
@@ -366,7 +445,22 @@ function SendDialogBody({
 
           <section className="grid gap-1.5">
             <span className="label">Who gets it</span>
-            <RecipientStrip audience={audience} error={audienceError} />
+            {target.kind === "recipe" ? (
+              <p className="rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-[12.5px] text-ink-2">
+                Everyone in <b className="text-ink">{target.label}</b> after
+                each webinar who agreed to WhatsApp messages.
+              </p>
+            ) : (
+              <>
+                <RecipientStrip audience={audience} error={audienceError} />
+                {automate && (
+                  <p className="text-[11.5px] text-ink-3">
+                    From this webinar. After every webinar from now on, the same
+                    group gets it.
+                  </p>
+                )}
+              </>
+            )}
           </section>
 
           <section className="grid gap-1.5">
@@ -439,53 +533,91 @@ function SendDialogBody({
             </section>
           )}
 
-          <fieldset className="grid gap-1.5">
-            <legend className="label">When</legend>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {(
-                [
-                  { id: "now", title: "Now", hint: "Goes out in a minute" },
-                  {
-                    id: "tomorrow",
-                    title: "Tomorrow 9 AM",
-                    hint: "Most people read in the morning",
-                  },
-                  { id: "later", title: "Pick a time", hint: "Your time zone" },
-                ] as const
-              ).map((o) => (
-                <label
-                  key={o.id}
-                  className={`cursor-pointer rounded-xl border px-3 py-2.5 transition ${
-                    timing === o.id
-                      ? "border-brand ring-1 ring-brand"
-                      : "border-line hover:border-line-2"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="send-timing"
-                    className="sr-only"
-                    checked={timing === o.id}
-                    onChange={() => setTiming(o.id)}
-                  />
-                  <span className="block text-[13px] font-medium text-ink">
-                    {o.title}
-                  </span>
-                  <span className="block text-[11px] text-ink-3">{o.hint}</span>
-                </label>
-              ))}
-            </div>
-            {timing === "later" && (
-              <input
-                type="datetime-local"
-                aria-label="When to send it"
-                onClick={openPickerOnClick}
-                className="field h-9 sm:max-w-60"
-                value={at}
-                onChange={(e) => setAt(e.target.value)}
-              />
-            )}
-          </fieldset>
+          {automate ? (
+            <fieldset className="grid gap-1.5">
+              <legend className="label">When, after it ends</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {DELAYS.map((o) => (
+                  <label
+                    key={o.min}
+                    className={`cursor-pointer rounded-xl border px-3 py-2.5 transition ${
+                      delayMin === o.min
+                        ? "border-brand ring-1 ring-brand"
+                        : "border-line hover:border-line-2"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="recipe-delay"
+                      className="sr-only"
+                      checked={delayMin === o.min}
+                      onChange={() => setDelayMin(o.min)}
+                    />
+                    <span className="block text-[13px] font-medium text-ink">
+                      {o.title}
+                    </span>
+                    <span className="block text-[11px] text-ink-3">
+                      {o.hint}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : (
+            <fieldset className="grid gap-1.5">
+              <legend className="label">When</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    { id: "now", title: "Now", hint: "Goes out in a minute" },
+                    {
+                      id: "tomorrow",
+                      title: "Tomorrow 9 AM",
+                      hint: "Most people read in the morning",
+                    },
+                    {
+                      id: "later",
+                      title: "Pick a time",
+                      hint: "Your time zone",
+                    },
+                  ] as const
+                ).map((o) => (
+                  <label
+                    key={o.id}
+                    className={`cursor-pointer rounded-xl border px-3 py-2.5 transition ${
+                      timing === o.id
+                        ? "border-brand ring-1 ring-brand"
+                        : "border-line hover:border-line-2"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="send-timing"
+                      className="sr-only"
+                      checked={timing === o.id}
+                      onChange={() => setTiming(o.id)}
+                    />
+                    <span className="block text-[13px] font-medium text-ink">
+                      {o.title}
+                    </span>
+                    <span className="block text-[11px] text-ink-3">
+                      {o.hint}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {timing === "later" && (
+                <input
+                  type="datetime-local"
+                  aria-label="When to send it"
+                  onClick={openPickerOnClick}
+                  className="field h-9 sm:max-w-60"
+                  value={at}
+                  onChange={(e) => setAt(e.target.value)}
+                />
+              )}
+            </fieldset>
+          )}
 
           {testOpen && template && (
             <div className="flex flex-wrap items-end gap-2 rounded-lg border border-line bg-surface-2 p-3">
@@ -524,7 +656,7 @@ function SendDialogBody({
                 fallback={fallback}
                 from={from}
               />
-              {reach > 0 && (
+              {reach > 0 && !automate && (
                 <div className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[12px] leading-relaxed text-ink-2">
                   <div className="text-[13.5px] font-semibold text-ink">
                     ≈ {rupees(cost)} on your Meta account

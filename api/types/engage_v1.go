@@ -246,3 +246,73 @@ type CRMFollowupsResponse struct {
 	Groups            []CRMFollowupGroup `json:"groups"`
 	WhatsAppConnected bool               `json:"whatsappConnected"`
 }
+
+/* A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ * missed it" rather than an empty builder. See migrations/0062. */
+const (
+	RecipeReminders = "reminders"
+	RecipeNoShow    = "replay_no_show"
+	RecipeHigh      = "offer_high"
+	RecipeEngaged   = "thanks_engaged"
+	RecipePassive   = "replay_passive"
+	RecipeRisk      = "replay_risk"
+	RecipeKeywords  = "keyword_replies"
+	RecipeHotLeads  = "hot_leads"
+)
+
+/* CRMRecipe is one card on the Automations page. */
+type CRMRecipe struct {
+	/** One of the Recipe constants. */
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	/** The flow in a few words, one per step: "Didn't join", "2 h after end", "Replay link". */
+	Flow []string `json:"flow"`
+	/** `followup` (a drip after every webinar), `reminders` (the reminder settings),
+	 *  `keywords` (a bot) or `hot_leads` (a tagging rule). */
+	Kind string `json:"kind"`
+	/** The Follow up group a `followup` recipe is for: an engagement tier or `no_show`. */
+	Group EngagementTier `json:"group,omitempty"`
+	/** Whether it is running. */
+	Active bool `json:"active"`
+	/** Set up but paused, so turning it on keeps what was chosen. */
+	Configured bool `json:"configured"`
+	/** A line from the coach's own data: "Would have reached 4 people from Morning Routines". */
+	Hint string `json:"hint,omitempty"`
+	/** For `followup`: the template, its params, and minutes after the end. */
+	Template string     `json:"template,omitempty"`
+	Language string     `json:"language,omitempty"`
+	Params   []CRMParam `json:"params,omitempty"`
+	DelayMin int        `json:"delayMin,omitempty"`
+	/** For `keywords`: word → reply. For `hot_leads`: the words. */
+	Keywords []CRMRecipeKeyword `json:"keywords,omitempty"`
+	Words    []string           `json:"words,omitempty"`
+	/** The drip or bot behind it, for "Open in builder". */
+	DripID string `json:"dripId,omitempty"`
+	BotID  string `json:"botId,omitempty"`
+	/** Sent so far by the drip, or people tagged by the rule. */
+	Sent int `json:"sent"`
+}
+
+/* CRMRecipeKeyword is one keyword reply: a word someone sends and what is sent back. */
+type CRMRecipeKeyword struct {
+	Word  string `json:"word"`
+	Reply string `json:"reply"`
+}
+
+/* CRMRecipesResponse is the Automations page. */
+type CRMRecipesResponse struct {
+	Recipes           []CRMRecipe `json:"recipes"`
+	WhatsAppConnected bool        `json:"whatsappConnected"`
+}
+
+/* CRMRecipeRequest turns a recipe on or off, with the choices it needs. */
+type CRMRecipeRequest struct {
+	Active   bool               `json:"active"`
+	Template string             `json:"template,omitempty"`
+	Language string             `json:"language,omitempty"`
+	Params   []CRMParam         `json:"params,omitempty"`
+	DelayMin int                `json:"delayMin,omitempty"`
+	Keywords []CRMRecipeKeyword `json:"keywords,omitempty"`
+	Words    []string           `json:"words,omitempty"`
+}

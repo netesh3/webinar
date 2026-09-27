@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -181,6 +182,11 @@ func (s *Module) saveDrip(w http.ResponseWriter, r *http.Request, id string) {
 		}
 	}
 
+	tiers, ok := tiersAllowed(w, trigger, body.Tiers)
+	if !ok {
+		return
+	}
+
 	steps, ok := s.stepsAllowed(w, r, user, body.Steps, trigger, slug)
 	if !ok {
 		return
@@ -202,6 +208,7 @@ func (s *Module) saveDrip(w http.ResponseWriter, r *http.Request, id string) {
 		TagID:       tagID,
 		Active:      body.Active,
 		Steps:       steps,
+		Tiers:       tiers,
 	})
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "No such sequence.")
@@ -224,6 +231,28 @@ func (s *Module) saveDrip(w http.ResponseWriter, r *http.Request, id string) {
 		status = http.StatusCreated
 	}
 	httpx.JSON(w, status, out)
+}
+
+/* tiersAllowed checks an `attended` sequence's engagement tiers: the four score tiers,
+ * each once. Dropped on any other trigger, as a webinar or tag is. */
+func tiersAllowed(w http.ResponseWriter, trigger string, in []types.EngagementTier) ([]types.EngagementTier, bool) {
+	if trigger != types.DripAttended {
+		return nil, true
+	}
+	out := []types.EngagementTier{}
+	for _, t := range in {
+		switch t {
+		case types.TierHigh, types.TierEngaged, types.TierPassive, types.TierRisk:
+			if !slices.Contains(out, t) {
+				out = append(out, t)
+			}
+		default:
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_tier",
+				"Pick engagement groups from Highly engaged, Engaged, Passive and At risk.")
+			return nil, false
+		}
+	}
+	return out, true
 }
 
 /* stepsAllowed checks every step, and returns them normalised.
@@ -546,6 +575,32 @@ func (s *Module) enrollDripsOnWebinarEnd(ctx context.Context, wb types.Webinar) 
 			s.log.Info("drip enrolled on webinar end", "webinar", wb.ID,
 				"trigger", trigger, "enrolled", n)
 		}
+	}
+}
+
+/* OnScored enrolls the `attended` sequences narrowed to engagement tiers, now that the
+ * webinar's tiers exist. Mirrors enrollDripsOnWebinarEnd, which skips those sequences. */
+func (s *Module) OnScored(ctx context.Context, slug string) {
+	wb, err := s.store.WebinarBySlug(ctx, slug)
+	if err != nil {
+		s.log.Error("drip trigger: scored: could not load webinar", "webinar", slug, "error", err)
+		return
+	}
+	if !wb.Options.WhatsAppReminders {
+		return
+	}
+	hostID, err := s.store.HostIDFor(ctx, slug)
+	if err != nil {
+		s.log.Error("drip trigger: could not resolve host", "webinar", slug, "error", err)
+		return
+	}
+	n, err := s.store.EnrollOnScored(ctx, hostID, slug)
+	if err != nil {
+		s.log.Error("drip trigger: scored", "webinar", slug, "error", err)
+		return
+	}
+	if n > 0 {
+		s.log.Info("drip enrolled on engagement", "webinar", slug, "enrolled", n)
 	}
 }
 

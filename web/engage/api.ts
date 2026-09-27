@@ -29,6 +29,8 @@ import type {
   CRMTestSendRequest,
   CRMWebinarMessagesResponse,
   CRMFollowupsResponse,
+  CRMRecipesResponse,
+  CRMRecipeRequest,
   CRMMessage,
   CRMNote,
   CRMNoteRequest,
@@ -401,6 +403,16 @@ export const engageApi = {
       `/api/host/crm/webinars/${seg(slug)}/followups`,
       fresh,
     ),
+
+  /** The Automations page: ready-made recipes over the drip and bot engines. */
+  crmRecipes: () => request<CRMRecipesResponse>("/api/host/crm/recipes", fresh),
+
+  /** Turn a recipe on or off, with the choices it needs. */
+  saveCrmRecipe: (id: string, body: CRMRecipeRequest) =>
+    request<CRMRecipesResponse>(`/api/host/crm/recipes/${seg(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 
   /** The audience a broadcast body would reach — for segments and picked lists,
    *  which do not fit a query string. */

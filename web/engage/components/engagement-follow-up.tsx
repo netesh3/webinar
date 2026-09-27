@@ -12,6 +12,7 @@ import {
   type CRMBroadcast,
   type CRMFollowupGroup,
   type CRMFollowupsResponse,
+  type CRMRecipe,
   type EngagementTier,
   type EngagementTierCounts,
 } from "@/lib/api-types";
@@ -20,8 +21,9 @@ import { TIER_META, type Tier } from "@/lib/engagement/score";
 import { formatRelative } from "@/lib/format";
 import { followupGroups } from "../buckets";
 import { NextStepCard, type NextStep } from "./messages-parts";
-import { SendDialog, type SendTarget } from "./send-dialog";
-import { AvatarStack, pct } from "./wa-kit";
+import { automateFor } from "./automations";
+import { SendDialog, type Automate, type SendTarget } from "./send-dialog";
+import { AvatarStack, Switch, pct } from "./wa-kit";
 
 /* The Engagement tab's Follow up: one card per engagement group — the same groups the
  * page scores people into — each with the suggested message and "Review & send", or what
@@ -96,7 +98,59 @@ function FollowUp({
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [target, setTarget] = useState<SendTarget | null>(null);
+  const [automate, setAutomate] = useState<Automate | undefined>(undefined);
+  const [recipes, setRecipes] = useState<CRMRecipe[]>([]);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+
+  // The "after every webinar" recipe behind each card.
+  useEffect(() => {
+    let cancelled = false;
+    engageApi
+      .crmRecipes()
+      .then(
+        (r) =>
+          !cancelled &&
+          setRecipes(r.recipes.filter((x) => x.kind === "followup")),
+      )
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [tick]);
+
+  async function setAuto(g: CRMFollowupGroup, r: CRMRecipe, on: boolean) {
+    try {
+      if (on && !(r.configured && r.template)) {
+        // The first time: pick the message in the send dialog, saved as the recipe.
+        const a = automateFor(r, slug);
+        setAutomate(a.automate);
+        setTarget({
+          ...(a.target as Extract<SendTarget, { kind: "segment" }>),
+          label: metaFor(g.id).label,
+        });
+        return;
+      }
+      const res = await engageApi.saveCrmRecipe(r.id, {
+        active: on,
+        template: on ? r.template : undefined,
+        language: on ? r.language : undefined,
+        params: on ? r.params : undefined,
+        delayMin: on ? r.delayMin : undefined,
+      });
+      setRecipes(res.recipes.filter((x) => x.kind === "followup"));
+      notify(
+        on
+          ? `${metaFor(g.id).label} get this after every webinar.`
+          : `No longer automatic for ${metaFor(g.id).label}.`,
+        "ok",
+      );
+    } catch (e) {
+      notify(
+        e instanceof ApiError ? e.message : "Could not change that.",
+        "error",
+      );
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +174,7 @@ function FollowUp({
 
   const open = (g: CRMFollowupGroup) => {
     const m = metaFor(g.id);
+    setAutomate(undefined);
     setTarget({
       kind: "segment",
       webinarId: slug,
@@ -182,6 +237,8 @@ function FollowUp({
             connected={data.whatsappConnected}
             onSend={() => open(g)}
             onCancel={cancel}
+            recipe={recipes.find((r) => r.group === g.id)}
+            onAuto={(r, on) => void setAuto(g, r, on)}
           />
         ))}
       </div>
@@ -199,7 +256,11 @@ function FollowUp({
       <SendDialog
         open={target !== null}
         target={target}
-        onClose={() => setTarget(null)}
+        automate={automate}
+        onClose={() => {
+          setTarget(null);
+          setAutomate(undefined);
+        }}
         onSent={refresh}
       />
     </div>
@@ -238,12 +299,17 @@ function GroupCard({
   connected,
   onSend,
   onCancel,
+  recipe,
+  onAuto,
 }: {
   group: CRMFollowupGroup;
   size: number;
   connected: boolean;
   onSend: () => void;
   onCancel: (b: CRMBroadcast) => void;
+  /** The "after every webinar" recipe for this group, once loaded. */
+  recipe?: CRMRecipe;
+  onAuto: (r: CRMRecipe, on: boolean) => void;
 }) {
   const m = metaFor(g.id);
   const now = useNow();
@@ -368,6 +434,16 @@ function GroupCard({
             {reach ? "Review & send" : "None on WhatsApp"}
           </button>
         </>
+      )}
+      {recipe && connected && (
+        <div className="-mx-4 -mb-3.5 flex items-center justify-between gap-2 border-t border-line px-4 py-2">
+          <span className="text-[11.5px] text-ink-2">After every webinar</span>
+          <Switch
+            checked={recipe.active}
+            onChange={(on) => onAuto(recipe, on)}
+            label={`Message ${m.label} automatically after every webinar`}
+          />
+        </div>
       )}
     </Card>
   );

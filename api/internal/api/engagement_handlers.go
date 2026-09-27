@@ -67,6 +67,11 @@ func (s *Server) handleRecomputeEngagement(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	payload, err := s.engagement.Compute(r.Context(), wb)
+	if err == nil && wb.Status == "ended" {
+		// A recompute after the end can move people between tiers; the Follow up recipes
+		// enroll whoever is newly in their group. Nobody is enrolled twice.
+		s.engage.OnScored(r.Context(), wb.Slug)
+	}
 	s.writeSummary(w, r, payload, err)
 }
 
