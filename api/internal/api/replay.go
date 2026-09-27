@@ -91,17 +91,27 @@ func (s *Server) enqueueReplay(ctx context.Context, slug string, rec types.Recor
 		passcode = strings.TrimSpace(wb.Passcode)
 	}
 
+	/* A live link survey rides along: it is the same URL for everybody and the one survey
+	 * mode that works outside the room. A built-in rating survey is answered in the room or
+	 * on its ended screen, so it has no link to put here. */
+	var surveyURL, surveyLabel string
+	if sv, err := s.store.HostSurvey(ctx, slug); err == nil && sv.Mode == types.SurveyLink && sv.Status == types.SurveyLive {
+		surveyURL, surveyLabel = sv.ExternalURL, sv.Title
+	}
+
 	/* WhatsApp is the CRM's half of this, and is handed over rather than done here: see
 	 * Engage.OnRecordingPublished. */
 	var emails int
 	for _, p := range people {
 		in := notify.Invite{
-			Name:      p.Name,
-			Topic:     wb.Topic,
-			WhenText:  whenText(wb.StartsAt, wb.TimeZone),
-			HostName:  wb.Host.Name,
-			ReplayURL: url,
-			Passcode:  passcode,
+			Name:        p.Name,
+			Topic:       wb.Topic,
+			WhenText:    whenText(wb.StartsAt, wb.TimeZone),
+			HostName:    wb.Host.Name,
+			ReplayURL:   url,
+			Passcode:    passcode,
+			SurveyURL:   surveyURL,
+			SurveyTitle: surveyLabel,
 		}
 		subject, body := notify.ReplayReady(in)
 		if err := s.store.Notify(ctx, s.store.DB(), store.Notification{

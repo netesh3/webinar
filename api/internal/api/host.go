@@ -778,6 +778,9 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 		return types.Webinar{}, err
 	}
 
+	// A survey armed for the end goes out now, while the room still exists to hear about it.
+	s.launchSurveyOnEnd(ctx, slug)
+
 	// Stop any active Egress recording before deleting the room so it uploads cleanly.
 	if recs, err := s.store.Recordings(ctx, slug); err == nil {
 		for _, r := range recs {

@@ -1,72 +1,460 @@
 {
-  "formulaVersion": 1,
-  "note": "Shared by api/internal/engagement (Go) and web/lib/engagement/score.test.mts (TS). Session flags say which tools were used; unused tools and tools a person was absent for have their weight redistributed.",
+  "formulaVersion": 2,
+  "note": "Shared by api/internal/engagement (Go) and web/lib/engagement/score.test.mts (TS). Session flags say which tools were used; unused tools and tools a person was absent for have their weight redistributed. v2: survey (weight 5) applies once a survey was sent; submitted = full credit, only opened a survey link = half. 'survey', 'surveyDone' and 'surveyClicked' default to false.",
   "cases": [
     {
       "name": "every tool used, full marks",
-      "session": { "polls": true, "quiz": true, "chat": true, "qa": true, "reactions": true, "hands": true },
-      "input": { "watchSec": 3600, "sessionSec": 3600, "chats": 5, "questions": 2, "upvotes": 0, "pollsPresent": 2, "pollsAnswered": 2, "quizPresent": 2, "quizCorrect": 2, "reactions": 10, "hands": 1 },
-      "score": 100, "tier": "high"
+      "session": {
+        "polls": true,
+        "quiz": true,
+        "chat": true,
+        "qa": true,
+        "reactions": true,
+        "hands": true
+      },
+      "input": {
+        "watchSec": 3600,
+        "sessionSec": 3600,
+        "chats": 5,
+        "questions": 2,
+        "upvotes": 0,
+        "pollsPresent": 2,
+        "pollsAnswered": 2,
+        "quizPresent": 2,
+        "quizCorrect": 2,
+        "reactions": 10,
+        "hands": 1
+      },
+      "score": 100,
+      "tier": "high"
     },
     {
       "name": "every tool used, half the session watched and nothing else",
-      "session": { "polls": true, "quiz": true, "chat": true, "qa": true, "reactions": true, "hands": true },
-      "input": { "watchSec": 1800, "sessionSec": 3600, "chats": 0, "questions": 0, "upvotes": 0, "pollsPresent": 2, "pollsAnswered": 0, "quizPresent": 2, "quizCorrect": 0, "reactions": 0, "hands": 0 },
-      "score": 21, "tier": "risk"
+      "session": {
+        "polls": true,
+        "quiz": true,
+        "chat": true,
+        "qa": true,
+        "reactions": true,
+        "hands": true
+      },
+      "input": {
+        "watchSec": 1800,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 2,
+        "pollsAnswered": 0,
+        "quizPresent": 2,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0
+      },
+      "score": 21,
+      "tier": "risk"
     },
     {
       "name": "chat-only session is not capped at 50",
-      "session": { "polls": false, "quiz": false, "chat": true, "qa": false, "reactions": false, "hands": false },
-      "input": { "watchSec": 2700, "sessionSec": 3600, "chats": 2, "questions": 0, "upvotes": 0, "pollsPresent": 0, "pollsAnswered": 0, "quizPresent": 0, "quizCorrect": 0, "reactions": 0, "hands": 0 },
-      "score": 68, "tier": "engaged"
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": true,
+        "qa": false,
+        "reactions": false,
+        "hands": false
+      },
+      "input": {
+        "watchSec": 2700,
+        "sessionSec": 3600,
+        "chats": 2,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0
+      },
+      "score": 68,
+      "tier": "engaged"
     },
     {
       "name": "absent for every poll and quiz is not penalised",
-      "session": { "polls": true, "quiz": true, "chat": true, "qa": false, "reactions": false, "hands": false },
-      "input": { "watchSec": 1080, "sessionSec": 3600, "chats": 0, "questions": 0, "upvotes": 0, "pollsPresent": 0, "pollsAnswered": 0, "quizPresent": 0, "quizCorrect": 0, "reactions": 0, "hands": 0 },
-      "score": 24, "tier": "risk"
+      "session": {
+        "polls": true,
+        "quiz": true,
+        "chat": true,
+        "qa": false,
+        "reactions": false,
+        "hands": false
+      },
+      "input": {
+        "watchSec": 1080,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0
+      },
+      "score": 24,
+      "tier": "risk"
     },
     {
       "name": "chat spam is capped at five messages",
-      "session": { "polls": true, "quiz": true, "chat": true, "qa": true, "reactions": true, "hands": true },
-      "input": { "watchSec": 0, "sessionSec": 3600, "chats": 50, "questions": 0, "upvotes": 0, "pollsPresent": 1, "pollsAnswered": 0, "quizPresent": 1, "quizCorrect": 0, "reactions": 0, "hands": 0 },
-      "score": 11, "tier": "risk"
+      "session": {
+        "polls": true,
+        "quiz": true,
+        "chat": true,
+        "qa": true,
+        "reactions": true,
+        "hands": true
+      },
+      "input": {
+        "watchSec": 0,
+        "sessionSec": 3600,
+        "chats": 50,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 1,
+        "pollsAnswered": 0,
+        "quizPresent": 1,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0
+      },
+      "score": 11,
+      "tier": "risk"
     },
     {
       "name": "mixed participation",
-      "session": { "polls": true, "quiz": true, "chat": true, "qa": true, "reactions": true, "hands": true },
-      "input": { "watchSec": 3240, "sessionSec": 3600, "chats": 3, "questions": 1, "upvotes": 0, "pollsPresent": 2, "pollsAnswered": 1, "quizPresent": 2, "quizCorrect": 1, "reactions": 4, "hands": 0 },
-      "score": 65, "tier": "engaged"
+      "session": {
+        "polls": true,
+        "quiz": true,
+        "chat": true,
+        "qa": true,
+        "reactions": true,
+        "hands": true
+      },
+      "input": {
+        "watchSec": 3240,
+        "sessionSec": 3600,
+        "chats": 3,
+        "questions": 1,
+        "upvotes": 0,
+        "pollsPresent": 2,
+        "pollsAnswered": 1,
+        "quizPresent": 2,
+        "quizCorrect": 1,
+        "reactions": 4,
+        "hands": 0
+      },
+      "score": 65,
+      "tier": "engaged"
     },
     {
       "name": "upvotes share the Q&A bucket at half value",
-      "session": { "polls": false, "quiz": false, "chat": false, "qa": true, "reactions": false, "hands": false },
-      "input": { "watchSec": 0, "sessionSec": 3600, "chats": 0, "questions": 0, "upvotes": 5, "pollsPresent": 0, "pollsAnswered": 0, "quizPresent": 0, "quizCorrect": 0, "reactions": 0, "hands": 0 },
-      "score": 10, "tier": "risk"
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": false,
+        "qa": true,
+        "reactions": false,
+        "hands": false
+      },
+      "input": {
+        "watchSec": 0,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 5,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0
+      },
+      "score": 10,
+      "tier": "risk"
     },
     {
       "name": "exactly 75 is highly engaged",
-      "session": { "polls": false, "quiz": false, "chat": true, "qa": false, "reactions": false, "hands": false },
-      "input": { "watchSec": 3375, "sessionSec": 3600, "chats": 0, "questions": 0, "upvotes": 0, "pollsPresent": 0, "pollsAnswered": 0, "quizPresent": 0, "quizCorrect": 0, "reactions": 0, "hands": 0 },
-      "score": 75, "tier": "high"
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": true,
+        "qa": false,
+        "reactions": false,
+        "hands": false
+      },
+      "input": {
+        "watchSec": 3375,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0
+      },
+      "score": 75,
+      "tier": "high"
     },
     {
       "name": "exactly 25 is passive",
-      "session": { "polls": false, "quiz": false, "chat": true, "qa": false, "reactions": false, "hands": false },
-      "input": { "watchSec": 1125, "sessionSec": 3600, "chats": 0, "questions": 0, "upvotes": 0, "pollsPresent": 0, "pollsAnswered": 0, "quizPresent": 0, "quizCorrect": 0, "reactions": 0, "hands": 0 },
-      "score": 25, "tier": "passive"
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": true,
+        "qa": false,
+        "reactions": false,
+        "hands": false
+      },
+      "input": {
+        "watchSec": 1125,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0
+      },
+      "score": 25,
+      "tier": "passive"
     },
     {
       "name": "watch beyond the session is capped",
-      "session": { "polls": false, "quiz": false, "chat": false, "qa": false, "reactions": false, "hands": false },
-      "input": { "watchSec": 9000, "sessionSec": 3600, "chats": 0, "questions": 0, "upvotes": 0, "pollsPresent": 0, "pollsAnswered": 0, "quizPresent": 0, "quizCorrect": 0, "reactions": 0, "hands": 0 },
-      "score": 100, "tier": "high"
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": false,
+        "qa": false,
+        "reactions": false,
+        "hands": false
+      },
+      "input": {
+        "watchSec": 9000,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0
+      },
+      "score": 100,
+      "tier": "high"
     },
     {
       "name": "a session that never ran scores zero",
-      "session": { "polls": false, "quiz": false, "chat": false, "qa": false, "reactions": false, "hands": false },
-      "input": { "watchSec": 0, "sessionSec": 0, "chats": 0, "questions": 0, "upvotes": 0, "pollsPresent": 0, "pollsAnswered": 0, "quizPresent": 0, "quizCorrect": 0, "reactions": 0, "hands": 0 },
-      "score": 0, "tier": "risk"
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": false,
+        "qa": false,
+        "reactions": false,
+        "hands": false
+      },
+      "input": {
+        "watchSec": 0,
+        "sessionSec": 0,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0
+      },
+      "score": 0,
+      "tier": "risk"
+    },
+    {
+      "name": "survey sent: watched it all, never opened the survey",
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": true,
+        "qa": false,
+        "reactions": false,
+        "hands": false,
+        "survey": true
+      },
+      "input": {
+        "watchSec": 3600,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0
+      },
+      "score": 73,
+      "tier": "engaged"
+    },
+    {
+      "name": "survey sent: opening the link counts half",
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": true,
+        "qa": false,
+        "reactions": false,
+        "hands": false,
+        "survey": true
+      },
+      "input": {
+        "watchSec": 3600,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0,
+        "surveyClicked": true
+      },
+      "score": 77,
+      "tier": "high"
+    },
+    {
+      "name": "survey sent: submitting counts in full",
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": true,
+        "qa": false,
+        "reactions": false,
+        "hands": false,
+        "survey": true
+      },
+      "input": {
+        "watchSec": 3600,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0,
+        "surveyDone": true
+      },
+      "score": 82,
+      "tier": "high"
+    },
+    {
+      "name": "survey sent: submitted and clicked is still full credit",
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": true,
+        "qa": false,
+        "reactions": false,
+        "hands": false,
+        "survey": true
+      },
+      "input": {
+        "watchSec": 3600,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0,
+        "surveyDone": true,
+        "surveyClicked": true
+      },
+      "score": 82,
+      "tier": "high"
+    },
+    {
+      "name": "survey signals are ignored when no survey was sent",
+      "session": {
+        "polls": false,
+        "quiz": false,
+        "chat": true,
+        "qa": false,
+        "reactions": false,
+        "hands": false,
+        "survey": false
+      },
+      "input": {
+        "watchSec": 3600,
+        "sessionSec": 3600,
+        "chats": 0,
+        "questions": 0,
+        "upvotes": 0,
+        "pollsPresent": 0,
+        "pollsAnswered": 0,
+        "quizPresent": 0,
+        "quizCorrect": 0,
+        "reactions": 0,
+        "hands": 0,
+        "surveyDone": true
+      },
+      "score": 80,
+      "tier": "high"
+    },
+    {
+      "name": "every tool and the survey, full marks",
+      "session": {
+        "polls": true,
+        "quiz": true,
+        "chat": true,
+        "qa": true,
+        "reactions": true,
+        "hands": true,
+        "survey": true
+      },
+      "input": {
+        "watchSec": 3600,
+        "sessionSec": 3600,
+        "chats": 5,
+        "questions": 2,
+        "upvotes": 0,
+        "pollsPresent": 2,
+        "pollsAnswered": 2,
+        "quizPresent": 2,
+        "quizCorrect": 2,
+        "reactions": 10,
+        "hands": 1,
+        "surveyDone": true
+      },
+      "score": 100,
+      "tier": "high"
     }
   ]
 }

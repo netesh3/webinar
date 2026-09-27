@@ -89,6 +89,10 @@ func (s *Service) Summary(ctx context.Context, w store.EngagementWebinar) ([]byt
 }
 
 func (s *Service) fresh(w store.EngagementWebinar, computed time.Time) bool {
+	// A survey answer after the last compute makes any snapshot stale, live or ended.
+	if w.SurveyAt != nil && computed.Before(*w.SurveyAt) {
+		return false
+	}
 	if w.Status == string(types.StatusEnded) && w.EndedAt != nil {
 		return !computed.Before(*w.EndedAt)
 	}

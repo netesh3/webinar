@@ -251,6 +251,10 @@ type EngagementCounts struct {
 	QuizPresent  int `json:"quizPresent"`
 	Reactions    int `json:"reactions"`
 	Hands        int `json:"hands"`
+	/** Post-event survey: submitted, or (link mode) only opened; Rating is 1–5, 0 for none. */
+	SurveyDone    bool `json:"surveyDone,omitempty"`
+	SurveyClicked bool `json:"surveyClicked,omitempty"`
+	Rating        int  `json:"rating,omitempty"`
 }
 
 /** `early`, `on_time` or `late`. */

@@ -148,7 +148,83 @@ pages 50 at a time.
 - The load's event query dominates at 100k events; if webinars grow well beyond that, group per person per heatmap column in SQL (the axis can be computed before the load).
 - Capture is per instance; a crash (not a graceful stop) loses up to ~1 s of reactions. Acceptable for a soft signal.
 - `stage_on/off` are captured but not yet scored or charted.
-- Surveys/ratings (0061+), WhatsApp composer and scheduled follow-ups — Phases 2–3 below.
+- ~~Surveys/ratings (0061+)~~ — built, see §0b. WhatsApp composer and scheduled follow-ups — Phases 2–3 below.
+
+## 0b. What the survey phase built
+
+A post-event survey per webinar, in one of two modes the host (or a co-host) picks:
+
+- **Rating survey** (`builtin`): a required 1–5 star rating, plus up to five optional questions
+  of four kinds — `rating_5`, `nps_10`, `single_choice` (2–6 options), `text` (≤ 1,000 chars).
+- **Survey link** (`link`): an https-only external URL (Google Forms, Typeform…, ≤ 2,048 chars,
+  no credentials, no whitespace) behind an "Open survey" button, with an optional 1–5 rating
+  asked first (`ask_rating`, default on) so ratings stay comparable across webinars.
+
+### Data model — `0061_surveys.sql`
+
+`surveys` (one per webinar: mode, title, button label, external URL, `ask_rating`, status
+`draft|live|closed`, `send_at` `on_end|manual`, launched/closed/updated timestamps),
+`survey_questions` (ordered; kind, prompt, required, `options jsonb`; position unique and
+deferrable so reorders are one statement), `survey_responses` (one per attendee identity, with the
+registration; `rating`, `submitted_at`, `link_clicked_at`), `survey_answers` (response × question,
+`number` or `text`). CHECKs mirror every limit in `internal/survey`, so a bug in the handler cannot
+store an http:// link, a sixth question or an NPS of 11.
+
+Once anyone has answered, the mode, the rating toggle and the questions are **locked** (409 on a
+structural change; the title and button label stay editable) so every answer keeps its meaning.
+
+### Endpoints
+
+Host + co-hosts, under `/api/host/webinars/{slug}`: `GET|PUT|DELETE /survey`,
+`POST /survey/launch` (also reopens a closed one), `POST /survey/close`, `GET /survey/results`
+(response rate vs attended, average + distribution, NPS with promoters/passives/detractors,
+per-question counts, newest comments, link click-through), `GET /survey/answers?question=&cursor=`
+(one text question, paged).
+
+Audience, under `/api/webinars/{slug}` (join key or session): `GET /survey` (the survey when it is
+live, or armed for the end while the room is live — plus the caller's own response),
+`POST /survey/responses` (validated, idempotent: a retry returns the first answer; rate-limited per
+identity), `POST /survey/click`. The stage (host, co-hosts, panelists) is never offered it.
+
+Realtime: every change announces `survey-changed` on the data channel (like `polls-changed`);
+clients bump `realtime.surveyRevision` and re-read their own view. Ending the webinar
+(`endWebinarSession`) launches an `on_end` survey before the room is torn down. The replay-ready
+email carries the link to a live survey when there is one (`notify.ReplayReady`).
+
+### Where it shows
+
+- **Host setup:** a *Survey* tab on the webinar's management page (live and ended lists; deep link
+  `?tab=survey`) — mode cards, question builder with reorder, "When the webinar ends" vs "When I send
+  it", a live preview of the attendee card, Send now / Close / Reopen, and a Results view.
+- **In the room (host):** a compact strip atop the host's Polls panel — status, responses, and
+  Send now / Close.
+- **Attendees:** a centred pop-up with the poll pop-up's contract (portal into fullscreen, focus
+  trap, Escape = "Maybe later", reduced motion, once per launch) in both `webinar-room.tsx` and
+  `cdn-attendee-room.tsx`; on the *webinar has ended* screen; and on a new *You left* screen after
+  Leave, offered once per launch per tab and skipped in ≤ 3 s if the read is slow.
+
+### Engagement: formula v2
+
+`survey` weight 5 now applies whenever the webinar has a survey that has been sent (`ExtraUsage`),
+fed by `EngagementInput` from `survey_responses`:
+
+| Signal | Credit |
+|---|---|
+| Submitted (built-in answers or the link-mode rating) | 1.0 |
+| Opened the external link only | 0.5 — opening is intent, not a completed form we can see |
+| Neither | 0 |
+
+v1 stays registered; snapshots record their `formulaVersion`, and a survey change moves the
+webinar's freshness stamp (`SurveyAt`) so v1 snapshots recompute on the next read. Shared cases in
+`score_cases.json` cover all three; the TS twin (`web/lib/engagement/score.ts`) matches. The CSV
+gains `survey` (`completed|clicked|`), `survey_rating` and `survey_nps`; each attendee row's counts
+carry `surveyDone`, `surveyClicked` and `rating`. The dashboard's Survey tab renders the real results.
+
+### Deferred
+
+- Tokenised no-login survey links in WhatsApp/email drips (the replay email links the webinar page).
+- `survey_submitted` drip trigger and a `surveyDone` segment filter.
+- Replay-time responses as a separate `source`.
 
 ---
 

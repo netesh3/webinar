@@ -234,6 +234,7 @@ func (s *Server) handleEngagementCSV(w http.ResponseWriter, r *http.Request) {
 		"name", "email", "attended", "score", "tier", "watch_minutes", "join_timing",
 		"first_join_min", "last_leave_min", "visits", "chats", "questions", "upvotes",
 		"polls_answered", "polls_present", "quiz_correct", "quiz_answered", "reactions", "hand_raises",
+		"survey", "survey_rating", "survey_nps",
 	})
 	optInt := func(p *int) string {
 		if p == nil {
@@ -254,6 +255,7 @@ func (s *Server) handleEngagementCSV(w http.ResponseWriter, r *http.Request) {
 			strconv.Itoa(c.Visits), strconv.Itoa(k.Chats), strconv.Itoa(k.Questions), strconv.Itoa(k.Upvotes),
 			strconv.Itoa(k.Polls), strconv.Itoa(k.PollsPresent), strconv.Itoa(k.QuizCorrect),
 			strconv.Itoa(k.QuizAnswered), strconv.Itoa(k.Reactions), strconv.Itoa(k.Hands),
+			c.Survey, optInt(c.Rating), optInt(c.NPS),
 		}); err != nil {
 			return err
 		}

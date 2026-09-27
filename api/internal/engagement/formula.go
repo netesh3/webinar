@@ -176,7 +176,7 @@ const (
 	upvoteCap    = 5
 	reactionCap  = 10
 	handCap      = 1
-	surveySignal = "survey_done"
+	surveySignal = SignalSurveyDone
 )
 
 func init() {
@@ -239,6 +239,46 @@ func init() {
 				}},
 		},
 	})
+}
+
+/* Formula v2: the survey term gets a real source (api/internal/store/surveys*.go) and a
+ * partial credit. Everything else is v1 unchanged, so a session with no survey scores
+ * exactly as it did.
+ *
+ *   submitted (a built-in survey, or the rating asked before a link)  → full credit
+ *   only pressed "Open survey" on a link survey                       → half credit
+ *   neither                                                            → nothing
+ *
+ * Half, because a click is intent we can see but not completion we can verify: the answers
+ * live on the host's own form. The term only counts once the survey was actually sent
+ * (Usage["survey"], set by the loader for a live or closed survey), and then for every
+ * attendee — an early leaver is offered it on the way out. */
+const surveyClickCredit = 0.5
+
+func init() {
+	v1, _ := Lookup(1)
+	components := make([]Component, 0, len(v1.Components))
+	for _, c := range v1.Components {
+		if c.Key() == KeySurvey {
+			c = spec{KeySurvey, "Survey", 5, "completed the post-event survey; opening a survey link counts half",
+				used(KeySurvey), always, surveyRatio}
+		}
+		components = append(components, c)
+	}
+	Register(Formula{Version: 2, Tiers: v1.Tiers, Components: components})
+}
+
+func surveyRatio(s Signals) (float64, string) {
+	switch {
+	case s.Extra[SignalSurveyDone] > 0:
+		if r := int(s.Extra[SignalSurveyRating]); r > 0 {
+			return 1, fmt.Sprintf("Completed · rated %d/5", r)
+		}
+		return 1, "Completed"
+	case s.Extra[SignalSurveyClicked] > 0:
+		return surveyClickCredit, "Opened the survey link"
+	}
+	return 0, "Not completed"
 }
 
 // spec is a Component built from plain functions, which is all the v1 terms need.

@@ -11,12 +11,13 @@ import (
 type scoreCase struct {
 	Name    string `json:"name"`
 	Session struct {
-		Polls, Quiz, Chat, QA, Reactions, Hands bool
+		Polls, Quiz, Chat, QA, Reactions, Hands, Survey bool
 	} `json:"session"`
 	Input struct {
 		WatchSec, SessionSec, Chats, Questions, Upvotes       int
 		PollsPresent, PollsAnswered, QuizPresent, QuizCorrect int
 		Reactions, Hands                                      int
+		SurveyDone, SurveyClicked                             bool
 	} `json:"input"`
 	Score int                  `json:"score"`
 	Tier  types.EngagementTier `json:"tier"`
@@ -46,9 +47,13 @@ func TestScoreMatchesSharedTable(t *testing.T) {
 	for _, c := range loadCases(t) {
 		t.Run(c.Name, func(t *testing.T) {
 			u := Usage{KeyPolls: c.Session.Polls, KeyQuiz: c.Session.Quiz, KeyChat: c.Session.Chat,
-				KeyQA: c.Session.QA, KeyReactions: c.Session.Reactions, KeyHands: c.Session.Hands}
+				KeyQA: c.Session.QA, KeyReactions: c.Session.Reactions, KeyHands: c.Session.Hands,
+				KeySurvey: c.Session.Survey}
 			in := c.Input
+			var probe Input
+			probe.AddSurvey("x", in.SurveyDone, in.SurveyClicked, 0)
 			got, parts := f.Score(u, Signals{
+				Extra:    probe.Extra["x"],
 				WatchSec: in.WatchSec, SessionSec: in.SessionSec, Chats: in.Chats,
 				Questions: in.Questions, Upvotes: in.Upvotes,
 				PollsPresent: in.PollsPresent, PollsAnswered: in.PollsAnswered,
@@ -87,6 +92,43 @@ func TestSurveyNeverAppliesUntilASourcePlugsIn(t *testing.T) {
 	}
 }
 
+func TestSurveyTermCreditsAndDetail(t *testing.T) {
+	var in Input
+	in.AddSurvey("att_a", true, false, 4)
+	in.AddSurvey("att_b", false, true, 0)
+	in.AddSurvey("att_c", false, false, 0)
+	for id, want := range map[string]struct {
+		ratio  float64
+		detail string
+	}{
+		"att_a": {1, "Completed · rated 4/5"},
+		"att_b": {0.5, "Opened the survey link"},
+		"att_c": {0, "Not completed"},
+	} {
+		r, d := surveyRatio(Signals{Extra: in.Extra[id]})
+		if r != want.ratio || d != want.detail {
+			t.Errorf("%s: ratio %.2f %q, want %.2f %q", id, r, d, want.ratio, want.detail)
+		}
+	}
+}
+
+// v1 is still registered, and a session with no survey scores identically under v1 and v2.
+func TestV2MatchesV1WithoutASurvey(t *testing.T) {
+	v1, _ := Lookup(1)
+	v2, ok := Lookup(2)
+	if !ok || Current().Version != 2 {
+		t.Fatal("v2 must be registered and current")
+	}
+	u := Usage{KeyChat: true, KeyPolls: true}
+	sig := Signals{WatchSec: 1800, SessionSec: 3600, Chats: 2, PollsPresent: 1, PollsAnswered: 1,
+		Extra: map[string]float64{SignalSurveyDone: 1}}
+	a, _ := v1.Score(u, sig)
+	b, _ := v2.Score(u, sig)
+	if a != b {
+		t.Fatalf("v1 %d vs v2 %d with no survey sent", a, b)
+	}
+}
+
 func TestRegistryKeepsOlderVersionsReadable(t *testing.T) {
 	v1, ok := Lookup(1)
 	if !ok || v1.Version != 1 {
@@ -96,7 +138,7 @@ func TestRegistryKeepsOlderVersionsReadable(t *testing.T) {
 	defer func() {
 		registryMu.Lock()
 		delete(registry, 99)
-		current = 1
+		current = 2
 		registryMu.Unlock()
 	}()
 	if Current().Version != 99 {

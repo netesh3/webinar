@@ -116,3 +116,31 @@ type Input struct {
 // IsAttendee is the audience/stage split every headline figure uses: attendees are
 // "att_" identities, the stage is "user_".
 func IsAttendee(identity string) bool { return strings.HasPrefix(identity, "att_") }
+
+// Survey signal names in Signals.Extra, written by AddSurvey and read by the survey term.
+const (
+	SignalSurveyDone    = "survey_done"
+	SignalSurveyClicked = "survey_clicked"
+	SignalSurveyRating  = "survey_rating"
+)
+
+// AddSurvey records one attendee's post-event survey state in the Extra channel.
+func (in *Input) AddSurvey(identity string, done, clicked bool, rating int) {
+	if in.Extra == nil {
+		in.Extra = map[string]map[string]float64{}
+	}
+	m := in.Extra[identity]
+	if m == nil {
+		m = map[string]float64{}
+		in.Extra[identity] = m
+	}
+	if done {
+		m[SignalSurveyDone] = 1
+	}
+	if clicked {
+		m[SignalSurveyClicked] = 1
+	}
+	if rating > 0 {
+		m[SignalSurveyRating] = float64(rating)
+	}
+}
