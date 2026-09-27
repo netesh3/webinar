@@ -135,6 +135,10 @@ func (s *seeder) seedAutomatic() error {
 				delivery := "sent"
 				if due.After(s.now) {
 					delivery = "pending"
+					// Opted out since registering: the outbox would never send it.
+					if !s.whatsappable(pi, s.now) {
+						continue
+					}
 				}
 				if err := s.automatic(w, pi, rid, types.NotifyWhatsAppReminder, &off, due, delivery); err != nil {
 					return err

@@ -264,10 +264,18 @@ function AutomaticRow({ stats: s, template }: { stats: CRMAutomaticStats; templa
         </div>
       </div>
       <div className="flex gap-3 text-[12px] tabular-nums text-ink-2">
-        <span>{sent} sent</span>
-        <span>{s.delivered} delivered</span>
-        <span className="text-ok">{s.read} read</span>
+        {/* Nothing out yet: "0 sent 0 delivered 0 read" says nothing "9 queued" doesn't. */}
+        {sent > 0 && (
+          <>
+            <span>{sent} sent</span>
+            <span>{s.delivered} delivered</span>
+            <span className="text-ok">{s.read} read</span>
+          </>
+        )}
         {s.queued > 0 && <span>{s.queued} queued</span>}
+        {sent === 0 && s.queued === 0 && s.failed === 0 && (
+          <span className="text-ink-3">None yet</span>
+        )}
         {s.failed > 0 && <span className="text-live">{s.failed} failed</span>}
       </div>
     </div>

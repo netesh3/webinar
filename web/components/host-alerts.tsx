@@ -146,9 +146,12 @@ export function HostAlerts() {
             <ReplyAlerts data={replies} onNavigate={() => setOpen(false)} />
 
             {alerts.length === 0 ? (
-              <p className="px-3 py-6 text-center text-[12.5px] text-ink-3">
-                Nothing yet. Registrations that need your approval show up here.
-              </p>
+              // Replies above are something; "nothing yet" under them contradicts it.
+              (replies?.needsReply ?? 0) > 0 ? null : (
+                <p className="px-3 py-6 text-center text-[12.5px] text-ink-3">
+                  Nothing yet. Registrations that need your approval show up here.
+                </p>
+              )
             ) : (
               <ul className="max-h-[24rem] divide-y divide-line/60 overflow-y-auto">
                 {alerts.map((a) => (

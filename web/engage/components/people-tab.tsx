@@ -131,12 +131,14 @@ export function HostPeopleTab({ initialWebinar = "" }: { initialWebinar?: string
   }
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="grid grid-cols-1 gap-4">
+      {/* items-end: the webinar picker has a label above it; the search and the send
+          button line up with its box, not with its label. */}
+      <div className="flex flex-wrap items-end gap-2">
         <div className="relative min-w-52 flex-1 sm:max-w-72">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-3" />
           <input
-            className="field h-9 pl-9"
+            className="field pl-9"
             placeholder="Search name, email or phone"
             aria-label="Search people"
             value={q}
@@ -217,7 +219,7 @@ export function HostPeopleTab({ initialWebinar = "" }: { initialWebinar?: string
           <table className="w-full text-left text-[13px]">
             <thead className="border-b border-line text-[11.5px] text-ink-3">
               <tr>
-                <th className="w-8 py-2 pl-4">
+                <th className="w-10 py-2 pl-4 pr-3">
                   <input
                     type="checkbox"
                     aria-label="Tick everyone on this page"
@@ -315,7 +317,7 @@ function PersonRow({
   const name = c.name || c.phone || c.email || "Unknown";
   return (
     <tr className={ticked ? "bg-brand-soft/40" : undefined}>
-      <td className="py-2.5 pl-4">
+      <td className="py-2.5 pl-4 pr-3">
         <input
           type="checkbox"
           aria-label={`Tick ${name}`}

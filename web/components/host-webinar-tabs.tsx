@@ -226,7 +226,9 @@ function AttendeesTab({
   });
 
   return (
-    <div className="grid gap-4">
+    // grid-cols-1 is minmax(0,1fr): without it the column grows to the table's
+    // min-width and the whole page scrolls sideways instead of the table.
+    <div className="grid grid-cols-1 gap-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <Stat
           label="Registered"
