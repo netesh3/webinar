@@ -151,6 +151,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And customising it: adding from More never pins a tool out of sight on a full
 	# bar, a recently used slot can be moved back, and undo puts exactly it back.
 	cd web && node --experimental-strip-types --no-warnings lib/tools-edit.test.mts
+	# And when More gets out of the way of the rest of the bar: another button
+	# closes it in the same click, a drag toward it or Customize does not.
+	cd web && node --experimental-strip-types --no-warnings lib/bar-popover.test.mts
 	# And the virtual-background catalogue: an old stored image id must not reach
 	# the compositor as a missing texture.
 	cd web && node --experimental-strip-types --no-warnings lib/backgrounds.test.mts

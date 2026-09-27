@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { isHomeTool, isPinnable, moreOrder, type ToolId } from "@/lib/tools";
+import { closesMoreOn, moreTargetOf } from "@/lib/bar-popover";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { useCompact } from "@/lib/compact";
 import { badgeText } from "@/lib/mentions";
@@ -119,6 +120,8 @@ export function MoreGrid({
   const dragging = drag.drag !== null;
   const compact = useCompact();
   const panel = useRef<HTMLDivElement | null>(null);
+  /** The bar button (if any) whose press is closing the panel, for focus. */
+  const pressedOutside = useRef<HTMLElement | null>(null);
   /* Reactions, Layout and Invite open in place, inside this panel, rather
    * than as a second popover stacked on it. */
   const [showReactions, setShowReactions] = useState(false);
@@ -181,29 +184,44 @@ export function MoreGrid({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || dragging) return;
+      pressedOutside.current = null;
       if (editing) onEditingChange(false);
       else onClose();
     };
+    // A press on a toolbar tool is not an outside press: it may be a drag
+    // aimed at this panel, or a − badge in Customize. The control bar closes
+    // More when that tool actually activates — see closesMoreOnToolActivate.
+    const targetOf = (e: Event) =>
+      moreTargetOf(
+        e.target as HTMLElement | null,
+        !!panel.current?.contains(e.target as Node | null),
+      );
     const onDown = (e: PointerEvent) => {
-      const target = e.target as HTMLElement;
-      if (panel.current?.contains(target)) return;
-      if (target.closest?.("[data-more-button]")) return;
-      // A press on a toolbar button is likely a drag aimed at this panel — or,
-      // in Customize, a tap on its − badge.
-      if (target.closest?.("[data-tool-slot]")) return;
-      if (target.closest?.("[data-toolbar-notice]")) return;
-      onClose();
+      const where = targetOf(e);
+      pressedOutside.current =
+        where === "tool-slot" || where === "elsewhere"
+          ? ((e.target as HTMLElement | null)?.closest?.<HTMLElement>("button") ?? null)
+          : null;
+      if (closesMoreOn("pointerdown", where)) onClose();
+    };
+    // Enter / Space on another bar button fires a click with no pointerdown.
+    const onClick = (e: MouseEvent) => {
+      if (closesMoreOn("click", targetOf(e), e.detail === 0)) onClose();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("pointerdown", onDown);
+    window.addEventListener("click", onClick, true);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("click", onClick, true);
     };
   }, [onClose, dragging, editing, onEditingChange]);
 
   /* Focus: onto the panel itself when the menu opens (Tab then walks the
-   * tools), back to the More button when it closes with focus inside it.
+   * tools), back to the More button when it closes with focus inside it —
+   * or to the bar button whose press closed it, since that is where the
+   * user just went (Safari does not focus a clicked button on its own).
    * The panel, not the first tool: a focus ring on "Share a video file" the
    * moment the menu opens reads as that tool being selected — the same
    * confusion the old Captions outline caused. Layout effect, so the cleanup
@@ -214,10 +232,14 @@ export function MoreGrid({
   const openedForDrag = useRef(drag.drag?.from === "bar");
   useLayoutEffect(() => {
     const el = panel.current;
+    const pressed = pressedOutside;
     if (!openedForDrag.current) el?.focus({ preventScroll: true });
     return () => {
       if (el && el.contains(document.activeElement)) {
-        document.querySelector<HTMLElement>("[data-more-button]")?.focus();
+        const back = pressed.current?.isConnected
+          ? pressed.current
+          : document.querySelector<HTMLElement>("[data-more-button]");
+        back?.focus({ preventScroll: true });
       }
     };
   }, []);
