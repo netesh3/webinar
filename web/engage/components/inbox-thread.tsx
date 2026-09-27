@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { engageApi } from "../api";
 import { Alert, ConfirmModal, Spinner } from "@/components/controls";
 import { ArrowLeftIcon, CheckIcon } from "@/components/icons";
@@ -68,6 +68,13 @@ export function InboxThread({
   const [connected, setConnected] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+
+  // Open at the newest message, as a phone does.
+  useEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,7 +192,8 @@ export function InboxThread({
         )}
 
         <div
-          className="min-h-72 flex-1 overflow-y-auto px-4 py-4"
+          ref={scroller}
+          className="h-[30rem] overflow-y-auto px-4 py-4"
           style={{ background: WA_WALL }}
         >
           {messages === null ? (
@@ -296,22 +304,34 @@ function items(
       out.push({ kind: "auto", key: run[0].id, ms: run });
     run = [];
   };
+  /* A run of automatic messages spans days — confirmation on the 12th, reminders on
+   * the 24th — and folds into one line; a day marker is for what else happened. */
+  const marker = (iso: string) => {
+    const k = dayKey(iso);
+    if (k === day) return;
+    day = k;
+    out.push({ kind: "day", key: "d" + k, label: dayLabel(iso, history) });
+  };
+  // Webinars they joined or missed are events of their own, between messages.
+  const events = (history ?? [])
+    .filter((h) => h.ended)
+    .map((h) => ({ at: new Date(h.startsAt).getTime(), iso: h.startsAt }))
+    .sort((x, y) => x.at - y.at);
+  let e = 0;
   for (const m of messages) {
-    const k = dayKey(m.createdAt);
-    if (k !== day) {
+    const t = new Date(m.createdAt).getTime();
+    while (e < events.length && events[e].at <= t) {
       flush();
-      day = k;
-      out.push({
-        kind: "day",
-        key: "d" + k,
-        label: dayLabel(m.createdAt, history),
-      });
+      marker(events[e].iso);
+      e++;
     }
     if (m.automatic && m.direction === "out") {
+      if (run.length === 0) marker(m.createdAt);
       run.push(m);
       continue;
     }
     flush();
+    marker(m.createdAt);
     out.push({ kind: "msg", key: m.id, m });
   }
   flush();
@@ -558,10 +578,7 @@ function Profile({
       )}
 
       {notesOn && (
-        <section className="grid gap-2 py-1.5 [&>*]:border-t-0">
-          <h4 className="px-4 pt-2 text-[10.5px] font-semibold tracking-wider text-ink-3 uppercase">
-            Notes
-          </h4>
+        <section className="[&>*]:border-t-0">
           <NotesPane contactId={contact.id} notes={notes} onChanged={onNotes} />
         </section>
       )}

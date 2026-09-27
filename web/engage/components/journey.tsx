@@ -341,13 +341,13 @@ export function nextStep({
   const n = audiences[first.id].recipients;
   return first.id === "no_show"
     ? {
-        title: `${n} ${n === 1 ? "person" : "people"} who didn't join haven't heard from you yet`,
+        title: `${n} ${n === 1 ? "person" : "people"} who didn't join ${n === 1 ? "hasn't" : "haven't"} heard from you yet`,
         hint: "People who get a replay link within 24 hours are the ones who watch it.",
         action: `Send replay to ${n}`,
         run: () => onSend(first),
       }
     : {
-        title: `${n} ${n === 1 ? "person" : "people"} ${first.label.toLowerCase()} and haven't heard from you`,
+        title: `${n} ${n === 1 ? "person" : "people"} ${first.label.toLowerCase()} and ${n === 1 ? "hasn't" : "haven't"} heard from you`,
         hint: first.suggestion,
         action: `Message ${n}`,
         run: () => onSend(first),
@@ -466,6 +466,9 @@ export function ResultsPanel({
               <span className="text-ink-2">{b.label}</span>
               <span className="font-semibold text-ink tabular-nums">
                 {pct(b.n, b.of)}
+                <span className="ml-1 text-[11px] font-normal text-ink-3">
+                  {b.n}/{b.of}
+                </span>
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-surface-2">
