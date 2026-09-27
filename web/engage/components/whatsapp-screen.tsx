@@ -20,6 +20,7 @@ import { Broadcasts } from "./crm-broadcasts";
 import { Drips } from "./crm-drips";
 import { RemindersSettings } from "./crm-screen";
 import { SetupChecklist, setupTodo } from "./crm-setup";
+import { StarterTemplates } from "./starter-templates";
 import { BlockedList, RefreshTemplates, templateKey } from "./crm-templates";
 import { CategoryPill, friendlyTemplateName } from "./wa-kit";
 
@@ -253,6 +254,10 @@ export function WhatsAppScreen() {
 
       {tab === "templates" && (
         <div className="grid gap-4">
+          <StarterTemplates
+            connected={connected}
+            onCreated={() => void refreshTemplates()}
+          />
           <Card className="px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>

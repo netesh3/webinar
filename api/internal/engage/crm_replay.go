@@ -54,6 +54,7 @@ func (s *Module) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, ho
 			TemplateName:     reminder.Template,
 			TemplateLanguage: reminder.Language,
 			TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, url, 0),
+			LinkURL:          url,
 		}); err != nil {
 			s.log.Error("replay: could not queue whatsapp", "webinar", wb.ID,
 				"contact", p.ContactID, "error", err)

@@ -241,3 +241,14 @@ func (s *Store) ReminderReads(ctx context.Context, hostID string, days int) (sen
 		hostID, time.Now().Add(-time.Duration(days)*24*time.Hour)).Scan(&sent, &read)
 	return sent, read, err
 }
+
+// LatestWebinar is the host's newest webinar by start time, ended or not.
+func (s *Store) LatestWebinar(ctx context.Context, hostID string) (slug, topic string, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT slug, topic FROM webinars WHERE host_id = $1::uuid
+		 ORDER BY starts_at DESC LIMIT 1`, hostID).Scan(&slug, &topic)
+	if noRows(err) {
+		return "", "", nil
+	}
+	return slug, topic, err
+}

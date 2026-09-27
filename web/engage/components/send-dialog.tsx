@@ -13,6 +13,7 @@ import { WhatsAppIcon } from "@/components/icons";
 import { useSession, useToast } from "@/components/providers";
 import { Button } from "@/components/ui";
 import { ApiError } from "@/lib/api";
+import { API_BASE } from "@/lib/http";
 import {
   AudienceContacts,
   AudienceSegment,
@@ -655,6 +656,11 @@ function SendDialogBody({
                 samples={samples}
                 fallback={fallback}
                 from={from}
+                cover={
+                  target.webinarId
+                    ? `${API_BASE}/api/webinars/${encodeURIComponent(target.webinarId)}/image`
+                    : undefined
+                }
               />
               {reach > 0 && !automate && (
                 <div className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[12px] leading-relaxed text-ink-2">

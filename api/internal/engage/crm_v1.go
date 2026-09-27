@@ -248,8 +248,13 @@ func (s *Module) handleCRMTestSend(w http.ResponseWriter, r *http.Request) {
 	}
 	me := types.CRMContact{Name: user.Name, Phone: phone}
 	params := resolveBroadcastParams(body.Params, me, wb, user.Name, 58)
-	if _, err := s.whatsapp.SendTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppPhoneNumberID,
-		wa.OutgoingTemplate{To: phone, Name: tmpl.Name, Language: tmpl.Language, BodyParams: params}); err != nil {
+	msg := wa.OutgoingTemplate{To: phone, Name: tmpl.Name, Language: tmpl.Language, BodyParams: params}
+	if reason := s.fillRich(r.Context(), &msg, tmpl, crmstore.WhatsAppOutbound{WebinarSlug: slug},
+		map[string]*types.Webinar{}); reason != "" {
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", reason)
+		return
+	}
+	if _, err := s.whatsapp.SendTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppPhoneNumberID, msg); err != nil {
 		s.noteWhatsAppError(r.Context(), user.ID, user.WhatsAppToken, err)
 		s.reportSendError(w, r, user.ID, err)
 		return

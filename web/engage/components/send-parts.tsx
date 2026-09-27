@@ -184,12 +184,15 @@ export function PhonePreview({
   samples,
   fallback,
   from,
+  cover,
 }: {
   template: CRMTemplate;
   samples: CRMAudienceSample[];
   /** Values to show when there is nobody to preview for yet. */
   fallback: string[];
   from: string;
+  /** The webinar's cover, for a template with an image header. */
+  cover?: string;
 }) {
   const [i, setI] = useState(0);
   const at = Math.min(i, Math.max(0, samples.length - 1));
@@ -237,19 +240,60 @@ export function PhonePreview({
         <span className="justify-self-center rounded-md bg-white/80 px-2 py-0.5 text-[10px] text-ink-2">
           Today
         </span>
-        <div className="max-w-[92%] rounded-lg rounded-tl-none bg-white px-2.5 py-1.5 text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#111] shadow-sm">
-          {template.header && (
-            <p className="font-semibold">{template.header}</p>
+        <div className="max-w-[92%] overflow-hidden rounded-lg rounded-tl-none bg-white text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#111] shadow-sm">
+          {template.headerFormat === "IMAGE" && (
+            <div
+              className="relative aspect-[1.91/1] w-full bg-gradient-to-br from-brand to-[#5b8cff]"
+              role="img"
+              aria-label="The webinar's cover image"
+            >
+              <span className="absolute inset-0 grid place-items-center px-3 text-center text-[12px] font-semibold text-white/90">
+                Your webinar&apos;s cover
+              </span>
+              {cover && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={cover}
+                  alt=""
+                  className="absolute inset-0 size-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              )}
+            </div>
           )}
-          {renderTemplate(template.body ?? "", values)}
-          {template.footer && (
-            <p className="mt-1 text-[10.5px] text-[#667781]">
-              {template.footer}
-            </p>
-          )}
-          <div className="mt-0.5 flex justify-end text-[10px] text-[#667781]">
-            {time}
+          <div className="px-2.5 py-1.5">
+            {template.header && (
+              <p className="font-semibold">{template.header}</p>
+            )}
+            {renderTemplate(template.body ?? "", values)}
+            {template.footer && (
+              <p className="mt-1 text-[10.5px] text-[#667781]">
+                {template.footer}
+              </p>
+            )}
+            <div className="mt-0.5 flex justify-end text-[10px] text-[#667781]">
+              {time}
+            </div>
           </div>
+          {(template.buttons ?? []).length > 0 && (
+            <div className="grid divide-y divide-black/5 border-t border-black/5">
+              {template.buttons.map((b, k) => (
+                <span
+                  key={k}
+                  className="flex items-center justify-center gap-1.5 py-1.5 text-[12.5px] font-medium text-[#027eb5]"
+                >
+                  {b.type === "URL"
+                    ? "↗"
+                    : b.type === "PHONE_NUMBER"
+                      ? "✆"
+                      : "↩"}{" "}
+                  {b.text}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </PhoneFrame>
     </div>

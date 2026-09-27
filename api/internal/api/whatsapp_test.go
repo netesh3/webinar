@@ -84,6 +84,9 @@ type fakeGraph struct {
 	// expiring, until a test says otherwise. debugCalls counts the checks.
 	debug      map[string]any
 	debugCalls int
+
+	// created is every template submitted for approval; each is then listed as PENDING.
+	created []map[string]any
 }
 
 // tokenHealth sets what Meta's /debug_token reports about the host's token.
@@ -119,6 +122,16 @@ func newFakeGraph(t *testing.T) *fakeGraph {
 				"display_phone_number": testMetaDisplay,
 				"verified_name":        testMetaBusinessNm,
 			})
+		case strings.HasSuffix(r.URL.Path, "/message_templates") && r.Method == http.MethodPost:
+			var body map[string]any
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, &body)
+			g.created = append(g.created, body)
+			g.templates = append(g.templates, map[string]any{
+				"name": body["name"], "language": body["language"], "status": "PENDING",
+				"category": body["category"], "components": body["components"],
+			})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": fmt.Sprint(len(g.created)), "status": "PENDING"})
 		case strings.HasSuffix(r.URL.Path, "/message_templates") && r.Method == http.MethodGet:
 			g.templateCalls++
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": g.templates})

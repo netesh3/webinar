@@ -1419,6 +1419,21 @@ type CRMTemplate struct {
 	Sendable bool `json:"sendable"`
 	/** Why not, in words, when Sendable is false. */
 	Unsupported string `json:"unsupported,omitempty"`
+	/** IMAGE when the header is a picture — the webinar's cover is sent in it. */
+	HeaderFormat string `json:"headerFormat,omitempty"`
+	/** Buttons, in order, as Meta approved them. */
+	Buttons []CRMTemplateButton `json:"buttons"`
+}
+
+/* CRMTemplateButton is one button on a template. A quick reply's tap comes back as a
+ * message with its text; a link opens the URL — for a dynamic one, the person's own join
+ * or replay link, filled in at send time. */
+type CRMTemplateButton struct {
+	/** QUICK_REPLY, URL or PHONE_NUMBER. */
+	Type    string `json:"type"`
+	Text    string `json:"text"`
+	URL     string `json:"url,omitempty"`
+	Dynamic bool   `json:"dynamic,omitempty"`
 }
 
 // CRMTemplatesResponse is the host's cached template list, alphabetical.
