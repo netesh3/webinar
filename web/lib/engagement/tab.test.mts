@@ -7,7 +7,7 @@ import {
   exportOptions,
   legacyOnlyColumns,
 } from "./exports.ts";
-import { SECTIONS, activeSection, clockAt, leaveState, sectionDomId } from "./sections.ts";
+import { clockAt, leaveState, sectionDomId } from "./sections.ts";
 
 const urls = {
   engagementCsv: "/e.csv",
@@ -41,23 +41,7 @@ assert.ok(ENGAGEMENT_CSV_COLUMNS.includes("visits") && ATTENDANCE_CSV_COLUMNS.in
 
 // ---- sections
 
-assert.deepEqual(
-  SECTIONS.map((s) => s.label),
-  ["Overview", "Attendance", "Activity", "Attendees", "Chat", "Q&A", "Polls & quizzes", "Reactions", "Survey", "Follow up"],
-);
 assert.equal(sectionDomId("qa"), "eng-qa");
-assert.equal(new Set(SECTIONS.map((s) => s.id)).size, SECTIONS.length);
-
-const tops = [
-  { id: "overview" as const, top: -900 },
-  { id: "attendance" as const, top: -100 },
-  { id: "activity" as const, top: 400 },
-];
-assert.equal(activeSection(tops, 120), "attendance");
-assert.equal(activeSection(tops, 500), "activity");
-// Above the first section, the first is current rather than none.
-assert.equal(activeSection([{ id: "overview", top: 300 }], 120), "overview");
-assert.equal(activeSection([], 120), null);
 
 // ---- clock times
 

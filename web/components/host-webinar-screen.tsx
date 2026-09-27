@@ -19,6 +19,7 @@ import { isDevAuthBypassActive, useDevAuthBypassActive } from "@/lib/dev-bypass-
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
+import type { HostTab } from "@/lib/host-tabs";
 
 const NONE: RegistrantRow[] = [];
 const NO_RECORDINGS: Recording[] = [];
@@ -39,6 +40,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const [busy, setBusy] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [openTab, setOpenTab] = useState<HostTab | null>(null);
 
   // Local preview reads fixtures, derived here rather than copied into state by
   // the load effect. The hook is false on the server and while hydrating, the
@@ -182,6 +184,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const isDraft = webinar.status === "draft";
   const pending = registrants.filter((r) => r.state === "pending").length;
   const initialTab = search.get("tab");
+  const endedTarget: HostTab = recordings.length > 0 ? "Recordings" : "Engagement";
 
   return (
     <>
@@ -233,11 +236,12 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
           {isDraft ? (
             <ButtonLink href={`/host/${slug}/edit`}>Finish setup</ButtonLink>
           ) : isEnded ? (
-            <ButtonLink
-              href={`/host/${slug}?tab=${recordings.length > 0 ? "recordings" : "engagement"}`}
-            >
-              {recordings.length > 0 ? "Watch the recording" : "See engagement"}
-            </ButtonLink>
+            /* A shortcut to another tab — pointless once that tab is the one open. */
+            endedTarget !== openTab && (
+              <ButtonLink href={`/host/${slug}?tab=${endedTarget.toLowerCase()}`}>
+                {endedTarget === "Recordings" ? "Watch the recording" : "See engagement"}
+              </ButtonLink>
+            )
           ) : (
             <>
               {isLive ? (
@@ -308,6 +312,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         recordings={recordings}
         onChanged={load}
         initialTab={initialTab}
+        onTabChange={setOpenTab}
       />
 
       <ConfirmModal
