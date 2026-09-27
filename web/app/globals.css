@@ -281,7 +281,8 @@
   }
 
   /* The connection toast borrows the join card's ring: amber and breathing while
-   * reconnecting, red and still when lost, green behind a check that pops in when back. */
+   * reconnecting, red and still when lost, green behind a check that pops in when back
+   * or first connected. */
   .conn-badge::before {
     border-color: var(--color-warn);
   }
@@ -293,7 +294,8 @@
     border-color: var(--color-live);
     opacity: 0.6;
   }
-  .conn-badge[data-phase="back"]::before {
+  .conn-badge[data-phase="back"]::before,
+  .conn-badge[data-phase="connected"]::before {
     border-color: var(--color-ok);
     opacity: 0.9;
   }
@@ -306,7 +308,8 @@
     background: var(--color-live-soft);
     color: var(--color-live);
   }
-  .conn-badge[data-phase="back"] .conn-disc {
+  .conn-badge[data-phase="back"] .conn-disc,
+  .conn-badge[data-phase="connected"] .conn-disc {
     background: var(--color-ok);
     color: #0b1a10;
   }
