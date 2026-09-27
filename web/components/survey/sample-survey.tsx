@@ -6,7 +6,7 @@ import { cleanInput, emptyInput, previewSurvey, validateInput } from "@/lib/surv
 import { FIXTURE_HOST_SURVEY, FIXTURE_SURVEY_RESULTS } from "@/lib/survey-fixtures";
 import { SurveyDialog } from "../room/survey-popup";
 import { Card } from "../ui";
-import { HostSurveyTab } from "./host-survey-tab";
+import { SurveyResultsView } from "./survey-results";
 import { SurveyBuilder } from "./survey-builder";
 import { SurveyForm } from "./survey-form";
 
@@ -53,7 +53,6 @@ export function SampleSurvey({ view, webinar }: { view: SampleView; webinar: Web
     );
   }
 
-  const host = FIXTURE_HOST_SURVEY;
   if (view === "setup" || view === "setup-link") {
     return (
       <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-5 sm:py-8">
@@ -63,7 +62,7 @@ export function SampleSurvey({ view, webinar }: { view: SampleView; webinar: Web
   }
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5 sm:py-8">
-      <HostSurveyTab webinar={webinar} sample={{ host, results: FIXTURE_SURVEY_RESULTS }} />
+      <SurveyResultsView slug={webinar.id} results={FIXTURE_SURVEY_RESULTS} preview />
     </main>
   );
 }

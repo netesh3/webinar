@@ -191,6 +191,7 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# it, and the Export menu must keep offering the old attendance CSV people built on.
 	cd web && node --experimental-strip-types --no-warnings lib/host-tabs.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/engagement/tab.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/engagement/folds.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

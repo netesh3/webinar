@@ -3,6 +3,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { EngagementFollowUp } from "@/engage";
 import type { RegistrantRow, Webinar } from "@/lib/api-types";
+import type { SectionId } from "@/lib/engagement/sections";
 import { apiSource } from "@/lib/engagement/api-source";
 import { fixtureSource } from "@/lib/engagement/source";
 import { useDevAuthBypassActive } from "@/lib/dev-bypass-session";
@@ -19,10 +20,13 @@ export function EngagementTab({
   webinar: w,
   registrants,
   onOpenAttendees,
+  initialSection,
 }: {
   webinar: Webinar;
   registrants: RegistrantRow[];
   onOpenAttendees?: () => void;
+  /** Open (and unfold) this section on arrival: ?tab=survey, ?tab=attendees. */
+  initialSection?: SectionId;
 }) {
   const bypass = useDevAuthBypassActive();
   // Bypass is only knowable after hydration; choosing a source before then would fire an
@@ -47,6 +51,7 @@ export function EngagementTab({
       showTitle={false}
       notStartedDetail={`Scheduled for ${formatDay(w.startsAt, w.timeZone)}, ${formatTime(w.startsAt, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}`}
       onOpenAttendees={onOpenAttendees}
+      initialSection={initialSection}
       followUp={
         bypass
           ? undefined

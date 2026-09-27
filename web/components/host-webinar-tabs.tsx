@@ -6,7 +6,6 @@ import { Alert, CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
 import { EngagementTab } from "./engagement/engagement-tab";
-import { HostSurveyTab } from "./survey/host-survey-tab";
 import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
 import { useShareOrigin, useToast } from "./providers";
 import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
@@ -20,7 +19,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
-import { defaultTab, tabFromQuery, allowedTab, tabsFor, type HostTab } from "@/lib/host-tabs";
+import { defaultTab, engagementSection, tabFromQuery, allowedTab, tabsFor, type HostTab } from "@/lib/host-tabs";
 import {
   RosterContactsLink,
   RosterWhatsAppCells,
@@ -37,7 +36,8 @@ import { useAppConfig } from "./providers";
  * domain, and the settings shown are the ones the session will actually run with.
  *
  * Which tabs a webinar has, and how ?tab= maps onto them (including the old
- * ?tab=report, now Engagement), is lib/host-tabs.ts.
+ * ?tab=report, now Engagement, and an ended webinar's ?tab=attendees / ?tab=survey, now
+ * Engagement's sections), is lib/host-tabs.ts.
  */
 
 export function HostWebinarTabs({
@@ -115,13 +115,14 @@ export function HostWebinarTabs({
           onChanged={onChanged}
         />
       )}
-      {tab === "Survey" && <HostSurveyTab webinar={w} />}
       {tab === "Settings" && <SettingsTab webinar={w} />}
       {tab === "Engagement" && (
         <EngagementTab
           webinar={w}
           registrants={registrants}
-          onOpenAttendees={() => setTab("Attendees")}
+          // Ended, the registrant list is gone: no-shows are Follow up's "Didn't join" group.
+          onOpenAttendees={tabs.includes("Attendees") ? () => setTab("Attendees") : undefined}
+          initialSection={engagementSection(initialTab, w.status)}
         />
       )}
     </>

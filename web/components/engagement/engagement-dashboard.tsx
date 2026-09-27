@@ -8,7 +8,7 @@ import { Badge, Button, Card } from "@/components/ui";
 import { formatTime } from "@/lib/format";
 import { useEngagementSummary, useSessionRecord, LIVE_REFRESH_MS } from "@/lib/engagement/hooks";
 import { exportOptions } from "@/lib/engagement/exports";
-import { sectionDomId, type SectionId } from "@/lib/engagement/sections";
+import type { SectionId } from "@/lib/engagement/sections";
 import type { EngagementSource } from "@/lib/engagement/source";
 import { pct } from "@/lib/engagement/viz";
 import { AttendeeDrawer } from "./attendee-drawer";
@@ -21,13 +21,14 @@ import { Hero } from "./hero";
 import { KpiGrid } from "./kpi-grid";
 import { Icon } from "./primitives";
 import { StageAttendance, useFullQuestions } from "./record-panels";
-import { Deferred, PageSection } from "./page-section";
+import { Deferred, FoldAllButton, PageSection, revealSection } from "./page-section";
 import { DashboardSkeleton, EmptyState, ErrorState, errorMessage } from "./states";
 
 /* One webinar's engagement, read top to bottom in the order a coach asks: how did it go,
  * who came and stayed, when people took part, who took part (table → drawer), what they
- * said, and what to do next — one section under the next, in a single scroll. Composition
- * only — every number arrives through `source`. */
+ * said, and what to do next — one section under the next, in a single scroll. Every section
+ * after Overview folds to a one-line summary, so a coach can keep just the ones they read.
+ * Composition only — every number arrives through `source`. */
 
 const card = "p-4 sm:p-5";
 
@@ -53,7 +54,7 @@ export function EngagementDashboard({
   notStartedDetail?: string;
   /** Jump to the host screen's registrant list — where no-shows are listed by name. */
   onOpenAttendees?: () => void;
-  /** Scroll to this section once the numbers are in; deep links such as ?tab=survey. */
+  /** Unfold and scroll to this section once the numbers are in; deep links such as ?tab=survey. */
   initialSection?: SectionId;
   /** The Follow up section's actions — the CRM's slot, handed the tier counts. Without
    *  it the section shows the engagement levels only. */
@@ -79,10 +80,7 @@ export function EngagementDashboard({
   useEffect(() => {
     if (!initialSection || !ready || landed.current) return;
     landed.current = true;
-    const raf = requestAnimationFrame(() => {
-      document.getElementById(sectionDomId(initialSection))?.scrollIntoView({ block: "start" });
-    });
-    return () => cancelAnimationFrame(raf);
+    revealSection(initialSection, "auto");
   }, [initialSection, ready]);
 
   const exports = useMemo(
@@ -135,10 +133,7 @@ export function EngagementDashboard({
         </Button>
       )}
       {ready && (
-        <Button
-          size="sm"
-          onClick={() => document.getElementById(sectionDomId("follow-up"))?.scrollIntoView({ behavior: "smooth", block: "start" })}
-        >
+        <Button size="sm" onClick={() => revealSection("follow-up")}>
           <Icon name="schedule_send" />
           Follow up
         </Button>
@@ -183,9 +178,15 @@ export function EngagementDashboard({
   const k = s.kpis;
   const questionsSummary = fullQs ?? s;
   const capped = !fullQs && record.available && k.questions > s.questions.length;
+  const openQs = k.questions - k.answeredQuestions;
+  const t = s.tiers;
+  // Where "See who didn't join" goes: the registrant list if this screen has one, else
+  // Follow up, whose "Didn't join" group lists and messages them.
+  const seeNoShows = onOpenAttendees ?? (followUp ? () => revealSection("follow-up") : undefined);
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
   return (
-    <div className="grid grid-cols-1 gap-8">
+    <div className="grid grid-cols-1 gap-3">
       <div className="grid gap-3">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <StatusLine s={s} live={summary.live} sample={sample} refreshing={summary.loading} onRefresh={summary.refresh} />
@@ -201,7 +202,17 @@ export function EngagementDashboard({
         </div>
       </PageSection>
 
-      <PageSection id="attendance" title="Attendance" hint="Who came, when they arrived and how long they stayed.">
+      <div className="-mb-2 flex items-center justify-between gap-3 border-t border-line pt-4">
+        <p className="text-[12.5px] text-ink-3">Fold what you don&apos;t need — this page remembers.</p>
+        <FoldAllButton />
+      </div>
+
+      <PageSection
+        id="attendance"
+        title="Attendance"
+        hint="Who came, when they arrived and how long they stayed."
+        summary={`${k.attended} attended · ${k.attendanceRatePct}% turnout · ${k.avgWatchMin} min average`}
+      >
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <Card className={card}>
             <SubTitle title="Who stayed" hint="People in the room, minute by minute. Dots mark polls, quizzes, Q&A and your offer." />
@@ -228,8 +239,8 @@ export function EngagementDashboard({
           <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-ink-2">
             <Icon name="person_off" className="text-ink-3" />
             {k.noShows} of {k.registered} registrants didn&apos;t join.
-            {onOpenAttendees && (
-              <button type="button" onClick={onOpenAttendees} className="font-medium text-brand hover:underline">
+            {seeNoShows && (
+              <button type="button" onClick={seeNoShows} className="font-medium text-brand hover:underline">
                 See who
               </button>
             )}
@@ -237,7 +248,12 @@ export function EngagementDashboard({
         )}
       </PageSection>
 
-      <PageSection id="activity" title="Activity" hint="Interactions per minute. Darker means busier — your best moments stand out.">
+      <PageSection
+        id="activity"
+        title="Activity"
+        hint="Interactions per minute. Darker means busier — your best moments stand out."
+        summary={`Peak of ${k.peakLive} in the room at minute ${k.peakMinute}`}
+      >
         <Deferred minHeight={220}>
           <Card className={card}>
             <ActivityHeatmap activity={s.activity} markers={s.markers} sessionMin={s.webinar.sessionMin} />
@@ -249,6 +265,7 @@ export function EngagementDashboard({
         id="attendees"
         title="Attendees"
         hint={`One row per person across the ${s.webinar.sessionMin}-minute session, with when they came in and left. Sort, filter, or open a row for their full timeline.`}
+        summary={`${plural(k.attended, "person", "people")} · ${t.high} highly engaged · ${t.risk} at risk`}
       >
         <Deferred minHeight={480}>
           <Card className={card}>
@@ -266,7 +283,12 @@ export function EngagementDashboard({
         </Deferred>
       </PageSection>
 
-      <DetailSection id="chat" title="Chat" hint="How much people talked, and who talked most.">
+      <DetailSection
+        id="chat"
+        title="Chat"
+        hint="How much people talked, and who talked most."
+        summary={k.chatMessages ? `${plural(k.chatMessages, "message")} from ${plural(k.chatters, "person", "people")}` : "No chat"}
+      >
         <ChatPanel s={s} />
       </DetailSection>
 
@@ -274,6 +296,16 @@ export function EngagementDashboard({
         id="qa"
         title="Q&A"
         hint="Every question, most upvoted first. Unanswered ones make a great follow-up."
+        summary={
+          k.questions ? (
+            <>
+              {plural(k.questions, "question")}
+              {openQs > 0 && <span className="font-medium text-warn"> · {openQs} unanswered</span>}
+            </>
+          ) : (
+            "No questions"
+          )
+        }
         action={
           capped && (
             <Button size="sm" variant="secondary" onClick={loadRecord} disabled={record.loading}>
@@ -286,19 +318,43 @@ export function EngagementDashboard({
         <QAPanel s={questionsSummary} />
       </DetailSection>
 
-      <DetailSection id="polls" title="Polls & quizzes" hint="What people answered, and how many of those in the room took part.">
+      <DetailSection
+        id="polls"
+        title="Polls & quizzes"
+        hint="What people answered, and how many of those in the room took part."
+        summary={
+          s.polls.length
+            ? `${plural(s.polls.length, "run")}${k.pollResponsePct >= 0 ? ` · ${k.pollResponsePct}% answered` : ""}${k.quizAccuracyPct >= 0 ? ` · ${k.quizAccuracyPct}% correct` : ""}`
+            : "None run"
+        }
+      >
         <PollsPanel s={s} />
       </DetailSection>
 
-      <DetailSection id="reactions" title="Reactions" hint="Emoji reactions over the session.">
+      <DetailSection
+        id="reactions"
+        title="Reactions"
+        hint="Emoji reactions over the session."
+        summary={k.reactions ? plural(k.reactions, "reaction") : "No reactions"}
+      >
         <ReactionsPanel s={s} />
       </DetailSection>
 
-      <DetailSection id="survey" title="Survey" hint="What attendees said about the session afterwards.">
-        <SurveyPanel source={source} />
+      <DetailSection
+        id="survey"
+        title="Feedback survey"
+        hint="Ratings and comments from the feedback survey."
+        summary="Ratings and comments"
+      >
+        <SurveyPanel source={source} ended={ended} />
       </DetailSection>
 
-      <PageSection id="follow-up" title="Follow up" hint="Everyone lands in one group by how they took part. Message each group what fits.">
+      <PageSection
+        id="follow-up"
+        title="Follow up"
+        hint="Everyone lands in one group by how they took part. Message each group what fits."
+        summary={`${t.high} highly engaged · ${t.risk} at risk · ${t.noShow} didn't join`}
+      >
         {(() => {
           const levels = (
             <Card className={card}>
@@ -329,16 +385,18 @@ function DetailSection({
   title,
   hint,
   action,
+  summary,
   children,
 }: {
   id: SectionId;
   title: string;
   hint: string;
   action?: ReactNode;
+  summary?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <PageSection id={id} title={title} hint={hint} action={action}>
+    <PageSection id={id} title={title} hint={hint} action={action} summary={summary}>
       <Deferred minHeight={200}>
         <Card className={card}>{children}</Card>
       </Deferred>

@@ -11,8 +11,7 @@ import { Card, SectionTitle, Stat } from "../ui";
 /* What the audience said: the headline numbers, the rating and NPS breakdowns, each extra
  * question, and the comments — paged per question from the server rather than shipped whole.
  *
- * Shared by the webinar's Survey tab and the engagement dashboard's Survey tab, so the two
- * never disagree. `preview` disables paging for fixture data. */
+ * The Engagement tab's Survey section and the /mock/survey preview both render it. `preview` disables paging for fixture data. */
 
 export function SurveyResultsView({
   slug,
