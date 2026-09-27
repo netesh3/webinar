@@ -12,6 +12,9 @@ import type {
   ChatStats,
   CoHostPatch,
   ControlsPatch,
+  EngagementAttendeeDetail,
+  EngagementAttendeePage,
+  EngagementSummary,
   FeatureGrant,
   HostWebinarPage,
   JoinResponse,
@@ -71,6 +74,7 @@ import {
   request,
   seg,
 } from "./http";
+import { toSearchParams, type AttendeeQuery } from "./engagement/query";
 
 export { API_BASE, ApiError };
 
@@ -565,6 +569,34 @@ export const api = {
 
   reportCsvUrl: (slug: string) =>
     `${API_BASE}/api/host/webinars/${seg(slug)}/report.csv`,
+
+  /** The Engagement page's headline read. `state` says why there are no numbers yet;
+   *  a live webinar's summary changes, so the page polls it. */
+  engagementSummary: (slug: string, signal?: AbortSignal) =>
+    request<EngagementSummary>(`/api/host/webinars/${seg(slug)}/engagement`, {
+      ...fresh,
+      signal,
+    }),
+
+  /** One page of the attendee heatmap, sorted, filtered and paged server-side.
+   *  `cursor` is the previous page's `nextCursor`, opaque. */
+  engagementAttendees: (slug: string, query: AttendeeQuery, signal?: AbortSignal) =>
+    request<EngagementAttendeePage>(
+      `/api/host/webinars/${seg(slug)}/engagement/attendees?${toSearchParams(query).toString()}`,
+      { ...fresh, signal },
+    ),
+
+  engagementAttendee: (slug: string, identity: string, signal?: AbortSignal) =>
+    request<EngagementAttendeeDetail>(
+      `/api/host/webinars/${seg(slug)}/engagement/attendees/${seg(identity)}`,
+      { ...fresh, signal },
+    ),
+
+  engagementCsvUrl: (slug: string) =>
+    `${API_BASE}/api/host/webinars/${seg(slug)}/engagement.csv`,
+
+  recomputeEngagement: (slug: string) =>
+    post<EngagementSummary>(`/api/host/webinars/${seg(slug)}/engagement/recompute`),
 
   approveAll: (slug: string) =>
     post<MuteAllResponse>(

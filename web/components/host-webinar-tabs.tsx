@@ -631,26 +631,31 @@ function ReportTab({ webinar: w }: { webinar: Webinar }) {
             Who showed up, how long they stayed, and what they asked.
           </p>
         </div>
-        {!bypass && (
-          <ButtonLink
-            href={api.reportCsvUrl(w.id)}
-            size="sm"
-            variant="secondary"
-            prefetch={false}
-          >
-            Export CSV
+        <div className="flex flex-wrap gap-2">
+          <ButtonLink href={`/host/${w.id}/engagement`} size="sm">
+            Open engagement dashboard
           </ButtonLink>
-        )}
-        {!bypass && (
-          <ButtonLink
-            href={api.transcriptUrl(w.id)}
-            size="sm"
-            variant="secondary"
-            prefetch={false}
-          >
-            Transcript
-          </ButtonLink>
-        )}
+          {!bypass && (
+            <ButtonLink
+              href={api.reportCsvUrl(w.id)}
+              size="sm"
+              variant="secondary"
+              prefetch={false}
+            >
+              Export CSV
+            </ButtonLink>
+          )}
+          {!bypass && (
+            <ButtonLink
+              href={api.transcriptUrl(w.id)}
+              size="sm"
+              variant="secondary"
+              prefetch={false}
+            >
+              Transcript
+            </ButtonLink>
+          )}
+        </div>
       </div>
       {error && <Alert>{error}</Alert>}
       {!rep ? (
