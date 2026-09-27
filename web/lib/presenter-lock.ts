@@ -85,7 +85,8 @@ export class PresenterLock {
   private lastBlobs = 0;
 
   /** The presenter's face, 0..1 frame units, if it was seen within FRESH_MS — a position
-   *  that can be trusted about this frame. Null otherwise. */
+   *  that can be trusted about this frame. Null otherwise. Used by the MODNet face check
+   *  and by auto low light, which meters the face rather than the room. */
   presenterFace(now: number): FaceBox | null {
     const p = this.presenter;
     return p && now - p.seen < FRESH_MS ? { x: p.x, y: p.y, w: p.w, h: p.h } : null;

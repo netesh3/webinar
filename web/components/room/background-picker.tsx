@@ -5,6 +5,7 @@ import { useLocalParticipant } from "@livekit/components-react";
 import { useEffect, type ReactNode } from "react";
 import {
   retryBackground,
+  useAutoLowLight,
   useBackgroundsSupported,
   useBackgroundStatus,
   useVirtualBackground,
@@ -49,6 +50,7 @@ export function VirtualBackground() {
   const { prefs, updatePrefs } = useRoomUI();
   const { notify } = useToast();
   const track = useCameraTrack();
+  useAutoLowLight(prefs.lowLightAuto);
 
   const { error } = useVirtualBackground(
     track,
