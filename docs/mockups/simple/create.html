@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>New webinar (simple mock)</title><link rel="stylesheet" href="assets/simple.css"></head>
+<body>
+<div data-nav></div>
+<main style="max-width:44rem">
+  <a class="back" href="home.html">← Your webinars</a>
+  <h1>New webinar</h1>
+  <p class="small muted" style="margin-top:4px">A name, a time and a picture — you're done. You can change anything later.</p>
+
+  <div class="card p5" style="margin-top:18px; display:grid; gap:16px">
+    <div style="display:grid; grid-template-columns:minmax(0,1fr) 15rem; gap:16px; align-items:start">
+      <div style="display:grid; gap:16px">
+        <div><label class="label">What's it called?</label><input class="field" value="Sleep Reset: 5 Habits That Work"></div>
+        <div><label class="label">One line about it <span class="faint">(optional)</span></label><input class="field" placeholder="Shown on the registration page"></div>
+      </div>
+      <div>
+        <label class="label">Cover image <span class="faint">(optional)</span></label>
+        <div style="aspect-ratio:16/9; border-radius:10px; border:1.5px dashed var(--line-2); background:linear-gradient(135deg,#0b5cff,#5b8cff); display:grid; place-items:center; text-align:center; color:#fff; padding:10px">
+          <div><div style="font-size:13px; font-weight:600">Sleep Reset</div><div style="font-size:11px; opacity:.85; margin-top:2px">Made from your title</div></div>
+        </div>
+        <div class="row" style="margin-top:8px; gap:6px"><button class="btn sm sec">Upload image</button><span class="xs faint">or drag it here · 16:9</span></div>
+      </div>
+    </div>
+    <div class="g3" style="grid-template-columns:1.3fr 1fr 1fr">
+      <div><label class="label">Date</label><input class="field" value="Wed, 7 Oct"></div>
+      <div><label class="label">Time (IST)</label><input class="field" value="7:00 PM"></div>
+      <div><label class="label">Length</label><input class="field" value="45 min"></div>
+    </div>
+  </div>
+
+  <div class="more" style="margin-top:14px">
+    <div class="h">
+      <div><div class="name">Already set up for you</div><div class="xs muted">Sensible defaults — open to change any of them.</div></div>
+      <button class="btn sm sec">Change ▾</button>
+    </div>
+    <div class="chipset">
+      <span><b>Anyone can register</b> · you get their email</span>
+      <span><b>Reminders</b> · 1 day + 1 hour, email &amp; WhatsApp</span>
+      <span><b>Chat &amp; Q&amp;A</b> on</span>
+      <span><b>Recorded</b> · replay sent after</span>
+      <span><b>Feedback</b> · 1–5 stars at the end</span>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:18px; justify-content:flex-end">
+    <button class="btn ghost">Save as draft</button>
+    <button class="btn">Create &amp; get link</button>
+  </div>
+
+  <div class="card p4" style="margin-top:28px; background:var(--surface-2)">
+    <div class="st" style="margin-bottom:8px">Inside "Change ▾" (4 groups instead of 8 sections)</div>
+    <div class="g4" style="grid-template-columns:repeat(2,1fr)">
+      <div class="small"><b>Registration</b><div class="xs muted">Approval, seat limit, passcode, extra questions</div></div>
+      <div class="small"><b>Reminders</b><div class="xs muted">Times, email / WhatsApp</div></div>
+      <div class="small"><b>In the room</b><div class="xs muted">Chat, Q&amp;A, reactions, panelists, record, captions, YouTube</div></div>
+      <div class="small"><b>Page &amp; feedback</b><div class="xs muted">Full description, agenda, what they'll learn, survey questions</div></div>
+    </div>
+  </div>
+</main>
+<div class="note"><b>Create.</b> Today: one page, 8 sections, ~32 inputs. Here: title, an optional line, a cover image (or one made from the title), date/time/length — then "Create &amp; get link". The cover is what people see on the registration page and in the WhatsApp reminders. Everything else is already on with a sensible default, listed as chips so nothing is hidden, and changeable in 4 groups. "Practice session" (saved but never used) is gone.</div>
+<script src="assets/nav.js"></script>
+</body></html>
