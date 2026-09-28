@@ -4,9 +4,10 @@ broadcasts, drips, bots, tags and notes.
 
 Store embeds the core *store.Store, so a CRM handler reads a webinar or a user through the
 same s.store it reads a contact through. What the embedding does NOT grant is the right to
-write webinar tables: this package writes only crm_* tables, its own rows in the shared
-notifications outbox (channel 'whatsapp'), and the users.whatsapp_* columns. That rule is
-checked by the boundary test in package engage.
+write webinar tables: this package writes only crm_* tables, webinar_message_settings
+(the per-webinar message slots), its own rows in the shared notifications outbox
+(channel 'whatsapp'), and the users.whatsapp_* columns. That rule is checked by the
+boundary test in package engage.
 
 The schema lives with every other migration in store/migrations, because the tables share
 one database and one ordered history; which module owns a table is in docs/engage/MODULES.md.

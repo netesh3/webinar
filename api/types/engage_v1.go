@@ -205,6 +205,8 @@ type CRMWebinarMessagesResponse struct {
 	Waiting           []CRMReplyAlert   `json:"waiting"`
 	Results           CRMWebinarResults `json:"results"`
 	WhatsAppConnected bool              `json:"whatsappConnected"`
+	/** Resolved message slots for this webinar, and which layer each field came from. */
+	Slots []MessageSlot `json:"slots"`
 }
 
 /* CRMTestSendRequest sends a template once to the host's own number, to see it. */

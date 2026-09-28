@@ -315,6 +315,11 @@ type Config struct {
 	 * AppConfig — one switch turns the whole path on or off, front and back.
 	 */
 	TelemetryEnabled bool
+
+	/* EngageSlots makes reminder, replay and follow-up senders read ResolveSlots
+	 * (channels and timing) instead of WebinarOptions. Off until the messages
+	 * UI writes slots. Set ENGAGE_SLOTS=1. Removed in a later phase. */
+	EngageSlots bool
 }
 
 // httpFromWS converts the browser-facing ws(s) URL into the http(s) form the
@@ -414,6 +419,7 @@ func Load() (Config, error) {
 	c.SeedDev = envBool("SEED_DEV", true)
 	c.AuthBypass = envBool("AUTH_BYPASS", false)
 	c.TelemetryEnabled = envBool("TELEMETRY_ENABLED", false)
+	c.EngageSlots = envBool("ENGAGE_SLOTS", false)
 	c.MinPasswordLength = envInt("MIN_PASSWORD_LENGTH", passwordFloorFor(c.Env))
 
 	/* The SFU list, parsed before validate() so a malformed one is a boot error.

@@ -5,8 +5,13 @@ import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
 import { CalendarIcon, ChevronDownIcon, PlayIcon } from "./icons";
-import { DEFAULT_ATTENDEE_LIMIT } from "./schedule-form";
-import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
+import { DEFAULT_ATTENDEE_LIMIT } from "./schedule/form-state";
+import {
+  useAppConfig,
+  useSession,
+  useShareOrigin,
+  useToast,
+} from "./providers";
 import { ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar, WebinarInput } from "@/lib/api-types";
@@ -16,7 +21,7 @@ import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 
 /* An instant webinar is the same request a normal Create submits, just with
  * the form skipped: a topic that says what it is, starting now, and every
- * other field set to the same defaults schedule-form.tsx's blank form would
+ * other field set to the same defaults the schedule form's blank form would
  * have sent. It is not a different kind of webinar — a host can rename it or
  * change its settings afterwards exactly like any other. */
 function instantWebinarInput(maxAttendees: number): WebinarInput {
@@ -114,7 +119,9 @@ export function HostWebinarsScreen() {
     const pendingTab = openPendingRoomTab();
     setStartingInstant(true);
     try {
-      const created = await api.createWebinar(instantWebinarInput(maxAttendees));
+      const created = await api.createWebinar(
+        instantWebinarInput(maxAttendees),
+      );
       await api.startWebinar(created.id);
       pendingTab.open(`/host/${created.id}/room`);
       // The whole point of "instant" is joining people who aren't in this
@@ -265,7 +272,11 @@ export function HostWebinarsScreen() {
           className="group flex items-center gap-3 rounded-xl border border-line bg-surface p-3.5 text-left transition-colors hover:border-brand-line hover:bg-surface-2 disabled:opacity-60"
         >
           <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
-            {startingInstant ? <Spinner className="size-4.5" /> : <PlayIcon className="size-4.5" />}
+            {startingInstant ? (
+              <Spinner className="size-4.5" />
+            ) : (
+              <PlayIcon className="size-4.5" />
+            )}
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-[13.5px] font-semibold">
@@ -302,7 +313,9 @@ export function HostWebinarsScreen() {
 
       {onStage.length > 0 && (
         <section className="mt-10">
-          <h2 className="mb-1 text-[15px] font-semibold">On stage as panelist</h2>
+          <h2 className="mb-1 text-[15px] font-semibold">
+            On stage as panelist
+          </h2>
           <p className="mb-3 text-[13px] text-ink-2">
             Sessions you were invited to present on — join when the host starts.
           </p>

@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ApiError, api } from "@/lib/api";
 import type { Survey, SurveyInput, Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
-import { cleanInput, emptyInput, previewSurvey, sendSummary, toInput, validateInput } from "@/lib/survey";
+import {
+  cleanInput,
+  emptyInput,
+  previewSurvey,
+  toInput,
+  validateInput,
+} from "@/lib/survey";
 import { Spinner, Toggle } from "../controls";
 import { SurveyBuilder } from "./survey-builder";
 import { SurveyForm } from "./survey-form";
@@ -30,12 +36,19 @@ export interface ScheduleSurvey {
   on: boolean;
 }
 
-export function useScheduleSurvey(webinar: Webinar | null, durationMin: number): ScheduleSurvey {
+export function useScheduleSurvey(
+  webinar: Webinar | null,
+  durationMin: number,
+): ScheduleSurvey {
   const editing = webinar !== null;
   const bypass = isDevAuthBypassActive();
-  const [load, setLoad] = useState<Load>(editing && !bypass ? "loading" : "ready");
+  const [load, setLoad] = useState<Load>(
+    editing && !bypass ? "loading" : "ready",
+  );
   const [saved, setSaved] = useState<Survey | null>(null);
-  const [on, setOn] = useState(!editing || (bypass && Boolean(webinar?.options.postWebinarSurvey)));
+  const [on, setOn] = useState(
+    !editing || (bypass && Boolean(webinar?.options.postWebinarSurvey)),
+  );
   const [draft, setDraft] = useState<SurveyInput>(emptyInput);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
 
@@ -79,7 +92,11 @@ export function useScheduleSurvey(webinar: Webinar | null, durationMin: number):
     try {
       if (on) {
         const body = cleanInput(draft);
-        if (saved && JSON.stringify(body) === JSON.stringify(cleanInput(toInput(saved)))) return null;
+        if (
+          saved &&
+          JSON.stringify(body) === JSON.stringify(cleanInput(toInput(saved)))
+        )
+          return null;
         const sv = await api.saveSurvey(target, body);
         setSaved(sv);
         setDraft(toInput(sv));
@@ -96,61 +113,65 @@ export function useScheduleSurvey(webinar: Webinar | null, durationMin: number):
     }
   }
 
+  const preview = (
+    <div className="xl:sticky xl:top-4">
+      <p className="mb-1.5 text-[12px] font-medium text-ink-3">
+        What attendees see
+      </p>
+      <div
+        className="room-dark rounded-xl border border-line-2 bg-surface p-2.5 shadow-[0_8px_24px_-16px_rgba(0,0,0,0.45)]"
+        style={{ zoom: 0.86 }}
+      >
+        <SurveyForm
+          key={JSON.stringify(cleanInput(draft))}
+          preview
+          survey={previewSurvey(draft)}
+          mine={{ submitted: false, linkClicked: false }}
+          slug={slug ?? "preview"}
+          onLater={() => undefined}
+          onDone={() => setDraft({ ...draft })}
+        />
+      </div>
+    </div>
+  );
+
   const node = (
-    <div id="survey" className="grid scroll-mt-24 gap-4">
+    <div id="survey" className="grid scroll-mt-24 gap-3">
       {load === "loading" ? (
         <Spinner className="size-5" />
       ) : load === "error" ? (
         <p className="rounded-lg bg-warn-soft px-3 py-2.5 text-[12.5px] text-warn">
-          Couldn&apos;t load this webinar&apos;s survey, so saving here won&apos;t touch it. Reload to try again.
+          Couldn&apos;t load this webinar&apos;s survey, so saving here
+          won&apos;t touch it. Reload to try again.
         </p>
       ) : (
         <>
-          <div
-            className={`rounded-[10px] border px-1.5 py-0.5 ${on ? "border-brand-line bg-brand-soft" : "border-line bg-surface"}`}
-          >
-            <Toggle
-              checked={on}
-              disabled={locked}
-              onChange={setOn}
-              label="Ask attendees for feedback"
-              description={
-                locked
-                  ? `${saved?.responses ?? 0} people have answered, so it can't be turned off.`
-                  : on
-                    ? `A short survey pops up in the middle of their screen. ${sendSummary(draft)}.`
-                    : "Nobody is asked to rate this webinar."
-              }
-            />
-          </div>
+          <Toggle
+            checked={on}
+            disabled={locked}
+            onChange={setOn}
+            label="Ask attendees for feedback"
+            description={
+              locked
+                ? `${saved?.responses ?? 0} people have answered, so it can't be turned off.`
+                : on
+                  ? "A short survey pops up in the middle of their screen."
+                  : "Nobody is asked to rate this webinar."
+            }
+          />
 
           {on && (
-            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-              <SurveyBuilder
-                value={draft}
-                onChange={(next) => {
-                  setServerErrors({});
-                  setDraft(next);
-                }}
-                errors={errors}
-                locked={locked}
-                durationMin={durationMin}
-              />
-              <div className="xl:sticky xl:top-4">
-                <p className="mb-2 text-[12px] font-medium text-ink-3">What attendees see</p>
-                <div className="room-dark rounded-2xl border border-line-2 bg-surface p-5 shadow-[0_18px_50px_-18px_rgba(0,0,0,0.5)]">
-                  <SurveyForm
-                    key={JSON.stringify(cleanInput(draft))}
-                    preview
-                    survey={previewSurvey(draft)}
-                    mine={{ submitted: false, linkClicked: false }}
-                    slug={slug ?? "preview"}
-                    onLater={() => undefined}
-                    onDone={() => setDraft({ ...draft })}
-                  />
-                </div>
-              </div>
-            </div>
+            <SurveyBuilder
+              value={draft}
+              onChange={(next) => {
+                setServerErrors({});
+                setDraft(next);
+              }}
+              errors={errors}
+              locked={locked}
+              durationMin={durationMin}
+              aside={preview}
+            />
           )}
         </>
       )}
