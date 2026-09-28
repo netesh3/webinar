@@ -364,6 +364,12 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/auth/logout", s.handleLogout)
 		r.With(s.requireUser).Get("/auth/me", s.handleMe)
 		r.With(s.requireUser).Patch("/auth/me", s.handleUpdateProfile)
+		// The signed-in account's uploaded profile photo. Same cookie as /auth/me,
+		// so an <img> on this origin can load it. Google's photo is not served
+		// from here — that URL is on the account payload itself.
+		r.With(s.requireUser).Get("/auth/avatar", s.handleAvatar)
+		r.With(s.requireUser).Post("/auth/avatar", s.handleUploadAvatar)
+		r.With(s.requireUser).Delete("/auth/avatar", s.handleDeleteAvatar)
 
 		// ---------------- telemetry (off unless TelemetryEnabled; see handleTelemetry) ----------------
 		r.With(telemetryLimit.Middleware).Post("/telemetry", s.handleTelemetry)

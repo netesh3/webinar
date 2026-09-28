@@ -2377,6 +2377,13 @@ export interface Account {
   initials: string;
   hue: string;
   /**
+   *  AvatarURL is the photo to show for this account.
+   * 	 * An uploaded picture wins over the Google profile photo. The upload is a
+   * 	 * path on this API (bytes live in the users row, same as a webinar cover);
+   * 	 * the Google photo is the https URL from sign-in. Empty means initials.
+   */
+  avatarUrl?: string;
+  /**
    * CanHost is GRANTED by an admin. It was once a checkbox on the signup form; see
    * migrations/0011 for why that had to stop.
    */

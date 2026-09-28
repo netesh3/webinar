@@ -71,6 +71,16 @@ type User struct {
 	// WhatsAppTokenRejectedAt is when Meta last refused the stored token. Set means
 	// the host has to reconnect; cleared by connecting again. See migrations/0054.
 	WhatsAppTokenRejectedAt *time.Time
+
+	// GooglePicture is the https profile photo URL from Google sign-in.
+	// Empty for a password account, and for a Google account whose token
+	// carried no usable picture. See migrations/0071.
+	GooglePicture string
+	// AvatarKey is the opaque cache-buster for an uploaded profile photo, and
+	// the sentinel that one exists. Empty means no upload. The bytes are
+	// AvatarData, loaded only when serving the image — not on every user read.
+	AvatarKey  string
+	AvatarMime string
 }
 
 /* HasFeature reports whether a per-account switch is on.
@@ -98,6 +108,7 @@ func (u User) Public() types.Account {
 		Phone:           u.Phone,
 		Initials:        u.Initials,
 		Hue:             u.Hue,
+		AvatarURL:       u.AvatarURL(),
 		CanHost:         u.CanHost,
 		IsAdmin:         u.IsAdmin,
 		MaxDurationMin:  u.MaxDurationMin,
@@ -158,7 +169,8 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 	coalesce(whatsapp_phone_number_id,''), coalesce(whatsapp_display_phone,''),
 	coalesce(whatsapp_verified_name,''),
 	whatsapp_token_expires_at, whatsapp_connected_at, whatsapp_registered_at,
-	whatsapp_coexistence, whatsapp_token_rejected_at`
+	whatsapp_coexistence, whatsapp_token_rejected_at,
+	coalesce(google_picture,''), coalesce(avatar_key,''), coalesce(avatar_mime,'')`
 
 func scanUser(row scanner) (User, error) {
 	var u User
@@ -168,8 +180,22 @@ func scanUser(row scanner) (User, error) {
 		&u.YouTubeRefresh, &u.YouTubeChannelID, &u.YouTubeChannelTitle, &u.YouTubeStreamID,
 		&u.WhatsAppToken, &u.WhatsAppWABAID, &u.WhatsAppPhoneNumberID, &u.WhatsAppDisplayPhone,
 		&u.WhatsAppVerifiedName, &u.WhatsAppTokenExpiresAt, &u.WhatsAppConnectedAt,
-		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence, &u.WhatsAppTokenRejectedAt)
+		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence, &u.WhatsAppTokenRejectedAt,
+		&u.GooglePicture, &u.AvatarKey, &u.AvatarMime)
 	return u, err
+}
+
+/* AvatarURL is the photo the client should render.
+ *
+ * Uploaded bytes win, then the Google profile photo, then nothing — the
+ * client draws initials when this is empty. The upload URL points at this
+ * API; the Google value is the https address stored at sign-in.
+ */
+func (u User) AvatarURL() string {
+	if u.AvatarKey != "" {
+		return "/api/auth/avatar?v=" + u.AvatarKey
+	}
+	return u.GooglePicture
 }
 
 func (s *Store) HostCanCdnBroadcast(ctx context.Context, hostID string) (bool, error) {
@@ -415,6 +441,71 @@ func (s *Store) SetUserYouTube(ctx context.Context, userID, refresh, channelID, 
 		return ErrNotFound
 	}
 	return nil
+}
+
+// SetGooglePicture stores the profile photo URL from a Google sign-in.
+// An empty picture is not written: a later token that omits it must not
+// wipe a URL we already kept.
+func (s *Store) SetGooglePicture(ctx context.Context, id, picture string) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE users SET google_picture = $2 WHERE id = $1`, id, picture)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+/* SetUserAvatar stores an uploaded profile photo in the row, replacing any
+ * previous upload. The Google URL is left alone — removing the upload falls
+ * back to it. newImageVersion is the same opaque cache-buster cover images use.
+ */
+func (s *Store) SetUserAvatar(ctx context.Context, id, mime string, data []byte) (User, error) {
+	u, err := scanUser(s.pool.QueryRow(ctx, `
+		UPDATE users
+		   SET avatar_key = $2, avatar_mime = $3, avatar_data = $4
+		 WHERE id = $1
+		RETURNING `+userColumns,
+		id, newImageVersion(), mime, data))
+	if noRows(err) {
+		return User{}, ErrNotFound
+	}
+	return u, err
+}
+
+// ClearUserAvatar removes the upload. The Google photo, if any, stays.
+func (s *Store) ClearUserAvatar(ctx context.Context, id string) (User, error) {
+	u, err := scanUser(s.pool.QueryRow(ctx, `
+		UPDATE users
+		   SET avatar_key = '', avatar_mime = '', avatar_data = ''
+		 WHERE id = $1
+		RETURNING `+userColumns, id))
+	if noRows(err) {
+		return User{}, ErrNotFound
+	}
+	return u, err
+}
+
+/* UserAvatarMedia returns the uploaded bytes. ErrNotFound when the account
+ * has no upload — a Google URL is not bytes we hold.
+ */
+func (s *Store) UserAvatarMedia(ctx context.Context, id string) (data []byte, mime string, err error) {
+	var key string
+	err = s.pool.QueryRow(ctx,
+		`SELECT avatar_key, avatar_mime, avatar_data FROM users WHERE id = $1`, id).
+		Scan(&key, &mime, &data)
+	if noRows(err) {
+		return nil, "", ErrNotFound
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	if key == "" {
+		return nil, "", ErrNotFound
+	}
+	return data, mime, nil
 }
 
 func (s *Store) SetUserYouTubeStreamID(ctx context.Context, userID, streamID string) error {

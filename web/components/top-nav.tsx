@@ -7,7 +7,8 @@ import { Menu } from "./controls";
 import { CloseIcon, MenuIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
-import { Avatar, ButtonLink } from "./ui";
+import { AccountAvatar } from "./account-avatar";
+import { ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 import { MessagesNavButton } from "@/engage";
 
@@ -124,15 +125,10 @@ export function TopNav() {
                   <span className="hidden max-w-32 truncate text-[12.5px] text-ink-2 md:block">
                     {account.name}
                   </span>
-                  <Avatar
-                    person={{
-                      id: account.id,
-                      name: account.name,
-                      title: account.title,
-                      org: account.org,
-                      initials: account.initials,
-                      hue: account.hue,
-                    }}
+                  <AccountAvatar
+                    initials={account.initials}
+                    hue={account.hue}
+                    photo={account.avatarUrl}
                     size={28}
                   />
                 </span>
