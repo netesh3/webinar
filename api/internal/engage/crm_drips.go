@@ -73,7 +73,7 @@ func (s *Module) handleCRMDrips(w http.ResponseWriter, r *http.Request) {
 		Drips: list,
 		// The same merge fields and the same triggers the server enforces, so the
 		// builder cannot offer either one this code would refuse.
-		Fields:            mergeFields,
+		Fields:            s.fieldsFor(r.Context(), user.ID),
 		Triggers:          types.DripTriggers,
 		Tags:              s.hostTags(r.Context(), user),
 		WhatsAppConnected: user.WhatsAppToken != "",

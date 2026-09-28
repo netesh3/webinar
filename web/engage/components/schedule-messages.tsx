@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { engageApi } from "../api";
 import { Alert, Modal } from "@/components/controls";
@@ -34,11 +40,70 @@ import { EVERYONE_MESSAGES, MessageEditor } from "./wa-messages";
 
 type Stage = "before" | "after";
 
+/** What the webinar being scheduled is, to preview it rather than an older one. */
+export type PreviewWebinar = {
+  topic: string;
+  /** The start, when the date and time parse. */
+  startsAt: Date | null;
+  timeZone: string;
+};
+
+/* The server's "when" format — notify.LocalTime: "14:00 on 14 October 2026 IST". */
+function whenText(at: Date, timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZoneName: "short",
+    }).formatToParts(at);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+    return `${get("hour")}:${get("minute")} on ${get("day")} ${get("month")} ${get("year")} ${get("timeZoneName")}`;
+  } catch {
+    return "";
+  }
+}
+
+/** The host's merge-field examples, with this webinar's title and time over them. */
+function withWebinar(
+  fields: CRMMergeField[],
+  w: PreviewWebinar | undefined,
+): CRMMergeField[] {
+  if (!w) return fields;
+  const when = w.startsAt ? whenText(w.startsAt, w.timeZone) : "";
+  // The slug is made from the title the same way the server does it, near enough
+  // for a preview: lowercase words joined by dashes.
+  const slug = w.topic
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return fields.map((f) =>
+    f.token === "topic" && w.topic.trim()
+      ? { ...f, example: w.topic.trim() }
+      : f.token === "when" && when
+        ? { ...f, example: when }
+        : f.token === "replay" && slug
+          ? {
+              ...f,
+              example: f.example.replace(
+                /\/w\/[^/]+\/recording\//,
+                `/w/${slug}/recording/`,
+              ),
+            }
+          : f,
+  );
+}
+
 export function AttendeeMessages({
   stage,
   email,
   whatsapp,
   reminderLabel,
+  webinar,
 }: {
   stage: Stage;
   /** Whether email goes out for this stage's messages. */
@@ -47,12 +112,18 @@ export function AttendeeMessages({
   whatsapp: boolean;
   /** "1 day, 1 hour before" — the reminder's when. */
   reminderLabel: string;
+  /** The webinar being scheduled, previewed in place of the host's latest one. */
+  webinar?: PreviewWebinar;
 }) {
   const { account } = useSession();
   const { notify } = useToast();
   const connected = Boolean(account?.whatsapp?.connected);
   const [reminders, setReminders] = useState<CRMReminder[] | null>(null);
-  const [fields, setFields] = useState<CRMMergeField[]>([]);
+  const [hostFields, setFields] = useState<CRMMergeField[]>([]);
+  const fields = useMemo(
+    () => withWebinar(hostFields, webinar),
+    [hostFields, webinar],
+  );
   const [templates, setTemplates] = useState<CRMTemplate[] | null>(null);
   const [recipes, setRecipes] = useState<CRMRecipe[] | null>(null);
   const [editing, setEditing] = useState<NotificationKind | null>(null);
@@ -97,12 +168,21 @@ export function AttendeeMessages({
         when={whenText}
         channels={[email && "Email", wa && t && "WhatsApp"]}
         preview={
-          wa ? (
+          connected ? (
             t ? (
-              <Bubble
-                template={t}
-                values={(r?.params ?? []).map((p) => exampleFor(fields, p))}
-              />
+              <div className="grid gap-1">
+                <Bubble
+                  template={t}
+                  values={(r?.params ?? []).map((p) => exampleFor(fields, p))}
+                  dim={!wa}
+                />
+                {!wa && (
+                  <Muted>
+                    WhatsApp is off for this webinar — switch on WhatsApp
+                    reminders above to send this too.
+                  </Muted>
+                )}
+              </div>
             ) : (
               <Muted>
                 {templates === null
@@ -113,7 +193,7 @@ export function AttendeeMessages({
           ) : null
         }
         action={
-          wa ? (
+          connected ? (
             <TextButton onClick={() => setEditing(kind)} disabled={!templates}>
               {t ? "Edit" : "Set up"}
             </TextButton>

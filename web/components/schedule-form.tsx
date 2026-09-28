@@ -539,6 +539,16 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
     return instant;
   }, [form.date, form.time, form.timeZone]);
 
+  // The webinar being typed, for the message previews under What attendees get.
+  const previewWebinar = useMemo(
+    () => ({
+      topic: form.topic,
+      startsAt: startsAtPreview,
+      timeZone: form.timeZone,
+    }),
+    [form.topic, startsAtPreview, form.timeZone],
+  );
+
   const summaryZone =
     hydrated && startsAtPreview && form.timeZone
       ? shortTimeZone(form.timeZone, startsAtPreview)
@@ -1115,6 +1125,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
             >
               <AttendeeMessages
                 stage="before"
+                webinar={previewWebinar}
                 email={Boolean(form.options.emailReminders)}
                 whatsapp={Boolean(form.options.whatsappReminders)}
                 reminderLabel={describeReminders(
@@ -1147,6 +1158,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
             >
               <AttendeeMessages
                 stage="after"
+                webinar={previewWebinar}
                 email
                 whatsapp={Boolean(form.options.whatsappReminders)}
                 reminderLabel=""
