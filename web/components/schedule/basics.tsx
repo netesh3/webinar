@@ -35,7 +35,7 @@ export function BasicsSection({
             this grid and the cover follows the description. The tag and the type
             stay up front: the tag files the webinar on the browse page and the
             type decides one-off or series. */}
-        <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_15rem] lg:gap-x-4">
+        <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-x-5">
           <div className="contents lg:flex lg:flex-col lg:gap-3.5">
             <div className="order-1 lg:order-none">
               <Text
@@ -102,7 +102,6 @@ export function BasicsSection({
 
           <div className="order-4 lg:order-none">
             <WebinarImagePicker
-              topic={form.topic}
               previewUrl={imagePreview}
               onChange={onImage}
               onRemove={onImageRemove}
