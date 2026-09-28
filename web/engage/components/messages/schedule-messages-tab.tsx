@@ -62,9 +62,11 @@ export const ScheduleMessagesTab = forwardRef<
     slug?: string;
     webinar?: PreviewWebinar;
     reminderTimes: ReminderTimesEditor;
+    /** Fired whenever the enabled-message count changes. */
+    onEnabledCount?: (count: number) => void;
   }
 >(function ScheduleMessagesTab(
-  { slug, webinar, reminderTimes },
+  { slug, webinar, reminderTimes, onEnabledCount },
   ref,
 ) {
   const { account } = useSession();
@@ -78,6 +80,8 @@ export const ScheduleMessagesTab = forwardRef<
   const [selected, setSelected] = useState(SlotReminder);
   const [forAll, setForAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const onEnabledCountRef = useRef(onEnabledCount);
+  onEnabledCountRef.current = onEnabledCount;
   const [writing, setWriting] = useState(false);
   const [tick, setTick] = useState(0);
   const pending = useRef(new Map<string, MessageSlot>());
@@ -134,6 +138,11 @@ export const ScheduleMessagesTab = forwardRef<
       cancelled = true;
     };
   }, [slug, tick]);
+
+  useEffect(() => {
+    if (!slots) return;
+    onEnabledCountRef.current?.(slots.filter((slot) => slot.enabled).length);
+  }, [slots]);
 
   const previewFields = useMemo(
     () => withWebinar(fields, webinar),
