@@ -1790,6 +1790,29 @@ const (
 	 *  step. The one trigger that is not about a webinar at all, so a sequence on it
 	 *  has no `topic` or `when` to fill a template with. Needs the tags feature. */
 	DripTagAdded = "tag_added"
+	/** DripPollAnswer fires when someone picks an answer in a poll, matched by the poll's
+	 *  question and the answer's text (Match.Question, Match.Answer). */
+	DripPollAnswer = "poll_answer"
+	/** DripButtonTap fires when someone taps a quick-reply button (Match.Text). */
+	DripButtonTap = "button_tap"
+	/** DripKeywordIn fires when someone sends a message containing a word (Match.Word). */
+	DripKeywordIn = "keyword_in"
+)
+
+/** What a rule's trigger has to match. Only the fields its trigger uses are set. */
+type CRMDripMatch struct {
+	Question string `json:"question,omitempty"`
+	Answer   string `json:"answer,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Word     string `json:"word,omitempty"`
+}
+
+/* What a step does. A message is an approved template; tag and notify send nothing to the
+ * person. */
+const (
+	DripStepMessage = "message"
+	DripStepTag     = "tag"
+	DripStepNotify  = "notify"
 )
 
 /* DripTriggers are the entry triggers, in the order a host is offered them.
@@ -1797,7 +1820,8 @@ const (
  * Iterated by the API's validation and sent to the builder, so a new trigger is added
  * here rather than in a switch statement and a form.
  */
-var DripTriggers = []string{DripManual, DripRegistered, DripAttended, DripNoShow, DripEnded, DripTagAdded}
+var DripTriggers = []string{DripManual, DripRegistered, DripAttended, DripNoShow, DripEnded, DripTagAdded,
+	DripPollAnswer, DripButtonTap, DripKeywordIn}
 
 /* CRMDripStep is one message of a sequence.
  *
@@ -1808,6 +1832,13 @@ var DripTriggers = []string{DripManual, DripRegistered, DripAttended, DripNoShow
 type CRMDripStep struct {
 	/** Minutes to wait after the previous step. 0 means as soon as they enter. */
 	DelayMinutes int `json:"delayMinutes"`
+	/** DripStepMessage (the default when empty), DripStepTag or DripStepNotify. */
+	Kind string `json:"kind,omitempty"`
+	/** For a tag step: the tag, and its name read-only. */
+	TagID   string `json:"tagId,omitempty"`
+	TagName string `json:"tagName,omitempty"`
+	/** For a notify step: what the email to the host says, beside who it is about. */
+	Note string `json:"note,omitempty"`
 	/** The approved template's name and language — its identity at Meta. */
 	Template string `json:"template"`
 	Language string `json:"language"`
@@ -1846,8 +1877,10 @@ type CRMDrip struct {
 	 *  who attended. Such a sequence starts once the webinar's engagement is computed. */
 	Tiers []EngagementTier `json:"tiers,omitempty"`
 	/** The recipe this sequence was made from (CRMRecipe.ID), empty for one built by hand. */
-	Recipe string       `json:"recipe,omitempty"`
-	Stats  CRMDripStats `json:"stats"`
+	Recipe string `json:"recipe,omitempty"`
+	/** What a poll_answer, button_tap or keyword_in trigger matches. */
+	Match *CRMDripMatch `json:"match,omitempty"`
+	Stats CRMDripStats  `json:"stats"`
 	/** RFC3339. */
 	CreatedAt string `json:"createdAt"`
 }
@@ -1935,6 +1968,8 @@ type CRMDripRequest struct {
 	TagID string `json:"tagId,omitempty"`
 	/** Optional for `attended`: only these engagement tiers. Ignored otherwise. */
 	Tiers []EngagementTier `json:"tiers,omitempty"`
+	/** Required for poll_answer, button_tap and keyword_in. */
+	Match *CRMDripMatch `json:"match,omitempty"`
 	/** Whether it runs. Absent is false, so a request that forgets it creates a
 	 *  paused sequence rather than one that starts messaging people. */
 	Active bool          `json:"active"`

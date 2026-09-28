@@ -44,6 +44,8 @@ type Engage interface {
 	// OnScored follows the webinar's engagement being computed and saved, at the end of a
 	// session or on a recompute: each attendee's tier now exists to follow up by.
 	OnScored(ctx context.Context, slug string)
+	// OnPollAnswer follows a vote in a poll: the room identity, the question and the answer.
+	OnPollAnswer(ctx context.Context, slug, identity, question, answer string)
 	// OnRecordingPublished follows a recording being made public, for a host who has replay links on.
 	OnRecordingPublished(ctx context.Context, wb types.Webinar, host store.User, replayURL string)
 
@@ -65,6 +67,7 @@ func (NoEngage) OnRegistrationsDecided(context.Context, string, []string)       
 func (NoEngage) OnRescheduled(context.Context, types.Webinar)                            {}
 func (NoEngage) OnEnded(context.Context, types.Webinar)                                  {}
 func (NoEngage) OnScored(context.Context, string)                                        {}
+func (NoEngage) OnPollAnswer(context.Context, string, string, string, string)            {}
 func (NoEngage) OnRecordingPublished(context.Context, types.Webinar, store.User, string) {}
 func (NoEngage) DecorateRegistrants(context.Context, store.User, string, []types.RegistrantRow) {
 }

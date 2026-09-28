@@ -245,6 +245,11 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "vote", err)
 		return
 	}
+	// The CRM's "answers a poll" automations. After the vote is stored, never in its way.
+	if p, err := s.store.Poll(r.Context(), slug, id, from.Identity, true); err == nil &&
+		req.Choice >= 0 && req.Choice < len(p.Options) {
+		s.engage.OnPollAnswer(r.Context(), slug, from.Identity, p.Question, p.Options[req.Choice])
+	}
 
 	// Read back through the audience's own narrowing, so a voter sees exactly what
 	// they are entitled to see and not a byte more.

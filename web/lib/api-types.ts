@@ -3294,6 +3294,43 @@ export const DripEnded = "ended";
  */
 export const DripTagAdded = "tag_added";
 /**
+ * * DripPollAnswer fires when someone picks an answer in a poll, matched by the poll's
+ * 	 *  question and the answer's text (Match.Question, Match.Answer).
+ */
+export const DripPollAnswer = "poll_answer";
+/**
+ * * DripButtonTap fires when someone taps a quick-reply button (Match.Text).
+ */
+export const DripButtonTap = "button_tap";
+/**
+ * * DripKeywordIn fires when someone sends a message containing a word (Match.Word).
+ */
+export const DripKeywordIn = "keyword_in";
+/**
+ * * What a rule's trigger has to match. Only the fields its trigger uses are set.
+ */
+export interface CRMDripMatch {
+  question?: string;
+  answer?: string;
+  text?: string;
+  word?: string;
+}
+/**
+ *  What a step does. A message is an approved template; tag and notify send nothing to the
+ *  * person.
+ */
+export const DripStepMessage = "message";
+/**
+ *  What a step does. A message is an approved template; tag and notify send nothing to the
+ *  * person.
+ */
+export const DripStepTag = "tag";
+/**
+ *  What a step does. A message is an approved template; tag and notify send nothing to the
+ *  * person.
+ */
+export const DripStepNotify = "notify";
+/**
  *  CRMDripStep is one message of a sequence.
  *  *
  *  * The delay is from the step before it — from entering, for the first one — because
@@ -3305,6 +3342,19 @@ export interface CRMDripStep {
    * * Minutes to wait after the previous step. 0 means as soon as they enter.
    */
   delayMinutes: number /* int */;
+  /**
+   * * DripStepMessage (the default when empty), DripStepTag or DripStepNotify.
+   */
+  kind?: string;
+  /**
+   * * For a tag step: the tag, and its name read-only.
+   */
+  tagId?: string;
+  tagName?: string;
+  /**
+   * * For a notify step: what the email to the host says, beside who it is about.
+   */
+  note?: string;
   /**
    * * The approved template's name and language — its identity at Meta.
    */
@@ -3364,6 +3414,10 @@ export interface CRMDrip {
    * * The recipe this sequence was made from (CRMRecipe.ID), empty for one built by hand.
    */
   recipe?: string;
+  /**
+   * * What a poll_answer, button_tap or keyword_in trigger matches.
+   */
+  match?: CRMDripMatch;
   stats: CRMDripStats;
   /**
    * * RFC3339.
@@ -3492,6 +3546,10 @@ export interface CRMDripRequest {
    * * Optional for `attended`: only these engagement tiers. Ignored otherwise.
    */
   tiers?: EngagementTier[];
+  /**
+   * * Required for poll_answer, button_tap and keyword_in.
+   */
+  match?: CRMDripMatch;
   /**
    * * Whether it runs. Absent is false, so a request that forgets it creates a
    * 	 *  paused sequence rather than one that starts messaging people.
