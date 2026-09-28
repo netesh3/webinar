@@ -2933,3 +2933,63 @@ type APIError struct {
 type StatusResponse struct {
 	Status string `json:"status"`
 }
+
+/* Integration cards on Settings. One shape for every provider, so the page
+ * renders the list and does not grow a branch when another app is added.
+ *
+ * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ * this type is only what the browser is allowed to see. */
+const (
+	IntegrationStatusConnected = "connected"
+	IntegrationStatusOff       = "off"
+	IntegrationStatusSoon      = "soon"
+
+	IntegrationCategoryMessaging = "messaging"
+	IntegrationCategoryStreaming = "streaming"
+	IntegrationCategorySoon      = "soon"
+
+	IntegrationActionNavigate = "navigate"
+	IntegrationActionRedirect = "redirect"
+	IntegrationActionDelete   = "delete"
+	IntegrationActionInterest = "interest"
+	IntegrationActionInfo     = "info"
+	IntegrationActionSignup   = "signup"
+)
+
+type IntegrationStep struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+type IntegrationAction struct {
+	ID     string            `json:"id"`
+	Label  string            `json:"label"`
+	Href   string            `json:"href,omitempty"`
+	Method string            `json:"method,omitempty"`
+	Kind   string            `json:"kind"`
+	Detail string            `json:"detail,omitempty"`
+	Menu   bool              `json:"menu,omitempty"`
+	Steps  []IntegrationStep `json:"steps,omitempty"`
+}
+
+type IntegrationCard struct {
+	ID         string              `json:"id"`
+	Name       string              `json:"name"`
+	Tagline    string              `json:"tagline"`
+	Category   string              `json:"category"`
+	Status     string              `json:"status"`
+	Detail     string              `json:"detail"`
+	Who        string              `json:"who,omitempty"`
+	WhoNote    string              `json:"whoNote,omitempty"`
+	Warn       string              `json:"warn,omitempty"`
+	Mark       string              `json:"mark"`
+	Text       string              `json:"text,omitempty"`
+	Tone       string              `json:"tone"`
+	Actions    []IntegrationAction `json:"actions,omitempty"`
+	Interested bool                `json:"interested,omitempty"`
+}
+
+type IntegrationsResponse struct {
+	Integrations []IntegrationCard `json:"integrations"`
+}

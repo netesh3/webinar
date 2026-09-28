@@ -234,7 +234,7 @@ export function HostMessagesTab({
         hint="When people answer your confirmations, reminders and follow-ups, their replies land here and you can answer from this tab."
         action={
           <Link
-            href="/account"
+            href="/settings#integrations"
             className="font-medium text-brand hover:underline"
           >
             Account settings

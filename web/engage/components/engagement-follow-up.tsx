@@ -220,7 +220,7 @@ function FollowUp({
         <p className="rounded-lg border border-line bg-surface px-4 py-3 text-[12.5px] text-ink-2">
           Connect your WhatsApp Business number to message these groups.{" "}
           <Link
-            href="/account"
+            href="/settings#integrations"
             className="font-medium text-brand hover:underline"
           >
             Account settings

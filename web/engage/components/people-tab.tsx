@@ -301,7 +301,7 @@ export function HostPeopleTab({
             <span className="font-medium text-ink">Follow up on WhatsApp.</span> Connect your
             number to message the people who came — or the ones who missed it.
           </p>
-          <Link href="/account" className="text-[13px] font-medium text-brand hover:underline">
+          <Link href="/settings#integrations" className="text-[13px] font-medium text-brand hover:underline">
             Connect WhatsApp
           </Link>
         </Card>

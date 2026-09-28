@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { engageApi } from "../api";
 import { Modal, Spinner } from "@/components/controls";
@@ -93,13 +94,22 @@ export function WhatsAppMetrics({
               </span>
             </>
           )}
-          <button
-            type="button"
-            onClick={onSettings}
-            className="text-[12.5px] font-medium text-brand hover:underline"
-          >
-            {connected ? "Settings" : "Connect"}
-          </button>
+          {connected ? (
+            <Link
+              href="/settings#integrations"
+              className="text-[12.5px] font-medium text-brand hover:underline"
+            >
+              Settings
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={onSettings}
+              className="text-[12.5px] font-medium text-brand hover:underline"
+            >
+              Connect
+            </button>
+          )}
         </div>
         <div
           className="inline-flex shrink-0 rounded-lg border border-line bg-surface-2 p-0.5"

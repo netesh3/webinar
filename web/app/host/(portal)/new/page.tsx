@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ScheduleForm } from "@/components/schedule-form";
+import { ScheduleForm } from "@/components/schedule/schedule-form";
 
 export default function ScheduleWebinarPage() {
   return (
