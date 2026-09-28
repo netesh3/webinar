@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hosting (simple mock)</title><link rel="stylesheet" href="assets/simple.css"></head>
+<body data-menu="open">
+<div data-nav></div>
+<main>
+  <div class="row between" style="align-items:flex-end">
+    <div><h1>Your webinars</h1><p class="small muted" style="margin-top:4px">Create one, share the link, go live, follow up.</p></div>
+    <div class="row"><button class="btn sec">Go live now</button><button class="btn">+ New webinar</button></div>
+  </div>
+
+  <div class="tabs" style="margin-top:20px">
+    <a class="tab on" href="#">Upcoming <span class="count">2</span></a>
+    <a class="tab" href="#">Completed <span class="count">6</span></a>
+    <a class="tab" href="#">Drafts <span class="count grey">1</span></a>
+    <span class="tabsep"></span>
+    <a class="tab" href="audience.html">Audience</a>
+  </div>
+
+  <div class="grid" style="gap:12px">
+    <div class="card card-webinar">
+      <div class="grow">
+        <div class="row"><span class="badge brand"><span class="dot"></span>In 2 days</span><span class="xs faint">Thu 1 Oct · 7:00 PM IST · 1 hr</span></div>
+        <div class="name" style="font-size:15px;margin-top:6px">Mindful Money: Budgeting Without Guilt</div>
+        <div class="meta">9 registered · 1 waiting for approval · reminders on (email + WhatsApp)</div>
+      </div>
+      <button class="btn sec sm">Copy link</button>
+      <button class="btn sm">Manage</button>
+      <span class="dots">⋯</span>
+    </div>
+    <div class="card card-webinar">
+      <div class="grow">
+        <div class="row"><span class="badge"><span class="dot"></span>Next week</span><span class="xs faint">Wed 7 Oct · 7:00 PM IST · 45 min</span></div>
+        <div class="name" style="font-size:15px;margin-top:6px">Sleep Reset: 5 Habits That Work</div>
+        <div class="meta">3 registered · reminders on</div>
+      </div>
+      <button class="btn sec sm">Copy link</button>
+      <button class="btn sm">Manage</button>
+      <span class="dots">⋯</span>
+    </div>
+  </div>
+
+  <div class="card p4" style="margin-top:16px; display:flex; gap:12px; align-items:center">
+    <span class="av a2">✦</span>
+    <div class="grow"><div class="name">Morning Routines That Stick ended 2 days ago</div><div class="xs muted">3 people who missed it haven't had the replay yet.</div></div>
+    <button class="btn sm">Follow up</button>
+  </div>
+</main>
+<div class="note"><b>Hosting.</b> Two actions (New webinar, Go live now). Each card has two buttons — Copy link and Manage — and Delete / Edit / Host in ⋯. The card line says what matters: how many registered, anyone waiting, reminders on. A just-ended webinar surfaces its one follow-up. Tabs: Upcoming, Completed, Drafts, and Audience — how people engage across all your webinars (it replaces People). Messages is the chat icon in the top bar. WatchList and the WhatsApp page move into the account menu (shown open); the "WhatsApp this week" card moves to the WhatsApp page.</div>
+<script src="assets/nav.js"></script>
+</body></html>

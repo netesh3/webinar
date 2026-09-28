@@ -21,10 +21,15 @@ export function EngagementTab({
   registrants,
   onOpenAttendees,
   initialSection,
+  hideFollowUp = false,
+  onOpenFollowUp,
 }: {
   webinar: Webinar;
   registrants: RegistrantRow[];
   onOpenAttendees?: () => void;
+  /** Following up is its own tab (an ended webinar): show the levels and a link there. */
+  hideFollowUp?: boolean;
+  onOpenFollowUp?: () => void;
   /** Open (and unfold) this section on arrival: ?tab=survey, ?tab=attendees. */
   initialSection?: SectionId;
 }) {
@@ -55,9 +60,25 @@ export function EngagementTab({
       followUp={
         bypass
           ? undefined
-          : (tiers, levels) => <EngagementFollowUp slug={w.id} tiers={tiers} fallback={levels} />
+          : hideFollowUp
+            ? (_tiers, levels) => (
+                <div className="grid gap-3">
+                  {levels}
+                  {onOpenFollowUp && (
+                    <button
+                      type="button"
+                      onClick={onOpenFollowUp}
+                      className="justify-self-start text-[13px] font-medium text-brand hover:underline"
+                    >
+                      Message each group in Follow up →
+                    </button>
+                  )}
+                </div>
+              )
+            : (tiers, levels) => <EngagementFollowUp slug={w.id} tiers={tiers} fallback={levels} />
       }
-      signInHref={`/login?next=${encodeURIComponent(`/host/${w.id}?tab=engagement`)}`}
+      onFollowUp={hideFollowUp ? onOpenFollowUp : undefined}
+      signInHref={`/login?next=${encodeURIComponent(`/host/${w.id}?tab=results`)}`}
     />
   );
 }

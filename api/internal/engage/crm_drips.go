@@ -581,6 +581,7 @@ func (s *Module) enrollDripsOnWebinarEnd(ctx context.Context, wb types.Webinar) 
 /* OnScored enrolls the `attended` sequences narrowed to engagement tiers, now that the
  * webinar's tiers exist. Mirrors enrollDripsOnWebinarEnd, which skips those sequences. */
 func (s *Module) OnScored(ctx context.Context, slug string) {
+	s.refreshAudience(ctx, slug)
 	wb, err := s.store.WebinarBySlug(ctx, slug)
 	if err != nil {
 		s.log.Error("drip trigger: scored: could not load webinar", "webinar", slug, "error", err)

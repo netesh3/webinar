@@ -46,6 +46,9 @@ func peopleWith() string {
 		store.WatchByRegistrationSQL(`w.host_id = $1::uuid AND ($2 = '' OR w.slug = $2)`), 1)
 }
 
+// engagementJoin is the Audience rollup for each contact (migrations/0065).
+const engagementJoin = `LEFT JOIN crm_contact_engagement ce ON ce.contact_id = c.id AND ce.host_id = c.host_id`
+
 // peopleScope keeps a webinar-filtered list to that webinar's people.
 const peopleScope = ` AND ($2 = '' OR per.contact_id IS NOT NULL)`
 
@@ -63,6 +66,12 @@ func peopleFilterPredicate(filter string) (string, error) {
 		return ` AND ` + optedInNow, nil
 	case types.PeopleHotLeads:
 		return ` AND ` + hotLead, nil
+	case types.PeopleHighlyEngaged:
+		return ` AND ce.attended >= 2 AND ce.avg_score >= 50`, nil
+	case types.PeopleCameBack:
+		return ` AND ce.attended >= 2`, nil
+	case types.PeopleSlipping:
+		return ` AND ce.registered >= 2 AND ce.attended = 0`, nil
 	}
 	return "", store.ErrInvalid
 }
@@ -107,12 +116,17 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		       count(*) FILTER (WHERE NOT COALESCE(per.attended, false)),
 		       count(*) FILTER (WHERE `+contactReplied+`),
 		       count(*) FILTER (WHERE `+optedInNow+`),
-		       count(*) FILTER (WHERE `+hotLead+`)
+		       count(*) FILTER (WHERE `+hotLead+`),
+		       count(*) FILTER (WHERE ce.attended >= 2 AND ce.avg_score >= 50),
+		       count(*) FILTER (WHERE ce.attended >= 2),
+		       count(*) FILTER (WHERE ce.registered >= 2 AND ce.attended = 0)
 		  FROM crm_contacts c
 		  LEFT JOIN per ON per.contact_id = c.id
+		  `+engagementJoin+`
 		 WHERE c.host_id = $1::uuid`+peopleScope, hostID, slug).Scan(
 		&out.Counts.Everyone, &out.Counts.Attended, &out.Counts.NeverAttended,
-		&out.Counts.Replied, &out.Counts.OptedIn, &out.Counts.HotLeads); err != nil {
+		&out.Counts.Replied, &out.Counts.OptedIn, &out.Counts.HotLeads,
+		&out.Counts.HighlyEngaged, &out.Counts.CameBack, &out.Counts.Slipping); err != nil {
 		return out, err
 	}
 
@@ -121,6 +135,7 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 	                  OR c.phone ILIKE '%' || $3 || '%')`
 	if err := s.pool.QueryRow(ctx, with+`
 		SELECT count(*) FROM crm_contacts c LEFT JOIN per ON per.contact_id = c.id
+		  `+engagementJoin+`
 		 WHERE c.host_id = $1::uuid`+peopleScope+pred+search, hostID, slug, q).Scan(&out.Total); err != nil {
 		return out, err
 	}
@@ -130,10 +145,12 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		       COALESCE(per.webinars, 0), COALESCE(per.attended_webinars, 0),
 		       COALESCE(per.last_topic, ''), COALESCE(per.last_slug, ''),
 		       COALESCE(per.attended, false), COALESCE(per.watch_min, 0),
+		       COALESCE(ce.avg_score, 0), COALESCE(ce.last_tier, ''),
 		       `+lastInboundAt+`,
 		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status, m.created_at
 		  FROM crm_contacts c
 		  LEFT JOIN per ON per.contact_id = c.id
+		  `+engagementJoin+`
 		  LEFT JOIN LATERAL (
 		       SELECT id, direction, body, kind, template_name, status, created_at
 		         FROM crm_messages WHERE contact_id = c.id
@@ -160,6 +177,7 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
 			&optIn, &optOut, &lastSeen, &created, &botPaused,
 			&p.WhatsAppStatus, &p.Webinars, &p.AttendedWebinars, &p.LastWebinar, &p.LastWebinarID, &p.Attended, &p.WatchMin,
+			&p.AvgScore, &p.Tier,
 			&inbound, &mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mAt); err != nil {
 			return out, err
 		}

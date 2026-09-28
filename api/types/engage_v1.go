@@ -19,6 +19,10 @@ type CRMPerson struct {
 	LastWebinarID string `json:"lastWebinarId,omitempty"`
 	Attended      bool   `json:"attended"`
 	WatchMin      int    `json:"watchMin"`
+	/** Across webinars, from the Audience rollup: average score over the ones they joined
+	 *  (0 when none), and their latest tier. */
+	AvgScore int    `json:"avgScore"`
+	Tier     string `json:"tier,omitempty"`
 }
 
 /* People filters. Everyone is the empty filter. */
@@ -29,6 +33,12 @@ const (
 	PeopleOptedIn       = "opted_in"
 	/** Tagged by the hot-lead recipe. */
 	PeopleHotLeads = "hot_leads"
+	/** Came 2+ and average score 50+ (the Audience tab's "best people"). */
+	PeopleHighlyEngaged = "highly_engaged"
+	/** Came to 2 or more. */
+	PeopleCameBack = "came_back"
+	/** Registered 2+ and never came. */
+	PeopleSlipping = "slipping"
 )
 
 // CRMPeopleCounts are the chips over the People list, counted through the webinar filter
@@ -40,6 +50,9 @@ type CRMPeopleCounts struct {
 	Replied       int `json:"replied"`
 	OptedIn       int `json:"optedIn"`
 	HotLeads      int `json:"hotLeads"`
+	HighlyEngaged int `json:"highlyEngaged"`
+	CameBack      int `json:"cameBack"`
+	Slipping      int `json:"slipping"`
 }
 
 // CRMWebinarRef names one of the host's webinars for a filter menu.
@@ -375,4 +388,42 @@ type CRMStarterTemplate struct {
 
 type CRMStarterTemplatesResponse struct {
 	Templates []CRMStarterTemplate `json:"templates"`
+}
+
+/* CRMAudienceSummary is the Audience tab: engagement across the host's webinars, read from
+ * the per-person rollup (migrations/0065) and the saved per-webinar snapshots. */
+type CRMAudienceSummary struct {
+	/** People who registered for at least one webinar. */
+	People int `json:"people"`
+	/** Came to 2 or more. */
+	CameBack int `json:"cameBack"`
+	/** Came 2+ and average score 50+, and registered 2+ but never came. */
+	BestCount     int `json:"bestCount"`
+	SlippingCount int `json:"slippingCount"`
+	/** Came to a webinar in the last 30 days. */
+	ActiveMonth int `json:"activeMonth"`
+	/** Over the webinars in Webinars: attended / registered, and the average session index. */
+	ShowUpPct int                  `json:"showUpPct"`
+	AvgIndex  int                  `json:"avgIndex"`
+	Webinars  []CRMAudienceWebinar `json:"webinars"`
+	Best      []CRMAudiencePerson  `json:"best"`
+	Slipping  []CRMAudiencePerson  `json:"slipping"`
+}
+
+type CRMAudienceWebinar struct {
+	ID         string `json:"id"`
+	Topic      string `json:"topic"`
+	StartsAt   string `json:"startsAt"`
+	Registered int    `json:"registered"`
+	Attended   int    `json:"attended"`
+	Index      int    `json:"index"`
+}
+
+type CRMAudiencePerson struct {
+	ContactID  string `json:"contactId"`
+	Name       string `json:"name"`
+	Registered int    `json:"registered"`
+	Attended   int    `json:"attended"`
+	AvgScore   int    `json:"avgScore"`
+	Tier       string `json:"tier,omitempty"`
 }

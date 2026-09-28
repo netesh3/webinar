@@ -31,6 +31,12 @@ export interface CRMPerson {
   lastWebinarId?: string;
   attended: boolean;
   watchMin: number /* int */;
+  /**
+   * * Across webinars, from the Audience rollup: average score over the ones they joined
+   * 	 *  (0 when none), and their latest tier.
+   */
+  avgScore: number /* int */;
+  tier?: string;
 }
 /**
  *  People filters. Everyone is the empty filter.
@@ -53,6 +59,18 @@ export const PeopleOptedIn = "opted_in";
  */
 export const PeopleHotLeads = "hot_leads";
 /**
+ * * Came 2+ and average score 50+ (the Audience tab's "best people").
+ */
+export const PeopleHighlyEngaged = "highly_engaged";
+/**
+ * * Came to 2 or more.
+ */
+export const PeopleCameBack = "came_back";
+/**
+ * * Registered 2+ and never came.
+ */
+export const PeopleSlipping = "slipping";
+/**
  * CRMPeopleCounts are the chips over the People list, counted through the webinar filter
  * but not the search box or the chosen chip.
  */
@@ -63,6 +81,9 @@ export interface CRMPeopleCounts {
   replied: number /* int */;
   optedIn: number /* int */;
   hotLeads: number /* int */;
+  highlyEngaged: number /* int */;
+  cameBack: number /* int */;
+  slipping: number /* int */;
 }
 /**
  * CRMWebinarRef names one of the host's webinars for a filter menu.
@@ -543,6 +564,53 @@ export interface CRMStarterTemplate {
 }
 export interface CRMStarterTemplatesResponse {
   templates: CRMStarterTemplate[];
+}
+/**
+ *  CRMAudienceSummary is the Audience tab: engagement across the host's webinars, read from
+ *  * the per-person rollup (migrations/0065) and the saved per-webinar snapshots.
+ */
+export interface CRMAudienceSummary {
+  /**
+   * * People who registered for at least one webinar.
+   */
+  people: number /* int */;
+  /**
+   * * Came to 2 or more.
+   */
+  cameBack: number /* int */;
+  /**
+   * * Came 2+ and average score 50+, and registered 2+ but never came.
+   */
+  bestCount: number /* int */;
+  slippingCount: number /* int */;
+  /**
+   * * Came to a webinar in the last 30 days.
+   */
+  activeMonth: number /* int */;
+  /**
+   * * Over the webinars in Webinars: attended / registered, and the average session index.
+   */
+  showUpPct: number /* int */;
+  avgIndex: number /* int */;
+  webinars: CRMAudienceWebinar[];
+  best: CRMAudiencePerson[];
+  slipping: CRMAudiencePerson[];
+}
+export interface CRMAudienceWebinar {
+  id: string;
+  topic: string;
+  startsAt: string;
+  registered: number /* int */;
+  attended: number /* int */;
+  index: number /* int */;
+}
+export interface CRMAudiencePerson {
+  contactId: string;
+  name: string;
+  registered: number /* int */;
+  attended: number /* int */;
+  avgScore: number /* int */;
+  tier?: string;
 }
 
 //////////

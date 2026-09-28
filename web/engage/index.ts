@@ -18,6 +18,8 @@ export {
   WhatsAppAccountRow,
   WhatsAppOptInCheckbox,
   WhatsAppRemindersToggle,
+  MessagesNavButton,
+  useWhatsAppMenuItem,
 } from "./slots";
 export { WhatsAppScreen } from "./components/whatsapp-screen";
 export { useRosterMessaging } from "./components/roster";
@@ -28,3 +30,5 @@ export { WebinarMessagesTab } from "./components/webinar-messages";
 export { ReplyAlerts, useReplies } from "./components/replies";
 export { WhatsAppWeekCard } from "./components/week-card";
 export { EngagementFollowUp } from "./components/engagement-follow-up";
+export { WebinarWhatsAppOverview } from "./components/webinar-overview";
+export { EngagementFollowUpPage } from "./components/follow-up-page";

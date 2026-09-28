@@ -1,8 +1,8 @@
 "use client";
 
 import { DEFAULT_REMINDERS, describeReminders } from "./reminder-times";
-import { useLayoutEffect, useState } from "react";
-import { Alert, CopyField, Spinner, Tabs } from "./controls";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
 import { EngagementTab } from "./engagement/engagement-tab";
@@ -17,14 +17,15 @@ import {
   tzLabel,
 } from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
-import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
+import type { EngagementTierCounts, Recording, RegistrantRow, Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { defaultTab, engagementSection, tabFromQuery, allowedTab, tabsFor, type HostTab } from "@/lib/host-tabs";
 import {
   RosterContactsLink,
   RosterWhatsAppCells,
   RosterWhatsAppHeaders,
-  WebinarMessagesTab,
+  WebinarWhatsAppOverview,
+  EngagementFollowUpPage,
   useRosterMessaging,
   useRosterWhatsAppColumns,
   followupGroups,
@@ -52,7 +53,7 @@ export function HostWebinarTabs({
   registrants: RegistrantRow[];
   recordings: Recording[];
   onChanged: () => void | Promise<void>;
-  /** Deep-link from Host list: admit | attendees | share | engagement | … */
+  /** Deep-link from Host list: people | setup | results | follow-up | … (old names too) */
   initialTab?: string | null;
   /** Tells the page header which tab is open. A layout effect, so the header never paints
    *  a stale button first. */
@@ -63,11 +64,11 @@ export function HostWebinarTabs({
   const tabs = tabsFor(w.status, whatsappConnect);
 
   const [tab, setTab] = useState<HostTab>(() =>
-    defaultTab(w.status, { pending: pending.length, whatsapp: whatsappConnect, requested: initialTab }),
+    defaultTab(w.status, { whatsapp: whatsappConnect, requested: initialTab }),
   );
 
-  // Follow ?tab= when the host clicks Admit / Attendees from the list. Adjusted
-  // during render when the inputs change, not in an effect after it.
+  // Follow ?tab= when a link names a tab. Adjusted during render when the inputs change,
+  // not in an effect after it.
   const queryInputs = JSON.stringify([initialTab ?? null, w.status, whatsappConnect]);
   const [seenQueryInputs, setSeenQueryInputs] = useState(queryInputs);
   if (queryInputs !== seenQueryInputs) {
@@ -75,13 +76,14 @@ export function HostWebinarTabs({
     const next = allowedTab(tabFromQuery(initialTab), w.status, whatsappConnect);
     if (next) setTab(next);
     // A status change (the webinar just ended) can take the open tab away.
-    else if (!tabs.includes(tab)) setTab(defaultTab(w.status, { pending: pending.length, whatsapp: whatsappConnect }));
+    else if (!tabs.includes(tab)) setTab(defaultTab(w.status, { whatsapp: whatsappConnect }));
   }
 
   useLayoutEffect(() => {
     onTabChange?.(tab);
   }, [tab, onTabChange]);
 
+  const ended = w.status === "ended";
   return (
     <>
       <div className="mb-4">
@@ -90,39 +92,55 @@ export function HostWebinarTabs({
           value={tab}
           onChange={setTab}
           counts={{
-            Admit: pending.length,
-            Attendees: registrants.length,
-            Recordings: recordings.length,
+            People: pending.length || registrants.length,
+            Recording: recordings.length,
           }}
         />
       </div>
 
-      {tab === "Admit" && (
-        <AdmitTab webinar={w} registrants={registrants} onChanged={onChanged} />
-      )}
-      {tab === "Attendees" && (
-        <AttendeesTab webinar={w} registrants={registrants} />
-      )}
-      {tab === "Messages" && (
-        <WebinarMessagesTab slug={w.id} ended={w.status === "ended"} durationMin={w.durationMin} />
-      )}
-      {tab === "Share" && <ShareTab webinar={w} />}
-      {tab === "Stage" && <StageTab webinar={w} onChanged={onChanged} />}
-      {tab === "Recordings" && (
-        <RecordingsTab
+      {tab === "Overview" && (
+        <OverviewTab
           webinar={w}
-          recordings={recordings}
+          registrants={registrants}
           onChanged={onChanged}
+          onOpenPeople={() => setTab("People")}
         />
       )}
-      {tab === "Settings" && <SettingsTab webinar={w} />}
-      {tab === "Engagement" && (
+      {tab === "People" && (
+        <div className="grid gap-4">
+          {w.approval === "manual" && pending.length > 0 && (
+            <Card className="p-5">
+              <SectionTitle>
+                Waiting to admit · {pending.length}
+              </SectionTitle>
+              <ApprovalQueue slug={w.id} pending={pending} onChanged={onChanged} />
+            </Card>
+          )}
+          <AttendeesTab webinar={w} registrants={registrants} />
+        </div>
+      )}
+      {tab === "Setup" && (
+        <div className="grid gap-4">
+          <SettingsTab webinar={w} />
+          <StageTab webinar={w} onChanged={onChanged} />
+          <HostLinkCard webinar={w} />
+        </div>
+      )}
+      {tab === "Follow up" && (
+        <FollowUpTab webinar={w} />
+      )}
+      {tab === "Recording" && (
+        <RecordingsTab webinar={w} recordings={recordings} onChanged={onChanged} />
+      )}
+      {tab === "Results" && (
         <EngagementTab
           webinar={w}
           registrants={registrants}
-          // Ended, the registrant list is gone: no-shows are Follow up's "Didn't join" group.
-          onOpenAttendees={tabs.includes("Attendees") ? () => setTab("Attendees") : undefined}
+          onOpenAttendees={!ended ? () => setTab("People") : undefined}
           initialSection={engagementSection(initialTab, w.status)}
+          // After the end, following up is its own tab.
+          hideFollowUp={ended && whatsappConnect}
+          onOpenFollowUp={ended && whatsappConnect ? () => setTab("Follow up") : undefined}
         />
       )}
     </>
@@ -131,40 +149,165 @@ export function HostWebinarTabs({
 
 // ------------------------------------------------------------- admit / attendees
 
-function AdmitTab({
+/* Overview: the one screen before a webinar. The link to share, the numbers, what goes out
+ * on its own, and anything waiting on the host — approvals are answered here. */
+function OverviewTab({
   webinar: w,
   registrants,
   onChanged,
+  onOpenPeople,
 }: {
   webinar: Webinar;
   registrants: RegistrantRow[];
   onChanged: () => void | Promise<void>;
+  onOpenPeople: () => void;
 }) {
+  const origin = useShareOrigin();
+  const { notify } = useToast();
   const pending = registrants.filter((r) => r.state === "pending");
+  const approved = registrants.filter((r) => r.state === "approved").length;
+  const onWhatsApp = registrants.filter((r) => r.whatsappStatus === "opted_in").length;
+  const link = `${origin}/webinars/${w.id}`;
+  const reminders = w.options.reminders ?? DEFAULT_REMINDERS;
+  const invite =
+    `${w.topic}\n` +
+    `${formatDay(w.startsAt, w.timeZone)}, ${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}\n\n` +
+    `Register: ${link}` +
+    (w.passcode ? `\nPasscode: ${w.passcode}` : "");
 
-  if (w.approval !== "manual") {
+  if (w.status === "draft") {
     return (
       <Card className="p-6">
-        <h2 className="text-[15px] font-semibold">Automatic approval</h2>
+        <h2 className="text-[15px] font-semibold">Finish setup to open registration</h2>
         <p className="mt-2 max-w-md text-[13.5px] leading-relaxed text-ink-2">
-          Registrants are admitted as soon as they sign up. Switch this webinar
-          to manual approval in Edit if you want a waiting queue here.
+          This webinar is a draft, so its page isn&apos;t public yet. Schedule it and you get a link to share.
         </p>
+        <ButtonLink href={`/host/${w.id}/edit`} className="mt-4">
+          Finish setup
+        </ButtonLink>
       </Card>
     );
   }
 
   return (
-    <div className="grid gap-4">
-      <div>
-        <h2 className="text-[15px] font-semibold">Waiting to admit</h2>
-        <p className="mt-1 text-[13px] text-ink-2">
-          {pending.length === 0
-            ? "Nobody is waiting. New registrations will appear here."
-            : `${pending.length} ${pending.length === 1 ? "person needs" : "people need"} a decision before they can join.`}
-        </p>
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      <div className="grid gap-4">
+        <Card className="p-5">
+          <SectionTitle>Share this link</SectionTitle>
+          <CopyField value={link} />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ButtonLink
+              href={`https://wa.me/?text=${encodeURIComponent(`${w.topic} — register here: ${link}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="sm"
+              variant="secondary"
+            >
+              WhatsApp
+            </ButtonLink>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(invite)
+                  .then(() => notify("Invitation copied.", "ok"))
+                  .catch(() => notify("Could not copy.", "error"))
+              }
+            >
+              Copy invitation
+            </Button>
+            <ButtonLink
+              href={googleCalendarInviteUrl({
+                topic: w.topic,
+                description: w.description,
+                startsAt: w.startsAt,
+                durationMin: w.durationMin,
+                timeZone: w.timeZone,
+                webinarId: w.webinarId,
+                registrationUrl: link,
+              })}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="sm"
+              variant="secondary"
+            >
+              <CalendarIcon className="size-4" />
+              Add to calendar
+            </ButtonLink>
+            <ButtonLink href={`/webinars/${w.id}`} target="_blank" rel="noopener noreferrer" size="sm" variant="ghost">
+              Preview page ↗
+            </ButtonLink>
+          </div>
+          <p className="mt-2.5 text-[12px] text-ink-3">
+            Anyone with this link can register · approval is {w.approval === "manual" ? "manual" : "automatic"}
+            {w.passcode ? ` · passcode ${w.passcode}` : ""}.
+          </p>
+        </Card>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Stat label="Registered" value={formatCount(w.registrantCount)} note={`of ${formatCount(w.attendeeLimit)} seats`} />
+          <Stat label="Approved" value={formatCount(approved)} note={pending.length ? `${pending.length} waiting` : "none waiting"} />
+          <Stat label="On WhatsApp" value={formatCount(onWhatsApp)} note="get reminders there" />
+        </div>
+
+        {/* One list of what is sent automatically. With WhatsApp on, the CRM's timeline is
+            that list (sent / read / queued per message); otherwise the plain schedule. */}
+        <WebinarWhatsAppOverview
+          slug={w.id}
+          ended={false}
+          fallback={
+            <Card className="p-5">
+              <SectionTitle>What goes out on its own</SectionTitle>
+              <ul className="grid gap-2 text-[13px]">
+                <li className="flex justify-between gap-3">
+                  <span>Confirmation, with their join link</span>
+                  <span className="text-ink-3">when they register</span>
+                </li>
+                {reminders.map((m) => (
+                  <li key={m} className="flex justify-between gap-3">
+                    <span>Reminder</span>
+                    <span className="text-ink-3">{describeReminders([m])}</span>
+                  </li>
+                ))}
+                <li className="flex justify-between gap-3">
+                  <span>Replay link</span>
+                  <span className="text-ink-3">when you publish the recording</span>
+                </li>
+              </ul>
+              <p className="mt-3 text-[12px] text-ink-3">
+                By email. Change the times in{" "}
+                <a href={`/host/${w.id}/edit`} className="font-medium text-brand hover:underline">
+                  Edit
+                </a>
+                .
+              </p>
+            </Card>
+          }
+        />
       </div>
-      <ApprovalQueue slug={w.id} pending={pending} onChanged={onChanged} />
+
+      <div className="grid gap-4">
+        <Card className="p-5">
+          <div className="flex items-center justify-between gap-2">
+            <SectionTitle>Waiting for you</SectionTitle>
+            {pending.length > 0 && (
+              <button type="button" onClick={onOpenPeople} className="text-[12px] font-medium text-brand hover:underline">
+                See all
+              </button>
+            )}
+          </div>
+          {pending.length === 0 ? (
+            <p className="text-[13px] text-ink-3">
+              {w.approval === "manual"
+                ? "Nobody is waiting to be admitted."
+                : "Nothing to do — people are admitted as they register."}
+            </p>
+          ) : (
+            <ApprovalQueue slug={w.id} pending={pending.slice(0, 5)} onChanged={onChanged} />
+          )}
+        </Card>
+      </div>
     </div>
   );
 }
@@ -354,83 +497,34 @@ function AttendeesTab({
 
 // -------------------------------------------------------------------- share
 
-function ShareTab({ webinar: w }: { webinar: Webinar }) {
-  // From the operator's configured public URL, falling back to this browser's
-  // origin — never a placeholder domain, which is worse than no link at all.
+/** The host and panelist room link, in Setup. */
+function HostLinkCard({ webinar: w }: { webinar: Webinar }) {
   const origin = useShareOrigin();
-
   return (
-    <div className="grid gap-4">
-      <Card className="p-5">
-        <SectionTitle>Registration page</SectionTitle>
-        {w.status === "draft" ? (
-          <Alert tone="warn">
-            This webinar is still a draft, so the page isn&apos;t public yet.
-          </Alert>
-        ) : (
-          <>
-            <CopyField value={`${origin}/webinars/${w.id}`} />
-            <p className="mt-2.5 text-[12px] leading-relaxed text-ink-3">
-              Anyone with this link can register. Approval is{" "}
-              {w.approval === "manual" ? "manual" : "automatic"}
-              {w.registrationRequired
-                ? "."
-                : ", and registration is not required to join."}
-            </p>
-          </>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle>Details for a calendar invite</SectionTitle>
-        <div className="grid gap-3">
-          <CopyField label="Webinar ID" value={w.webinarId} />
-          {w.passcode && <CopyField label="Passcode" value={w.passcode} />}
-          <CopyField
-            label="Full invitation"
-            value={
-              `${w.topic}\n` +
-              `${formatDay(w.startsAt, w.timeZone)}, ` +
-              `${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ` +
-              `${tzLabel(w.startsAt, w.timeZone)}\n\n` +
-              `Register: ${origin}/webinars/${w.id}\n` +
-              `Webinar ID: ${w.webinarId}` +
-              (w.passcode ? `\nPasscode: ${w.passcode}` : "")
-            }
-          />
-          <ButtonLink
-            href={googleCalendarInviteUrl({
-              topic: w.topic,
-              description: w.description,
-              startsAt: w.startsAt,
-              durationMin: w.durationMin,
-              timeZone: w.timeZone,
-              webinarId: w.webinarId,
-              registrationUrl: `${origin}/webinars/${w.id}`,
-            })}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="secondary"
-            size="sm"
-            className="justify-self-start"
-          >
-            <CalendarIcon className="size-4" />
-            Add to Google Calendar
-          </ButtonLink>
-        </div>
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle>Host and panelist link</SectionTitle>
-        <CopyField value={`${origin}/host/${w.id}/room`} />
-        <p className="mt-2.5 text-[12px] leading-relaxed text-ink-3">
-          Only you and the panelists on this webinar can use it — the server
-          refuses to mint a publishing token for anyone else, so sharing it does
-          not give anyone the stage.
-        </p>
-      </Card>
-    </div>
+    <Card className="p-5">
+      <SectionTitle>Host and panelist link</SectionTitle>
+      <CopyField value={`${origin}/host/${w.id}/room`} />
+      <p className="mt-2.5 text-[12px] leading-relaxed text-ink-3">
+        Only you and the panelists on this webinar can use it — the server refuses to mint a
+        publishing token for anyone else, so sharing it does not give anyone the stage.
+      </p>
+    </Card>
   );
+}
+
+/* Follow up: the group cards need the tier counts, which are the webinar's engagement
+ * numbers — loaded here, on the webinar side, and handed to the CRM's slot. */
+function FollowUpTab({ webinar: w }: { webinar: Webinar }) {
+  const [tiers, setTiers] = useState<EngagementTierCounts | null>(null);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    api
+      .engagementSummary(w.id, ctrl.signal)
+      .then((s) => setTiers(s.tiers))
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [w.id]);
+  return <EngagementFollowUpPage slug={w.id} tiers={tiers} />;
 }
 
 // -------------------------------------------------------------------- stage
@@ -588,7 +682,6 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     ["Reactions", w.controls.reactionsEnabled],
     ["Locked to new attendees", w.controls.locked],
     ["Registration required", w.registrationRequired],
-    ["Practice session", w.options.practiceSession],
     ["Record automatically", w.options.autoRecord],
     ["Live captions", w.options.captions],
     ["Email reminders", w.options.emailReminders !== false],

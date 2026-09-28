@@ -16,6 +16,8 @@ const engagementRetention = 90 * 24 * time.Hour
 func (s *Server) initEngagement() {
 	s.capture = capture.New(s.store, capture.DefaultConfig(), s.log)
 	s.engagement = service.New(s.store, s.capture, service.Config{}, s.log)
+	// Whatever path scores a webinar, the CRM hears about it (follow-up recipes, Audience).
+	s.engagement.OnSaved(func(ctx context.Context, slug string) { s.engage.OnScored(ctx, slug) })
 }
 
 // CloseEngagement drains the capture buffer. Call after the HTTP server has shut down.
@@ -81,9 +83,7 @@ func (s *Server) computeEngagementOnEnd(ctx context.Context, slug string) {
 	}
 	if _, err := s.engagement.Compute(ctx, w); err != nil {
 		s.log.Warn("end webinar: could not compute engagement", "slug", slug, "error", err)
-		return
 	}
-	s.engage.OnScored(ctx, slug)
 }
 
 func (s *Server) sweepEngagementEvents(ctx context.Context) {

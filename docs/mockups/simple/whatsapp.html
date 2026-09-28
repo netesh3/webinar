@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhatsApp (simple mock)</title><link rel="stylesheet" href="assets/simple.css">
+<style>
+  .msg { display:grid; grid-template-columns: 150px minmax(0,1fr) 250px auto; gap:16px; align-items:center; padding:14px 0; border-bottom:1px solid var(--line); }
+  .msg:last-child { border-bottom:0; }
+  .msg .when { font-size:12px; color:var(--ink-3); }
+  .msg .t { font-size:13.5px; font-weight:600; }
+  .bubble { background:#fff; border-radius:10px 10px 10px 2px; padding:8px 10px; font-size:12px; line-height:1.45; color:#111b21; box-shadow:0 1px 1px rgba(0,0,0,.08); }
+  .wallbg { background:#efeae2; border-radius:10px; padding:8px; }
+  .arow { display:grid; grid-template-columns: minmax(0,1fr) auto; gap:10px; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); }
+  .arow:last-child { border-bottom:0; }
+  .conn { display:flex; gap:14px; align-items:center; }
+  .dotok { width:10px; height:10px; border-radius:99px; background:var(--ok); box-shadow:0 0 0 4px rgba(11,138,75,.15); }
+</style></head>
+<body>
+<div data-nav></div>
+<main style="max-width:62rem">
+  <a class="back" href="home.html">← Your webinars</a>
+  <div class="row between" style="align-items:flex-end">
+    <div><h1>WhatsApp</h1><p class="small muted" style="margin-top:4px">What your attendees get on WhatsApp, and what it does for you.</p></div>
+  </div>
+
+  <!-- 1. Connection: one line once it works -->
+  <div class="card p4 conn" style="margin-top:18px">
+    <span class="dotok"></span>
+    <div class="grow"><div class="name">Connected · +91 98200 11223 · Aarti Menon Coaching</div><div class="xs muted">Messages come from your number and Meta bills your account · 142 people can get WhatsApp</div></div>
+    <a class="xlink" href="#">Settings</a>
+  </div>
+
+  <!-- 2. The messages attendees get -->
+  <div class="sechead"><div><h2>Sent to everyone who registers</h2><p>For every webinar with WhatsApp on. Edit the wording any time.</p></div></div>
+  <div class="card p5">
+    <div class="msg">
+      <div><div class="t">Confirmation</div><div class="when">when they register</div></div>
+      <div class="wallbg"><div class="bubble">Hi <b>Thandi</b>, you're registered for <b>Morning Routines</b> on <b>Fri 25 Sept, 6:30 PM</b>. We'll remind you before it starts.</div></div>
+      <div class="xs muted">81% read · 66 sent this month</div>
+      <button class="btn sm sec">Edit</button>
+    </div>
+    <div class="msg">
+      <div><div class="t">Reminder</div><div class="when">1 day and 1 hour before · set per webinar</div></div>
+      <div class="wallbg"><div class="bubble">Hi <b>Thandi</b>, <b>Morning Routines</b> starts <b>in 1 hour</b>. Tap Join to come straight in.<div style="border-top:1px solid #eee;margin-top:6px;padding-top:4px;text-align:center;color:#027eb5">↗ Join</div></div></div>
+      <div class="xs muted">78% read</div>
+      <button class="btn sm sec">Edit</button>
+    </div>
+    <div class="msg">
+      <div><div class="t">Replay</div><div class="when">when you publish the recording</div></div>
+      <div class="wallbg"><div class="bubble">Hi <b>Thandi</b>, the recording of <b>Morning Routines</b> is ready. Watch it any time this week.<div style="border-top:1px solid #eee;margin-top:6px;padding-top:4px;text-align:center;color:#027eb5">↗ Watch replay</div></div></div>
+      <div class="xs muted">Not sent yet</div>
+      <button class="btn sm sec">Edit</button>
+    </div>
+  </div>
+
+  <!-- 3. Automations: rules, written as sentences -->
+  <div class="sechead">
+    <div><h2>Automations</h2><p>Switch on what you want WhatsApp to do for you — or write your own rule.</p></div>
+    <button class="btn sm">+ New automation</button>
+  </div>
+  <div class="card p5">
+    <div class="arow">
+      <div><div class="name"><span class="faint">When</span> a webinar ends <span class="faint">→</span> message each group</div><div class="xs muted">Offer to the highly engaged, replay to who missed it… · pick groups on each webinar's Follow up tab · 1 of 5 groups on</div></div>
+      <span class="toggle on"></span>
+    </div>
+    <div class="arow">
+      <div><div class="name"><span class="faint">When</span> someone answers <b>“Yes”</b> to <b>“Want 1:1 coaching?”</b> <span class="faint">→</span> send <b>Book a call</b>, tag <b>Hot lead</b></div><div class="xs muted">Your rule · 4 people this week</div></div>
+      <span class="toggle on"></span>
+    </div>
+    <div class="arow">
+      <div><div class="name"><span class="faint">When</span> a reply mentions price, program or 1:1 <span class="faint">→</span> tag <b>Hot lead</b></div><div class="xs muted">2 tagged</div></div>
+      <span class="toggle on"></span>
+    </div>
+    <div class="arow">
+      <div><div class="name"><span class="faint">When</span> someone sends <b>PRICE</b> or <b>REPLAY</b> <span class="faint">→</span> reply straight away</div><div class="xs muted">Would have answered 3 people last week</div></div>
+      <button class="btn sm sec">Set up</button>
+    </div>
+  </div>
+  <p class="xs faint" style="margin-top:10px">One message to a group, once? <a class="xlink" href="#">Send a message now →</a></p>
+
+  <!-- 3b. The rule builder, open -->
+  <div class="sechead"><div><h2>New automation <span class="xs faint" style="font-weight:400">(what "+ New automation" opens)</span></h2></div></div>
+  <div class="card p5" style="display:grid; gap:14px">
+    <div class="grid" style="grid-template-columns:90px minmax(0,1fr); gap:10px; align-items:center">
+      <b class="small">When</b>
+      <div class="row" style="flex-wrap:wrap; gap:6px">
+        <span class="chip on">answers a poll</span><span class="chip">registers</span><span class="chip">comes to a webinar</span><span class="chip">misses a webinar</span><span class="chip">is in an engagement group</span><span class="chip">taps a button</span><span class="chip">replies with a word</span><span class="chip">gets a tag</span>
+      </div>
+      <b class="small">Which</b>
+      <div class="row" style="gap:8px"><input class="field sm" style="max-width:260px" value="Want 1:1 coaching?"><span class="small muted">answered</span><input class="field sm" style="max-width:120px" value="Yes"><span class="xs faint">· any webinar</span></div>
+      <b class="small">Then</b>
+      <div style="display:grid; gap:6px">
+        <div class="row" style="gap:8px"><span class="badge">1</span><span class="small">Wait</span><input class="field sm" style="width:90px" value="1 hour"></div>
+        <div class="row" style="gap:8px"><span class="badge">2</span><span class="small">Send</span><input class="field sm" style="max-width:260px" value="Book a call · Promotional"></div>
+        <div class="row" style="gap:8px"><span class="badge">3</span><span class="small">Tag them</span><input class="field sm" style="max-width:160px" value="Hot lead"></div>
+        <a class="xlink small" href="#">+ Add a step — wait, send, tag, tell me</a>
+      </div>
+    </div>
+    <div class="row between" style="border-top:1px solid var(--line); padding-top:12px">
+      <span class="xs muted">Would have run for <b>4 people</b> from Morning Routines · ≈ ₹3 on your Meta account</span>
+      <div class="row"><button class="btn sm ghost">Cancel</button><button class="btn sm">Turn on</button></div>
+    </div>
+  </div>
+
+  <!-- 4. The edit panel for one message, shown open -->
+  <div class="sechead"><div><h2>Editing the Reminder <span class="xs faint" style="font-weight:400">(what "Edit" opens)</span></h2></div></div>
+  <div class="card p5" style="display:grid; grid-template-columns:minmax(0,1fr) 260px; gap:20px">
+    <div style="display:grid; gap:12px">
+      <div><label class="label">Message</label>
+        <div class="tpls">
+          <div class="tplc on"><div><div class="t">Reminder with Join button <span class="pill u">Update · ₹0.13</span> <span class="pill best">Approved</span></div><div class="b">Hi [first name], [webinar] starts [how soon]. Tap Join to come straight in.</div></div></div>
+          <div class="tplc"><div><div class="t">Webinar reminder <span class="pill u">Update · ₹0.13</span></div><div class="b">Hi [first name], [webinar] starts [how soon]. Your join link is in your email.</div></div></div>
+        </div>
+      </div>
+      <div class="xs muted">The words in [brackets] are filled in for each person. WhatsApp only sends wording Meta has approved. <a class="xlink" href="#">Write your own wording</a> — Meta usually approves it in minutes.</div>
+    </div>
+    <div><div class="label">On their phone</div><div class="wallbg" style="padding:12px"><div class="bubble">Hi Thandi, Morning Routines starts in 1 hour. Tap Join to come straight in.<div style="border-top:1px solid #eee;margin-top:6px;padding-top:4px;text-align:center;color:#027eb5">↗ Join</div></div></div>
+      <div class="row" style="margin-top:10px; justify-content:flex-end"><button class="btn sm ghost">Send me a test</button><button class="btn sm">Save</button></div></div>
+  </div>
+</main>
+<div class="note"><b>WhatsApp.</b> Today: 3 tabs; the same template editor twice (Templates and Number &amp; billing); starter / approved / picker lists of the same templates; "Fill {{2}} with", "en · utility"; a 5-step checklist that stays after it's done; 9 automation cards. Here: one page. A one-line connection status (the checklist only shows until it's done). The three messages attendees get, shown as they read them, each with "Change" — which opens the message picker in plain words, the phone preview and "Send me a test"; the blanks are filled automatically. Automations are rules written as sentences — "When … → …" — with switches; "+ New automation" builds your own from plain choices (answers a poll, comes / misses, engagement group, taps a button, replies with a word, gets a tag → wait, send, tag, tell me), and says how many it would have reached. The old recipes, sequences and bots become these rules; a one-off broadcast is "Send a message now". The three messages everyone gets stay fixed (they follow the webinar's timeline), each editable.</div>
+<script src="assets/nav.js"></script>
+</body></html>

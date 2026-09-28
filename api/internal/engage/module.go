@@ -138,6 +138,7 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Get("/crm/webinars/{slug}/messages", s.handleCRMWebinarMessages)
 	host.Get("/crm/webinars/{slug}/followups", s.handleCRMFollowups)
 	host.Get("/crm/recipes", s.handleCRMRecipes)
+	host.Get("/crm/audience/summary", s.handleCRMAudienceSummary)
 	host.Get("/crm/templates/starters", s.handleCRMStarterTemplates)
 	host.Post("/crm/templates/starters", s.handleCreateCRMStarterTemplates)
 	host.Put("/crm/recipes/{id}", s.handleSaveCRMRecipe)
@@ -189,6 +190,12 @@ func (s *Module) OnRegistered(ctx context.Context, wb types.Webinar, reg types.R
 	}
 	s.log.Info("crm contact", "webinar", wb.ID, "contact", contact.ID,
 		"whatsapp_opt_in", contact.WhatsAppOptIn)
+	// "Registered for N" moves now; scores follow when the webinar is scored.
+	if hostID, err := s.store.HostIDFor(ctx, wb.ID); err == nil {
+		if err := s.store.RefreshEngagementForContact(ctx, hostID, contact.ID); err != nil {
+			s.log.Warn("audience: refresh on registration", "contact", contact.ID, "error", err)
+		}
+	}
 
 	/* Queue their WhatsApp messages, including for a pending registration: the outbox
 	 * sweep requires an approved registration, so the confirmation waits for the host's

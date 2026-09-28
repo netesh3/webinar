@@ -379,7 +379,7 @@ function RecipeCard({
   );
 }
 
-function KeywordsDialog({
+export function KeywordsDialog({
   recipe,
   onClose,
   onSaved,

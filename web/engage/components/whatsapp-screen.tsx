@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { engageApi } from "../api";
-import { Alert, Spinner, Tabs } from "@/components/controls";
+import { Alert, Spinner } from "@/components/controls";
 import { useSession, useToast } from "@/components/providers";
 import { Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
@@ -19,33 +19,35 @@ import { Bots } from "./crm-bots";
 import { Broadcasts } from "./crm-broadcasts";
 import { Drips } from "./crm-drips";
 import { RemindersSettings } from "./crm-screen";
-import { SetupChecklist, setupTodo } from "./crm-setup";
+import { SetupChecklist } from "./crm-setup";
 import { StarterTemplates } from "./starter-templates";
+import { WhatsAppSimple } from "./whatsapp-simple";
 import { BlockedList, RefreshTemplates, templateKey } from "./crm-templates";
 import { CategoryPill, friendlyTemplateName } from "./wa-kit";
 
-/* The WhatsApp page: /host/crm.
- *
- * Three tabs — Automations (recipes, and the builders under "Build your own"), Templates
- * (the approved messages and which one each automatic message uses), Number & billing
- * (the setup checklist). People and conversations are Hosting tabs; this page is for
- * what happens on its own. Old ?view= links still land: setup opens Number & billing,
- * sequences / bots / broadcasts open their builder. */
+/* The WhatsApp page: /host/crm. One simple page (WhatsAppSimple) — connection, the three
+ * messages everyone gets, automations — linking to the full views: Settings (the setup
+ * checklist), All your wording (templates), All automations and the builders. Old ?view=
+ * links still land on the matching view. */
 
-const TABS = ["automations", "templates", "number"] as const;
-type Tab = (typeof TABS)[number];
+/* "home" is the one simple page; the others are the full views it links to — the setup
+ * checklist, every template, the automations cards, and the builders — reached by link and
+ * by the ?view= addresses that already exist, not by tabs. */
+type Tab = "home" | "automations" | "templates" | "number";
 const LABELS: Record<Tab, string> = {
-  automations: "Automations",
-  templates: "Templates",
-  number: "Number & billing",
+  home: "WhatsApp",
+  automations: "All automations",
+  templates: "All your wording",
+  number: "Settings",
 };
 
 function fromView(v: string): { tab: Tab; build: BuildView | null } {
   if (v === "setup" || v === "number") return { tab: "number", build: null };
   if (v === "templates") return { tab: "templates", build: null };
+  if (v === "automations") return { tab: "automations", build: null };
   if (v === "sequences" || v === "bots" || v === "broadcasts")
     return { tab: "automations", build: v };
-  return { tab: "automations", build: null };
+  return { tab: "home", build: null };
 }
 
 const BUILD_TITLES: Record<BuildView, string> = {
@@ -70,7 +72,14 @@ export function WhatsAppScreen() {
       setTabState(t);
       setBuild(b);
       const view =
-        b ?? (t === "number" ? "setup" : t === "templates" ? "templates" : "");
+        b ??
+        (t === "number"
+          ? "setup"
+          : t === "templates"
+            ? "templates"
+            : t === "automations"
+              ? "automations"
+              : "");
       router.replace(`/host/crm${view ? `?view=${view}` : ""}`);
     },
     [router],
@@ -187,25 +196,48 @@ export function WhatsAppScreen() {
 
   return (
     <div className="grid gap-4">
-      <Link href="/host" className="text-[12.5px] text-ink-2 hover:text-ink">
-        ← Hosting
-      </Link>
+      {tab === "home" ? (
+        <Link href="/host" className="text-[12.5px] text-ink-2 hover:text-ink">
+          ← Your webinars
+        </Link>
+      ) : (
+        <button
+          type="button"
+          onClick={() => go("home")}
+          className="justify-self-start text-[12.5px] text-ink-2 hover:text-ink"
+        >
+          ← WhatsApp
+        </button>
+      )}
       <div>
         <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
-          WhatsApp
+          {LABELS[tab]}
         </h1>
         <p className="mt-1 text-[13.5px] text-ink-2">
-          Your number, your templates, and what happens on its own.
+          {tab === "home"
+            ? "What your attendees get on WhatsApp, and what it does for you."
+            : tab === "number"
+              ? "Your number, and what is left to set up."
+              : tab === "templates"
+                ? "Every message wording at Meta, and which one each automatic message uses."
+                : "Every automation, and the builders for your own."}
         </p>
       </div>
 
-      <Tabs<Tab>
-        tabs={TABS}
-        value={tab}
-        onChange={(t) => go(t)}
-        labels={LABELS}
-        counts={{ templates: sendable.length, number: setupTodo(setup) }}
-      />
+      {tab === "home" && (
+        <WhatsAppSimple
+          setup={setup}
+          templates={templates}
+          onOpen={(v) =>
+            v === "setup"
+              ? go("number")
+              : v === "templates"
+                ? go("templates")
+                : go("automations", v)
+          }
+          onTemplatesChanged={() => void refreshTemplates()}
+        />
+      )}
 
       {tab === "automations" &&
         (build ? (

@@ -253,14 +253,16 @@ export function timelineRows({
 export function Timeline({
   rows,
   footer,
+  title = "Everything sent for this webinar",
 }: {
   rows: Row[];
   footer?: ReactNode;
+  title?: string;
 }) {
   return (
     <Card className="px-5 py-4">
       <h3 className="text-[13.5px] font-semibold text-ink">
-        Everything sent for this webinar
+        {title}
       </h3>
       <ol className="mt-2 divide-y divide-line">
         {rows.map((r) => (

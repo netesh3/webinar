@@ -66,12 +66,9 @@ func (s *Server) handleRecomputeEngagement(w http.ResponseWriter, r *http.Reques
 		s.writeSummary(w, r, payload, err)
 		return
 	}
+	// Compute tells the CRM (OnSaved): the recipes enroll anyone newly in a group, and the
+	// Audience rollup is refreshed. Nobody is enrolled twice.
 	payload, err := s.engagement.Compute(r.Context(), wb)
-	if err == nil && wb.Status == "ended" {
-		// A recompute after the end can move people between tiers; the Follow up recipes
-		// enroll whoever is newly in their group. Nobody is enrolled twice.
-		s.engage.OnScored(r.Context(), wb.Slug)
-	}
 	s.writeSummary(w, r, payload, err)
 }
 

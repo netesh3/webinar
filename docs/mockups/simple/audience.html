@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audience (simple mock)</title><link rel="stylesheet" href="assets/simple.css">
+<style>
+  .bars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; align-items: end; height: 150px; padding-top: 8px; }
+  .bars .b { display: grid; gap: 6px; justify-items: center; font-size: 11px; color: var(--ink-3); }
+  .bars .col { width: 100%; display: flex; gap: 4px; align-items: flex-end; height: 110px; }
+  .bars .col i { flex: 1; border-radius: 4px 4px 0 0; }
+  .bars .col i.a { background: #b8d0ff; } .bars .col i.e { background: var(--brand); }
+  .person { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .person:last-child { border-bottom: 0; }
+  .pips { display: inline-flex; gap: 3px; } .pips i { width: 8px; height: 8px; border-radius: 99px; background: var(--line); }
+  .pips i.c { background: var(--ok); } .pips i.m { background: var(--line-2); }
+  table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.t th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--ink-3); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  table.t td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <div class="row between" style="align-items:flex-end">
+    <div><h1>Your webinars</h1><p class="small muted" style="margin-top:4px">Create one, share the link, go live, follow up.</p></div>
+    <div class="row"><button class="btn sec">Go live now</button><button class="btn">+ New webinar</button></div>
+  </div>
+  <div class="tabs" style="margin-top:20px">
+    <a class="tab" href="home.html">Upcoming <span class="count">2</span></a>
+    <a class="tab" href="#">Completed <span class="count">6</span></a>
+    <a class="tab" href="#">Drafts <span class="count grey">1</span></a>
+    <span class="tabsep"></span>
+    <a class="tab on" href="#">Audience</a>
+  </div>
+
+  <div class="row between" style="margin-bottom:12px">
+    <span class="small muted">Across your last 6 webinars</span>
+    <span class="chips"><span class="chip on">Last 6</span><span class="chip">This year</span><span class="chip">All time</span></span>
+  </div>
+
+  <div class="kpis five" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card kpi"><div class="l">People reached</div><div class="v">142</div><div class="d up">+23 this month</div></div>
+    <div class="card kpi"><div class="l">Show-up rate</div><div class="v">64%</div><div class="d up">▲ 8 pts vs before</div></div>
+    <div class="card kpi"><div class="l">Avg engagement</div><div class="v">58</div><div class="d">out of 100 · Good</div></div>
+    <div class="card kpi"><div class="l">Came back</div><div class="v">31</div><div class="d">joined 2 or more</div></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); margin-top:16px; align-items:start">
+    <div class="card p5">
+      <div class="row between"><div class="st" style="margin:0">Webinar by webinar</div>
+        <span class="row xs muted" style="gap:10px"><span class="row" style="gap:4px"><i style="width:10px;height:10px;border-radius:3px;background:#b8d0ff;display:inline-block"></i>Showed up %</span><span class="row" style="gap:4px"><i style="width:10px;height:10px;border-radius:3px;background:var(--brand);display:inline-block"></i>Engagement</span></span></div>
+      <div class="bars">
+        <div class="b"><div class="col"><i class="a" style="height:48%"></i><i class="e" style="height:42%"></i></div>Sleep 101</div>
+        <div class="b"><div class="col"><i class="a" style="height:55%"></i><i class="e" style="height:50%"></i></div>Focus</div>
+        <div class="b"><div class="col"><i class="a" style="height:60%"></i><i class="e" style="height:47%"></i></div>Habits</div>
+        <div class="b"><div class="col"><i class="a" style="height:58%"></i><i class="e" style="height:61%"></i></div>Procrast.</div>
+        <div class="b"><div class="col"><i class="a" style="height:69%"></i><i class="e" style="height:61%"></i></div>Morning</div>
+        <div class="b"><div class="col"><i class="a" style="height:72%"></i><i class="e" style="height:66%"></i></div>Money</div>
+      </div>
+      <p class="xs faint" style="margin-top:10px">Tap a webinar to open its Results. Show-up is climbing since WhatsApp reminders went on (Morning Routines).</p>
+    </div>
+
+    <div class="grid" style="gap:16px">
+      <div class="card p5">
+        <div class="row between"><div class="st" style="margin:0">Your best people</div><span class="xs faint">highly engaged, came 2+</span></div>
+        <div class="person"><span class="av sm a2">PS</span><span class="grow"><b>Priya Sharma</b><div class="xs faint">came to 4 of 4 · avg 82</div></span><span class="tagp t1">Hot lead</span></div>
+        <div class="person"><span class="av sm a7">RV</span><span class="grow"><b>Rahul Verma</b><div class="xs faint">came to 3 of 3 · avg 78</div></span><span class="tagp t1">Hot lead</span></div>
+        <div class="person"><span class="av sm a4">VN</span><span class="grow"><b>Vikram Nair</b><div class="xs faint">came to 3 of 4 · avg 74</div></span></div>
+        <button class="btn sm" style="margin-top:10px">Message these 12</button>
+      </div>
+      <div class="card p5">
+        <div class="row between"><div class="st" style="margin:0">Slipping away</div><span class="xs faint">registered 2+, never came</span></div>
+        <div class="person"><span class="av sm a3">KM</span><span class="grow"><b>Karan Mehta</b><div class="xs faint">registered 3 · came 0</div></span></div>
+        <div class="person"><span class="av sm a6">AS</span><span class="grow"><b>Aditya Singh</b><div class="xs faint">registered 2 · came 0</div></span></div>
+        <button class="btn sm sec" style="margin-top:10px">Send the replays to these 9</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card p0" style="margin-top:16px">
+    <div class="row between" style="padding:12px 16px; border-bottom:1px solid var(--line)">
+      <span class="chips"><span class="chip on">Everyone <b>142</b></span><span class="chip">Highly engaged <b>18</b></span><span class="chip">Came back <b>31</b></span><span class="chip">Never came <b>41</b></span><span class="chip">Hot leads <b>6</b></span></span>
+      <input class="field sm" style="width:220px" placeholder="Search name, email, number">
+    </div>
+    <table class="t">
+      <tr><th>Person</th><th>Webinars</th><th>Engagement</th><th>Last</th><th>WhatsApp</th></tr>
+      <tr><td><div class="row"><span class="av sm a2">PS</span><div><b>Priya Sharma</b><div class="xs faint">priya@example.com</div></div></div></td>
+        <td><span class="pips"><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i></span> <span class="xs muted">4 of 4</span></td>
+        <td><div class="row" style="gap:6px"><span class="tdot high"></span><b>82</b><span class="xs faint">Highly engaged</span></div></td>
+        <td class="xs muted">Mindful Money · watched 58 min</td><td><span class="badge ok">Replied</span></td></tr>
+      <tr><td><div class="row"><span class="av sm a5">NJ</span><div><b>Neha Joshi</b><div class="xs faint">neha@example.com</div></div></div></td>
+        <td><span class="pips"><i class="c"></i><i class="m"></i><i class="c"></i></span> <span class="xs muted">2 of 3</span></td>
+        <td><div class="row" style="gap:6px"><span class="tdot eng"></span><b>61</b><span class="xs faint">Engaged</span></div></td>
+        <td class="xs muted">Morning Routines · didn't come</td><td><span class="badge">Opted in</span></td></tr>
+      <tr><td><div class="row"><span class="av sm a3">KM</span><div><b>Karan Mehta</b><div class="xs faint">karan@example.com</div></div></div></td>
+        <td><span class="pips"><i class="m"></i><i class="m"></i><i class="m"></i></span> <span class="xs muted">0 of 3</span></td>
+        <td class="xs faint">—</td>
+        <td class="xs muted">Mindful Money · registered</td><td><span class="badge">Opted in</span></td></tr>
+    </table>
+  </div>
+</main>
+<div class="note"><b>Audience.</b> Replaces People: the Engagement tab, across every webinar. Show-up and engagement per webinar, your best people (highly engaged and coming back) and the ones slipping away — each a list you can message — then everyone, with a dot per webinar, their average engagement and tier. Opening a person shows their timeline and conversation. Messages leaves the tabs: it is an inbox, so it is the chat icon in the top bar, beside the bell, with the unread count.</div>
+<script src="assets/nav.js"></script>
+</body></html>
