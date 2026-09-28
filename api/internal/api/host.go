@@ -778,6 +778,19 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 		return types.Webinar{}, err
 	}
 
+	/* Tell every browser in the room that the session is over before anything below takes
+	 * the room away. Without it the first sign an attendee (or the host) has of the end is
+	 * the connection closing — and a closing connection reads as a network drop, so they
+	 * were shown "Reconnecting…" for a webinar that had simply finished. With the status in
+	 * room metadata first, the client knows that whatever disconnect follows is the end. */
+	if sfu, err := s.sfuFor(ctx, wb); err == nil {
+		if meta, err := s.roomMetadata(ctx, wb); err == nil {
+			if err := sfu.SetMetadata(ctx, lk.RoomName(slug), meta); err != nil {
+				s.log.Warn("end webinar: could not announce the end", "slug", slug, "error", err)
+			}
+		}
+	}
+
 	// A survey armed for the end goes out now, while the room still exists to hear about it.
 	s.launchSurveyOnEnd(ctx, slug)
 

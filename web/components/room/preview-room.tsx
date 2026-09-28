@@ -186,6 +186,8 @@ export function PreviewRoom() {
       me: DEV_BYPASS_ME,
       entryVideo: null,
       recovering: null,
+      over: false,
+      markEnding: () => undefined,
       realtime,
       roster: {
         live: DEV_BYPASS_LIVE,

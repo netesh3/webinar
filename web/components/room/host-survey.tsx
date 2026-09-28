@@ -183,7 +183,7 @@ export function SendSurveyButton({ disabled }: { disabled?: boolean }) {
  *   on screen      say how many have answered; the rest can finish on the ended screen.
  *   none / closed  the plain confirmation. */
 export function EndWebinarDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { slug } = useRoomUI();
+  const { slug, markEnding } = useRoomUI();
   const { notify } = useToast();
   const s = useHostSurvey();
   const [ending, setEnding] = useState(false);
@@ -201,10 +201,14 @@ export function EndWebinarDialog({ open, onClose }: { open: boolean; onClose: ()
 
   async function end() {
     setEnding(true);
+    // Before the request: the server closes the room while it is still answering, and that
+    // disconnect must read as the end rather than a drop to reconnect from.
+    markEnding(true);
     try {
       await api.endWebinar(slug);
       onClose();
     } catch (err) {
+      markEnding(false);
       notify(err instanceof Error ? err.message : "Could not end the webinar.", "error");
       setEnding(false);
     }
