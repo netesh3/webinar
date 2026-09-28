@@ -209,20 +209,20 @@ export function WhatsAppScreen() {
           ← WhatsApp
         </button>
       )}
-      <div>
-        <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
-          {LABELS[tab]}
-        </h1>
-        <p className="mt-1 text-[13.5px] text-ink-2">
-          {tab === "home"
-            ? "What your attendees get on WhatsApp, and what it does for you."
-            : tab === "number"
+      {tab !== "home" && (
+        <div>
+          <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
+            {LABELS[tab]}
+          </h1>
+          <p className="mt-1 text-[13.5px] text-ink-2">
+            {tab === "number"
               ? "Your number, and what is left to set up."
               : tab === "templates"
                 ? "Every message wording at Meta, and which one each automatic message uses."
                 : "Every automation, and the builders for your own."}
-        </p>
-      </div>
+          </p>
+        </div>
+      )}
 
       {tab === "home" && (
         <WhatsAppSimple

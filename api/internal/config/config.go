@@ -256,6 +256,10 @@ type Config struct {
 	 * segment. Empty in production, where the pinned wa.DefaultGraph applies.
 	 * Tests point it at an httptest.Server, like YouTubeAPIURL. */
 	WhatsAppGraphURL string
+	/* WhatsAppRates overrides the built-in per-country Meta rate card used when a
+	 * status callback names a category but not an amount. Micros of a rupee
+	 * (1_000_000 = ₹1): "IN:utility=130000,US=40000". Empty keeps the built-in card. */
+	WhatsAppRates string
 
 	/* Supabase Auth — Google sign-in / sign-up.
 	 *
@@ -379,6 +383,7 @@ func Load() (Config, error) {
 		MetaWhatsAppConfigID:    env("META_WHATSAPP_CONFIG_ID", ""),
 		MetaWebhookVerifyToken:  env("META_WEBHOOK_VERIFY_TOKEN", ""),
 		WhatsAppGraphURL:        strings.TrimRight(env("WHATSAPP_GRAPH_URL", ""), "/"),
+		WhatsAppRates:           env("WHATSAPP_RATES", ""),
 		SupabaseURL:             strings.TrimRight(env("SUPABASE_URL", ""), "/"),
 		SupabaseAnonKey:         env("SUPABASE_ANON_KEY", ""),
 		SupabaseJWTSecret:       env("SUPABASE_JWT_SECRET", ""),

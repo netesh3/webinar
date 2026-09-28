@@ -988,6 +988,32 @@ export interface EngagementAttendeeDetail {
 }
 
 //////////
+// source: metrics.go
+
+export interface CRMMetricsResponse {
+  from?: string;
+  to: string;
+  sent: number /* int */;
+  delivered: number /* int */;
+  read: number /* int */;
+  failed: number /* int */;
+  costMicros: number /* int64 */;
+  costEstimated: boolean;
+  currency: string;
+  failures: CRMFailure[];
+}
+/**
+ *  CRMFailure is one grouped reason messages did not arrive, with a fix in
+ *  * plain language. Code is Meta's error code when the stored text has one.
+ */
+export interface CRMFailure {
+  code: string;
+  reason: string;
+  count: number /* int */;
+  fix: string;
+}
+
+//////////
 // source: slots.go
 
 export const SlotConfirmation = "confirmation";

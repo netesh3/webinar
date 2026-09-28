@@ -39,6 +39,8 @@ type Module struct {
 	// store is the CRM's own SQL, with the core store embedded for webinar and user reads.
 	store *crmstore.Store
 	log   *slog.Logger
+	// rates fills a cost when Meta names a category but not an amount.
+	rates RateTable
 	/* whatsapp is nil unless all three META_* values are set, and the handlers say so
 	 * rather than offering a Connect button that dead-ends. Every method on it tolerates a
 	 * nil receiver, which is what lets the webhook and the connect endpoint check Enabled()
@@ -67,7 +69,12 @@ func New(cfg config.Config, st *store.Store, log *slog.Logger) *Module {
 		}
 		log.Info("whatsapp connect enabled", "graph", whatsapp.Graph)
 	}
-	return &Module{cfg: cfg, store: crmstore.New(st), log: log, whatsapp: whatsapp}
+	rates, err := ParseRates(cfg.WhatsAppRates)
+	if err != nil {
+		log.Warn("whatsapp rates: using the built-in card", "error", err)
+		rates = DefaultRates()
+	}
+	return &Module{cfg: cfg, store: crmstore.New(st), log: log, whatsapp: whatsapp, rates: rates}
 }
 
 /* featureAllowed is the CRM's copy of the webinar API's per-account switch check: 403
@@ -122,6 +129,7 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Put("/crm/reminders", s.handleSetCRMReminders)
 	host.Get("/crm/message-defaults", s.handleMessageDefaults)
 	host.Put("/crm/message-defaults", s.handleSetMessageDefaults)
+	host.Get("/crm/metrics", s.handleCRMMetrics)
 	host.Get("/crm/audience", s.handleCRMAudience)
 	host.Post("/crm/audience", s.handleCRMAudience)
 
