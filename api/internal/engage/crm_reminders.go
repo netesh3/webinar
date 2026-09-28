@@ -247,29 +247,18 @@ func (s *Module) enqueueWhatsAppInvite(
 		return
 	}
 
-	if s.cfg.EngageSlots {
-		slots, err := s.ResolveSlots(ctx, wb.ID)
-		if err != nil {
-			s.log.Error("whatsapp invite: message slots", "webinar", wb.ID, "error", err)
-			return
-		}
-		if conf, ok := types.FindSlot(slots, types.SlotConfirmation); ok && conf.Sends(types.ChannelWhatsApp) {
-			s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppConfirmed, 0, &conf)
-		}
-		if rem, ok := types.FindSlot(slots, types.SlotReminder); ok && rem.Sends(types.ChannelWhatsApp) {
-			for _, offset := range rem.BeforeMinutes() {
-				s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppReminder, offset, &rem)
-			}
-		}
+	slots, err := s.ResolveSlots(ctx, wb.ID)
+	if err != nil {
+		s.log.Error("whatsapp invite: message slots", "webinar", wb.ID, "error", err)
 		return
 	}
-
-	if !wb.Options.WhatsAppReminders {
-		return
+	if conf, ok := types.FindSlot(slots, types.SlotConfirmation); ok && conf.Sends(types.ChannelWhatsApp) {
+		s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppConfirmed, 0, &conf)
 	}
-	s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppConfirmed, 0, nil)
-	for _, offset := range wb.Options.Reminders {
-		s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppReminder, offset, nil)
+	if rem, ok := types.FindSlot(slots, types.SlotReminder); ok && rem.Sends(types.ChannelWhatsApp) {
+		for _, offset := range rem.BeforeMinutes() {
+			s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppReminder, offset, &rem)
+		}
 	}
 }
 

@@ -1,4 +1,3 @@
-import { describeReminders } from "../reminder-times";
 import type { FormState } from "./form-state";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -74,15 +73,6 @@ export function scheduleSummary(
   );
   if (form.attendeeLimit > 0) {
     parts.push(`${form.attendeeLimit.toLocaleString()} seats`);
-  }
-  const remindersOn =
-    form.options.emailReminders || form.options.whatsappReminders;
-  if (!remindersOn) {
-    parts.push("Reminders off");
-  } else if (form.options.reminders.length > 0) {
-    parts.push(`Reminders ${describeReminders(form.options.reminders)}`);
-  } else {
-    parts.push("Reminders on");
   }
   return {
     lead: formatScheduleWhen(form.date, form.time, zoneLabel),

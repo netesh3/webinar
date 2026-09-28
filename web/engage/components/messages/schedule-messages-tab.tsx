@@ -20,13 +20,10 @@ import {
   type CRMRecipe,
   type CRMTemplate,
   type MessageSlot,
-  type WebinarOptions,
 } from "@/lib/api-types";
-import type { PreviewWebinar } from "../schedule-messages";
 import { StarterTemplates } from "../starter-templates";
 import {
   clearPatch,
-  legacyOptions,
   normalizeSlots,
   slotReady,
   toPatch,
@@ -34,6 +31,14 @@ import {
 } from "./catalog";
 import { MessageList } from "./message-list";
 import { MessagePane, type ReminderTimesEditor } from "./message-pane";
+
+/** What the webinar being scheduled is, to preview it rather than an older one. */
+export type PreviewWebinar = {
+  topic: string;
+  /** The start, when the date and time parse. */
+  startsAt: Date | null;
+  timeZone: string;
+};
 
 /* Messages & follow-ups: the list and the pane, reading and writing slots.
  *
@@ -48,7 +53,7 @@ export type MessagesSaveHandle = {
   persistOverrides: (slug: string) => Promise<void>;
 };
 
-export type { PreviewWebinar, ReminderTimesEditor };
+export type { ReminderTimesEditor };
 
 export const ScheduleMessagesTab = forwardRef<
   MessagesSaveHandle,
@@ -57,11 +62,9 @@ export const ScheduleMessagesTab = forwardRef<
     slug?: string;
     webinar?: PreviewWebinar;
     reminderTimes: ReminderTimesEditor;
-    /** Keeps the schedule form's reminder options in step with the slots it saves. */
-    onLegacyOptions?: (patch: Partial<WebinarOptions>) => void;
   }
 >(function ScheduleMessagesTab(
-  { slug, webinar, reminderTimes, onLegacyOptions },
+  { slug, webinar, reminderTimes },
   ref,
 ) {
   const { account } = useSession();
@@ -78,8 +81,6 @@ export const ScheduleMessagesTab = forwardRef<
   const [writing, setWriting] = useState(false);
   const [tick, setTick] = useState(0);
   const pending = useRef(new Map<string, MessageSlot>());
-  const onLegacy = useRef(onLegacyOptions);
-  onLegacy.current = onLegacyOptions;
 
   const [picked, setPicked] = useState(selected);
   if (picked !== selected) {
@@ -116,7 +117,6 @@ export const ScheduleMessagesTab = forwardRef<
           webinarMessages?.slots?.length ? webinarMessages.slots : defaults.slots,
         );
         setSlots(next);
-        onLegacy.current?.(legacyOptions(next));
         setTemplates(templateList.templates ?? []);
         setFields(reminders?.fields ?? []);
         setAutomations(
@@ -154,11 +154,7 @@ export const ScheduleMessagesTab = forwardRef<
         return;
       }
       const previous = slots;
-      const list = (slots ?? []).map((slot) =>
-        slot.kind === next.kind ? next : slot,
-      );
       applyLocal(next);
-      onLegacy.current?.(legacyOptions(list));
       try {
         if (asDefault) {
           await engageApi.setMessageDefaults({ slots: [next] });
@@ -168,7 +164,6 @@ export const ScheduleMessagesTab = forwardRef<
               slots: [clearPatch(next.kind)],
             });
             setSlots(normalizeSlots(saved.slots));
-            onLegacy.current?.(legacyOptions(normalizeSlots(saved.slots)));
           }
           return;
         }
@@ -178,13 +173,11 @@ export const ScheduleMessagesTab = forwardRef<
           });
           pending.current.delete(next.kind);
           setSlots(normalizeSlots(saved.slots));
-          onLegacy.current?.(legacyOptions(normalizeSlots(saved.slots)));
           return;
         }
         pending.current.set(next.kind, next);
       } catch (err) {
         setSlots(previous);
-        if (previous) onLegacy.current?.(legacyOptions(previous));
         notify(
           err instanceof ApiError ? err.message : "Could not save that message.",
           "error",

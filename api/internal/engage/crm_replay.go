@@ -24,27 +24,22 @@ func (s *Module) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, ho
 	if host.WhatsAppToken == "" || host.WhatsAppPhoneNumberID == "" {
 		return
 	}
-	var due time.Time
-	var slotWording *types.MessageSlot
-	if s.cfg.EngageSlots {
-		slots, err := s.ResolveSlots(ctx, wb.ID)
-		if err != nil {
-			s.log.Error("replay: message slots", "webinar", wb.ID, "error", err)
-			return
-		}
-		slot, ok := types.FindSlot(slots, types.SlotReplay)
-		if !ok || !slot.Sends(types.ChannelWhatsApp) {
-			return
-		}
-		slotWording = &slot
-		due = slot.Timing.From(types.EndOf(wb), webinarLocation(wb))
-		if !due.After(time.Now()) {
-			due = time.Time{}
-		}
+	slots, err := s.ResolveSlots(ctx, wb.ID)
+	if err != nil {
+		s.log.Error("replay: message slots", "webinar", wb.ID, "error", err)
+		return
+	}
+	slot, ok := types.FindSlot(slots, types.SlotReplay)
+	if !ok || !slot.Sends(types.ChannelWhatsApp) {
+		return
+	}
+	slotWording := &slot
+	due := slot.Timing.From(types.EndOf(wb), webinarLocation(wb))
+	if !due.After(time.Now()) {
+		due = time.Time{}
 	}
 	var reminder types.CRMReminder
 	var hasTemplate bool
-	var err error
 	if slotWording != nil && strings.TrimSpace(slotWording.Template) != "" {
 		reminder = types.CRMReminder{
 			Kind: types.NotifyWhatsAppReplay, Template: slotWording.Template,

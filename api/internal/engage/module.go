@@ -237,32 +237,25 @@ func (s *Module) OnRegistrationsDecided(ctx context.Context, slug string, declin
  * reminders already queued, and queues the times that are new for the opted-in contacts
  * who are due them — the CRM's side of the webinar's replanReminders.
  *
- * The WhatsApp switch off, or no reminder template chosen, means every unsent reminder is
- * dropped; turning either back on and saving queues them again.
+ * A reminder slot that does not send on WhatsApp drops every unsent reminder;
+ * turning it back on and saving queues them again.
  */
 func (s *Module) OnRescheduled(ctx context.Context, wb types.Webinar) {
 	starts, err := time.Parse(time.RFC3339, wb.StartsAt)
 	if err != nil {
 		return
 	}
-	offsets := wb.Options.Reminders
-	if !wb.Options.WhatsAppReminders {
-		offsets = []int{}
+	slots, err := s.ResolveSlots(ctx, wb.ID)
+	if err != nil {
+		s.log.Warn("crm: message slots", "slug", wb.ID, "error", err)
+		return
 	}
+	rem, _ := types.FindSlot(slots, types.SlotReminder)
+	var offsets []int
 	var wording *types.MessageSlot
-	if s.cfg.EngageSlots {
-		slots, err := s.ResolveSlots(ctx, wb.ID)
-		if err != nil {
-			s.log.Warn("crm: message slots", "slug", wb.ID, "error", err)
-			return
-		}
-		rem, _ := types.FindSlot(slots, types.SlotReminder)
-		if !rem.Sends(types.ChannelWhatsApp) {
-			offsets = []int{}
-		} else {
-			offsets = rem.BeforeMinutes()
-			wording = &rem
-		}
+	if rem.Sends(types.ChannelWhatsApp) {
+		offsets = rem.BeforeMinutes()
+		wording = &rem
 	}
 	if err := s.store.ReplanWhatsAppReminders(ctx, wb.ID, starts, offsets); err != nil {
 		s.log.Warn("crm: could not replan whatsapp reminders", "slug", wb.ID, "error", err)

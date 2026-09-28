@@ -6,11 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/types"
 )
-
-func withSlots(c *config.Config) { c.EngageSlots = true }
 
 func slotOf(t *testing.T, slots []types.MessageSlot, kind string) types.MessageSlot {
 	t.Helper()
@@ -341,7 +338,7 @@ func TestEngageSlotReplayChannels(t *testing.T) {
 
 func TestEngageSlotFollowupTiming(t *testing.T) {
 	g := newFakeGraph(t)
-	h := newHarness(t, whatsappConfigured(g.srv.URL), withSlots)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
 	wb := remindersWebinar(t, h, "Follow up", true)
@@ -380,11 +377,11 @@ func TestEngageSlotFollowupTiming(t *testing.T) {
 	}
 }
 
-/* With the flag on, a saved reminder slot decides the channel and the time.
+/* A saved reminder slot decides the channel and the time.
  * Options still say email at a day and an hour; the slot says WhatsApp at 30 minutes. */
 func TestEngageSlotsReminderSender(t *testing.T) {
 	g := newFakeGraph(t)
-	h := newHarness(t, whatsappConfigured(g.srv.URL), withSlots)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
 	setReminders(t, h, types.CRMReminder{

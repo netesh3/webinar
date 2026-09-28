@@ -101,7 +101,7 @@ func (s *Server) enqueueReplay(ctx context.Context, slug string, rec types.Recor
 	}
 
 	/* WhatsApp is the CRM's half of this, and is handed over rather than done here: see
-	 * Engage.OnRecordingPublished. Email follows the replay slot when ENGAGE_SLOTS is on. */
+	 * Engage.OnRecordingPublished. Email follows the resolved replay slot. */
 	sendEmail := true
 	var due time.Time
 	if slots, ok := s.messageSlots(ctx, slug); ok {

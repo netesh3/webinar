@@ -12,14 +12,12 @@ import {
   SlotFollowupRisk,
   SlotReminder,
   SlotReplay,
-  TimingBefore,
   TimingImmediate,
   TimingNextMorning,
   TimingOnPublish,
   type MessageSlot,
   type MessageSlotPatch,
   type NotificationKind,
-  type WebinarOptions,
 } from "@/lib/api-types";
 
 /* The Messages tab's catalogue: one row per slot, in the order the mock shows them,
@@ -212,24 +210,6 @@ export function toPatch(slot: MessageSlot): MessageSlotPatch {
  *  the legacy reminder options, which only apply when no settings row exists. */
 export function clearPatch(kind: string): MessageSlotPatch {
   return { kind };
-}
-
-/** Confirmation and reminder still land in WebinarOptions, so a webinar saved
- *  before its slot rows exist resolves to the same channels and times. */
-export function legacyOptions(slots: MessageSlot[]): Partial<WebinarOptions> {
-  const reminder = slots.find((slot) => slot.kind === SlotReminder);
-  const confirmation = slots.find((slot) => slot.kind === SlotConfirmation);
-  if (!reminder) return {};
-  const whatsapp = (slot: MessageSlot | undefined) =>
-    Boolean(slot?.enabled && slot.channels.includes(ChannelWhatsApp));
-  return {
-    emailReminders: Boolean(
-      reminder.enabled && reminder.channels.includes(ChannelEmail),
-    ),
-    whatsappReminders: whatsapp(reminder) || whatsapp(confirmation),
-    reminders:
-      reminder.timing.type === TimingBefore ? (reminder.timing.minutes ?? []) : [],
-  };
 }
 
 export function slotReady(slot: MessageSlot): string | null {

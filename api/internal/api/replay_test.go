@@ -94,6 +94,16 @@ func replayFor(t *testing.T, h *harness, topic, email string) string {
 	return ""
 }
 
+/* replayOnWhatsApp puts WhatsApp on the replay slot. The built-in replay is email
+ * only; a template on its own does not send. */
+func replayOnWhatsApp(t *testing.T, h *harness) {
+	t.Helper()
+	putDefaults(t, h, types.MessageSlot{
+		Kind: types.SlotReplay, Channels: []string{types.ChannelEmail, types.ChannelWhatsApp},
+		Timing: types.MessageTiming{Type: types.TimingOnPublish}, Enabled: true,
+	})
+}
+
 func TestPublishingARecordingTellsTheRegistrants(t *testing.T) {
 	g := newFakeGraph(t)
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
@@ -121,6 +131,7 @@ func TestPublishingARecordingTellsTheRegistrants(t *testing.T) {
 		Kind: types.NotifyWhatsAppReplay, Template: testTemplateUtility,
 		Language: "en_US", Params: []string{"replay"},
 	})
+	replayOnWhatsApp(t, h)
 
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("start webinar: status %d body %s", res.StatusCode, raw)
@@ -225,6 +236,7 @@ func TestReplayStillGoesOutAfterTheWebinarHasEnded(t *testing.T) {
 		Kind: types.NotifyWhatsAppReplay, Template: testTemplateUtility,
 		Language: "en_US", Params: []string{"replay"},
 	})
+	replayOnWhatsApp(t, h)
 
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("start: status %d body %s", res.StatusCode, raw)

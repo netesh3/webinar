@@ -231,7 +231,9 @@ type WebinarOptions struct {
 	Captions          bool `json:"captions"`
 	Multistream       bool `json:"multistream"`
 	PostWebinarSurvey bool `json:"postWebinarSurvey"`
-	// EmailReminders defaults true for existing rows that never stored the key.
+	/* EmailReminders is kept so old rows still resolve. The messages editor no
+	 * longer writes it; ResolveSlots reads it only when this webinar has no
+	 * reminder settings row. Missing means on. */
 	EmailReminders bool `json:"emailReminders"`
 	/* WhatsAppReminders defaults FALSE, unlike its email counterpart, and the
 	 * asymmetry is deliberate: every WhatsApp message is charged to the host's own

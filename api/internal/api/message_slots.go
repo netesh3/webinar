@@ -7,8 +7,9 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-/* messageSlots asks the CRM for resolved slots when ENGAGE_SLOTS is on.
- * A failure falls back to WebinarOptions: a slot read must not drop a confirmation. */
+/* messageSlots asks the CRM for resolved slots.
+ * A failure falls back to WebinarOptions: a slot read must not drop a confirmation.
+ * NoEngage (a deployment without the CRM) also returns ok false. */
 func (s *Server) messageSlots(ctx context.Context, webinarID string) ([]types.MessageSlot, bool) {
 	if s.engage == nil {
 		return nil, false

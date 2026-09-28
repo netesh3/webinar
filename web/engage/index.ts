@@ -17,7 +17,6 @@ export {
   useRosterWhatsAppColumns,
   WhatsAppAccountRow,
   WhatsAppOptInCheckbox,
-  WhatsAppRemindersToggle,
   MessagesNavButton,
 } from "./slots";
 export { WhatsAppScreen } from "./components/whatsapp-screen";
@@ -33,11 +32,7 @@ export { WebinarWhatsAppOverview } from "./components/webinar-overview";
 export { WebinarWhatsAppMetrics } from "./components/webinar-whatsapp-metrics";
 export { EngagementFollowUpPage } from "./components/follow-up-page";
 export {
-  AttendeeMessages,
-  Row as MessageRow,
-  type PreviewWebinar,
-} from "./components/schedule-messages";
-export {
   ScheduleMessagesTab,
   type MessagesSaveHandle,
+  type PreviewWebinar,
 } from "./components/messages/schedule-messages-tab";
