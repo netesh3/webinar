@@ -4,9 +4,15 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { engageApi } from "../api";
-import { Alert, Spinner } from "@/components/controls";
-import { MaterialIcon } from "@/components/icons";
+import { Alert, Spinner, Tabs } from "@/components/controls";
+import {
+  ArrowLeftIcon,
+  MaterialIcon,
+  SearchIcon,
+  SendIcon,
+} from "@/components/icons";
 import { useSession, useToast } from "@/components/providers";
+import { Button, Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import {
   FeatureCRMNotes,
@@ -22,7 +28,7 @@ import {
 } from "@/lib/api-types";
 import { kindText } from "./crm-screen";
 import { templateKey } from "./crm-templates";
-import { PersonAvatar, Ticks, WA_BUBBLE, WA_WALL } from "./wa-kit";
+import { PersonAvatar, Ticks } from "./wa-kit";
 
 /* Messages: its own screen, opened from the chat icon, not a tab on Your webinars.
  *
@@ -147,39 +153,49 @@ export function HostMessagesInbox() {
     threads?.find((t) => t.contact.id === selectedId) ?? null;
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 border-t border-line bg-surface md:grid-cols-[400px_minmax(0,1fr)]">
-      <aside
-        className={`${mobileOpen ? "hidden md:flex" : "flex"} min-h-0 min-w-0 flex-col border-r border-line`}
+    <div>
+      <Link
+        href="/host"
+        className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-brand"
       >
-        <div className="flex gap-2 border-b border-line p-2.5">
-          <label className="flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-line bg-surface-2 px-2.5">
-            <MaterialIcon name="search" className="size-[18px] text-ink-3" />
+        ← Your webinars
+      </Link>
+      <h1 className="mb-1 text-[24px] font-semibold tracking-[-0.02em]">
+        Messages
+      </h1>
+      <p className="mb-5 text-[13px] text-ink-2">
+        WhatsApp conversations from your webinars.
+      </p>
+      <Card className="overflow-hidden">
+        <div className="grid h-[min(40rem,calc(100dvh-16rem))] min-h-[28rem] grid-cols-1 md:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
+          <aside
+            className={`${mobileOpen ? "hidden md:flex" : "flex"} min-h-0 min-w-0 flex-col border-r border-line`}
+          >
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2.5">
+          <label className="relative min-w-[12rem] flex-1">
             <span className="sr-only">Search name or number</span>
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search name or number"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-3"
+              className="field h-9 w-full pl-8 text-[13px]"
             />
           </label>
-          <label className="flex h-9 shrink-0 items-center gap-0.5 rounded-lg border border-line-2 bg-surface pr-1.5 pl-2">
-            <MaterialIcon name="filter_alt" className="size-[18px] text-brand" />
-            <span className="sr-only">Filter</span>
-            <select
-              aria-label="Filter"
-              value={filter}
-              onChange={(e) => chooseFilter(e.target.value)}
-              className="w-[7.4rem] cursor-pointer border-0 bg-transparent text-[12.5px] text-ink outline-none"
-            >
-              <option value="">All webinars</option>
-              <option value="unread">Unread</option>
-              {webinars.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.topic}
-                </option>
-              ))}
-            </select>
-          </label>
+          <select
+            aria-label="Filter"
+            value={filter}
+            onChange={(e) => chooseFilter(e.target.value)}
+            className="field h-9 w-[9.25rem] shrink-0 text-[13px]"
+          >
+            <option value="">All webinars</option>
+            <option value="unread">Unread</option>
+            {webinars.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.topic}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -210,11 +226,11 @@ export function HostMessagesInbox() {
             ))
           )}
         </div>
-      </aside>
+          </aside>
 
-      <section
-        className={`${mobileOpen ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-col`}
-      >
+          <section
+            className={`${mobileOpen ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-col`}
+          >
         {selectedId ? (
           <ThreadPane
             key={selectedId}
@@ -233,7 +249,9 @@ export function HostMessagesInbox() {
               : "No conversations yet."}
           </div>
         )}
-      </section>
+          </section>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -266,8 +284,8 @@ function ConversationRow({
       type="button"
       onClick={onSelect}
       aria-current={active ? "true" : undefined}
-      className={`grid w-full grid-cols-[36px_minmax(0,1fr)_10px] items-center gap-2.5 border-b border-l-[3px] border-line py-2 pr-3 pl-1.5 text-left ${
-        active ? "border-l-brand bg-brand-soft" : "border-l-transparent"
+      className={`grid w-full grid-cols-[36px_minmax(0,1fr)_10px] items-center gap-2.5 border-b border-line px-3 py-2.5 text-left ${
+        active ? "bg-brand-soft" : "hover:bg-surface-2"
       }`}
     >
       <PersonAvatar name={name} seed={c.id} size={36} />
@@ -300,11 +318,7 @@ function ConversationRow({
           </span>
         )}
         {t.webinar && (
-          <span
-            className={`mt-1 inline-flex h-[18px] max-w-full items-center truncate rounded-full px-1.5 text-[10.5px] font-medium text-ink-2 ${
-              active ? "bg-white" : "bg-surface-2"
-            }`}
-          >
+          <span className="mt-0.5 block truncate text-[11.5px] text-ink-3">
             {t.webinar}
           </span>
         )}
@@ -372,19 +386,19 @@ function ThreadPane({
 
   return (
     <>
-      <header className="flex items-center gap-2.5 border-b border-line px-4 py-2.5">
+      <header className="flex items-center gap-3 border-b border-line px-4 py-3">
         <button
           type="button"
           onClick={onBack}
           className="grid size-8 place-items-center rounded-lg text-ink-2 hover:bg-surface-2 md:hidden"
           aria-label="Back to conversations"
         >
-          <MaterialIcon name="arrow_back" className="size-[18px]" />
+          <ArrowLeftIcon className="size-4" />
         </button>
-        <PersonAvatar name={name} seed={contactId} size={40} />
+        <PersonAvatar name={name} seed={contactId} size={34} />
         <div className="min-w-0">
-          <div className="truncate text-[15px] font-semibold text-ink">{name}</div>
-          <div className="truncate text-[12px] text-ink-3">
+          <div className="truncate text-[14px] font-semibold text-ink">{name}</div>
+          <div className="truncate text-[11.5px] text-ink-3">
             {contact?.phone ? `${contact.phone} · WhatsApp` : "WhatsApp"}
           </div>
         </div>
@@ -394,13 +408,7 @@ function ThreadPane({
 
       <div
         ref={scroller}
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 py-4"
-        style={{
-          background: WA_WALL,
-          backgroundImage:
-            "radial-gradient(rgba(0,0,0,.035) 1px, transparent 1px)",
-          backgroundSize: "14px 14px",
-        }}
+        className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto bg-page px-4 py-4"
       >
         {error && <Alert tone="error">{error}</Alert>}
         {messages === null ? (
@@ -452,7 +460,7 @@ function Facts({ contact }: { contact: CRMContact }) {
   if (seen) facts.push({ icon: "visibility", k: "Last seen", v: seen });
   if (facts.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-x-8 gap-y-2 border-b border-line px-4 py-2.5">
+    <div className="flex flex-wrap gap-x-8 gap-y-2 border-b border-line px-4 py-3">
       {facts.map((f) => (
         <div key={f.k} className="flex min-w-0 gap-2">
           <MaterialIcon name={f.icon} className="mt-px size-4 text-ink-3" />
@@ -480,31 +488,47 @@ function Bubble({ m }: { m: CRMMessage }) {
         : m.manual
           ? "You"
           : "";
+  const failed = m.status === "failed";
   return (
     <div className={`flex ${inbound ? "justify-start" : "justify-end"}`}>
-      <div
-        className={`max-w-[min(440px,78%)] rounded-lg px-2.5 pt-1.5 pb-1 text-[13px] leading-relaxed break-words text-[#111] shadow-sm ${
-          inbound ? "rounded-tl-none bg-white" : "rounded-tr-none"
-        }`}
-        style={inbound ? undefined : { background: WA_BUBBLE }}
-      >
-        {!inbound && m.templateName && (
-          <div className="text-[10px] font-semibold tracking-wide text-[#1f7a4d] uppercase">
-            Template
-          </div>
-        )}
-        {m.body ? (
-          <span className="whitespace-pre-wrap">{m.body}</span>
-        ) : (
-          <span className="italic opacity-70">{kindText(m.kind)}</span>
-        )}
-        <span className="float-right mt-1 ml-3 flex items-center gap-1 text-[10px] text-[#667781]">
-          {when}
+      <div className="max-w-[min(440px,85%)] min-w-0">
+        <div
+          className={`rounded-2xl px-3 py-2 text-[13px] leading-relaxed break-words ${
+            inbound
+              ? "rounded-bl-md bg-surface text-ink"
+              : failed
+                ? "rounded-br-md border border-live/30 bg-live-soft text-ink"
+                : "rounded-br-md bg-brand text-white"
+          }`}
+        >
+          {!inbound && m.templateName && (
+            <div
+              className={`mb-0.5 text-[10px] font-semibold tracking-wide uppercase ${
+                failed ? "text-live" : "text-white/80"
+              }`}
+            >
+              Template
+            </div>
+          )}
+          {m.body ? (
+            <span className="whitespace-pre-wrap">{m.body}</span>
+          ) : (
+            <span className="italic opacity-80">{kindText(m.kind)}</span>
+          )}
+        </div>
+        <div
+          className={`mt-1 flex items-center gap-1.5 text-[10.5px] text-ink-3 ${
+            inbound ? "" : "justify-end"
+          }`}
+        >
+          <span>{when}</span>
           {who && <span>· {who}</span>}
           {!inbound && <Ticks status={m.status} />}
-        </span>
+        </div>
         {m.status === "failed" && m.error && (
-          <p className="clear-both mt-1 text-[11px] text-live">{m.error}</p>
+          <p className={`mt-0.5 text-[11px] text-live ${inbound ? "" : "text-right"}`}>
+            {m.error}
+          </p>
         )}
       </div>
     </div>
@@ -541,21 +565,13 @@ function Composer({
 
   return (
     <div className="border-t border-line bg-surface">
-      <div className="flex gap-0.5 border-b border-line px-2.5">
-        {(["reply", "note"] as const).map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setMode(id)}
-            className={`-mb-px h-9 border-b-2 px-3 text-[13px] font-medium ${
-              mode === id
-                ? "border-brand text-brand"
-                : "border-transparent text-ink-3"
-            }`}
-          >
-            {id === "reply" ? "Reply" : "Note"}
-          </button>
-        ))}
+      <div className="px-3">
+        <Tabs
+          tabs={["reply", "note"] as const}
+          value={mode}
+          onChange={setMode}
+          labels={{ reply: "Reply", note: "Note" }}
+        />
       </div>
       {mode === "note" ? (
         <NoteBox
@@ -685,9 +701,8 @@ function ReplyBox({
   return (
     <div>
       {!open && (
-        <div className="mx-3 mt-2.5 flex items-start gap-2 rounded-lg bg-warn-soft px-2.5 py-2 text-[12.5px] leading-snug text-warn">
-          <MaterialIcon name="lock" className="mt-px size-4" />
-          <span>{closed}</span>
+        <div className="px-3 pt-3">
+          <Alert tone="warn">{closed}</Alert>
         </div>
       )}
       {open ? (
@@ -710,7 +725,7 @@ function ReplyBox({
             }}
             className="field min-h-9 flex-1 resize-none py-2 text-[13px]"
           />
-          <SendButton busy={busy} disabled={!canSend} onClick={() => void send()} title="Send" />
+          <SendButton busy={busy} disabled={!canSend} onClick={() => void send()} label="Send" />
         </div>
       ) : (
         <div className="px-3 pt-2.5 pb-3">
@@ -746,7 +761,7 @@ function ReplyBox({
                 busy={busy}
                 disabled={!canSend}
                 onClick={() => void send()}
-                title="Send template"
+                label="Send"
               />
             </div>
           )}
@@ -846,6 +861,7 @@ function NoteBox({
           busy={busy}
           disabled={!notesOn || body.trim() === ""}
           onClick={() => void save()}
+          label="Save"
           title={notesOn ? "Save note" : "Notes aren't saved yet"}
         />
       </div>
@@ -862,28 +878,31 @@ function SendButton({
   busy,
   disabled,
   onClick,
+  label,
   title,
 }: {
   busy: boolean;
   disabled: boolean;
   onClick: () => void;
-  title: string;
+  label: string;
+  title?: string;
 }) {
   return (
-    <button
+    <Button
       type="button"
-      title={title}
-      aria-label={title}
+      size="sm"
+      title={title ?? label}
+      aria-label={title ?? label}
       disabled={busy || disabled}
       onClick={onClick}
-      className="grid size-9 shrink-0 place-items-center rounded-full bg-brand text-white disabled:opacity-40"
     >
       {busy ? (
-        <Spinner className="size-4" />
+        <Spinner className="size-3.5" />
       ) : (
-        <MaterialIcon name="send" className="size-[18px]" />
+        <SendIcon className="size-3.5" />
       )}
-    </button>
+      {label}
+    </Button>
   );
 }
 
