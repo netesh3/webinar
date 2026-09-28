@@ -36,7 +36,7 @@ export function MessageRow({
 }) {
   return (
     <div
-      className={`grid grid-cols-[1.75rem_minmax(0,1fr)_8.75rem_2rem_1.25rem] items-center gap-x-2 px-3 py-1 ${
+      className={`grid grid-cols-[1.75rem_minmax(0,1fr)_8.75rem_2rem_1.75rem] items-center gap-x-2 px-3 py-1 ${
         selected ? "bg-brand-soft" : ""
       } ${dim ? "opacity-60" : ""}`}
     >
@@ -46,7 +46,7 @@ export function MessageRow({
         aria-current={selected ? "true" : undefined}
         className="col-span-2 flex min-w-0 items-center gap-2 rounded-lg py-1.5 text-left outline-none hover:bg-surface-2 focus-visible:bg-surface-2"
       >
-        <MaterialIcon name={icon} className="size-5 text-ink-3" />
+        <MaterialIcon name={icon} className="size-[18px] shrink-0 self-center text-ink-3" />
         <span className="min-w-0">
           <span className="block truncate text-[13px] font-semibold text-ink">
             {title}
@@ -66,7 +66,7 @@ export function MessageRow({
           />
         ) : null}
       </div>
-      <div className="text-ink-3">
+      <div className="flex items-center justify-center text-ink-3">
         {trailing ?? (
           <button
             type="button"
@@ -74,7 +74,7 @@ export function MessageRow({
             aria-label={switchLabel ? `Open ${switchLabel}` : "Open"}
             className="grid size-7 place-items-center rounded-md hover:bg-surface-2"
           >
-            <MaterialIcon name="chevron_right" className="size-4" />
+            <MaterialIcon name="chevron_right" className="size-[18px]" />
           </button>
         )}
       </div>
