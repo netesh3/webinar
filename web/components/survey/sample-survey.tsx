@@ -2,8 +2,16 @@
 
 import { useState } from "react";
 import type { Survey, SurveyInput, Webinar } from "@/lib/api-types";
-import { cleanInput, emptyInput, previewSurvey, validateInput } from "@/lib/survey";
-import { FIXTURE_HOST_SURVEY, FIXTURE_SURVEY_RESULTS } from "@/lib/survey-fixtures";
+import {
+  cleanInput,
+  emptyInput,
+  previewSurvey,
+  validateInput,
+} from "@/lib/survey";
+import {
+  FIXTURE_HOST_SURVEY,
+  FIXTURE_SURVEY_RESULTS,
+} from "@/lib/survey-fixtures";
 import { SurveyDialog } from "../room/survey-popup";
 import { Card } from "../ui";
 import { SurveyResultsView } from "./survey-results";
@@ -13,9 +21,14 @@ import { SurveyForm } from "./survey-form";
 /* The survey's screens over fixture data, for design review and screenshots — the same
  * components the room and the host pages use, with no API behind them. See app/mock/survey. */
 
-export type SampleView = "popup" | "link" | "thanks" | "setup" | "setup-link" | "results";
+export type SampleView =
+  "popup" | "link" | "thanks" | "setup" | "setup-link" | "results";
 
-const RATING: Survey = { ...FIXTURE_HOST_SURVEY.survey!, responses: 0, locked: false };
+const RATING: Survey = {
+  ...FIXTURE_HOST_SURVEY.survey!,
+  responses: 0,
+  locked: false,
+};
 
 const LINK: Survey = {
   ...RATING,
@@ -29,7 +42,13 @@ const LINK: Survey = {
 
 const MINE = { submitted: false, linkClicked: false };
 
-export function SampleSurvey({ view, webinar }: { view: SampleView; webinar: Webinar }) {
+export function SampleSurvey({
+  view,
+  webinar,
+}: {
+  view: SampleView;
+  webinar: Webinar;
+}) {
   if (view === "popup" || view === "link" || view === "thanks") {
     const survey = view === "link" ? LINK : RATING;
     return (
@@ -62,7 +81,11 @@ export function SampleSurvey({ view, webinar }: { view: SampleView; webinar: Web
   }
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5 sm:py-8">
-      <SurveyResultsView slug={webinar.id} results={FIXTURE_SURVEY_RESULTS} preview />
+      <SurveyResultsView
+        slug={webinar.id}
+        results={FIXTURE_SURVEY_RESULTS}
+        preview
+      />
     </main>
   );
 }
@@ -70,24 +93,44 @@ export function SampleSurvey({ view, webinar }: { view: SampleView; webinar: Web
 /** The schedule form's survey section on its own, over a fresh draft. */
 function SampleScheduleSurvey({ link }: { link: boolean }) {
   const [draft, setDraft] = useState<SurveyInput>(() =>
-    link ? { ...emptyInput(), mode: "link", externalUrl: "https://forms.gle/Wk3ExampleSurvey" } : emptyInput(),
+    link
+      ? {
+          ...emptyInput(),
+          mode: "link",
+          externalUrl: "https://forms.gle/Wk3ExampleSurvey",
+        }
+      : emptyInput(),
   );
   return (
     <Card className="p-5">
       <h3 className="mb-4 text-[14px] font-semibold">Feedback survey</h3>
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <SurveyBuilder value={draft} onChange={setDraft} errors={validateInput(draft)} locked={false} durationMin={60} />
-        <div className="room-dark rounded-2xl border border-line-2 bg-surface p-5">
-          <SurveyForm
-            key={JSON.stringify(cleanInput(draft))}
-            preview
-            survey={previewSurvey(draft)}
-            mine={MINE}
-            slug="preview"
-            onLater={() => undefined}
-          />
-        </div>
-      </div>
+      <SurveyBuilder
+        value={draft}
+        onChange={setDraft}
+        errors={validateInput(draft)}
+        locked={false}
+        durationMin={60}
+        aside={
+          <div>
+            <p className="mb-1.5 text-[12px] font-medium text-ink-3">
+              What attendees see
+            </p>
+            <div
+              className="room-dark rounded-xl border border-line-2 bg-surface p-2.5"
+              style={{ zoom: 0.86 }}
+            >
+              <SurveyForm
+                key={JSON.stringify(cleanInput(draft))}
+                preview
+                survey={previewSurvey(draft)}
+                mine={MINE}
+                slug="preview"
+                onLater={() => undefined}
+              />
+            </div>
+          </div>
+        }
+      />
     </Card>
   );
 }

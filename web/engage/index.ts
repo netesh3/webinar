@@ -34,4 +34,5 @@ export { EngagementFollowUpPage } from "./components/follow-up-page";
 export {
   AttendeeMessages,
   Row as MessageRow,
+  type PreviewWebinar,
 } from "./components/schedule-messages";
