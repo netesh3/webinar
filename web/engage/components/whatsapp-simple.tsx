@@ -42,9 +42,7 @@ export function WhatsAppSimple({
 }: {
   setup: CRMSetup | null;
   templates: CRMTemplate[] | null;
-  onOpen: (
-    view: "setup" | "templates" | "sequences" | "bots" | "broadcasts",
-  ) => void;
+  onOpen: (view: "setup" | "templates" | "broadcasts") => void;
   onTemplatesChanged: () => void;
 }) {
   const { notify } = useToast();
@@ -222,8 +220,6 @@ export function WhatsAppSimple({
         onToggleRecipe={(r, on) => void toggleRecipe(r, on)}
         onKeywords={() => kw && setKeywords(kw)}
         onAdd={() => setBuilding(true)}
-        onSequences={() => onOpen("sequences")}
-        onBots={() => onOpen("bots")}
         onBroadcasts={() => onOpen("broadcasts")}
       />
 

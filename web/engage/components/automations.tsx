@@ -19,9 +19,9 @@ import { Switch } from "./wa-kit";
 /* The WhatsApp page's Automations tab: ready-made recipes a coach turns on, instead of an
  * empty builder. Each is a preset over the drip and bot engines (see crm_recipes.go):
  * reminders, a follow-up after every webinar for each engagement group, keyword replies,
- * and tagging hot leads. The builders are still here, under "Build your own". */
+ * and tagging hot leads. A one-off broadcast is still here, under "Build your own". */
 
-export type BuildView = "sequences" | "bots" | "broadcasts";
+export type BuildView = "broadcasts";
 
 const HINTS = Object.fromEntries(followupGroups().map((g) => [g.id, g.hints]));
 
@@ -197,23 +197,9 @@ export function Automations({
               Build your own
             </span>
             <span className="text-[12px] text-ink-3">
-              Step-by-step sequences, reply bots, and one-off broadcasts.
+              A one-off message to a group of people.
             </span>
             <div className="mt-1 flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => onBuild("sequences")}
-              >
-                Sequences
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => onBuild("bots")}
-              >
-                Bots
-              </Button>
               <Button
                 size="sm"
                 variant="secondary"

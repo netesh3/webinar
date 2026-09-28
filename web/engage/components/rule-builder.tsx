@@ -29,9 +29,9 @@ import {
 import { templateKey } from "./crm-templates";
 import { categoryWords, readable } from "./wa-messages";
 
-/* "+ New automation": a rule written as When → Then, in plain choices. Saved as a
- * sequence (the engine that already waits, retries and respects opt-outs), so a rule is
- * also editable in the Sequences builder. */
+/* "+ New automation": a rule written as When → Then, in plain choices. Saved on the
+ * sequence engine (it already waits, retries and respects opt-outs). The sequences
+ * builder is not in the product right now; the rule is switched on and off here. */
 
 type WhenId =
   | "poll"
