@@ -33,8 +33,6 @@ import type {
   WebinarMessagesRequest,
   WebinarSlotsResponse,
   CRMFollowupsResponse,
-  MessageDefaultsRequest,
-  MessageDefaultsResponse,
   CRMAudienceSummary,
   CRMStarterTemplatesResponse,
   CRMSnippet,
