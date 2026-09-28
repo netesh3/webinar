@@ -272,6 +272,17 @@ func (s *Module) ResolveSlots(ctx context.Context, webinarSlug string) ([]types.
 	return out, nil
 }
 
+// countSending is how many resolved slots are on and include the channel.
+func countSending(slots []types.MessageSlot, channel string) int {
+	n := 0
+	for _, sl := range slots {
+		if sl.Sends(channel) {
+			n++
+		}
+	}
+	return n
+}
+
 /* MessageSlots is the Engage contract the email senders call.
  * ok is false only when the slots cannot be read; the caller then keeps the
  * confirmation rather than dropping it. ResolveSlots still applies
