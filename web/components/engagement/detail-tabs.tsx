@@ -9,6 +9,7 @@ import { useToast } from "../providers";
 import { SurveyResultsView } from "../survey/survey-results";
 import { Badge, Button, ButtonLink } from "../ui";
 import { pct } from "@/lib/engagement/viz";
+import { noAudienceChat } from "@/lib/engagement/sections";
 import { Bars, HBar } from "./charts";
 import { MiniStat } from "./primitives";
 
@@ -26,7 +27,7 @@ const None = ({ children }: { children: string }) => <p className="py-8 text-cen
 
 function ChatPanel({ s }: { s: EngagementSummary }) {
   const { chat, kpis } = s;
-  if (kpis.chatMessages === 0) return <None>No one used chat this session.</None>;
+  if (kpis.chatMessages === 0) return <None>{noAudienceChat(kpis.stageChatMessages ?? 0)}</None>;
   const top = chat.topChatters[0]?.count ?? 1;
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">

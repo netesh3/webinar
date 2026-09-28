@@ -7,7 +7,7 @@ import {
   exportOptions,
   legacyOnlyColumns,
 } from "./exports.ts";
-import { clockAt, leaveState, sectionDomId } from "./sections.ts";
+import { clockAt, leaveState, noAudienceChat, sectionDomId } from "./sections.ts";
 
 const urls = {
   engagementCsv: "/e.csv",
@@ -38,6 +38,16 @@ assert.deepEqual(
 // ever becomes empty, the attendance export can be retired.
 assert.deepEqual(legacyOnlyColumns(), ["section", "role", "joined_at", "left_at", "minutes", "question", "answered"]);
 assert.ok(ENGAGEMENT_CSV_COLUMNS.includes("visits") && ATTENDANCE_CSV_COLUMNS.includes("visits"));
+// Every audience channel has a per-person count (pinned server-side in engagement_capture_test.go).
+for (const c of ["chats", "questions", "upvotes", "polls_answered", "reactions", "hand_raises"] as const) {
+  assert.ok(ENGAGEMENT_CSV_COLUMNS.includes(c), c);
+}
+
+// ---- the empty Chat panel
+
+assert.equal(noAudienceChat(0), "No one used chat this session.");
+assert.match(noAudienceChat(1), /No attendee chatted\. Hosts and panelists sent 1 message —/);
+assert.match(noAudienceChat(4), /sent 4 messages/);
 
 // ---- sections
 

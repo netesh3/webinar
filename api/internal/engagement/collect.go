@@ -104,6 +104,7 @@ func (r *run) collectChat() {
 		}
 	}
 	r.sum.KPIs.Chatters = len(senders)
+	r.sum.KPIs.StageChatMessages = r.in.StageChats
 	r.usage[KeyChat] = r.sum.KPIs.ChatMessages > 0
 
 	type named struct {

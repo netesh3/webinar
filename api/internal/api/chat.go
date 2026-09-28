@@ -353,10 +353,12 @@ func (s *Server) handleChatTranscript(w http.ResponseWriter, r *http.Request) {
 		"mediaUrl", "mediaMime", "mediaBytes", "mentions",
 	})
 	for _, m := range messages {
+		// What people typed goes through csvText, like every other export: a chat line
+		// that starts with "=" is a formula to a spreadsheet, not a message.
 		_ = out.Write([]string{
 			slug, m.ID, strconv.FormatInt(m.Seq, 10), m.Timestamp,
-			m.SenderID, m.UserID, m.SenderName, string(m.SenderRole),
-			string(m.Type), string(m.Destination), m.Message,
+			m.SenderID, m.UserID, csvText(m.SenderName), string(m.SenderRole),
+			string(m.Type), string(m.Destination), csvText(m.Message),
 			m.MediaURL, m.MediaMime, strconv.FormatInt(m.MediaBytes, 10),
 			strings.Join(m.Mentions, " "),
 		})
