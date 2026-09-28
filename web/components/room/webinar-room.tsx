@@ -20,7 +20,7 @@ import {
   type TrackPublishOptions,
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { enableCamera } from "@/lib/backgrounds";
 import { roomOptions, SCREEN_SHARE_PUBLISH, useMediaPreferences } from "@/lib/media";
@@ -184,7 +184,11 @@ export function WebinarRoom({
           ? await api.hostJoin(slug)
           : await api.join(slug, joinKey);
         return { url: fresh.url, token: fresh.token };
-      } catch {
+      } catch (e) {
+        // The server refusing a new token because the session is over is an answer, not a
+        // network fault: the ladder stops and says the webinar ended. Mid-session the
+        // audience's "not_joinable" can only mean that too — a draft never went live.
+        if (e instanceof ApiError && (e.code === "ended" || e.code === "not_joinable")) return "ended" as const;
         return null;
       }
     })();
@@ -535,6 +539,20 @@ function ConnectedRoom({
     join.controls,
     join.maxDurationMin,
   );
+  /* The session is over: the server said so in room metadata (it does, before it closes the
+   * room), or this host has just pressed End. From then on a disconnect is the end, whatever
+   * reason the SFU gives for it, and nothing says "Reconnecting…" — there is nothing to
+   * reconnect to. A ref for the disconnect handler, state for what renders. */
+  const [endingHere, setEndingHere] = useState(false);
+  const over = status === "ended" || endingHere;
+  const overRef = useRef(false);
+  useEffect(() => {
+    overRef.current = over;
+  }, [over]);
+  const markEnding = useCallback((on: boolean) => {
+    overRef.current = on;
+    setEndingHere(on);
+  }, []);
   const { notify } = useToast();
   // The host's join toasts are fed from two places declared far apart: the server's
   // "joined" packet arrives through useRealtime (below), and the roster they turn
@@ -677,6 +695,10 @@ function ConnectedRoom({
    * track does nothing, and the track that matters here is precisely the one
    * LiveKit has just let go of without stopping. */
   const captured = useRef(new Set<LocalTrack>());
+  // Camera and microphone go off with the session, not when the SFU gets round to closing.
+  useEffect(() => {
+    if (status === "ended") stopLocalCapture(room, captured.current);
+  }, [status, room]);
   useEffect(() => {
     const onPublished = (pub: LocalTrackPublication) => {
       if (pub.track) captured.current.add(pub.track);
@@ -760,7 +782,7 @@ function ConnectedRoom({
 
     const onDisconnected = (reason?: DisconnectReason) => {
       if (cancelled) return;
-      const exitReason = classifyDisconnect(reason);
+      const exitReason = overRef.current && !leaving.current ? "ended" : classifyDisconnect(reason);
       if (!exitReason) {
         // Pressing Leave is as terminal for this browser's devices as being
         // thrown out is; only a retryable drop keeps them open.
@@ -801,9 +823,15 @@ function ConnectedRoom({
          * Only on a retry: the first attempt already holds a credential minted seconds ago,
          * and a second round trip before the first connect would cost every presenter time
          * to pay for a case that cannot have happened yet. */
-        const credential =
-          (attempts.current > 0 ? await freshCredential() : null) ?? join;
+        const fresh = attempts.current > 0 ? await freshCredential() : null;
         if (cancelled) return;
+        if (fresh === "ended" || (attempts.current > 0 && overRef.current)) {
+          setRecovering(null);
+          stopLocalCapture(room, captured.current);
+          setExit("ended");
+          return;
+        }
+        const credential = fresh ?? join;
         await connect(credential.url, credential.token, CONNECT_OPTIONS);
         if (cancelled) return;
         setRecovering(null);
@@ -1088,7 +1116,13 @@ function ConnectedRoom({
   });
   // "You're connected" on joining the stage, then "Reconnecting…" → "You're back online" /
   // "Connection lost", for everyone in this room.
-  const { greet } = useConnectionToast(room, recovering, RECOVERY_BACKOFF_MS.length, permissions.canPublish);
+  const { greet } = useConnectionToast(
+    room,
+    recovering,
+    RECOVERY_BACKOFF_MS.length,
+    permissions.canPublish,
+    over || exit !== null,
+  );
   useEffect(() => {
     greetConnected.current = greet;
   }, [greet]);
@@ -1174,6 +1208,8 @@ function ConnectedRoom({
        * parent before this component mounts, so it is stable anyway. */
       entryVideo,
       recovering,
+      over,
+      markEnding,
       realtime,
       roster,
       polls,
@@ -1191,6 +1227,8 @@ function ConnectedRoom({
     [
       entryVideo,
       recovering,
+      over,
+      markEnding,
       slug,
       join,
       joinKey,
@@ -1222,8 +1260,11 @@ function ConnectedRoom({
     ],
   );
 
-  if (exit) {
-    return <SessionOver reason={exit} onLeave={onLeave} slug={slug} joinKey={joinKey} />;
+  // The server announces the end in room metadata before it closes the room, so everyone
+  // lands on the ended screen straight away rather than watching the connection go.
+  const shownExit = exit ?? (status === "ended" ? "ended" : null);
+  if (shownExit) {
+    return <SessionOver reason={shownExit} onLeave={onLeave} slug={slug} joinKey={joinKey} />;
   }
 
   if (failure) {
@@ -1541,7 +1582,9 @@ function LiveClock() {
  *  and end up rejoining, which drops them from the SFU and makes it slower. */
 function ConnectionBanner() {
   const state = useConnectionState();
-  const { recovering } = useRoomUI();
+  const { recovering, over } = useRoomUI();
+  // Ending, the connection closing is the point, not a fault: SessionOver takes over.
+  if (over) return null;
   if (state === ConnectionState.Connected && recovering === null) return null;
 
   /* Our own retry outranks the SDK's state.
@@ -1581,7 +1624,7 @@ type ExitReason = "ended" | "removed" | "duplicate" | "lost";
 /** Asks the API for a credential to reconnect with, or null if it cannot be reached.
  *  Implemented in WebinarRoom, which is the component that knows which gate minted the
  *  first one. See the comment there for why a retry needs a new one at all. */
-type Credential = () => Promise<{ url: string; token: string } | null>;
+type Credential = () => Promise<{ url: string; token: string } | "ended" | null>;
 
 /* Whether the capture behind a track is still running.
  *

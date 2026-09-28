@@ -55,6 +55,8 @@ export function useConnectionToast(
   recovering: number | null,
   attempts: number,
   publisher: boolean,
+  /** The session is over (or being ended): say nothing more, and take down anything showing. */
+  over = false,
 ): { greet: () => void } {
   const { upsert, dismissKey } = useToast();
   const state = useConnectionState(room);
@@ -96,9 +98,16 @@ export function useConnectionToast(
   }, [sync]);
 
   useEffect(() => {
+    if (over) {
+      // The room closing is what ending looks like from here. Not an outage, so no
+      // "Reconnecting…" — the ended screen is the whole message.
+      clearTimeout(timer.current);
+      dismissKey(KEY);
+      return;
+    }
     tracker.update({ link: toLink(state), recovering, attempts, offline }, Date.now());
     sync();
-  }, [tracker, state, recovering, attempts, offline, sync]);
+  }, [tracker, state, recovering, attempts, offline, sync, over, dismissKey]);
 
   useEffect(
     () => () => {
@@ -109,8 +118,12 @@ export function useConnectionToast(
   );
 
   // Called by the room when a host or panelist first reaches the stage on joining.
+  const overRef = useRef(over);
+  useEffect(() => {
+    overRef.current = over;
+  }, [over]);
   const greet = useCallback(() => {
-    if (tracker.greet(Date.now())) syncRef.current();
+    if (!overRef.current && tracker.greet(Date.now())) syncRef.current();
   }, [tracker]);
   return { greet };
 }

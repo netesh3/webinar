@@ -311,6 +311,8 @@ export function CdnAttendeeRoom({
       me,
       entryVideo: null,
       recovering: null,
+      over: false,
+      markEnding: () => undefined,
       realtime,
       roster,
       polls,
@@ -357,7 +359,10 @@ export function CdnAttendeeRoom({
     ],
   );
 
-  if (exit) {
+  // The server announces the end in room metadata before it closes the room, so the ended
+  // screen shows at once instead of the player first saying "Reconnecting to the broadcast…"
+  // as the stream goes away.
+  if (exit || status === "ended") {
     return (
       <main className="grid min-h-dvh place-items-center bg-stage p-4 text-center sm:p-6">
         <div className="flex w-full max-w-[460px] flex-col items-center">
