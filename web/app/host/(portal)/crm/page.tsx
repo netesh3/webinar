@@ -9,9 +9,10 @@ import { MESSAGES_HREF, PEOPLE_HREF, WhatsAppScreen } from "@/engage";
  *
  * People and Messages are Hosting tabs, so the old Contacts links — ?webinar=, ?status=,
  * ?view=contacts — land on People (with the webinar filter carried over), and
- * ?view=inbox on Messages. Everything else opens here: a plain /host/crm on Automations,
- * ?view=setup on Number & billing (Account settings links to it), and the builders by
- * ?view=sequences / bots / broadcasts.
+ * ?view=inbox on Messages. Everything else opens here: a plain /host/crm is the
+ * WhatsApp page, ?view=setup is Number & billing (Account settings links to it),
+ * and ?view=broadcasts opens that builder. A retired or unknown ?view= — including
+ * the old sequences and bots builders — stays on this page.
  *
  * A static segment beside /host/[id], so it shadows a webinar whose slug is literally
  * "crm" — the same trade /host/new and /host/login already make. */

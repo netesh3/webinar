@@ -21,8 +21,8 @@ import { formatRelative } from "@/lib/format";
 import { ChatIcon } from "@/components/icons";
 import { useReplies } from "./components/replies";
 
-/** WhatsApp setup and the automations (bots, sequences) — not in the nav; reached
- *  from Account settings and from a webinar's Messages tab. */
+/** WhatsApp setup — not in the nav; reached from Account settings and from a
+ *  webinar's Messages tab. */
 export const ENGAGE_HOME = "/host/crm";
 
 /** People and Messages are tabs on the Hosting page, beside Upcoming and Past. */
