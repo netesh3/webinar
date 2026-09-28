@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audience · page 2 (perf mock)</title><link rel="stylesheet" href="assets/simple.css">
+<style>
+  .person { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .person:last-child { border-bottom: 0; }
+  table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.t th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--ink-3); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  table.t td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .pager { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; }
+  .pager .mid { font-size:12.5px; color:var(--ink-2); }
+  .pager .mid b { color:var(--ink); }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <div class="row between" style="align-items:flex-end">
+    <div><h1>Your webinars</h1><p class="small muted" style="margin-top:4px">Create one, share the link, go live, follow up.</p></div>
+    <div class="row"><button class="btn sec">Go live now</button><button class="btn">+ New webinar</button></div>
+  </div>
+  <div class="tabs" style="margin-top:20px">
+    <a class="tab" href="perf-home.html">Upcoming <span class="count">24</span></a>
+    <a class="tab" href="perf-completed-page2.html">Completed <span class="count">34</span></a>
+    <a class="tab" href="perf-drafts-empty.html">Drafts <span class="count grey">10</span></a>
+    <span class="tabsep"></span>
+    <a class="tab on" href="#">Audience</a>
+  </div>
+
+  <div class="row between" style="margin-bottom:12px">
+    <span class="small muted">Across your last 6 webinars</span>
+    <span class="chips"><span class="chip on">Last 6</span><span class="chip">Last 12</span><span class="chip">All</span></span>
+  </div>
+
+  <div class="kpis five" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card kpi"><div class="l">People reached</div><div class="v">142</div><div class="d up">+23 this month</div></div>
+    <div class="card kpi"><div class="l">Show-up rate</div><div class="v">64%</div><div class="d up">▲ 8 pts vs before</div></div>
+    <div class="card kpi"><div class="l">Avg engagement</div><div class="v">58</div><div class="d">out of 100 · Good</div></div>
+    <div class="card kpi"><div class="l">Came back</div><div class="v">31</div><div class="d">joined 2 or more</div></div>
+  </div>
+
+  <div class="card p0" style="margin-top:16px">
+    <div class="row between" style="padding:12px 16px; border-bottom:1px solid var(--line)">
+      <span class="chips"><span class="chip on">Everyone <b>142</b></span><span class="chip">Highly engaged <b>18</b></span><span class="chip">Came back <b>31</b></span><span class="chip">Never came <b>41</b></span><span class="chip">Hot leads <b>6</b></span></span>
+      <input class="field sm" style="width:220px" placeholder="Search name, email, number">
+    </div>
+    <table class="t">
+      <tr><th>Person</th><th>Webinars</th><th>Engagement</th><th>Last</th><th>WhatsApp</th></tr>
+      <tr><td><div class="row"><span class="av sm a6">AS</span><div><b>Aditi Shah</b><div class="xs faint">aditi@example.com</div></div></div></td>
+        <td class="xs muted">2 of 4</td>
+        <td><div class="row" style="gap:6px"><span class="tdot eng"></span><b>54</b><span class="xs faint">Engaged</span></div></td>
+        <td class="xs muted">Sleep Reset · watched 22 min</td><td><span class="badge">Opted in</span></td></tr>
+      <tr><td><div class="row"><span class="av sm a8">RG</span><div><b>Rohit Gupta</b><div class="xs faint">rohit@example.com</div></div></div></td>
+        <td class="xs muted">1 of 2</td>
+        <td><div class="row" style="gap:6px"><span class="tdot pas"></span><b>41</b><span class="xs faint">Passive</span></div></td>
+        <td class="xs muted">Morning Routines · watched 11 min</td><td><span class="badge">Opted in</span></td></tr>
+      <tr><td><div class="row"><span class="av sm a1">LM</span><div><b>Leela Menon</b><div class="xs faint">leela@example.com</div></div></div></td>
+        <td class="xs muted">0 of 2</td>
+        <td class="xs faint">—</td>
+        <td class="xs muted">Mindful Money · registered</td><td><span class="badge">Opted in</span></td></tr>
+    </table>
+    <div class="pager">
+      <button class="btn sm sec">Previous</button>
+      <div class="mid"><b>Page 2 of 6</b> <span class="xs faint">· 25 per page · 26–50 of 142</span></div>
+      <button class="btn sm sec">Next</button>
+    </div>
+  </div>
+</main>
+<div class="note"><b>Audience people, page 2.</b> Paginated: the people table is 25 rows a page (today the server sends 50 and the Previous / Next row only appears after 50). Page 2 replaces page 1; these are people 26–50, not the first three. The summary cards above stay. Cached for about a minute: the summary and the page you are on. Search, a filter chip, and Message these N still ask the server. The inbox is not cached.</div>
+<script src="assets/nav.js"></script>
+</body></html>

@@ -23,3 +23,10 @@ shot create-tabs-webinar  create-tabs-webinar.html  2330
 shot create-tabs-messages create-tabs-messages.html 1120
 shot settings settings.html 1200
 shot inbox inbox.html 1000 1440
+shot perf-home perf-home.html 980
+shot perf-completed-page2 perf-completed-page2.html 980
+shot perf-drafts-empty perf-drafts-empty.html 560
+shot perf-audience-page2 perf-audience-page2.html 720
+shot perf-audience-empty perf-audience-empty.html 700
+shot perf-inbox-page2 perf-inbox-page2.html 560
+shot perf-registrants-page2 perf-registrants-page2.html 720
