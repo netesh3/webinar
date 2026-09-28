@@ -16,6 +16,7 @@ import {
   type CRMWebinarResults,
 } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
+import { messagesHref } from "../hrefs";
 import { PersonAvatar, estimateCost, pct, rupees } from "./wa-kit";
 
 /* A webinar's Messages tab, v2.1: what WhatsApp sent for it and who answered. Deciding who
@@ -362,7 +363,7 @@ export function replyClosing(
       : "Answering now is free; after that only an approved template can be sent.",
     action: "Reply now",
     run: () => {},
-    href: `/host?tab=messages&contact=${encodeURIComponent(closing.w.contactId)}`,
+    href: messagesHref(closing.w.contactId),
   };
 }
 
@@ -427,7 +428,7 @@ export function WaitingList({ waiting }: { waiting: CRMReplyAlert[] }) {
           )}
         </h3>
         <Link
-          href="/host?tab=messages"
+          href={messagesHref()}
           className="text-[12px] font-medium text-brand hover:underline"
         >
           Open Messages →
@@ -443,7 +444,7 @@ export function WaitingList({ waiting }: { waiting: CRMReplyAlert[] }) {
           {waiting.slice(0, 5).map((w) => (
             <Link
               key={w.contactId}
-              href={`/host?tab=messages&contact=${encodeURIComponent(w.contactId)}`}
+              href={messagesHref(w.contactId)}
               className="flex gap-3 px-4 py-3 hover:bg-surface-2"
             >
               <PersonAvatar name={w.name} seed={w.contactId} size={32} />

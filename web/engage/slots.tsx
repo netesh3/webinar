@@ -9,6 +9,7 @@
  */
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAppConfig, useSession } from "@/components/providers";
 import { Badge, ButtonLink } from "@/components/ui";
 import {
@@ -19,15 +20,15 @@ import {
 } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
 import { ChatIcon } from "@/components/icons";
+import {
+  ENGAGE_HOME,
+  MESSAGES_HREF,
+  PEOPLE_HREF,
+  messagesHref,
+} from "./hrefs";
 import { useReplies } from "./components/replies";
 
-/** WhatsApp setup — not in the nav; reached from Account settings and from a
- *  webinar's Messages tab. */
-export const ENGAGE_HOME = "/host/crm";
-
-/** People and Messages are tabs on the Hosting page, beside Upcoming and Past. */
-export const PEOPLE_HREF = "/host?tab=people";
-export const MESSAGES_HREF = "/host?tab=messages";
+export { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, messagesHref };
 
 /* The registration form's WhatsApp consent box.
  *
@@ -189,18 +190,27 @@ function WhatsAppStatusBadge({ status }: { status?: string }) {
 }
 
 /* The top bar's inbox: a chat icon with how many conversations are waiting, opening
- * Messages. Absent when this account has no WhatsApp, where there is no inbox to open. */
+ * the Messages screen. Absent when this account has no WhatsApp, where there is no
+ * inbox to open. */
 export function MessagesNavButton() {
   const replies = useReplies();
   const { account } = useSession();
+  const pathname = usePathname();
   if (!account?.canHost || !account?.whatsapp) return null;
   const n = replies?.needsReply ?? 0;
+  const here =
+    pathname === MESSAGES_HREF || pathname.startsWith(`${MESSAGES_HREF}/`);
   return (
     <Link
       href={MESSAGES_HREF}
       aria-label={n ? `Messages, ${n} waiting` : "Messages"}
+      aria-current={here ? "page" : undefined}
       title="Messages"
-      className="relative grid size-9 place-items-center rounded-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
+      className={`relative grid size-9 place-items-center rounded-lg ${
+        here
+          ? "bg-brand-soft text-brand"
+          : "text-ink-2 hover:bg-surface-2 hover:text-ink"
+      }`}
     >
       <ChatIcon className="size-[18px]" />
       {n > 0 && (

@@ -22,6 +22,7 @@ import {
   type CRMPerson,
 } from "@/lib/api-types";
 import { formatDuration } from "@/lib/format";
+import { messagesHref } from "../hrefs";
 import { PersonAvatar } from "./wa-kit";
 import { SendDialog, type SendTarget } from "./send-dialog";
 import { AudienceSummary } from "./audience-summary";
@@ -454,7 +455,7 @@ function PersonRow({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Link
-              href={`/host?tab=messages&contact=${encodeURIComponent(c.id)}`}
+              href={messagesHref(c.id)}
               className="truncate text-[13.5px] font-medium text-ink hover:text-brand"
             >
               {name}

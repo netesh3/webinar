@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { HostMessagesTab, HostPeopleTab, useReplies } from "@/engage";
+import { HostPeopleTab } from "@/engage";
 import { EndedNudge } from "./ended-nudge";
 import { useAppConfig, useSession } from "./providers";
 import { HostWebinarRows } from "./host-webinar-list";
@@ -49,29 +49,26 @@ const ATTENDING = "attending";
  *  link or bookmark made then opens the same list. */
 const ATTENDING_LEGACY = "registered";
 
-/* People and Messages: Engage's two tabs, rendered by it and only offered when this
- * deployment can connect WhatsApp. Beside the webinar lists rather than in a separate
- * CRM, because "who came, and who wrote back" is asked from the same place a host
- * plans the next session. Like Attending, neither is a HostWebinarTab. */
+/* Audience: Engage's tab, rendered by it and only offered when this deployment can
+ * connect WhatsApp. Beside the webinar lists rather than in a separate CRM, because
+ * "who came" is asked from the same place a host plans the next session. Like
+ * Attending, it is not a HostWebinarTab. Messages is not a tab here — it is
+ * /host/messages, and an old ?tab=messages link is sent there. */
 const PEOPLE = "people";
 const MESSAGES = "messages";
-type ViewTab =
-  HostWebinarTab | typeof ATTENDING | typeof PEOPLE | typeof MESSAGES;
+type ViewTab = HostWebinarTab | typeof ATTENDING | typeof PEOPLE;
 
 /* Shown in the tab row: the webinar lists, then Audience (engagement across all of them;
  * ?tab=people), then Attending — webinars other people host that this account signed up
  * for — but only once there is at least one: for most hosts it would be an empty tab
- * forever. Messages (the inbox) is reached from the top bar's chat icon; its ?tab= link
- * still opens it here, without a tab of its own. */
+ * forever. */
 const BASE_TABS: readonly ViewTab[] = [...TABS];
 const ENGAGE_TABS: readonly ViewTab[] = [...BASE_TABS, PEOPLE];
-const LINKABLE: readonly ViewTab[] = [...TABS, ATTENDING, PEOPLE, MESSAGES];
+const LINKABLE: readonly ViewTab[] = [...TABS, ATTENDING, PEOPLE];
 
 /** The tabs that do not read the paged webinar endpoint, and so hide its filters. */
-function ownList(
-  t: ViewTab,
-): t is typeof ATTENDING | typeof PEOPLE | typeof MESSAGES {
-  return t === ATTENDING || t === PEOPLE || t === MESSAGES;
+function ownList(t: ViewTab): t is typeof ATTENDING | typeof PEOPLE {
+  return t === ATTENDING || t === PEOPLE;
 }
 
 const TAB_LABELS: Record<ViewTab, string> = {
@@ -80,7 +77,6 @@ const TAB_LABELS: Record<ViewTab, string> = {
   drafts: "Drafts",
   attending: "Attending",
   people: "Audience",
-  messages: "Messages",
 };
 
 /** Matches store.DefaultHostWebinarLimit. Sent explicitly rather than left to
@@ -159,14 +155,14 @@ export function HostWebinarBrowser({
   const listTabs = whatsappConnect ? ENGAGE_TABS : BASE_TABS;
   const viewTabs: readonly ViewTab[] =
     attendingCount > 0 ? [...listTabs, ATTENDING] : listTabs;
-  const replies = useReplies();
 
-  /* ?tab= picks the tab, so the bell and People's rows can link straight into
-   * Messages — and followed, not just read once, because those links are usually
-   * clicked while the host is already on this page. */
+  /* ?tab= picks the tab, and is followed, not just read once, because those links
+   * are usually clicked while the host is already on this page. Messages used to
+   * be one of them; it is its own screen now, so that query leaves this page. */
   const router = useRouter();
   const search = useSearchParams();
   const rawTab = search.get("tab") ?? "";
+  const messagesLink = rawTab === MESSAGES;
   const askedTab = (
     rawTab === ATTENDING_LEGACY ? ATTENDING : rawTab
   ) as ViewTab;
@@ -177,15 +173,23 @@ export function HostWebinarBrowser({
     t === ATTENDING ||
     (whatsappConnect && LINKABLE.includes(t));
   const [tab, setTabState] = useState<ViewTab>(() =>
-    reachable(askedTab) ? askedTab : "upcoming",
+    messagesLink || !reachable(askedTab) ? "upcoming" : askedTab,
   );
   // Adjusted while rendering rather than in an effect: a new link is a new tab now.
   const linkKey = search.toString();
   const [seenLink, setSeenLink] = useState(linkKey);
   if (linkKey !== seenLink) {
     setSeenLink(linkKey);
-    if (reachable(askedTab)) setTabState(askedTab);
+    if (!messagesLink && reachable(askedTab)) setTabState(askedTab);
   }
+  useEffect(() => {
+    if (!messagesLink) return;
+    const params = new URLSearchParams();
+    if (linkedContact) params.set("contact", linkedContact);
+    if (linkedWebinar) params.set("webinar", linkedWebinar);
+    const q = params.toString();
+    router.replace(q ? `/host/messages?${q}` : "/host/messages");
+  }, [messagesLink, linkedContact, linkedWebinar, router]);
   /* Switching tabs by hand drops whatever a link had narrowed to. */
   const setTab = useCallback(
     (next: ViewTab) => {
@@ -342,8 +346,6 @@ export function HostWebinarBrowser({
               counts={{
                 ...counts,
                 [ATTENDING]: attendingCount,
-                // Waiting replies, not every conversation: the number worth a badge.
-                [MESSAGES]: replies?.needsReply ?? 0,
               }}
             />
           </div>
@@ -410,7 +412,11 @@ export function HostWebinarBrowser({
         </div>
       )}
 
-      {tab === ATTENDING ? (
+      {messagesLink ? (
+        <div className="grid place-items-center py-16">
+          <Spinner />
+        </div>
+      ) : tab === ATTENDING ? (
         /* Its own loading, empty and error states, unchanged from the page this
            used to be: the rows carry a join key and a calendar link, which is
            what an attendee came for and is nothing like a host row. */
@@ -421,8 +427,6 @@ export function HostWebinarBrowser({
           initialWebinar={linkedWebinar}
           summary
         />
-      ) : tab === MESSAGES ? (
-        <HostMessagesTab key={linkedContact} initialContact={linkedContact} />
       ) : items === null ? (
         <div className="grid gap-3">
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />

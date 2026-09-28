@@ -7,6 +7,7 @@ import { WhatsAppIcon } from "@/components/icons";
 import { useSession } from "@/components/providers";
 import type { CRMSummaryResponse } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
+import { messagesHref } from "../hrefs";
 import { pct } from "./wa-kit";
 
 /* "WhatsApp this week", over the Hosting home's Upcoming list (Engage v2): what the
@@ -50,7 +51,7 @@ export function WhatsAppWeekCard() {
         <h2 className="text-[13px] font-semibold text-ink">WhatsApp this week</h2>
         {data.needsReply > 0 && (
           <Link
-            href="/host?tab=messages"
+            href={messagesHref()}
             className="ml-auto rounded-full bg-ok px-2.5 py-1 text-[11.5px] font-semibold text-white hover:brightness-110"
           >
             {data.needsReply} {data.needsReply === 1 ? "reply" : "replies"} to answer →

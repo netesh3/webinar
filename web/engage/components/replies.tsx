@@ -6,6 +6,7 @@ import { engageApi } from "../api";
 import { useSession } from "@/components/providers";
 import type { CRMRepliesResponse } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
+import { messagesHref } from "../hrefs";
 import { PersonAvatar } from "./wa-kit";
 
 /* WhatsApp replies waiting on the host, for the top bar's bell.
@@ -58,7 +59,7 @@ export function ReplyAlerts({
   return (
     <div className="border-b border-line">
       <Link
-        href="/host?tab=messages"
+        href={messagesHref()}
         onClick={onNavigate}
         className="flex items-center justify-between px-3 py-2 text-[12px] font-semibold text-ok hover:bg-surface-2"
       >
@@ -71,7 +72,7 @@ export function ReplyAlerts({
         {data.recent.slice(0, 4).map((r) => (
           <li key={r.contactId}>
             <Link
-              href={`/host?tab=messages&contact=${encodeURIComponent(r.contactId)}`}
+              href={messagesHref(r.contactId)}
               onClick={onNavigate}
               className="flex gap-2.5 bg-ok/5 px-3 py-2 hover:bg-surface-2"
             >

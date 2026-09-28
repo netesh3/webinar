@@ -6,6 +6,7 @@ import { engageApi } from "../api";
 import { useAppConfig } from "@/components/providers";
 import type { CRMWebinarMessagesResponse } from "@/lib/api-types";
 import { useNow } from "@/lib/clock";
+import { messagesHref } from "../hrefs";
 import { Timeline, timelineRows } from "./messages-parts";
 
 /* The webinar's Overview, WhatsApp part: the automated messages before the webinar
@@ -89,7 +90,7 @@ export function WebinarWhatsAppOverview({
           </span>
           {waiting > 0 && (
             <Link
-              href="/host?tab=messages"
+              href={messagesHref()}
               className="font-medium text-brand hover:underline"
             >
               {waiting} {waiting === 1 ? "reply" : "replies"} waiting →
