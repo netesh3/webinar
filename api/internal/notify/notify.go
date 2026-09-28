@@ -167,9 +167,12 @@ func (s SMTP) compose(m Message, now time.Time) string {
 		writeBody(&b, m, boundary+"alt")
 		b.WriteString("\r\n")
 		fmt.Fprintf(&b, "--%s\r\n", boundary)
-		fmt.Fprintf(&b, "Content-Type: text/calendar; charset=utf-8; method=PUBLISH; name=%q\r\n", header(name))
+		// The header's method must match the file's METHOD, or Outlook ignores a cancellation.
+		fmt.Fprintf(&b, "Content-Type: text/calendar; charset=utf-8; method=%s; name=%q\r\n",
+			header(ICSMethod(ics)), header(name))
 		fmt.Fprintf(&b, "Content-Disposition: attachment; filename=%q\r\n\r\n", header(name))
-		b.WriteString(strings.ReplaceAll(ics, "\n", "\r\n"))
+		// Normalised first: ICSFile already writes CRLF, and a blind \n → \r\n made \r\r\n.
+		b.WriteString(strings.ReplaceAll(strings.ReplaceAll(ics, "\r\n", "\n"), "\n", "\r\n"))
 		if !strings.HasSuffix(ics, "\r\n") {
 			b.WriteString("\r\n")
 		}
