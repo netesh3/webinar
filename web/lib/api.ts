@@ -271,6 +271,19 @@ export const api = {
 
   updateProfile: (body: ProfilePatch) => patch<Account>("/api/auth/me", body),
 
+  /** Replaces the account's profile photo. The body is the raw image — see
+   *  lib/profile-photo.ts, which crops to a square before this is called.
+   *  Returns the account; avatarUrl then points at the stored bytes. */
+  uploadAvatar: (blob: Blob, mime: string) =>
+    request<Account>("/api/auth/avatar", {
+      method: "POST",
+      body: blob,
+      headers: { "Content-Type": mime },
+    }),
+
+  /** Removes the upload. The account falls back to its Google photo, if any. */
+  deleteAvatar: () => del<Account>("/api/auth/avatar"),
+
   myRegistrations: () =>
     request<RegisteredWebinar[]>("/api/me/registrations", fresh),
 
