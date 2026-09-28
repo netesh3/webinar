@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/authctx"
@@ -635,6 +636,7 @@ func (s *Module) enrollDripsOnWebinarEnd(ctx context.Context, wb types.Webinar) 
 		s.log.Error("drip trigger: could not resolve host", "webinar", wb.ID, "error", err)
 		return
 	}
+	since := time.Now().Add(-30 * time.Second)
 	for _, trigger := range []string{types.DripAttended, types.DripNoShow, types.DripEnded} {
 		n, err := s.store.EnrollOnWebinarEnd(ctx, hostID, wb.ID, trigger)
 		if err != nil {
@@ -647,6 +649,7 @@ func (s *Module) enrollDripsOnWebinarEnd(ctx context.Context, wb types.Webinar) 
 				"trigger", trigger, "enrolled", n)
 		}
 	}
+	s.applyFollowupTiming(ctx, wb.ID, since)
 }
 
 /* OnScored enrolls the `attended` sequences narrowed to engagement tiers, now that the
@@ -666,6 +669,7 @@ func (s *Module) OnScored(ctx context.Context, slug string) {
 		s.log.Error("drip trigger: could not resolve host", "webinar", slug, "error", err)
 		return
 	}
+	since := time.Now().Add(-30 * time.Second)
 	n, err := s.store.EnrollOnScored(ctx, hostID, slug)
 	if err != nil {
 		s.log.Error("drip trigger: scored", "webinar", slug, "error", err)
@@ -674,6 +678,7 @@ func (s *Module) OnScored(ctx context.Context, slug string) {
 	if n > 0 {
 		s.log.Info("drip enrolled on engagement", "webinar", slug, "enrolled", n)
 	}
+	s.applyFollowupTiming(ctx, slug, since)
 }
 
 // ----------------------------------------------------------------- sweeping
@@ -709,8 +714,28 @@ func (s *Module) AdvanceDrips(ctx context.Context) {
 	// One webinar is usually the source for many enrollments — everybody a finished
 	// webinar just enrolled shares it — so it is read once per sweep, not per person.
 	webinars := map[string]types.Webinar{}
+	slotCache := map[string][]types.MessageSlot{}
 	queued, exited := 0, 0
 	for _, step := range due {
+		if s.cfg.EngageSlots && step.Recipe != "" && step.WebinarSlug != "" {
+			slots, ok := slotCache[step.WebinarSlug]
+			if !ok {
+				var err error
+				slots, err = s.ResolveSlots(ctx, step.WebinarSlug)
+				if err != nil {
+					s.log.Error("drip sweep: message slots", "webinar", step.WebinarSlug, "error", err)
+					continue
+				}
+				slotCache[step.WebinarSlug] = slots
+			}
+			if followupBlocked(slots, step.Recipe) {
+				if err := s.store.ExitDripEnrollment(ctx, step.DripID, step.EnrollmentID, "message slot off"); err != nil {
+					s.log.Error("drip sweep: slot off", "enrollment", step.EnrollmentID, "error", err)
+				}
+				exited++
+				continue
+			}
+		}
 		// A step that sends nothing to the person: no consent check, no outbox.
 		if step.Kind == types.DripStepTag || step.Kind == types.DripStepNotify {
 			s.runSilentStep(ctx, step)
