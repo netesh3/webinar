@@ -215,13 +215,17 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 }
 
 // PeopleContactIDs is every messageable contact a People filter matches, capped.
+// The engagement join is what "Your best people", "Came back" and "Slipping away"
+// filter on (ce.*). Without it those "Message these N" lookups fail the query.
 func (s *Store) PeopleContactIDs(ctx context.Context, hostID string, f PeopleFilter, limit int) ([]string, error) {
 	pred, err := peopleFilterPredicate(f.Filter)
 	if err != nil {
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, peopleWith()+`
-		SELECT c.id::text FROM crm_contacts c LEFT JOIN per ON per.contact_id = c.id
+		SELECT c.id::text FROM crm_contacts c
+		  LEFT JOIN per ON per.contact_id = c.id
+		  `+engagementJoin+`
 		 WHERE c.host_id = $1::uuid`+peopleScope+pred+reachable+`
 		   AND ($3 = '' OR c.name ILIKE '%' || $3 || '%'
 		        OR c.email ILIKE '%' || $3 || '%' OR c.phone ILIKE '%' || $3 || '%')

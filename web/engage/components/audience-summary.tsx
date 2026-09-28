@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { engageApi } from "../api";
+import { useToast } from "@/components/providers";
 import { Button, Card } from "@/components/ui";
+import { ApiError } from "@/lib/api";
 import {
   PeopleHighlyEngaged,
   PeopleSlipping,
@@ -27,6 +29,7 @@ export function AudienceSummary({
   const [last, setLast] = useState(6);
   const [data, setData] = useState<CRMAudienceSummary | null>(null);
   const [busy, setBusy] = useState("");
+  const { notify } = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +47,11 @@ export function AudienceSummary({
     try {
       const { contactIds } = await engageApi.crmPeopleIds({ filter });
       onMessage(contactIds, label);
+    } catch (e: unknown) {
+      notify(
+        e instanceof ApiError ? e.message : "Could not find these people.",
+        "error",
+      );
     } finally {
       setBusy("");
     }
