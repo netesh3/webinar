@@ -100,8 +100,10 @@ export function RoomSection({
             onChange={(e) => set("panelistEmails", e.target.value)}
           />
           <p className="mt-1 text-[11.5px] leading-relaxed text-ink-3">
-            They need an account, because a publishing token is minted from a
-            signed-in session — addresses without one are skipped.
+            Each panelist is emailed their stage link once the webinar is
+            scheduled, and told if you move or delete it. They need an account,
+            because a publishing token is minted from a signed-in session —
+            addresses without one are skipped.
           </p>
           {fields.panelistEmails && (
             <p className="mt-1 text-[12px] font-medium text-live">

@@ -457,7 +457,7 @@ func (s *Store) Registrants(ctx context.Context, slug string, limit int) ([]type
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, r.first_name, r.last_name, r.email, r.company,
 		       r.job_title, r.phone, r.state, r.created_at, r.user_id IS NOT NULL,
-		       r.is_guest
+		       r.is_guest, r.answers
 		  FROM registrations r
 		  JOIN webinars w ON w.id = r.webinar_id
 		 WHERE w.slug = $1
@@ -475,10 +475,14 @@ func (s *Store) Registrants(ctx context.Context, slug string, limit int) ([]type
 			first     string
 			last      string
 			createdAt time.Time
+			answers   []byte
 		)
 		if err := rows.Scan(&r.ID, &first, &last, &r.Email, &r.Company,
 			&r.JobTitle, &r.Phone, &r.State, &createdAt, &r.HasAccount,
-			&r.IsGuest); err != nil {
+			&r.IsGuest, &answers); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(answers, &r.Answers); err != nil {
 			return nil, err
 		}
 		r.Name = strings.TrimSpace(first + " " + last)

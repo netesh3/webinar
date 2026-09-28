@@ -15,9 +15,7 @@ import {
   type CRMTemplate,
 } from "@/lib/api-types";
 import { Automations, type BuildView } from "./automations";
-import { Bots } from "./crm-bots";
 import { Broadcasts } from "./crm-broadcasts";
-import { Drips } from "./crm-drips";
 import { RemindersSettings } from "./crm-screen";
 import { SetupChecklist } from "./crm-setup";
 import { StarterTemplates } from "./starter-templates";
@@ -26,13 +24,13 @@ import { BlockedList, RefreshTemplates, templateKey } from "./crm-templates";
 import { CategoryPill, friendlyTemplateName } from "./wa-kit";
 
 /* The WhatsApp page: /host/crm. One simple page (WhatsAppSimple) — connection, the three
- * messages everyone gets, automations — linking to the full views: Settings (the setup
- * checklist), All your wording (templates), All automations and the builders. Old ?view=
- * links still land on the matching view. */
+ * messages everyone gets, automations — linking to Settings (the setup checklist), All
+ * your wording (templates), All automations, and a one-off broadcast. A ?view= this page
+ * does not know, including the retired sequences and bots builders, is the simple page. */
 
 /* "home" is the one simple page; the others are the full views it links to — the setup
- * checklist, every template, the automations cards, and the builders — reached by link and
- * by the ?view= addresses that already exist, not by tabs. */
+ * checklist, every template, the automations cards, and a broadcast — reached by link and
+ * by the ?view= addresses that still exist, not by tabs. */
 type Tab = "home" | "automations" | "templates" | "number";
 const LABELS: Record<Tab, string> = {
   home: "WhatsApp",
@@ -41,18 +39,24 @@ const LABELS: Record<Tab, string> = {
   number: "Settings",
 };
 
+/** Views this page still opens. Anything else, including sequences and bots, is home. */
+const KNOWN_VIEWS = new Set([
+  "setup",
+  "number",
+  "templates",
+  "automations",
+  "broadcasts",
+]);
+
 function fromView(v: string): { tab: Tab; build: BuildView | null } {
   if (v === "setup" || v === "number") return { tab: "number", build: null };
   if (v === "templates") return { tab: "templates", build: null };
   if (v === "automations") return { tab: "automations", build: null };
-  if (v === "sequences" || v === "bots" || v === "broadcasts")
-    return { tab: "automations", build: v };
+  if (v === "broadcasts") return { tab: "automations", build: "broadcasts" };
   return { tab: "home", build: null };
 }
 
 const BUILD_TITLES: Record<BuildView, string> = {
-  sequences: "Sequences",
-  bots: "Bots",
   broadcasts: "Broadcasts",
 };
 
@@ -61,16 +65,13 @@ export function WhatsAppScreen() {
   const { notify } = useToast();
   const router = useRouter();
   const search = useSearchParams();
-  const initial = fromView((search.get("view") ?? "").trim());
-  const [tab, setTabState] = useState<Tab>(initial.tab);
-  const [build, setBuild] = useState<BuildView | null>(initial.build);
+  const viewParam = (search.get("view") ?? "").trim();
+  const { tab, build } = fromView(viewParam);
   const canHost = account?.canHost ?? false;
   const tagsOn = (account?.features ?? []).includes(FeatureCRMTags);
 
   const go = useCallback(
     (t: Tab, b: BuildView | null = null) => {
-      setTabState(t);
-      setBuild(b);
       const view =
         b ??
         (t === "number"
@@ -84,6 +85,13 @@ export function WhatsAppScreen() {
     },
     [router],
   );
+
+  /* A retired or unknown ?view= already renders as the WhatsApp page (fromView).
+   * Drop the query so a refresh and the address bar stay on /host/crm. */
+  useEffect(() => {
+    if (!viewParam || KNOWN_VIEWS.has(viewParam)) return;
+    router.replace("/host/crm");
+  }, [viewParam, router]);
 
   const [setup, setSetup] = useState<CRMSetup | null>(null);
   const [setupLoading, setSetupLoading] = useState(true);
@@ -219,7 +227,7 @@ export function WhatsAppScreen() {
               ? "Your number, and what is left to set up."
               : tab === "templates"
                 ? "Every message wording at Meta, and which one each automatic message uses."
-                : "Every automation, and the builders for your own."}
+                : "Every automation, and a one-off broadcast."}
           </p>
         </div>
       )}
@@ -255,26 +263,14 @@ export function WhatsAppScreen() {
                 {BUILD_TITLES[build]}
               </span>
             </div>
-            {build === "sequences" ? (
-              <Drips
-                whatsappConnected={connected}
-                templates={templates}
-                templatesError={templatesError}
-                syncing={syncing}
-                onRefreshTemplates={refreshTemplates}
-              />
-            ) : build === "bots" ? (
-              <Bots whatsappConnected={connected} />
-            ) : (
-              <Broadcasts
-                whatsappConnected={connected}
-                templates={templates}
-                templatesError={templatesError}
-                syncing={syncing}
-                tags={tagsOn ? (tags ?? []) : null}
-                onRefreshTemplates={refreshTemplates}
-              />
-            )}
+            <Broadcasts
+              whatsappConnected={connected}
+              templates={templates}
+              templatesError={templatesError}
+              syncing={syncing}
+              tags={tagsOn ? (tags ?? []) : null}
+              onRefreshTemplates={refreshTemplates}
+            />
           </div>
         ) : (
           <Automations

@@ -34,6 +34,7 @@ export { EngagementFollowUpPage } from "./components/follow-up-page";
 export {
   ScheduleMessagesTab,
   type MessagesSaveHandle,
+  type MessagesSummary,
   type PreviewWebinar,
 } from "./components/messages/schedule-messages-tab";
 export {

@@ -35,11 +35,14 @@ export function formatScheduleWhen(
   return zoneLabel ? `${when} ${zoneLabel}` : when;
 }
 
-function formatDuration(minutes: number): string | null {
+/** "1 hour", "1.5 hours", "1 h 15 min", "45 minutes". */
+export function formatDuration(minutes: number): string | null {
   if (!minutes) return null;
-  return minutes >= 60
-    ? `${minutes / 60} hour${minutes > 60 ? "s" : ""}`
-    : `${minutes} minutes`;
+  if (minutes < 60) return `${minutes} minutes`;
+  if (minutes % 30 === 0) {
+    return `${minutes / 60} hour${minutes > 60 ? "s" : ""}`;
+  }
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
 export function shortTimeZone(timeZone: string, at: Date): string {

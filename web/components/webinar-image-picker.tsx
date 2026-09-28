@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Spinner } from "./controls";
-import { TrashIcon } from "./icons";
-import { Button } from "./ui";
+import { ImageIcon, TrashIcon } from "./icons";
+import { Badge, Button } from "./ui";
 import {
   prepareWebinarImage,
   WebinarImageError,
@@ -18,19 +18,16 @@ import {
  * already-under-1MB blob; it does not know or care how large the original file
  * was.
  *
- * One 16:9 box. Empty, it is the cover made from the title; once a file is
- * chosen, that same box shows the preview. The box stays the drop target and
- * the click target either way.
+ * One 16:9 box. Empty, it is the drop zone; once a file is chosen, that same
+ * box shows the preview. A second empty frame under the drop zone read as two
+ * covers. The box stays the drop target and the click target either way.
  */
 
 export function WebinarImagePicker({
-  topic = "",
   previewUrl,
   onChange,
   onRemove,
 }: {
-  /** Title painted on the generated cover until a file is chosen. */
-  topic?: string;
   /** What to show right now: the persisted image, a local preview of a pending
    *  selection, or null when there is nothing to show yet. */
   previewUrl: string | null;
@@ -67,13 +64,15 @@ export function WebinarImagePicker({
     inputRef.current?.click();
   }
 
-  const coverTitle = topic.trim() || "Your webinar";
-
   return (
     <div>
-      <span className="label">
-        Cover image <span className="font-normal text-ink-3">(optional)</span>
-      </span>
+      <div className="flex items-center gap-2">
+        <span className="label !mb-0">Webinar Image</span>
+        <Badge tone="brand">Optional</Badge>
+      </div>
+      <p className="mt-1 mb-2.5 text-[12px] text-ink-3">
+        Upload a cover image for your webinar.
+      </p>
 
       <button
         type="button"
@@ -91,11 +90,15 @@ export function WebinarImagePicker({
         aria-label={
           previewUrl ? "Replace webinar cover image" : "Upload a webinar cover image"
         }
-        className={`relative mt-1 flex aspect-video w-full items-center justify-center overflow-hidden rounded-[10px] text-center outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-          previewUrl
-            ? "border border-line bg-surface-2"
-            : "bg-gradient-to-br from-[#2a3b8f] to-[#6a5cff] text-white"
-        } ${dragOver ? "ring-2 ring-brand" : ""}`}
+        className={`relative flex aspect-video w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border-2 px-4 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+          previewUrl ? "border-solid p-0" : "border-dashed"
+        } ${
+          dragOver
+            ? "border-brand bg-brand/5"
+            : previewUrl
+              ? "border-line bg-surface-2"
+              : "border-line-2 hover:border-ink-3 hover:bg-surface-2"
+        }`}
       >
         {previewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- object URL or API URL; next/image cannot optimize either
@@ -104,18 +107,23 @@ export function WebinarImagePicker({
             alt="Webinar cover preview"
             className="absolute inset-0 size-full object-cover"
           />
-        ) : (
-          <span className="px-2.5">
-            <span className="block text-[13px] font-semibold">{coverTitle}</span>
-            <span className="mt-0.5 block text-[11px] opacity-85">
-              Shown on your page and in WhatsApp
-            </span>
-          </span>
+        ) : busy ? null : (
+          <ImageIcon className="size-6 text-ink-3" />
         )}
         {busy && (
           <span className="absolute inset-0 grid place-items-center bg-surface/70">
             <Spinner className="size-5 text-ink-3" />
           </span>
+        )}
+        {!previewUrl && (
+          <>
+            <span className="text-[13px] font-medium text-ink-2">
+              {busy ? "Processing…" : "Drag & drop an image here"}
+            </span>
+            {!busy && (
+              <span className="text-[12px] text-ink-3">or click to upload</span>
+            )}
+          </>
         )}
       </button>
       <input
@@ -131,11 +139,11 @@ export function WebinarImagePicker({
         }}
       />
 
-      {!previewUrl && (
-        <p className="mt-2 text-[11.5px] text-ink-3">
-          Click the cover or drag an image here · 16:9
-        </p>
-      )}
+      <p className="mt-2 text-[11.5px] leading-relaxed text-ink-3">
+        Recommended: 1280 × 720 (16:9) · Supported formats: JPG, PNG, WEBP
+        <br />
+        Images are automatically compressed to 1 MB or less.
+      </p>
       {error && (
         <p className="mt-1.5 text-[11.5px] font-medium text-live">{error}</p>
       )}

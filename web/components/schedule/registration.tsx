@@ -5,6 +5,12 @@ import { PlusIcon, TrashIcon } from "../icons";
 import { useAppConfig } from "../providers";
 import { Button } from "../ui";
 import type { CustomQuestion } from "@/lib/api-types";
+import {
+  MIN_OPTIONS,
+  QUESTION_TYPES,
+  optionsProblem,
+  withType,
+} from "@/lib/registration-questions";
 import { Boxed, FormGroup, FormSection, Text } from "./chrome";
 import { limitOptions, type FormState, type SetForm } from "./form-state";
 
@@ -121,7 +127,11 @@ function QuestionEditor({
             <div className="flex items-start gap-2">
               <input
                 className="field h-9 flex-1 text-[13px]"
-                placeholder="Question label"
+                placeholder={
+                  q.type === "checkbox"
+                    ? "Checkbox text, e.g. Send me the slides"
+                    : "Question label"
+                }
                 value={q.label}
                 onChange={(e) => update(i, { label: e.target.value })}
                 aria-label={`Question ${i + 1} label`}
@@ -129,12 +139,20 @@ function QuestionEditor({
               <select
                 className="field h-9 w-[112px] text-[12.5px]"
                 value={q.type}
-                onChange={(e) => update(i, { type: e.target.value })}
+                onChange={(e) =>
+                  onChange(
+                    questions.map((x, j) =>
+                      j === i ? withType(x, e.target.value) : x,
+                    ),
+                  )
+                }
                 aria-label={`Question ${i + 1} type`}
               >
-                <option value="short">Short text</option>
-                <option value="select">Choose one</option>
-                <option value="checkbox">Checkbox</option>
+                {QUESTION_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
               </select>
               <button
                 type="button"
@@ -147,19 +165,10 @@ function QuestionEditor({
             </div>
 
             {q.type === "select" && (
-              <input
-                className="field mt-2 h-9 text-[12.5px]"
-                placeholder="Options, comma separated"
-                value={(q.options ?? []).join(", ")}
-                onChange={(e) =>
-                  update(i, {
-                    options: e.target.value
-                      .split(",")
-                      .map((o) => o.trim())
-                      .filter(Boolean),
-                  })
-                }
-                aria-label={`Question ${i + 1} options`}
+              <OptionsEditor
+                index={i}
+                question={q}
+                onChange={(options) => update(i, { options })}
               />
             )}
 
@@ -170,7 +179,7 @@ function QuestionEditor({
                 checked={q.required}
                 onChange={(e) => update(i, { required: e.target.checked })}
               />
-              Required
+              {q.type === "checkbox" ? "Must be ticked to register" : "Required"}
             </label>
           </div>
         ))}
@@ -193,6 +202,65 @@ function QuestionEditor({
         <PlusIcon className="size-3.5" />
         Add a question
       </Button>
+    </div>
+  );
+}
+
+/* One row per option rather than a comma-separated box: an option can contain a comma
+ * ("Yes, and my team"), and the old box re-joined what it split on every keystroke, so a
+ * trailing comma or space was eaten before the next option could be typed. */
+function OptionsEditor({
+  index,
+  question,
+  onChange,
+}: {
+  index: number;
+  question: CustomQuestion;
+  onChange: (options: string[]) => void;
+}) {
+  const options = question.options ?? [];
+  const problem = question.label.trim() ? optionsProblem(question) : null;
+  return (
+    <div className="mt-2 grid gap-1.5 pl-3">
+      {options.map((o, j) => (
+        <div key={j} className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className="size-3 shrink-0 rounded-full border border-line-2"
+          />
+          <input
+            className="field h-8 flex-1 text-[12.5px]"
+            placeholder={`Option ${j + 1}`}
+            value={o}
+            onChange={(e) =>
+              onChange(options.map((x, k) => (k === j ? e.target.value : x)))
+            }
+            aria-label={`Question ${index + 1} option ${j + 1}`}
+          />
+          <button
+            type="button"
+            onClick={() => onChange(options.filter((_, k) => k !== j))}
+            disabled={options.length <= MIN_OPTIONS}
+            aria-label={`Remove option ${j + 1} from question ${index + 1}`}
+            className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-3 hover:bg-live-soft hover:text-live disabled:pointer-events-none disabled:opacity-30"
+          >
+            <TrashIcon className="size-3.5" />
+          </button>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => onChange([...options, ""])}
+          className="inline-flex items-center gap-1 text-[12px] font-medium text-brand hover:underline"
+        >
+          <PlusIcon className="size-3" />
+          Add option
+        </button>
+        {problem && (
+          <span className="text-[12px] font-medium text-live">{problem}</span>
+        )}
+      </div>
     </div>
   );
 }

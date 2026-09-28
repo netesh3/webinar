@@ -161,10 +161,18 @@ export function WhatsAppAuto({
                     <MaterialIcon name={m.icon} className="!text-[17px]" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <b className="block text-[13.5px]">{m.title}</b>
+                    <div className="flex items-start justify-between gap-2">
+                      <b className="block min-w-0 text-[13.5px]">{m.title}</b>
+                      <Switch
+                        checked={slot.enabled}
+                        onChange={(v) => onToggle(slot, v)}
+                        label={m.title}
+                        disabled={!connected && !slot.enabled}
+                      />
+                    </div>
                     {m.fixed ? (
-                      <span className="mt-0.5 inline-flex h-[22px] items-center gap-0.5 rounded-md border border-line bg-surface-2 px-1.5 text-[11.5px] font-medium text-ink-2">
-                        <MaterialIcon name="lock" className="!text-[13px] text-ink-3" />
+                      <span className="mt-0.5 inline-flex h-[22px] w-max shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md border border-line bg-surface-2 px-1.5 text-[11.5px] font-medium text-ink-2">
+                        <MaterialIcon name="lock" className="!text-[13px] shrink-0 text-ink-3" />
                         Right away
                       </span>
                     ) : (
@@ -188,12 +196,6 @@ export function WhatsAppAuto({
                       />
                     )}
                   </div>
-                  <Switch
-                    checked={slot.enabled}
-                    onChange={(v) => onToggle(slot, v)}
-                    label={m.title}
-                    disabled={!connected && !slot.enabled}
-                  />
                 </div>
                 <Snip text={slot.enabled ? text : ""} empty="Not sending this on WhatsApp." />
                 <div className="mt-2.5 flex items-center justify-end">
@@ -281,7 +283,7 @@ export function WhatsAppAuto({
                   {gets}
                 </p>
                 <Snip text={on ? text : ""} empty="Not sending anything to this group" />
-                <div className="mt-2.5 flex items-end justify-between gap-1.5">
+                <div className="mt-2.5 flex flex-wrap items-end justify-between gap-1.5">
                   <TimingChip
                     label={timingLabel(slot.kind, slot.timing)}
                     open={open === slot.kind}
@@ -290,7 +292,7 @@ export function WhatsAppAuto({
                   {on ? (
                     <button
                       type="button"
-                      className="text-[12px] font-medium text-brand hover:underline"
+                      className="shrink-0 text-[12px] font-medium text-brand hover:underline"
                       disabled={!connected}
                       onClick={() => onEdit(slot, g.title)}
                     >
@@ -300,6 +302,7 @@ export function WhatsAppAuto({
                     <Button
                       size="sm"
                       variant="secondary"
+                      className="shrink-0"
                       disabled={!connected || !templates}
                       onClick={() => onEdit(slot, g.title)}
                     >
@@ -371,13 +374,13 @@ function TimingChip({
       type="button"
       onClick={onClick}
       aria-expanded={open}
-      className={`mt-0.5 inline-flex h-[22px] w-fit items-center gap-0.5 rounded-md border bg-brand-soft px-1.5 text-[11.5px] font-medium text-brand ${
+      className={`mt-0.5 inline-flex h-[22px] w-max min-w-max shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md border bg-brand-soft px-1.5 text-[11.5px] font-medium text-brand ${
         open ? "border-brand ring-[3px] ring-brand/15" : "border-brand-line"
       }`}
     >
-      <MaterialIcon name="schedule" className="!text-[14px]" />
+      <MaterialIcon name="schedule" className="!text-[14px] shrink-0" />
       {label}
-      <MaterialIcon name="expand_more" className="!text-[15px]" />
+      <MaterialIcon name="expand_more" className="!text-[15px] shrink-0" />
     </button>
   );
 }
@@ -411,7 +414,7 @@ function ReplayRow({
   const text = snippet(slot, templates ?? [], fields);
   return (
     <div
-      className={`relative grid items-center gap-3 rounded-[10px] border border-line p-3 sm:grid-cols-[auto_minmax(0,16rem)_minmax(0,1fr)_auto_auto_auto] ${
+      className={`relative grid items-center gap-3 rounded-[10px] border border-line p-3 sm:grid-cols-[auto_minmax(max-content,16rem)_minmax(0,1fr)_auto_auto_auto] ${
         open ? "z-20" : ""
       }`}
     >

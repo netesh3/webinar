@@ -13,9 +13,7 @@ import {
   Spinner,
   Tabs,
 } from "@/components/controls";
-import { Bots } from "./crm-bots";
 import { Broadcasts } from "./crm-broadcasts";
-import { Drips } from "./crm-drips";
 import { NotesPane } from "./crm-notes";
 import { SetupChecklist, setupTodo } from "./crm-setup";
 import { ContactTags, TagChips, TagManager } from "./crm-tags";
@@ -87,31 +85,20 @@ import { formatRelative } from "@/lib/format";
  *  this screen sees a reply arrive without wondering whether to reload. */
 const POLL_MS = 20_000;
 
-/** The five views of the CRM: what is left to set up, the people, one message sent to
- *  many of them at once, the sequences that keep sending on their own, and the bots that
- *  answer without anybody here at all. Tabs rather than routes because they are the same
- *  list seen five ways — a host who has just read a reply is one click from the campaign
- *  that prompted it, or from the flow that sent it.
+/** The views still on this older screen: what is left to set up, the people, and one
+ *  message sent to many of them at once. Sequences and bots are not offered.
  *
  *  Setting up comes first because it is the order the host meets them in, and it carries
- *  a count of what is outstanding so the work is visible from the other four. It is not
+ *  a count of what is outstanding so the work is visible from the other views. It is not
  *  the DEFAULT view, though: a host arrives here to read their contacts, including the
- *  many who arrive before WhatsApp is finished. */
-const CRM_VIEWS = [
-  "setup",
-  "contacts",
-  "broadcasts",
-  "sequences",
-  "bots",
-] as const;
+ *  many who arrive before WhatsApp is finished. An unknown ?view= is Contacts. */
+const CRM_VIEWS = ["setup", "contacts", "broadcasts"] as const;
 type CRMView = (typeof CRM_VIEWS)[number];
 
 const VIEW_LABELS: Record<CRMView, string> = {
   setup: "Set up",
   contacts: "Contacts",
   broadcasts: "Broadcasts",
-  sequences: "Sequences",
-  bots: "Bots",
 };
 
 /** The sentence under each heading. Contacts is deliberately absent: its blurb counts
@@ -121,9 +108,6 @@ const VIEW_BLURBS: Partial<Record<CRMView, string>> = {
     "Five things, once. Each one is checked against your WhatsApp account rather than ticked off here, so this is what is actually true.",
   broadcasts:
     "One message to many people, from your own WhatsApp number and billed to your Meta account.",
-  sequences:
-    "Several messages over days, sent automatically to everybody who registers from now on.",
-  bots: "A reply to somebody who writes in, with the conversation handed to you the moment the flow runs out of answers.",
 };
 
 /* The chips above the contacts list, in two labelled groups.
@@ -577,19 +561,6 @@ export function CRMScreen() {
           tags={tagsOn ? (tags ?? []) : null}
           onRefreshTemplates={refreshTemplates}
         />
-      ) : view === "sequences" ? (
-        <Drips
-          whatsappConnected={whatsappConnected}
-          templates={templates}
-          templatesError={templatesError}
-          syncing={syncing}
-          onRefreshTemplates={refreshTemplates}
-        />
-      ) : view === "bots" ? (
-        /* No templates handed down: a bot only ever replies inside the 24 hours
-           the contact's own message opened, where WhatsApp allows the host's own
-           words. Nothing it sends is a template. */
-        <Bots whatsappConnected={whatsappConnected} />
       ) : (
         <>
           {error && <Alert tone="error">{error}</Alert>}

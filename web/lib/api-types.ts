@@ -1559,6 +1559,16 @@ export const NotifyWhatsAppReplay: NotificationKind = "wa_replay";
  * 	 * per address, enforced by a unique index (migration 0058).
  */
 export const NotifyWelcome: NotificationKind = "welcome";
+/**
+ *  The panelist's side of a webinar: added to the stage (with the stage link and a
+ * 	 * calendar file), the start moved, the session cancelled. Addressed by email and tied to
+ * 	 * no registration — a panelist signs in rather than holding a join key, so the link in
+ * 	 * these is the same for every panelist and is not a credential. One invite per panelist
+ * 	 * per webinar (migration 0070); updates and cancellations are one per change.
+ */
+export const NotifyPanelistInvited: NotificationKind = "panelist_invited";
+export const NotifyPanelistRescheduled: NotificationKind = "panelist_rescheduled";
+export const NotifyPanelistCancelled: NotificationKind = "panelist_cancelled";
 export const MaxReminders = 3;
 export const MinReminderOffset = 1;
 export const MaxReminderOffset = 30 * 24 * 60;
@@ -1648,7 +1658,9 @@ export interface WebinarOptions {
   multistream: boolean;
   postWebinarSurvey: boolean;
   /**
-   * EmailReminders defaults true for existing rows that never stored the key.
+   *  EmailReminders is kept so old rows still resolve. The messages editor no
+   * 	 * longer writes it; ResolveSlots reads it only when this webinar has no
+   * 	 * reminder settings row. Missing means on.
    */
   emailReminders: boolean;
   /**
@@ -4697,6 +4709,11 @@ export interface RegistrantRow {
    */
   contactId?: string;
   lastMessage?: CRMMessage;
+  /**
+   *  Answers to the webinar's registration questions, keyed by CustomQuestion.ID. A
+   * 	 * checkbox answer is "yes" when ticked; an unanswered question has no key.
+   */
+  answers?: { [key: string]: string};
 }
 export interface PanelistRequest {
   email: string;

@@ -19,11 +19,13 @@ import {
 import { ApiError, api } from "@/lib/api";
 import {
   ChannelEmail,
+  type CustomQuestion,
   type EngagementTierCounts,
   type Recording,
   type RegistrantRow,
   type Webinar,
 } from "@/lib/api-types";
+import { answerText } from "@/lib/registration-questions";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import {
   defaultTab,
@@ -433,6 +435,7 @@ function AttendeesTab({
   const approved = registrants.filter((r) => r.state === "approved");
   const declined = registrants.filter((r) => r.state === "declined");
   const ended = w.status === "ended";
+  const asked = w.customQuestions ?? [];
 
   /* After the webinar: chips by engagement level, the Engagement tab's Follow up groups,
    * so "Message these N" here and there reach the same people. Empty groups are left
@@ -544,6 +547,9 @@ function AttendeesTab({
                   {messaging.headerCell}
                   <th className="py-2 pr-3 font-medium">Name</th>
                   <th className="py-2 pr-3 font-medium">Company</th>
+                  {asked.length > 0 && (
+                    <th className="py-2 pr-3 font-medium">Answers</th>
+                  )}
                   {ended && <th className="py-2 pr-3 font-medium">Watched</th>}
                   {whatsappOn && <RosterWhatsAppHeaders />}
                   <th className="py-2 pr-3 font-medium">Registered</th>
@@ -580,6 +586,11 @@ function AttendeesTab({
                         </div>
                       )}
                     </td>
+                    {asked.length > 0 && (
+                      <td className="max-w-[260px] py-2.5 pr-3 text-[11.5px] text-ink-2">
+                        <RegistrantAnswers questions={asked} answers={r.answers} />
+                      </td>
+                    )}
                     {ended && (
                       <td className="py-2.5 pr-3 text-ink-2 tabular-nums">
                         {r.joined ? (
@@ -853,6 +864,29 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
         changed live from the host controls once the webinar is running.
       </p>
     </Card>
+  );
+}
+
+function RegistrantAnswers({
+  questions,
+  answers,
+}: {
+  questions: CustomQuestion[];
+  answers?: Record<string, string>;
+}) {
+  const given = questions
+    .map((q) => ({ q, text: answerText(q, answers?.[q.id]) }))
+    .filter((a) => a.text);
+  if (given.length === 0) return <span className="text-ink-3">—</span>;
+  return (
+    <dl className="grid gap-0.5">
+      {given.map(({ q, text }) => (
+        <div key={q.id} className="truncate" title={`${q.label}: ${text}`}>
+          <dt className="inline text-ink-3">{q.label}: </dt>
+          <dd className="inline">{text}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

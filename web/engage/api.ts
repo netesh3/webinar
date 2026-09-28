@@ -7,15 +7,11 @@ import type {
   Account,
   CRMAudienceResponse,
   CRMBotPauseRequest,
-  CRMBotRequest,
-  CRMBotResponse,
-  CRMBotsResponse,
   CRMBroadcast,
   CRMBroadcastRequest,
   CRMBroadcastsResponse,
   CRMContact,
   CRMContactsResponse,
-  CRMDripEnrollRequest,
   CRMDripRequest,
   CRMDripResponse,
   CRMDripsResponse,
@@ -307,90 +303,22 @@ export const engageApi = {
   cancelCrmBroadcast: (id: string) =>
     post<CRMBroadcast>(`/api/host/crm/broadcasts/${seg(id)}/cancel`),
 
-  /** The host's drip sequences with their steps and counts, plus the triggers and
-   *  merge fields the builder may offer — from the server, so the form cannot offer
-   *  an entry rule or a token the server would refuse. */
+  /** Automatic replies that are not a recipe: the list, so the WhatsApp page can
+   *  show them and turn one on or off. The sequences builder is not in the product. */
   crmDrips: () => request<CRMDripsResponse>("/api/host/crm/drips", fresh),
 
-  /** One sequence and the people on it. Worth polling while a sequence is running:
-   *  steps are queued by the server's 30-second sweep, so positions move on their
-   *  own with nobody clicking anything. */
-  crmDrip: (id: string) =>
-    request<CRMDripResponse>(`/api/host/crm/drips/${seg(id)}`, fresh),
-
-  /** Creates a sequence. `active: false` saves it without starting it — worth using
-   *  deliberately, because an active sequence with a `registered` trigger begins
-   *  enrolling people the moment the next person signs up. */
+  /** Creates an automatic reply. `active: false` saves it without starting it. */
   createCrmDrip: (body: CRMDripRequest) =>
     post<CRMDripResponse>("/api/host/crm/drips", body),
 
-  /** Replaces a sequence, steps and all. The people already on it keep their
-   *  position, which means editing step 3 of a running sequence changes what the
-   *  person sitting on step 2 is about to receive — and inserting a step moves
-   *  everybody's place. Pausing (`active: false`) holds them where they are. */
+  /** Replaces an automatic reply, including turning it on or off (`active`). */
   updateCrmDrip: (id: string, body: CRMDripRequest) =>
     request<CRMDripResponse>(`/api/host/crm/drips/${seg(id)}`, {
       method: "PUT",
       body: JSON.stringify(body),
     }),
 
-  /** Deletes a sequence and forgets who was on it. Pausing is the gentler thing;
-   *  messages already sent stay in each contact's conversation either way. */
-  deleteCrmDrip: (id: string) => del<void>(`/api/host/crm/drips/${seg(id)}`),
-
-  /** Puts one contact on a sequence by hand. `webinarId` is only needed when a step
-   *  mentions the webinar's topic or start time and the sequence itself names no
-   *  webinar — there is no registration to infer one from. Nothing is sent by this
-   *  call; the first step goes out on the next sweep. */
-  enrollCrmDrip: (id: string, body: CRMDripEnrollRequest) =>
-    post<CRMDripResponse>(`/api/host/crm/drips/${seg(id)}/enrollments`, body),
-
-  /** Takes somebody off a sequence. The step waiting for them is retired with it,
-   *  and the enrollment is kept as "exited" so a later trigger cannot quietly put
-   *  the same person back on. */
-  removeCrmDripEnrollment: (id: string, enrollmentId: string) =>
-    del<CRMDripResponse>(
-      `/api/host/crm/drips/${seg(id)}/enrollments/${seg(enrollmentId)}`,
-    ),
-
-  /** The host's bots with their flows and conversation counts, plus the triggers,
-   *  node kinds and sequences the builder may offer — from the server, for the same
-   *  reason as the drip builder's lists: a form that offers a step the server would
-   *  refuse is a form that wastes somebody's afternoon. */
-  crmBots: () => request<CRMBotsResponse>("/api/host/crm/bots", fresh),
-
-  /** One bot and the conversations it has had. Worth polling while a flow with a
-   *  `wait` step is running: sessions wake on the server's 30-second sweep, so
-   *  people move through a flow with nobody clicking anything here. */
-  crmBot: (id: string) =>
-    request<CRMBotResponse>(`/api/host/crm/bots/${seg(id)}`, fresh),
-
-  /** Creates a bot. `active: false` saves the flow without letting it answer
-   *  anybody, which is the only safe way to build one: an active bot replies to the
-   *  next stranger who messages the host's number, and those replies are billed to
-   *  the host's own WhatsApp account. */
-  createCrmBot: (body: CRMBotRequest) =>
-    post<CRMBotResponse>("/api/host/crm/bots", body),
-
-  /** Replaces a bot, flow and all.
-   *
-   *  Allowed while people are mid-conversation, and worth understanding: somebody
-   *  waiting at a question whose step has been deleted is stopped the next time they
-   *  write, and somebody at a step that still exists carries on into the new flow.
-   *  Refused (422) for a flow that could not run — a dead link, a loop, a question
-   *  with no buttons — and 409 for a second bot set to answer every message. */
-  updateCrmBot: (id: string, body: CRMBotRequest) =>
-    request<CRMBotResponse>(`/api/host/crm/bots/${seg(id)}`, {
-      method: "PUT",
-      body: JSON.stringify(body),
-    }),
-
-  /** Deletes a bot and forgets the conversations it had. Switching it off
-   *  (`active: false`) stops it and keeps them; either way the messages it already
-   *  sent stay in each contact's thread, because they were really sent. */
-  deleteCrmBot: (id: string) => del<void>(`/api/host/crm/bots/${seg(id)}`),
-
-  /** Takes a conversation over from the bots, or hands it back.
+  /** Takes a conversation over from a bot, or hands it back.
    *
    *  While paused no bot answers this contact — that is what a `handoff` step sets,
    *  and what the host sets from the inbox before typing to somebody themselves.

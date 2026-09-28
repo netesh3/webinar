@@ -18,8 +18,6 @@ export function WhatsAppReplies({
   onToggleRecipe,
   onKeywords,
   onAdd,
-  onSequences,
-  onBots,
   onBroadcasts,
 }: {
   rules: CRMDrip[];
@@ -30,8 +28,6 @@ export function WhatsAppReplies({
   onToggleRecipe: (recipe: CRMRecipe, on: boolean) => void;
   onKeywords: () => void;
   onAdd: () => void;
-  onSequences: () => void;
-  onBots: () => void;
   onBroadcasts: () => void;
 }) {
   return (
@@ -159,15 +155,6 @@ export function WhatsAppReplies({
         One message to a group, once?{" "}
         <button type="button" onClick={onBroadcasts} className="font-medium text-brand hover:underline">
           Send a message now
-        </button>
-        {" · "}
-        Something custom?{" "}
-        <button type="button" onClick={onSequences} className="font-medium text-brand hover:underline">
-          Sequences
-        </button>{" "}
-        and{" "}
-        <button type="button" onClick={onBots} className="font-medium text-brand hover:underline">
-          bots
         </button>
       </p>
     </section>
