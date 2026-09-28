@@ -55,6 +55,13 @@ export type MessagesSaveHandle = {
 
 export type { ReminderTimesEditor };
 
+/** What the schedule form's footer says about the messages. */
+export type MessagesSummary = {
+  enabled: number;
+  /** True once this webinar has its own wording, timing or switches. */
+  custom: boolean;
+};
+
 export const ScheduleMessagesTab = forwardRef<
   MessagesSaveHandle,
   {
@@ -64,9 +71,25 @@ export const ScheduleMessagesTab = forwardRef<
     reminderTimes: ReminderTimesEditor;
     /** Fired whenever the enabled-message count changes. */
     onEnabledCount?: (count: number) => void;
+    onSummary?: (summary: MessagesSummary) => void;
+    /** Fired when the messages could not be loaded at all. */
+    onLoadError?: () => void;
+    /** Overrides edited before the webinar existed, restored from a draft. */
+    initialPending?: MessageSlot[];
+    /** Fired when those waiting overrides change, so the form can keep them. */
+    onPendingChange?: (slots: MessageSlot[]) => void;
   }
 >(function ScheduleMessagesTab(
-  { slug, webinar, reminderTimes, onEnabledCount },
+  {
+    slug,
+    webinar,
+    reminderTimes,
+    onEnabledCount,
+    onSummary,
+    onLoadError,
+    initialPending,
+    onPendingChange,
+  },
   ref,
 ) {
   const { account } = useSession();
@@ -82,9 +105,22 @@ export const ScheduleMessagesTab = forwardRef<
   const [error, setError] = useState<string | null>(null);
   const onEnabledCountRef = useRef(onEnabledCount);
   onEnabledCountRef.current = onEnabledCount;
+  const onSummaryRef = useRef(onSummary);
+  onSummaryRef.current = onSummary;
+  const onLoadErrorRef = useRef(onLoadError);
+  onLoadErrorRef.current = onLoadError;
+  const onPendingChangeRef = useRef(onPendingChange);
+  onPendingChangeRef.current = onPendingChange;
   const [writing, setWriting] = useState(false);
   const [tick, setTick] = useState(0);
-  const pending = useRef(new Map<string, MessageSlot>());
+  const pending = useRef(
+    new Map<string, MessageSlot>(
+      (slug ? [] : (initialPending ?? [])).map((s) => [s.kind, s]),
+    ),
+  );
+  const pendingChanged = useCallback(() => {
+    onPendingChangeRef.current?.([...pending.current.values()]);
+  }, []);
 
   const [picked, setPicked] = useState(selected);
   if (picked !== selected) {
@@ -100,6 +136,7 @@ export const ScheduleMessagesTab = forwardRef<
         slots: waiting.map(toPatch),
       });
       pending.current.clear();
+      pendingChanged();
     },
   }));
 
@@ -119,7 +156,7 @@ export const ScheduleMessagesTab = forwardRef<
         if (cancelled) return;
         const next = normalizeSlots(
           webinarMessages?.slots?.length ? webinarMessages.slots : defaults.slots,
-        );
+        ).map((slot) => pending.current.get(slot.kind) ?? slot);
         setSlots(next);
         setTemplates(templateList.templates ?? []);
         setFields(reminders?.fields ?? []);
@@ -132,6 +169,7 @@ export const ScheduleMessagesTab = forwardRef<
       .catch((err: unknown) => {
         if (!cancelled) {
           setError(err instanceof ApiError ? err.message : "Could not load messages.");
+          onLoadErrorRef.current?.();
         }
       });
     return () => {
@@ -141,7 +179,14 @@ export const ScheduleMessagesTab = forwardRef<
 
   useEffect(() => {
     if (!slots) return;
-    onEnabledCountRef.current?.(slots.filter((slot) => slot.enabled).length);
+    const enabled = slots.filter((slot) => slot.enabled).length;
+    onEnabledCountRef.current?.(enabled);
+    onSummaryRef.current?.({
+      enabled,
+      custom:
+        pending.current.size > 0 ||
+        slots.some((slot) => slot.source === "webinar"),
+    });
   }, [slots]);
 
   const previewFields = useMemo(
@@ -168,6 +213,7 @@ export const ScheduleMessagesTab = forwardRef<
         if (asDefault) {
           await engageApi.setMessageDefaults({ slots: [next] });
           pending.current.delete(next.kind);
+          pendingChanged();
           if (slug) {
             const saved = await engageApi.setWebinarMessageSlots(slug, {
               slots: [clearPatch(next.kind)],
@@ -185,6 +231,7 @@ export const ScheduleMessagesTab = forwardRef<
           return;
         }
         pending.current.set(next.kind, next);
+        pendingChanged();
       } catch (err) {
         setSlots(previous);
         notify(
@@ -193,7 +240,7 @@ export const ScheduleMessagesTab = forwardRef<
         );
       }
     },
-    [applyLocal, notify, slug, slots],
+    [applyLocal, notify, pendingChanged, slug, slots],
   );
 
   async function toggleAutomation(recipe: CRMRecipe, on: boolean) {

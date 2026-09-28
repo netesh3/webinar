@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import { openPickerOnClick, Select } from "../controls";
-import { CalendarIcon, MaterialIcon } from "../icons";
-import { Button } from "../ui";
+import { CalendarIcon } from "../icons";
 import { useHydrated } from "@/lib/clock";
 import {
   localTimeZone,
@@ -23,8 +22,9 @@ import {
 } from "./form-state";
 import { RegistrationSection } from "./registration";
 import { RoomSection } from "./room";
-import { SurveySection } from "./survey-section";
+import { formatDuration } from "./summary";
 
+/** The Details step: basics, time, registration and the room. */
 export function WebinarTab({
   form,
   set,
@@ -34,9 +34,6 @@ export function WebinarTab({
   imagePreview,
   onImage,
   onImageRemove,
-  onMessages,
-  survey,
-  messagesOn,
 }: {
   form: FormState;
   set: SetForm;
@@ -46,12 +43,19 @@ export function WebinarTab({
   imagePreview: string | null;
   onImage: (prepared: PreparedWebinarImage, preview: string) => void;
   onImageRemove: () => void;
-  onMessages: () => void;
-  survey: ReactNode;
-  /** How many attendee messages are switched on, once that tab has loaded. */
-  messagesOn: number | null;
 }) {
-  const zones = useMemo(() => timeZoneNames(), []);
+  const allZones = useMemo(() => timeZoneNames(), []);
+  /* The zone the webinar HAS is always an option. Browsers disagree on the
+   * IANA list (Chrome has Asia/Calcutta, not Asia/Kolkata — the API's
+   * default), and a <select> whose value is missing from its options shows
+   * the first zone in the list while the form still holds the real one. */
+  const zones = useMemo(
+    () =>
+      form.timeZone && !allZones.includes(form.timeZone)
+        ? [form.timeZone, ...allZones]
+        : allZones,
+    [allZones, form.timeZone],
+  );
   const hydrated = useHydrated();
   const startsAtPreview = useMemo(() => {
     return zonedToInstant(form.date, form.time, form.timeZone);
@@ -86,23 +90,6 @@ export function WebinarTab({
         editing={editing}
         webinar={webinar}
       />
-      <SurveySection survey={survey} />
-      <div className="flex flex-col gap-3 rounded-xl border border-dashed border-brand-line bg-brand-soft px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-[14px] font-semibold text-ink">
-            Next: what your attendees get
-          </p>
-          <p className="text-[12px] text-ink-3">
-            {messagesOn == null
-              ? "Confirmation, reminders, the replay and follow-ups. Check the wording before you schedule."
-              : `${messagesOn} on — confirmation, reminders, the replay and follow-ups. Check the wording before you schedule.`}
-          </p>
-        </div>
-        <Button type="button" variant="secondary" onClick={onMessages}>
-          Messages &amp; follow-ups
-          <MaterialIcon name="arrow_forward" className="size-4" />
-        </Button>
-      </div>
     </div>
   );
 }
@@ -170,9 +157,14 @@ function WhenSection({
           value={String(form.durationMin)}
           onChange={(v) => set("durationMin", Number(v))}
         >
-          {DURATIONS.map((m) => (
+          {/* The webinar's own length is always offered, like the zone
+              below — an API-set 75 minutes would otherwise show as 15. */}
+          {(DURATIONS.includes(form.durationMin)
+            ? DURATIONS
+            : [...DURATIONS, form.durationMin].sort((a, b) => a - b)
+          ).map((m) => (
             <option key={m} value={m}>
-              {m >= 60 ? `${m / 60} hour${m > 60 ? "s" : ""}` : `${m} minutes`}
+              {formatDuration(m)}
             </option>
           ))}
         </Select>

@@ -62,6 +62,7 @@ export type FormState = {
   durationMin: number;
   timeZone: string;
   kind: WebinarInput["kind"];
+  simuliveRecordingId: string;
   registrationRequired: boolean;
   approval: WebinarInput["approval"];
   attendeeLimit: number;
@@ -135,7 +136,10 @@ export function initialState(
       time: when.time,
       durationMin: webinar.durationMin,
       timeZone: webinar.timeZone,
-      kind: webinar.kind === "recurring" ? "recurring" : "live",
+      // Kept as it is, simulive included: PATCH replaces the whole webinar, so
+      // folding simulive into "live" here would convert it on the first save.
+      kind: webinar.kind || "live",
+      simuliveRecordingId: webinar.simuliveRecordingId ?? "",
       registrationRequired: webinar.registrationRequired,
       approval: webinar.approval,
       attendeeLimit: webinar.attendeeLimit,
@@ -170,6 +174,7 @@ export function initialState(
     // The browser's zone, falling back to IST — see localTimeZone.
     timeZone: localTimeZone(),
     kind: "live",
+    simuliveRecordingId: "",
     registrationRequired: true,
     approval: "automatic",
     /* 50, not the server's ceiling. See ATTENDEE_LIMITS. Clamped in case an operator has
