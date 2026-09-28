@@ -385,24 +385,22 @@ export function HostPeopleTab({
             </ul>
           </>
         )}
-        {(data.total > PAGE || offset > 0) && (
-          <ListPager
-            layout="split"
-            range="inline"
-            className="border-t border-line px-4 py-3"
-            page={Math.floor(offset / PAGE) + 1}
-            pages={Math.max(
-              Math.floor(offset / PAGE) + 1,
-              Math.ceil(data.total / PAGE) || 1,
-            )}
-            pageSize={PAGE}
-            start={people.length === 0 ? 0 : offset + 1}
-            end={people.length === 0 ? 0 : offset + people.length}
-            total={data.total}
-            onPrevious={() => setOffset(Math.max(0, offset - PAGE))}
-            onNext={() => setOffset(offset + PAGE)}
-          />
-        )}
+        <ListPager
+          layout="split"
+          range="inline"
+          className="border-t border-line px-4 py-3"
+          page={Math.floor(offset / PAGE) + 1}
+          pages={Math.max(
+            Math.floor(offset / PAGE) + 1,
+            Math.ceil(data.total / PAGE) || 1,
+          )}
+          pageSize={PAGE}
+          start={people.length === 0 ? 0 : offset + 1}
+          end={people.length === 0 ? 0 : offset + people.length}
+          total={data.total}
+          onPrevious={() => setOffset(Math.max(0, offset - PAGE))}
+          onNext={() => setOffset(offset + PAGE)}
+        />
       </Card>
 
       <SendDialog
