@@ -16,3 +16,4 @@ shot create         create.html         900
 shot webinar-before webinar-before.html 900
 shot webinar-after  webinar-after.html  960
 shot audience       audience.html       1180
+shot whatsapp       whatsapp.html       1900
