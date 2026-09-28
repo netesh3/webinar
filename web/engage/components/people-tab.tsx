@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { engageApi } from "../api";
 import { Spinner } from "@/components/controls";
 import { ChevronDownIcon, SearchIcon, SendIcon } from "@/components/icons";
-import { Button, Card, Empty } from "@/components/ui";
+import { Button, Card, Empty, ListPager } from "@/components/ui";
+import { dropCache, readCache, TTL_LIST, writeCache } from "@/lib/http";
 import {
   CRMStatusNoNumber,
   CRMStatusNoOptIn,
@@ -51,7 +52,11 @@ const FILTERS: { id: string; label: string; count: (c: CRMPeopleCounts) => numbe
   { id: PeopleHotLeads, label: "Hot leads", count: (c) => c.hotLeads },
 ];
 
-const PAGE = 50;
+const PAGE = 25;
+
+function peopleKey(webinar: string, filter: string, query: string, offset: number) {
+  return `crm-people:${webinar}:${filter}:${query}:${offset}`;
+}
 
 export function HostPeopleTab({
   initialWebinar = "",
@@ -68,11 +73,23 @@ export function HostPeopleTab({
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
-  const [data, setData] = useState<CRMPeopleResponse | null>(null);
+  const [data, setData] = useState<CRMPeopleResponse | null>(
+    () =>
+      readCache<CRMPeopleResponse>(
+        peopleKey(initialWebinar, initialFilter, "", 0),
+        TTL_LIST,
+      )?.value ?? null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState<SendTarget | null>(null);
   const [opening, setOpening] = useState(false);
+  const listKey = peopleKey(webinar, filter, query, offset);
+  const [seenPeople, setSeenPeople] = useState(listKey);
+  if (listKey !== seenPeople) {
+    setSeenPeople(listKey);
+    setData(readCache<CRMPeopleResponse>(listKey, TTL_LIST)?.value ?? null);
+  }
 
   // Typing settles for a moment before it becomes a request.
   useEffect(() => {
@@ -93,14 +110,18 @@ export function HostPeopleTab({
   }
 
   useEffect(() => {
+    const key = peopleKey(webinar, filter, query, offset);
+    if (readCache<CRMPeopleResponse>(key, TTL_LIST)?.fresh) return;
     let cancelled = false;
     engageApi
-      .crmPeople({ webinarId: webinar, filter, q: query, offset })
+      .crmPeople({ webinarId: webinar, filter, q: query, offset, limit: PAGE })
       .then((res) => {
-        if (!cancelled) {
-          setData(res);
-          setError(null);
-        }
+        if (cancelled) return;
+        const emptyPage = offset > 0 && (res.people?.length ?? 0) === 0;
+        if (emptyPage) dropCache(key);
+        else writeCache(key, res);
+        setData(res);
+        setError(null);
       })
       .catch(() => {
         if (!cancelled) setError("Could not load your people.");
@@ -310,9 +331,18 @@ export function HostPeopleTab({
 
       <Card className="overflow-hidden p-0">
         {people.length === 0 ? (
-          <div className="px-4 py-12 text-center text-[13px] text-ink-3">
-            Nobody matches that.
-          </div>
+          offset > 0 ? (
+            <div className="px-4 py-12 text-center">
+              <div className="text-[15px] font-medium text-ink">Nobody on this page</div>
+              <p className="mt-1 text-[13px] text-ink-3">
+                The last people on this page were removed, or the page is past the end of the list.
+              </p>
+            </div>
+          ) : (
+            <div className="px-4 py-12 text-center text-[13px] text-ink-3">
+              Nobody matches that.
+            </div>
+          )
         ) : (
           <>
             <div className="hidden items-center gap-3 border-b border-line px-4 py-2 text-[11.5px] text-ink-3 sm:flex">
@@ -355,33 +385,25 @@ export function HostPeopleTab({
             </ul>
           </>
         )}
+        {(data.total > PAGE || offset > 0) && (
+          <ListPager
+            layout="split"
+            range="inline"
+            className="border-t border-line px-4 py-3"
+            page={Math.floor(offset / PAGE) + 1}
+            pages={Math.max(
+              Math.floor(offset / PAGE) + 1,
+              Math.ceil(data.total / PAGE) || 1,
+            )}
+            pageSize={PAGE}
+            start={people.length === 0 ? 0 : offset + 1}
+            end={people.length === 0 ? 0 : offset + people.length}
+            total={data.total}
+            onPrevious={() => setOffset(Math.max(0, offset - PAGE))}
+            onNext={() => setOffset(offset + PAGE)}
+          />
+        )}
       </Card>
-
-      {data.total > PAGE && (
-        <div className="flex items-center justify-between text-[12px] text-ink-2">
-          <span className="tabular-nums">
-            {offset + 1}–{Math.min(offset + people.length, data.total)} of {data.total}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={offset === 0}
-              onClick={() => setOffset(Math.max(0, offset - PAGE))}
-            >
-              Previous
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={offset + people.length >= data.total}
-              onClick={() => setOffset(offset + PAGE)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
 
       <SendDialog
         open={target !== null}

@@ -1162,11 +1162,11 @@ func TestManualApprovalBlocksJoinUntilApproved(t *testing.T) {
 	// The webinar's host approves.
 	h.login("marco@streamline.io")
 	_, raw = h.do(http.MethodGet, "/api/host/webinars/postgres-event-platforms/registrants", nil)
-	var rows []types.RegistrantRow
-	h.decode(raw, &rows)
+	var page types.RegistrantPage
+	h.decode(raw, &page)
 
 	var id string
-	for _, r := range rows {
+	for _, r := range page.Items {
 		if r.Email == "pending@test.dev" {
 			id = r.ID
 		}

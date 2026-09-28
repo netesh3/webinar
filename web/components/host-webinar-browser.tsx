@@ -10,8 +10,18 @@ import { MyWebinarsList } from "./my-webinars-list";
 import { useRegistrations } from "./registrations";
 import { Alert, openPickerOnClick, Spinner, Tabs } from "./controls";
 import { CloseIcon, SearchIcon } from "./icons";
-import { Button, ButtonLink, Empty } from "./ui";
+import { Button, ButtonLink, Empty, ListPager } from "./ui";
 import { ApiError, api, type HostWebinarTab } from "@/lib/api";
+import {
+  hostListFilterKey,
+  hostListPageKey,
+  onHostListsDropped,
+  rememberCursors,
+  rememberPage,
+  rememberedCursors,
+  rememberedPage,
+} from "@/lib/host-list-cache";
+import { readCache, TTL_LIST, writeCache } from "@/lib/http";
 import type {
   HostWebinarCounts,
   HostWebinarPage,
@@ -80,8 +90,7 @@ const TAB_LABELS: Record<ViewTab, string> = {
 };
 
 /** Matches store.DefaultHostWebinarLimit. Sent explicitly rather than left to
- *  the server's default so the number the UI reasons about ("of 34", when to
- *  offer Load more) is the number it actually asked for. */
+ *  the server's default so "10 per page · 1–10 of 24" is the number asked for. */
 const PAGE_SIZE = 10;
 
 /** Long enough that a host typing a title is one request rather than fifteen,
@@ -206,20 +215,46 @@ export function HostWebinarBrowser({
   const [to, setTo] = useState("");
 
   const [items, setItems] = useState<Webinar[] | null>(null);
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [counts, setCounts] = useState<HostWebinarCounts>(NO_COUNTS);
   const [total, setTotal] = useState(0);
   const [pending, setPending] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
   /* Every reply is checked against this before it is allowed to write state.
    *
-   * A debounced search and a Load more in flight at the same time are two
+   * A debounced search and a page change in flight at the same time are two
    * requests whose replies can arrive in either order; without a sequence
-   * number, a slow first page can land after the page it was superseded by, or
-   * an append can staple yesterday's rows onto today's filter. */
+   * number, a slow first page can land after the page it was superseded by. */
   const seq = useRef(0);
+
+  const listing = !ownList(tab);
+  const listKey = listing ? hostListFilterKey(tab, q, from, to) : "";
+  const [seenList, setSeenList] = useState(listKey);
+  const pageNow = listKey !== "" && listKey !== seenList ? rememberedPage(listKey) : page;
+  if (listKey !== seenList) {
+    setSeenList(listKey);
+    if (listKey !== "") setPage(rememberedPage(listKey));
+  }
+  const cacheKey = listKey ? hostListPageKey(listKey, pageNow) : "";
+  const [seenCache, setSeenCache] = useState("");
+  if (listing && cacheKey !== seenCache) {
+    setSeenCache(cacheKey);
+    const hit = readCache<HostWebinarPage>(cacheKey, TTL_LIST);
+    if (hit) {
+      setItems(hit.value.items ?? []);
+      setCounts(hit.value.counts);
+      setTotal(hit.value.total);
+      setError(null);
+      setPending(false);
+      const stack = rememberedCursors(listKey).slice();
+      if (hit.value.nextCursor) stack[pageNow + 1] = hit.value.nextCursor;
+      rememberCursors(listKey, stack);
+    } else {
+      setItems(null);
+      setPending(true);
+    }
+  }
 
   const filtersActive = q !== "" || from !== "" || to !== "";
   const nothingAtAll =
@@ -253,17 +288,24 @@ export function HostWebinarBrowser({
     /* Nothing to ask this endpoint for. Returning before the sequence number is
      * bumped deliberately leaves any reply still in the air free to land: it is
      * the answer for the tab behind this one, which is where a host goes back to. */
-    if (ownList(tab)) return;
+    if (!listKey || ownList(tab)) return;
+    const hit = readCache<HostWebinarPage>(cacheKey, TTL_LIST);
+    if (hit?.fresh) return;
 
     const mine = ++seq.current;
-    fetchPage({ tab, q, from, to })
-      .then((page) => {
+    const cursor = rememberedCursors(listKey)[pageNow];
+    fetchPage({ tab, q, from, to }, cursor)
+      .then((result) => {
         if (seq.current !== mine) return;
-        setItems(page.items);
-        setCursor(page.nextCursor);
-        setCounts(page.counts);
-        setTotal(page.total);
+        setItems(result.items ?? []);
+        setCounts(result.counts);
+        setTotal(result.total);
         setError(null);
+        const stack = rememberedCursors(listKey).slice();
+        if (result.nextCursor) stack[pageNow + 1] = result.nextCursor;
+        else stack.length = pageNow + 1;
+        rememberCursors(listKey, stack);
+        writeCache(hostListPageKey(listKey, pageNow), result);
       })
       .catch((e: unknown) => {
         if (seq.current !== mine) return;
@@ -280,39 +322,33 @@ export function HostWebinarBrowser({
       .finally(() => {
         if (seq.current === mine) setPending(false);
       });
-  }, [fetchPage, tab, q, from, to]);
+  }, [fetchPage, tab, q, from, to, listKey, cacheKey, pageNow]);
 
-  useEffect(load, [load, reloadToken]);
+  const [listGen, setListGen] = useState(0);
+  useEffect(load, [load, reloadToken, listGen]);
 
-  function loadMore() {
-    if (!cursor || loadingMore || ownList(tab)) return;
-    const mine = seq.current;
-    setLoadingMore(true);
-    fetchPage({ tab, q, from, to }, cursor)
-      .then((page) => {
-        // A filter changed while this was in the air: those rows answer a
-        // question nobody is asking any more.
-        if (seq.current !== mine) return;
-        setItems((prev) => [...(prev ?? []), ...page.items]);
-        setCursor(page.nextCursor);
-        setCounts(page.counts);
-        setTotal(page.total);
-      })
-      .catch((e: unknown) => {
-        if (seq.current !== mine) return;
-        setError(e instanceof Error ? e.message : "Could not load more.");
-      })
-      .finally(() => {
-        if (seq.current === mine) setLoadingMore(false);
-      });
+  useEffect(
+    () =>
+      onHostListsDropped(() => {
+        setPage(0);
+        setItems(null);
+        setPending(true);
+        setListGen((n) => n + 1);
+      }),
+    [],
+  );
+
+  function goTo(index: number) {
+    if (!listKey || index < 0 || index === pageNow) return;
+    if (index > pageNow && rememberedCursors(listKey)[index] === undefined) return;
+    rememberPage(listKey, index);
+    setPage(index);
   }
 
-  /** Any filter change restarts the list from the first page — a cursor is a
-   *  position in one specific result set and means nothing in the next one. */
+  /** A search or a date starts again at page 1. A tab click restores that tab's page. */
   function refilter(apply: () => void) {
     apply();
     setPending(true);
-    setCursor(undefined);
   }
 
   function clearFilters() {
@@ -432,7 +468,7 @@ export function HostWebinarBrowser({
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
         </div>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && pageNow === 0 ? (
         error ? null : (
           <EmptyList
             tab={tab}
@@ -446,32 +482,45 @@ export function HostWebinarBrowser({
           {/* Dimmed rather than replaced with a spinner while a new filter is
               in flight: the rows underneath are still the answer to the last
               question, and blanking them makes the page jump on every
-              keystroke. */}
-          <div
-            className={pending ? "opacity-50 transition-opacity" : undefined}
-          >
-            <HostWebinarRows webinars={items} />
-          </div>
-
-          {cursor ? (
-            <div className="mt-4 flex flex-col items-center gap-1.5">
-              <Button
-                variant="secondary"
-                onClick={loadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore ? <Spinner className="size-3.5" /> : "Load more"}
-              </Button>
-              <p className="text-[12px] text-ink-3 tabular-nums">
-                Showing {items.length} of {total}
-              </p>
-            </div>
+              keystroke. A cached page is shown as it is, then refreshed. */}
+          {items.length === 0 ? (
+            <Empty
+              title={tab === "drafts" ? "No drafts on this page" : "Nobody on this page"}
+              hint={
+                tab === "drafts"
+                  ? "The last draft was published while this page was open. Page 1 still has the rest."
+                  : "The last webinars on this page were removed, or the page is past the end of the list."
+              }
+              action={
+                <Button variant="secondary" onClick={() => goTo(0)}>
+                  Back to page 1
+                </Button>
+              }
+            />
           ) : (
-            items.length > PAGE_SIZE && (
-              <p className="mt-4 text-center text-[12px] text-ink-3 tabular-nums">
-                All {items.length} shown
-              </p>
-            )
+            <div
+              className={pending ? "opacity-50 transition-opacity" : undefined}
+            >
+              <HostWebinarRows webinars={items} />
+            </div>
+          )}
+
+          {(total > PAGE_SIZE || pageNow > 0) && (
+            <ListPager
+              page={pageNow + 1}
+              pages={
+                listKey && rememberedCursors(listKey)[pageNow + 1]
+                  ? Math.max(pageNow + 1, Math.ceil(total / PAGE_SIZE) || 1)
+                  : pageNow + 1
+              }
+              pageSize={PAGE_SIZE}
+              start={items.length === 0 ? 0 : pageNow * PAGE_SIZE + 1}
+              end={items.length === 0 ? 0 : pageNow * PAGE_SIZE + items.length}
+              total={total}
+              busy={pending}
+              onPrevious={() => goTo(pageNow - 1)}
+              onNext={() => goTo(pageNow + 1)}
+            />
           )}
         </>
       )}
@@ -599,7 +648,7 @@ function bypassPage(p: PageQuery): HostWebinarPage {
     );
 
   // The cursor is the previous page's last slug, matching the server's keyset
-  // shape closely enough that Load more exercises the same code path.
+  // shape closely enough that Next exercises the same code path.
   const start = p.cursor ? inTab.findIndex((w) => w.id === p.cursor) + 1 : 0;
   const items = inTab.slice(start, start + p.limit);
   const last = items.at(-1);

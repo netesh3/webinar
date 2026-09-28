@@ -2786,6 +2786,17 @@ type StageAllResponse struct {
 	Count int `json:"count"`
 }
 
+// RegistrantPage is one page of the host's People tab.
+type RegistrantPage struct {
+	Items    []RegistrantRow `json:"items"`
+	Total    int             `json:"total"`
+	Offset   int             `json:"offset"`
+	Approved int             `json:"approved"`
+	Declined int             `json:"declined"`
+	Pending  int             `json:"pending"`
+	Guests   int             `json:"guests"`
+}
+
 type RegistrantRow struct {
 	ID         string            `json:"id"`
 	Name       string            `json:"name"`

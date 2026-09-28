@@ -42,9 +42,9 @@ func registrants(t *testing.T, h *harness, slug string) []types.RegistrantRow {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("registrants: status %d body %s", res.StatusCode, raw)
 	}
-	var rows []types.RegistrantRow
-	h.decode(raw, &rows)
-	return rows
+	var page types.RegistrantPage
+	h.decode(raw, &page)
+	return page.Items
 }
 
 func postAudience(t *testing.T, h *harness, body types.CRMBroadcastRequest) (int, types.CRMAudienceResponse, []byte) {

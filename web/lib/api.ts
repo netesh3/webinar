@@ -31,6 +31,7 @@ import type {
   PollInput,
   PollVoteRequest,
   QuestionPatch,
+  RegistrantPage,
   RegistrantRow,
   RegistrationState,
   Role,
@@ -72,18 +73,29 @@ import type {
  * pointless hop back out through the proxy. Without this the root layout's config
  * fetch fails at render time with "Failed to parse URL".
  */
+import { dropHostWebinarLists, HOST_LIST_PICKER_KEY } from "./host-list-cache";
 import {
   API_BASE,
   ApiError,
   baseFor,
+  cachedGet,
   del,
+  dropCache,
   fresh,
   patch,
   post,
   put,
+  readCache,
   request,
   seg,
+  TTL_CONFIG,
+  TTL_SESSION,
+  writeCache,
 } from "./http";
+
+const ME_KEY = "/api/auth/me";
+const INTEGRATIONS_KEY = "/api/host/integrations";
+const REGISTRATIONS_KEY = "/api/me/registrations";
 import { toSearchParams, type AttendeeQuery } from "./engagement/query";
 
 export { API_BASE, ApiError };
@@ -102,7 +114,7 @@ export type HostWebinarTab = "upcoming" | "past" | "drafts";
 export const api = {
   /** Branding, public URLs and limits an operator sets. Read once at boot so no
    *  such value is baked into the bundle. */
-  config: () => request<AppConfig>("/api/config", fresh),
+  config: () => cachedGet<AppConfig>("/api/config", { ttl: TTL_CONFIG }),
 
   /** What THIS account may see: hosted, presenting, or registered. Requires a
    *  session — an anonymous caller gets 401, not an empty list, because "nothing
@@ -114,8 +126,11 @@ export const api = {
   getWebinar: (slug: string) =>
     request<Webinar>(`/api/webinars/${seg(slug)}`, fresh),
 
-  register: (slug: string, body: RegisterRequest) =>
-    post<Registration>(`/api/webinars/${seg(slug)}/register`, body),
+  register: async (slug: string, body: RegisterRequest) => {
+    const reg = await post<Registration>(`/api/webinars/${seg(slug)}/register`, body);
+    dropCache(REGISTRATIONS_KEY);
+    return reg;
+  },
 
   /** Resolves locally-held join keys back into registrations, WITH the webinar
    *  attached. The webinar used to be looked up from the public catalogue; there
@@ -267,25 +282,32 @@ export const api = {
 
   logout: () => post<StatusResponse>("/api/auth/logout"),
 
-  me: () => request<Account>("/api/auth/me", fresh),
+  me: (force = false) => cachedGet<Account>(ME_KEY, { ttl: TTL_SESSION, force }),
 
   updateProfile: (body: ProfilePatch) => patch<Account>("/api/auth/me", body),
 
   /** Replaces the account's profile photo. The body is the raw image — see
    *  lib/profile-photo.ts, which crops to a square before this is called.
    *  Returns the account; avatarUrl then points at the stored bytes. */
-  uploadAvatar: (blob: Blob, mime: string) =>
-    request<Account>("/api/auth/avatar", {
+  uploadAvatar: async (blob: Blob, mime: string) => {
+    const me = await request<Account>("/api/auth/avatar", {
       method: "POST",
       body: blob,
       headers: { "Content-Type": mime },
-    }),
+    });
+    writeCache(ME_KEY, me);
+    return me;
+  },
 
   /** Removes the upload. The account falls back to its Google photo, if any. */
-  deleteAvatar: () => del<Account>("/api/auth/avatar"),
+  deleteAvatar: async () => {
+    const me = await del<Account>("/api/auth/avatar");
+    writeCache(ME_KEY, me);
+    return me;
+  },
 
-  myRegistrations: () =>
-    request<RegisteredWebinar[]>("/api/me/registrations", fresh),
+  myRegistrations: (force = false) =>
+    cachedGet<RegisteredWebinar[]>(REGISTRATIONS_KEY, { ttl: TTL_SESSION, force }),
 
   // ------------------------------------------------------------------ host
 
@@ -326,6 +348,8 @@ export const api = {
    *  a page. Drafts are left out: a draft has never been scheduled, so nobody has
    *  registered for it and there is nobody to message about it. */
   hostWebinarsForPicker: async (): Promise<Webinar[]> => {
+    const hit = readCache<Webinar[]>(HOST_LIST_PICKER_KEY, TTL_SESSION);
+    if (hit?.fresh) return hit.value;
     const out: Webinar[] = [];
     for (const tab of ["upcoming", "past"] satisfies HostWebinarTab[]) {
       let cursor = "";
@@ -344,6 +368,7 @@ export const api = {
         cursor = res.nextCursor;
       }
     }
+    writeCache(HOST_LIST_PICKER_KEY, out);
     return out;
   },
 
@@ -355,8 +380,11 @@ export const api = {
   hostWebinar: (slug: string) =>
     request<Webinar>(`/api/host/webinars/${seg(slug)}/`, fresh),
 
-  createWebinar: (body: WebinarInput) =>
-    post<Webinar>("/api/host/webinars", body),
+  createWebinar: async (body: WebinarInput) => {
+    const webinar = await post<Webinar>("/api/host/webinars", body);
+    dropHostWebinarLists();
+    return webinar;
+  },
 
   updateWebinar: (slug: string, body: WebinarInput) =>
     patch<Webinar>(`/api/host/webinars/${seg(slug)}/`, body),
@@ -371,23 +399,35 @@ export const api = {
     return `${baseFor()}/api/host/youtube/connect?return=${encodeURIComponent(next)}`;
   },
 
-  disconnectYouTube: () => del<Account>("/api/host/youtube"),
+  disconnectYouTube: async () => {
+    const account = await del<Account>("/api/host/youtube");
+    dropCache(INTEGRATIONS_KEY);
+    dropCache(ME_KEY);
+    return account;
+  },
 
-  hostIntegrations: () =>
-    request<IntegrationsResponse>("/api/host/integrations", fresh),
+  hostIntegrations: (force = false) =>
+    cachedGet<IntegrationsResponse>(INTEGRATIONS_KEY, { ttl: TTL_SESSION, force }),
 
   /** "Notify me" for a coming-soon integration. Returns the card list. */
   integrationInterest: (id: string) =>
     post<IntegrationsResponse>(`/api/host/integrations/${seg(id)}/interest`),
 
   /** Follow a card action the registry described (disconnect). href is an /api path. */
-  integrationCall: (href: string, method: "DELETE" | "POST") =>
-    method === "DELETE"
-      ? del<IntegrationsResponse | Account>(href)
-      : post<IntegrationsResponse | Account>(href),
+  integrationCall: async (href: string, method: "DELETE" | "POST") => {
+    const res =
+      method === "DELETE"
+        ? await del<IntegrationsResponse | Account>(href)
+        : await post<IntegrationsResponse | Account>(href);
+    dropCache(INTEGRATIONS_KEY);
+    return res;
+  },
 
-  deleteWebinar: (slug: string) =>
-    del<StatusResponse>(`/api/host/webinars/${seg(slug)}/`),
+  deleteWebinar: async (slug: string) => {
+    const res = await del<StatusResponse>(`/api/host/webinars/${seg(slug)}/`);
+    dropHostWebinarLists();
+    return res;
+  },
 
   /** Replaces the webinar's cover image. The body is the raw, already-compressed
    *  image — see lib/webinar-image.ts, which crops to 16:9 and re-encodes to at
@@ -404,11 +444,17 @@ export const api = {
   deleteWebinarImage: (slug: string) =>
     del<Webinar>(`/api/host/webinars/${seg(slug)}/image`),
 
-  startWebinar: (slug: string) =>
-    post<Webinar>(`/api/host/webinars/${seg(slug)}/start`),
+  startWebinar: async (slug: string) => {
+    const webinar = await post<Webinar>(`/api/host/webinars/${seg(slug)}/start`);
+    dropHostWebinarLists();
+    return webinar;
+  },
 
-  endWebinar: (slug: string) =>
-    post<Webinar>(`/api/host/webinars/${seg(slug)}/end`),
+  endWebinar: async (slug: string) => {
+    const webinar = await post<Webinar>(`/api/host/webinars/${seg(slug)}/end`);
+    dropHostWebinarLists();
+    return webinar;
+  },
 
   /** Hands ownership to another panelist already in the room, then the caller leaves. */
   transferHost: (slug: string, identity: string) =>
@@ -602,11 +648,16 @@ export const api = {
 
   // ------------------------------------------------------------ registrants
 
-  hostRegistrants: (slug: string) =>
-    request<RegistrantRow[]>(
-      `/api/host/webinars/${seg(slug)}/registrants`,
+  hostRegistrants: (slug: string, page: { limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (page.limit) qs.set("limit", String(page.limit));
+    if (page.offset) qs.set("offset", String(page.offset));
+    const s = qs.toString();
+    return request<RegistrantPage>(
+      `/api/host/webinars/${seg(slug)}/registrants${s ? `?${s}` : ""}`,
       fresh,
-    ),
+    );
+  },
 
   /** The CSV export is a plain link rather than a fetch, so the browser's own
    *  download machinery handles it. */

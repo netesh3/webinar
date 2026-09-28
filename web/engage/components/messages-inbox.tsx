@@ -14,6 +14,7 @@ import {
 import { useToast } from "@/components/providers";
 import { Button, Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
+import { ListPager } from "@/components/ui";
 import {
   InboxAll,
   InboxNeedsReply,
@@ -39,6 +40,7 @@ import { PersonAvatar, Ticks } from "./wa-kit";
  */
 
 const POLL_MS = 20_000;
+const PAGE = 30;
 const TEXT_MAX = 4096;
 
 const MONTHS = [
@@ -57,6 +59,8 @@ export function HostMessagesInbox() {
   const [filter, setFilter] = useState(askedUnread ? "unread" : askedWebinar);
   const [query, setQuery] = useState("");
   const [threads, setThreads] = useState<CRMInboxThread[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [webinars, setWebinars] = useState<{ id: string; topic: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pickedId, setPickedId] = useState<string | null>(
@@ -69,14 +73,21 @@ export function HostMessagesInbox() {
 
   const view = filter === "unread" ? InboxNeedsReply : InboxAll;
   const webinarId = filter !== "unread" && filter !== "" ? filter : "";
+  const [seenInbox, setSeenInbox] = useState(`${view}:${webinarId}`);
+  if (`${view}:${webinarId}` !== seenInbox) {
+    setSeenInbox(`${view}:${webinarId}`);
+    setOffset(0);
+    setThreads(null);
+  }
 
   useEffect(() => {
     let cancelled = false;
     engageApi
-      .crmInbox(view, webinarId)
+      .crmInbox(view, webinarId, offset, PAGE)
       .then((res) => {
         if (cancelled) return;
-        setThreads(res.threads);
+        setThreads(res.threads ?? []);
+        setTotal(res.total);
         setWebinars(res.webinars);
         setError(null);
       })
@@ -89,7 +100,7 @@ export function HostMessagesInbox() {
     return () => {
       cancelled = true;
     };
-  }, [view, webinarId, tick]);
+  }, [view, webinarId, offset, tick]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -147,6 +158,11 @@ export function HostMessagesInbox() {
 
   const selected =
     threads?.find((t) => t.contact.id === selectedId) ?? null;
+  const inboxTotal = total;
+  const inboxPages = Math.max(
+    Math.floor(offset / PAGE) + 1,
+    Math.ceil(inboxTotal / PAGE) || 1,
+  );
 
   return (
     <div>
@@ -205,11 +221,13 @@ export function HostMessagesInbox() {
             </p>
           ) : visible.length === 0 ? (
             <p className="px-4 py-10 text-center text-[13px] text-ink-2">
-              {query.trim()
-                ? "No conversations match that search."
-                : filter === "unread"
-                  ? "You're all caught up. Nobody is waiting on a reply."
-                  : "No conversations yet."}
+              {offset > 0 && !query.trim()
+                ? "Nobody on this page"
+                : query.trim()
+                  ? "No conversations match that search."
+                  : filter === "unread"
+                    ? "You're all caught up. Nobody is waiting on a reply."
+                    : "No conversations yet."}
             </p>
           ) : (
             visible.map((t) => (
@@ -222,6 +240,21 @@ export function HostMessagesInbox() {
             ))
           )}
         </div>
+        {inboxTotal > PAGE || offset > 0 ? (
+          <ListPager
+            layout="split"
+            range="stack"
+            className="border-t border-line px-3 py-2.5"
+            page={Math.floor(offset / PAGE) + 1}
+            pages={inboxPages}
+            pageSize={PAGE}
+            start={(threads?.length ?? 0) === 0 ? 0 : offset + 1}
+            end={(threads?.length ?? 0) === 0 ? 0 : offset + (threads?.length ?? 0)}
+            total={inboxTotal}
+            onPrevious={() => setOffset((n) => Math.max(0, n - PAGE))}
+            onNext={() => setOffset((n) => n + PAGE)}
+          />
+        ) : null}
           </aside>
 
           <section

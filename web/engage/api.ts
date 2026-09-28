@@ -57,7 +57,25 @@ import type {
   WhatsAppRegisterRequest,
   WhatsAppSignup,
 } from "@/lib/api-types";
-import { request, post, patch, del, seg, fresh } from "@/lib/http";
+import { dropAllSlots, writeSlots } from "./slot-cache";
+import {
+  cachedGet,
+  dropCache,
+  request,
+  post,
+  patch,
+  del,
+  seg,
+  fresh,
+  TTL_AUDIENCE,
+  TTL_SESSION,
+  writeCache,
+} from "@/lib/http";
+
+const TEMPLATES_KEY = "/api/host/crm/templates";
+const DEFAULTS_KEY = "/api/host/crm/message-defaults";
+const INTEGRATIONS_KEY = "/api/host/integrations";
+const ME_KEY = "/api/auth/me";
 
 export const engageApi = {
   /* Connect WhatsApp — a payload, not a redirect. Meta's Embedded Signup is a JS
@@ -67,10 +85,19 @@ export const engageApi = {
   whatsappSignup: () =>
     request<WhatsAppSignup>("/api/host/whatsapp/connect", fresh),
 
-  connectWhatsApp: (body: WhatsAppCallbackRequest) =>
-    post<Account>("/api/host/whatsapp/callback", body),
+  connectWhatsApp: async (body: WhatsAppCallbackRequest) => {
+    const account = await post<Account>("/api/host/whatsapp/callback", body);
+    dropCache(INTEGRATIONS_KEY);
+    dropCache(ME_KEY);
+    return account;
+  },
 
-  disconnectWhatsApp: () => del<Account>("/api/host/whatsapp"),
+  disconnectWhatsApp: async () => {
+    const account = await del<Account>("/api/host/whatsapp");
+    dropCache(INTEGRATIONS_KEY);
+    dropCache(ME_KEY);
+    return account;
+  },
 
   /* Registers the connected number with Cloud API, using a PIN the host types.
    *
@@ -202,9 +229,9 @@ export const engageApi = {
    *  Graph call against a per-WABA rate limit, so it belongs behind a button and
    *  not in a render. */
   crmTemplates: (refresh = false) =>
-    request<CRMTemplatesResponse>(
+    cachedGet<CRMTemplatesResponse>(
       `/api/host/crm/templates${refresh ? "?refresh=1" : ""}`,
-      fresh,
+      { key: TEMPLATES_KEY, ttl: TTL_SESSION, force: refresh },
     ),
 
   /** Sends one WhatsApp message and returns the message as it was filed in the
@@ -237,14 +264,18 @@ export const engageApi = {
 
   /** The coach's defaults for every webinar. The WhatsApp page writes only this. */
   crmMessageDefaults: () =>
-    request<MessageDefaultsResponse>("/api/host/crm/message-defaults", fresh),
+    cachedGet<MessageDefaultsResponse>(DEFAULTS_KEY, { ttl: TTL_SESSION }),
 
   /** Replaces the kinds it names. Kinds left out stay as they are. */
-  setCrmMessageDefaults: (body: MessageDefaultsRequest) =>
-    request<MessageDefaultsResponse>("/api/host/crm/message-defaults", {
+  setCrmMessageDefaults: async (body: MessageDefaultsRequest) => {
+    const saved = await request<MessageDefaultsResponse>("/api/host/crm/message-defaults", {
       method: "PUT",
       body: JSON.stringify(body),
-    }),
+    });
+    writeCache(DEFAULTS_KEY, saved);
+    dropAllSlots();
+    return saved;
+  },
 
   /** Sent, delivered, read, failed and cost for outbound WhatsApp in a window.
    *  Omit `from` for everything up to `to`. Omit both for the last 30 days. */
@@ -334,21 +365,26 @@ export const engageApi = {
   // ------------------------------------------------------------- engage v1
 
   /** The Hosting page's People tab. `filter` is one of the People* values. */
-  crmPeople: (opts: { webinarId?: string; filter?: string; q?: string; offset?: number } = {}) =>
+  crmPeople: (opts: { webinarId?: string; filter?: string; q?: string; offset?: number; limit?: number } = {}) =>
     request<CRMPeopleResponse>(`/api/host/crm/people${peopleQuery(opts)}`, fresh),
 
   /** The Audience tab: engagement across webinars, from the stored rollup. */
   crmAudienceSummary: (last = 6) =>
-    request<CRMAudienceSummary>(`/api/host/crm/audience/summary?last=${last}`, fresh),
+    cachedGet<CRMAudienceSummary>(`/api/host/crm/audience/summary?last=${last}`, {
+      key: `crm-audience:${last}`,
+      ttl: TTL_AUDIENCE,
+    }),
 
   /** Every messageable contact a People filter matches, for "Message these N". */
   crmPeopleIds: (opts: { webinarId?: string; filter?: string; q?: string } = {}) =>
     request<CRMContactIDsResponse>(`/api/host/crm/people/ids${peopleQuery(opts)}`, fresh),
 
   /** The Messages tab's list. `view` is needs_reply, all or done. */
-  crmInbox: (view = "needs_reply", webinarId = "") => {
+  crmInbox: (view = "needs_reply", webinarId = "", offset = 0, limit = 0) => {
     const params = new URLSearchParams({ view });
     if (webinarId) params.set("webinarId", webinarId);
+    if (offset > 0) params.set("offset", String(offset));
+    if (limit > 0) params.set("limit", String(limit));
     return request<CRMInboxResponse>(`/api/host/crm/inbox?${params.toString()}`, fresh);
   },
 
@@ -393,21 +429,28 @@ export const engageApi = {
 
   /** The coach's message defaults, one slot per kind. */
   messageDefaults: () =>
-    request<MessageDefaultsResponse>("/api/host/crm/message-defaults", fresh),
+    cachedGet<MessageDefaultsResponse>(DEFAULTS_KEY, { ttl: TTL_SESSION }),
 
   /** Replace the named kinds on the account defaults. Other kinds stay as they are. */
-  setMessageDefaults: (body: MessageDefaultsRequest) =>
-    request<MessageDefaultsResponse>("/api/host/crm/message-defaults", {
+  setMessageDefaults: async (body: MessageDefaultsRequest) => {
+    const saved = await request<MessageDefaultsResponse>("/api/host/crm/message-defaults", {
       method: "PUT",
       body: JSON.stringify(body),
-    }),
+    });
+    writeCache(DEFAULTS_KEY, saved);
+    dropAllSlots();
+    return saved;
+  },
 
   /** Replace the override row for each named kind. A field left out inherits the default. */
-  setWebinarMessageSlots: (slug: string, body: WebinarMessagesRequest) =>
-    request<WebinarSlotsResponse>(
+  setWebinarMessageSlots: async (slug: string, body: WebinarMessagesRequest) => {
+    const saved = await request<WebinarSlotsResponse>(
       `/api/host/crm/webinars/${seg(slug)}/messages`,
       { method: "PUT", body: JSON.stringify(body) },
-    ),
+    );
+    writeSlots(slug, saved.slots ?? []);
+    return saved;
+  },
 
   /** The Engagement tab's Follow up: each engagement group's reach and last send. */
   crmFollowups: (slug: string) =>
@@ -442,12 +485,19 @@ export const engageApi = {
     post<void>("/api/host/crm/test-send", body),
 };
 
-function peopleQuery(opts: { webinarId?: string; filter?: string; q?: string; offset?: number }) {
+function peopleQuery(opts: {
+  webinarId?: string;
+  filter?: string;
+  q?: string;
+  offset?: number;
+  limit?: number;
+}) {
   const params = new URLSearchParams();
   if (opts.webinarId) params.set("webinarId", opts.webinarId);
   if (opts.filter) params.set("filter", opts.filter);
   if (opts.q?.trim()) params.set("q", opts.q.trim());
   if (opts.offset) params.set("offset", String(opts.offset));
+  if (opts.limit) params.set("limit", String(opts.limit));
   const q = params.toString();
   return q ? `?${q}` : "";
 }

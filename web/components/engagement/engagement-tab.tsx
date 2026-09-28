@@ -2,7 +2,7 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 import { EngagementFollowUp } from "@/engage";
-import type { RegistrantRow, Webinar } from "@/lib/api-types";
+import type { Webinar } from "@/lib/api-types";
 import type { SectionId } from "@/lib/engagement/sections";
 import { apiSource } from "@/lib/engagement/api-source";
 import { fixtureSource } from "@/lib/engagement/source";
@@ -18,14 +18,15 @@ const noSubscribe = () => () => {};
  *  preview webinar's state — scheduled, live or ended. */
 export function EngagementTab({
   webinar: w,
-  registrants,
+  approved,
   onOpenAttendees,
   initialSection,
   hideFollowUp = false,
   onOpenFollowUp,
 }: {
   webinar: Webinar;
-  registrants: RegistrantRow[];
+  /** Approved count when admission is manual. Omitted until the roster counts arrive. */
+  approved?: number;
   onOpenAttendees?: () => void;
   /** Following up is its own tab (an ended webinar): show the levels and a link there. */
   hideFollowUp?: boolean;
@@ -42,11 +43,6 @@ export function EngagementTab({
     () => (bypass ? fixtureSource(previewStatus) : apiSource(w.id)),
     [bypass, previewStatus, w.id],
   );
-  const approved = useMemo(
-    () => (w.approval === "manual" ? registrants.filter((r) => r.state === "approved").length : undefined),
-    [w.approval, registrants],
-  );
-
   if (!hydrated) return <DashboardSkeleton />;
   return (
     <EngagementDashboard

@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { SlotReminder, type MessageSlot } from "@/lib/api-types";
 import { engageApi } from "./api";
+import { readSlots, slotVersion, subscribeSlots, writeSlots } from "./slot-cache";
+
+const slotFlight = new Map<string, Promise<void>>();
 
 /* How many attendee messages actually go out on a channel.
  *
@@ -19,32 +22,50 @@ export type WebinarSlotsState =
 /** One webinar's resolved slots. `unavailable` means the caller should use the
  *  legacy option; an empty ready list is real data and counts as zero. */
 export function useWebinarMessageSlots(slug: string): WebinarSlotsState {
-  const [state, setState] = useState<WebinarSlotsState>({ status: "loading" });
-  const [seenSlug, setSeenSlug] = useState(slug);
-  if (slug !== seenSlug) {
-    setSeenSlug(slug);
-    setState({ status: "loading" });
+  const version = useSyncExternalStore(
+    (cb) => subscribeSlots(slug, cb),
+    () => slotVersion(slug),
+    () => 0,
+  );
+  const cached = readSlots(slug);
+  const [state, setState] = useState<WebinarSlotsState>(() =>
+    cached ? { status: "ready", slots: cached } : { status: "loading" },
+  );
+  const [seen, setSeen] = useState(`${slug}:${version}`);
+  const mark = `${slug}:${version}`;
+  if (mark !== seen) {
+    setSeen(mark);
+    const next = readSlots(slug);
+    setState(next ? { status: "ready", slots: next } : { status: "loading" });
   }
 
   useEffect(() => {
+    if (readSlots(slug)) return;
     let cancelled = false;
-    engageApi
-      .crmWebinarMessages(slug)
-      .then((res) => {
-        if (cancelled) return;
-        if (!Array.isArray(res.slots)) {
-          setState({ status: "unavailable" });
-          return;
-        }
-        setState({ status: "ready", slots: res.slots });
-      })
-      .catch(() => {
-        if (!cancelled) setState({ status: "unavailable" });
-      });
+    const load = () =>
+      engageApi
+        .crmWebinarMessages(slug)
+        .then((res) => {
+          if (!Array.isArray(res.slots)) {
+            if (!cancelled) setState({ status: "unavailable" });
+            return;
+          }
+          writeSlots(slug, res.slots);
+          if (!cancelled) setState({ status: "ready", slots: res.slots });
+        })
+        .catch(() => {
+          if (!cancelled) setState({ status: "unavailable" });
+        });
+    const pending = slotFlight.get(slug);
+    const run = pending ?? load();
+    if (!pending) slotFlight.set(slug, run);
+    run.finally(() => {
+      if (slotFlight.get(slug) === run) slotFlight.delete(slug);
+    });
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, version]);
 
   return state;
 }

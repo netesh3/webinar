@@ -149,6 +149,10 @@ type CRMInboxResponse struct {
 	/** The number is on the WhatsApp Business app too (Coexistence): replies can also be
 	 *  typed on the phone, and show up here. */
 	Coexistence bool `json:"coexistence"`
+	/** Where this page starts. */
+	Offset int `json:"offset"`
+	/** Threads in the current view, of which Threads is one page. */
+	Total int `json:"total"`
 }
 
 // CRMDoneRequest marks a conversation done, or reopens it.

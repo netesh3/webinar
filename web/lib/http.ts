@@ -100,6 +100,65 @@ export const put = <T>(path: string, body: unknown) =>
 
 export const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
-/** Reads are never cached: a stale registrant count or a stale "live" badge is
- *  worse than a round trip. */
+/** Reads the browser must not keep: a live badge, the room, the inbox, alerts. */
 export const fresh = { cache: "no-store" } as const;
+
+/** Kept until dropCache. Profile, integrations, message defaults, registrations. */
+export const TTL_SESSION = Number.POSITIVE_INFINITY;
+/** GET /api/config. The server render already supplied it; skip a second fetch. */
+export const TTL_CONFIG = 5 * 60_000;
+/** One page of a host list or the people table. */
+export const TTL_LIST = 30_000;
+/** Audience summary cards above the people table. */
+export const TTL_AUDIENCE = 60_000;
+
+type CacheSlot = { at: number; body: unknown };
+
+const memory = new Map<string, CacheSlot>();
+const flying = new Map<string, Promise<unknown>>();
+
+/** A stored GET, including one that is past its TTL. `fresh` is false once `ttl` has passed. */
+export function readCache<T>(key: string, ttl: number): { value: T; fresh: boolean } | null {
+  const hit = memory.get(key);
+  if (!hit) return null;
+  return { value: hit.body as T, fresh: Date.now() - hit.at < ttl };
+}
+
+export function writeCache(key: string, body: unknown): void {
+  memory.set(key, { at: Date.now(), body });
+}
+
+export function dropCache(key: string): void {
+  memory.delete(key);
+}
+
+export function dropCachePrefix(prefix: string): void {
+  for (const key of memory.keys()) {
+    if (key.startsWith(prefix)) memory.delete(key);
+  }
+}
+
+/** A GET kept in memory. A fresh hit skips the network. `force` replaces the slot.
+ *  Two callers of the same key share one request. */
+export async function cachedGet<T>(
+  path: string,
+  opts: { ttl: number; key?: string; force?: boolean },
+): Promise<T> {
+  const key = opts.key ?? path;
+  if (!opts.force) {
+    const hit = readCache<T>(key, opts.ttl);
+    if (hit?.fresh) return hit.value;
+    const pending = flying.get(key);
+    if (pending) return pending as Promise<T>;
+  }
+  const run = request<T>(path, fresh)
+    .then((body) => {
+      writeCache(key, body);
+      return body;
+    })
+    .finally(() => {
+      if (flying.get(key) === run) flying.delete(key);
+    });
+  flying.set(key, run);
+  return run;
+}

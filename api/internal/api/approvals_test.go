@@ -126,9 +126,9 @@ func idOf(t *testing.T, h *harness, slug, email string) string {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("registrants: status %d body %s", res.StatusCode, raw)
 	}
-	var rows []types.RegistrantRow
-	h.decode(raw, &rows)
-	for _, r := range rows {
+	var page types.RegistrantPage
+	h.decode(raw, &page)
+	for _, r := range page.Items {
 		if strings.EqualFold(r.Email, email) {
 			return r.ID
 		}

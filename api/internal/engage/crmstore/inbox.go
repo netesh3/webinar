@@ -76,8 +76,9 @@ func inboxViewPredicate(view string) (string, error) {
 	return "", store.ErrInvalid
 }
 
-// Inbox is the Messages tab's list.
-func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string) (types.CRMInboxResponse, error) {
+// Inbox is one page of the Messages list. limit <= 0 keeps the old 200-row cap
+// so a caller that does not page still receives the whole short list.
+func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string, limit, offset int) (types.CRMInboxResponse, error) {
 	out := types.CRMInboxResponse{Threads: []types.CRMInboxThread{}, View: view}
 	if out.View == "" {
 		out.View = types.InboxNeedsReply
@@ -88,6 +89,12 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string) (ty
 	}
 	slug := strings.TrimSpace(webinarSlug)
 	scope := inboxScoped()
+	if limit <= 0 || limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	if err := s.pool.QueryRow(ctx, `
 		SELECT count(*) FILTER (WHERE `+needsReply+`),
@@ -116,7 +123,7 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string) (ty
 		  ) m ON true
 		 WHERE c.host_id = $1::uuid`+scope+pred+`
 		 ORDER BY m.created_at DESC, c.id
-		 LIMIT 200`, hostID, slug)
+		 LIMIT $3 OFFSET $4`, hostID, slug, limit, offset)
 	if err != nil {
 		return out, err
 	}
@@ -152,6 +159,19 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string) (ty
 	if err := rows.Err(); err != nil {
 		return out, err
 	}
+	switch out.View {
+	case types.InboxAll:
+		out.Total = out.Counts.All
+	case types.InboxDone:
+		out.Total = out.Counts.Done
+	case types.InboxSnoozed:
+		out.Total = out.Counts.Snoozed
+	case types.InboxHotLeads:
+		out.Total = out.Counts.HotLeads
+	default:
+		out.Total = out.Counts.NeedsReply
+	}
+	out.Offset = offset
 	out.Webinars, err = s.webinarRefs(ctx, hostID)
 	return out, err
 }
