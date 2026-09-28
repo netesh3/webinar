@@ -9,7 +9,7 @@ export default function HostMessagesPage() {
   return (
     <Suspense
       fallback={
-        <div className="grid flex-1 place-items-center">
+        <div className="grid place-items-center py-20">
           <Spinner className="size-6 text-ink-3" />
         </div>
       }
