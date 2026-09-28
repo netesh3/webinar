@@ -4770,3 +4770,144 @@ export interface APIError {
 export interface StatusResponse {
   status: string;
 }
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationStatusConnected = "connected";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationStatusOff = "off";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationStatusSoon = "soon";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationCategoryMessaging = "messaging";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationCategoryStreaming = "streaming";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationCategorySoon = "soon";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionNavigate = "navigate";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionRedirect = "redirect";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionDelete = "delete";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionInterest = "interest";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionInfo = "info";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionSignup = "signup";
+export interface IntegrationStep {
+  title: string;
+  body: string;
+}
+export interface IntegrationAction {
+  id: string;
+  label: string;
+  href?: string;
+  method?: string;
+  kind: string;
+  detail?: string;
+  menu?: boolean;
+  steps?: IntegrationStep[];
+}
+export interface IntegrationCard {
+  id: string;
+  name: string;
+  tagline: string;
+  category: string;
+  status: string;
+  detail: string;
+  who?: string;
+  whoNote?: string;
+  warn?: string;
+  mark: string;
+  text?: string;
+  tone: string;
+  actions?: IntegrationAction[];
+  interested?: boolean;
+}
+export interface IntegrationsResponse {
+  integrations: IntegrationCard[];
+}

@@ -152,8 +152,8 @@ export function TopNav() {
                   : []),
                 {
                   kind: "action",
-                  label: "Account settings",
-                  onSelect: () => router.push("/account"),
+                  label: "Settings",
+                  onSelect: () => router.push("/settings#integrations"),
                 },
                 { kind: "separator" },
                 {

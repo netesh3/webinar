@@ -17,7 +17,8 @@ import {
   type WhatsAppSignupMode,
 } from "../whatsapp-signup";
 
-/* Connect WhatsApp, in Account settings.
+/* Connect WhatsApp. The Embedded Signup dialog stays here, on the WhatsApp
+ * page. Settings only shows the status and links back.
  *
  * The copy is blunt about billing on purpose. A host is connecting THEIR OWN
  * WhatsApp Business Account, and Meta charges every conversation to it — so the
@@ -25,10 +26,8 @@ import {
  * discovers that arrangement from a Meta invoice has been misled by omission,
  * however accurate everything else was.
  *
- * Its own file rather than another branch inside account-screen: the Embedded
- * Signup dialog needs Meta's SDK prepared on mount (see lib/whatsapp-signup.ts),
- * which is an effect and a piece of state that have nothing to do with editing a
- * name and an organisation.
+ * Its own file so the Embedded Signup dialog can prepare Meta's SDK on mount
+ * (see lib/whatsapp-signup.ts), which has nothing to do with the Settings page.
  */
 export function WhatsAppCard({
   account,

@@ -68,7 +68,7 @@ Webinar screens import from `@/engage` only (`web/engage/index.ts`):
 | --- | --- | --- |
 | `WhatsAppRemindersToggle` | schedule form | deployment can connect WhatsApp (disabled until the host connects) |
 | `WhatsAppOptInCheckbox` | register form | deployment can connect WhatsApp and a phone number was typed |
-| `WhatsAppAccountRow` | account settings | deployment can connect WhatsApp and the account may host |
+| `WhatsAppAccountRow` | still exported; Settings reads `GET /api/host/integrations` instead | deployment can connect WhatsApp and the account may host |
 | `RosterContactsLink` | Attendees tab | always (contacts exist without a number) |
 | `useRosterWhatsAppColumns`, `RosterWhatsAppHeaders`, `RosterWhatsAppCells` | Attendees tab | host has connected WhatsApp |
 | `engageNavItem`, `ENGAGE_HOME` | top nav | account may host |

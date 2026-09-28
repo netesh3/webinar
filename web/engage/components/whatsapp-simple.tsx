@@ -156,13 +156,12 @@ export function WhatsAppSimple({
               {setup?.optedInContacts ?? 0} people can get WhatsApp
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => onOpen("setup")}
+          <Link
+            href="/settings#integrations"
             className="text-[12.5px] font-medium text-brand hover:underline"
           >
             Settings
-          </button>
+          </Link>
         </Card>
       ) : (
         <Card className="flex flex-wrap items-center gap-3 border-brand-line bg-brand-soft/40 px-4 py-3">
