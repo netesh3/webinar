@@ -2,12 +2,16 @@ package engage
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
 	"github.com/netkumar/webcast/api/types"
 )
@@ -44,6 +48,50 @@ func (s *Module) handleCRMMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	if from != nil {
 		out.From = from.UTC().Format(time.RFC3339)
+	}
+	for _, f := range failures {
+		out.Failures = append(out.Failures, ExplainFailure(f.Error, f.Count))
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+/* handleCRMWebinarMetrics is GET /crm/webinars/{slug}/metrics.
+ *
+ * The host-wide aggregate, limited to this webinar, plus the by-kind split.
+ * A slug that is not this host's reads the same as one that does not exist.
+ */
+func (s *Module) handleCRMWebinarMetrics(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
+	slug := chi.URLParam(r, "slug")
+	if !s.crmWebinarAllowed(w, r, user.ID, slug) {
+		return
+	}
+	totals, failures, kinds, err := s.store.WebinarMessageMetrics(r.Context(), user.ID, slug)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_webinar",
+			"That webinar is not one of yours.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "crm webinar metrics", err)
+		return
+	}
+	out := types.CRMWebinarMetricsResponse{
+		Sent:          totals.Sent,
+		Delivered:     totals.Delivered,
+		Read:          totals.Read,
+		Failed:        totals.Failed,
+		CostMicros:    totals.CostMicros,
+		CostEstimated: totals.CostEstimated,
+		Currency:      "INR",
+		Failures:      make([]types.CRMFailure, 0, len(failures)),
+		People:        kinds.People,
+		ByKind: types.CRMMetricsByKind{
+			Confirmation: kinds.Confirmation,
+			Reminders:    kinds.Reminders,
+			Replay:       kinds.Replay,
+			FollowUps:    kinds.FollowUps,
+		},
 	}
 	for _, f := range failures {
 		out.Failures = append(out.Failures, ExplainFailure(f.Error, f.Count))

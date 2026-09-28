@@ -3,10 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { engageApi } from "../api";
-import { Modal, Spinner } from "@/components/controls";
-import { Button } from "@/components/ui";
-import type { CRMFailure, CRMMetricsResponse, CRMSetup } from "@/lib/api-types";
-import { MetricTiles, StatusBar } from "./metric-tiles";
+import { Spinner } from "@/components/controls";
+import type { CRMMetricsResponse, CRMSetup } from "@/lib/api-types";
+import { FailureDialog, MetricTiles, StatusBar } from "./metric-tiles";
 
 type Period = "7d" | "30d" | "all";
 
@@ -149,48 +148,5 @@ export function WhatsAppMetrics({
         <FailureDialog failures={shown.failures} onClose={() => setWhy(false)} />
       )}
     </section>
-  );
-}
-
-function FailureDialog({
-  failures,
-  onClose,
-}: {
-  failures: CRMFailure[];
-  onClose: () => void;
-}) {
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Why messages failed"
-      description="Grouped by what WhatsApp reported. Each note is what to do about it."
-      footer={
-        <Button variant="ghost" onClick={onClose}>
-          Close
-        </Button>
-      }
-    >
-      {failures.length === 0 ? (
-        <p className="text-[13px] text-ink-2">Nothing failed in this period.</p>
-      ) : (
-        <ul className="grid gap-3">
-          {failures.map((f) => (
-            <li key={`${f.code}-${f.reason}`} className="rounded-xl border border-line px-3.5 py-3">
-              <p className="text-[13.5px] font-semibold text-ink">
-                {f.reason}
-                <span className="ml-2 font-medium text-ink-3">
-                  {f.count} {f.count === 1 ? "message" : "messages"}
-                </span>
-              </p>
-              {f.code && (
-                <p className="mt-0.5 text-[11.5px] text-ink-3">WhatsApp error {f.code}</p>
-              )}
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">{f.fix}</p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Modal>
   );
 }

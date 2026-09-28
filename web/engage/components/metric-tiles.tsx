@@ -1,10 +1,17 @@
 "use client";
 
+import { Modal } from "@/components/controls";
 import { MaterialIcon } from "@/components/icons";
-import type { CRMMetricsResponse } from "@/lib/api-types";
+import { Button } from "@/components/ui";
+import type { CRMFailure, CRMMetricsResponse } from "@/lib/api-types";
 
-/* The five numbers and the status bar. Shared by the WhatsApp page and, later,
- * the compact card on an ended webinar. */
+export type MetricNumbers = Pick<
+  CRMMetricsResponse,
+  "sent" | "delivered" | "read" | "failed" | "costMicros" | "costEstimated"
+>;
+
+/* The five numbers and the status bar. Shared by the WhatsApp page and the
+ * compact card on an ended webinar. */
 
 export function formatRupees(micros: number): string {
   const n = micros / 1_000_000;
@@ -20,10 +27,13 @@ function share(part: number, whole: number): string {
 export function MetricTiles({
   metrics,
   compact = false,
+  sentHint,
   onSeeWhy,
 }: {
-  metrics: CRMMetricsResponse;
+  metrics: MetricNumbers;
   compact?: boolean;
+  /** Replaces the Sent tile's line. The webinar card says who it went to. */
+  sentHint?: string;
   onSeeWhy?: () => void;
 }) {
   const deliveredOfSent = share(metrics.delivered, metrics.sent);
@@ -43,7 +53,7 @@ export function MetricTiles({
       icon: "send",
       label: "Sent",
       value: String(metrics.sent),
-      hint: "messages, all webinars",
+      hint: sentHint ?? (compact ? "for this webinar" : "messages, all webinars"),
     },
     {
       icon: "done_all",
@@ -128,7 +138,50 @@ export function MetricTiles({
   );
 }
 
-export function StatusBar({ metrics }: { metrics: CRMMetricsResponse }) {
+export function FailureDialog({
+  failures,
+  onClose,
+}: {
+  failures: CRMFailure[];
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Why messages failed"
+      description="Grouped by what WhatsApp reported. Each note is what to do about it."
+      footer={
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      {failures.length === 0 ? (
+        <p className="text-[13px] text-ink-2">Nothing failed in this period.</p>
+      ) : (
+        <ul className="grid gap-3">
+          {failures.map((f) => (
+            <li key={`${f.code}-${f.reason}`} className="rounded-xl border border-line px-3.5 py-3">
+              <p className="text-[13.5px] font-semibold text-ink">
+                {f.reason}
+                <span className="ml-2 font-medium text-ink-3">
+                  {f.count} {f.count === 1 ? "message" : "messages"}
+                </span>
+              </p>
+              {f.code && (
+                <p className="mt-0.5 text-[11.5px] text-ink-3">WhatsApp error {f.code}</p>
+              )}
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">{f.fix}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
+export function StatusBar({ metrics }: { metrics: MetricNumbers }) {
   const read = metrics.read;
   const deliveredOnly = Math.max(0, metrics.delivered - metrics.read);
   const failed = metrics.failed;

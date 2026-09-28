@@ -30,3 +30,33 @@ type CRMFailure struct {
 	Count  int    `json:"count"`
 	Fix    string `json:"fix"`
 }
+
+/* CRMWebinarMetricsResponse is one webinar's WhatsApp numbers.
+ *
+ * The same aggregate as CRMMetricsResponse, limited to messages stored against
+ * this webinar, plus how many people they went to and how the sent count splits
+ * across confirmation, reminders, replay and follow-ups. Follow-ups are the
+ * drip steps and the broadcasts sent for this webinar. A message with no
+ * notification kind still counts in the totals; it is not one of the four.
+ */
+type CRMWebinarMetricsResponse struct {
+	Sent          int              `json:"sent"`
+	Delivered     int              `json:"delivered"`
+	Read          int              `json:"read"`
+	Failed        int              `json:"failed"`
+	CostMicros    int64            `json:"costMicros"`
+	CostEstimated bool             `json:"costEstimated"`
+	Currency      string           `json:"currency"`
+	Failures      []CRMFailure     `json:"failures"`
+	People        int              `json:"people"`
+	ByKind        CRMMetricsByKind `json:"byKind"`
+}
+
+/* CRMMetricsByKind is the sent count for each automatic message, in the order
+ * they happen. Sent only: queued rows are not in any of these. */
+type CRMMetricsByKind struct {
+	Confirmation int `json:"confirmation"`
+	Reminders    int `json:"reminders"`
+	Replay       int `json:"replay"`
+	FollowUps    int `json:"followUps"`
+}

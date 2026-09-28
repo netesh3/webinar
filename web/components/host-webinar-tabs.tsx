@@ -38,6 +38,7 @@ import {
   RosterWhatsAppHeaders,
   ScheduleMessagesTab,
   WebinarWhatsAppOverview,
+  WebinarWhatsAppMetrics,
   EngagementFollowUpPage,
   useRosterMessaging,
   useRosterWhatsAppColumns,
@@ -625,7 +626,13 @@ function FollowUpTab({ webinar: w }: { webinar: Webinar }) {
       .catch(() => {});
     return () => ctrl.abort();
   }, [w.id]);
-  return <EngagementFollowUpPage slug={w.id} tiers={tiers} />;
+  return (
+    <EngagementFollowUpPage
+      slug={w.id}
+      tiers={tiers}
+      afterGroups={<WebinarWhatsAppMetrics slug={w.id} topic={w.topic} />}
+    />
+  );
 }
 
 // -------------------------------------------------------------------- stage
