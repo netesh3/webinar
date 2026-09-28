@@ -440,16 +440,13 @@ export function retryBackground(): void {
 
 // ------------------------------------------------------------------- the processor
 
-/* How slow is too slow.
+/* How many frames to average the reported cost over.
  *
- * A frame budget of 33ms is 30fps. Sustained work above SLOW_FRAME_MS means the device
- * cannot keep up, and the honest response is to say so and turn it off rather than to
- * publish a stuttering track — the audience sees the stutter, and the person causing it
- * does not. Measured over a window, because one slow frame is a garbage collection.
+ * A number that changes thirty times a second cannot be read; ninety frames is a couple
+ * of seconds at 30fps, long enough to smooth over a single garbage collection without
+ * making the settings window feel stale.
  */
-const SLOW_FRAME_MS = 42;
-const SLOW_FRAME_WINDOW = 90;
-const SLOW_FRAME_LIMIT = 55;
+const FRAME_COST_WINDOW = 90;
 
 /* Turns a choice into what the compositor needs.
  */
@@ -1054,17 +1051,12 @@ export async function enableCamera(
  *
  * Switching `engine` tears down one processor and attaches the other — the transformers
  * are not interchangeable.
- *
- * `onDegraded` fires when the device cannot keep up. The caller says so and turns it
- * off — this hook does not decide that on its own, because "your laptop is too slow"
- * is a sentence that belongs to the UI.
  */
 export function useVirtualBackground(
   track: LocalVideoTrack | undefined,
   choice: BackgroundChoice,
   /** The low-light lift in stored units, 0..LOW_LIGHT_MAX. 0 is off. Ignored on LiveKit. */
   lowLight: number,
-  onDegraded?: () => void,
   engine: BackgroundEngine = DEFAULT_BACKGROUND_ENGINE,
 ) {
   const softCurrent = useRef<SoftSegmenter | null>(null);
@@ -1080,19 +1072,12 @@ export function useVirtualBackground(
     latestLowLight.current = lowLight;
   }, [lowLight]);
 
-  // The slow-frame window, reset whenever the mode changes.
-  const slow = useRef({ frames: 0, slowFrames: 0, totalMs: 0, segmentMs: 0 });
-  const degraded = useRef(false);
-
-  // Through a ref so the effect below does not re-run when the caller re-renders.
-  const notifyDegraded = useRef(onDegraded);
-  useEffect(() => {
-    notifyDegraded.current = onDegraded;
-  }, [onDegraded]);
+  // The frame-cost window, reset whenever the mode changes.
+  const cost = useRef({ frames: 0, totalMs: 0, segmentMs: 0 });
 
   /* Whether this screen is still here. The processor outlives it — it goes on to the room —
-   * and until the room takes it over it would otherwise go on reporting slow frames to a
-   * pre-join screen that has gone, which would turn the background off with nobody told. */
+   * and until the room takes it over it would otherwise go on publishing frame cost from a
+   * pre-join screen that has gone, into a store a screen that has moved on is not reading. */
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
@@ -1152,12 +1137,11 @@ export function useVirtualBackground(
 
     const onFrame = ({ totalMs, segmentMs }: { totalMs: number; segmentMs: number }) => {
       if (!mounted.current) return;
-      const w = slow.current;
+      const w = cost.current;
       w.frames += 1;
       w.totalMs += totalMs;
       w.segmentMs += segmentMs;
-      if (totalMs > SLOW_FRAME_MS) w.slowFrames += 1;
-      if (w.frames < SLOW_FRAME_WINDOW) return;
+      if (w.frames < FRAME_COST_WINDOW) return;
 
       // Averaged over the window rather than reported per frame: a number
       // that changes thirty times a second cannot be read.
@@ -1165,18 +1149,9 @@ export function useVirtualBackground(
         total: Math.round((w.totalMs / w.frames) * 10) / 10,
         segment: Math.round((w.segmentMs / w.frames) * 10) / 10,
       });
-
-      const tooSlow = (w.slowFrames / w.frames) * 100 > SLOW_FRAME_LIMIT;
       w.frames = 0;
-      w.slowFrames = 0;
       w.totalMs = 0;
       w.segmentMs = 0;
-      // Announced once. Repeating it every ninety frames would be a toast
-      // storm on exactly the device least able to cope with one.
-      if (tooSlow && !degraded.current) {
-        degraded.current = true;
-        notifyDegraded.current?.();
-      }
     };
 
     /* Enhanced → Beta once per attach cycle when SoftSegmenter hits an interrupted Module.
@@ -1468,11 +1443,10 @@ export function useVirtualBackground(
     softCurrent.current?.setLowLight(lowLightAmount(lowLight));
   }, [lowLight, engine]);
 
-  // The window and the one-shot warning both reset when the mode changes, so a
-  // lighter background gets a fair hearing on a device that failed with a heavier one.
+  // The window resets when the mode changes, so a lighter background's cost is not
+  // averaged in with a heavier one's.
   useEffect(() => {
-    slow.current = { frames: 0, slowFrames: 0, totalMs: 0, segmentMs: 0 };
-    degraded.current = false;
+    cost.current = { frames: 0, totalMs: 0, segmentMs: 0 };
   }, [key]);
 
   /* Deliberately no teardown on unmount. The processor is the track's, and goes when the

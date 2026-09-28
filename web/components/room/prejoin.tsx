@@ -144,13 +144,6 @@ export function PreJoin({
     previewTrack ?? undefined,
     prefs.background,
     prefs.lowLight,
-    () => {
-      if (prefs.background.mode !== "none") {
-        onUpdatePrefs({ background: { mode: "none" } });
-        return;
-      }
-      onUpdatePrefs({ lowLight: 0 });
-    },
     prefs.backgroundEngine,
   );
 
