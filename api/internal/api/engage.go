@@ -54,6 +54,10 @@ type Engage interface {
 
 	// Tick is the CRM's share of the 30-second sweeper: drips, bots, the WhatsApp outbox.
 	Tick(ctx context.Context)
+
+	/* MessageSlots is the resolved attendee messages for one webinar when ENGAGE_SLOTS
+	 * is on. ok is false when the flag is off; the caller keeps reading WebinarOptions. */
+	MessageSlots(ctx context.Context, webinarID string) ([]types.MessageSlot, bool, error)
 }
 
 // NoEngage is a deployment without the CRM: no routes, no messages, no columns.
@@ -72,6 +76,9 @@ func (NoEngage) OnRecordingPublished(context.Context, types.Webinar, store.User,
 func (NoEngage) DecorateRegistrants(context.Context, store.User, string, []types.RegistrantRow) {
 }
 func (NoEngage) Tick(context.Context) {}
+func (NoEngage) MessageSlots(context.Context, string) ([]types.MessageSlot, bool, error) {
+	return nil, false, nil
+}
 
 /* UseEngage plugs the CRM in. Called once, by main (and the test harness), before Routes.
  * A nil argument means NoEngage. */

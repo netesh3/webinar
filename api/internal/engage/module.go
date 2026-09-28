@@ -120,6 +120,8 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Post("/crm/contacts/{id}/send", s.handleCRMSend)
 	host.Get("/crm/reminders", s.handleCRMReminders)
 	host.Put("/crm/reminders", s.handleSetCRMReminders)
+	host.Get("/crm/message-defaults", s.handleMessageDefaults)
+	host.Put("/crm/message-defaults", s.handleSetMessageDefaults)
 	host.Get("/crm/audience", s.handleCRMAudience)
 	host.Post("/crm/audience", s.handleCRMAudience)
 
@@ -136,6 +138,7 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Get("/crm/replies", s.handleCRMReplies)
 	host.Get("/crm/summary", s.handleCRMSummary)
 	host.Get("/crm/webinars/{slug}/messages", s.handleCRMWebinarMessages)
+	host.Put("/crm/webinars/{slug}/messages", s.handleSetWebinarMessages)
 	host.Get("/crm/webinars/{slug}/followups", s.handleCRMFollowups)
 	host.Get("/crm/recipes", s.handleCRMRecipes)
 	host.Get("/crm/audience/summary", s.handleCRMAudienceSummary)
@@ -237,6 +240,21 @@ func (s *Module) OnRescheduled(ctx context.Context, wb types.Webinar) {
 	if !wb.Options.WhatsAppReminders {
 		offsets = []int{}
 	}
+	var wording *types.MessageSlot
+	if s.cfg.EngageSlots {
+		slots, err := s.ResolveSlots(ctx, wb.ID)
+		if err != nil {
+			s.log.Warn("crm: message slots", "slug", wb.ID, "error", err)
+			return
+		}
+		rem, _ := types.FindSlot(slots, types.SlotReminder)
+		if !rem.Sends(types.ChannelWhatsApp) {
+			offsets = []int{}
+		} else {
+			offsets = rem.BeforeMinutes()
+			wording = &rem
+		}
+	}
 	if err := s.store.ReplanWhatsAppReminders(ctx, wb.ID, starts, offsets); err != nil {
 		s.log.Warn("crm: could not replan whatsapp reminders", "slug", wb.ID, "error", err)
 		return
@@ -266,7 +284,7 @@ func (s *Module) OnRescheduled(ctx context.Context, wb types.Webinar) {
 			}
 			contacts[g.ContactID] = c
 		}
-		s.queueWhatsApp(ctx, hostID, wb, c, g.RegistrationID, types.NotifyWhatsAppReminder, g.OffsetMin)
+		s.queueWhatsApp(ctx, hostID, wb, c, g.RegistrationID, types.NotifyWhatsAppReminder, g.OffsetMin, wording)
 	}
 }
 

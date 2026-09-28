@@ -238,12 +238,7 @@ func (s *Module) enqueueWhatsAppInvite(
 	contact types.CRMContact,
 	registrationID string,
 ) {
-	if !wb.Options.WhatsAppReminders || registrationID == "" {
-		return
-	}
-	// Checked again by the outbox sweep, which is where it counts; here it saves
-	// writing rows for the majority of registrants who never ticked the box.
-	if !contact.WhatsAppOptIn || contact.Phone == "" {
+	if registrationID == "" || !contact.WhatsAppOptIn || contact.Phone == "" {
 		return
 	}
 	hostID, err := s.store.HostIDFor(ctx, wb.ID)
@@ -252,9 +247,29 @@ func (s *Module) enqueueWhatsAppInvite(
 		return
 	}
 
-	s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppConfirmed, 0)
+	if s.cfg.EngageSlots {
+		slots, err := s.ResolveSlots(ctx, wb.ID)
+		if err != nil {
+			s.log.Error("whatsapp invite: message slots", "webinar", wb.ID, "error", err)
+			return
+		}
+		if conf, ok := types.FindSlot(slots, types.SlotConfirmation); ok && conf.Sends(types.ChannelWhatsApp) {
+			s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppConfirmed, 0, &conf)
+		}
+		if rem, ok := types.FindSlot(slots, types.SlotReminder); ok && rem.Sends(types.ChannelWhatsApp) {
+			for _, offset := range rem.BeforeMinutes() {
+				s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppReminder, offset, &rem)
+			}
+		}
+		return
+	}
+
+	if !wb.Options.WhatsAppReminders {
+		return
+	}
+	s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppConfirmed, 0, nil)
 	for _, offset := range wb.Options.Reminders {
-		s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppReminder, offset)
+		s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppReminder, offset, nil)
 	}
 }
 
@@ -272,6 +287,7 @@ func (s *Module) queueWhatsApp(
 	registrationID string,
 	kind types.NotificationKind,
 	offset int,
+	slot *types.MessageSlot,
 ) {
 	var due time.Time
 	if kind == types.NotifyWhatsAppReminder {
@@ -284,10 +300,20 @@ func (s *Module) queueWhatsApp(
 			return
 		}
 	}
-	reminder, ok, err := s.store.ReminderTemplate(ctx, hostID, kind)
-	if err != nil {
-		s.log.Error("whatsapp invite: reminder template", "kind", kind, "error", err)
-		return
+	var reminder types.CRMReminder
+	var ok bool
+	var err error
+	if slot != nil && strings.TrimSpace(slot.Template) != "" {
+		reminder = types.CRMReminder{
+			Kind: kind, Template: slot.Template, Language: slot.Language, Params: slot.Params,
+		}
+		ok = true
+	} else {
+		reminder, ok, err = s.store.ReminderTemplate(ctx, hostID, kind)
+		if err != nil {
+			s.log.Error("whatsapp invite: reminder template", "kind", kind, "error", err)
+			return
+		}
 	}
 	if !ok {
 		return
