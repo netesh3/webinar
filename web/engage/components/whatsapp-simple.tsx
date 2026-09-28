@@ -8,6 +8,8 @@ import { useToast } from "@/components/providers";
 import { Button, Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import type {
+  CRMDrip,
+  CRMTag,
   CRMMergeField,
   CRMRecipe,
   CRMRecipesResponse,
@@ -20,6 +22,7 @@ import { StarterTemplates } from "./starter-templates";
 import { Switch } from "./wa-kit";
 import { EVERYONE_MESSAGES, MessageEditor } from "./wa-messages";
 import { KeywordsDialog } from "./automations";
+import { RuleBuilder, ruleSentence } from "./rule-builder";
 
 /* The WhatsApp page, simplified (docs/mockups/simple/whatsapp.html): one page, three parts.
  *
@@ -54,17 +57,27 @@ export function WhatsAppSimple({
   >(null);
   const [writing, setWriting] = useState(false);
   const [keywords, setKeywords] = useState<CRMRecipe | null>(null);
+  const [rules, setRules] = useState<CRMDrip[]>([]);
+  const [tags, setTags] = useState<CRMTag[]>([]);
+  const [building, setBuilding] = useState(false);
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([engageApi.crmReminders(), engageApi.crmRecipes()])
-      .then(([r, rc]) => {
+    Promise.all([
+      engageApi.crmReminders(),
+      engageApi.crmRecipes(),
+      engageApi.crmDrips(),
+    ])
+      .then(([r, rc, d]) => {
         if (cancelled) return;
         setReminders(r.reminders);
         setFields(r.fields);
         setRecipes(rc);
+        // The host's own rules: sequences not made from a recipe.
+        setRules(d.drips.filter((x) => !x.recipe));
+        setTags(d.tags);
       })
       .catch(() => {});
     return () => {
@@ -73,6 +86,28 @@ export function WhatsAppSimple({
   }, [tick]);
 
   const connected = Boolean(setup?.connected);
+
+  async function toggleRule(d: CRMDrip, active: boolean) {
+    try {
+      const res = await engageApi.updateCrmDrip(d.id, {
+        name: d.name,
+        trigger: d.trigger,
+        webinarId: d.webinarId,
+        tagId: d.tagId || undefined,
+        tiers: d.tiers,
+        match: d.match,
+        active,
+        steps: d.steps,
+      });
+      setRules((prev) => prev.map((x) => (x.id === d.id ? res.drip : x)));
+      notify(active ? "On." : "Off.", "ok");
+    } catch (e) {
+      notify(
+        e instanceof ApiError ? e.message : "Could not change that.",
+        "error",
+      );
+    }
+  }
 
   async function toggleRecipe(r: CRMRecipe, on: boolean) {
     try {
@@ -218,9 +253,17 @@ export function WhatsAppSimple({
           <div>
             <h2 className="text-[15px] font-semibold text-ink">Automations</h2>
             <p className="text-[12.5px] text-ink-2">
-              Switch on what you want WhatsApp to do for you.
+              Switch on what you want WhatsApp to do for you — or write your own
+              rule.
             </p>
           </div>
+          <Button
+            size="sm"
+            onClick={() => setBuilding(true)}
+            disabled={!connected || !templates}
+          >
+            + New automation
+          </Button>
         </div>
         <Card className="divide-y divide-line p-0">
           <Rule
@@ -233,6 +276,25 @@ export function WhatsAppSimple({
               </span>
             }
           />
+          {rules.map((d) => {
+            const r = ruleSentence(d);
+            return (
+              <Rule
+                key={d.id}
+                when={r.when}
+                then={r.then}
+                hint={`${d.name} · ${d.stats.active + d.stats.done} so far`}
+                right={
+                  <Switch
+                    checked={d.active}
+                    onChange={(v) => void toggleRule(d, v)}
+                    label={d.name}
+                    disabled={!connected && !d.active}
+                  />
+                }
+              />
+            );
+          })}
           {hot && (
             <Rule
               when="a reply mentions price, program or 1:1"
@@ -374,6 +436,15 @@ export function WhatsAppSimple({
             />
           </div>
         </Modal>
+      )}
+      {building && templates && (
+        <RuleBuilder
+          templates={templates}
+          tags={tags}
+          fields={fields}
+          onClose={() => setBuilding(false)}
+          onSaved={(d) => setRules((prev) => [d, ...prev])}
+        />
       )}
       {keywords && (
         <KeywordsDialog

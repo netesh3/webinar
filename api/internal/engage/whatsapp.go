@@ -458,6 +458,7 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 		 */
 		s.tagHotLead(ctx, *h, contact.ID, m.Body)
 		s.onQuickReply(ctx, *h, contact.ID, m.Kind, m.Body)
+		s.onInboundRules(ctx, h.ID, contact.ID, m.Kind, m.Body)
 		s.runBot(ctx, *h, contact, m)
 	}
 
