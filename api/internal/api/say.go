@@ -269,10 +269,13 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		if packet.ID == "" {
 			packet.ID = fmt.Sprintf("q-%d", packet.At)
 		}
-		_ = s.store.UpsertSessionQuestion(r.Context(), slug, types.SessionQuestion{
+		if err := s.store.UpsertSessionQuestion(r.Context(), slug, types.SessionQuestion{
 			ID: packet.ID, Identity: from.Identity, Name: from.Name,
 			Text: packet.Text, Anonymous: packet.Anonymous, Role: from.Role,
-		})
+		}); err != nil {
+			// Still delivered live, but it will be missing from the report — say so.
+			s.log.Warn("say: record question failed", "slug", slug, "question", packet.ID, "error", err)
+		}
 	case types.MsgUpvote:
 		if added, err := s.store.UpvoteQuestion(
 			r.Context(), slug, packet.QuestionID, from.Identity,

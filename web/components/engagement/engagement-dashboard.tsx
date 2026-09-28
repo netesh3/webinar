@@ -290,7 +290,13 @@ export function EngagementDashboard({
         id="chat"
         title="Chat"
         hint="How much people talked, and who talked most."
-        summary={k.chatMessages ? `${plural(k.chatMessages, "message")} from ${plural(k.chatters, "person", "people")}` : "No chat"}
+        summary={
+          k.chatMessages
+            ? `${plural(k.chatMessages, "message")} from ${plural(k.chatters, "person", "people")}`
+            : k.stageChatMessages
+              ? `No attendee chat · ${plural(k.stageChatMessages, "stage message")}`
+              : "No chat"
+        }
       >
         <ChatPanel s={s} />
       </DetailSection>

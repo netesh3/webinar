@@ -119,6 +119,16 @@ func TestComputeHeadlineFigures(t *testing.T) {
 	}
 }
 
+// Stage chat never scores, but a session where only the stage chatted still reports it.
+func TestComputeReportsStageChatSeparately(t *testing.T) {
+	in := scenario()
+	in.Chats, in.StageChats = nil, 3
+	k := Compute(in, Current()).Summary.KPIs
+	if k.ChatMessages != 0 || k.Chatters != 0 || k.StageChatMessages != 3 {
+		t.Fatalf("audience chat %d/%d stage %d, want 0/0 and 3", k.ChatMessages, k.Chatters, k.StageChatMessages)
+	}
+}
+
 func TestComputePollVotersIsDistinctAudience(t *testing.T) {
 	in := scenario()
 	in.Votes = append(in.Votes,

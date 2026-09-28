@@ -63,6 +63,9 @@ type EngagementKPIs struct {
 	PeakMinute        int `json:"peakMinute"`
 	ChatMessages      int `json:"chatMessages"`
 	Chatters          int `json:"chatters"`
+	/** Messages from the host and panelists: not in any audience figure, but shown so a
+	 * session where only the stage chatted doesn't read as unused chat. */
+	StageChatMessages int `json:"stageChatMessages,omitempty"`
 	Questions         int `json:"questions"`
 	AnsweredQuestions int `json:"answeredQuestions"`
 	Upvotes           int `json:"upvotes"`

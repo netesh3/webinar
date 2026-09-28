@@ -28,6 +28,7 @@ export const ENGAGEMENT_CSV_COLUMNS = [
   "name", "email", "attended", "score", "tier", "watch_minutes", "join_timing",
   "first_join_min", "last_leave_min", "visits", "chats", "questions", "upvotes",
   "polls_answered", "polls_present", "quiz_correct", "quiz_answered", "reactions", "hand_raises",
+  "survey", "survey_rating", "survey_nps",
 ] as const;
 
 export const ATTENDANCE_CSV_COLUMNS = [
@@ -47,7 +48,7 @@ const OPTIONS: { id: ExportId; url: keyof ExportUrls; label: string; hint: strin
     id: "engagement_csv",
     url: "engagementCsv",
     label: "Engagement (CSV)",
-    hint: "One row per person: score, level, watch time, chats, questions, polls",
+    hint: "One row per person: score, level, watch time, chats, questions, polls, reactions",
     needsStart: false,
   },
   {
