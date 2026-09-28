@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { engageApi } from "../api";
 import { useSession } from "@/components/providers";
 import type { CRMRepliesResponse } from "@/lib/api-types";
@@ -18,28 +18,60 @@ import { PersonAvatar } from "./wa-kit";
 
 const POLL_MS = 60_000;
 
+/* One poll for every caller (the bell, the messages icon). A second mount joins
+ * the same interval instead of starting another. */
+let replySnap: CRMRepliesResponse | null = null;
+const replyListeners = new Set<() => void>();
+let pollers = 0;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+function emitReplies() {
+  replyListeners.forEach((cb) => cb());
+}
+
+function loadReplies() {
+  engageApi
+    .crmReplies()
+    .then((res) => {
+      replySnap = res;
+      emitReplies();
+    })
+    .catch(() => {});
+}
+
+function startReplyPoll() {
+  if (pollTimer) return;
+  loadReplies();
+  pollTimer = setInterval(() => {
+    if (document.visibilityState === "visible") loadReplies();
+  }, POLL_MS);
+}
+
+function stopReplyPoll() {
+  if (!pollTimer) return;
+  clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+const subscribeReplies = (cb: () => void) => {
+  replyListeners.add(cb);
+  return () => {
+    replyListeners.delete(cb);
+  };
+};
+
 export function useReplies(): CRMRepliesResponse | null {
   const { account } = useSession();
   const enabled = Boolean(account?.canHost && account?.whatsapp);
-  const [data, setData] = useState<CRMRepliesResponse | null>(null);
+  const data = useSyncExternalStore(subscribeReplies, () => replySnap, () => null);
 
   useEffect(() => {
     if (!enabled) return;
-    let cancelled = false;
-    const load = () =>
-      engageApi
-        .crmReplies()
-        .then((res) => {
-          if (!cancelled) setData(res);
-        })
-        .catch(() => {});
-    load();
-    const id = setInterval(() => {
-      if (document.visibilityState === "visible") load();
-    }, POLL_MS);
+    pollers += 1;
+    startReplyPoll();
     return () => {
-      cancelled = true;
-      clearInterval(id);
+      pollers -= 1;
+      if (pollers === 0) stopReplyPoll();
     };
   }, [enabled]);
 

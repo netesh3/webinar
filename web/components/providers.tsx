@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { ApiError, api } from "@/lib/api";
+import { dropCache, writeCache } from "@/lib/http";
 import type { Account, AppConfig, ProfilePatch } from "@/lib/api-types";
 import { DEV_BYPASS_ACCOUNT, isDevAuthBypass } from "@/lib/dev-bypass";
 import {
@@ -292,7 +293,7 @@ export function AppProviders({
       return;
     }
     try {
-      const me = await api.me();
+      const me = await api.me(true);
       setAccount(me);
       setStatus("signed-in");
     } catch (err) {
@@ -342,9 +343,13 @@ export function AppProviders({
     };
   }, []);
 
-  // Config is refreshed on the client even when the server already provided it:
-  // the track suggestions grow as webinars are scheduled.
+  // The server render already fetched config. Seeding the 5-minute cache skips
+  // the extra client refetch; a later read within that window is the same answer.
   useEffect(() => {
+    if (initialConfig) {
+      writeCache("/api/config", initialConfig);
+      return;
+    }
     let active = true;
     api
       .config()
@@ -360,7 +365,7 @@ export function AppProviders({
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialConfig]);
 
   const session = useMemo<SessionValue>(
     () => ({
@@ -368,12 +373,14 @@ export function AppProviders({
       status,
       signIn: async (email, password) => {
         const me = await api.login(email, password);
+        writeCache("/api/auth/me", me);
         setAccount(me);
         setStatus("signed-in");
         return me;
       },
       signUp: async (input) => {
         const me = await api.signup(input);
+        writeCache("/api/auth/me", me);
         setAccount(me);
         setStatus("signed-in");
         return me;
@@ -391,6 +398,7 @@ export function AppProviders({
         } finally {
           // Drop local state even if the request failed: the cookie may already
           // be gone, and leaving a stale avatar in the nav is worse.
+          dropCache("/api/auth/me");
           setAccount(null);
           setStatus("anonymous");
         }
@@ -402,6 +410,8 @@ export function AppProviders({
           return next;
         }
         const me = await api.updateProfile(patch);
+        dropCache("/api/auth/me");
+        writeCache("/api/auth/me", me);
         setAccount(me);
         return me;
       },

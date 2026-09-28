@@ -83,7 +83,9 @@ func (s *Module) handleCRMInbox(w http.ResponseWriter, r *http.Request) {
 	if slug != "" && !s.crmWebinarAllowed(w, r, user.ID, slug) {
 		return
 	}
-	out, err := s.store.Inbox(r.Context(), user.ID, strings.TrimSpace(r.URL.Query().Get("view")), slug)
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	out, err := s.store.Inbox(r.Context(), user.ID, strings.TrimSpace(r.URL.Query().Get("view")), slug, limit, offset)
 	if errors.Is(err, store.ErrInvalid) {
 		httpx.Error(w, http.StatusBadRequest, "bad_view", "There is no such view.")
 		return

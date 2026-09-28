@@ -230,6 +230,82 @@ export function TopicStripe({ webinar }: { webinar: Webinar }) {
   );
 }
 
+/** Previous / Page N of M / Next, under a list. Next replaces the rows. */
+export function ListPager({
+  page,
+  pages,
+  pageSize,
+  start,
+  end,
+  total,
+  onPrevious,
+  onNext,
+  busy = false,
+  layout = "center",
+  range = "stack",
+  className = "",
+}: {
+  /** 1-based. */
+  page: number;
+  pages: number;
+  pageSize: number;
+  /** 1-based first row, or 0 when this page is empty. */
+  start: number;
+  end: number;
+  total: number;
+  onPrevious: () => void;
+  onNext: () => void;
+  busy?: boolean;
+  /** Webinar lists sit in the middle. Tables and the inbox stretch across the card. */
+  layout?: "center" | "split";
+  /** A second line under the page label, or the same line after a dot. */
+  range?: "stack" | "inline";
+  className?: string;
+}) {
+  const empty = start <= 0 || end < start;
+  const span = empty
+    ? `${pageSize} per page · 0 on this page`
+    : `${pageSize} per page · ${start}–${end} of ${total}`;
+  return (
+    <div
+      className={
+        layout === "split"
+          ? `flex items-center justify-between gap-3 ${className}`
+          : `mt-4 flex items-center justify-center gap-3.5 ${className}`
+      }
+    >
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={onPrevious}
+        disabled={busy || page <= 1}
+      >
+        Previous
+      </Button>
+      <div
+        className={`text-[12.5px] leading-snug text-ink-2 ${range === "stack" ? "text-center" : ""}`}
+      >
+        <b className="font-semibold text-ink">
+          Page {page} of {pages}
+        </b>
+        {range === "stack" ? (
+          <div className="text-[11.5px] text-ink-3">{span}</div>
+        ) : (
+          <span className="text-[11.5px] text-ink-3"> · {span}</span>
+        )}
+      </div>
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={onNext}
+        disabled={busy || page >= pages}
+      >
+        Next
+      </Button>
+    </div>
+  );
+}
+
 export function kindLabel(w: Webinar): { text: string; tone: Tone } {
   if (w.status === "live") return { text: "Live now", tone: "live" };
   if (w.status === "ended") return { text: "Completed", tone: "neutral" };

@@ -209,6 +209,9 @@ export interface CRMInboxResponse {
    * 	 *  typed on the phone, and show up here.
    */
   coexistence: boolean;
+  /** Where this page starts, and how many threads the current view holds. */
+  offset: number;
+  total: number;
 }
 /**
  * CRMDoneRequest marks a conversation done, or reopens it.
@@ -4714,6 +4717,16 @@ export interface RegistrantRow {
    * 	 * checkbox answer is "yes" when ticked; an unanswered question has no key.
    */
   answers?: { [key: string]: string};
+}
+/** One page of GET /api/host/webinars/{slug}/registrants. */
+export interface RegistrantPage {
+  items: RegistrantRow[];
+  total: number;
+  offset: number;
+  approved: number;
+  declined: number;
+  pending: number;
+  guests: number;
 }
 export interface PanelistRequest {
   email: string;

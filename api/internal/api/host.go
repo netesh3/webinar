@@ -1525,17 +1525,29 @@ func (s *Server) handleRemoveParticipant(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handleHostRegistrants(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
-	rows, err := s.store.Registrants(r.Context(), slug, 500)
+	limit := 500
+	offset := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			limit = n
+		}
+	}
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			offset = n
+		}
+	}
+	page, err := s.store.RegistrantPage(r.Context(), slug, limit, offset)
 	if err != nil {
 		s.fail(w, r, "registrants", err)
 		return
 	}
 	// Watch time is the webinar's own fact; a failure leaves the columns at zero.
-	if err := s.store.AttachWatch(r.Context(), slug, rows); err != nil {
+	if err := s.store.AttachWatch(r.Context(), slug, page.Items); err != nil {
 		s.log.Warn("registrants: watch time", "error", err, "slug", slug)
 	}
-	s.engage.DecorateRegistrants(r.Context(), userFromContext(r.Context()), slug, rows)
-	httpx.JSON(w, http.StatusOK, rows)
+	s.engage.DecorateRegistrants(r.Context(), userFromContext(r.Context()), slug, page.Items)
+	httpx.JSON(w, http.StatusOK, page)
 }
 
 func (s *Server) handleSessionReport(w http.ResponseWriter, r *http.Request) {

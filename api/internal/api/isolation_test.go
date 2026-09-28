@@ -168,12 +168,15 @@ func TestStrangerIsRefusedOnTheRoutesWithoutASlug(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("owner reading her own registrants: status %d body %s", res.StatusCode, raw)
 	}
-	var registrants []struct {
-		ID string `json:"id"`
+	var page struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
 	}
-	if err := json.Unmarshal(raw, &registrants); err != nil {
+	if err := json.Unmarshal(raw, &page); err != nil {
 		t.Fatalf("decode registrants: %v (body %s)", err, raw)
 	}
+	registrants := page.Items
 	if len(registrants) == 0 {
 		t.Fatal("registered an attendee but the owner's registrant list is empty")
 	}

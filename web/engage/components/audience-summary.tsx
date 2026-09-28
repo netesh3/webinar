@@ -6,6 +6,7 @@ import { engageApi } from "../api";
 import { useToast } from "@/components/providers";
 import { Button, Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
+import { readCache, TTL_AUDIENCE } from "@/lib/http";
 import {
   PeopleHighlyEngaged,
   PeopleSlipping,
@@ -27,11 +28,20 @@ export function AudienceSummary({
   canMessage: boolean;
 }) {
   const [last, setLast] = useState(6);
-  const [data, setData] = useState<CRMAudienceSummary | null>(null);
+  const [data, setData] = useState<CRMAudienceSummary | null>(
+    () => readCache<CRMAudienceSummary>(`crm-audience:6`, TTL_AUDIENCE)?.value ?? null,
+  );
   const [busy, setBusy] = useState("");
+  const audienceKey = `crm-audience:${last}`;
+  const [seenAudience, setSeenAudience] = useState(audienceKey);
+  if (audienceKey !== seenAudience) {
+    setSeenAudience(audienceKey);
+    setData(readCache<CRMAudienceSummary>(audienceKey, TTL_AUDIENCE)?.value ?? null);
+  }
   const { notify } = useToast();
 
   useEffect(() => {
+    if (readCache<CRMAudienceSummary>(`crm-audience:${last}`, TTL_AUDIENCE)?.fresh) return;
     let cancelled = false;
     engageApi
       .crmAudienceSummary(last)

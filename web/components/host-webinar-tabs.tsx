@@ -8,7 +8,7 @@ import { RecordingsTab } from "./recordings-tab";
 import { EngagementTab } from "./engagement/engagement-tab";
 import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
 import { useShareOrigin, useToast } from "./providers";
-import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
+import { Avatar, Badge, Button, ButtonLink, Card, ListPager, SectionTitle } from "./ui";
 import {
   formatCount,
   formatDay,
@@ -22,10 +22,12 @@ import {
   type CustomQuestion,
   type EngagementTierCounts,
   type Recording,
+  type RegistrantPage,
   type RegistrantRow,
   type Webinar,
 } from "@/lib/api-types";
 import { answerText } from "@/lib/registration-questions";
+import { DEV_BYPASS_REGISTRANTS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import {
   defaultTab,
@@ -60,16 +62,31 @@ import { useAppConfig } from "./providers";
  * Engagement's sections), is lib/host-tabs.ts.
  */
 
+export type RosterCounts = {
+  total: number;
+  approved: number;
+  declined: number;
+  pending: number;
+  guests: number;
+};
+
+const PEOPLE_PAGE = 25;
+
 export function HostWebinarTabs({
   webinar: w,
-  registrants,
+  counts,
+  pending,
+  rosterToken,
   recordings,
   onChanged,
   initialTab,
   onTabChange,
 }: {
   webinar: Webinar;
-  registrants: RegistrantRow[];
+  counts: RosterCounts | null;
+  pending: RegistrantRow[];
+  /** Bumped when the webinar is reloaded, so the People page refetches. */
+  rosterToken: number;
   recordings: Recording[];
   onChanged: () => void | Promise<void>;
   /** Deep-link from Host list: people | setup | results | follow-up | … (old names too) */
@@ -78,7 +95,6 @@ export function HostWebinarTabs({
    *  a stale button first. */
   onTabChange?: (tab: HostTab) => void;
 }) {
-  const pending = registrants.filter((r) => r.state === "pending");
   const { whatsappConnect } = useAppConfig();
   const tabs = tabsFor(w.status, whatsappConnect);
 
@@ -120,7 +136,7 @@ export function HostWebinarTabs({
           value={tab}
           onChange={setTab}
           counts={{
-            People: pending.length || registrants.length,
+            People: counts?.total ?? w.registrantCount,
             Recording: recordings.length,
           }}
         />
@@ -129,7 +145,8 @@ export function HostWebinarTabs({
       {tab === "Overview" && (
         <OverviewTab
           webinar={w}
-          registrants={registrants}
+          counts={counts}
+          pending={pending}
           onChanged={onChanged}
           onOpenPeople={() => setTab("People")}
         />
@@ -146,7 +163,7 @@ export function HostWebinarTabs({
               />
             </Card>
           )}
-          <AttendeesTab webinar={w} registrants={registrants} />
+          <AttendeesTab webinar={w} counts={counts} rosterToken={rosterToken} />
         </div>
       )}
       {tab === "Setup" && (
@@ -188,7 +205,7 @@ export function HostWebinarTabs({
       {tab === "Results" && (
         <EngagementTab
           webinar={w}
-          registrants={registrants}
+          approved={w.approval === "manual" ? counts?.approved : undefined}
           onOpenAttendees={!ended ? () => setTab("People") : undefined}
           initialSection={engagementSection(initialTab, w.status)}
           // After the end, following up is its own tab.
@@ -232,22 +249,20 @@ function EmailReminders({ webinar }: { webinar: Webinar }) {
  * on its own, and anything waiting on the host — approvals are answered here. */
 function OverviewTab({
   webinar: w,
-  registrants,
+  counts,
+  pending,
   onChanged,
   onOpenPeople,
 }: {
   webinar: Webinar;
-  registrants: RegistrantRow[];
+  counts: RosterCounts | null;
+  pending: RegistrantRow[];
   onChanged: () => void | Promise<void>;
   onOpenPeople: () => void;
 }) {
   const origin = useShareOrigin();
   const { notify } = useToast();
-  const pending = registrants.filter((r) => r.state === "pending");
-  const approved = registrants.filter((r) => r.state === "approved").length;
-  const onWhatsApp = registrants.filter(
-    (r) => r.whatsappStatus === "opted_in",
-  ).length;
+  const approved = counts?.approved ?? 0;
   const link = `${origin}/webinars/${w.id}`;
   const invite =
     `${w.topic}\n` +
@@ -343,13 +358,13 @@ function OverviewTab({
           />
           <Stat
             label="Approved"
-            value={formatCount(approved)}
+            value={counts ? formatCount(approved) : "—"}
             note={pending.length ? `${pending.length} waiting` : "none waiting"}
           />
           <Stat
             label="On WhatsApp"
-            value={formatCount(onWhatsApp)}
-            note="get reminders there"
+            value="—"
+            note="see People for who opted in"
           />
         </div>
 
@@ -424,16 +439,71 @@ function OverviewTab({
 
 function AttendeesTab({
   webinar: w,
-  registrants,
+  counts,
+  rosterToken,
 }: {
   webinar: Webinar;
-  registrants: RegistrantRow[];
+  counts: RosterCounts | null;
+  rosterToken: number;
 }) {
   const bypass = isDevAuthBypassActive();
-  // The CRM's two columns, when the host has connected WhatsApp. See engage/slots.tsx.
   const whatsappOn = useRosterWhatsAppColumns();
-  const approved = registrants.filter((r) => r.state === "approved");
-  const declined = registrants.filter((r) => r.state === "declined");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<RegistrantPage | null>(null);
+  const [seenOffset, setSeenOffset] = useState(0);
+  if (offset !== seenOffset) {
+    setSeenOffset(offset);
+    setPage(null);
+  }
+  useEffect(() => {
+    if (bypass) return;
+    let cancelled = false;
+    api
+      .hostRegistrants(w.id, { limit: PEOPLE_PAGE, offset })
+      .then((next) => {
+        if (!cancelled) setPage(next);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPage({
+            items: [],
+            total: 0,
+            offset,
+            approved: 0,
+            declined: 0,
+            pending: 0,
+            guests: 0,
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bypass, w.id, offset, rosterToken]);
+
+  const registrants = bypass ? DEV_BYPASS_REGISTRANTS : (page?.items ?? []);
+  const roster = bypass
+    ? {
+        total: DEV_BYPASS_REGISTRANTS.length,
+        approved: DEV_BYPASS_REGISTRANTS.filter((r) => r.state === "approved").length,
+        declined: DEV_BYPASS_REGISTRANTS.filter((r) => r.state === "declined").length,
+        guests: DEV_BYPASS_REGISTRANTS.filter((r) => r.isGuest).length,
+      }
+    : page
+      ? {
+          total: page.total,
+          approved: page.approved,
+          declined: page.declined,
+          guests: page.guests,
+        }
+      : counts
+        ? {
+            total: counts.total,
+            approved: counts.approved,
+            declined: counts.declined,
+            guests: counts.guests,
+          }
+        : null;
   const ended = w.status === "ended";
   const asked = w.customQuestions ?? [];
 
@@ -459,7 +529,7 @@ function AttendeesTab({
       <div className="grid gap-3 sm:grid-cols-3">
         <Stat
           label="Registered"
-          value={formatCount(w.registrantCount)}
+          value={formatCount(roster?.total ?? w.registrantCount)}
           note={`of ${formatCount(w.attendeeLimit)} seats`}
         />
         <Stat
@@ -467,20 +537,24 @@ function AttendeesTab({
           value={
             ended && w.report
               ? formatCount(w.report.attended)
-              : formatCount(approved.length)
+              : roster
+                ? formatCount(roster.approved)
+                : "—"
           }
           note={
             ended && w.report
               ? `avg watch ${w.report.avgWatchMin} min`
-              : `${formatCount(declined.length)} declined`
+              : roster
+                ? `${formatCount(roster.declined)} declined`
+                : ""
           }
         />
         <Stat
           label="Contactable"
-          value={formatCount(registrants.filter((r) => !r.isGuest).length)}
-          note={`${formatCount(
-            registrants.filter((r) => r.isGuest).length,
-          )} guests`}
+          value={
+            roster ? formatCount(Math.max(0, roster.total - roster.guests)) : "—"
+          }
+          note={roster ? `${formatCount(roster.guests)} guests` : ""}
         />
       </div>
 
@@ -531,9 +605,17 @@ function AttendeesTab({
           </div>
         )}
 
-        {registrants.length === 0 ? (
+        {!bypass && !page ? (
+          <div className="grid place-items-center py-10">
+            <Spinner className="size-5 text-ink-3" />
+          </div>
+        ) : registrants.length === 0 && offset === 0 ? (
           <p className="py-8 text-center text-[13px] text-ink-3">
             Nobody has registered yet.
+          </p>
+        ) : registrants.length === 0 ? (
+          <p className="py-8 text-center text-[13px] text-ink-3">
+            Nobody on this page
           </p>
         ) : rows.length === 0 ? (
           <p className="py-8 text-center text-[13px] text-ink-3">
@@ -621,6 +703,21 @@ function AttendeesTab({
               </tbody>
             </table>
           </div>
+        )}
+        {!bypass && roster && (roster.total > PEOPLE_PAGE || offset > 0) && (
+          <ListPager
+            layout="split"
+            range="inline"
+            className="mt-3 border-t border-line pt-3"
+            page={Math.floor(offset / PEOPLE_PAGE) + 1}
+            pages={Math.max(1, Math.ceil(roster.total / PEOPLE_PAGE))}
+            pageSize={PEOPLE_PAGE}
+            start={registrants.length === 0 ? 0 : offset + 1}
+            end={registrants.length === 0 ? 0 : offset + registrants.length}
+            total={roster.total}
+            onPrevious={() => setOffset((n) => Math.max(0, n - PEOPLE_PAGE))}
+            onNext={() => setOffset((n) => n + PEOPLE_PAGE)}
+          />
         )}
       </Card>
       {messaging.dialog}

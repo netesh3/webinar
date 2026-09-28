@@ -17,6 +17,7 @@ import {
   tzLabel,
 } from "@/lib/format";
 import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
+import type { RosterCounts } from "./host-webinar-tabs";
 import { bypassWebinar, DEV_BYPASS_REGISTRANTS } from "@/lib/dev-bypass";
 import {
   isDevAuthBypassActive,
@@ -29,6 +30,16 @@ import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 const NONE: RegistrantRow[] = [];
 const NO_RECORDINGS: Recording[] = [];
 
+function countsOf(rows: RegistrantRow[]): RosterCounts {
+  return {
+    total: rows.length,
+    approved: rows.filter((r) => r.state === "approved").length,
+    declined: rows.filter((r) => r.state === "declined").length,
+    pending: rows.filter((r) => r.state === "pending").length,
+    guests: rows.filter((r) => r.isGuest).length,
+  };
+}
+
 /** Manage one webinar: Host it, admit people, see who registered / attended. */
 export function HostWebinarScreen({ slug }: { slug: string }) {
   const router = useRouter();
@@ -38,7 +49,9 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const bypass = isDevAuthBypassActive();
 
   const [fetchedWebinar, setWebinar] = useState<Webinar | null>(null);
-  const [fetchedRegistrants, setRegistrants] = useState<RegistrantRow[]>([]);
+  const [fetchedCounts, setCounts] = useState<RosterCounts | null>(null);
+  const [fetchedPending, setPendingRows] = useState<RegistrantRow[]>([]);
+  const [rosterToken, setRosterToken] = useState(0);
   const [fetchedRecordings, setRecordings] = useState<Recording[]>([]);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [fetchError, setError] = useState<string | null>(null);
@@ -52,11 +65,16 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const showPreview = useDevAuthBypassActive();
   const preview = showPreview ? bypassWebinar(slug) : undefined;
   const webinar = showPreview ? (preview ?? null) : fetchedWebinar;
-  const registrants = showPreview
-    ? preview && preview.status !== "draft"
+  const previewRows =
+    showPreview && preview && preview.status !== "draft"
       ? DEV_BYPASS_REGISTRANTS
-      : NONE
-    : fetchedRegistrants;
+      : NONE;
+  const counts: RosterCounts | null = showPreview
+    ? countsOf(previewRows)
+    : fetchedCounts;
+  const pending = showPreview
+    ? previewRows.filter((r) => r.state === "pending")
+    : fetchedPending;
   const recordings = showPreview ? NO_RECORDINGS : fetchedRecordings;
   const error = showPreview
     ? preview
@@ -69,14 +87,38 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
 
     return Promise.all([
       api.hostWebinar(slug),
-      api.hostRegistrants(slug),
       api.recordings(slug).catch(() => [] as Recording[]),
     ])
-      .then(([w, rows, recs]) => {
+      .then(([w, recs]) => {
         setWebinar(w);
-        setRegistrants(rows);
         setRecordings(recs);
         setError(null);
+        setRosterToken((n) => n + 1);
+        if (w.status === "draft") {
+          setCounts(null);
+          setPendingRows([]);
+          return;
+        }
+        void api
+          .hostRegistrants(slug, { limit: 1 })
+          .then((page) =>
+            setCounts({
+              total: page.total,
+              approved: page.approved,
+              declined: page.declined,
+              pending: page.pending,
+              guests: page.guests,
+            }),
+          )
+          .catch(() => {});
+        if (w.approval === "manual") {
+          void api
+            .pendingApprovals(slug)
+            .then(setPendingRows)
+            .catch(() => setPendingRows([]));
+        } else {
+          setPendingRows([]);
+        }
       })
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 401) setNeedsLogin(true);
@@ -204,7 +246,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const isLive = webinar.status === "live";
   const isEnded = webinar.status === "ended";
   const isDraft = webinar.status === "draft";
-  const pending = registrants.filter((r) => r.state === "pending").length;
+  const waiting = pending.length;
   const initialTab = search.get("tab");
 
   return (
@@ -225,7 +267,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
             </Badge>
             {webinar.approval === "manual" && !isEnded && (
               <Badge tone="warn">
-                {pending > 0 ? `${pending} waiting to admit` : "Manual admit"}
+                {waiting > 0 ? `${waiting} waiting to admit` : "Manual admit"}
               </Badge>
             )}
           </div>
@@ -322,11 +364,13 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         </div>
       </div>
 
-      <StepBar webinar={webinar} registrants={registrants.length} />
+      <StepBar webinar={webinar} registrants={webinar.registrantCount} />
 
       <HostWebinarTabs
         webinar={webinar}
-        registrants={registrants}
+        counts={counts}
+        pending={pending}
+        rosterToken={rosterToken}
         recordings={recordings}
         onChanged={load}
         initialTab={initialTab}
