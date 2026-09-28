@@ -125,6 +125,9 @@ function KindControl({
   const options = [
     ["live", "Live webinar"],
     ["recurring", "Recurring series"],
+    // Only offered to a webinar that already is one: simulive is set up from
+    // a recording elsewhere, and this form cannot pick that recording.
+    ...(value === "simulive" ? ([["simulive", "Simulive"]] as const) : []),
   ] as const;
   return (
     <div>

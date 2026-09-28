@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/netkumar/webcast/api/types"
@@ -422,6 +423,43 @@ func (s *Store) ReminderGaps(ctx context.Context, slug string, offsets []int) ([
 		out = append(out, g)
 	}
 	return out, rows.Err()
+}
+
+// InvitedPanelistEmails is the set of (lowercased) addresses already holding a panelist
+// invitation for this webinar, whatever its delivery state.
+func (s *Store) InvitedPanelistEmails(ctx context.Context, slug string) (map[string]bool, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT n.email FROM notifications n JOIN webinars w ON w.id = n.webinar_id
+		 WHERE w.slug = $1 AND n.kind = 'panelist_invited'`, slug)
+	if err != nil {
+		return nil, err
+	}
+	emails, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(emails))
+	for _, e := range emails {
+		out[e] = true
+	}
+	return out, nil
+}
+
+/* ForgetPanelistInvites drops the invitation of anybody no longer on a webinar's panel, sent
+ * or not, and any update still waiting to reach them. Called after the panel changes: an
+ * unsent invite to somebody the host just removed must not go out, and removing a sent one
+ * is what lets adding them back invite them again (one invite per panelist; migration 0070). */
+func (s *Store) ForgetPanelistInvites(ctx context.Context, slug string) error {
+	_, err := s.pool.Exec(ctx, `
+		DELETE FROM notifications n
+		 USING webinars w
+		 WHERE n.webinar_id = w.id AND w.slug = $1
+		   AND (n.kind = 'panelist_invited'
+		        OR (n.kind = 'panelist_rescheduled' AND n.delivery = 'pending'))
+		   AND NOT EXISTS (
+		         SELECT 1 FROM webinar_panelists p JOIN users u ON u.id = p.user_id
+		          WHERE p.webinar_id = w.id AND lower(u.email) = n.email)`, slug)
+	return err
 }
 
 // SkipRemindersForEndedWebinar stops emailing people about a session that will not happen.

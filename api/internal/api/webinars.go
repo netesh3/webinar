@@ -184,6 +184,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	req.Answers = registrationAnswers(req.Answers, wb.CustomQuestions)
 	if fields := validateRegistration(req, wb); len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
@@ -326,8 +327,8 @@ func validateRegistration(req types.RegisterRequest, wb types.Webinar) map[strin
 		fields["phone"] = msg
 	}
 	for _, q := range wb.CustomQuestions {
-		if q.Required && strings.TrimSpace(req.Answers[q.ID]) == "" {
-			fields[q.ID] = "Required."
+		if msg := answerProblem(q, strings.TrimSpace(req.Answers[q.ID])); msg != "" {
+			fields[q.ID] = msg
 		}
 	}
 
