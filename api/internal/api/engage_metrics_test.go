@@ -71,6 +71,143 @@ func TestCRMMetricsAggregatesTheWindow(t *testing.T) {
 	}
 }
 
+func TestCRMWebinarMetricsFiltersByWebinarAndKind(t *testing.T) {
+	h := newHarness(t)
+	h.login("neeraj@acme.dev")
+	hostID := userID(t, h, "neeraj@acme.dev")
+	c1 := insertContact(t, h, hostID, "+919800011177")
+	c2 := insertContact(t, h, hostID, "+919800011166")
+	mine := h.newWebinar("Morning Routines That Stick", nil)
+	other := h.newWebinar("A different webinar", nil)
+	mineID := webinarUUID(t, h, mine.ID)
+	otherID := webinarUUID(t, h, other.ID)
+
+	// Six automatic sends, one manual reply, plus rows that must not count.
+	linkWebinarMessage(t, h, hostID, c1, mineID, "wa_registration_confirmed", "wamid.W1", "read", "", 130_000, true)
+	linkWebinarMessage(t, h, hostID, c1, mineID, "wa_reminder", "wamid.W2", "delivered", "", 130_000, false)
+	linkWebinarMessage(t, h, hostID, c2, mineID, "wa_reminder", "wamid.W3", "failed", "131026: Message undeliverable", 0, false)
+	linkWebinarMessage(t, h, hostID, c2, mineID, "wa_replay", "wamid.W4", "read", "", 130_000, true)
+	linkWebinarMessage(t, h, hostID, c1, mineID, "wa_drip", "wamid.W5", "sent", "", 0, false)
+	linkWebinarMessage(t, h, hostID, c1, mineID, "wa_broadcast", "wamid.W6", "read", "", 130_000, true)
+	linkWebinarMessage(t, h, hostID, c1, mineID, "", "wamid.W7", "sent", "", 0, false)
+	linkWebinarMessage(t, h, hostID, c1, mineID, "wa_reminder", "wamid.W8", "queued", "", 0, false)
+	linkWebinarMessage(t, h, hostID, c1, otherID, "wa_registration_confirmed", "wamid.W9", "read", "", 130_000, true)
+	if _, err := h.store.Pool().Exec(context.Background(), `
+		INSERT INTO crm_messages (host_id, contact_id, direction, body, wamid, status, webinar_id)
+		VALUES ($1::uuid, $2::uuid, 'in', 'hi', 'wamid.WIN', 'delivered', $3::uuid)`,
+		hostID, c1, mineID); err != nil {
+		t.Fatal(err)
+	}
+
+	res, raw := h.do(http.MethodGet, "/api/host/crm/webinars/"+mine.ID+"/metrics", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("metrics: %d %s", res.StatusCode, raw)
+	}
+	var out types.CRMWebinarMetricsResponse
+	h.decode(raw, &out)
+	if out.Sent != 7 || out.Delivered != 4 || out.Read != 3 || out.Failed != 1 || out.People != 2 {
+		t.Fatalf("counts sent=%d delivered=%d read=%d failed=%d people=%d, want 7/4/3/1/2",
+			out.Sent, out.Delivered, out.Read, out.Failed, out.People)
+	}
+	if out.CostMicros != 520_000 || !out.CostEstimated || out.Currency != "INR" {
+		t.Fatalf("cost %d estimated=%v currency=%s", out.CostMicros, out.CostEstimated, out.Currency)
+	}
+	if out.ByKind.Confirmation != 1 || out.ByKind.Reminders != 2 || out.ByKind.Replay != 1 || out.ByKind.FollowUps != 2 {
+		t.Fatalf("by kind = %+v", out.ByKind)
+	}
+	if len(out.Failures) != 1 || out.Failures[0].Count != 1 || out.Failures[0].Code != "131026" {
+		t.Fatalf("failures = %+v", out.Failures)
+	}
+
+	res, raw = h.do(http.MethodGet, "/api/host/crm/webinars/not-a-real-webinar/metrics", nil)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("missing webinar: %d %s", res.StatusCode, raw)
+	}
+
+	h.signup("Other Host", "other-metrics@acme.dev", true)
+	res, raw = h.do(http.MethodGet, "/api/host/crm/webinars/"+mine.ID+"/metrics", nil)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("other host: %d %s", res.StatusCode, raw)
+	}
+}
+
+func webinarUUID(t *testing.T, h *harness, slug string) string {
+	t.Helper()
+	var id string
+	if err := h.store.Pool().QueryRow(context.Background(),
+		`SELECT id::text FROM webinars WHERE slug = $1`, slug).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+/* linkWebinarMessage writes one outbound row for a webinar, and the outbox row
+ * that says which kind it was. An empty kind is a manual send: it counts in the
+ * totals and in nobody's bucket. */
+func linkWebinarMessage(t *testing.T, h *harness, hostID, contactID, webinarID, kind, wamid, status, failure string, micros int64, estimated bool) {
+	t.Helper()
+	ctx := context.Background()
+	var notifID *string
+	if kind != "" {
+		var offset *int
+		var broadcastID, dripID *string
+		switch kind {
+		case "wa_reminder":
+			n := 60
+			offset = &n
+		case "wa_broadcast":
+			var id string
+			if err := h.store.Pool().QueryRow(ctx, `
+				INSERT INTO crm_broadcasts
+					(host_id, name, template_name, template_language, audience, webinar_id, scheduled_at)
+				VALUES ($1::uuid, 'Follow up', 'thanks', 'en', 'webinar', $2::uuid, now())
+				RETURNING id::text`, hostID, webinarID).Scan(&id); err != nil {
+				t.Fatal(err)
+			}
+			broadcastID = &id
+		case "wa_drip":
+			var drip, enroll string
+			if err := h.store.Pool().QueryRow(ctx, `
+				INSERT INTO crm_drips (host_id, name, trigger_kind, webinar_id)
+				VALUES ($1::uuid, 'After', 'ended', $2::uuid)
+				RETURNING id::text`, hostID, webinarID).Scan(&drip); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.store.Pool().QueryRow(ctx, `
+				INSERT INTO crm_drip_enrollments (drip_id, contact_id, webinar_id)
+				VALUES ($1::uuid, $2::uuid, $3::uuid)
+				RETURNING id::text`, drip, contactID, webinarID).Scan(&enroll); err != nil {
+				t.Fatal(err)
+			}
+			dripID = &enroll
+		}
+		var id string
+		if err := h.store.Pool().QueryRow(ctx, `
+			INSERT INTO notifications
+				(kind, channel, contact_id, template_name, webinar_id, subject, body,
+				 delivery, offset_min, broadcast_id, drip_enrollment_id)
+			VALUES ($1, 'whatsapp', $2::uuid, 'tmpl', $3::uuid, '', '',
+			        'sent', $4, $5::uuid, $6::uuid)
+			RETURNING id::text`,
+			kind, contactID, webinarID, offset, broadcastID, dripID).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		notifID = &id
+	}
+	var cost any
+	if micros != 0 {
+		cost = micros
+	}
+	if _, err := h.store.Pool().Exec(ctx, `
+		INSERT INTO crm_messages
+			(host_id, contact_id, direction, body, wamid, status, error,
+			 cost_micros, cost_estimated, notification_id, webinar_id)
+		VALUES ($1::uuid, $2::uuid, 'out', 'hello', $3, $4, $5, $6, $7, $8::uuid, $9::uuid)`,
+		hostID, contactID, wamid, status, failure, cost, estimated, notifID, webinarID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestWhatsAppWebhookStoresPricing(t *testing.T) {
 	g := newFakeGraph(t)
 	h := newHarness(t, whatsappConfigured(g.srv.URL))

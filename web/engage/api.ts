@@ -41,6 +41,7 @@ import type {
   CRMRecipeRequest,
   CRMMessage,
   CRMMetricsResponse,
+  CRMWebinarMetricsResponse,
   CRMNote,
   CRMNoteRequest,
   CRMNotesResponse,
@@ -259,6 +260,13 @@ export const engageApi = {
       fresh,
     );
   },
+
+  /** This webinar's sent, delivered, read, failed and cost, split by message. */
+  crmWebinarMetrics: (slug: string) =>
+    request<CRMWebinarMetricsResponse>(
+      `/api/host/crm/webinars/${seg(slug)}/metrics`,
+      fresh,
+    ),
 
   /** How many people an audience would reach, and why the rest would not.
    *
