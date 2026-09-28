@@ -19,6 +19,16 @@ import type { MessagesSaveHandle } from "@/engage";
 import type { MessageSlot, Webinar, WebinarInput } from "@/lib/api-types";
 import { useHydrated, useNow } from "@/lib/clock";
 import { zonedToInstant } from "@/lib/format";
+import { optionsProblem } from "@/lib/registration-questions";
+import {
+  issuesFor,
+  legacyAnchor,
+  nextStep,
+  prevStep,
+  scheduleIssues,
+  STEPS,
+  stepIndex,
+} from "@/lib/schedule-wizard";
 import type { PreparedWebinarImage } from "@/lib/webinar-image";
 import { useScheduleSurvey } from "../survey/schedule-survey";
 import {
@@ -37,10 +47,8 @@ import {
 } from "./draft-store";
 import { defaultWhen, initialState, type FormState } from "./form-state";
 import { MessagesTab } from "./messages-tab";
-import { ReviewStep } from "./review-step";
-import { StepPanel, Stepper, stepFrom, type Step } from "./stepper";
+import { panelId, StepCards, StepPanel, stepFrom, type Step } from "./stepper";
 import { scheduleSummary, shortTimeZone } from "./summary";
-import { SurveySection } from "./survey-section";
 import { WebinarTab } from "./webinar-tab";
 
 export type { FormState };
@@ -52,16 +60,18 @@ const AUTOSAVE_MS = 600;
 function stepForFields(fields: Record<string, string>): Step {
   const keys = Object.keys(fields);
   if (keys.length > 0 && keys.every((k) => MESSAGE_FIELDS.has(k))) {
-    return "followups";
+    return "messages";
   }
-  return "details";
+  return "webinar";
 }
 
-function anchorForFields(fields: Record<string, string>): string | null {
+/** Where a server-side field error is fixed: a field id when there is one. */
+function targetForFields(fields: Record<string, string>): string | null {
   const keys = Object.keys(fields);
   if (keys.includes("reminders")) return null;
+  if (keys.includes("topic")) return "topic";
   if (keys.some((k) => ["startsAt", "timeZone", "durationMin"].includes(k))) {
-    return "settings-when";
+    return "date";
   }
   if (
     keys.some((k) =>
@@ -70,16 +80,22 @@ function anchorForFields(fields: Record<string, string>): string | null {
   ) {
     return "settings-registration";
   }
-  if (keys.includes("panelistEmails")) return "settings-in-the-room";
+  if (keys.includes("panelistEmails")) return "panelists";
   return "settings-the-basics";
 }
 
-function scrollToId(id: string) {
+/* Scroll to an element and, when it is (or holds) the field at fault, focus
+ * it — so the host lands on the thing to fix, not just near it. */
+function focusTarget(id: string) {
   requestAnimationFrame(() => {
-    document.getElementById(id)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const field = el.matches("input, textarea, select")
+      ? el
+      : el.querySelector<HTMLElement>('[aria-invalid="true"], :invalid');
+    (field ?? (el.tabIndex >= 0 || el.hasAttribute("tabindex") ? el : null))
+      ?.focus({ preventScroll: true });
   });
 }
 
@@ -144,34 +160,56 @@ function ScheduleFormBody({
    * middleware's session lookup timing out — Next fell back to a full page
    * load, and the whole form went with it. replaceState is synced into
    * useSearchParams by Next without asking the server anything. */
-  const fromUrl = stepFrom(search.get("step"));
+  const rawStep = search.get("step");
+  const fromUrl = stepFrom(rawStep);
   const [step, setStep] = useState<Step>(fromUrl);
   const [urlStep, setUrlStep] = useState<Step>(fromUrl);
   if (fromUrl !== urlStep) {
     setUrlStep(fromUrl);
     setStep(fromUrl);
   }
-  const [visited, setVisited] = useState<Set<Step>>(() => new Set([fromUrl]));
-
-  const topRef = useRef<HTMLDivElement>(null);
   const go = useCallback((next: Step, scroll = false) => {
     setStep(next);
     // urlStep catches up when useSearchParams reflects this replaceState;
     // setting it here would make the render before that "see" the old URL
     // disagree with it and snap back to the previous step.
-    setVisited((v) => (v.has(next) ? v : new Set(v).add(next)));
     const url = new URL(window.location.href);
-    if (next === "details") url.searchParams.delete("step");
+    if (next === "webinar") url.searchParams.delete("step");
     else url.searchParams.set("step", next);
     window.history.replaceState(window.history.state, "", url);
     if (scroll) {
       requestAnimationFrame(() => {
-        const top = topRef.current;
-        if (top && top.getBoundingClientRect().top < 0) {
-          top.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
+        window.scrollTo({ top: 0 });
+        // The button that moved us may be gone (Next becomes Schedule), so
+        // put keyboard focus at the start of the step that just opened.
+        document
+          .getElementById(panelId(next))
+          ?.focus({ preventScroll: true });
       });
     }
+  }, []);
+
+  /* Old links: ?step=survey opened a Survey step, which is now the last
+   * section of The webinar — open that step there, and say so in the URL. */
+  const [legacy] = useState(() => ({
+    anchor: legacyAnchor(rawStep),
+    stale: rawStep !== null && rawStep !== fromUrl,
+  }));
+  useEffect(() => {
+    if (legacy.stale) {
+      const url = new URL(window.location.href);
+      if (fromUrl === "webinar") url.searchParams.delete("step");
+      else url.searchParams.set("step", fromUrl);
+      window.history.replaceState(window.history.state, "", url);
+    }
+    if (legacy.anchor) {
+      const id = legacy.anchor;
+      // After the survey builder has laid out, or the scroll lands short.
+      const t = window.setTimeout(() => focusTarget(id), 150);
+      return () => window.clearTimeout(t);
+    }
+    // Once, for the URL the page opened with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* The form's own draft. See draft-store.ts. */
@@ -325,8 +363,8 @@ function ScheduleFormBody({
     const startsAt = zonedToInstant(form.date, form.time, form.timeZone);
     if (!startsAt) {
       setFields({ startsAt: "Pick a valid date and time." });
-      flushSync(() => go("details"));
-      scrollToId("settings-when");
+      flushSync(() => go("webinar"));
+      focusTarget("date");
       return null;
     }
     return {
@@ -375,8 +413,8 @@ function ScheduleFormBody({
     const surveyProblem = survey.problem();
     if (surveyProblem) {
       setError(surveyProblem);
-      flushSync(() => go("survey"));
-      scrollToId("survey");
+      flushSync(() => go("webinar"));
+      focusTarget("survey");
       setBusy(null);
       return;
     }
@@ -480,8 +518,8 @@ function ScheduleFormBody({
         if (err.fields) {
           setFields(err.fields);
           flushSync(() => go(stepForFields(err.fields!)));
-          const anchor = anchorForFields(err.fields);
-          if (anchor) scrollToId(anchor);
+          const target = targetForFields(err.fields);
+          if (target) focusTarget(target);
         } else setError(err.message);
       } else {
         setError("Could not save. Check your connection and try again.");
@@ -508,12 +546,100 @@ function ScheduleFormBody({
       : "";
   const summary = scheduleSummary(form, summaryZone);
   const showDraft = !editing || webinar.status === "draft";
+
+  const questionProblem =
+    form.questions
+      .filter((q) => q.label.trim() !== "")
+      .map(optionsProblem)
+      .find((p) => p !== null) ?? null;
+  const issues = scheduleIssues({
+    topic: form.topic,
+    startsAt: startsAtPreview,
+    editing,
+    now,
+    questionProblem,
+    watchUrl: form.streamWatchUrl,
+    multistream: Boolean(form.options.multistream),
+    surveyProblem: survey.problem(),
+  });
+
+  /* Inline errors for problems the host has been sent to fix. Derived from
+   * the live issue list, so each one clears the moment it is fixed; the
+   * server's own field errors are kept as they came. */
+  const [told, setTold] = useState<ReadonlySet<string>>(() => new Set());
+  const shownFields: Record<string, string> = { ...fields };
+  for (const i of issues) {
+    if (i.field && told.has(i.id) && !shownFields[i.field]) {
+      shownFields[i.field] = i.message;
+    }
+  }
+
+  const messagesOn =
+    followUps && followUps !== "failed" ? followUps.enabled : null;
   const done: Record<Step, boolean> = {
-    details: form.topic.trim() !== "" && startsAtPreview !== null,
-    survey: visited.has("survey"),
-    followups: visited.has("followups"),
-    review: false,
+    webinar: issuesFor(issues, "webinar").length === 0,
+    messages: false,
   };
+  const cardDetails: Record<Step, string> = {
+    webinar: "Title, time, registration, the room",
+    messages:
+      messagesOn == null
+        ? "Reminders, WhatsApp, after it ends"
+        : `Reminders, WhatsApp, after it ends · ${messagesOn} on`,
+  };
+
+  /* Can the host leave `target` going forward? Its own issues first, then
+   * the browser's constraints on its fields (a date before today, a
+   * malformed link) as a backstop. On a problem, opens the step that has it
+   * and lands on the field — never a silent refusal. */
+  function passes(target: Step): boolean {
+    const own = issuesFor(issues, target);
+    if (own.length > 0) {
+      setTold((t) => new Set([...t, ...own.map((i) => i.id)]));
+      flushSync(() => go(target));
+      focusTarget(own[0].target);
+      return false;
+    }
+    const panel = document.getElementById(panelId(target));
+    const invalid = panel?.querySelector(":invalid");
+    if (
+      invalid instanceof HTMLInputElement ||
+      invalid instanceof HTMLTextAreaElement ||
+      invalid instanceof HTMLSelectElement
+    ) {
+      flushSync(() => go(target));
+      invalid.focus();
+      invalid.reportValidity();
+      return false;
+    }
+    return true;
+  }
+
+  function next() {
+    const to = nextStep(step);
+    if (to && passes(step)) go(to, true);
+  }
+
+  /* The step cards: back freely; forward the way Next goes, so a card can't
+   * skip a step that would stop Next. */
+  function openStep(target: Step) {
+    const to = stepIndex(target);
+    if (target === step) return;
+    if (to < stepIndex(step)) {
+      go(target, true);
+      return;
+    }
+    for (const s of STEPS.slice(0, to)) {
+      if (!passes(s.id)) return;
+    }
+    go(target, true);
+  }
+
+  const back = prevStep(step);
+  const upcoming = nextStep(step);
+  const nextLabel = upcoming
+    ? `Next: ${STEPS[stepIndex(upcoming)].title} →`
+    : null;
 
   /* Enter in a one-line field used to submit the whole form — scheduling a
    * webinar, and emailing its panel, from a half-typed title. Submitting is
@@ -535,6 +661,14 @@ function ScheduleFormBody({
       onKeyDown={onKeyDown}
       onSubmit={(e) => {
         e.preventDefault();
+        // Only the last step has a submit button; anything else that gets
+        // here (a browser's implicit submission) is not a request to schedule.
+        if (nextStep(step) !== null) return;
+        // Schedule checks The webinar the way Next does, and opens it on the
+        // first problem.
+        for (const s of STEPS) {
+          if (!passes(s.id)) return;
+        }
         const formEl = e.currentTarget;
         if (!formEl.checkValidity()) {
           const invalid = formEl.querySelector(":invalid");
@@ -556,8 +690,18 @@ function ScheduleFormBody({
     >
       {/* The bar is position:fixed, so it does not take a row. This padding
           is what keeps the last fields from sitting underneath it. */}
-      <div ref={topRef} className="scroll-mt-20 pb-48 lg:pb-28">
-        <Stepper step={step} done={done} onStep={(s) => go(s, true)} />
+      <div className="grid gap-5 pb-48 lg:pb-28">
+        <p className="-mt-1 text-[13px] text-ink-2">
+          Set up the webinar, then what your attendees get. You can change
+          anything later.
+        </p>
+
+        <StepCards
+          step={step}
+          done={done}
+          details={cardDetails}
+          onStep={openStep}
+        />
 
         <div className="grid gap-5">
           {restored && (
@@ -584,14 +728,15 @@ function ScheduleFormBody({
             <Alert tone="error">{Object.values(fields).join(" ")}</Alert>
           )}
 
-          {/* All four panels stay mounted; the stepper only picks the one that
-              shows. Nothing is unmounted by moving between them, and a failed
-              submit can still find the invalid field and open its step. */}
-          <StepPanel step="details" current={step}>
+          {/* Both panels stay mounted; a card only picks the one that shows.
+              Nothing is unmounted by moving between them (reminder editors and
+              the survey builder keep their state), and a failed submit can
+              still find the invalid field and open its step. */}
+          <StepPanel step="webinar" current={step}>
             <WebinarTab
               form={form}
               set={set}
-              fields={fields}
+              fields={shownFields}
               editing={editing}
               webinar={webinar}
               imagePreview={imagePreview}
@@ -608,12 +753,10 @@ function ScheduleFormBody({
                 // cleared is not a change the webinar has ever seen.
                 setImageRemoved(Boolean(webinar?.imageUrl));
               }}
+              survey={survey.node}
             />
           </StepPanel>
-          <StepPanel step="survey" current={step}>
-            <SurveySection survey={survey.node} />
-          </StepPanel>
-          <StepPanel step="followups" current={step}>
+          <StepPanel step="messages" current={step}>
             <MessagesTab
               key={restoreGen}
               previewWebinar={previewWebinar}
@@ -628,29 +771,22 @@ function ScheduleFormBody({
               }}
             />
           </StepPanel>
-          <StepPanel step="review" current={step}>
-            <ReviewStep
-              form={form}
-              when={summary.lead}
-              surveyOn={survey.on}
-              followUps={followUps}
-              hasImage={imagePreview !== null}
-              onStep={(s) => go(s, true)}
-            />
-          </StepPanel>
         </div>
       </div>
 
       <ActionBar
         lead={summary.lead}
         rest={summary.rest}
-        editing={editing}
+        stepNumber={stepIndex(step) + 1}
+        stepCount={STEPS.length}
+        nextLabel={nextLabel}
+        finalLabel={editing ? "Save changes" : "Schedule"}
         showDraft={showDraft}
         busy={busy}
         status={status}
         followUps={followUps}
-        followUpsActive={step === "followups"}
-        onFollowUps={() => go("followups", true)}
+        onBack={back ? () => go(back, true) : null}
+        onNext={next}
         onDraft={() => void submit("draft")}
       />
     </form>

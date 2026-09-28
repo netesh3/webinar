@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { openPickerOnClick, Select } from "../controls";
 import { CalendarIcon } from "../icons";
 import { useHydrated } from "@/lib/clock";
@@ -22,9 +22,10 @@ import {
 } from "./form-state";
 import { RegistrationSection } from "./registration";
 import { RoomSection } from "./room";
+import { SurveySection } from "./survey-section";
 import { formatDuration } from "./summary";
 
-/** The Details step: basics, time, registration and the room. */
+/** The Details step: basics, time, registration, the room and the feedback survey. */
 export function WebinarTab({
   form,
   set,
@@ -34,6 +35,7 @@ export function WebinarTab({
   imagePreview,
   onImage,
   onImageRemove,
+  survey,
 }: {
   form: FormState;
   set: SetForm;
@@ -43,6 +45,8 @@ export function WebinarTab({
   imagePreview: string | null;
   onImage: (prepared: PreparedWebinarImage, preview: string) => void;
   onImageRemove: () => void;
+  /** The feedback survey builder, owned by the form so it can save it. */
+  survey: ReactNode;
 }) {
   const allZones = useMemo(() => timeZoneNames(), []);
   /* The zone the webinar HAS is always an option. Browsers disagree on the
@@ -90,6 +94,7 @@ export function WebinarTab({
         editing={editing}
         webinar={webinar}
       />
+      <SurveySection survey={survey} />
     </div>
   );
 }

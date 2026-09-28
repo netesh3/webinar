@@ -159,7 +159,7 @@ export const create = {
       },
     );
     await t.say(
-      "Registration, the room and feedback are all on this tab. Registration decides who can join — approval, a seat cap, or your own questions.",
+      "Registration, the room and feedback are all on this step. Registration decides who can join — approval, a seat cap, or your own questions.",
       async () => {
         await t.point(page.getByRole("heading", { name: "Who can join" }));
       },
@@ -173,16 +173,15 @@ export const create = {
       },
     );
     await t.say(
-      "And you can ask for feedback, with a short survey that pops up when you put it on screen.",
+      "And further down, you can ask for feedback, with a short survey that pops up when you put it on screen.",
       async () => {
-        await t.click(tab(page, /^2\s*Survey$/), { settle: 800 });
         await t.point(page.getByRole("heading", { name: "Feedback survey" }));
       },
     );
     await t.say(
-      "Follow-ups are the next step, and always one click away in the footer. Each message — confirmation, reminder, replay, follow-up — has its own channels and time.",
+      "Then click Next for step two, messages and follow-ups. Each message — confirmation, reminder, replay, follow-up — has its own channels and time.",
       async () => {
-        await t.click(btn(page, /Set up follow-ups/), { settle: 1200 });
+        await t.click(btn(page, /^Next: Messages & follow-ups/), { settle: 1200 });
         await t.point(page.getByText("Reminder", { exact: true }));
         await t.point(page.getByText("Before", { exact: true }));
       },

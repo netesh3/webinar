@@ -1,7 +1,7 @@
 "use client";
 
 import { Spinner } from "../controls";
-import { CheckIcon, MaterialIcon } from "../icons";
+import { CalendarIcon, CheckIcon, MaterialIcon } from "../icons";
 import { Button } from "../ui";
 
 export type DraftStatus =
@@ -22,28 +22,39 @@ function followUpsText(f: FollowUpSummary): string {
   return `Follow-ups: ${f.custom ? "customised" : "default"} (${f.enabled} message${f.enabled === 1 ? "" : "s"})`;
 }
 
+/* The wizard's sticky footer: what is being scheduled on the left, where the
+ * host is and how to move on the right. Only the last step submits; Next and
+ * Back are plain buttons, keyed apart from the submit one so the button under
+ * the pointer never turns into a submit mid-click. */
 export function ActionBar({
   lead,
   rest,
-  editing,
+  stepNumber,
+  stepCount,
+  nextLabel,
+  finalLabel,
   showDraft,
   busy,
   status,
   followUps,
-  onFollowUps,
-  followUpsActive,
+  onBack,
+  onNext,
   onDraft,
 }: {
   lead: string | null;
   rest: string;
-  editing: boolean;
+  stepNumber: number;
+  stepCount: number;
+  /** The Next button's label; null on the last step, which submits instead. */
+  nextLabel: string | null;
+  finalLabel: string;
   showDraft: boolean;
   busy: "scheduled" | "draft" | null;
   status: DraftStatus;
   /** Null until the follow-ups step has loaded its messages. */
   followUps: FollowUpSummary;
-  onFollowUps: () => void;
-  followUpsActive: boolean;
+  onBack: (() => void) | null;
+  onNext: () => void;
   onDraft: () => void;
 }) {
   return (
@@ -78,13 +89,20 @@ export function ActionBar({
             </span>
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 lg:shrink-0 lg:flex-nowrap">
+        <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap lg:gap-2.5">
+          <span
+            className="mr-auto text-[11.5px] font-medium whitespace-nowrap text-ink-3 lg:mr-1.5"
+            aria-live="polite"
+          >
+            Step <b className="font-semibold text-ink">{stepNumber}</b> of{" "}
+            {stepCount}
+          </span>
           {showDraft && (
             <Button
               type="button"
               variant="ghost"
               size="lg"
-              className="flex-1 px-4 lg:flex-none"
+              className="px-4"
               disabled={busy !== null}
               onClick={onDraft}
             >
@@ -96,22 +114,38 @@ export function ActionBar({
             type="button"
             variant="secondary"
             size="lg"
-            aria-pressed={followUpsActive}
-            className="flex-1 border-brand-line bg-brand-soft text-brand hover:bg-brand-soft/70 lg:flex-none"
-            onClick={onFollowUps}
+            className="px-4"
+            disabled={onBack === null}
+            onClick={onBack ?? undefined}
           >
-            <MaterialIcon name="mail" className="size-4" />
-            Set up follow-ups
+            ← Back
           </Button>
-          <Button
-            type="submit"
-            size="lg"
-            className="flex-1 lg:flex-none"
-            disabled={busy !== null}
-          >
-            {busy === "scheduled" && <Spinner className="size-4" />}
-            {editing ? "Save changes" : "Schedule"}
-          </Button>
+          {nextLabel !== null ? (
+            <Button
+              key="next"
+              type="button"
+              size="lg"
+              className="w-full px-4 shadow-[0_2px_6px_rgba(20,99,255,0.35)] lg:w-auto"
+              onClick={onNext}
+            >
+              {nextLabel}
+            </Button>
+          ) : (
+            <Button
+              key="submit"
+              type="submit"
+              size="lg"
+              className="w-full px-4 shadow-[0_2px_6px_rgba(20,99,255,0.35)] lg:w-auto"
+              disabled={busy !== null}
+            >
+              {busy === "scheduled" ? (
+                <Spinner className="size-4" />
+              ) : (
+                <CalendarIcon className="size-4" />
+              )}
+              {finalLabel}
+            </Button>
+          )}
         </div>
       </div>
     </div>
