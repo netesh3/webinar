@@ -223,8 +223,8 @@ export function HostWebinarsScreen() {
             <ButtonLink href="/my-webinars" variant="secondary" size="sm">
               WatchList
             </ButtonLink>
-            <ButtonLink href="/account" variant="ghost" size="sm">
-              Account settings
+            <ButtonLink href="/settings#account" variant="ghost" size="sm">
+              Settings
             </ButtonLink>
           </div>
         </Card>
