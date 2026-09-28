@@ -121,7 +121,8 @@ func (s *Module) handleWhatsAppCallback(w http.ResponseWriter, r *http.Request) 
 	/* Subscribing is best-effort, and its failure is logged loudly rather than
 	 * returned. Without it sends still work and nothing inbound ever arrives, which
 	 * is a real degradation — but it is a smaller one than refusing a connection
-	 * the host has already granted, and Phase 1b re-subscribes on ingest. */
+	 * the host has already granted. EnsureWhatsAppSubscriptions puts it back on
+	 * the sweeper when this call fails, or when Meta later drops the subscription. */
 	if err := s.whatsapp.SubscribeApp(r.Context(), tok.AccessToken, wabaID); err != nil {
 		s.log.Warn("whatsapp subscribe app: inbound messages will not arrive until this succeeds",
 			"error", err, "user", user.ID, "waba", wabaID)
@@ -144,6 +145,45 @@ func (s *Module) handleWhatsAppCallback(w http.ResponseWriter, r *http.Request) 
 	}
 	s.log.Info("whatsapp connected", "user", user.ID, "waba", wabaID, "number", num.DisplayPhone)
 	httpx.JSON(w, http.StatusOK, updated.Public())
+}
+
+/* EnsureWhatsAppSubscriptions points every connected number at our webhook.
+ *
+ * Connect does this once, and that once is not enough. The call is best-effort —
+ * a slow answer from Meta must not throw away a token the host just granted —
+ * and Meta itself drops a subscription that keeps failing. Either way the
+ * connection still looks fine: templates send, and no delivery status or inbound
+ * reply is ever posted, because Meta has nobody to post them to. The inbox then
+ * shows only the green bubbles we sent, and the reply window stays closed.
+ *
+ * Idempotent at Meta. The lease keeps a tick every half-minute from subscribing
+ * the same account over and over; a dropped subscription is put back within that
+ * interval, without the host disconnecting and connecting again.
+ */
+func (s *Module) EnsureWhatsAppSubscriptions(ctx context.Context) {
+	if s.whatsapp == nil || !s.whatsapp.Enabled() {
+		return
+	}
+	_, ok, err := s.store.TryLease(ctx, "whatsapp-subscribe", 10*time.Minute)
+	if err != nil {
+		s.log.Error("whatsapp subscribe: lease", "error", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	grants, err := s.store.WhatsAppGrants(ctx)
+	if err != nil {
+		s.log.Error("whatsapp subscribe: grants", "error", err)
+		return
+	}
+	for _, g := range grants {
+		if err := s.whatsapp.SubscribeApp(ctx, g.Token, g.WABAID); err != nil {
+			s.log.Warn("whatsapp subscribe: inbound replies will not arrive until this succeeds",
+				"error", err, "host", g.HostID, "waba", g.WABAID)
+			s.noteWhatsAppError(ctx, g.HostID, g.Token, err)
+		}
+	}
 }
 
 /* handleWhatsAppRegister registers the connected number with Cloud API.

@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -512,5 +513,31 @@ func TestWhatsAppWebhookRequiresAMetaSignature(t *testing.T) {
 				t.Errorf("status %d, want %d\n  body: %s", res.StatusCode, tc.want, raw)
 			}
 		})
+	}
+}
+
+/* A subscription Meta has dropped is put back without the host reconnecting.
+ *
+ * Connect subscribes once. If that call failed, or Meta later removed the app
+ * from the WABA, sends keep working and no inbound reply or delivery status is
+ * ever posted — the inbox shows only what we sent. The sweeper's ensure is what
+ * notices and subscribes again.
+ */
+func TestDroppedWhatsAppSubscriptionIsRestored(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+
+	g.mu.Lock()
+	g.subscribed = nil
+	g.mu.Unlock()
+
+	h.engage.EnsureWhatsAppSubscriptions(context.Background())
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.subscribed) != 1 || g.subscribed[0] != testMetaWABAID {
+		t.Fatalf("subscribed = %v, want [%s] again after Meta dropped it", g.subscribed, testMetaWABAID)
 	}
 }
