@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>WebinarLiv — guided tours</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root { color-scheme: light; --ink:#16151f; --muted:#6b6880; --line:#e7e5ef; --brand:#7c5cff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 -apple-system, system-ui, sans-serif; color: var(--ink); background: #f7f6fb; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 40px 24px 80px; display: grid; grid-template-columns: 300px 1fr; gap: 28px; }
+  h1 { grid-column: 1 / -1; margin: 0; font-size: 28px; }
+  .sub { grid-column: 1 / -1; margin: -18px 0 4px; color: var(--muted); }
+  ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; align-content: start; }
+  li button { width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 12px; padding: 12px 14px; cursor: pointer; font: inherit; color: inherit; }
+  li button:hover { border-color: #cfc6ff; }
+  li button[aria-current="true"] { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(124,92,255,.15); }
+  li .n { color: var(--brand); font-weight: 600; font-size: 12px; letter-spacing: .06em; }
+  li .t { display: block; font-weight: 600; }
+  li .d { display: block; color: var(--muted); font-size: 13px; }
+  video { width: 100%; border-radius: 14px; background: #0e0c1d; box-shadow: 0 10px 40px rgba(20,16,60,.15); }
+  .now h2 { margin: 16px 0 4px; font-size: 20px; }
+  .now p { margin: 0; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>WebinarLiv guided tours</h1>
+  <p class="sub">Short narrated walkthroughs, one per feature. Plays the next one when each ends.</p>
+  <ol id="list"></ol>
+  <section class="now">
+    <video id="v" controls playsinline preload="metadata"></video>
+    <h2 id="title"></h2>
+    <p id="desc"></p>
+  </section>
+</div>
+<script>
+const TOURS = [
+  ["01-home", "Your home page", "Where everything lives: tabs, cards, the bell and your account menu."],
+  ["02-schedule", "Schedule a webinar", "Title, cover image, date — and the defaults already set up for you."],
+  ["03-invite", "Invite people and get ready", "Share your link, see who registered, and check your setup."],
+  ["04-go-live", "Go live", "Camera check, backgrounds, and every control in the room."],
+  ["05-results", "See how it went", "Attendance, activity, polls and engagement groups."],
+  ["06-follow-up", "Follow up after a webinar", "Message each group on WhatsApp — once, or automatically."],
+  ["07-messages", "Reply to messages", "The WhatsApp inbox: hot leads, quick replies, snooze, shortcuts."],
+  ["08-whatsapp", "WhatsApp and automations", "Automatic messages, and writing your own When → Then rules."],
+  ["09-audience", "Your audience", "Everyone across all your webinars: best people, slipping away."],
+];
+const list = document.getElementById("list"), v = document.getElementById("v");
+let cur = 0;
+function play(i, auto) {
+  cur = i;
+  const [id, t, d] = TOURS[i];
+  v.src = "videos/" + id + ".mp4";
+  document.getElementById("title").textContent = t;
+  document.getElementById("desc").textContent = d;
+  [...list.querySelectorAll("button")].forEach((b, j) => b.setAttribute("aria-current", j === i));
+  if (auto) v.play();
+  history.replaceState(null, "", "#" + id);
+}
+TOURS.forEach(([id, t, d], i) => {
+  const li = document.createElement("li");
+  li.innerHTML = `<button><span class="n">TOUR ${i + 1}</span><span class="t">${t}</span><span class="d">${d}</span></button>`;
+  li.firstChild.onclick = () => play(i, true);
+  list.appendChild(li);
+});
+v.addEventListener("ended", () => cur < TOURS.length - 1 && play(cur + 1, true));
+const start = TOURS.findIndex(([id]) => "#" + id === location.hash);
+play(start < 0 ? 0 : start, false);
+</script>
+</body>
+</html>
