@@ -199,3 +199,147 @@ func (s *Server) joinURLFromKey(slug, key string) string {
 	}
 	return base + "/webinars/" + slug + "/room?k=" + key
 }
+
+/* The panel's mail. A panelist reaches the stage by signing in at /host/<slug>/room (see
+ * web/lib/access.ts, PANELIST) — the attendee link would seat them in the audience — so that
+ * is the only link these carry.
+ *
+ * Drafts send nothing: a draft is not a commitment, and the invite goes out the first time
+ * the webinar is saved as scheduled. Nothing here fails the save; errors are logged. */
+
+func (s *Server) stageURL(slug string) string {
+	return strings.TrimRight(s.cfg.WebBaseURL, "/") + "/host/" + slug + "/room"
+}
+
+func (s *Server) panelistInvite(wb types.Webinar, name string) notify.Invite {
+	return notify.Invite{
+		Name:     name,
+		Topic:    wb.Topic,
+		WhenText: whenText(wb.StartsAt, wb.TimeZone),
+		HostName: wb.Host.Name,
+		StageURL: s.stageURL(wb.ID),
+	}
+}
+
+func (s *Server) panelistICS(wb types.Webinar, userID string) string {
+	starts, err := time.Parse(time.RFC3339, wb.StartsAt)
+	if err != nil {
+		return ""
+	}
+	return notify.ICSFile(notify.CalendarEvent{
+		// Stable per panelist and webinar, so a rescheduled file replaces the first one.
+		UID:         "panelist-" + userID + "-" + wb.ID + "@webinarliv.com",
+		Title:       wb.Topic,
+		Description: strings.TrimSpace(wb.Summary),
+		URL:         s.stageURL(wb.ID),
+		StartsAt:    starts,
+		DurationMin: wb.Duration,
+	})
+}
+
+/* syncPanelistMail runs after every save. It forgets invitations to anybody no longer on
+ * the panel, tells the panelists already invited when the start moved, and invites whoever
+ * is new. `prevStartsAt` is the start before this save ("" on create). */
+func (s *Server) syncPanelistMail(ctx context.Context, wb types.Webinar, prevStartsAt string) {
+	if err := s.store.ForgetPanelistInvites(ctx, wb.ID); err != nil {
+		s.log.Warn("panelist mail: could not drop removed panelists", "slug", wb.ID, "error", err)
+	}
+	if wb.Status != types.StatusScheduled && wb.Status != types.StatusLive {
+		return
+	}
+	panel, err := s.store.PanelistContacts(ctx, wb.ID)
+	if err != nil {
+		s.log.Warn("panelist mail: could not list the panel", "slug", wb.ID, "error", err)
+		return
+	}
+	if len(panel) == 0 {
+		return
+	}
+	invited, err := s.store.InvitedPanelistEmails(ctx, wb.ID)
+	if err != nil {
+		s.log.Warn("panelist mail: could not read who is invited", "slug", wb.ID, "error", err)
+		return
+	}
+	moved := prevStartsAt != "" && !sameInstant(prevStartsAt, wb.StartsAt)
+
+	queued := 0
+	for _, p := range panel {
+		email := strings.ToLower(strings.TrimSpace(p.Email))
+		kind := types.NotifyPanelistInvited
+		subject, body := notify.PanelistInvited(s.panelistInvite(wb, p.Name))
+		if invited[email] {
+			if !moved {
+				continue
+			}
+			kind = types.NotifyPanelistRescheduled
+			subject, body = notify.PanelistRescheduled(s.panelistInvite(wb, p.Name))
+		}
+		if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
+			Email:       email,
+			Kind:        kind,
+			WebinarSlug: wb.ID,
+			Subject:     subject,
+			Body:        body,
+			ICS:         s.panelistICS(wb, p.UserID),
+		}); err != nil {
+			s.log.Error("panelist mail: could not queue", "slug", wb.ID, "kind", kind, "err", err)
+			continue
+		}
+		queued++
+	}
+	if queued > 0 {
+		s.log.Info("panelist mail queued", "slug", wb.ID, "count", queued)
+		s.inBackground(func(ctx context.Context) { s.flushOutbox(ctx) })
+	}
+}
+
+/* panelistCancellations renders the "cancelled" mail for the invited panel of a scheduled
+ * webinar about to be deleted. Read before the delete (the rows cascade with it) and queued
+ * after, with no webinar_id, so the outbox does not hold it back for a webinar that is gone. */
+func (s *Server) panelistCancellations(ctx context.Context, slug string) []store.Notification {
+	wb, err := s.store.WebinarBySlug(ctx, slug)
+	if err != nil || wb.Status != types.StatusScheduled {
+		return nil
+	}
+	panel, err := s.store.PanelistContacts(ctx, slug)
+	if err != nil || len(panel) == 0 {
+		return nil
+	}
+	invited, err := s.store.InvitedPanelistEmails(ctx, slug)
+	if err != nil {
+		return nil
+	}
+	out := []store.Notification{}
+	for _, p := range panel {
+		email := strings.ToLower(strings.TrimSpace(p.Email))
+		if !invited[email] {
+			continue
+		}
+		subject, body := notify.PanelistCancelled(s.panelistInvite(wb, p.Name))
+		out = append(out, store.Notification{
+			Email: email, Kind: types.NotifyPanelistCancelled, Subject: subject, Body: body,
+		})
+	}
+	return out
+}
+
+func (s *Server) sendPanelistCancellations(ctx context.Context, owed []store.Notification) {
+	if len(owed) == 0 {
+		return
+	}
+	for _, n := range owed {
+		if err := s.store.Notify(ctx, s.store.DB(), n); err != nil {
+			s.log.Error("panelist mail: could not queue cancellation", "err", err)
+		}
+	}
+	s.inBackground(func(ctx context.Context) { s.flushOutbox(ctx) })
+}
+
+func sameInstant(a, b string) bool {
+	ta, errA := time.Parse(time.RFC3339, a)
+	tb, errB := time.Parse(time.RFC3339, b)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+	return ta.Equal(tb)
+}

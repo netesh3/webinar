@@ -4,8 +4,10 @@ import type { Ref } from "react";
 import {
   ScheduleMessagesTab,
   type MessagesSaveHandle,
+  type MessagesSummary,
   type PreviewWebinar,
 } from "@/engage";
+import type { MessageSlot } from "@/lib/api-types";
 import { ReminderTimes } from "../reminder-times";
 
 /* Messages & follow-ups.
@@ -17,20 +19,29 @@ export function MessagesTab({
   previewWebinar,
   slug,
   saveRef,
-  onEnabledCount,
+  onSummary,
+  onLoadError,
+  initialPending,
+  onPendingChange,
 }: {
   previewWebinar: PreviewWebinar;
   slug?: string;
   saveRef?: Ref<MessagesSaveHandle>;
-  /** How many messages are switched on, for the tab subtitle. */
-  onEnabledCount?: (count: number) => void;
+  /** How many messages are on, and whether this webinar changed them. */
+  onSummary?: (summary: MessagesSummary) => void;
+  onLoadError?: () => void;
+  initialPending?: MessageSlot[];
+  onPendingChange?: (slots: MessageSlot[]) => void;
 }) {
   return (
     <ScheduleMessagesTab
       ref={saveRef}
       slug={slug}
       webinar={previewWebinar}
-      onEnabledCount={onEnabledCount}
+      onSummary={onSummary}
+      onLoadError={onLoadError}
+      initialPending={initialPending}
+      onPendingChange={onPendingChange}
       reminderTimes={({ value, onChange, disabled }) => (
         <ReminderTimes value={value} onChange={onChange} disabled={disabled} />
       )}
