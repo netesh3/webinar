@@ -8,6 +8,21 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
+func TestCountSending(t *testing.T) {
+	slots := []types.MessageSlot{
+		{Kind: types.SlotConfirmation, Channels: []string{types.ChannelEmail}, Enabled: true},
+		{Kind: types.SlotReminder, Channels: []string{types.ChannelEmail, types.ChannelWhatsApp}, Enabled: true},
+		{Kind: types.SlotReplay, Channels: []string{types.ChannelWhatsApp}, Enabled: false},
+		{Kind: types.SlotFollowupNoShow, Channels: []string{types.ChannelWhatsApp}, Enabled: true},
+	}
+	if got := countSending(slots, types.ChannelWhatsApp); got != 2 {
+		t.Fatalf("whatsapp = %d, want 2 (disabled replay must not count)", got)
+	}
+	if got := countSending(slots, types.ChannelEmail); got != 2 {
+		t.Fatalf("email = %d, want 2", got)
+	}
+}
+
 func TestSlotTimingValidation(t *testing.T) {
 	if _, err := ValidateMessageSlot(types.SlotConfirmation, []string{"email"},
 		types.MessageTiming{Type: types.TimingImmediate}, nil); err != nil {

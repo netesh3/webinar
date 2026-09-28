@@ -17,11 +17,12 @@ import {
   tzLabel,
 } from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
-import type {
-  EngagementTierCounts,
-  Recording,
-  RegistrantRow,
-  Webinar,
+import {
+  ChannelEmail,
+  type EngagementTierCounts,
+  type Recording,
+  type RegistrantRow,
+  type Webinar,
 } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import {
@@ -40,8 +41,10 @@ import {
   WebinarWhatsAppOverview,
   WebinarWhatsAppMetrics,
   EngagementFollowUpPage,
+  reminderMinutes,
   useRosterMessaging,
   useRosterWhatsAppColumns,
+  useWebinarMessageSlots,
   followupGroups,
 } from "@/engage";
 import { useAppConfig } from "./providers";
@@ -197,6 +200,30 @@ export function HostWebinarTabs({
   );
 }
 
+/* Email reminder rows on the plain schedule. Times come from the resolved reminder
+ * slot when it sends email. options.reminders is only the list when that request
+ * has not come back — the same fallback as the WhatsApp on/off badge. */
+function EmailReminders({ webinar }: { webinar: Webinar }) {
+  const slots = useWebinarMessageSlots(webinar.id);
+  const fromSlots = reminderMinutes(slots, ChannelEmail);
+  // Missing key means on, same as the API. Off means the legacy schedule sends nothing.
+  const legacy =
+    webinar.options.emailReminders === false
+      ? []
+      : (webinar.options.reminders ?? DEFAULT_REMINDERS);
+  const minutes = fromSlots ?? legacy;
+  return (
+    <>
+      {minutes.map((m) => (
+        <li key={m} className="flex justify-between gap-3">
+          <span>Reminder</span>
+          <span className="text-ink-3">{describeReminders([m])}</span>
+        </li>
+      ))}
+    </>
+  );
+}
+
 // ------------------------------------------------------------- admit / attendees
 
 /* Overview: the one screen before a webinar. The link to share, the numbers, what goes out
@@ -220,7 +247,6 @@ function OverviewTab({
     (r) => r.whatsappStatus === "opted_in",
   ).length;
   const link = `${origin}/webinars/${w.id}`;
-  const reminders = w.options.reminders ?? DEFAULT_REMINDERS;
   const invite =
     `${w.topic}\n` +
     `${formatDay(w.startsAt, w.timeZone)}, ${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}\n\n` +
@@ -338,12 +364,7 @@ function OverviewTab({
                   <span>Confirmation, with their join link</span>
                   <span className="text-ink-3">when they register</span>
                 </li>
-                {reminders.map((m) => (
-                  <li key={m} className="flex justify-between gap-3">
-                    <span>Reminder</span>
-                    <span className="text-ink-3">{describeReminders([m])}</span>
-                  </li>
-                ))}
+                <EmailReminders webinar={w} />
                 <li className="flex justify-between gap-3">
                   <span>Replay link</span>
                   <span className="text-ink-3">

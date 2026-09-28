@@ -36,3 +36,10 @@ export {
   type MessagesSaveHandle,
   type PreviewWebinar,
 } from "./components/messages/schedule-messages-tab";
+export {
+  channelEnabled,
+  countEnabledChannel,
+  reminderMinutes,
+  useWebinarMessageSlots,
+  type WebinarSlotsState,
+} from "./slot-counts";
