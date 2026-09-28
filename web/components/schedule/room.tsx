@@ -174,6 +174,7 @@ export function RoomSection({
                   YouTube watch link
                 </span>
                 <input
+                  id="watch-url"
                   type="url"
                   value={form.streamWatchUrl}
                   onChange={(e) => set("streamWatchUrl", e.target.value)}

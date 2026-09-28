@@ -1,96 +1,81 @@
 "use client";
 
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { CheckIcon } from "../icons";
+import { STEPS, type Step } from "@/lib/schedule-wizard";
 
-export type Step = "details" | "survey" | "followups" | "review";
-
-export const STEPS: { id: Step; title: string }[] = [
-  { id: "details", title: "Details" },
-  { id: "survey", title: "Survey" },
-  { id: "followups", title: "Follow-ups" },
-  { id: "review", title: "Review" },
-];
-
-/** `?step=` to a step. "messages" is what the two-tab form wrote. */
-export function stepFrom(value: string | null): Step {
-  if (value === "messages") return "followups";
-  return STEPS.some((s) => s.id === value) ? (value as Step) : "details";
-}
+export { STEPS, stepFrom, type Step } from "@/lib/schedule-wizard";
 
 export const panelId = (step: Step) => `schedule-panel-${step}`;
 const tabId = (step: Step) => `schedule-tab-${step}`;
 
-/* Details → Survey → Follow-ups → Review.
+/* The webinar → Messages & follow-ups, as two cards side by side.
  *
- * Every step is a panel of the same form, and all four stay mounted — the
- * stepper only chooses which one shows. Switching is a state change, never a
- * navigation, so nothing the host typed can be lost to it. */
-export function Stepper({
+ * Each step is a panel of the same form, and both stay mounted — a card only
+ * chooses which one shows. Switching is a state change, never a navigation, so
+ * nothing the host typed can be lost to it. The form decides (onStep) whether a
+ * step may open; going forward runs the same check as Next. */
+export function StepCards({
   step,
   done,
+  details,
   onStep,
 }: {
   step: Step;
   done: Record<Step, boolean>;
+  details: Record<Step, string>;
   onStep: (next: Step) => void;
 }) {
-  const current = STEPS.findIndex((s) => s.id === step);
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-line pb-4">
-      <div
-        role="tablist"
-        aria-label="Schedule steps"
-        className="flex min-w-0 items-center gap-2.5 overflow-x-auto"
-      >
-        {STEPS.map((s, i) => {
-          const active = s.id === step;
-          const complete = !active && done[s.id];
-          return (
-            <Fragment key={s.id}>
-              {i > 0 && (
-                <span
-                  aria-hidden
-                  className={`h-[1.5px] w-6 shrink-0 sm:w-11 ${
-                    i <= current ? "bg-brand" : "bg-line"
-                  }`}
-                />
-              )}
-              <button
-                type="button"
-                role="tab"
-                id={tabId(s.id)}
-                aria-selected={active}
-                aria-controls={panelId(s.id)}
-                onClick={() => onStep(s.id)}
-                className={`flex shrink-0 items-center gap-2 rounded-full py-0.5 pr-1 text-[12.5px] whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                  active
-                    ? "font-semibold text-ink"
-                    : complete
-                      ? "font-medium text-ink-2 hover:text-ink"
-                      : "font-medium text-ink-3 hover:text-ink-2"
-                }`}
-              >
-                <span
-                  className={`grid size-[22px] place-items-center rounded-full border-[1.5px] text-[11px] font-bold ${
-                    active
-                      ? "border-brand bg-brand text-white shadow-[0_0_0_4px_rgba(11,92,255,0.14)]"
-                      : complete
-                        ? "border-brand bg-brand-soft text-brand"
-                        : "border-line-2 bg-surface text-ink-3"
-                  }`}
-                >
-                  {complete ? <CheckIcon className="size-3" /> : i + 1}
-                </span>
+    <div
+      role="tablist"
+      aria-label="Schedule steps"
+      className="grid gap-2.5 sm:grid-cols-2"
+    >
+      {STEPS.map((s, i) => {
+        const active = s.id === step;
+        const complete = !active && done[s.id];
+        return (
+          <button
+            key={s.id}
+            type="button"
+            role="tab"
+            id={tabId(s.id)}
+            aria-selected={active}
+            aria-current={active ? "step" : undefined}
+            aria-controls={panelId(s.id)}
+            onClick={() => onStep(s.id)}
+            className={`flex min-w-0 items-center gap-3 rounded-xl border bg-surface px-3.5 py-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+              active
+                ? "border-brand shadow-[0_0_0_3px_rgba(11,92,255,0.12)]"
+                : "border-line hover:border-line-2"
+            }`}
+          >
+            <span
+              aria-hidden
+              className={`grid size-[26px] shrink-0 place-items-center rounded-full text-[12px] font-semibold ${
+                active
+                  ? "bg-brand text-white"
+                  : complete
+                    ? "bg-ok-soft text-ok"
+                    : "bg-surface-2 text-ink-2"
+              }`}
+            >
+              {complete ? <CheckIcon className="size-3.5" /> : i + 1}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[14px] font-semibold text-ink">
+                <span className="sr-only">Step {i + 1}: </span>
                 {s.title}
-              </button>
-            </Fragment>
-          );
-        })}
-      </div>
-      <p className="ml-auto hidden text-[11.5px] whitespace-nowrap text-ink-3 md:block">
-        All steps keep your changes — switch freely
-      </p>
+                {complete && <span className="sr-only"> (done)</span>}
+              </span>
+              <span className="mt-px block truncate text-[12px] text-ink-3">
+                {details[s.id]}
+              </span>
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -110,7 +95,8 @@ export function StepPanel({
       role="tabpanel"
       aria-labelledby={tabId(step)}
       data-schedule-tab={step}
-      className={step === current ? undefined : "hidden"}
+      tabIndex={-1}
+      className={`outline-none ${step === current ? "" : "hidden"}`}
     >
       {children}
     </div>

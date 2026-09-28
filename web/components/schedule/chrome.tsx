@@ -74,6 +74,7 @@ export function Boxed({
 }
 
 export function Text({
+  id: idProp,
   label,
   value,
   onChange,
@@ -83,6 +84,7 @@ export function Text({
   required,
   large,
 }: {
+  id?: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -92,7 +94,8 @@ export function Text({
   required?: boolean;
   large?: boolean;
 }) {
-  const id = useId();
+  const autoId = useId();
+  const id = idProp ?? autoId;
   return (
     <div>
       <label className="label" htmlFor={id}>

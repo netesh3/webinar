@@ -39,6 +39,7 @@ export function BasicsSection({
           <div className="contents lg:flex lg:flex-col lg:gap-3.5">
             <div className="order-1 lg:order-none">
               <Text
+                id="topic"
                 label="Topic"
                 value={form.topic}
                 onChange={(v) => set("topic", v)}
