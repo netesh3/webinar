@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { HostAlert } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
@@ -95,8 +95,30 @@ export function HostAlerts() {
     }
   }
 
+  /* Close on Escape or a press outside the bell and its panel. A document
+   * listener rather than a fixed click-catcher: the header's backdrop-filter
+   * makes `position: fixed` relative to the header, so a catcher only covered
+   * the header strip and clicks on the page never closed the panel. Checking
+   * `root.contains` keeps the button's own click from closing and reopening. */
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={root}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -122,13 +144,6 @@ export function HostAlerts() {
 
       {open && (
         <>
-          {/* A click-catcher rather than a document listener: it cannot fire before the
-              button's own onClick and so cannot close and reopen in one click. */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-            aria-hidden
-          />
           <div className="absolute right-0 z-50 mt-1 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-surface shadow-lg">
             <div className="flex items-center justify-between border-b border-line px-3 py-2">
               <span className="text-[12.5px] font-semibold">Notifications</span>

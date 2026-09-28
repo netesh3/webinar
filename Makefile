@@ -65,6 +65,11 @@ web: ## Run the Next.js frontend (terminal 3)
 tunnel: ## Public HTTPS URL, needed to test camera/mic from a phone
 	cloudflared tunnel --url http://localhost:3000
 
+.PHONY: tours
+tours: ## Record the narrated guided-tour videos (stack up + demo seed); make tours ONLY="02 05"
+	node scripts/tours/run.mjs $(ONLY)
+	@echo "open docs/tours/index.html"
+
 # ---------------------------------------------------------------- types
 
 .PHONY: types
