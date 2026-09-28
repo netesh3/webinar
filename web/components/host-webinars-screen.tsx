@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
+import { CalendarIcon, ChevronRightIcon, PlayIcon } from "./icons";
 import { DEFAULT_ATTENDEE_LIMIT } from "./schedule/form-state";
 import {
   useAppConfig,
@@ -11,7 +13,7 @@ import {
   useShareOrigin,
   useToast,
 } from "./providers";
-import { Button, ButtonLink, Card } from "./ui";
+import { ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar, WebinarInput } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
@@ -83,11 +85,41 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
   };
 }
 
+const actionCardClass =
+  "group flex w-full items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3.5 text-left " +
+  "shadow-[0_1px_2px_rgba(19,22,25,0.04)] transition-[border-color,box-shadow] " +
+  "hover:border-line-2 hover:shadow-[0_2px_8px_rgba(19,22,25,0.08)] " +
+  "outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-1 " +
+  "disabled:cursor-progress disabled:opacity-70";
+
+function ActionCardBody({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <>
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[14px] font-semibold text-ink">{title}</span>
+        <span className="mt-0.5 block text-[12.5px] text-ink-2">{subtitle}</span>
+      </span>
+      <ChevronRightIcon className="size-4 shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-ink-2" />
+    </>
+  );
+}
+
 /** Host Webinar home: create, run upcoming sessions, review past attendance.
  *
  *  No top nav entry of its own any more — the logo is this page for a host,
- *  see homeHrefFor in top-nav.tsx. The heading and the two actions match the
- *  approved home mock: Go live now, and New webinar. */
+ *  see homeHrefFor in top-nav.tsx. The page opens on two action cards, Instant
+ *  webinar (go live now, no form) and Schedule a webinar (/host/new). */
 export function HostWebinarsScreen() {
   const { account, status } = useSession();
   const { maxAttendees } = useAppConfig();
@@ -253,27 +285,36 @@ export function HostWebinarsScreen() {
         </div>
       )}
 
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
-            Your webinars
-          </h1>
-          <p className="mt-1 text-[13px] text-ink-2">
-            Create one, share the link, go live, follow up.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={startInstantWebinar}
-            disabled={startingInstant}
-          >
-            {startingInstant && <Spinner className="size-4" />}
-            {startingInstant ? "Starting…" : "Go live now"}
-          </Button>
-          <ButtonLink href="/host/new">+ New webinar</ButtonLink>
-        </div>
+      {/* The visible heading gave way to the action cards; the page keeps its
+       * h1 for screen readers and the document outline. */}
+      <h1 className="sr-only">Your webinars</h1>
+      <div className="mb-6 grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={startInstantWebinar}
+          disabled={startingInstant}
+          aria-busy={startingInstant}
+          className={actionCardClass}
+        >
+          <ActionCardBody
+            icon={
+              startingInstant ? (
+                <Spinner className="size-4" />
+              ) : (
+                <PlayIcon className="size-3.5" />
+              )
+            }
+            title={startingInstant ? "Starting…" : "Instant webinar"}
+            subtitle="Go live immediately, no form"
+          />
+        </button>
+        <Link href="/host/new" className={actionCardClass}>
+          <ActionCardBody
+            icon={<CalendarIcon className="size-4" />}
+            title="Schedule a webinar"
+            subtitle="Pick a date and invite people"
+          />
+        </Link>
       </div>
 
       <HostWebinarBrowser reloadToken={reloadToken} />
