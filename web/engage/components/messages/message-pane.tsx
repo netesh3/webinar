@@ -94,7 +94,7 @@ function Chip({
       type="button"
       aria-pressed={dashed ? undefined : on}
       onClick={onClick}
-      className={`inline-flex h-[26px] items-center gap-0.5 rounded-full border px-[9px] text-[12px] font-medium ${
+      className={`inline-flex h-[26px] w-max min-w-max shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full border px-[9px] text-[12px] font-medium ${
         dashed
           ? "border-dashed border-line-2 bg-surface text-ink-3 hover:bg-white"
           : on
