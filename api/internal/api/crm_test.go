@@ -302,6 +302,26 @@ func TestWhatsAppWebhookIngestsIntoTheHostsCRM(t *testing.T) {
 	if thread.Contact.ID != contactID || len(thread.Messages) != 1 {
 		t.Fatalf("thread = %d messages for contact %s", len(thread.Messages), thread.Contact.ID)
 	}
+	if thread.Messages[0].Direction != "in" || thread.Messages[0].Body != "Is the replay available?" {
+		t.Fatalf("thread message = %+v, want the inbound reply", thread.Messages[0])
+	}
+
+	// The Messages inbox is a different read from the contact list. A reply that
+	// is stored and then left out of this response is the bug the host sees:
+	// green bubbles only, and "reply window closed".
+	in := inbox(t, h, types.InboxAll)
+	var saw bool
+	for _, th := range in.Threads {
+		if th.Contact.ID != contactID || th.LastMessage == nil {
+			continue
+		}
+		if th.LastMessage.Direction == "in" && th.LastMessage.Body == "Is the replay available?" {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("inbox did not return the inbound reply: %+v", in.Threads)
+	}
 
 	/* Meta retries any delivery it did not see a 2xx for, including ones we handled
 	 * and then failed to acknowledge. Without idempotency on the message id, a

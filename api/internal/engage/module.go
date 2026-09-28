@@ -321,6 +321,9 @@ func (s *Module) DecorateRegistrants(ctx context.Context, host store.User, slug 
  * flushed, so a step that came due in the last thirty seconds goes out on this tick; bots
  * go after drips so a flow that enrols somebody and then waits is not a tick behind. */
 func (s *Module) Tick(ctx context.Context) {
+	// Before anything is sent: a number Meta is not posting to never gets the
+	// replies those sends are waiting on. See EnsureWhatsAppSubscriptions.
+	s.EnsureWhatsAppSubscriptions(ctx)
 	s.AdvanceDrips(ctx)
 	s.AdvanceBots(ctx)
 	s.flushWhatsAppOutbox(ctx)
