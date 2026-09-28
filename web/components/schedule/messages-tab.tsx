@@ -6,7 +6,6 @@ import {
   type MessagesSaveHandle,
   type PreviewWebinar,
 } from "@/engage";
-import type { WebinarOptions } from "@/lib/api-types";
 import { ReminderTimes } from "../reminder-times";
 
 /* Messages & follow-ups.
@@ -18,19 +17,16 @@ export function MessagesTab({
   previewWebinar,
   slug,
   saveRef,
-  patchOptions,
 }: {
   previewWebinar: PreviewWebinar;
   slug?: string;
   saveRef?: Ref<MessagesSaveHandle>;
-  patchOptions: (patch: Partial<WebinarOptions>) => void;
 }) {
   return (
     <ScheduleMessagesTab
       ref={saveRef}
       slug={slug}
       webinar={previewWebinar}
-      onLegacyOptions={patchOptions}
       reminderTimes={({ value, onChange, disabled }) => (
         <ReminderTimes value={value} onChange={onChange} disabled={disabled} />
       )}

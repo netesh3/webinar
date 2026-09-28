@@ -9,7 +9,6 @@
  */
 
 import Link from "next/link";
-import { Toggle } from "@/components/controls";
 import { useAppConfig, useSession } from "@/components/providers";
 import { Badge, ButtonLink } from "@/components/ui";
 import {
@@ -29,74 +28,6 @@ export const ENGAGE_HOME = "/host/crm";
 /** People and Messages are tabs on the Hosting page, beside Upcoming and Past. */
 export const PEOPLE_HREF = "/host?tab=people";
 export const MESSAGES_HREF = "/host?tab=messages";
-
-/* The schedule form's WhatsApp reminders switch.
- *
- * Written by hand rather than from the options table because it is the one toggle that
- * can be unavailable: without a connected WhatsApp Business account there is nothing to
- * send from, and a switch that turns on and then silently does nothing would be worse
- * than one that says why. Absent when this deployment cannot connect WhatsApp at all. */
-export function WhatsAppRemindersToggle({
-  checked,
-  onChange,
-  boxed = false,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  /** Draw the same boxed switch the schedule form uses for email. Absent
-   *  entirely when this deployment cannot connect WhatsApp, so the caller
-   *  never has to leave an empty box behind. */
-  boxed?: boolean;
-}) {
-  const config = useAppConfig();
-  const { account } = useSession();
-  if (!config.whatsappConnect) return null;
-  const connected = Boolean(account?.whatsapp?.connected);
-  const toggle = (
-    <Toggle
-      checked={checked}
-      onChange={onChange}
-      disabled={!connected}
-      label="WhatsApp reminders (confirmation and timed reminders)"
-      description={
-        connected ? (
-          <>
-            Sent from {account?.whatsapp?.displayPhone || "your number"} to
-            registrants who tick the WhatsApp box, and billed to your Meta
-            account. The wording is set once, on the{" "}
-            <Link
-              href={`${ENGAGE_HOME}?view=templates`}
-              className="font-medium text-brand hover:underline"
-            >
-              WhatsApp page
-            </Link>
-            .
-          </>
-        ) : (
-          <>
-            <Link
-              href={`${ENGAGE_HOME}?view=setup`}
-              className="font-medium text-brand hover:underline"
-            >
-              Connect WhatsApp
-            </Link>{" "}
-            to message registrants on their phone.
-          </>
-        )
-      }
-    />
-  );
-  if (!boxed) return toggle;
-  return (
-    <div
-      className={`rounded-[10px] border px-1.5 py-0.5 ${
-        checked ? "border-brand-line bg-brand-soft" : "border-line bg-surface"
-      }`}
-    >
-      {toggle}
-    </div>
-  );
-}
 
 /* The registration form's WhatsApp consent box.
  *

@@ -66,23 +66,24 @@ Webinar screens import from `@/engage` only (`web/engage/index.ts`):
 
 | Export | Used in | Shows when |
 | --- | --- | --- |
-| `WhatsAppRemindersToggle` | schedule form | deployment can connect WhatsApp (disabled until the host connects) |
 | `WhatsAppOptInCheckbox` | register form | deployment can connect WhatsApp and a phone number was typed |
 | `WhatsAppAccountRow` | still exported; Settings reads `GET /api/host/integrations` instead | deployment can connect WhatsApp and the account may host |
 | `RosterContactsLink` | Attendees tab | always (contacts exist without a number) |
 | `useRosterWhatsAppColumns`, `RosterWhatsAppHeaders`, `RosterWhatsAppCells` | Attendees tab | host has connected WhatsApp |
 | `engageNavItem`, `ENGAGE_HOME` | top nav | account may host |
-| `CRMScreen` | `app/host/(portal)/crm/page.tsx` | route |
+| `WhatsAppScreen` | `app/host/(portal)/crm/page.tsx` | route |
+| `ScheduleMessagesTab` | schedule form, Messages & follow-ups | always (the slot list and pane) |
+| `WebinarWhatsAppMetrics` | webinar WhatsApp overview | host has connected WhatsApp |
 
 Each slot decides for itself whether to render, based on app config and the
 host's connection. A webinar screen never reads `account.whatsapp` or
 `config.whatsappConnect`.
 
-Still on the webinar side, deliberately: `options.whatsappReminders` on the
-webinar (the host's per-webinar choice is stored with the webinar) and
-`whatsappOptIn` on the registration request (consent is given on the
-registration form). Both are plain fields that the CRM reads. Neither needs
-CRM code to render or save.
+`whatsappOptIn` on the registration request stays on the webinar side: consent
+is given on the registration form. `options.emailReminders`,
+`options.whatsappReminders` and `options.reminders` are still read for old
+webinars that have no message-slot row. The messages editor does not write
+them; senders use `ResolveSlots`.
 
 ## Checks
 

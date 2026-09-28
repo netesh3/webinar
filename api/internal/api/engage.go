@@ -55,8 +55,9 @@ type Engage interface {
 	// Tick is the CRM's share of the 30-second sweeper: drips, bots, the WhatsApp outbox.
 	Tick(ctx context.Context)
 
-	/* MessageSlots is the resolved attendee messages for one webinar when ENGAGE_SLOTS
-	 * is on. ok is false when the flag is off; the caller keeps reading WebinarOptions. */
+	/* MessageSlots is the resolved attendee messages for one webinar.
+	 * ok is false when they cannot be read; the caller keeps reading WebinarOptions.
+	 * Old rows with no settings row are already folded in by ResolveSlots. */
 	MessageSlots(ctx context.Context, webinarID string) ([]types.MessageSlot, bool, error)
 }
 

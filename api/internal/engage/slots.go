@@ -273,11 +273,10 @@ func (s *Module) ResolveSlots(ctx context.Context, webinarSlug string) ([]types.
 }
 
 /* MessageSlots is the Engage contract the email senders call.
- * ok is false when ENGAGE_SLOTS is off, and the caller keeps reading WebinarOptions. */
+ * ok is false only when the slots cannot be read; the caller then keeps the
+ * confirmation rather than dropping it. ResolveSlots still applies
+ * WebinarOptions when an old webinar has no settings row for that kind. */
 func (s *Module) MessageSlots(ctx context.Context, webinarID string) ([]types.MessageSlot, bool, error) {
-	if !s.cfg.EngageSlots {
-		return nil, false, nil
-	}
 	slots, err := s.ResolveSlots(ctx, webinarID)
 	if err != nil {
 		return nil, false, err
@@ -623,7 +622,7 @@ func webinarLocation(wb types.Webinar) *time.Location {
  * the preset delay. Only a stored default or webinar override counts: the built-in
  * delay would otherwise move a sequence the host timed themselves. */
 func (s *Module) applyFollowupTiming(ctx context.Context, slug string, since time.Time) {
-	if !s.cfg.EngageSlots || slug == "" {
+	if slug == "" {
 		return
 	}
 	wb, err := s.store.WebinarBySlug(ctx, slug)

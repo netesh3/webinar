@@ -36,9 +36,8 @@ import (
  *     somebody to change their mind, and the answer to "they said stop" is to close
  *     the enrollment rather than to leave a message pending for ever.
  *
- * The webinar triggers all follow the webinar's own WhatsApp switch. A host who turned
- * WhatsApp off for a webinar did not mean "except for the sequence", and one switch
- * meaning "no WhatsApp about this webinar" is a thing a host can hold in their head.
+ * A follow-up sends when its message slot is on WhatsApp. Turning that slot off
+ * exits the step; the old per-webinar WhatsApp switch is not consulted.
  *
  * Only templates. The plan allowed a free-form step inside Meta's 24-hour window, and
  * a drip is exactly where that cannot be relied on: a step due two days after somebody
@@ -594,14 +593,13 @@ func (s *Module) crmWebinarAllowed(w http.ResponseWriter, r *http.Request, hostI
 /* enrollDripsOnRegistration is the `registered` trigger.
  *
  * Called from the registration path, after the contact exists and beside the WhatsApp
- * invitation — which is also where the webinar's WhatsApp switch is honoured, and for
- * the same reason: a host who turned it off for this webinar did not mean "except for
- * the sequence".
+ * invitation. Whether a follow-up actually sends is the slot's decision, checked when
+ * the step comes due.
  *
  * Failures are logged and dropped. The seat is what the registrant came for.
  */
 func (s *Module) enrollDripsOnRegistration(ctx context.Context, wb types.Webinar, contact types.CRMContact) {
-	if !wb.Options.WhatsAppReminders || !contact.WhatsAppOptIn || contact.Phone == "" {
+	if !contact.WhatsAppOptIn || contact.Phone == "" {
 		return
 	}
 	hostID, err := s.store.HostIDFor(ctx, wb.ID)
@@ -628,9 +626,6 @@ func (s *Module) enrollDripsOnRegistration(ctx context.Context, wb types.Webinar
  * A webinar that ends twice enrolls nobody twice; entry is one per person per sequence.
  */
 func (s *Module) enrollDripsOnWebinarEnd(ctx context.Context, wb types.Webinar) {
-	if !wb.Options.WhatsAppReminders {
-		return
-	}
 	hostID, err := s.store.HostIDFor(ctx, wb.ID)
 	if err != nil {
 		s.log.Error("drip trigger: could not resolve host", "webinar", wb.ID, "error", err)
@@ -656,14 +651,6 @@ func (s *Module) enrollDripsOnWebinarEnd(ctx context.Context, wb types.Webinar) 
  * webinar's tiers exist. Mirrors enrollDripsOnWebinarEnd, which skips those sequences. */
 func (s *Module) OnScored(ctx context.Context, slug string) {
 	s.refreshAudience(ctx, slug)
-	wb, err := s.store.WebinarBySlug(ctx, slug)
-	if err != nil {
-		s.log.Error("drip trigger: scored: could not load webinar", "webinar", slug, "error", err)
-		return
-	}
-	if !wb.Options.WhatsAppReminders {
-		return
-	}
 	hostID, err := s.store.HostIDFor(ctx, slug)
 	if err != nil {
 		s.log.Error("drip trigger: could not resolve host", "webinar", slug, "error", err)
@@ -717,7 +704,7 @@ func (s *Module) AdvanceDrips(ctx context.Context) {
 	slotCache := map[string][]types.MessageSlot{}
 	queued, exited := 0, 0
 	for _, step := range due {
-		if s.cfg.EngageSlots && step.Recipe != "" && step.WebinarSlug != "" {
+		if step.Recipe != "" && step.WebinarSlug != "" {
 			slots, ok := slotCache[step.WebinarSlug]
 			if !ok {
 				var err error

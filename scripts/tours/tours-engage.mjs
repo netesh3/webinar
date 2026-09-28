@@ -51,32 +51,36 @@ export const whatsapp = {
       { kicker: "WebinarLiv guided tour · 8", title: "WhatsApp and automations", sub: "Reminders, replays and automations that run for you" },
       "In this video, we'll look at your WhatsApp page, and set up an automation.",
     );
-    await t.say("Open your account menu, and choose WhatsApp.", async () => {
-      await t.click(btn(page, /^Your account/), { settle: 1000 });
-      await t.click(page.getByRole("menuitem", { name: /WhatsApp/ }).or(link(page, /^WhatsApp/)).first(), { settle: 2000 });
+    await t.say("Open Settings, then Integrations. WhatsApp is one of the apps.", async () => {
+      await t.goto("/settings#integrations");
+      await t.point(page.getByRole("heading", { name: "Integrations" }));
+      await t.point(page.getByRole("heading", { name: "WhatsApp Business" }).or(page.getByText("WhatsApp Business").first()));
     });
-    await t.say("At the top, you can see your number is connected. Messages come from your own WhatsApp Business number.", async () => {
-      await t.point(page.getByText(/^Connected/).first());
+    await t.say("Manage opens the WhatsApp page. Messages come from your own business number.", async () => {
+      await t.click(link(page, /^Manage$/).or(page.getByRole("link", { name: /WhatsApp/ })).first(), { settle: 2000 });
+      await t.point(page.getByRole("heading", { name: "WhatsApp", exact: true }));
+      await t.point(page.getByText(/^Connected/).or(page.getByText("Not connected")).first());
     });
-    await t.say("Sent to everyone who registers are your automated messages: a confirmation, a reminder, and the replay.", async () => {
-      await t.point(page.getByRole("heading", { name: "Sent to everyone who registers" }));
+    await t.say("The numbers at the top are what went out: sent, delivered, read, failed, and what Meta charged.", async () => {
+      await t.point(page.getByRole("group", { name: "Period" }));
     });
-    await t.say("Click Edit to change the wording. Pick a message, and see it on the phone before you save.", async () => {
-      await t.click(btn(page, /^Edit$/).nth(1), { settle: 1800 });
-      await t.point(dialog(page).getByRole("radio").first());
+    await t.say("What goes out automatically is split into before the webinar and after it. Confirmation, the reminder, the replay, and each follow-up.", async () => {
+      await t.point(page.getByRole("heading", { name: "What goes out automatically" }));
+      await t.point(page.getByText("Before the webinar", { exact: true }));
     });
-    await t.say("You can even send a test to your own number.", async () => {
-      await t.point(dialog(page).getByRole("button", { name: /^Test$/ }));
+    await t.say("Click Edit to change the wording. Pick a message, and see it before you save.", async () => {
+      await t.click(btn(page, /^Edit$/).first(), { settle: 1800 });
+      await t.point(dialog(page).getByRole("heading", { name: /^Edit / }));
       await t.click(dialog(page).getByRole("button", { name: /^Cancel$/ }));
     });
-    await t.say("Below are your automations. Each one reads like a sentence, and has an on and off switch.", async () => {
-      await t.point(page.getByRole("heading", { name: "Automations" }));
+    await t.say("Settings on this page goes back to Integrations.", async () => {
+      await t.point(link(page, /^Settings$/));
     });
-    await t.say("For example, when a reply mentions price, or your program, the person is tagged as a Hot lead.", async () => {
-      await t.point(page.getByText(/mentions price/).first());
+    await t.say("Automatic replies run when someone writes back. Each one is a sentence with a switch.", async () => {
+      await t.point(page.getByRole("heading", { name: "Automatic replies" }));
     });
-    await t.say("To write your own, click New automation.", async () => {
-      await t.click(btn(page, /New automation/), { settle: 1600 });
+    await t.say("Add an automatic reply to write your own.", async () => {
+      await t.click(btn(page, /Add an automatic reply/), { settle: 1600 });
     });
     await t.say("First, pick the When. Let's say, when someone answers a poll.", async () => {
       await t.click(dialog(page).getByRole("button", { name: "answers a poll" }));

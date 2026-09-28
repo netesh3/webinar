@@ -216,10 +216,7 @@ func (s *Store) PendingWhatsApp(ctx context.Context, limit int) ([]WhatsAppOutbo
 		             * about a session that has ended, and it is not a reminder — the host
 		             * asked for it by publishing the recording, one press at a time, long
 		             * after the webinar's own reminder toggle stopped meaning anything. */
-		            AND (n.kind = 'wa_replay' OR (
-		              w.status NOT IN ('ended','draft')
-		              AND COALESCE((w.options->>'whatsappReminders')::boolean, false)
-		            ))
+		            AND (n.kind = 'wa_replay' OR w.status NOT IN ('ended','draft'))
 		       ))
 		   AND (n.registration_id IS NULL OR EXISTS (
 		         SELECT 1 FROM registrations r

@@ -8,7 +8,7 @@ import { CheckIcon } from "../icons";
 import { useAppConfig, useToast } from "../providers";
 import { API_BASE, ApiError, api } from "@/lib/api";
 import type { MessagesSaveHandle } from "@/engage";
-import type { Webinar, WebinarInput, WebinarOptions } from "@/lib/api-types";
+import type { Webinar, WebinarInput } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { zonedToInstant } from "@/lib/format";
 import type { PreparedWebinarImage } from "@/lib/webinar-image";
@@ -118,13 +118,6 @@ function ScheduleFormBody({ webinar = null }: { webinar?: Webinar | null }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"scheduled" | "draft" | null>(null);
   const messagesRef = useRef<MessagesSaveHandle>(null);
-
-  function patchOptions(patch: Partial<WebinarOptions>) {
-    setForm((current) => ({
-      ...current,
-      options: { ...current.options, ...patch },
-    }));
-  }
 
   /* The cover image.
    *
@@ -444,7 +437,6 @@ function ScheduleFormBody({ webinar = null }: { webinar?: Webinar | null }) {
             previewWebinar={previewWebinar}
             slug={webinar?.id}
             saveRef={messagesRef}
-            patchOptions={patchOptions}
           />
         </div>
       </div>

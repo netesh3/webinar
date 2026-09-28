@@ -86,10 +86,14 @@ export const home = {
         await t.key("Escape");
       },
     );
-    await t.say("And your account menu has your settings.", async () => {
-      await t.click(btn(page, /^Your account/), { settle: 1500 });
-      await t.key("Escape");
-    });
+    await t.say(
+      "Your account menu opens Settings. Integrations is where WhatsApp, YouTube and the other apps live.",
+      async () => {
+        await t.click(btn(page, /^Your account/), { settle: 1500 });
+        await t.point(page.getByRole("menuitem", { name: /^Settings$/ }));
+        await t.key("Escape");
+      },
+    );
     await t.say("That's the home page. Next, let's schedule a webinar.");
   },
 };
@@ -175,12 +179,11 @@ export const create = {
       },
     );
     await t.say(
-      "Messages and follow-ups are the next tab. Reminders go out by email, and by WhatsApp if it's connected.",
+      "Messages and follow-ups are the other tab. Each message — confirmation, reminder, replay, follow-up — has its own channels and time.",
       async () => {
         await t.click(tab(page, /Messages & follow-ups/), { settle: 1200 });
-        await t.point(
-          page.getByRole("heading", { name: "Reminders", exact: true }).last(),
-        );
+        await t.point(page.getByText("Reminder", { exact: true }));
+        await t.point(page.getByText("Before", { exact: true }));
       },
     );
     await t.say(

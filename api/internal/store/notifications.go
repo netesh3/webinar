@@ -254,13 +254,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		             * it is the one that must survive the session ending — every other kind
 		             * here is a promise about something that is going to happen, and an
 		             * ended webinar is the reason not to keep it. */
-		            AND (notifications.kind = 'replay_ready' OR (
-		              w.status NOT IN ('ended','draft')
-		              AND (
-		                notifications.kind <> 'reminder'
-		                OR COALESCE((w.options->>'emailReminders')::boolean, true)
-		              )
-		            ))
+		            AND (notifications.kind = 'replay_ready' OR w.status NOT IN ('ended','draft'))
 		       ))
 		   AND (registration_id IS NULL OR EXISTS (
 		         SELECT 1 FROM registrations r
