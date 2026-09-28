@@ -30,7 +30,11 @@ import {
   timeZoneNames,
   zonedToInstant,
 } from "@/lib/format";
-import { ScheduleWhatsAppMessages, WhatsAppRemindersToggle } from "@/engage";
+import {
+  AttendeeMessages,
+  MessageRow,
+  WhatsAppRemindersToggle,
+} from "@/engage";
 import { useScheduleSurvey } from "./survey/schedule-survey";
 
 /* Schedule or edit a webinar.
@@ -857,13 +861,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                     !form.options.whatsappReminders
                   }
                 />
-                {form.options.whatsappReminders && (
-                  <ScheduleWhatsAppMessages
-                    reminderLabel={describeReminders(
-                      form.options.reminders ?? DEFAULT_REMINDERS,
-                    )}
-                  />
-                )}
               </div>
             </FormSection>
           </FormGroup>
@@ -1108,6 +1105,54 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
               {survey.node}
             </FormSection>
           </FormGroup>
+          <FormGroup label="What attendees get">
+            {/* Every message, in the order they get it, so a host sees the whole
+                journey while scheduling — and edits any of it from here. */}
+            <FormSection
+              title="Before"
+              description="From the moment they register until you go live."
+              first
+            >
+              <AttendeeMessages
+                stage="before"
+                email={Boolean(form.options.emailReminders)}
+                whatsapp={Boolean(form.options.whatsappReminders)}
+                reminderLabel={describeReminders(
+                  form.options.reminders ?? DEFAULT_REMINDERS,
+                )}
+              />
+            </FormSection>
+            <FormSection
+              title="During"
+              description="In the room, at the end of the session."
+            >
+              <div className="rounded-xl border border-line">
+                <MessageRow
+                  title="Feedback survey"
+                  when="pops up when you put it on screen"
+                  channels={[survey.on && "In the room"]}
+                  preview={
+                    <p className="text-[12px] text-ink-2">
+                      {survey.on
+                        ? "A short survey — set it up under Page and feedback, above."
+                        : "Off — switch it on under Page and feedback, above."}
+                    </p>
+                  }
+                />
+              </div>
+            </FormSection>
+            <FormSection
+              title="After"
+              description="The replay, and a follow-up for each engagement group."
+            >
+              <AttendeeMessages
+                stage="after"
+                email
+                whatsapp={Boolean(form.options.whatsappReminders)}
+                reminderLabel=""
+              />
+            </FormSection>
+          </FormGroup>
         </MoreOptions>
       </div>
 
@@ -1170,6 +1215,11 @@ function defaultsSummary(
       bold: "Feedback",
       rest: surveyOn ? "asked at the end" : "off",
       group: "Page and feedback",
+    },
+    {
+      bold: "Messages",
+      rest: "see everything attendees get",
+      group: "What attendees get",
     },
   ];
 }

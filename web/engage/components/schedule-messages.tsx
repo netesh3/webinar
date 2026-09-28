@@ -1,144 +1,234 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { engageApi } from "../api";
 import { Alert, Modal } from "@/components/controls";
-import { useSession } from "@/components/providers";
+import { useSession, useToast } from "@/components/providers";
+import { ApiError } from "@/lib/api";
 import {
+  NotifyWhatsAppConfirmed,
   NotifyWhatsAppReminder,
   NotifyWhatsAppReplay,
   type CRMMergeField,
+  type CRMRecipe,
   type CRMReminder,
   type CRMTemplate,
+  type NotificationKind,
 } from "@/lib/api-types";
+import { automateFor } from "./automations";
 import { exampleFor, renderTemplate } from "./crm-templates";
+import { SendDialog } from "./send-dialog";
 import { StarterTemplates } from "./starter-templates";
+import { Switch } from "./wa-kit";
 import { EVERYONE_MESSAGES, MessageEditor } from "./wa-messages";
 
-/* What goes out on WhatsApp, shown right under the reminder switches while
- * scheduling: the confirmation and the reminder as the attendee reads them,
- * each with Edit. The wording is account-wide (one set for every webinar), so
- * editing here is the same edit as on the WhatsApp page — said so, not hidden.
+/* Every message an attendee gets, shown while scheduling: the confirmation and
+ * reminders before, the replay and each group's follow-up after — each with its
+ * channels, the WhatsApp wording as they read it, and Edit.
  *
- * The editor is portalled to <body>: this sits inside the schedule <form>, and
- * the editor's own buttons would otherwise submit it. */
+ * The WhatsApp wording and the follow-ups are account-wide (one set for every
+ * webinar), and the box says so. Editors are portalled to <body>: this sits
+ * inside the schedule <form>, whose submit their own buttons would trigger. */
 
-const SHOWN = EVERYONE_MESSAGES.filter((m) => m.kind !== NotifyWhatsAppReplay);
+type Stage = "before" | "after";
 
-export function ScheduleWhatsAppMessages({
+export function AttendeeMessages({
+  stage,
+  email,
+  whatsapp,
   reminderLabel,
 }: {
+  stage: Stage;
+  /** Whether email goes out for this stage's messages. */
+  email: boolean;
+  /** Whether the host switched WhatsApp on for this webinar's reminders. */
+  whatsapp: boolean;
+  /** "1 day, 1 hour before" — the reminder's when. */
   reminderLabel: string;
 }) {
   const { account } = useSession();
+  const { notify } = useToast();
   const connected = Boolean(account?.whatsapp?.connected);
   const [reminders, setReminders] = useState<CRMReminder[] | null>(null);
   const [fields, setFields] = useState<CRMMergeField[]>([]);
   const [templates, setTemplates] = useState<CRMTemplate[] | null>(null);
-  const [editing, setEditing] = useState<(typeof SHOWN)[number] | null>(null);
+  const [recipes, setRecipes] = useState<CRMRecipe[] | null>(null);
+  const [editing, setEditing] = useState<NotificationKind | null>(null);
   const [writing, setWriting] = useState(false);
+  const [followup, setFollowup] = useState<CRMRecipe | null>(null);
   const [tick, setTick] = useState(0);
+  const refresh = useCallback(() => setTick((n) => n + 1), []);
 
   useEffect(() => {
     if (!connected) return;
     let cancelled = false;
-    Promise.all([engageApi.crmReminders(), engageApi.crmTemplates()])
-      .then(([r, t]) => {
+    Promise.all([
+      engageApi.crmReminders(),
+      engageApi.crmTemplates(),
+      stage === "after" ? engageApi.crmRecipes() : Promise.resolve(null),
+    ])
+      .then(([r, t, rc]) => {
         if (cancelled) return;
         setReminders(r.reminders);
         setFields(r.fields);
         setTemplates(t.templates);
+        if (rc) setRecipes(rc.recipes.filter((x) => x.kind === "followup"));
       })
       .catch(() => !cancelled && setTemplates([]));
     return () => {
       cancelled = true;
     };
-  }, [connected, tick]);
+  }, [connected, stage, tick]);
 
-  if (!connected) return null;
+  const templateFor = (name?: string, language?: string) =>
+    (templates ?? []).find((x) => x.name === name && x.language === language);
+
+  function reminderRow(kind: NotificationKind, whenText: string) {
+    const m = EVERYONE_MESSAGES.find((x) => x.kind === kind)!;
+    const r = reminders?.find((x) => x.kind === kind);
+    const t = templateFor(r?.template, r?.language);
+    const wa = connected && (kind === NotifyWhatsAppReplay || whatsapp);
+    return (
+      <Row
+        key={kind}
+        title={m.title}
+        when={whenText}
+        channels={[email && "Email", wa && t && "WhatsApp"]}
+        preview={
+          wa ? (
+            t ? (
+              <Bubble
+                template={t}
+                values={(r?.params ?? []).map((p) => exampleFor(fields, p))}
+              />
+            ) : (
+              <Muted>
+                {templates === null
+                  ? "…"
+                  : "No WhatsApp wording yet — email only."}
+              </Muted>
+            )
+          ) : null
+        }
+        action={
+          wa ? (
+            <TextButton onClick={() => setEditing(kind)} disabled={!templates}>
+              {t ? "Edit" : "Set up"}
+            </TextButton>
+          ) : null
+        }
+      />
+    );
+  }
+
+  async function toggle(r: CRMRecipe, on: boolean) {
+    if (on && !(r.configured && r.template)) {
+      setFollowup(r);
+      return;
+    }
+    try {
+      const res = await engageApi.saveCrmRecipe(r.id, {
+        active: on,
+        template: on ? r.template : undefined,
+        language: on ? r.language : undefined,
+        params: on ? r.params : undefined,
+        delayMin: on ? r.delayMin : undefined,
+      });
+      setRecipes(res.recipes.filter((x) => x.kind === "followup"));
+      notify(on ? "On for every webinar." : "Off.", "ok");
+    } catch (e) {
+      notify(
+        e instanceof ApiError ? e.message : "Could not change that.",
+        "error",
+      );
+    }
+  }
+
+  const rows: ReactNode[] =
+    stage === "before"
+      ? [
+          reminderRow(NotifyWhatsAppConfirmed, "when they register"),
+          reminderRow(NotifyWhatsAppReminder, reminderLabel),
+        ]
+      : [
+          reminderRow(NotifyWhatsAppReplay, "when you publish the recording"),
+          ...(connected
+            ? (recipes ?? []).map((r) => {
+                const t = r.template
+                  ? templateFor(r.template, r.language)
+                  : undefined;
+                return (
+                  <Row
+                    key={r.id}
+                    title={r.title}
+                    when={r.flow[1] ?? ""}
+                    channels={[r.active && "WhatsApp"]}
+                    preview={
+                      t ? (
+                        <Bubble
+                          template={t}
+                          values={(r.params ?? []).map((p) =>
+                            p.field
+                              ? exampleFor(fields, p.field)
+                              : (p.text ?? ""),
+                          )}
+                          dim={!r.active}
+                        />
+                      ) : (
+                        <Muted>
+                          Not set up — you can still message them from Follow up
+                          after.
+                        </Muted>
+                      )
+                    }
+                    action={
+                      <div className="flex items-center gap-3">
+                        <TextButton
+                          onClick={() => setFollowup(r)}
+                          disabled={!templates}
+                        >
+                          {r.configured && r.template ? "Edit" : "Set up"}
+                        </TextButton>
+                        <Switch
+                          checked={r.active}
+                          onChange={(on) => void toggle(r, on)}
+                          label={`${r.title} after every webinar`}
+                        />
+                      </div>
+                    }
+                  />
+                );
+              })
+            : []),
+        ];
+
+  const editingMeta = EVERYONE_MESSAGES.find((x) => x.kind === editing);
+  const auto = followup ? automateFor(followup) : null;
 
   return (
-    <div className="rounded-xl border border-line bg-surface-2/50 p-3">
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-[12.5px] font-medium text-ink">
-          What they get on WhatsApp
-        </p>
+    <div className="grid gap-2">
+      <div className="divide-y divide-line rounded-xl border border-line">
+        {rows}
+      </div>
+      {stage === "after" && connected && recipes === null && <Muted>…</Muted>}
+      {connected && (
         <p className="text-[11.5px] text-ink-3">
-          Same wording for all your webinars ·{" "}
+          WhatsApp wording and follow-ups are the same for all your webinars ·{" "}
           <Link href="/host/crm" className="text-brand hover:underline">
             WhatsApp page
           </Link>
         </p>
-      </div>
-      <div className="grid gap-2 lg:grid-cols-2">
-        {SHOWN.map((m) => {
-          const r = reminders?.find((x) => x.kind === m.kind);
-          const t = (templates ?? []).find(
-            (x) => x.name === r?.template && x.language === r?.language,
-          );
-          return (
-            <div
-              key={m.kind}
-              className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-line bg-surface p-2.5"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[12.5px] font-semibold text-ink">
-                  {m.title}{" "}
-                  <span className="font-normal text-ink-3">
-                    ·{" "}
-                    {m.kind === NotifyWhatsAppReminder
-                      ? reminderLabel
-                      : "when they register"}
-                  </span>
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setEditing(m)}
-                  disabled={!templates}
-                  className="shrink-0 text-[12px] font-medium text-brand hover:underline disabled:opacity-50"
-                >
-                  {t ? "Edit" : "Set up"}
-                </button>
-              </div>
-              <div className="flex-1 rounded-lg bg-[#efeae2] p-1.5">
-                {t ? (
-                  <div className="rounded-md rounded-tl-none bg-white px-2 py-1.5 text-[12px] leading-relaxed text-[#111] shadow-sm">
-                    {renderTemplate(
-                      t.body ?? "",
-                      (r?.params ?? []).map((p) => exampleFor(fields, p)),
-                    )}
-                    {(t.buttons ?? []).length > 0 && (
-                      <span className="mt-1 flex justify-center gap-4 border-t border-black/5 pt-1 text-[11.5px] font-medium text-[#027eb5]">
-                        {t.buttons.map((b) => (
-                          <span key={b.text}>
-                            {b.type === "URL" ? "↗" : "↩"} {b.text}
-                          </span>
-                        ))}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <p className="px-1.5 py-1 text-[12px] text-ink-3">
-                    {templates === null
-                      ? "…"
-                      : "Not set — this one goes by email only."}
-                  </p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      )}
 
-      {editing &&
+      {editingMeta &&
         templates &&
         createPortal(
           <MessageEditor
-            kind={editing.kind}
-            title={editing.title}
-            current={reminders?.find((r) => r.kind === editing.kind)}
+            kind={editingMeta.kind}
+            title={editingMeta.title}
+            current={reminders?.find((r) => r.kind === editingMeta.kind)}
             templates={templates}
             fields={fields}
             onClose={() => setEditing(null)}
@@ -147,6 +237,17 @@ export function ScheduleWhatsAppMessages({
               setEditing(null);
               setWriting(true);
             }}
+          />,
+          document.body,
+        )}
+      {auto &&
+        createPortal(
+          <SendDialog
+            open
+            target={auto.target}
+            automate={auto.automate}
+            onClose={() => setFollowup(null)}
+            onSent={refresh}
           />,
           document.body,
         )}
@@ -163,14 +264,104 @@ export function ScheduleWhatsAppMessages({
                 Meta approves every message before it can be sent, usually in
                 minutes. Start from these, written for webinars.
               </Alert>
-              <StarterTemplates
-                connected={connected}
-                onCreated={() => setTick((n) => n + 1)}
-              />
+              <StarterTemplates connected={connected} onCreated={refresh} />
             </div>
           </Modal>,
           document.body,
         )}
     </div>
+  );
+}
+
+/** One message in the list: what, when, by which channels, and how it reads. */
+export function Row({
+  title,
+  when,
+  channels,
+  preview,
+  action,
+}: {
+  title: string;
+  when: string;
+  channels: (string | false | null | undefined)[];
+  preview?: ReactNode;
+  action?: ReactNode;
+}) {
+  const on = channels.filter(Boolean) as string[];
+  return (
+    <div className="grid gap-2 px-3.5 py-3 md:grid-cols-[13rem_minmax(0,1fr)_auto] md:items-start md:gap-4">
+      <div className="min-w-0">
+        <p className="text-[13px] font-semibold text-ink">{title}</p>
+        <p className="text-[11.5px] text-ink-3">{when}</p>
+        <p className="mt-1 flex flex-wrap gap-1">
+          {on.length ? (
+            on.map((c) => (
+              <span
+                key={c}
+                className="rounded bg-surface-2 px-1.5 py-px text-[10.5px] font-semibold text-ink-2"
+              >
+                {c}
+              </span>
+            ))
+          ) : (
+            <span className="text-[11px] text-ink-3">Off</span>
+          )}
+        </p>
+      </div>
+      <div className="min-w-0">{preview}</div>
+      {action ? <div className="md:pt-0.5">{action}</div> : <span />}
+    </div>
+  );
+}
+
+function Bubble({
+  template,
+  values,
+  dim,
+}: {
+  template: CRMTemplate;
+  values: string[];
+  dim?: boolean;
+}) {
+  return (
+    <div className={`rounded-lg bg-[#efeae2] p-1.5 ${dim ? "opacity-60" : ""}`}>
+      <div className="rounded-md rounded-tl-none bg-white px-2 py-1.5 text-[12px] leading-relaxed text-[#111] shadow-sm">
+        {renderTemplate(template.body ?? "", values)}
+        {(template.buttons ?? []).length > 0 && (
+          <span className="mt-1 flex justify-center gap-4 border-t border-black/5 pt-1 text-[11.5px] font-medium text-[#027eb5]">
+            {template.buttons.map((b) => (
+              <span key={b.text}>
+                {b.type === "URL" ? "↗" : "↩"} {b.text}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Muted({ children }: { children: ReactNode }) {
+  return <p className="text-[12px] text-ink-3">{children}</p>;
+}
+
+function TextButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="text-[12.5px] font-medium text-brand hover:underline disabled:opacity-50"
+    >
+      {children}
+    </button>
   );
 }
