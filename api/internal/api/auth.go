@@ -625,6 +625,14 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if pic := identity.Picture; pic != "" && pic != user.GooglePicture {
+		if err := s.store.SetGooglePicture(r.Context(), user.ID, pic); err != nil {
+			s.log.Warn("supabase auth: picture", "error", err, "user", user.ID)
+		} else {
+			user.GooglePicture = pic
+		}
+	}
+
 	token, exp, err := s.sessions.Issue(user.ID)
 	if err != nil {
 		s.fail(w, r, "supabase auth: issue session", err)
