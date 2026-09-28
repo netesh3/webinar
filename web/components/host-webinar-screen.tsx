@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { HostWebinarTabs } from "./host-webinar-tabs";
-import { Alert, ConfirmModal, Spinner } from "./controls";
+import { ConfirmModal, Menu, Spinner } from "./controls";
+import { StepBar } from "./webinar-steps";
 import { ArrowLeftIcon } from "./icons";
 import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, kindLabel } from "./ui";
@@ -184,7 +185,6 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const isDraft = webinar.status === "draft";
   const pending = registrants.filter((r) => r.state === "pending").length;
   const initialTab = search.get("tab");
-  const endedTarget: HostTab = recordings.length > 0 ? "Recordings" : "Engagement";
 
   return (
     <>
@@ -193,7 +193,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-brand"
       >
         <ArrowLeftIcon className="size-3.5" />
-        Hosting
+        Your webinars
       </Link>
 
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -232,79 +232,57 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
           </p>
         </div>
 
-        <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Menu
+            label="More actions"
+            trigger={<span className="grid size-9 place-items-center rounded-lg text-[18px] text-ink-2 hover:bg-surface-2">⋯</span>}
+            items={[
+              ...(!isDraft && !isEnded
+                ? [
+                    { kind: "action" as const, label: "Edit webinar", onSelect: () => router.push(`/host/${slug}/edit`) },
+                    {
+                      kind: "action" as const,
+                      label: "Share link",
+                      onSelect: () =>
+                        void shareAttendeeLink({ url: `${origin}/webinars/${slug}`, topic: webinar.topic, notify }),
+                    },
+                  ]
+                : []),
+              ...(isLive
+                ? [{ kind: "action" as const, label: "End for everyone", danger: true, onSelect: () => setConfirmEnd(true) }]
+                : []),
+              { kind: "separator" as const },
+              { kind: "action" as const, label: "Delete webinar", danger: true, onSelect: () => setConfirmDelete(true) },
+            ]}
+          />
           {isDraft ? (
             <ButtonLink href={`/host/${slug}/edit`}>Finish setup</ButtonLink>
           ) : isEnded ? (
-            /* A shortcut to another tab — pointless once that tab is the one open. */
-            endedTarget !== openTab && (
-              <ButtonLink href={`/host/${slug}?tab=${endedTarget.toLowerCase()}`}>
-                {endedTarget === "Recordings" ? "Watch the recording" : "See engagement"}
+            recordings.length > 0 &&
+            openTab !== "Recording" && (
+              <ButtonLink href={`/host/${slug}?tab=recording`} variant="secondary">
+                ▶ Watch recording
               </ButtonLink>
             )
-          ) : (
-            <>
-              {isLive ? (
-                <ButtonLink
-                  href={bypass ? "/preview/room" : `/host/${slug}/room`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Rejoin room
-                </ButtonLink>
-              ) : (
-                <Button onClick={() => void start()} disabled={busy}>
-                  {busy && <Spinner className="size-4" />}
-                  Host webinar
-                </Button>
-              )}
-              {pending > 0 && (
-                <ButtonLink href={`/host/${slug}?tab=admit`} variant="secondary">
-                  Admit ({pending})
-                </ButtonLink>
-              )}
-              {isLive && (
-                <Button variant="danger" onClick={() => setConfirmEnd(true)} disabled={busy}>
-                  End for everyone
-                </Button>
-              )}
-            </>
-          )}
-          {/* The registration link only means something while somebody can still
-              join. After the webinar it leads to a page that cannot be attended;
-              sharing the recording is a different link, offered on its own row. */}
-          {!isDraft && !isEnded && (
-            <Button
-              variant="secondary"
-              onClick={() =>
-                void shareAttendeeLink({
-                  url: `${origin}/webinars/${slug}`,
-                  topic: webinar.topic,
-                  notify,
-                })
-              }
+          ) : isLive ? (
+            <ButtonLink
+              href={bypass ? "/preview/room" : `/host/${slug}/room`}
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              Share
+              Rejoin room
+            </ButtonLink>
+          ) : (
+            <Button onClick={() => void start()} disabled={busy}>
+              {busy && <Spinner className="size-4" />}
+              ▶ Go live
             </Button>
           )}
-          {!isDraft && !isEnded && (
-            <ButtonLink href={`/host/${slug}/edit`} variant="ghost">
-              Edit
-            </ButtonLink>
-          )}
-          <Button variant="ghost" onClick={() => setConfirmDelete(true)} disabled={busy}>
-            Delete
-          </Button>
         </div>
       </div>
 
-      {isDraft && (
-        <div className="mb-4">
-          <Alert tone="warn" title="This is a draft">
-            Finish setup and save as scheduled to open registration.
-          </Alert>
-        </div>
-      )}
+      <StepBar webinar={webinar} registrants={registrants.length} />
+
 
       <HostWebinarTabs
         webinar={webinar}

@@ -3,13 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { engageApi } from "../api";
-import { Disclosure, Spinner } from "@/components/controls";
+import { Spinner } from "@/components/controls";
 import { useToast } from "@/components/providers";
 import { Empty } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import type {
   CRMBroadcast,
-  CRMTemplate,
   CRMWebinarMessagesResponse,
 } from "@/lib/api-types";
 import { useNow } from "@/lib/clock";
@@ -22,7 +21,6 @@ import {
   replyClosing,
   timelineRows,
 } from "./messages-parts";
-import { RemindersSettings } from "./crm-screen";
 import { SendDialog, type SendTarget } from "./send-dialog";
 
 /* A webinar's Messages tab: what WhatsApp sent for this one webinar, and who answered.
@@ -46,9 +44,6 @@ export function WebinarMessagesTab({
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [target, setTarget] = useState<SendTarget | null>(null);
-  const [templates, setTemplates] = useState<CRMTemplate[] | null>(null);
-  const [templatesError, setTemplatesError] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
   const now = useNow();
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
@@ -75,30 +70,6 @@ export function WebinarMessagesTab({
       cancelled = true;
     };
   }, [slug, tick]);
-
-  useEffect(() => {
-    loadTemplates();
-    // Once per mount: templates change about once a week.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function loadTemplates(refresh = false) {
-    if (refresh) setSyncing(true);
-    engageApi
-      .crmTemplates(refresh)
-      .then((res) => {
-        setTemplates(res.templates);
-        setTemplatesError(null);
-      })
-      .catch((e: unknown) => {
-        setTemplates([]);
-        setTemplatesError(
-          e instanceof ApiError ? e.message : "Could not load templates.",
-        );
-        if (refresh) notify("Could not reach WhatsApp.", "error");
-      })
-      .finally(() => setSyncing(false));
-  }
 
   async function cancel(b: CRMBroadcast) {
     try {
@@ -145,7 +116,7 @@ export function WebinarMessagesTab({
     broadcasts: data.broadcasts,
     ended,
     now,
-    engagementHref: `/host/${encodeURIComponent(slug)}?tab=engagement`,
+    engagementHref: `/host/${encodeURIComponent(slug)}?tab=follow-up`,
     onCancel: cancel,
   });
 
@@ -167,14 +138,14 @@ export function WebinarMessagesTab({
             footer={
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-[11.5px] text-ink-3">
                 <span>
-                  Who to follow up with is on{" "}
+                  Templates for these messages are on the{" "}
                   <Link
-                    href={`/host/${encodeURIComponent(slug)}?tab=engagement`}
+                    href="/host/crm?view=templates"
                     className="font-medium text-brand hover:underline"
                   >
-                    Engagement → Follow up
+                    WhatsApp page
                   </Link>
-                  . Reminder times are in Settings.
+                  .
                 </span>
                 <button
                   type="button"
@@ -193,19 +164,6 @@ export function WebinarMessagesTab({
               </div>
             }
           />
-          <Disclosure summary="Change which template each message uses">
-            <p className="mb-3 text-[12px] text-ink-3">
-              These apply to all your webinars — the facts in each message
-              (topic, time) come from the webinar.
-            </p>
-            <RemindersSettings
-              templates={templates}
-              templatesError={templatesError}
-              syncing={syncing}
-              onRefreshTemplates={() => loadTemplates(true)}
-              onSaved={refresh}
-            />
-          </Disclosure>
         </div>
         <div className="grid gap-4">
           <WaitingList waiting={data.waiting} />

@@ -42,6 +42,7 @@ export function EngagementDashboard({
   onOpenAttendees,
   initialSection,
   followUp,
+  onFollowUp,
 }: {
   source: EngagementSource;
   sample?: boolean;
@@ -59,6 +60,8 @@ export function EngagementDashboard({
   /** The Follow up section's actions — the CRM's slot, handed the tier counts. Without
    *  it the section shows the engagement levels only. */
   followUp?: (tiers: EngagementSummary["tiers"], levels: ReactNode) => ReactNode;
+  /** Where the header's Follow up button goes, when following up is another tab. */
+  onFollowUp?: () => void;
 }) {
   const { notify } = useToast();
   const summary = useEngagementSummary(source);
@@ -133,7 +136,7 @@ export function EngagementDashboard({
         </Button>
       )}
       {ready && (
-        <Button size="sm" onClick={() => revealSection("follow-up")}>
+        <Button size="sm" onClick={onFollowUp ?? (() => revealSection("follow-up"))}>
           <Icon name="schedule_send" />
           Follow up
         </Button>
