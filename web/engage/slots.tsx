@@ -63,13 +63,16 @@ export function WhatsAppRemindersToggle({
           <>
             Sent from {account?.whatsapp?.displayPhone || "your number"} to
             registrants who tick the WhatsApp box, and billed to your Meta
-            account. Pick the template for each message on this webinar&apos;s{" "}
-            <span className="font-medium text-ink">Messages</span> tab.
+            account. The wording is set once, on the{" "}
+            <Link href={`${ENGAGE_HOME}?view=templates`} className="font-medium text-brand hover:underline">
+              WhatsApp page
+            </Link>
+            .
           </>
         ) : (
           <>
             <Link
-              href="/account"
+              href={`${ENGAGE_HOME}?view=setup`}
               className="font-medium text-brand hover:underline"
             >
               Connect WhatsApp

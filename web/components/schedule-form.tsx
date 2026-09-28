@@ -5,9 +5,13 @@ import { useId, useMemo, useState, type ReactNode } from "react";
 import { Alert, openPickerOnClick, Select, Spinner, Toggle } from "./controls";
 import { useAppConfig, useSession, useToast } from "./providers";
 import { Button, Card } from "./ui";
-import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
+import { CalendarIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "./icons";
 import { WebinarImagePicker } from "./webinar-image-picker";
-import { DEFAULT_REMINDERS, describeReminders, ReminderTimes } from "./reminder-times";
+import {
+  DEFAULT_REMINDERS,
+  describeReminders,
+  ReminderTimes,
+} from "./reminder-times";
 import { API_BASE, ApiError, api } from "@/lib/api";
 import type {
   AgendaItem,
@@ -122,15 +126,23 @@ export const DEFAULT_ATTENDEE_LIMIT = ATTENDEE_LIMITS[0];
  * option the first time somebody changed the title.
  */
 function limitOptions(maxAttendees: number, current: number): number[] {
-  const ceiling = maxAttendees > 0 ? maxAttendees : ATTENDEE_LIMITS[ATTENDEE_LIMITS.length - 1];
+  const ceiling =
+    maxAttendees > 0
+      ? maxAttendees
+      : ATTENDEE_LIMITS[ATTENDEE_LIMITS.length - 1];
   const offered = ATTENDEE_LIMITS.filter((n) => n <= ceiling);
   const known: readonly number[] = ATTENDEE_LIMITS;
   const withCurrent =
-    current > 0 && !known.includes(current) ? [...offered, current] : [...offered];
+    current > 0 && !known.includes(current)
+      ? [...offered, current]
+      : [...offered];
   return [...new Set(withCurrent)].sort((a, b) => a - b);
 }
 
-function initialState(webinar: Webinar | null, maxAttendees: number): FormState {
+function initialState(
+  webinar: Webinar | null,
+  maxAttendees: number,
+): FormState {
   if (webinar) {
     const when = instantToZoned(webinar.startsAt, webinar.timeZone);
     return {
@@ -181,7 +193,10 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
     approval: "automatic",
     /* 50, not the server's ceiling. See ATTENDEE_LIMITS. Clamped in case an operator has
      * configured a maximum below it — a server sized for 20 must not offer 50. */
-    attendeeLimit: maxAttendees > 0 ? Math.min(DEFAULT_ATTENDEE_LIMIT, maxAttendees) : DEFAULT_ATTENDEE_LIMIT,
+    attendeeLimit:
+      maxAttendees > 0
+        ? Math.min(DEFAULT_ATTENDEE_LIMIT, maxAttendees)
+        : DEFAULT_ATTENDEE_LIMIT,
     passcode: "",
     panelistEmails: "",
     takeaways: "",
@@ -234,11 +249,28 @@ function initialState(webinar: Webinar | null, maxAttendees: number): FormState 
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 /** The wall clock the host picked, as the sticky bar reads it. Built from the
  *  input strings so it does not depend on the viewer's zone. */
-function formatScheduleWhen(date: string, time: string, zoneLabel: string): string | null {
+function formatScheduleWhen(
+  date: string,
+  time: string,
+  zoneLabel: string,
+): string | null {
   const [y, m, d] = date.split("-").map(Number);
   const [hh, mm] = time.split(":").map(Number);
   if (![y, m, d, hh, mm].every((n) => Number.isFinite(n))) return null;
@@ -290,7 +322,8 @@ function scheduleSummary(
   if (form.attendeeLimit > 0) {
     parts.push(`${form.attendeeLimit.toLocaleString()} seats`);
   }
-  const remindersOn = form.options.emailReminders || form.options.whatsappReminders;
+  const remindersOn =
+    form.options.emailReminders || form.options.whatsappReminders;
   if (!remindersOn) {
     parts.push("Reminders off");
   } else if (form.options.reminders.length > 0) {
@@ -330,7 +363,9 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
   const [imagePreview, setImagePreview] = useState<string | null>(
     webinar?.imageUrl ? `${API_BASE}${webinar.imageUrl}` : null,
   );
-  const [pendingImage, setPendingImage] = useState<PreparedWebinarImage | null>(null);
+  const [pendingImage, setPendingImage] = useState<PreparedWebinarImage | null>(
+    null,
+  );
   // True once the host removes a PERSISTED image with no replacement chosen —
   // the thing submit() actually has to tell the server about. Picking a new
   // image after removing one clears this; the upload itself is the replacement.
@@ -398,7 +433,9 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
     const surveyProblem = survey.problem();
     if (surveyProblem) {
       setError(surveyProblem);
-      document.getElementById("survey")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document
+        .getElementById("survey")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
       setBusy(null);
       return;
     }
@@ -422,13 +459,19 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
             pendingImage.mime,
           );
         } catch {
-          notify("Saved, but the cover image didn't upload. Edit the webinar to try again.", "info");
+          notify(
+            "Saved, but the cover image didn't upload. Edit the webinar to try again.",
+            "info",
+          );
         }
       } else if (imageRemoved) {
         try {
           saved = await api.deleteWebinarImage(saved.id);
         } catch {
-          notify("Saved, but the cover image couldn't be removed. Edit the webinar to try again.", "info");
+          notify(
+            "Saved, but the cover image couldn't be removed. Edit the webinar to try again.",
+            "info",
+          );
         }
       }
 
@@ -442,7 +485,11 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
           }
           // Connected YouTube with no pasted key: the live is created when
           // the webinar starts, so we do not mint a Studio event on every save.
-        } else if (saved.streamConfigured || saved.streamKeySaved || saved.streamWatchUrl) {
+        } else if (
+          saved.streamConfigured ||
+          saved.streamKeySaved ||
+          saved.streamWatchUrl
+        ) {
           saved = await api.setWebinarStream(saved.id, {
             off: true,
             dropWatch: true,
@@ -506,7 +553,8 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
           is what keeps the last fields from sitting underneath it. */}
       <div className="grid gap-5 pb-48 lg:pb-24">
         <p className="text-[13px] text-ink-2">
-          You can change everything after scheduling.
+          A name, a time and a picture — you&apos;re done. You can change
+          anything later.
         </p>
 
         {error && <Alert tone="error">{error}</Alert>}
@@ -544,22 +592,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                       hint="Shown on the browse page, under the title."
                     />
                   </div>
-
-                  <div className="order-4 flex min-h-28 flex-col lg:order-none lg:min-h-0 lg:flex-1">
-                    <label className="label" htmlFor="description">
-                      Description
-                    </label>
-                    <div className="min-h-28 lg:relative lg:min-h-0 lg:flex-1">
-                      <textarea
-                        id="description"
-                        className="field lg:absolute lg:inset-0 lg:!resize-none"
-                        rows={4}
-                        placeholder="Shown on the registration page."
-                        value={form.description}
-                        onChange={(e) => set("description", e.target.value)}
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 <div className="order-3 lg:order-none lg:self-start">
@@ -580,31 +612,6 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                     }}
                   />
                 </div>
-              </div>
-
-              <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-5">
-                {/* Free text with suggestions from what already exists, rather than a
-                    fixed list nobody can extend without a deploy. */}
-                <div>
-                  <label className="label" htmlFor="track">
-                    Topic tag
-                  </label>
-                  <input
-                    id="track"
-                    className="field"
-                    list="track-suggestions"
-                    placeholder="e.g. Architecture"
-                    value={form.track}
-                    onChange={(e) => set("track", e.target.value)}
-                  />
-                  <datalist id="track-suggestions">
-                    {config.tracks.map((t) => (
-                      <option key={t} value={t} />
-                    ))}
-                  </datalist>
-                </div>
-
-                <KindControl value={form.kind} onChange={(v) => set("kind", v)} />
               </div>
             </div>
           </FormSection>
@@ -656,7 +663,9 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
               >
                 {DURATIONS.map((m) => (
                   <option key={m} value={m}>
-                    {m >= 60 ? `${m / 60} hour${m > 60 ? "s" : ""}` : `${m} minutes`}
+                    {m >= 60
+                      ? `${m / 60} hour${m > 60 ? "s" : ""}`
+                      : `${m} minutes`}
                   </option>
                 ))}
               </Select>
@@ -677,10 +686,14 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
             </div>
 
             {fields.startsAt && (
-              <p className="mt-2 text-[12px] font-medium text-live">{fields.startsAt}</p>
+              <p className="mt-2 text-[12px] font-medium text-live">
+                {fields.startsAt}
+              </p>
             )}
             {fields.timeZone && (
-              <p className="mt-2 text-[12px] font-medium text-live">{fields.timeZone}</p>
+              <p className="mt-2 text-[12px] font-medium text-live">
+                {fields.timeZone}
+              </p>
             )}
 
             {startsAtPreview && hydrated && (
@@ -695,309 +708,404 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                     })}
                   </strong>{" "}
                   in your local time
-                  {form.timeZone !== localTimeZone() && ` (${localTimeZone()})`}.
+                  {form.timeZone !== localTimeZone() && ` (${localTimeZone()})`}
+                  .
                 </span>
               </p>
             )}
           </FormSection>
         </FormGroup>
 
-        <FormGroup label="Who can join">
-          <FormSection
-            title="Registration"
-            description="Who gets in, and what you ask them first."
-            first
-          >
-            <div className="grid gap-3.5">
-              <Boxed on={form.registrationRequired}>
-                <Toggle
-                  checked={form.registrationRequired}
-                  onChange={(v) => set("registrationRequired", v)}
-                  label="Require registration"
-                  description="Attendees fill in a form and get a personal join link. Signed-in accounts get it on their account instead."
-                />
-              </Boxed>
-
-              <div className="grid gap-3.5 lg:grid-cols-3">
-                <Select
-                  label="Approval"
-                  value={form.approval}
-                  onChange={(v) => set("approval", v as FormState["approval"])}
-                  hint={
-                    form.approval === "manual"
-                      ? "Registrants wait in a queue until you approve them."
-                      : undefined
-                  }
-                >
-                  <option value="automatic">Automatically approve</option>
-                  <option value="manual">Manually approve each one</option>
-                </Select>
-
-                <Select
-                  id="limit"
-                  label="Attendee limit"
-                  value={String(form.attendeeLimit)}
-                  onChange={(v) => set("attendeeLimit", Number(v))}
-                  hint={
-                    config.maxAttendees
-                      ? `This server is sized for up to ${config.maxAttendees.toLocaleString()} concurrent attendees.`
-                      : undefined
-                  }
-                >
-                  {limitOptions(config.maxAttendees, form.attendeeLimit).map((n) => (
-                    <option key={n} value={n}>
-                      {n.toLocaleString()} attendees
-                    </option>
-                  ))}
-                </Select>
-
-                <Text
-                  label="Passcode (optional)"
-                  value={form.passcode}
-                  onChange={(v) => set("passcode", v)}
-                  hint="Shown alongside the webinar ID for anyone dialling in from a calendar invite."
-                  error={fields.passcode}
-                />
-              </div>
-
-              <QuestionEditor
-                questions={form.questions}
-                onChange={(q) => set("questions", q)}
-              />
-            </div>
-          </FormSection>
-
-          {/* Email, WhatsApp and the times they share. They used to sit in
-              Other options, which hid the switches from the times they control. */}
-          <FormSection
-            title="Reminders"
-            description="The same times drive email and WhatsApp."
-          >
-            <div className="grid gap-3.5">
-              <div className="grid gap-2.5 lg:grid-cols-2">
-                <Boxed
-                  on={Boolean(form.options.emailReminders)}
-                  className="lg:only:col-span-2"
-                >
+        <MoreOptions
+          editing={editing}
+          summary={defaultsSummary(form, survey.on)}
+        >
+          <FormGroup label="Registration">
+            <FormSection
+              title="Who can join"
+              description="Who gets in, and what you ask them first."
+              first
+            >
+              <div className="grid gap-3.5">
+                <Boxed on={form.registrationRequired}>
                   <Toggle
-                    checked={Boolean(form.options.emailReminders)}
-                    onChange={(v) => set("options", { ...form.options, emailReminders: v })}
-                    label="Email reminders"
+                    checked={form.registrationRequired}
+                    onChange={(v) => set("registrationRequired", v)}
+                    label="Require registration"
+                    description="Attendees fill in a form and get a personal join link. Signed-in accounts get it on their account instead."
                   />
                 </Boxed>
-                <WhatsAppRemindersToggle
-                  boxed
-                  checked={Boolean(form.options.whatsappReminders)}
-                  onChange={(v) =>
-                    set("options", { ...form.options, whatsappReminders: v })
+
+                <div className="grid gap-3.5 lg:grid-cols-3">
+                  <Select
+                    label="Approval"
+                    value={form.approval}
+                    onChange={(v) =>
+                      set("approval", v as FormState["approval"])
+                    }
+                    hint={
+                      form.approval === "manual"
+                        ? "Registrants wait in a queue until you approve them."
+                        : undefined
+                    }
+                  >
+                    <option value="automatic">Automatically approve</option>
+                    <option value="manual">Manually approve each one</option>
+                  </Select>
+
+                  <Select
+                    id="limit"
+                    label="Attendee limit"
+                    value={String(form.attendeeLimit)}
+                    onChange={(v) => set("attendeeLimit", Number(v))}
+                    hint={
+                      config.maxAttendees
+                        ? `This server is sized for up to ${config.maxAttendees.toLocaleString()} concurrent attendees.`
+                        : undefined
+                    }
+                  >
+                    {limitOptions(config.maxAttendees, form.attendeeLimit).map(
+                      (n) => (
+                        <option key={n} value={n}>
+                          {n.toLocaleString()} attendees
+                        </option>
+                      ),
+                    )}
+                  </Select>
+
+                  <Text
+                    label="Passcode (optional)"
+                    value={form.passcode}
+                    onChange={(v) => set("passcode", v)}
+                    hint="Shown alongside the webinar ID for anyone dialling in from a calendar invite."
+                    error={fields.passcode}
+                  />
+                </div>
+
+                <QuestionEditor
+                  questions={form.questions}
+                  onChange={(q) => set("questions", q)}
+                />
+              </div>
+            </FormSection>
+          </FormGroup>
+          <FormGroup label="Reminders">
+            {/* Email, WhatsApp and the times they share. They used to sit in
+              Other options, which hid the switches from the times they control. */}
+            <FormSection
+              title="Reminders"
+              first
+              description="The same times drive email and WhatsApp."
+            >
+              <div className="grid gap-3.5">
+                <div className="grid gap-2.5 lg:grid-cols-2">
+                  <Boxed
+                    on={Boolean(form.options.emailReminders)}
+                    className="lg:only:col-span-2"
+                  >
+                    <Toggle
+                      checked={Boolean(form.options.emailReminders)}
+                      onChange={(v) =>
+                        set("options", { ...form.options, emailReminders: v })
+                      }
+                      label="Email reminders"
+                    />
+                  </Boxed>
+                  <WhatsAppRemindersToggle
+                    boxed
+                    checked={Boolean(form.options.whatsappReminders)}
+                    onChange={(v) =>
+                      set("options", { ...form.options, whatsappReminders: v })
+                    }
+                  />
+                </div>
+                <ReminderTimes
+                  value={form.options.reminders}
+                  onChange={(r) =>
+                    set("options", { ...form.options, reminders: r })
+                  }
+                  disabled={
+                    !form.options.emailReminders &&
+                    !form.options.whatsappReminders
                   }
                 />
               </div>
-              <ReminderTimes
-                value={form.options.reminders}
-                onChange={(r) => set("options", { ...form.options, reminders: r })}
-                disabled={!form.options.emailReminders && !form.options.whatsappReminders}
-              />
-            </div>
-          </FormSection>
+            </FormSection>
+          </FormGroup>
+          <FormGroup label="In the room">
+            <FormSection
+              title="How the session starts"
+              description="You can change any of these live from the host controls once the webinar is running."
+              first
+            >
+              <div className="grid gap-1 lg:grid-cols-2">
+                <Toggle
+                  checked={form.controls.hideAttendees}
+                  onChange={(v) =>
+                    set("controls", { ...form.controls, hideAttendees: v })
+                  }
+                  label="Hide attendees from each other"
+                  description="Attendees see only you and the panelists. Enforced by the media server."
+                />
+                <Toggle
+                  checked={form.controls.muteOnEntry}
+                  onChange={(v) =>
+                    set("controls", { ...form.controls, muteOnEntry: v })
+                  }
+                  label="Mute panelists on entry"
+                />
+                <Toggle
+                  checked={form.controls.allowUnmute}
+                  onChange={(v) =>
+                    set("controls", { ...form.controls, allowUnmute: v })
+                  }
+                  label="Panelists may unmute themselves"
+                />
+                <Toggle
+                  checked={form.controls.chatEnabled}
+                  onChange={(v) =>
+                    set("controls", { ...form.controls, chatEnabled: v })
+                  }
+                  label="Attendee chat"
+                />
+                <Toggle
+                  checked={form.controls.qaEnabled}
+                  onChange={(v) =>
+                    set("controls", { ...form.controls, qaEnabled: v })
+                  }
+                  label="Q&A"
+                />
+                <Toggle
+                  checked={form.controls.raiseHandEnabled}
+                  onChange={(v) =>
+                    set("controls", { ...form.controls, raiseHandEnabled: v })
+                  }
+                  label="Raise hand"
+                />
+                <Toggle
+                  checked={form.controls.reactionsEnabled}
+                  onChange={(v) =>
+                    set("controls", { ...form.controls, reactionsEnabled: v })
+                  }
+                  label="Reactions"
+                />
+              </div>
+            </FormSection>
 
-          <FormSection
-            title="Who is on the stage"
-            description="Panelists can share their camera and screen."
-          >
-            <div>
-              <label className="label" htmlFor="panelists">
-                Panelist emails
-              </label>
-              <textarea
-                id="panelists"
-                className="field"
-                rows={2}
-                placeholder="one@example.com, two@example.com"
-                value={form.panelistEmails}
-                onChange={(e) => set("panelistEmails", e.target.value)}
-              />
-              <p className="mt-1 text-[11.5px] leading-relaxed text-ink-3">
-                They need an account, because a publishing token is minted from a
-                signed-in session — addresses without one are skipped.
-              </p>
-              {fields.panelistEmails && (
-                <p className="mt-1 text-[12px] font-medium text-live">
-                  {fields.panelistEmails}
+            <FormSection
+              title="Who is on the stage"
+              description="Panelists can share their camera and screen."
+            >
+              <div>
+                <label className="label" htmlFor="panelists">
+                  Panelist emails
+                </label>
+                <textarea
+                  id="panelists"
+                  className="field"
+                  rows={2}
+                  placeholder="one@example.com, two@example.com"
+                  value={form.panelistEmails}
+                  onChange={(e) => set("panelistEmails", e.target.value)}
+                />
+                <p className="mt-1 text-[11.5px] leading-relaxed text-ink-3">
+                  They need an account, because a publishing token is minted
+                  from a signed-in session — addresses without one are skipped.
                 </p>
-              )}
-              {editing && webinar.panelists.length > 0 && (
-                <p className="mt-2 text-[12px] text-ink-2">
-                  Currently on the stage:{" "}
-                  {webinar.panelists.map((p) => p.name).join(", ")}. Leave the box empty to
-                  remove them all.
-                </p>
-              )}
-            </div>
-          </FormSection>
-        </FormGroup>
+                {fields.panelistEmails && (
+                  <p className="mt-1 text-[12px] font-medium text-live">
+                    {fields.panelistEmails}
+                  </p>
+                )}
+                {editing && webinar.panelists.length > 0 && (
+                  <p className="mt-2 text-[12px] text-ink-2">
+                    Currently on the stage:{" "}
+                    {webinar.panelists.map((p) => p.name).join(", ")}. Leave the
+                    box empty to remove them all.
+                  </p>
+                )}
+              </div>
+            </FormSection>
 
-        <FormGroup label="In the room">
-          <FormSection
-            title="How the session starts"
-            description="You can change any of these live from the host controls once the webinar is running."
-            first
-          >
-            <div className="grid gap-1 lg:grid-cols-2">
-              <Toggle
-                checked={form.controls.hideAttendees}
-                onChange={(v) => set("controls", { ...form.controls, hideAttendees: v })}
-                label="Hide attendees from each other"
-                description="Attendees see only you and the panelists. Enforced by the media server."
-              />
-              <Toggle
-                checked={form.controls.muteOnEntry}
-                onChange={(v) => set("controls", { ...form.controls, muteOnEntry: v })}
-                label="Mute panelists on entry"
-              />
-              <Toggle
-                checked={form.controls.allowUnmute}
-                onChange={(v) => set("controls", { ...form.controls, allowUnmute: v })}
-                label="Panelists may unmute themselves"
-              />
-              <Toggle
-                checked={form.controls.chatEnabled}
-                onChange={(v) => set("controls", { ...form.controls, chatEnabled: v })}
-                label="Attendee chat"
-              />
-              <Toggle
-                checked={form.controls.qaEnabled}
-                onChange={(v) => set("controls", { ...form.controls, qaEnabled: v })}
-                label="Q&A"
-              />
-              <Toggle
-                checked={form.controls.raiseHandEnabled}
-                onChange={(v) => set("controls", { ...form.controls, raiseHandEnabled: v })}
-                label="Raise hand"
-              />
-              <Toggle
-                checked={form.controls.reactionsEnabled}
-                onChange={(v) => set("controls", { ...form.controls, reactionsEnabled: v })}
-                label="Reactions"
-              />
-            </div>
-          </FormSection>
+            <FormSection
+              title="Recording and extras"
+              description="Recording, captions and streaming."
+            >
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-7">
+                <div className="grid content-start gap-4">
+                  <AgendaEditor
+                    agenda={form.agenda}
+                    onChange={(a) => set("agenda", a)}
+                  />
 
-          <FormSection
-            title="Agenda and extras"
-            description="What people will get, and what happens around the session."
-          >
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-7">
-              <div className="grid content-start gap-4">
-                <AgendaEditor agenda={form.agenda} onChange={(a) => set("agenda", a)} />
+                  <div>
+                    <label className="label" htmlFor="takeaways">
+                      What attendees will learn
+                    </label>
+                    <textarea
+                      id="takeaways"
+                      className="field"
+                      rows={3}
+                      placeholder="One per line."
+                      value={form.takeaways}
+                      onChange={(e) => set("takeaways", e.target.value)}
+                    />
+                  </div>
+                </div>
 
                 <div>
-                  <label className="label" htmlFor="takeaways">
-                    What attendees will learn
+                  <span className="label">Other options</span>
+                  <div className="rounded-[10px] border border-line px-2 py-1">
+                    {(
+                      [
+                        ["autoRecord", "Record automatically"],
+                        ["captions", "Live captions"],
+                        ["multistream", "Stream to YouTube / LinkedIn"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <Toggle
+                        key={key}
+                        checked={Boolean(form.options[key])}
+                        onChange={(v) =>
+                          set("options", { ...form.options, [key]: v })
+                        }
+                        label={label}
+                      />
+                    ))}
+                  </div>
+                  {form.options.multistream && (
+                    <div className="mt-3 grid gap-2">
+                      {config.youtubeOAuth && account?.youtube?.connected ? (
+                        <p className="text-[12.5px] text-ink-2">
+                          Linked channel:{" "}
+                          <span className="font-medium text-ink">
+                            {account.youtube.channelTitle || "YouTube"}
+                          </span>
+                          . We create an Unlisted live when you start, and put
+                          the watch link in Recordings. Paste a Studio key below
+                          only if you want a different destination.
+                        </p>
+                      ) : config.youtubeOAuth ? (
+                        <p className="text-[12.5px] text-ink-2">
+                          <a
+                            href={api.youtubeConnectURL(
+                              typeof window === "undefined"
+                                ? "/host/schedule"
+                                : window.location.pathname,
+                            )}
+                            className="font-medium text-brand hover:underline"
+                          >
+                            Connect YouTube
+                          </a>{" "}
+                          to create the live automatically, or paste a stream
+                          key from Studio.
+                        </p>
+                      ) : null}
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <label className="grid gap-1">
+                          <span className="text-[12.5px] font-medium text-ink">
+                            YouTube watch link
+                          </span>
+                          <input
+                            type="url"
+                            value={form.streamWatchUrl}
+                            onChange={(e) =>
+                              set("streamWatchUrl", e.target.value)
+                            }
+                            placeholder="https://youtu.be/…"
+                            className="h-10 rounded-lg border border-line bg-surface px-3 text-[13px]"
+                          />
+                        </label>
+                        <label className="grid gap-1">
+                          <span className="text-[12.5px] font-medium text-ink">
+                            Stream key
+                          </span>
+                          <input
+                            type="password"
+                            autoComplete="off"
+                            value={form.streamKey}
+                            onChange={(e) => set("streamKey", e.target.value)}
+                            placeholder={
+                              webinar?.streamKeySaved
+                                ? "Already saved — paste a new key to replace"
+                                : "From YouTube Studio → Go live"
+                            }
+                            className="h-10 rounded-lg border border-line bg-surface px-3 font-mono text-[13px]"
+                          />
+                        </label>
+                      </div>
+                      <p className="text-[12px] text-ink-3">
+                        We push the same mix attendees see. Set the YouTube live
+                        to Unlisted or Private if you want it as a recording.
+                        The watch link shows in the recordings tab after the
+                        session.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </FormSection>
+          </FormGroup>
+          <FormGroup label="Page and feedback">
+            <FormSection
+              title="About the webinar"
+              description="The full description and the topic tag, on the registration page."
+              first
+            >
+              <div className="grid gap-3.5">
+                <div className="order-4 flex min-h-28 flex-col lg:order-none lg:min-h-0 lg:flex-1">
+                  <label className="label" htmlFor="description">
+                    Description
                   </label>
-                  <textarea
-                    id="takeaways"
-                    className="field"
-                    rows={3}
-                    placeholder="One per line."
-                    value={form.takeaways}
-                    onChange={(e) => set("takeaways", e.target.value)}
+                  <div className="min-h-28 lg:relative lg:min-h-0 lg:flex-1">
+                    <textarea
+                      id="description"
+                      className="field lg:absolute lg:inset-0 lg:!resize-none"
+                      rows={4}
+                      placeholder="Shown on the registration page."
+                      value={form.description}
+                      onChange={(e) => set("description", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-5">
+                  {/* Free text with suggestions from what already exists, rather than a
+                    fixed list nobody can extend without a deploy. */}
+                  <div>
+                    <label className="label" htmlFor="track">
+                      Topic tag
+                    </label>
+                    <input
+                      id="track"
+                      className="field"
+                      list="track-suggestions"
+                      placeholder="e.g. Architecture"
+                      value={form.track}
+                      onChange={(e) => set("track", e.target.value)}
+                    />
+                    <datalist id="track-suggestions">
+                      {config.tracks.map((t) => (
+                        <option key={t} value={t} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  <KindControl
+                    value={form.kind}
+                    onChange={(v) => set("kind", v)}
                   />
                 </div>
               </div>
-
-              <div>
-                <span className="label">Other options</span>
-                <div className="rounded-[10px] border border-line px-2 py-1">
-                  {(
-                    [
-                      ["practiceSession", "Practice session (backstage)"],
-                      ["autoRecord", "Record automatically"],
-                      ["captions", "Live captions"],
-                      ["multistream", "Stream to YouTube / LinkedIn"],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <Toggle
-                      key={key}
-                      checked={Boolean(form.options[key])}
-                      onChange={(v) => set("options", { ...form.options, [key]: v })}
-                      label={label}
-                    />
-                  ))}
-                </div>
-                {form.options.multistream && (
-                  <div className="mt-3 grid gap-2">
-                    {config.youtubeOAuth && account?.youtube?.connected ? (
-                      <p className="text-[12.5px] text-ink-2">
-                        Linked channel:{" "}
-                        <span className="font-medium text-ink">
-                          {account.youtube.channelTitle || "YouTube"}
-                        </span>
-                        . We create an Unlisted live when you start, and put the
-                        watch link in Recordings. Paste a Studio key below only if
-                        you want a different destination.
-                      </p>
-                    ) : config.youtubeOAuth ? (
-                      <p className="text-[12.5px] text-ink-2">
-                        <a
-                          href={api.youtubeConnectURL(
-                            typeof window === "undefined"
-                              ? "/host/schedule"
-                              : window.location.pathname,
-                          )}
-                          className="font-medium text-brand hover:underline"
-                        >
-                          Connect YouTube
-                        </a>{" "}
-                        to create the live automatically, or paste a stream key
-                        from Studio.
-                      </p>
-                    ) : null}
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <label className="grid gap-1">
-                        <span className="text-[12.5px] font-medium text-ink">YouTube watch link</span>
-                        <input
-                          type="url"
-                          value={form.streamWatchUrl}
-                          onChange={(e) => set("streamWatchUrl", e.target.value)}
-                          placeholder="https://youtu.be/…"
-                          className="h-10 rounded-lg border border-line bg-surface px-3 text-[13px]"
-                        />
-                      </label>
-                      <label className="grid gap-1">
-                        <span className="text-[12.5px] font-medium text-ink">Stream key</span>
-                        <input
-                          type="password"
-                          autoComplete="off"
-                          value={form.streamKey}
-                          onChange={(e) => set("streamKey", e.target.value)}
-                          placeholder={
-                            webinar?.streamKeySaved
-                              ? "Already saved — paste a new key to replace"
-                              : "From YouTube Studio → Go live"
-                          }
-                          className="h-10 rounded-lg border border-line bg-surface px-3 font-mono text-[13px]"
-                        />
-                      </label>
-                    </div>
-                    <p className="text-[12px] text-ink-3">
-                      We push the same mix attendees see. Set the YouTube live to Unlisted or
-                      Private if you want it as a recording. The watch link shows in the
-                      recordings tab after the session.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </FormSection>
-
-          <FormSection
-            title="Feedback survey"
-            description="Set it up now; in the room it's one button. Results land on the webinar's page afterwards."
-          >
-            {survey.node}
-          </FormSection>
-        </FormGroup>
+            </FormSection>
+            <FormSection
+              title="Feedback survey"
+              description="Set it up now; in the room it's one button. Results land on the webinar's page afterwards."
+            >
+              {survey.node}
+            </FormSection>
+          </FormGroup>
+        </MoreOptions>
       </div>
 
       <ActionBar
@@ -1012,7 +1120,113 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
   );
 }
 
-function FormGroup({ label, children }: { label: string; children: ReactNode }) {
+/* What the webinar will do without anyone opening "Change", as short phrases: a new host
+ * reads their webinar's setup at a glance, and nothing is hidden behind the fold. */
+function defaultsSummary(
+  form: FormState,
+  surveyOn: boolean,
+): { bold: string; rest: string }[] {
+  const o = form.options;
+  const channels = [
+    o.emailReminders && "email",
+    o.whatsappReminders && "WhatsApp",
+  ]
+    .filter(Boolean)
+    .join(" & ");
+  const times = describeReminders(o.reminders ?? DEFAULT_REMINDERS);
+  const room = [
+    form.controls.chatEnabled && "Chat",
+    form.controls.qaEnabled && "Q&A",
+  ]
+    .filter(Boolean)
+    .join(" & ");
+  return [
+    {
+      bold: !form.registrationRequired
+        ? "Open link"
+        : form.approval === "manual"
+          ? "You approve each one"
+          : "Anyone can register",
+      rest: form.registrationRequired
+        ? `up to ${form.attendeeLimit.toLocaleString()}`
+        : "no form",
+    },
+    { bold: "Reminders", rest: channels ? `${times} · ${channels}` : "off" },
+    ...(room ? [{ bold: room, rest: "on" }] : []),
+    {
+      bold: o.autoRecord ? "Recorded" : "Not recorded",
+      rest: o.autoRecord ? "replay sent after" : "",
+    },
+    { bold: "Feedback", rest: surveyOn ? "asked at the end" : "off" },
+  ];
+}
+
+/* Everything but the basics, folded: the defaults as chips, and "Change" to open the four
+ * groups. Open from the start when editing — a host who pressed Edit came to change one of
+ * these. */
+function MoreOptions({
+  editing,
+  summary,
+  children,
+}: {
+  editing: boolean;
+  summary: { bold: string; rest: string }[];
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(editing);
+  return (
+    <div className="grid gap-5">
+      <Card className="px-4 py-3.5 lg:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-[14px] font-semibold text-ink">
+              {editing ? "Everything else" : "Already set up for you"}
+            </h2>
+            <p className="text-[12px] text-ink-3">
+              {editing
+                ? "Registration, reminders, the room, the page and feedback."
+                : "Sensible defaults — change any of them."}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+          >
+            {open ? "Hide" : "Change"}
+            <ChevronDownIcon
+              className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+            />
+          </Button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {summary.map((c) => (
+            <span
+              key={c.bold}
+              className="rounded-full bg-surface-2 px-2.5 py-1 text-[12px] text-ink-2"
+            >
+              <b className="font-medium text-ink">{c.bold}</b>
+              {c.rest ? ` · ${c.rest}` : ""}
+            </span>
+          ))}
+        </div>
+      </Card>
+      {/* Kept mounted when folded, so the survey builder and every field keep their state
+          and the form still submits them. */}
+      <div className={open ? "grid gap-5" : "hidden"}>{children}</div>
+    </div>
+  );
+}
+
+function FormGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
   return (
     <div>
       <h2 className="mb-2 text-[11px] font-semibold tracking-[0.07em] text-ink-3 uppercase">
@@ -1041,8 +1255,12 @@ function FormSection({
       }`}
     >
       <div>
-        <h3 className="text-[14px] font-semibold tracking-[-0.005em] text-ink">{title}</h3>
-        <p className="mt-1 text-[12px] leading-normal text-ink-3">{description}</p>
+        <h3 className="text-[14px] font-semibold tracking-[-0.005em] text-ink">
+          {title}
+        </h3>
+        <p className="mt-1 text-[12px] leading-normal text-ink-3">
+          {description}
+        </p>
       </div>
       <div className="min-w-0">{children}</div>
     </section>
@@ -1142,7 +1360,10 @@ function ActionBar({
     >
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-2.5 px-4 py-2.5 sm:px-5 lg:flex-row lg:items-center lg:gap-4 lg:py-3">
         <p className="flex min-w-0 flex-1 items-start gap-2 text-[12.5px] leading-snug text-ink-2 lg:items-center">
-          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ok lg:mt-0" aria-hidden />
+          <span
+            className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ok lg:mt-0"
+            aria-hidden
+          />
           <span className="min-w-0 lg:truncate">
             {lead && <strong className="font-semibold text-ink">{lead}</strong>}
             {rest && (
@@ -1181,7 +1402,6 @@ function ActionBar({
     </div>
   );
 }
-
 
 // ------------------------------------------------------------------- fields
 
