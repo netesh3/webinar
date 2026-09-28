@@ -74,7 +74,7 @@ export function SurveyBuilder({
 
   return (
     <div className="grid gap-3.5">
-      <div className="grid items-end gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+      <div className="grid items-start gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
         <Segmented
           label="Survey type"
           name={`${id}-mode`}
@@ -99,6 +99,7 @@ export function SurveyBuilder({
         <TextInput
           id={`${id}-title`}
           label="Title"
+          compact
           value={value.title}
           placeholder={DEFAULT_TITLE}
           max={LIMITS.title}
@@ -247,7 +248,7 @@ function Segmented({
   const labelId = useId();
   return (
     <div className="min-w-0">
-      <div className="mb-1 flex items-center gap-1">
+      <div className="mb-1.5 flex h-4 items-center gap-1">
         <span className="label mb-0" id={labelId}>
           {label}
         </span>
@@ -263,7 +264,7 @@ function Segmented({
           return (
             <label
               key={o.id}
-              className={`flex cursor-pointer items-center gap-1 rounded-md px-2 text-[12.5px] whitespace-nowrap has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand/40 ${
+              className={`flex cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-2.5 text-[12.5px] leading-none whitespace-nowrap has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand/40 ${
                 active
                   ? "bg-surface font-medium text-ink shadow-sm ring-1 ring-line"
                   : "text-ink-2"
@@ -281,7 +282,7 @@ function Segmented({
               {o.icon && (
                 <MaterialIcon
                   name={o.icon}
-                  className={`size-4 ${active ? "text-brand" : "text-ink-3"}`}
+                  className={`size-4 shrink-0 !text-[16px] ${active ? "text-brand" : "text-ink-3"}`}
                   fill={active && o.icon === "star"}
                 />
               )}
@@ -317,13 +318,13 @@ function QuestionList({
   const full = value.questions.length >= LIMITS.questions;
   return (
     <div>
-      <div className="flex items-baseline justify-between">
+      <div className="mb-1.5 flex h-4 items-center justify-between">
         <span className="label mb-0">Questions</span>
         <span className="text-[11.5px] text-ink-3 tabular-nums">
           {value.questions.length} / {LIMITS.questions} extra
         </span>
       </div>
-      <div className="mt-2 flex items-center gap-3 rounded-lg border border-line bg-surface-2/60 px-3 py-2.5">
+      <div className="flex h-9 items-center gap-2.5 rounded-lg border border-line bg-surface-2/60 px-3">
         <span className="flex gap-0.5 text-warn" aria-hidden>
           {[0, 1, 2, 3, 4].map((i) => (
             <StarIcon key={i} className="size-4 fill-warn" />
@@ -542,6 +543,7 @@ function TextInput({
   error,
   hint,
   type = "text",
+  compact,
 }: {
   id: string;
   label: string;
@@ -552,16 +554,18 @@ function TextInput({
   error?: string;
   hint?: string;
   type?: string;
+  /** Segmented-control height, for a field sharing a row with one. */
+  compact?: boolean;
 }) {
   return (
     <div>
-      <label htmlFor={id} className="label">
+      <label htmlFor={id} className="label flex h-4 items-center">
         {label}
       </label>
       <input
         id={id}
         type={type}
-        className={`field ${error ? "border-live/60" : ""}`}
+        className={`field ${compact ? "h-[34px] text-[13.5px]" : ""} ${error ? "border-live/60" : ""}`}
         value={value}
         placeholder={placeholder}
         maxLength={max}
