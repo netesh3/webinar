@@ -2,6 +2,7 @@ package wa
 
 import (
 	"encoding/json"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -97,6 +98,26 @@ type Status struct {
 	// so it is carried through verbatim rather than summarised.
 	Error string
 	At    time.Time
+	// RecipientID is the customer's number, digits as Meta writes it. The country
+	// prefix is how a missing charge is estimated.
+	RecipientID string
+	// Pricing is set when this callback carried a pricing object, or a
+	// conversation origin that names a category. Nil when Meta said nothing
+	// about cost.
+	Pricing *Pricing
+}
+
+/* Pricing is Meta's pricing object on a status callback.
+ *
+ * Category is utility, marketing, authentication, service, …. HasAmount is
+ * false when Meta named a category and left the charge out — the usual case —
+ * and the CRM then estimates. Billable is nil when the field was omitted.
+ */
+type Pricing struct {
+	Category  string
+	Billable  *bool
+	HasAmount bool
+	Micros    int64
 }
 
 // The JSON, named to match Meta's field names rather than ours, so the two can be
@@ -123,11 +144,17 @@ type webhookEnvelope struct {
 				// smb_message_echoes: the same message shape plus `to`.
 				MessageEchoes []webhookEcho `json:"message_echoes"`
 				Statuses      []struct {
-					ID          string         `json:"id"`
-					Status      string         `json:"status"`
-					Timestamp   string         `json:"timestamp"`
-					RecipientID string         `json:"recipient_id"`
-					Errors      []webhookError `json:"errors"`
+					ID           string          `json:"id"`
+					Status       string          `json:"status"`
+					Timestamp    string          `json:"timestamp"`
+					RecipientID  string          `json:"recipient_id"`
+					Errors       []webhookError  `json:"errors"`
+					Pricing      *webhookPricing `json:"pricing"`
+					Conversation struct {
+						Origin struct {
+							Type string `json:"type"`
+						} `json:"origin"`
+					} `json:"conversation"`
 				} `json:"statuses"`
 			} `json:"value"`
 		} `json:"changes"`
@@ -177,6 +204,12 @@ type webhookMessage struct {
 type webhookEcho struct {
 	webhookMessage
 	To string `json:"to"`
+}
+
+type webhookPricing struct {
+	Billable *bool           `json:"billable"`
+	Category string          `json:"category"`
+	Amount   json.RawMessage `json:"amount"`
 }
 
 type webhookError struct {
@@ -248,6 +281,8 @@ func ParseWebhook(raw []byte) (Delivery, error) {
 					Status:        s,
 					Error:         firstError(st.Errors),
 					At:            unixSeconds(st.Timestamp),
+					RecipientID:   strings.TrimSpace(st.RecipientID),
+					Pricing:       readPricing(st.Pricing, st.Conversation.Origin.Type),
 				})
 			}
 		}
@@ -319,6 +354,57 @@ func readReplyID(m webhookMessage) string {
 	default:
 		return ""
 	}
+}
+
+/* readPricing keeps a category even when Meta omits the amount.
+ *
+ * The conversation origin is the fallback category: older callbacks name the
+ * charge there and leave pricing off entirely. Nothing at all returns nil, so
+ * a plain delivered tick does not invent a cost.
+ */
+func readPricing(p *webhookPricing, origin string) *Pricing {
+	out := Pricing{}
+	seen := false
+	if p != nil {
+		seen = true
+		out.Category = strings.ToLower(strings.TrimSpace(p.Category))
+		out.Billable = p.Billable
+		if micros, ok := amountToMicros(p.Amount); ok {
+			out.HasAmount = true
+			out.Micros = micros
+		}
+	}
+	if out.Category == "" {
+		if c := strings.ToLower(strings.TrimSpace(origin)); c != "" {
+			out.Category = c
+			seen = true
+		}
+	}
+	if !seen {
+		return nil
+	}
+	return &out
+}
+
+// amountToMicros reads an optional charge. Meta usually omits it. A number or
+// a numeric string is major units (0.13 rupees → 130000 micros).
+func amountToMicros(raw json.RawMessage) (int64, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0, false
+	}
+	var n float64
+	if err := json.Unmarshal(raw, &n); err == nil {
+		return int64(math.Round(n * 1_000_000)), true
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0, false
+	}
+	return int64(math.Round(f * 1_000_000)), true
 }
 
 func firstError(errs []webhookError) string {

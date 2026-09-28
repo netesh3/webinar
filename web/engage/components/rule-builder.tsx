@@ -277,8 +277,8 @@ export function RuleBuilder({
       open
       onClose={onClose}
       size="xl"
-      title="New automation"
-      description="When something happens, WhatsApp does the rest — once per person."
+      title="New automatic reply"
+      description="Pick what someone does, then what WhatsApp does for you."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -294,8 +294,13 @@ export function RuleBuilder({
       <div className="grid gap-5">
         {error && <Alert tone="error">{error}</Alert>}
 
-        <section className="grid gap-2 sm:grid-cols-[5rem_minmax(0,1fr)]">
-          <b className="pt-1 text-[13px] text-ink">When</b>
+        <section className="grid gap-2">
+          <b className="flex items-center gap-2 pt-1 text-[13.5px] text-ink">
+            <i className="grid size-[22px] place-items-center rounded-full bg-brand text-[11.5px] font-semibold text-white not-italic">
+              1
+            </i>
+            When someone…
+          </b>
           <div className="grid gap-3">
             <div className="flex flex-wrap gap-1.5">
               {WHENS.map((w) => (
@@ -377,8 +382,13 @@ export function RuleBuilder({
           </div>
         </section>
 
-        <section className="grid gap-2 sm:grid-cols-[5rem_minmax(0,1fr)]">
-          <b className="pt-1 text-[13px] text-ink">Then</b>
+        <section className="grid gap-2">
+          <b className="flex items-center gap-2 pt-1 text-[13.5px] text-ink">
+            <i className="grid size-[22px] place-items-center rounded-full bg-brand text-[11.5px] font-semibold text-white not-italic">
+              2
+            </i>
+            Then…
+          </b>
           <ol className="grid gap-2">
             {steps.map((s, i) => (
               <li
@@ -550,8 +560,14 @@ export function RuleBuilder({
           </ol>
         </section>
 
-        <section className="grid gap-2 sm:grid-cols-[5rem_minmax(0,1fr)]">
-          <b className="pt-1 text-[13px] text-ink">Name</b>
+        <section className="grid gap-2">
+          <b className="flex items-center gap-2 pt-1 text-[13.5px] text-ink">
+            <i className="grid size-[22px] place-items-center rounded-full bg-brand text-[11.5px] font-semibold text-white not-italic">
+              3
+            </i>
+            Name it
+            <span className="text-[11.5px] font-normal text-ink-3">optional</span>
+          </b>
           <input
             className="field h-9 max-w-md text-[13px]"
             placeholder="Optional — we name it from the When"

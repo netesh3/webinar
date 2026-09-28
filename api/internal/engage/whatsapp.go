@@ -504,9 +504,15 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 			s.log.Error("whatsapp webhook: status", "error", err, "host", h.ID, "wamid", st.WAMID)
 			continue
 		}
+		// Pricing rides on the same callback, including one whose status did not
+		// move (a retry, or a charge that arrived after "read"). A missing row is
+		// ignored inside the store, so this also runs when the status itself was
+		// a no-op.
+		s.recordPricing(ctx, h.ID, st)
 		// A status for a message we never stored is not an error — a send from
 		// before this table existed, or from an account that has since
-		// reconnected — so it is noted and dropped.
+		// reconnected — so it is noted and dropped. A status that did not move
+		// forward also reports unmatched; the pricing line above still applied.
 		if !matched {
 			s.log.Info("whatsapp status for an unknown message", "host", h.ID, "status", st.Status)
 			continue

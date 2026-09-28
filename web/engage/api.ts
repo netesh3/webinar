@@ -29,6 +29,8 @@ import type {
   CRMTestSendRequest,
   CRMWebinarMessagesResponse,
   CRMFollowupsResponse,
+  MessageDefaultsRequest,
+  MessageDefaultsResponse,
   CRMAudienceSummary,
   CRMStarterTemplatesResponse,
   CRMSnippet,
@@ -38,6 +40,7 @@ import type {
   CRMRecipesResponse,
   CRMRecipeRequest,
   CRMMessage,
+  CRMMetricsResponse,
   CRMNote,
   CRMNoteRequest,
   CRMNotesResponse,
@@ -232,6 +235,30 @@ export const engageApi = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+
+  /** The coach's defaults for every webinar. The WhatsApp page writes only this. */
+  crmMessageDefaults: () =>
+    request<MessageDefaultsResponse>("/api/host/crm/message-defaults", fresh),
+
+  /** Replaces the kinds it names. Kinds left out stay as they are. */
+  setCrmMessageDefaults: (body: MessageDefaultsRequest) =>
+    request<MessageDefaultsResponse>("/api/host/crm/message-defaults", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  /** Sent, delivered, read, failed and cost for outbound WhatsApp in a window.
+   *  Omit `from` for everything up to `to`. Omit both for the last 30 days. */
+  crmMetrics: (from = "", to = "") => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const q = params.toString();
+    return request<CRMMetricsResponse>(
+      `/api/host/crm/metrics${q ? `?${q}` : ""}`,
+      fresh,
+    );
+  },
 
   /** How many people an audience would reach, and why the rest would not.
    *

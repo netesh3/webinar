@@ -423,8 +423,8 @@ export function KeywordsDialog({
       open
       onClose={onClose}
       size="lg"
-      title="Keyword replies"
-      description="When someone sends exactly one of these words, they get your reply straight away — free, because they wrote first."
+      title="Reply straight away when someone sends a word"
+      description="Answers common questions any time, even when you're asleep. Words aren't case-sensitive, and these replies are free because they wrote first."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
