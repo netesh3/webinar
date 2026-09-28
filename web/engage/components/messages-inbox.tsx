@@ -240,7 +240,7 @@ export function HostMessagesInbox() {
             ))
           )}
         </div>
-        {inboxTotal > PAGE || offset > 0 ? (
+        {threads !== null ? (
           <ListPager
             layout="split"
             range="stack"

@@ -704,7 +704,7 @@ function AttendeesTab({
             </table>
           </div>
         )}
-        {!bypass && roster && (roster.total > PEOPLE_PAGE || offset > 0) && (
+        {roster && (bypass || page) && (
           <ListPager
             layout="split"
             range="inline"

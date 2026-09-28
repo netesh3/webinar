@@ -468,22 +468,20 @@ export function HostWebinarBrowser({
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
         </div>
-      ) : items.length === 0 && pageNow === 0 ? (
-        error ? null : (
-          <EmptyList
-            tab={tab}
-            filtersActive={filtersActive}
-            nothingAtAll={nothingAtAll}
-            onClear={clearFilters}
-          />
-        )
-      ) : (
+      ) : error && items.length === 0 && pageNow === 0 ? null : (
         <>
           {/* Dimmed rather than replaced with a spinner while a new filter is
               in flight: the rows underneath are still the answer to the last
               question, and blanking them makes the page jump on every
               keystroke. A cached page is shown as it is, then refreshed. */}
-          {items.length === 0 ? (
+          {items.length === 0 && pageNow === 0 ? (
+            <EmptyList
+              tab={tab}
+              filtersActive={filtersActive}
+              nothingAtAll={nothingAtAll}
+              onClear={clearFilters}
+            />
+          ) : items.length === 0 ? (
             <Empty
               title={tab === "drafts" ? "No drafts on this page" : "Nobody on this page"}
               hint={
@@ -505,23 +503,23 @@ export function HostWebinarBrowser({
             </div>
           )}
 
-          {(total > PAGE_SIZE || pageNow > 0) && (
-            <ListPager
-              page={pageNow + 1}
-              pages={
-                listKey && rememberedCursors(listKey)[pageNow + 1]
-                  ? Math.max(pageNow + 1, Math.ceil(total / PAGE_SIZE) || 1)
-                  : pageNow + 1
-              }
-              pageSize={PAGE_SIZE}
-              start={items.length === 0 ? 0 : pageNow * PAGE_SIZE + 1}
-              end={items.length === 0 ? 0 : pageNow * PAGE_SIZE + items.length}
-              total={total}
-              busy={pending}
-              onPrevious={() => goTo(pageNow - 1)}
-              onNext={() => goTo(pageNow + 1)}
-            />
-          )}
+          {/* Always under the list, including one page and an empty list.
+              Page 1 of 1 leaves Previous and Next disabled. */}
+          <ListPager
+            page={pageNow + 1}
+            pages={
+              listKey && rememberedCursors(listKey)[pageNow + 1]
+                ? Math.max(pageNow + 1, Math.ceil(total / PAGE_SIZE) || 1)
+                : pageNow + 1
+            }
+            pageSize={PAGE_SIZE}
+            start={items.length === 0 ? 0 : pageNow * PAGE_SIZE + 1}
+            end={items.length === 0 ? 0 : pageNow * PAGE_SIZE + items.length}
+            total={total}
+            busy={pending}
+            onPrevious={() => goTo(pageNow - 1)}
+            onNext={() => goTo(pageNow + 1)}
+          />
         </>
       )}
 
