@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drafts · empty last page (perf mock)</title><link rel="stylesheet" href="assets/simple.css">
+<style>
+  .pager { display:flex; align-items:center; justify-content:center; gap:14px; margin-top:16px; }
+  .pager .mid { font-size:12.5px; color:var(--ink-2); text-align:center; line-height:1.35; }
+  .pager .mid b { color:var(--ink); font-weight:600; }
+  .pager .btn[disabled], .pager a[aria-disabled="true"] { opacity:.4; pointer-events:none; }
+  .empty { text-align:center; padding:48px 20px; }
+  .empty h2 { font-size:15px; margin:0; }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <div class="row between" style="align-items:flex-end">
+    <div><h1>Your webinars</h1><p class="small muted" style="margin-top:4px">Create one, share the link, go live, follow up.</p></div>
+    <div class="row"><button class="btn sec">Go live now</button><button class="btn">+ New webinar</button></div>
+  </div>
+
+  <div class="tabs" style="margin-top:20px">
+    <a class="tab" href="perf-home.html">Upcoming <span class="count">24</span></a>
+    <a class="tab" href="perf-completed-page2.html">Completed <span class="count">34</span></a>
+    <a class="tab on" href="#">Drafts <span class="count grey">10</span></a>
+    <span class="tabsep"></span>
+    <a class="tab" href="perf-audience-page2.html">Audience</a>
+  </div>
+
+  <div class="card empty">
+    <h2>No drafts on this page</h2>
+    <p class="small muted" style="margin-top:6px">The last draft was published while this page was open. Page 1 still has the rest.</p>
+    <button class="btn sm sec" style="margin-top:14px">Back to page 1</button>
+  </div>
+
+  <div class="pager">
+    <button class="btn sm sec">Previous</button>
+    <div class="mid"><b>Page 2 of 2</b><div class="xs faint">10 per page · 0 on this page</div></div>
+    <button class="btn sm sec" disabled>Next</button>
+  </div>
+</main>
+<div class="note"><b>Drafts, empty last page.</b> Paginated: page size is still 10. This is what you see when the page you are on has no rows left — you published the last draft, or you stepped past the end — not a blank app. Previous goes back. Cached: the drafts page you already loaded. A brand-new draft still appears after you create it, because that action refreshes the list.</div>
+<script src="assets/nav.js"></script>
+</body></html>
