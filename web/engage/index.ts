@@ -36,3 +36,7 @@ export {
   Row as MessageRow,
   type PreviewWebinar,
 } from "./components/schedule-messages";
+export {
+  ScheduleMessagesTab,
+  type MessagesSaveHandle,
+} from "./components/messages/schedule-messages-tab";
