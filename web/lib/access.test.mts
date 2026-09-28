@@ -129,6 +129,7 @@ console.log("\nHOST — nothing is taken away");
     "a host's registrations are the Attending tab on their home page",
   );
   allowed("/account", host, "account settings");
+  allowed("/settings", host, "settings");
 }
 
 console.log("\nHOST — signed out, and sent back where they were going");
@@ -188,12 +189,19 @@ console.log("\nACCOUNT PAGES — a session, not a capability");
     "/login?next=%2Faccount",
     "so does the account page",
   );
+  redirectedTo(
+    "/settings",
+    anonymous,
+    "/login?next=%2Fsettings",
+    "so does settings, which replaced it",
+  );
   allowed(
     "/my-webinars",
     participant,
     "a participant with an account may see their own list",
   );
   allowed("/account", participant, "…and their own settings");
+  allowed("/settings", participant, "…and settings");
 }
 
 /* A SESSION THE API COULD NOT CONFIRM
@@ -212,6 +220,7 @@ console.log("\nUNCONFIRMED SESSION — a lookup that failed, not a missing one")
     "/host/acme-launch",
     "/my-webinars",
     "/account",
+    "/settings",
     "/",
   ]) {
     ok(
@@ -320,6 +329,7 @@ console.log("\nEDGE CASES");
     ["/host", "the host portal"],
     ["/my-webinars", "an attendee's own list"],
     ["/account", "account settings"],
+    ["/settings", "settings"],
     ["/admin", "the admin area"],
   ] as const) {
     ok(
@@ -330,7 +340,7 @@ console.log("\nEDGE CASES");
   }
 
   // And each of those really is a path decideAccess refuses an anonymous visitor.
-  for (const path of ["/host", "/my-webinars", "/account", "/admin"]) {
+  for (const path of ["/host", "/my-webinars", "/account", "/settings", "/admin"]) {
     ok(
       decideAccess(path, anonymous).allow === false,
       `${path} refuses an anonymous visitor`,

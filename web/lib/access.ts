@@ -98,7 +98,7 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
       if (viewer.kind === "anonymous") return redirect("/login", path);
       return viewer.isAdmin ? ALLOW : { allow: false, redirectTo: "/account" };
     }
-    if (path === "/my-webinars" || path === "/account") {
+    if (path === "/my-webinars" || path === "/account" || path === "/settings") {
       if (viewer.kind === "anonymous") return redirect("/login", path);
       /* A host's registrations are the Attending tab on their home page now. The
        * path still opens — registration emails and the welcome email for

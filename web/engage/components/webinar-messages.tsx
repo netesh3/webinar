@@ -99,7 +99,7 @@ export function WebinarMessagesTab({
         hint="Connect your WhatsApp Business number to send confirmations, reminders and follow-ups for this webinar."
         action={
           <Link
-            href="/account"
+            href="/settings#integrations"
             className="font-medium text-brand hover:underline"
           >
             Account settings

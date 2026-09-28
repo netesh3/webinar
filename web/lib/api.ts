@@ -49,6 +49,7 @@ import type {
   SurveyResults,
   SurveySubmitRequest,
   SurveyTextPage,
+  IntegrationsResponse,
   Webinar,
   WebinarInput,
 } from "./api-types";
@@ -352,12 +353,25 @@ export const api = {
     patch<Webinar>(`/api/host/webinars/${seg(slug)}/stream`, body),
 
   /** Browser navigation to Google (not fetch) — needs a top-level redirect. */
-  youtubeConnectURL: (returnTo = "/account") => {
-    const next = returnTo.startsWith("/") ? returnTo : "/account";
+  youtubeConnectURL: (returnTo = "/settings") => {
+    const next = returnTo.startsWith("/") ? returnTo : "/settings";
     return `${baseFor()}/api/host/youtube/connect?return=${encodeURIComponent(next)}`;
   },
 
   disconnectYouTube: () => del<Account>("/api/host/youtube"),
+
+  hostIntegrations: () =>
+    request<IntegrationsResponse>("/api/host/integrations", fresh),
+
+  /** "Notify me" for a coming-soon integration. Returns the card list. */
+  integrationInterest: (id: string) =>
+    post<IntegrationsResponse>(`/api/host/integrations/${seg(id)}/interest`),
+
+  /** Follow a card action the registry described (disconnect). href is an /api path. */
+  integrationCall: (href: string, method: "DELETE" | "POST") =>
+    method === "DELETE"
+      ? del<IntegrationsResponse | Account>(href)
+      : post<IntegrationsResponse | Account>(href),
 
   deleteWebinar: (slug: string) =>
     del<StatusResponse>(`/api/host/webinars/${seg(slug)}/`),
