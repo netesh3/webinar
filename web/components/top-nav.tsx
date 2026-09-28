@@ -9,7 +9,7 @@ import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
-import { MessagesNavButton, useWhatsAppMenuItem } from "@/engage";
+import { MessagesNavButton } from "@/engage";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
@@ -63,7 +63,6 @@ export function TopNav() {
   const { registrations } = useRegistrations();
   const [open, setOpen] = useState(false);
   const links = linksFor(Boolean(account), account?.canHost === true);
-  const whatsappItem = useWhatsAppMenuItem();
   // Nothing for the mobile drawer to reveal without at least one of these — a
   // button that opens onto an empty panel is worse than no button.
   const hasMobileMenu = links.length > 0 || !account;
@@ -82,7 +81,13 @@ export function TopNav() {
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a fixed
               brand asset, not a page image next/image would optimize. */}
-          <img src="/brand/mark.png" alt="" width={28} height={28} className="size-7 rounded-lg" />
+          <img
+            src="/brand/mark.png"
+            alt=""
+            width={28}
+            height={28}
+            className="size-7 rounded-lg"
+          />
           <span className="text-[14.5px] font-semibold tracking-[-0.01em]">
             {appName}
           </span>
@@ -150,14 +155,13 @@ export function TopNav() {
                   label: "Account settings",
                   onSelect: () => router.push("/account"),
                 },
-                ...(whatsappItem
-                  ? [{ kind: "action" as const, label: whatsappItem.label, onSelect: () => router.push(whatsappItem.href) }]
-                  : []),
                 ...(account.canHost
                   ? [
                       {
                         kind: "action" as const,
-                        label: count ? `Webinars I'm attending (${count})` : "Webinars I'm attending",
+                        label: count
+                          ? `Webinars I'm attending (${count})`
+                          : "Webinars I'm attending",
                         onSelect: () => router.push("/host?tab=registered"),
                       },
                     ]

@@ -19,7 +19,6 @@ export {
   WhatsAppOptInCheckbox,
   WhatsAppRemindersToggle,
   MessagesNavButton,
-  useWhatsAppMenuItem,
 } from "./slots";
 export { WhatsAppScreen } from "./components/whatsapp-screen";
 export { useRosterMessaging } from "./components/roster";
