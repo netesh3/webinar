@@ -122,6 +122,15 @@ const (
 	 * Google sign-in. Addressed by email, never user_id, so it is not a host alert; one
 	 * per address, enforced by a unique index (migration 0058). */
 	NotifyWelcome NotificationKind = "welcome"
+
+	/* The panelist's side of a webinar: added to the stage (with the stage link and a
+	 * calendar file), the start moved, the session cancelled. Addressed by email and tied to
+	 * no registration — a panelist signs in rather than holding a join key, so the link in
+	 * these is the same for every panelist and is not a credential. One invite per panelist
+	 * per webinar (migration 0070); updates and cancellations are one per change. */
+	NotifyPanelistInvited     NotificationKind = "panelist_invited"
+	NotifyPanelistRescheduled NotificationKind = "panelist_rescheduled"
+	NotifyPanelistCancelled   NotificationKind = "panelist_cancelled"
 )
 
 /* WhatsAppReminderKinds are the automatic WhatsApp messages, in the order they

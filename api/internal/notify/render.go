@@ -35,6 +35,10 @@ type Invite struct {
 	 * replay mail when one is live. Public like ReplayURL; SurveyTitle is its heading. */
 	SurveyURL   string
 	SurveyTitle string
+	/* StageURL is a panelist's way onto the stage. Not a credential: the page asks them to
+	 * sign in with the account they were added as, so it is the same for every panelist and
+	 * safe in a calendar. Separate from JoinURL so no renderer mixes the two up. */
+	StageURL string
 }
 
 // greeting avoids "Hi ," for a registrant who gave no name.

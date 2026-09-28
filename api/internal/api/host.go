@@ -145,6 +145,7 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("webinar created", "slug", wb.ID, "host", user.ID, "status", wb.Status)
+	s.syncPanelistMail(r.Context(), wb, "")
 	httpx.JSON(w, http.StatusCreated, wb)
 }
 
@@ -170,6 +171,13 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
+	}
+
+	// The start as it was, so panelists already invited can be told if this save moves it.
+	// A draft's start was never announced to anyone, so it does not count as a move.
+	prevStartsAt := ""
+	if prev, err := s.store.WebinarBySlug(r.Context(), slug); err == nil && prev.Status != types.StatusDraft {
+		prevStartsAt = prev.StartsAt
 	}
 
 	wb, err := s.store.UpdateWebinar(r.Context(), slug, in)
@@ -200,6 +208,7 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	// replanReminders, and the CRM's side in Engage.OnRescheduled.
 	s.replanReminders(r.Context(), wb)
 	s.engage.OnRescheduled(r.Context(), wb)
+	s.syncPanelistMail(r.Context(), wb, prevStartsAt)
 	httpx.JSON(w, http.StatusOK, wb)
 }
 
@@ -308,6 +317,7 @@ func (s *Server) handleDeleteWebinarImage(w http.ResponseWriter, r *http.Request
 func (s *Server) handleDeleteWebinar(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
 
+	cancellations := s.panelistCancellations(r.Context(), slug)
 	deleted, err := s.deleteWebinarBySlug(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
@@ -317,6 +327,7 @@ func (s *Server) handleDeleteWebinar(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "delete webinar", err)
 		return
 	}
+	s.sendPanelistCancellations(r.Context(), cancellations)
 
 	s.logWebinarDeleted(slug, deleted)
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
@@ -1823,6 +1834,9 @@ func (s *Server) handleAddPanelist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("panelist added", "slug", slug, "user", person.ID)
+	if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+		s.syncPanelistMail(r.Context(), wb, "")
+	}
 	httpx.JSON(w, http.StatusOK, person)
 }
 
@@ -1841,6 +1855,9 @@ func (s *Server) handleRemovePanelist(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.RevokeStage(r.Context(), slug, hostIdentity(userID)); err != nil {
 		s.log.Warn("remove panelist: could not clear stage grant",
 			"slug", slug, "user", userID, "error", err)
+	}
+	if err := s.store.ForgetPanelistInvites(r.Context(), slug); err != nil {
+		s.log.Warn("remove panelist: could not drop their invitation", "slug", slug, "error", err)
 	}
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "removed"})
 }
