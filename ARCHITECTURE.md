@@ -915,8 +915,12 @@ lookup for an image. So the removal took away the cheaper option and kept the de
 
 The lever that does reduce cost is `{ mode: "none" }`, which skips segmentation entirely. The
 per-frame cost is measured and shown in the settings window (`useBackgroundCost`), so nobody has
-to take that on trust — and `SLOW_FRAME_MS` already turns the background off automatically on a
-device that cannot keep up.
+to take that on trust.
+
+There is no automatic fallback that turns the background off on a slow device — that existed
+briefly (`SLOW_FRAME_MS`) and was removed once segmentation moved off MediaPipe/GPU and onto
+`lib/humanseg.ts`'s PP-HumanSeg model on the CPU (~4ms a frame on a laptop), which made the
+degrade path guard against a cost the pipeline no longer has.
 
 The blur is composited by `lib/segmenter.ts` rather than by
 `@livekit/track-processors`' `BackgroundTransformer`. Two of that implementation's

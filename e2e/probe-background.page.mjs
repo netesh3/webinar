@@ -570,9 +570,8 @@ const spyHost = document.createElement("div");
 document.body.append(spyHost);
 createRoot(spyHost).render(createElement(StatusSpy));
 
-const events = [];
 function Harness({ track, choice, lowLight }) {
-  useVirtualBackground(track, choice, lowLight, () => events.push({ at: now(), what: "degraded" }));
+  useVirtualBackground(track, choice, lowLight);
   return null;
 }
 
