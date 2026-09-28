@@ -622,6 +622,8 @@ type DripDue struct {
 	Note      string
 	HostEmail string
 	DripName  string
+	// Recipe is the preset this drip was made from, empty for one built by hand.
+	Recipe string
 }
 
 /* DueDripSteps is every enrollment whose next step is owed.
@@ -646,7 +648,7 @@ func (s *Store) DueDripSteps(ctx context.Context, limit int) ([]DripDue, error) 
 		             OR c.whatsapp_opt_in_at > c.whatsapp_opt_out_at)),
 		       COALESCE(w.slug,''), e.position,
 		       s.template_name, s.template_language, s.params,
-		       s.kind, COALESCE(s.tag_id::text,''), s.note, u.email, d.name
+		       s.kind, COALESCE(s.tag_id::text,''), s.note, u.email, d.name, COALESCE(d.recipe,'')
 		  FROM crm_drip_enrollments e
 		  JOIN crm_drips d       ON d.id = e.drip_id AND d.active
 		  JOIN crm_drip_steps s  ON s.drip_id = d.id AND s.position = e.position
@@ -667,7 +669,7 @@ func (s *Store) DueDripSteps(ctx context.Context, limit int) ([]DripDue, error) 
 		if err := rows.Scan(&d.EnrollmentID, &d.DripID, &d.HostID, &d.HostName,
 			&d.ContactID, &d.ContactName, &d.Reachable, &d.WebinarSlug, &d.Position,
 			&d.TemplateName, &d.TemplateLanguage, &d.Params,
-			&d.Kind, &d.TagID, &d.Note, &d.HostEmail, &d.DripName); err != nil {
+			&d.Kind, &d.TagID, &d.Note, &d.HostEmail, &d.DripName, &d.Recipe); err != nil {
 			return nil, err
 		}
 		if d.Params == nil {

@@ -282,6 +282,10 @@ export interface CRMWebinarMessagesResponse {
   waiting: CRMReplyAlert[];
   results: CRMWebinarResults;
   whatsappConnected: boolean;
+  /**
+   * * Resolved message slots for this webinar, and which layer each field came from.
+   */
+  slots: MessageSlot[];
 }
 /**
  *  CRMTestSendRequest sends a template once to the host's own number, to see it.
@@ -981,6 +985,117 @@ export interface EngagementAttendeeDetail {
   whatsAppOptIn?: boolean;
   reactions: EngagementCount[];
   sessionMin: number /* int */;
+}
+
+//////////
+// source: slots.go
+
+export const SlotConfirmation = "confirmation";
+export const SlotReminder = "reminder";
+export const SlotReplay = "replay";
+export const SlotFollowupHigh = "followup_high";
+export const SlotFollowupEngaged = "followup_engaged";
+export const SlotFollowupPassive = "followup_passive";
+export const SlotFollowupRisk = "followup_risk";
+export const SlotFollowupNoShow = "followup_no_show";
+export const ChannelEmail = "email";
+export const ChannelWhatsApp = "whatsapp";
+export const TimingImmediate = "immediate";
+export const TimingBefore = "before";
+export const TimingOnPublish = "on_publish";
+export const TimingAfterEnd = "after_end";
+export const TimingNextMorning = "next_morning";
+/**
+ *  Where a resolved field came from. options is the legacy WebinarOptions read,
+ * 	 * used for confirmation and reminder when the webinar has no settings row yet.
+ */
+export const LayerBuiltin = "builtin";
+export const LayerDefault = "default";
+export const LayerOptions = "options";
+export const LayerWebinar = "webinar";
+/**
+ *  MessageTiming is when a slot sends.
+ *  *
+ *  * before carries minutes as a list (largest first). after_end carries minutes as
+ *  * one number on the wire. next_morning carries the hour in the webinar's time zone.
+ */
+export interface MessageTiming {
+  type: string;
+  /**
+   * * Minutes before the start (a list) or after the end (one number on the wire).
+   */
+  minutes?: number /* int */[];
+  /**
+   * * Hour of the morning after the webinar, 0–23, for next_morning.
+   */
+  hour?: number /* int */;
+}
+/**
+ *  MessageSlot is one resolved attendee message.
+ *  *
+ *  * Source is the highest layer that contributed a field. Layers says which layer
+ *  * each field came from, so a webinar that only overrides timing still shows the
+ *  * wording as the account default.
+ */
+export interface MessageSlot {
+  kind: string;
+  channels: string[];
+  timing: MessageTiming;
+  template: string;
+  language: string;
+  params: string[];
+  enabled: boolean;
+  source: string;
+  layers: MessageSlotLayers;
+}
+/**
+ *  MessageSlotLayers names the layer of each field: builtin, default, options or webinar.
+ */
+export interface MessageSlotLayers {
+  channels: string;
+  timing: string;
+  template: string;
+  language: string;
+  params: string;
+  enabled: string;
+}
+/**
+ *  MessageSlotPatch is one webinar override. A null or omitted field is stored as
+ *  * NULL and resolved from the account default.
+ */
+export interface MessageSlotPatch {
+  kind: string;
+  channels?: string[];
+  timing?: MessageTiming;
+  template?: string;
+  language?: string;
+  params?: string[];
+  enabled?: boolean;
+}
+/**
+ *  MessageDefaultsResponse is the coach's defaults, one slot per kind.
+ */
+export interface MessageDefaultsResponse {
+  slots: MessageSlot[];
+}
+/**
+ *  MessageDefaultsRequest replaces the kinds it names. Kinds left out are unchanged.
+ */
+export interface MessageDefaultsRequest {
+  slots: MessageSlot[];
+}
+/**
+ *  WebinarMessagesRequest replaces the override row for each named kind.
+ */
+export interface WebinarMessagesRequest {
+  slots: MessageSlotPatch[];
+}
+/**
+ *  WebinarSlotsResponse is the resolved slots for one webinar.
+ */
+export interface WebinarSlotsResponse {
+  webinarId: string;
+  slots: MessageSlot[];
 }
 
 //////////

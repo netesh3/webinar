@@ -27,6 +27,17 @@ func (s *Server) enqueueApprovedInvite(
 		return
 	}
 
+	slots, useSlots := s.messageSlots(ctx, wb.ID)
+	sendConfirm := true
+	sendReminders := wb.Options.EmailReminders
+	if useSlots {
+		sendConfirm = slotSends(slots, types.SlotConfirmation, types.ChannelEmail)
+		sendReminders = slotSends(slots, types.SlotReminder, types.ChannelEmail)
+	}
+	if !sendConfirm && !sendReminders {
+		return
+	}
+
 	in := notify.Invite{
 		Name:     name,
 		Topic:    wb.Topic,
@@ -54,23 +65,32 @@ func (s *Server) enqueueApprovedInvite(
 		DurationMin: wb.Duration,
 	})
 
-	n := store.Notification{
-		Email:          email,
-		Kind:           kind,
-		WebinarSlug:    wb.ID,
-		Subject:        subject,
-		Body:           body,
-		ICS:            ics,
-		RegistrationID: registrationID,
-	}
-	if err := s.store.Notify(ctx, s.store.DB(), n); err != nil {
-		s.log.Error("notify: could not queue invite", "email", email, "kind", kind, "err", err)
-		return
+	if sendConfirm {
+		n := store.Notification{
+			Email:          email,
+			Kind:           kind,
+			WebinarSlug:    wb.ID,
+			Subject:        subject,
+			Body:           body,
+			ICS:            ics,
+			RegistrationID: registrationID,
+		}
+		if err := s.store.Notify(ctx, s.store.DB(), n); err != nil {
+			s.log.Error("notify: could not queue invite", "email", email, "kind", kind, "err", err)
+			return
+		}
 	}
 
-	if wb.Options.EmailReminders {
-		s.enqueueReminders(ctx, wb, email, name, registrationID, joinURL, ics, starts)
+	if !sendReminders {
+		return
 	}
+	one := wb
+	if useSlots {
+		if rem, ok := types.FindSlot(slots, types.SlotReminder); ok {
+			one.Options.Reminders = rem.BeforeMinutes()
+		}
+	}
+	s.enqueueReminders(ctx, one, email, name, registrationID, joinURL, ics, starts)
 }
 
 func (s *Server) enqueueReminders(
@@ -124,7 +144,13 @@ func (s *Server) replanReminders(ctx context.Context, wb types.Webinar) {
 		return
 	}
 	offsets := wb.Options.Reminders
-	if !wb.Options.EmailReminders {
+	if slots, ok := s.messageSlots(ctx, wb.ID); ok {
+		if rem, found := types.FindSlot(slots, types.SlotReminder); !found || !rem.Sends(types.ChannelEmail) {
+			offsets = []int{}
+		} else {
+			offsets = rem.BeforeMinutes()
+		}
+	} else if !wb.Options.EmailReminders {
 		// Switched off: the sweep already holds these back, and dropping them means
 		// switching back on queues them fresh with the current times.
 		offsets = []int{}

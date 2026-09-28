@@ -87,7 +87,10 @@ func TestModuleBoundary(t *testing.T) {
 var writeRe = regexp.MustCompile(`(?i)\b(?:insert\s+into|update|delete\s+from)\s+([a-z_][a-z0-9_]*)`)
 
 func TestCRMStoreWritesOnlyItsOwnTables(t *testing.T) {
-	owned := map[string]bool{"notifications": true, "users": true} // its own rows / whatsapp_* columns
+	owned := map[string]bool{
+		"notifications": true, "users": true, // its own rows / whatsapp_* columns
+		"webinar_message_settings": true, // per-webinar message slots, owned by engage
+	}
 	files, err := filepath.Glob(filepath.Join("crmstore", "*.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +117,7 @@ func TestCRMStoreWritesOnlyItsOwnTables(t *testing.T) {
 				if strings.HasPrefix(table, "crm_") || owned[table] || table == "set" {
 					continue
 				}
-				t.Errorf("%s writes %q: the CRM writes crm_* tables, its own notifications rows and users.whatsapp_* only", path, table)
+				t.Errorf("%s writes %q: the CRM writes crm_* tables, webinar_message_settings, its own notifications rows and users.whatsapp_* only", path, table)
 			}
 			return true
 		})

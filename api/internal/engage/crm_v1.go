@@ -173,6 +173,10 @@ func (s *Module) handleCRMWebinarMessages(w http.ResponseWriter, r *http.Request
 		s.fail(w, r, "crm webinar messages: results", err)
 		return
 	}
+	if out.Slots, err = s.ResolveSlots(ctx, slug); err != nil {
+		s.fail(w, r, "crm webinar messages: slots", err)
+		return
+	}
 	httpx.JSON(w, http.StatusOK, out)
 }
 
