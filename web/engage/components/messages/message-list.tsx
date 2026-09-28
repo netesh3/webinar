@@ -146,7 +146,7 @@ export function MessageList({
               }
               when={
                 <span className="inline-flex items-center gap-1">
-                  <MaterialIcon name="arrow_forward" className="size-3.5" />
+                  <MaterialIcon name="arrow_forward" className="size-[13px] shrink-0" />
                   {copy.then}
                 </span>
               }
@@ -158,10 +158,10 @@ export function MessageList({
                 <Link
                   href={ENGAGE_HOME}
                   aria-label={`Open ${recipe.title} on the WhatsApp page`}
-                  className="text-ink-3 hover:text-ink"
+                  className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <MaterialIcon name="chevron_right" className="size-4" />
+                  <MaterialIcon name="chevron_right" className="size-[18px]" />
                 </Link>
               }
             />
@@ -172,7 +172,7 @@ export function MessageList({
             href={ENGAGE_HOME}
             className="inline-flex items-center gap-1 font-medium text-brand hover:underline"
           >
-            <MaterialIcon name="add" className="size-3.5" />
+            <MaterialIcon name="add" className="size-[15px] shrink-0" />
             New automation
           </Link>
           <Link
@@ -180,7 +180,7 @@ export function MessageList({
             className="inline-flex items-center gap-1 text-ink-2 hover:text-ink hover:underline"
           >
             All automations on the WhatsApp page
-            <MaterialIcon name="arrow_forward" className="size-3.5" />
+            <MaterialIcon name="arrow_forward" className="size-[15px] shrink-0" />
           </Link>
         </div>
       </div>
