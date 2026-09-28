@@ -5,8 +5,11 @@ cd "$(dirname "$0")"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 mkdir -p png
 shot() {
+  # $1 name  $2 html  $3 height  $4 width (optional; other mocks stay at 1280)
+  w=1280
+  if [ -n "$4" ]; then w=$4; fi
   "$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
-    --window-size=1280,"$3" --virtual-time-budget=6000 \
+    --window-size="$w","$3" --virtual-time-budget=6000 \
     --screenshot="png/$1.png" "file://$PWD/$2?clean" >/dev/null 2>&1
   echo "png/$1.png"
 }
@@ -19,3 +22,4 @@ shot whatsapp       whatsapp.html       3010
 shot create-tabs-webinar  create-tabs-webinar.html  2330
 shot create-tabs-messages create-tabs-messages.html 1120
 shot settings settings.html 1200
+shot inbox inbox.html 1000 1440

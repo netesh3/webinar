@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Messages (simple mock)</title>
+<link rel="stylesheet" href="assets/simple.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0..1,0">
+<link rel="stylesheet" href="assets/inbox.css">
+</head>
+<body class="inbox-page" data-title="Messages" data-back="home.html">
+<div data-nav></div>
+<main>
+  <div class="shell">
+    <aside class="list">
+      <div class="tools">
+        <label class="search"><span class="ms">search</span><input placeholder="Search name or number"></label>
+        <label class="filt"><span class="ms">filter_alt</span>
+          <select aria-label="Filter">
+            <option>All webinars</option>
+            <option>Unread</option>
+            <option>Mindful Money</option>
+            <option>Sleep Reset</option>
+            <option>Morning Routines</option>
+          </select>
+        </label>
+      </div>
+      <div class="rows">
+        <button class="conv on" type="button">
+          <span class="avwrap"><span class="av a4">AK</span></span>
+          <span class="conv-main">
+            <span class="conv-top"><span class="name">Amlesh Kumar</span><span class="when">Sat</span></span>
+            <span class="prev"><span class="txt">4 — loved the part on pricing</span></span>
+            <span class="wchip">Mindful Money</span>
+          </span>
+          <span class="unread" title="Unread"></span>
+        </button>
+        <button class="conv" type="button">
+          <span class="avwrap on"><span class="av a7">RM</span></span>
+          <span class="conv-main">
+            <span class="conv-top"><span class="name">Rohan Mehta</span><span class="when">10:16 PM</span></span>
+            <span class="prev"><span class="txt">Can I get the slides? And what's the price…</span></span>
+            <span class="wchip">Mindful Money</span>
+          </span>
+          <span class="unread" title="Unread"></span>
+        </button>
+        <button class="conv" type="button">
+          <span class="avwrap on"><span class="av a2">PS</span></span>
+          <span class="conv-main">
+            <span class="conv-top"><span class="name">Priya Sharma</span><span class="when">9:02 PM</span></span>
+            <span class="prev"><span class="txt">Yes, book me a call</span></span>
+            <span class="wchip">Sleep Reset</span>
+          </span>
+          <span class="unread" title="Unread"></span>
+        </button>
+        <button class="conv" type="button">
+          <span class="avwrap on"><span class="av a5">KP</span></span>
+          <span class="conv-main">
+            <span class="conv-top"><span class="name">Kavya Pillai</span><span class="when">8:11 PM</span></span>
+            <span class="prev"><span class="txt">Is there a replay? I dropped at the Q&amp;A</span></span>
+            <span class="wchip">Mindful Money</span>
+          </span>
+          <span class="unread" title="Unread"></span>
+        </button>
+        <button class="conv" type="button">
+          <span class="avwrap"><span class="av a6">NJ</span></span>
+          <span class="conv-main">
+            <span class="conv-top"><span class="name">Neha Joshi</span><span class="when">Yesterday</span></span>
+            <span class="prev"><span class="who">Auto</span><span class="txt">The recording is ready whenever you are</span><span class="ticks">✓✓</span></span>
+            <span class="wchip">Morning Routines</span>
+          </span>
+          <span></span>
+        </button>
+        <button class="conv" type="button">
+          <span class="avwrap"><span class="av a3">RV</span></span>
+          <span class="conv-main">
+            <span class="conv-top"><span class="name">Rahul Verma</span><span class="when">Yesterday</span></span>
+            <span class="prev"><span class="who">You</span><span class="txt">Thanks for staying to the end</span><span class="ticks">✓✓</span></span>
+            <span class="wchip">Mindful Money</span>
+          </span>
+          <span></span>
+        </button>
+        <button class="conv" type="button">
+          <span class="avwrap"><span class="av a8">SR</span></span>
+          <span class="conv-main">
+            <span class="conv-top"><span class="name">Siddharth Rao</span><span class="when">Fri</span></span>
+            <span class="prev"><span class="txt">Will the slides be shared?</span></span>
+            <span class="wchip">Sleep Reset</span>
+          </span>
+          <span></span>
+        </button>
+        <button class="conv" type="button">
+          <span class="avwrap"><span class="av a1">KM</span></span>
+          <span class="conv-main">
+            <span class="conv-top"><span class="name">Karan Mehta</span><span class="when">Fri</span></span>
+            <span class="prev"><span class="who">Auto</span><span class="txt">Sorry we missed you — here's the recording</span><span class="ticks">✓✓</span></span>
+            <span class="wchip">Sleep Reset</span>
+          </span>
+          <span></span>
+        </button>
+        <button class="conv" type="button">
+          <span class="avwrap"><span class="av a7">VN</span></span>
+          <span class="conv-main">
+            <span class="conv-top"><span class="name">Vikram Nair</span><span class="when">Thu</span></span>
+            <span class="prev"><span class="txt">Got the notes, thank you</span></span>
+            <span class="wchip">Morning Routines</span>
+          </span>
+          <span></span>
+        </button>
+        <button class="conv" type="button">
+          <span class="avwrap"><span class="av a2">DK</span></span>
+          <span class="conv-main">
+            <span class="conv-top"><span class="name">Divya</span><span class="when">26 Sep</span></span>
+            <span class="prev"><span class="who">Auto</span><span class="txt">You're registered for Thu 1 Oct, 7 PM</span><span class="ticks">✓✓</span></span>
+            <span class="wchip">Mindful Money</span>
+          </span>
+          <span></span>
+        </button>
+      </div>
+    </aside>
+
+    <section class="pane">
+      <div class="who">
+        <span class="av lg a4">AK</span>
+        <div class="grow">
+          <div class="name" style="font-size:15px">Amlesh Kumar</div>
+          <div class="sub">+91 98450 11772 · WhatsApp</div>
+        </div>
+      </div>
+      <div class="facts">
+        <div class="fact"><span class="ms">calendar_month</span><div><div class="k">Customer since</div><div class="v">17 Mar 2026</div></div></div>
+        <div class="fact"><span class="ms">visibility</span><div><div class="k">Last seen</div><div class="v">26 Sep 2026, 6:18 PM</div></div></div>
+        <div class="fact"><span class="ms">translate</span><div><div class="k">Language</div><div class="v">English</div></div></div>
+        <div class="fact"><span class="ms">public</span><div><div class="k">Country</div><div class="v">India</div></div></div>
+        <div class="fact"><span class="ms">schedule</span><div><div class="k">Timezone</div><div class="v">+05:30</div></div></div>
+      </div>
+
+      <div class="msgs">
+        <button class="loadmore" type="button">Load more</button>
+        <div class="sys">Label added · Mindful Money</div>
+
+        <div class="bub out">
+          <div class="tpl">Template</div>
+          <b class="lead">Your seat is booked</b>
+          Hello Amlesh Kumar,<br>
+          Thank you for booking Mindful Money: Budgeting Without Guilt.
+          <div class="cta">View details</div>
+          <div class="meta">Sat 26 Sep · 5:07 PM · Automation <span class="ticks">✓✓</span></div>
+        </div>
+
+        <div class="bub in">View details<div class="meta">5:07 PM</div></div>
+
+        <div class="bub out">
+          <div class="tpl">Template</div>
+          Hi 👋
+          <div class="body">Your seat is confirmed for <b>Mindful Money: Budgeting Without Guilt</b> with Aarti Menon.</div>
+          <div class="whenlines">
+            <div><span class="ms">calendar_today</span>Date: Thu 1 Oct</div>
+            <div><span class="ms">schedule</span>Time: 7:00 PM (IST)</div>
+            <div><span class="ms">videocam</span>Mode: Live on WebinarLiv</div>
+          </div>
+          <div class="body">You'll learn to budget without the guilt — even if numbers aren't your thing.</div>
+          <div class="imp">Important</div>
+          <ul>
+            <li>Join 5–10 minutes early</li>
+            <li>Keep a notebook handy</li>
+            <li>The join link arrives an hour before</li>
+          </ul>
+          <div class="meta">Sat 26 Sep · 5:08 PM · Automation <span class="ticks">✓✓</span></div>
+        </div>
+
+        <div class="bub in">4 — loved the part on pricing. Can I get the slides from last time?<div class="meta">6:18 PM</div></div>
+      </div>
+
+      <div class="comp">
+        <div class="modes">
+          <button class="on" type="button">Reply</button>
+          <button type="button">Note</button>
+        </div>
+        <div class="closed"><span class="ms">lock</span><span>Reply window closed. Amlesh last wrote on Sat 26 Sep, so only an approved template can be sent.</span></div>
+        <div class="crow">
+          <button class="plus" type="button" title="Add"><span class="ms">add</span></button>
+          <select class="field" aria-label="Approved template">
+            <option>Choose an approved template</option>
+            <option>Your seat is booked</option>
+            <option>Webinar confirmed</option>
+            <option>Reminder — 1 hour before</option>
+            <option>Replay is ready</option>
+          </select>
+          <button class="send" type="button" title="Send template"><span class="ms">send</span></button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+<div class="note"><b>Messages.</b> Its own screen, from the chat icon in the top bar — not a tab on Your webinars. Back goes to the hosting home. The list is everyone on WhatsApp (initials, preview, time, the webinar, an unread dot); the open thread carries who they are across the top, then the templates you sent (seat booked, webinar confirmed) and what they wrote back. Amlesh last wrote on Saturday, so the reply window is closed and Reply can only send an approved template. Note is a private note for you, not a WhatsApp message.</div>
+<script src="assets/nav.js"></script>
+</body></html>
