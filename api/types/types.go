@@ -2822,6 +2822,9 @@ type RegistrantRow struct {
 	 * "Last message" column. Both filled in by the CRM, like WhatsAppStatus. */
 	ContactID   string      `json:"contactId,omitempty"`
 	LastMessage *CRMMessage `json:"lastMessage,omitempty"`
+	/* Answers to the webinar's registration questions, keyed by CustomQuestion.ID. A
+	 * checkbox answer is "yes" when ticked; an unanswered question has no key. */
+	Answers map[string]string `json:"answers,omitempty"`
 }
 
 type PanelistRequest struct {

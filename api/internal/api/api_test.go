@@ -919,7 +919,7 @@ func (h *harness) registerAs(slug, email string) types.Registration {
 		FirstName: "Test", LastName: "User", Email: email, Consent: true,
 		Passcode: seedPasscode,
 		Phone:    testPhone,
-		Answers:  map[string]string{"stack": "Postgres", "scale": "Under 100"},
+		Answers:  h.validAnswers(slug),
 	})
 	if res.StatusCode != http.StatusCreated && res.StatusCode != http.StatusOK {
 		h.t.Fatalf("register: status %d body %s", res.StatusCode, raw)
@@ -927,6 +927,29 @@ func (h *harness) registerAs(slug, email string) types.Registration {
 	var reg types.Registration
 	h.decode(raw, &reg)
 	return reg
+}
+
+/* validAnswers answers every one of the webinar's registration questions acceptably: the
+ * first option of a "Choose one", a ticked checkbox, some text. Read from the webinar
+ * rather than hard-coded, because a "Choose one" answer must now be one of ITS options. */
+func (h *harness) validAnswers(slug string) map[string]string {
+	h.t.Helper()
+	wb, err := h.store.WebinarBySlug(context.Background(), slug)
+	if err != nil {
+		return nil // an unknown slug is the test's point; let the endpoint say so
+	}
+	answers := map[string]string{}
+	for _, q := range wb.CustomQuestions {
+		switch q.Type {
+		case "select":
+			answers[q.ID] = q.Options[0]
+		case "checkbox":
+			answers[q.ID] = "yes"
+		default:
+			answers[q.ID] = "Test answer"
+		}
+	}
+	return answers
 }
 
 // registerAsGuest registers with no cookies at all, which is the path someone

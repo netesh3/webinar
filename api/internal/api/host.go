@@ -543,6 +543,10 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool) (ty
 	}
 	if len(in.CustomQuestions) > 20 {
 		fields["customQuestions"] = "Twenty questions is the most a registration form can carry."
+	} else if qs, msg := normalizeQuestions(in.CustomQuestions); msg != "" {
+		fields["customQuestions"] = msg
+	} else {
+		in.CustomQuestions = qs
 	}
 	if list, msg := normalizeReminders(in.Options.Reminders); msg != "" {
 		fields["reminders"] = msg
@@ -1679,6 +1683,11 @@ func (s *Server) handleExportRegistrants(w http.ResponseWriter, r *http.Request)
 	// the export is FOR, and "who has not replied to me on WhatsApp" is the list a host
 	// would otherwise have to rebuild by hand from two screens.
 	s.engage.DecorateRegistrants(r.Context(), userFromContext(r.Context()), slug, rows)
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "export registrants: load webinar", err)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition",
@@ -1692,10 +1701,15 @@ func (s *Server) handleExportRegistrants(w http.ResponseWriter, r *http.Request)
 	// has always had, because a column that moves breaks whatever the host built on top of
 	// this export just as surely as one that disappears. Both are present even for a host
 	// with no WhatsApp connected, and empty there — for the same reason `guest` is.
-	_ = cw.Write([]string{
+	// The registration questions come last, one column each, for the same reason.
+	header := []string{
 		"name", "email", "phone", "company", "job title", "state", "registered at",
 		"has account", "guest", "whatsapp", "whatsapp replied at",
-	})
+	}
+	for _, q := range wb.CustomQuestions {
+		header = append(header, csvText(q.Label))
+	}
+	_ = cw.Write(header)
 	for _, row := range rows {
 		/* The number is prefixed with a tab.
 		 *
@@ -1707,11 +1721,15 @@ func (s *Server) handleExportRegistrants(w http.ResponseWriter, r *http.Request)
 		if phone != "" {
 			phone = "\t" + phone
 		}
-		_ = cw.Write([]string{
+		record := []string{
 			row.Name, row.Email, phone, row.Company, row.JobTitle,
 			string(row.State), row.CreatedAt, fmt.Sprint(row.HasAccount),
 			fmt.Sprint(row.IsGuest), row.WhatsAppStatus, row.LastInboundAt,
-		})
+		}
+		for _, q := range wb.CustomQuestions {
+			record = append(record, csvText(row.Answers[q.ID]))
+		}
+		_ = cw.Write(record)
 	}
 	cw.Flush()
 	if err := cw.Error(); err != nil {

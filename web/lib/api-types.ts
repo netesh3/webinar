@@ -4697,6 +4697,11 @@ export interface RegistrantRow {
    */
   contactId?: string;
   lastMessage?: CRMMessage;
+  /**
+   *  Answers to the webinar's registration questions, keyed by CustomQuestion.ID. A
+   * 	 * checkbox answer is "yes" when ticked; an unanswered question has no key.
+   */
+  answers?: { [key: string]: string};
 }
 export interface PanelistRequest {
   email: string;
