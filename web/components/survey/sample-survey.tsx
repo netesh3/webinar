@@ -112,7 +112,7 @@ function SampleScheduleSurvey({ link }: { link: boolean }) {
         durationMin={60}
         aside={
           <div>
-            <p className="mb-1.5 text-[12px] font-medium text-ink-3">
+            <p className="label mb-1.5 flex h-4 items-center">
               What attendees see
             </p>
             <div
