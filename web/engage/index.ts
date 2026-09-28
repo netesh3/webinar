@@ -11,6 +11,7 @@ export {
   ENGAGE_HOME,
   MESSAGES_HREF,
   PEOPLE_HREF,
+  messagesHref,
   RosterContactsLink,
   RosterWhatsAppCells,
   RosterWhatsAppHeaders,
@@ -24,6 +25,7 @@ export { useRosterMessaging } from "./components/roster";
 export { followupGroups, type FollowupGroup } from "./buckets";
 export { HostPeopleTab } from "./components/people-tab";
 export { HostMessagesTab } from "./components/inbox-tab";
+export { HostMessagesInbox } from "./components/messages-inbox";
 export { WebinarMessagesTab } from "./components/webinar-messages";
 export { ReplyAlerts, useReplies } from "./components/replies";
 export { WhatsAppWeekCard } from "./components/week-card";

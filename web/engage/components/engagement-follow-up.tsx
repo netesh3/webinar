@@ -19,6 +19,7 @@ import {
 import { useNow } from "@/lib/clock";
 import { TIER_META, type Tier } from "@/lib/engagement/score";
 import { formatRelative } from "@/lib/format";
+import { messagesHref } from "../hrefs";
 import { followupGroups } from "../buckets";
 import { NextStepCard, type NextStep } from "./messages-parts";
 import { automateFor } from "./automations";
@@ -246,7 +247,7 @@ function FollowUp({
         The big number is everyone in the group; the send shows how many can get
         WhatsApp. Replies land in{" "}
         <Link
-          href="/host?tab=messages"
+          href={messagesHref()}
           className="font-medium text-brand hover:underline"
         >
           Messages

@@ -37,10 +37,11 @@ const ALLOW: Decision = { allow: true };
 
 /* First segments under /host that are pages rather than webinar slugs.
  *
- * `/host/new` is the schedule form and `/host/login` is the way in; everything else after
- * /host is a slug. Getting this list wrong would make the schedule form look like a webinar
- * called "new" and redirect a host to /webinars/new, which does not exist. */
-const HOST_PAGES = new Set(["login", "new"]);
+ * `/host/new` is the schedule form, `/host/login` is the way in, and `/host/messages`
+ * is the WhatsApp inbox. Everything else after /host is a slug. Getting this list
+ * wrong would make one of those pages look like a webinar and redirect a participant
+ * to /webinars/new, which does not exist. */
+const HOST_PAGES = new Set(["login", "new", "messages"]);
 
 /**
  * decideAccess answers one request.

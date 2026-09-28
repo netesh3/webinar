@@ -1,14 +1,8 @@
-import { TopNav } from "@/components/top-nav";
+import { HostPortalFrame } from "@/components/host-portal-frame";
 
-/* The host portal's chrome: top nav only (Host Webinar, plus the account menu). */
+/* The host portal's chrome: top nav, and a padded column for every page except
+ * Messages, which fills the window. */
 
 export default function HostPortalLayout({ children }: LayoutProps<"/host">) {
-  return (
-    <>
-      <TopNav />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-5">
-        {children}
-      </main>
-    </>
-  );
+  return <HostPortalFrame>{children}</HostPortalFrame>;
 }

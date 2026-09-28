@@ -113,12 +113,19 @@ console.log("\nPARTICIPANT — host URLs are refused");
     "/account",
     "the schedule form is not a webinar slug — it must not redirect to /webinars/new",
   );
+  redirectedTo(
+    "/host/messages",
+    participant,
+    "/account",
+    "Messages is its own screen, not a webinar slug",
+  );
 }
 
 console.log("\nHOST — nothing is taken away");
 {
   allowed("/host", host, "the dashboard");
   allowed("/host/new", host, "the schedule form");
+  allowed("/host/messages", host, "the WhatsApp inbox");
   allowed("/host/redis-cache", host, "manage a webinar");
   allowed("/host/redis-cache/edit", host, "edit it");
   allowed("/host/redis-cache/room", host, "present in it");

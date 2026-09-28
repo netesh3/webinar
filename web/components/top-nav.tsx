@@ -30,9 +30,8 @@ import { MessagesNavButton } from "@/engage";
  * /my-webinars is where registering sends somebody — a host lands on the
  * Attending tab from it (see lib/access.ts).
  *
- * Contacts went too. People and Messages are tabs on the Hosting page beside
- * Upcoming and Past — one person, one row, across every webinar — so a host
- * has one home rather than a second app bolted onto the first. WhatsApp replies
+ * Contacts went too. Audience is a tab on Your webinars. Messages is its own
+ * screen, opened from the chat icon, with a link back here. WhatsApp replies
  * land on the bell. */
 
 function linksFor(signedIn: boolean, canHost: boolean) {
@@ -68,13 +67,19 @@ export function TopNav() {
   const hasMobileMenu = links.length > 0 || !account;
 
   const count = registrations?.length ?? 0;
+  const inbox =
+    pathname === "/host/messages" || pathname.startsWith("/host/messages/");
 
   /* A plain prefix test: nothing in this nav is a prefix of anything else in it. */
   const isActive = (href: string) => pathname.startsWith(href);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-5">
+    <header className="sticky top-0 z-30 shrink-0 border-b border-line bg-surface/95 backdrop-blur">
+      <div
+        className={`flex h-14 items-center gap-2 px-4 ${
+          inbox ? "w-full" : "mx-auto max-w-6xl sm:px-5"
+        }`}
+      >
         <Link
           href={homeHrefFor(account?.canHost === true)}
           className="mr-1 flex shrink-0 items-center gap-2.5 sm:mr-3"
@@ -109,6 +114,22 @@ export function TopNav() {
             />
           ))}
         </nav>
+
+        {inbox && (
+          <>
+            <Link
+              href="/host"
+              className="ml-3 inline-flex items-center gap-1 text-[13px] whitespace-nowrap text-ink-2 hover:text-brand"
+            >
+              <span aria-hidden>←</span>
+              Your webinars
+            </Link>
+            <span className="mx-3 h-4 w-px shrink-0 bg-line-2" aria-hidden />
+            <h1 className="text-[15px] leading-none font-semibold tracking-[-0.01em]">
+              Messages
+            </h1>
+          </>
+        )}
 
         <div className="flex-1" />
 
