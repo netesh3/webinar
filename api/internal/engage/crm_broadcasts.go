@@ -295,7 +295,7 @@ func (s *Module) handleCRMBroadcasts(w http.ResponseWriter, r *http.Request) {
 		Broadcasts: list,
 		// The same merge fields the reminders offer, from the same place, so the
 		// composer cannot offer a token the server would refuse.
-		Fields:            mergeFields,
+		Fields:            s.fieldsFor(r.Context(), user.ID),
 		WhatsAppConnected: user.WhatsAppToken != "",
 	})
 }

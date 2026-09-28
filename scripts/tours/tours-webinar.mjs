@@ -30,8 +30,8 @@ export const invite = {
     await t.say("Preview page shows exactly what your visitors see when they open the link.", async () => {
       await t.point(link(page, /Preview page/));
     });
-    await t.say("Further down, you can see what goes out on its own: the confirmation when someone registers, and each reminder before you start.", async () => {
-      await t.point(page.getByRole("heading", { name: "What goes out on its own" }));
+    await t.say("Further down, you can see the automated messages: the confirmation when someone registers, and each reminder before you start.", async () => {
+      await t.point(page.getByRole("heading", { name: "Automated messages" }));
     });
     await t.say("The People tab lists everyone who has registered, with how they signed up. You can message them all, or export the list.", async () => {
       await t.click(tab(page, /^People/), { settle: 1500 });
@@ -130,7 +130,7 @@ export const followup = {
     await t.say("We'll cancel this one for now.", async () => {
       await t.click(dialog(page).getByRole("button", { name: /^Cancel$/ }));
     });
-    await t.say("Want this to happen every time? Switch on automatically after every webinar, and each group gets its message on its own.", async () => {
+    await t.say("Want this to happen every time? Switch on automatically after every webinar, and each group gets its message automatically.", async () => {
       await t.point(page.getByRole("switch", { name: /automatically after/ }));
     });
     await t.say("Below, you'll see everything that was sent for this webinar, and replies waiting for you.", async () => {

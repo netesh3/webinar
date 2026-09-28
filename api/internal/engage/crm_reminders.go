@@ -110,7 +110,7 @@ func (s *Module) handleCRMReminders(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, types.CRMRemindersResponse{
 		Reminders:         reminders,
-		Fields:            mergeFields,
+		Fields:            s.fieldsFor(r.Context(), user.ID),
 		WhatsAppConnected: user.WhatsAppToken != "",
 	})
 }
@@ -203,7 +203,7 @@ func (s *Module) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("whatsapp reminder templates set", "host", user.ID, "kinds", len(in))
 	httpx.JSON(w, http.StatusOK, types.CRMRemindersResponse{
 		Reminders:         reminders,
-		Fields:            mergeFields,
+		Fields:            s.fieldsFor(r.Context(), user.ID),
 		WhatsAppConnected: user.WhatsAppToken != "",
 	})
 }

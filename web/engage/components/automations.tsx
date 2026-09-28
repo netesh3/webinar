@@ -297,7 +297,7 @@ function SetupStrip({ setup, on }: { setup: CRMSetup | null; on: number }) {
           ? `${on} automation${on === 1 ? "" : "s"} on`
           : "Turn on a recipe",
       sub:
-        on > 0 ? "Running on their own" : "Most coaches start with the replay",
+        on > 0 ? "Automations running" : "Most coaches start with the replay",
     },
   ];
   return (

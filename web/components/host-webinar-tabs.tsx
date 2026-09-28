@@ -17,9 +17,21 @@ import {
   tzLabel,
 } from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
-import type { EngagementTierCounts, Recording, RegistrantRow, Webinar } from "@/lib/api-types";
+import type {
+  EngagementTierCounts,
+  Recording,
+  RegistrantRow,
+  Webinar,
+} from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
-import { defaultTab, engagementSection, tabFromQuery, allowedTab, tabsFor, type HostTab } from "@/lib/host-tabs";
+import {
+  defaultTab,
+  engagementSection,
+  tabFromQuery,
+  allowedTab,
+  tabsFor,
+  type HostTab,
+} from "@/lib/host-tabs";
 import {
   RosterContactsLink,
   RosterWhatsAppCells,
@@ -69,14 +81,23 @@ export function HostWebinarTabs({
 
   // Follow ?tab= when a link names a tab. Adjusted during render when the inputs change,
   // not in an effect after it.
-  const queryInputs = JSON.stringify([initialTab ?? null, w.status, whatsappConnect]);
+  const queryInputs = JSON.stringify([
+    initialTab ?? null,
+    w.status,
+    whatsappConnect,
+  ]);
   const [seenQueryInputs, setSeenQueryInputs] = useState(queryInputs);
   if (queryInputs !== seenQueryInputs) {
     setSeenQueryInputs(queryInputs);
-    const next = allowedTab(tabFromQuery(initialTab), w.status, whatsappConnect);
+    const next = allowedTab(
+      tabFromQuery(initialTab),
+      w.status,
+      whatsappConnect,
+    );
     if (next) setTab(next);
     // A status change (the webinar just ended) can take the open tab away.
-    else if (!tabs.includes(tab)) setTab(defaultTab(w.status, { whatsapp: whatsappConnect }));
+    else if (!tabs.includes(tab))
+      setTab(defaultTab(w.status, { whatsapp: whatsappConnect }));
   }
 
   useLayoutEffect(() => {
@@ -110,10 +131,12 @@ export function HostWebinarTabs({
         <div className="grid gap-4">
           {w.approval === "manual" && pending.length > 0 && (
             <Card className="p-5">
-              <SectionTitle>
-                Waiting to admit · {pending.length}
-              </SectionTitle>
-              <ApprovalQueue slug={w.id} pending={pending} onChanged={onChanged} />
+              <SectionTitle>Waiting to admit · {pending.length}</SectionTitle>
+              <ApprovalQueue
+                slug={w.id}
+                pending={pending}
+                onChanged={onChanged}
+              />
             </Card>
           )}
           <AttendeesTab webinar={w} registrants={registrants} />
@@ -126,11 +149,13 @@ export function HostWebinarTabs({
           <HostLinkCard webinar={w} />
         </div>
       )}
-      {tab === "Follow up" && (
-        <FollowUpTab webinar={w} />
-      )}
+      {tab === "Follow up" && <FollowUpTab webinar={w} />}
       {tab === "Recording" && (
-        <RecordingsTab webinar={w} recordings={recordings} onChanged={onChanged} />
+        <RecordingsTab
+          webinar={w}
+          recordings={recordings}
+          onChanged={onChanged}
+        />
       )}
       {tab === "Results" && (
         <EngagementTab
@@ -140,7 +165,9 @@ export function HostWebinarTabs({
           initialSection={engagementSection(initialTab, w.status)}
           // After the end, following up is its own tab.
           hideFollowUp={ended && whatsappConnect}
-          onOpenFollowUp={ended && whatsappConnect ? () => setTab("Follow up") : undefined}
+          onOpenFollowUp={
+            ended && whatsappConnect ? () => setTab("Follow up") : undefined
+          }
         />
       )}
     </>
@@ -166,7 +193,9 @@ function OverviewTab({
   const { notify } = useToast();
   const pending = registrants.filter((r) => r.state === "pending");
   const approved = registrants.filter((r) => r.state === "approved").length;
-  const onWhatsApp = registrants.filter((r) => r.whatsappStatus === "opted_in").length;
+  const onWhatsApp = registrants.filter(
+    (r) => r.whatsappStatus === "opted_in",
+  ).length;
   const link = `${origin}/webinars/${w.id}`;
   const reminders = w.options.reminders ?? DEFAULT_REMINDERS;
   const invite =
@@ -178,9 +207,12 @@ function OverviewTab({
   if (w.status === "draft") {
     return (
       <Card className="p-6">
-        <h2 className="text-[15px] font-semibold">Finish setup to open registration</h2>
+        <h2 className="text-[15px] font-semibold">
+          Finish setup to open registration
+        </h2>
         <p className="mt-2 max-w-md text-[13.5px] leading-relaxed text-ink-2">
-          This webinar is a draft, so its page isn&apos;t public yet. Schedule it and you get a link to share.
+          This webinar is a draft, so its page isn&apos;t public yet. Schedule
+          it and you get a link to share.
         </p>
         <ButtonLink href={`/host/${w.id}/edit`} className="mt-4">
           Finish setup
@@ -235,20 +267,39 @@ function OverviewTab({
               <CalendarIcon className="size-4" />
               Add to calendar
             </ButtonLink>
-            <ButtonLink href={`/webinars/${w.id}`} target="_blank" rel="noopener noreferrer" size="sm" variant="ghost">
+            <ButtonLink
+              href={`/webinars/${w.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="sm"
+              variant="ghost"
+            >
               Preview page ↗
             </ButtonLink>
           </div>
           <p className="mt-2.5 text-[12px] text-ink-3">
-            Anyone with this link can register · approval is {w.approval === "manual" ? "manual" : "automatic"}
+            Anyone with this link can register · approval is{" "}
+            {w.approval === "manual" ? "manual" : "automatic"}
             {w.passcode ? ` · passcode ${w.passcode}` : ""}.
           </p>
         </Card>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <Stat label="Registered" value={formatCount(w.registrantCount)} note={`of ${formatCount(w.attendeeLimit)} seats`} />
-          <Stat label="Approved" value={formatCount(approved)} note={pending.length ? `${pending.length} waiting` : "none waiting"} />
-          <Stat label="On WhatsApp" value={formatCount(onWhatsApp)} note="get reminders there" />
+          <Stat
+            label="Registered"
+            value={formatCount(w.registrantCount)}
+            note={`of ${formatCount(w.attendeeLimit)} seats`}
+          />
+          <Stat
+            label="Approved"
+            value={formatCount(approved)}
+            note={pending.length ? `${pending.length} waiting` : "none waiting"}
+          />
+          <Stat
+            label="On WhatsApp"
+            value={formatCount(onWhatsApp)}
+            note="get reminders there"
+          />
         </div>
 
         {/* One list of what is sent automatically. With WhatsApp on, the CRM's timeline is
@@ -258,7 +309,7 @@ function OverviewTab({
           ended={false}
           fallback={
             <Card className="p-5">
-              <SectionTitle>What goes out on its own</SectionTitle>
+              <SectionTitle>Automated messages</SectionTitle>
               <ul className="grid gap-2 text-[13px]">
                 <li className="flex justify-between gap-3">
                   <span>Confirmation, with their join link</span>
@@ -272,12 +323,17 @@ function OverviewTab({
                 ))}
                 <li className="flex justify-between gap-3">
                   <span>Replay link</span>
-                  <span className="text-ink-3">when you publish the recording</span>
+                  <span className="text-ink-3">
+                    when you publish the recording
+                  </span>
                 </li>
               </ul>
               <p className="mt-3 text-[12px] text-ink-3">
                 By email. Change the times in{" "}
-                <a href={`/host/${w.id}/edit`} className="font-medium text-brand hover:underline">
+                <a
+                  href={`/host/${w.id}/edit`}
+                  className="font-medium text-brand hover:underline"
+                >
                   Edit
                 </a>
                 .
@@ -292,7 +348,11 @@ function OverviewTab({
           <div className="flex items-center justify-between gap-2">
             <SectionTitle>Waiting for you</SectionTitle>
             {pending.length > 0 && (
-              <button type="button" onClick={onOpenPeople} className="text-[12px] font-medium text-brand hover:underline">
+              <button
+                type="button"
+                onClick={onOpenPeople}
+                className="text-[12px] font-medium text-brand hover:underline"
+              >
                 See all
               </button>
             )}
@@ -304,7 +364,11 @@ function OverviewTab({
                 : "Nothing to do — people are admitted as they register."}
             </p>
           ) : (
-            <ApprovalQueue slug={w.id} pending={pending.slice(0, 5)} onChanged={onChanged} />
+            <ApprovalQueue
+              slug={w.id}
+              pending={pending.slice(0, 5)}
+              onChanged={onChanged}
+            />
           )}
         </Card>
       </div>
@@ -329,14 +393,18 @@ function AttendeesTab({
   /* After the webinar: chips by engagement level, the Engagement tab's Follow up groups,
    * so "Message these N" here and there reach the same people. Empty groups are left
    * out; before the scores are computed only "Didn't join" can have anyone in it. */
-  const buckets = ended ? followupGroups().filter((g) => registrants.some(g.test)) : [];
+  const buckets = ended
+    ? followupGroups().filter((g) => registrants.some(g.test))
+    : [];
   const [bucketId, setBucketId] = useState("");
   const bucket = buckets.find((b) => b.id === bucketId) ?? null;
   const rows = bucket ? registrants.filter(bucket.test) : registrants;
   const messaging = useRosterMessaging({
     webinarId: w.id,
     rows,
-    bucket: bucket ? { segment: bucket.segment, label: bucket.label, hints: bucket.hints } : null,
+    bucket: bucket
+      ? { segment: bucket.segment, label: bucket.label, hints: bucket.hints }
+      : null,
   });
 
   return (
@@ -394,23 +462,25 @@ function AttendeesTab({
 
         {buckets.length > 0 && registrants.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-1.5">
-            {[{ id: "", label: "Everyone", test: () => true }, ...buckets].map((b) => (
-              <button
-                key={b.id || "all"}
-                type="button"
-                onClick={() => setBucketId(b.id)}
-                className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${
-                  bucketId === b.id
-                    ? "border-brand bg-brand-soft text-brand"
-                    : "border-line text-ink-2 hover:border-line-2"
-                }`}
-              >
-                {b.label}{" "}
-                <span className="tabular-nums opacity-70">
-                  {registrants.filter(b.test).length}
-                </span>
-              </button>
-            ))}
+            {[{ id: "", label: "Everyone", test: () => true }, ...buckets].map(
+              (b) => (
+                <button
+                  key={b.id || "all"}
+                  type="button"
+                  onClick={() => setBucketId(b.id)}
+                  className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${
+                    bucketId === b.id
+                      ? "border-brand bg-brand-soft text-brand"
+                      : "border-line text-ink-2 hover:border-line-2"
+                  }`}
+                >
+                  {b.label}{" "}
+                  <span className="tabular-nums opacity-70">
+                    {registrants.filter(b.test).length}
+                  </span>
+                </button>
+              ),
+            )}
           </div>
         )}
 
@@ -419,7 +489,9 @@ function AttendeesTab({
             Nobody has registered yet.
           </p>
         ) : rows.length === 0 ? (
-          <p className="py-8 text-center text-[13px] text-ink-3">Nobody in this group.</p>
+          <p className="py-8 text-center text-[13px] text-ink-3">
+            Nobody in this group.
+          </p>
         ) : (
           <div className="-mx-4 overflow-x-auto px-4">
             <table className="w-full min-w-[680px] text-[12.5px]">
@@ -451,7 +523,9 @@ function AttendeesTab({
                           "no number" is only an answer if the numbers are visible.
                           Under the email because it is the same kind of fact. */}
                       {r.phone && (
-                        <div className="text-[11.5px] text-ink-3">{r.phone}</div>
+                        <div className="text-[11.5px] text-ink-3">
+                          {r.phone}
+                        </div>
                       )}
                     </td>
                     <td className="py-2.5 pr-3 text-ink-2">
@@ -464,7 +538,11 @@ function AttendeesTab({
                     </td>
                     {ended && (
                       <td className="py-2.5 pr-3 text-ink-2 tabular-nums">
-                        {r.joined ? `${r.watchMin} min` : <span className="text-ink-3">Didn&apos;t join</span>}
+                        {r.joined ? (
+                          `${r.watchMin} min`
+                        ) : (
+                          <span className="text-ink-3">Didn&apos;t join</span>
+                        )}
                       </td>
                     )}
                     {whatsappOn && <RosterWhatsAppCells row={r} />}
@@ -505,8 +583,9 @@ function HostLinkCard({ webinar: w }: { webinar: Webinar }) {
       <SectionTitle>Host and panelist link</SectionTitle>
       <CopyField value={`${origin}/host/${w.id}/room`} />
       <p className="mt-2.5 text-[12px] leading-relaxed text-ink-3">
-        Only you and the panelists on this webinar can use it — the server refuses to mint a
-        publishing token for anyone else, so sharing it does not give anyone the stage.
+        Only you and the panelists on this webinar can use it — the server
+        refuses to mint a publishing token for anyone else, so sharing it does
+        not give anyone the stage.
       </p>
     </Card>
   );
@@ -688,7 +767,10 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     // Shown whether or not it is on, because "no WhatsApp message will be sent" is
     // the fact a host is checking here — and the default is off.
     ["WhatsApp reminders", w.options.whatsappReminders === true],
-    ["Reminder times", describeReminders(w.options.reminders ?? DEFAULT_REMINDERS)],
+    [
+      "Reminder times",
+      describeReminders(w.options.reminders ?? DEFAULT_REMINDERS),
+    ],
     ["Attendee limit", formatCount(w.attendeeLimit)],
     ["Time zone", w.timeZone],
   ];

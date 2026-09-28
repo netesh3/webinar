@@ -30,7 +30,11 @@ import {
   timeZoneNames,
   zonedToInstant,
 } from "@/lib/format";
-import { WhatsAppRemindersToggle } from "@/engage";
+import {
+  AttendeeMessages,
+  MessageRow,
+  WhatsAppRemindersToggle,
+} from "@/engage";
 import { useScheduleSurvey } from "./survey/schedule-survey";
 
 /* Schedule or edit a webinar.
@@ -535,6 +539,16 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
     return instant;
   }, [form.date, form.time, form.timeZone]);
 
+  // The webinar being typed, for the message previews under What attendees get.
+  const previewWebinar = useMemo(
+    () => ({
+      topic: form.topic,
+      startsAt: startsAtPreview,
+      timeZone: form.timeZone,
+    }),
+    [form.topic, startsAtPreview, form.timeZone],
+  );
+
   const summaryZone =
     hydrated && startsAtPreview && form.timeZone
       ? shortTimeZone(form.timeZone, startsAtPreview)
@@ -566,12 +580,13 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
             first
           >
             <div className="grid gap-3.5">
-              {/* Topic and summary, then the cover, then the description, so a
-                  narrow screen reads in that order. `contents` lets those
-                  fields join this grid below `lg`; from `lg` they stack in the
-                  left column and the description takes the leftover height. */}
-              <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-stretch lg:gap-x-5">
-                <div className="contents lg:flex lg:h-full lg:flex-col lg:gap-3.5">
+              {/* Topic, summary, then tag and type in the left column; the cover
+                  on the right. Below `lg`, `contents` lets the left fields join
+                  this grid and the cover follows them. The tag and the type are up
+                  front, not folded: the tag files the webinar on the browse page
+                  and the type decides one-off or series — choices, not defaults. */}
+              <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-x-5">
+                <div className="contents lg:flex lg:flex-col lg:gap-3.5">
                   <div className="order-1 lg:order-none">
                     <Text
                       label="Topic"
@@ -592,9 +607,36 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                       hint="Shown on the browse page, under the title."
                     />
                   </div>
+
+                  <div className="order-4 grid gap-3.5 sm:grid-cols-2 lg:order-none">
+                    {/* Free text with suggestions from what already exists, rather
+                        than a fixed list nobody can extend without a deploy. */}
+                    <div>
+                      <label className="label" htmlFor="track">
+                        Topic tag
+                      </label>
+                      <input
+                        id="track"
+                        className="field"
+                        list="track-suggestions"
+                        placeholder="e.g. Productivity"
+                        value={form.track}
+                        onChange={(e) => set("track", e.target.value)}
+                      />
+                      <datalist id="track-suggestions">
+                        {config.tracks.map((t) => (
+                          <option key={t} value={t} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <KindControl
+                      value={form.kind}
+                      onChange={(v) => set("kind", v)}
+                    />
+                  </div>
                 </div>
 
-                <div className="order-3 lg:order-none lg:self-start">
+                <div className="order-3 lg:order-none">
                   <WebinarImagePicker
                     previewUrl={imagePreview}
                     onChange={(prepared, preview) => {
@@ -1049,53 +1091,21 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
           <FormGroup label="Page and feedback">
             <FormSection
               title="About the webinar"
-              description="The full description and the topic tag, on the registration page."
+              description="The full description, on the registration page."
               first
             >
-              <div className="grid gap-3.5">
-                <div className="order-4 flex min-h-28 flex-col lg:order-none lg:min-h-0 lg:flex-1">
-                  <label className="label" htmlFor="description">
-                    Description
-                  </label>
-                  <div className="min-h-28 lg:relative lg:min-h-0 lg:flex-1">
-                    <textarea
-                      id="description"
-                      className="field lg:absolute lg:inset-0 lg:!resize-none"
-                      rows={4}
-                      placeholder="Shown on the registration page."
-                      value={form.description}
-                      onChange={(e) => set("description", e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-5">
-                  {/* Free text with suggestions from what already exists, rather than a
-                    fixed list nobody can extend without a deploy. */}
-                  <div>
-                    <label className="label" htmlFor="track">
-                      Topic tag
-                    </label>
-                    <input
-                      id="track"
-                      className="field"
-                      list="track-suggestions"
-                      placeholder="e.g. Architecture"
-                      value={form.track}
-                      onChange={(e) => set("track", e.target.value)}
-                    />
-                    <datalist id="track-suggestions">
-                      {config.tracks.map((t) => (
-                        <option key={t} value={t} />
-                      ))}
-                    </datalist>
-                  </div>
-
-                  <KindControl
-                    value={form.kind}
-                    onChange={(v) => set("kind", v)}
-                  />
-                </div>
+              <div>
+                <label className="label" htmlFor="description">
+                  Description
+                </label>
+                <textarea
+                  id="description"
+                  className="field min-h-28"
+                  rows={5}
+                  placeholder="What you'll cover, who it's for, and what people will take away."
+                  value={form.description}
+                  onChange={(e) => set("description", e.target.value)}
+                />
               </div>
             </FormSection>
             <FormSection
@@ -1103,6 +1113,56 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
               description="Set it up now; in the room it's one button. Results land on the webinar's page afterwards."
             >
               {survey.node}
+            </FormSection>
+          </FormGroup>
+          <FormGroup label="What attendees get">
+            {/* Every message, in the order they get it, so a host sees the whole
+                journey while scheduling — and edits any of it from here. */}
+            <FormSection
+              title="Before"
+              description="From the moment they register until you go live."
+              first
+            >
+              <AttendeeMessages
+                stage="before"
+                webinar={previewWebinar}
+                email={Boolean(form.options.emailReminders)}
+                whatsapp={Boolean(form.options.whatsappReminders)}
+                reminderLabel={describeReminders(
+                  form.options.reminders ?? DEFAULT_REMINDERS,
+                )}
+              />
+            </FormSection>
+            <FormSection
+              title="During"
+              description="In the room, at the end of the session."
+            >
+              <div className="rounded-xl border border-line">
+                <MessageRow
+                  title="Feedback survey"
+                  when="pops up when you put it on screen"
+                  channels={[survey.on && "In the room"]}
+                  preview={
+                    <p className="text-[12px] text-ink-2">
+                      {survey.on
+                        ? "A short survey — set it up under Page and feedback, above."
+                        : "Off — switch it on under Page and feedback, above."}
+                    </p>
+                  }
+                />
+              </div>
+            </FormSection>
+            <FormSection
+              title="After"
+              description="The replay, and a follow-up for each engagement group."
+            >
+              <AttendeeMessages
+                stage="after"
+                webinar={previewWebinar}
+                email
+                whatsapp={Boolean(form.options.whatsappReminders)}
+                reminderLabel=""
+              />
             </FormSection>
           </FormGroup>
         </MoreOptions>
@@ -1125,7 +1185,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
 function defaultsSummary(
   form: FormState,
   surveyOn: boolean,
-): { bold: string; rest: string }[] {
+): { bold: string; rest: string; group: string }[] {
   const o = form.options;
   const channels = [
     o.emailReminders && "email",
@@ -1150,42 +1210,70 @@ function defaultsSummary(
       rest: form.registrationRequired
         ? `up to ${form.attendeeLimit.toLocaleString()}`
         : "no form",
+      group: "Registration",
     },
-    { bold: "Reminders", rest: channels ? `${times} · ${channels}` : "off" },
-    ...(room ? [{ bold: room, rest: "on" }] : []),
+    {
+      bold: "Reminders",
+      rest: channels ? `${times} · ${channels}` : "off",
+      group: "Reminders",
+    },
+    ...(room ? [{ bold: room, rest: "on", group: "In the room" }] : []),
     {
       bold: o.autoRecord ? "Recorded" : "Not recorded",
       rest: o.autoRecord ? "replay sent after" : "",
+      group: "In the room",
     },
-    { bold: "Feedback", rest: surveyOn ? "asked at the end" : "off" },
+    {
+      bold: "Feedback",
+      rest: surveyOn ? "asked at the end" : "off",
+      group: "Page and feedback",
+    },
+    {
+      bold: "Messages",
+      rest: "see everything attendees get",
+      group: "What attendees get",
+    },
   ];
 }
 
-/* Everything but the basics, folded: the defaults as chips, and "Change" to open the four
- * groups. Open from the start when editing — a host who pressed Edit came to change one of
- * these. */
+const groupId = (label: string) =>
+  `settings-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+
+/* Everything but the basics, folded: the current settings as chips — each one
+ * opens the settings at its own section — and a button that says what it does.
+ * Open from the start when editing: a host who pressed Edit came to change one
+ * of these. */
 function MoreOptions({
   editing,
   summary,
   children,
 }: {
   editing: boolean;
-  summary: { bold: string; rest: string }[];
+  summary: { bold: string; rest: string; group: string }[];
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(editing);
+  function jump(group: string) {
+    setOpen(true);
+    // After the unfold has painted, or there is nothing to scroll to yet.
+    requestAnimationFrame(() =>
+      document
+        .getElementById(groupId(group))
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  }
   return (
     <div className="grid gap-5">
       <Card className="px-4 py-3.5 lg:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-[14px] font-semibold text-ink">
-              {editing ? "Everything else" : "Already set up for you"}
+              Registration, reminders and the room
             </h2>
             <p className="text-[12px] text-ink-3">
               {editing
-                ? "Registration, reminders, the room, the page and feedback."
-                : "Sensible defaults — change any of them."}
+                ? "Plus the page and the feedback survey. Click any to go to it."
+                : "Already set up for you. Click any to change it."}
             </p>
           </div>
           <Button
@@ -1195,7 +1283,7 @@ function MoreOptions({
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
           >
-            {open ? "Hide" : "Change"}
+            {open ? "Hide settings" : "Show all settings"}
             <ChevronDownIcon
               className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`}
             />
@@ -1203,13 +1291,15 @@ function MoreOptions({
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {summary.map((c) => (
-            <span
+            <button
+              type="button"
               key={c.bold}
-              className="rounded-full bg-surface-2 px-2.5 py-1 text-[12px] text-ink-2"
+              onClick={() => jump(c.group)}
+              className="rounded-full bg-surface-2 px-2.5 py-1 text-[12px] text-ink-2 transition hover:bg-brand-soft hover:text-ink"
             >
               <b className="font-medium text-ink">{c.bold}</b>
               {c.rest ? ` · ${c.rest}` : ""}
-            </span>
+            </button>
           ))}
         </div>
       </Card>
@@ -1228,7 +1318,7 @@ function FormGroup({
   children: ReactNode;
 }) {
   return (
-    <div>
+    <div id={groupId(label)} className="scroll-mt-20">
       <h2 className="mb-2 text-[11px] font-semibold tracking-[0.07em] text-ink-3 uppercase">
         {label}
       </h2>
