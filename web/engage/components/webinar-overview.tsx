@@ -8,7 +8,7 @@ import type { CRMWebinarMessagesResponse } from "@/lib/api-types";
 import { useNow } from "@/lib/clock";
 import { Timeline, timelineRows } from "./messages-parts";
 
-/* The webinar's Overview, WhatsApp part: what goes out on its own before the webinar
+/* The webinar's Overview, WhatsApp part: the automated messages before the webinar
  * (confirmation, each reminder, the replay) with how many are sent or queued, and replies
  * waiting. A slot: absent where this deployment cannot send WhatsApp. */
 export function WebinarWhatsAppOverview({
@@ -68,9 +68,7 @@ export function WebinarWhatsAppOverview({
   const waiting = data.waiting.length;
   return (
     <Timeline
-      title={
-        ended ? "Everything sent for this webinar" : "What goes out on its own"
-      }
+      title={ended ? "Everything sent for this webinar" : "Automated messages"}
       rows={rows}
       footer={
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-[11.5px] text-ink-3">

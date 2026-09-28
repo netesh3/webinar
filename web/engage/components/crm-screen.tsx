@@ -27,7 +27,12 @@ import {
   renderTemplate,
   templateKey,
 } from "./crm-templates";
-import { ArrowLeftIcon, SearchIcon, SendIcon, WhatsAppIcon } from "@/components/icons";
+import {
+  ArrowLeftIcon,
+  SearchIcon,
+  SendIcon,
+  WhatsAppIcon,
+} from "@/components/icons";
 import { useSession, useToast } from "@/components/providers";
 import { Badge, Button, Card, Empty } from "@/components/ui";
 import { ApiError } from "@/lib/api";
@@ -117,7 +122,7 @@ const VIEW_BLURBS: Partial<Record<CRMView, string>> = {
   broadcasts:
     "One message to many people, from your own WhatsApp number and billed to your Meta account.",
   sequences:
-    "Several messages over days, sent on their own to everybody who registers from now on.",
+    "Several messages over days, sent automatically to everybody who registers from now on.",
   bots: "A reply to somebody who writes in, with the conversation handed to you the moment the flow runs out of answers.",
 };
 
@@ -524,8 +529,8 @@ export function CRMScreen() {
           host fixing a connection and a host thinking they lost their list. */}
       {!whatsappConnected && view !== "setup" && (
         <Alert tone="warn" title="WhatsApp isn't connected">
-          Your contacts and conversations are unaffected, but nothing can be sent
-          until you connect your own WhatsApp Business account.{" "}
+          Your contacts and conversations are unaffected, but nothing can be
+          sent until you connect your own WhatsApp Business account.{" "}
           {/* Straight to the step, not to account settings: the card moved here,
               and sending somebody to a different screen to do one of five things
               is the arrangement this tab replaced. */}
@@ -600,8 +605,8 @@ export function CRMScreen() {
           {scope && (
             <Card className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
               <p className="text-[13px] leading-relaxed text-ink-2">
-                Declined registrations are left out, and so is anybody who joined
-                as a guest without an email address or a number.{" "}
+                Declined registrations are left out, and so is anybody who
+                joined as a guest without an email address or a number.{" "}
                 <Link
                   href={`/host/${scope.webinarId}?tab=attendees`}
                   className="font-medium text-ink underline"
@@ -776,7 +781,9 @@ function ContactBreakdown({
   /* "Has written in" is a fact about a conversation, and there are no conversations
    * before WhatsApp is connected — but consent is recorded by the registration form
    * either way, so the other group is worth reading from the first sign-up. */
-  const groups = CHIP_GROUPS.filter((g) => whatsappConnected || !g.needsWhatsApp);
+  const groups = CHIP_GROUPS.filter(
+    (g) => whatsappConnected || !g.needsWhatsApp,
+  );
 
   return (
     <Card className="grid gap-4 px-5 py-4">
@@ -1821,7 +1828,9 @@ export function Compose({
                   onClick={onManageSnippets}
                   className="h-7 px-1.5 text-[12px] font-medium text-brand hover:underline"
                 >
-                  {snippets.length ? "Edit quick replies" : "+ Save a quick reply"}
+                  {snippets.length
+                    ? "Edit quick replies"
+                    : "+ Save a quick reply"}
                 </button>
               )}
             </div>

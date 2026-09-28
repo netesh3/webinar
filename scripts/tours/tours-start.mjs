@@ -86,11 +86,11 @@ export const create = {
       await t.point(page.getByLabel("Start time"));
       await t.point(page.getByLabel("Duration"));
     });
-    await t.say("That's all you need. Everything else is already set up with sensible defaults, shown here.", async () => {
-      await t.point(page.getByRole("heading", { name: "Already set up for you" }));
+    await t.say("That's all you need. Registration, reminders and the room are already set up for you, summarised here.", async () => {
+      await t.point(page.getByRole("heading", { name: "Registration, reminders and the room" }));
     });
-    await t.say("If you want to change something, click Change. Options are grouped: registration, reminders, the room, and your page.", async () => {
-      await t.click(btn(page, /^Change$/), { settle: 1200 });
+    await t.say("Click any of them to change it, or click Show all settings to see everything.", async () => {
+      await t.click(btn(page, /^Show all settings/), { settle: 1200 });
     });
     await t.say("Registration decides who can join. You can require approval, cap the number of seats, or add your own questions.", async () => {
       await t.point(page.getByRole("heading", { name: "Who can join" }));

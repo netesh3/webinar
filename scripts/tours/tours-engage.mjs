@@ -37,7 +37,7 @@ export const messages = {
       await t.click(btn(page, /Keyboard shortcuts/), { settle: 1800 });
       await t.key("Escape");
     });
-    await t.say("That's the inbox. Next, let's make WhatsApp work for you on its own.");
+    await t.say("That's the inbox. Next, let's set up automations.");
   },
 };
 
@@ -48,7 +48,7 @@ export const whatsapp = {
   async run(t, page) {
     await t.goto("/host");
     await t.card(
-      { kicker: "WebinarLiv guided tour · 8", title: "WhatsApp and automations", sub: "Reminders, replays and rules that run on their own" },
+      { kicker: "WebinarLiv guided tour · 8", title: "WhatsApp and automations", sub: "Reminders, replays and automations that run for you" },
       "In this video, we'll look at your WhatsApp page, and set up an automation.",
     );
     await t.say("Open your account menu, and choose WhatsApp.", async () => {
@@ -58,7 +58,7 @@ export const whatsapp = {
     await t.say("At the top, you can see your number is connected. Messages come from your own WhatsApp Business number.", async () => {
       await t.point(page.getByText(/^Connected/).first());
     });
-    await t.say("Sent to everyone who registers are the messages that go out on their own: a confirmation, a reminder, and the replay.", async () => {
+    await t.say("Sent to everyone who registers are your automated messages: a confirmation, a reminder, and the replay.", async () => {
       await t.point(page.getByRole("heading", { name: "Sent to everyone who registers" }));
     });
     await t.say("Click Edit to change the wording. Pick a message, and see it on the phone before you save.", async () => {

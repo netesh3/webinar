@@ -1128,7 +1128,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
 function defaultsSummary(
   form: FormState,
   surveyOn: boolean,
-): { bold: string; rest: string }[] {
+): { bold: string; rest: string; group: string }[] {
   const o = form.options;
   const channels = [
     o.emailReminders && "email",
@@ -1153,42 +1153,65 @@ function defaultsSummary(
       rest: form.registrationRequired
         ? `up to ${form.attendeeLimit.toLocaleString()}`
         : "no form",
+      group: "Registration",
     },
-    { bold: "Reminders", rest: channels ? `${times} · ${channels}` : "off" },
-    ...(room ? [{ bold: room, rest: "on" }] : []),
+    {
+      bold: "Reminders",
+      rest: channels ? `${times} · ${channels}` : "off",
+      group: "Reminders",
+    },
+    ...(room ? [{ bold: room, rest: "on", group: "In the room" }] : []),
     {
       bold: o.autoRecord ? "Recorded" : "Not recorded",
       rest: o.autoRecord ? "replay sent after" : "",
+      group: "In the room",
     },
-    { bold: "Feedback", rest: surveyOn ? "asked at the end" : "off" },
+    {
+      bold: "Feedback",
+      rest: surveyOn ? "asked at the end" : "off",
+      group: "Page and feedback",
+    },
   ];
 }
 
-/* Everything but the basics, folded: the defaults as chips, and "Change" to open the four
- * groups. Open from the start when editing — a host who pressed Edit came to change one of
- * these. */
+const groupId = (label: string) =>
+  `settings-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+
+/* Everything but the basics, folded: the current settings as chips — each one
+ * opens the settings at its own section — and a button that says what it does.
+ * Open from the start when editing: a host who pressed Edit came to change one
+ * of these. */
 function MoreOptions({
   editing,
   summary,
   children,
 }: {
   editing: boolean;
-  summary: { bold: string; rest: string }[];
+  summary: { bold: string; rest: string; group: string }[];
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(editing);
+  function jump(group: string) {
+    setOpen(true);
+    // After the unfold has painted, or there is nothing to scroll to yet.
+    requestAnimationFrame(() =>
+      document
+        .getElementById(groupId(group))
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  }
   return (
     <div className="grid gap-5">
       <Card className="px-4 py-3.5 lg:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-[14px] font-semibold text-ink">
-              {editing ? "Everything else" : "Already set up for you"}
+              Registration, reminders and the room
             </h2>
             <p className="text-[12px] text-ink-3">
               {editing
-                ? "Registration, reminders, the room, the page and feedback."
-                : "Sensible defaults — change any of them."}
+                ? "Plus the page and the feedback survey. Click any to go to it."
+                : "Already set up for you. Click any to change it."}
             </p>
           </div>
           <Button
@@ -1198,7 +1221,7 @@ function MoreOptions({
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
           >
-            {open ? "Hide" : "Change"}
+            {open ? "Hide settings" : "Show all settings"}
             <ChevronDownIcon
               className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`}
             />
@@ -1206,13 +1229,15 @@ function MoreOptions({
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {summary.map((c) => (
-            <span
+            <button
+              type="button"
               key={c.bold}
-              className="rounded-full bg-surface-2 px-2.5 py-1 text-[12px] text-ink-2"
+              onClick={() => jump(c.group)}
+              className="rounded-full bg-surface-2 px-2.5 py-1 text-[12px] text-ink-2 transition hover:bg-brand-soft hover:text-ink"
             >
               <b className="font-medium text-ink">{c.bold}</b>
               {c.rest ? ` · ${c.rest}` : ""}
-            </span>
+            </button>
           ))}
         </div>
       </Card>
@@ -1231,7 +1256,7 @@ function FormGroup({
   children: ReactNode;
 }) {
   return (
-    <div>
+    <div id={groupId(label)} className="scroll-mt-20">
       <h2 className="mb-2 text-[11px] font-semibold tracking-[0.07em] text-ink-3 uppercase">
         {label}
       </h2>
