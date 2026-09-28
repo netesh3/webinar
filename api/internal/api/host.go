@@ -1597,7 +1597,7 @@ func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request) {
 	for _, a := range rep.Attendees {
 		// The person: their whole session, with first in, last out and the summed total.
 		_ = cw.Write([]string{
-			"attended", a.Name, a.Email, a.Role,
+			"attended", csvText(a.Name), csvText(a.Email), a.Role,
 			a.FirstJoinedAt, a.LastLeftAt, fmt.Sprint(a.WatchMin), fmt.Sprint(len(a.Visits)),
 			"", "",
 		})
@@ -1611,7 +1611,7 @@ func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, v := range a.Visits {
 			_ = cw.Write([]string{
-				"visit", a.Name, a.Email, a.Role,
+				"visit", csvText(a.Name), csvText(a.Email), a.Role,
 				v.JoinedAt, v.LeftAt, fmt.Sprint(v.Minutes), "",
 				"", "",
 			})
@@ -1624,9 +1624,9 @@ func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request) {
 			name = "Anonymous"
 		}
 		_ = cw.Write([]string{
-			"question", name, "", "",
+			"question", csvText(name), "", "",
 			"", "", "", "",
-			q.Text, fmt.Sprint(q.Answered),
+			csvText(q.Text), fmt.Sprint(q.Answered),
 		})
 	}
 	cw.Flush()

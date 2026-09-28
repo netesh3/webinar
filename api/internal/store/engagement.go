@@ -89,10 +89,17 @@ func (s *Store) EngagementInput(ctx context.Context, webinarID string, now time.
 			return rows.Scan(&v.Identity, &v.Joined, &v.Left)
 		}))
 
+	/* The audience is every "att_" identity, the same split visits, votes and reactions use —
+	 * not sender_role, which is the role at the moment of sending: an attendee the host brought
+	 * on stage chats and asks as "panelist", and filtering on it silently dropped everything
+	 * they did from their own score and from the session's totals. An image has no text, so
+	 * its storage key stands in for the body: long enough to score, unique enough to not
+	 * read as a repeat of the previous image. */
 	b.Queue(`
-		SELECT sender_identity, created_at, char_length(content), hashtextextended(content, 0)
+		SELECT sender_identity, created_at, char_length(COALESCE(media_key, content)),
+		       hashtextextended(COALESCE(media_key, content), 0)
 		  FROM chat_messages
-		 WHERE webinar_id = $1 AND deleted_at IS NULL AND sender_role = 'attendee'
+		 WHERE webinar_id = $1 AND deleted_at IS NULL AND starts_with(sender_identity, 'att_')
 		 ORDER BY sender_identity, seq`, webinarID).
 		Query(scanAll(&in.Chats, func(rows pgx.Rows, c *engagement.Chat) error {
 			return rows.Scan(&c.Identity, &c.At, &c.Length, &c.Hash)
@@ -101,15 +108,23 @@ func (s *Store) EngagementInput(ctx context.Context, webinarID string, now time.
 	b.Queue(`
 		SELECT sender_name, created_at, CASE WHEN message_type = 'image' THEN '[image]' ELSE left(content, 280) END
 		  FROM chat_messages
-		 WHERE webinar_id = $1 AND deleted_at IS NULL AND sender_role = 'attendee'
+		 WHERE webinar_id = $1 AND deleted_at IS NULL AND starts_with(sender_identity, 'att_')
 		 ORDER BY seq DESC LIMIT 5`, webinarID).
 		Query(scanAll(&in.LatestChat, func(rows pgx.Rows, c *engagement.ChatLine) error {
 			return rows.Scan(&c.Name, &c.At, &c.Text)
 		}))
 
 	b.Queue(`
+		SELECT count(*) FROM chat_messages
+		 WHERE webinar_id = $1 AND deleted_at IS NULL AND NOT starts_with(sender_identity, 'att_')`, webinarID).
+		QueryRow(func(row pgx.Row) error { return row.Scan(&in.StageChats) })
+
+	// A question with no identity predates identities being stored; its role is all there is.
+	b.Queue(`
 		SELECT id, identity, name, body, created_at, anonymous, dismissed, answered, upvotes
-		  FROM session_questions WHERE webinar_id = $1 AND role = 'attendee'`, webinarID).
+		  FROM session_questions
+		 WHERE webinar_id = $1
+		   AND (starts_with(identity, 'att_') OR (identity = '' AND role = 'attendee'))`, webinarID).
 		Query(scanAll(&in.Questions, func(rows pgx.Rows, q *engagement.Question) error {
 			return rows.Scan(&q.ID, &q.Identity, &q.Name, &q.Text, &q.At, &q.Anonymous,
 				&q.Dismissed, &q.Answered, &q.Upvotes)

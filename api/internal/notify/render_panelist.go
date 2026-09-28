@@ -1,71 +1,174 @@
 package notify
 
 import (
+	"bytes"
 	"fmt"
+	"html/template"
 	"strings"
 )
 
 /* What a panelist is told. Their link is StageURL, never JoinURL: a panelist reaches the
- * stage by signing in, and an attendee join link would seat them in the audience. */
+ * stage by signing in, and an attendee join link would seat them in the audience.
+ *
+ * Each message is plain text plus an HTML alternative built from the same pieces, so the
+ * two parts cannot drift into saying different things. */
+
+// panelistMail is one panelist message before it becomes text and HTML.
+type panelistMail struct {
+	Subject   string
+	Preheader string
+	Eyebrow   string
+	Heading   string
+	Greeting  string
+	Lead      string
+	When      string
+	WhenLabel string
+	Was       string
+	LinkLabel string // the text version's line above the link
+	Button    string
+	URL       string
+	Notes     []string
+	SignOff   string
+	Signer    string
+	Product   string
+	Cancelled bool
+}
+
+func panelistGreeting(name string) string {
+	if first := FirstName(name); first != "" {
+		return "Hi " + first + ","
+	}
+	return "Hi there,"
+}
+
+func productName(p string) string {
+	if p = strings.TrimSpace(p); p != "" {
+		return p
+	}
+	return "Webinar Liv"
+}
+
+// signer is the host, or the product's team when the webinar has no host name.
+func signer(in Invite) string {
+	if h := strings.TrimSpace(in.HostName); h != "" {
+		return h
+	}
+	return "The " + productName(in.Product) + " team"
+}
+
+func signInNote(in Invite) string {
+	if e := strings.TrimSpace(in.Email); e != "" {
+		return "Sign in with " + e + " and you'll go straight onto the stage, where you can share your camera and screen."
+	}
+	return "Sign in with this email address and you'll go straight onto the stage, where you can share your camera and screen."
+}
 
 // PanelistInvited is sent when somebody is added to a scheduled webinar's panel.
-func PanelistInvited(in Invite) (subject, body string) {
-	subject = fmt.Sprintf("You're a panelist: %s", in.Topic)
-
-	var b strings.Builder
-	b.WriteString(greeting(in.Name) + "\n\n")
+func PanelistInvited(in Invite) (subject, text, html string) {
+	lead := "You've been added as a panelist for " + quoted(in.Topic) + "."
 	if h := strings.TrimSpace(in.HostName); h != "" {
-		fmt.Fprintf(&b, "%s has added you as a panelist on %q.\n\n", h, in.Topic)
-	} else {
-		fmt.Fprintf(&b, "You've been added as a panelist on %q.\n\n", in.Topic)
+		lead = h + " has added you as a panelist for " + quoted(in.Topic) + "."
 	}
-	if in.WhenText != "" {
-		fmt.Fprintf(&b, "When: %s\n\n", in.WhenText)
+	m := panelistMail{
+		Subject:   "You're a panelist: " + strings.TrimSpace(in.Topic),
+		Preheader: lead,
+		Eyebrow:   "You're a panelist",
+		Heading:   strings.TrimSpace(in.Topic),
+		Lead:      lead,
+		When:      in.WhenText,
+		WhenLabel: "When",
+		LinkLabel: "Join the stage here:",
+		Button:    "Join the stage",
+		URL:       in.StageURL,
+		Notes:     []string{signInNote(in)},
 	}
-	b.WriteString("Join the stage here:\n")
-	b.WriteString(in.StageURL + "\n\n")
-	b.WriteString("Sign in with this email address and you'll go straight onto the stage, where you can share your camera and screen.\n")
-	b.WriteString("A calendar file is attached so you can add this to your calendar.\n")
-	if h := strings.TrimSpace(in.HostName); h != "" {
-		fmt.Fprintf(&b, "\nSee you there,\n%s\n", h)
+	if in.Calendar {
+		m.Notes = append(m.Notes, "The attached calendar file adds the session to your calendar.")
 	}
-	return subject, b.String()
+	return renderPanelist(in, m)
 }
 
 // PanelistRescheduled tells an already-invited panelist the start moved.
-func PanelistRescheduled(in Invite) (subject, body string) {
-	subject = fmt.Sprintf("New time: %s", in.Topic)
-
-	var b strings.Builder
-	b.WriteString(greeting(in.Name) + "\n\n")
-	fmt.Fprintf(&b, "%q, where you're a panelist, has a new time.\n\n", in.Topic)
-	if in.WhenText != "" {
-		fmt.Fprintf(&b, "New time: %s\n\n", in.WhenText)
+func PanelistRescheduled(in Invite) (subject, text, html string) {
+	lead := quoted(in.Topic) + " has moved to a new time. You're still on the panel."
+	m := panelistMail{
+		Subject:   "New time: " + strings.TrimSpace(in.Topic),
+		Preheader: lead,
+		Eyebrow:   "New time",
+		Heading:   strings.TrimSpace(in.Topic),
+		Lead:      lead,
+		When:      in.WhenText,
+		WhenLabel: "New time",
+		Was:       in.WasText,
+		LinkLabel: "Your stage link hasn't changed:",
+		Button:    "Join the stage",
+		URL:       in.StageURL,
+		Notes:     []string{signInNote(in)},
 	}
-	b.WriteString("Your stage link hasn't changed:\n")
-	b.WriteString(in.StageURL + "\n\n")
-	b.WriteString("An updated calendar file is attached.\n")
-	if h := strings.TrimSpace(in.HostName); h != "" {
-		fmt.Fprintf(&b, "\n%s\n", h)
+	if in.Calendar {
+		m.Notes = append(m.Notes, "The attached calendar file moves the event already in your calendar.")
 	}
-	return subject, b.String()
+	return renderPanelist(in, m)
 }
 
 // PanelistCancelled tells an invited panelist the webinar was deleted before it ran. No
 // link: there is no longer anything to join.
-func PanelistCancelled(in Invite) (subject, body string) {
-	subject = fmt.Sprintf("Cancelled: %s", in.Topic)
+func PanelistCancelled(in Invite) (subject, text, html string) {
+	lead := quoted(in.Topic) + " has been cancelled."
+	if in.WhenText != "" {
+		lead = quoted(in.Topic) + ", scheduled for " + in.WhenText + ", has been cancelled."
+	}
+	note := "You don't need to do anything."
+	if in.Calendar {
+		note += " The attached calendar file removes the event from your calendar."
+	} else {
+		note += " If you added it to your calendar, you can remove it."
+	}
+	m := panelistMail{
+		Subject:   "Cancelled: " + strings.TrimSpace(in.Topic),
+		Preheader: lead,
+		Eyebrow:   "Cancelled",
+		Heading:   strings.TrimSpace(in.Topic),
+		Lead:      lead,
+		Notes:     []string{note},
+		Cancelled: true,
+	}
+	return renderPanelist(in, m)
+}
+
+func renderPanelist(in Invite, m panelistMail) (subject, text, html string) {
+	m.Greeting = panelistGreeting(in.Name)
+	m.SignOff = "Thanks,"
+	m.Signer = signer(in)
+	m.Product = productName(in.Product)
 
 	var b strings.Builder
-	b.WriteString(greeting(in.Name) + "\n\n")
-	if in.WhenText != "" {
-		fmt.Fprintf(&b, "%q, scheduled for %s, has been cancelled.\n", in.Topic, in.WhenText)
-	} else {
-		fmt.Fprintf(&b, "%q has been cancelled.\n", in.Topic)
+	b.WriteString(m.Greeting + "\n\n")
+	b.WriteString(m.Lead + "\n\n")
+	if m.When != "" && !m.Cancelled {
+		fmt.Fprintf(&b, "%s: %s\n", m.WhenLabel, m.When)
+		if m.Was != "" {
+			fmt.Fprintf(&b, "Was: %s\n", m.Was)
+		}
+		b.WriteString("\n")
 	}
-	b.WriteString("You don't need to do anything; you can remove it from your calendar.\n")
-	if h := strings.TrimSpace(in.HostName); h != "" {
-		fmt.Fprintf(&b, "\n%s\n", h)
+	if m.URL != "" {
+		b.WriteString(m.LinkLabel + "\n" + m.URL + "\n\n")
 	}
-	return subject, b.String()
+	for _, n := range m.Notes {
+		b.WriteString(n + "\n\n")
+	}
+	b.WriteString(m.SignOff + "\n" + m.Signer + "\n")
+
+	var hb bytes.Buffer
+	if err := panelistHTML.Execute(&hb, panelistView{panelistMail: m, Initial: string([]rune(m.Product)[0]), MSO: msoFonts}); err != nil {
+		return m.Subject, b.String(), ""
+	}
+	return m.Subject, b.String(), hb.String()
+}
+
+type panelistView struct {
+	panelistMail
+	Initial string
+	MSO     template.HTML
 }

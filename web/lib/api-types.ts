@@ -673,6 +673,11 @@ export interface EngagementKPIs {
   peakMinute: number /* int */;
   chatMessages: number /* int */;
   chatters: number /* int */;
+  /**
+   * * Messages from the host and panelists: not in any audience figure, but shown so a
+   * 	 * session where only the stage chatted doesn't read as unused chat.
+   */
+  stageChatMessages?: number /* int */;
   questions: number /* int */;
   answeredQuestions: number /* int */;
   upvotes: number /* int */;

@@ -102,6 +102,9 @@ type Input struct {
 	Visits     []Visit
 	Chats      []Chat
 	LatestChat []ChatLine
+	// StageChats is how many messages the host and panelists sent. Never scored; reported
+	// so a session where only the stage chatted doesn't read as "nobody used chat".
+	StageChats int
 	Questions  []Question
 	Upvotes    []Upvote
 	Polls      []Poll
