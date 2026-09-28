@@ -29,7 +29,7 @@ func (s *Server) youtubeFront(path, result, detail string) string {
 	base := strings.TrimRight(s.cfg.WebBaseURL, "/")
 	u, err := url.Parse(base + path)
 	if err != nil {
-		u, _ = url.Parse(base + "/account")
+		u, _ = url.Parse(base + "/settings")
 	}
 	q := u.Query()
 	if result != "" {
@@ -45,7 +45,7 @@ func (s *Server) youtubeFront(path, result, detail string) string {
 func safeReturnPath(raw string) string {
 	p := strings.TrimSpace(raw)
 	if p == "" || !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.Contains(p, "://") {
-		return "/account"
+		return "/settings"
 	}
 	if i := strings.IndexAny(p, "\r\n"); i >= 0 {
 		p = p[:i]
@@ -99,7 +99,7 @@ func (s *Server) youtubeSameSite() http.SameSite {
 }
 
 func (s *Server) handleYouTubeCallback(w http.ResponseWriter, r *http.Request) {
-	ret := "/account"
+	ret := "/settings"
 	fail := func(result, detail string) {
 		http.SetCookie(w, &http.Cookie{
 			Name: youtubeStateCookie, Value: "", Path: "/", MaxAge: -1,

@@ -443,6 +443,10 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/youtube/connect", s.handleYouTubeConnect)
 				r.Delete("/youtube", s.handleYouTubeDisconnect)
 
+				r.Get("/integrations", s.handleListIntegrations)
+				r.Post("/integrations/{id}/interest", s.handleIntegrationInterest)
+				r.Delete("/integrations/{id}", s.handleIntegrationDisconnect)
+
 				// The WhatsApp CRM's routes, mounted by the CRM itself. See Engage.Mount.
 				s.engage.Mount(publicAPI, r)
 

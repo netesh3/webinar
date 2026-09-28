@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_REMINDERS, describeReminders } from "./reminder-times";
+import { DEFAULT_REMINDERS, ReminderTimes, describeReminders } from "./reminder-times";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
@@ -36,6 +36,7 @@ import {
   RosterContactsLink,
   RosterWhatsAppCells,
   RosterWhatsAppHeaders,
+  ScheduleMessagesTab,
   WebinarWhatsAppOverview,
   WebinarWhatsAppMetrics,
   EngagementFollowUpPage,
@@ -145,6 +146,27 @@ export function HostWebinarTabs({
       )}
       {tab === "Setup" && (
         <div className="grid gap-4">
+          <Card className="p-5">
+            <SectionTitle>Messages & follow-ups</SectionTitle>
+            <p className="mt-1 mb-4 text-[12.5px] text-ink-2">
+              The same editor as scheduling. Changes here apply to this webinar.
+            </p>
+            <ScheduleMessagesTab
+              slug={w.id}
+              webinar={{
+                topic: w.topic,
+                startsAt: new Date(w.startsAt),
+                timeZone: w.timeZone,
+              }}
+              reminderTimes={({ value, onChange, disabled }) => (
+                <ReminderTimes
+                  value={value}
+                  onChange={onChange}
+                  disabled={disabled}
+                />
+              )}
+            />
+          </Card>
           <SettingsTab webinar={w} />
           <StageTab webinar={w} onChanged={onChanged} />
           <HostLinkCard webinar={w} />
@@ -770,14 +792,6 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     ["Registration required", w.registrationRequired],
     ["Record automatically", w.options.autoRecord],
     ["Live captions", w.options.captions],
-    ["Email reminders", w.options.emailReminders !== false],
-    // Shown whether or not it is on, because "no WhatsApp message will be sent" is
-    // the fact a host is checking here — and the default is off.
-    ["WhatsApp reminders", w.options.whatsappReminders === true],
-    [
-      "Reminder times",
-      describeReminders(w.options.reminders ?? DEFAULT_REMINDERS),
-    ],
     ["Attendee limit", formatCount(w.attendeeLimit)],
     ["Time zone", w.timeZone],
   ];

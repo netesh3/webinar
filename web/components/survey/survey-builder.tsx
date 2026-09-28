@@ -1,7 +1,11 @@
 "use client";
 
-import { useId } from "react";
-import type { SurveyInput, SurveyQuestionInput, SurveyQuestionKind } from "@/lib/api-types";
+import { useId, type ReactNode } from "react";
+import type {
+  SurveyInput,
+  SurveyQuestionInput,
+  SurveyQuestionKind,
+} from "@/lib/api-types";
 import {
   DEFAULT_BUTTON,
   DEFAULT_TITLE,
@@ -12,8 +16,15 @@ import {
   moveItem,
   suggestedSendMinute,
 } from "@/lib/survey";
-import { Toggle } from "../controls";
-import { ArrowDownIcon, ArrowUpIcon, ExternalLinkIcon, PlusIcon, StarIcon, TrashIcon } from "../icons";
+import { InfoTip, Toggle } from "../controls";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  MaterialIcon,
+  PlusIcon,
+  StarIcon,
+  TrashIcon,
+} from "../icons";
 
 /* The host's survey builder: a controlled form over SurveyInput.
  *
@@ -22,12 +33,25 @@ import { ArrowDownIcon, ArrowUpIcon, ExternalLinkIcon, PlusIcon, StarIcon, Trash
  * answered) freezes everything that would change what an answer meant — mode, the rating
  * toggle, the questions — and leaves the wording of the card editable. */
 
+const SEND_SHORT: Record<(typeof SEND_CHOICES)[number]["id"], string> = {
+  manual: "I'll put it on screen",
+  at_minute: "At a set time",
+  on_end: "When I end",
+};
+
+const SEND_ICON: Record<(typeof SEND_CHOICES)[number]["id"], string> = {
+  manual: "co_present",
+  at_minute: "schedule",
+  on_end: "call_end",
+};
+
 export function SurveyBuilder({
   value,
   onChange,
   errors,
   locked,
   durationMin = 60,
+  aside,
 }: {
   value: SurveyInput;
   onChange: (next: SurveyInput) => void;
@@ -35,41 +59,43 @@ export function SurveyBuilder({
   locked: boolean;
   /** The webinar's scheduled length, for the "at a set time" suggestion. */
   durationMin?: number;
+  /** Live preview, beside the questions. */
+  aside?: ReactNode;
 }) {
   const id = useId();
   const set = (patch: Partial<SurveyInput>) => onChange({ ...value, ...patch });
   const setQ = (i: number, patch: Partial<SurveyQuestionInput>) =>
-    set({ questions: value.questions.map((q, n) => (n === i ? { ...q, ...patch } : q)) });
+    set({
+      questions: value.questions.map((q, n) =>
+        n === i ? { ...q, ...patch } : q,
+      ),
+    });
   const link = value.mode === "link";
 
   return (
-    <div className="grid gap-5">
-      <fieldset disabled={locked}>
-        <legend className="label">Survey type</legend>
-        <div role="radiogroup" aria-label="Survey type" className="grid gap-2 sm:grid-cols-2">
-          <ModeCard
-            active={!link}
-            onPick={() => set({ mode: "builtin" })}
-            icon={<StarIcon className="size-[18px]" />}
-            title="Rating survey"
-            body="1–5 stars plus a few short questions, answered right in the webinar."
-          />
-          <ModeCard
-            active={link}
-            onPick={() => set({ mode: "link" })}
-            icon={<ExternalLinkIcon className="size-[18px]" />}
-            title="Survey link"
-            body="Send people to your Google Form, Typeform or any https:// survey."
-          />
-        </div>
-        {locked && (
-          <p className="mt-2 text-[12px] text-ink-3">
-            People have answered, so the type and questions are fixed. You can still reword the title and button.
-          </p>
-        )}
-      </fieldset>
-
-      <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-3.5">
+      <div className="grid items-end gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+        <Segmented
+          label="Survey type"
+          name={`${id}-mode`}
+          value={value.mode}
+          disabled={locked}
+          onChange={(mode) => set({ mode: mode as SurveyInput["mode"] })}
+          options={[
+            {
+              id: "builtin",
+              label: "Rating survey",
+              icon: "star",
+              tip: "1–5 stars plus a few short questions, answered right in the webinar.",
+            },
+            {
+              id: "link",
+              label: "Survey link",
+              icon: "open_in_new",
+              tip: "Send people to your Google Form, Typeform or any https:// survey.",
+            },
+          ]}
+        />
         <TextInput
           id={`${id}-title`}
           label="Title"
@@ -79,7 +105,15 @@ export function SurveyBuilder({
           error={errors.title}
           onChange={(title) => set({ title })}
         />
-        {link && (
+      </div>
+      {locked && (
+        <p className="text-[12px] text-ink-3">
+          People have answered, so the type and questions are fixed. You can
+          still reword the title and button.
+        </p>
+      )}
+      {link && (
+        <div className="grid gap-3 sm:grid-cols-2">
           <TextInput
             id={`${id}-button`}
             label="Button label"
@@ -89,11 +123,6 @@ export function SurveyBuilder({
             error={errors.buttonLabel}
             onChange={(buttonLabel) => set({ buttonLabel })}
           />
-        )}
-      </div>
-
-      {link ? (
-        <>
           <TextInput
             id={`${id}-url`}
             label="Survey link"
@@ -105,71 +134,169 @@ export function SurveyBuilder({
             hint="Opens in a new tab. Only https:// links are accepted."
             onChange={(externalUrl) => set({ externalUrl })}
           />
-          <div className="rounded-lg border border-line px-2">
-            <Toggle
-              checked={value.askRating}
-              disabled={locked}
-              onChange={(askRating) => set({ askRating })}
-              label="Also ask for a 1–5 star rating"
-              description="Keeps your session ratings comparable across webinars, whatever the external form asks."
-            />
-          </div>
-        </>
-      ) : (
-        <QuestionList value={value} locked={locked} errors={errors} set={set} setQ={setQ} />
+        </div>
       )}
 
-      <fieldset>
-        <legend className="label">When attendees see it</legend>
-        <div role="radiogroup" aria-label="When attendees see it" className="grid gap-2">
-          {SEND_CHOICES.map((c) => (
-            <SendCard
-              key={c.id}
-              active={value.sendAt === c.id}
-              onPick={() =>
-                set({
-                  sendAt: c.id,
-                  sendAfterMin:
-                    c.id === "at_minute" && !value.sendAfterMin
-                      ? suggestedSendMinute(durationMin)
-                      : value.sendAfterMin,
-                })
-              }
-              title={c.title}
-              body={c.body}
-              recommended={c.recommended}
-            >
-              {c.id === "at_minute" && value.sendAt === "at_minute" && (
-                <span className="mt-2.5 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-2">
-                  <label htmlFor={`${id}-minute`}>Pop up</label>
-                  <input
-                    id={`${id}-minute`}
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    max={LIMITS.sendAfterMin}
-                    value={value.sendAfterMin || ""}
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                    onChange={(e) => set({ sendAfterMin: Math.trunc(Number(e.target.value)) || 0 })}
-                    aria-invalid={Boolean(errors.sendAfterMin)}
-                    className={`field h-8 w-20 py-1 text-center tabular-nums ${errors.sendAfterMin ? "border-live/60" : ""}`}
-                  />
-                  <span>minutes after you go live</span>
-                  {durationMin > 0 && (
-                    <span className="text-ink-3">· the session is {durationMin} min</span>
-                  )}
-                </span>
-              )}
-            </SendCard>
-          ))}
+      <Segmented
+        label="When attendees see it"
+        labelTip="Whichever you pick, you can still send it earlier from the room, and anyone who leaves early is asked on the way out."
+        name={`${id}-when`}
+        value={value.sendAt}
+        onChange={(sendAt) =>
+          set({
+            sendAt: sendAt as SurveyInput["sendAt"],
+            sendAfterMin:
+              sendAt === "at_minute" && !value.sendAfterMin
+                ? suggestedSendMinute(durationMin)
+                : value.sendAfterMin,
+          })
+        }
+        options={SEND_CHOICES.map((c) => ({
+          id: c.id,
+          label: SEND_SHORT[c.id],
+          icon: SEND_ICON[c.id],
+          tip: c.body,
+          recommended: c.recommended,
+        }))}
+      />
+      {value.sendAt === "at_minute" && (
+        <span className="flex flex-wrap items-center gap-2 text-[12.5px] text-ink-2">
+          <label htmlFor={`${id}-minute`}>Pop up</label>
+          <input
+            id={`${id}-minute`}
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={LIMITS.sendAfterMin}
+            value={value.sendAfterMin || ""}
+            onChange={(e) =>
+              set({ sendAfterMin: Math.trunc(Number(e.target.value)) || 0 })
+            }
+            aria-invalid={Boolean(errors.sendAfterMin)}
+            className={`field h-8 w-20 py-1 text-center tabular-nums ${errors.sendAfterMin ? "border-live/60" : ""}`}
+          />
+          <span>minutes after you go live</span>
+          {durationMin > 0 && (
+            <span className="text-ink-3">
+              · the session is {durationMin} min
+            </span>
+          )}
+        </span>
+      )}
+      {errors.sendAfterMin && (
+        <p className="text-[12px] text-live">{errors.sendAfterMin}</p>
+      )}
+
+      <div
+        className={
+          aside
+            ? "grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17.5rem]"
+            : undefined
+        }
+      >
+        <div className="grid gap-3">
+          {link ? (
+            <div className="rounded-lg border border-line px-2">
+              <Toggle
+                checked={value.askRating}
+                disabled={locked}
+                onChange={(askRating) => set({ askRating })}
+                label="Also ask for a 1–5 star rating"
+                description="Keeps your session ratings comparable across webinars, whatever the external form asks."
+              />
+            </div>
+          ) : (
+            <QuestionList
+              value={value}
+              locked={locked}
+              errors={errors}
+              set={set}
+              setQ={setQ}
+            />
+          )}
         </div>
-        {errors.sendAfterMin && <p className="mt-1.5 text-[12px] text-live">{errors.sendAfterMin}</p>}
-        <p className="mt-2 text-[11.5px] text-ink-3">
-          Whichever you pick, you can still send it earlier from the room, and anyone who leaves
-          early is asked on the way out.
-        </p>
-      </fieldset>
+        {aside}
+      </div>
+    </div>
+  );
+}
+
+function Segmented({
+  label,
+  labelTip,
+  name,
+  value,
+  onChange,
+  options,
+  disabled,
+}: {
+  label: string;
+  labelTip?: string;
+  name: string;
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+  options: {
+    id: string;
+    label: string;
+    tip: string;
+    icon?: string;
+    recommended?: boolean;
+  }[];
+}) {
+  const labelId = useId();
+  return (
+    <div className="min-w-0">
+      <div className="mb-1 flex items-center gap-1">
+        <span className="label mb-0" id={labelId}>
+          {label}
+        </span>
+        {labelTip && <InfoTip text={labelTip} />}
+      </div>
+      <div
+        role="radiogroup"
+        aria-labelledby={labelId}
+        className="flex h-[34px] w-fit max-w-full gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5"
+      >
+        {options.map((o) => {
+          const active = value === o.id;
+          return (
+            <label
+              key={o.id}
+              className={`flex cursor-pointer items-center gap-1 rounded-md px-2 text-[12.5px] whitespace-nowrap has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand/40 ${
+                active
+                  ? "bg-surface font-medium text-ink shadow-sm ring-1 ring-line"
+                  : "text-ink-2"
+              } ${disabled ? "pointer-events-none opacity-60" : ""}`}
+            >
+              <input
+                type="radio"
+                name={name}
+                value={o.id}
+                checked={active}
+                disabled={disabled}
+                onChange={() => onChange(o.id)}
+                className="sr-only"
+              />
+              {o.icon && (
+                <MaterialIcon
+                  name={o.icon}
+                  className={`size-4 ${active ? "text-brand" : "text-ink-3"}`}
+                  fill={active && o.icon === "star"}
+                />
+              )}
+              {o.label}
+              {o.recommended && (
+                <span
+                  className="size-1.5 shrink-0 rounded-full bg-ok ring-2 ring-ok-soft"
+                  title="Recommended"
+                />
+              )}
+              <InfoTip text={o.tip} />
+            </label>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -203,10 +330,13 @@ function QuestionList({
           ))}
         </span>
         <span className="min-w-0 flex-1 text-[13px] text-ink">
-          Overall rating, 1–5 stars <span className="text-ink-3">· always asked, required</span>
+          Overall rating, 1–5 stars{" "}
+          <span className="text-ink-3">· always asked, required</span>
         </span>
       </div>
-      {errors.questions && <p className="mt-2 text-[12px] text-live">{errors.questions}</p>}
+      {errors.questions && (
+        <p className="mt-2 text-[12px] text-live">{errors.questions}</p>
+      )}
       <ol className="mt-2 grid gap-2">
         {value.questions.map((q, i) => (
           <li key={q.id ?? `new-${i}`}>
@@ -217,20 +347,33 @@ function QuestionList({
               locked={locked}
               error={errors[`questions.${i}`]}
               onChange={(patch) => setQ(i, patch)}
-              onMove={(to) => set({ questions: moveItem(value.questions, i, to) })}
-              onRemove={() => set({ questions: value.questions.filter((_, n) => n !== i) })}
+              onMove={(to) =>
+                set({ questions: moveItem(value.questions, i, to) })
+              }
+              onRemove={() =>
+                set({ questions: value.questions.filter((_, n) => n !== i) })
+              }
             />
           </li>
         ))}
       </ol>
       {!locked && (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {(["nps_10", "text", "single_choice", "rating_5"] as SurveyQuestionKind[]).map((kind) => (
+          {(
+            [
+              "nps_10",
+              "text",
+              "single_choice",
+              "rating_5",
+            ] as SurveyQuestionKind[]
+          ).map((kind) => (
             <button
               key={kind}
               type="button"
               disabled={full}
-              onClick={() => set({ questions: [...value.questions, blankQuestion(kind)] })}
+              onClick={() =>
+                set({ questions: [...value.questions, blankQuestion(kind)] })
+              }
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-line-2 px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:border-brand hover:text-brand disabled:pointer-events-none disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
             >
               <PlusIcon className="size-3.5" />
@@ -284,10 +427,18 @@ function QuestionEditor({
         </label>
         {!locked && (
           <span className="flex items-center">
-            <IconBtn label="Move up" disabled={index === 0} onClick={() => onMove(index - 1)}>
+            <IconBtn
+              label="Move up"
+              disabled={index === 0}
+              onClick={() => onMove(index - 1)}
+            >
               <ArrowUpIcon className="size-3.5" />
             </IconBtn>
-            <IconBtn label="Move down" disabled={index === count - 1} onClick={() => onMove(index + 1)}>
+            <IconBtn
+              label="Move down"
+              disabled={index === count - 1}
+              onClick={() => onMove(index + 1)}
+            >
               <ArrowDownIcon className="size-3.5" />
             </IconBtn>
             <IconBtn label="Remove question" onClick={onRemove}>
@@ -320,10 +471,21 @@ function QuestionEditor({
                 maxLength={LIMITS.option}
                 aria-label={`Option ${n + 1}`}
                 placeholder={`Option ${n + 1}`}
-                onChange={(e) => onChange({ options: options.map((x, k) => (k === n ? e.target.value : x)) })}
+                onChange={(e) =>
+                  onChange({
+                    options: options.map((x, k) =>
+                      k === n ? e.target.value : x,
+                    ),
+                  })
+                }
               />
               {!locked && options.length > 2 && (
-                <IconBtn label={`Remove option ${n + 1}`} onClick={() => onChange({ options: options.filter((_, k) => k !== n) })}>
+                <IconBtn
+                  label={`Remove option ${n + 1}`}
+                  onClick={() =>
+                    onChange({ options: options.filter((_, k) => k !== n) })
+                  }
+                >
                   <TrashIcon className="size-3.5" />
                 </IconBtn>
               )}
@@ -408,104 +570,13 @@ function TextInput({
         onChange={(e) => onChange(e.target.value)}
       />
       {(error || hint) && (
-        <p id={`${id}-note`} className={`mt-1 text-[11.5px] ${error ? "text-live" : "text-ink-3"}`}>
+        <p
+          id={`${id}-note`}
+          className={`mt-1 text-[11.5px] ${error ? "text-live" : "text-ink-3"}`}
+        >
           {error ?? hint}
         </p>
       )}
-    </div>
-  );
-}
-
-function ModeCard({
-  active,
-  onPick,
-  icon,
-  title,
-  body,
-}: {
-  active: boolean;
-  onPick: () => void;
-  icon: React.ReactNode;
-  title: string;
-  body: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      onClick={onPick}
-      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60 ${
-        active ? "border-brand bg-brand-soft shadow-[0_0_0_1px_var(--color-brand)]" : "border-line hover:border-line-2 hover:bg-surface-2"
-      }`}
-    >
-      <span
-        className={`grid size-9 shrink-0 place-items-center rounded-lg ${
-          active ? "bg-brand text-white" : "bg-surface-2 text-ink-2"
-        }`}
-      >
-        {icon}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[13.5px] font-semibold text-ink">{title}</span>
-        <span className="mt-0.5 block text-[12px] leading-snug text-ink-2">{body}</span>
-      </span>
-    </button>
-  );
-}
-
-function SendCard({
-  active,
-  onPick,
-  title,
-  body,
-  recommended,
-  children,
-}: {
-  active: boolean;
-  onPick: () => void;
-  title: string;
-  body: string;
-  recommended?: boolean;
-  children?: React.ReactNode;
-}) {
-  // A div with radio semantics rather than a <button>: the minute field sits inside it.
-  return (
-    <div
-      role="radio"
-      tabIndex={0}
-      aria-checked={active}
-      onClick={onPick}
-      onKeyDown={(e) => {
-        if (e.key === " " || e.key === "Enter") {
-          e.preventDefault();
-          onPick();
-        }
-      }}
-      className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-        active ? "border-brand bg-brand-soft" : "border-line hover:border-line-2 hover:bg-surface-2"
-      }`}
-    >
-      <span
-        aria-hidden
-        className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border-2 ${
-          active ? "border-brand" : "border-line-2"
-        }`}
-      >
-        {active && <span className="size-2 rounded-full bg-brand" />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-ink">
-          {title}
-          {recommended && (
-            <span className="rounded-full bg-ok-soft px-2 py-0.5 text-[10.5px] font-semibold tracking-wide text-ok uppercase">
-              Recommended
-            </span>
-          )}
-        </span>
-        <span className="mt-0.5 block text-[12px] leading-snug text-ink-2">{body}</span>
-        {children}
-      </span>
     </div>
   );
 }

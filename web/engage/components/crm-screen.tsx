@@ -1725,7 +1725,7 @@ export function Compose({
     return (
       <ComposeNote>
         Connect your own WhatsApp Business account in{" "}
-        <Link href="/account" className="font-medium underline">
+        <Link href="/settings#integrations" className="font-medium underline">
           account settings
         </Link>{" "}
         to reply from here.

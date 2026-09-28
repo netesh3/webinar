@@ -28,6 +28,10 @@ import type {
   CRMSummaryResponse,
   CRMTestSendRequest,
   CRMWebinarMessagesResponse,
+  MessageDefaultsRequest,
+  MessageDefaultsResponse,
+  WebinarMessagesRequest,
+  WebinarSlotsResponse,
   CRMFollowupsResponse,
   MessageDefaultsRequest,
   MessageDefaultsResponse,
@@ -454,11 +458,29 @@ export const engageApi = {
   /** The Hosting home's "WhatsApp this week" card. */
   crmSummary: () => request<CRMSummaryResponse>("/api/host/crm/summary", fresh),
 
-  /** One webinar's Messages tab. */
+  /** One webinar's Messages tab, including its resolved message slots. */
   crmWebinarMessages: (slug: string) =>
     request<CRMWebinarMessagesResponse>(
       `/api/host/crm/webinars/${seg(slug)}/messages`,
       fresh,
+    ),
+
+  /** The coach's message defaults, one slot per kind. */
+  messageDefaults: () =>
+    request<MessageDefaultsResponse>("/api/host/crm/message-defaults", fresh),
+
+  /** Replace the named kinds on the account defaults. Other kinds stay as they are. */
+  setMessageDefaults: (body: MessageDefaultsRequest) =>
+    request<MessageDefaultsResponse>("/api/host/crm/message-defaults", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  /** Replace the override row for each named kind. A field left out inherits the default. */
+  setWebinarMessageSlots: (slug: string, body: WebinarMessagesRequest) =>
+    request<WebinarSlotsResponse>(
+      `/api/host/crm/webinars/${seg(slug)}/messages`,
+      { method: "PUT", body: JSON.stringify(body) },
     ),
 
   /** The Engagement tab's Follow up: each engagement group's reach and last send. */

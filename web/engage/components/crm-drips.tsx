@@ -1326,7 +1326,7 @@ function Builder({
       {!whatsappConnected && (
         <Alert tone="warn">
           Connect your own WhatsApp Business account in{" "}
-          <Link href="/account" className="font-medium underline">
+          <Link href="/settings#integrations" className="font-medium underline">
             account settings
           </Link>{" "}
           to build a sequence.

@@ -9,7 +9,14 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { CheckIcon, ChevronDownIcon, CloseIcon, CopyIcon, SpinnerIcon } from "./icons";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  CopyIcon,
+  InfoIcon,
+  SpinnerIcon,
+} from "./icons";
 
 /* Interactive primitives.
  *
@@ -110,11 +117,19 @@ export function Modal({
 
   if (!open) return null;
 
-  const width = { sm: "sm:max-w-sm", md: "sm:max-w-lg", lg: "sm:max-w-2xl", xl: "sm:max-w-4xl" }[size];
+  const width = {
+    sm: "sm:max-w-sm",
+    md: "sm:max-w-lg",
+    lg: "sm:max-w-2xl",
+    xl: "sm:max-w-4xl",
+  }[size];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
-      <div className="absolute inset-0 bg-ink/45 backdrop-blur-sm" aria-hidden />
+      <div
+        className="absolute inset-0 bg-ink/45 backdrop-blur-sm"
+        aria-hidden
+      />
       <div
         ref={panel}
         role="dialog"
@@ -132,7 +147,10 @@ export function Modal({
               {title}
             </h2>
             {description && (
-              <p id={descId} className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
+              <p
+                id={descId}
+                className="mt-1 text-[12.5px] leading-relaxed text-ink-2"
+              >
                 {description}
               </p>
             )}
@@ -142,7 +160,9 @@ export function Modal({
           </IconButton>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {children}
+        </div>
 
         {footer && (
           <div className="flex flex-wrap justify-end gap-2 border-t border-line px-5 py-3.5">
@@ -384,7 +404,9 @@ export function Menu({
         >
           {items.map((item, i) => {
             if (item.kind === "separator") {
-              return <div key={i} className="my-1 h-px bg-line" role="separator" />;
+              return (
+                <div key={i} className="my-1 h-px bg-line" role="separator" />
+              );
             }
             if (item.kind === "label") {
               return (
@@ -411,7 +433,11 @@ export function Menu({
                     : "text-ink hover:bg-surface-2"
                 }`}
               >
-                {item.icon && <span className="mt-0.5 shrink-0 text-ink-3">{item.icon}</span>}
+                {item.icon && (
+                  <span className="mt-0.5 shrink-0 text-ink-3">
+                    {item.icon}
+                  </span>
+                )}
                 {/* Hint stacks under the label instead of beside it — a subtitle,
                     not a trailing column. That is what keeps the menu's width
                     driven by the label alone (see the width comment above), and
@@ -421,7 +447,9 @@ export function Menu({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{item.label}</span>
                   {item.hint && (
-                    <span className="mt-0.5 block text-[11px] text-ink-3">{item.hint}</span>
+                    <span className="mt-0.5 block text-[11px] text-ink-3">
+                      {item.hint}
+                    </span>
                   )}
                 </span>
               </button>
@@ -538,7 +566,9 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.id)}
             title={o.label}
             className={`inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2.5 text-[12px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
-              active ? "bg-white/20 text-white" : "text-white/60 hover:text-white"
+              active
+                ? "bg-white/20 text-white"
+                : "text-white/60 hover:text-white"
             }`}
           >
             {o.icon}
@@ -573,7 +603,9 @@ export function Segmented<T extends string>({
  * 101 / Safari 16, throws on a disabled or read-only input, and throws if the activation
  * has already been spent.
  */
-export function openPickerOnClick(event: React.MouseEvent<HTMLInputElement>): void {
+export function openPickerOnClick(
+  event: React.MouseEvent<HTMLInputElement>,
+): void {
   const input = event.currentTarget;
   if (typeof input.showPicker !== "function") return;
   try {
@@ -701,6 +733,32 @@ export function Alert({
       {title && <strong className="mb-0.5 block text-ink">{title}</strong>}
       {children}
     </div>
+  );
+}
+
+// -------------------------------------------------------------------- info tip
+
+/** A short explanation on hover and keyboard focus. The button's name is
+ *  "More information"; the text itself is the tooltip, so a segmented control
+ *  can stay one line. */
+export function InfoTip({ text }: { text: string }) {
+  return (
+    <span className="group/tip relative inline-flex">
+      <button
+        type="button"
+        className="grid size-4 place-items-center rounded-full text-ink-3 outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
+        aria-label="More information"
+        title={text}
+      >
+        <InfoIcon className="size-3.5" />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute top-[calc(100%+8px)] left-0 z-30 hidden w-72 rounded-lg bg-[#1f2329] px-2.5 py-1.5 text-left text-[11.5px] leading-snug font-normal text-[#eef0f3] shadow-lg group-hover/tip:block group-focus-within/tip:block sm:w-[28rem]"
+      >
+        {text}
+      </span>
+    </span>
   );
 }
 

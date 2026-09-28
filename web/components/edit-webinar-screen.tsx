@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ScheduleForm } from "./schedule-form";
+import { ScheduleForm } from "./schedule/schedule-form";
 import { Alert, Spinner } from "./controls";
 import { ArrowLeftIcon } from "./icons";
 import { ButtonLink, Card } from "./ui";
@@ -15,7 +15,9 @@ import type { Webinar } from "@/lib/api-types";
  *  publicly visible, and a draft is exactly what a host comes here to finish. */
 export function EditWebinarScreen({ slug }: { slug: string }) {
   const [webinar, setWebinar] = useState<Webinar | null>(null);
-  const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  const [error, setError] = useState<{ code: string; message: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     let active = true;
@@ -41,7 +43,9 @@ export function EditWebinarScreen({ slug }: { slug: string }) {
     return (
       <Card className="p-8 text-center">
         <h1 className="text-[17px] font-semibold">
-          {error.code === "unauthenticated" ? "Please sign in" : "Couldn't load that"}
+          {error.code === "unauthenticated"
+            ? "Please sign in"
+            : "Couldn't load that"}
         </h1>
         <p className="mx-auto mt-2 max-w-sm text-[13.5px] leading-relaxed text-ink-2">
           {error.message}
