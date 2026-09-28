@@ -4,25 +4,22 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { engageApi } from "../api";
-import { Alert, Spinner, Tabs } from "@/components/controls";
+import { Alert, Spinner } from "@/components/controls";
 import {
   ArrowLeftIcon,
   MaterialIcon,
   SearchIcon,
   SendIcon,
 } from "@/components/icons";
-import { useSession, useToast } from "@/components/providers";
+import { useToast } from "@/components/providers";
 import { Button, Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import {
-  FeatureCRMNotes,
   InboxAll,
   InboxNeedsReply,
-  NoteMaxLength,
   type CRMContact,
   type CRMInboxThread,
   type CRMMessage,
-  type CRMNote,
   type CRMTemplate,
   type CRMThreadResponse,
 } from "@/lib/api-types";
@@ -34,12 +31,11 @@ import { PersonAvatar, Ticks } from "./wa-kit";
  *
  * The list is the inbox endpoint (every conversation, or the ones waiting, or one
  * webinar's people). The open thread is the same read the old tab used, including
- * the 24-hour window: inside it Reply is the host's own words; outside it Reply
- * can only send an approved template, which is the send path the CRM already has.
- * Note writes a private note when this account has that feature. Language, country
- * and timezone are not on the contact the API returns, so those facts are absent
- * rather than filled in. The thread read is capped, not paged, so there is no
- * Load more.
+ * the 24-hour window: inside it the composer is the host's own words; outside it
+ * the composer can only send an approved template, which is the send path the CRM
+ * already has. Language, country and timezone are not on the contact the API
+ * returns, so those facts are absent rather than filled in. The thread read is
+ * capped, not paged, so there is no Load more.
  */
 
 const POLL_MS = 20_000;
@@ -430,7 +426,6 @@ function ThreadPane({
           lastWrote={lastWroteAt(contact, thread.messages)}
           windowUntil={thread.serviceWindowUntil ?? ""}
           connected={thread.whatsappConnected}
-          notes={thread.notes ?? []}
           templates={templates}
           templatesError={templatesError}
           onSent={(msg) => {
@@ -441,9 +436,6 @@ function ThreadPane({
             );
             onSent();
           }}
-          onNotes={(notes) =>
-            setThread((prev) => (prev ? { ...prev, notes } : prev))
-          }
         />
       )}
     </>
@@ -540,58 +532,34 @@ function Composer({
   lastWrote,
   windowUntil,
   connected,
-  notes,
   templates,
   templatesError,
   onSent,
-  onNotes,
 }: {
   contact: CRMContact;
   /** When they last wrote, from the contact or the thread. Empty if they never have. */
   lastWrote: string;
   windowUntil: string;
   connected: boolean;
-  notes: CRMNote[];
   templates: CRMTemplate[] | null;
   templatesError: string | null;
   onSent: (msg: CRMMessage) => void;
-  onNotes: (notes: CRMNote[]) => void;
 }) {
-  const { account } = useSession();
-  const notesOn = (account?.features ?? []).includes(FeatureCRMNotes);
-  const [mode, setMode] = useState<"reply" | "note">("reply");
   const open = windowUntil !== "";
   const name = contact.name || "They";
 
   return (
     <div className="border-t border-line bg-surface">
-      <div className="px-3">
-        <Tabs
-          tabs={["reply", "note"] as const}
-          value={mode}
-          onChange={setMode}
-          labels={{ reply: "Reply", note: "Note" }}
-        />
-      </div>
-      {mode === "note" ? (
-        <NoteBox
-          contactId={contact.id}
-          notesOn={notesOn}
-          notes={notes}
-          onNotes={onNotes}
-        />
-      ) : (
-        <ReplyBox
-          contact={contact}
-          lastWrote={lastWrote}
-          open={open}
-          name={name}
-          connected={connected}
-          templates={templates}
-          templatesError={templatesError}
-          onSent={onSent}
-        />
-      )}
+      <ReplyBox
+        contact={contact}
+        lastWrote={lastWrote}
+        open={open}
+        name={name}
+        connected={connected}
+        templates={templates}
+        templatesError={templatesError}
+        onSent={onSent}
+      />
     </div>
   );
 }
@@ -793,83 +761,6 @@ function ReplyBox({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function NoteBox({
-  contactId,
-  notesOn,
-  notes,
-  onNotes,
-}: {
-  contactId: string;
-  notesOn: boolean;
-  notes: CRMNote[];
-  onNotes: (notes: CRMNote[]) => void;
-}) {
-  const { notify } = useToast();
-  const [body, setBody] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function save() {
-    const wanted = body.trim();
-    if (!wanted || busy) return;
-    if (!notesOn) return;
-    setBusy(true);
-    try {
-      await engageApi.createCrmNote(contactId, wanted);
-      setBody("");
-      onNotes((await engageApi.crmNotes(contactId)).notes);
-      notify("Note saved.", "ok");
-    } catch (e: unknown) {
-      notify(
-        e instanceof ApiError ? e.message : "Could not save that note.",
-        "error",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="px-3 py-2.5">
-      {notesOn && notes.length > 0 && (
-        <ul className="mb-2 grid max-h-28 gap-1 overflow-y-auto">
-          {notes.map((n) => (
-            <li key={n.id} className="text-[12px] leading-snug text-ink-2">
-              <span className="text-ink-3">{listWhen(n.createdAt)} · </span>
-              {n.body}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="flex items-end gap-2">
-        <label className="sr-only" htmlFor="inbox-note">
-          Private note
-        </label>
-        <textarea
-          id="inbox-note"
-          value={body}
-          maxLength={NoteMaxLength}
-          rows={2}
-          placeholder="Private note, only you can see this"
-          onChange={(e) => setBody(e.target.value)}
-          className="field min-h-9 flex-1 resize-none py-2 text-[13px]"
-        />
-        <SendButton
-          busy={busy}
-          disabled={!notesOn || body.trim() === ""}
-          onClick={() => void save()}
-          label="Save"
-          title={notesOn ? "Save note" : "Notes aren't saved yet"}
-        />
-      </div>
-      <p className="mt-1.5 text-[12px] text-ink-3">
-        {notesOn
-          ? "A private note for you, not a WhatsApp message."
-          : "Notes aren't saved yet."}
-      </p>
     </div>
   );
 }
