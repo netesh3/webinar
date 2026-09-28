@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
-import { CalendarIcon, ChevronDownIcon, PlayIcon } from "./icons";
 import { DEFAULT_ATTENDEE_LIMIT } from "./schedule/form-state";
 import {
   useAppConfig,
@@ -12,7 +11,7 @@ import {
   useShareOrigin,
   useToast,
 } from "./providers";
-import { ButtonLink, Card } from "./ui";
+import { Button, ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar, WebinarInput } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
@@ -87,12 +86,8 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
 /** Host Webinar home: create, run upcoming sessions, review past attendance.
  *
  *  No top nav entry of its own any more — the logo is this page for a host,
- *  see homeHrefFor in top-nav.tsx — and no page heading either: the two
- *  action tiles below say what this screen is for more directly than a title
- *  repeating them would. In-page segments (Upcoming / Past / Drafts) instead
- *  of a competing sidebar, and two action tiles up top (Instant / Schedule)
- *  instead of a pair of same-weight buttons, so which one to click is obvious
- *  without reading closely. */
+ *  see homeHrefFor in top-nav.tsx. The heading and the two actions match the
+ *  approved home mock: Go live now, and New webinar. */
 export function HostWebinarsScreen() {
   const { account, status } = useSession();
   const { maxAttendees } = useAppConfig();
@@ -258,55 +253,27 @@ export function HostWebinarsScreen() {
         </div>
       )}
 
-      {/* Two distinct rows rather than two same-weight buttons: which one to
-          click should be obvious without reading closely, the way Zoom's own
-          "New Meeting" vs "Schedule" tiles are. Compact and horizontal, not a
-          tall card — the whole row is one action, so there is nothing to say
-          twice (a title plus a "Do the thing →" link under it repeats
-          itself). */}
-      <div className="mb-8 grid gap-2.5 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={startInstantWebinar}
-          disabled={startingInstant}
-          className="group flex items-center gap-3 rounded-xl border border-line bg-surface p-3.5 text-left transition-colors hover:border-brand-line hover:bg-surface-2 disabled:opacity-60"
-        >
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
-            {startingInstant ? (
-              <Spinner className="size-4.5" />
-            ) : (
-              <PlayIcon className="size-4.5" />
-            )}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13.5px] font-semibold">
-              {startingInstant ? "Starting…" : "Instant webinar"}
-            </span>
-            <span className="block truncate text-[12px] text-ink-2">
-              Go live immediately, no form
-            </span>
-          </span>
-          <ChevronDownIcon className="size-4 shrink-0 -rotate-90 text-ink-3 transition-transform group-hover:translate-x-0.5" />
-        </button>
-
-        <ButtonLink
-          href="/host/new"
-          variant="secondary"
-          className="group h-auto items-center gap-3 whitespace-normal rounded-xl border-line p-3.5 text-left font-normal hover:border-brand-line"
-        >
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
-            <CalendarIcon className="size-4.5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13.5px] font-semibold">
-              Schedule a webinar
-            </span>
-            <span className="block truncate text-[12px] text-ink-2">
-              Pick a date and invite people
-            </span>
-          </span>
-          <ChevronDownIcon className="size-4 shrink-0 -rotate-90 text-ink-3 transition-transform group-hover:translate-x-0.5" />
-        </ButtonLink>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
+            Your webinars
+          </h1>
+          <p className="mt-1 text-[13px] text-ink-2">
+            Create one, share the link, go live, follow up.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={startInstantWebinar}
+            disabled={startingInstant}
+          >
+            {startingInstant && <Spinner className="size-4" />}
+            {startingInstant ? "Starting…" : "Go live now"}
+          </Button>
+          <ButtonLink href="/host/new">+ New webinar</ButtonLink>
+        </div>
       </div>
 
       <HostWebinarBrowser reloadToken={reloadToken} />

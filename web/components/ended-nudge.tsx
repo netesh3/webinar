@@ -33,7 +33,7 @@ export function EndedNudge() {
   const came = w.report?.attended ?? 0;
   const missed = Math.max(0, w.registrantCount - came);
   return (
-    <Card className="mb-4 flex flex-wrap items-center gap-3 border-brand-line bg-brand-soft/40 px-4 py-3">
+    <Card className="mt-4 flex flex-wrap items-center gap-3 border-brand-line bg-brand-soft/40 px-4 py-3">
       <span
         className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand text-white"
         aria-hidden

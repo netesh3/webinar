@@ -410,8 +410,6 @@ export function HostWebinarBrowser({
         </div>
       )}
 
-      {tab === "upcoming" && <EndedNudge />}
-
       {tab === ATTENDING ? (
         /* Its own loading, empty and error states, unchanged from the page this
            used to be: the rows carry a join key and a calendar link, which is
@@ -473,6 +471,8 @@ export function HostWebinarBrowser({
           )}
         </>
       )}
+
+      {tab === "upcoming" && <EndedNudge />}
     </>
   );
 }
