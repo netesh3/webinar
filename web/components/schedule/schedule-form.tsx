@@ -118,6 +118,7 @@ function ScheduleFormBody({ webinar = null }: { webinar?: Webinar | null }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"scheduled" | "draft" | null>(null);
   const messagesRef = useRef<MessagesSaveHandle>(null);
+  const [messagesOn, setMessagesOn] = useState<number | null>(null);
 
   /* The cover image.
    *
@@ -386,7 +387,11 @@ function ScheduleFormBody({ webinar = null }: { webinar?: Webinar | null }) {
             selected={step === "messages"}
             n="2"
             title="Messages & follow-ups"
-            detail="Reminders, WhatsApp, after it ends"
+            detail={
+              messagesOn == null
+                ? "Reminders, WhatsApp, after it ends"
+                : `Reminders, WhatsApp, after it ends · ${messagesOn} on`
+            }
             controls="schedule-panel-messages"
             onClick={() => go("messages")}
           />
@@ -424,6 +429,7 @@ function ScheduleFormBody({ webinar = null }: { webinar?: Webinar | null }) {
             }}
             onMessages={() => go("messages")}
             survey={survey.node}
+            messagesOn={messagesOn}
           />
         </div>
         <div
@@ -437,6 +443,7 @@ function ScheduleFormBody({ webinar = null }: { webinar?: Webinar | null }) {
             previewWebinar={previewWebinar}
             slug={webinar?.id}
             saveRef={messagesRef}
+            onEnabledCount={setMessagesOn}
           />
         </div>
       </div>

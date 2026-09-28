@@ -10,6 +10,7 @@ import {
   formatCount,
   formatDayShort,
   formatDuration,
+  formatRelative,
   formatTimeRange,
   tzLabel,
 } from "@/lib/format";
@@ -161,6 +162,20 @@ function HostCard({
   const isDraft = w.status === "draft";
   const isEnded = w.status === "ended";
   const isLive = w.status === "live";
+  const upcoming = !isDraft && !isEnded && !isLive;
+  const whenLabel = upcoming
+    ? formatRelative(w.startsAt, new Date()).replace(/^./, (c) => c.toUpperCase())
+    : null;
+  const emailOn = w.options?.emailReminders;
+  const whatsAppOn = w.options?.whatsappReminders;
+  const reminders =
+    emailOn && whatsAppOn
+      ? "reminders on (email + WhatsApp)"
+      : emailOn
+        ? "reminders on"
+        : whatsAppOn
+          ? "reminders on (WhatsApp)"
+          : null;
   const needsAdmit = w.approval === "manual" && !isEnded && !isDraft;
   const bypass = isDevAuthBypassActive();
   const origin = useShareOrigin();
@@ -174,9 +189,22 @@ function HostCard({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-            <Badge tone={kind.tone} dot={isLive}>
-              {kind.text}
-            </Badge>
+            {whenLabel ? (
+              <Badge tone="brand" dot>
+                {whenLabel}
+              </Badge>
+            ) : (
+              <Badge tone={kind.tone} dot={isLive}>
+                {kind.text}
+              </Badge>
+            )}
+            {upcoming && (
+              <span className="text-[12px] text-ink-3">
+                {formatDayShort(w.startsAt, w.timeZone)} ·{" "}
+                {formatTimeRange(w.startsAt, w.durationMin, w.timeZone)}{" "}
+                {tzLabel(w.startsAt, w.timeZone)} · {formatDuration(w.durationMin)}
+              </span>
+            )}
             {needsAdmit && <Badge tone="warn">Admit required</Badge>}
             {w.priceUsd ? <Badge tone="brand">${w.priceUsd}</Badge> : null}
           </div>
@@ -190,11 +218,13 @@ function HostCard({
             </Link>
           </h3>
 
-          <p className="mt-1.5 text-[13px] text-ink-2">
-            {formatDayShort(w.startsAt, w.timeZone)} ·{" "}
-            {formatTimeRange(w.startsAt, w.durationMin, w.timeZone)}{" "}
-            {tzLabel(w.startsAt, w.timeZone)} · {formatDuration(w.durationMin)}
-          </p>
+          {!upcoming && (
+            <p className="mt-1.5 text-[13px] text-ink-2">
+              {formatDayShort(w.startsAt, w.timeZone)} ·{" "}
+              {formatTimeRange(w.startsAt, w.durationMin, w.timeZone)}{" "}
+              {tzLabel(w.startsAt, w.timeZone)} · {formatDuration(w.durationMin)}
+            </p>
+          )}
 
           <p className="mt-1 text-[12px] text-ink-3">
             {isDraft ? (
@@ -207,9 +237,7 @@ function HostCard({
             ) : (
               <>
                 {formatCount(w.registrantCount)} registered
-                {w.attendeeLimit > 0
-                  ? ` · ${formatCount(w.attendeeLimit)} seat limit`
-                  : ""}
+                {reminders ? ` · ${reminders}` : ""}
               </>
             )}
           </p>

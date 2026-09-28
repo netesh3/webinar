@@ -36,6 +36,7 @@ export function WebinarTab({
   onImageRemove,
   onMessages,
   survey,
+  messagesOn,
 }: {
   form: FormState;
   set: SetForm;
@@ -47,6 +48,8 @@ export function WebinarTab({
   onImageRemove: () => void;
   onMessages: () => void;
   survey: ReactNode;
+  /** How many attendee messages are switched on, once that tab has loaded. */
+  messagesOn: number | null;
 }) {
   const zones = useMemo(() => timeZoneNames(), []);
   const hydrated = useHydrated();
@@ -90,8 +93,9 @@ export function WebinarTab({
             Next: what your attendees get
           </p>
           <p className="text-[12px] text-ink-3">
-            Confirmation, reminders and follow-ups. Check the wording before you
-            schedule — or schedule from here.
+            {messagesOn == null
+              ? "Confirmation, reminders, the replay and follow-ups. Check the wording before you schedule."
+              : `${messagesOn} on — confirmation, reminders, the replay and follow-ups. Check the wording before you schedule.`}
           </p>
         </div>
         <Button type="button" variant="secondary" onClick={onMessages}>

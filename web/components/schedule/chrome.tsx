@@ -36,7 +36,7 @@ export function FormSection({
 }) {
   return (
     <section
-      className={`grid gap-3 px-4 py-5 lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start lg:gap-8 lg:px-6 lg:py-6 ${
+      className={`grid gap-3 px-4 py-5 lg:grid-cols-[11rem_minmax(0,1fr)] lg:items-start lg:gap-5 lg:px-5 lg:py-5 ${
         first ? "" : "border-t border-line"
       }`}
     >

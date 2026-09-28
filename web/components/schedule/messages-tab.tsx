@@ -17,16 +17,20 @@ export function MessagesTab({
   previewWebinar,
   slug,
   saveRef,
+  onEnabledCount,
 }: {
   previewWebinar: PreviewWebinar;
   slug?: string;
   saveRef?: Ref<MessagesSaveHandle>;
+  /** How many messages are switched on, for the tab subtitle. */
+  onEnabledCount?: (count: number) => void;
 }) {
   return (
     <ScheduleMessagesTab
       ref={saveRef}
       slug={slug}
       webinar={previewWebinar}
+      onEnabledCount={onEnabledCount}
       reminderTimes={({ value, onChange, disabled }) => (
         <ReminderTimes value={value} onChange={onChange} disabled={disabled} />
       )}
