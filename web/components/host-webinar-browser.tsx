@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { HostMessagesTab, HostPeopleTab, useReplies } from "@/engage";
 import { EndedNudge } from "./ended-nudge";
-import { useAppConfig } from "./providers";
+import { useAppConfig, useSession } from "./providers";
 import { HostWebinarRows } from "./host-webinar-list";
 import { MyWebinarsList } from "./my-webinars-list";
 import { useRegistrations } from "./registrations";
@@ -12,7 +12,11 @@ import { Alert, openPickerOnClick, Spinner, Tabs } from "./controls";
 import { CloseIcon, SearchIcon } from "./icons";
 import { Button, ButtonLink, Empty } from "./ui";
 import { ApiError, api, type HostWebinarTab } from "@/lib/api";
-import type { HostWebinarCounts, HostWebinarPage, Webinar } from "@/lib/api-types";
+import type {
+  HostWebinarCounts,
+  HostWebinarPage,
+  Webinar,
+} from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
@@ -26,13 +30,12 @@ import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
  * and a date are one request each, and the tab badges come back with the page
  * because nothing here can count rows it was never sent.
  *
- * WatchList sits on the end of that row, and is the one tab this endpoint knows
- * nothing about: it is the sessions this account signed up for as an attendee,
- * which used to be "My Webinar" in the top nav. Hosting and attending are two
- * things one person does, not two places they go — and a nav entry per list made
- * "where is that webinar again?" a question about which door to use. So it moved
- * in here after Drafts, where every other list of this person's sessions already
- * was.
+ * Attending sits on the end of that row, and is the one tab this endpoint knows
+ * nothing about: it is the sessions other people host that this account signed up
+ * for as an attendee, which used to be "My Webinar" in the top nav and then an
+ * entry in the account menu. Hosting and attending are two things one person
+ * does, not two places they go — so it lives here, where every other list of this
+ * person's sessions already is, and only shows up once there is something in it.
  */
 
 const TABS: readonly HostWebinarTab[] = ["upcoming", "past", "drafts"];
@@ -41,36 +44,41 @@ const TABS: readonly HostWebinarTab[] = ["upcoming", "past", "drafts"];
  * paged endpoint by accident: MyWebinarsList resolves join keys and
  * /api/me/registrations itself. Everything that fetches below narrows this out
  * first. */
-const REGISTERED = "registered";
+const ATTENDING = "attending";
+/** The tab's old ?tab= name, from when the account menu linked to it. Still read, so a
+ *  link or bookmark made then opens the same list. */
+const ATTENDING_LEGACY = "registered";
 
 /* People and Messages: Engage's two tabs, rendered by it and only offered when this
  * deployment can connect WhatsApp. Beside the webinar lists rather than in a separate
  * CRM, because "who came, and who wrote back" is asked from the same place a host
- * plans the next session. Like WatchList, neither is a HostWebinarTab. */
+ * plans the next session. Like Attending, neither is a HostWebinarTab. */
 const PEOPLE = "people";
 const MESSAGES = "messages";
-type ViewTab = HostWebinarTab | typeof REGISTERED | typeof PEOPLE | typeof MESSAGES;
+type ViewTab =
+  HostWebinarTab | typeof ATTENDING | typeof PEOPLE | typeof MESSAGES;
 
 /* Shown in the tab row: the webinar lists, then Audience (engagement across all of them;
- * ?tab=people). WatchList (webinars this account attends) and Messages (the inbox) are
- * reached from the account menu and the top bar's chat icon; their ?tab= links still open
- * them here, without a tab of their own. */
+ * ?tab=people), then Attending — webinars other people host that this account signed up
+ * for — but only once there is at least one: for most hosts it would be an empty tab
+ * forever. Messages (the inbox) is reached from the top bar's chat icon; its ?tab= link
+ * still opens it here, without a tab of its own. */
 const BASE_TABS: readonly ViewTab[] = [...TABS];
 const ENGAGE_TABS: readonly ViewTab[] = [...BASE_TABS, PEOPLE];
-const LINKABLE: readonly ViewTab[] = [...TABS, REGISTERED, PEOPLE, MESSAGES];
+const LINKABLE: readonly ViewTab[] = [...TABS, ATTENDING, PEOPLE, MESSAGES];
 
 /** The tabs that do not read the paged webinar endpoint, and so hide its filters. */
 function ownList(
   t: ViewTab,
-): t is typeof REGISTERED | typeof PEOPLE | typeof MESSAGES {
-  return t === REGISTERED || t === PEOPLE || t === MESSAGES;
+): t is typeof ATTENDING | typeof PEOPLE | typeof MESSAGES {
+  return t === ATTENDING || t === PEOPLE || t === MESSAGES;
 }
 
 const TAB_LABELS: Record<ViewTab, string> = {
   upcoming: "Upcoming",
   past: "Completed",
   drafts: "Drafts",
-  registered: "Attending",
+  attending: "Attending",
   people: "Audience",
   messages: "Messages",
 };
@@ -136,9 +144,21 @@ export function HostWebinarBrowser({
    * costs the same request the top nav already makes on every page, and the
    * alternative — an unbadged tab — loses the one number that says whether it is
    * worth opening. */
-  const { registrations } = useRegistrations();
+  const { registrations, webinarFor } = useRegistrations();
+  const { account } = useSession();
+  /* Other people's webinars only: a host who registered for their own session to
+   * see the attendee side has it under Upcoming or Completed already. Unknown
+   * (still loading) counts as none: the tab appears once the answer is in,
+   * rather than showing and then vanishing for a host with nothing to attend. */
+  const attendingCount =
+    registrations?.filter((r) => {
+      const w = webinarFor(r.webinarId);
+      return w !== undefined && w.host.id !== account?.id;
+    }).length ?? 0;
   const { whatsappConnect } = useAppConfig();
-  const viewTabs = whatsappConnect ? ENGAGE_TABS : BASE_TABS;
+  const listTabs = whatsappConnect ? ENGAGE_TABS : BASE_TABS;
+  const viewTabs: readonly ViewTab[] =
+    attendingCount > 0 ? [...listTabs, ATTENDING] : listTabs;
   const replies = useReplies();
 
   /* ?tab= picks the tab, so the bell and People's rows can link straight into
@@ -146,11 +166,16 @@ export function HostWebinarBrowser({
    * clicked while the host is already on this page. */
   const router = useRouter();
   const search = useSearchParams();
-  const askedTab = (search.get("tab") ?? "") as ViewTab;
+  const rawTab = search.get("tab") ?? "";
+  const askedTab = (
+    rawTab === ATTENDING_LEGACY ? ATTENDING : rawTab
+  ) as ViewTab;
   const linkedContact = search.get("contact") ?? "";
   const linkedWebinar = search.get("webinar") ?? "";
   const reachable = (t: ViewTab) =>
-    viewTabs.includes(t) || t === REGISTERED || (whatsappConnect && LINKABLE.includes(t));
+    viewTabs.includes(t) ||
+    t === ATTENDING ||
+    (whatsappConnect && LINKABLE.includes(t));
   const [tab, setTabState] = useState<ViewTab>(() =>
     reachable(askedTab) ? askedTab : "upcoming",
   );
@@ -307,7 +332,7 @@ export function HostWebinarBrowser({
               bare
               tabs={viewTabs.includes(tab) ? viewTabs : [...viewTabs, tab]}
               value={tab}
-              /* WatchList has nothing to re-filter and fetches itself, so it
+              /* Attending has nothing to re-filter and fetches itself, so it
                  skips refilter: that would raise the pending flag for a request
                  this tab never makes, and leave the rows behind it dimmed. */
               onChange={(next) =>
@@ -316,14 +341,14 @@ export function HostWebinarBrowser({
               labels={TAB_LABELS}
               counts={{
                 ...counts,
-                [REGISTERED]: registrations?.length ?? 0,
+                [ATTENDING]: attendingCount,
                 // Waiting replies, not every conversation: the number worth a badge.
                 [MESSAGES]: replies?.needsReply ?? 0,
               }}
             />
           </div>
 
-          {/* Hidden on WatchList rather than disabled. Both controls are
+          {/* Hidden on Attending rather than disabled. Both controls are
               arguments to the host's paged endpoint; leaving them up over a list
               they cannot narrow is a control that lies about what it does. */}
           {!ownList(tab) && (
@@ -387,13 +412,17 @@ export function HostWebinarBrowser({
 
       {tab === "upcoming" && <EndedNudge />}
 
-      {tab === REGISTERED ? (
+      {tab === ATTENDING ? (
         /* Its own loading, empty and error states, unchanged from the page this
            used to be: the rows carry a join key and a calendar link, which is
            what an attendee came for and is nothing like a host row. */
-        <MyWebinarsList />
+        <MyWebinarsList othersOnly />
       ) : tab === PEOPLE ? (
-        <HostPeopleTab key={linkedWebinar} initialWebinar={linkedWebinar} summary />
+        <HostPeopleTab
+          key={linkedWebinar}
+          initialWebinar={linkedWebinar}
+          summary
+        />
       ) : tab === MESSAGES ? (
         <HostMessagesTab key={linkedContact} initialContact={linkedContact} />
       ) : items === null ? (
@@ -416,7 +445,9 @@ export function HostWebinarBrowser({
               in flight: the rows underneath are still the answer to the last
               question, and blanking them makes the page jump on every
               keystroke. */}
-          <div className={pending ? "opacity-50 transition-opacity" : undefined}>
+          <div
+            className={pending ? "opacity-50 transition-opacity" : undefined}
+          >
             <HostWebinarRows webinars={items} />
           </div>
 

@@ -49,7 +49,7 @@ export const home = {
       await t.click(btn(page, /^Notifications/), { settle: 1500 });
       await t.key("Escape");
     });
-    await t.say("And your account menu has your WhatsApp settings, and the webinars you're attending as a guest.", async () => {
+    await t.say("And your account menu has your settings.", async () => {
       await t.click(btn(page, /^Your account/), { settle: 1500 });
       await t.key("Escape");
     });

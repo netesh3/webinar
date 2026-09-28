@@ -1,4 +1,6 @@
-/* Top nav for the simple-funnel mocks, with the account menu that links to WhatsApp. */
+/* Top nav for the simple-funnel mocks. The account menu (open when body[data-menu="open"]) is just
+   Settings and Sign out; WhatsApp is the chat icon and Settings → Integrations, and webinars you're
+   attending are the Attending tab on the home page. */
 (function () {
   const nav = document.querySelector("[data-nav]");
   if (nav) nav.outerHTML = `
@@ -10,9 +12,7 @@
   <span class="acct" style="position:relative">Aarti Menon <span class="av sm a1">AM</span> <span class="faint" style="font-size:10px">▾</span>
     ${document.body.dataset.menu === "open" ? `<div class="card" style="position:absolute;right:0;top:40px;width:220px;padding:6px;z-index:5;box-shadow:0 12px 32px -8px rgba(0,0,0,.18)">
       <div class="xs faint" style="padding:6px 10px">demo@webinarliv.com</div>
-      <a href="#" style="display:block;padding:8px 10px;border-radius:6px;font-size:13px;background:var(--surface-2)">Account settings</a>
-      <a href="#" style="display:flex;justify-content:space-between;padding:8px 10px;border-radius:6px;font-size:13px">WhatsApp <span class="xs" style="color:var(--ok)">● Connected</span></a>
-      <a href="#" style="display:block;padding:8px 10px;border-radius:6px;font-size:13px">Webinars I'm attending</a>
+      <a href="settings.html" style="display:block;padding:8px 10px;border-radius:6px;font-size:13px;background:var(--surface-2)">Settings</a>
       <div style="height:1px;background:var(--line);margin:4px 0"></div>
       <a href="#" style="display:block;padding:8px 10px;border-radius:6px;font-size:13px;color:var(--ink-2)">Sign out</a>
     </div>` : ""}

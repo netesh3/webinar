@@ -64,7 +64,10 @@ export function WhatsAppRemindersToggle({
             Sent from {account?.whatsapp?.displayPhone || "your number"} to
             registrants who tick the WhatsApp box, and billed to your Meta
             account. The wording is set once, on the{" "}
-            <Link href={`${ENGAGE_HOME}?view=templates`} className="font-medium text-brand hover:underline">
+            <Link
+              href={`${ENGAGE_HOME}?view=templates`}
+              className="font-medium text-brand hover:underline"
+            >
               WhatsApp page
             </Link>
             .
@@ -276,15 +279,4 @@ export function MessagesNavButton() {
       )}
     </Link>
   );
-}
-
-/** The account menu's WhatsApp entry: its page, and whether the number is connected. */
-export function useWhatsAppMenuItem(): { label: string; href: string } | null {
-  const config = useAppConfig();
-  const { account } = useSession();
-  if (!config.whatsappConnect || !account?.canHost) return null;
-  return {
-    label: account.whatsapp?.connected ? "WhatsApp · connected" : "Connect WhatsApp",
-    href: account.whatsapp?.connected ? ENGAGE_HOME : `${ENGAGE_HOME}?view=setup`,
-  };
 }

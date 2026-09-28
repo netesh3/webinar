@@ -10,17 +10,21 @@ import { ArrowLeftIcon } from "./icons";
 import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, kindLabel } from "./ui";
 import { ApiError, api } from "@/lib/api";
-import { formatDay, formatDuration, formatTimeRange, tzLabel } from "@/lib/format";
-import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
 import {
-  bypassWebinar,
-  DEV_BYPASS_REGISTRANTS,
-} from "@/lib/dev-bypass";
-import { isDevAuthBypassActive, useDevAuthBypassActive } from "@/lib/dev-bypass-session";
+  formatDay,
+  formatDuration,
+  formatTimeRange,
+  tzLabel,
+} from "@/lib/format";
+import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
+import { bypassWebinar, DEV_BYPASS_REGISTRANTS } from "@/lib/dev-bypass";
+import {
+  isDevAuthBypassActive,
+  useDevAuthBypassActive,
+} from "@/lib/dev-bypass-session";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
-import type { HostTab } from "@/lib/host-tabs";
 
 const NONE: RegistrantRow[] = [];
 const NO_RECORDINGS: Recording[] = [];
@@ -41,7 +45,6 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const [busy, setBusy] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [openTab, setOpenTab] = useState<HostTab | null>(null);
 
   // Local preview reads fixtures, derived here rather than copied into state by
   // the load effect. The hook is false on the server and while hydrating, the
@@ -77,8 +80,12 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
       })
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 401) setNeedsLogin(true);
-        else if (e instanceof ApiError && e.code === "not_a_host") setNeedsLogin(true);
-        else setError(e instanceof Error ? e.message : "Could not load this webinar.");
+        else if (e instanceof ApiError && e.code === "not_a_host")
+          setNeedsLogin(true);
+        else
+          setError(
+            e instanceof Error ? e.message : "Could not load this webinar.",
+          );
       });
   }, [slug, bypass]);
 
@@ -104,7 +111,10 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
       await load();
     } catch (e) {
       pendingTab.cancel();
-      notify(e instanceof Error ? e.message : "Could not start the webinar.", "error");
+      notify(
+        e instanceof Error ? e.message : "Could not start the webinar.",
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -123,7 +133,10 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
       setConfirmEnd(false);
       await load();
     } catch (e) {
-      notify(e instanceof Error ? e.message : "Could not end the webinar.", "error");
+      notify(
+        e instanceof Error ? e.message : "Could not end the webinar.",
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -139,10 +152,16 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
     setBusy(true);
     try {
       await api.deleteWebinar(slug);
-      notify("Webinar deleted, along with its registrations, chat and recordings.", "ok");
+      notify(
+        "Webinar deleted, along with its registrations, chat and recordings.",
+        "ok",
+      );
       router.push("/host");
     } catch (e) {
-      notify(e instanceof Error ? e.message : "Could not delete the webinar.", "error");
+      notify(
+        e instanceof Error ? e.message : "Could not delete the webinar.",
+        "error",
+      );
       setConfirmDelete(false);
       setBusy(false);
     }
@@ -151,7 +170,9 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   if (needsLogin) {
     return (
       <Card className="p-8 text-center">
-        <h1 className="text-[18px] font-semibold">Sign in to manage this webinar</h1>
+        <h1 className="text-[18px] font-semibold">
+          Sign in to manage this webinar
+        </h1>
         <ButtonLink href={`/login?next=/host/${slug}`} className="mt-5">
           Sign in
         </ButtonLink>
@@ -213,7 +234,11 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
           </h1>
           <p className="mt-2 text-[13px] text-ink-2">
             {formatDay(webinar.startsAt, webinar.timeZone)} ·{" "}
-            {formatTimeRange(webinar.startsAt, webinar.durationMin, webinar.timeZone)}{" "}
+            {formatTimeRange(
+              webinar.startsAt,
+              webinar.durationMin,
+              webinar.timeZone,
+            )}{" "}
             {tzLabel(webinar.startsAt, webinar.timeZone)} ·{" "}
             {formatDuration(webinar.durationMin)}
           </p>
@@ -235,36 +260,53 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Menu
             label="More actions"
-            trigger={<span className="grid size-9 place-items-center rounded-lg text-[18px] text-ink-2 hover:bg-surface-2">⋯</span>}
+            trigger={
+              <span className="grid size-9 place-items-center rounded-lg text-[18px] text-ink-2 hover:bg-surface-2">
+                ⋯
+              </span>
+            }
             items={[
               ...(!isDraft && !isEnded
                 ? [
-                    { kind: "action" as const, label: "Edit webinar", onSelect: () => router.push(`/host/${slug}/edit`) },
+                    {
+                      kind: "action" as const,
+                      label: "Edit webinar",
+                      onSelect: () => router.push(`/host/${slug}/edit`),
+                    },
                     {
                       kind: "action" as const,
                       label: "Share link",
                       onSelect: () =>
-                        void shareAttendeeLink({ url: `${origin}/webinars/${slug}`, topic: webinar.topic, notify }),
+                        void shareAttendeeLink({
+                          url: `${origin}/webinars/${slug}`,
+                          topic: webinar.topic,
+                          notify,
+                        }),
                     },
                   ]
                 : []),
               ...(isLive
-                ? [{ kind: "action" as const, label: "End for everyone", danger: true, onSelect: () => setConfirmEnd(true) }]
+                ? [
+                    {
+                      kind: "action" as const,
+                      label: "End for everyone",
+                      danger: true,
+                      onSelect: () => setConfirmEnd(true),
+                    },
+                  ]
                 : []),
               { kind: "separator" as const },
-              { kind: "action" as const, label: "Delete webinar", danger: true, onSelect: () => setConfirmDelete(true) },
+              {
+                kind: "action" as const,
+                label: "Delete webinar",
+                danger: true,
+                onSelect: () => setConfirmDelete(true),
+              },
             ]}
           />
           {isDraft ? (
             <ButtonLink href={`/host/${slug}/edit`}>Finish setup</ButtonLink>
-          ) : isEnded ? (
-            recordings.length > 0 &&
-            openTab !== "Recording" && (
-              <ButtonLink href={`/host/${slug}?tab=recording`} variant="secondary">
-                ▶ Watch recording
-              </ButtonLink>
-            )
-          ) : isLive ? (
+          ) : isEnded ? null : isLive ? (
             <ButtonLink
               href={bypass ? "/preview/room" : `/host/${slug}/room`}
               target="_blank"
@@ -274,8 +316,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
             </ButtonLink>
           ) : (
             <Button onClick={() => void start()} disabled={busy}>
-              {busy && <Spinner className="size-4" />}
-              ▶ Go live
+              {busy && <Spinner className="size-4" />}▶ Go live
             </Button>
           )}
         </div>
@@ -283,14 +324,12 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
 
       <StepBar webinar={webinar} registrants={registrants.length} />
 
-
       <HostWebinarTabs
         webinar={webinar}
         registrants={registrants}
         recordings={recordings}
         onChanged={load}
         initialTab={initialTab}
-        onTabChange={setOpenTab}
       />
 
       <ConfirmModal

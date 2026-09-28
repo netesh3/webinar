@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Schedule — The webinar tab (mock)</title><link rel="stylesheet" href="assets/simple.css">
+<link rel="stylesheet" href="assets/create-tabs.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0..1,0">
+</head>
+<body>
+<div data-nav></div>
+<main style="max-width:60rem">
+  <a class="back" href="home.html">← Your webinars</a>
+  <h1>Schedule a webinar</h1>
+  <p class="small muted" style="margin-top:4px">Set up the webinar, then what your attendees get. You can change anything later.</p>
+
+  <!-- The two tabs: the webinar itself, and every message around it -->
+  <div class="ctabs">
+    <a class="ctab on" href="create-tabs-webinar.html"><span class="n">1</span><span><b>The webinar</b><small>Title, time, registration, the room</small></span></a>
+    <a class="ctab" href="create-tabs-messages.html"><span class="n">2</span><span><b>Messages &amp; follow-ups</b><small>Reminders, WhatsApp, after it ends · 6 on</small></span></a>
+  </div>
+
+  <div class="grp">The basics</div>
+  <div class="card p5 sect">
+    <div class="sl"><b>Basics</b><span>What people see on the browse and registration pages.</span></div>
+    <div style="display:grid; grid-template-columns:minmax(0,1fr) 15rem; gap:16px; align-items:start">
+      <div style="display:grid; gap:14px">
+        <div><label class="label">Topic</label><input class="field" value="Sleep Better in 7 Days"></div>
+        <div><label class="label">One-line summary</label><input class="field" value="A simple wind-down routine you can start tonight"></div>
+        <div><label class="label">Description <span class="faint">(optional)</span></label><textarea class="field" rows="3">Seven nights, one small habit each. We'll build a wind-down routine together, live, and you'll leave with a printable plan.</textarea><div class="xs faint" style="margin-top:4px">The full story, on the registration page.</div></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+          <div><label class="label">Topic tag</label><input class="field" value="Wellness"></div>
+          <div><label class="label">Type</label><div class="kseg"><span class="on">Live webinar</span><span>Recurring series</span></div></div>
+        </div>
+      </div>
+      <div>
+        <label class="label">Cover image <span class="faint">(optional)</span></label>
+        <div class="cover"><div><div style="font-size:13px; font-weight:600">Sleep Better in 7 Days</div><div style="font-size:11px; opacity:.85; margin-top:2px">Shown on your page and in WhatsApp</div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="card p5 sect" style="margin-top:-1px; border-top-left-radius:0; border-top-right-radius:0">
+    <div class="sl"><b>When</b><span>Defaults to today, at the next five-minute mark.</span></div>
+    <div style="display:grid; grid-template-columns:1.2fr 1fr 1fr 1.6fr; gap:12px">
+      <div><label class="label">Date</label><input class="field" value="Wed, 7 Oct 2026"></div>
+      <div><label class="label">Start time</label><input class="field" value="7:00 PM"></div>
+      <div><label class="label">Duration</label><input class="field" value="1 hour"></div>
+      <div><label class="label">Time zone</label><input class="field" value="(GMT+05:30) Asia/Kolkata"></div>
+    </div>
+  </div>
+
+  <div class="grp">Registration</div>
+  <div class="card p5 sect">
+    <div class="sl"><b>Who can join</b><span>Who gets in, and what you ask them first.</span></div>
+    <div style="display:grid; gap:12px">
+      <div class="boxed on"><span class="toggle on"></span><div><b class="small">Require registration</b><div class="xs muted">Attendees fill in a form and get a personal join link.</div></div></div>
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px">
+        <div><label class="label">Approval</label><input class="field" value="Automatically approve"></div>
+        <div><label class="label">Attendee limit</label><input class="field" value="100 attendees"></div>
+        <div><label class="label">Passcode <span class="faint">(optional)</span></label><input class="field"></div>
+      </div>
+      <div>
+        <div class="label">Registration questions <span class="faint">· name and email are always asked</span></div>
+        <div class="qrow"><span class="ms qi">drag_indicator</span><input class="field sm" value="What's keeping you up at night?"><span class="qt">Short answer</span><span class="qt">Optional</span><span class="ms qx">close</span></div>
+        <a class="xlink small" href="#"><span class="ms s">add</span>Add a question</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="grp">In the room</div>
+  <div class="card p5 sect">
+    <div class="sl"><b>How the session starts</b><span>Change any of these live from the host controls.</span></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 20px">
+      <div class="trow"><span class="toggle on"></span>Attendee chat</div>
+      <div class="trow"><span class="toggle on"></span>Q&amp;A</div>
+      <div class="trow"><span class="toggle on"></span>Reactions</div>
+      <div class="trow"><span class="toggle"></span>Raise hand</div>
+      <div class="trow"><span class="toggle"></span>Hide attendees from each other</div>
+      <div class="trow"><span class="toggle on"></span>Mute panelists on entry</div>
+      <div class="trow"><span class="toggle on"></span>Panelists may unmute themselves</div>
+    </div>
+  </div>
+  <div class="card p5 sect" style="margin-top:-1px; border-top-left-radius:0; border-top-right-radius:0">
+    <div class="sl"><b>Who is on the stage</b><span>Panelists can share their camera and screen.</span></div>
+    <div><label class="label">Panelist emails</label><input class="field" value="meera@calmsleep.in"><div class="xs faint" style="margin-top:4px">They need a WebinarLiv account — addresses without one are skipped.</div></div>
+  </div>
+  <div class="card p5 sect" style="margin-top:-1px; border-top-left-radius:0; border-top-right-radius:0">
+    <div class="sl"><b>Recording and extras</b><span>Recording, captions and streaming.</span></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 20px">
+      <div class="trow"><span class="toggle on"></span>Record automatically</div>
+      <div class="trow"><span class="toggle"></span>Live captions</div>
+      <div class="trow"><span class="toggle"></span>Stream to YouTube / LinkedIn</div>
+    </div>
+  </div>
+
+  <div class="grp">Feedback</div>
+  <div class="card p5 sect">
+    <div class="sl"><b>Feedback survey</b><span>Set it up now; in the room it's one button. Results land on the webinar's page afterwards.</span></div>
+    <div class="fsv">
+      <div class="trow"><span class="toggle on"></span><b>Ask attendees for feedback</b><span class="xs muted">A short survey pops up in the middle of their screen.</span></div>
+      <div class="fsrow">
+        <div><label class="label">Survey type</label>
+          <div class="fseg">
+            <span class="on" title="1–5 stars plus a few short questions, answered right in the webinar."><span class="ms">star</span>Rating survey<span class="ms fi">info</span></span>
+            <span title="Send people to your Google Form, Typeform or any https:// survey."><span class="ms">open_in_new</span>Survey link<span class="ms fi">info</span></span>
+          </div>
+        </div>
+        <div><label class="label">Title</label><input class="field sm" value="How was the session?"></div>
+      </div>
+      <div class="fwhen">
+        <label class="label">When attendees see it <span class="ms fi" title="Whichever you pick, you can still send it earlier from the room, and anyone who leaves early is asked on the way out.">info</span></label>
+        <div class="fseg">
+          <span class="on tipon" title="You press Send survey in the room, usually just before you wrap up. It pops up in the middle of everyone's screen, and you end once they've answered."><span class="ms">co_present</span>I'll put it on screen<i class="recd" title="Recommended"></i><span class="ms fi">info</span>
+            <span class="ftip">You press Send survey in the room, usually just before you wrap up. It pops up in the middle of everyone's screen, and you end once they've answered.</span></span>
+          <span title="Pops up on its own at the minute you pick. If you finish before then, it goes out as you end."><span class="ms">schedule</span>At a set time<span class="ms fi">info</span></span>
+          <span title="Pops up for everyone the moment you press End. Quickest for you, but some people will already have closed the tab."><span class="ms">call_end</span>When I end<span class="ms fi">info</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card p5 sect" style="margin-top:-1px; border-top-left-radius:0; border-top-right-radius:0">
+    <div class="sl"><b>Questions</b><span>The star rating is always asked. Add up to five more.</span></div>
+    <div class="sqgrid">
+      <div>
+        <div class="label" style="display:flex; justify-content:space-between"><span>Questions</span><span class="faint" style="font-weight:400">2 / 5 extra</span></div>
+        <div class="sqfix"><span class="stars"><span class="ms">star</span><span class="ms">star</span><span class="ms">star</span><span class="ms">star</span><span class="ms">star</span></span>Overall rating, 1–5 stars <span class="faint">· always asked, required</span></div>
+        <div class="sq">
+          <div class="sqh"><span class="qt">0–10 recommend</span><span class="cb"><span class="ms">check_box_outline_blank</span>Required</span><span class="ms sqa dis">arrow_upward</span><span class="ms sqa">arrow_downward</span><span class="ms sqa">delete</span></div>
+          <input class="field sm" value="How likely are you to recommend this session to a friend or colleague?">
+        </div>
+        <div class="sq">
+          <div class="sqh"><span class="qt">Short answer</span><span class="cb"><span class="ms">check_box_outline_blank</span>Required</span><span class="ms sqa">arrow_upward</span><span class="ms sqa dis">arrow_downward</span><span class="ms sqa">delete</span></div>
+          <input class="field sm" value="What was the most useful part?">
+        </div>
+        <div class="sqadd">
+          <span class="pickc add"><span class="ms s">add</span>0–10 recommend</span>
+          <span class="pickc add"><span class="ms s">add</span>Short answer</span>
+          <span class="pickc add"><span class="ms s">add</span>Multiple choice</span>
+          <span class="pickc add"><span class="ms s">add</span>1–5 stars</span>
+        </div>
+      </div>
+      <div>
+        <div class="label">What attendees see</div>
+        <div class="svp">
+          <div class="svh"><span class="svi ms">assignment</span><div style="flex:1"><span class="svb">Preview</span><small>Takes about 30 seconds</small></div><span class="ms" style="font-size:16px; opacity:.6">close</span></div>
+          <b class="svt">How was the session?</b>
+          <div class="svstars"><div><span class="ms">star</span><span class="ms">star</span><span class="ms">star</span><span class="ms">star</span><span class="ms">star</span></div><small>Tap a star to rate</small></div>
+          <div class="svq">How likely are you to recommend this session to a friend or colleague? <i>Optional</i></div>
+          <div class="svnps"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span></div>
+          <div class="svends"><span>Not likely</span><span>Very likely</span></div>
+          <div class="svq">What was the most useful part? <i>Optional</i></div>
+          <div class="svta">Type your answer…</div>
+          <div class="svbtns"><span>Maybe later</span><span class="go">Send feedback</span></div>
+          <div class="svhint">Pick a star rating.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nextcard">
+    <div><b>Next: what your attendees get</b><div class="xs muted">Confirmation, 2 reminders, the replay and 3 follow-ups are on — check the wording before you schedule.</div></div>
+    <a class="btn sec" href="create-tabs-messages.html">Messages &amp; follow-ups <span class="ms s" style="margin:0 0 0 4px">arrow_forward</span></a>
+  </div>
+</main>
+
+<div class="abar">
+  <div class="small"><span class="dotg"></span><b>Wed 7 Oct, 7:00 PM IST</b> · 1 hour · Registration on · 100 seats · <b>6 messages on</b></div>
+  <div class="row"><button class="btn ghost">Save as draft</button><button class="btn">Schedule</button></div>
+</div>
+
+<div class="note"><b>Tab 1 · The webinar.</b> Everything about the webinar itself — basics (title, summary, description, tag, type, cover), when, registration, the room, and the feedback survey (the same builder, restyled to match: switch, type and title; questions with a live preview; when it pops up) — with no message settings in it. Registration and the room are shown open, not folded behind “Change”: without the message settings the tab is short enough to read top to bottom. The step card at the end hands over to tab 2 and says what is already on there. The bar at the bottom (date, seats, “6 messages on”) and Schedule are the same on both tabs, so a host can schedule from either one; tab 2 is never a required step.</div>
+<script src="assets/nav.js"></script>
+</body></html>
