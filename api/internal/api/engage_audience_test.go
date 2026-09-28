@@ -102,4 +102,23 @@ func TestAudienceRollup(t *testing.T) {
 		people.People[0].Tier != string(types.TierHigh) {
 		t.Errorf("people highly engaged = %+v", people.People)
 	}
+
+	// "Message these N" on the Audience cards resolves the same groups. These filters
+	// read the engagement rollup (ce.*); a lookup that forgets that join 500s.
+	res, raw = h.do(http.MethodGet, "/api/host/crm/people/ids?filter="+types.PeopleHighlyEngaged, nil)
+	var ids types.CRMContactIDsResponse
+	h.decode(raw, &ids)
+	if res.StatusCode != http.StatusOK || len(ids.ContactIDs) != 1 || ids.ContactIDs[0] != thandi.ID {
+		t.Errorf("best people ids = %d %+v (%s), want Thandi", res.StatusCode, ids, raw)
+	}
+	res, raw = h.do(http.MethodGet, "/api/host/crm/people/ids?filter="+types.PeopleCameBack, nil)
+	h.decode(raw, &ids)
+	if res.StatusCode != http.StatusOK || len(ids.ContactIDs) != 1 || ids.ContactIDs[0] != thandi.ID {
+		t.Errorf("came back ids = %d %+v (%s), want Thandi", res.StatusCode, ids, raw)
+	}
+	res, raw = h.do(http.MethodGet, "/api/host/crm/people/ids?filter="+types.PeopleSlipping, nil)
+	h.decode(raw, &ids)
+	if res.StatusCode != http.StatusOK || len(ids.ContactIDs) != 1 || ids.ContactIDs[0] != sam.ID {
+		t.Errorf("slipping ids = %d %+v (%s), want Sam", res.StatusCode, ids, raw)
+	}
 }
