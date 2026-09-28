@@ -16,8 +16,8 @@ import { MessagesNavButton } from "@/engage";
  * It held three. Browse went first: a public catalogue that stopped being one,
  * since the list is now scoped to sessions the account already hosts, presents
  * on or registered for. My Webinar went the same way and for the same reason —
- * it is the WatchList tab on Host Webinar now, sitting after Drafts with the
- * host's other lists. A nav entry per view of one person's sessions asks them to
+ * it is the Attending tab on Host Webinar now, after Audience with the host's
+ * other lists, shown once the host has registered for somebody else's session. A nav entry per view of one person's sessions asks them to
  * decide which door leads to the webinar they are looking for, and both doors
  * open on the same room.
  *
@@ -27,8 +27,8 @@ import { MessagesNavButton } from "@/engage";
  * could not have gone anywhere. The logo does that job now, see homeHrefFor.
  *
  * Both routes stay reachable. /browse still takes the links already sent out, and
- * /my-webinars is where registering sends somebody and what the account menu's
- * neighbours link to.
+ * /my-webinars is where registering sends somebody — a host lands on the
+ * Attending tab from it (see lib/access.ts).
  *
  * Contacts went too. People and Messages are tabs on the Hosting page beside
  * Upcoming and Past — one person, one row, across every webinar — so a host
@@ -155,17 +155,6 @@ export function TopNav() {
                   label: "Account settings",
                   onSelect: () => router.push("/account"),
                 },
-                ...(account.canHost
-                  ? [
-                      {
-                        kind: "action" as const,
-                        label: count
-                          ? `Webinars I'm attending (${count})`
-                          : "Webinars I'm attending",
-                        onSelect: () => router.push("/host?tab=registered"),
-                      },
-                    ]
-                  : []),
                 { kind: "separator" },
                 {
                   kind: "action",

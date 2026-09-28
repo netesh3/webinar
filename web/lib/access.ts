@@ -68,7 +68,9 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
    * own signed-out state. /admin stays closed because an admin waiting out a
    * blip is a smaller cost than the alternative, and admins are few. */
   if (viewer.kind === "unknown") {
-    return segments[0] === "admin" ? { allow: false, redirectTo: "/account" } : ALLOW;
+    return segments[0] === "admin"
+      ? { allow: false, redirectTo: "/account" }
+      : ALLOW;
   }
 
   /* Marketing home is for visitors only. Signed-in users skip the brand page and
@@ -97,7 +99,15 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
       return viewer.isAdmin ? ALLOW : { allow: false, redirectTo: "/account" };
     }
     if (path === "/my-webinars" || path === "/account") {
-      return viewer.kind === "anonymous" ? redirect("/login", path) : ALLOW;
+      if (viewer.kind === "anonymous") return redirect("/login", path);
+      /* A host's registrations are the Attending tab on their home page now. The
+       * path still opens — registration emails and the welcome email for
+       * non-hosts point at it — and for somebody who cannot host it is still the
+       * page itself, since they have no /host to hold the tab. */
+      if (path === "/my-webinars" && viewer.canHost) {
+        return { allow: false, redirectTo: "/host?tab=attending" };
+      }
+      return ALLOW;
     }
     return ALLOW;
   }

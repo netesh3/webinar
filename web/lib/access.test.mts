@@ -76,12 +76,7 @@ console.log("\nPARTICIPANT — the registration link is public");
 
 console.log("\nSIGNED-IN — marketing home redirects into the app");
 {
-  redirectedTo(
-    "/",
-    host,
-    "/host",
-    "a host opening / lands on Hosting",
-  );
+  redirectedTo("/", host, "/host", "a host opening / lands on Hosting");
   redirectedTo(
     "/",
     participant,
@@ -127,10 +122,11 @@ console.log("\nHOST — nothing is taken away");
   allowed("/host/redis-cache", host, "manage a webinar");
   allowed("/host/redis-cache/edit", host, "edit it");
   allowed("/host/redis-cache/room", host, "present in it");
-  allowed(
+  redirectedTo(
     "/my-webinars",
     host,
-    "a host is also a person who registers for things",
+    "/host?tab=attending",
+    "a host's registrations are the Attending tab on their home page",
   );
   allowed("/account", host, "account settings");
 }
@@ -211,7 +207,13 @@ console.log("\nUNCONFIRMED SESSION — a lookup that failed, not a missing one")
 {
   const unknown: Viewer = { kind: "unknown" };
 
-  for (const path of ["/host", "/host/acme-launch", "/my-webinars", "/account", "/"]) {
+  for (const path of [
+    "/host",
+    "/host/acme-launch",
+    "/my-webinars",
+    "/account",
+    "/",
+  ]) {
     ok(
       decideAccess(path, unknown).allow === true,
       `${path} is allowed when the session could not be checked`,
@@ -307,7 +309,10 @@ console.log("\nEDGE CASES");
  * exactly the thing that drifts.
  */
 {
-  const middleware = readFileSync(new URL("../middleware.ts", import.meta.url), "utf8");
+  const middleware = readFileSync(
+    new URL("../middleware.ts", import.meta.url),
+    "utf8",
+  );
   const matcher = middleware.slice(middleware.indexOf("matcher:"));
 
   for (const [path, why] of [
