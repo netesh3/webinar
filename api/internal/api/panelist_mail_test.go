@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +85,17 @@ func TestPanelistsAreEmailedTheirStageLink(t *testing.T) {
 	if !strings.Contains(inv.Body, "Mail Host") || !strings.Contains(inv.ICS, "BEGIN:VCALENDAR") {
 		t.Errorf("invitation missing host name or calendar file")
 	}
+	if !strings.Contains(inv.HTML, ">Join the stage</a>") || !strings.Contains(inv.HTML, stage) {
+		t.Errorf("invitation has no HTML part with the Join the stage button")
+	}
+	if !strings.Contains(inv.Body, "GMT") || !strings.Contains(inv.Body, "(1 hour)") {
+		t.Errorf("invitation time is not in the panelist format:\n%s", inv.Body)
+	}
+	if icsField(inv.ICS, "METHOD") != "PUBLISH" ||
+		!strings.Contains(icsField(inv.ICS, "ORGANIZER"), "mailto:mailhost@test.dev") {
+		t.Errorf("invitation calendar file: method/organizer wrong:\n%s", inv.ICS)
+	}
+	uid, seq := icsField(inv.ICS, "UID"), icsSequence(t, inv.ICS)
 	if got := mail.to("nobody-yet@test.dev", ""); len(got) != 0 {
 		t.Errorf("an address with no account was emailed")
 	}
@@ -110,6 +122,14 @@ func TestPanelistsAreEmailedTheirStageLink(t *testing.T) {
 	if len(moved) != 1 || !strings.Contains(moved[0].Body, stage) {
 		t.Fatalf("reschedule to pam = %+v, want one with the stage link", moved)
 	}
+	if !strings.Contains(moved[0].Body, "Was: ") || moved[0].HTML == "" {
+		t.Errorf("reschedule does not show the old time or has no HTML:\n%s", moved[0].Body)
+	}
+	if icsField(moved[0].ICS, "UID") != uid || icsSequence(t, moved[0].ICS) <= seq {
+		t.Errorf("reschedule file does not update the same event: uid %q (want %q), sequence %d (was %d)",
+			icsField(moved[0].ICS, "UID"), uid, icsSequence(t, moved[0].ICS), seq)
+	}
+	seq = icsSequence(t, moved[0].ICS)
 
 	// Taken off and put back: invited again.
 	wb = update(func(in *types.WebinarInput) { in.StartsAt = newStart; in.PanelistEmails = nil })
@@ -130,10 +150,34 @@ func TestPanelistsAreEmailedTheirStageLink(t *testing.T) {
 		got := mail.to(who, "Cancelled")
 		if len(got) != 1 {
 			t.Errorf("cancellations to %s = %d, want 1", who, len(got))
-		} else if strings.Contains(got[0].Body, "/room") {
+		} else if strings.Contains(got[0].Body, "/room") || strings.Contains(got[0].HTML, "/room") {
 			t.Errorf("a cancellation carries a link:\n%s", got[0].Body)
+		} else if icsField(got[0].ICS, "METHOD") != "CANCEL" || icsField(got[0].ICS, "STATUS") != "CANCELLED" {
+			t.Errorf("cancellation to %s has no CANCEL calendar file:\n%s", who, got[0].ICS)
+		} else if who == "pam.panel@test.dev" &&
+			(icsField(got[0].ICS, "UID") != uid || icsSequence(t, got[0].ICS) <= seq) {
+			t.Errorf("cancellation does not replace the same event:\n%s", got[0].ICS)
 		}
 	}
+}
+
+// icsField is the value of the first line starting NAME: or NAME; in an unfolded file.
+func icsField(ics, name string) string {
+	for _, line := range strings.Split(strings.ReplaceAll(ics, "\r\n ", ""), "\r\n") {
+		if strings.HasPrefix(line, name+":") || strings.HasPrefix(line, name+";") {
+			return line[len(name)+1:]
+		}
+	}
+	return ""
+}
+
+func icsSequence(t *testing.T, ics string) int {
+	t.Helper()
+	n, err := strconv.Atoi(icsField(ics, "SEQUENCE"))
+	if err != nil {
+		t.Fatalf("no SEQUENCE in:\n%s", ics)
+	}
+	return n
 }
 
 func TestAddingAPanelistFromTheWebinarPageInvitesThem(t *testing.T) {

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/netkumar/webcast/api/internal/notify"
@@ -211,29 +212,95 @@ func (s *Server) stageURL(slug string) string {
 	return strings.TrimRight(s.cfg.WebBaseURL, "/") + "/host/" + slug + "/room"
 }
 
-func (s *Server) panelistInvite(wb types.Webinar, name string) notify.Invite {
+/* panelistWhen is the panelist mails' own time format (notify.EventTime): day, start–end
+ * with the GMT offset, and the length. "" when the start does not parse. */
+func panelistWhen(startsAt string, durationMin int, zone string) string {
+	at, err := time.Parse(time.RFC3339, startsAt)
+	if err != nil {
+		return ""
+	}
+	return notify.EventTime(at, durationMin, zone)
+}
+
+func (s *Server) panelistInvite(wb types.Webinar, p store.PanelistContact, calendar bool) notify.Invite {
+	name := p.Name
+	/* An account with no profile name carries its address's local part as one (see the
+	 * welcome email). "Hi priya.s92," reads like a broken mail merge. */
+	if local, _, ok := strings.Cut(strings.TrimSpace(p.Email), "@"); ok &&
+		strings.EqualFold(strings.TrimSpace(name), local) {
+		name = ""
+	}
 	return notify.Invite{
 		Name:     name,
 		Topic:    wb.Topic,
-		WhenText: whenText(wb.StartsAt, wb.TimeZone),
+		WhenText: panelistWhen(wb.StartsAt, wb.Duration, wb.TimeZone),
 		HostName: wb.Host.Name,
 		StageURL: s.stageURL(wb.ID),
+		Email:    strings.ToLower(strings.TrimSpace(p.Email)),
+		Product:  s.cfg.AppName,
+		Calendar: calendar,
 	}
 }
 
-func (s *Server) panelistICS(wb types.Webinar, userID string) string {
+/* calendarSequence is the SEQUENCE for a panelist's calendar file: seconds since 2024, at
+ * the moment the file is written. A calendar replaces an event it already holds only for a
+ * higher SEQUENCE, and every panelist file is written in response to a save or a delete
+ * that happened after the one before it, so the clock is the version counter — without a
+ * column to keep in step. Seconds since 2024 rather than since 1970 keeps it well inside
+ * the 32-bit integer some clients parse it into. */
+func calendarSequence(now time.Time) int {
+	const epoch2024 = 1704067200
+	n := int(now.Unix() - epoch2024)
+	if n < 0 {
+		n = 0
+	}
+	// Two saves inside one second still get increasing numbers from this process.
+	sequenceMu.Lock()
+	defer sequenceMu.Unlock()
+	if n <= lastSequence {
+		n = lastSequence + 1
+	}
+	lastSequence = n
+	return n
+}
+
+var (
+	sequenceMu   sync.Mutex
+	lastSequence int
+)
+
+// panelistOrganizer is the host's name and account address, for the file's ORGANIZER.
+func (s *Server) panelistOrganizer(ctx context.Context, wb types.Webinar) (name, email string) {
+	if wb.Host.ID == "" {
+		return "", ""
+	}
+	host, err := s.store.UserByID(ctx, wb.Host.ID)
+	if err != nil {
+		return "", ""
+	}
+	return strings.TrimSpace(wb.Host.Name), strings.ToLower(strings.TrimSpace(host.Email))
+}
+
+func (s *Server) panelistICS(ctx context.Context, wb types.Webinar, p store.PanelistContact, cancelled bool) string {
 	starts, err := time.Parse(time.RFC3339, wb.StartsAt)
 	if err != nil {
 		return ""
 	}
+	orgName, orgEmail := s.panelistOrganizer(ctx, wb)
 	return notify.ICSFile(notify.CalendarEvent{
-		// Stable per panelist and webinar, so a rescheduled file replaces the first one.
-		UID:         "panelist-" + userID + "-" + wb.ID + "@webinarliv.com",
-		Title:       wb.Topic,
-		Description: strings.TrimSpace(wb.Summary),
-		URL:         s.stageURL(wb.ID),
-		StartsAt:    starts,
-		DurationMin: wb.Duration,
+		// Stable per panelist and webinar, so a rescheduled or cancelled file replaces the first one.
+		UID:            "panelist-" + p.UserID + "-" + wb.ID + "@webinarliv.com",
+		Sequence:       calendarSequence(time.Now()),
+		Cancelled:      cancelled,
+		Title:          wb.Topic,
+		Description:    strings.TrimSpace(wb.Summary),
+		URL:            s.stageURL(wb.ID),
+		StartsAt:       starts,
+		DurationMin:    wb.Duration,
+		OrganizerName:  orgName,
+		OrganizerEmail: orgEmail,
+		AttendeeName:   strings.TrimSpace(p.Name),
+		AttendeeEmail:  strings.ToLower(strings.TrimSpace(p.Email)),
 	})
 }
 
@@ -265,22 +332,32 @@ func (s *Server) syncPanelistMail(ctx context.Context, wb types.Webinar, prevSta
 	queued := 0
 	for _, p := range panel {
 		email := strings.ToLower(strings.TrimSpace(p.Email))
+		ics := s.panelistICS(ctx, wb, p, false)
+		in := s.panelistInvite(wb, p, ics != "")
 		kind := types.NotifyPanelistInvited
-		subject, body := notify.PanelistInvited(s.panelistInvite(wb, p.Name))
 		if invited[email] {
 			if !moved {
 				continue
 			}
 			kind = types.NotifyPanelistRescheduled
-			subject, body = notify.PanelistRescheduled(s.panelistInvite(wb, p.Name))
+		}
+		var subject, text, html string
+		if kind == types.NotifyPanelistRescheduled {
+			if prev, err := time.Parse(time.RFC3339, prevStartsAt); err == nil {
+				in.WasText = notify.EventStart(prev, wb.TimeZone)
+			}
+			subject, text, html = notify.PanelistRescheduled(in)
+		} else {
+			subject, text, html = notify.PanelistInvited(in)
 		}
 		if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
 			Email:       email,
 			Kind:        kind,
 			WebinarSlug: wb.ID,
 			Subject:     subject,
-			Body:        body,
-			ICS:         s.panelistICS(wb, p.UserID),
+			Body:        text,
+			HTML:        html,
+			ICS:         ics,
 		}); err != nil {
 			s.log.Error("panelist mail: could not queue", "slug", wb.ID, "kind", kind, "err", err)
 			continue
@@ -315,9 +392,11 @@ func (s *Server) panelistCancellations(ctx context.Context, slug string) []store
 		if !invited[email] {
 			continue
 		}
-		subject, body := notify.PanelistCancelled(s.panelistInvite(wb, p.Name))
+		ics := s.panelistICS(ctx, wb, p, true)
+		subject, text, html := notify.PanelistCancelled(s.panelistInvite(wb, p, ics != ""))
 		out = append(out, store.Notification{
-			Email: email, Kind: types.NotifyPanelistCancelled, Subject: subject, Body: body,
+			Email: email, Kind: types.NotifyPanelistCancelled, Subject: subject, Body: text,
+			HTML: html, ICS: ics,
 		})
 	}
 	return out
