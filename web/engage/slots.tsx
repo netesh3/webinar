@@ -19,6 +19,8 @@ import {
   type RegistrantRow,
 } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
+import { ChatIcon } from "@/components/icons";
+import { useReplies } from "./components/replies";
 
 /** WhatsApp setup and the automations (bots, sequences) — not in the nav; reached
  *  from Account settings and from a webinar's Messages tab. */
@@ -247,4 +249,39 @@ function WhatsAppStatusBadge({ status }: { status?: string }) {
   if (status === CRMStatusNoNumber) return <Badge>No number</Badge>;
   // Everything left is no_opt_in, which is most of a list rather than a fault.
   return <Badge>No consent</Badge>;
+}
+
+/* The top bar's inbox: a chat icon with how many conversations are waiting, opening
+ * Messages. Absent when this account has no WhatsApp, where there is no inbox to open. */
+export function MessagesNavButton() {
+  const replies = useReplies();
+  const { account } = useSession();
+  if (!account?.canHost || !account?.whatsapp) return null;
+  const n = replies?.needsReply ?? 0;
+  return (
+    <Link
+      href={MESSAGES_HREF}
+      aria-label={n ? `Messages, ${n} waiting` : "Messages"}
+      title="Messages"
+      className="relative grid size-9 place-items-center rounded-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
+    >
+      <ChatIcon className="size-[18px]" />
+      {n > 0 && (
+        <span className="absolute top-1 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-ok px-1 text-[10px] font-semibold text-white">
+          {n > 99 ? "99+" : n}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+/** The account menu's WhatsApp entry: its page, and whether the number is connected. */
+export function useWhatsAppMenuItem(): { label: string; href: string } | null {
+  const config = useAppConfig();
+  const { account } = useSession();
+  if (!config.whatsappConnect || !account?.canHost) return null;
+  return {
+    label: account.whatsapp?.connected ? "WhatsApp · connected" : "Connect WhatsApp",
+    href: account.whatsapp?.connected ? ENGAGE_HOME : `${ENGAGE_HOME}?view=setup`,
+  };
 }

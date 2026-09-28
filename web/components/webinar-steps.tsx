@@ -13,7 +13,13 @@ const STEPS: { id: Step; title: string }[] = [
   { id: "follow", title: "Follow up" },
 ];
 
-export function StepBar({ webinar: w, registrants }: { webinar: Webinar; registrants: number }) {
+export function StepBar({
+  webinar: w,
+  registrants,
+}: {
+  webinar: Webinar;
+  registrants: number;
+}) {
   const now = stepFor(w.status);
   const at = STEPS.findIndex((s) => s.id === now);
   const report = w.report;
@@ -28,7 +34,10 @@ export function StepBar({ webinar: w, registrants }: { webinar: Webinar; registr
         : w.status === "live"
           ? "On now"
           : `${formatDay(w.startsAt, w.timeZone).split(",")[0]} ${formatTime(w.startsAt, w.timeZone)}`,
-    follow: w.status === "ended" ? "Message who came, and who missed it" : "After it ends",
+    follow:
+      w.status === "ended"
+        ? "Message who came, and who missed it"
+        : "After it ends",
   };
   return (
     <ol className="mb-5 grid grid-cols-2 overflow-hidden rounded-xl border border-line bg-surface sm:grid-cols-4">
@@ -53,10 +62,14 @@ export function StepBar({ webinar: w, registrants }: { webinar: Webinar; registr
               {done ? "✓" : i + 1}
             </span>
             <span className="min-w-0">
-              <span className={`block text-[13px] font-semibold ${current || done ? "text-ink" : "text-ink-3"}`}>
+              <span
+                className={`block text-[13px] font-semibold ${current || done ? "text-ink" : "text-ink-3"}`}
+              >
                 {s.title}
               </span>
-              <span className="block truncate text-[11.5px] text-ink-3">{sub[s.id]}</span>
+              <span className="block truncate text-[11.5px] text-ink-3">
+                {sub[s.id]}
+              </span>
             </span>
           </li>
         );

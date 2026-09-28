@@ -42,7 +42,15 @@ type Service struct {
 
 	mu       sync.Mutex
 	inflight map[string]*call
+
+	// onSaved runs after scores are saved, whichever path computed them (the end of a
+	// session, a recompute, or the first read of an unscored webinar). See OnSaved.
+	onSaved func(ctx context.Context, slug string)
 }
+
+/* OnSaved registers what to run after a webinar's scores are saved: the CRM's follow-up
+ * recipes and the Audience rollup. Set once at start-up, before any compute runs. */
+func (s *Service) OnSaved(fn func(ctx context.Context, slug string)) { s.onSaved = fn }
 
 type call struct {
 	done    chan struct{}
@@ -158,6 +166,9 @@ func (s *Service) compute(ctx context.Context, w store.EngagementWebinar) ([]byt
 	if res.Summary.State != types.EngagementNotStarted {
 		if _, err := s.store.SaveEngagement(ctx, w.ID, f.Version, now, payload, res.Rows); err != nil {
 			return nil, err
+		}
+		if s.onSaved != nil {
+			s.onSaved(ctx, w.Slug)
 		}
 	}
 	if s.log != nil {

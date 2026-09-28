@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { HostMessagesTab, HostPeopleTab, WhatsAppWeekCard, useReplies } from "@/engage";
+import { HostMessagesTab, HostPeopleTab, useReplies } from "@/engage";
+import { EndedNudge } from "./ended-nudge";
 import { useAppConfig } from "./providers";
 import { HostWebinarRows } from "./host-webinar-list";
 import { MyWebinarsList } from "./my-webinars-list";
@@ -50,8 +51,13 @@ const PEOPLE = "people";
 const MESSAGES = "messages";
 type ViewTab = HostWebinarTab | typeof REGISTERED | typeof PEOPLE | typeof MESSAGES;
 
-const BASE_TABS: readonly ViewTab[] = [...TABS, REGISTERED];
-const ENGAGE_TABS: readonly ViewTab[] = [...BASE_TABS, PEOPLE, MESSAGES];
+/* Shown in the tab row: the webinar lists, then Audience (engagement across all of them;
+ * ?tab=people). WatchList (webinars this account attends) and Messages (the inbox) are
+ * reached from the account menu and the top bar's chat icon; their ?tab= links still open
+ * them here, without a tab of their own. */
+const BASE_TABS: readonly ViewTab[] = [...TABS];
+const ENGAGE_TABS: readonly ViewTab[] = [...BASE_TABS, PEOPLE];
+const LINKABLE: readonly ViewTab[] = [...TABS, REGISTERED, PEOPLE, MESSAGES];
 
 /** The tabs that do not read the paged webinar endpoint, and so hide its filters. */
 function ownList(
@@ -64,8 +70,8 @@ const TAB_LABELS: Record<ViewTab, string> = {
   upcoming: "Upcoming",
   past: "Completed",
   drafts: "Drafts",
-  registered: "WatchList",
-  people: "People",
+  registered: "Attending",
+  people: "Audience",
   messages: "Messages",
 };
 
@@ -143,15 +149,17 @@ export function HostWebinarBrowser({
   const askedTab = (search.get("tab") ?? "") as ViewTab;
   const linkedContact = search.get("contact") ?? "";
   const linkedWebinar = search.get("webinar") ?? "";
+  const reachable = (t: ViewTab) =>
+    viewTabs.includes(t) || t === REGISTERED || (whatsappConnect && LINKABLE.includes(t));
   const [tab, setTabState] = useState<ViewTab>(() =>
-    viewTabs.includes(askedTab) ? askedTab : "upcoming",
+    reachable(askedTab) ? askedTab : "upcoming",
   );
   // Adjusted while rendering rather than in an effect: a new link is a new tab now.
   const linkKey = search.toString();
   const [seenLink, setSeenLink] = useState(linkKey);
   if (linkKey !== seenLink) {
     setSeenLink(linkKey);
-    if (viewTabs.includes(askedTab)) setTabState(askedTab);
+    if (reachable(askedTab)) setTabState(askedTab);
   }
   /* Switching tabs by hand drops whatever a link had narrowed to. */
   const setTab = useCallback(
@@ -297,7 +305,7 @@ export function HostWebinarBrowser({
           <div className="min-w-0">
             <Tabs
               bare
-              tabs={viewTabs}
+              tabs={viewTabs.includes(tab) ? viewTabs : [...viewTabs, tab]}
               value={tab}
               /* WatchList has nothing to re-filter and fetches itself, so it
                  skips refilter: that would raise the pending flag for a request
@@ -377,7 +385,7 @@ export function HostWebinarBrowser({
         </div>
       )}
 
-      {tab === "upcoming" && <WhatsAppWeekCard />}
+      {tab === "upcoming" && <EndedNudge />}
 
       {tab === REGISTERED ? (
         /* Its own loading, empty and error states, unchanged from the page this
@@ -385,7 +393,7 @@ export function HostWebinarBrowser({
            what an attendee came for and is nothing like a host row. */
         <MyWebinarsList />
       ) : tab === PEOPLE ? (
-        <HostPeopleTab key={linkedWebinar} initialWebinar={linkedWebinar} />
+        <HostPeopleTab key={linkedWebinar} initialWebinar={linkedWebinar} summary />
       ) : tab === MESSAGES ? (
         <HostMessagesTab key={linkedContact} initialContact={linkedContact} />
       ) : items === null ? (

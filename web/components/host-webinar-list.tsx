@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ConfirmModal, Spinner } from "./controls";
+import { ConfirmModal, Menu } from "./controls";
 import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, kindLabel } from "./ui";
 import {
@@ -148,7 +148,6 @@ export function HostWebinarList({ webinars }: { webinars: Webinar[] }) {
 function HostCard({
   webinar: w,
   readOnly,
-  busy,
   onStart,
   onDelete,
 }: {
@@ -166,6 +165,7 @@ function HostCard({
   const bypass = isDevAuthBypassActive();
   const origin = useShareOrigin();
   const { notify } = useToast();
+  const router = useRouter();
   const roomHref = bypass ? "/preview/room" : `/host/${w.id}/room`;
   const registerUrl = `${origin}/webinars/${w.id}`;
 
@@ -232,59 +232,53 @@ function HostCard({
             </ButtonLink>
           ) : (
             <>
-              {isLive ? (
-                <ButtonLink
-                  href={roomHref}
-                  size="sm"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Rejoin
-                </ButtonLink>
-              ) : (
-                <Button size="sm" onClick={onStart} disabled={busy}>
-                  {busy ? <Spinner className="size-3.5" /> : "Host"}
-                </Button>
-              )}
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() =>
-                  void shareAttendeeLink({
-                    url: registerUrl,
-                    topic: w.topic,
-                    notify,
-                  })
+                  void navigator.clipboard
+                    .writeText(registerUrl)
+                    .then(() => notify("Link copied — share it anywhere.", "ok"))
+                    .catch(() => void shareAttendeeLink({ url: registerUrl, topic: w.topic, notify }))
                 }
               >
-                Share
+                Copy link
               </Button>
-              {needsAdmit ? (
-                <ButtonLink
-                  href={`/host/${w.id}?tab=admit`}
-                  variant="secondary"
-                  size="sm"
-                >
-                  Admit
+              {isLive ? (
+                <ButtonLink href={roomHref} size="sm" target="_blank" rel="noopener noreferrer">
+                  Rejoin
                 </ButtonLink>
               ) : (
-                <ButtonLink
-                  href={`/host/${w.id}?tab=attendees`}
-                  variant="secondary"
-                  size="sm"
-                >
-                  Attendees
+                <ButtonLink href={`/host/${w.id}`} size="sm">
+                  Manage
                 </ButtonLink>
               )}
-              <ButtonLink href={`/host/${w.id}`} variant="ghost" size="sm">
-                Manage
-              </ButtonLink>
             </>
           )}
           {!readOnly && (
-            <Button variant="ghost" size="sm" onClick={onDelete} disabled={busy}>
-              Delete
-            </Button>
+            <Menu
+              label={`More for ${w.topic}`}
+              trigger={
+                <span className="grid size-8 place-items-center rounded-lg text-[17px] text-ink-2 hover:bg-surface-2">
+                  ⋯
+                </span>
+              }
+              items={[
+                ...(!isDraft
+                  ? [
+                      isLive
+                        ? { kind: "action" as const, label: "Manage", onSelect: () => router.push(`/host/${w.id}`) }
+                        : { kind: "action" as const, label: "Go live now", onSelect: onStart },
+                      ...(needsAdmit
+                        ? [{ kind: "action" as const, label: "Admit people", onSelect: () => router.push(`/host/${w.id}?tab=people`) }]
+                        : []),
+                      { kind: "action" as const, label: "Edit", onSelect: () => router.push(`/host/${w.id}/edit`) },
+                      { kind: "separator" as const },
+                    ]
+                  : []),
+                { kind: "action" as const, label: "Delete", danger: true, onSelect: onDelete },
+              ]}
+            />
           )}
         </div>
       </div>

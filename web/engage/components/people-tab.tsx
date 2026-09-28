@@ -12,7 +12,10 @@ import {
   CRMStatusOptedOut,
   PeopleAttended,
   PeopleNeverAttended,
+  PeopleCameBack,
+  PeopleHighlyEngaged,
   PeopleHotLeads,
+  PeopleSlipping,
   PeopleReplied,
   type CRMPeopleCounts,
   type CRMPeopleResponse,
@@ -21,6 +24,7 @@ import {
 import { formatDuration } from "@/lib/format";
 import { PersonAvatar } from "./wa-kit";
 import { SendDialog, type SendTarget } from "./send-dialog";
+import { AudienceSummary } from "./audience-summary";
 
 /* Hosting → People: everybody who has registered for any of your webinars, once each.
  *
@@ -39,15 +43,27 @@ const FILTERS: { id: string; label: string; count: (c: CRMPeopleCounts) => numbe
   { id: "", label: "Everyone", count: (c) => c.everyone },
   { id: PeopleAttended, label: "Came", count: (c) => c.attended },
   { id: PeopleNeverAttended, label: "Didn't come", count: (c) => c.neverAttended },
+  { id: PeopleHighlyEngaged, label: "Highly engaged", count: (c) => c.highlyEngaged },
+  { id: PeopleCameBack, label: "Came back", count: (c) => c.cameBack },
+  { id: PeopleSlipping, label: "Slipping away", count: (c) => c.slipping },
   { id: PeopleReplied, label: "Replied", count: (c) => c.replied },
   { id: PeopleHotLeads, label: "Hot leads", count: (c) => c.hotLeads },
 ];
 
 const PAGE = 50;
 
-export function HostPeopleTab({ initialWebinar = "" }: { initialWebinar?: string }) {
+export function HostPeopleTab({
+  initialWebinar = "",
+  initialFilter = "",
+  summary = false,
+}: {
+  initialWebinar?: string;
+  initialFilter?: string;
+  /** The Audience tab: engagement across webinars above the list. */
+  summary?: boolean;
+}) {
   const [webinar, setWebinar] = useState(initialWebinar);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(initialFilter);
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
@@ -162,6 +178,13 @@ export function HostPeopleTab({ initialWebinar = "" }: { initialWebinar?: string
 
   return (
     <div className="grid gap-4">
+      {summary && !webinar && (
+        <AudienceSummary
+          onPick={(f) => narrow(() => setFilter(f))}
+          onMessage={(ids, label) => setTarget({ kind: "contacts", contactIds: ids, label })}
+          canMessage={canMessage}
+        />
+      )}
       {/* The answer before the list: how big the audience is, and how much of it showed. */}
       <p className="text-[13px] text-ink-2">
         <span className="font-semibold text-ink tabular-nums">{c.everyone}</span>{" "}
@@ -248,7 +271,10 @@ export function HostPeopleTab({ initialWebinar = "" }: { initialWebinar?: string
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show">
         {FILTERS.filter(
           // Hot leads only once the hot-lead automation has tagged someone.
-          (f) => f.id !== PeopleHotLeads || c.hotLeads > 0 || filter === f.id,
+          (f) =>
+            (f.id !== PeopleHotLeads && f.id !== PeopleSlipping && f.id !== PeopleHighlyEngaged && f.id !== PeopleCameBack) ||
+            f.count(c) > 0 ||
+            filter === f.id,
         ).map((f) => {
           const on = filter === f.id;
           return (
@@ -309,6 +335,7 @@ export function HostPeopleTab({ initialWebinar = "" }: { initialWebinar?: string
               )}
               <span className="flex-1">Person</span>
               <span className="w-44">{webinar ? "At this webinar" : "Attendance"}</span>
+              {!webinar && <span className="hidden w-36 lg:block">Engagement</span>}
               {!webinar && <span className="hidden w-56 md:block">Last webinar</span>}
               {canMessage && <span className="w-24" />}
             </div>
@@ -449,6 +476,12 @@ function PersonRow({
       </div>
 
       {!scoped && (
+        <div className="hidden w-36 lg:block">
+          <Engagement person={p} />
+        </div>
+      )}
+
+      {!scoped && (
         <div className="hidden w-56 min-w-0 md:block">
           <span className="block truncate text-[13px] text-ink-2" title={p.lastWebinar}>
             {p.lastWebinar ?? "—"}
@@ -493,6 +526,31 @@ function Attendance({ person: p, scoped }: { person: CRMPerson; scoped: boolean 
       tone="ok"
       text={p.webinars === 1 ? "Came" : `Came to ${p.attendedWebinars} of ${p.webinars}`}
     />
+  );
+}
+
+const TIER_DOT: Record<string, string> = {
+  high: "bg-ok",
+  engaged: "bg-brand",
+  passive: "bg-warn",
+  risk: "bg-live",
+};
+const TIER_WORD: Record<string, string> = {
+  high: "Highly engaged",
+  engaged: "Engaged",
+  passive: "Passive",
+  risk: "At risk",
+};
+
+/** Their average engagement across the webinars they came to, and their latest tier. */
+function Engagement({ person: p }: { person: CRMPerson }) {
+  if (!p.attendedWebinars || !p.avgScore) return <span className="text-[13px] text-ink-3">—</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[13px]" title={p.tier ? TIER_WORD[p.tier] : undefined}>
+      <span aria-hidden className={`size-2 rounded-full ${TIER_DOT[p.tier ?? ""] ?? "bg-line-2"}`} />
+      <span className="font-semibold text-ink tabular-nums">{p.avgScore}</span>
+      <span className="truncate text-[11.5px] text-ink-3">{p.tier ? TIER_WORD[p.tier] : ""}</span>
+    </span>
   );
 }
 

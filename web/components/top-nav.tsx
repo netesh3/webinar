@@ -9,6 +9,7 @@ import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
+import { MessagesNavButton, useWhatsAppMenuItem } from "@/engage";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
@@ -62,6 +63,7 @@ export function TopNav() {
   const { registrations } = useRegistrations();
   const [open, setOpen] = useState(false);
   const links = linksFor(Boolean(account), account?.canHost === true);
+  const whatsappItem = useWhatsAppMenuItem();
   // Nothing for the mobile drawer to reveal without at least one of these — a
   // button that opens onto an empty panel is worse than no button.
   const hasMobileMenu = links.length > 0 || !account;
@@ -109,6 +111,7 @@ export function TopNav() {
           <span className="size-7 animate-pulse rounded-full bg-surface-2" />
         ) : account ? (
           <>
+            {account.canHost && <MessagesNavButton />}
             {account.canHost && <HostAlerts />}
             <Menu
               label="Your account"
@@ -147,6 +150,18 @@ export function TopNav() {
                   label: "Account settings",
                   onSelect: () => router.push("/account"),
                 },
+                ...(whatsappItem
+                  ? [{ kind: "action" as const, label: whatsappItem.label, onSelect: () => router.push(whatsappItem.href) }]
+                  : []),
+                ...(account.canHost
+                  ? [
+                      {
+                        kind: "action" as const,
+                        label: count ? `Webinars I'm attending (${count})` : "Webinars I'm attending",
+                        onSelect: () => router.push("/host?tab=registered"),
+                      },
+                    ]
+                  : []),
                 { kind: "separator" },
                 {
                   kind: "action",

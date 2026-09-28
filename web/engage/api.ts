@@ -29,6 +29,7 @@ import type {
   CRMTestSendRequest,
   CRMWebinarMessagesResponse,
   CRMFollowupsResponse,
+  CRMAudienceSummary,
   CRMStarterTemplatesResponse,
   CRMSnippet,
   CRMSnippetRequest,
@@ -370,6 +371,10 @@ export const engageApi = {
   /** The Hosting page's People tab. `filter` is one of the People* values. */
   crmPeople: (opts: { webinarId?: string; filter?: string; q?: string; offset?: number } = {}) =>
     request<CRMPeopleResponse>(`/api/host/crm/people${peopleQuery(opts)}`, fresh),
+
+  /** The Audience tab: engagement across webinars, from the stored rollup. */
+  crmAudienceSummary: (last = 6) =>
+    request<CRMAudienceSummary>(`/api/host/crm/audience/summary?last=${last}`, fresh),
 
   /** Every messageable contact a People filter matches, for "Message these N". */
   crmPeopleIds: (opts: { webinarId?: string; filter?: string; q?: string } = {}) =>
