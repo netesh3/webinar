@@ -33,7 +33,15 @@ async function proxy(
   req: NextRequest,
   ctx: { params: Promise<{ path: string[] }> },
 ): Promise<Response> {
-  const apiBase = (process.env.API_INTERNAL_URL || "").replace(/\/+$/, "");
+  // In `next dev` with no web/.env.local, fall back to the local API that
+  // ./start.sh runs, the same default lib/http.ts uses in the browser. Anywhere
+  // else a missing value is still a misconfiguration.
+  const devDefault =
+    process.env.NODE_ENV === "development" ? "http://localhost:8080" : "";
+  const apiBase = (process.env.API_INTERNAL_URL || devDefault).replace(
+    /\/+$/,
+    "",
+  );
   if (!apiBase) {
     return NextResponse.json(
       { error: "misconfigured", message: "API_INTERNAL_URL is not set" },
