@@ -32,3 +32,4 @@ export { WhatsAppWeekCard } from "./components/week-card";
 export { EngagementFollowUp } from "./components/engagement-follow-up";
 export { WebinarWhatsAppOverview } from "./components/webinar-overview";
 export { EngagementFollowUpPage } from "./components/follow-up-page";
+export { ScheduleWhatsAppMessages } from "./components/schedule-messages";
