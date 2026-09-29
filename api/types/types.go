@@ -2774,9 +2774,6 @@ type AppConfig struct {
 	SignupOpen   bool   `json:"signupOpen"`
 	// DefaultMaxMeetingMin is the system default maximum meeting duration in minutes (default 180 = 3h).
 	DefaultMaxMeetingMin int `json:"defaultMaxMeetingMin"`
-	// Tracks are the topic tags already in use, offered as suggestions rather
-	// than a fixed enum so an operator never has to edit a list in the bundle.
-	Tracks []string `json:"tracks"`
 	// GoogleClientID and GoogleAPIKey turn on the Google Drive source in the
 	// share-a-file picker. Both are public values — see config.Config — and both
 	// are empty unless an operator sets them, which the picker reports as "not

@@ -585,13 +585,17 @@ func (s *Store) PanelistIDs(ctx context.Context, slug string) ([]string, error) 
 	return out, rows.Err()
 }
 
-// Tracks lists the topic tags already in use, for the schedule form's
-// suggestions. Suggesting what exists means there is no hardcoded taxonomy to
-// keep in sync with whatever an operator actually runs.
-func (s *Store) Tracks(ctx context.Context) ([]string, error) {
+// HostTracks lists the topic tags this host has already used, for the
+// schedule form's suggestions. Suggesting what exists means there is no
+// hardcoded taxonomy to keep in sync with whatever an operator actually runs.
+//
+// Scoped to host_id: a coach's tags are that coach's own vocabulary, not a
+// taxonomy shared by the whole server, and offering every host's tags as
+// "your suggestions" is one coach's tag leaking into a stranger's dropdown.
+func (s *Store) HostTracks(ctx context.Context, hostID string) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT DISTINCT track FROM webinars
-		 WHERE track <> '' ORDER BY track`)
+		 WHERE host_id = $1 AND track <> '' ORDER BY track`, hostID)
 	if err != nil {
 		return nil, err
 	}

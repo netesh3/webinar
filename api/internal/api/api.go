@@ -425,6 +425,10 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/webinars", s.handleCreateWebinar)
 				r.Get("/recordings", s.handleHostRecordingLibrary)
 
+				// The schedule form's topic-tag suggestions: this host's own tags,
+				// never another host's — see handleHostTracks.
+				r.Get("/tracks", s.handleHostTracks)
+
 				r.Get("/youtube/connect", s.handleYouTubeConnect)
 				r.Delete("/youtube", s.handleYouTubeDisconnect)
 
@@ -537,12 +541,6 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 // The product name, the public URL used to build share links and the attendee
 // ceiling are all operator settings, so the UI asks for them.
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	tracks, err := s.store.Tracks(r.Context())
-	if err != nil {
-		// Suggestions are a nicety. Losing them must not blank the app.
-		s.log.Warn("config: could not load tracks", "error", err)
-		tracks = []string{}
-	}
 	httpx.JSON(w, http.StatusOK, types.AppConfig{
 		AppName:                 s.cfg.AppName,
 		WebBaseURL:              s.cfg.WebBaseURL,
@@ -550,7 +548,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		MaxAttendees:            s.cfg.MaxAttendees,
 		SignupOpen:              s.cfg.SignupOpen,
 		DefaultMaxMeetingMin:    s.cfg.DefaultMaxMeetingMin,
-		Tracks:                  tracks,
 		GoogleClientID:          s.cfg.GoogleClientID,
 		GoogleAPIKey:            s.cfg.GoogleAPIKey,
 		YouTubeOAuth:            s.cfg.YouTubeOAuthEnabled(),

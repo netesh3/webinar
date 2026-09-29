@@ -37,7 +37,6 @@ const CONFIG_FALLBACK: AppConfig = {
   webBaseUrl: "",
   maxAttendees: 0,
   signupOpen: true,
-  tracks: [],
   // Unknown until the real config arrives, and false is the safe guess: it only
   // hides "the cloud" as a record destination, never offers one that 503s.
   cloudRecordingEnabled: false,
@@ -239,7 +238,8 @@ export function AppProviders({
   }, []);
 
   // Config is refreshed on the client even when the server already provided it:
-  // the track suggestions grow as webinars are scheduled.
+  // operator settings — a feature flag, whether email is configured — can change
+  // from the admin screen while a tab has been open since before that happened.
   useEffect(() => {
     let active = true;
     api

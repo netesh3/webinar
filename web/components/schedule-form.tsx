@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Alert, openPickerOnClick, Select, Spinner, Toggle } from "./controls";
 import { useAppConfig, useSession, useToast } from "./providers";
 import { Button, Card } from "./ui";
@@ -335,6 +335,28 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
   // image after removing one clears this; the upload itself is the replacement.
   const [imageRemoved, setImageRemoved] = useState(false);
 
+  /* Topic tag suggestions: this host's OWN tags, fetched from the API rather
+   * than kept in app config. Config is public and read before any session
+   * exists, so it cannot be scoped to a coach — and a global list was the bug:
+   * every coach saw every other coach's tags in their own dropdown. A tag that
+   * does not appear here yet needs no separate "create" step: typing a new
+   * one and saving the webinar is what puts it in this list for next time. */
+  const [trackSuggestions, setTrackSuggestions] = useState<string[]>([]);
+  useEffect(() => {
+    let active = true;
+    api
+      .hostTracks()
+      .then((tracks) => {
+        if (active) setTrackSuggestions(tracks);
+      })
+      .catch(() => {
+        // Suggestions are a nicety. Losing them must not block the form.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Built once per mount: the list is ~450 entries and re-sorting it on every
   // keystroke in the topic field is pure waste.
   const zones = useMemo(() => timeZoneNames(), []);
@@ -584,7 +606,7 @@ export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
                     onChange={(e) => set("track", e.target.value)}
                   />
                   <datalist id="track-suggestions">
-                    {config.tracks.map((t) => (
+                    {trackSuggestions.map((t) => (
                       <option key={t} value={t} />
                     ))}
                   </datalist>
