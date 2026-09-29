@@ -170,7 +170,7 @@ func (s *Module) audienceAllowed(w http.ResponseWriter, r *http.Request, user st
 		// The audience the tags feature exists for. Gated, because a host without it has
 		// no way to put a label on anybody and a stored tag audience would then be a
 		// broadcast nobody can explain.
-		if !s.featureAllowed(w, user, types.FeatureCRMTags) {
+		if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 			return false
 		}
 		if a.TagID == "" {

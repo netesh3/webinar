@@ -120,7 +120,7 @@ var botNodeKinds = []string{
  * this is what keeps the host from reaching it.
  */
 func nodeKindsFor(user store.User) []string {
-	if user.HasFeature(types.FeatureCRMTags) {
+	if user.HasFeature(types.FeatureWhatsAppCRM) {
 		return botNodeKinds
 	}
 	out := make([]string, 0, len(botNodeKinds))
@@ -366,7 +366,7 @@ func (s *Module) flowAllowed(
 				at+"that is not something a bot can do.")
 			return nil, false
 		}
-		if clean.Kind == types.BotNodeTag && !s.featureAllowed(w, user, types.FeatureCRMTags) {
+		if clean.Kind == types.BotNodeTag && !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 			return nil, false
 		}
 		clean.Next = strings.TrimSpace(node.Next)
@@ -1061,7 +1061,7 @@ func (s *Module) botTag(ctx context.Context, t *botTurn, node types.CRMBotNode) 
 	/* Checked here as well as when the flow was saved, because the switch can be
 	 * turned off in between: a host whose tags were withdrawn should not keep getting
 	 * them applied by a bot that was built while they had them. */
-	if !t.host.HasFeature(types.FeatureCRMTags) {
+	if !t.host.HasFeature(types.FeatureWhatsAppCRM) {
 		return
 	}
 	if err := s.applyTag(ctx, t.host, t.contact.ID, node.TagID); err != nil {

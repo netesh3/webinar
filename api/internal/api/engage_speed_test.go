@@ -14,7 +14,7 @@ func TestInboxSnoozeAndHotLeads(t *testing.T) {
 	g := newFakeGraph(t)
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureCRMTags)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 	connectWhatsApp(t, h)
 	wb := autoWebinar(t, h, "Speed")
 	thandi := registerWithPhone(t, h, wb.ID, "Thandi", "thandi@example.com", crmContactPhone, true)

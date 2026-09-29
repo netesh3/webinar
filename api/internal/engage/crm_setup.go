@@ -39,7 +39,7 @@ func (s *Module) handleCRMSetup(w http.ResponseWriter, r *http.Request) {
 		/* Whether registering the number is this host's step at all, from the same
 		 * per-account switch that decides whether the form is rendered — so the
 		 * checklist cannot count a step the host has no button for. */
-		RegisterStep:   user.HasFeature(types.FeatureWhatsAppRegister),
+		RegisterStep:   user.HasFeature(types.FeatureWhatsAppCRM),
 		RemindersTotal: len(types.WhatsAppReminderKinds),
 	}
 	if user.WhatsAppRegisteredAt != nil {

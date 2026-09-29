@@ -122,7 +122,7 @@ func TestRecipeKeywordRepliesAndHotLeads(t *testing.T) {
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureCRMTags)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 	wb := autoWebinar(t, h, "Keywords")
 	thandi := registerWithPhone(t, h, wb.ID, "Thandi", "thandi@example.com", crmContactPhone, true)
 

@@ -41,9 +41,7 @@ import {
   CRMStatusOptedIn,
   CRMStatusOptedOut,
   CRMStatusReplied,
-  FeatureCRMNotes,
-  FeatureCRMTags,
-  FeatureReplayLinks,
+  FeatureWhatsAppCRM,
   NotifyWhatsAppConfirmed,
   NotifyWhatsAppReminder,
   NotifyWhatsAppReplay,
@@ -282,8 +280,9 @@ export function CRMScreen() {
    * on every request it gates — this only decides whether to show a pane whose
    * every call would be refused, which is a kindness rather than a permission. */
   const features = account?.features ?? [];
-  const tagsOn = features.includes(FeatureCRMTags);
-  const notesOn = features.includes(FeatureCRMNotes);
+  const crmOn = features.includes(FeatureWhatsAppCRM);
+  const tagsOn = crmOn;
+  const notesOn = crmOn;
 
   /* Templates belong to the host, not to a contact, so they are loaded here and
    * handed down: they are the same list for every conversation, and re-reading
@@ -908,7 +907,7 @@ const REMINDER_KINDS: {
      * host has not decided the recording may be watched yet. Publishing it is
      * that decision, and it is the only one — see the note in 0049. */
     hint: "Sent once, to everybody who registered, when you switch on public viewing for a recording. Everyone gets the email; this is the WhatsApp copy. The per-webinar reminder switch does not apply to it — publishing is the decision.",
-    feature: FeatureReplayLinks,
+    feature: FeatureWhatsAppCRM,
   },
 ];
 

@@ -60,7 +60,7 @@ func (s *Server) enqueueReplay(ctx context.Context, slug string, rec types.Recor
 	/* The switch, checked here rather than in the handler, because this is the only
 	 * thing it governs: a host without it can still publish recordings and copy the
 	 * link themselves, which is what the product did before this existed. */
-	if !host.HasFeature(types.FeatureReplayLinks) {
+	if !host.HasFeature(types.FeatureWhatsAppCRM) {
 		return
 	}
 
