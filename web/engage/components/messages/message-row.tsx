@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { MaterialIcon } from "@/components/icons";
 import { Switch } from "../wa-kit";
 
-/* One message: icon, name and when, then three fixed slots — badges, switch, chevron —
+/* One message: icon, name and when, then three fixed slots — badges, switch, trailing —
  * so the switches in a group sit on one vertical line. The name is the button that
  * opens the pane; the switch and a Choose a message button stay outside it. */
 
@@ -31,7 +31,8 @@ export function MessageRow({
   onSelect: () => void;
   onToggle?: (on: boolean) => void;
   badges?: ReactNode;
-  /** Replaces the chevron. Automations use a link. */
+  /** The name button already opens the pane, so there's nothing to show here
+   *  by default. Automations use it for a link to the WhatsApp page. */
   trailing?: ReactNode;
 }) {
   return (
@@ -66,18 +67,7 @@ export function MessageRow({
           />
         ) : null}
       </div>
-      <div className="flex items-center justify-center text-ink-3">
-        {trailing ?? (
-          <button
-            type="button"
-            onClick={onSelect}
-            aria-label={switchLabel ? `Open ${switchLabel}` : "Open"}
-            className="grid size-7 place-items-center rounded-md hover:bg-surface-2"
-          >
-            <MaterialIcon name="chevron_right" className="size-[18px]" />
-          </button>
-        )}
-      </div>
+      <div className="flex items-center justify-center text-ink-3">{trailing}</div>
     </div>
   );
 }
