@@ -32,3 +32,4 @@ shot perf-audience-page2 perf-audience-page2.html 720
 shot perf-audience-empty perf-audience-empty.html 700
 shot perf-inbox-page2 perf-inbox-page2.html 560
 shot perf-registrants-page2 perf-registrants-page2.html 720
+shot landing landing.html 1780

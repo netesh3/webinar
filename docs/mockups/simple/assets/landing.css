@@ -1,0 +1,76 @@
+/* Signed-out landing page for hosts. Mock only — not product CSS. Uses the v1/v2 tokens via simple.css. */
+body.landing { background: var(--surface); font-size: 15px; }
+.landing .nav-in { gap: 14px; }
+.landing .navlink.txt { font-size: 14px; }
+.lp { max-width: 72rem; margin: 0 auto; padding: 0 20px; }
+.lp-sec { padding: 72px 0; }
+.lp-alt { background: var(--page); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--wa); background: var(--ok-soft); border: 1px solid rgba(11,138,75,.2); border-radius: 99px; padding: 4px 12px; }
+.lp h1 { font-size: 46px; line-height: 1.08; letter-spacing: -.03em; font-weight: 650; margin: 18px 0 0; }
+.lp h1 .ac { color: var(--wa); }
+.lp h2 { font-size: 30px; line-height: 1.2; letter-spacing: -.02em; font-weight: 600; }
+.lp .lede { font-size: 17px; line-height: 1.6; color: var(--ink-2); margin-top: 18px; max-width: 34rem; }
+.lp .sub { font-size: 15px; line-height: 1.6; color: var(--ink-2); margin-top: 10px; max-width: 36rem; }
+.lp .btn.lg { height: 48px; padding: 0 22px; font-size: 15px; border-radius: 10px; }
+.lp .cta-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-top: 28px; }
+.lp .cta-row .link { font-size: 14px; font-weight: 500; color: var(--brand); }
+.lp .fine { font-size: 12.5px; color: var(--ink-3); margin-top: 14px; }
+
+/* ---- hero ---- */
+.hero { display: grid; grid-template-columns: 1.05fr .95fr; gap: 56px; align-items: center; padding: 64px 0 72px; }
+.hero-vis { position: relative; }
+.hero-vis .wcard { padding: 16px 18px; position: relative; z-index: 2; width: 86%; }
+.hero-vis .wcard .name { font-size: 15px; font-weight: 600; margin-top: 6px; }
+.hero-vis .wcard .meta { font-size: 12.5px; color: var(--ink-2); margin-top: 4px; }
+.hero-vis .phone { margin: -18px 0 0 auto; width: 78%; border-radius: 18px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: 0 24px 48px -20px rgba(19,22,25,.25); position: relative; z-index: 1; }
+.hero-vis .phone .bar { display: flex; align-items: center; gap: 10px; padding: 26px 14px 10px; background: #075e54; color: #fff; font-size: 13px; }
+.hero-vis .phone .bar .av { width: 30px; height: 30px; }
+.hero-vis .phone .bar small { display: block; font-size: 11px; opacity: .8; }
+.hero-vis .phone .wa { padding: 14px; gap: 8px; min-height: 250px; }
+.hero-vis .phone .wa .bub { max-width: 86%; }
+
+/* ---- proof points ---- */
+.proof { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
+.proof .card { padding: 22px; }
+.proof .ic { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); }
+.proof .ic.wa { background: var(--ok-soft); color: var(--wa); }
+.proof h3 { font-size: 16px; font-weight: 600; margin: 16px 0 0; letter-spacing: -.01em; }
+.proof p { font-size: 14px; line-height: 1.6; color: var(--ink-2); margin-top: 6px; }
+
+/* ---- how it works ---- */
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 32px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.steps > div { padding: 22px 20px; border-right: 1px solid var(--line); }
+.steps > div:last-child { border-right: 0; background: linear-gradient(180deg, #eefaf3, #fff 80%); }
+.steps .n { width: 28px; height: 28px; border-radius: 99px; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--brand); color: #fff; }
+.steps > div:last-child .n { background: var(--wa); }
+.steps .t { font-size: 16px; font-weight: 600; margin-top: 14px; color: var(--ink); }
+.steps .s { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); margin-top: 6px; }
+
+/* ---- final CTA ---- */
+.endcta { background: var(--grad); color: #fff; border-radius: 16px; padding: 44px 48px; display: flex; align-items: center; gap: 32px; }
+.endcta h2 { color: #fff; }
+.endcta p { color: rgba(255,255,255,.85); font-size: 15px; line-height: 1.6; margin-top: 8px; max-width: 34rem; }
+.endcta .btn { background: #fff; color: var(--brand); }
+
+.lp-foot { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 28px 0 40px; font-size: 13px; color: var(--ink-3); }
+.lp-foot a { color: var(--ink-2); }
+
+/* ---- stacking ---- */
+@media (max-width: 960px) {
+  .hero { grid-template-columns: 1fr; gap: 40px; padding: 40px 0 48px; }
+  .steps { grid-template-columns: 1fr 1fr; }
+  .steps > div:nth-child(2) { border-right: 0; }
+  .steps > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .endcta { flex-direction: column; align-items: flex-start; padding: 32px 28px; }
+}
+@media (max-width: 640px) {
+  .lp h1 { font-size: 34px; }
+  .lp h2 { font-size: 24px; }
+  .lp-sec { padding: 48px 0; }
+  .proof, .steps { grid-template-columns: 1fr; }
+  .steps > div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .steps > div:last-child { border-bottom: 0; }
+  .hero-vis .wcard, .hero-vis .phone { width: 100%; }
+  .landing .navlink.txt { display: none; }
+  .lp .btn.lg { width: 100%; }
+}

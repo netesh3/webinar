@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Landing — for hosts (simple mock)</title>
+<link rel="stylesheet" href="assets/simple.css"><link rel="stylesheet" href="assets/landing.css"></head>
+<!--
+  Section order (one job: get a host to create an account):
+    1. Nav — logo, Sign in, Create your account
+    2. Hero — outcome headline, one primary action, product visual (webinar card + WhatsApp follow-up)
+    3. Proof points — three, each backed by something that ships today
+    4. How it works — Schedule, Invite, Go live, Follow up
+    5. Final call to action — same primary action
+    6. Footer — Privacy, Terms, and a line for attendees who landed here by mistake
+  No logos, testimonials or numbers: we don't have any we can stand behind yet.
+-->
+<body class="landing">
+<header class="nav"><div class="nav-in">
+  <a class="logo" href="#"><span class="logo-mark">W</span><b>Webinar Liv</b><span class="beta">Beta</span></a>
+  <span class="grow"></span>
+  <a class="navlink txt" href="#how">How it works</a>
+  <a class="navlink txt" href="#">Sign in</a>
+  <a class="btn sm" href="#">Create your account</a>
+</div></header>
+
+<div class="lp">
+  <section class="hero" aria-labelledby="hl">
+    <div>
+      <span class="eyebrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>Webinars with WhatsApp follow-up</span>
+      <h1 id="hl">Run the webinar.<br><span class="ac">Follow up on WhatsApp.</span></h1>
+      <p class="lede">Schedule a session, share one link, and go live in the browser. Afterwards, message the people who came — and the ones who missed it — where they actually read.</p>
+      <div class="cta-row">
+        <a class="btn lg" href="#">Create your account</a>
+        <a class="link" href="#how">See how it works ↓</a>
+      </div>
+      <p class="fine">Your audience joins from a link — no download, no account needed.</p>
+    </div>
+
+    <div class="hero-vis" aria-hidden="true">
+      <div class="card wcard">
+        <div class="row"><span class="badge ok"><span class="dot"></span>Ended 1 hr ago</span><span class="xs faint">Thu 1 Oct · 7:00 PM IST</span></div>
+        <div class="name">Mindful Money: Budgeting Without Guilt</div>
+        <div class="meta">Came · Missed it · Replay ready</div>
+        <div class="row" style="margin-top:12px"><button class="btn sm">Follow up</button><button class="btn sec sm">Recording</button></div>
+      </div>
+      <div class="phone">
+        <div class="bar"><span class="av a1">AM</span><div>Aarti Menon<small>Business account</small></div></div>
+        <div class="wa">
+          <div class="bub out"><div class="tpl">Replay</div>Hi Priya, sorry you missed tonight's session. Here's the recording — the budgeting sheet is at 18:40.<div class="meta">8:05 PM <span class="ticks">✓✓</span></div><div class="cta">Watch the replay</div></div>
+          <div class="bub in">Thank you! Watching it now 🙏<div class="meta">8:12 PM</div></div>
+          <div class="bub in">Is there a next one?<div class="meta">8:13 PM</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<section class="lp-sec lp-alt" aria-labelledby="why">
+  <div class="lp">
+    <h2 id="why">Built around what happens after you go live</h2>
+    <p class="sub">Most webinar tools stop when the session ends. That's where follow-up starts.</p>
+    <div class="proof">
+      <div class="card">
+        <span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span>
+        <h3>One link to join</h3>
+        <p>People register on your page and join in the browser. Nothing to install, and they don't need an account.</p>
+      </div>
+      <div class="card">
+        <span class="ic wa"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
+        <h3>Reminders on email and WhatsApp</h3>
+        <p>Set when reminders go out. Registrants who opt in to WhatsApp get them there too.</p>
+      </div>
+      <div class="card">
+        <span class="ic wa"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg></span>
+        <h3>Follow-up by who showed up</h3>
+        <p>See who came and who missed it, send each group the right message, and read replies in one inbox.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="lp-sec" id="how" aria-labelledby="how-h">
+  <div class="lp">
+    <h2 id="how-h">How it works</h2>
+    <p class="sub">Four steps, in the order you already think about a webinar.</p>
+    <div class="steps">
+      <div><span class="n">1</span><div class="t">Schedule</div><div class="s">A title, a date and a length. Sensible defaults for the rest.</div></div>
+      <div><span class="n">2</span><div class="t">Invite</div><div class="s">Share your registration link. Reminders go out on their own.</div></div>
+      <div><span class="n">3</span><div class="t">Go live</div><div class="s">Present, share your screen, take questions and run polls. It's recorded.</div></div>
+      <div><span class="n">4</span><div class="t">Follow up</div><div class="s">Send the replay to people who missed it and a next step to people who came — on WhatsApp.</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="lp-sec" style="padding-top:0" aria-labelledby="end">
+  <div class="lp">
+    <div class="endcta">
+      <div class="grow">
+        <h2 id="end">Your next webinar, with the follow-up built in</h2>
+        <p>Create an account, schedule your first session, and share the link today.</p>
+      </div>
+      <a class="btn lg" href="#">Create your account</a>
+    </div>
+    <footer class="lp-foot">
+      <span>© Webinar Liv</span><a href="#">Privacy</a><a href="#">Terms</a>
+      <span class="grow"></span>
+      <span>Joining a webinar? Use the link your host sent you.</span>
+    </footer>
+  </div>
+</section>
+
+<div class="note"><b>Landing (for hosts).</b> One job: get a host to create an account. One primary action, repeated in the nav, hero and final band; "See how it works" only scrolls. Attendees aren't the buyer — they get a single line in the footer instead of a "Join a webinar" button that competes with the main one. Every claim maps to something that ships: link join with no download, reminders by email + WhatsApp (WhatsApp opt-in is a separate, unticked box at registration), came / missed follow-up, the Messages inbox, and recording. No logos, testimonials or stats until we have real ones.</div>
+<script src="assets/nav.js"></script>
+</body></html>
