@@ -1,99 +1,138 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Your webinars (host home)</title>
-<link rel="stylesheet" href="assets/simple.css">
 <link rel="stylesheet" href="assets/host-home.css"></head>
-<body data-msg="2" data-alerts="1">
-<div data-nav></div>
+<body>
+<header class="nav"><div class="nav-in">
+  <a class="logo" href="index.html"><span class="logo-mark">W</span><b>Webinar Liv</b><span class="beta">Beta</span></a>
+  <span class="grow"></span>
+  <a class="icon-btn" href="inbox.html" title="Messages">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>
+    <span class="count green">2</span>
+  </a>
+  <a class="icon-btn" href="#" title="Alerts">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    <span class="count">1</span>
+  </a>
+  <span class="acct">Aarti Menon <span class="av">AM</span></span>
+</div></header>
+
 <main>
-  <div class="row between" style="align-items:flex-end">
-    <div>
-      <h1>Your webinars</h1>
-      <p class="small muted" style="margin-top:4px">Next is Mindful Money, Friday 2 Oct at 7:00 PM IST. Two replies are waiting, and one person needs approval.</p>
+  <h1 class="sr-only">Your webinars</h1>
+
+  <div class="actions">
+    <div class="action">
+      <span class="tile"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></span>
+      <span class="body">
+        <a class="t" href="webinar-before.html"><span class="kicker">Next</span>Mindful Money: Budgeting Without Guilt</a>
+        <span class="s">Fri 2 Oct · 7:00 PM IST · in 3 days</span>
+      </span>
+      <span class="needs">
+        <a class="need" href="inbox.html"><span class="dot"></span><b>2</b> replies waiting</a>
+        <a class="need warn" href="webinar-before.html"><span class="dot"></span><b>1</b> registrant to approve</a>
+      </span>
     </div>
-    <a class="btn" href="create-tabs-webinar.html">Schedule a webinar</a>
+    <a class="action" href="create-tabs-webinar.html">
+      <span class="tile"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg></span>
+      <span class="body">
+        <span class="t">Schedule a webinar</span>
+        <span class="s">Pick a date and invite people</span>
+      </span>
+      <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+    </a>
   </div>
 
-  <div class="attn">
-    <div class="card panel">
-      <div class="hd">
-        <h2>2 replies waiting</h2>
-        <a class="linkish small" href="inbox.html">Open Messages</a>
+  <div class="toolbar">
+    <div class="tabs" role="tablist">
+      <a class="tab on" href="#">Upcoming <span class="count">3</span></a>
+      <a class="tab" href="perf-completed-page2.html">Completed <span class="count">6</span></a>
+      <a class="tab" href="#">Drafts <span class="count">1</span></a>
+      <a class="tab" href="audience.html">Audience</a>
+    </div>
+    <div class="filters">
+      <label class="search">
+        <span class="sr-only">Search webinars by name</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg>
+        <input type="search" placeholder="Search by name…">
+      </label>
+      <div class="range">
+        <input type="date" aria-label="Show webinars from this date">
+        <span class="arr" aria-hidden="true">→</span>
+        <input type="date" aria-label="Show webinars up to this date">
       </div>
-      <div class="reply">
-        <span class="av sm a6">AS</span>
-        <div class="grow">
-          <div class="name">Aditi Shah</div>
-          <div class="xs muted truncate">Is the replay still up?</div>
+    </div>
+  </div>
+
+  <div class="rows">
+    <div class="card hostcard">
+      <div class="info">
+        <div class="chips">
+          <span class="badge brand"><span class="dot"></span>In 3 days</span>
+          <span class="when">Fri 2 Oct · 7:00–8:00 PM IST · 1 hr</span>
+          <span class="badge warn">Admit required</span>
         </div>
-        <span class="xs faint">Mon</span>
+        <h3><a href="webinar-before.html">Mindful Money: Budgeting Without Guilt</a></h3>
+        <p class="meta">9 registered · reminders on (email + WhatsApp)</p>
       </div>
-      <div class="reply">
-        <span class="av sm a1">DK</span>
-        <div class="grow">
-          <div class="name">Divya Krishnan</div>
-          <div class="xs muted truncate">Can you send the link? I had a work call</div>
+      <div class="acts">
+        <div class="btns">
+          <button class="btn sec" type="button">Copy link</button>
+          <button class="btn" type="button" disabled aria-describedby="wait-1">Go live</button>
+          <a class="btn sec" href="webinar-before.html">Manage</a>
+          <span class="more" title="More for Mindful Money">⋯</span>
         </div>
-        <span class="xs faint">Yesterday</span>
+        <p class="wait" id="wait-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Opens 5 minutes before start (6:55 PM IST)</p>
       </div>
     </div>
-    <div class="card approve">
-      <div>
-        <h2>1 person to approve</h2>
-        <p class="small" style="margin-top:6px">Rohit Gupta wants to join</p>
-        <p class="xs muted" style="margin-top:2px">Mindful Money: Budgeting Without Guilt</p>
-      </div>
-      <a class="btn sm sec" href="webinar-before.html" style="align-self:flex-start">Review</a>
-    </div>
-  </div>
 
-  <div class="tabs">
-    <a class="tab on" href="#">Upcoming <span class="count">1</span></a>
-    <a class="tab" href="#">Completed <span class="count grey">0</span></a>
-    <a class="tab" href="#">Drafts <span class="count grey">0</span></a>
-    <span class="tabsep"></span>
-    <a class="tab" href="audience.html">Audience</a>
-  </div>
-
-  <div class="filters">
-    <label class="search">
-      <span class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden">Search webinars by name</span>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input class="field" type="search" placeholder="Search by name…" value="">
-    </label>
-    <div class="range">
-      <input type="date" aria-label="Show webinars from this date" value="">
-      <span aria-hidden>→</span>
-      <input type="date" aria-label="Show webinars up to this date" value="">
-    </div>
-  </div>
-
-  <div class="card card-webinar next">
-    <div class="grow">
-      <div class="row">
-        <span class="badge brand"><span class="dot"></span>In 3 days</span>
-        <span class="xs faint">Fri 2 Oct · 7:00 PM IST · 1 hr</span>
+    <div class="card hostcard">
+      <div class="info">
+        <div class="chips">
+          <span class="badge brand"><span class="dot"></span>Next week</span>
+          <span class="when">Wed 7 Oct · 7:00–7:45 PM IST · 45 min</span>
+        </div>
+        <h3><a href="#">Sleep Reset: 5 Habits That Work</a></h3>
+        <p class="meta">3 registered · reminders on</p>
       </div>
-      <div class="name" style="font-size:15px;margin-top:6px">Mindful Money: Budgeting Without Guilt</div>
-      <div class="meta">9 registered · 1 waiting for approval · reminders on (email + WhatsApp)</div>
-    </div>
-    <div class="acts">
-      <div class="row">
-        <button class="btn sec sm" type="button">Copy link</button>
-        <button class="btn sec sm" type="button" disabled>Go live</button>
-        <a class="btn sec sm" href="webinar-before.html">Manage</a>
-        <span class="dots" title="More">⋯</span>
+      <div class="acts">
+        <div class="btns">
+          <button class="btn sec" type="button">Copy link</button>
+          <button class="btn" type="button" disabled aria-describedby="wait-2">Go live</button>
+          <a class="btn sec" href="#">Manage</a>
+          <span class="more" title="More for Sleep Reset">⋯</span>
+        </div>
+        <p class="wait" id="wait-2"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Opens 5 minutes before start (6:55 PM IST)</p>
       </div>
-      <p class="wait xs faint">Opens 5 minutes before start (6:55 PM IST)</p>
+    </div>
+
+    <div class="card hostcard">
+      <div class="info">
+        <div class="chips">
+          <span class="badge brand"><span class="dot"></span>In 2 weeks</span>
+          <span class="when">Thu 15 Oct · 6:30–7:30 PM IST · 1 hr</span>
+        </div>
+        <h3><a href="#">Focus Blocks for Busy Weeks</a></h3>
+        <p class="meta">0 registered · reminders on</p>
+      </div>
+      <div class="acts">
+        <div class="btns">
+          <button class="btn sec" type="button">Copy link</button>
+          <button class="btn" type="button" disabled aria-describedby="wait-3">Go live</button>
+          <a class="btn sec" href="#">Manage</a>
+          <span class="more" title="More for Focus Blocks">⋯</span>
+        </div>
+        <p class="wait" id="wait-3"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Opens 5 minutes before start (6:25 PM IST)</p>
+      </div>
     </div>
   </div>
 
   <div class="pager">
-    <button class="btn sm sec" type="button" disabled>Previous</button>
-    <div class="mid"><b>Page 1 of 1</b><div class="xs faint">10 per page · 1–1 of 1</div></div>
-    <button class="btn sm sec" type="button" disabled>Next</button>
+    <button class="btn sec" type="button" disabled>Previous</button>
+    <div class="mid"><b>Page 1 of 1</b><div>10 per page · 1–3 of 3</div></div>
+    <button class="btn sec" type="button" disabled>Next</button>
   </div>
 </main>
-<div class="note"><b>Signed-in homepage.</b> The next session and what is waiting (replies, someone to approve, Go live still locked) come before the list. Schedule a webinar is the one primary action. Instant webinar stays off unless an admin turns it on, so there is no Go live now beside it. Go live on the card stays disabled until five minutes before the start. Upcoming, Completed, Drafts, Audience, search, the date range, and the pager stay. Attending stays hidden until this account has registered for someone else's webinar. Rows are the existing samples: Mindful Money, Rohit Gupta waiting to join, Aditi Shah and Divya Krishnan from Messages.</div>
-<script src="assets/nav.js"></script>
+
+<div class="note"><b>Host home, signed in.</b> Same chrome as /host today: top bar, the action-card row, Upcoming / Completed / Drafts / Audience with search and dates on one rule, HostCard rows, and the pager. The one change is the action-card row: the Instant webinar slot now holds the next session and what it is waiting on (2 replies, 1 registrant to approve). Schedule a webinar is the only primary action. Go live is the usual filled button, disabled with its reason until 5 minutes before the start.</div>
+<script>if (new URLSearchParams(location.search).has("clean")) document.querySelectorAll(".note").forEach((n) => n.remove());</script>
 </body></html>

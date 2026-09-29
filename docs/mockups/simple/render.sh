@@ -32,5 +32,5 @@ shot perf-audience-page2 perf-audience-page2.html 720
 shot perf-audience-empty perf-audience-empty.html 700
 shot perf-inbox-page2 perf-inbox-page2.html 560
 shot perf-registrants-page2 perf-registrants-page2.html 720
-shot host-home host-home.html 760
-shot host-home-empty host-home-empty.html 640
+shot host-home host-home.html 760 1440
+shot host-home-empty host-home-empty.html 560 1440

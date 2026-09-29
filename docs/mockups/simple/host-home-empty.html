@@ -1,49 +1,67 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Your webinars (new host)</title>
-<link rel="stylesheet" href="assets/simple.css">
 <link rel="stylesheet" href="assets/host-home.css"></head>
-<body data-msg="0" data-alerts="0">
-<div data-nav></div>
+<body>
+<header class="nav"><div class="nav-in">
+  <a class="logo" href="index.html"><span class="logo-mark">W</span><b>Webinar Liv</b><span class="beta">Beta</span></a>
+  <span class="grow"></span>
+  <a class="icon-btn" href="inbox.html" title="Messages">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>
+  </a>
+  <a class="icon-btn" href="#" title="Alerts">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+  </a>
+  <span class="acct">Aarti Menon <span class="av">AM</span></span>
+</div></header>
+
 <main>
-  <div>
-    <h1>Your webinars</h1>
-    <p class="small muted" style="margin-top:4px">When you have a session, it shows up here.</p>
+  <h1 class="sr-only">Your webinars</h1>
+
+  <div class="actions one">
+    <a class="action" href="create-tabs-webinar.html">
+      <span class="tile"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg></span>
+      <span class="body">
+        <span class="t">Schedule a webinar</span>
+        <span class="s">Pick a date and invite people</span>
+      </span>
+      <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+    </a>
   </div>
 
-  <div class="tabs" style="margin-top:20px">
-    <a class="tab on" href="#">Upcoming <span class="count grey">0</span></a>
-    <a class="tab" href="#">Completed <span class="count grey">0</span></a>
-    <a class="tab" href="#">Drafts <span class="count grey">0</span></a>
-    <span class="tabsep"></span>
-    <a class="tab" href="audience.html">Audience</a>
-  </div>
-
-  <div class="filters">
-    <label class="search">
-      <span style="position:absolute;width:1px;height:1px;overflow:hidden">Search webinars by name</span>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input class="field" type="search" placeholder="Search by name…" value="">
-    </label>
-    <div class="range">
-      <input type="date" aria-label="Show webinars from this date" value="">
-      <span aria-hidden>→</span>
-      <input type="date" aria-label="Show webinars up to this date" value="">
+  <div class="toolbar">
+    <div class="tabs" role="tablist">
+      <a class="tab on" href="#">Upcoming</a>
+      <a class="tab" href="#">Completed</a>
+      <a class="tab" href="#">Drafts</a>
+      <a class="tab" href="audience.html">Audience</a>
+    </div>
+    <div class="filters">
+      <label class="search">
+        <span class="sr-only">Search webinars by name</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg>
+        <input type="search" placeholder="Search by name…">
+      </label>
+      <div class="range">
+        <input type="date" aria-label="Show webinars from this date">
+        <span class="arr" aria-hidden="true">→</span>
+        <input type="date" aria-label="Show webinars up to this date">
+      </div>
     </div>
   </div>
 
-  <div class="card empty-host">
-    <h2>No webinars yet</h2>
-    <p class="small muted">Schedule one, share the link, and it shows up here. Go live opens five minutes before the start.</p>
-    <a class="btn" href="create-tabs-webinar.html" style="margin-top:16px">Schedule a webinar</a>
+  <div class="empty">
+    <p class="t">No webinars yet</p>
+    <p class="h">Schedule one above, then share the link.</p>
   </div>
 
   <div class="pager">
-    <button class="btn sm sec" type="button" disabled>Previous</button>
-    <div class="mid"><b>Page 1 of 1</b><div class="xs faint">10 per page · 0 on this page</div></div>
-    <button class="btn sm sec" type="button" disabled>Next</button>
+    <button class="btn sec" type="button" disabled>Previous</button>
+    <div class="mid"><b>Page 1 of 1</b><div>10 per page · 0 on this page</div></div>
+    <button class="btn sec" type="button" disabled>Next</button>
   </div>
 </main>
-<div class="note"><b>New host, hosting already on.</b> One next step: Schedule a webinar. It is not repeated in the header. Instant webinar is hidden. A brand-new signup whose hosting is still off does not see this screen — they see “Hosting isn’t enabled for this account” until an admin turns it on. Tabs and the pager stay, including on an empty list.</div>
-<script src="assets/nav.js"></script>
+
+<div class="note"><b>New host, nothing yet.</b> The action-card row has one slot: Schedule a webinar. It is the only step, so the empty list below does not repeat it as a button (the same rule EmptyList follows today). Instant webinar is hidden. Tabs, search, dates and the pager stay, with Page 1 of 1 and both arrows disabled.</div>
+<script>if (new URLSearchParams(location.search).has("clean")) document.querySelectorAll(".note").forEach((n) => n.remove());</script>
 </body></html>
