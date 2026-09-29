@@ -6,19 +6,21 @@ import { Alert, Modal, Spinner } from "@/components/controls";
 import { useToast } from "@/components/providers";
 import { Button } from "@/components/ui";
 import { ApiError } from "@/lib/api";
-import type {
-  CRMMergeField,
-  CRMStarterTemplate,
-  CRMTemplate,
-  MessageSlot,
+import {
+  ChannelWhatsApp,
+  type CRMMergeField,
+  type CRMStarterTemplate,
+  type CRMTemplate,
+  type MessageSlot,
 } from "@/lib/api-types";
 import { guessParams } from "./wa-messages";
+import { timingForSave } from "./message-timing";
 import { isFollowup, wordingKind } from "./messages/catalog";
 import { StarterTemplates } from "./starter-templates";
 
-/* The "Write your own wording" dialog opened from a message in Setup (and from
- * the WhatsApp page's editor). The templates library uses StarterTemplates on
- * its own and does not come through here.
+/* The "Write your own wording" dialog opened from a message in Setup. The
+ * WhatsApp page uses the wording drawer instead. The templates library uses
+ * StarterTemplates on its own and does not come through here.
  *
  * An approved starter is applied to the message that opened the dialog. A
  * starter Meta has not seen yet is submitted. Anything the host types is
@@ -73,6 +75,27 @@ export function slotWithWording(
     language: template.language,
     params,
     enabled: isFollowup(slot.kind) ? true : slot.enabled,
+  };
+}
+
+/** The account-default save the message editor writes: WhatsApp on, timing in
+ * the shape the API stores, and this approved template's blanks filled in. */
+export function slotFromTemplate(
+  slot: MessageSlot,
+  template: CRMTemplate,
+  fields: CRMMergeField[],
+): MessageSlot {
+  const channels = slot.channels.includes(ChannelWhatsApp)
+    ? slot.channels
+    : [...slot.channels, ChannelWhatsApp];
+  return {
+    ...slot,
+    channels,
+    timing: timingForSave(slot.timing),
+    template: template.name,
+    language: template.language,
+    params: guessParams(template, wordingKind(slot.kind), fields),
+    enabled: true,
   };
 }
 

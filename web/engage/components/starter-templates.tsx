@@ -7,7 +7,7 @@ import { useToast } from "@/components/providers";
 import { Button, Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import type { CRMStarterTemplate } from "@/lib/api-types";
-import { CategoryPill } from "./wa-kit";
+import { friendlyTemplateName, CategoryPill } from "./wa-kit";
 
 /* The Templates tab's starter set: four messages written for webinars, with the cover as
  * the picture, a Join / Watch replay button that opens the person's own link, and quick
@@ -18,6 +18,8 @@ export function StarterTemplates({
   onCreated,
   onUse,
   onItems,
+  variant = "card",
+  query = "",
 }: {
   connected: boolean;
   onCreated: () => void;
@@ -25,6 +27,10 @@ export function StarterTemplates({
    *  Absent on the templates library, which only submits and lists them. */
   onUse?: (template: CRMStarterTemplate) => void | Promise<unknown>;
   onItems?: (templates: CRMStarterTemplate[]) => void;
+  /** `rows` is the wording drawer's compact list. `card` is the library and Setup. */
+  variant?: "card" | "rows";
+  /** Rows variant only: hide starters whose name or text doesn't match. */
+  query?: string;
 }) {
   const { notify } = useToast();
   const [items, setItems] = useState<CRMStarterTemplate[] | null>(null);
@@ -81,6 +87,25 @@ export function StarterTemplates({
   const missing = items.filter((t) => !t.status).length;
   const ready =
     Boolean(onUse) && items.every((t) => t.status === "APPROVED" && !t.error);
+
+  if (variant === "rows") {
+    const q = (query ?? "").trim().toLowerCase();
+    const shown = q
+      ? items.filter((t) =>
+          `${t.use} ${t.name} ${t.body}`.toLowerCase().includes(q),
+        )
+      : items;
+    if (shown.length === 0) return null;
+    return (
+      <StarterRows
+        items={shown}
+        missing={missing}
+        busy={busy}
+        connected={connected}
+        onSubmit={() => void create()}
+      />
+    );
+  }
 
   async function applyOne(t: CRMStarterTemplate) {
     if (!onUse || using) return;
@@ -162,6 +187,85 @@ export function StarterTemplates({
         })}
       </ul>
     </Card>
+  );
+}
+
+function starterStatus(t: CRMStarterTemplate): { label: string; tone: string } {
+  if (t.error) return { label: "Rejected", tone: "text-live" };
+  if (t.status === "APPROVED") return { label: "Approved", tone: "text-ok" };
+  if (t.status === "REJECTED") return { label: "Rejected", tone: "text-live" };
+  if (t.status) return { label: "Pending", tone: "text-warn" };
+  return { label: "Not submitted", tone: "text-ink-3" };
+}
+
+function StarterRows({
+  items,
+  missing,
+  busy,
+  connected,
+  onSubmit,
+}: {
+  items: CRMStarterTemplate[];
+  missing: number;
+  busy: boolean;
+  connected: boolean;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-[10px] border border-line">
+      <div className="flex items-center justify-between gap-2 border-b border-line bg-surface-2 px-2.5 py-2">
+        <div>
+          <b className="block text-[13px]">Starter templates</b>
+          <span className="mt-px block text-[11.5px] text-ink-3">
+            Written for webinars. Submit what you don&apos;t have.
+          </span>
+        </div>
+        {missing > 0 && (
+          <Button
+            size="sm"
+            className="h-[26px] shrink-0 px-2 text-[12px]"
+            onClick={onSubmit}
+            disabled={busy || !connected}
+          >
+            {busy && <Spinner className="size-3.5" />}
+            Submit {missing} to Meta
+          </Button>
+        )}
+      </div>
+      <ul>
+        {items.map((t) => {
+          const status = starterStatus(t);
+          return (
+            <li
+              key={t.name}
+              className="flex items-center gap-2 border-t border-line px-2.5 py-1.5 first:border-t-0"
+            >
+              <div className="min-w-0 flex-1">
+                <b className="text-[12.5px]">{t.use}</b>
+                <small className="mt-px block truncate text-[11.5px] text-ink-3">
+                  {friendlyTemplateName(t.name)}
+                </small>
+                {t.buttons.length > 0 && (
+                  <div className="mt-0.5 flex flex-wrap gap-1">
+                    {t.buttons.map((b) => (
+                      <i
+                        key={b.text}
+                        className="rounded-[5px] border border-line bg-surface-2 px-1.5 py-px text-[10.5px] text-[#027eb5] not-italic"
+                      >
+                        {b.type === "URL" ? "↗" : "↩"} {b.text}
+                      </i>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <span className={`shrink-0 text-[11px] font-semibold ${status.tone}`}>
+                {status.label}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
