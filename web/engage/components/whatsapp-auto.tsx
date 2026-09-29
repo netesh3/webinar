@@ -92,7 +92,15 @@ function snippet(
   );
 }
 
-function Snip({ text, empty }: { text: string; empty: string }) {
+function Snip({
+  text,
+  empty,
+  onOpen,
+}: {
+  text: string;
+  empty: string;
+  onOpen?: () => void;
+}) {
   if (!text) {
     return (
       <p className="mt-2 flex-1 rounded-lg border border-dashed border-line-2 px-2 py-1.5 text-[11.5px] leading-snug text-ink-3">
@@ -100,10 +108,13 @@ function Snip({ text, empty }: { text: string; empty: string }) {
       </p>
     );
   }
+  const className =
+    "mt-2 flex-1 rounded-lg rounded-bl-sm bg-[#eef6ea] px-2 py-1.5 text-left text-[11.5px] leading-snug text-ink-2 italic";
+  if (!onOpen) return <p className={className}>“{text}”</p>;
   return (
-    <p className="mt-2 flex-1 rounded-lg rounded-bl-sm bg-[#eef6ea] px-2 py-1.5 text-[11.5px] leading-snug text-ink-2 italic">
+    <button type="button" className={`${className} hover:bg-[#e5f2df]`} onClick={onOpen}>
       “{text}”
-    </p>
+    </button>
   );
 }
 
@@ -115,6 +126,7 @@ export function WhatsAppAuto({
   fields,
   connected,
   busyKind,
+  openKind,
   onToggle,
   onTiming,
   onEdit,
@@ -124,6 +136,7 @@ export function WhatsAppAuto({
   fields: CRMMergeField[];
   connected: boolean;
   busyKind: string | null;
+  openKind?: string | null;
   onToggle: (slot: MessageSlot, enabled: boolean) => void;
   onTiming: (slot: MessageSlot, timing: MessageSlot["timing"]) => void;
   onEdit: (slot: MessageSlot, title: string) => void;
@@ -152,9 +165,11 @@ export function WhatsAppAuto({
             return (
               <article
                 key={m.kind}
-                className={`relative flex flex-col rounded-[10px] border border-line p-3 ${
-                  open === slot.kind ? "z-20" : ""
-                }`}
+                className={`relative flex flex-col rounded-[10px] border p-3 ${
+                  openKind === slot.kind
+                    ? "z-10 border-brand ring-[3px] ring-brand/15"
+                    : "border-line"
+                } ${open === slot.kind ? "z-20" : ""}`}
               >
                 <div className="flex items-start gap-2">
                   <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
@@ -197,12 +212,21 @@ export function WhatsAppAuto({
                     )}
                   </div>
                 </div>
-                <Snip text={slot.enabled ? text : ""} empty="Not sending this on WhatsApp." />
+                <Snip
+                  text={slot.enabled ? text : ""}
+                  empty="Not sending this on WhatsApp."
+                  onOpen={
+                    text && connected && templates
+                      ? () => onEdit(slot, m.title)
+                      : undefined
+                  }
+                />
                 <div className="mt-2.5 flex items-center justify-end">
                   <button
                     type="button"
                     className="text-[12px] font-medium text-brand hover:underline"
                     disabled={!connected || !templates}
+                    aria-label={`${text ? "Edit" : "Set up"} ${m.title} wording`}
                     onClick={() => onEdit(slot, m.title)}
                   >
                     {text ? "Edit" : "Set up"}
@@ -232,6 +256,7 @@ export function WhatsAppAuto({
           fields={fields}
           connected={connected}
           open={open === SlotReplay}
+          wordingOpen={openKind === SlotReplay}
           busy={busyKind === SlotReplay}
           onOpen={() => setOpen(open === SlotReplay ? null : SlotReplay)}
           onClose={() => setOpen(null)}
@@ -259,7 +284,13 @@ export function WhatsAppAuto({
                 key={g.kind}
                 className={`relative flex flex-col rounded-[10px] border p-2.5 ${
                   open === slot.kind ? "z-20" : ""
-                } ${on ? "border-line" : "border-dashed border-line bg-surface-2"}`}
+                } ${
+                  openKind === slot.kind
+                    ? "border-brand ring-[3px] ring-brand/15"
+                    : on
+                      ? "border-line"
+                      : "border-dashed border-line bg-surface-2"
+                }`}
               >
                 <div className="mb-2 flex items-center justify-between">
                   <span
@@ -282,7 +313,13 @@ export function WhatsAppAuto({
                   <MaterialIcon name="arrow_forward" className="!text-[14px] text-ink-3" />
                   {gets}
                 </p>
-                <Snip text={on ? text : ""} empty="Not sending anything to this group" />
+                <Snip
+                  text={on ? text : ""}
+                  empty="Not sending anything to this group"
+                  onOpen={
+                    text && connected ? () => onEdit(slot, g.title) : undefined
+                  }
+                />
                 <div className="mt-2.5 flex flex-wrap items-end justify-between gap-1.5">
                   <TimingChip
                     label={timingLabel(slot.kind, slot.timing)}
@@ -294,6 +331,7 @@ export function WhatsAppAuto({
                       type="button"
                       className="shrink-0 text-[12px] font-medium text-brand hover:underline"
                       disabled={!connected}
+                      aria-label={`Edit ${g.title} wording`}
                       onClick={() => onEdit(slot, g.title)}
                     >
                       Edit
@@ -304,6 +342,7 @@ export function WhatsAppAuto({
                       variant="secondary"
                       className="shrink-0"
                       disabled={!connected || !templates}
+                      aria-label={`Set up ${g.title} wording`}
                       onClick={() => onEdit(slot, g.title)}
                     >
                       Set up
@@ -391,6 +430,7 @@ function ReplayRow({
   fields,
   connected,
   open,
+  wordingOpen,
   busy,
   onOpen,
   onClose,
@@ -403,6 +443,7 @@ function ReplayRow({
   fields: CRMMergeField[];
   connected: boolean;
   open: boolean;
+  wordingOpen?: boolean;
   busy: boolean;
   onOpen: () => void;
   onClose: () => void;
@@ -414,9 +455,9 @@ function ReplayRow({
   const text = snippet(slot, templates ?? [], fields);
   return (
     <div
-      className={`relative grid items-center gap-3 rounded-[10px] border border-line p-3 sm:grid-cols-[auto_minmax(max-content,16rem)_minmax(0,1fr)_auto_auto_auto] ${
-        open ? "z-20" : ""
-      }`}
+      className={`relative grid items-center gap-3 rounded-[10px] border p-3 sm:grid-cols-[auto_minmax(max-content,16rem)_minmax(0,1fr)_auto_auto_auto] ${
+        wordingOpen ? "border-brand ring-[3px] ring-brand/15" : "border-line"
+      } ${open ? "z-20" : ""}`}
     >
       <span className="grid size-7 place-items-center rounded-lg bg-brand-soft text-brand">
         <MaterialIcon name="play_circle" className="!text-[17px]" />
@@ -439,11 +480,16 @@ function ReplayRow({
           />
         )}
       </div>
-      <Snip text={slot.enabled ? text : ""} empty="Not sending the replay on WhatsApp." />
+      <Snip
+        text={slot.enabled ? text : ""}
+        empty="Not sending the replay on WhatsApp."
+        onOpen={text && connected ? () => onEdit(slot, "Replay") : undefined}
+      />
       <button
         type="button"
         className="text-[12px] font-medium text-brand hover:underline"
         disabled={!connected}
+        aria-label={`${text ? "Edit" : "Set up"} Replay wording`}
         onClick={() => onEdit(slot, "Replay")}
       >
         {text ? "Edit" : "Set up"}

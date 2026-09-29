@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { engageApi } from "../api";
 import { MESSAGES_HREF } from "../slots";
 import { Spinner } from "@/components/controls";
@@ -15,7 +15,6 @@ import type {
   CRMRecipe,
   CRMRecipesResponse,
   CRMSetup,
-  CRMStarterTemplate,
   CRMTag,
   CRMTemplate,
   MessageSlot,
@@ -23,16 +22,15 @@ import type {
 } from "@/lib/api-types";
 import { KeywordsDialog } from "./automations";
 import { RuleBuilder } from "./rule-builder";
-import { SlotEditor } from "./slot-editor";
-import {
-  resolveStarterTemplate,
-  slotWithWording,
-  WriteWordingDialog,
-} from "./write-wording-dialog";
 import { WhatsAppAuto } from "./whatsapp-auto";
 import { WhatsAppMetrics } from "./whatsapp-metrics";
 import { WhatsAppReplies } from "./whatsapp-replies";
 import { minutesOf, timingForSave } from "./message-timing";
+import {
+  filterForSlot,
+  WordingDrawer,
+  type WordingFilter,
+} from "./wording-drawer";
 
 /* The WhatsApp page (docs/mockups/simple/whatsapp.html, variant B).
  *
@@ -42,12 +40,21 @@ import { minutesOf, timingForSave } from "./message-timing";
 export function WhatsAppSimple({
   setup,
   templates,
+  templatesError,
+  syncing = false,
+  catalogOpen,
   onOpen,
+  onCatalogClose,
   onTemplatesChanged,
 }: {
   setup: CRMSetup | null;
   templates: CRMTemplate[] | null;
+  templatesError?: string | null;
+  syncing?: boolean;
+  /** True when the address is /host/crm?view=templates. Opens the drawer on All. */
+  catalogOpen?: boolean;
   onOpen: (view: "setup" | "templates" | "broadcasts") => void;
+  onCatalogClose?: () => void;
   onTemplatesChanged: () => void;
 }) {
   const { notify } = useToast();
@@ -57,19 +64,24 @@ export function WhatsAppSimple({
   const [rules, setRules] = useState<CRMDrip[]>([]);
   const [tags, setTags] = useState<CRMTag[]>([]);
   const [needsReply, setNeedsReply] = useState(0);
-  const [editing, setEditing] = useState<{ slot: MessageSlot; title: string } | null>(
-    null,
-  );
-  const [editError, setEditError] = useState<string | null>(null);
-  const [writingFor, setWritingFor] = useState<{
-    slot: MessageSlot;
+  const [drawer, setDrawer] = useState<{
+    filter: WordingFilter;
+    slot: MessageSlot | null;
     title: string;
   } | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const catalogWasOpen = useRef(false);
   const [keywords, setKeywords] = useState<CRMRecipe | null>(null);
   const [building, setBuilding] = useState(false);
   const [busyKind, setBusyKind] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
-  const refresh = useCallback(() => setTick((t) => t + 1), []);
+
+  useEffect(() => {
+    if (catalogOpen && !catalogWasOpen.current) {
+      setEditError(null);
+      setDrawer({ filter: "All", slot: null, title: "" });
+    }
+    catalogWasOpen.current = Boolean(catalogOpen);
+  }, [catalogOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +107,7 @@ export function WhatsAppSimple({
     return () => {
       cancelled = true;
     };
-  }, [tick]);
+  }, []);
 
   const connected = Boolean(setup?.connected);
 
@@ -110,7 +122,7 @@ export function WhatsAppSimple({
       return true;
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "Could not save that.";
-      if (editing) setEditError(msg);
+      if (drawer) setEditError(msg);
       notify(msg, "error");
       return false;
     } finally {
@@ -128,24 +140,31 @@ export function WhatsAppSimple({
     if (ok) notify("Saved.", "ok");
   }
 
-  async function applyWording(starter: CRMStarterTemplate): Promise<boolean> {
-    if (!writingFor) return false;
-    const resolved = await resolveStarterTemplate(starter, templates ?? []);
-    if (!resolved?.template.sendable) {
-      notify(
-        "That wording isn't ready to use yet. Refresh your templates once Meta has approved it.",
-        "error",
-      );
-      return false;
-    }
-    const template = resolved.template;
-    const ok = await saveSlot(
-      slotWithWording(writingFor.slot, starter, template, fields),
-    );
+  function openWording(slot: MessageSlot, messageTitle: string) {
+    setEditError(null);
+    setDrawer({
+      filter: filterForSlot(slot.kind) ?? "All",
+      slot,
+      title: messageTitle,
+    });
+  }
+
+  function openAllWording() {
+    setEditError(null);
+    setDrawer({ filter: "All", slot: null, title: "" });
+    onOpen("templates");
+  }
+
+  function closeWording() {
+    setDrawer(null);
+    setEditError(null);
+    if (catalogOpen) onCatalogClose?.();
+  }
+
+  async function useWording(next: MessageSlot, label: string) {
+    const ok = await saveSlot(next);
     if (!ok) return false;
-    notify(`Using the ${starter.use} wording on ${writingFor.title}.`, "ok");
-    onTemplatesChanged();
-    setWritingFor(null);
+    notify(`Using this wording on ${label}.`, "ok");
     return true;
   }
 
@@ -233,10 +252,8 @@ export function WhatsAppSimple({
           busyKind={busyKind}
           onToggle={(slot, enabled) => void toggle(slot, enabled)}
           onTiming={(slot, timing) => void saveTiming(slot, timing)}
-          onEdit={(slot, title) => {
-            setEditError(null);
-            setEditing({ slot, title });
-          }}
+          openKind={drawer?.slot?.kind ?? null}
+          onEdit={openWording}
         />
       )}
 
@@ -252,38 +269,30 @@ export function WhatsAppSimple({
         onBroadcasts={() => onOpen("broadcasts")}
       />
 
-      {editing && templates && (
-        <SlotEditor
-          slot={editing.slot}
-          title={editing.title}
+      {drawer && (
+        <WordingDrawer
+          filter={drawer.filter}
+          onFilter={(filter) =>
+            setDrawer((current) => (current ? { ...current, filter } : current))
+          }
+          slot={
+            drawer.slot
+              ? (slots?.find((item) => item.kind === drawer.slot?.kind) ?? drawer.slot)
+              : null
+          }
+          title={drawer.title}
+          slots={slots ?? []}
           templates={templates}
           fields={fields}
-          busy={busyKind === editing.slot.kind}
-          error={editError}
-          onClose={() => setEditing(null)}
-          onSave={(next) => {
-            void saveSlot(next).then((ok) => {
-              if (ok) {
-                notify(`${editing.title} saved.`, "ok");
-                setEditing(null);
-              }
-            });
-          }}
-          onWriteOwn={() => {
-            setWritingFor(editing);
-            setEditing(null);
-          }}
-        />
-      )}
-      {writingFor && (
-        <WriteWordingDialog
           connected={connected}
-          onClose={() => setWritingFor(null)}
-          onCreated={() => {
-            onTemplatesChanged();
-            refresh();
-          }}
-          onUse={applyWording}
+          syncing={syncing}
+          busy={busyKind !== null}
+          error={editError}
+          templatesError={templatesError}
+          onClose={closeWording}
+          onRefresh={() => onTemplatesChanged()}
+          onUse={useWording}
+          onCreated={onTemplatesChanged}
         />
       )}
       {building && templates && (
@@ -308,7 +317,7 @@ export function WhatsAppSimple({
       <p className="text-[12px] text-ink-3">
         <button
           type="button"
-          onClick={() => onOpen("templates")}
+          onClick={openAllWording}
           className="hover:text-ink"
         >
           All your wording at Meta →

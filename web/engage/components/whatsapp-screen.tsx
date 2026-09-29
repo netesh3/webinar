@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { engageApi } from "../api";
-import { Alert, Spinner } from "@/components/controls";
+import { Spinner } from "@/components/controls";
 import { useSession, useToast } from "@/components/providers";
 import { Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
@@ -18,24 +18,21 @@ import { Automations, type BuildView } from "./automations";
 import { Broadcasts } from "./crm-broadcasts";
 import { RemindersSettings } from "./crm-screen";
 import { SetupChecklist } from "./crm-setup";
-import { StarterTemplates } from "./starter-templates";
 import { WhatsAppSimple } from "./whatsapp-simple";
-import { BlockedList, RefreshTemplates, templateKey } from "./crm-templates";
-import { CategoryPill, friendlyTemplateName } from "./wa-kit";
 
-/* The WhatsApp page: /host/crm. One simple page (WhatsAppSimple) — connection, the three
- * messages everyone gets, automations — linking to Settings (the setup checklist), All
- * your wording (templates), All automations, and a one-off broadcast. A ?view= this page
- * does not know, including the retired sequences and bots builders, is the simple page. */
+/* The WhatsApp page: /host/crm. One simple page (WhatsAppSimple) — connection, the
+ * messages everyone gets, automations — linking to Settings and a one-off broadcast.
+ * Wording opens in a drawer on this page. ?view=templates still lands here and opens
+ * that drawer, so older links keep working. A ?view= this page does not know, including
+ * the retired sequences and bots builders, is the simple page. */
 
 /* "home" is the one simple page; the others are the full views it links to — the setup
- * checklist, every template, the automations cards, and a broadcast — reached by link and
- * by the ?view= addresses that still exist, not by tabs. */
-type Tab = "home" | "automations" | "templates" | "number";
+ * checklist, the automations cards, and a broadcast — reached by link and by the
+ * ?view= addresses that still exist, not by tabs. */
+type Tab = "home" | "automations" | "number";
 const LABELS: Record<Tab, string> = {
   home: "WhatsApp",
   automations: "All automations",
-  templates: "All your wording",
   number: "Settings",
 };
 
@@ -50,9 +47,9 @@ const KNOWN_VIEWS = new Set([
 
 function fromView(v: string): { tab: Tab; build: BuildView | null } {
   if (v === "setup" || v === "number") return { tab: "number", build: null };
-  if (v === "templates") return { tab: "templates", build: null };
   if (v === "automations") return { tab: "automations", build: null };
   if (v === "broadcasts") return { tab: "automations", build: "broadcasts" };
+  // templates stays on the WhatsApp page; the drawer opens over it.
   return { tab: "home", build: null };
 }
 
@@ -74,13 +71,7 @@ export function WhatsAppScreen() {
     (t: Tab, b: BuildView | null = null) => {
       const view =
         b ??
-        (t === "number"
-          ? "setup"
-          : t === "templates"
-            ? "templates"
-            : t === "automations"
-              ? "automations"
-              : "");
+        (t === "number" ? "setup" : t === "automations" ? "automations" : "");
       router.replace(`/host/crm${view ? `?view=${view}` : ""}`);
     },
     [router],
@@ -200,7 +191,6 @@ export function WhatsAppScreen() {
   }
 
   const connected = Boolean(setup?.connected ?? account?.whatsapp?.connected);
-  const sendable = (templates ?? []).filter((t) => t.sendable);
 
   return (
     <div className="grid gap-4">
@@ -225,9 +215,7 @@ export function WhatsAppScreen() {
           <p className="mt-1 text-[13.5px] text-ink-2">
             {tab === "number"
               ? "Your number, and what is left to set up."
-              : tab === "templates"
-                ? "Every message wording at Meta, and which one each automatic message uses."
-                : "Every automation, and a one-off broadcast."}
+              : "Every automation, and a one-off broadcast."}
           </p>
         </div>
       )}
@@ -236,13 +224,19 @@ export function WhatsAppScreen() {
         <WhatsAppSimple
           setup={setup}
           templates={templates}
+          templatesError={templatesError}
+          syncing={syncing}
+          catalogOpen={viewParam === "templates"}
           onOpen={(v) =>
             v === "setup"
               ? go("number")
               : v === "templates"
-                ? go("templates")
+                ? router.replace("/host/crm?view=templates")
                 : go("automations", v)
           }
+          onCatalogClose={() => {
+            if (viewParam === "templates") router.replace("/host/crm");
+          }}
           onTemplatesChanged={() => void refreshTemplates()}
         />
       )}
@@ -275,93 +269,10 @@ export function WhatsAppScreen() {
         ) : (
           <Automations
             setup={setup}
-            onOpenTemplates={() => go("templates")}
+            onOpenTemplates={() => router.replace("/host/crm?view=templates")}
             onBuild={(b) => go("automations", b)}
           />
         ))}
-
-      {tab === "templates" && (
-        <div className="grid gap-4">
-          <StarterTemplates
-            connected={connected}
-            onCreated={() => void refreshTemplates()}
-          />
-          <Card className="px-5 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-[15px] font-semibold">
-                  Approved templates
-                </h2>
-                <p className="mt-0.5 text-[12.5px] text-ink-2">
-                  WhatsApp only lets you message people who haven&apos;t written
-                  to you with a template Meta has approved. Create them in
-                  WhatsApp Manager, then check again here.
-                </p>
-              </div>
-              <RefreshTemplates syncing={syncing} onClick={refreshTemplates} />
-            </div>
-            {templatesError && (
-              <div className="mt-3">
-                <Alert tone="error">{templatesError}</Alert>
-              </div>
-            )}
-            {templates === null ? (
-              <div className="flex justify-center py-8">
-                <Spinner />
-              </div>
-            ) : (
-              <ul className="mt-3 grid gap-2 md:grid-cols-2">
-                {sendable.map((t) => (
-                  <li
-                    key={templateKey(t)}
-                    className="rounded-lg border border-line px-3 py-2.5"
-                  >
-                    <div className="flex items-center gap-2 text-[13px] font-medium text-ink">
-                      {friendlyTemplateName(t.name)}
-                      <CategoryPill category={t.category} />
-                      <span className="text-[11px] font-normal text-ink-3">
-                        {t.language}
-                      </span>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-ink-2">
-                      {t.body}
-                    </p>
-                  </li>
-                ))}
-                {sendable.length === 0 && (
-                  <li className="text-[12.5px] text-ink-3">
-                    No approved templates yet.
-                  </li>
-                )}
-              </ul>
-            )}
-            {(templates ?? []).some((t) => !t.sendable) && (
-              <div className="mt-3 border-t border-line pt-3">
-                <p className="mb-1 text-[12px] font-medium text-ink-2">
-                  Can&apos;t be used yet
-                </p>
-                <BlockedList
-                  templates={(templates ?? []).filter((t) => !t.sendable)}
-                />
-              </div>
-            )}
-          </Card>
-          <Card className="px-5 py-4">
-            <h2 className="text-[15px] font-semibold">Automatic messages</h2>
-            <p className="mt-0.5 mb-3 text-[12.5px] text-ink-2">
-              Which template the confirmation, each reminder and the replay link
-              use. The times are set per webinar.
-            </p>
-            <RemindersSettings
-              templates={templates}
-              templatesError={templatesError}
-              syncing={syncing}
-              onRefreshTemplates={refreshTemplates}
-              onSaved={reloadSetup}
-            />
-          </Card>
-        </div>
-      )}
 
       {tab === "number" && (
         <SetupChecklist

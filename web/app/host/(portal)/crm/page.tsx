@@ -11,7 +11,7 @@ import { MESSAGES_HREF, PEOPLE_HREF, WhatsAppScreen } from "@/engage";
  * links — ?webinar=, ?status=, ?view=contacts — land on Audience (with the webinar
  * filter carried over), and ?view=inbox on Messages. Everything else opens here: a
  * plain /host/crm is the WhatsApp page, ?view=setup is Number & billing (Account
- * settings links to it),
+ * settings links to it), ?view=templates opens the wording drawer on that page,
  * and ?view=broadcasts opens that builder. A retired or unknown ?view= — including
  * the old sequences and bots builders — stays on this page.
  *
