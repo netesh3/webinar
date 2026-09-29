@@ -10,6 +10,7 @@
 #   ./stop.sh --all    same as --db, plus the headless Chrome instances the
 #                      E2E test leaves behind
 #
+
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
