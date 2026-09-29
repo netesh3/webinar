@@ -7,7 +7,6 @@ import type { CRMRecipe, MessageSlot } from "@/lib/api-types";
 import { ENGAGE_HOME } from "../../slots";
 import {
   MESSAGE_ROWS,
-  isFollowup,
   rowWhen,
   unconfigured,
   type MessageGroup,
@@ -99,27 +98,11 @@ export function MessageList({
                   enabled={Boolean(slot?.enabled)}
                   switchLabel={`${meta.title} for this webinar`}
                   onSelect={() => onSelect(meta.kind)}
-                  onToggle={(next) => onToggle(meta.kind, next)}
-                  badges={
-                    bare ? (
-                      <button
-                        type="button"
-                        className="rounded-md bg-brand px-2 py-1 text-[11px] font-semibold text-white hover:bg-brand/90"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onSelect(meta.kind);
-                        }}
-                      >
-                        Choose a message
-                      </button>
-                    ) : (
-                      <ChannelBadges
-                        channels={slot?.channels ?? []}
-                        enabled={Boolean(slot?.enabled)}
-                        both={!isFollowup(meta.kind)}
-                      />
-                    )
-                  }
+                  onToggle={(next) => {
+                    onSelect(meta.kind);
+                    onToggle(meta.kind, next);
+                  }}
+                  badges={<ChannelBadges channels={slot?.channels ?? []} />}
                 />
               );
             })}
