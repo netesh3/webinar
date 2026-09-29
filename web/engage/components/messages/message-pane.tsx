@@ -28,6 +28,7 @@ import {
   withChannel,
   wordingKind,
 } from "./catalog";
+import { ChannelIcon } from "./channel-icon";
 import { WordingPicker } from "./wording-picker";
 
 /* The selected message. WhatsApp and Email are tabs at the top: each tab shows
@@ -209,12 +210,14 @@ export function MessagePane({
       >
         <ChannelTab
           label="WhatsApp"
+          channel={ChannelWhatsApp}
           selected={channel === "whatsapp"}
           included={whatsappOn}
           onClick={() => setChannel("whatsapp")}
         />
         <ChannelTab
           label="Email"
+          channel={ChannelEmail}
           selected={channel === "email"}
           included={emailOn}
           onClick={() => setChannel("email")}
@@ -305,11 +308,13 @@ export function MessagePane({
 
 function ChannelTab({
   label,
+  channel,
   selected,
   included,
   onClick,
 }: {
   label: string;
+  channel: string;
   selected: boolean;
   included: boolean;
   onClick: () => void;
@@ -320,13 +325,20 @@ function ChannelTab({
       role="tab"
       aria-selected={selected}
       onClick={onClick}
-      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-[6px] ${
-        selected ? "bg-surface font-medium text-ink shadow-sm" : "text-ink-2"
-      }`}
+      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-[6px] font-medium ${
+        selected ? "bg-surface shadow-sm" : ""
+      } ${channel === ChannelWhatsApp ? "text-ok" : "text-brand"}`}
     >
+      <ChannelIcon
+        channel={channel}
+        className={`size-4 ${channel === ChannelWhatsApp ? "text-ok" : "text-brand"}`}
+      />
       {label}
       {included && (
-        <MaterialIcon name="check" className="size-[14px] text-ok" />
+        <MaterialIcon
+          name="check"
+          className={`size-[14px] ${channel === ChannelWhatsApp ? "text-ok" : "text-brand"}`}
+        />
       )}
     </button>
   );

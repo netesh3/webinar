@@ -1,4 +1,5 @@
 import { ChannelEmail, ChannelWhatsApp } from "@/lib/api-types";
+import { ChannelIcon } from "./channel-icon";
 
 /* Email and WhatsApp chips on a message row. A chip is there only while that
  * channel is selected, so turning one off in the pane takes its chip away. */
@@ -18,12 +19,13 @@ export function ChannelBadges({ channels }: { channels: string[] }) {
       {shown.map((channel) => (
         <span
           key={channel}
-          className={`rounded px-1.5 py-px text-[10.5px] font-semibold ${
+          className={`inline-flex items-center gap-1 rounded border px-1.5 py-px text-[10.5px] font-semibold ${
             channel === ChannelWhatsApp
-              ? "bg-ok-soft text-ok"
-              : "bg-surface-2 text-ink-2"
+              ? "border-ok/25 bg-ok-soft text-ok"
+              : "border-brand-line bg-brand-soft text-brand"
           }`}
         >
+          <ChannelIcon channel={channel} className="size-3" />
           {LABELS[channel]}
         </span>
       ))}
