@@ -16,7 +16,12 @@ import { useAppConfig, useSession, useToast } from "../providers";
 import { Button } from "../ui";
 import { API_BASE, ApiError, api } from "@/lib/api";
 import type { MessagesSaveHandle } from "@/engage";
-import type { MessageSlot, Webinar, WebinarInput } from "@/lib/api-types";
+import {
+  FeatureCloudRecording,
+  type MessageSlot,
+  type Webinar,
+  type WebinarInput,
+} from "@/lib/api-types";
 import { useHydrated, useNow } from "@/lib/clock";
 import { zonedToInstant } from "@/lib/format";
 import { optionsProblem } from "@/lib/registration-questions";
@@ -150,6 +155,7 @@ function ScheduleFormBody({
   const router = useRouter();
   const search = useSearchParams();
   const config = useAppConfig();
+  const { account } = useSession();
   const { notify } = useToast();
   const editing = webinar !== null;
 
@@ -395,7 +401,15 @@ function ScheduleFormBody({
         .map((e) => e.trim())
         .filter(Boolean),
       // Mirrors whether a survey is set up, for the places that only read the webinar.
-      options: { ...form.options, postWebinarSurvey: survey.on },
+      // A host without cloud recording cannot turn auto-record on, including from a
+      // draft saved before the switch existed.
+      options: {
+        ...form.options,
+        postWebinarSurvey: survey.on,
+        ...((account?.features ?? []).includes(FeatureCloudRecording)
+          ? {}
+          : { autoRecord: false }),
+      },
       controls: form.controls,
     };
   }

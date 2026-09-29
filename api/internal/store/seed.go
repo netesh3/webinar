@@ -59,7 +59,7 @@ func (s *Store) SeedDev(ctx context.Context, hashedPassword string) error {
 
 	opts := func(overrides map[string]bool) []byte {
 		o := map[string]bool{
-			"practiceSession": true, "autoRecord": true, "qAndA": true,
+			"practiceSession": true, "autoRecord": false, "qAndA": true,
 			"polls": true, "attendeeChat": true, "raiseHand": true,
 			"captions": false, "multistream": false, "postWebinarSurvey": true,
 		}

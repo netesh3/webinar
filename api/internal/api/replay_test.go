@@ -30,6 +30,7 @@ import (
 // readyRecording records a webinar from start to finish and returns the recording.
 func readyRecording(t *testing.T, h *harness, slug string) types.Recording {
 	t.Helper()
+	grantCloudRecording(t, h)
 	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+slug+"/recordings",
 		types.StartRecordingRequest{Mime: `video/webm;codecs="vp9,opus"`})
 	if res.StatusCode != http.StatusCreated {

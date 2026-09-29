@@ -7,7 +7,7 @@ import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
 import { EngagementTab } from "./engagement/engagement-tab";
 import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
-import { useShareOrigin, useToast } from "./providers";
+import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
 import { Avatar, Badge, Button, ButtonLink, Card, ListPager, SectionTitle } from "./ui";
 import {
   formatCount,
@@ -19,6 +19,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import {
   ChannelEmail,
+  FeatureCloudRecording,
   type CustomQuestion,
   type EngagementTierCounts,
   type Recording,
@@ -51,8 +52,6 @@ import {
   useWebinarMessageSlots,
   followupGroups,
 } from "@/engage";
-import { useAppConfig } from "./providers";
-
 /* Per-webinar management. Every tab here operates on real data — the share links
  * are built from the operator's configured public URL rather than a placeholder
  * domain, and the settings shown are the ones the session will actually run with.
@@ -96,18 +95,26 @@ export function HostWebinarTabs({
   onTabChange?: (tab: HostTab) => void;
 }) {
   const { whatsappConnect } = useAppConfig();
-  const tabs = tabsFor(w.status, whatsappConnect);
+  const { account } = useSession();
+  const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
+  const tabs = tabsFor(w.status, whatsappConnect, cloudRecording);
 
   const [tab, setTab] = useState<HostTab>(() =>
-    defaultTab(w.status, { whatsapp: whatsappConnect, requested: initialTab }),
+    defaultTab(w.status, {
+      whatsapp: whatsappConnect,
+      requested: initialTab,
+      cloudRecording,
+    }),
   );
 
   // Follow ?tab= when a link names a tab. Adjusted during render when the inputs change,
-  // not in an effect after it.
+  // not in an effect after it. cloudRecording is one of those inputs: the session arrives
+  // after the first paint, and a host who has the switch should not stay on the fallback.
   const queryInputs = JSON.stringify([
     initialTab ?? null,
     w.status,
     whatsappConnect,
+    cloudRecording,
   ]);
   const [seenQueryInputs, setSeenQueryInputs] = useState(queryInputs);
   if (queryInputs !== seenQueryInputs) {
@@ -116,11 +123,12 @@ export function HostWebinarTabs({
       tabFromQuery(initialTab),
       w.status,
       whatsappConnect,
+      cloudRecording,
     );
     if (next) setTab(next);
     // A status change (the webinar just ended) can take the open tab away.
     else if (!tabs.includes(tab))
-      setTab(defaultTab(w.status, { whatsapp: whatsappConnect }));
+      setTab(defaultTab(w.status, { whatsapp: whatsappConnect, cloudRecording }));
   }
 
   useLayoutEffect(() => {
@@ -195,7 +203,7 @@ export function HostWebinarTabs({
         </div>
       )}
       {tab === "Follow up" && <FollowUpTab webinar={w} />}
-      {tab === "Recording" && (
+      {tab === "Recording" && cloudRecording && (
         <RecordingsTab
           webinar={w}
           recordings={recordings}
@@ -909,6 +917,8 @@ function StageTab({
  *  them is the schedule form's job; showing them here is so a host can confirm
  *  what they are about to go live with without opening it. */
 function SettingsTab({ webinar: w }: { webinar: Webinar }) {
+  const { account } = useSession();
+  const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
   const rows: [string, boolean | string][] = [
     ["Attendees hidden from each other", w.controls.hideAttendees],
     ["Panelists muted on entry", w.controls.muteOnEntry],
@@ -919,7 +929,9 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     ["Reactions", w.controls.reactionsEnabled],
     ["Locked to new attendees", w.controls.locked],
     ["Registration required", w.registrationRequired],
-    ["Record automatically", w.options.autoRecord],
+    ...(cloudRecording
+      ? ([["Record automatically", w.options.autoRecord]] as [string, boolean][])
+      : []),
     ["Live captions", w.options.captions],
     ["Attendee limit", formatCount(w.attendeeLimit)],
     ["Time zone", w.timeZone],

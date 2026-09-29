@@ -116,6 +116,12 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cloud only. A host without the switch still records on their own computer;
+	// that path never calls this endpoint.
+	if !s.requireCloudRecording(w, r, wb.Host.ID) {
+		return
+	}
+
 	// The key is ours, derived from the recording's own id — never from the slug, a
 	// topic or anything else a person typed. Two levels of fan-out so a directory
 	// listing stays usable after a few thousand recordings.

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/netkumar/webcast/api/internal/httpx"
@@ -46,4 +47,46 @@ func featureLabel(key string) string {
 		}
 	}
 	return key
+}
+
+/* requireCloudRecording allows the request only when this webinar's host has the switch.
+ *
+ * The host, not whoever pressed the button. A panelist records the host's session, so a
+ * host with the switch off cannot be routed around by inviting someone who has it, and a
+ * panelist on a host who has it can still press Record. Absent means off — see
+ * migrations/0072. Local recording never reaches this: it stays on the presenter's computer.
+ *
+ * Returns false after writing the response. Callers return immediately.
+ */
+func (s *Server) requireCloudRecording(w http.ResponseWriter, r *http.Request, hostID string) bool {
+	if hostID == "" {
+		httpx.Error(w, http.StatusForbidden, "feature_off",
+			featureLabel(types.FeatureCloudRecording)+" isn't switched on for this account.")
+		return false
+	}
+	caller := userFromContext(r.Context())
+	subject := caller
+	if hostID != caller.ID {
+		host, err := s.store.UserByID(r.Context(), hostID)
+		if err != nil {
+			s.fail(w, r, "cloud recording: load host", err)
+			return false
+		}
+		subject = host
+	}
+	return s.featureAllowed(w, subject, types.FeatureCloudRecording)
+}
+
+// hostCloudRecording is the same switch, for a response that has to say yes or no
+// rather than refuse. A lookup failure is off: offering Cloud and then 403ing is worse.
+func (s *Server) hostCloudRecording(ctx context.Context, hostID string) bool {
+	if hostID == "" {
+		return false
+	}
+	host, err := s.store.UserByID(ctx, hostID)
+	if err != nil {
+		s.log.Warn("cloud recording: load host", "host", hostID, "error", err)
+		return false
+	}
+	return host.HasFeature(types.FeatureCloudRecording)
 }

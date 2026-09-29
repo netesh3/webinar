@@ -4,7 +4,7 @@
  * the numbers, what goes out on its own, anyone waiting), People (who registered, pending
  * approvals first) and Setup (everything about how it runs). Live adds Results. After it,
  * Results (the Engagement dashboard), Follow up (the one place to message people after a
- * webinar) and Recording.
+ * webinar) and, when this host may use cloud recording, Recording.
  *
  * Pure so node can test it: old links still say ?tab=report, ?tab=admit, ?tab=messages, and
  * a link that silently lands somewhere else is the kind of breakage nobody reports. */
@@ -29,10 +29,20 @@ export function stepFor(status: HostStatus): Step {
   return "invite";
 }
 
-/* Follow up needs WhatsApp; without it an ended webinar has Results and Recording. Live
- * adds Results after the three, so the numbers are one click away while it runs. */
-export function tabsFor(status: HostStatus, whatsapp = false): readonly HostTab[] {
-  if (status === "ended") return whatsapp ? ENDED_TABS : ["Results", "Recording"];
+/* Follow up needs WhatsApp. Recording is the cloud-recording tab, so it is omitted
+ * unless this host has that switch — local recording has no library here. Live adds
+ * Results after the three, so the numbers are one click away while it runs. */
+export function tabsFor(
+  status: HostStatus,
+  whatsapp = false,
+  cloudRecording = false,
+): readonly HostTab[] {
+  if (status === "ended") {
+    const tabs: HostTab[] = ["Results"];
+    if (whatsapp) tabs.push("Follow up");
+    if (cloudRecording) tabs.push("Recording");
+    return tabs;
+  }
   if (status === "live") return [...PRE_EVENT_TABS, "Results"];
   return PRE_EVENT_TABS;
 }
@@ -81,9 +91,14 @@ export function tabFromQuery(raw: string | null | undefined): HostTab | null {
 /** An old link can ask for a tab this webinar does not have (yet, or any more); null lets
  *  the caller fall back. Before the end, Results and Follow up links open Overview; after
  *  it, People links open Results (its Attendees section) and Setup links fall back. */
-export function allowedTab(tab: HostTab | null, status: HostStatus, whatsapp = false): HostTab | null {
+export function allowedTab(
+  tab: HostTab | null,
+  status: HostStatus,
+  whatsapp = false,
+  cloudRecording = false,
+): HostTab | null {
   if (!tab) return null;
-  const tabs = tabsFor(status, whatsapp);
+  const tabs = tabsFor(status, whatsapp, cloudRecording);
   if (tabs.includes(tab)) return tab;
   if (status === "ended" && tab === "People") return "Results";
   if (status === "ended" && tab === "Follow up") return "Results";
@@ -102,9 +117,18 @@ export function engagementSection(raw: string | null | undefined, status: HostSt
 /** What opens when no (usable) ?tab= was given. */
 export function defaultTab(
   status: HostStatus,
-  { whatsapp = false, requested }: { pending?: number; whatsapp?: boolean; requested?: string | null },
+  {
+    whatsapp = false,
+    requested,
+    cloudRecording = false,
+  }: {
+    pending?: number;
+    whatsapp?: boolean;
+    requested?: string | null;
+    cloudRecording?: boolean;
+  } = {},
 ): HostTab {
-  const asked = allowedTab(tabFromQuery(requested), status, whatsapp);
+  const asked = allowedTab(tabFromQuery(requested), status, whatsapp, cloudRecording);
   if (asked) return asked;
   return status === "ended" ? "Results" : "Overview";
 }

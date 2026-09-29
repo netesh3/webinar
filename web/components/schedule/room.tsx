@@ -3,7 +3,7 @@
 import { Toggle } from "../controls";
 import { useAppConfig, useSession } from "../providers";
 import { api } from "@/lib/api";
-import type { Webinar } from "@/lib/api-types";
+import { FeatureCloudRecording, type Webinar } from "@/lib/api-types";
 import { FormGroup, FormSection } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
 
@@ -22,6 +22,16 @@ export function RoomSection({
 }) {
   const config = useAppConfig();
   const { account } = useSession();
+  const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
+  const extras = (
+    [
+      ...(cloudRecording
+        ? ([["autoRecord", "Record automatically"]] as const)
+        : []),
+      ["captions", "Live captions"],
+      ["multistream", "Stream to YouTube"],
+    ] as const
+  );
   return (
     <FormGroup label="In the room">
       <FormSection
@@ -125,13 +135,7 @@ export function RoomSection({
         description="Recording, captions and streaming."
       >
         <div className="grid gap-1 lg:grid-cols-2">
-          {(
-            [
-              ["autoRecord", "Record automatically"],
-              ["captions", "Live captions"],
-              ["multistream", "Stream to YouTube"],
-            ] as const
-          ).map(([key, label]) => (
+          {extras.map(([key, label]) => (
             <Toggle
               key={key}
               checked={Boolean(form.options[key])}

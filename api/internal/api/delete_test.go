@@ -32,6 +32,7 @@ func TestDeletingAWebinarRemovesEverything(t *testing.T) {
 	h.signup("Guest Speaker", "cleanup-panelist@test.dev", false)
 	h.logout()
 	h.login("cleanup-host@test.dev")
+	grantCloudRecording(t, h)
 
 	wb := h.newWebinar("Everything Webinar", func(in *types.WebinarInput) {
 		in.PanelistEmails = []string{"cleanup-panelist@test.dev"}
