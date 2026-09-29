@@ -843,16 +843,21 @@ type HostWebinarCounts struct {
 // merge semantics on a nested shape like Agenda is where partial-update bugs
 // come from.
 type WebinarInput struct {
-	Topic               string        `json:"topic"`
-	Summary             string        `json:"summary"`
-	Descript            string        `json:"description"`
-	Track               string        `json:"track"`
-	StartsAt            string        `json:"startsAt"` // RFC3339, absolute instant
-	Duration            int           `json:"durationMin"`
-	TimeZone            string        `json:"timeZone"` // IANA name, for display
-	Kind                WebinarKind   `json:"kind"`
-	Status              WebinarStatus `json:"status"` // scheduled | draft only
-	SimuliveRecordingID string        `json:"simuliveRecordingId,omitempty"`
+	Topic    string        `json:"topic"`
+	Summary  string        `json:"summary"`
+	Descript string        `json:"description"`
+	Track    string        `json:"track"`
+	StartsAt string        `json:"startsAt"` // RFC3339, absolute instant
+	Duration int           `json:"durationMin"`
+	TimeZone string        `json:"timeZone"` // IANA name, for display
+	Kind     WebinarKind   `json:"kind"`
+	Status   WebinarStatus `json:"status"` // scheduled | draft only
+	/* Instant is the "go live now" create: no schedule form, the room starts
+	 * immediately. Not stored. Refused unless the host has FeatureInstantWebinar
+	 * — a hidden button is not the control, this field is. Omitted is a normal
+	 * scheduled webinar. */
+	Instant             bool   `json:"instant,omitempty"`
+	SimuliveRecordingID string `json:"simuliveRecordingId,omitempty"`
 
 	RegistrationRequired bool         `json:"registrationRequired"`
 	Approval             ApprovalMode `json:"approval"`
@@ -948,8 +953,10 @@ type Account struct {
  *
  * Absent means off. There is no feature that defaults to on. An administrator
  * turning one on for an account is the record that somebody decided to — for the
- * CRM switches because they spend money or write to other people's phones, and
- * for cloud recording because storing a session is a decision per customer.
+ * CRM switches because they spend money or write to other people's phones, for
+ * cloud recording because storing a session is a decision per customer, and for
+ * join-without-registration and instant webinars because the default is the
+ * restrictive one: everyone registers, and every webinar is scheduled.
  */
 const (
 	// FeatureCRMTags is labelling contacts, and everything that reads a label: the
@@ -969,6 +976,18 @@ const (
 	 * Off leaves recording on the presenter's computer, which needs no server
 	 * storage. It does not default to on — see migrations/0072. */
 	FeatureCloudRecording = "cloud_recording"
+	/* FeatureJoinWithoutRegistration lets a host turn registration off, which
+	 * opens the name-only door (guest join).
+	 *
+	 * Off — the default, including for accounts that already exist — means
+	 * everyone who joins registers. See migrations/0073. */
+	FeatureJoinWithoutRegistration = "join_without_registration"
+	/* FeatureInstantWebinar lets a host go live without scheduling: the
+	 * "Instant webinar" card, and a create that sets Instant.
+	 *
+	 * Off — the default — means every webinar is scheduled first. See
+	 * migrations/0073. */
+	FeatureInstantWebinar = "instant_webinar"
 )
 
 /* Feature is one switch as the admin screen renders it.
@@ -1012,6 +1031,16 @@ var Features = []Feature{
 		Key:         FeatureCloudRecording,
 		Label:       "Cloud recording",
 		Description: "Record sessions to cloud storage and show the recordings tab. Off leaves recording on this computer.",
+	},
+	{
+		Key:         FeatureJoinWithoutRegistration,
+		Label:       "Join without registration",
+		Description: "Let this host turn registration off so people can join with a name and no form. Off means everyone registers.",
+	},
+	{
+		Key:         FeatureInstantWebinar,
+		Label:       "Instant webinar",
+		Description: "Let this host go live immediately, without scheduling a webinar. Off means every webinar is scheduled first.",
 	},
 }
 
@@ -2523,9 +2552,18 @@ type GuestJoinRequest struct {
  *
  * Manual approval closes it because a guest cannot be approved: no address to write to, nothing
  * for the host to review. A passcode closes it because the guest form has no field to type one
- * into, and adding one would make it the registration form.
+ * into, and adding one would make it the registration form. Registration required closes it,
+ * and so does the host not having FeatureJoinWithoutRegistration: that switch defaults to off,
+ * so the name-only door is closed until an administrator opens it for the account.
+ *
+ * hostOpenJoin is that switch. The store reads it off the host; the guest endpoint reads it
+ * again. Passing it in, rather than looking the host up here, keeps this a pure function of
+ * the webinar plus one decision.
  */
-func GuestJoinAllowedFor(w Webinar) bool {
+func GuestJoinAllowedFor(w Webinar, hostOpenJoin bool) bool {
+	if !hostOpenJoin || w.RegistrationRequired {
+		return false
+	}
 	return w.Approval != ApprovalManual && strings.TrimSpace(w.Passcode) == ""
 }
 

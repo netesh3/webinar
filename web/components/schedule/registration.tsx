@@ -2,9 +2,12 @@
 
 import { Select, Toggle } from "../controls";
 import { PlusIcon, TrashIcon } from "../icons";
-import { useAppConfig } from "../providers";
+import { useAppConfig, useSession } from "../providers";
 import { Button } from "../ui";
-import type { CustomQuestion } from "@/lib/api-types";
+import {
+  FeatureJoinWithoutRegistration,
+  type CustomQuestion,
+} from "@/lib/api-types";
 import {
   MIN_OPTIONS,
   QUESTION_TYPES,
@@ -24,6 +27,12 @@ export function RegistrationSection({
   fields: Record<string, string>;
 }) {
   const config = useAppConfig();
+  const { account } = useSession();
+  /* Off for every account until an admin turns it on. Hiding the switch is
+   * the courtesy; the server still refuses a save that turns registration off. */
+  const openJoin = (account?.features ?? []).includes(
+    FeatureJoinWithoutRegistration,
+  );
   return (
     <FormGroup label="Registration">
       <FormSection
@@ -32,14 +41,16 @@ export function RegistrationSection({
         first
       >
         <div className="grid gap-3.5">
-          <Boxed on={form.registrationRequired}>
-            <Toggle
-              checked={form.registrationRequired}
-              onChange={(v) => set("registrationRequired", v)}
-              label="Require registration"
-              description="Attendees fill in a form and get a personal join link. Signed-in accounts get it on their account instead."
-            />
-          </Boxed>
+          {openJoin && (
+            <Boxed on={form.registrationRequired}>
+              <Toggle
+                checked={form.registrationRequired}
+                onChange={(v) => set("registrationRequired", v)}
+                label="Require registration"
+                description="Attendees fill in a form and get a personal join link. Signed-in accounts get it on their account instead. Turn this off to let people join with a name and no form."
+              />
+            </Boxed>
+          )}
 
           <div className="grid gap-3.5 lg:grid-cols-3">
             <Select

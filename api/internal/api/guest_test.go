@@ -65,16 +65,26 @@ func (h *harness) registrantCount(slug string) int {
 	return len(rows)
 }
 
-// openWebinar is a live, automatic-approval, passcode-free webinar: the shape the guest door
-// is for.
+// openWebinar is a live, automatic-approval, passcode-free webinar with registration
+// off: the shape the guest door is for. The door also needs the host's switch, which
+// defaults to off.
 func (h *harness) openWebinar(topic string) types.Webinar {
 	h.t.Helper()
+	h.allowOpenJoin()
 	wb := h.newWebinar(topic, func(in *types.WebinarInput) {
 		in.Approval = types.ApprovalAutomatic
 		in.Passcode = ""
+		in.RegistrationRequired = false
 	})
 	h.goLive(wb.ID)
 	return wb
+}
+
+// allowOpenJoin turns FeatureJoinWithoutRegistration on for whoever is signed in.
+func (h *harness) allowOpenJoin() {
+	h.t.Helper()
+	me := meAccount(h.t, h)
+	grantFeature(h.t, h, me.ID, types.FeatureJoinWithoutRegistration)
 }
 
 func TestGuestJoinLetsANameStraightIn(t *testing.T) {
@@ -201,9 +211,11 @@ func TestTwoGuestsGetTwoSeats(t *testing.T) {
 func TestGuestJoinRefusedWhenTheHostApprovesEachAttendee(t *testing.T) {
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
+	h.allowOpenJoin()
 	wb := h.newWebinar("Approval required", func(in *types.WebinarInput) {
 		in.Approval = types.ApprovalManual
 		in.Passcode = ""
+		in.RegistrationRequired = false
 	})
 	h.goLive(wb.ID)
 
@@ -258,6 +270,7 @@ func TestGuestJoinRefusedWhenAPasscodeIsSet(t *testing.T) {
 func TestGuestJoinAllowedMatchesWhatTheEndpointDoes(t *testing.T) {
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
+	h.allowOpenJoin()
 
 	cases := []struct {
 		name    string
@@ -267,14 +280,22 @@ func TestGuestJoinAllowedMatchesWhatTheEndpointDoes(t *testing.T) {
 		{"open", func(in *types.WebinarInput) {
 			in.Approval = types.ApprovalAutomatic
 			in.Passcode = ""
+			in.RegistrationRequired = false
 		}, true},
 		{"manual approval", func(in *types.WebinarInput) {
 			in.Approval = types.ApprovalManual
 			in.Passcode = ""
+			in.RegistrationRequired = false
 		}, false},
 		{"passcode", func(in *types.WebinarInput) {
 			in.Approval = types.ApprovalAutomatic
 			in.Passcode = "228104"
+			in.RegistrationRequired = false
+		}, false},
+		{"registration required", func(in *types.WebinarInput) {
+			in.Approval = types.ApprovalAutomatic
+			in.Passcode = ""
+			in.RegistrationRequired = true
 		}, false},
 	}
 
@@ -342,6 +363,7 @@ func TestGuestJoinNeedsAName(t *testing.T) {
 func TestGuestJoinClearsTheSameGatesAsRegisteredEntry(t *testing.T) {
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
+	h.allowOpenJoin()
 
 	t.Run("locked", func(t *testing.T) {
 		wb := h.openWebinar("Locked")
@@ -415,6 +437,7 @@ func TestGuestJoinClearsTheSameGatesAsRegisteredEntry(t *testing.T) {
 		wb := h.newWebinar("One seat", func(in *types.WebinarInput) {
 			in.Approval = types.ApprovalAutomatic
 			in.Passcode = ""
+			in.RegistrationRequired = false
 			in.AttendeeLimit = 1
 		})
 		h.goLive(wb.ID)

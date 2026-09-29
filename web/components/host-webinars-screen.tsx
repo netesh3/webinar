@@ -15,7 +15,11 @@ import {
 } from "./providers";
 import { ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
-import type { Webinar, WebinarInput } from "@/lib/api-types";
+import {
+  FeatureInstantWebinar,
+  type Webinar,
+  type WebinarInput,
+} from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { localTimeZone } from "@/lib/format";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
@@ -44,6 +48,7 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
     timeZone: localTimeZone(),
     kind: "live",
     status: "scheduled",
+    instant: true,
     registrationRequired: true,
     approval: "automatic",
     attendeeLimit:
@@ -134,6 +139,9 @@ export function HostWebinarsScreen() {
   const bypass = isDevAuthBypassActive();
 
   const canHost = account?.canHost ?? false;
+  const instantAllowed = (account?.features ?? []).includes(
+    FeatureInstantWebinar,
+  );
 
   async function startInstantWebinar() {
     if (bypass) {
@@ -288,26 +296,34 @@ export function HostWebinarsScreen() {
       {/* The visible heading gave way to the action cards; the page keeps its
        * h1 for screen readers and the document outline. */}
       <h1 className="sr-only">Your webinars</h1>
-      <div className="mb-6 grid gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={startInstantWebinar}
-          disabled={startingInstant}
-          aria-busy={startingInstant}
-          className={actionCardClass}
-        >
-          <ActionCardBody
-            icon={
-              startingInstant ? (
-                <Spinner className="size-4" />
-              ) : (
-                <PlayIcon className="size-3.5" />
-              )
-            }
-            title={startingInstant ? "Starting…" : "Instant webinar"}
-            subtitle="Go live immediately, no form"
-          />
-        </button>
+      <div
+        className={
+          instantAllowed
+            ? "mb-6 grid gap-3 sm:grid-cols-2"
+            : "mb-6 grid gap-3 sm:max-w-md"
+        }
+      >
+        {instantAllowed && (
+          <button
+            type="button"
+            onClick={startInstantWebinar}
+            disabled={startingInstant}
+            aria-busy={startingInstant}
+            className={actionCardClass}
+          >
+            <ActionCardBody
+              icon={
+                startingInstant ? (
+                  <Spinner className="size-4" />
+                ) : (
+                  <PlayIcon className="size-3.5" />
+                )
+              }
+              title={startingInstant ? "Starting…" : "Instant webinar"}
+              subtitle="Go live immediately, no form"
+            />
+          </button>
+        )}
         <Link href="/host/new" className={actionCardClass}>
           <ActionCardBody
             icon={<CalendarIcon className="size-4" />}

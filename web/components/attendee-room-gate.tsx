@@ -184,7 +184,9 @@ export function AttendeeRoomGate({
               {error.message}
             </p>
             <div className="mt-5 grid gap-2">
-              {error.code === "not_registered" ? (
+              {error.code === "not_registered" ||
+              error.code === "registration_required" ||
+              error.code === "no_join_key" ? (
                 <ButtonLink href={`/webinars/${slug}`}>Register now</ButtonLink>
               ) : (
                 <Button
@@ -226,6 +228,8 @@ function errorTitle(code: string): string {
     case "not_joinable":
       return "This webinar isn't running";
     case "not_registered":
+    case "registration_required":
+    case "no_join_key":
       return "You're not registered yet";
     default:
       return "Can't join yet";

@@ -93,8 +93,34 @@ func (s *Server) handleGuestJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	/* Registration, checked before anything is created.
+	 *
+	 * The host's switch, not the caller's: a guest has no account. Off is the default
+	 * (migrations/0073), and a webinar saved with registration off does not reopen the
+	 * door after an administrator turns the switch back off. The landing page hides the
+	 * button from GuestJoinAllowed; this is the same rule for a request that skips the page.
+	 *
+	 * 403 registration_required, and the sentence says to register, because that is the
+	 * door that is open. feature_off would be a message about the host's account, which
+	 * the person holding the link cannot act on.
+	 */
+	open := false
+	if wb.Host.ID != "" {
+		host, err := s.store.UserByID(r.Context(), wb.Host.ID)
+		if err != nil {
+			s.fail(w, r, "guest join: host", err)
+			return
+		}
+		open = host.HasFeature(types.FeatureJoinWithoutRegistration)
+	}
+	if !open || wb.RegistrationRequired {
+		httpx.Error(w, http.StatusForbidden, "registration_required",
+			"Please register to join this webinar.")
+		return
+	}
+
 	// The approval gate. Checked before anything is created, so a refused guest leaves no row.
-	if !types.GuestJoinAllowedFor(wb) {
+	if !types.GuestJoinAllowedFor(wb, true) {
 		httpx.Error(w, http.StatusConflict, "guest_join_disabled",
 			"The host approves each attendee for this webinar, so please use Register & Join.")
 		return

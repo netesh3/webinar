@@ -22,10 +22,11 @@ import {
   rememberedPage,
 } from "@/lib/host-list-cache";
 import { readCache, TTL_LIST, writeCache } from "@/lib/http";
-import type {
-  HostWebinarCounts,
-  HostWebinarPage,
-  Webinar,
+import {
+  FeatureInstantWebinar,
+  type HostWebinarCounts,
+  type HostWebinarPage,
+  type Webinar,
 } from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
@@ -562,6 +563,10 @@ function EmptyList({
   nothingAtAll: boolean;
   onClear: () => void;
 }) {
+  const { account } = useSession();
+  const instantAllowed = (account?.features ?? []).includes(
+    FeatureInstantWebinar,
+  );
   if (filtersActive) {
     return (
       <Empty
@@ -583,7 +588,11 @@ function EmptyList({
     return (
       <Empty
         title="No webinars yet"
-        hint="Start one instantly, or schedule one above — then share the link."
+        hint={
+          instantAllowed
+            ? "Start one instantly, or schedule one above — then share the link."
+            : "Schedule one above, then share the link."
+        }
       />
     );
   }

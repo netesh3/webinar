@@ -244,10 +244,12 @@ func TestTheHerdArrivingAfterAFailoverAllGetIn(t *testing.T) {
 	spare := newFakeProject("cloud-2")
 	h := newHarnessWith(t, []*fakeRooms{spare})
 	h.login("neeraj@acme.dev")
+	h.allowOpenJoin()
 
 	wb := h.newWebinar("Top of the hour", func(in *types.WebinarInput) {
 		in.Approval = types.ApprovalAutomatic
 		in.Passcode = ""
+		in.RegistrationRequired = false
 	})
 	h.rooms.refuseRooms = true
 
@@ -470,10 +472,12 @@ func TestAWebinarWhoseProjectIsGone(t *testing.T) {
 	t.Run("scheduled: moved to a working project", func(t *testing.T) {
 		h := newHarnessWith(t, []*fakeRooms{newFakeProject("cloud-2")})
 		h.login("neeraj@acme.dev")
+		h.allowOpenJoin()
 		// Scheduled, not live, and inside the join window.
 		wb := h.newWebinar("Not started yet", func(in *types.WebinarInput) {
 			in.Approval = types.ApprovalAutomatic
 			in.Passcode = ""
+			in.RegistrationRequired = false
 		})
 
 		// Pin it, then take the project away.

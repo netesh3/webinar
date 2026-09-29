@@ -2329,6 +2329,13 @@ export interface WebinarInput {
   timeZone: string; // IANA name, for display
   kind: WebinarKind;
   status: WebinarStatus; // scheduled | draft only
+  /**
+   *  Instant is the "go live now" create: no schedule form, the room starts
+   * 	 * immediately. Not stored. Refused unless the host has FeatureInstantWebinar
+   * 	 * — a hidden button is not the control, this field is. Omitted is a normal
+   * 	 * scheduled webinar.
+   */
+  instant?: boolean;
   simuliveRecordingId?: string;
   registrationRequired: boolean;
   approval: ApprovalMode;
@@ -2460,6 +2467,22 @@ export const FeatureWhatsAppRegister = "whatsapp_register";
  * 	 * storage. It does not default to on — see migrations/0072.
  */
 export const FeatureCloudRecording = "cloud_recording";
+/**
+ *  FeatureJoinWithoutRegistration lets a host turn registration off, which
+ * 	 * opens the name-only door (guest join).
+ * 	 *
+ * 	 * Off — the default, including for accounts that already exist — means
+ * 	 * everyone who joins registers. See migrations/0073.
+ */
+export const FeatureJoinWithoutRegistration = "join_without_registration";
+/**
+ *  FeatureInstantWebinar lets a host go live without scheduling: the
+ * 	 * "Instant webinar" card, and a create that sets Instant.
+ * 	 *
+ * 	 * Off — the default — means every webinar is scheduled first. See
+ * 	 * migrations/0073.
+ */
+export const FeatureInstantWebinar = "instant_webinar";
 /**
  *  Feature is one switch as the admin screen renders it.
  *  *

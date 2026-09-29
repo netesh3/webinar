@@ -299,7 +299,13 @@ function EntryChoice({
   );
 
   if (mode === "guest") {
-    return <GuestJoinFields webinar={w} onBack={() => setMode("choose")} />;
+    return (
+      <GuestJoinFields
+        webinar={w}
+        onBack={() => setMode("choose")}
+        onRegister={() => setMode("register")}
+      />
+    );
   }
 
   if (mode === "register") {
@@ -412,9 +418,12 @@ function BackLink({ onBack }: { onBack: () => void }) {
 function GuestJoinFields({
   webinar: w,
   onBack,
+  onRegister,
 }: {
   webinar: Webinar;
   onBack: () => void;
+  /** The server refused the name-only door. Show the registration form. */
+  onRegister: () => void;
 }) {
   const { add } = useJoinKeys();
   const [name, setName] = useState("");
@@ -435,6 +444,10 @@ function GuestJoinFields({
       if (join.joinKey) add(join.joinKey, w.id);
       openRoomTab(`/webinars/${w.id}/room`);
     } catch (err) {
+      if (err instanceof ApiError && err.code === "registration_required") {
+        onRegister();
+        return;
+      }
       if (err instanceof ApiError) {
         if (err.fields) setFieldErrors(err.fields);
         setError(err.fields ? "Some fields need attention." : err.message);
