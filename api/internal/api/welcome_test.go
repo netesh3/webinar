@@ -87,7 +87,7 @@ func TestSignupSendsExactlyOneWelcomeEmail(t *testing.T) {
 	}
 	if m.HTML == "" || !strings.Contains(m.Body, "webinarliv@gmail.com") ||
 		!strings.Contains(m.Body, "+91-9852411280") ||
-		!strings.Contains(m.Body, "http://localhost:3000/host") {
+		!strings.Contains(m.Body, "http://localhost:3000/my-webinars") {
 		t.Errorf("welcome body incomplete:\n%s", m.Body)
 	}
 	if strings.Contains(m.HTML, "<b>Sharma</b>") {

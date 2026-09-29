@@ -58,14 +58,14 @@ func TestWelcomeRendersSubjectTextAndHTML(t *testing.T) {
 	}
 }
 
-// The copy must not promise that access is withheld: a new account works immediately.
+// The copy must not say the account is on hold: a new account can attend immediately.
 func TestWelcomeDoesNotSayAccessIsPending(t *testing.T) {
 	_, text, html := WelcomeEmail(sampleWelcome())
 	for _, body := range []string{text, html} {
 		lower := strings.ToLower(body)
 		for _, bad := range []string{"give you access", "once approved", "pending approval", "until we"} {
 			if strings.Contains(lower, bad) {
-				t.Errorf("copy says %q, but new accounts can already sign in and host", bad)
+				t.Errorf("copy says %q, but new accounts can already sign in and attend", bad)
 			}
 		}
 		if !strings.Contains(lower, "your account is ready") {

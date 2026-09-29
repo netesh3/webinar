@@ -13,11 +13,11 @@ import (
  *
  * Its whole job is to make somebody who has just signed up feel welcome, and to tell them
  * the truth about what happens next. The truth, at the time of writing: a new account can
- * attend and host straight away (handleSignup creates every account host-capable), and
- * the things an administrator does switch on per account are the extras in
- * types.Features. So the copy says "you're ready now" AND "we'll be in touch to help you
- * set up and switch on extras" — never "wait for us to give you access", which would
- * make somebody sit on an account that already works.
+ * register and attend straight away, and hosting is switched on per account by an
+ * administrator (handleSignup creates every account without it), as are the extras in
+ * types.Features. So the copy says "you're ready to join now" AND "we'll switch on hosting
+ * when you want it" — never "wait for us to give you access", which would make somebody
+ * think the account they already use to attend does not work yet.
  *
  * Rendered with html/template so the one piece of user-supplied text, the name, is
  * escaped by construction rather than by remembering to.
@@ -106,7 +106,7 @@ func WelcomeEmail(w Welcome) (subject, text, html string) {
 	var tb strings.Builder
 	fmt.Fprintf(&tb, "%s\n\n", d.Greeting)
 	fmt.Fprintf(&tb, "Thank you for choosing %s. We're really glad you're here.\n\n", product)
-	tb.WriteString("Your account is ready, so you can join webinars and set up your own right away.\n\n")
+	tb.WriteString("Your account is ready, so you can join webinars right away. Our team switches on hosting when you want to run your own.\n\n")
 	tb.WriteString("What happens next\n\n")
 	for i, s := range d.Steps {
 		fmt.Fprintf(&tb, "%d. %s: %s\n", i+1, s.Title, s.Text)
@@ -143,9 +143,9 @@ type welcomeStep struct{ Title, Text string }
 
 func welcomeSteps(product string) []welcomeStep {
 	return []welcomeStep{
-		{"Look around", "Your account works now. Join a webinar you're invited to, or schedule your own from the dashboard."},
+		{"Look around", "Your account works now. Register for and join any webinar you're invited to."},
 		{"We'll say hello", "Someone from the " + product + " team will reach out shortly to help you get set up."},
-		{"Unlock the extras", "Tell us what you need and we'll switch on features like replay links and contact tools for your account."},
+		{"Start hosting", "Tell us you want to run your own webinars and we'll switch on hosting, plus extras like replay links and contact tools."},
 	}
 }
 
@@ -229,7 +229,7 @@ var welcomeHTML = template.Must(template.New("welcome").Funcs(template.FuncMap{
 
   <tr><td class="wl-pad" style="padding:30px 40px 4px 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
     <p class="wl-ink" style="margin:0 0 10px 0;font-size:16px;line-height:24px;font-weight:600;color:#0f172a;">{{.Greeting}}</p>
-    <p class="wl-muted" style="margin:0;font-size:16px;line-height:25px;color:#475467;">Your account is ready, so you can join webinars and set up your own right away.</p>
+    <p class="wl-muted" style="margin:0;font-size:16px;line-height:25px;color:#475467;">Your account is ready, so you can join webinars right away. Our team switches on hosting when you want to run your own.</p>
   </td></tr>
 
   <tr><td class="wl-pad" style="padding:22px 40px 4px 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">

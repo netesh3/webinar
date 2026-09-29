@@ -804,31 +804,28 @@ func (h *harness) signup(name, email string, wantsHost bool) types.Account {
 	var acct types.Account
 	h.decode(raw, &acct)
 
-	/* Every signup grants hosting unconditionally now — see handleSignup — so
-	 * acct.CanHost is true here regardless of what wantsHost (the parameter,
-	 * or the wire field of the same name, which the server ignores either
-	 * way) said. A test that wants a fixture WITHOUT hosting is the one case
-	 * that now needs an explicit extra step: revoke it through the store, the
-	 * same write an admin's PATCH performs — an admin taking hosting away is
-	 * still the only way an account ends up without it after signup.
+	/* Signup never grants hosting — see handleSignup — so acct.CanHost is false
+	 * here whatever wantsHost (the parameter, or the wire field of the same
+	 * name, which the server ignores) said. A test that wants a HOST fixture
+	 * gets one the way production does: an admin's grant, written through the
+	 * store, the same write the admin PATCH performs.
 	 *
 	 * Done in the harness rather than in the ~90 tests that call it, because
 	 * those tests are about what a host can or cannot DO, not about how the
-	 * fixture account came to have (or not have) the capability. The grant
-	 * and revoke paths themselves are tested directly in admin_test.go.
+	 * fixture account came to have the capability. The grant and revoke paths
+	 * themselves are tested directly in admin_test.go.
 	 *
-	 * No re-login needed either way: authenticate() re-reads the account from
-	 * the database on every request, so a capability change here applies to
-	 * the very next call.
+	 * No re-login needed: authenticate() re-reads the account from the
+	 * database on every request, so the grant applies to the very next call.
 	 */
-	if !acct.CanHost {
-		h.t.Fatalf("signup did not grant hosting to %s; the automatic-hosting policy is broken", email)
+	if acct.CanHost {
+		h.t.Fatalf("signup granted hosting to %s; new accounts must start without it", email)
 	}
-	if !wantsHost {
-		if _, err := h.store.SetHostCapability(context.Background(), acct.ID, false); err != nil {
-			h.t.Fatalf("revoke hosting from %s: %v", email, err)
+	if wantsHost {
+		if _, err := h.store.SetHostCapability(context.Background(), acct.ID, true); err != nil {
+			h.t.Fatalf("grant hosting to %s: %v", email, err)
 		}
-		acct.CanHost = false
+		acct.CanHost = true
 	}
 	return acct
 }
