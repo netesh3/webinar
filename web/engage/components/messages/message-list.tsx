@@ -150,20 +150,13 @@ export function MessageList({
             />
           );
         })}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3 text-[12.5px]">
+        <div className="flex items-center justify-end px-3 py-3 text-[12.5px]">
           <Link
             href={ENGAGE_HOME}
             className="inline-flex items-center gap-1 font-medium text-brand hover:underline"
           >
             <MaterialIcon name="add" className="size-[15px] shrink-0" />
             New automation
-          </Link>
-          <Link
-            href={ENGAGE_HOME}
-            className="inline-flex items-center gap-1 text-ink-2 hover:text-ink hover:underline"
-          >
-            All automations on the WhatsApp page
-            <MaterialIcon name="arrow_forward" className="size-[15px] shrink-0" />
           </Link>
         </div>
       </div>
