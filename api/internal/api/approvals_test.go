@@ -23,16 +23,15 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-/* soon is INSIDE the 15-minute door, so these tests measure the approval gate and nothing else.
+/* soon is far enough ahead that the schedule API accepts it.
  *
- * The first version of this put the start 90 minutes out, reasoning that a distant webinar
- * keeps the join window out of the way. It does the opposite: the door is shut until 15 minutes
- * before, so an approved registrant was correctly refused with `too_early` and the test read as
- * "approval does not work". Two gates guard the room and a test of one has to leave the other
- * open. Five minutes matches the convention already used elsewhere in this package.
+ * A scheduled start has to be at least an hour out (minScheduleLead). Tests that
+ * then join — the approval gate — cannot use that time: the door stays shut until
+ * 15 minutes before, and an approved registrant would be refused with `too_early`.
+ * manualWebinar creates with this instant and then moves the row inside the door.
  */
 func soon() string {
-	return time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339)
+	return time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
 }
 
 // manualWebinar creates a webinar that requires approval, owned by the logged-in caller.
@@ -55,7 +54,9 @@ func manualWebinar(t *testing.T, h *harness, topic string) types.Webinar {
 	if wb.Approval != types.ApprovalManual {
 		t.Fatalf("approval = %q, want manual — the rest of this test is meaningless", wb.Approval)
 	}
-	return wb
+	/* Inside the join window. soon() itself is two hours out, which the API
+	 * accepts and the door does not. See the comment on soon. */
+	return h.placeFixtureStart(wb.ID, time.Now().Add(5*time.Minute))
 }
 
 // registerGuest registers somebody with no account, the way the public form does.
