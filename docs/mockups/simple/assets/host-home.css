@@ -1,0 +1,53 @@
+/* Signed-in host homepage. Mock only — not product CSS. */
+
+.attn {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(240px, 0.72fr);
+  gap: 12px;
+  margin: 18px 0 20px;
+}
+.panel { padding: 0; overflow: hidden; }
+.panel .hd {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px;
+}
+.panel .hd h2 { margin: 0; font-size: 13.5px; }
+.reply {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-top: 1px solid var(--line);
+}
+.reply .grow { min-width: 0; }
+.approve {
+  display: flex; flex-direction: column; justify-content: center; gap: 12px;
+  padding: 14px 16px;
+  border-color: rgba(161, 92, 0, .28);
+  background: var(--warn-soft);
+}
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.filters .search { position: relative; }
+.filters .search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--ink-3); }
+.filters .field { height: 36px; width: 220px; padding-left: 32px; font-size: 13px; }
+.range {
+  display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  color: var(--ink-3); font-size: 12.5px;
+}
+.range input {
+  border: 0; background: transparent; font: inherit; font-size: 12.5px;
+  color: var(--ink); width: 7.4rem; outline: none;
+}
+.card.next { border-color: var(--brand-line); box-shadow: 0 0 0 3px rgba(11, 92, 255, .08); }
+.wait { margin-top: 6px; max-width: 16rem; margin-left: auto; text-align: right; line-height: 1.35; }
+.acts { display: flex; flex-direction: column; align-items: flex-end; gap: 0; flex-shrink: 0; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 16px; }
+.pager .mid { font-size: 12.5px; color: var(--ink-2); text-align: center; line-height: 1.35; }
+.pager .mid b { color: var(--ink); font-weight: 600; }
+.pager .btn[disabled] { opacity: .4; }
+.empty-host { text-align: center; padding: 52px 28px 44px; }
+.empty-host h2 { font-size: 18px; letter-spacing: -.02em; }
+.empty-host p { max-width: 420px; margin: 8px auto 0; line-height: 1.5; }
+@media (max-width: 860px) {
+  .attn { grid-template-columns: 1fr; }
+  .card-webinar { flex-wrap: wrap; }
+  .wait { text-align: left; margin-left: 0; }
+}

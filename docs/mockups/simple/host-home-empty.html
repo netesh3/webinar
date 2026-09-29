@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your webinars (new host)</title>
+<link rel="stylesheet" href="assets/simple.css">
+<link rel="stylesheet" href="assets/host-home.css"></head>
+<body data-msg="0" data-alerts="0">
+<div data-nav></div>
+<main>
+  <div>
+    <h1>Your webinars</h1>
+    <p class="small muted" style="margin-top:4px">When you have a session, it shows up here.</p>
+  </div>
+
+  <div class="tabs" style="margin-top:20px">
+    <a class="tab on" href="#">Upcoming <span class="count grey">0</span></a>
+    <a class="tab" href="#">Completed <span class="count grey">0</span></a>
+    <a class="tab" href="#">Drafts <span class="count grey">0</span></a>
+    <span class="tabsep"></span>
+    <a class="tab" href="audience.html">Audience</a>
+  </div>
+
+  <div class="filters">
+    <label class="search">
+      <span style="position:absolute;width:1px;height:1px;overflow:hidden">Search webinars by name</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input class="field" type="search" placeholder="Search by name…" value="">
+    </label>
+    <div class="range">
+      <input type="date" aria-label="Show webinars from this date" value="">
+      <span aria-hidden>→</span>
+      <input type="date" aria-label="Show webinars up to this date" value="">
+    </div>
+  </div>
+
+  <div class="card empty-host">
+    <h2>No webinars yet</h2>
+    <p class="small muted">Schedule one, share the link, and it shows up here. Go live opens five minutes before the start.</p>
+    <a class="btn" href="create-tabs-webinar.html" style="margin-top:16px">Schedule a webinar</a>
+  </div>
+
+  <div class="pager">
+    <button class="btn sm sec" type="button" disabled>Previous</button>
+    <div class="mid"><b>Page 1 of 1</b><div class="xs faint">10 per page · 0 on this page</div></div>
+    <button class="btn sm sec" type="button" disabled>Next</button>
+  </div>
+</main>
+<div class="note"><b>New host, hosting already on.</b> One next step: Schedule a webinar. It is not repeated in the header. Instant webinar is hidden. A brand-new signup whose hosting is still off does not see this screen — they see “Hosting isn’t enabled for this account” until an admin turns it on. Tabs and the pager stay, including on an empty list.</div>
+<script src="assets/nav.js"></script>
+</body></html>
