@@ -109,9 +109,10 @@ export function isFollowup(kind: string): boolean {
   return kind.startsWith("followup_");
 }
 
-/** A follow-up with no approved wording yet. The row offers Choose a message. */
+/** No wording resolved from any layer (builtin, default, options or webinar) —
+ *  truly nothing to send yet. The row offers Choose a message. */
 export function unconfigured(slot: MessageSlot | undefined): boolean {
-  return Boolean(slot && isFollowup(slot.kind) && !slot.template);
+  return Boolean(slot && !slot.template);
 }
 
 export function wordingKind(kind: string): NotificationKind {
