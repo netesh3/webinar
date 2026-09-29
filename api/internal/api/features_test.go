@@ -212,3 +212,150 @@ func TestFeaturesAreRefusedWhenSwitchedOff(t *testing.T) {
 func hasFeature(features []string, key string) bool {
 	return slices.Contains(features, key)
 }
+
+// grantCloudRecording turns the switch on for whoever is signed in.
+// Recording tests that are about the file, not the switch, need this: the switch
+// is off until an admin says otherwise, including for a fixture host.
+func grantCloudRecording(t *testing.T, h *harness) {
+	t.Helper()
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureCloudRecording)
+}
+
+/* Cloud recording is off for every account until an admin turns it on.
+ *
+ * The browser hides the tab and the Cloud destination. This is the part that
+ * still has to be true when the browser is not involved: starting a cloud
+ * recording, and saving a webinar with "Record automatically", both 403.
+ * Recording on this computer does not call these endpoints, so it is unaffected.
+ */
+func TestCloudRecordingIsOffUntilAnAdminAllowsIt(t *testing.T) {
+	h := newHarness(t)
+
+	var cfg types.AppConfig
+	_, raw := h.do(http.MethodGet, "/api/config", nil)
+	h.decode(raw, &cfg)
+	if !hasFeature(featureKeys(cfg.FeatureCatalogue), types.FeatureCloudRecording) {
+		t.Fatal("feature catalogue does not offer cloud recording, so the admin screen cannot switch it")
+	}
+
+	host := h.signup("Cloud Host", "cloud-host@test.dev", true)
+	if hasFeature(host.Features, types.FeatureCloudRecording) {
+		t.Fatalf("new account features = %v, want cloud recording off", host.Features)
+	}
+	h.signup("Cloud Panelist", "cloud-panel@test.dev", false)
+	h.login("cloud-host@test.dev")
+
+	wb := h.newWebinar("No cloud yet", nil)
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/panelists",
+		types.PanelistRequest{Email: "cloud-panel@test.dev"}); res.StatusCode != http.StatusOK {
+		t.Fatalf("add panelist: status %d body %s", res.StatusCode, raw)
+	}
+
+	refused := cloudInput(wb.Topic, wb.StartsAt, true)
+	res, raw := h.do(http.MethodPost, "/api/host/webinars", refused)
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
+		t.Fatalf("create with auto-record: status %d code %q, want 403 feature_off\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+
+	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID, refused)
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
+		t.Fatalf("update with auto-record: status %d code %q, want 403 feature_off\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("start webinar: status %d body %s", res.StatusCode, raw)
+	}
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/recordings",
+		types.StartRecordingRequest{Mime: "video/webm"})
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
+		t.Fatalf("host start recording: status %d code %q, want 403 feature_off\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+	// The recording routes are still there. Listing is not starting one.
+	if res, _ := h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/recordings", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("list recordings with the switch off: status %d, want 200", res.StatusCode)
+	}
+
+	h.login("cloud-panel@test.dev")
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/recordings",
+		types.StartRecordingRequest{Mime: "video/webm"})
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
+		t.Fatalf("panelist start recording: status %d code %q, want 403 feature_off\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+
+	if _, _, err := h.store.PromoteAdmins(context.Background(), []string{"neeraj@acme.dev"}); err != nil {
+		t.Fatalf("promote admin: %v", err)
+	}
+	h.login("neeraj@acme.dev")
+	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+host.ID+"/features",
+		types.FeatureGrant{Feature: types.FeatureCloudRecording, Enabled: true})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("admin enable: status %d body %s", res.StatusCode, raw)
+	}
+	var enabled types.Account
+	h.decode(raw, &enabled)
+	if !hasFeature(enabled.Features, types.FeatureCloudRecording) {
+		t.Fatalf("features after enable = %v", enabled.Features)
+	}
+
+	h.login("cloud-host@test.dev")
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/recordings",
+		types.StartRecordingRequest{Mime: "video/webm"})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("start recording once enabled: status %d body %s", res.StatusCode, raw)
+	}
+	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID, refused)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update auto-record once enabled: status %d body %s", res.StatusCode, raw)
+	}
+	var updated types.Webinar
+	h.decode(raw, &updated)
+	if !updated.Options.AutoRecord {
+		t.Fatal("auto-record did not stick after the switch was turned on")
+	}
+
+	// And turning it back off refuses the next cloud start. The one already
+	// running is finished by the test database reset, not by this assertion.
+	h.login("neeraj@acme.dev")
+	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+host.ID+"/features",
+		types.FeatureGrant{Feature: types.FeatureCloudRecording, Enabled: false})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("admin disable: status %d body %s", res.StatusCode, raw)
+	}
+	h.login("cloud-host@test.dev")
+	other := h.newWebinar("Still no cloud", nil)
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+other.ID+"/start", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("start second webinar: status %d body %s", res.StatusCode, raw)
+	}
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+other.ID+"/recordings",
+		types.StartRecordingRequest{Mime: "video/webm"})
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
+		t.Fatalf("start after disable: status %d code %q, want 403 feature_off\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+}
+
+func featureKeys(features []types.Feature) []string {
+	keys := make([]string, len(features))
+	for i, f := range features {
+		keys[i] = f.Key
+	}
+	return keys
+}
+
+func cloudInput(topic, startsAt string, auto bool) types.WebinarInput {
+	return types.WebinarInput{
+		Topic: topic, StartsAt: startsAt, Duration: 60, TimeZone: "UTC",
+		Kind: types.KindLive, Status: types.StatusScheduled,
+		RegistrationRequired: true, Approval: types.ApprovalAutomatic, AttendeeLimit: 100,
+		Options: types.WebinarOptions{AutoRecord: auto},
+		Controls: types.SessionControls{
+			HideAttendees: true, MuteOnEntry: true, AllowUnmute: true,
+			ChatEnabled: true, QAEnabled: true, RaiseHandEnabled: true,
+			ReactionsEnabled: true, PollsEnabled: true,
+		},
+	}
+}

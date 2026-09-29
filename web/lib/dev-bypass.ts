@@ -1,6 +1,7 @@
 import {
   FeatureCRMNotes,
   FeatureCRMTags,
+  FeatureCloudRecording,
   FeatureReplayLinks,
   FeatureWhatsAppRegister,
 } from "@/lib/api-types";
@@ -47,6 +48,7 @@ export const DEV_BYPASS_ACCOUNT: Account = {
     FeatureCRMNotes,
     FeatureReplayLinks,
     FeatureWhatsAppRegister,
+    FeatureCloudRecording,
   ],
 };
 
@@ -317,6 +319,7 @@ export const DEV_BYPASS_JOIN: JoinResponse = {
   startedAt: new Date().toISOString(),
   hidden: false,
   canRecord: true,
+  cloudRecording: true,
   maxDurationMin: 180,
 };
 

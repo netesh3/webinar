@@ -209,9 +209,14 @@ export interface CRMInboxResponse {
    * 	 *  typed on the phone, and show up here.
    */
   coexistence: boolean;
-  /** Where this page starts, and how many threads the current view holds. */
-  offset: number;
-  total: number;
+  /**
+   * * Where this page starts.
+   */
+  offset: number /* int */;
+  /**
+   * * Threads in the current view, of which Threads is one page.
+   */
+  total: number /* int */;
 }
 /**
  * CRMDoneRequest marks a conversation done, or reopens it.
@@ -2448,6 +2453,14 @@ export const FeatureReplayLinks = "replay_links";
  */
 export const FeatureWhatsAppRegister = "whatsapp_register";
 /**
+ *  FeatureCloudRecording is storing the session on this instance: the recordings
+ * 	 * tab, "Record to the Cloud", and "Record automatically".
+ * 	 *
+ * 	 * Off leaves recording on the presenter's computer, which needs no server
+ * 	 * storage. It does not default to on — see migrations/0072.
+ */
+export const FeatureCloudRecording = "cloud_recording";
+/**
  *  Feature is one switch as the admin screen renders it.
  *  *
  *  * Label and Description are here rather than in the browser so that the two cannot
@@ -4424,6 +4437,15 @@ export interface JoinResponse {
    */
   canRecord: boolean;
   /**
+   *  CloudRecording is whether this webinar's host may record to cloud storage.
+   * 	 *
+   * 	 * The host's switch (FeatureCloudRecording), not the caller's, and not
+   * 	 * AppConfig.CloudRecordingEnabled. That one is whether the instance has
+   * 	 * storage at all. This one is whether this host is allowed to use it. Off
+   * 	 * hides "Record to the Cloud"; recording on this computer stays.
+   */
+  cloudRecording: boolean;
+  /**
    *  JoinKey is the caller's own registration key, echoed back.
    * 	 *
    * 	 * For the guest door it is the point of the response: a guest has no account and no
@@ -4664,6 +4686,18 @@ export interface MuteAllResponse {
 export interface StageAllResponse {
   count: number /* int */;
 }
+/**
+ * RegistrantPage is one page of the host's People tab.
+ */
+export interface RegistrantPage {
+  items: RegistrantRow[];
+  total: number /* int */;
+  offset: number /* int */;
+  approved: number /* int */;
+  declined: number /* int */;
+  pending: number /* int */;
+  guests: number /* int */;
+}
 export interface RegistrantRow {
   id: string;
   name: string;
@@ -4729,16 +4763,6 @@ export interface RegistrantRow {
    * 	 * checkbox answer is "yes" when ticked; an unanswered question has no key.
    */
   answers?: { [key: string]: string};
-}
-/** One page of GET /api/host/webinars/{slug}/registrants. */
-export interface RegistrantPage {
-  items: RegistrantRow[];
-  total: number;
-  offset: number;
-  approved: number;
-  declined: number;
-  pending: number;
-  guests: number;
 }
 export interface PanelistRequest {
   email: string;

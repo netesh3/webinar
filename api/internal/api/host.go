@@ -154,6 +154,9 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := userFromContext(r.Context())
+	if in.Options.AutoRecord && !s.requireCloudRecording(w, r, user.ID) {
+		return
+	}
 	wb, err := s.store.CreateWebinar(r.Context(), user.ID, in, s.cfg.DefaultMaxMeetingMin)
 	if errors.Is(err, store.ErrInvalid) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "invalid", err.Error())
@@ -190,6 +193,23 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
+	}
+
+	// "Record automatically" is a cloud recording. The host's switch, so a co-host
+	// cannot turn it on for an account that does not have it.
+	if in.Options.AutoRecord {
+		hostID, err := s.store.HostIDFor(r.Context(), slug)
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+			return
+		}
+		if err != nil {
+			s.fail(w, r, "update webinar: host", err)
+			return
+		}
+		if !s.requireCloudRecording(w, r, hostID) {
+			return
+		}
 	}
 
 	// The start as it was, so panelists already invited can be told if this save moves it.

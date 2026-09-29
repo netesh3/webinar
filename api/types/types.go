@@ -946,9 +946,10 @@ type Account struct {
  * — and the admin screen renders whatever this server declares rather than a list
  * the browser keeps its own copy of.
  *
- * Absent means off. There is no feature that defaults to on: every one of these
- * either spends the host's money or writes to other people's phones, so an
- * administrator turning it on for an account is the record that somebody decided to.
+ * Absent means off. There is no feature that defaults to on. An administrator
+ * turning one on for an account is the record that somebody decided to — for the
+ * CRM switches because they spend money or write to other people's phones, and
+ * for cloud recording because storing a session is a decision per customer.
  */
 const (
 	// FeatureCRMTags is labelling contacts, and everything that reads a label: the
@@ -962,6 +963,12 @@ const (
 	// FeatureWhatsAppRegister is registering the connected number with Cloud API from
 	// the connect flow, using a two-step PIN the host types.
 	FeatureWhatsAppRegister = "whatsapp_register"
+	/* FeatureCloudRecording is storing the session on this instance: the recordings
+	 * tab, "Record to the Cloud", and "Record automatically".
+	 *
+	 * Off leaves recording on the presenter's computer, which needs no server
+	 * storage. It does not default to on — see migrations/0072. */
+	FeatureCloudRecording = "cloud_recording"
 )
 
 /* Feature is one switch as the admin screen renders it.
@@ -1000,6 +1007,11 @@ var Features = []Feature{
 		Key:         FeatureWhatsAppRegister,
 		Label:       "Register WhatsApp number",
 		Description: "Let this host register a number created in the signup dialog, with a two-step PIN they choose.",
+	},
+	{
+		Key:         FeatureCloudRecording,
+		Label:       "Cloud recording",
+		Description: "Record sessions to cloud storage and show the recordings tab. Off leaves recording on this computer.",
 	},
 }
 
@@ -2570,6 +2582,13 @@ type JoinResponse struct {
 	 * control combines both to decide which destinations to offer.
 	 */
 	CanRecord bool `json:"canRecord"`
+	/* CloudRecording is whether this webinar's host may record to cloud storage.
+	 *
+	 * The host's switch (FeatureCloudRecording), not the caller's, and not
+	 * AppConfig.CloudRecordingEnabled. That one is whether the instance has
+	 * storage at all. This one is whether this host is allowed to use it. Off
+	 * hides "Record to the Cloud"; recording on this computer stays. */
+	CloudRecording bool `json:"cloudRecording"`
 	/* JoinKey is the caller's own registration key, echoed back.
 	 *
 	 * For the guest door it is the point of the response: a guest has no account and no

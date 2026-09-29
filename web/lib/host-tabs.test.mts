@@ -8,8 +8,10 @@ import { allowedTab, defaultTab, engagementSection, stepFor, tabFromQuery, tabsF
 assert.deepEqual(tabsFor("draft"), ["Overview", "People", "Setup"]);
 assert.deepEqual(tabsFor("scheduled", true), ["Overview", "People", "Setup"]);
 assert.deepEqual(tabsFor("live"), ["Overview", "People", "Setup", "Results"]);
-assert.deepEqual(tabsFor("ended", true), ["Results", "Follow up", "Recording"]);
-assert.deepEqual(tabsFor("ended"), ["Results", "Recording"]);
+assert.deepEqual(tabsFor("ended", true), ["Results", "Follow up"]);
+assert.deepEqual(tabsFor("ended"), ["Results"]);
+assert.deepEqual(tabsFor("ended", false, true), ["Results", "Recording"]);
+assert.deepEqual(tabsFor("ended", true, true), ["Results", "Follow up", "Recording"]);
 
 // The step bar.
 assert.equal(stepFor("draft"), "create");
@@ -47,7 +49,10 @@ assert.equal(engagementSection("survey", "ended"), "survey");
 assert.equal(engagementSection("recordings", "ended"), undefined);
 assert.equal(defaultTab("ended", { whatsapp: true, requested: "messages" }), "Follow up");
 assert.equal(defaultTab("ended", { whatsapp: false, requested: "messages" }), "Results");
-assert.equal(defaultTab("ended", { requested: "recordings" }), "Recording");
+assert.equal(defaultTab("ended", { requested: "recordings" }), "Results");
+assert.equal(defaultTab("ended", { cloudRecording: true, requested: "recordings" }), "Recording");
+assert.equal(allowedTab(tabFromQuery("recordings"), "ended"), null);
+assert.equal(allowedTab(tabFromQuery("recordings"), "ended", false, true), "Recording");
 assert.equal(allowedTab(tabFromQuery("admit"), "ended"), "Results");
 assert.equal(allowedTab(tabFromQuery("settings"), "ended"), null);
 

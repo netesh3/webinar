@@ -232,7 +232,8 @@ function SourceStep({
   onBusy: (label: string, progress: number | null) => void;
   onError: (message: string) => void;
 }) {
-  const { slug } = useRoomUI();
+  const { slug, join } = useRoomUI();
+  const cloudRecordings = join.cloudRecording;
   const { googleClientId, googleApiKey } = useAppConfig();
   const drive = { clientId: googleClientId ?? "", apiKey: googleApiKey ?? "" };
   const input = useRef<HTMLInputElement>(null);
@@ -240,11 +241,10 @@ function SourceStep({
 
   const [recordings, setRecordings] = useState<Recording[] | null>(null);
 
-  // This webinar's own recordings. Listed first, because "a previously recorded
-  // webinar" is the thing this feature is for and they are already on the server —
-  // nothing to upload and nothing to hold in memory, since the file endpoint
-  // supports range requests and the element streams it.
+  // This webinar's cloud recordings. Hidden when the host's switch is off — a
+  // list of cloud files is a cloud-recording entry point. Local files below stay.
   useEffect(() => {
+    if (!cloudRecordings) return;
     let cancelled = false;
     api
       .recordings(slug)
@@ -257,7 +257,7 @@ function SourceStep({
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, cloudRecordings]);
 
   useEffect(
     () => () => {
@@ -296,7 +296,8 @@ function SourceStep({
 
   return (
     <div className="space-y-4">
-      {/* ---- this webinar's recordings ---- */}
+      {/* ---- this webinar's cloud recordings ---- */}
+      {cloudRecordings && (
       <section>
         <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
           Recorded on this webinar
@@ -346,6 +347,7 @@ function SourceStep({
           </ul>
         )}
       </section>
+      )}
 
       {/* ---- local disk ---- */}
       <section>

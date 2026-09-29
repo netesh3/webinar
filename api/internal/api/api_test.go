@@ -2432,6 +2432,7 @@ func findParticipant(t *testing.T, live types.LiveRoom, identity string) types.L
 func TestRecordingLifecycle(t *testing.T) {
 	h := newHarness(t)
 	h.signup("Rec Host", "rechost@test.dev", true)
+	grantCloudRecording(t, h)
 	wb := h.newWebinar("Recorded Session", nil)
 
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
@@ -2587,6 +2588,7 @@ func TestRecordingIsForTheStageOnly(t *testing.T) {
 	h.signup("Rec Panelist", "recpanel@test.dev", false)
 	h.signup("Bystander", "bystander@test.dev", true) // hosts, but not this webinar
 	h.signup("Rec Owner", "recowner@test.dev", true)
+	grantCloudRecording(t, h)
 	wb := h.newWebinar("Guarded Recording", nil)
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/panelists",
 		types.PanelistRequest{Email: "recpanel@test.dev"}); res.StatusCode != http.StatusOK {
@@ -2660,6 +2662,7 @@ func TestRecordingIsForTheStageOnly(t *testing.T) {
 func TestRecordingLimitsAndValidation(t *testing.T) {
 	h := newHarness(t)
 	h.signup("Limit Host", "limits@test.dev", true)
+	grantCloudRecording(t, h)
 	wb := h.newWebinar("Bounded Recording", nil)
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("start: status %d body %s", res.StatusCode, raw)
@@ -2718,6 +2721,7 @@ func TestRecordingLimitsAndValidation(t *testing.T) {
 func TestEndingTheWebinarFinalisesRecordings(t *testing.T) {
 	h := newHarness(t)
 	h.signup("Ending Host", "ending@test.dev", true)
+	grantCloudRecording(t, h)
 	wb := h.newWebinar("Ends While Recording", nil)
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("start: status %d body %s", res.StatusCode, raw)

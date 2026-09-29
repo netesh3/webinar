@@ -493,12 +493,13 @@ export function RecordButton() {
   // lib/screen-recorder.ts.
   const go = useCallback(
     (dest: RecordTarget) => {
+      if (dest === "cloud" && !join.cloudRecording) return;
       setOpen(false);
       void start(dest).catch((err: unknown) =>
         notify(err instanceof Error ? err.message : "Could not start recording.", "error"),
       );
     },
-    [start, notify],
+    [start, notify, join.cloudRecording],
   );
 
   // One bar popover at a time, same rules as More (lib/bar-popover.ts): a press
@@ -542,11 +543,17 @@ export function RecordButton() {
   }, [open]);
 
   if (!join.canRecord && !isHost) return null;
-  if (!supported && !isEgress && !localSupported) return null;
   if (connection !== ConnectionState.Connected) return null;
 
-  const busy = state === "starting" || state === "stopping";
+  // The host's switch, from the join response. Off means this menu has no Cloud
+  // row at all — a disabled item is still a cloud-recording option.
+  const cloudOffered = join.cloudRecording;
   const isRecording = mine || (serverRecording && (join.canRecord || isHost));
+  if (!isRecording && !cloudOffered && !localSupported) return null;
+  if (!isRecording && cloudOffered && !supported && !isEgress && !localSupported) return null;
+
+  const busy = state === "starting" || state === "stopping";
+  const destinations: RecordTarget[] = cloudOffered ? ["cloud", "local"] : ["local"];
   // Someone else's recording (another host, or before a reload) is always a
   // server one — local recordings are never announced to the room.
   const activeTarget: RecordTarget = mine && destination === "local" ? "local" : "cloud";
@@ -560,9 +567,9 @@ export function RecordButton() {
           ? `Stop recording (${recordingTag(activeTarget)})`
           : IDLE_TITLE;
 
-  // How many items the open menu holds, in focus order: the two destinations
-  // while idle, or just Stop while recording.
-  const itemCount = isRecording ? 1 : 2;
+  // How many items the open menu holds, in focus order: the destinations while
+  // idle (Cloud only when this host may use it), or just Stop while recording.
+  const itemCount = isRecording ? 1 : destinations.length;
 
   const openFrom = (button: HTMLButtonElement | null) => {
     opener.current = button;
@@ -683,7 +690,7 @@ export function RecordButton() {
           className="room-dark absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-line bg-surface p-1.5 text-ink shadow-2xl backdrop-blur-xl"
         >
           {!isRecording &&
-            (["cloud", "local"] as const).map((target, i) => (
+            destinations.map((target, i) => (
               <RecordMenuItem
                 key={target}
                 ref={(el) => {
