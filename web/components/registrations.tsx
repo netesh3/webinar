@@ -378,7 +378,7 @@ export function useRegistrations() {
         ...(prev ?? []).filter((r) => r.webinarId !== reg.webinarId),
         reg,
       ]);
-      add(reg.joinKey, reg.webinarId);
+      if (reg.joinKey) add(reg.joinKey, reg.webinarId);
     },
     [account, add],
   );

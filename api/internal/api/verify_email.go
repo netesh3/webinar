@@ -56,6 +56,30 @@ func (s *Server) queueEmailVerification(ctx context.Context, user store.User) {
 	s.inBackground(func(ctx context.Context) { s.flushOutbox(ctx) })
 }
 
+/* deliverCompletedRegistrations sends the join link for registrations the
+ * verification link just finished.
+ *
+ * A failure to mail does not undo the verification. The registration is
+ * already approved (or waiting on the host), which is the same rule as a
+ * registration that did not need this step. Manual-approval webinars still
+ * wait for the host; the join link goes out when they approve, not here.
+ */
+func (s *Server) deliverCompletedRegistrations(ctx context.Context, done []store.CompletedRegistration) {
+	for _, item := range done {
+		wb, err := s.store.WebinarBySlug(ctx, item.Registration.WebinarID)
+		if err != nil {
+			s.log.Error("verify email: load webinar", "webinar", item.Registration.WebinarID, "err", err)
+			continue
+		}
+		if item.Registration.State == types.RegPending {
+			s.alertHostOfPending(ctx, wb, item.Registration)
+		} else if strings.TrimSpace(item.Registration.Email) != "" {
+			s.notifyNewRegistration(ctx, wb, item.Registration, true)
+		}
+		s.engage.OnRegistered(ctx, wb, item.Registration, item.WhatsAppOptIn)
+	}
+}
+
 func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
 	var req types.VerifyEmailRequest
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
@@ -63,9 +87,13 @@ func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.store.RedeemEmailVerification(r.Context(), req.Token)
+	_, done, err := s.store.RedeemEmailVerification(r.Context(), req.Token)
 	switch {
 	case err == nil:
+		// The address is confirmed. Webinar registrations that were waiting on
+		// this link become real now, and the join link goes out in that mail.
+		// Nothing here signs the person in.
+		s.deliverCompletedRegistrations(r.Context(), done)
 		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "verified"})
 	case errors.Is(err, store.ErrVerifyExpired):
 		httpx.Error(w, http.StatusBadRequest, "expired_token",

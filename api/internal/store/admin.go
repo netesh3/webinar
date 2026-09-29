@@ -220,7 +220,8 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		SELECT u.id::text, u.email, u.name, u.title, u.org, u.phone, u.initials, u.hue,
 		       u.can_host, u.is_admin, u.created_at,
 		       (SELECT count(*) FROM webinars w WHERE w.host_id = u.id),
-		       u.max_duration_min, u.can_cdn_broadcast, u.features
+		       u.max_duration_min, u.can_cdn_broadcast, u.features,
+		       (u.email_verified_at IS NOT NULL)
 		  FROM users u
 		 WHERE lower(u.email) LIKE $1 OR lower(u.name) LIKE $1
 		 ORDER BY u.is_admin DESC, u.can_host DESC, u.created_at DESC
@@ -238,7 +239,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		)
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Phone, &u.Initials,
 			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast,
-			&u.Features); err != nil {
+			&u.Features, &u.EmailVerified); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)

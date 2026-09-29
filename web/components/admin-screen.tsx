@@ -295,6 +295,7 @@ function AdminAccounts() {
                         {u.name}
                       </span>
                       {u.isAdmin && <Badge tone="brand">Admin</Badge>}
+                      {!u.emailVerified && <Badge tone="warn">Email unverified</Badge>}
                       {u.canCdnBroadcast && <Badge tone="ok">CDN Broadcast</Badge>}
                       {isSelf && <Badge>You</Badge>}
                     </div>

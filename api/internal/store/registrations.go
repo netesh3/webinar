@@ -41,9 +41,10 @@ const registrationColumns = `
 // already registered. Idempotent by design: submitting the form twice returns
 // the same join key rather than a duplicate row or an error.
 //
-// userID is empty for someone registering without an account. When it is set,
-// the row is linked to that account, which is what lets the registration follow
-// the person to another browser instead of living only in localStorage.
+// userID is the signed-in account when there is one. Linking does not use it:
+// the email decides which account the registration belongs to, so a second
+// address on the form cannot be attached to whoever happens to be signed in.
+// The parameter stays so existing callers keep compiling.
 func (s *Store) Register(ctx context.Context, slug string, req types.RegisterRequest, userID string) (types.Registration, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -75,22 +76,21 @@ func (s *Store) Register(ctx context.Context, slug string, req types.RegisterReq
 	}
 
 	email := strings.ToLower(strings.TrimSpace(req.Email))
+	_ = userID
 
-	existing, err := registrationByEmail(ctx, tx, webinarID, email)
+	attendee, err := ensureAttendee(ctx, tx, email, req)
+	if err != nil {
+		return types.Registration{}, err
+	}
+
+	_, err = registrationByEmail(ctx, tx, webinarID, email)
 	switch {
 	case err == nil:
-		// Claim an earlier guest registration for the signed-in account, so
-		// registering again while signed in adopts the row rather than failing
-		// on the one-per-email constraint.
-		if userID != "" {
-			if _, err := tx.Exec(ctx, `
-				UPDATE registrations SET user_id = $1
-				 WHERE webinar_id = $2 AND lower(email) = $3 AND user_id IS NULL`,
-				userID, webinarID, email); err != nil {
-				return types.Registration{}, err
-			}
+		bound, berr := bindRegistration(ctx, tx, webinarID, email, attendee, req.WhatsAppOptIn)
+		if berr != nil {
+			return types.Registration{}, berr
 		}
-		return existing, tx.Commit(ctx)
+		return bound, tx.Commit(ctx)
 	case err == ErrNotFound:
 		// fall through and create
 	default:
@@ -107,10 +107,7 @@ func (s *Store) Register(ctx context.Context, slug string, req types.RegisterReq
 		return types.Registration{}, ErrFull
 	}
 
-	state := types.RegApproved
-	if approval == string(types.ApprovalManual) {
-		state = types.RegPending
-	}
+	state := registrationState(attendee.EmailVerified(), approval)
 
 	answers := orEmptyMap(req.Answers)
 	answersJSON, err := json.Marshal(answers)
@@ -132,22 +129,21 @@ func (s *Store) Register(ctx context.Context, slug string, req types.RegisterReq
 		JoinKey:   newJoinKey(),
 	}
 
-	// NULLIF so an empty userID becomes SQL NULL rather than failing the
-	// foreign key on the empty string.
 	var createdAt time.Time
 	err = tx.QueryRow(ctx, `
 		INSERT INTO registrations
 			(webinar_id, email, first_name, last_name, company, job_title, country,
-			 phone, answers, state, join_key, user_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,nullif($12,'')::uuid)
+			 phone, answers, state, join_key, user_id, whatsapp_opt_in)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::uuid,$13)
 		RETURNING id::text, created_at`,
 		webinarID, reg.Email, reg.FirstName, reg.LastName, reg.Company,
 		reg.JobTitle, reg.Country, reg.Phone, answersJSON, string(reg.State), reg.JoinKey,
-		userID,
+		attendee.ID, req.WhatsAppOptIn,
 	).Scan(&reg.ID, &createdAt)
 	if isUniqueViolation(err) {
-		// Lost a race on the same email — return the row that won.
-		won, gerr := registrationByEmail(ctx, tx, webinarID, email)
+		// Lost a race on the same email — return the row that won, linked to
+		// this address's account.
+		won, gerr := bindRegistration(ctx, tx, webinarID, email, attendee, req.WhatsAppOptIn)
 		if gerr != nil {
 			return types.Registration{}, gerr
 		}
@@ -277,6 +273,85 @@ func NormalisePhone(raw string) string {
 		return ""
 	}
 	return "+" + digits.String()
+}
+
+/* registrationState is what a new row is allowed to be.
+ *
+ * An unverified address is not in the room and is not in the host's review
+ * queue. Confirming the email is what moves it to approved, or to pending
+ * when the webinar asks the host to decide.
+ */
+func registrationState(verified bool, approval string) types.RegistrationState {
+	if !verified {
+		return types.RegUnverified
+	}
+	if approval == string(types.ApprovalManual) {
+		return types.RegPending
+	}
+	return types.RegApproved
+}
+
+/* ensureAttendee finds the account for this address, or creates one.
+ *
+ * Created rows cannot host and are not email-verified. An address that
+ * already has an account is reused as-is: can_host is not granted and not
+ * taken away. Runs inside Register's transaction so a failed registration
+ * does not leave an account behind.
+ */
+func ensureAttendee(ctx context.Context, tx pgx.Tx, email string, req types.RegisterRequest) (User, error) {
+	name := strings.TrimSpace(strings.TrimSpace(req.FirstName) + " " + strings.TrimSpace(req.LastName))
+	title := strings.TrimSpace(req.JobTitle)
+	org := strings.TrimSpace(req.Company)
+	phone := NormalisePhone(req.Phone)
+
+	var inserted string
+	err := tx.QueryRow(ctx, `
+		INSERT INTO users (email, password_hash, name, title, org, phone, initials, hue, can_host)
+		VALUES ($1, '', $2, $3, $4, $5, $6, $7, false)
+		ON CONFLICT ((lower(email))) DO NOTHING
+		RETURNING id::text`,
+		email, name, title, org, phone, InitialsOf(name), HueFor(email),
+	).Scan(&inserted)
+	if err != nil && !noRows(err) {
+		return User{}, err
+	}
+
+	u, err := scanUser(tx.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE lower(email) = $1`, email))
+	if noRows(err) {
+		return User{}, ErrNotFound
+	}
+	return u, err
+}
+
+/* bindRegistration points an existing row at the address's account.
+ *
+ * If that account is already verified and the row was still waiting on the
+ * email link, this is the moment it becomes a real registration. Opt-in is
+ * only ever turned on, never off, by a repeat submit.
+ */
+func bindRegistration(ctx context.Context, tx pgx.Tx, webinarID, email string, user User, optIn bool) (types.Registration, error) {
+	if _, err := tx.Exec(ctx, `
+		UPDATE registrations
+		   SET user_id = $1::uuid,
+		       whatsapp_opt_in = whatsapp_opt_in OR $4
+		 WHERE webinar_id = $2 AND lower(email) = $3`,
+		user.ID, webinarID, email, optIn); err != nil {
+		return types.Registration{}, err
+	}
+	if user.EmailVerified() {
+		if _, err := tx.Exec(ctx, `
+			UPDATE registrations r
+			   SET state = CASE WHEN w.approval = 'manual' THEN 'pending' ELSE 'approved' END
+			  FROM webinars w
+			 WHERE r.webinar_id = w.id
+			   AND r.webinar_id = $1
+			   AND lower(r.email) = $2
+			   AND r.state = 'unverified'`, webinarID, email); err != nil {
+			return types.Registration{}, err
+		}
+	}
+	return registrationByEmail(ctx, tx, webinarID, email)
 }
 
 // registrationByEmail looks up one registration inside an open transaction.

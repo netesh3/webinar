@@ -64,7 +64,8 @@ function VerifyEmailInner() {
             <Alert tone="ok">Your email is verified.</Alert>
           </div>
           <p className="mt-3 text-[13px] leading-relaxed text-ink-2">
-            Sign in to continue.
+            If you registered for a webinar, your join link is on its way to this
+            inbox. Otherwise, sign in to continue.
           </p>
         </>
       ) : (

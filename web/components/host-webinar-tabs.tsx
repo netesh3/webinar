@@ -703,6 +703,8 @@ function AttendeesTab({
                         <Badge tone="ok">Approved</Badge>
                       ) : r.state === "pending" ? (
                         <Badge tone="warn">Pending</Badge>
+                      ) : r.state === "unverified" ? (
+                        <Badge tone="warn">Email unverified</Badge>
                       ) : (
                         <Badge>Declined</Badge>
                       )}

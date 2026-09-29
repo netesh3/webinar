@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useJoinKeys, useRegistrations } from "./registrations";
 import { Alert, CopyField, Spinner } from "./controls";
 import { ArrowLeftIcon, CalendarIcon, CheckIcon, UserPlusIcon } from "./icons";
@@ -309,14 +309,25 @@ function EntryChoice({
   }
 
   if (mode === "register") {
+    // No way back when there was never a choice: a "Back" that returns to a screen with
+    // one button on it is a dead end that looks like a mistake.
+    const onBack = guestAvailable ? () => setMode("choose") : undefined;
+    if (identityKnown(account, w)) {
+      return (
+        <KnownAttendeeRegister
+          webinar={w}
+          account={account!}
+          onRegistered={onRegistered}
+          onBack={onBack}
+        />
+      );
+    }
     return (
       <RegisterFields
         webinar={w}
         account={account}
         onRegistered={onRegistered}
-        // No way back when there was never a choice: a "Back" that returns to a screen with
-        // one button on it is a dead end that looks like a mistake.
-        onBack={guestAvailable ? () => setMode("choose") : undefined}
+        onBack={onBack}
       />
     );
   }
@@ -515,6 +526,82 @@ function GuestJoinFields({
         </p>
       </div>
     </form>
+  );
+}
+
+/* A signed-in account with a name and email already answered the form.
+ *
+ * Extra questions and a passcode are still asked, because those are about
+ * this webinar, not about who the person is. Otherwise registering again is
+ * one click on "Register & Join", not six fields.
+ */
+function identityKnown(account: Account | null, w: Webinar): boolean {
+  if (!account?.name.trim() || !account.email.trim()) return false;
+  if (w.passcodeRequired) return false;
+  return !w.customQuestions.some((q) => q.required);
+}
+
+/* Signed in, and we already know the name and email.
+ *
+ * The request is the same one the form posts. Consent is included because
+ * opening this door is the person asking to be registered; the server still
+ * checks it. A failure drops them onto the form rather than a dead card.
+ */
+function KnownAttendeeRegister({
+  webinar: w,
+  account,
+  onRegistered,
+  onBack,
+}: {
+  webinar: Webinar;
+  account: Account;
+  onRegistered: (reg: Registration) => void;
+  onBack?: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    const { firstName, lastName } = splitName(account.name);
+    api
+      .register(w.id, {
+        firstName,
+        lastName,
+        email: account.email,
+        company: account.org,
+        jobTitle: account.title,
+        phone: account.phone ?? "",
+        consent: true,
+        answers: {},
+      })
+      .then(onRegistered)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not register.");
+      });
+  }, [account, onRegistered, w.id]);
+
+  if (error) {
+    return (
+      <RegisterFields
+        webinar={w}
+        account={account}
+        onRegistered={onRegistered}
+        onBack={onBack}
+      />
+    );
+  }
+
+  return (
+    <div>
+      {onBack && <BackLink onBack={onBack} />}
+      <WhenHeader webinar={w} title="Register & Join" />
+      <p className="text-[13px] leading-relaxed text-ink-2">
+        Registering {account.name} ({account.email}).
+      </p>
+      <div className="mt-3 h-24 animate-pulse rounded-xl bg-surface-2" />
+    </div>
   );
 }
 
@@ -884,9 +971,11 @@ function RegisterFields({
         </Button>
 
         <p className="text-center text-[11.5px] text-ink-3">
-          {w.approval === "manual"
-            ? "The host reviews each registration before approving."
-            : "You'll get your join link straight away."}
+          {account
+            ? w.approval === "manual"
+              ? "The host reviews each registration before approving."
+              : "You'll get your join link straight away."
+            : "We'll email you a link to confirm this address. Your join link arrives after that."}
         </p>
       </div>
     </form>
@@ -906,6 +995,7 @@ function Confirmed({
   const { emailConfigured } = useAppConfig();
   const pending = r.state === "pending";
   const declined = r.state === "declined";
+  const awaitingEmail = r.state === "unverified" || r.needsEmailVerification;
   const joinUrl = `${origin}/webinars/${w.id}/room`;
 
   const event = {
@@ -922,12 +1012,12 @@ function Confirmed({
         className={`mb-4 grid size-11 place-items-center rounded-full ${
           declined
             ? "bg-live-soft text-live"
-            : pending
+            : pending || awaitingEmail
               ? "bg-warn-soft text-warn"
               : "bg-ok-soft text-ok"
         }`}
       >
-        {pending || declined ? (
+        {pending || declined || awaitingEmail ? (
           <CalendarIcon className="size-5" />
         ) : (
           <CheckIcon className="size-5" />
@@ -937,13 +1027,21 @@ function Confirmed({
       <h2 className="text-[16px] font-semibold">
         {declined
           ? "Registration declined"
-          : pending
-            ? "Registration submitted"
-            : `You're registered${r.firstName ? `, ${r.firstName}` : ""}`}
+          : awaitingEmail
+            ? "Check your email"
+            : pending
+              ? "Registration submitted"
+              : `You're registered${r.firstName ? `, ${r.firstName}` : ""}`}
       </h2>
       <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
         {declined ? (
           <>The host didn&apos;t approve this registration.</>
+        ) : awaitingEmail ? (
+          <>
+            {r.message ||
+              "Check your email to confirm this address. Your join link arrives after you verify."}{" "}
+            The link works once. This page does not sign you in.
+          </>
         ) : pending ? (
           <>
             The host reviews registrations for this webinar. Check back here —
@@ -976,7 +1074,7 @@ function Confirmed({
             a screenshot of a confirmation page. */}
       </dl>
 
-      {!pending && !declined && (
+      {!pending && !declined && !awaitingEmail && (
         <>
           <div className="mb-3">
             <CopyField label="Your join key" value={r.joinKey} />

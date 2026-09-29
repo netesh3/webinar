@@ -62,6 +62,11 @@ func (s *Server) handleAttendeeJoin(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if reg.State == types.RegUnverified {
+		httpx.Error(w, http.StatusForbidden, "email_unverified",
+			"Verify your email to get your join link.")
+		return
+	}
 	if reg.State != types.RegApproved {
 		httpx.Error(w, http.StatusForbidden, "not_approved",
 			"The host hasn't approved your registration yet.")
