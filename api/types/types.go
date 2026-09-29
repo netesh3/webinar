@@ -977,7 +977,7 @@ const (
 	 *
 	 * Off — the default for a brand-new account, the same as each of those keys —
 	 * means none of that surface. An account that already had any of them keeps
-	 * it; see migrations/0074. */
+	 * it; see migrations/0075. */
 	FeatureWhatsAppCRM = "whatsapp_crm"
 	/* FeatureCloudRecording is storing the session on this instance: the recordings
 	 * tab, "Record to the Cloud", and "Record automatically".

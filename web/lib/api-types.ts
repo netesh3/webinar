@@ -2461,7 +2461,7 @@ export interface Account {
  * 	 *
  * 	 * Off — the default for a brand-new account, the same as each of those keys —
  * 	 * means none of that surface. An account that already had any of them keeps
- * 	 * it; see migrations/0074.
+ * 	 * it; see migrations/0075.
  */
 export const FeatureWhatsAppCRM = "whatsapp_crm";
 /**

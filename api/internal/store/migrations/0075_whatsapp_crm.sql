@@ -7,8 +7,7 @@
 -- defaulted off, and the combined switch does too. A new signup still starts
 -- from the column default '{}', which does not contain whatsapp_crm.
 --
--- Numbered 0074 because origin/main ends at 0073_join_policy. Another branch
--- may add its own 0074; renumber one of them before both land on main.
+-- Numbered 0075. 0074_email_verification.sql already landed on main.
 
 UPDATE users
 SET features = array_append(features, 'whatsapp_crm')
