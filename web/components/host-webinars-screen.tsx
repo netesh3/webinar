@@ -6,7 +6,7 @@ import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
 import { CalendarIcon, ChevronRightIcon, PlayIcon } from "./icons";
-import { DEFAULT_ATTENDEE_LIMIT } from "./schedule/form-state";
+import { DEFAULT_ATTENDEE_LIMIT, SCHEDULE_LEAD_ERROR } from "./schedule/form-state";
 import {
   useAppConfig,
   useSession,
@@ -35,15 +35,10 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
     summary: "",
     description: "",
     track: "",
-    /* NOT literally now: the server rejects a create whose startsAt is
-     * already in the past (host.go, isCreate + status "scheduled"), with no
-     * grace period — and "now" computed here is, by the time this request
-     * reaches the server, already a little in the past. A few minutes of
-     * slack clears that race with room to spare. The exact value barely
-     * matters anyway: startWebinar (called right after this resolves) has no
-     * precondition on startsAt at all, so the room goes live immediately
-     * regardless of what this says. */
-    startsAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    /* The server stamps an instant create to its own clock and skips the
+     * schedule form's hour lead. This value is only here because the field
+     * is required on the type; it is not a time the host picked. */
+    startsAt: new Date().toISOString(),
     durationMin: 60,
     timeZone: localTimeZone(),
     kind: "live",
@@ -88,6 +83,20 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
       locked: false,
     },
   };
+}
+
+/* The hour-ahead sentence is a schedule-form field error. This button has no
+ * time to change, so that text is never what a failed instant start says. */
+function instantStartError(err: unknown): string {
+  if (!(err instanceof ApiError)) {
+    return err instanceof Error && err.message
+      ? err.message
+      : "Could not start the webinar.";
+  }
+  const fields = { ...(err.fields ?? {}) };
+  if (fields.startsAt === SCHEDULE_LEAD_ERROR) delete fields.startsAt;
+  const fieldMsg = Object.values(fields).find((message) => message);
+  return fieldMsg || err.message || "Could not start the webinar.";
 }
 
 const actionCardClass =
@@ -174,13 +183,7 @@ export function HostWebinarsScreen() {
       refresh();
     } catch (err) {
       pendingTab.cancel();
-      const message =
-        err instanceof ApiError
-          ? (Object.values(err.fields ?? {})[0] ?? err.message)
-          : err instanceof Error
-            ? err.message
-            : "Could not start the webinar.";
-      notify(message || "Could not start the webinar.", "error");
+      notify(instantStartError(err), "error");
     } finally {
       setStartingInstant(false);
     }

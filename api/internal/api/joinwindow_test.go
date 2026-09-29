@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -73,24 +74,32 @@ func TestAttendeeCanJoinJustBeforeTheStart(t *testing.T) {
 	}
 }
 
-/* Starting early must open the doors early.
+/* Go live stays shut until five minutes before the start.
  *
- * This is the case that pins the `status != live` guard, and the reason it needs its own
- * test: the obvious version of this — a webinar scheduled in the PAST and started late —
- * cannot detect a missing guard at all, because a past schedule is never "too early"
- * whatever the rule is. It has to be a FUTURE webinar that the host opened ahead of time.
- * Verified by removing the guard: this test fails and the late-start one below does not. */
+ * Once a webinar IS live, the schedule stops mattering for the audience — that
+ * is the `status != live` guard. A host can no longer reach that state a month
+ * early through Go live, so this test refuses the early start and then marks
+ * the row live the way a session that already opened would be. Verified by
+ * removing the guard: the join below fails and the late-start test does not. */
 func TestStartingEarlyOpensTheDoors(t *testing.T) {
 	h := newHarness(t)
 	h.signup("Eager Host", "eager-host@test.dev", true)
 	wb := scheduleAt(t, h, "Opened Early", 30*24*time.Hour)
-	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
-		t.Fatalf("start: status %d body %s", res.StatusCode, raw)
+	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil)
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "too_soon" {
+		t.Fatalf("start a month early: status %d code %q, want 403 too_soon\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+	if strings.Contains(string(raw), "hour from now") {
+		t.Fatalf("early Go live used the schedule-form message: %s", raw)
+	}
+	if _, err := h.store.SetStatus(context.Background(), wb.ID, types.StatusLive); err != nil {
+		t.Fatalf("mark live: %v", err)
 	}
 	h.logout()
 
 	reg := h.registerAs(wb.ID, "keen@test.dev")
-	res, raw := h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/join",
+	res, raw = h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/join",
 		types.JoinRequest{JoinKey: reg.JoinKey})
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("the host started it, so the schedule must stop mattering: status %d body %s",
@@ -117,6 +126,24 @@ func TestALateStartDoesNotLockTheAudienceOut(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("a live webinar refused an attendee because of its scheduled time: status %d body %s",
 			res.StatusCode, raw)
+	}
+}
+
+func TestGoLiveOpensFiveMinutesBefore(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Punctual Host", "punctual-host@test.dev", true)
+
+	early := scheduleAt(t, h, "Two Hours Out", 2*time.Hour)
+	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+early.ID+"/start", nil)
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "too_soon" {
+		t.Fatalf("start two hours early: status %d code %q, want 403 too_soon\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+
+	soon := scheduleAt(t, h, "Four Minutes Out", 4*time.Minute)
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+soon.ID+"/start", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("start four minutes out: status %d body %s", res.StatusCode, raw)
 	}
 }
 

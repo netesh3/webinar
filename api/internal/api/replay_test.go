@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/netkumar/webcast/api/types"
 )
@@ -97,6 +98,19 @@ func replayFor(t *testing.T, h *harness, topic, email string) string {
 
 /* replayOnWhatsApp puts WhatsApp on the replay slot. The built-in replay is email
  * only; a template on its own does not send. */
+/* openThenStart moves a webinar inside the Go live window and starts it.
+ *
+ * remindersWebinar schedules two days out, which is right for a reminder and
+ * too soon to go live. These tests are about the replay after the session,
+ * not about that window. */
+func openThenStart(t *testing.T, h *harness, slug string) {
+	t.Helper()
+	h.placeFixtureStart(slug, time.Now().Add(4*time.Minute))
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+slug+"/start", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("start: status %d body %s", res.StatusCode, raw)
+	}
+}
+
 func replayOnWhatsApp(t *testing.T, h *harness) {
 	t.Helper()
 	putDefaults(t, h, types.MessageSlot{
@@ -134,9 +148,7 @@ func TestPublishingARecordingTellsTheRegistrants(t *testing.T) {
 	})
 	replayOnWhatsApp(t, h)
 
-	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
-		t.Fatalf("start webinar: status %d body %s", res.StatusCode, raw)
-	}
+	openThenStart(t, h, wb.ID)
 	rec := readyRecording(t, h, wb.ID)
 
 	// Nothing is said while the recording is private, which is the whole reason the
@@ -239,9 +251,7 @@ func TestReplayStillGoesOutAfterTheWebinarHasEnded(t *testing.T) {
 	})
 	replayOnWhatsApp(t, h)
 
-	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
-		t.Fatalf("start: status %d body %s", res.StatusCode, raw)
-	}
+	openThenStart(t, h, wb.ID)
 	rec := readyRecording(t, h, wb.ID)
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/end", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("end: status %d body %s", res.StatusCode, raw)
@@ -283,9 +293,7 @@ func TestReplayNeedsTheSwitchAndAChosenTemplate(t *testing.T) {
 		Kind: types.NotifyWhatsAppReplay, Template: testTemplateUtility,
 		Language: "en_US", Params: []string{"replay"},
 	})
-	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
-		t.Fatalf("start: status %d body %s", res.StatusCode, raw)
-	}
+	openThenStart(t, h, wb.ID)
 	rec := readyRecording(t, h, wb.ID)
 	publishRecording(t, h, wb.ID, rec.ID, true)
 
@@ -307,9 +315,7 @@ func TestReplayNeedsTheSwitchAndAChosenTemplate(t *testing.T) {
 	const only = "Email only"
 	wb2 := remindersWebinar(t, h, only, false)
 	registerOptedIn(t, h, wb2.ID)
-	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb2.ID+"/start", nil); res.StatusCode != http.StatusOK {
-		t.Fatalf("start: status %d body %s", res.StatusCode, raw)
-	}
+	openThenStart(t, h, wb2.ID)
 	rec2 := readyRecording(t, h, wb2.ID)
 	publishRecording(t, h, wb2.ID, rec2.ID, true)
 

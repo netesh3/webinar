@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { HostWebinarTabs } from "./host-webinar-tabs";
 import { ConfirmModal, Menu, Spinner } from "./controls";
 import { StepBar } from "./webinar-steps";
@@ -23,6 +23,8 @@ import {
   isDevAuthBypassActive,
   useDevAuthBypassActive,
 } from "@/lib/dev-bypass-session";
+import { canGoLive, goLiveWaitReason } from "@/lib/go-live";
+import { useNow } from "@/lib/clock";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
@@ -58,6 +60,8 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const [busy, setBusy] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const now = useNow(15_000);
+  const waitReasonId = useId();
 
   // Local preview reads fixtures, derived here rather than copied into state by
   // the load effect. The hook is false on the server and while hydrating, the
@@ -357,9 +361,14 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
               Rejoin room
             </ButtonLink>
           ) : (
-            <Button onClick={() => void start()} disabled={busy}>
-              {busy && <Spinner className="size-4" />}▶ Go live
-            </Button>
+            <GoLiveButton
+              busy={busy}
+              open={canGoLive(webinar.startsAt, now)}
+              reason={goLiveWaitReason(webinar.startsAt, webinar.timeZone)}
+              reasonId={waitReasonId}
+              showReason={now != null && !canGoLive(webinar.startsAt, now)}
+              onStart={() => void start()}
+            />
           )}
         </div>
       </div>
@@ -396,5 +405,38 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         confirmLabel="Delete this webinar"
       />
     </>
+  );
+}
+
+function GoLiveButton({
+  busy,
+  open,
+  reason,
+  reasonId,
+  showReason,
+  onStart,
+}: {
+  busy: boolean;
+  open: boolean;
+  reason: string;
+  reasonId: string;
+  showReason: boolean;
+  onStart: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        onClick={onStart}
+        disabled={busy || !open}
+        aria-describedby={showReason ? reasonId : undefined}
+      >
+        {busy && <Spinner className="size-4" />}▶ Go live
+      </Button>
+      {showReason && (
+        <p id={reasonId} className="max-w-56 text-right text-[12px] leading-snug text-ink-3">
+          {reason}
+        </p>
+      )}
+    </div>
   );
 }

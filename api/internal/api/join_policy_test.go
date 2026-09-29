@@ -42,6 +42,10 @@ func TestJoinWithoutRegistrationIsRejectedUntilAnAdminAllowsIt(t *testing.T) {
 	}
 	var wb types.Webinar
 	h.decode(raw, &wb)
+	/* Created far enough ahead to clear the schedule lead, then moved inside
+	 * the join window. The registration check is what this test is about, and
+	 * a start two hours out is refused as too early before that check runs. */
+	wb = h.placeFixtureStart(wb.ID, time.Now().Add(5*time.Minute))
 	if !wb.RegistrationRequired {
 		t.Fatal("registrationRequired false on create while the switch is off")
 	}
@@ -184,6 +188,19 @@ func TestInstantWebinarIsRejectedUntilAnAdminAllowsIt(t *testing.T) {
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("instant create once allowed: status %d body %s", res.StatusCode, raw)
 	}
+	var live types.Webinar
+	h.decode(raw, &live)
+	started, err := time.Parse(time.RFC3339, live.StartsAt)
+	if err != nil {
+		t.Fatalf("instant startsAt %q: %v", live.StartsAt, err)
+	}
+	if d := time.Since(started); d < -time.Minute || d > time.Minute {
+		t.Fatalf("instant startsAt %s, want about now", live.StartsAt)
+	}
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+live.ID+"/start", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("instant start: status %d body %s", res.StatusCode, raw)
+	}
 
 	h.login("neeraj@acme.dev")
 	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+host.ID+"/features",
@@ -200,8 +217,14 @@ func TestInstantWebinarIsRejectedUntilAnAdminAllowsIt(t *testing.T) {
 }
 
 func policyInput(topic string, registration bool, instant bool) types.WebinarInput {
+	/* A scheduled create has to clear the hour lead. An instant create is
+	 * stamped to now by the handler, so the time here is only a placeholder. */
+	start := time.Now().Add(2 * time.Hour)
+	if instant {
+		start = time.Now().Add(5 * time.Minute)
+	}
 	return types.WebinarInput{
-		Topic: topic, StartsAt: time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339),
+		Topic: topic, StartsAt: start.UTC().Format(time.RFC3339),
 		Duration: 60, TimeZone: "UTC",
 		Kind: types.KindLive, Status: types.StatusScheduled,
 		RegistrationRequired: registration, Approval: types.ApprovalAutomatic, AttendeeLimit: 100,

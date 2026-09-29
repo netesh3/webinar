@@ -42,6 +42,14 @@ func TestScheduleLead(t *testing.T) {
 		t.Fatalf("create 2h ahead rejected: %q (fields %v)", msg, fields)
 	}
 
+	// Instant has no time to pick. The hour lead stays on the schedule form.
+	instant := leadInput(time.Now().Add(5*time.Minute), types.StatusScheduled)
+	instant.Instant = true
+	_, fields = s.normalizeWebinarInput(instant, true, "")
+	if msg := fields["startsAt"]; msg != "" {
+		t.Fatalf("instant create rejected a soon start: %q", msg)
+	}
+
 	// A draft is not a commitment to run, so a soon start is still a sketch.
 	_, fields = s.normalizeWebinarInput(leadInput(time.Now().Add(10*time.Minute), types.StatusDraft), true, "")
 	if msg := fields["startsAt"]; msg != "" {
