@@ -138,6 +138,39 @@ func TestStarterTemplatesAndQuickReplyActions(t *testing.T) {
 	}
 }
 
+/* Wording the host types is submitted as its own template. Blanks have to be
+ * {{1}}, {{2}}, in order — a skipped number is Meta's refusal, caught here. */
+func TestCreateCustomWording(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+
+	res, raw := h.do(http.MethodPost, "/api/host/crm/templates", map[string]any{
+		"body": "Hi {{1}}, see you at {{2}}.", "category": "UTILITY",
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("custom wording: %d %s", res.StatusCode, raw)
+	}
+	var authored struct {
+		Name, Language, Status, Body string
+	}
+	h.decode(raw, &authored)
+	if authored.Status != "PENDING" || authored.Language != "en" || !strings.HasPrefix(authored.Name, "wl_own_") || authored.Body == "" {
+		t.Fatalf("authored = %+v", authored)
+	}
+	if len(g.created) != 1 {
+		t.Fatalf("created %d templates", len(g.created))
+	}
+
+	res, raw = h.do(http.MethodPost, "/api/host/crm/templates", map[string]any{
+		"body": "Hi {{1}}, then {{3}}.",
+	})
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("skipped blank: %d %s", res.StatusCode, raw)
+	}
+}
+
 // buttonTap is a template quick-reply tap, as Meta posts it.
 func buttonTap(wamid, from, text string) string {
 	return `{"object":"whatsapp_business_account","entry":[{"id":"` + testMetaWABAID + `","changes":[{"field":"messages","value":{

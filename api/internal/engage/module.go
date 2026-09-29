@@ -153,6 +153,7 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Get("/crm/audience/summary", s.handleCRMAudienceSummary)
 	host.Get("/crm/templates/starters", s.handleCRMStarterTemplates)
 	host.Post("/crm/templates/starters", s.handleCreateCRMStarterTemplates)
+	host.Post("/crm/templates", s.handleCreateCRMWording)
 	host.Put("/crm/recipes/{id}", s.handleSaveCRMRecipe)
 	host.Post("/crm/test-send", s.handleCRMTestSend)
 	host.Get("/crm/broadcasts", s.handleCRMBroadcasts)
