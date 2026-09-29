@@ -24,7 +24,7 @@ import (
  */
 
 // remindersWebinar creates a webinar far enough ahead that BOTH timed reminders are
-// still in the future, with WhatsApp messaging switched on. `soon()` is five minutes
+// still in the future, with WhatsApp messaging switched on. `soon()` is two hours
 // out, which would correctly skip a "starts in 24 hours" message and make every
 // assertion below a coincidence.
 func remindersWebinar(t *testing.T, h *harness, topic string, whatsapp bool) types.Webinar {

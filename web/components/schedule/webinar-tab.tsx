@@ -119,7 +119,7 @@ function WhenSection({
   return (
     <FormSection
       title="When"
-      description="Defaults to today, at the next five-minute mark."
+      description="The webinar has to start at least an hour from now."
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.5fr)]">
         <div>
@@ -136,9 +136,10 @@ function WhenSection({
             // Only on a NEW webinar — an existing one may legitimately show a
             // past date (it already ran, or it's a draft nobody finished), and
             // an edit that touches an unrelated field must not be blocked by a
-            // date the host never touched. The server enforces the real rule
-            // (see normalizeWebinarInput's isCreate); this is a nudge so the
-            // native picker does not even offer a date that will be refused.
+            // date the host never touched. The server enforces the real rule,
+            // including the one-hour lead (see normalizeWebinarInput); this
+            // min only keeps yesterday out of a new webinar. The hour itself
+            // is the message under the fields, not a time-input min.
             min={editing ? undefined : todayInputValue()}
             required
           />

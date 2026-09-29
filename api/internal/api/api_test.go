@@ -853,13 +853,13 @@ func (h *harness) newWebinar(topic string, mutate func(*types.WebinarInput)) typ
 	h.t.Helper()
 	in := types.WebinarInput{
 		Topic: topic,
-		/* Five minutes out, not an hour.
+		/* Five minutes out, inside the join window (see joinGrace in join.go).
 		 *
-		 * Inside the join window (see joinGrace in join.go), because most tests here
-		 * register and then immediately join, and an attendee joining a session that is
-		 * still an hour away is not a scenario any of them mean to exercise — it is a
-		 * fixture accident that used to be invisible because there was no window at all.
-		 * Tests that care about the window set their own time; see joinwindow_test.go. */
+		 * The API refuses a scheduled start sooner than an hour (minScheduleLead).
+		 * This helper still asks for five minutes — that is what the join tests
+		 * need — and, when the API would refuse it, creates at two hours and then
+		 * moves the row. Tests that care about the window set their own time; see
+		 * joinwindow_test.go. */
 		StartsAt:             time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339),
 		Duration:             60,
 		TimeZone:             "UTC",
@@ -877,12 +877,45 @@ func (h *harness) newWebinar(topic string, mutate func(*types.WebinarInput)) typ
 	if mutate != nil {
 		mutate(&in)
 	}
+	var placeAt time.Time
+	place := false
+	if at, err := time.Parse(time.RFC3339, in.StartsAt); err == nil {
+		status := in.Status
+		if status == "" {
+			status = types.StatusScheduled
+		}
+		// Same hour as minScheduleLead. Drafts are allowed any start.
+		if status == types.StatusScheduled && at.Before(time.Now().Add(time.Hour)) {
+			placeAt = at
+			place = true
+			in.StartsAt = time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
+		}
+	}
 	res, raw := h.do(http.MethodPost, "/api/host/webinars", in)
 	if res.StatusCode != http.StatusCreated {
 		h.t.Fatalf("create webinar: status %d body %s", res.StatusCode, raw)
 	}
 	var wb types.Webinar
 	h.decode(raw, &wb)
+	if place {
+		return h.placeFixtureStart(wb.ID, placeAt)
+	}
+	return wb
+}
+
+// placeFixtureStart moves a webinar's start after the API has accepted it.
+// Join tests need a start inside the 15-minute door; the schedule API will not
+// write one. The returned webinar is re-read so StartsAt matches the row.
+func (h *harness) placeFixtureStart(slug string, at time.Time) types.Webinar {
+	h.t.Helper()
+	if _, err := h.store.Pool().Exec(context.Background(),
+		`UPDATE webinars SET starts_at = $2 WHERE slug = $1`, slug, at); err != nil {
+		h.t.Fatalf("place start for %s: %v", slug, err)
+	}
+	wb, err := h.store.WebinarBySlug(context.Background(), slug)
+	if err != nil {
+		h.t.Fatalf("reload %s after placing its start: %v", slug, err)
+	}
 	return wb
 }
 
