@@ -4778,11 +4778,6 @@ export interface AppConfig {
    */
   defaultMaxMeetingMin: number /* int */;
   /**
-   * Tracks are the topic tags already in use, offered as suggestions rather
-   * than a fixed enum so an operator never has to edit a list in the bundle.
-   */
-  tracks: string[];
-  /**
    * GoogleClientID and GoogleAPIKey turn on the Google Drive source in the
    * share-a-file picker. Both are public values — see config.Config — and both
    * are empty unless an operator sets them, which the picker reports as "not

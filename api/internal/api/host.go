@@ -111,6 +111,25 @@ func (s *Server) handleStageWebinars(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, list)
 }
 
+// handleHostTracks is GET /api/host/tracks — the topic tags this host has
+// already used on their own webinars, offered as suggestions on the schedule
+// form instead of a fixed taxonomy nobody could extend without a deploy.
+//
+// Scoped to the caller's own user id, the same way handleHostAlerts is: this
+// host's tags are this host's own vocabulary, not one shared across every
+// coach on the server, and a tag typed here that does not already appear in
+// the list is simply saved onto the webinar and shows up as a suggestion the
+// next time this same host looks — no separate "create the tag" step needed.
+func (s *Server) handleHostTracks(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r.Context())
+	tracks, err := s.store.HostTracks(r.Context(), user.ID)
+	if err != nil {
+		s.fail(w, r, "host tracks", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, tracks)
+}
+
 func (s *Server) handleHostWebinar(w http.ResponseWriter, r *http.Request) {
 	wb, err := s.store.WebinarBySlug(r.Context(), slugFromContext(r.Context()))
 	if err != nil {

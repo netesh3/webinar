@@ -1,8 +1,8 @@
 "use client";
 
-import { useId } from "react";
-import { useAppConfig } from "../providers";
+import { useEffect, useId, useState } from "react";
 import { WebinarImagePicker } from "../webinar-image-picker";
+import { api } from "@/lib/api";
 import type { PreparedWebinarImage } from "@/lib/webinar-image";
 import { FormSection, Text } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
@@ -22,7 +22,28 @@ export function BasicsSection({
   onImage: (prepared: PreparedWebinarImage, preview: string) => void;
   onImageRemove: () => void;
 }) {
-  const config = useAppConfig();
+  /* Topic tag suggestions: this host's OWN tags, fetched from the API rather
+   * than app config. Config is public and read before any session exists, so
+   * it cannot be scoped to a coach — a global list was the bug: every coach
+   * saw every other coach's tags in their own dropdown. A tag that does not
+   * appear here yet needs no separate "create" step: typing a new one and
+   * saving the webinar is what puts it in this list for next time. */
+  const [trackSuggestions, setTrackSuggestions] = useState<string[]>([]);
+  useEffect(() => {
+    let active = true;
+    api
+      .hostTracks()
+      .then((tracks) => {
+        if (active) setTrackSuggestions(tracks);
+      })
+      .catch(() => {
+        // Suggestions are a nicety. Losing them must not block the form.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <FormSection
       title="Basics"
@@ -92,7 +113,7 @@ export function BasicsSection({
                   onChange={(e) => set("track", e.target.value)}
                 />
                 <datalist id="track-suggestions">
-                  {config.tracks.map((t) => (
+                  {trackSuggestions.map((t) => (
                     <option key={t} value={t} />
                   ))}
                 </datalist>

@@ -374,6 +374,13 @@ export const api = {
 
   hostRecordingLibrary: () => request<Recording[]>("/api/host/recordings", fresh),
 
+  /** Topic tags THIS host has already used, for the schedule form's
+   *  suggestions. Scoped to the signed-in coach — another coach's tags are
+   *  not this one's taxonomy — so a brand-new tag typed here needs no
+   *  separate "create" step: saving the webinar with it is enough for it to
+   *  come back as a suggestion next time. */
+  hostTracks: () => request<string[]>("/api/host/tracks", fresh),
+
   /** Sessions this account is a panelist on but does not own. */
   stageWebinars: () => request<Webinar[]>("/api/host/stage", fresh),
 

@@ -2771,8 +2771,56 @@ func TestConfigIsServedToTheFrontend(t *testing.T) {
 	if cfg.MaxAttendees != 500 {
 		t.Errorf("maxAttendees = %d, want the server's configured ceiling", cfg.MaxAttendees)
 	}
-	if cfg.Tracks == nil {
-		t.Error("tracks must be a list, not null — the UI maps over it")
+}
+
+// Topic tags are one coach's own vocabulary, not a taxonomy shared by the
+// whole server: a tag Coach A has used must suggest itself back to Coach A,
+// and must never show up in Coach B's dropdown just because Coach B also
+// hosts webinars — see handleHostTracks.
+func TestHostTracksAreScopedToTheHost(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Coach A", "coach-a@test.dev", true)
+	h.newWebinar("A's Webinar", func(in *types.WebinarInput) {
+		in.Track = "Only Coach A"
+	})
+
+	res, raw := h.do(http.MethodGet, "/api/host/tracks", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("host tracks: status %d body %s", res.StatusCode, raw)
+	}
+	var aTracks []string
+	h.decode(raw, &aTracks)
+	if !slices.Contains(aTracks, "Only Coach A") {
+		t.Errorf("coach A's tracks = %v, want it to include a tag coach A just used", aTracks)
+	}
+
+	// A fresh signup re-points the harness's session cookie at the new
+	// account — see h.signup — so this is now Coach B looking at their own
+	// dropdown, with no webinars and no tags of their own yet.
+	h.signup("Coach B", "coach-b@test.dev", true)
+	res, raw = h.do(http.MethodGet, "/api/host/tracks", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("host tracks: status %d body %s", res.StatusCode, raw)
+	}
+	var bTracks []string
+	h.decode(raw, &bTracks)
+	if slices.Contains(bTracks, "Only Coach A") {
+		t.Errorf("coach B's tracks = %v, must not include coach A's tag", bTracks)
+	}
+
+	// "If tag does not present then create it": a coach typing a brand-new tag
+	// needs no separate create step — saving a webinar with it is enough for
+	// it to show up in that same coach's own suggestions afterward.
+	h.newWebinar("B's Webinar", func(in *types.WebinarInput) {
+		in.Track = "Only Coach B"
+	})
+	res, raw = h.do(http.MethodGet, "/api/host/tracks", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("host tracks: status %d body %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &bTracks)
+	if !slices.Contains(bTracks, "Only Coach B") {
+		t.Errorf("coach B's tracks = %v, want the tag coach B just used", bTracks)
 	}
 }
 
