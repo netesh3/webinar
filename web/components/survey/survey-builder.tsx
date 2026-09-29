@@ -73,148 +73,146 @@ export function SurveyBuilder({
   const link = value.mode === "link";
 
   return (
-    <div className="grid gap-3.5">
-      <TextInput
-        id={`${id}-title`}
-        label="Title"
-        value={value.title}
-        placeholder={DEFAULT_TITLE}
-        max={LIMITS.title}
-        error={errors.title}
-        onChange={(title) => set({ title })}
-      />
-      <Segmented
-        label="Survey type"
-        name={`${id}-mode`}
-        value={value.mode}
-        disabled={locked}
-        onChange={(mode) => set({ mode: mode as SurveyInput["mode"] })}
-        options={[
-          {
-            id: "builtin",
-            label: "Rating survey",
-            icon: "star",
-            tip: "1–5 stars plus a few short questions, answered right in the webinar.",
-          },
-          {
-            id: "link",
-            label: "Survey link",
-            icon: "open_in_new",
-            tip: "Send people to your Google Form, Typeform or any https:// survey.",
-          },
-        ]}
-      />
-      {locked && (
-        <p className="text-[12px] text-ink-3">
-          People have answered, so the type and questions are fixed. You can
-          still reword the title and button.
-        </p>
-      )}
-      {link && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <TextInput
-            id={`${id}-button`}
-            label="Button label"
-            value={value.buttonLabel}
-            placeholder={DEFAULT_BUTTON}
-            max={LIMITS.button}
-            error={errors.buttonLabel}
-            onChange={(buttonLabel) => set({ buttonLabel })}
-          />
-          <TextInput
-            id={`${id}-url`}
-            label="Survey link"
-            type="url"
-            value={value.externalUrl}
-            placeholder="https://forms.gle/…"
-            max={LIMITS.url}
-            error={errors.externalUrl}
-            hint="Opens in a new tab. Only https:// links are accepted."
-            onChange={(externalUrl) => set({ externalUrl })}
-          />
-        </div>
-      )}
-
-      <Segmented
-        label="When attendees see it"
-        labelTip="Whichever you pick, you can still send it earlier from the room, and anyone who leaves early is asked on the way out."
-        name={`${id}-when`}
-        value={value.sendAt}
-        onChange={(sendAt) =>
-          set({
-            sendAt: sendAt as SurveyInput["sendAt"],
-            sendAfterMin:
-              sendAt === "at_minute" && !value.sendAfterMin
-                ? suggestedSendMinute(durationMin)
-                : value.sendAfterMin,
-          })
-        }
-        options={SEND_CHOICES.map((c) => ({
-          id: c.id,
-          label: SEND_SHORT[c.id],
-          icon: SEND_ICON[c.id],
-          tip: c.body,
-          recommended: c.recommended,
-        }))}
-      />
-      {value.sendAt === "at_minute" && (
-        <span className="flex flex-wrap items-center gap-2 text-[12.5px] text-ink-2">
-          <label htmlFor={`${id}-minute`}>Pop up</label>
-          <input
-            id={`${id}-minute`}
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={LIMITS.sendAfterMin}
-            value={value.sendAfterMin || ""}
-            onChange={(e) =>
-              set({ sendAfterMin: Math.trunc(Number(e.target.value)) || 0 })
-            }
-            aria-invalid={Boolean(errors.sendAfterMin)}
-            className={`field h-8 w-20 py-1 text-center tabular-nums ${errors.sendAfterMin ? "border-live/60" : ""}`}
-          />
-          <span>minutes after you go live</span>
-          {durationMin > 0 && (
-            <span className="text-ink-3">
-              · the session is {durationMin} min
-            </span>
-          )}
-        </span>
-      )}
-      {errors.sendAfterMin && (
-        <p className="text-[12px] text-live">{errors.sendAfterMin}</p>
-      )}
-
-      <div
-        className={
-          aside
-            ? "grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17.5rem]"
-            : undefined
-        }
-      >
-        <div className="grid gap-3">
-          {link ? (
-            <div className="rounded-lg border border-line px-2">
-              <Toggle
-                checked={value.askRating}
-                disabled={locked}
-                onChange={(askRating) => set({ askRating })}
-                label="Also ask for a 1–5 star rating"
-                description="Keeps your session ratings comparable across webinars, whatever the external form asks."
-              />
-            </div>
-          ) : (
-            <QuestionList
-              value={value}
-              locked={locked}
-              errors={errors}
-              set={set}
-              setQ={setQ}
+    <div
+      className={
+        aside
+          ? "grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17.5rem]"
+          : undefined
+      }
+    >
+      <div className="grid gap-3.5">
+        <TextInput
+          id={`${id}-title`}
+          label="Title"
+          value={value.title}
+          placeholder={DEFAULT_TITLE}
+          max={LIMITS.title}
+          error={errors.title}
+          onChange={(title) => set({ title })}
+        />
+        <Segmented
+          label="Survey type"
+          name={`${id}-mode`}
+          value={value.mode}
+          disabled={locked}
+          onChange={(mode) => set({ mode: mode as SurveyInput["mode"] })}
+          options={[
+            {
+              id: "builtin",
+              label: "Rating survey",
+              icon: "star",
+              tip: "1–5 stars plus a few short questions, answered right in the webinar.",
+            },
+            {
+              id: "link",
+              label: "Survey link",
+              icon: "open_in_new",
+              tip: "Send people to your Google Form, Typeform or any https:// survey.",
+            },
+          ]}
+        />
+        {locked && (
+          <p className="text-[12px] text-ink-3">
+            People have answered, so the type and questions are fixed. You can
+            still reword the title and button.
+          </p>
+        )}
+        {link && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextInput
+              id={`${id}-button`}
+              label="Button label"
+              value={value.buttonLabel}
+              placeholder={DEFAULT_BUTTON}
+              max={LIMITS.button}
+              error={errors.buttonLabel}
+              onChange={(buttonLabel) => set({ buttonLabel })}
             />
-          )}
-        </div>
-        {aside}
+            <TextInput
+              id={`${id}-url`}
+              label="Survey link"
+              type="url"
+              value={value.externalUrl}
+              placeholder="https://forms.gle/…"
+              max={LIMITS.url}
+              error={errors.externalUrl}
+              hint="Opens in a new tab. Only https:// links are accepted."
+              onChange={(externalUrl) => set({ externalUrl })}
+            />
+          </div>
+        )}
+
+        <Segmented
+          label="When attendees see it"
+          labelTip="Whichever you pick, you can still send it earlier from the room, and anyone who leaves early is asked on the way out."
+          name={`${id}-when`}
+          value={value.sendAt}
+          onChange={(sendAt) =>
+            set({
+              sendAt: sendAt as SurveyInput["sendAt"],
+              sendAfterMin:
+                sendAt === "at_minute" && !value.sendAfterMin
+                  ? suggestedSendMinute(durationMin)
+                  : value.sendAfterMin,
+            })
+          }
+          options={SEND_CHOICES.map((c) => ({
+            id: c.id,
+            label: SEND_SHORT[c.id],
+            icon: SEND_ICON[c.id],
+            tip: c.body,
+            recommended: c.recommended,
+          }))}
+        />
+        {value.sendAt === "at_minute" && (
+          <span className="flex flex-wrap items-center gap-2 text-[12.5px] text-ink-2">
+            <label htmlFor={`${id}-minute`}>Pop up</label>
+            <input
+              id={`${id}-minute`}
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={LIMITS.sendAfterMin}
+              value={value.sendAfterMin || ""}
+              onChange={(e) =>
+                set({ sendAfterMin: Math.trunc(Number(e.target.value)) || 0 })
+              }
+              aria-invalid={Boolean(errors.sendAfterMin)}
+              className={`field h-8 w-20 py-1 text-center tabular-nums ${errors.sendAfterMin ? "border-live/60" : ""}`}
+            />
+            <span>minutes after you go live</span>
+            {durationMin > 0 && (
+              <span className="text-ink-3">
+                · the session is {durationMin} min
+              </span>
+            )}
+          </span>
+        )}
+        {errors.sendAfterMin && (
+          <p className="text-[12px] text-live">{errors.sendAfterMin}</p>
+        )}
+
+        {link ? (
+          <div className="rounded-lg border border-line px-2">
+            <Toggle
+              checked={value.askRating}
+              disabled={locked}
+              onChange={(askRating) => set({ askRating })}
+              label="Also ask for a 1–5 star rating"
+              description="Keeps your session ratings comparable across webinars, whatever the external form asks."
+            />
+          </div>
+        ) : (
+          <QuestionList
+            value={value}
+            locked={locked}
+            errors={errors}
+            set={set}
+            setQ={setQ}
+          />
+        )}
       </div>
+      {aside}
     </div>
   );
 }
