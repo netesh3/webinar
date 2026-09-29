@@ -74,39 +74,36 @@ export function SurveyBuilder({
 
   return (
     <div className="grid gap-3.5">
-      <div className="grid items-start gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
-        <Segmented
-          label="Survey type"
-          name={`${id}-mode`}
-          value={value.mode}
-          disabled={locked}
-          onChange={(mode) => set({ mode: mode as SurveyInput["mode"] })}
-          options={[
-            {
-              id: "builtin",
-              label: "Rating survey",
-              icon: "star",
-              tip: "1–5 stars plus a few short questions, answered right in the webinar.",
-            },
-            {
-              id: "link",
-              label: "Survey link",
-              icon: "open_in_new",
-              tip: "Send people to your Google Form, Typeform or any https:// survey.",
-            },
-          ]}
-        />
-        <TextInput
-          id={`${id}-title`}
-          label="Title"
-          compact
-          value={value.title}
-          placeholder={DEFAULT_TITLE}
-          max={LIMITS.title}
-          error={errors.title}
-          onChange={(title) => set({ title })}
-        />
-      </div>
+      <TextInput
+        id={`${id}-title`}
+        label="Title"
+        value={value.title}
+        placeholder={DEFAULT_TITLE}
+        max={LIMITS.title}
+        error={errors.title}
+        onChange={(title) => set({ title })}
+      />
+      <Segmented
+        label="Survey type"
+        name={`${id}-mode`}
+        value={value.mode}
+        disabled={locked}
+        onChange={(mode) => set({ mode: mode as SurveyInput["mode"] })}
+        options={[
+          {
+            id: "builtin",
+            label: "Rating survey",
+            icon: "star",
+            tip: "1–5 stars plus a few short questions, answered right in the webinar.",
+          },
+          {
+            id: "link",
+            label: "Survey link",
+            icon: "open_in_new",
+            tip: "Send people to your Google Form, Typeform or any https:// survey.",
+          },
+        ]}
+      />
       {locked && (
         <p className="text-[12px] text-ink-3">
           People have answered, so the type and questions are fixed. You can
@@ -543,7 +540,6 @@ function TextInput({
   error,
   hint,
   type = "text",
-  compact,
 }: {
   id: string;
   label: string;
@@ -554,8 +550,6 @@ function TextInput({
   error?: string;
   hint?: string;
   type?: string;
-  /** Segmented-control height, for a field sharing a row with one. */
-  compact?: boolean;
 }) {
   return (
     <div>
@@ -565,7 +559,7 @@ function TextInput({
       <input
         id={id}
         type={type}
-        className={`field ${compact ? "h-[34px] text-[13.5px]" : ""} ${error ? "border-live/60" : ""}`}
+        className={`field ${error ? "border-live/60" : ""}`}
         value={value}
         placeholder={placeholder}
         maxLength={max}
