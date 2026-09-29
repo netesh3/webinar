@@ -465,6 +465,16 @@ export const engageApi = {
   createCrmStarterTemplates: () =>
     post<CRMStarterTemplatesResponse>("/api/host/crm/templates/starters"),
 
+  /** Submit wording the host typed. Meta reviews it before it can be sent. */
+  createCrmWording: (body: { body: string; category: "UTILITY" | "MARKETING" }) =>
+    post<{
+      name: string;
+      language: string;
+      status: string;
+      category: string;
+      body: string;
+    }>("/api/host/crm/templates", body),
+
   /** The Automations page: ready-made recipes over the drip and bot engines. */
   crmRecipes: () => request<CRMRecipesResponse>("/api/host/crm/recipes", fresh),
 

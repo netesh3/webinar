@@ -11,17 +11,22 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { engageApi } from "../../api";
-import { Alert, Modal, Spinner } from "@/components/controls";
+import { Alert, Spinner } from "@/components/controls";
 import { useSession, useToast } from "@/components/providers";
 import { ApiError } from "@/lib/api";
 import {
   SlotReminder,
   type CRMMergeField,
   type CRMRecipe,
+  type CRMStarterTemplate,
   type CRMTemplate,
   type MessageSlot,
 } from "@/lib/api-types";
-import { StarterTemplates } from "../starter-templates";
+import {
+  resolveStarterTemplate,
+  slotWithWording,
+  WriteWordingDialog,
+} from "../write-wording-dialog";
 import {
   clearPatch,
   normalizeSlots,
@@ -205,7 +210,7 @@ export const ScheduleMessagesTab = forwardRef<
       const problem = slotReady(next);
       if (problem) {
         notify(problem, "error");
-        return;
+        return false;
       }
       const previous = slots;
       applyLocal(next);
@@ -220,7 +225,7 @@ export const ScheduleMessagesTab = forwardRef<
             });
             setSlots(normalizeSlots(saved.slots));
           }
-          return;
+          return true;
         }
         if (slug) {
           const saved = await engageApi.setWebinarMessageSlots(slug, {
@@ -228,16 +233,18 @@ export const ScheduleMessagesTab = forwardRef<
           });
           pending.current.delete(next.kind);
           setSlots(normalizeSlots(saved.slots));
-          return;
+          return true;
         }
         pending.current.set(next.kind, next);
         pendingChanged();
+        return true;
       } catch (err) {
         setSlots(previous);
         notify(
           err instanceof ApiError ? err.message : "Could not save that message.",
           "error",
         );
+        return false;
       }
     },
     [applyLocal, notify, pendingChanged, slug, slots],
@@ -294,6 +301,28 @@ export const ScheduleMessagesTab = forwardRef<
     ? whenText(webinar.startsAt, webinar.timeZone)
     : "";
 
+  async function applyWording(starter: CRMStarterTemplate): Promise<boolean> {
+    if (!slot) return false;
+    const resolved = await resolveStarterTemplate(starter, templates);
+    if (!resolved?.template.sendable) {
+      notify(
+        "That wording isn't ready to use yet. Refresh your templates once Meta has approved it.",
+        "error",
+      );
+      return false;
+    }
+    const template = resolved.template;
+    if (resolved.templates !== templates) setTemplates(resolved.templates);
+    const ok = await commit(
+      slotWithWording(slot, starter, template, previewFields),
+      forAll,
+    );
+    if (!ok) return false;
+    notify(`Using the ${starter.use} wording on this message.`, "ok");
+    setWriting(false);
+    return true;
+  }
+
   return (
     <div className="grid gap-3">
       {error && <Alert tone="error">{error}</Alert>}
@@ -331,23 +360,12 @@ export const ScheduleMessagesTab = forwardRef<
       )}
       {writing &&
         createPortal(
-          <Modal
-            open
+          <WriteWordingDialog
+            connected={connected}
             onClose={() => setWriting(false)}
-            size="lg"
-            title="Write your own wording"
-          >
-            <div className="grid gap-3">
-              <Alert tone="info">
-                Meta approves every message before it can be sent, usually in
-                minutes. Start from these, written for webinars.
-              </Alert>
-              <StarterTemplates
-                connected={connected}
-                onCreated={() => setTick((n) => n + 1)}
-              />
-            </div>
-          </Modal>,
+            onCreated={() => setTick((n) => n + 1)}
+            onUse={applyWording}
+          />,
           document.body,
         )}
       </div>

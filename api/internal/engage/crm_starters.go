@@ -2,8 +2,13 @@ package engage
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/httpx"
@@ -128,6 +133,123 @@ func (s *Module) handleCreateCRMStarterTemplates(w http.ResponseWriter, r *http.
 		s.log.Warn("crm starter templates: resync", "host", user.ID, "error", err)
 	}
 	httpx.JSON(w, http.StatusOK, out)
+}
+
+/* handleCreateCRMWording submits wording the host typed, for Meta to approve.
+ * An approved starter is chosen in the dialog instead; this is the blank page under it. */
+func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
+	if s.whatsapp == nil || !s.whatsapp.Enabled() {
+		httpx.Error(w, http.StatusServiceUnavailable, "whatsapp_unset", "WhatsApp is not set up on this instance.")
+		return
+	}
+	if user.WhatsAppToken == "" || user.WhatsAppWABAID == "" {
+		httpx.Error(w, http.StatusUnprocessableEntity, "whatsapp_not_connected",
+			"Connect your WhatsApp Business account first.")
+		return
+	}
+	var req struct {
+		Body     string `json:"body"`
+		Category string `json:"category"`
+	}
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	body := strings.TrimSpace(req.Body)
+	if body == "" || utf8.RuneCountInString(body) > 1024 {
+		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_body", "Write the message, up to 1024 characters.")
+		return
+	}
+	category := strings.ToUpper(strings.TrimSpace(req.Category))
+	if category == "" {
+		category = "UTILITY"
+	}
+	if category != "UTILITY" && category != "MARKETING" {
+		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_category", "Choose Utility or Marketing.")
+		return
+	}
+	examples, err := bodyExamples(body)
+	if err != nil {
+		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_body", err.Error())
+		return
+	}
+	name, err := customTemplateName()
+	if err != nil {
+		s.fail(w, r, "crm wording name", err)
+		return
+	}
+	status, err := s.whatsapp.CreateTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppWABAID, wa.NewTemplate{
+		Name: name, Language: "en", Category: category, Body: body,
+		Examples: examples, Footer: "Reply STOP to opt out",
+	})
+	if err != nil {
+		httpx.Error(w, http.StatusUnprocessableEntity, "template_refused", err.Error())
+		return
+	}
+	if status == "" {
+		status = "PENDING"
+	}
+	if err := s.syncTemplates(r.Context(), user); err != nil {
+		s.log.Warn("crm wording: resync", "host", user.ID, "error", err)
+	}
+	httpx.JSON(w, http.StatusOK, struct {
+		Name     string `json:"name"`
+		Language string `json:"language"`
+		Status   string `json:"status"`
+		Category string `json:"category"`
+		Body     string `json:"body"`
+	}{Name: name, Language: "en", Status: status, Category: category, Body: body})
+}
+
+var (
+	anyPlaceholder      = regexp.MustCompile(`\{\{[^}]*\}\}`)
+	numberedPlaceholder = regexp.MustCompile(`\{\{\s*(\d+)\s*\}\}`)
+)
+
+/* bodyExamples checks {{1}}, {{2}}… and returns one sample value per blank.
+ * Meta refuses a template whose blanks skip a number or aren't numbered. */
+func bodyExamples(body string) ([]string, error) {
+	if len(anyPlaceholder.FindAllString(body, -1)) != len(numberedPlaceholder.FindAllString(body, -1)) {
+		return nil, fmt.Errorf("use {{1}}, {{2}} for the parts that change, like a name or the webinar")
+	}
+	matches := numberedPlaceholder.FindAllStringSubmatch(body, -1)
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	seen := map[int]bool{}
+	max := 0
+	for _, m := range matches {
+		n, _ := strconv.Atoi(m[1])
+		if n < 1 {
+			return nil, fmt.Errorf("number the blanks {{1}}, {{2}}, and so on")
+		}
+		seen[n] = true
+		if n > max {
+			max = n
+		}
+	}
+	if len(seen) != max || max > 10 {
+		return nil, fmt.Errorf("number the blanks {{1}}, {{2}}, in order, with none skipped")
+	}
+	samples := []string{"Priya", "Morning Routines That Stick", "Friday at 6:30 PM", "the host", "the link"}
+	out := make([]string, max)
+	for i := range out {
+		if i < len(samples) {
+			out[i] = samples[i]
+			continue
+		}
+		out[i] = "example"
+	}
+	return out, nil
+}
+
+func customTemplateName() (string, error) {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("wl_own_%x", b), nil
 }
 
 func newTemplate(t types.CRMStarterTemplate, base string) wa.NewTemplate {

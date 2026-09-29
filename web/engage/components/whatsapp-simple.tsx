@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { engageApi } from "../api";
 import { MESSAGES_HREF } from "../slots";
-import { Alert, Modal, Spinner } from "@/components/controls";
+import { Spinner } from "@/components/controls";
 import { MaterialIcon } from "@/components/icons";
 import { useToast } from "@/components/providers";
 import { Button } from "@/components/ui";
@@ -15,6 +15,7 @@ import type {
   CRMRecipe,
   CRMRecipesResponse,
   CRMSetup,
+  CRMStarterTemplate,
   CRMTag,
   CRMTemplate,
   MessageSlot,
@@ -23,7 +24,11 @@ import type {
 import { KeywordsDialog } from "./automations";
 import { RuleBuilder } from "./rule-builder";
 import { SlotEditor } from "./slot-editor";
-import { StarterTemplates } from "./starter-templates";
+import {
+  resolveStarterTemplate,
+  slotWithWording,
+  WriteWordingDialog,
+} from "./write-wording-dialog";
 import { WhatsAppAuto } from "./whatsapp-auto";
 import { WhatsAppMetrics } from "./whatsapp-metrics";
 import { WhatsAppReplies } from "./whatsapp-replies";
@@ -56,7 +61,10 @@ export function WhatsAppSimple({
     null,
   );
   const [editError, setEditError] = useState<string | null>(null);
-  const [writing, setWriting] = useState(false);
+  const [writingFor, setWritingFor] = useState<{
+    slot: MessageSlot;
+    title: string;
+  } | null>(null);
   const [keywords, setKeywords] = useState<CRMRecipe | null>(null);
   const [building, setBuilding] = useState(false);
   const [busyKind, setBusyKind] = useState<string | null>(null);
@@ -118,6 +126,27 @@ export function WhatsAppSimple({
   async function saveTiming(slot: MessageSlot, timing: MessageTiming) {
     const ok = await saveSlot({ ...slot, timing });
     if (ok) notify("Saved.", "ok");
+  }
+
+  async function applyWording(starter: CRMStarterTemplate): Promise<boolean> {
+    if (!writingFor) return false;
+    const resolved = await resolveStarterTemplate(starter, templates ?? []);
+    if (!resolved?.template.sendable) {
+      notify(
+        "That wording isn't ready to use yet. Refresh your templates once Meta has approved it.",
+        "error",
+      );
+      return false;
+    }
+    const template = resolved.template;
+    const ok = await saveSlot(
+      slotWithWording(writingFor.slot, starter, template, fields),
+    );
+    if (!ok) return false;
+    notify(`Using the ${starter.use} wording on ${writingFor.title}.`, "ok");
+    onTemplatesChanged();
+    setWritingFor(null);
+    return true;
   }
 
   async function toggleRule(d: CRMDrip, active: boolean) {
@@ -241,27 +270,21 @@ export function WhatsAppSimple({
             });
           }}
           onWriteOwn={() => {
+            setWritingFor(editing);
             setEditing(null);
-            setWriting(true);
           }}
         />
       )}
-      {writing && (
-        <Modal open onClose={() => setWriting(false)} size="lg" title="Write your own wording">
-          <div className="grid gap-3">
-            <Alert tone="info">
-              Meta approves every message before it can be sent, usually in minutes.
-              Start from these, or write any wording in WhatsApp Manager and it shows up here.
-            </Alert>
-            <StarterTemplates
-              connected={connected}
-              onCreated={() => {
-                onTemplatesChanged();
-                refresh();
-              }}
-            />
-          </div>
-        </Modal>
+      {writingFor && (
+        <WriteWordingDialog
+          connected={connected}
+          onClose={() => setWritingFor(null)}
+          onCreated={() => {
+            onTemplatesChanged();
+            refresh();
+          }}
+          onUse={applyWording}
+        />
       )}
       {building && templates && (
         <RuleBuilder
