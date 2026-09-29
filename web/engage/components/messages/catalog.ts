@@ -110,7 +110,7 @@ export function isFollowup(kind: string): boolean {
 }
 
 /** No wording resolved from any layer (builtin, default, options or webinar) —
- *  truly nothing to send yet. The row offers Choose a message. */
+ *  truly nothing to send yet. Opening the row lands on the wording list. */
 export function unconfigured(slot: MessageSlot | undefined): boolean {
   return Boolean(slot && !slot.template);
 }

@@ -18,7 +18,7 @@ import {
   type MessageSlot,
 } from "@/lib/api-types";
 import { exampleFor, renderTemplate } from "../crm-templates";
-import { PhoneFrame, Switch } from "../wa-kit";
+import { PhoneFrame } from "../wa-kit";
 import { guessParams } from "../wa-messages";
 import {
   hasChannel,
@@ -30,8 +30,9 @@ import {
 } from "./catalog";
 import { WordingPicker } from "./wording-picker";
 
-/* The selected message: switch, channels, when, wording, and the preview
- * as the attendee reads it — this webinar's title, the coach's own name. */
+/* The selected message. WhatsApp and Email are tabs at the top: each tab shows
+ * only that channel, and a tick on the tab means this message sends there.
+ * The row's switch is the only on/off control — this pane does not repeat it. */
 
 export type ReminderTimesEditor = (props: {
   value: number[];
@@ -189,119 +190,164 @@ export function MessagePane({
     hasChannel(slot, ChannelWhatsApp) ? "whatsapp" : "email",
   );
 
+  const whatsappOn = hasChannel(slot, ChannelWhatsApp);
+  const emailOn = hasChannel(slot, ChannelEmail);
+
   return (
     <aside className="grid min-w-0 content-start gap-3 rounded-xl border border-line bg-surface p-3.5 [&>*]:min-w-0">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-[14px] font-semibold text-ink">
-            {meta?.title ?? slot.kind}
-          </h3>
-          <p className="text-[11.5px] text-ink-3">{meta?.blurb}</p>
-        </div>
-        <Switch
-          checked={slot.enabled}
-          onChange={(on) => onChange({ ...slot, enabled: on })}
-          label={`${meta?.title ?? "Message"} on`}
-        />
+      <div>
+        <h3 className="text-[14px] font-semibold text-ink">
+          {meta?.title ?? slot.kind}
+        </h3>
+        <p className="text-[11.5px] text-ink-3">{meta?.blurb}</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-[10px] border border-line bg-surface-2 px-2.5 py-2">
-        <span className="mr-auto text-[12px] text-ink-2">Send this by</span>
-        <Check
-          checked={hasChannel(slot, ChannelEmail)}
-          label="Email"
-          onChange={(on) => onChange(withChannel(slot, ChannelEmail, on))}
-        />
-        <Check
-          checked={hasChannel(slot, ChannelWhatsApp)}
+      <div
+        role="tablist"
+        aria-label="Channel"
+        className="flex gap-0.5 rounded-lg bg-surface-2 p-0.5 text-[13px] font-medium"
+      >
+        <ChannelTab
           label="WhatsApp"
-          onChange={(on) => onChange(withChannel(slot, ChannelWhatsApp, on))}
+          selected={channel === "whatsapp"}
+          included={whatsappOn}
+          onClick={() => setChannel("whatsapp")}
         />
-      </div>
-
-      <WhenEditor slot={slot} onChange={onChange} />
-
-      <WordingPicker
-        kind={slot.kind}
-        templates={templates}
-        templateName={slot.template}
-        language={slot.language}
-        params={slot.params ?? []}
-        fields={fields}
-        connected={connected}
-        onPick={(next) =>
-          onChange({
-            ...slot,
-            template: next.name,
-            language: next.language,
-            params: guessParams(next, wordingKind(slot.kind), fields),
-            enabled: isFollowup(slot.kind) ? true : slot.enabled,
-          })
-        }
-        onWriteOwn={onWriteOwn}
-        after={
-          <Check
-            checked={forAll}
-            label="Use this for all my webinars"
-            size="quiet"
-            onChange={onForAll}
-          />
-        }
-      />
-
-      <div className="flex gap-0.5 rounded-lg bg-surface-2 p-0.5 text-[12px] font-medium">
-        {(["whatsapp", "email"] as const).map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => setChannel(item)}
-            className={`flex-1 rounded-md px-2 py-[5px] ${
-              channel === item
-                ? "bg-surface font-medium text-ink shadow-sm"
-                : "text-ink-2"
-            }`}
-          >
-            {item === "whatsapp" ? "WhatsApp" : "Email"}
-          </button>
-        ))}
+        <ChannelTab
+          label="Email"
+          selected={channel === "email"}
+          included={emailOn}
+          onClick={() => setChannel("email")}
+        />
       </div>
 
       {channel === "whatsapp" ? (
-        <div className="[&_.min-h-64]:min-h-0 [&_.min-h-64]:py-2.5">
-          <PhoneFrame title={coachName} subtitle="Business account">
-            <div className="max-w-[92%] rounded-lg rounded-tl-none bg-white px-2.5 py-2 text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#111] shadow-sm">
-              {rendered || mail.body}
-              {template && (template.buttons ?? []).length > 0 && (
-                <div className="mt-1.5 flex flex-col border-t border-black/5 pt-1">
-                  {template.buttons.map((button) => (
-                    <span
-                      key={button.text}
-                      className="inline-flex items-center justify-center gap-1 py-1 text-[12px] font-medium text-[#027eb5]"
-                    >
-                      <MaterialIcon name="login" className="size-[14px]" />
-                      {button.text}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </PhoneFrame>
-        </div>
+        <>
+          <SendOn
+            label="Send on WhatsApp"
+            checked={whatsappOn}
+            onChange={(on) => onChange(withChannel(slot, ChannelWhatsApp, on))}
+          />
+          <WhenEditor slot={slot} onChange={onChange} />
+          <WordingPicker
+            kind={slot.kind}
+            templates={templates}
+            templateName={slot.template}
+            language={slot.language}
+            params={slot.params ?? []}
+            fields={fields}
+            connected={connected}
+            onPick={(next) =>
+              onChange({
+                ...slot,
+                template: next.name,
+                language: next.language,
+                params: guessParams(next, wordingKind(slot.kind), fields),
+                enabled: isFollowup(slot.kind) ? true : slot.enabled,
+              })
+            }
+            onWriteOwn={onWriteOwn}
+          />
+          <div className="[&_.min-h-64]:min-h-0 [&_.min-h-64]:py-2.5">
+            <PhoneFrame title={coachName} subtitle="Business account">
+              <div className="max-w-[92%] rounded-lg rounded-tl-none bg-white px-2.5 py-2 text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#111] shadow-sm">
+                {rendered || mail.body}
+                {template && (template.buttons ?? []).length > 0 && (
+                  <div className="mt-1.5 flex flex-col border-t border-black/5 pt-1">
+                    {template.buttons.map((button) => (
+                      <span
+                        key={button.text}
+                        className="inline-flex items-center justify-center gap-1 py-1 text-[12px] font-medium text-[#027eb5]"
+                      >
+                        <MaterialIcon name="login" className="size-[14px]" />
+                        {button.text}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </PhoneFrame>
+          </div>
+        </>
       ) : (
-        <div className="rounded-xl border border-line bg-surface-2 p-3">
-          <p className="text-[11px] text-ink-3">From {coachName}</p>
-          <p className="mt-1 text-[13px] font-semibold text-ink">{mail.subject}</p>
-          <p className="mt-2 text-[12.5px] leading-relaxed whitespace-pre-wrap text-ink-2">
-            {mail.body}
-          </p>
-        </div>
+        <>
+          <SendOn
+            label="Send on Email"
+            checked={emailOn}
+            onChange={(on) => onChange(withChannel(slot, ChannelEmail, on))}
+          />
+          <WhenEditor slot={slot} onChange={onChange} />
+          <div className="grid gap-1.5 rounded-[10px] border border-line bg-surface px-2.5 py-2.5">
+            <span className="text-[12px] text-ink-2">Message</span>
+            <p className="text-[11px] text-ink-3">From {coachName}</p>
+            <p className="text-[13px] font-semibold text-ink">{mail.subject}</p>
+            <p className="text-[12.5px] leading-relaxed whitespace-pre-wrap text-ink-2">
+              {mail.body}
+            </p>
+          </div>
+        </>
       )}
+
+      <Check
+        checked={forAll}
+        label="Use this for all my webinars"
+        size="quiet"
+        onChange={onForAll}
+      />
 
       <p className="text-[11.5px] leading-relaxed text-ink-3">
         Channels, times and wording here are for this webinar. Tick “Use this for
         all my webinars” to make it your default.
       </p>
     </aside>
+  );
+}
+
+function ChannelTab({
+  label,
+  selected,
+  included,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  included: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      onClick={onClick}
+      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-[6px] ${
+        selected ? "bg-surface font-medium text-ink shadow-sm" : "text-ink-2"
+      }`}
+    >
+      {label}
+      {included && (
+        <MaterialIcon name="check" className="size-[14px] text-ok" />
+      )}
+    </button>
+  );
+}
+
+function SendOn({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <div className="grid gap-0.5">
+      <Check checked={checked} label={label} onChange={onChange} />
+      <p className="pl-[22px] text-[11px] text-ink-3">
+        Send on WhatsApp, email, or both.
+      </p>
+    </div>
   );
 }
 
