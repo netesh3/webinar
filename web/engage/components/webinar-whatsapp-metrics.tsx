@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { engageApi } from "../api";
 import { ENGAGE_HOME } from "../slots";
-import { MaterialIcon } from "@/components/icons";
+import { MaterialIcon, WhatsAppIcon } from "@/components/icons";
 import { useAppConfig, useSession } from "@/components/providers";
 import type { CRMWebinarMetricsResponse } from "@/lib/api-types";
 import { FailureDialog, MetricTiles } from "./metric-tiles";
@@ -68,7 +68,7 @@ export function WebinarWhatsAppMetrics({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13px] text-ink-2">
           <span className="grid size-[26px] shrink-0 place-items-center rounded-md bg-ok-soft text-ok">
-            <MaterialIcon name="chat" className="!text-[16px]" />
+            <WhatsAppIcon className="size-4" />
           </span>
           <b className="font-semibold text-ink">WhatsApp for this webinar</b>
           <span className="truncate text-[12px] text-ink-3">
