@@ -37,6 +37,14 @@ const minScheduleLead = time.Hour
 
 const scheduleLeadError = "Schedule it at least an hour from now."
 
+/* hostStartLead is how early Go live may open a scheduled webinar.
+ *
+ * Five minutes, and only for a start the host picked. An instant webinar is
+ * stamped at now, so this window is already open when that room is created.
+ * The hour above is a different rule: it belongs to the schedule form.
+ */
+const hostStartLead = 5 * time.Minute
+
 /* handleHostWebinars is GET /api/host/webinars — one page of the sessions this
  * account owns, in the bucket the portal is showing.
  *
@@ -157,14 +165,22 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
+	user := userFromContext(r.Context())
+	/* Before the hour-lead check. An instant create has no time picker, so a
+	 * soon start must come back as "this account cannot", not as "schedule it
+	 * at least an hour from now". */
+	if in.Instant && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
+		return
+	}
+	/* Go live now. The server's clock, not the browser's: a client clock a
+	 * few minutes fast would otherwise land outside the five-minute start
+	 * window and refuse the start that this button exists to do. */
+	if in.Instant {
+		in.StartsAt = time.Now().UTC().Format(time.RFC3339)
+	}
 	in, fields := s.normalizeWebinarInput(in, true, "")
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
-		return
-	}
-
-	user := userFromContext(r.Context())
-	if in.Instant && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
 		return
 	}
 	/* Registration off is the name-only door. Without the switch it is not saved:
@@ -598,14 +614,15 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 	 *
 	 * Create, and only a scheduled webinar: a draft is not a commitment to run
 	 * at that instant. Anything sooner than the lead — including a time that
-	 * has already passed — is the same refusal.
+	 * has already passed — is the same refusal. An instant webinar is exempt:
+	 * there is no time to pick, and the create handler stamps the start to now.
 	 *
 	 * Update: only when this save moves the start onto a time inside the lead.
 	 * A webinar about to begin, or one that already ran, can still be edited.
 	 *
 	 * fields["startsAt"] == "": skipped when the date was already rejected above
 	 * (empty or unparsable) so this does not overwrite that message. */
-	if fields["startsAt"] == "" && startsAt.Before(time.Now().Add(minScheduleLead)) {
+	if fields["startsAt"] == "" && !in.Instant && startsAt.Before(time.Now().Add(minScheduleLead)) {
 		switch {
 		case isCreate && in.Status == types.StatusScheduled:
 			fields["startsAt"] = scheduleLeadError
@@ -727,6 +744,24 @@ func normalizeReminders(in []int) ([]int, string) {
 func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
 
+	existing, err := s.store.WebinarBySlug(r.Context(), slug)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "start webinar", err)
+		return
+	}
+	/* Already live is a rejoin, not a new start. Ended is left to SetStatus.
+	 * Scheduled and draft wait until five minutes before the start. */
+	if existing.Status == types.StatusScheduled || existing.Status == types.StatusDraft {
+		if msg, closed := goLiveClosed(existing); closed {
+			httpx.Error(w, http.StatusForbidden, "too_soon", msg)
+			return
+		}
+	}
+
 	wb, err := s.store.SetStatus(r.Context(), slug, types.StatusLive)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
@@ -764,6 +799,24 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 
 	s.log.Info("webinar started", "slug", slug, "room", room)
 	httpx.JSON(w, http.StatusOK, wb)
+}
+
+/* goLiveClosed reports whether Go live is still shut, and the sentence to show.
+ *
+ * Open from five minutes before the start, and any time after, until the
+ * webinar has ended (the caller does not ask once it is live or over). A start
+ * that cannot be read is not a reason to trap the host, so that case opens.
+ */
+func goLiveClosed(wb types.Webinar) (string, bool) {
+	startsAt, err := time.Parse(time.RFC3339, wb.StartsAt)
+	if err != nil {
+		return "", false
+	}
+	opens := startsAt.Add(-hostStartLead)
+	if !time.Now().Before(opens) {
+		return "", false
+	}
+	return "Go live opens 5 minutes before the start, at " + localTime(opens, wb.TimeZone) + ".", true
 }
 
 // handleTransferHost hands a live session to another panelist already in the room.

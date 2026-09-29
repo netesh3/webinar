@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ConfirmModal, Menu } from "./controls";
 import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, kindLabel } from "./ui";
@@ -17,6 +17,8 @@ import {
 import { api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
+import { canGoLive, goLiveWaitReason } from "@/lib/go-live";
+import { useNow } from "@/lib/clock";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
@@ -40,6 +42,7 @@ export function HostWebinarRows({
 }) {
   const router = useRouter();
   const { notify } = useToast();
+  const now = useNow(15_000);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Webinar | null>(null);
   const bypass = isDevAuthBypassActive();
@@ -112,6 +115,7 @@ export function HostWebinarRows({
               webinar={w}
               readOnly={readOnly}
               busy={busy === w.id}
+              now={now}
               onStart={() => void start(w)}
               onDelete={() => setConfirmDelete(w)}
             />
@@ -149,12 +153,15 @@ export function HostWebinarList({ webinars }: { webinars: Webinar[] }) {
 function HostCard({
   webinar: w,
   readOnly,
+  busy,
+  now,
   onStart,
   onDelete,
 }: {
   webinar: Webinar;
   readOnly: boolean;
   busy: boolean;
+  now: number | null;
   onStart: () => void;
   onDelete: () => void;
 }) {
@@ -181,8 +188,13 @@ function HostCard({
   const origin = useShareOrigin();
   const { notify } = useToast();
   const router = useRouter();
+  const waitReasonId = useId();
   const roomHref = bypass ? "/preview/room" : `/host/${w.id}/room`;
   const registerUrl = `${origin}/webinars/${w.id}`;
+  const scheduled = !isDraft && !isEnded && !isLive;
+  const liveOpen = isLive || (scheduled && canGoLive(w.startsAt, now));
+  const showWait = !readOnly && scheduled && now != null && !canGoLive(w.startsAt, now);
+  const waitReason = goLiveWaitReason(w.startsAt, w.timeZone);
 
   return (
     <Card className="p-4 sm:p-5">
@@ -243,8 +255,9 @@ function HostCard({
           </p>
         </div>
 
-        {/* Primary actions — Host / Share / Manage / Attendees (or Admit). */}
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {/* Primary actions — Go live / Share / Manage / Attendees (or Admit). */}
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <div className="flex flex-wrap items-center justify-end gap-2">
           {readOnly ? (
             <ButtonLink
               href={roomHref}
@@ -272,12 +285,22 @@ function HostCard({
               >
                 Copy link
               </Button>
+              {scheduled && (
+                <Button
+                  size="sm"
+                  onClick={onStart}
+                  disabled={busy || !liveOpen}
+                  aria-describedby={showWait ? waitReasonId : undefined}
+                >
+                  {busy ? "Starting…" : "Go live"}
+                </Button>
+              )}
               {isLive ? (
                 <ButtonLink href={roomHref} size="sm" target="_blank" rel="noopener noreferrer">
                   Rejoin
                 </ButtonLink>
               ) : (
-                <ButtonLink href={`/host/${w.id}`} size="sm">
+                <ButtonLink href={`/host/${w.id}`} size="sm" variant="secondary">
                   Manage
                 </ButtonLink>
               )}
@@ -294,9 +317,9 @@ function HostCard({
               items={[
                 ...(!isDraft
                   ? [
-                      isLive
-                        ? { kind: "action" as const, label: "Manage", onSelect: () => router.push(`/host/${w.id}`) }
-                        : { kind: "action" as const, label: "Go live now", onSelect: onStart },
+                      ...(isLive
+                        ? [{ kind: "action" as const, label: "Manage", onSelect: () => router.push(`/host/${w.id}`) }]
+                        : []),
                       ...(needsAdmit
                         ? [{ kind: "action" as const, label: "Admit people", onSelect: () => router.push(`/host/${w.id}?tab=people`) }]
                         : []),
@@ -307,6 +330,12 @@ function HostCard({
                 { kind: "action" as const, label: "Delete", danger: true, onSelect: onDelete },
               ]}
             />
+          )}
+          </div>
+          {showWait && (
+            <p id={waitReasonId} className="max-w-56 text-right text-[11.5px] leading-snug text-ink-3">
+              {waitReason}
+            </p>
           )}
         </div>
       </div>
