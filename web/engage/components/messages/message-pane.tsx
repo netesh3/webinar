@@ -18,7 +18,7 @@ import {
   type MessageSlot,
 } from "@/lib/api-types";
 import { exampleFor, renderTemplate } from "../crm-templates";
-import { PhoneFrame } from "../wa-kit";
+import { PersonAvatar, PhoneFrame } from "../wa-kit";
 import { guessParams } from "../wa-messages";
 import {
   hasChannel,
@@ -280,13 +280,21 @@ export function MessagePane({
             onChange={(on) => onChange(withChannel(slot, ChannelEmail, on))}
           />
           <WhenEditor slot={slot} onChange={onChange} />
-          <div className="grid gap-1.5 rounded-[10px] border border-line bg-surface px-2.5 py-2.5">
-            <span className="text-[12px] text-ink-2">Message</span>
-            <p className="text-[11px] text-ink-3">From {coachName}</p>
-            <p className="text-[13px] font-semibold text-ink">{mail.subject}</p>
-            <p className="text-[12.5px] leading-relaxed whitespace-pre-wrap text-ink-2">
-              {mail.body}
-            </p>
+          <div className="[&_.min-h-64]:min-h-0 [&_.min-h-64]:py-2.5">
+            <EmailFrame from={coachName} subject={mail.subject} body={mail.body}>
+              {template && (template.buttons ?? []).length > 0 && (
+                <div className="mt-2.5 flex flex-col gap-1.5 border-t border-black/5 pt-2">
+                  {template.buttons.map((button) => (
+                    <span
+                      key={button.text}
+                      className="inline-flex items-center justify-center gap-1 rounded-md bg-brand-soft py-1.5 text-[12px] font-medium text-brand"
+                    >
+                      {button.text}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </EmailFrame>
           </div>
         </>
       )}
@@ -341,6 +349,51 @@ function ChannelTab({
         />
       )}
     </button>
+  );
+}
+
+/** The email as the attendee opens it, in the same frame as the WhatsApp phone. */
+function EmailFrame({
+  from,
+  subject,
+  body,
+  children,
+}: {
+  from: string;
+  subject: string;
+  body: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="mx-auto w-full max-w-[17rem] rounded-[2rem] border-[7px] border-[#1c1c1e] bg-[#1c1c1e] shadow-lg">
+      <div className="overflow-hidden rounded-[1.5rem]">
+        <div className="flex items-center gap-2 bg-brand px-3 py-2.5 text-white">
+          <span className="grid size-[26px] shrink-0 place-items-center rounded-full bg-white/15">
+            <MaterialIcon name="mail" className="!text-[15px]" />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-[12.5px] font-semibold">Inbox</div>
+            <div className="truncate text-[10.5px] opacity-80">Email</div>
+          </div>
+        </div>
+        <div className="grid min-h-64 content-start bg-[#f4f5f7] px-2.5 py-3">
+          <div className="rounded-lg bg-white px-2.5 py-2.5 text-[#111] shadow-sm">
+            <p className="text-[13px] leading-snug font-semibold">{subject}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <PersonAvatar name={from} size={22} />
+              <div className="min-w-0">
+                <p className="truncate text-[11.5px] font-semibold">{from}</p>
+                <p className="text-[10px] text-[#667]">to you</p>
+              </div>
+            </div>
+            <p className="mt-2.5 text-[12.5px] leading-relaxed whitespace-pre-wrap">
+              {body}
+            </p>
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
