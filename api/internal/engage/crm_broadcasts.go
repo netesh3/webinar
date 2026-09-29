@@ -102,7 +102,58 @@ func (s *Module) handleCRMAudience(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "crm audience", err)
 		return
 	}
+	if len(body.Params) > 0 && counts.Recipients > 0 {
+		samples, err := s.audienceSamples(r, user, a, body.Params)
+		if err != nil {
+			s.fail(w, r, "crm audience: samples", err)
+			return
+		}
+		counts.Samples = samples
+	}
 	httpx.JSON(w, http.StatusOK, counts)
+}
+
+// previewSamples is how many recipients the send preview can step through.
+const previewSamples = 5
+
+/* audienceSamples fills in the params for the first few recipients, with the same
+ * resolution the broadcast uses — so the preview shows what that person will actually
+ * read, not a made-up example.
+ */
+func (s *Module) audienceSamples(r *http.Request, user store.User, a crmstore.Audience, params []types.CRMParam) ([]types.CRMAudienceSample, error) {
+	ctx := r.Context()
+	contacts, err := s.store.AudienceContacts(ctx, user.ID, a, previewSamples)
+	if err != nil && !errors.Is(err, store.ErrConflict) {
+		return nil, err
+	}
+	if len(contacts) > previewSamples {
+		contacts = contacts[:previewSamples]
+	}
+	var wb types.Webinar
+	var watched map[string]int
+	if a.WebinarSlug != "" {
+		if wb, err = s.store.WebinarBySlug(ctx, a.WebinarSlug); err != nil {
+			return nil, err
+		}
+		if usesField(params, "watched") {
+			if watched, err = s.store.ContactWatchMinutes(ctx, user.ID, a.WebinarSlug); err != nil {
+				return nil, err
+			}
+		}
+	}
+	out := make([]types.CRMAudienceSample, 0, len(contacts))
+	for _, c := range contacts {
+		name := c.Name
+		if name == "" {
+			name = c.Phone
+		}
+		out = append(out, types.CRMAudienceSample{
+			ContactID: c.ID,
+			Name:      name,
+			Params:    resolveBroadcastParams(params, c, wb, user.Name, watched[c.ID]),
+		})
+	}
+	return out, nil
 }
 
 /* audienceAllowed checks the audience and the webinar it names, writing the refusal
@@ -155,6 +206,20 @@ func (s *Module) audienceAllowed(w http.ResponseWriter, r *http.Request, user st
 		if g.Attendance == types.SegmentNoShow && (g.MinWatchMin > 0 || g.MaxWatchMin > 0) {
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_segment",
 				"Somebody who didn't join has no watch time to filter on.")
+			return false
+		}
+		for _, t := range g.Tiers {
+			switch t {
+			case types.TierHigh, types.TierEngaged, types.TierPassive, types.TierRisk:
+			default:
+				httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_segment",
+					"Engagement tiers are high, engaged, passive or risk. No-shows are chosen with attendance.")
+				return false
+			}
+		}
+		if g.Attendance == types.SegmentNoShow && len(g.Tiers) > 0 {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_segment",
+				"Somebody who didn't join has no engagement score to filter on.")
 			return false
 		}
 		if a.WebinarSlug == "" {
@@ -230,7 +295,7 @@ func (s *Module) handleCRMBroadcasts(w http.ResponseWriter, r *http.Request) {
 		Broadcasts: list,
 		// The same merge fields the reminders offer, from the same place, so the
 		// composer cannot offer a token the server would refuse.
-		Fields:            mergeFields,
+		Fields:            s.fieldsFor(r.Context(), user.ID),
 		WhatsAppConnected: user.WhatsAppToken != "",
 	})
 }

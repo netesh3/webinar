@@ -1,6 +1,9 @@
 package api_test
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -8,6 +11,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/netkumar/webcast/api/internal/config"
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -28,6 +32,31 @@ func signTestSupabaseToken(t *testing.T, email, name string) string {
 		"user_metadata": map[string]any{
 			"full_name": name,
 		},
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	s, err := tok.SignedString([]byte(testSupabaseJWT))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func signTestSupabaseTokenWithPicture(t *testing.T, email, name, picture string) string {
+	t.Helper()
+	now := time.Now()
+	meta := map[string]any{"full_name": name}
+	if picture != "" {
+		meta["picture"] = picture
+	}
+	claims := jwt.MapClaims{
+		"sub":           "22222222-2222-2222-2222-222222222222",
+		"email":         email,
+		"role":          "authenticated",
+		"iss":           testSupabaseURL + "/auth/v1",
+		"aud":           "authenticated",
+		"iat":           now.Unix(),
+		"exp":           now.Add(time.Hour).Unix(),
+		"user_metadata": meta,
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	s, err := tok.SignedString([]byte(testSupabaseJWT))
@@ -139,5 +168,98 @@ func TestConfigExposesGoogleAuth(t *testing.T) {
 	}
 	if strings.Contains(string(raw), testSupabaseJWT) {
 		t.Fatal("jwt secret leaked in /api/config")
+	}
+}
+
+const googlePicture = "https://lh3.googleusercontent.com/a/test-photo"
+
+func TestGooglePictureStoredAndUploadReplacesIt(t *testing.T) {
+	h := newHarness(t, withSupabaseAuth)
+
+	res, raw := h.do(http.MethodPost, "/api/auth/supabase", types.SupabaseAuthRequest{
+		AccessToken: signTestSupabaseTokenWithPicture(t, "photo@test.dev", "Photo User", googlePicture),
+	})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("create: status %d body %s", res.StatusCode, raw)
+	}
+	var acct types.Account
+	h.decode(raw, &acct)
+	if acct.AvatarURL != googlePicture {
+		t.Fatalf("avatar on create = %q", acct.AvatarURL)
+	}
+
+	res, raw = h.do(http.MethodGet, "/api/auth/me", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("me: status %d body %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &acct)
+	if acct.AvatarURL != googlePicture {
+		t.Fatalf("avatar on me = %q", acct.AvatarURL)
+	}
+
+	// A later sign-in with no picture must not wipe the one already stored.
+	res, raw = h.do(http.MethodPost, "/api/auth/supabase", types.SupabaseAuthRequest{
+		AccessToken: signTestSupabaseToken(t, "photo@test.dev", "Photo User"),
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("return: status %d body %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &acct)
+	if acct.AvatarURL != googlePicture {
+		t.Fatalf("avatar after return = %q", acct.AvatarURL)
+	}
+
+	pngBytes := onePixelPNG
+	res, raw = h.doRaw(http.MethodPost, "/api/auth/avatar", "application/octet-stream", pngBytes, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("upload: status %d body %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &acct)
+	if !strings.HasPrefix(acct.AvatarURL, "/api/auth/avatar?v=") {
+		t.Fatalf("avatar after upload = %q", acct.AvatarURL)
+	}
+
+	stored, mime, err := h.store.UserAvatarMedia(context.Background(), acct.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mime != "image/png" || !bytes.Equal(stored, pngBytes) {
+		t.Fatalf("stored mime %q len %d, want the png bytes", mime, len(stored))
+	}
+
+	res, raw = h.do(http.MethodGet, acct.AvatarURL, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("get avatar: status %d body %s", res.StatusCode, raw)
+	}
+	if ct := res.Header.Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("content-type %q", ct)
+	}
+	if !bytes.Equal(raw, pngBytes) {
+		t.Fatal("served bytes differ from the upload")
+	}
+
+	res, raw = h.doRaw(http.MethodPost, "/api/auth/avatar", "image/png", []byte("not an image"), nil)
+	if res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("bad type: status %d body %s", res.StatusCode, raw)
+	}
+
+	res, raw = h.do(http.MethodDelete, "/api/auth/avatar", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("delete: status %d body %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &acct)
+	if acct.AvatarURL != googlePicture {
+		t.Fatalf("avatar after remove = %q, want the google photo", acct.AvatarURL)
+	}
+	if _, _, err := h.store.UserAvatarMedia(context.Background(), acct.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("upload bytes after remove: %v", err)
+	}
+}
+
+func TestAvatarRejectsUnsignedUpload(t *testing.T) {
+	h := newHarness(t)
+	res, raw := h.doRaw(http.MethodPost, "/api/auth/avatar", "image/png", onePixelPNG, nil)
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d body %s, want 401", res.StatusCode, raw)
 	}
 }

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings (simple mock)</title><link rel="stylesheet" href="assets/simple.css">
+<link rel="stylesheet" href="assets/create-tabs.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0..1,0">
+<link rel="stylesheet" href="assets/settings.css">
+</head>
+<body>
+<div data-nav></div>
+<main style="max-width:64rem">
+  <a class="back" href="home.html">← Your webinars</a>
+  <h1>Settings</h1>
+  <p class="small muted" style="margin-top:4px">Your details, and the apps Webinar Liv works with.</p>
+
+  <div class="setp">
+    <!-- Left: sections -->
+    <nav class="snav">
+      <a href="#profile"><span class="ms">person</span>Profile</a>
+      <a class="on" href="#integrations"><span class="ms">extension</span>Integrations<span class="cnt">2 on</span></a>
+      <a href="#notifications"><span class="ms">notifications</span>Notifications</a>
+      <a href="#account"><span class="ms">manage_accounts</span>Account</a>
+      <div class="sep"></div>
+      <a class="out" href="#"><span class="ms">logout</span>Sign out</a>
+    </nav>
+
+    <!-- Right: Integrations, open -->
+    <section id="integrations">
+      <div class="shead">
+        <div><h2>Integrations</h2><p>Connect the apps you already use. Each one is optional — you can switch it off any time.</p></div>
+      </div>
+
+      <div class="grp">Messaging</div>
+      <div class="igrid">
+        <div class="ic">
+          <div class="ich">
+            <span class="lt wa ms">chat</span>
+            <div class="grow"><b>WhatsApp Business</b><span>Messages to your attendees</span></div>
+            <span class="sst ok">Connected</span>
+          </div>
+          <p class="icd">Confirmations, reminders and follow-ups on WhatsApp, from your own business number.</p>
+          <div class="icf">
+            <div class="who"><b>+91 98200 11223</b>
+              <small>Aarti Menon Coaching</small>
+              <small class="warnl"><span class="ms s">schedule</span>Reconnect in 52 days</small></div>
+            <a class="btn sm sec" href="whatsapp.html">Manage</a>
+            <span class="kebab"><span class="ms">more_horiz</span></span>
+          </div>
+        </div>
+
+        <div class="ic soon">
+          <div class="ich">
+            <span class="lt tg ms">send</span>
+            <div class="grow"><b>Telegram</b><span>Reminders and follow-ups</span></div>
+            <span class="sst soon">Coming soon</span>
+          </div>
+          <p class="icd">Send reminders and follow-ups on Telegram, for attendees who prefer it to WhatsApp.</p>
+          <div class="icf">
+            <div class="who"><small>We'll email you the day it's ready.</small></div>
+            <span class="btn sm sec"><span class="ms s">notifications</span>Notify me</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grp">Streaming</div>
+      <div class="igrid">
+        <div class="ic">
+          <div class="ich">
+            <span class="lt yt ms">smart_display</span>
+            <div class="grow"><b>YouTube</b><span>Go live on your channel too</span></div>
+            <span class="sst ok">Connected</span>
+          </div>
+          <p class="icd">Go live on YouTube at the same time, automatically. The watch link lands in the webinar's Recording tab.</p>
+          <div class="icf">
+            <div class="who">Channel <b>Aarti Menon Coaching</b><small>New lives start as Unlisted</small></div>
+            <span class="btn sm sec">Manage</span>
+            <span class="kebab"><span class="ms">more_horiz</span></span>
+          </div>
+        </div>
+
+        <div class="ic">
+          <div class="ich">
+            <span class="lt li txt">in</span>
+            <div class="grow"><b>LinkedIn Live</b><span>Go live on your profile or page</span></div>
+            <span class="sst">Not connected</span>
+          </div>
+          <p class="icd">Stream your webinar to LinkedIn, so your network can watch without registering.</p>
+          <div class="icf">
+            <div class="who"><small>Takes about a minute</small></div>
+            <span class="btn sm">Connect</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grp">Coming soon</div>
+      <div class="sgrid">
+        <div class="srow"><span class="lt gc ms">calendar_month</span><div class="grow"><b>Google Calendar</b><small>Your webinars on your calendar, time blocked</small></div></div>
+        <div class="srow"><span class="lt ig ms">photo_camera</span><div class="grow"><b>Instagram</b><small>Reminders by Instagram message</small></div></div>
+        <div class="srow"><span class="lt mc txt">M</span><div class="grow"><b>Mailchimp</b><small>Add everyone who registers to your email list</small></div></div>
+        <div class="srow"><span class="lt zp ms">bolt</span><div class="grow"><b>Zapier</b><small>Send new registrations to thousands of other apps</small></div></div>
+      </div>
+      <div class="sfoot"><span>Missing an app you use?</span><a class="xlink" href="#">Tell us which one</a></div>
+
+      <!-- Two small examples: the ⋯ menu, and what Connect opens -->
+      <div class="exrow">
+        <div>
+          <div class="exh"><h2>The ⋯ menu</h2><p>On a connected app</p></div>
+          <div class="imenu">
+            <a class="first" href="whatsapp.html"><span class="ms">open_in_new</span>Open the WhatsApp page</a>
+            <a href="#"><span class="ms">sync</span>Reconnect now</a>
+            <a href="#"><span class="ms">receipt_long</span>See what Meta charges</a>
+            <div class="sep"></div>
+            <a class="bad" href="#"><span class="ms">link_off</span>Disconnect</a>
+          </div>
+        </div>
+        <div>
+          <div class="exh"><h2>What “Connect” opens — WhatsApp</h2><p>Three steps in a small window. Nothing to copy or paste.</p></div>
+      <div class="card cflow">
+        <div class="cfh">
+          <span class="lt wa ms">chat</span>
+          <div class="grow"><b>Connect WhatsApp Business</b><small>Messages go from your own number</small></div>
+          <span class="ms" style="font-size:20px;color:var(--ink-3)">close</span>
+        </div>
+        <div class="csteps">
+          <div class="cstep now"><span class="n">1</span><b>Sign in with Facebook</b><p>Use the Facebook account that runs your business page.</p></div>
+          <div class="cstep"><span class="n">2</span><b>Pick your number</b><p>Choose your WhatsApp Business number, or add a new one.</p></div>
+          <div class="cstep"><span class="n">3</span><b>Done</b><p>Confirmations and reminders now go from your number.</p></div>
+        </div>
+        <div class="cff">
+          <div class="grow"><span class="ms s">info</span>Meta charges each message to your WhatsApp Business account — about ₹0.13 each. We never charge for messages.</div>
+          <span class="btn sm sec">Cancel</span>
+          <span class="btn sm">Continue with Facebook</span>
+        </div>
+      </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div class="note"><b>Settings, with Integrations.</b> One page with a short list of sections on the left. Integrations shows every app as a card: what it does in one sentence, whether it is on, and one button. WhatsApp and YouTube move here from the account form; the WhatsApp page's “Settings” link points to <a href="settings.html#integrations">settings.html#integrations</a>. Telegram and the rest appear as “Coming soon” so the place for them already exists.</div>
+<script src="assets/nav.js"></script>
+</body></html>

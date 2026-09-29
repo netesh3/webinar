@@ -1,125 +1,133 @@
 "use client";
 
-import { DEFAULT_REMINDERS, describeReminders } from "./reminder-times";
-import { Fragment, useEffect, useState } from "react";
-import { Alert, CopyField, Spinner, Tabs } from "./controls";
+import { DEFAULT_REMINDERS, ReminderTimes, describeReminders } from "./reminder-times";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { RecordingsTab } from "./recordings-tab";
-import { CalendarIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "./icons";
+import { EngagementTab } from "./engagement/engagement-tab";
+import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
 import { useShareOrigin, useToast } from "./providers";
-import { Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from "./ui";
+import { Avatar, Badge, Button, ButtonLink, Card, ListPager, SectionTitle } from "./ui";
 import {
   formatCount,
   formatDay,
-  formatDuration,
-  formatTime,
   formatTimeRange,
   googleCalendarInviteUrl,
   tzLabel,
 } from "@/lib/format";
 import { ApiError, api } from "@/lib/api";
-import type {
-  AttendanceRow,
-  Recording,
-  RegistrantRow,
-  SessionReport,
-  Webinar,
+import {
+  ChannelEmail,
+  type CustomQuestion,
+  type EngagementTierCounts,
+  type Recording,
+  type RegistrantPage,
+  type RegistrantRow,
+  type Webinar,
 } from "@/lib/api-types";
+import { answerText } from "@/lib/registration-questions";
+import { DEV_BYPASS_REGISTRANTS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
+import {
+  defaultTab,
+  engagementSection,
+  tabFromQuery,
+  allowedTab,
+  tabsFor,
+  type HostTab,
+} from "@/lib/host-tabs";
 import {
   RosterContactsLink,
   RosterWhatsAppCells,
   RosterWhatsAppHeaders,
-  WebinarMessagesTab,
+  ScheduleMessagesTab,
+  WebinarWhatsAppOverview,
+  WebinarWhatsAppMetrics,
+  EngagementFollowUpPage,
+  reminderMinutes,
   useRosterMessaging,
   useRosterWhatsAppColumns,
-  watchBuckets,
+  useWebinarMessageSlots,
+  followupGroups,
 } from "@/engage";
 import { useAppConfig } from "./providers";
 
 /* Per-webinar management. Every tab here operates on real data — the share links
  * are built from the operator's configured public URL rather than a placeholder
  * domain, and the settings shown are the ones the session will actually run with.
+ *
+ * Which tabs a webinar has, and how ?tab= maps onto them (including the old
+ * ?tab=report, now Engagement, and an ended webinar's ?tab=attendees / ?tab=survey, now
+ * Engagement's sections), is lib/host-tabs.ts.
  */
 
-const TABS = [
-  "Admit",
-  "Attendees",
-  "Share",
-  "Stage",
-  "Recordings",
-  "Settings",
-] as const;
-type Tab = (typeof TABS)[number] | "Report" | "Messages";
+export type RosterCounts = {
+  total: number;
+  approved: number;
+  declined: number;
+  pending: number;
+  guests: number;
+};
 
-const ENDED_TABS = ["Recordings", "Attendees", "Report"] as const;
-
-/* Messages — every WhatsApp message this webinar sends — is Engage's tab, placed
- * after Attendees and only offered when this deployment can connect WhatsApp. */
-function tabsFor(ended: boolean, whatsapp = false): readonly Tab[] {
-  const base: readonly Tab[] = ended ? ENDED_TABS : TABS;
-  if (!whatsapp) return base;
-  const i = base.indexOf("Attendees") + 1;
-  return [...base.slice(0, i), "Messages", ...base.slice(i)];
-}
-
-/** An old link, or the Host list, can still ask for a tab this webinar no
- *  longer has. Anything not on offer resolves to null so the caller can fall
- *  back rather than render an empty page. */
-function allowedTab(tab: Tab | null, ended: boolean, whatsapp = false): Tab | null {
-  return tab && tabsFor(ended, whatsapp).includes(tab) ? tab : null;
-}
-
-function tabFromQuery(raw: string | null | undefined): Tab | null {
-  if (!raw) return null;
-  const key = raw.toLowerCase();
-  if (key === "admit" || key === "registrants") return "Admit";
-  if (key === "attendees" || key === "attendance") return "Attendees";
-  if (key === "share") return "Share";
-  if (key === "stage") return "Stage";
-  if (key === "recordings") return "Recordings";
-  if (key === "settings") return "Settings";
-  if (key === "report") return "Report";
-  if (key === "messages") return "Messages";
-  return null;
-}
+const PEOPLE_PAGE = 25;
 
 export function HostWebinarTabs({
   webinar: w,
-  registrants,
+  counts,
+  pending,
+  rosterToken,
   recordings,
   onChanged,
   initialTab,
+  onTabChange,
 }: {
   webinar: Webinar;
-  registrants: RegistrantRow[];
+  counts: RosterCounts | null;
+  pending: RegistrantRow[];
+  /** Bumped when the webinar is reloaded, so the People page refetches. */
+  rosterToken: number;
   recordings: Recording[];
   onChanged: () => void | Promise<void>;
-  /** Deep-link from Host list: admit | attendees | share | … */
+  /** Deep-link from Host list: people | setup | results | follow-up | … (old names too) */
   initialTab?: string | null;
+  /** Tells the page header which tab is open. A layout effect, so the header never paints
+   *  a stale button first. */
+  onTabChange?: (tab: HostTab) => void;
 }) {
-  const pending = registrants.filter((r) => r.state === "pending");
-  const ended = w.status === "ended";
   const { whatsappConnect } = useAppConfig();
-  const tabs = tabsFor(ended, whatsappConnect);
+  const tabs = tabsFor(w.status, whatsappConnect);
 
-  const defaultTab: Tab =
-    allowedTab(tabFromQuery(initialTab), ended, whatsappConnect) ??
-    (ended
-      ? recordings.length > 0
-        ? "Recordings"
-        : "Attendees"
-      : pending.length > 0
-        ? "Admit"
-        : "Attendees");
-  const [tab, setTab] = useState<Tab>(defaultTab);
+  const [tab, setTab] = useState<HostTab>(() =>
+    defaultTab(w.status, { whatsapp: whatsappConnect, requested: initialTab }),
+  );
 
-  // Follow ?tab= when the host clicks Admit / Attendees from the list.
-  useEffect(() => {
-    const next = allowedTab(tabFromQuery(initialTab), ended, whatsappConnect);
+  // Follow ?tab= when a link names a tab. Adjusted during render when the inputs change,
+  // not in an effect after it.
+  const queryInputs = JSON.stringify([
+    initialTab ?? null,
+    w.status,
+    whatsappConnect,
+  ]);
+  const [seenQueryInputs, setSeenQueryInputs] = useState(queryInputs);
+  if (queryInputs !== seenQueryInputs) {
+    setSeenQueryInputs(queryInputs);
+    const next = allowedTab(
+      tabFromQuery(initialTab),
+      w.status,
+      whatsappConnect,
+    );
     if (next) setTab(next);
-  }, [initialTab, ended, whatsappConnect]);
+    // A status change (the webinar just ended) can take the open tab away.
+    else if (!tabs.includes(tab))
+      setTab(defaultTab(w.status, { whatsapp: whatsappConnect }));
+  }
 
+  useLayoutEffect(() => {
+    onTabChange?.(tab);
+  }, [tab, onTabChange]);
+
+  const ended = w.status === "ended";
   return (
     <>
       <div className="mb-4">
@@ -128,101 +136,392 @@ export function HostWebinarTabs({
           value={tab}
           onChange={setTab}
           counts={{
-            Admit: pending.length,
-            Attendees: registrants.length,
-            Recordings: recordings.length,
+            People: counts?.total ?? w.registrantCount,
+            Recording: recordings.length,
           }}
         />
       </div>
 
-      {tab === "Admit" && (
-        <AdmitTab webinar={w} registrants={registrants} onChanged={onChanged} />
+      {tab === "Overview" && (
+        <OverviewTab
+          webinar={w}
+          counts={counts}
+          pending={pending}
+          onChanged={onChanged}
+          onOpenPeople={() => setTab("People")}
+        />
       )}
-      {tab === "Attendees" && (
-        <AttendeesTab webinar={w} registrants={registrants} />
+      {tab === "People" && (
+        <div className="grid gap-4">
+          {w.approval === "manual" && pending.length > 0 && (
+            <Card className="p-5">
+              <SectionTitle>Waiting to admit · {pending.length}</SectionTitle>
+              <ApprovalQueue
+                slug={w.id}
+                pending={pending}
+                onChanged={onChanged}
+              />
+            </Card>
+          )}
+          <AttendeesTab webinar={w} counts={counts} rosterToken={rosterToken} />
+        </div>
       )}
-      {tab === "Messages" && (
-        <WebinarMessagesTab slug={w.id} ended={ended} durationMin={w.durationMin} />
+      {tab === "Setup" && (
+        <div className="grid gap-4">
+          <Card className="p-5">
+            <SectionTitle>Messages & follow-ups</SectionTitle>
+            <p className="mt-1 mb-4 text-[12.5px] text-ink-2">
+              The same editor as scheduling. Changes here apply to this webinar.
+            </p>
+            <ScheduleMessagesTab
+              slug={w.id}
+              webinar={{
+                topic: w.topic,
+                startsAt: new Date(w.startsAt),
+                timeZone: w.timeZone,
+              }}
+              reminderTimes={({ value, onChange, disabled }) => (
+                <ReminderTimes
+                  value={value}
+                  onChange={onChange}
+                  disabled={disabled}
+                />
+              )}
+            />
+          </Card>
+          <SettingsTab webinar={w} />
+          <StageTab webinar={w} onChanged={onChanged} />
+          <HostLinkCard webinar={w} />
+        </div>
       )}
-      {tab === "Share" && <ShareTab webinar={w} />}
-      {tab === "Stage" && <StageTab webinar={w} onChanged={onChanged} />}
-      {tab === "Recordings" && (
+      {tab === "Follow up" && <FollowUpTab webinar={w} />}
+      {tab === "Recording" && (
         <RecordingsTab
           webinar={w}
           recordings={recordings}
           onChanged={onChanged}
         />
       )}
-      {tab === "Settings" && <SettingsTab webinar={w} />}
-      {tab === "Report" && <ReportTab webinar={w} />}
+      {tab === "Results" && (
+        <EngagementTab
+          webinar={w}
+          approved={w.approval === "manual" ? counts?.approved : undefined}
+          onOpenAttendees={!ended ? () => setTab("People") : undefined}
+          initialSection={engagementSection(initialTab, w.status)}
+          // After the end, following up is its own tab.
+          hideFollowUp={ended && whatsappConnect}
+          onOpenFollowUp={
+            ended && whatsappConnect ? () => setTab("Follow up") : undefined
+          }
+        />
+      )}
+    </>
+  );
+}
+
+/* Email reminder rows on the plain schedule. Times come from the resolved reminder
+ * slot when it sends email. options.reminders is only the list when that request
+ * has not come back — the same fallback as the WhatsApp on/off badge. */
+function EmailReminders({ webinar }: { webinar: Webinar }) {
+  const slots = useWebinarMessageSlots(webinar.id);
+  const fromSlots = reminderMinutes(slots, ChannelEmail);
+  // Missing key means on, same as the API. Off means the legacy schedule sends nothing.
+  const legacy =
+    webinar.options.emailReminders === false
+      ? []
+      : (webinar.options.reminders ?? DEFAULT_REMINDERS);
+  const minutes = fromSlots ?? legacy;
+  return (
+    <>
+      {minutes.map((m) => (
+        <li key={m} className="flex justify-between gap-3">
+          <span>Reminder</span>
+          <span className="text-ink-3">{describeReminders([m])}</span>
+        </li>
+      ))}
     </>
   );
 }
 
 // ------------------------------------------------------------- admit / attendees
 
-function AdmitTab({
+/* Overview: the one screen before a webinar. The link to share, the numbers, what goes out
+ * on its own, and anything waiting on the host — approvals are answered here. */
+function OverviewTab({
   webinar: w,
-  registrants,
+  counts,
+  pending,
   onChanged,
+  onOpenPeople,
 }: {
   webinar: Webinar;
-  registrants: RegistrantRow[];
+  counts: RosterCounts | null;
+  pending: RegistrantRow[];
   onChanged: () => void | Promise<void>;
+  onOpenPeople: () => void;
 }) {
-  const pending = registrants.filter((r) => r.state === "pending");
+  const origin = useShareOrigin();
+  const { notify } = useToast();
+  const approved = counts?.approved ?? 0;
+  const link = `${origin}/webinars/${w.id}`;
+  const invite =
+    `${w.topic}\n` +
+    `${formatDay(w.startsAt, w.timeZone)}, ${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}\n\n` +
+    `Register: ${link}` +
+    (w.passcode ? `\nPasscode: ${w.passcode}` : "");
 
-  if (w.approval !== "manual") {
+  if (w.status === "draft") {
     return (
       <Card className="p-6">
-        <h2 className="text-[15px] font-semibold">Automatic approval</h2>
+        <h2 className="text-[15px] font-semibold">
+          Finish setup to open registration
+        </h2>
         <p className="mt-2 max-w-md text-[13.5px] leading-relaxed text-ink-2">
-          Registrants are admitted as soon as they sign up. Switch this webinar
-          to manual approval in Edit if you want a waiting queue here.
+          This webinar is a draft, so its page isn&apos;t public yet. Schedule
+          it and you get a link to share.
         </p>
+        <ButtonLink href={`/host/${w.id}/edit`} className="mt-4">
+          Finish setup
+        </ButtonLink>
       </Card>
     );
   }
 
   return (
-    <div className="grid gap-4">
-      <div>
-        <h2 className="text-[15px] font-semibold">Waiting to admit</h2>
-        <p className="mt-1 text-[13px] text-ink-2">
-          {pending.length === 0
-            ? "Nobody is waiting. New registrations will appear here."
-            : `${pending.length} ${pending.length === 1 ? "person needs" : "people need"} a decision before they can join.`}
-        </p>
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      <div className="grid gap-4">
+        <Card className="p-5">
+          <SectionTitle>Share this link</SectionTitle>
+          <CopyField value={link} />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ButtonLink
+              href={`https://wa.me/?text=${encodeURIComponent(`${w.topic} — register here: ${link}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="sm"
+              variant="secondary"
+            >
+              WhatsApp
+            </ButtonLink>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(invite)
+                  .then(() => notify("Invitation copied.", "ok"))
+                  .catch(() => notify("Could not copy.", "error"))
+              }
+            >
+              Copy invitation
+            </Button>
+            <ButtonLink
+              href={googleCalendarInviteUrl({
+                topic: w.topic,
+                description: w.description,
+                startsAt: w.startsAt,
+                durationMin: w.durationMin,
+                timeZone: w.timeZone,
+                webinarId: w.webinarId,
+                registrationUrl: link,
+              })}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="sm"
+              variant="secondary"
+            >
+              <CalendarIcon className="size-4" />
+              Add to calendar
+            </ButtonLink>
+            <ButtonLink
+              href={`/webinars/${w.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="sm"
+              variant="ghost"
+            >
+              Preview page ↗
+            </ButtonLink>
+          </div>
+          <p className="mt-2.5 text-[12px] text-ink-3">
+            Anyone with this link can register · approval is{" "}
+            {w.approval === "manual" ? "manual" : "automatic"}
+            {w.passcode ? ` · passcode ${w.passcode}` : ""}.
+          </p>
+        </Card>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Stat
+            label="Registered"
+            value={formatCount(w.registrantCount)}
+            note={`of ${formatCount(w.attendeeLimit)} seats`}
+          />
+          <Stat
+            label="Approved"
+            value={counts ? formatCount(approved) : "—"}
+            note={pending.length ? `${pending.length} waiting` : "none waiting"}
+          />
+          <Stat
+            label="On WhatsApp"
+            value="—"
+            note="see People for who opted in"
+          />
+        </div>
+
+        {/* One list of what is sent automatically. With WhatsApp on, the CRM's timeline is
+            that list (sent / read / queued per message); otherwise the plain schedule. */}
+        <WebinarWhatsAppOverview
+          slug={w.id}
+          ended={false}
+          fallback={
+            <Card className="p-5">
+              <SectionTitle>Automated messages</SectionTitle>
+              <ul className="grid gap-2 text-[13px]">
+                <li className="flex justify-between gap-3">
+                  <span>Confirmation, with their join link</span>
+                  <span className="text-ink-3">when they register</span>
+                </li>
+                <EmailReminders webinar={w} />
+                <li className="flex justify-between gap-3">
+                  <span>Replay link</span>
+                  <span className="text-ink-3">
+                    when you publish the recording
+                  </span>
+                </li>
+              </ul>
+              <p className="mt-3 text-[12px] text-ink-3">
+                By email. Change the times in{" "}
+                <a
+                  href={`/host/${w.id}/edit`}
+                  className="font-medium text-brand hover:underline"
+                >
+                  Edit
+                </a>
+                .
+              </p>
+            </Card>
+          }
+        />
       </div>
-      <ApprovalQueue slug={w.id} pending={pending} onChanged={onChanged} />
+
+      <div className="grid gap-4">
+        <Card className="p-5">
+          <div className="flex items-center justify-between gap-2">
+            <SectionTitle>Waiting for you</SectionTitle>
+            {pending.length > 0 && (
+              <button
+                type="button"
+                onClick={onOpenPeople}
+                className="text-[12px] font-medium text-brand hover:underline"
+              >
+                See all
+              </button>
+            )}
+          </div>
+          {pending.length === 0 ? (
+            <p className="text-[13px] text-ink-3">
+              {w.approval === "manual"
+                ? "Nobody is waiting to be admitted."
+                : "Nothing to do — people are admitted as they register."}
+            </p>
+          ) : (
+            <ApprovalQueue
+              slug={w.id}
+              pending={pending.slice(0, 5)}
+              onChanged={onChanged}
+            />
+          )}
+        </Card>
+      </div>
     </div>
   );
 }
 
 function AttendeesTab({
   webinar: w,
-  registrants,
+  counts,
+  rosterToken,
 }: {
   webinar: Webinar;
-  registrants: RegistrantRow[];
+  counts: RosterCounts | null;
+  rosterToken: number;
 }) {
   const bypass = isDevAuthBypassActive();
-  // The CRM's two columns, when the host has connected WhatsApp. See engage/slots.tsx.
   const whatsappOn = useRosterWhatsAppColumns();
-  const approved = registrants.filter((r) => r.state === "approved");
-  const declined = registrants.filter((r) => r.state === "declined");
-  const ended = w.status === "ended";
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<RegistrantPage | null>(null);
+  const [seenOffset, setSeenOffset] = useState(0);
+  if (offset !== seenOffset) {
+    setSeenOffset(offset);
+    setPage(null);
+  }
+  useEffect(() => {
+    if (bypass) return;
+    let cancelled = false;
+    api
+      .hostRegistrants(w.id, { limit: PEOPLE_PAGE, offset })
+      .then((next) => {
+        if (!cancelled) setPage(next);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPage({
+            items: [],
+            total: 0,
+            offset,
+            approved: 0,
+            declined: 0,
+            pending: 0,
+            guests: 0,
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bypass, w.id, offset, rosterToken]);
 
-  /* After the webinar: chips by how long people watched. The same buckets the
-   * Messages tab offers, so "Message these N" here and there reach the same people. */
-  const buckets = ended ? watchBuckets(w.durationMin) : [];
+  const registrants = bypass ? DEV_BYPASS_REGISTRANTS : (page?.items ?? []);
+  const roster = bypass
+    ? {
+        total: DEV_BYPASS_REGISTRANTS.length,
+        approved: DEV_BYPASS_REGISTRANTS.filter((r) => r.state === "approved").length,
+        declined: DEV_BYPASS_REGISTRANTS.filter((r) => r.state === "declined").length,
+        guests: DEV_BYPASS_REGISTRANTS.filter((r) => r.isGuest).length,
+      }
+    : page
+      ? {
+          total: page.total,
+          approved: page.approved,
+          declined: page.declined,
+          guests: page.guests,
+        }
+      : counts
+        ? {
+            total: counts.total,
+            approved: counts.approved,
+            declined: counts.declined,
+            guests: counts.guests,
+          }
+        : null;
+  const ended = w.status === "ended";
+  const asked = w.customQuestions ?? [];
+
+  /* After the webinar: chips by engagement level, the Engagement tab's Follow up groups,
+   * so "Message these N" here and there reach the same people. Empty groups are left
+   * out; before the scores are computed only "Didn't join" can have anyone in it. */
+  const buckets = ended
+    ? followupGroups().filter((g) => registrants.some(g.test))
+    : [];
   const [bucketId, setBucketId] = useState("");
   const bucket = buckets.find((b) => b.id === bucketId) ?? null;
   const rows = bucket ? registrants.filter(bucket.test) : registrants;
   const messaging = useRosterMessaging({
     webinarId: w.id,
     rows,
-    bucket: bucket ? { segment: bucket.segment, label: bucket.label } : null,
+    bucket: bucket
+      ? { segment: bucket.segment, label: bucket.label, hints: bucket.hints }
+      : null,
   });
 
   return (
@@ -230,7 +529,7 @@ function AttendeesTab({
       <div className="grid gap-3 sm:grid-cols-3">
         <Stat
           label="Registered"
-          value={formatCount(w.registrantCount)}
+          value={formatCount(roster?.total ?? w.registrantCount)}
           note={`of ${formatCount(w.attendeeLimit)} seats`}
         />
         <Stat
@@ -238,20 +537,24 @@ function AttendeesTab({
           value={
             ended && w.report
               ? formatCount(w.report.attended)
-              : formatCount(approved.length)
+              : roster
+                ? formatCount(roster.approved)
+                : "—"
           }
           note={
             ended && w.report
               ? `avg watch ${w.report.avgWatchMin} min`
-              : `${formatCount(declined.length)} declined`
+              : roster
+                ? `${formatCount(roster.declined)} declined`
+                : ""
           }
         />
         <Stat
           label="Contactable"
-          value={formatCount(registrants.filter((r) => !r.isGuest).length)}
-          note={`${formatCount(
-            registrants.filter((r) => r.isGuest).length,
-          )} guests`}
+          value={
+            roster ? formatCount(Math.max(0, roster.total - roster.guests)) : "—"
+          }
+          note={roster ? `${formatCount(roster.guests)} guests` : ""}
         />
       </div>
 
@@ -280,32 +583,44 @@ function AttendeesTab({
 
         {buckets.length > 0 && registrants.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-1.5">
-            {[{ id: "", label: "Everyone", test: () => true }, ...buckets].map((b) => (
-              <button
-                key={b.id || "all"}
-                type="button"
-                onClick={() => setBucketId(b.id)}
-                className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${
-                  bucketId === b.id
-                    ? "border-brand bg-brand-soft text-brand"
-                    : "border-line text-ink-2 hover:border-line-2"
-                }`}
-              >
-                {b.label}{" "}
-                <span className="tabular-nums opacity-70">
-                  {registrants.filter(b.test).length}
-                </span>
-              </button>
-            ))}
+            {[{ id: "", label: "Everyone", test: () => true }, ...buckets].map(
+              (b) => (
+                <button
+                  key={b.id || "all"}
+                  type="button"
+                  onClick={() => setBucketId(b.id)}
+                  className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${
+                    bucketId === b.id
+                      ? "border-brand bg-brand-soft text-brand"
+                      : "border-line text-ink-2 hover:border-line-2"
+                  }`}
+                >
+                  {b.label}{" "}
+                  <span className="tabular-nums opacity-70">
+                    {registrants.filter(b.test).length}
+                  </span>
+                </button>
+              ),
+            )}
           </div>
         )}
 
-        {registrants.length === 0 ? (
+        {!bypass && !page ? (
+          <div className="grid place-items-center py-10">
+            <Spinner className="size-5 text-ink-3" />
+          </div>
+        ) : registrants.length === 0 && offset === 0 ? (
           <p className="py-8 text-center text-[13px] text-ink-3">
             Nobody has registered yet.
           </p>
+        ) : registrants.length === 0 ? (
+          <p className="py-8 text-center text-[13px] text-ink-3">
+            Nobody on this page
+          </p>
         ) : rows.length === 0 ? (
-          <p className="py-8 text-center text-[13px] text-ink-3">Nobody in this group.</p>
+          <p className="py-8 text-center text-[13px] text-ink-3">
+            Nobody in this group.
+          </p>
         ) : (
           <div className="-mx-4 overflow-x-auto px-4">
             <table className="w-full min-w-[680px] text-[12.5px]">
@@ -314,6 +629,9 @@ function AttendeesTab({
                   {messaging.headerCell}
                   <th className="py-2 pr-3 font-medium">Name</th>
                   <th className="py-2 pr-3 font-medium">Company</th>
+                  {asked.length > 0 && (
+                    <th className="py-2 pr-3 font-medium">Answers</th>
+                  )}
                   {ended && <th className="py-2 pr-3 font-medium">Watched</th>}
                   {whatsappOn && <RosterWhatsAppHeaders />}
                   <th className="py-2 pr-3 font-medium">Registered</th>
@@ -337,7 +655,9 @@ function AttendeesTab({
                           "no number" is only an answer if the numbers are visible.
                           Under the email because it is the same kind of fact. */}
                       {r.phone && (
-                        <div className="text-[11.5px] text-ink-3">{r.phone}</div>
+                        <div className="text-[11.5px] text-ink-3">
+                          {r.phone}
+                        </div>
                       )}
                     </td>
                     <td className="py-2.5 pr-3 text-ink-2">
@@ -348,9 +668,18 @@ function AttendeesTab({
                         </div>
                       )}
                     </td>
+                    {asked.length > 0 && (
+                      <td className="max-w-[260px] py-2.5 pr-3 text-[11.5px] text-ink-2">
+                        <RegistrantAnswers questions={asked} answers={r.answers} />
+                      </td>
+                    )}
                     {ended && (
                       <td className="py-2.5 pr-3 text-ink-2 tabular-nums">
-                        {r.joined ? `${r.watchMin} min` : <span className="text-ink-3">Didn&apos;t join</span>}
+                        {r.joined ? (
+                          `${r.watchMin} min`
+                        ) : (
+                          <span className="text-ink-3">Didn&apos;t join</span>
+                        )}
                       </td>
                     )}
                     {whatsappOn && <RosterWhatsAppCells row={r} />}
@@ -375,6 +704,21 @@ function AttendeesTab({
             </table>
           </div>
         )}
+        {roster && (bypass || page) && (
+          <ListPager
+            layout="split"
+            range="inline"
+            className="mt-3 border-t border-line pt-3"
+            page={Math.floor(offset / PEOPLE_PAGE) + 1}
+            pages={Math.max(1, Math.ceil(roster.total / PEOPLE_PAGE))}
+            pageSize={PEOPLE_PAGE}
+            start={registrants.length === 0 ? 0 : offset + 1}
+            end={registrants.length === 0 ? 0 : offset + registrants.length}
+            total={roster.total}
+            onPrevious={() => setOffset((n) => Math.max(0, n - PEOPLE_PAGE))}
+            onNext={() => setOffset((n) => n + PEOPLE_PAGE)}
+          />
+        )}
       </Card>
       {messaging.dialog}
     </div>
@@ -383,82 +727,40 @@ function AttendeesTab({
 
 // -------------------------------------------------------------------- share
 
-function ShareTab({ webinar: w }: { webinar: Webinar }) {
-  // From the operator's configured public URL, falling back to this browser's
-  // origin — never a placeholder domain, which is worse than no link at all.
+/** The host and panelist room link, in Setup. */
+function HostLinkCard({ webinar: w }: { webinar: Webinar }) {
   const origin = useShareOrigin();
-
   return (
-    <div className="grid gap-4">
-      <Card className="p-5">
-        <SectionTitle>Registration page</SectionTitle>
-        {w.status === "draft" ? (
-          <Alert tone="warn">
-            This webinar is still a draft, so the page isn&apos;t public yet.
-          </Alert>
-        ) : (
-          <>
-            <CopyField value={`${origin}/webinars/${w.id}`} />
-            <p className="mt-2.5 text-[12px] leading-relaxed text-ink-3">
-              Anyone with this link can register. Approval is{" "}
-              {w.approval === "manual" ? "manual" : "automatic"}
-              {w.registrationRequired
-                ? "."
-                : ", and registration is not required to join."}
-            </p>
-          </>
-        )}
-      </Card>
+    <Card className="p-5">
+      <SectionTitle>Host and panelist link</SectionTitle>
+      <CopyField value={`${origin}/host/${w.id}/room`} />
+      <p className="mt-2.5 text-[12px] leading-relaxed text-ink-3">
+        Only you and the panelists on this webinar can use it — the server
+        refuses to mint a publishing token for anyone else, so sharing it does
+        not give anyone the stage.
+      </p>
+    </Card>
+  );
+}
 
-      <Card className="p-5">
-        <SectionTitle>Details for a calendar invite</SectionTitle>
-        <div className="grid gap-3">
-          <CopyField label="Webinar ID" value={w.webinarId} />
-          {w.passcode && <CopyField label="Passcode" value={w.passcode} />}
-          <CopyField
-            label="Full invitation"
-            value={
-              `${w.topic}\n` +
-              `${formatDay(w.startsAt, w.timeZone)}, ` +
-              `${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ` +
-              `${tzLabel(w.startsAt, w.timeZone)}\n\n` +
-              `Register: ${origin}/webinars/${w.id}\n` +
-              `Webinar ID: ${w.webinarId}` +
-              (w.passcode ? `\nPasscode: ${w.passcode}` : "")
-            }
-          />
-          <ButtonLink
-            href={googleCalendarInviteUrl({
-              topic: w.topic,
-              description: w.description,
-              startsAt: w.startsAt,
-              durationMin: w.durationMin,
-              timeZone: w.timeZone,
-              webinarId: w.webinarId,
-              registrationUrl: `${origin}/webinars/${w.id}`,
-            })}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="secondary"
-            size="sm"
-            className="justify-self-start"
-          >
-            <CalendarIcon className="size-4" />
-            Add to Google Calendar
-          </ButtonLink>
-        </div>
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle>Host and panelist link</SectionTitle>
-        <CopyField value={`${origin}/host/${w.id}/room`} />
-        <p className="mt-2.5 text-[12px] leading-relaxed text-ink-3">
-          Only you and the panelists on this webinar can use it — the server
-          refuses to mint a publishing token for anyone else, so sharing it does
-          not give anyone the stage.
-        </p>
-      </Card>
-    </div>
+/* Follow up: the group cards need the tier counts, which are the webinar's engagement
+ * numbers — loaded here, on the webinar side, and handed to the CRM's slot. */
+function FollowUpTab({ webinar: w }: { webinar: Webinar }) {
+  const [tiers, setTiers] = useState<EngagementTierCounts | null>(null);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    api
+      .engagementSummary(w.id, ctrl.signal)
+      .then((s) => setTiers(s.tiers))
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [w.id]);
+  return (
+    <EngagementFollowUpPage
+      slug={w.id}
+      tiers={tiers}
+      afterGroups={<WebinarWhatsAppMetrics slug={w.id} topic={w.topic} />}
+    />
   );
 }
 
@@ -601,342 +903,6 @@ function StageTab({
   );
 }
 
-function ReportTab({ webinar: w }: { webinar: Webinar }) {
-  const bypass = isDevAuthBypassActive();
-  const [rep, setRep] = useState<SessionReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (bypass) {
-      setRep({
-        registered: 4,
-        approved: 4,
-        attended: 3,
-        avgWatchMin: 18,
-        questions: 2,
-        pollVoters: 2,
-        questionRows: [],
-        /* Not an empty list any more, and each row is here for a reason: the table has four
-         * states worth looking at and none of them were reachable in preview.
-         *
-         * A rejoiner whose total is much less than their brackets (the case the whole change
-         * exists for), an early arrival whose waiting time is not counted, somebody still in
-         * the room, and the host — listed, labelled, and deliberately absent from the
-         * attended count above. */
-        attendees: BYPASS_ATTENDANCE,
-      });
-      return;
-    }
-    void api
-      .sessionReport(w.id)
-      .then(setRep)
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : "Could not load the report."),
-      );
-  }, [w.id, bypass]);
-
-  return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-[15px] font-semibold">Session report</h2>
-          <p className="mt-1 text-[13px] text-ink-2">
-            Who showed up, how long they stayed, and what they asked.
-          </p>
-        </div>
-        {!bypass && (
-          <ButtonLink
-            href={api.reportCsvUrl(w.id)}
-            size="sm"
-            variant="secondary"
-            prefetch={false}
-          >
-            Export CSV
-          </ButtonLink>
-        )}
-        {!bypass && (
-          <ButtonLink
-            href={api.transcriptUrl(w.id)}
-            size="sm"
-            variant="secondary"
-            prefetch={false}
-          >
-            Transcript
-          </ButtonLink>
-        )}
-      </div>
-      {error && <Alert>{error}</Alert>}
-      {!rep ? (
-        <Spinner className="size-5" />
-      ) : (
-        <>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Stat label="Registered" value={formatCount(rep.registered)} note="" />
-            <Stat
-              label="Attended"
-              value={formatCount(rep.attended)}
-              note={`${formatCount(rep.approved)} approved`}
-            />
-            <Stat
-              label="Avg. watch"
-              value={`${rep.avgWatchMin} min`}
-              note={`${formatCount(rep.pollVoters)} poll voters`}
-            />
-          </div>
-          <Card className="p-4">
-            <SectionTitle>Who attended</SectionTitle>
-            {rep.attendees.length === 0 ? (
-              <p className="py-6 text-center text-[13px] text-ink-3">
-                Nobody was recorded in the room.
-              </p>
-            ) : (
-              <AttendanceTable rows={rep.attendees} timeZone={w.timeZone} />
-            )}
-          </Card>
-          <Card className="p-4">
-            <SectionTitle>Questions</SectionTitle>
-            {rep.questionRows.length === 0 ? (
-              <p className="py-6 text-center text-[13px] text-ink-3">
-                No questions were asked.
-              </p>
-            ) : (
-              <ul className="mt-3 divide-y divide-line text-[13px]">
-                {rep.questionRows.map((q) => (
-                  <li key={q.id} className="py-2">
-                    <p>{q.text}</p>
-                    <p className="mt-0.5 text-[12px] text-ink-3">
-                      {q.anonymous ? "Anonymous" : q.name}
-                      {q.answered ? " · answered" : ""}
-                      {q.upvotes ? ` · ${q.upvotes} upvotes` : ""}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </>
-      )}
-    </div>
-  );
-}
-
-/* The preview's attendance rows, in the local-UI mode that has no API behind it.
- *
- * Times are fixed rather than relative to now: they are only ever read through
- * formatTime(webinar.timeZone), the fixture webinar is two weeks in the past, and a clock that
- * moved would make the one screen whose job is looking at a table impossible to compare
- * against itself.
- */
-const BYPASS_ATTENDANCE: AttendanceRow[] = [
-  {
-    identity: "att_preview_1",
-    name: "Amlesh Kumar",
-    email: "amlesh177@gmail.com",
-    role: "attendee",
-    // Watched the open and the close, nothing in the middle: brackets say 58 minutes, the
-    // total says 20, and the difference is the point of the table.
-    watchMin: 20,
-    firstJoinedAt: "2026-09-08T09:32:00Z",
-    lastLeftAt: "2026-09-08T10:30:00Z",
-    visits: [
-      { joinedAt: "2026-09-08T09:32:00Z", leftAt: "2026-09-08T09:44:00Z", minutes: 12 },
-      { joinedAt: "2026-09-08T10:05:00Z", leftAt: "2026-09-08T10:11:00Z", minutes: 6 },
-      { joinedAt: "2026-09-08T10:28:00Z", leftAt: "2026-09-08T10:30:00Z", minutes: 2 },
-    ],
-  },
-  {
-    identity: "att_preview_2",
-    name: "Sunayana G",
-    email: "sunayana.g23@gmail.com",
-    role: "attendee",
-    // Arrived twelve minutes early and sat on the waiting screen, which is not watching: in
-    // at 09:18, live at 09:30, so 42 minutes rather than 54.
-    watchMin: 42,
-    firstJoinedAt: "2026-09-08T09:18:00Z",
-    lastLeftAt: "2026-09-08T10:12:00Z",
-    visits: [
-      { joinedAt: "2026-09-08T09:18:00Z", leftAt: "2026-09-08T10:12:00Z", minutes: 42 },
-    ],
-  },
-  {
-    identity: "att_preview_3",
-    name: "Guest",
-    email: "",
-    role: "attendee",
-    // No departure: their laptop went to sleep and the SFU never said they left, so the row
-    // has to read as "still in" rather than inventing a time.
-    watchMin: 30,
-    firstJoinedAt: "2026-09-08T10:00:00Z",
-    lastLeftAt: "",
-    visits: [{ joinedAt: "2026-09-08T10:00:00Z", leftAt: "", minutes: 30 }],
-  },
-  {
-    identity: "user_preview_host",
-    name: "Preview Host",
-    email: "host@example.com",
-    role: "host",
-    watchMin: 60,
-    firstJoinedAt: "2026-09-08T09:28:00Z",
-    lastLeftAt: "2026-09-08T10:31:00Z",
-    visits: [
-      { joinedAt: "2026-09-08T09:28:00Z", leftAt: "2026-09-08T10:31:00Z", minutes: 60 },
-    ],
-  },
-];
-
-/* Who was in the room, when, and for how long.
- *
- * One row per person with their visits folded into it, rather than one row per visit. A person
- * who dropped out three times is one attendee and reads as one line; flattening the visits
- * would put them in the table three times and make "how long did they watch" a sum the reader
- * has to do. The rejoins are the interesting part, so they are a click away rather than a
- * column away — and the row says how many there were, so nobody has to open rows to find out
- * which ones have anything behind them.
- *
- * In and Out are the brackets of the whole session: first arrival, last departure. Total is the
- * sum of the visits, which for a rejoiner is LESS than Out minus In — and that gap is the
- * entire point of the table. Before this, Total was Out minus In, so somebody who watched the
- * first five minutes and the last five of an hour was reported as having watched the hour.
- */
-function AttendanceTable({
-  rows,
-  timeZone,
-}: {
-  rows: AttendanceRow[];
-  timeZone: string;
-}) {
-  /* Which rows are open, by identity. A Set rather than a flag on the row: the rows come from
-   * the server on every poll of the report, and state keyed to the data would be lost each
-   * time one arrived. */
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
-  const toggle = (identity: string) =>
-    setOpen((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(identity)) next.add(identity);
-      return next;
-    });
-
-  return (
-    <div className="-mx-4 mt-3 overflow-x-auto px-4">
-      <table className="w-full min-w-[560px] text-[12.5px]">
-        <thead>
-          <tr className="border-b border-line text-left text-[11.5px] text-ink-3">
-            <th className="py-2 pr-3 font-medium">Name</th>
-            <th className="py-2 pr-3 font-medium">In</th>
-            <th className="py-2 pr-3 font-medium">Out</th>
-            <th className="py-2 pr-3 text-right font-medium">Total</th>
-            <th className="py-2 text-right font-medium">Visits</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((a) => {
-            const expandable = a.visits.length > 1;
-            const isOpen = open.has(a.identity);
-            return (
-              <Fragment key={a.identity}>
-                <tr
-                  className={`border-b border-line ${
-                    expandable ? "cursor-pointer hover:bg-surface-2" : ""
-                  }`}
-                  onClick={expandable ? () => toggle(a.identity) : undefined}
-                >
-                  <td className="py-2.5 pr-3">
-                    <div className="flex items-center gap-1.5">
-                      {/* Only where there is something to open. A disclosure arrow on a row
-                          that does nothing is a promise the row cannot keep. */}
-                      {expandable ? (
-                        <ChevronDownIcon
-                          className={`size-3.5 shrink-0 text-ink-3 transition-transform ${
-                            isOpen ? "" : "-rotate-90"
-                          }`}
-                        />
-                      ) : (
-                        <span aria-hidden className="size-3.5 shrink-0" />
-                      )}
-                      <span className="font-medium">{a.name}</span>
-                      {/* The stage is in this list, labelled, because "was my panelist there
-                          for the whole hour?" is a real question — but the counts above are
-                          attendees only, so a host is never in their own audience figures. */}
-                      {a.role !== "attendee" && (
-                        <Badge tone={a.role === "host" ? "brand" : "neutral"}>
-                          {a.role === "host" ? "Host" : "Panelist"}
-                        </Badge>
-                      )}
-                    </div>
-                    {a.email && (
-                      <div className="text-[11.5px] text-ink-3">{a.email}</div>
-                    )}
-                  </td>
-                  <td className="py-2.5 pr-3 text-ink-2 tabular-nums">
-                    {a.firstJoinedAt ? formatTime(a.firstJoinedAt, timeZone) : "—"}
-                  </td>
-                  <td className="py-2.5 pr-3 text-ink-2 tabular-nums">
-                    {/* No departure means they were still in the room when this was read,
-                        which is a different fact from "left at the end" and has to look
-                        different. */}
-                    {a.lastLeftAt ? (
-                      formatTime(a.lastLeftAt, timeZone)
-                    ) : (
-                      <span className="text-ink-3">still in</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 pr-3 text-right tabular-nums">
-                    {formatDuration(a.watchMin)}
-                  </td>
-                  <td className="py-2.5 text-right text-ink-2 tabular-nums">
-                    {a.visits.length}
-                  </td>
-                </tr>
-
-                {expandable && isOpen && (
-                  <tr className="border-b border-line bg-surface-2/40">
-                    <td colSpan={5} className="px-3 py-2">
-                      <ul className="grid gap-1">
-                        {a.visits.map((v, i) => (
-                          <li
-                            key={`${v.joinedAt}-${i}`}
-                            className="flex items-center gap-2 text-[11.5px] text-ink-2 tabular-nums"
-                          >
-                            <span className="text-ink-3">{i + 1}.</span>
-                            <span>{formatTime(v.joinedAt, timeZone)}</span>
-                            <span aria-hidden className="text-ink-3">
-                              →
-                            </span>
-                            <span>
-                              {v.leftAt ? (
-                                formatTime(v.leftAt, timeZone)
-                              ) : (
-                                <span className="text-ink-3">still in</span>
-                              )}
-                            </span>
-                            <span className="text-ink-3">
-                              ({formatDuration(v.minutes)})
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-
-      {/* Said once, under the table, rather than as a footnote on every row that shows it.
-          Somebody comparing Total against In and Out will notice they disagree, and the reason
-          is the feature rather than a bug. */}
-      {rows.some((a) => a.visits.length > 1) && (
-        <p className="mt-3 text-[11.5px] leading-relaxed text-ink-3">
-          Total is time actually present, so it is less than In to Out for anyone who left and
-          came back. Time spent waiting before the webinar went live is not counted.
-        </p>
-      )}
-    </div>
-  );
-}
-
 // ----------------------------------------------------------------- settings
 
 /** The settings the session will run with, read from the webinar record. Editing
@@ -953,14 +919,8 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     ["Reactions", w.controls.reactionsEnabled],
     ["Locked to new attendees", w.controls.locked],
     ["Registration required", w.registrationRequired],
-    ["Practice session", w.options.practiceSession],
     ["Record automatically", w.options.autoRecord],
     ["Live captions", w.options.captions],
-    ["Email reminders", w.options.emailReminders !== false],
-    // Shown whether or not it is on, because "no WhatsApp message will be sent" is
-    // the fact a host is checking here — and the default is off.
-    ["WhatsApp reminders", w.options.whatsappReminders === true],
-    ["Reminder times", describeReminders(w.options.reminders ?? DEFAULT_REMINDERS)],
     ["Attendee limit", formatCount(w.attendeeLimit)],
     ["Time zone", w.timeZone],
   ];
@@ -1001,6 +961,29 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
         changed live from the host controls once the webinar is running.
       </p>
     </Card>
+  );
+}
+
+function RegistrantAnswers({
+  questions,
+  answers,
+}: {
+  questions: CustomQuestion[];
+  answers?: Record<string, string>;
+}) {
+  const given = questions
+    .map((q) => ({ q, text: answerText(q, answers?.[q.id]) }))
+    .filter((a) => a.text);
+  if (given.length === 0) return <span className="text-ink-3">—</span>;
+  return (
+    <dl className="grid gap-0.5">
+      {given.map(({ q, text }) => (
+        <div key={q.id} className="truncate" title={`${q.label}: ${text}`}>
+          <dt className="inline text-ink-3">{q.label}: </dt>
+          <dd className="inline">{text}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

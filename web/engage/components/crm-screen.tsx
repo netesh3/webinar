@@ -13,9 +13,7 @@ import {
   Spinner,
   Tabs,
 } from "@/components/controls";
-import { Bots } from "./crm-bots";
 import { Broadcasts } from "./crm-broadcasts";
-import { Drips } from "./crm-drips";
 import { NotesPane } from "./crm-notes";
 import { SetupChecklist, setupTodo } from "./crm-setup";
 import { ContactTags, TagChips, TagManager } from "./crm-tags";
@@ -27,7 +25,12 @@ import {
   renderTemplate,
   templateKey,
 } from "./crm-templates";
-import { ArrowLeftIcon, SearchIcon, SendIcon, WhatsAppIcon } from "@/components/icons";
+import {
+  ArrowLeftIcon,
+  SearchIcon,
+  SendIcon,
+  WhatsAppIcon,
+} from "@/components/icons";
 import { useSession, useToast } from "@/components/providers";
 import { Badge, Button, Card, Empty } from "@/components/ui";
 import { ApiError } from "@/lib/api";
@@ -51,6 +54,7 @@ import type {
   CRMContactScope,
   CRMMergeField,
   CRMMessage,
+  CRMSnippet,
   CRMNote,
   CRMReminder,
   CRMSendRequest,
@@ -81,31 +85,20 @@ import { formatRelative } from "@/lib/format";
  *  this screen sees a reply arrive without wondering whether to reload. */
 const POLL_MS = 20_000;
 
-/** The five views of the CRM: what is left to set up, the people, one message sent to
- *  many of them at once, the sequences that keep sending on their own, and the bots that
- *  answer without anybody here at all. Tabs rather than routes because they are the same
- *  list seen five ways — a host who has just read a reply is one click from the campaign
- *  that prompted it, or from the flow that sent it.
+/** The views still on this older screen: what is left to set up, the people, and one
+ *  message sent to many of them at once. Sequences and bots are not offered.
  *
  *  Setting up comes first because it is the order the host meets them in, and it carries
- *  a count of what is outstanding so the work is visible from the other four. It is not
+ *  a count of what is outstanding so the work is visible from the other views. It is not
  *  the DEFAULT view, though: a host arrives here to read their contacts, including the
- *  many who arrive before WhatsApp is finished. */
-const CRM_VIEWS = [
-  "setup",
-  "contacts",
-  "broadcasts",
-  "sequences",
-  "bots",
-] as const;
+ *  many who arrive before WhatsApp is finished. An unknown ?view= is Contacts. */
+const CRM_VIEWS = ["setup", "contacts", "broadcasts"] as const;
 type CRMView = (typeof CRM_VIEWS)[number];
 
 const VIEW_LABELS: Record<CRMView, string> = {
   setup: "Set up",
   contacts: "Contacts",
   broadcasts: "Broadcasts",
-  sequences: "Sequences",
-  bots: "Bots",
 };
 
 /** The sentence under each heading. Contacts is deliberately absent: its blurb counts
@@ -115,9 +108,6 @@ const VIEW_BLURBS: Partial<Record<CRMView, string>> = {
     "Five things, once. Each one is checked against your WhatsApp account rather than ticked off here, so this is what is actually true.",
   broadcasts:
     "One message to many people, from your own WhatsApp number and billed to your Meta account.",
-  sequences:
-    "Several messages over days, sent on their own to everybody who registers from now on.",
-  bots: "A reply to somebody who writes in, with the conversation handed to you the moment the flow runs out of answers.",
 };
 
 /* The chips above the contacts list, in two labelled groups.
@@ -523,8 +513,8 @@ export function CRMScreen() {
           host fixing a connection and a host thinking they lost their list. */}
       {!whatsappConnected && view !== "setup" && (
         <Alert tone="warn" title="WhatsApp isn't connected">
-          Your contacts and conversations are unaffected, but nothing can be sent
-          until you connect your own WhatsApp Business account.{" "}
+          Your contacts and conversations are unaffected, but nothing can be
+          sent until you connect your own WhatsApp Business account.{" "}
           {/* Straight to the step, not to account settings: the card moved here,
               and sending somebody to a different screen to do one of five things
               is the arrangement this tab replaced. */}
@@ -571,19 +561,6 @@ export function CRMScreen() {
           tags={tagsOn ? (tags ?? []) : null}
           onRefreshTemplates={refreshTemplates}
         />
-      ) : view === "sequences" ? (
-        <Drips
-          whatsappConnected={whatsappConnected}
-          templates={templates}
-          templatesError={templatesError}
-          syncing={syncing}
-          onRefreshTemplates={refreshTemplates}
-        />
-      ) : view === "bots" ? (
-        /* No templates handed down: a bot only ever replies inside the 24 hours
-           the contact's own message opened, where WhatsApp allows the host's own
-           words. Nothing it sends is a template. */
-        <Bots whatsappConnected={whatsappConnected} />
       ) : (
         <>
           {error && <Alert tone="error">{error}</Alert>}
@@ -599,8 +576,8 @@ export function CRMScreen() {
           {scope && (
             <Card className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
               <p className="text-[13px] leading-relaxed text-ink-2">
-                Declined registrations are left out, and so is anybody who joined
-                as a guest without an email address or a number.{" "}
+                Declined registrations are left out, and so is anybody who
+                joined as a guest without an email address or a number.{" "}
                 <Link
                   href={`/host/${scope.webinarId}?tab=attendees`}
                   className="font-medium text-ink underline"
@@ -775,7 +752,9 @@ function ContactBreakdown({
   /* "Has written in" is a fact about a conversation, and there are no conversations
    * before WhatsApp is connected — but consent is recorded by the registration form
    * either way, so the other group is worth reading from the first sign-up. */
-  const groups = CHIP_GROUPS.filter((g) => whatsappConnected || !g.needsWhatsApp);
+  const groups = CHIP_GROUPS.filter(
+    (g) => whatsappConnected || !g.needsWhatsApp,
+  );
 
   return (
     <Card className="grid gap-4 px-5 py-4">
@@ -1291,7 +1270,7 @@ function ContactRow({
 
 /** The one fact about a contact that decides what a host may do with them, so it
  *  is on every row rather than only in the detail pane. */
-function ConsentBadge({ contact: c }: { contact: CRMContact }) {
+export function ConsentBadge({ contact: c }: { contact: CRMContact }) {
   if (!c.phone) return <Badge>Email only</Badge>;
   if (c.whatsappOptOutAt) return <Badge tone="live">Opted out</Badge>;
   if (c.whatsappOptIn) {
@@ -1652,7 +1631,7 @@ type ComposeMode = "reply" | "template";
  * the server, which is what actually enforces them; what they do here is explain
  * themselves before the press instead of after it.
  */
-function Compose({
+export function Compose({
   contact,
   windowUntil,
   connected,
@@ -1661,6 +1640,8 @@ function Compose({
   syncing,
   onRefreshTemplates,
   onSent,
+  snippets,
+  onManageSnippets,
 }: {
   contact: CRMContact;
   /** RFC3339, or empty when no window is open. */
@@ -1671,6 +1652,9 @@ function Compose({
   syncing: boolean;
   onRefreshTemplates: () => void;
   onSent: (msg: CRMMessage) => void;
+  /** Saved quick replies, as chips above the reply box. Absent hides the row. */
+  snippets?: CRMSnippet[];
+  onManageSnippets?: () => void;
 }) {
   const { notify } = useToast();
   const [mode, setMode] = useState<ComposeMode>("reply");
@@ -1712,7 +1696,7 @@ function Compose({
     return (
       <ComposeNote>
         Connect your own WhatsApp Business account in{" "}
-        <Link href="/account" className="font-medium underline">
+        <Link href="/settings#integrations" className="font-medium underline">
           account settings
         </Link>{" "}
         to reply from here.
@@ -1792,6 +1776,36 @@ function Compose({
           <label className="sr-only" htmlFor="crm-reply">
             Your reply
           </label>
+          {snippets && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {snippets.map((sn) => (
+                <button
+                  key={sn.id}
+                  type="button"
+                  title={sn.body}
+                  onClick={() =>
+                    setText((prev) =>
+                      prev.trim() ? `${prev.trimEnd()}\n${sn.body}` : sn.body,
+                    )
+                  }
+                  className="h-7 rounded-full border border-line-2 bg-surface px-2.5 text-[12px] text-ink-2 hover:border-brand hover:text-brand"
+                >
+                  {sn.title}
+                </button>
+              ))}
+              {onManageSnippets && (
+                <button
+                  type="button"
+                  onClick={onManageSnippets}
+                  className="h-7 px-1.5 text-[12px] font-medium text-brand hover:underline"
+                >
+                  {snippets.length
+                    ? "Edit quick replies"
+                    : "+ Save a quick reply"}
+                </button>
+              )}
+            </div>
+          )}
           <textarea
             id="crm-reply"
             className="field min-h-20 resize-y py-2"
@@ -1799,12 +1813,20 @@ function Compose({
             placeholder={`Reply to ${displayName(contact)}…`}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              // ⌘↵ / Ctrl↵ sends, as in every chat app with a multi-line box.
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                if (canSend && !busy) void send();
+              }
+            }}
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11.5px] text-ink-3">
               WhatsApp&apos;s 24-hour window closes{" "}
               {formatRelative(windowUntil, new Date())}. After that, only an
-              approved template can be sent.
+              approved template can be sent.{" "}
+              <span className="hidden sm:inline">⌘↵ to send.</span>
             </p>
             <SendButton busy={busy} disabled={!canSend} onClick={send} />
           </div>
@@ -1992,7 +2014,7 @@ function previewOf(m: CRMMessage): string {
 
 /** What to show for a message whose content is not text. Meta's own vocabulary,
  *  turned into a sentence rather than left as a bare `document`. */
-function kindText(kind?: string): string {
+export function kindText(kind?: string): string {
   switch (kind) {
     case "image":
       return "Sent a photo";

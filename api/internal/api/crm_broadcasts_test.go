@@ -3,6 +3,7 @@ package api_test
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -159,7 +160,7 @@ func TestCRMAudienceCountsEveryReason(t *testing.T) {
 	 * number is normalised and a registration keeps what was typed, so these only line
 	 * up if the digits are compared rather than the strings. */
 	byWebinar := audiencePreview(t, h, "?audience=webinar&webinarId="+wb.ID)
-	if byWebinar != (types.CRMAudienceResponse{
+	if !reflect.DeepEqual(byWebinar, types.CRMAudienceResponse{
 		Audience: types.AudienceWebinar, Recipients: 1, NoOptIn: 1, OptedOut: 1, NoNumber: 1,
 	}) {
 		t.Fatalf("webinar audience = %+v, want the same four people", byWebinar)

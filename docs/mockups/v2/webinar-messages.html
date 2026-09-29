@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Webinar · Messages (v2 mock)</title><link rel="stylesheet" href="assets/v2.css">
+<style>
+  .wtabs .tab { height: 38px; }
+  .reply { display: flex; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); align-items: flex-start; }
+  .reply:last-child { border-bottom: 0; }
+  .reply .q { font-size: 12.5px; color: var(--ink); margin-top: 2px; }
+  .hot { font-size: 10.5px; font-weight: 600; color: #c2410c; background: #fff1e6; border-radius: 5px; padding: 1px 6px; }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <a class="back" href="home.html">← Hosting</a>
+  <div class="row between" style="align-items:flex-start">
+    <div>
+      <span class="badge">Ended</span>
+      <h1 style="margin-top:8px">Morning Routines That Stick</h1>
+      <p class="small muted" style="margin-top:4px">Fri, 25 Sept 2026 · 07:00 – 08:00 IST · 1 hr · 13 registered · 9 attended</p>
+    </div>
+    <div class="row"><button class="btn">View attendance</button><button class="btn ghost">Delete</button></div>
+  </div>
+
+  <div class="tabs wtabs" style="margin-top:20px">
+    <a class="tab" href="#">Recordings</a>
+    <a class="tab" href="#">Attendees <span class="count">13</span></a>
+    <a class="tab on" href="#">Messages <span class="count green">4</span></a>
+    <a class="tab" href="#">Report</a>
+  </div>
+
+  <!-- 1. The one thing to do next -->
+  <div class="nudge" style="margin-bottom:16px">
+    <span class="ic">✦</span>
+    <div class="grow">
+      <div class="name">3 people who didn't join haven't heard from you yet</div>
+      <div class="xs muted">People who get a replay link within 24 hours are the ones who watch it. The suggested message is ready.</div>
+    </div>
+    <button class="btn sm sec">Preview</button>
+    <button class="btn sm">Send replay to 3</button>
+  </div>
+
+  <!-- 2. Journey -->
+  <div class="card p5" style="margin-bottom:16px">
+    <div class="row between" style="margin-bottom:18px">
+      <div class="st" style="margin:0">This webinar on WhatsApp</div>
+      <span class="xs faint">10 of 13 registrants can get WhatsApp · 1 opted out · 1 no number · 1 didn't opt in</span>
+    </div>
+    <div class="journey">
+      <div class="jstep done"><div class="dot">✓</div><div class="t">Registered</div><div class="s">Confirmation</div><div class="r">11 · 82% read</div></div>
+      <div class="jstep done"><div class="dot">✓</div><div class="t">1 day before</div><div class="s">Reminder</div><div class="r">11 · 82% read</div></div>
+      <div class="jstep done"><div class="dot">✓</div><div class="t">1 hour before</div><div class="s">Reminder</div><div class="r">11 · 73% read</div></div>
+      <div class="jstep done"><div class="dot">●</div><div class="t">Live</div><div class="s">9 joined · avg 41 min</div><div class="r" style="color:var(--brand)">69% showed up</div></div>
+      <div class="jstep now"><div class="dot">→</div><div class="t">Follow up</div><div class="s">2 of 4 groups sent</div><div class="r" style="color:var(--brand)">6 replies</div></div>
+      <div class="jstep"><div class="dot">▶</div><div class="t">Replay</div><div class="s">Publish to send</div><div class="r" style="color:var(--ink-3)">Not yet</div></div>
+    </div>
+  </div>
+
+  <!-- 3. Follow up by watch time -->
+  <div class="row between" style="margin:24px 0 10px">
+    <div class="st" style="margin:0">Follow up, by how long they watched</div>
+    <label class="row small muted"><span class="toggle on"></span> Do this automatically after every webinar</label>
+  </div>
+  <div class="segs">
+    <div class="card seg done">
+      <div class="h"><span class="small muted">Stayed 30+ min</span><span class="badge ok">Sent</span></div>
+      <div class="row between"><span class="n">6</span><span class="faces"><span class="av sm a1">PS</span><span class="av sm a2">RV</span><span class="av sm a3">AI</span><span class="av sm a4">VN</span></span></div>
+      <div class="sugg">Thank you + workbook offer · <b>6 read · 3 replied</b></div>
+      <div class="rate"><div class="bar"><i class="rd" style="width:100%"></i></div><span class="tnum">100%</span></div>
+    </div>
+    <div class="card seg">
+      <div class="h"><span class="small muted">Left before 30 min</span><span class="badge brand">Suggested</span></div>
+      <div class="row between"><span class="n">3</span><span class="faces"><span class="av sm a5">RG</span><span class="av sm a6">MP</span><span class="av sm a7">SR</span></span></div>
+      <div class="sugg">"Here's the part you missed — the habit-stacking demo starts at 34:10 in the replay."</div>
+      <button class="btn sm">Review & send</button>
+    </div>
+    <div class="card seg">
+      <div class="h"><span class="small muted">Didn't join</span><span class="badge warn">3 waiting</span></div>
+      <div class="row between"><span class="n">4</span><span class="faces"><span class="av sm a8">KM</span><span class="av sm a2">NJ</span><span class="av sm a3">AS</span><span class="av sm a1">DK</span></span></div>
+      <div class="sugg">"Sorry we missed you — the replay is up for 48 hours."</div>
+      <button class="btn sm">Review & send</button>
+    </div>
+    <div class="card seg done">
+      <div class="h"><span class="small muted">Replied "YES"</span><span class="badge ok">Auto</span></div>
+      <div class="row between"><span class="n">3</span><span class="faces"><span class="av sm a1">PS</span><span class="av sm a4">VN</span><span class="av sm a2">RV</span></span></div>
+      <div class="sugg">Workbook sent automatically when they replied YES.</div>
+      <div class="rate"><div class="bar"><i class="rd" style="width:100%"></i></div><span class="tnum">3/3</span></div>
+    </div>
+  </div>
+
+  <!-- 4. Replies + results side by side -->
+  <div class="grid" style="grid-template-columns:1.35fr 1fr;margin-top:24px;align-items:start">
+    <div class="card p0">
+      <div class="row between" style="padding:14px 16px;border-bottom:1px solid var(--line)"><div class="st" style="margin:0">Waiting for your reply <span class="count green">4</span></div><a class="small linkish" href="inbox.html">Open Messages →</a></div>
+      <div class="reply"><span class="av a2">RV</span><div class="grow"><div class="row"><span class="name">Rahul Verma</span><span class="hot">Hot lead</span><span class="grow"></span><span class="xs faint">yesterday</span></div><div class="q">"Yes. Also — do you run a paid program? I want accountability."</div><div class="xs faint" style="margin-top:3px">Watched 55 min · 2 webinars</div></div></div>
+      <div class="reply"><span class="av a2">NJ</span><div class="grow"><div class="row"><span class="name">Neha Joshi</span><span class="grow"></span><span class="xs faint">16 h ago</span></div><div class="q">"Watched it! Is the budgeting one also free?"</div><div class="xs faint" style="margin-top:3px">Didn't join · watched the replay</div></div></div>
+      <div class="reply"><span class="av a1">DK</span><div class="grow"><div class="row"><span class="name">Divya Krishnan</span><span class="grow"></span><span class="xs faint">yesterday</span></div><div class="q">"Can you send the link? I had a work call 😞"</div><div class="xs" style="margin-top:3px;color:var(--warn)">Reply window closes in 3 h</div></div></div>
+    </div>
+    <div class="card p5">
+      <div class="st">What WhatsApp did for this webinar</div>
+      <div class="grid" style="gap:12px">
+        <div><div class="row between small"><span class="muted">Showed up (WhatsApp reminded)</span><b class="tnum">82%</b></div><div class="rate" style="margin-top:6px"><div class="bar"><i class="rd" style="width:82%"></i></div></div></div>
+        <div><div class="row between small"><span class="muted">Showed up (email only)</span><b class="tnum">50%</b></div><div class="rate" style="margin-top:6px"><div class="bar"><i class="s" style="width:50%"></i></div></div></div>
+        <div class="divider" style="margin:4px 0"></div>
+        <div class="row between small"><span class="muted">Messages sent</span><b class="tnum">44</b></div>
+        <div class="row between small"><span class="muted">Read</span><b class="tnum">37 · 84%</b></div>
+        <div class="row between small"><span class="muted">Replies</span><b class="tnum">7</b></div>
+        <div class="row between small"><span class="muted">Tagged "Hot lead"</span><b class="tnum">2</b></div>
+        <div class="row between small"><span class="muted">Est. Meta cost</span><b class="tnum">≈ ₹14</b></div>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="note"><b>Webinar → Messages.</b> Today this tab is five plain lists. v2 makes it a journey: what went out before, how many showed up, and a card per watch-time group with the message ready. The top card is the single next action.</div>
+<script src="assets/v2.js"></script>
+</body></html>

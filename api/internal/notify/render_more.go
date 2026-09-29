@@ -11,7 +11,7 @@ func RegistrationConfirmed(in Invite) (subject, body string) {
 
 	var b strings.Builder
 	b.WriteString(greeting(in.Name) + "\n\n")
-	fmt.Fprintf(&b, "You're registered for %q.\n\n", in.Topic)
+	fmt.Fprintf(&b, "You're registered for %s.\n\n", quoted(in.Topic))
 	if in.WhenText != "" {
 		fmt.Fprintf(&b, "When: %s\n\n", in.WhenText)
 	}
@@ -40,11 +40,18 @@ func ReplayReady(in Invite) (subject, body string) {
 
 	var b strings.Builder
 	b.WriteString(greeting(in.Name) + "\n\n")
-	fmt.Fprintf(&b, "The recording of %q is now available to watch.\n\n", in.Topic)
+	fmt.Fprintf(&b, "The recording of %s is now available to watch.\n\n", quoted(in.Topic))
 	b.WriteString("Watch it here:\n")
 	b.WriteString(in.ReplayURL + "\n\n")
 	if p := strings.TrimSpace(in.Passcode); p != "" {
 		fmt.Fprintf(&b, "Passcode: %s\n\n", p)
+	}
+	if u := strings.TrimSpace(in.SurveyURL); u != "" {
+		title := strings.TrimSpace(in.SurveyTitle)
+		if title == "" {
+			title = "How was the session?"
+		}
+		fmt.Fprintf(&b, "%s The host would love your feedback in a short survey:\n%s\n\n", title, u)
 	}
 	// No "don't forward this" line, and its absence is the point: this one may be
 	// shared, and saying otherwise would train people to ignore the warning on the
@@ -61,7 +68,7 @@ func Reminder(in Invite, window string) (subject, body string) {
 
 	var b strings.Builder
 	b.WriteString(greeting(in.Name) + "\n\n")
-	fmt.Fprintf(&b, "%q starts %s.\n\n", in.Topic, window)
+	fmt.Fprintf(&b, "%s starts %s.\n\n", quoted(in.Topic), window)
 	if in.WhenText != "" {
 		fmt.Fprintf(&b, "When: %s\n\n", in.WhenText)
 	}

@@ -17,8 +17,11 @@ import { useToolLayout, type ToolId } from "@/lib/tools";
 import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
 import type { MediaPermissions } from "@/lib/permissions";
 import type { FileShareApi } from "@/lib/file-share";
+import type { HostSurvey } from "@/lib/api-types";
+import { FIXTURE_HOST_SURVEY } from "@/lib/survey-fixtures";
 import { ControlBar } from "./control-bar";
 import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
+import { HostSurveyPill, HostSurveyProvider } from "./host-survey";
 import { MeetingInfo } from "./meeting-info";
 import { SidePanel } from "./side-panel";
 import { ViewsMenu } from "./views-menu";
@@ -73,6 +76,20 @@ const ATTENDEE_PERMS: MediaPermissions = {
  */
 type PreviewSeat = "host" | "panelist" | "attendee";
 
+/* The host's survey, from ?survey= : ready (set up, not sent) or live (on screen, answers
+ * coming in). Absent shows no survey at all, as before. */
+function previewSurvey(value: string | null): HostSurvey | undefined {
+  if (value !== "ready" && value !== "live") return undefined;
+  const base = FIXTURE_HOST_SURVEY.survey!;
+  return {
+    attended: 48,
+    survey:
+      value === "live"
+        ? { ...base, status: "live", responses: 31 }
+        : { ...base, status: "draft", sendAt: "manual", responses: 0, launchedAt: undefined },
+  };
+}
+
 function asSeat(value: string | null): PreviewSeat {
   return value === "attendee" || value === "panelist" ? value : "host";
 }
@@ -113,6 +130,7 @@ const EMPTY_UNREAD: Record<ToolId, number> = {
   host: 0,
   captions: 0,
   sharefile: 0,
+  youtube: 0,
 };
 
 export function PreviewRoom() {
@@ -122,7 +140,9 @@ export function PreviewRoom() {
    * render agree. Reading the URL in an effect would flash the host's bar before swapping to
    * an attendee's, and reading it in a lazy initialiser would render one thing on the server
    * and another on hydration. */
-  const seat = asSeat(useSearchParams().get("as"));
+  const params = useSearchParams();
+  const seat = asSeat(params.get("as"));
+  const surveySample = previewSurvey(params.get("survey"));
   const isHost = seat === "host";
   const permissions = SEAT_PERMS[seat];
 
@@ -166,6 +186,8 @@ export function PreviewRoom() {
       me: DEV_BYPASS_ME,
       entryVideo: null,
       recovering: null,
+      over: false,
+      markEnding: () => undefined,
       realtime,
       roster: {
         live: DEV_BYPASS_LIVE,
@@ -197,6 +219,7 @@ export function PreviewRoom() {
   return (
     <RoomContext.Provider value={room}>
       <RoomUIProvider value={ui}>
+        <HostSurveyProvider enabled={isHost} sample={surveySample}>
         <ToolDragProvider onPin={tools.pin} onUnpin={tools.unpin}>
           <div data-room className="flex h-dvh flex-col overflow-hidden bg-stage">
             <div className="relative min-h-0 min-w-0 flex-1">
@@ -208,6 +231,7 @@ export function PreviewRoom() {
               >
                 <PreviewStage />
               </div>
+              {isHost && <HostSurveyPill />}
               <PreviewHeader />
               <SidePanel />
             </div>
@@ -215,6 +239,7 @@ export function PreviewRoom() {
           </div>
           <ToolWindows />
         </ToolDragProvider>
+        </HostSurveyProvider>
       </RoomUIProvider>
     </RoomContext.Provider>
   );

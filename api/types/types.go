@@ -117,6 +117,20 @@ const (
 	 * the host picks an approved template for it once, and it is sent to the people
 	 * who registered for the webinar it belongs to. */
 	NotifyWhatsAppReplay NotificationKind = "wa_replay"
+
+	/* NotifyWelcome is the one thank-you email a new account gets, from signup or a first
+	 * Google sign-in. Addressed by email, never user_id, so it is not a host alert; one
+	 * per address, enforced by a unique index (migration 0058). */
+	NotifyWelcome NotificationKind = "welcome"
+
+	/* The panelist's side of a webinar: added to the stage (with the stage link and a
+	 * calendar file), the start moved, the session cancelled. Addressed by email and tied to
+	 * no registration — a panelist signs in rather than holding a join key, so the link in
+	 * these is the same for every panelist and is not a credential. One invite per panelist
+	 * per webinar (migration 0070); updates and cancellations are one per change. */
+	NotifyPanelistInvited     NotificationKind = "panelist_invited"
+	NotifyPanelistRescheduled NotificationKind = "panelist_rescheduled"
+	NotifyPanelistCancelled   NotificationKind = "panelist_cancelled"
 )
 
 /* WhatsAppReminderKinds are the automatic WhatsApp messages, in the order they
@@ -226,7 +240,9 @@ type WebinarOptions struct {
 	Captions          bool `json:"captions"`
 	Multistream       bool `json:"multistream"`
 	PostWebinarSurvey bool `json:"postWebinarSurvey"`
-	// EmailReminders defaults true for existing rows that never stored the key.
+	/* EmailReminders is kept so old rows still resolve. The messages editor no
+	 * longer writes it; ResolveSlots reads it only when this webinar has no
+	 * reminder settings row. Missing means on. */
 	EmailReminders bool `json:"emailReminders"`
 	/* WhatsAppReminders defaults FALSE, unlike its email counterpart, and the
 	 * asymmetry is deliberate: every WhatsApp message is charged to the host's own
@@ -891,6 +907,11 @@ type Account struct {
 	Phone    string `json:"phone"`
 	Initials string `json:"initials"`
 	Hue      string `json:"hue"`
+	/* AvatarURL is the photo to show for this account.
+	 * An uploaded picture wins over the Google profile photo. The upload is a
+	 * path on this API (bytes live in the users row, same as a webinar cover);
+	 * the Google photo is the https URL from sign-in. Empty means initials. */
+	AvatarURL string `json:"avatarUrl,omitempty"`
 	// CanHost is GRANTED by an admin. It was once a checkbox on the signup form; see
 	// migrations/0011 for why that had to stop.
 	CanHost bool `json:"canHost"`
@@ -1166,6 +1187,10 @@ type CRMMessage struct {
 	Webinar string `json:"webinar,omitempty"`
 	/** A person wrote it: from the inbox, or on the phone (Coexistence). */
 	Manual bool `json:"manual,omitempty"`
+	/** Sent by the outbox on its own: a confirmation, reminder or replay. The thread
+	 *  folds these into one line so the conversation stays readable. */
+	Automatic bool   `json:"automatic,omitempty"`
+	WebinarID string `json:"webinarId,omitempty"`
 }
 
 /* CRMContactScope names the webinar a contacts list was narrowed to.
@@ -1410,6 +1435,21 @@ type CRMTemplate struct {
 	Sendable bool `json:"sendable"`
 	/** Why not, in words, when Sendable is false. */
 	Unsupported string `json:"unsupported,omitempty"`
+	/** IMAGE when the header is a picture — the webinar's cover is sent in it. */
+	HeaderFormat string `json:"headerFormat,omitempty"`
+	/** Buttons, in order, as Meta approved them. */
+	Buttons []CRMTemplateButton `json:"buttons"`
+}
+
+/* CRMTemplateButton is one button on a template. A quick reply's tap comes back as a
+ * message with its text; a link opens the URL — for a dynamic one, the person's own join
+ * or replay link, filled in at send time. */
+type CRMTemplateButton struct {
+	/** QUICK_REPLY, URL or PHONE_NUMBER. */
+	Type    string `json:"type"`
+	Text    string `json:"text"`
+	URL     string `json:"url,omitempty"`
+	Dynamic bool   `json:"dynamic,omitempty"`
 }
 
 // CRMTemplatesResponse is the host's cached template list, alphabetical.
@@ -1601,6 +1641,9 @@ type CRMSegment struct {
 	MaxWatchMin int `json:"maxWatchMin,omitempty"`
 	/** Has written to the host on WhatsApp. */
 	Replied bool `json:"replied,omitempty"`
+	/** Engagement tiers from the webinar's latest score (engagement_scores). Implies joined.
+	 * `no_show` is expressed with Attendance, not here. */
+	Tiers []EngagementTier `json:"tiers,omitempty"`
 }
 
 const (
@@ -1730,6 +1773,17 @@ type CRMAudienceResponse struct {
 	NoOptIn  int `json:"noOptIn"`
 	OptedOut int `json:"optedOut"`
 	NoNumber int `json:"noNumber"`
+	/** The first few recipients with their values filled in, for the send preview.
+	 *  Only when the request carries params; each Params lines up with the template's
+	 *  {{1}}, {{2}} … the way the broadcast will send them. */
+	Samples []CRMAudienceSample `json:"samples,omitempty"`
+}
+
+/** One recipient as the send preview shows them. */
+type CRMAudienceSample struct {
+	ContactID string   `json:"contactId"`
+	Name      string   `json:"name"`
+	Params    []string `json:"params"`
 }
 
 /* How somebody enters a drip.
@@ -1752,6 +1806,29 @@ const (
 	 *  step. The one trigger that is not about a webinar at all, so a sequence on it
 	 *  has no `topic` or `when` to fill a template with. Needs the tags feature. */
 	DripTagAdded = "tag_added"
+	/** DripPollAnswer fires when someone picks an answer in a poll, matched by the poll's
+	 *  question and the answer's text (Match.Question, Match.Answer). */
+	DripPollAnswer = "poll_answer"
+	/** DripButtonTap fires when someone taps a quick-reply button (Match.Text). */
+	DripButtonTap = "button_tap"
+	/** DripKeywordIn fires when someone sends a message containing a word (Match.Word). */
+	DripKeywordIn = "keyword_in"
+)
+
+/** What a rule's trigger has to match. Only the fields its trigger uses are set. */
+type CRMDripMatch struct {
+	Question string `json:"question,omitempty"`
+	Answer   string `json:"answer,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Word     string `json:"word,omitempty"`
+}
+
+/* What a step does. A message is an approved template; tag and notify send nothing to the
+ * person. */
+const (
+	DripStepMessage = "message"
+	DripStepTag     = "tag"
+	DripStepNotify  = "notify"
 )
 
 /* DripTriggers are the entry triggers, in the order a host is offered them.
@@ -1759,7 +1836,8 @@ const (
  * Iterated by the API's validation and sent to the builder, so a new trigger is added
  * here rather than in a switch statement and a form.
  */
-var DripTriggers = []string{DripManual, DripRegistered, DripAttended, DripNoShow, DripEnded, DripTagAdded}
+var DripTriggers = []string{DripManual, DripRegistered, DripAttended, DripNoShow, DripEnded, DripTagAdded,
+	DripPollAnswer, DripButtonTap, DripKeywordIn}
 
 /* CRMDripStep is one message of a sequence.
  *
@@ -1770,6 +1848,13 @@ var DripTriggers = []string{DripManual, DripRegistered, DripAttended, DripNoShow
 type CRMDripStep struct {
 	/** Minutes to wait after the previous step. 0 means as soon as they enter. */
 	DelayMinutes int `json:"delayMinutes"`
+	/** DripStepMessage (the default when empty), DripStepTag or DripStepNotify. */
+	Kind string `json:"kind,omitempty"`
+	/** For a tag step: the tag, and its name read-only. */
+	TagID   string `json:"tagId,omitempty"`
+	TagName string `json:"tagName,omitempty"`
+	/** For a notify step: what the email to the host says, beside who it is about. */
+	Note string `json:"note,omitempty"`
 	/** The approved template's name and language — its identity at Meta. */
 	Template string `json:"template"`
 	Language string `json:"language"`
@@ -1804,6 +1889,13 @@ type CRMDrip struct {
 	Active bool `json:"active"`
 	/** In order. A drip with no steps cannot be saved. */
 	Steps []CRMDripStep `json:"steps"`
+	/** The engagement tiers an `attended` sequence is narrowed to, empty for everybody
+	 *  who attended. Such a sequence starts once the webinar's engagement is computed. */
+	Tiers []EngagementTier `json:"tiers,omitempty"`
+	/** The recipe this sequence was made from (CRMRecipe.ID), empty for one built by hand. */
+	Recipe string `json:"recipe,omitempty"`
+	/** What a poll_answer, button_tap or keyword_in trigger matches. */
+	Match *CRMDripMatch `json:"match,omitempty"`
 	Stats CRMDripStats  `json:"stats"`
 	/** RFC3339. */
 	CreatedAt string `json:"createdAt"`
@@ -1890,6 +1982,10 @@ type CRMDripRequest struct {
 	WebinarID string `json:"webinarId,omitempty"`
 	/** Optional for `tag_added`, where empty means any tag. Ignored otherwise. */
 	TagID string `json:"tagId,omitempty"`
+	/** Optional for `attended`: only these engagement tiers. Ignored otherwise. */
+	Tiers []EngagementTier `json:"tiers,omitempty"`
+	/** Required for poll_answer, button_tap and keyword_in. */
+	Match *CRMDripMatch `json:"match,omitempty"`
 	/** Whether it runs. Absent is false, so a request that forgets it creates a
 	 *  paused sequence rather than one that starts messaging people. */
 	Active bool          `json:"active"`
@@ -2690,6 +2786,17 @@ type StageAllResponse struct {
 	Count int `json:"count"`
 }
 
+// RegistrantPage is one page of the host's People tab.
+type RegistrantPage struct {
+	Items    []RegistrantRow `json:"items"`
+	Total    int             `json:"total"`
+	Offset   int             `json:"offset"`
+	Approved int             `json:"approved"`
+	Declined int             `json:"declined"`
+	Pending  int             `json:"pending"`
+	Guests   int             `json:"guests"`
+}
+
 type RegistrantRow struct {
 	ID         string            `json:"id"`
 	Name       string            `json:"name"`
@@ -2732,11 +2839,17 @@ type RegistrantRow struct {
 	 * (store.AttachWatch). Zero and false before the webinar has run. */
 	Joined   bool `json:"joined"`
 	WatchMin int  `json:"watchMin"`
+	/* Tier is their engagement level from the webinar's latest score (engagement_scores),
+	 * empty until it has been computed or when they never joined. */
+	Tier EngagementTier `json:"tier,omitempty"`
 	/* ContactID is this registrant's CRM contact, which is who a message is addressed to;
 	 * empty for a guest. LastMessage is the latest message either way on WhatsApp, for the
 	 * "Last message" column. Both filled in by the CRM, like WhatsAppStatus. */
 	ContactID   string      `json:"contactId,omitempty"`
 	LastMessage *CRMMessage `json:"lastMessage,omitempty"`
+	/* Answers to the webinar's registration questions, keyed by CustomQuestion.ID. A
+	 * checkbox answer is "yes" when ticked; an unanswered question has no key. */
+	Answers map[string]string `json:"answers,omitempty"`
 }
 
 type PanelistRequest struct {
@@ -2846,4 +2959,64 @@ type APIError struct {
 
 type StatusResponse struct {
 	Status string `json:"status"`
+}
+
+/* Integration cards on Settings. One shape for every provider, so the page
+ * renders the list and does not grow a branch when another app is added.
+ *
+ * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ * this type is only what the browser is allowed to see. */
+const (
+	IntegrationStatusConnected = "connected"
+	IntegrationStatusOff       = "off"
+	IntegrationStatusSoon      = "soon"
+
+	IntegrationCategoryMessaging = "messaging"
+	IntegrationCategoryStreaming = "streaming"
+	IntegrationCategorySoon      = "soon"
+
+	IntegrationActionNavigate = "navigate"
+	IntegrationActionRedirect = "redirect"
+	IntegrationActionDelete   = "delete"
+	IntegrationActionInterest = "interest"
+	IntegrationActionInfo     = "info"
+	IntegrationActionSignup   = "signup"
+)
+
+type IntegrationStep struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+type IntegrationAction struct {
+	ID     string            `json:"id"`
+	Label  string            `json:"label"`
+	Href   string            `json:"href,omitempty"`
+	Method string            `json:"method,omitempty"`
+	Kind   string            `json:"kind"`
+	Detail string            `json:"detail,omitempty"`
+	Menu   bool              `json:"menu,omitempty"`
+	Steps  []IntegrationStep `json:"steps,omitempty"`
+}
+
+type IntegrationCard struct {
+	ID         string              `json:"id"`
+	Name       string              `json:"name"`
+	Tagline    string              `json:"tagline"`
+	Category   string              `json:"category"`
+	Status     string              `json:"status"`
+	Detail     string              `json:"detail"`
+	Who        string              `json:"who,omitempty"`
+	WhoNote    string              `json:"whoNote,omitempty"`
+	Warn       string              `json:"warn,omitempty"`
+	Mark       string              `json:"mark"`
+	Text       string              `json:"text,omitempty"`
+	Tone       string              `json:"tone"`
+	Actions    []IntegrationAction `json:"actions,omitempty"`
+	Interested bool                `json:"interested,omitempty"`
+}
+
+type IntegrationsResponse struct {
+	Integrations []IntegrationCard `json:"integrations"`
 }

@@ -237,8 +237,7 @@ export function TagManager({
       );
     } catch (e) {
       /* The server's own sentence. The refusal that matters names the sequence
-       * that triggers on this tag, and "could not delete" would leave a host
-       * hunting through the Sequences tab for which one it meant. */
+       * that triggers on this tag — a generic "could not delete" would hide which one. */
       setError(e instanceof ApiError ? e.message : "Could not delete that tag.");
     } finally {
       setBusy(false);

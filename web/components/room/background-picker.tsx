@@ -5,6 +5,7 @@ import { useLocalParticipant } from "@livekit/components-react";
 import { useEffect, type ReactNode } from "react";
 import {
   retryBackground,
+  useAutoLowLight,
   useBackgroundsSupported,
   useBackgroundStatus,
   useVirtualBackground,
@@ -46,37 +47,15 @@ function useCameraTrack(): LocalVideoTrack | undefined {
 
 /** Applies the stored background. Renders nothing. */
 export function VirtualBackground() {
-  const { prefs, updatePrefs } = useRoomUI();
+  const { prefs } = useRoomUI();
   const { notify } = useToast();
   const track = useCameraTrack();
+  useAutoLowLight(prefs.lowLightAuto);
 
   const { error } = useVirtualBackground(
     track,
     prefs.background,
     prefs.lowLight,
-    () => {
-    /* The device cannot keep up. Turned off rather than left stuttering: the person
-     * whose laptop is struggling cannot see the stutter, and the audience can.
-     *
-     * The background goes first and alone, because it is what costs — segmentation is
-     * the inference, the lift is four instructions on a pixel already in a register. A
-     * machine that cannot sustain both can usually sustain the lift, so taking it away
-     * too would be removing the cheap thing to fix the expensive one. Only when there
-     * was no background to drop does the lift go instead. */
-    if (prefs.background.mode !== "none") {
-      updatePrefs({ background: { mode: "none" } });
-      notify(
-        "Your device can't keep up with the virtual background, so it's been turned off.",
-        "info",
-      );
-      return;
-    }
-    updatePrefs({ lowLight: 0 });
-    notify(
-      "Your device can't keep up with the low-light adjustment, so it's been turned off.",
-      "info",
-    );
-  },
     prefs.backgroundEngine,
   );
 
@@ -137,8 +116,7 @@ export function BackgroundPicker() {
 
       <p className="mt-2 text-[11.5px] leading-relaxed text-ink-3">
         Segmentation runs on your own device — the video is never sent anywhere to
-        be processed. On a slower machine it will turn itself off rather than
-        publish a stuttering picture.
+        be processed.
       </p>
     </section>
   );

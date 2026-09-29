@@ -48,3 +48,6 @@ firebase-debug.log
 docs/mockups/**/*.png
 docs/mockups/**/*.zip
 docs/architecture/*.visual-check.*.png
+
+# guided-tour recordings (make tours) — large binaries, regenerate instead
+docs/tours/videos/

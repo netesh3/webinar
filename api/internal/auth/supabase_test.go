@@ -105,6 +105,53 @@ func TestVerifySupabaseAccessToken(t *testing.T) {
 		}
 	})
 
+	t.Run("google picture", func(t *testing.T) {
+		tok := sign(func(c *supabaseClaims) {
+			c.UserMetadata["picture"] = "https://lh3.googleusercontent.com/a/abc=s96-c"
+			c.UserMetadata["avatar_url"] = "https://lh3.googleusercontent.com/a/other"
+		})
+		id, err := VerifySupabaseAccessToken(tok, secret, url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id.Picture != "https://lh3.googleusercontent.com/a/abc=s96-c" {
+			t.Fatalf("picture %q", id.Picture)
+		}
+	})
+
+	t.Run("avatar_url when picture is absent", func(t *testing.T) {
+		tok := sign(func(c *supabaseClaims) {
+			c.UserMetadata["avatar_url"] = "https://lh3.googleusercontent.com/a/fallback"
+		})
+		id, err := VerifySupabaseAccessToken(tok, secret, url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id.Picture != "https://lh3.googleusercontent.com/a/fallback" {
+			t.Fatalf("picture %q", id.Picture)
+		}
+	})
+
+	t.Run("rejects a picture that is not a google https url", func(t *testing.T) {
+		for _, raw := range []string{
+			"http://lh3.googleusercontent.com/a/x",
+			"https://evil.example/a.png",
+			"javascript:alert(1)",
+			"https://user:pass@lh3.googleusercontent.com/a/x",
+		} {
+			tok := sign(func(c *supabaseClaims) {
+				c.UserMetadata["picture"] = raw
+			})
+			id, err := VerifySupabaseAccessToken(tok, secret, url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if id.Picture != "" {
+				t.Fatalf("picture %q kept from %q", id.Picture, raw)
+			}
+		}
+	})
+
 	t.Run("name from email local part", func(t *testing.T) {
 		tok := sign(func(c *supabaseClaims) {
 			c.UserMetadata = nil

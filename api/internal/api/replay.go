@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -91,32 +92,56 @@ func (s *Server) enqueueReplay(ctx context.Context, slug string, rec types.Recor
 		passcode = strings.TrimSpace(wb.Passcode)
 	}
 
+	/* A live link survey rides along: it is the same URL for everybody and the one survey
+	 * mode that works outside the room. A built-in rating survey is answered in the room or
+	 * on its ended screen, so it has no link to put here. */
+	var surveyURL, surveyLabel string
+	if sv, err := s.store.HostSurvey(ctx, slug); err == nil && sv.Mode == types.SurveyLink && sv.Status == types.SurveyLive {
+		surveyURL, surveyLabel = sv.ExternalURL, sv.Title
+	}
+
 	/* WhatsApp is the CRM's half of this, and is handed over rather than done here: see
-	 * Engage.OnRecordingPublished. */
-	var emails int
-	for _, p := range people {
-		in := notify.Invite{
-			Name:      p.Name,
-			Topic:     wb.Topic,
-			WhenText:  whenText(wb.StartsAt, wb.TimeZone),
-			HostName:  wb.Host.Name,
-			ReplayURL: url,
-			Passcode:  passcode,
+	 * Engage.OnRecordingPublished. Email follows the resolved replay slot. */
+	sendEmail := true
+	var due time.Time
+	if slots, ok := s.messageSlots(ctx, slug); ok {
+		sendEmail = slotSends(slots, types.SlotReplay, types.ChannelEmail)
+		if slot, found := types.FindSlot(slots, types.SlotReplay); found {
+			due = slot.Timing.From(types.EndOf(wb), webinarLocation(wb))
+			if !due.After(time.Now()) {
+				due = time.Time{}
+			}
 		}
-		subject, body := notify.ReplayReady(in)
-		if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
-			Email:          p.Email,
-			Kind:           types.NotifyReplayReady,
-			WebinarSlug:    slug,
-			RegistrationID: p.RegistrationID,
-			Subject:        subject,
-			Body:           body,
-			// No calendar attachment: there is nothing to put in a diary.
-		}); err != nil {
-			s.log.Error("replay: could not queue email", "webinar", slug,
-				"registration", p.RegistrationID, "error", err)
-		} else {
-			emails++
+	}
+	var emails int
+	if sendEmail {
+		for _, p := range people {
+			in := notify.Invite{
+				Name:        p.Name,
+				Topic:       wb.Topic,
+				WhenText:    whenText(wb.StartsAt, wb.TimeZone),
+				HostName:    wb.Host.Name,
+				ReplayURL:   url,
+				Passcode:    passcode,
+				SurveyURL:   surveyURL,
+				SurveyTitle: surveyLabel,
+			}
+			subject, body := notify.ReplayReady(in)
+			if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
+				Email:          p.Email,
+				Kind:           types.NotifyReplayReady,
+				WebinarSlug:    slug,
+				RegistrationID: p.RegistrationID,
+				Subject:        subject,
+				Body:           body,
+				DueAt:          due,
+				// No calendar attachment: there is nothing to put in a diary.
+			}); err != nil {
+				s.log.Error("replay: could not queue email", "webinar", slug,
+					"registration", p.RegistrationID, "error", err)
+			} else {
+				emails++
+			}
 		}
 	}
 

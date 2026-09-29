@@ -156,6 +156,8 @@ type WhatsAppOutbound struct {
 	BroadcastID string
 	// WebinarSlug is the webinar this message is about, when there is one.
 	WebinarSlug string
+	// LinkURL is where a dynamic link button goes; empty means the webinar's page.
+	LinkURL string
 
 	Attempts int
 }
@@ -197,7 +199,8 @@ func (s *Store) PendingWhatsApp(ctx context.Context, limit int) ([]WhatsAppOutbo
 		       COALESCE(n.broadcast_id::text,''), n.attempts,
 		       COALESCE((SELECT w.slug FROM webinars w
 		                  WHERE w.id = COALESCE(n.webinar_id,
-		                        (SELECT b.webinar_id FROM crm_broadcasts b WHERE b.id = n.broadcast_id))), '')
+		                        (SELECT b.webinar_id FROM crm_broadcasts b WHERE b.id = n.broadcast_id))), ''),
+		       n.link_url
 		  FROM notifications n
 		  JOIN crm_contacts c ON c.id = n.contact_id
 		  JOIN users u        ON u.id = c.host_id
@@ -213,10 +216,7 @@ func (s *Store) PendingWhatsApp(ctx context.Context, limit int) ([]WhatsAppOutbo
 		             * about a session that has ended, and it is not a reminder — the host
 		             * asked for it by publishing the recording, one press at a time, long
 		             * after the webinar's own reminder toggle stopped meaning anything. */
-		            AND (n.kind = 'wa_replay' OR (
-		              w.status NOT IN ('ended','draft')
-		              AND COALESCE((w.options->>'whatsappReminders')::boolean, false)
-		            ))
+		            AND (n.kind = 'wa_replay' OR w.status NOT IN ('ended','draft'))
 		       ))
 		   AND (n.registration_id IS NULL OR EXISTS (
 		         SELECT 1 FROM registrations r
@@ -243,7 +243,7 @@ func (s *Store) PendingWhatsApp(ctx context.Context, limit int) ([]WhatsAppOutbo
 		var m WhatsAppOutbound
 		if err := rows.Scan(&m.ID, &m.Kind, &m.HostID, &m.Token, &m.PhoneNumberID,
 			&m.ContactID, &m.Phone, &m.TemplateName, &m.TemplateLanguage,
-			&m.Params, &m.BroadcastID, &m.Attempts, &m.WebinarSlug); err != nil {
+			&m.Params, &m.BroadcastID, &m.Attempts, &m.WebinarSlug, &m.LinkURL); err != nil {
 			return nil, err
 		}
 		if m.Params == nil {

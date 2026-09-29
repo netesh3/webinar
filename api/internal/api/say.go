@@ -199,8 +199,9 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 	 * recorded but not delivered arrives on everyone's next sync; a message delivered
 	 * but not recorded is gone the moment a tab reloads.
 	 *
-	 * The other kinds — questions, hands, reactions — are not persisted and take the
-	 * path below unchanged.
+	 * The other kinds — questions, hands, reactions — are not written here and take the
+	 * path below. Questions are stored before delivery; hands and reactions are copied
+	 * into the engagement capture buffer after it (recordRealtime), off the request path.
 	 */
 	if packet.Kind == types.MsgChat {
 		// After the destination is settled, because who can be mentioned depends on
@@ -268,10 +269,13 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		if packet.ID == "" {
 			packet.ID = fmt.Sprintf("q-%d", packet.At)
 		}
-		_ = s.store.UpsertSessionQuestion(r.Context(), slug, types.SessionQuestion{
+		if err := s.store.UpsertSessionQuestion(r.Context(), slug, types.SessionQuestion{
 			ID: packet.ID, Identity: from.Identity, Name: from.Name,
 			Text: packet.Text, Anonymous: packet.Anonymous, Role: from.Role,
-		})
+		}); err != nil {
+			// Still delivered live, but it will be missing from the report — say so.
+			s.log.Warn("say: record question failed", "slug", slug, "question", packet.ID, "error", err)
+		}
 	case types.MsgUpvote:
 		if added, err := s.store.UpvoteQuestion(
 			r.Context(), slug, packet.QuestionID, from.Identity,
@@ -290,6 +294,7 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "say: send data", err)
 		return
 	}
+	s.recordRealtime(slug, from, packet)
 
 	httpx.JSON(w, http.StatusOK, types.SendMessageResponse{
 		Destination: packet.Destination,

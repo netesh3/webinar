@@ -105,7 +105,7 @@ export function PollPopup() {
 }
 
 /** document.body, or the element that is fullscreen right now. Null before mount. */
-function usePortalHost(): HTMLElement | null {
+export function usePortalHost(): HTMLElement | null {
   const [host, setHost] = useState<HTMLElement | null>(null);
   useEffect(() => {
     const read = () => {

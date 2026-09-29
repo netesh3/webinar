@@ -41,6 +41,11 @@ type Engage interface {
 	OnRescheduled(ctx context.Context, wb types.Webinar)
 	// OnEnded follows the end of a session, after attendance has its final answer.
 	OnEnded(ctx context.Context, wb types.Webinar)
+	// OnScored follows the webinar's engagement being computed and saved, at the end of a
+	// session or on a recompute: each attendee's tier now exists to follow up by.
+	OnScored(ctx context.Context, slug string)
+	// OnPollAnswer follows a vote in a poll: the room identity, the question and the answer.
+	OnPollAnswer(ctx context.Context, slug, identity, question, answer string)
 	// OnRecordingPublished follows a recording being made public, for a host who has replay links on.
 	OnRecordingPublished(ctx context.Context, wb types.Webinar, host store.User, replayURL string)
 
@@ -49,6 +54,11 @@ type Engage interface {
 
 	// Tick is the CRM's share of the 30-second sweeper: drips, bots, the WhatsApp outbox.
 	Tick(ctx context.Context)
+
+	/* MessageSlots is the resolved attendee messages for one webinar.
+	 * ok is false when they cannot be read; the caller keeps reading WebinarOptions.
+	 * Old rows with no settings row are already folded in by ResolveSlots. */
+	MessageSlots(ctx context.Context, webinarID string) ([]types.MessageSlot, bool, error)
 }
 
 // NoEngage is a deployment without the CRM: no routes, no messages, no columns.
@@ -61,10 +71,15 @@ func (NoEngage) OnRegistered(context.Context, types.Webinar, types.Registration,
 func (NoEngage) OnRegistrationsDecided(context.Context, string, []string)                {}
 func (NoEngage) OnRescheduled(context.Context, types.Webinar)                            {}
 func (NoEngage) OnEnded(context.Context, types.Webinar)                                  {}
+func (NoEngage) OnScored(context.Context, string)                                        {}
+func (NoEngage) OnPollAnswer(context.Context, string, string, string, string)            {}
 func (NoEngage) OnRecordingPublished(context.Context, types.Webinar, store.User, string) {}
 func (NoEngage) DecorateRegistrants(context.Context, store.User, string, []types.RegistrantRow) {
 }
 func (NoEngage) Tick(context.Context) {}
+func (NoEngage) MessageSlots(context.Context, string) ([]types.MessageSlot, bool, error) {
+	return nil, false, nil
+}
 
 /* UseEngage plugs the CRM in. Called once, by main (and the test harness), before Routes.
  * A nil argument means NoEngage. */

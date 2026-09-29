@@ -17,7 +17,6 @@ import { useMediaPreferences } from "@/lib/media";
 import {
   useMediaPermissions,
   useLiveRole,
-  useLiveCoHost,
   type MediaPermissions,
 } from "@/lib/permissions";
 import {
@@ -45,9 +44,12 @@ import { ControlBar } from "./control-bar";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, type RoomUI } from "./context";
 import { PollPopup } from "./poll-popup";
+import { SurveyPopup } from "./survey-popup";
+import { SessionSurvey } from "../survey/session-survey";
+import { useAudienceSurvey } from "@/lib/use-audience-survey";
 import { CtaPopup } from "./cta-popup";
 import { CaptionOverlay } from "./caption-overlay";
-import { StageInviteDialog } from "./stage-invite-dialog";
+import { useSelfHandToasts, type SelfHandEvent } from "./self-hand-toasts";
 import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
@@ -81,13 +83,12 @@ export function CdnAttendeeRoom({
   onPromoted: () => void;
 }) {
   const { prefs, update: updatePrefs } = useMediaPreferences();
-  const { notify } = useToast();
 
   const [room] = useState(() => new Room());
 
   const [failure, setFailure] = useState<string | null>(null);
   const [exit, setExit] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [, setConnected] = useState(false);
 
   const onLeaveRef = useRef(onLeave);
   useEffect(() => {
@@ -105,7 +106,6 @@ export function CdnAttendeeRoom({
 
   // Live roles & permissions
   const liveRole = useLiveRole(room, join.role);
-  const liveCoHost = useLiveCoHost(room);
 
   // Real-time chat relay
   const relay = useCallback<Relay>(
@@ -122,6 +122,9 @@ export function CdnAttendeeRoom({
     [join.identity, join.displayName, join.role, liveRole],
   );
 
+  // Filled in below, once `realtime` exists: the hand and stage toasts' bridge.
+  const selfHand = useRef<((event: SelfHandEvent) => void) | null>(null);
+
   // Realtime hook for chat, Q&A, polls, reactions, hand-raising
   const realtime = useRealtime(
     room,
@@ -130,24 +133,43 @@ export function CdnAttendeeRoom({
     useMemo(
       () => ({
         onHandLowered: (reason: "granted" | "dismissed") => {
-          if (reason !== "granted") {
-            notify("The host dismissed your request to speak for now.", "info");
-          }
+          selfHand.current?.({ kind: "lowered", reason });
+        },
+        onHandsCleared: () => {
+          selfHand.current?.({ kind: "lowered", reason: "cleared" });
         },
       }),
-      [notify],
+      [],
     ),
   );
+
+  // This person's own hand and stage, as the WebRTC room shows them (self-hand-toasts.tsx).
+  // On accepting an invite this room is replaced by the stage and nothing after the
+  // remount announces it, so the card says "You're on stage" here.
+  const announceSelfHand = useSelfHandToasts({
+    slug,
+    joinKey,
+    handRaised: realtime.myHandRaised,
+    invite: realtime.stageInvite,
+    recording,
+    canRaise: controls.raiseHandEnabled,
+    toggleHand: realtime.toggleHand,
+    dismissInvite: realtime.dismissStageInvite,
+    onAccepted: useCallback(() => onPromotedRef.current(), []),
+  });
+  useEffect(() => {
+    selfHand.current = announceSelfHand;
+  }, [announceSelfHand]);
 
   // Watch permissions: upgrade dynamically to stage if promoted
   const announcePermissions = useCallback(
     (next: MediaPermissions) => {
       if (next.canPublish || next.canSpeak) {
-        notify("You're on the stage!", "ok");
+        selfHand.current?.({ kind: "stage", arrival: next.canPublish ? "stage" : "speak" });
         onPromotedRef.current();
       }
     },
-    [notify],
+    [],
   );
 
   const permissions = useMediaPermissions(room, announcePermissions);
@@ -249,6 +271,7 @@ export function CdnAttendeeRoom({
       host: 0,
       captions: 0,
       sharefile: 0,
+      youtube: 0,
     }),
     [chatVisible, qaVisible, chatCount, questionCount, seen, realtime.chat, realtime.questions, mountedAt, me.identity],
   );
@@ -267,6 +290,7 @@ export function CdnAttendeeRoom({
     controls.pollsEnabled,
     room,
   );
+  const survey = useAudienceSurvey(slug, joinKey, realtime.surveyRevision, true);
   const network = useNetworkHealth(room, false);
 
   const ui = useMemo<RoomUI>(
@@ -287,6 +311,8 @@ export function CdnAttendeeRoom({
       me,
       entryVideo: null,
       recovering: null,
+      over: false,
+      markEnding: () => undefined,
       realtime,
       roster,
       polls,
@@ -333,10 +359,13 @@ export function CdnAttendeeRoom({
     ],
   );
 
-  if (exit) {
+  // The server announces the end in room metadata before it closes the room, so the ended
+  // screen shows at once instead of the player first saying "Reconnecting to the broadcast…"
+  // as the stream goes away.
+  if (exit || status === "ended") {
     return (
-      <main className="grid min-h-dvh place-items-center bg-stage p-6 text-center">
-        <div className="max-w-sm">
+      <main className="grid min-h-dvh place-items-center bg-stage p-4 text-center sm:p-6">
+        <div className="flex w-full max-w-[460px] flex-col items-center">
           <h1 className="text-[18px] font-semibold text-white">The webinar has ended</h1>
           <p className="mt-2 text-[13.5px] leading-relaxed text-white/60">
             Thanks for coming — the host closed the session.
@@ -349,6 +378,7 @@ export function CdnAttendeeRoom({
               Back to webinars
             </button>
           </div>
+          <SessionSurvey slug={slug} joinKey={joinKey} className="mt-6" />
         </div>
       </main>
     );
@@ -412,9 +442,15 @@ export function CdnAttendeeRoom({
                   </div>
 
                   <PollPopup />
+                  <SurveyPopup
+                    slug={slug}
+                    joinKey={joinKey}
+                    survey={survey.data}
+                    onChange={survey.replace}
+                    enabled
+                  />
                   <CtaPopup />
                   <CaptionOverlay />
-                  <StageInviteDialog onAccepted={() => onPromotedRef.current()} />
                   <RoomHeader />
                   <SidePanel />
                 </div>
@@ -665,6 +701,10 @@ function WhepPlayer({
   );
 }
 
+function isPlaylistUrl(url: string): boolean {
+  return /\.m3u8(\?|$)/i.test(url);
+}
+
 function HlsPlayer({
   streamUrl,
   lowLatency,
@@ -677,7 +717,10 @@ function HlsPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
+  // A plain file is muted before it plays (see the effect below); starting in
+  // that state is what the effect used to set on mount. Later URL changes are
+  // covered by the element's volumechange event, wired to onMutedChange.
+  const [isMuted, setIsMuted] = useState(() => !isPlaylistUrl(streamUrl));
   const activeUrl = streamUrl;
   const ll = Boolean(lowLatency);
 
@@ -697,12 +740,11 @@ function HlsPlayer({
       video.play().catch(() => {});
     };
 
-    const isPlaylist = /\.m3u8(\?|$)/i.test(activeUrl);
+    const isPlaylist = isPlaylistUrl(activeUrl);
     if (!isPlaylist) {
       video.playsInline = true;
       video.setAttribute("playsinline", "");
       video.muted = true;
-      setIsMuted(true);
       video.src = activeUrl;
       const onLoaded = () => {
         setLoading(false);

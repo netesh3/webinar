@@ -7,6 +7,8 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -22,8 +24,21 @@ import {
   type RecordingTransport,
 } from "@/lib/recorder";
 import { canRecordScreen, ScreenRecorder } from "@/lib/screen-recorder";
+import {
+  clearLegacyRememberedTarget,
+  initialMenuIndex,
+  menuSubline,
+  menuTitle,
+  moveMenuIndex,
+  recordAvailability,
+  recordingDetail,
+  recordingTag,
+  type CloudSetting,
+  type RecordTarget,
+  type TargetAvailability,
+} from "@/lib/record-target";
 import { Spinner } from "../controls";
-import { useAppConfig, useToast } from "../providers";
+import { useAppConfig, useAppConfigStatus, useToast } from "../providers";
 import { recordingRetentionDays } from "@/lib/recording-retention";
 import { ChevronDownIcon, DeviceIcon, RecordIcon, StopIcon } from "../icons";
 import { useRoomUI } from "./context";
@@ -63,6 +78,10 @@ const readCanRecordOnServer = () => false;
 // lib/screen-recorder.ts).
 const readCanRecordLocally = () => canRecordLocally() && canRecordScreen();
 const readCanRecordLocallyOnServer = () => false;
+// The two halves separately, so the chooser can say WHICH one is missing.
+const readCanSaveLocally = () => canRecordLocally();
+const readCanCaptureScreen = () => canRecordScreen();
+const IDLE_TITLE = "Record — choose where to save";
 
 /** A recording's suggested filename: the topic, filesystem-safe, plus the date
  *  so a host who records the same series weekly does not have to rename one
@@ -130,11 +149,14 @@ function useRecorder(): RecorderContextValue {
   const [stoppedRecently, setStoppedRecently] = useState(false);
   const { recording: serverRecording } = useRoomUI();
 
-  useEffect(() => {
-    if (!serverRecording) {
-      setStoppedRecently(false);
-    }
-  }, [serverRecording]);
+  // Cleared when the server stops reporting a recording — on that edge, during
+  // render, rather than in an effect after it. Only the edge: stop() raising the
+  // flag while the server already says "not recording" must not clear it.
+  const [seenServerRecording, setSeenServerRecording] = useState(serverRecording);
+  if (serverRecording !== seenServerRecording) {
+    setSeenServerRecording(serverRecording);
+    if (!serverRecording) setStoppedRecently(false);
+  }
 
   // Local recording is a ScreenRecorder (lib/screen-recorder.ts), not a
   // SessionRecorder — no canvas compositing, see recording.tsx's module
@@ -383,17 +405,37 @@ function useRecorder(): RecorderContextValue {
   return { state, bytes, startedAt, destination, start, stop, mine, isEgress };
 }
 
-/** The control bar's record button. Rendered as a split button with dropdown chevron arrow. */
+/** The control bar's record button: a split button — the main half records or
+ *  stops, the chevron opens the same small menu.
+ *
+ *  Idle, both halves open one compact destination menu above the button
+ *  ("Record to the Cloud" / "Record on this Computer"); picking an item starts
+ *  right there, from that click, so Local keeps the user activation its screen
+ *  and save pickers need. While recording the main half only ever stops — no
+ *  menu between a host and Stop — and the chevron shows where it is going plus
+ *  a Stop. The decisions are in lib/record-target.ts. */
 export function RecordButton() {
   const { join, recording: serverRecording, isHost } = useRoomUI();
-  const { recordingMode, recordingsRetentionDays } = useAppConfig();
+  const { recordingMode, recordingsRetentionDays, cloudRecordingEnabled } = useAppConfig();
+  const configStatus = useAppConfigStatus();
   const keepDays = recordingRetentionDays(undefined, recordingsRetentionDays);
   const isEgress = recordingMode === "egress";
   const { notify } = useToast();
   const { state, bytes, startedAt, destination, start, stop, mine } = useRoomRecorder();
   const connection = useConnectionState();
-  const [choosing, setChoosing] = useState(false);
+  const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement | null>(null);
+  const mainRef = useRef<HTMLButtonElement | null>(null);
+  /** Which half opened the menu, so Escape can hand focus back to it. */
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const items = useRef<(HTMLButtonElement | null)[]>([]);
+  const menuId = useId();
+
+  // "Remember my choice" is gone; drop what an older build stored so it can
+  // never quietly pick a destination again.
+  useEffect(() => {
+    clearLegacyRememberedTarget(safeLocalStorage());
+  }, []);
 
   // Whether this browser can encode video at all. Read through
   // useSyncExternalStore because it is a client-only capability: false during the
@@ -409,10 +451,49 @@ export function RecordButton() {
     readCanRecordLocally,
     readCanRecordLocallyOnServer,
   );
+  const canSaveLocally = useSyncExternalStore(
+    subscribeNothing,
+    readCanSaveLocally,
+    readCanRecordLocallyOnServer,
+  );
+  const canCaptureScreen = useSyncExternalStore(
+    subscribeNothing,
+    readCanCaptureScreen,
+    readCanRecordLocallyOnServer,
+  );
 
+  // While the config is still loading, cloudRecordingEnabled is only
+  // CONFIG_FALLBACK's "false" guess — Cloud shows as checking, not unavailable.
+  const cloudSetting: CloudSetting =
+    configStatus === "loading"
+      ? "checking"
+      : configStatus === "failed" && !cloudRecordingEnabled
+        ? "unknown"
+        : cloudRecordingEnabled;
+
+  const availability = useMemo(
+    () =>
+      recordAvailability({
+        cloudEnabled: cloudSetting,
+        isEgress,
+        canComposite: supported,
+        canSaveLocally,
+        canCaptureScreen,
+      }),
+    [cloudSetting, isEgress, supported, canSaveLocally, canCaptureScreen],
+  );
+
+  const close = useCallback((restoreFocus: boolean) => {
+    setOpen(false);
+    if (restoreFocus) (opener.current ?? mainRef.current)?.focus({ preventScroll: true });
+  }, []);
+
+  // Called synchronously from the menu item's click so local recording's
+  // getDisplayMedia/showSaveFilePicker keep their user activation — see
+  // lib/screen-recorder.ts.
   const go = useCallback(
-    (dest: "cloud" | "local") => {
-      setChoosing(false);
+    (dest: RecordTarget) => {
+      setOpen(false);
       void start(dest).catch((err: unknown) =>
         notify(err instanceof Error ? err.message : "Could not start recording.", "error"),
       );
@@ -420,20 +501,45 @@ export function RecordButton() {
     [start, notify],
   );
 
+  // One bar popover at a time, same rules as More (lib/bar-popover.ts): a press
+  // anywhere outside closes it — including another toolbar button, which then
+  // does its own thing in the same click — and so does Enter/Space on another
+  // button, which fires a click with no pointerdown. Escape closes and hands
+  // focus back to whichever half opened the menu.
   useEffect(() => {
-    if (!choosing) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setChoosing(false);
+    if (!open) return;
+    const outside = (e: Event) => !wrap.current?.contains(e.target as Node | null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      close(!!wrap.current?.contains(document.activeElement));
+    };
     const onDown = (e: PointerEvent) => {
-      if (wrap.current?.contains(e.target as Node)) return;
-      setChoosing(false);
+      if (outside(e)) close(false);
+    };
+    const onClick = (e: MouseEvent) => {
+      if (e.detail === 0 && outside(e)) close(false);
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("pointerdown", onDown);
+    window.addEventListener("click", onClick, true);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("click", onClick, true);
     };
-  }, [choosing]);
+  }, [open, close]);
+
+  // Focus moves into the menu when it opens (ARIA menu button): the first
+  // usable item, else the first one so its reason is read. On open only — not
+  // again when Cloud stops "checking" while the menu is up. A pointer open
+  // shows no ring, thanks to :focus-visible.
+  useEffect(() => {
+    if (!open) return;
+    const list = items.current.filter((el): el is HTMLButtonElement => !!el?.isConnected);
+    const i = initialMenuIndex(list.map((el) => el.getAttribute("aria-disabled") !== "true"));
+    list[i]?.focus({ preventScroll: true });
+  }, [open]);
 
   if (!join.canRecord && !isHost) return null;
   if (!supported && !isEgress && !localSupported) return null;
@@ -441,6 +547,9 @@ export function RecordButton() {
 
   const busy = state === "starting" || state === "stopping";
   const isRecording = mine || (serverRecording && (join.canRecord || isHost));
+  // Someone else's recording (another host, or before a reload) is always a
+  // server one — local recordings are never announced to the room.
+  const activeTarget: RecordTarget = mine && destination === "local" ? "local" : "cloud";
 
   const label =
     state === "starting"
@@ -448,15 +557,53 @@ export function RecordButton() {
       : state === "stopping"
         ? "Saving recording"
         : isRecording
-          ? "Stop recording"
-          : "Start recording";
+          ? `Stop recording (${recordingTag(activeTarget)})`
+          : IDLE_TITLE;
 
-  const onMainClick = () => {
+  // How many items the open menu holds, in focus order: the two destinations
+  // while idle, or just Stop while recording.
+  const itemCount = isRecording ? 1 : 2;
+
+  const openFrom = (button: HTMLButtonElement | null) => {
+    opener.current = button;
+    setOpen(true);
+  };
+
+  const toggleFrom = (button: HTMLButtonElement | null) => {
+    if (open) close(false);
+    else openFrom(button);
+  };
+
+  const onMainClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (isRecording) {
+      setOpen(false);
       void stop();
       return;
     }
-    go("cloud");
+    toggleFrom(e.currentTarget);
+  };
+
+  // ArrowUp/Down on a closed trigger opens the menu too — the bar sits at the
+  // bottom, so the menu grows up and either direction is reasonable.
+  const onTriggerKey = (e: React.KeyboardEvent<HTMLButtonElement>, opensMenu: boolean) => {
+    if (!opensMenu || open) return;
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      openFrom(e.currentTarget);
+    }
+  };
+
+  const onMenuKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Tab") {
+      // Leaving the menu closes it; focus carries on wherever Tab takes it.
+      setOpen(false);
+      return;
+    }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return;
+    e.preventDefault();
+    const list = items.current.slice(0, itemCount);
+    const current = list.findIndex((el) => el === document.activeElement);
+    list[moveMenuIndex(current, e.key, list.length)]?.focus();
   };
 
   return (
@@ -468,14 +615,19 @@ export function RecordButton() {
             : "text-white/75 hover:bg-white/10 hover:text-white"
         }`}
       >
-        {/* Main button: Record or Stop */}
+        {/* Main button: opens the destination menu, or stops */}
         <button
+          ref={mainRef}
           type="button"
+          data-record-main
           aria-label={label}
-          aria-pressed={isRecording}
-          title={isRecording ? "Stop recording" : "Record to the Cloud"}
+          aria-haspopup={isRecording ? undefined : "menu"}
+          aria-expanded={isRecording ? undefined : open}
+          aria-controls={!isRecording && open ? menuId : undefined}
+          title={label}
           disabled={busy}
           onClick={onMainClick}
+          onKeyDown={(e) => onTriggerKey(e, !isRecording)}
           className="relative inline-flex h-10 shrink-0 flex-col items-center justify-center gap-0.5 px-2 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:min-w-14"
         >
           {isRecording ? <StopIcon className="size-5" /> : <RecordIcon className="size-5" />}
@@ -488,98 +640,203 @@ export function RecordButton() {
                   ? "Stop"
                   : "Record"}
           </span>
-          {/* Elapsed time pill if recording */}
-          {isRecording && startedAt !== null && (
-            <span className="absolute -top-7 left-1/2 hidden -translate-x-1/2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap text-white sm:block">
-              <Elapsed since={startedAt} /> {destination === "local" ? `· ${formatBytes(bytes)}` : "· Cloud"}
-            </span>
-          )}
         </button>
 
         {/* Divider line between main button and chevron arrow */}
         <div className="w-px bg-white/15 my-1.5" aria-hidden />
 
-        {/* Dropdown chevron arrow */}
+        {/* Chevron: the same menu while idle; while recording, where it is
+            going and a Stop. */}
         <button
           type="button"
           aria-label="Recording options"
           aria-haspopup="menu"
-          aria-expanded={choosing}
-          title="Choose recording destination"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          title={isRecording ? "Recording options" : "Choose recording destination"}
           disabled={busy}
-          onClick={() => setChoosing((v) => !v)}
+          onClick={(e) => toggleFrom(e.currentTarget)}
+          onKeyDown={(e) => onTriggerKey(e, true)}
           className="flex w-5 sm:w-6 items-center justify-center text-white/60 hover:bg-white/10 hover:text-white outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 cursor-pointer"
         >
           <ChevronDownIcon
-            className={`size-3.5 transition-transform duration-150 ${choosing ? "rotate-180" : ""}`}
+            className={`size-3.5 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
           />
         </button>
       </div>
 
-      {/* Options Popover Menu: clean & minimal */}
-      {choosing && (
+      {/* A pill rather than a label change so the bar's width does not jump when
+          recording starts. Deliberately terse — "REC · 12:38" — with where it is
+          going (and a local file's size) in the tooltip / accessible name. */}
+      {isRecording && (
+        <RecordingPill target={activeTarget} startedAt={startedAt} bytes={bytes} />
+      )}
+
+      {/* The destinations, one click each — or, while recording, where it is
+          going and a Stop. Anchored above the split button. */}
+      {open && (
         <div
+          id={menuId}
           role="menu"
-          aria-label="Recording options"
+          aria-label={isRecording ? "Recording options" : "Where to record"}
+          onKeyDown={onMenuKey}
           className="room-dark absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-line bg-surface p-1.5 text-ink shadow-2xl backdrop-blur-xl"
         >
-          {/* Option 1: Record to the Cloud */}
-          <button
-            type="button"
-            role="menuitem"
-            disabled={busy}
-            onClick={() => go("cloud")}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
-          >
-            <RecordIcon className="size-4 text-live" />
-            <span className="min-w-0">
-              <span className="block text-[13px] font-medium text-ink">Record to the Cloud</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-ink-3">
-                {keepDays > 0
-                  ? `Stored for ${keepDays} days. Download a copy if you need it longer.`
-                  : "Saved to your recordings list."}
-              </span>
-            </span>
-          </button>
-
-          {/* Option 2: Record on this Computer */}
-          <button
-            type="button"
-            role="menuitem"
-            disabled={busy}
-            onClick={() => go("local")}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
-          >
-            <DeviceIcon className="size-4 text-brand" />
-            <span className="min-w-0">
-              <span className="block text-[13px] font-medium text-ink">Record on this Computer</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-ink-3">
-                Saved as a local file. Nothing is uploaded or auto-deleted.
-              </span>
-            </span>
-          </button>
-
-          {/* If currently recording, show direct Stop button */}
-          {isRecording && (
-            <div className="mt-1 border-t border-line/60 pt-1">
-              <button
-                type="button"
-                role="menuitem"
-                disabled={busy}
-                onClick={() => {
-                  setChoosing(false);
-                  void stop();
+          {!isRecording &&
+            (["cloud", "local"] as const).map((target, i) => (
+              <RecordMenuItem
+                key={target}
+                ref={(el) => {
+                  items.current[i] = el;
                 }}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-live transition-colors outline-none hover:bg-live/10 focus-visible:ring-2 focus-visible:ring-live/50 cursor-pointer font-medium text-[13px]"
-              >
-                <StopIcon className="size-4" />
-                Stop recording
-              </button>
-            </div>
+                target={target}
+                keepDays={keepDays}
+                availability={availability[target]}
+                busy={busy}
+                onPick={() => go(target)}
+              />
+            ))}
+
+          {isRecording && (
+            <>
+              <div role="none" className="flex items-center justify-between px-2.5 py-1.5 text-[11.5px] text-ink-3">
+                <span>Recording to</span>
+                <span className="font-medium text-live">
+                  {activeTarget === "local" ? "This computer" : "Cloud"}
+                </span>
+              </div>
+              <div role="none" className="mt-1 border-t border-line/60 pt-1">
+                <button
+                  ref={(el) => {
+                    items.current[0] = el;
+                  }}
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  aria-disabled={busy || undefined}
+                  onClick={() => {
+                    if (busy) return;
+                    setOpen(false);
+                    void stop();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-live transition-colors outline-none hover:bg-live/10 focus-visible:ring-2 focus-visible:ring-live/50 cursor-pointer font-medium text-[13px]"
+                >
+                  <StopIcon className="size-4" />
+                  Stop recording
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+/** One destination in the compact menu: icon, title, and a single short
+ *  subline — what happens, or (dimmed) why it can't. aria-disabled rather than
+ *  disabled so arrow keys still land on it and the reason is read out; a click
+ *  on it does nothing. While the config is loading Cloud is "checking": not
+ *  dimmed, a small spinner, and not clickable until the answer arrives. */
+function RecordMenuItem({
+  ref,
+  target,
+  keepDays,
+  availability,
+  busy,
+  onPick,
+}: {
+  ref: React.Ref<HTMLButtonElement>;
+  target: RecordTarget;
+  keepDays: number;
+  availability: TargetAvailability;
+  busy: boolean;
+  onPick: () => void;
+}) {
+  const Icon = target === "cloud" ? RecordIcon : DeviceIcon;
+  const pending = !!availability.pending;
+  const off = !availability.available && !pending;
+  const inert = !availability.available || busy;
+  return (
+    <button
+      ref={ref}
+      type="button"
+      role="menuitem"
+      tabIndex={-1}
+      data-record-item={target}
+      aria-disabled={inert || undefined}
+      aria-busy={pending || undefined}
+      onClick={() => {
+        if (!inert) onPick();
+      }}
+      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+        off ? "cursor-not-allowed opacity-55" : pending ? "cursor-progress" : "cursor-pointer hover:bg-surface-2"
+      }`}
+    >
+      {pending ? (
+        <Spinner className="size-4 shrink-0 text-ink-3" />
+      ) : (
+        <Icon className={`size-4 shrink-0 ${target === "cloud" ? "text-live" : "text-brand"}`} />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-medium text-ink">{menuTitle(target)}</span>
+        <span className="mt-0.5 block text-[11px] leading-snug text-ink-3">
+          {menuSubline(target, availability, keepDays)}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function safeLocalStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** "● REC · 12:38" above the Record/Stop button, with the detail on hover or
+ *  focus. Focusable so keyboard users can reach the tooltip, and a tap focuses
+ *  it on touch. The detail is also its accessible name (role="img" keeps it one
+ *  atomic element, and nothing live-announces the ticking clock).
+ *  Ticks on its own so the bar does not re-render every second. */
+function RecordingPill({
+  target,
+  startedAt,
+  bytes,
+}: {
+  target: RecordTarget;
+  startedAt: number | null;
+  bytes: number;
+}) {
+  const [mountTime] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const elapsed = formatClock(Math.max(0, now - (startedAt ?? mountTime)));
+  const detail = recordingDetail(target, elapsed, bytes > 0 ? formatBytes(bytes) : null);
+
+  return (
+    <span
+      data-record-pill={target}
+      tabIndex={0}
+      role="img"
+      aria-label={detail}
+      className="group/pill absolute -top-7 left-1/2 hidden -translate-x-1/2 cursor-default items-center gap-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap text-white outline-none focus-visible:ring-2 focus-visible:ring-white/50 sm:inline-flex"
+    >
+      <span className="size-1.5 animate-pulse rounded-full bg-live" aria-hidden />
+      <span className="font-semibold tracking-wide">REC</span>
+      <span className="font-mono tabular-nums text-white/80">· {elapsed}</span>
+      <span
+        aria-hidden
+        className="room-dark pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 rounded-md border border-line bg-surface px-2 py-1 text-[11px] font-medium text-ink opacity-0 shadow-lg transition-opacity duration-100 group-hover/pill:opacity-100 group-focus/pill:opacity-100"
+      >
+        {detail}
+      </span>
+    </span>
   );
 }
 

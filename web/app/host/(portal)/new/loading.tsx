@@ -10,7 +10,7 @@ export default function Loading() {
     <>
       <div className="mb-4 h-[17px] w-28 animate-pulse rounded bg-surface-2" />
       <div className="mb-1 h-7 w-64 animate-pulse rounded bg-surface-2" />
-      <div className="mt-3 mb-5 h-4 w-72 animate-pulse rounded bg-surface-2" />
+      <div className="mt-3 mb-5 h-9 w-full max-w-xl animate-pulse rounded-lg bg-surface-2" />
       <div className="grid gap-5 pb-48 lg:pb-24">
         {[320, 420, 280].map((h) => (
           <div

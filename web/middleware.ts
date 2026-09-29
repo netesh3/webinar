@@ -177,6 +177,7 @@ export const config = {
     "/host/:path*",
     "/my-webinars",
     "/account",
+    "/settings",
     /* /admin has to be listed or decideAccess is never consulted for it.
      *
      * It was missed when the admin area was added, and the failure was quiet in exactly the

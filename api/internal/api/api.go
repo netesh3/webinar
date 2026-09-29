@@ -16,6 +16,8 @@ import (
 	"github.com/livekit/protocol/livekit"
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/config"
+	"github.com/netkumar/webcast/api/internal/engagement/capture"
+	"github.com/netkumar/webcast/api/internal/engagement/service"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
@@ -136,11 +138,18 @@ type Server struct {
 	 */
 	mail notify.Transport
 
+	// background tracks after-response work (the welcome email's send). See inBackground.
+	background sync.WaitGroup
+
 	invitesMu sync.Mutex
 	invites   map[string]pendingStage
 
 	// engage is the WhatsApp CRM, or NoEngage. See engage.go; set by UseEngage.
 	engage Engage
+
+	// capture buffers realtime interactions for the Engagement page; engagement serves it.
+	capture    *capture.Recorder
+	engagement *service.Service
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {
@@ -183,6 +192,7 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		invites:    map[string]pendingStage{},
 		engage:     NoEngage{},
 	}
+	srv.initEngagement()
 	return srv
 }
 
@@ -319,6 +329,11 @@ func (s *Server) Routes() http.Handler {
 		// five hundred browsers waiting to be read out of a response.
 		r.Get("/webinars/{slug}/polls", s.handleAudiencePolls)
 		r.Post("/webinars/{slug}/polls/{id}/vote", s.handleVote)
+		// The post-event survey as the audience sees it, and their one response. Same
+		// credential as polls; the stage is told there is nothing to answer.
+		r.Get("/webinars/{slug}/survey", s.handleAudienceSurvey)
+		r.Post("/webinars/{slug}/survey/responses", s.handleSubmitSurvey)
+		r.Post("/webinars/{slug}/survey/click", s.handleSurveyClick)
 		r.Post("/webinars/{slug}/stage-invite", s.handleStageInviteRespond)
 		r.Post("/webinars/{slug}/captions", s.handleAppendCaption)
 
@@ -349,6 +364,12 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/auth/logout", s.handleLogout)
 		r.With(s.requireUser).Get("/auth/me", s.handleMe)
 		r.With(s.requireUser).Patch("/auth/me", s.handleUpdateProfile)
+		// The signed-in account's uploaded profile photo. Same cookie as /auth/me,
+		// so an <img> on this origin can load it. Google's photo is not served
+		// from here — that URL is on the account payload itself.
+		r.With(s.requireUser).Get("/auth/avatar", s.handleAvatar)
+		r.With(s.requireUser).Post("/auth/avatar", s.handleUploadAvatar)
+		r.With(s.requireUser).Delete("/auth/avatar", s.handleDeleteAvatar)
 
 		// ---------------- telemetry (off unless TelemetryEnabled; see handleTelemetry) ----------------
 		r.With(telemetryLimit.Middleware).Post("/telemetry", s.handleTelemetry)
@@ -432,6 +453,10 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/youtube/connect", s.handleYouTubeConnect)
 				r.Delete("/youtube", s.handleYouTubeDisconnect)
 
+				r.Get("/integrations", s.handleListIntegrations)
+				r.Post("/integrations/{id}/interest", s.handleIntegrationInterest)
+				r.Delete("/integrations/{id}", s.handleIntegrationDisconnect)
+
 				// The WhatsApp CRM's routes, mounted by the CRM itself. See Engage.Mount.
 				s.engage.Mount(publicAPI, r)
 
@@ -487,10 +512,23 @@ func (s *Server) Routes() http.Handler {
 					r.Post("/polls/{id}/close", s.handleClosePoll)
 					r.Delete("/polls/{id}", s.handleDeletePoll)
 
+					r.Get("/survey", s.handleGetSurvey)
+					r.Put("/survey", s.handlePutSurvey)
+					r.Delete("/survey", s.handleDeleteSurvey)
+					r.Post("/survey/launch", s.handleLaunchSurvey)
+					r.Post("/survey/close", s.handleCloseSurvey)
+					r.Get("/survey/results", s.handleSurveyResults)
+					r.Get("/survey/answers", s.handleSurveyAnswers)
+
 					r.Get("/registrants", s.handleHostRegistrants)
 					r.Get("/registrants.csv", s.handleExportRegistrants)
 					r.Get("/report", s.handleSessionReport)
 					r.Get("/report.csv", s.handleExportReport)
+					r.Get("/engagement", s.handleEngagementSummary)
+					r.Post("/engagement/recompute", s.handleRecomputeEngagement)
+					r.Get("/engagement/attendees", s.handleEngagementAttendees)
+					r.Get("/engagement/attendees/{identity}", s.handleEngagementAttendee)
+					r.Get("/engagement.csv", s.handleEngagementCSV)
 					r.Get("/transcript.txt", s.handleTranscript)
 					r.Patch("/questions/{id}", s.handlePatchQuestion)
 					r.Post("/registrants/approve-all", s.handleApproveAll)

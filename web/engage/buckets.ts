@@ -1,39 +1,52 @@
-import { SegmentJoined, SegmentNoShow, type CRMSegment, type RegistrantRow } from "@/lib/api-types";
+import {
+  SegmentJoined,
+  SegmentNoShow,
+  TierNoShow,
+  type CRMSegment,
+  type EngagementTier,
+  type RegistrantRow,
+} from "@/lib/api-types";
+import { TIER_META, TIER_ORDER } from "@/lib/engagement/score";
 
-/* The watch-time buckets a host follows up by, after a webinar.
+/* The groups a host follows up by, after a webinar: the Engagement tab's four score tiers
+ * and the no-shows.
  *
- * Shared by the Attendees tab's chips and the Messages tab's "Follow up" cards, so a
- * chip and a card with the same name are the same people: each is both a test a row
- * on screen passes and a segment the server resolves for the send. "Stayed" is half
- * the planned length, capped at 30 minutes, because a host thinking "the ones who
- * stayed" means the ones who saw the pitch, not the ones who stayed to the last slide.
+ * Shared by the Attendees tab's chips and the Engagement tab's Follow up cards, so a chip
+ * and a card with the same name are the same people: each is both a test a row on screen
+ * passes (the row's tier, from the same engagement_scores) and a segment the server
+ * resolves for the send.
  */
-export type WatchBucket = {
-  id: string;
+export type FollowupGroup = {
+  id: EngagementTier;
   label: string;
   segment: CRMSegment;
+  /** Words a template for this group tends to use, to put the best one first. */
+  hints: string[];
   test: (r: RegistrantRow) => boolean;
 };
 
-export function watchBuckets(durationMin: number): WatchBucket[] {
-  const stayed = Math.max(5, Math.min(30, Math.round((durationMin || 60) / 2)));
+const HINTS: Record<string, string[]> = {
+  high: ["offer", "program", "thank", "spot", "enrol"],
+  engaged: ["thank", "replay", "offer", "attend"],
+  passive: ["replay", "recap", "highlight"],
+  risk: ["replay", "missed", "left", "part"],
+  [TierNoShow]: ["missed", "sorry", "replay", "recording"],
+};
+
+export function followupGroups(): FollowupGroup[] {
   return [
+    ...TIER_ORDER.map<FollowupGroup>((t) => ({
+      id: t,
+      label: TIER_META[t].label,
+      segment: { attendance: SegmentJoined, tiers: [t] },
+      hints: HINTS[t],
+      test: (r) => r.joined && r.tier === t,
+    })),
     {
-      id: "stayed",
-      label: `Watched ${stayed}+ min`,
-      segment: { attendance: SegmentJoined, minWatchMin: stayed },
-      test: (r) => r.joined && r.watchMin >= stayed,
-    },
-    {
-      id: "left",
-      label: `Left before ${stayed} min`,
-      segment: { attendance: SegmentJoined, maxWatchMin: stayed - 1 },
-      test: (r) => r.joined && r.watchMin < stayed,
-    },
-    {
-      id: "no_show",
+      id: TierNoShow,
       label: "Didn't join",
       segment: { attendance: SegmentNoShow },
+      hints: HINTS[TierNoShow],
       test: (r) => !r.joined,
     },
   ];

@@ -82,6 +82,12 @@ export type RoomUI = {
    *  inside the gap between attempts. */
   recovering: number | null;
 
+  /** The session is over, or this host has just pressed End: a disconnect now is the end,
+   *  never a drop, so nothing says "Reconnecting…". */
+  over: boolean;
+  /** Set by End just before the request, cleared if it fails. */
+  markEnding: (on: boolean) => void;
+
   realtime: Realtime;
 
   /* The room as the SERVER sees it, polled for the host only.

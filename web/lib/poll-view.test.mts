@@ -15,6 +15,7 @@ import {
   correctAfterRemove,
   draftFromPoll,
   groupPolls,
+  hostPanelView,
   keepDismissals,
   letterFor,
   pollResults,
@@ -92,6 +93,15 @@ console.log("\ngroupPolls");
   eq(g.drafts.map((p) => p.id), ["d1", "d2"], "drafts in the order written");
   eq(g.closed.map((p) => p.id), ["c-new", "c-old"], "closed, most recent first");
 }
+
+console.log("\nhostPanelView");
+eq(hostPanelView(null, null, false), { body: "loading", footer: false }, "loading: no bottom bar to jump away");
+eq(hostPanelView(null, "down", false), { body: "failed", footer: false }, "a failed first read: no bar either");
+eq(hostPanelView([], null, false), { body: "empty", footer: false }, "empty: its own centered button, no bar");
+eq(hostPanelView([], null, true), { body: "empty", footer: false }, "empty while composing: still no bar");
+eq(hostPanelView([poll({})], null, false), { body: "list", footer: true }, "a list: the bar");
+eq(hostPanelView([poll({})], null, true), { body: "list", footer: false }, "composing hides the bar");
+eq(hostPanelView([poll({})], "down", false), { body: "list", footer: true }, "a failed refresh keeps the list");
 
 console.log("\nactivePoll");
 eq(activePoll(null), null, "nothing loaded");

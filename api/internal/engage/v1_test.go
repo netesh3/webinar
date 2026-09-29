@@ -53,7 +53,7 @@ func TestTokenExpiryMessage(t *testing.T) {
 	if m.To != "coach@example.com" || !strings.Contains(m.Subject, "Thu 12 Nov") {
 		t.Errorf("message = %+v", m)
 	}
-	if !strings.Contains(m.Body, "https://webinarliv.com/account") {
-		t.Errorf("body has no link to Account settings: %s", m.Body)
+	if !strings.Contains(m.Body, "https://webinarliv.com/settings#integrations") {
+		t.Errorf("body has no link to Settings: %s", m.Body)
 	}
 }

@@ -41,7 +41,9 @@ export type ToolId =
   /** Live captions for everyone — a host-only on/off session control. */
   | "captions"
   /** "Share a video file" — opens the file-share picker. */
-  | "sharefile";
+  | "sharefile"
+  /** Stream to YouTube — a host-only dialog with a live indicator. */
+  | "youtube";
 
 export const TOOL_IDS: readonly ToolId[] = [
   "chat",
@@ -56,6 +58,7 @@ export const TOOL_IDS: readonly ToolId[] = [
   "host",
   "captions",
   "sharefile",
+  "youtube",
 ];
 
 /** Engagement tools that open as an overlay panel (Zoom's Chat / Q&A / Participants).
@@ -132,29 +135,34 @@ const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "qa", "hand"];
  *  nothing is claiming the left yet — gets the full four. */
 const CENTER_BAR_COMPACT_ATTENDEE: readonly ToolId[] = ["chat", "qa", "hand"];
 
+/** `tucked` is the home tools (HOME_BAR_TOOLS) the person has moved into More
+ *  — see tuckedTools. They leave the standing strip rather than showing twice. */
 export function centerBarTools(
   available: readonly ToolId[],
   compact: boolean,
   attendee = false,
+  tucked: readonly ToolId[] = [],
 ): ToolId[] {
   const want = compact
     ? attendee
       ? CENTER_BAR_COMPACT_ATTENDEE
       : CENTER_BAR_COMPACT
     : CENTER_BAR_TOOLS;
-  return want.filter((id) => available.includes(id));
+  return want.filter((id) => available.includes(id) && !tucked.includes(id));
 }
 
-/** Engagement tools that did not fit the compact bar, for More's extra row. */
+/** Engagement tools that did not fit the compact bar, for More's extra row.
+ *  A tucked home tool is already in the grid proper, so it is left out here. */
 export function morePanelTools(
   available: readonly ToolId[],
   compact: boolean,
   attendee = false,
+  tucked: readonly ToolId[] = [],
 ): ToolId[] | undefined {
   if (!compact) return undefined;
   const onBar = new Set(centerBarTools(available, true, attendee));
   const rest = CENTER_BAR_TOOLS.filter(
-    (id) => available.includes(id) && !onBar.has(id),
+    (id) => available.includes(id) && !onBar.has(id) && !tucked.includes(id),
   );
   return rest.length > 0 ? rest : undefined;
 }
@@ -237,6 +245,7 @@ const DEFAULT_SIZE: Record<ToolId, { w: number; h: number }> = {
   invite: { w: 320, h: 200 },
   captions: { w: 320, h: 200 },
   sharefile: { w: 320, h: 200 },
+  youtube: { w: 320, h: 200 },
 };
 
 /** Keeps a rect inside the usable area, shrinking it if the area is smaller than
@@ -305,13 +314,43 @@ const DEFAULT_PINNED: ToolId[] = [];
  *  strip is CENTER_BAR_TOOLS, not this list — that strip is not a pin. */
 export const FIXED_BAR_TOOLS: readonly ToolId[] = [];
 
+/* Home tools: on the bar by default, in a standing place of their own, and
+ * movable into More like any other tool.
+ *
+ * YouTube sits beside Record and Settings closes the standing strip — where
+ * both always were — rather than in the capacity-limited pin slots. That is
+ * what keeps "nothing changes until you move it" true: their positions stay
+ * put, and they do not eat into the slots somebody's own pins use.
+ *
+ * On the bar vs in More is one fact: whether the tool is in `overflow`. Never
+ * in `pinned` — its home is its bar position. So a layout saved before these
+ * could move (no home tool in `overflow`, because Settings was stripped from
+ * it and YouTube was not a tool) loads with both on the bar, exactly as a
+ * first-time user gets them, and no storage version bump is needed. */
+export const HOME_BAR_TOOLS: readonly ToolId[] = ["youtube", "settings"];
+
+export function isHomeTool(id: ToolId): boolean {
+  return HOME_BAR_TOOLS.includes(id);
+}
+
+/** Home tools this person has moved into More. */
+export function tuckedTools(layout: ToolLayout): ToolId[] {
+  return HOME_BAR_TOOLS.filter((id) => layout.overflow.includes(id));
+}
+
 /** Tools that must not appear as customisable pins — they already have a
- *  standing place (the strip, or a reserved slot). */
+ *  standing place (the strip, or a reserved slot). Home tools are movable, so
+ *  they are not excluded here; see isPinSlotTool for the pin slots. */
 function isBarExcluded(id: ToolId): boolean {
   return (
     FIXED_BAR_TOOLS.includes(id) ||
-    (CENTER_BAR_TOOLS as readonly string[]).includes(id)
+    ((CENTER_BAR_TOOLS as readonly string[]).includes(id) && !isHomeTool(id))
   );
+}
+
+/** Whether a tool may occupy a pin slot, pinned or surfaced from recent use. */
+function isPinSlotTool(id: ToolId): boolean {
+  return !isBarExcluded(id) && !isHomeTool(id);
 }
 
 export const RECENT_LIMIT = 6;
@@ -319,7 +358,7 @@ export const RECENT_LIMIT = 6;
 function emptyLayout(): ToolLayout {
   return {
     pinned: [...DEFAULT_PINNED],
-    overflow: TOOL_IDS.filter((id) => !isBarExcluded(id)),
+    overflow: TOOL_IDS.filter(isPinSlotTool),
     recent: [],
     windows: {},
     nextZ: 1,
@@ -332,7 +371,9 @@ function emptyLayout(): ToolLayout {
  *
  *  Moving one that is already pinned is a reorder rather than a duplicate — the
  *  same gesture does both, and treating them separately meant dragging a pinned
- *  tool two slots left inserted a second copy of it. */
+ *  tool two slots left inserted a second copy of it.
+ *
+ *  A home tool goes back to its own place on the bar; the index does not apply. */
 export function pinTool(
   layout: ToolLayout,
   tool: ToolId,
@@ -340,6 +381,10 @@ export function pinTool(
 ): ToolLayout {
   // Centre-cluster tools already have a standing place on the bar.
   if (isBarExcluded(tool)) return layout;
+  if (isHomeTool(tool)) {
+    if (!layout.overflow.includes(tool)) return layout;
+    return { ...layout, overflow: layout.overflow.filter((id) => id !== tool) };
+  }
   const without = layout.pinned.filter((id) => id !== tool);
   const at = Math.min(Math.max(index, 0), without.length);
   return {
@@ -359,6 +404,10 @@ export function pinTool(
  *  recent use was never pinned, so dragging it back to More used to do nothing
  *  at all — the slot filled itself again from `recent` on the next render. */
 export function unpinTool(layout: ToolLayout, tool: ToolId): ToolLayout {
+  if (isHomeTool(tool)) {
+    if (layout.overflow.includes(tool)) return layout;
+    return { ...layout, overflow: [...layout.overflow, tool] };
+  }
   if (!layout.pinned.includes(tool) && !layout.recent.includes(tool)) return layout;
   return {
     ...layout,
@@ -373,9 +422,14 @@ export function unpinTool(layout: ToolLayout, tool: ToolId): ToolLayout {
 
 /** Records a use, most recent first, with no duplicates.
  *
- *  Engagement tools are excluded — they must not surface into vacant bar slots. */
+ *  Engagement tools are excluded — they must not surface into vacant bar
+ *  slots — and so are home tools, which never go in a pin slot. Settings used
+ *  to be recorded here on every open, which alone was enough to make "Reset"
+ *  appear on a toolbar nobody had touched. */
 export function noteUse(layout: ToolLayout, tool: ToolId): ToolLayout {
-  if (isPanelTool(tool) || FIXED_BAR_TOOLS.includes(tool)) return layout;
+  if (isPanelTool(tool) || FIXED_BAR_TOOLS.includes(tool) || isHomeTool(tool)) {
+    return layout;
+  }
   return {
     ...layout,
     recent: [tool, ...layout.recent.filter((id) => id !== tool)].slice(
@@ -571,15 +625,21 @@ export function reconcile(
 ): ToolLayout {
   const allowed = new Set(available);
   // Strip standing-toolbar tools from pins — they already have a centre slot.
+  // Home tools never sit in a pin slot either; their home is their slot.
   const pinned = layout.pinned.filter(
-    (id) => allowed.has(id) && !isBarExcluded(id),
+    (id) => allowed.has(id) && isPinSlotTool(id),
   );
+  // A tucked home tool stays tucked while it is unavailable — that is a
+  // preference, not a placement, and dropping it would put YouTube back on
+  // the bar the next time this person hosts. Nothing renders it meanwhile:
+  // every surface filters by what is available.
   const overflow = layout.overflow.filter(
-    (id) => allowed.has(id) && !isBarExcluded(id),
+    (id) => (allowed.has(id) || isHomeTool(id)) && !isBarExcluded(id),
   );
   const placed = new Set([...pinned, ...overflow]);
+  // A home tool that is not in More is on the bar — so it is never "added".
   const added = available.filter(
-    (id) => !placed.has(id) && !isBarExcluded(id),
+    (id) => !placed.has(id) && isPinSlotTool(id),
   );
 
   // Windows for a tool that is no longer available have to close, or a demoted
@@ -590,7 +650,7 @@ export function reconcile(
   }
 
   const recent = layout.recent.filter(
-    (id) => allowed.has(id) && !isPanelTool(id),
+    (id) => allowed.has(id) && !isPanelTool(id) && !isHomeTool(id),
   );
 
   const same =
@@ -624,7 +684,7 @@ export function barSlots(
 ): BarSlot[] {
   const allowed = new Set(available);
   const slots: BarSlot[] = layout.pinned
-    .filter((id) => allowed.has(id) && !isBarExcluded(id))
+    .filter((id) => allowed.has(id) && isPinSlotTool(id))
     .slice(0, Math.max(0, capacity))
     .map((tool) => ({ tool, pinned: true }));
 
@@ -633,7 +693,7 @@ export function barSlots(
   const taken = new Set(slots.map((s) => s.tool));
   for (const tool of layout.recent) {
     if (slots.length >= capacity) break;
-    if (taken.has(tool) || !allowed.has(tool) || isBarExcluded(tool)) continue;
+    if (taken.has(tool) || !allowed.has(tool) || !isPinSlotTool(tool)) continue;
     slots.push({ tool, pinned: false });
     taken.add(tool);
   }
@@ -645,7 +705,8 @@ export function barSlots(
  *  Computed from the bar rather than from `overflow` alone, so a tool surfaced
  *  into a vacant slot is not offered in both places at once. Centre-cluster
  *  tools are omitted — they already sit in the middle of the bar (or, on a
- *  phone, in More via morePanelTools).
+ *  phone, in More via morePanelTools). A home tool is here only once it has
+ *  been tucked, because only then is it in `overflow`.
  *
  *  In MORE_ORDER, not in the order things happened to be unpinned: a tool
  *  dragged back into More returns to the same spot every time, so a host who
@@ -688,6 +749,7 @@ export const MORE_ORDER: readonly string[] = [
   "share",
   "sharefile",
   "captions",
+  "youtube",
   "chat",
   "qa",
   "polls",
@@ -714,7 +776,8 @@ export function moreOrder<T extends string>(ids: readonly T[]): T[] {
 }
 
 /** Whether a tool can be moved between the toolbar and More at all. The
- *  standing strip (Chat, Q&A, …) cannot: it already has a fixed place. */
+ *  standing strip (Chat, Q&A, …) cannot: it already has a fixed place. Home
+ *  tools (YouTube, Settings) can, though they return to their own place. */
 export function isPinnable(id: ToolId): boolean {
   return !isBarExcluded(id);
 }
@@ -768,7 +831,11 @@ export function wouldBump(
   layout: ToolLayout,
   capacity: number,
   available: readonly ToolId[],
+  tool?: ToolId,
 ): ToolId | null {
+  // A home tool goes back to its own place, not a pin slot, so it never
+  // pushes anything out.
+  if (tool && isHomeTool(tool)) return null;
   const pins = visiblePins(layout, capacity, available);
   return capacity > 0 && pins.length >= capacity ? pins[pins.length - 1] : null;
 }
@@ -798,6 +865,11 @@ export function pinIndexForDrop(
  * showing (what the drag layer measures and the marker is drawn at); omitted
  * means "at the end". Refuses — same layout, no change — when this screen has
  * no customisable slots, or the tool is not one that can move.
+ *
+ * A home tool (YouTube, Settings) is the exception to both: it goes back to
+ * its own place on the bar wherever it was dropped, takes no pin slot, bumps
+ * nothing, and so needs no capacity — which also means a phone that tucked
+ * one can always put it back.
  */
 export function placeOnBar(
   layout: ToolLayout,
@@ -806,6 +878,12 @@ export function placeOnBar(
   available: readonly ToolId[],
   slotIndex?: number,
 ): { layout: ToolLayout; change: ToolbarChange | null } {
+  if (isHomeTool(tool)) {
+    const next = available.includes(tool) ? pinTool(layout, tool, 0) : layout;
+    return next === layout
+      ? { layout, change: null }
+      : { layout: next, change: { kind: "added", tool, bumped: [] } };
+  }
   if (capacity <= 0 || !isPinnable(tool) || !available.includes(tool)) {
     return { layout, change: null };
   }
@@ -899,9 +977,14 @@ export function usableTools(
 }
 
 /** Whether the toolbar differs from what a first-time user gets — the only
- *  time "Reset" has anything to do. */
+ *  time "Reset" has anything to do. A tucked home tool counts: Settings in
+ *  More is a change somebody may want to undo. */
 export function isCustomised(layout: ToolLayout): boolean {
-  return layout.pinned.length > 0 || layout.recent.length > 0;
+  return (
+    layout.pinned.length > 0 ||
+    layout.recent.length > 0 ||
+    tuckedTools(layout).length > 0
+  );
 }
 
 /** The sentence the room shows after an edit, in the host's terms rather than
@@ -938,8 +1021,18 @@ export function describeChange(
  * below replaces `overflow` wholesale with what it parses from storage, so a
  * stale v5 record would silently drop Layout from every surface rather than
  * placing it in the grid the way a first-time user gets it. See v5's own note
- * just below for the same reasoning applied to Chat / Participants earlier. */
-const STORAGE_KEY = "webcast.toolbar.v6";
+ * just below for the same reasoning applied to Chat / Participants earlier.
+ *
+ * v7: YouTube and Settings became movable home tools (HOME_BAR_TOOLS), whose
+ * place is recorded as "in `overflow` means tucked into More". A v6 record
+ * cannot mean that — tucking did not exist — yet some do have "settings" in
+ * `overflow`: v6 builds from before Settings joined the standing strip put it
+ * there by default. Read as-is, those would open with Settings in More. So v6
+ * is read once as a legacy record with every home tool taken out of it (they
+ * land on the bar, where they have always been) and everything else — pins,
+ * More, recents — kept. No pins are lost to the bump. */
+const STORAGE_KEY = "webcast.toolbar.v7";
+const LEGACY_STORAGE_KEY = "webcast.toolbar.v6";
 
 /** Only the customisation is persisted, never the windows.
  *
@@ -948,32 +1041,52 @@ const STORAGE_KEY = "webcast.toolbar.v6";
  *  against a different viewport is wrong more often than it is right. */
 type Persisted = { pinned: ToolId[]; overflow: ToolId[]; recent: ToolId[] };
 
-function load(): ToolLayout {
+/** A stored record, as a layout. `legacy` is a v6 record, which places every
+ *  home tool on the bar. Exported for the migration tests; anything it cannot
+ *  read falls back to the default layout. */
+export function parseStoredToolbar(
+  raw: string | null,
+  legacy = false,
+): ToolLayout {
   const base = emptyLayout();
-  if (typeof window === "undefined") return base;
+  if (!raw) return base;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return base;
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return base;
     const { pinned, overflow, recent } = parsed as Partial<Persisted>;
     const clean = (value: unknown): ToolId[] =>
       Array.isArray(value) ? [...new Set(value.filter(isToolId))] : [];
-    const nextPinned = clean(pinned).filter((id) => !isBarExcluded(id));
+    const nextPinned = clean(pinned).filter(isPinSlotTool);
     return {
       ...base,
       pinned: nextPinned,
       overflow: clean(overflow).filter(
-        (id) => !nextPinned.includes(id) && !isBarExcluded(id),
+        (id) =>
+          !nextPinned.includes(id) &&
+          !isBarExcluded(id) &&
+          !(legacy && isHomeTool(id)),
       ),
+      // Opening Settings used to be recorded here, which alone made Reset
+      // show on a toolbar nobody had touched.
       recent: clean(recent)
-        .filter((id) => !isPanelTool(id))
+        .filter((id) => !isPanelTool(id) && !isHomeTool(id))
         .slice(0, RECENT_LIMIT),
     };
   } catch {
     // Corrupt or unreadable storage falls back to the default layout rather than
     // taking the room down with it.
     return base;
+  }
+}
+
+function load(): ToolLayout {
+  if (typeof window === "undefined") return emptyLayout();
+  try {
+    const current = window.localStorage.getItem(STORAGE_KEY);
+    if (current) return parseStoredToolbar(current);
+    return parseStoredToolbar(window.localStorage.getItem(LEGACY_STORAGE_KEY), true);
+  } catch {
+    return emptyLayout();
   }
 }
 
@@ -1115,9 +1228,9 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
   );
 
   // Drop a panel tab that is no longer available (host turned polls off, etc.).
-  useEffect(() => {
-    if (panelTab && !available.includes(panelTab)) setPanelTab(null);
-  }, [available, panelTab]);
+  // During render, not in an effect: the check is its own guard, so it settles
+  // in one extra pass instead of a committed render with a dead tab.
+  if (panelTab && !available.includes(panelTab)) setPanelTab(null);
 
   // The derived layout is what gets saved, so a tool that appeared mid-session
   // keeps the position it was given.

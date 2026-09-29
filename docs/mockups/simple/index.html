@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simple funnel (mocks)</title><link rel="stylesheet" href="assets/simple.css"></head>
+<body>
+<div data-nav></div>
+<main>
+  <h1>A simpler webinar funnel</h1>
+  <p class="small muted" style="margin-top:4px">Four steps a coach already thinks in: Create → Invite → Go live → Follow up.</p>
+
+  <div class="stage" style="margin-top:18px">
+    <div class="done"><span class="n">1</span><div><div class="t">Create</div><div class="s">3 fields, defaults for the rest</div></div></div>
+    <div class="done"><span class="n">2</span><div><div class="t">Invite</div><div class="s">Overview · People · Setup</div></div></div>
+    <div class="done"><span class="n">3</span><div><div class="t">Go live</div><div class="s">Room as today</div></div></div>
+    <div class="done"><span class="n">4</span><div><div class="t">Follow up</div><div class="s">Results · Follow up · Recording</div></div></div>
+  </div>
+
+  <div class="card p5" style="margin-top:18px">
+    <div class="ba2">
+      <div class="col"><h3>Today</h3><ul>
+        <li>Home: 6 tabs, 5 buttons per card</li>
+        <li>Create: 8 sections, ~32 inputs on one page</li>
+        <li>Webinar page: up to 8 tabs before, 3 after</li>
+        <li>Follow-up started from 4 places</li>
+        <li>WhatsApp templates edited in 3 places; no menu link to the WhatsApp page</li>
+        <li>Practice session and the in-room offer do nothing</li>
+      </ul></div>
+      <div class="col"><h3>Proposed</h3><ul>
+        <li>Home: 5 tabs, 2 buttons per card (rest in ⋯), a just-ended webinar's follow-up surfaced</li>
+        <li>Create: title, date/time/length → "Create &amp; get link"; defaults shown as chips</li>
+        <li>Webinar page: a 4-step bar + 3 tabs per stage</li>
+        <li>Follow-up in one place: the webinar's Follow up tab (Messages keeps replies across webinars)</li>
+        <li>WhatsApp in the top bar; templates edited there only</li>
+        <li>Dead toggles removed</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="g4" style="grid-template-columns:repeat(2,1fr); margin-top:18px">
+    <a class="card p4" href="home.html"><div class="name">1 · Your webinars</div><div class="xs muted">Home</div></a>
+    <a class="card p4" href="create-tabs-webinar.html"><div class="name">2a · Schedule — The webinar</div><div class="xs muted">Split: webinar only</div></a>
+    <a class="card p4" href="create-tabs-messages.html"><div class="name">2b · Schedule — Messages &amp; follow-ups</div><div class="xs muted">Split: reminders, WhatsApp, follow-ups</div></a>
+    <a class="card p4" href="webinar-before.html"><div class="name">3 · Webinar, before</div><div class="xs muted">Overview · People · Setup</div></a>
+    <a class="card p4" href="webinar-after.html"><div class="name">4 · Webinar, after</div><div class="xs muted">Results · Follow up · Recording</div></a>
+    <a class="card p4" href="audience.html"><div class="name">5 · Audience</div><div class="xs muted">Engagement across all webinars</div></a>
+    <a class="card p4" href="whatsapp.html"><div class="name">6 · WhatsApp</div><div class="xs muted">One page: connection, messages, automations</div></a>
+    <a class="card p4" href="settings.html"><div class="name">7 · Settings</div><div class="xs muted">Profile, Integrations (WhatsApp, YouTube, LinkedIn, Telegram…)</div></a>
+    <a class="card p4" href="inbox.html"><div class="name">8 · Messages</div><div class="xs muted">Inbox on its own screen, from the chat icon</div></a>
+  </div>
+</main>
+<script src="assets/nav.js"></script>
+</body></html>

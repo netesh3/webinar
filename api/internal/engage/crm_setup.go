@@ -97,12 +97,26 @@ func (s *Module) handleCRMSetup(w http.ResponseWriter, r *http.Request) {
 		out.RemindersBroken = append(out.RemindersBroken, rem.Kind)
 	}
 
-	withReminders, total, err := s.store.WebinarReminderCounts(r.Context(), user.ID)
+	/* Per-webinar WhatsApp is a resolved slot, not options.whatsappReminders.
+	 * The flag stays false on webinars saved through the messages editor, so a
+	 * count of the flag reports them as off even when a slot sends WhatsApp. */
+	slugs, err := s.store.LiveWebinarSlugs(r.Context(), user.ID)
 	if err != nil {
 		s.fail(w, r, "crm setup: webinars", err)
 		return
 	}
-	out.WebinarsWithReminders, out.WebinarsTotal = withReminders, total
+	withReminders := 0
+	for _, slug := range slugs {
+		slots, err := s.ResolveSlots(r.Context(), slug)
+		if err != nil {
+			s.fail(w, r, "crm setup: slots", err)
+			return
+		}
+		if countSending(slots, types.ChannelWhatsApp) > 0 {
+			withReminders++
+		}
+	}
+	out.WebinarsWithReminders, out.WebinarsTotal = withReminders, len(slugs)
 
 	/* The one number that says whether any of the above can reach anybody, and it comes
 	 * from AudienceCounts rather than a count of its own — the same query the host reads

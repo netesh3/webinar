@@ -65,6 +65,11 @@ web: ## Run the Next.js frontend (terminal 3)
 tunnel: ## Public HTTPS URL, needed to test camera/mic from a phone
 	cloudflared tunnel --url http://localhost:3000
 
+.PHONY: tours
+tours: ## Record the narrated guided-tour videos (stack up + demo seed); make tours ONLY="02 05"
+	node scripts/tours/run.mjs $(ONLY)
+	@echo "open docs/tours/index.html"
+
 # ---------------------------------------------------------------- types
 
 .PHONY: types
@@ -119,6 +124,12 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the delete warning, because the delete is irreversible and the previous copy told a
 	# host deleting a finished webinar that they were tidying up a page.
 	cd web && node --experimental-strip-types --no-warnings lib/webinar-delete.test.mts
+	# And the registration-question builder: a "Choose one" must open option rows to fill
+	# in, and an option containing a comma is still one option.
+	cd web && node --experimental-strip-types --no-warnings lib/registration-questions.test.mts
+	# And the create-webinar form's two steps: old ?step= links must still open the right
+	# one, and only a real problem on The webinar may hold back Next or Schedule.
+	cd web && node --experimental-strip-types --no-warnings lib/schedule-wizard.test.mts
 	# And the chat preview card: a burst of arrivals, a reconnect merging history, and
 	# your own echo coming back off the wire cannot be produced by hand in a live room.
 	cd web && node --experimental-strip-types --no-warnings lib/chat-notify.test.mts
@@ -151,6 +162,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And customising it: adding from More never pins a tool out of sight on a full
 	# bar, a recently used slot can be moved back, and undo puts exactly it back.
 	cd web && node --experimental-strip-types --no-warnings lib/tools-edit.test.mts
+	# And when More gets out of the way of the rest of the bar: another button
+	# closes it in the same click, a drag toward it or Customize does not.
+	cd web && node --experimental-strip-types --no-warnings lib/bar-popover.test.mts
 	# And the virtual-background catalogue: an old stored image id must not reach
 	# the compositor as a missing texture.
 	cd web && node --experimental-strip-types --no-warnings lib/backgrounds.test.mts
@@ -164,6 +178,31 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And reaction bursts appearing one at a time, 500–1000 ms apart, with a bounded
 	# backlog — so one click never reads as several and a flood never queues a minute.
 	cd web && node --experimental-strip-types --no-warnings lib/reaction-queue.test.mts
+	# And the host's join toasts: "joining…" must only turn into "joined" once the roster
+	# shows the person, and a reconnect or the host's own first roster must not burst.
+	cd web && node --experimental-strip-types --no-warnings lib/join-toasts.test.mts
+	# And the raised-hand toasts: one per new hand, gone when anyone handles it, a burst
+	# folded into one summary, and the hands already up when a host arrives left alone.
+	cd web && node --experimental-strip-types --no-warnings lib/hand-toasts.test.mts
+	# And where a recording goes: Cloud must read as "checking", not unavailable, while
+	# the config loads, and the compact menu's sublines must stay one short line.
+	cd web && node --experimental-strip-types --no-warnings lib/record-target.test.mts
+	# And the connection toast: a sub-second blip must stay silent, a shown drop must turn
+	# into "back online" in place, and a long one must escalate to "Connection lost".
+	cd web && node --experimental-strip-types --no-warnings lib/connection-toast.test.mts
+	# And the requester's own hand and stage toast: raised → lowered by the host must
+	# replace in place, an open invite must not be talked over or time out.
+	cd web && node --experimental-strip-types --no-warnings lib/self-hand-toasts.test.mts
+	# And the engagement score, against the same table the Go formula is tested with
+	# (api/internal/engagement/testdata/score_cases.json), so the fixture page and the
+	# server can never disagree about a number — plus the attendee paging and heatmap maths.
+	cd web && node --experimental-strip-types --no-warnings lib/engagement/score.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/survey.test.mts
+	# And the Engagement tab that replaced Report: old ?tab=report links must still land on
+	# it, and the Export menu must keep offering the old attendance CSV people built on.
+	cd web && node --experimental-strip-types --no-warnings lib/host-tabs.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/engagement/tab.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/engagement/folds.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

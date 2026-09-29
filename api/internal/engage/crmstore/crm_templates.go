@@ -32,6 +32,9 @@ type TemplateInput struct {
 	Variables int
 	// Empty when sendable; otherwise why not, in words a host can read.
 	Unsupported string
+	// HeaderFormat is IMAGE for a template whose header is the webinar's cover.
+	HeaderFormat string
+	Buttons      []types.CRMTemplateButton
 }
 
 /* ReplaceTemplates makes the cache equal to what Meta just returned.
@@ -70,8 +73,8 @@ func (s *Store) ReplaceTemplates(ctx context.Context, hostID string, in []Templa
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO crm_templates
 				(host_id, name, language, status, category, header, body, footer,
-				 variables, unsupported, synced_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+				 variables, unsupported, synced_at, header_format, buttons)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 			ON CONFLICT (host_id, name, language) DO UPDATE SET
 				status = excluded.status,
 				category = excluded.category,
@@ -80,10 +83,13 @@ func (s *Store) ReplaceTemplates(ctx context.Context, hostID string, in []Templa
 				footer = excluded.footer,
 				variables = excluded.variables,
 				unsupported = excluded.unsupported,
+				header_format = excluded.header_format,
+				buttons = excluded.buttons,
 				synced_at = excluded.synced_at,
 				updated_at = now()`,
 			hostID, name, lang, strings.TrimSpace(t.Status), strings.TrimSpace(t.Category),
 			t.Header, t.Body, t.Footer, t.Variables, t.Unsupported, batch,
+			strings.ToUpper(strings.TrimSpace(t.HeaderFormat)), buttonsOrEmpty(t.Buttons),
 		); err != nil {
 			return err
 		}
@@ -97,9 +103,16 @@ func (s *Store) ReplaceTemplates(ctx context.Context, hostID string, in []Templa
 	return tx.Commit(ctx)
 }
 
+func buttonsOrEmpty(b []types.CRMTemplateButton) []types.CRMTemplateButton {
+	if b == nil {
+		return []types.CRMTemplateButton{}
+	}
+	return b
+}
+
 const crmTemplateColumns = `
 	name, language, status, category, header, body, footer, variables,
-	unsupported, synced_at`
+	unsupported, synced_at, header_format, buttons`
 
 func scanTemplate(row scanner) (types.CRMTemplate, time.Time, error) {
 	var (
@@ -107,8 +120,12 @@ func scanTemplate(row scanner) (types.CRMTemplate, time.Time, error) {
 		synced time.Time
 	)
 	if err := row.Scan(&t.Name, &t.Language, &t.Status, &t.Category, &t.Header,
-		&t.Body, &t.Footer, &t.Variables, &t.Unsupported, &synced); err != nil {
+		&t.Body, &t.Footer, &t.Variables, &t.Unsupported, &synced,
+		&t.HeaderFormat, &t.Buttons); err != nil {
 		return types.CRMTemplate{}, time.Time{}, err
+	}
+	if t.Buttons == nil {
+		t.Buttons = []types.CRMTemplateButton{}
 	}
 	/* Sendable, derived rather than stored, so one rule answers both the picker and
 	 * the send path. Two conditions: Meta approved it, and it is made only of the

@@ -22,9 +22,26 @@ const (
 	lastManualReplyAt = `(SELECT max(o.created_at) FROM crm_messages o
 	 WHERE o.contact_id = c.id AND o.direction = 'out' AND o.manual)`
 
-	needsReply = `(` + lastInboundAt + ` IS NOT NULL
+	/* waitingOnHost is "their newest message is unanswered and not marked done". */
+	waitingOnHost = `(` + lastInboundAt + ` IS NOT NULL
 	 AND ` + lastInboundAt + ` > COALESCE(` + lastManualReplyAt + `, '-infinity'::timestamptz)
 	 AND ` + lastInboundAt + ` > COALESCE(c.inbox_done_at, '-infinity'::timestamptz))`
+
+	/* snoozedNow is a snooze still running: not yet due, and nothing new from them since
+	 * it was set. A message after the snooze wakes it, as one after Mark done reopens. */
+	snoozedNow = `(c.inbox_snoozed_until IS NOT NULL AND c.inbox_snoozed_until > now()
+	 AND ` + lastInboundAt + ` <= COALESCE(c.inbox_snoozed_at, '-infinity'::timestamptz))`
+
+	needsReply = `(` + waitingOnHost + ` AND NOT ` + snoozedNow + `)`
+
+	/* hotLead is a contact carrying the hot-lead recipe's tag. */
+	hotLead = `EXISTS (SELECT 1 FROM crm_hot_leads h JOIN crm_contact_tags ct ON ct.tag_id = h.tag_id
+	 WHERE h.host_id = c.host_id AND ct.contact_id = c.id)`
+
+	// lastInboundBody is their newest message's text, for a one-line preview.
+	lastInboundBody = `COALESCE((SELECT inb.body FROM crm_messages inb
+	 WHERE inb.contact_id = c.id AND inb.direction = 'in'
+	 ORDER BY inb.created_at DESC LIMIT 1), '')`
 
 	hasThread = `EXISTS (SELECT 1 FROM crm_messages t WHERE t.contact_id = c.id)`
 
@@ -50,13 +67,18 @@ func inboxViewPredicate(view string) (string, error) {
 	case types.InboxAll:
 		return ` AND ` + hasThread, nil
 	case types.InboxDone:
-		return ` AND ` + contactReplied + ` AND NOT ` + needsReply, nil
+		return ` AND ` + contactReplied + ` AND NOT ` + waitingOnHost, nil
+	case types.InboxSnoozed:
+		return ` AND ` + waitingOnHost + ` AND ` + snoozedNow, nil
+	case types.InboxHotLeads:
+		return ` AND ` + hasThread + ` AND ` + hotLead, nil
 	}
 	return "", store.ErrInvalid
 }
 
-// Inbox is the Messages tab's list.
-func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string) (types.CRMInboxResponse, error) {
+// Inbox is one page of the Messages list. limit <= 0 keeps the old 200-row cap
+// so a caller that does not page still receives the whole short list.
+func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string, limit, offset int) (types.CRMInboxResponse, error) {
 	out := types.CRMInboxResponse{Threads: []types.CRMInboxThread{}, View: view}
 	if out.View == "" {
 		out.View = types.InboxNeedsReply
@@ -67,19 +89,29 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string) (ty
 	}
 	slug := strings.TrimSpace(webinarSlug)
 	scope := inboxScoped()
+	if limit <= 0 || limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	if err := s.pool.QueryRow(ctx, `
 		SELECT count(*) FILTER (WHERE `+needsReply+`),
 		       count(*) FILTER (WHERE `+hasThread+`),
-		       count(*) FILTER (WHERE `+contactReplied+` AND NOT `+needsReply+`)
+		       count(*) FILTER (WHERE `+contactReplied+` AND NOT `+waitingOnHost+`),
+		       count(*) FILTER (WHERE `+waitingOnHost+` AND `+snoozedNow+`),
+		       count(*) FILTER (WHERE `+hasThread+` AND `+hotLead+`)
 		  FROM crm_contacts c
 		 WHERE c.host_id = $1::uuid`+scope, hostID, slug).Scan(
-		&out.Counts.NeedsReply, &out.Counts.All, &out.Counts.Done); err != nil {
+		&out.Counts.NeedsReply, &out.Counts.All, &out.Counts.Done,
+		&out.Counts.Snoozed, &out.Counts.HotLeads); err != nil {
 		return out, err
 	}
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+crmContactColumns+`, `+lastInboundAt+`, `+needsReply+`,
+		       CASE WHEN `+snoozedNow+` THEN c.inbox_snoozed_until END, `+hotLead+`,
 		       COALESCE(tw.slug, ''), COALESCE(tw.topic, ''),
 		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status, m.created_at
 		  FROM crm_contacts c
@@ -91,7 +123,7 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string) (ty
 		  ) m ON true
 		 WHERE c.host_id = $1::uuid`+scope+pred+`
 		 ORDER BY m.created_at DESC, c.id
-		 LIMIT 200`, hostID, slug)
+		 LIMIT $3 OFFSET $4`, hostID, slug, limit, offset)
 	if err != nil {
 		return out, err
 	}
@@ -101,20 +133,23 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string) (ty
 			t                                  types.CRMInboxThread
 			optIn, optOut, lastSeen, botPaused *time.Time
 			created                            time.Time
-			inbound                            *time.Time
+			inbound, snoozed                   *time.Time
 			m                                  types.CRMMessage
 			mAt                                time.Time
 		)
 		c := &t.Contact
 		if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
 			&optIn, &optOut, &lastSeen, &created, &botPaused,
-			&inbound, &t.NeedsReply, &t.WebinarID, &t.Webinar,
+			&inbound, &t.NeedsReply, &snoozed, &t.HotLead, &t.WebinarID, &t.Webinar,
 			&m.ID, &m.Direction, &m.Body, &m.Kind, &m.TemplateName, &m.Status, &mAt); err != nil {
 			return out, err
 		}
 		fillContactTimes(c, optIn, optOut, lastSeen, created, botPaused)
 		if inbound != nil {
 			c.LastInboundAt = inbound.Format(time.RFC3339)
+		}
+		if snoozed != nil {
+			t.SnoozedUntil = snoozed.Format(time.RFC3339)
 		}
 		m.ContactID = c.ID
 		m.CreatedAt = mAt.Format(time.RFC3339)
@@ -124,6 +159,19 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string) (ty
 	if err := rows.Err(); err != nil {
 		return out, err
 	}
+	switch out.View {
+	case types.InboxAll:
+		out.Total = out.Counts.All
+	case types.InboxDone:
+		out.Total = out.Counts.Done
+	case types.InboxSnoozed:
+		out.Total = out.Counts.Snoozed
+	case types.InboxHotLeads:
+		out.Total = out.Counts.HotLeads
+	default:
+		out.Total = out.Counts.NeedsReply
+	}
+	out.Offset = offset
 	out.Webinars, err = s.webinarRefs(ctx, hostID)
 	return out, err
 }
@@ -134,6 +182,27 @@ func (s *Store) SetInboxDone(ctx context.Context, hostID, contactID string, done
 		UPDATE crm_contacts
 		   SET inbox_done_at = CASE WHEN $3 THEN now() ELSE NULL END
 		 WHERE id = $1::uuid AND host_id = $2::uuid`, contactID, hostID, done)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
+/* SetInboxSnooze hides a conversation from Needs reply until `until`, or wakes it when
+ * until is zero. */
+func (s *Store) SetInboxSnooze(ctx context.Context, hostID, contactID string, until time.Time) error {
+	var at any
+	if !until.IsZero() {
+		at = until
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE crm_contacts
+		   SET inbox_snoozed_until = $3,
+		       inbox_snoozed_at = CASE WHEN $3::timestamptz IS NULL THEN NULL ELSE now() END
+		 WHERE id = $1::uuid AND host_id = $2::uuid`, contactID, hostID, at)
 	if err != nil {
 		return err
 	}
@@ -158,9 +227,10 @@ func (s *Store) ThreadMeta(ctx context.Context, hostID, contactID string) (types
 	err = s.pool.QueryRow(ctx, peopleWith()+`
 		SELECT COALESCE(per.webinars, 0), COALESCE(per.watch_min, 0)
 		  FROM per WHERE per.contact_id = $3::uuid`, hostID, "", contactID).Scan(&meta.Webinars, &meta.WatchMin)
-	if noRows(err) {
-		return meta, nil
+	if err != nil && !noRows(err) {
+		return meta, err
 	}
+	meta.History, err = s.ContactHistory(ctx, hostID, contactID)
 	return meta, err
 }
 
@@ -168,7 +238,8 @@ func (s *Store) ThreadMeta(ctx context.Context, hostID, contactID string) (types
 func (s *Store) Replies(ctx context.Context, hostID string) (types.CRMRepliesResponse, error) {
 	out := types.CRMRepliesResponse{Recent: []types.CRMReplyAlert{}, ByWebinar: map[string]int{}}
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.id::text, c.name, c.phone, COALESCE(tw.slug, ''), COALESCE(tw.topic, ''), `+lastInboundAt+`
+		SELECT c.id::text, c.name, c.phone, COALESCE(tw.slug, ''), COALESCE(tw.topic, ''), `+lastInboundAt+`,
+		       `+lastInboundBody+`
 		  FROM crm_contacts c
 		  `+threadWebinar+`
 		 WHERE c.host_id = $1::uuid AND `+needsReply+`
@@ -184,7 +255,7 @@ func (s *Store) Replies(ctx context.Context, hostID string) (types.CRMRepliesRes
 			phone string
 			at    time.Time
 		)
-		if err := rows.Scan(&a.ContactID, &a.Name, &phone, &a.WebinarID, &a.Webinar, &at); err != nil {
+		if err := rows.Scan(&a.ContactID, &a.Name, &phone, &a.WebinarID, &a.Webinar, &at, &a.Preview); err != nil {
 			return out, err
 		}
 		if a.Name == "" {
@@ -205,7 +276,7 @@ func (s *Store) Replies(ctx context.Context, hostID string) (types.CRMRepliesRes
 // WebinarWaiting is the replies waiting from one webinar's people, newest first.
 func (s *Store) WebinarWaiting(ctx context.Context, hostID, slug string) ([]types.CRMReplyAlert, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.id::text, COALESCE(NULLIF(c.name, ''), c.phone), `+lastInboundAt+`
+		SELECT c.id::text, COALESCE(NULLIF(c.name, ''), c.phone), `+lastInboundAt+`, `+lastInboundBody+`
 		  FROM crm_contacts c
 		 WHERE c.host_id = $1::uuid AND `+contactRegisteredFor(`$2`)+` AND `+needsReply+`
 		 ORDER BY 3 DESC LIMIT 50`, hostID, slug)
@@ -219,7 +290,7 @@ func (s *Store) WebinarWaiting(ctx context.Context, hostID, slug string) ([]type
 			a  types.CRMReplyAlert
 			at time.Time
 		)
-		if err := rows.Scan(&a.ContactID, &a.Name, &at); err != nil {
+		if err := rows.Scan(&a.ContactID, &a.Name, &at, &a.Preview); err != nil {
 			return nil, err
 		}
 		a.WebinarID = slug

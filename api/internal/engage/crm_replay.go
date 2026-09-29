@@ -2,6 +2,8 @@ package engage
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -22,10 +24,34 @@ func (s *Module) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, ho
 	if host.WhatsAppToken == "" || host.WhatsAppPhoneNumberID == "" {
 		return
 	}
-	reminder, hasTemplate, err := s.store.ReminderTemplate(ctx, host.ID, types.NotifyWhatsAppReplay)
+	slots, err := s.ResolveSlots(ctx, wb.ID)
 	if err != nil {
-		s.log.Error("replay: reminder template", "host", host.ID, "error", err)
+		s.log.Error("replay: message slots", "webinar", wb.ID, "error", err)
 		return
+	}
+	slot, ok := types.FindSlot(slots, types.SlotReplay)
+	if !ok || !slot.Sends(types.ChannelWhatsApp) {
+		return
+	}
+	slotWording := &slot
+	due := slot.Timing.From(types.EndOf(wb), webinarLocation(wb))
+	if !due.After(time.Now()) {
+		due = time.Time{}
+	}
+	var reminder types.CRMReminder
+	var hasTemplate bool
+	if slotWording != nil && strings.TrimSpace(slotWording.Template) != "" {
+		reminder = types.CRMReminder{
+			Kind: types.NotifyWhatsAppReplay, Template: slotWording.Template,
+			Language: slotWording.Language, Params: slotWording.Params,
+		}
+		hasTemplate = true
+	} else {
+		reminder, hasTemplate, err = s.store.ReminderTemplate(ctx, host.ID, types.NotifyWhatsAppReplay)
+		if err != nil {
+			s.log.Error("replay: reminder template", "host", host.ID, "error", err)
+			return
+		}
 	}
 	if !hasTemplate {
 		return
@@ -54,6 +80,8 @@ func (s *Module) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, ho
 			TemplateName:     reminder.Template,
 			TemplateLanguage: reminder.Language,
 			TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, url, 0),
+			LinkURL:          url,
+			DueAt:            due,
 		}); err != nil {
 			s.log.Error("replay: could not queue whatsapp", "webinar", wb.ID,
 				"contact", p.ContactID, "error", err)

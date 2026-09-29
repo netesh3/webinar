@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Webinar · Messages, WhatsApp only (v2.1 mock)</title><link rel="stylesheet" href="assets/v21.css">
+<style>.reply { display: flex; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); } .reply:last-child { border-bottom: 0; }</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <a class="back" href="#">← Hosting</a>
+  <div class="row between" style="align-items:flex-start">
+    <div>
+      <span class="badge">Ended</span>
+      <h1 style="margin-top:8px">Morning Routines That Stick</h1>
+      <p class="small muted" style="margin-top:4px">Fri, 25 Sept 2026 · 18:36 – 19:36 IST · 1 hr · 13 registered</p>
+    </div>
+    <button class="btn ghost">Delete</button>
+  </div>
+
+  <div class="tabs" style="margin-top:20px">
+    <a class="tab" href="engagement.html">Engagement</a>
+    <a class="tab" href="#">Recordings</a>
+    <a class="tab" href="#">Attendees <span class="count">13</span></a>
+    <a class="tab on" href="#">Messages <span class="count green">4</span></a>
+    <a class="tab" href="#">Survey</a>
+  </div>
+
+  <!-- Only a WhatsApp-specific nudge: a reply about to lose its free window -->
+  <div class="nudge ok" style="margin:16px 0">
+    <span class="ic">✆</span>
+    <div class="grow">
+      <div class="name">Divya's reply window closes in 3 h</div>
+      <div class="xs muted">"Can you send the link? I had a work call 😞" — answering now is free; after that only a template can be sent.</div>
+    </div>
+    <button class="btn sm">Reply now</button>
+  </div>
+
+  <!-- WhatsApp numbers only; attendance lives on Engagement -->
+  <div class="kpis five">
+    <div class="card kpi"><div class="l">Can get WhatsApp</div><div class="v">10 <span class="small faint">/ 13</span></div><div class="d">1 opted out · 1 no number · 1 no consent</div></div>
+    <div class="card kpi"><div class="l">Messages sent</div><div class="v">46</div><div class="d">automatic 33 · follow-ups 13</div></div>
+    <div class="card kpi"><div class="l">Read</div><div class="v">85%</div><div class="d">39 of 46</div></div>
+    <div class="card kpi"><div class="l">Replies</div><div class="v">7</div><div class="d">4 waiting on you</div></div>
+    <div class="card kpi"><div class="l">Est. Meta cost</div><div class="v">≈ ₹12</div><div class="d">14 marketing · 32 utility</div></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns: minmax(0,1.35fr) minmax(0,1fr); gap:16px; margin-top:16px; align-items:start">
+    <!-- Every message this webinar sent, in order -->
+    <div class="card p5">
+      <div class="row between" style="margin-bottom:6px">
+        <div class="st" style="margin:0">Everything sent for this webinar</div>
+        <a class="xlink" href="#">Change templates</a>
+      </div>
+      <div class="tl">
+        <div class="it"><span class="when">On registering</span><span class="ic">✓</span><span class="what"><b>Confirmation</b><span class="xs faint">webinar_confirmation · utility</span></span><span class="res"><span>11 sent</span><span class="rd">82% read</span></span></div>
+        <div class="it"><span class="when">1 day before</span><span class="ic">✓</span><span class="what"><b>Reminder</b><span class="xs faint">webinar_reminder · utility</span></span><span class="res"><span>11 sent</span><span class="rd">82% read</span></span></div>
+        <div class="it"><span class="when">1 hour before</span><span class="ic">✓</span><span class="what"><b>Reminder</b><span class="xs faint">webinar_reminder · utility</span></span><span class="res"><span>11 sent</span><span class="rd">73% read</span></span></div>
+        <div class="it"><span class="when">+40 min after</span><span class="ic f">↗</span><span class="what"><b>Follow-up · Engaged</b><span class="xs faint">thanks_for_attending · marketing</span></span><span class="res"><span>2 sent</span><span class="rd">2 read</span><span class="rp">1 replied</span></span></div>
+        <div class="it"><span class="when">+1 h after</span><span class="ic f">↗</span><span class="what"><b>Follow-up · No-shows</b><span class="xs faint">missed_you · marketing</span></span><span class="res"><span>4 sent</span><span class="rd">3 read</span><span class="rp">2 replied</span></span></div>
+        <div class="it"><span class="when">Tomorrow 9 AM</span><span class="ic q">◷</span><span class="what"><b>Follow-up · Passive</b><span class="xs faint">replay_ready · utility · scheduled</span></span><span class="res"><span>1 queued</span><a class="xlink" href="#">Cancel</a></span></div>
+        <div class="it"><span class="when">On publishing</span><span class="ic q">▶</span><span class="what"><b>Replay link</b><span class="xs faint">Sends when you publish the recording</span></span><span class="res"><a class="xlink" href="#">Publish recording</a></span></div>
+      </div>
+      <p class="xs faint" style="margin-top:10px">Who to follow up with is on <a class="xlink" href="engagement.html">Engagement → Follow up</a>. Reminder times are in Settings.</p>
+    </div>
+
+    <div class="grid" style="gap:16px">
+      <div class="card" style="padding:0">
+        <div class="row between" style="padding:12px 16px; border-bottom:1px solid var(--line)">
+          <div class="st" style="margin:0">Waiting for your reply <span class="count green">4</span></div>
+          <a class="xlink" href="#">Open Messages →</a>
+        </div>
+        <div class="reply"><span class="av a1">DK</span><div class="grow"><div class="row between"><b class="small">Divya Krishnan</b><span class="xs" style="color:var(--warn)">3 h left</span></div><div class="small">"Can you send the link? I had a work call 😞"</div></div></div>
+        <div class="reply"><span class="av a7">RV</span><div class="grow"><div class="row between"><b class="small">Rahul Verma</b><span class="xs faint">yesterday</span></div><div class="small">"Yes. Also — do you run a paid program?"</div></div></div>
+        <div class="reply"><span class="av a4">NJ</span><div class="grow"><div class="row between"><b class="small">Neha Joshi</b><span class="xs faint">16 h ago</span></div><div class="small">"Watched it! Is the budgeting one also free?"</div></div></div>
+      </div>
+      <div class="card p5">
+        <div class="st" style="margin-top:0">Did the reminders help?</div>
+        <div class="rate" style="margin-top:8px"><span style="width:150px">Got a WhatsApp reminder</span><span class="bar"><i class="rd" style="width:64%"></i></span><b>64%</b><span class="xs faint">7/11</span></div>
+        <div class="rate" style="margin-top:8px"><span style="width:150px">Email only</span><span class="bar"><i class="s" style="width:50%"></i></span><b>50%</b><span class="xs faint">1/2</span></div>
+        <p class="xs faint" style="margin-top:8px">Show-up rate by who got a reminder. Small groups swing a lot — this settles after a few webinars.</p>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="note"><b>Webinar → Messages, WhatsApp only.</b> The v2 tab repeated Engagement (joined, avg watch, show-up, and its own follow-up cards by watch time). v2.1 keeps what only this tab can say: reach and cost, a single timeline of every message sent or queued with read and reply numbers, replies waiting, and whether reminders moved show-up. Deciding who to message moves to Engagement.</div>
+<script src="../v2/assets/v2.js"></script>
+</body></html>

@@ -7,7 +7,13 @@ import { Alert } from "./controls";
 import { CalendarIcon } from "./icons";
 import { useSession, useShareOrigin } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, TopicStripe } from "./ui";
-import { formatDay, formatDuration, formatRelative, formatTimeRange, tzLabel } from "@/lib/format";
+import {
+  formatDay,
+  formatDuration,
+  formatRelative,
+  formatTimeRange,
+  tzLabel,
+} from "@/lib/format";
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import { useNow } from "@/lib/clock";
 import type { Registration, Webinar } from "@/lib/api-types";
@@ -30,8 +36,16 @@ import type { Registration, Webinar } from "@/lib/api-types";
  * vanished from their list. The lookup has no such filter.
  */
 
-export function MyWebinarsList() {
-  const { registrations, webinarFor, forget, error, retry } = useRegistrations();
+export function MyWebinarsList({
+  /** The host page's Attending tab: only other people's webinars. A host who
+   *  registered for their own session to test the attendee side already has it
+   *  under Upcoming or Completed. */
+  othersOnly = false,
+}: {
+  othersOnly?: boolean;
+} = {}) {
+  const { registrations, webinarFor, forget, error, retry } =
+    useRegistrations();
   // Still needed for the "saved in this browser" nudge; the registration fetching it
   // used to do is now useRegistrations' job.
   const { account } = useSession();
@@ -42,8 +56,11 @@ export function MyWebinarsList() {
     return registrations
       .map((reg) => ({ reg, webinar: webinarFor(reg.webinarId) }))
       .filter((x): x is { reg: Registration; webinar: Webinar } => !!x.webinar)
-      .sort((a, b) => +new Date(a.webinar.startsAt) - +new Date(b.webinar.startsAt));
-  }, [registrations, webinarFor]);
+      .filter((x) => !othersOnly || x.webinar.host.id !== account?.id)
+      .sort(
+        (a, b) => +new Date(a.webinar.startsAt) - +new Date(b.webinar.startsAt),
+      );
+  }, [registrations, webinarFor, othersOnly, account?.id]);
 
   if (rows === null && error) {
     return (
@@ -97,7 +114,10 @@ export function MyWebinarsList() {
       {!account && (
         <div className="rounded-lg border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
           These registrations are saved in this browser.{" "}
-          <Link href="/signup" className="font-medium text-brand hover:underline">
+          <Link
+            href="/signup"
+            className="font-medium text-brand hover:underline"
+          >
             Create an account
           </Link>{" "}
           to keep them if you clear your cache or switch device.
@@ -217,7 +237,8 @@ function RegisteredCard({
             </span>
             {!pending && !declined && (
               <span>
-                Join key <span className="font-mono text-ink-2">{r.joinKey}</span>
+                Join key{" "}
+                <span className="font-mono text-ink-2">{r.joinKey}</span>
               </span>
             )}
             <span>Hosted by {w.host.name}</span>
@@ -265,7 +286,9 @@ function RegisteredCard({
                 variant="secondary"
                 size="sm"
                 className="px-2"
-                onClick={() => downloadIcs(event, `${w.id}-${r.joinKey}`, `${w.id}.ics`)}
+                onClick={() =>
+                  downloadIcs(event, `${w.id}-${r.joinKey}`, `${w.id}.ics`)
+                }
               >
                 .ics
               </Button>

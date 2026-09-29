@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhatsApp (simple mock)</title><link rel="stylesheet" href="assets/simple.css">
+<link rel="stylesheet" href="assets/create-tabs.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0..1,0">
+<link rel="stylesheet" href="assets/whatsapp.css">
+<link rel="stylesheet" href="assets/wa-metrics.css">
+<link rel="stylesheet" href="assets/wa-timing.css">
+</head>
+<body>
+<div data-nav></div>
+<main style="max-width:60rem">
+  <a class="back" href="home.html">← Your webinars</a>
+
+  <!-- What this page is -->
+  <div class="wah">
+    <div><h1>WhatsApp</h1><p class="small muted" style="margin-top:4px">Your attendees get these on WhatsApp, from your own number — for every webinar.</p></div>
+    <div class="acts">
+      <a class="btn sec" href="inbox.html"><span class="ms s">forum</span>Open inbox<span class="cnt">4</span></a>
+      <button class="btn"><span class="ms s">send</span>Send a message</button>
+    </div>
+  </div>
+
+  <!-- Is it working? How did it go? -->
+  <div class="wam">
+    <div class="wam-top">
+      <div class="wam-conn"><span class="wam-dot"></span><b>Connected</b> +91 98200 11223 (Aarti Menon Coaching) <span class="sub">· messages come from your number</span><a class="xlink" href="settings.html#integrations">Settings</a></div>
+      <div class="wam-per"><span>7 days</span><span class="on">30 days</span><span>All</span></div>
+    </div>
+    <div class="wam-tiles">
+      <div class="wam-t"><div class="l"><span class="ms">send</span>Sent</div><b>212</b><small>messages, all webinars</small></div>
+      <div class="wam-t"><div class="l"><span class="ms">done_all</span>Delivered</div><b>206<i>97%</i></b><small>reached their phone</small></div>
+      <div class="wam-t"><div class="l"><span class="ms">visibility</span>Read</div><b>167<i>81%</i></b><small>of delivered</small></div>
+      <div class="wam-t bad"><div class="l"><span class="ms">error</span>Failed</div><b>6</b><small>didn't arrive · <a class="xlink" href="#">See why</a></small></div>
+      <div class="wam-t"><div class="l"><span class="ms">payments</span>Cost</div><b>₹27.56</b><small>Meta bills ₹0.13 each</small></div>
+    </div>
+    <div class="wam-bar">
+      <div class="wam-track"><i class="rd" style="flex:167"></i><i class="dl" style="flex:39"></i><i class="fl" style="flex:6"></i></div>
+      <div class="wam-key"><span class="rd">Read 167</span><span class="dl">Delivered, not read 39</span><span class="fl">Failed 6</span></div>
+    </div>
+  </div>
+
+  <!-- What it sends for me: by who gets it -->
+  <div class="wsh" id="auto"><div><h2>What goes out automatically</h2><p>For every webinar. Switch any message off, change when it goes, or edit its words.</p></div></div>
+  <div class="wg">
+
+    <div class="wgh"><span class="wgi ms">event_upcoming</span><div><b>Before the webinar</b><small>Everyone who registers gets these</small></div></div>
+    <div class="wg3">
+      <div class="wc">
+        <div class="top"><span class="ic ms">how_to_reg</span><div class="grow"><b>Confirmation</b><span class="tchip fixed" title="Sent as soon as they register"><span class="ms">lock</span>Right away</span></div><span class="toggle on"></span></div>
+        <div class="snip">“Hi Divya, you're registered for Mindful Money: Budgeting Without Guilt on Thu 8 Oct, 7 PM.”</div>
+        <div class="bot"><span>81% read</span><a class="xlink" href="#">Edit</a></div>
+      </div>
+      <div class="wc">
+        <div class="top"><span class="ic ms">alarm</span><div class="grow"><b>Reminder</b><span class="tchip open"><span class="ms">schedule</span>1 day and 1 hour before<span class="ms dd">expand_more</span></span>
+          <div class="tpop">
+            <div class="tph"><b>Default for new webinars</b><span class="ms">close</span></div>
+            <div class="tpc">
+              <span class="tpv">1 day before<span class="ms">close</span></span>
+              <span class="tpv">1 hour before<span class="ms">close</span></span>
+              <span class="tpv add"><span class="ms">add</span>Add a time</span>
+            </div>
+            <div class="tpadd"><span class="tpn">30</span><span class="tps">minutes<span class="ms">expand_more</span></span><span class="tpw">before</span><a class="xlink" href="#">Add</a></div>
+            <p class="tpg">Every new webinar starts with these. You can still change them on any webinar while scheduling.</p>
+            <div class="tpf"><button class="btn sm ghost">Cancel</button><button class="btn sm">Save</button></div>
+          </div></div><span class="toggle on"></span></div>
+        <div class="snip">“Hi Divya, Mindful Money: Budgeting Without Guilt starts in 1 hour. Tap Join to come in.”</div>
+        <div class="bot"><span>78% read</span><a class="xlink" href="#">Edit</a></div>
+      </div>
+      <div class="wlive"><span class="ms">do_not_disturb_on</span><b>While you're live</b><small>Nothing is sent, so no one is pulled away from the webinar</small></div>
+    </div>
+
+    <div class="wgh second"><span class="wgi ms">event_available</span><div><b>After the webinar</b><small>Everyone gets the replay; then each group gets its own message, based on how they took part</small></div></div>
+    <div class="wrep">
+      <span class="ic ms">play_circle</span>
+      <div class="wrl"><b>Replay</b><small>Goes to everyone</small><span class="tchip"><span class="ms">schedule</span>When I publish the recording<span class="ms dd">expand_more</span></span></div>
+      <div class="snip">“Hi Divya, the recording of Mindful Money: Budgeting Without Guilt is ready. Watch it any time this week.”</div>
+      <span class="wrs">74% read</span><a class="xlink" href="#">Edit</a><span class="toggle on"></span>
+    </div>
+    <div class="wsub"><span class="ms">subdirectory_arrow_right</span>Then each group gets its own message, at the time you pick</div>
+    <div class="wg5">
+      <div class="gc">
+        <div class="gtop"><span class="gi ms hot">local_fire_department</span><span class="toggle on"></span></div>
+        <b>Very engaged</b><small class="gx">stayed and joined in</small>
+        <div class="gets"><span class="ms">arrow_forward</span>your offer</div>
+        <div class="snip">“Divya, thanks for joining in! Here's the Money Reset offer…”</div>
+        <div class="gbot"><span><span class="tchip"><span class="ms">schedule</span>2 hours after<span class="ms dd">expand_more</span></span><br>4 people last time</span><a class="xlink" href="#">Edit</a></div>
+      </div>
+      <div class="gc">
+        <div class="gtop"><span class="gi ms">favorite</span><span class="toggle on"></span></div>
+        <b>Joined and engaged</b><small class="gx">stayed most of it</small>
+        <div class="gets"><span class="ms">arrow_forward</span>thank-you</div>
+        <div class="snip">“Thanks for coming, Divya! Here are the notes from today…”</div>
+        <div class="gbot"><span><span class="tchip"><span class="ms">schedule</span>2 hours after<span class="ms dd">expand_more</span></span><br>11 people last time</span><a class="xlink" href="#">Edit</a></div>
+      </div>
+      <div class="gc">
+        <div class="gtop"><span class="gi ms">person_off</span><span class="toggle on"></span></div>
+        <b>Didn't join</b><small class="gx">registered but missed it</small>
+        <div class="gets"><span class="ms">arrow_forward</span>the replay</div>
+        <div class="snip">“Sorry we missed you, Divya. Here's the recording…”</div>
+        <div class="gbot"><span><span class="tchip"><span class="ms">schedule</span>2 hours after<span class="ms dd">expand_more</span></span><br>18 people last time</span><a class="xlink" href="#">Edit</a></div>
+      </div>
+      <div class="gc off">
+        <div class="gtop"><span class="gi ms">visibility_off</span><span class="toggle"></span></div>
+        <b>Watched quietly</b><small class="gx">stayed but didn't chat</small>
+        <div class="gets"><span class="ms">arrow_forward</span>nothing yet</div>
+        <div class="gnone">Not sending anything to this group</div>
+        <div class="gbot"><span>6 people<br>last time</span><button class="btn sm sec">Set up</button></div>
+      </div>
+      <div class="gc off">
+        <div class="gtop"><span class="gi ms">logout</span><span class="toggle"></span></div>
+        <b>Left early</b><small class="gx">left before the end</small>
+        <div class="gets"><span class="ms">arrow_forward</span>nothing yet</div>
+        <div class="gnone">Not sending anything to this group</div>
+        <div class="gbot"><span>5 people<br>last time</span><button class="btn sm sec">Set up</button></div>
+      </div>
+    </div>
+    <p class="wgf"><span class="ms">info</span>People-counts are from your last webinar.</p>
+  </div>
+
+  <!-- What it does when people reply -->
+  <div class="wsh"><div><h2>Automatic replies</h2><p>When someone does something, WhatsApp does something for you.</p></div></div>
+  <div class="arl">
+    <div class="ar">
+      <span class="ic ms">poll</span>
+      <div class="grow"><span class="w">When someone says</span> Yes <span class="w">to</span> “Want 1:1 coaching?” <span class="ms">arrow_forward</span>send “Book a call” and tag Hot lead<small>4 people this week</small></div>
+      <span class="toggle on"></span>
+    </div>
+    <div class="ar">
+      <span class="ic ms">sell</span>
+      <div class="grow"><span class="w">When someone asks about</span> price or your program <span class="ms">arrow_forward</span>tag Hot lead<small>2 people tagged</small></div>
+      <span class="toggle on"></span>
+    </div>
+    <div class="ar off">
+      <span class="ic ms">chat</span>
+      <div class="grow"><span class="w">When someone sends</span> PRICE <span class="w">or</span> REPLAY <span class="ms">arrow_forward</span>reply straight away<small>Not set up yet · would have answered 3 people last week</small></div>
+      <button class="btn sm sec">Set up</button>
+    </div>
+    <div class="add"><a class="xlink" href="#"><span class="ms s">add</span>Add an automatic reply</a></div>
+  </div>
+
+  <!-- What the two buttons open (shown here so you can see them) -->
+  <div class="dlgs" id="dialogs">
+    <div class="dlgs-h"><span class="ms">open_in_new</span>What these buttons open</div>
+
+    <!-- 1. Set up: reply to a word -->
+    <div class="dcap">Set up <span class="ms">arrow_forward</span></div>
+    <div class="dlg">
+      <div class="dt">
+        <span class="dti ms">chat</span>
+        <div class="grow"><b>Reply straight away when someone sends a word</b><small>Answers common questions any time, even when you're asleep.</small></div>
+        <span class="dx ms">close</span>
+      </div>
+      <div class="db kw">
+        <div>
+          <div class="kwh"><span>When they send</span><span>You reply</span></div>
+          <div class="kwr">
+            <span class="kwc">PRICE</span><span class="kwa ms">arrow_forward</span>
+            <div class="ta">The 8-week Money Reset program is ₹14,999. Reply CALL and I'll send you a booking link.</div>
+            <span class="rm ms">close</span>
+          </div>
+          <div class="kwr">
+            <span class="kwc">REPLAY</span><span class="kwa ms">arrow_forward</span>
+            <div class="ta">Here's the replay of the last webinar: webinarliv.com/w/mindful-money/replay</div>
+            <span class="rm ms">close</span>
+          </div>
+          <div class="kwr">
+            <span class="kwc">CALL</span><span class="kwa ms">arrow_forward</span>
+            <div class="ta">Pick a time that suits you: calendly.com/aarti/intro</div>
+            <span class="rm ms">close</span>
+          </div>
+          <a class="xlink dadd" href="#"><span class="ms s">add</span>Add a word</a>
+          <p class="dhint">Words aren't case-sensitive. These replies are free when they're answering a message.</p>
+        </div>
+        <div class="mini">
+          <div class="mh"><span class="av">AM</span>Aarti Menon Coaching</div>
+          <div class="mw">
+            <div class="mb in">PRICE<small>Divya · 9:41</small></div>
+            <div class="mb out">The 8-week Money Reset program is ₹14,999. Reply CALL and I'll send you a booking link.<small>9:41</small></div>
+          </div>
+        </div>
+      </div>
+      <div class="df"><button class="btn sm ghost">Cancel</button><button class="btn sm">Turn on</button></div>
+    </div>
+
+    <!-- 2. Add an automatic reply -->
+    <div class="dcap"><span class="ms">add</span>Add an automatic reply <span class="ms">arrow_forward</span></div>
+    <div class="dlg">
+      <div class="dt">
+        <span class="dti ms">bolt</span>
+        <div class="grow"><b>New automatic reply</b><small>Pick what someone does, then what WhatsApp does for you.</small></div>
+        <span class="dx ms">close</span>
+      </div>
+      <div class="db">
+        <div class="ds">
+          <div class="dsn"><i>1</i>When someone…</div>
+          <div class="chips">
+            <span class="pickc on">answers a poll</span><span class="pickc">registers</span><span class="pickc">comes to a webinar</span><span class="pickc">misses a webinar</span><span class="pickc">taps a button</span><span class="pickc">sends a word</span><span class="pickc">gets a tag</span>
+          </div>
+          <div class="dfields">
+            <label><span>Poll question</span><input class="field sm" value="Want 1:1 coaching?"></label>
+            <label><span>Answer</span><input class="field sm" value="Yes"></label>
+          </div>
+        </div>
+        <div class="ds">
+          <div class="dsn"><i>2</i>Then…</div>
+          <div class="acts2">
+            <div class="act"><span class="n">1</span><span class="ms">schedule</span><div class="grow">Wait <b>1 hour</b></div><span class="rm ms">close</span></div>
+            <div class="act"><span class="n">2</span><span class="ms">send</span><div class="grow">Send a message: <b>“Book a call”</b> <a class="xlink" href="#">Change</a></div><span class="rm ms">close</span></div>
+            <div class="act"><span class="n">3</span><span class="ms">sell</span><div class="grow">Tag them: <b>Hot lead</b></div><span class="rm ms">close</span></div>
+          </div>
+          <div class="chips addc">
+            <span class="pickc add"><span class="ms s">add</span>Wait</span><span class="pickc add"><span class="ms s">add</span>Send a message</span><span class="pickc add"><span class="ms s">add</span>Tag them</span><span class="pickc add"><span class="ms s">add</span>Tell me</span>
+          </div>
+        </div>
+        <div class="ds">
+          <div class="dsn"><i>3</i>Name it <span class="dopt">optional</span></div>
+          <input class="field sm" style="max-width:22rem" placeholder="We'll name it from what you picked">
+        </div>
+        <div class="dsum">
+          <span class="ms">info</span>
+          <div><b>When someone answers Yes to ‘Want 1:1 coaching?’</b> <span class="ms">arrow_forward</span> wait 1 hour, send ‘Book a call’, tag Hot lead<small>Would have run for 4 people last week</small></div>
+        </div>
+      </div>
+      <div class="df"><button class="btn sm ghost">Cancel</button><button class="btn sm">Turn on</button></div>
+    </div>
+
+    <!-- 3. Timing pickers -->
+    <div class="tpx">
+      <div>
+        <div class="dcap"><span class="ms">schedule</span>Replay timing <span class="ms">arrow_forward</span></div>
+        <div class="tpop static">
+          <div class="tph"><b>When does the replay go out?</b><span class="ms">close</span></div>
+          <label class="tpr on"><span class="rd"></span>When I publish the recording</label>
+          <label class="tpr"><span class="rd"></span>Automatically, <span class="tpn">2<span class="ms">expand_more</span></span> hours after it ends</label>
+          <p class="tpg">Automatic needs the recording to be ready.</p>
+          <div class="tpf"><button class="btn sm ghost">Cancel</button><button class="btn sm">Save</button></div>
+        </div>
+      </div>
+      <div>
+        <div class="dcap"><span class="ms">schedule</span>Follow-up timing, for a group <span class="ms">arrow_forward</span></div>
+        <div class="tpop static">
+          <div class="tph"><b>When does “Very engaged” get it?</b><span class="ms">close</span></div>
+          <div class="tpc">
+            <span class="tpv pick">1 hour after</span>
+            <span class="tpv pick on"><span class="ms">check</span>2 hours after</span>
+            <span class="tpv pick">Next morning (9 AM)</span>
+            <span class="tpv pick">1 day after</span>
+            <span class="tpv pick">Custom…</span>
+          </div>
+          <p class="tpg">Counted from when the webinar ends.</p>
+          <div class="tpf"><button class="btn sm ghost">Cancel</button><button class="btn sm">Save</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="note"><b>WhatsApp, explained on the page.</b> The top says what this is and whether it works; under the connected number, five numbers for the period you pick (7 days · 30 days · All) — sent, delivered, read, failed (with why) and what Meta bills you — add up (212 sent = 206 delivered + 6 failed), and the same card sits on each ended webinar for just that webinar; replies waiting are on the Open inbox button. "What goes out automatically" is split into Before the webinar (confirmation and reminder, for everyone who registers) and After the webinar (the replay for everyone, then one card per group based on how they took part), so you can see who gets which message and which groups get nothing yet — switch or edit each one right where it is. Nothing is sent while you're live. Tap any message's time to change when it goes — reminders set a default for new webinars (still changeable per webinar), the replay goes when you publish or automatically after it ends, and each group's follow-up can go 1 hour, 2 hours, next morning or a day later. "Add an automatic reply" and "Set up" open a small step-by-step panel only when you ask; both dialogs are shown below the page.</div>
+<script src="assets/nav.js"></script>
+</body></html>

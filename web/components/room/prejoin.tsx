@@ -7,7 +7,12 @@ import {
   type LocalVideoTrack,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { openCamera, useBackgroundsAvailable, useVirtualBackground } from "@/lib/backgrounds";
+import {
+  openCamera,
+  useAutoLowLight,
+  useBackgroundsAvailable,
+  useVirtualBackground,
+} from "@/lib/backgrounds";
 import { cameraCapturePreset, deviceLabel, useDevices, type MediaPreferences } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
@@ -57,6 +62,7 @@ export function PreJoin({
 }) {
   const [micEnabled, setMicEnabled] = useState(prefs.micEnabled);
   const [cameraEnabled, setCameraEnabled] = useState(prefs.cameraEnabled);
+  useAutoLowLight(prefs.lowLightAuto);
   /* Why a device that would not open gets its OWN piece of state, one per device.
    *
    * These used to be one `error`, written at the end of the acquisition effect and cleared at
@@ -138,13 +144,6 @@ export function PreJoin({
     previewTrack ?? undefined,
     prefs.background,
     prefs.lowLight,
-    () => {
-      if (prefs.background.mode !== "none") {
-        onUpdatePrefs({ background: { mode: "none" } });
-        return;
-      }
-      onUpdatePrefs({ lowLight: 0 });
-    },
     prefs.backgroundEngine,
   );
 
@@ -513,6 +512,8 @@ export function PreJoin({
               <LowLightControl
                 value={prefs.lowLight}
                 disabled={!cameraEnabled}
+                auto={prefs.lowLightAuto}
+                onAutoChange={(lowLightAuto) => onUpdatePrefs({ lowLightAuto })}
                 onChange={(lowLight) => onUpdatePrefs({ lowLight })}
                 hint={
                   cameraEnabled
@@ -561,11 +562,16 @@ function MicMeter({ track }: { track: LocalAudioTrack | null }) {
    * the pre-join screen thrashing alongside the background flicker. Enter high, leave low. */
   const [hearing, setHearing] = useState(false);
 
+  // Losing the track drops the label, on that edge during render rather than
+  // in the effect below.
+  const [seenTrack, setSeenTrack] = useState(track);
+  if (track !== seenTrack) {
+    setSeenTrack(track);
+    if (!track) setHearing(false);
+  }
+
   useEffect(() => {
-    if (!track) {
-      setHearing(false);
-      return;
-    }
+    if (!track) return;
     return measureMicLevel(track.mediaStreamTrack, (next) => {
       setLevel(next);
       setHearing((was) => (was ? next > 0.02 : next > 0.06));

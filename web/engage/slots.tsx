@@ -9,7 +9,7 @@
  */
 
 import Link from "next/link";
-import { Toggle } from "@/components/controls";
+import { usePathname } from "next/navigation";
 import { useAppConfig, useSession } from "@/components/providers";
 import { Badge, ButtonLink } from "@/components/ui";
 import {
@@ -19,73 +19,16 @@ import {
   type RegistrantRow,
 } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
+import { ChatIcon } from "@/components/icons";
+import {
+  ENGAGE_HOME,
+  MESSAGES_HREF,
+  PEOPLE_HREF,
+  messagesHref,
+} from "./hrefs";
+import { useReplies } from "./components/replies";
 
-/** WhatsApp setup and the automations (bots, sequences) — not in the nav; reached
- *  from Account settings and from a webinar's Messages tab. */
-export const ENGAGE_HOME = "/host/crm";
-
-/** People and Messages are tabs on the Hosting page, beside Upcoming and Past. */
-export const PEOPLE_HREF = "/host?tab=people";
-export const MESSAGES_HREF = "/host?tab=messages";
-
-/* The schedule form's WhatsApp reminders switch.
- *
- * Written by hand rather than from the options table because it is the one toggle that
- * can be unavailable: without a connected WhatsApp Business account there is nothing to
- * send from, and a switch that turns on and then silently does nothing would be worse
- * than one that says why. Absent when this deployment cannot connect WhatsApp at all. */
-export function WhatsAppRemindersToggle({
-  checked,
-  onChange,
-  boxed = false,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  /** Draw the same boxed switch the schedule form uses for email. Absent
-   *  entirely when this deployment cannot connect WhatsApp, so the caller
-   *  never has to leave an empty box behind. */
-  boxed?: boolean;
-}) {
-  const config = useAppConfig();
-  const { account } = useSession();
-  if (!config.whatsappConnect) return null;
-  const connected = Boolean(account?.whatsapp?.connected);
-  const toggle = (
-    <Toggle
-      checked={checked}
-      onChange={onChange}
-      disabled={!connected}
-      label="WhatsApp reminders (confirmation and timed reminders)"
-      description={
-        connected ? (
-          <>
-            Sent from {account?.whatsapp?.displayPhone || "your number"} to
-            registrants who tick the WhatsApp box, and billed to your Meta account.
-            Pick the template for each message on this webinar&apos;s{" "}
-            <span className="font-medium text-ink">Messages</span> tab.
-          </>
-        ) : (
-          <>
-            <Link href="/account" className="font-medium text-brand hover:underline">
-              Connect WhatsApp
-            </Link>{" "}
-            to message registrants on their phone.
-          </>
-        )
-      }
-    />
-  );
-  if (!boxed) return toggle;
-  return (
-    <div
-      className={`rounded-[10px] border px-1.5 py-0.5 ${
-        checked ? "border-brand-line bg-brand-soft" : "border-line bg-surface"
-      }`}
-    >
-      {toggle}
-    </div>
-  );
-}
+export { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, messagesHref };
 
 /* The registration form's WhatsApp consent box.
  *
@@ -116,9 +59,11 @@ export function WhatsAppOptInCheckbox({
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        Send me reminders and updates on{" "}
-        <span className="font-medium text-ink">WhatsApp</span>. You can reply{" "}
-        <span className="font-medium text-ink">STOP</span> at any time.
+        Send me updates on{" "}
+        <span className="font-medium text-ink">WhatsApp</span>: a confirmation,
+        a reminder before it starts with a one-tap Join, and the replay if I
+        miss it. Reply <span className="font-medium text-ink">STOP</span> at any
+        time.
       </span>
     </label>
   );
@@ -152,8 +97,16 @@ export function WhatsAppAccountRow() {
               : "Send confirmations and reminders from your own business number."}
           </p>
         </div>
-        <ButtonLink href={`${ENGAGE_HOME}?view=setup`} size="sm" variant="secondary">
-          {account.whatsapp?.needsReconnect ? "Reconnect" : account.whatsapp ? "Manage" : "Set up"}
+        <ButtonLink
+          href={`${ENGAGE_HOME}?view=setup`}
+          size="sm"
+          variant="secondary"
+        >
+          {account.whatsapp?.needsReconnect
+            ? "Reconnect"
+            : account.whatsapp
+              ? "Manage"
+              : "Set up"}
         </ButtonLink>
       </div>
     </div>
@@ -204,12 +157,15 @@ export function RosterWhatsAppCells({ row }: { row: RegistrantRow }) {
             ours reads as its delivery state, which is what a host checks after sending. */}
         {row.lastMessage ? (
           <div className="min-w-0">
-            <div className={`truncate ${row.lastMessage.direction === "in" ? "text-ok" : ""}`}>
+            <div
+              className={`truncate ${row.lastMessage.direction === "in" ? "text-ok" : ""}`}
+            >
               {row.lastMessage.direction === "in" ? "Replied: " : ""}
               {row.lastMessage.body || row.lastMessage.templateName || "—"}
             </div>
             <div className="text-[11px] text-ink-3">
-              {row.lastMessage.direction === "out" && `${row.lastMessage.status} · `}
+              {row.lastMessage.direction === "out" &&
+                `${row.lastMessage.status} · `}
               {formatRelative(row.lastMessage.createdAt, new Date())}
             </div>
           </div>
@@ -231,4 +187,37 @@ function WhatsAppStatusBadge({ status }: { status?: string }) {
   if (status === CRMStatusNoNumber) return <Badge>No number</Badge>;
   // Everything left is no_opt_in, which is most of a list rather than a fault.
   return <Badge>No consent</Badge>;
+}
+
+/* The top bar's inbox: a chat icon with how many conversations are waiting, opening
+ * the Messages screen. Absent when this account has no WhatsApp, where there is no
+ * inbox to open. */
+export function MessagesNavButton() {
+  const replies = useReplies();
+  const { account } = useSession();
+  const pathname = usePathname();
+  if (!account?.canHost || !account?.whatsapp) return null;
+  const n = replies?.needsReply ?? 0;
+  const here =
+    pathname === MESSAGES_HREF || pathname.startsWith(`${MESSAGES_HREF}/`);
+  return (
+    <Link
+      href={MESSAGES_HREF}
+      aria-label={n ? `Messages, ${n} waiting` : "Messages"}
+      aria-current={here ? "page" : undefined}
+      title="Messages"
+      className={`relative grid size-9 place-items-center rounded-lg ${
+        here
+          ? "bg-brand-soft text-brand"
+          : "text-ink-2 hover:bg-surface-2 hover:text-ink"
+      }`}
+    >
+      <ChatIcon className="size-[18px]" />
+      {n > 0 && (
+        <span className="absolute top-1 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-ok px-1 text-[10px] font-semibold text-white">
+          {n > 99 ? "99+" : n}
+        </span>
+      )}
+    </Link>
+  );
 }

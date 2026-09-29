@@ -7,16 +7,18 @@ import { Menu } from "./controls";
 import { CloseIcon, MenuIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
-import { Avatar, ButtonLink } from "./ui";
+import { AccountAvatar } from "./account-avatar";
+import { ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
+import { MessagesNavButton } from "@/engage";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
  * It held three. Browse went first: a public catalogue that stopped being one,
  * since the list is now scoped to sessions the account already hosts, presents
  * on or registered for. My Webinar went the same way and for the same reason —
- * it is the WatchList tab on Host Webinar now, sitting after Drafts with the
- * host's other lists. A nav entry per view of one person's sessions asks them to
+ * it is the Attending tab on Host Webinar now, after Audience with the host's
+ * other lists, shown once the host has registered for somebody else's session. A nav entry per view of one person's sessions asks them to
  * decide which door leads to the webinar they are looking for, and both doors
  * open on the same room.
  *
@@ -26,13 +28,11 @@ import { HostAlerts } from "./host-alerts";
  * could not have gone anywhere. The logo does that job now, see homeHrefFor.
  *
  * Both routes stay reachable. /browse still takes the links already sent out, and
- * /my-webinars is where registering sends somebody and what the account menu's
- * neighbours link to.
+ * /my-webinars is where registering sends somebody — a host lands on the
+ * Attending tab from it (see lib/access.ts).
  *
- * Contacts went too. People and Messages are tabs on the Hosting page beside
- * Upcoming and Past — one person, one row, across every webinar — so a host
- * has one home rather than a second app bolted onto the first. WhatsApp replies
- * land on the bell. */
+ * Contacts went too. Audience is a tab on Your webinars. Messages is its own
+ * screen, opened from the chat icon. WhatsApp replies land on the bell. */
 
 function linksFor(signedIn: boolean, canHost: boolean) {
   // A host reaches their registrations through the tab, and /host through the
@@ -72,7 +72,7 @@ export function TopNav() {
   const isActive = (href: string) => pathname.startsWith(href);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
+    <header className="sticky top-0 z-30 shrink-0 border-b border-line bg-surface/95 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-5">
         <Link
           href={homeHrefFor(account?.canHost === true)}
@@ -80,7 +80,13 @@ export function TopNav() {
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a fixed
               brand asset, not a page image next/image would optimize. */}
-          <img src="/brand/mark.png" alt="" width={28} height={28} className="size-7 rounded-lg" />
+          <img
+            src="/brand/mark.png"
+            alt=""
+            width={28}
+            height={28}
+            className="size-7 rounded-lg"
+          />
           <span className="text-[14.5px] font-semibold tracking-[-0.01em]">
             {appName}
           </span>
@@ -109,6 +115,7 @@ export function TopNav() {
           <span className="size-7 animate-pulse rounded-full bg-surface-2" />
         ) : account ? (
           <>
+            {account.canHost && <MessagesNavButton />}
             {account.canHost && <HostAlerts />}
             <Menu
               label="Your account"
@@ -118,15 +125,10 @@ export function TopNav() {
                   <span className="hidden max-w-32 truncate text-[12.5px] text-ink-2 md:block">
                     {account.name}
                   </span>
-                  <Avatar
-                    person={{
-                      id: account.id,
-                      name: account.name,
-                      title: account.title,
-                      org: account.org,
-                      initials: account.initials,
-                      hue: account.hue,
-                    }}
+                  <AccountAvatar
+                    initials={account.initials}
+                    hue={account.hue}
+                    photo={account.avatarUrl}
                     size={28}
                   />
                 </span>
@@ -144,8 +146,8 @@ export function TopNav() {
                   : []),
                 {
                   kind: "action",
-                  label: "Account settings",
-                  onSelect: () => router.push("/account"),
+                  label: "Settings",
+                  onSelect: () => router.push("/settings#integrations"),
                 },
                 { kind: "separator" },
                 {

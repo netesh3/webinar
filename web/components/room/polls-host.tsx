@@ -4,16 +4,33 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Poll, PollInput } from "@/lib/api-types";
 import { useCoalescingReader } from "@/lib/polls";
-import { draftFromPoll, groupPolls, pollResults, type ComposerDraft } from "@/lib/poll-view";
+import { draftFromPoll, groupPolls, hostPanelView, pollResults, type ComposerDraft } from "@/lib/poll-view";
 import { Alert, Spinner } from "../controls";
-import { CopyIcon, PlayIcon, PlusIcon, PollIcon, RotateCcwIcon, StopIcon, TrashIcon } from "../icons";
+import { CopyIcon, PlayIcon, PlusIcon, RotateCcwIcon, StopIcon, TrashIcon } from "../icons";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { Composer } from "./poll-composer";
-import { KindPill, ResultRows, SectionLabel, StatePill, votesLabel } from "./poll-pieces";
+import { SurveyRoomControls } from "./survey-room-controls";
+import {
+  EmptySlot,
+  KindPill,
+  ResultRows,
+  RetryButton,
+  SectionLabel,
+  StatePill,
+  votesLabel,
+} from "./poll-pieces";
 
 /** How often the host refreshes an open poll's tally. */
 const TALLY_POLL_MS = 4000;
+
+/* The last list each room's host panel read, kept for the page's lifetime.
+ *
+ * Closing the panel (or docking/undocking it) unmounts it, and without this every
+ * reopen would start from nothing and flash a spinner over a list that was on screen
+ * a second ago. The cached copy is only a starting point — the panel re-reads on
+ * mount as it always has — and it is only ever written in the browser, by a read. */
+const hostPollsCache = new Map<string, Poll[]>();
 
 /** Reads the host's polls, and re-reads on the room's nudge.
  *
@@ -22,13 +39,15 @@ const TALLY_POLL_MS = 4000;
  *  poll, so it runs only while one is open. Reads are serialised without dropping
  *  any — see coalescingReader. */
 function useHostPolls(slug: string) {
-  const [polls, setPolls] = useState<Poll[] | null>(null);
+  const [polls, setPolls] = useState<Poll[] | null>(() => hostPollsCache.get(slug) ?? null);
   const [error, setError] = useState<string | null>(null);
   const { realtime } = useRoomUI();
 
   const read = useCallback(async () => {
     try {
-      setPolls(await api.hostPolls(slug));
+      const list = await api.hostPolls(slug);
+      hostPollsCache.set(slug, list);
+      setPolls(list);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load the polls.");
@@ -117,12 +136,13 @@ export function HostPolls() {
     reload();
   }
 
-  const empty = polls !== null && polls.length === 0;
+  const view = hostPanelView(polls, error, composing !== null);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {error && (
+        <SurveyRoomControls />
+        {error && view.body !== "failed" && (
           <div className="mb-3">
             <Alert tone="error">{error}</Alert>
           </div>
@@ -146,12 +166,17 @@ export function HostPolls() {
           </div>
         )}
 
-        {polls === null && !error ? (
-          <div className="grid place-items-center py-10">
-            <Spinner className="size-5 text-ink-3" />
-          </div>
-        ) : empty && !composing ? (
-          <EmptyHost onCreate={() => setComposing({ mode: "new" })} />
+        {view.body === "loading" ? (
+          <EmptySlot brand loading title="Loading polls…" />
+        ) : view.body === "failed" ? (
+          <EmptySlot
+            title="Couldn't load the polls"
+            action={<RetryButton onClick={reload} />}
+          >
+            {error}
+          </EmptySlot>
+        ) : view.body === "empty" ? (
+          !composing && <EmptyHost onCreate={() => setComposing({ mode: "new" })} />
         ) : (
           <div className="space-y-2.5">
             {groups.live.length > 0 && (
@@ -226,7 +251,7 @@ export function HostPolls() {
         )}
       </div>
 
-      {!composing && !empty && (
+      {view.footer && (
         <div className="shrink-0 border-t border-line p-2.5">
           <button
             type="button"
@@ -244,24 +269,23 @@ export function HostPolls() {
 
 function EmptyHost({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="flex flex-col items-center px-4 py-10 text-center">
-      <span className="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand">
-        <PollIcon className="size-5" />
-      </span>
-      <p className="mt-3 text-[13px] font-semibold text-ink">Ask the room something</p>
-      <p className="mt-1 max-w-[16rem] text-[12px] leading-relaxed text-ink-3">
-        Write a poll or a quiz now and launch it when you&apos;re ready. It pops up in the
-        middle of every attendee&apos;s screen.
-      </p>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-[12.5px] font-semibold text-stage transition-colors hover:bg-brand-hover outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-      >
-        <PlusIcon className="size-4" />
-        New poll or quiz
-      </button>
-    </div>
+    <EmptySlot
+      brand
+      title="Ask the room something"
+      action={
+        <button
+          type="button"
+          onClick={onCreate}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-[12.5px] font-semibold text-stage transition-colors hover:bg-brand-hover outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+        >
+          <PlusIcon className="size-4" />
+          New poll or quiz
+        </button>
+      }
+    >
+      Write a poll or a quiz now and launch it when you&apos;re ready. It pops up in the
+      middle of every attendee&apos;s screen.
+    </EmptySlot>
   );
 }
 

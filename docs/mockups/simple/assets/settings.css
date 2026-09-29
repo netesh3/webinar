@@ -1,0 +1,99 @@
+/* Settings page with Integrations (settings.html). Mock only — not product CSS. */
+.setp { display: grid; grid-template-columns: 13rem minmax(0,1fr); gap: 28px; margin-top: 20px; align-items: start; }
+
+/* Left: section nav */
+.snav { position: sticky; top: 76px; display: grid; gap: 2px; }
+.snav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 13.5px; color: var(--ink-2); }
+.snav a .ms { font-size: 19px; color: var(--ink-3); }
+.snav a:hover { background: var(--surface-2); }
+.snav a.on { background: var(--brand-soft); color: var(--brand); font-weight: 500; }
+.snav a.on .ms { color: var(--brand); }
+.snav a .cnt { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--ok); }
+.snav .sep { height: 1px; background: var(--line); margin: 8px 10px; }
+.snav a.out { color: var(--ink-3); }
+
+/* Right: section head */
+.shead { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.shead h2 { font-size: 17px; letter-spacing: -.01em; }
+.shead p { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
+.setp .grp:first-of-type { margin-top: 18px; }
+
+/* Integration cards */
+.igrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ic { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 1px 2px rgba(19,22,25,.04); }
+.ic .ich { display: flex; align-items: center; gap: 12px; padding: 14px 16px 0; }
+.ic .ich b { display: block; font-size: 14px; }
+.ic .ich .grow > span { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
+.ic .icd { padding: 8px 16px 14px; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); flex: 1; }
+.ic .icf { display: flex; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; border-top: 1px solid var(--line); min-height: 53px; }
+.ic .icf .who { flex: 1; min-width: 0; font-size: 12px; color: var(--ink-2); line-height: 1.4; }
+.ic .icf .who b { color: var(--ink); font-weight: 500; }
+.ic .icf .who small { display: block; font-size: 11.5px; color: var(--ink-3); }
+.ic .icf .who small.warnl { color: var(--warn); }
+.ic .icf .who small .ms.s { font-size: 13px; margin-right: 3px; vertical-align: -2px; }
+.ic.soon .icd { color: var(--ink-3); }
+
+/* Logo tiles: a coloured rounded square, icon or initial */
+.lt { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; color: #fff; flex-shrink: 0; font-size: 20px; }
+.lt.ms { font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24; }
+.lt.txt { font-family: inherit; font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
+.lt.yt { background: #e62117; } .lt.wa { background: #1fa855; } .lt.tg { background: #2aa3df; }
+.lt.li { background: #0a66c2; } .lt.gc { background: #1a73e8; } .lt.ig { background: linear-gradient(135deg,#f58529,#dd2a7b 55%,#8134af); }
+.lt.mc { background: #f2c200; color: #241c15; } .lt.zp { background: #ff4f00; }
+.ic.soon .lt { filter: saturate(.55); opacity: .8; }
+
+/* Status: dot + word */
+.sst { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500; white-space: nowrap; color: var(--ink-3); }
+.sst::before { content: ""; width: 7px; height: 7px; border-radius: 99px; background: var(--line-2); }
+.sst.ok { color: var(--ok); } .sst.ok::before { background: var(--ok); }
+.sst.soon { color: var(--ink-3); padding: 2px 8px; border-radius: 99px; background: var(--surface-2); }
+.sst.soon::before { display: none; }
+
+.kebab { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--ink-2); border: 1px solid var(--line-2); background: var(--surface); }
+.kebab .ms { font-size: 18px; }
+.kebab.on { background: var(--surface-2); }
+
+/* Examples below the grid: the ⋯ menu and the Connect window, side by side */
+.exrow { display: grid; grid-template-columns: 13.5rem minmax(0,1fr); gap: 16px; margin-top: 28px; align-items: start; }
+.exh { margin-bottom: 10px; min-height: 38px; }
+.exh h2 { font-size: 14px; }
+.exh p { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.exrow .imenu { position: static; width: auto; }
+.exrow .cflow { margin-top: 0; }
+
+/* The ⋯ menu on a connected card */
+.imenu { position: absolute; right: 12px; top: calc(100% - 6px); width: 210px; padding: 6px; z-index: 6; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 14px 32px -10px rgba(0,0,0,.22); }
+.imenu a { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 6px; font-size: 12.5px; color: var(--ink); }
+.imenu a .ms { font-size: 17px; color: var(--ink-3); }
+.imenu a.first { background: var(--surface-2); }
+.imenu a.bad, .imenu a.bad .ms { color: var(--live); }
+.imenu .sep { height: 1px; background: var(--line); margin: 4px 2px; }
+
+/* Coming soon: smaller, one line each */
+.sgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.srow { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.srow .lt { width: 30px; height: 30px; border-radius: 8px; font-size: 17px; filter: saturate(.55); opacity: .8; }
+.srow .lt.txt { font-size: 13px; }
+.srow b { display: block; font-size: 13px; font-weight: 600; }
+.srow small { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
+.sfoot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 12px; color: var(--ink-3); }
+
+/* What "Connect" opens: three steps */
+.cflow { margin-top: 10px; overflow: hidden; }
+.cflow .cfh { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.cflow .cfh b { display: block; font-size: 14px; }
+.cflow .cfh small { display: block; font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+.csteps { display: grid; grid-template-columns: repeat(3, 1fr); }
+.cstep { padding: 12px 14px; border-right: 1px solid var(--line); }
+.cstep:last-child { border-right: 0; }
+.cstep .n { width: 22px; height: 22px; border-radius: 99px; display: grid; place-items: center; font-size: 11.5px; font-weight: 600; background: var(--surface-2); color: var(--ink-2); margin-bottom: 8px; }
+.cstep.now { background: var(--brand-soft); }
+.cstep.now .n { background: var(--brand); color: #fff; }
+.cstep b { display: block; font-size: 13px; }
+.cstep p { font-size: 12px; line-height: 1.45; color: var(--ink-2); margin-top: 3px; }
+.cflow .cff { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.cflow .cff .grow { font-size: 12px; color: var(--ink-2); }
+.cflow .cff .grow .ms.s { font-size: 14px; color: var(--ink-3); }
+.exrow .cflow .cff { flex-wrap: wrap; }
+.exrow .cflow .cff .grow { flex-basis: 100%; }
+.exrow .cflow .cff .btn:first-of-type { margin-left: auto; }

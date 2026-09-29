@@ -35,6 +35,22 @@ type DripInput struct {
 	TagID  string
 	Active bool
 	Steps  []types.CRMDripStep
+	// Tiers narrows the attended trigger to engagement tiers (a Follow up recipe). Empty
+	// means everybody who attended.
+	Tiers []types.EngagementTier
+	// Recipe is the recipe this drip was made from, set only on creation; empty for one
+	// the host built.
+	Recipe string
+	// Match is what a poll_answer, button_tap or keyword_in trigger matches.
+	Match types.CRMDripMatch
+}
+
+func tierNames(ts []types.EngagementTier) []string {
+	out := []string{}
+	for _, t := range ts {
+		out = append(out, string(t))
+	}
+	return out
 }
 
 /* SaveDrip writes a sequence, creating it when id is empty and replacing it otherwise.
@@ -61,12 +77,18 @@ func (s *Store) SaveDrip(ctx context.Context, hostID, id string, in DripInput) (
 	name := strings.Join(strings.Fields(in.Name), " ")
 	if id == "" {
 		err = tx.QueryRow(ctx, `
-			INSERT INTO crm_drips (host_id, name, trigger_kind, webinar_id, active, trigger_tag_id)
+			INSERT INTO crm_drips (host_id, name, trigger_kind, webinar_id, active, trigger_tag_id,
+			                       trigger_tiers, recipe, trigger_match)
 			VALUES ($1::uuid, $2, $3,
 			        (SELECT id FROM webinars WHERE slug = $4 AND host_id = $1::uuid), $5,
-			        (SELECT id FROM crm_tags WHERE id = NULLIF($6,'')::uuid AND host_id = $1::uuid))
+			        (SELECT id FROM crm_tags WHERE id = NULLIF($6,'')::uuid AND host_id = $1::uuid),
+			        $7, NULLIF($8,''), $9)
 			RETURNING id::text`,
-			hostID, name, in.Trigger, in.WebinarSlug, in.Active, in.TagID).Scan(&id)
+			hostID, name, in.Trigger, in.WebinarSlug, in.Active, in.TagID,
+			tierNames(in.Tiers), in.Recipe, in.Match).Scan(&id)
+		if isUniqueViolation(err) {
+			return "", store.ErrConflict
+		}
 		if err != nil {
 			return "", err
 		}
@@ -76,9 +98,10 @@ func (s *Store) SaveDrip(ctx context.Context, hostID, id string, in DripInput) (
 			   SET name = $3, trigger_kind = $4, active = $5, updated_at = now(),
 			       webinar_id = (SELECT id FROM webinars WHERE slug = $6 AND host_id = $1::uuid),
 			       trigger_tag_id = (SELECT id FROM crm_tags
-			                          WHERE id = NULLIF($7,'')::uuid AND host_id = $1::uuid)
+			                          WHERE id = NULLIF($7,'')::uuid AND host_id = $1::uuid),
+			       trigger_tiers = $8, trigger_match = $9
 			 WHERE host_id = $1::uuid AND id = $2::uuid`,
-			hostID, id, name, in.Trigger, in.Active, in.WebinarSlug, in.TagID)
+			hostID, id, name, in.Trigger, in.Active, in.WebinarSlug, in.TagID, tierNames(in.Tiers), in.Match)
 		if err != nil {
 			return "", err
 		}
@@ -96,11 +119,18 @@ func (s *Store) SaveDrip(ctx context.Context, hostID, id string, in DripInput) (
 		if params == nil {
 			params = []types.CRMParam{}
 		}
+		kind := step.Kind
+		if kind == "" {
+			kind = types.DripStepMessage
+		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO crm_drip_steps
-				(drip_id, position, delay_minutes, template_name, template_language, params)
-			VALUES ($1::uuid, $2, $3, $4, $5, $6)`,
-			id, i, step.DelayMinutes, step.Template, step.Language, params); err != nil {
+				(drip_id, position, delay_minutes, template_name, template_language, params,
+				 kind, tag_id, note)
+			VALUES ($1::uuid, $2, $3, $4, $5, $6, $7,
+			        (SELECT id FROM crm_tags WHERE id = NULLIF($8,'')::uuid AND host_id = $9::uuid), $10)`,
+			id, i, step.DelayMinutes, step.Template, step.Language, params,
+			kind, step.TagID, hostID, step.Note); err != nil {
 			return "", err
 		}
 	}
@@ -116,7 +146,7 @@ func (s *Store) SaveDrip(ctx context.Context, hostID, id string, in DripInput) (
 const dripSelect = `
 	SELECT d.id::text, d.name, d.trigger_kind, COALESCE(w.slug,''), COALESCE(w.topic,''),
 	       COALESCE(t.id::text,''), COALESCE(t.name,''),
-	       d.active, d.created_at,
+	       d.active, d.created_at, d.trigger_tiers, COALESCE(d.recipe,''), d.trigger_match,
 	       (SELECT count(*) FROM crm_drip_enrollments e
 	         WHERE e.drip_id = d.id AND e.state = 'active'),
 	       (SELECT count(*) FROM crm_drip_enrollments e
@@ -141,13 +171,21 @@ func scanDrip(row scanner) (types.CRMDrip, error) {
 		d         types.CRMDrip
 		createdAt time.Time
 		st        types.CRMDripStats
+		tiers     []string
+		match     types.CRMDripMatch
 	)
 	if err := row.Scan(&d.ID, &d.Name, &d.Trigger, &d.WebinarID, &d.WebinarTopic,
-		&d.TagID, &d.TagName, &d.Active, &createdAt,
+		&d.TagID, &d.TagName, &d.Active, &createdAt, &tiers, &d.Recipe, &match,
 		&st.Active, &st.Done, &st.Exited, &st.Queued, &st.Sent, &st.Failed); err != nil {
 		return types.CRMDrip{}, err
 	}
 	d.CreatedAt = createdAt.Format(time.RFC3339)
+	if match != (types.CRMDripMatch{}) {
+		d.Match = &match
+	}
+	for _, t := range tiers {
+		d.Tiers = append(d.Tiers, types.EngagementTier(t))
+	}
 	d.Stats = st
 	d.Steps = []types.CRMDripStep{}
 	return d, nil
@@ -192,10 +230,11 @@ func (s *Store) Drips(ctx context.Context, hostID string, limit int) ([]types.CR
 	}
 
 	steps, err := s.pool.Query(ctx, `
-		SELECT drip_id::text, delay_minutes, template_name, template_language, params
-		  FROM crm_drip_steps
-		 WHERE drip_id = ANY($1::uuid[])
-		 ORDER BY drip_id, position`, ids)
+		SELECT s.drip_id::text, s.delay_minutes, s.template_name, s.template_language, s.params,
+		       s.kind, COALESCE(s.tag_id::text,''), COALESCE(t.name,''), s.note
+		  FROM crm_drip_steps s LEFT JOIN crm_tags t ON t.id = s.tag_id
+		 WHERE s.drip_id = ANY($1::uuid[])
+		 ORDER BY s.drip_id, s.position`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +246,7 @@ func (s *Store) Drips(ctx context.Context, hostID string, limit int) ([]types.CR
 			step   types.CRMDripStep
 		)
 		if err := steps.Scan(&dripID, &step.DelayMinutes, &step.Template,
-			&step.Language, &step.Params); err != nil {
+			&step.Language, &step.Params, &step.Kind, &step.TagID, &step.TagName, &step.Note); err != nil {
 			return nil, err
 		}
 		if step.Params == nil {
@@ -233,8 +272,10 @@ func (s *Store) Drip(ctx context.Context, hostID, id string) (types.CRMDrip, err
 	}
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT delay_minutes, template_name, template_language, params
-		  FROM crm_drip_steps WHERE drip_id = $1::uuid ORDER BY position`, id)
+		SELECT s.delay_minutes, s.template_name, s.template_language, s.params,
+		       s.kind, COALESCE(s.tag_id::text,''), COALESCE(t.name,''), s.note
+		  FROM crm_drip_steps s LEFT JOIN crm_tags t ON t.id = s.tag_id
+		 WHERE s.drip_id = $1::uuid ORDER BY s.position`, id)
 	if err != nil {
 		return types.CRMDrip{}, err
 	}
@@ -242,7 +283,7 @@ func (s *Store) Drip(ctx context.Context, hostID, id string) (types.CRMDrip, err
 	for rows.Next() {
 		var step types.CRMDripStep
 		if err := rows.Scan(&step.DelayMinutes, &step.Template, &step.Language,
-			&step.Params); err != nil {
+			&step.Params, &step.Kind, &step.TagID, &step.TagName, &step.Note); err != nil {
 			return types.CRMDrip{}, err
 		}
 		if step.Params == nil {
@@ -338,6 +379,7 @@ func (s *Store) EnrollOnWebinarEnd(ctx context.Context, hostID, webinarSlug, tri
 		return 0, store.ErrConflict
 	}
 	tag, err := s.pool.Exec(ctx, enrollSelect+`
+		   AND cardinality(d.trigger_tiers) = 0
 		   AND EXISTS (
 		     SELECT 1 FROM registrations r
 		      WHERE r.webinar_id = w.id AND r.state <> 'declined'
@@ -345,6 +387,29 @@ func (s *Store) EnrollOnWebinarEnd(ctx context.Context, hostID, webinarSlug, tri
 		   )
 		ON CONFLICT DO NOTHING`,
 		hostID, trigger, webinarSlug)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+/* EnrollOnScored is the `attended` trigger narrowed to engagement tiers: the Follow up
+ * recipes. Run once the webinar's engagement has been computed, which is when the tiers
+ * exist — after the room is gone and every visit closed. A recompute runs it again, and
+ * only people newly in a group are added: entry is one per person per sequence.
+ */
+func (s *Store) EnrollOnScored(ctx context.Context, hostID, webinarSlug string) (int, error) {
+	tag, err := s.pool.Exec(ctx, enrollSelect+`
+		   AND cardinality(d.trigger_tiers) > 0
+		   AND EXISTS (
+		     SELECT 1 FROM registrations r
+		       JOIN engagement_scores es ON es.registration_id = r.id AND es.webinar_id = w.id
+		      WHERE r.webinar_id = w.id AND r.state <> 'declined'
+		        AND es.tier = ANY(d.trigger_tiers)
+		        AND `+contactMatchesRegistration+`
+		   )
+		ON CONFLICT DO NOTHING`,
+		hostID, types.DripAttended, webinarSlug)
 	if err != nil {
 		return 0, err
 	}
@@ -550,6 +615,15 @@ type DripDue struct {
 	TemplateName     string
 	TemplateLanguage string
 	Params           []types.CRMParam
+
+	// Kind is the step's: a message, a tag, or an email to the host (HostEmail, Note).
+	Kind      string
+	TagID     string
+	Note      string
+	HostEmail string
+	DripName  string
+	// Recipe is the preset this drip was made from, empty for one built by hand.
+	Recipe string
 }
 
 /* DueDripSteps is every enrollment whose next step is owed.
@@ -573,7 +647,8 @@ func (s *Store) DueDripSteps(ctx context.Context, limit int) ([]DripDue, error) 
 		        AND (c.whatsapp_opt_out_at IS NULL
 		             OR c.whatsapp_opt_in_at > c.whatsapp_opt_out_at)),
 		       COALESCE(w.slug,''), e.position,
-		       s.template_name, s.template_language, s.params
+		       s.template_name, s.template_language, s.params,
+		       s.kind, COALESCE(s.tag_id::text,''), s.note, u.email, d.name, COALESCE(d.recipe,'')
 		  FROM crm_drip_enrollments e
 		  JOIN crm_drips d       ON d.id = e.drip_id AND d.active
 		  JOIN crm_drip_steps s  ON s.drip_id = d.id AND s.position = e.position
@@ -593,7 +668,8 @@ func (s *Store) DueDripSteps(ctx context.Context, limit int) ([]DripDue, error) 
 		var d DripDue
 		if err := rows.Scan(&d.EnrollmentID, &d.DripID, &d.HostID, &d.HostName,
 			&d.ContactID, &d.ContactName, &d.Reachable, &d.WebinarSlug, &d.Position,
-			&d.TemplateName, &d.TemplateLanguage, &d.Params); err != nil {
+			&d.TemplateName, &d.TemplateLanguage, &d.Params,
+			&d.Kind, &d.TagID, &d.Note, &d.HostEmail, &d.DripName, &d.Recipe); err != nil {
 			return nil, err
 		}
 		if d.Params == nil {
@@ -662,4 +738,82 @@ func (s *Store) QueueDripStep(ctx context.Context, due DripDue, params []string)
 		return store.ErrConflict
 	}
 	return tx.Commit(ctx)
+}
+
+/* AdvanceDripStep moves an enrollment past a step that sends nothing (a tag or an email to
+ * the host), guarded by the position like QueueDripStep, so two sweeps run it once. */
+func (s *Store) AdvanceDripStep(ctx context.Context, due DripDue) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE crm_drip_enrollments e
+		   SET position = e.position + 1,
+		       state = CASE WHEN EXISTS (
+		                 SELECT 1 FROM crm_drip_steps s
+		                  WHERE s.drip_id = e.drip_id AND s.position = e.position + 1)
+		               THEN 'active' ELSE 'done' END,
+		       next_due_at = now() + (COALESCE((
+		           SELECT s.delay_minutes FROM crm_drip_steps s
+		            WHERE s.drip_id = e.drip_id AND s.position = e.position + 1), 0)
+		           * interval '1 minute'),
+		       updated_at = now()
+		 WHERE e.id = $1::uuid AND e.position = $2 AND e.state = 'active'`,
+		due.EnrollmentID, due.Position)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return store.ErrConflict
+	}
+	return nil
+}
+
+/* EnrollOnEvent puts one contact on every active rule whose trigger is `trigger` and whose
+ * match fits: a poll answer (question and answer, case and spacing aside), a tapped button
+ * (its text), or a word in a message. webinarSlug is where it happened, or "" — the rule's
+ * own webinar scope, when set, has to agree. Once per person per rule, like every trigger. */
+func (s *Store) EnrollOnEvent(ctx context.Context, hostID, contactID, webinarSlug, trigger string, got types.CRMDripMatch) (int, error) {
+	norm := func(v string) string { return strings.ToLower(strings.Join(strings.Fields(v), " ")) }
+	tag, err := s.pool.Exec(ctx, `
+		INSERT INTO crm_drip_enrollments (drip_id, contact_id, webinar_id, next_due_at)
+		SELECT d.id, c.id,
+		       COALESCE(d.webinar_id, (SELECT id FROM webinars WHERE slug = NULLIF($5,'') AND host_id = d.host_id)),
+		       now() + (s0.delay_minutes * interval '1 minute')
+		  FROM crm_drips d
+		  JOIN crm_drip_steps s0 ON s0.drip_id = d.id AND s0.position = 0
+		  JOIN crm_contacts c    ON c.host_id = d.host_id AND c.id = $2::uuid
+		 WHERE d.host_id = $1::uuid AND d.active AND d.trigger_kind = $3
+		   AND (d.webinar_id IS NULL OR d.webinar_id = (SELECT id FROM webinars WHERE slug = NULLIF($5,'')))
+		   AND CASE $3
+		         WHEN 'poll_answer' THEN
+		              lower(regexp_replace(btrim(d.trigger_match->>'question'), '\s+', ' ', 'g')) = $4::jsonb->>'question'
+		          AND (COALESCE(d.trigger_match->>'answer','') = ''
+		               OR lower(regexp_replace(btrim(d.trigger_match->>'answer'), '\s+', ' ', 'g')) = $4::jsonb->>'answer')
+		         WHEN 'button_tap' THEN
+		              lower(regexp_replace(btrim(d.trigger_match->>'text'), '\s+', ' ', 'g')) = $4::jsonb->>'text'
+		         WHEN 'keyword_in' THEN
+		              position(lower(btrim(d.trigger_match->>'word')) IN $4::jsonb->>'text') > 0
+		         ELSE false END
+		ON CONFLICT DO NOTHING`,
+		hostID, contactID, trigger, types.CRMDripMatch{
+			Question: norm(got.Question), Answer: norm(got.Answer), Text: norm(got.Text),
+		}, webinarSlug)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// ContactForIdentity is the contact behind a room identity (att_<key>) on one webinar.
+func (s *Store) ContactForIdentity(ctx context.Context, slug, identity string) (hostID, contactID string, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT w.host_id::text, pick.id::text
+		  FROM attendance a
+		  JOIN webinars w ON w.id = a.webinar_id
+		  JOIN registrations r ON r.id = a.registration_id
+		  CROSS JOIN LATERAL (`+pickContactForRegistration+`) pick
+		 WHERE w.slug = $1 AND a.identity = $2
+		 LIMIT 1`, slug, identity).Scan(&hostID, &contactID)
+	if noRows(err) {
+		return "", "", store.ErrNotFound
+	}
+	return hostID, contactID, err
 }

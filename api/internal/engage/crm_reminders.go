@@ -110,7 +110,7 @@ func (s *Module) handleCRMReminders(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, types.CRMRemindersResponse{
 		Reminders:         reminders,
-		Fields:            mergeFields,
+		Fields:            s.fieldsFor(r.Context(), user.ID),
 		WhatsAppConnected: user.WhatsAppToken != "",
 	})
 }
@@ -203,7 +203,7 @@ func (s *Module) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("whatsapp reminder templates set", "host", user.ID, "kinds", len(in))
 	httpx.JSON(w, http.StatusOK, types.CRMRemindersResponse{
 		Reminders:         reminders,
-		Fields:            mergeFields,
+		Fields:            s.fieldsFor(r.Context(), user.ID),
 		WhatsAppConnected: user.WhatsAppToken != "",
 	})
 }
@@ -238,12 +238,7 @@ func (s *Module) enqueueWhatsAppInvite(
 	contact types.CRMContact,
 	registrationID string,
 ) {
-	if !wb.Options.WhatsAppReminders || registrationID == "" {
-		return
-	}
-	// Checked again by the outbox sweep, which is where it counts; here it saves
-	// writing rows for the majority of registrants who never ticked the box.
-	if !contact.WhatsAppOptIn || contact.Phone == "" {
+	if registrationID == "" || !contact.WhatsAppOptIn || contact.Phone == "" {
 		return
 	}
 	hostID, err := s.store.HostIDFor(ctx, wb.ID)
@@ -252,9 +247,18 @@ func (s *Module) enqueueWhatsAppInvite(
 		return
 	}
 
-	s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppConfirmed, 0)
-	for _, offset := range wb.Options.Reminders {
-		s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppReminder, offset)
+	slots, err := s.ResolveSlots(ctx, wb.ID)
+	if err != nil {
+		s.log.Error("whatsapp invite: message slots", "webinar", wb.ID, "error", err)
+		return
+	}
+	if conf, ok := types.FindSlot(slots, types.SlotConfirmation); ok && conf.Sends(types.ChannelWhatsApp) {
+		s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppConfirmed, 0, &conf)
+	}
+	if rem, ok := types.FindSlot(slots, types.SlotReminder); ok && rem.Sends(types.ChannelWhatsApp) {
+		for _, offset := range rem.BeforeMinutes() {
+			s.queueWhatsApp(ctx, hostID, wb, contact, registrationID, types.NotifyWhatsAppReminder, offset, &rem)
+		}
 	}
 }
 
@@ -272,6 +276,7 @@ func (s *Module) queueWhatsApp(
 	registrationID string,
 	kind types.NotificationKind,
 	offset int,
+	slot *types.MessageSlot,
 ) {
 	var due time.Time
 	if kind == types.NotifyWhatsAppReminder {
@@ -284,10 +289,20 @@ func (s *Module) queueWhatsApp(
 			return
 		}
 	}
-	reminder, ok, err := s.store.ReminderTemplate(ctx, hostID, kind)
-	if err != nil {
-		s.log.Error("whatsapp invite: reminder template", "kind", kind, "error", err)
-		return
+	var reminder types.CRMReminder
+	var ok bool
+	var err error
+	if slot != nil && strings.TrimSpace(slot.Template) != "" {
+		reminder = types.CRMReminder{
+			Kind: kind, Template: slot.Template, Language: slot.Language, Params: slot.Params,
+		}
+		ok = true
+	} else {
+		reminder, ok, err = s.store.ReminderTemplate(ctx, hostID, kind)
+		if err != nil {
+			s.log.Error("whatsapp invite: reminder template", "kind", kind, "error", err)
+			return
+		}
 	}
 	if !ok {
 		return
@@ -301,6 +316,7 @@ func (s *Module) queueWhatsApp(
 		TemplateName:     reminder.Template,
 		TemplateLanguage: reminder.Language,
 		TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, "", offset),
+		LinkURL:          s.joinLink(ctx, wb.ID, registrationID),
 		DueAt:            due,
 		OffsetMin:        offset,
 	}); err != nil {
@@ -417,6 +433,8 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 		s.log.Error("whatsapp outbox: could not read", "error", err)
 		return
 	}
+	// Webinars read once per flush, for the cover image and page link.
+	webinars := map[string]*types.Webinar{}
 	for _, m := range owed {
 		tmpl, err := s.store.Template(ctx, m.HostID, m.TemplateName, m.TemplateLanguage)
 		if errors.Is(err, store.ErrNotFound) {
@@ -441,12 +459,17 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 			continue
 		}
 
-		wamid, err := s.whatsapp.SendTemplate(ctx, m.Token, m.PhoneNumberID, wa.OutgoingTemplate{
+		out := wa.OutgoingTemplate{
 			To:         m.Phone,
 			Name:       tmpl.Name,
 			Language:   tmpl.Language,
 			BodyParams: m.Params,
-		})
+		}
+		if reason := s.fillRich(ctx, &out, tmpl, m, webinars); reason != "" {
+			s.skipWhatsApp(ctx, m, reason)
+			continue
+		}
+		wamid, err := s.whatsapp.SendTemplate(ctx, m.Token, m.PhoneNumberID, out)
 		if err != nil {
 			// Retried with backoff by RecordSendAttempt until the attempts run out.
 			// Meta's own sentence is kept as the reason: it is usually the only

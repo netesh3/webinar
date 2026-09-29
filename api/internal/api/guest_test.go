@@ -509,8 +509,9 @@ func TestTheHostCanTellAGuestApart(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("registrants: status %d body %s", res.StatusCode, raw)
 	}
-	var rows []types.RegistrantRow
-	h.decode(raw, &rows)
+	var page types.RegistrantPage
+	h.decode(raw, &page)
+	rows := page.Items
 	if len(rows) != 2 {
 		t.Fatalf("rows %d, want 2", len(rows))
 	}

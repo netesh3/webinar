@@ -312,15 +312,17 @@ func (s *Module) syncTemplates(ctx context.Context, user store.User) error {
 	in := make([]crmstore.TemplateInput, 0, len(found))
 	for _, t := range found {
 		in = append(in, crmstore.TemplateInput{
-			Name:        t.Name,
-			Language:    t.Language,
-			Status:      t.Status,
-			Category:    t.Category,
-			Header:      t.Header,
-			Body:        t.Body,
-			Footer:      t.Footer,
-			Variables:   t.Variables,
-			Unsupported: t.Unsupported,
+			Name:         t.Name,
+			Language:     t.Language,
+			Status:       t.Status,
+			Category:     t.Category,
+			Header:       t.Header,
+			Body:         t.Body,
+			Footer:       t.Footer,
+			Variables:    t.Variables,
+			Unsupported:  t.Unsupported,
+			HeaderFormat: t.HeaderFormat,
+			Buttons:      templateButtons(t.Buttons),
 		})
 	}
 	if err := s.store.ReplaceTemplates(ctx, user.ID, in); err != nil {
@@ -328,6 +330,14 @@ func (s *Module) syncTemplates(ctx context.Context, user store.User) error {
 	}
 	s.log.Info("whatsapp templates synced", "host", user.ID, "count", len(in))
 	return nil
+}
+
+func templateButtons(in []wa.TemplateButton) []types.CRMTemplateButton {
+	out := make([]types.CRMTemplateButton, 0, len(in))
+	for _, b := range in {
+		out = append(out, types.CRMTemplateButton{Type: b.Type, Text: b.Text, URL: b.URL, Dynamic: b.Dynamic})
+	}
+	return out
 }
 
 // ----------------------------------------------------------------------- send
@@ -488,13 +498,19 @@ func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
 				"This contact has not opted in to marketing messages, so only a utility template can be sent to them.")
 			return
 		}
-		wamid, err = s.whatsapp.SendTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppPhoneNumberID,
-			wa.OutgoingTemplate{
-				To:         contact.Phone,
-				Name:       tmpl.Name,
-				Language:   tmpl.Language,
-				BodyParams: body.Params,
-			})
+		msg := wa.OutgoingTemplate{
+			To:         contact.Phone,
+			Name:       tmpl.Name,
+			Language:   tmpl.Language,
+			BodyParams: body.Params,
+		}
+		// No webinar here: a dynamic link button goes to the host's newest webinar page.
+		if reason := s.fillRich(r.Context(), &msg, tmpl, crmstore.WhatsAppOutbound{
+			WebinarSlug: s.latestWebinarSlug(r.Context(), user.ID)}, map[string]*types.Webinar{}); reason != "" {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", reason)
+			return
+		}
+		wamid, err = s.whatsapp.SendTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppPhoneNumberID, msg)
 		if err != nil {
 			s.noteWhatsAppError(r.Context(), user.ID, user.WhatsAppToken, err)
 			s.reportSendError(w, r, user.ID, err)

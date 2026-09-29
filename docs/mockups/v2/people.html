@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>People · Hosting (v2 mock)</title><link rel="stylesheet" href="assets/v2.css">
+<style>
+  .pp { display: flex; align-items: center; gap: 10px; }
+  .wb { display: flex; align-items: center; gap: 8px; } .wb .bar { width: 70px; height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; } .wb .bar i { display: block; height: 100%; background: var(--brand); }
+  .dots { display: flex; gap: 3px; } .dots i { width: 8px; height: 8px; border-radius: 99px; background: var(--line); } .dots i.a { background: var(--brand); } .dots i.m { background: #b8d0ff; }
+  .selbar { position: sticky; bottom: 16px; margin-top: 12px; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; background: #131619; color: #fff; box-shadow: 0 20px 40px -12px rgba(0,0,0,.35); }
+  .selbar .btn.sec { background: transparent; color: #fff; border-color: rgba(255,255,255,.3); }
+  .saved { display: flex; gap: 6px; align-items: center; }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <div data-hosttabs="people"></div>
+
+  <div class="kpis" style="margin-bottom:16px">
+    <div class="card kpi"><div class="l">People</div><div class="v">14</div><div class="d up">+9 from Mindful Money</div></div>
+    <div class="card kpi"><div class="l">Reachable on WhatsApp</div><div class="v">11</div><div class="d">79% opted in · 1 opted out</div></div>
+    <div class="card kpi"><div class="l">Came back for a 2nd webinar</div><div class="v">64%</div><div class="d up">9 of 14</div></div>
+    <div class="card kpi"><div class="l">Hot leads</div><div class="v" style="color:#c2410c">2</div><div class="d">Replied about the paid program</div></div>
+  </div>
+
+  <div class="row wrap between" style="margin-bottom:10px">
+    <div class="saved chips" data-chipset>
+      <span class="chip on">Everyone <b>14</b></span>
+      <span class="chip">🔥 Hot leads <b>2</b></span>
+      <span class="chip">Came to 2+ <b>9</b></span>
+      <span class="chip">Never attended <b>3</b></span>
+      <span class="chip">Replied <b>7</b></span>
+      <span class="chip" style="border-style:dashed">+ Save this filter</span>
+    </div>
+    <div class="row">
+      <div class="search" style="width:240px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input class="field sm" placeholder="Search name, email or phone"></div>
+      <select class="field sm" style="width:180px"><option>All webinars (3)</option></select>
+      <button class="btn sm sec">Import CSV</button>
+    </div>
+  </div>
+
+  <div class="card p0">
+    <table>
+      <thead><tr><th style="width:36px"><span class="check part"></span></th><th>Person</th><th>Webinars</th><th>Watched (latest)</th><th>Engagement</th><th>WhatsApp</th><th>Last message</th></tr></thead>
+      <tbody>
+        <tr class="sel"><td><span class="check on">✓</span></td><td><div class="pp"><span class="av a2">RV</span><div><div class="name">Rahul Verma <span class="tagp t1" style="margin-left:4px">Hot lead</span></div><div class="xs faint">Infosys · +91 98200 34512</div></div></div></td><td><div class="dots"><i class="a"></i><i class="m"></i></div><div class="xs faint" style="margin-top:3px">1 attended · 1 upcoming</div></td><td><div class="wb"><div class="bar"><i style="width:92%"></i></div><span class="xs tnum">55 min</span></div></td><td><span class="heat"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></td><td><span class="st-dot ok">Opted in</span></td><td><div class="xs truncate" style="max-width:220px;color:var(--ok)">↩ Do you run a paid program?</div><div class="xs faint">18 h ago · needs reply</div></td></tr>
+        <tr class="sel"><td><span class="check on">✓</span></td><td><div class="pp"><span class="av a7">SR</span><div><div class="name">Siddharth Rao <span class="tagp t1" style="margin-left:4px">Hot lead</span></div><div class="xs faint">Startup founder · +91 98800 01289</div></div></div></td><td><div class="dots"><i class="a"></i><i class="a"></i><i class="m"></i></div><div class="xs faint" style="margin-top:3px">2 attended · 1 upcoming</div></td><td><div class="wb"><div class="bar"><i style="width:10%"></i></div><span class="xs tnum">6 min</span></div></td><td><span class="heat m"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></td><td><span class="st-dot ok">Opted in</span></td><td><div class="xs truncate" style="max-width:220px;color:var(--ok)">↩ Will the slides be shared?</div><div class="xs faint">1 h ago · needs reply</div></td></tr>
+        <tr><td><span class="check"></span></td><td><div class="pp"><span class="av a1">PS</span><div><div class="name">Priya Sharma</div><div class="xs faint">Freelance designer · +91 98100 23401</div></div></div></td><td><div class="dots"><i class="a"></i><i class="a"></i><i class="m"></i></div><div class="xs faint" style="margin-top:3px">2 attended · 1 upcoming</div></td><td><div class="wb"><div class="bar"><i style="width:97%"></i></div><span class="xs tnum">58 min</span></div></td><td><span class="heat"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span></td><td><span class="st-dot ok">Opted in</span></td><td><div class="xs truncate" style="max-width:220px">Got it, thank you so much</div><div class="xs faint">2 d ago · done</div></td></tr>
+        <tr><td><span class="check"></span></td><td><div class="pp"><span class="av a2">NJ</span><div><div class="name">Neha Joshi</div><div class="xs faint">+91 98230 12390</div></div></div></td><td><div class="dots"><i class="a"></i><i></i></div><div class="xs faint" style="margin-top:3px">1 attended · 1 missed</div></td><td><span class="xs faint">Didn't join · watched replay</span></td><td><span class="heat m"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></td><td><span class="st-dot ok">Opted in</span></td><td><div class="xs truncate" style="max-width:220px;color:var(--ok)">↩ Is the budgeting one also free?</div><div class="xs faint">16 h ago · needs reply</div></td></tr>
+        <tr><td><span class="check"></span></td><td><div class="pp"><span class="av a8">KM</span><div><div class="name">Kavya Menon</div><div class="xs faint">+91 98470 89067</div></div></div></td><td><div class="dots"><i></i><i class="m"></i></div><div class="xs faint" style="margin-top:3px">1 missed · 1 upcoming</div></td><td><span class="xs faint">Didn't join</span></td><td><span class="heat l"><i class="on"></i><i></i><i></i><i></i><i></i></span></td><td><span class="st-dot live">Opted out</span></td><td><div class="xs truncate" style="max-width:220px">↩ STOP</div><div class="xs faint">2 d ago</div></td></tr>
+        <tr><td><span class="check"></span></td><td><div class="pp"><span class="av a6">MP</span><div><div class="name">Meera Pillai</div><div class="xs faint">meera.pillai@example.com</div></div></div></td><td><div class="dots"><i class="a"></i></div><div class="xs faint" style="margin-top:3px">1 attended</div></td><td><div class="wb"><div class="bar"><i style="width:20%"></i></div><span class="xs tnum">12 min</span></div></td><td><span class="heat l"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></td><td><span class="st-dot">No number · <span class="linkish">ask by email</span></span></td><td><span class="xs faint">—</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="selbar">
+    <b>2 selected</b><span class="small" style="opacity:.7">both opted in · both hot leads</span><span class="grow"></span>
+    <button class="btn sm sec">Tag</button><button class="btn sm sec">Add to sequence</button><button class="btn sm" style="background:var(--wa)">Message 2 on WhatsApp</button>
+  </div>
+</main>
+<div class="note"><b>People.</b> One row per person across all webinars. Each row shows how engaged they are (dots per webinar, watch-time bar, a 5-step heat meter) so the coach can see who to talk to. Saved groups like "Hot leads" and "Came to 2+" replace hand-filtering. Selecting rows opens a floating bar with bulk actions.</div>
+<script src="assets/v2.js"></script>
+</body></html>

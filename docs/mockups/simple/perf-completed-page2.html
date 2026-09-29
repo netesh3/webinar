@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Completed · page 2 (perf mock)</title><link rel="stylesheet" href="assets/simple.css">
+<style>
+  .pager { display:flex; align-items:center; justify-content:center; gap:14px; margin-top:16px; }
+  .pager .mid { font-size:12.5px; color:var(--ink-2); text-align:center; line-height:1.35; }
+  .pager .mid b { color:var(--ink); font-weight:600; }
+  .figs { display:flex; gap:22px; margin-top:8px; }
+  .figs .l { font-size:11.5px; color:var(--ink-3); }
+  .figs .v { font-size:15px; font-weight:650; margin-top:1px; }
+  .figs .v span { font-weight:450; font-size:12px; color:var(--ink-3); margin-left:4px; }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <div class="row between" style="align-items:flex-end">
+    <div><h1>Your webinars</h1><p class="small muted" style="margin-top:4px">Create one, share the link, go live, follow up.</p></div>
+    <div class="row"><button class="btn sec">Go live now</button><button class="btn">+ New webinar</button></div>
+  </div>
+
+  <div class="tabs" style="margin-top:20px">
+    <a class="tab" href="perf-home.html">Upcoming <span class="count">24</span></a>
+    <a class="tab on" href="#">Completed <span class="count">34</span></a>
+    <a class="tab" href="perf-drafts-empty.html">Drafts <span class="count grey">10</span></a>
+    <span class="tabsep"></span>
+    <a class="tab" href="perf-audience-page2.html">Audience</a>
+  </div>
+
+  <div class="grid" style="gap:12px">
+    <div class="card card-webinar">
+      <div class="grow">
+        <div class="name" style="font-size:15px">Habits That Survive a Busy Month</div>
+        <div class="xs muted" style="margin-top:3px">Thu 12 Jun · 7:00 – 8:00 PM IST</div>
+        <div class="figs">
+          <div><div class="l">Attended</div><div class="v">41 <span>of 70 registered</span></div></div>
+          <div><div class="l">Turnout</div><div class="v" style="color:var(--ok)">59%</div></div>
+          <div><div class="l">Avg. time watched</div><div class="v">38 min <span>of 1 hr</span></div></div>
+        </div>
+      </div>
+      <button class="btn sm">See results</button>
+    </div>
+    <div class="card card-webinar">
+      <div class="grow">
+        <div class="name" style="font-size:15px">Saying No Without the Guilt</div>
+        <div class="xs muted" style="margin-top:3px">Wed 28 May · 7:00 – 7:45 PM IST</div>
+        <div class="figs">
+          <div><div class="l">Attended</div><div class="v">18 <span>of 52 registered</span></div></div>
+          <div><div class="l">Turnout</div><div class="v" style="color:var(--warn)">35%</div></div>
+          <div><div class="l">Questions</div><div class="v">11</div></div>
+        </div>
+      </div>
+      <button class="btn sm">See results</button>
+    </div>
+    <div class="card card-webinar">
+      <div class="grow">
+        <div class="name" style="font-size:15px">A Quieter Morning, On Purpose</div>
+        <div class="xs muted" style="margin-top:3px">Thu 15 May · 6:30 – 7:30 PM IST</div>
+        <div class="figs">
+          <div><div class="l">Attended</div><div class="v">63 <span>of 88 registered</span></div></div>
+          <div><div class="l">Turnout</div><div class="v" style="color:var(--ok)">72%</div></div>
+          <div><div class="l">Avg. time watched</div><div class="v">44 min <span>of 1 hr</span></div></div>
+        </div>
+      </div>
+      <button class="btn sm">See results</button>
+    </div>
+    <div class="card card-webinar">
+      <div class="grow">
+        <div class="name" style="font-size:15px">Money Check-in: The First Hour</div>
+        <div class="xs muted" style="margin-top:3px">Wed 30 Apr · 7:00 – 8:00 PM IST</div>
+        <div class="figs">
+          <div><div class="l">Attended</div><div class="v">22 <span>of 40 registered</span></div></div>
+          <div><div class="l">Turnout</div><div class="v" style="color:var(--ok)">55%</div></div>
+        </div>
+      </div>
+      <button class="btn sm">See results</button>
+    </div>
+  </div>
+
+  <div class="pager">
+    <button class="btn sm sec">Previous</button>
+    <div class="mid"><b>Page 2 of 4</b><div class="xs faint">10 per page · 11–20 of 34</div></div>
+    <button class="btn sm sec">Next</button>
+  </div>
+</main>
+<div class="note"><b>Completed, page 2.</b> Paginated: opening page 2 replaces page 1. These are sessions 11–20, not 20 cards stacked under a Load more. Same control on Upcoming and Drafts, 10 per page. Cached: this page of the list, for the session, so switching back to Upcoming does not wait on a spinner. The follow-up nudge and anything live are not cached.</div>
+<script src="assets/nav.js"></script>
+</body></html>

@@ -317,8 +317,9 @@ func TestHostSeesTheNumber(t *testing.T) {
 	// The number is collected so a host can follow up; if it does not reach the host's own
 	// view of the registrant list, collecting it achieved nothing.
 	_, raw = h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/registrants", nil)
-	var rows []types.RegistrantRow
-	h.decode(raw, &rows)
+	var page types.RegistrantPage
+	h.decode(raw, &page)
+	rows := page.Items
 	found := false
 	for _, r := range rows {
 		if r.Email == "callable@test.dev" {

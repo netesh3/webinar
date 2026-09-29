@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Messages · page 2 (perf mock)</title><link rel="stylesheet" href="assets/simple.css">
+<style>
+  .conv { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line); width:100%; background:transparent; text-align:left; }
+  .conv.on { background:var(--surface-2); }
+  .conv .grow { min-width:0; }
+  .pager { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-top:1px solid var(--line); }
+  .pager .mid { font-size:12.5px; color:var(--ink-2); }
+  .pager .mid b { color:var(--ink); }
+</style></head>
+<body data-title="Messages" data-back="perf-home.html">
+<div data-nav></div>
+<main>
+  <div class="row between" style="align-items:flex-end; margin-bottom:14px">
+    <div><h1>Messages</h1><p class="small muted" style="margin-top:4px">WhatsApp conversations. Needs reply first.</p></div>
+    <span class="chips"><span class="chip">Needs reply <b>4</b></span><span class="chip on">All <b>128</b></span><span class="chip">Done</span></span>
+  </div>
+  <div class="grid" style="grid-template-columns:minmax(0,340px) minmax(0,1fr); align-items:start; gap:16px">
+    <div class="card p0">
+      <div class="conv"><span class="av sm a6">AS</span><span class="grow"><b>Aditi Shah</b><div class="xs faint">Is the replay still up?</div></span><span class="xs faint">Mon</span></div>
+      <div class="conv"><span class="av sm a8">RG</span><span class="grow"><b>Rohit Gupta</b><div class="xs faint">Can I switch to the Thursday one?</div></span><span class="xs faint">Mon</span></div>
+      <div class="conv on"><span class="av sm a1">LM</span><span class="grow"><b>Leela Menon</b><div class="xs faint">Thanks — I'll be there</div></span><span class="xs faint">Sun</span></div>
+      <div class="conv"><span class="av sm a3">VN</span><span class="grow"><b>Vikram Nair</b><div class="xs faint">You: The notes are in your email</div></span><span class="xs faint">Sun</span></div>
+      <div class="pager">
+        <button class="btn sm sec">Previous</button>
+        <div class="mid"><b>Page 2 of 5</b><div class="xs faint">30 per page · 31–60 of 128</div></div>
+        <button class="btn sm sec">Next</button>
+      </div>
+    </div>
+    <div class="card p5">
+      <div class="row"><span class="av a1">LM</span><div><div class="name">Leela Menon</div><div class="xs muted">+91 98200 44110 · Mindful Money</div></div></div>
+      <div class="card" style="margin-top:16px;background:var(--surface-2)">
+        <div class="xs faint">Sun · 6:40 PM</div>
+        <div class="small" style="margin-top:4px">Thanks — I'll be there.</div>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="note"><b>Messages list, page 2.</b> Paginated: today the inbox returns up to 200 threads in one response and polls that whole list every 20 seconds. Proposed page size is 30, Previous / Next under the list, same buttons as Audience. Not cached: needs-reply, the open thread, and the badge in the top bar stay on their current poll. Templates and saved replies can stay for the session.</div>
+<script src="assets/nav.js"></script>
+</body></html>

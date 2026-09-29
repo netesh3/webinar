@@ -449,41 +449,74 @@ func scanRegistration(row scanner) (types.Registration, error) {
 	return reg, nil
 }
 
-// Registrants powers the host's registration tab.
+// Registrants powers callers that want a bounded slice and no page counts:
+// the CSV export and the approval queue.
 func (s *Store) Registrants(ctx context.Context, slug string, limit int) ([]types.RegistrantRow, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
+	page, err := s.RegistrantPage(ctx, slug, limit, 0)
+	if err != nil {
+		return nil, err
+	}
+	return page.Items, nil
+}
+
+// RegistrantPage is one page of the host's People tab, plus the counts the
+// header still needs once the table no longer holds every row.
+func (s *Store) RegistrantPage(ctx context.Context, slug string, limit, offset int) (types.RegistrantPage, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	out := types.RegistrantPage{Items: []types.RegistrantRow{}, Offset: offset}
+	err := s.pool.QueryRow(ctx, `
+		SELECT count(*),
+		       count(*) FILTER (WHERE r.state = 'approved'),
+		       count(*) FILTER (WHERE r.state = 'declined'),
+		       count(*) FILTER (WHERE r.state = 'pending'),
+		       count(*) FILTER (WHERE r.is_guest)
+		  FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		 WHERE w.slug = $1`, slug).Scan(&out.Total, &out.Approved, &out.Declined, &out.Pending, &out.Guests)
+	if err != nil {
+		return out, err
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, r.first_name, r.last_name, r.email, r.company,
 		       r.job_title, r.phone, r.state, r.created_at, r.user_id IS NOT NULL,
-		       r.is_guest
+		       r.is_guest, r.answers
 		  FROM registrations r
 		  JOIN webinars w ON w.id = r.webinar_id
 		 WHERE w.slug = $1
 		 ORDER BY r.created_at DESC
-		 LIMIT $2`, slug, limit)
+		 LIMIT $2 OFFSET $3`, slug, limit, offset)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 	defer rows.Close()
 
-	out := []types.RegistrantRow{}
 	for rows.Next() {
 		var (
 			r         types.RegistrantRow
 			first     string
 			last      string
 			createdAt time.Time
+			answers   []byte
 		)
 		if err := rows.Scan(&r.ID, &first, &last, &r.Email, &r.Company,
 			&r.JobTitle, &r.Phone, &r.State, &createdAt, &r.HasAccount,
-			&r.IsGuest); err != nil {
-			return nil, err
+			&r.IsGuest, &answers); err != nil {
+			return out, err
+		}
+		if err := json.Unmarshal(answers, &r.Answers); err != nil {
+			return out, err
 		}
 		r.Name = strings.TrimSpace(first + " " + last)
 		r.CreatedAt = createdAt.Format(time.RFC3339)
-		out = append(out, r)
+		out.Items = append(out.Items, r)
 	}
 	return out, rows.Err()
 }

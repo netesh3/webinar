@@ -69,6 +69,7 @@ func (s *Server) RunTick(ctx context.Context) bool {
 	s.sweepEmptyWebinars(ctx)
 	s.sweepBroadcasts(ctx)
 	s.sweepSimulive(ctx)
+	s.sweepDueSurveys(ctx)
 	s.reconcileEgressRecordings(ctx)
 	s.flushOutbox(ctx)
 	// The CRM's drips, bots and WhatsApp outbox. See Engage.Tick.
@@ -78,6 +79,9 @@ func (s *Server) RunTick(ctx context.Context) bool {
 		if _, due, err := s.store.TryLease(ctx, "recording-retention", retentionEvery); err == nil && due {
 			s.sweepExpiredRecordings(ctx)
 		}
+	}
+	if _, due, err := s.store.TryLease(ctx, "engagement-retention", retentionEvery); err == nil && due {
+		s.sweepEngagementEvents(ctx)
 	}
 	return true
 }

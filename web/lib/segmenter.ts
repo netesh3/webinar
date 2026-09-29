@@ -5,8 +5,8 @@ import {
   type TrackTransformerDestroyOptions,
   type VideoTransformerInitOptions,
 } from "@livekit/track-processors";
-import { LOW_LIGHT_GLSL } from "./low-light-curve";
-import { agreesWithReference, loadModnet, type Matte, type Modnet } from "./modnet";
+import { LOW_LIGHT_GLSL, LOW_LIGHT_LIFT } from "./low-light-curve";
+import { HumanSeg, loadHumanSeg, type Matte } from "./humanseg";
 import { PresenterLock, type FaceBox } from "./presenter-lock";
 
 /* Segmentation and compositing, done ourselves.
@@ -91,12 +91,11 @@ export type SegmenterOptions = {
  * note above. Both are served from our own origin so a webinar does not depend on a
  * CDN being reachable from a corporate network. */
 const WASM_PATH = "/mediapipe/wasm";
-const MODEL_PATH = "/mediapipe/selfie_segmenter_landscape.tflite";
 
 /** The matte's long side: the landscape model's own width. More would be interpolation
  *  the model did not do; the joint upsample in the composite is what adds resolution. */
 const MATTE_LONG_SIDE = 256;
-/** MODNet's matte: its own output size, 512×288 on a 16:9 camera. */
+/** The model's refined mask: its own output size, 512×288 on a 16:9 camera. */
 const MATTE_LONG_SIDE_DIRECT = 512;
 
 /* How much of the new mask each frame takes, and what decides it.
@@ -316,8 +315,6 @@ const REBUILD_RETRY_MS = [0, 1000, 3000];
 const ENGINE_SETTLED_MS = 10_000;
 /** Consecutive segmentation errors before the MediaPipe instance is replaced, and how many
  *  replacements before giving up on it. */
-const SEGMENT_ERROR_LIMIT = 5;
-const SEGMENTER_RESTART_LIMIT = 2;
 
 /** How long an engine outlives its processor, so the next one can take it over. See park. */
 const PARK_MS = 30_000;
@@ -454,22 +451,20 @@ precision highp float;
 uniform sampler2D current;    // guide colour, raw confidence
 uniform sampler2D previous;   // guide colour, smoothed confidence
 uniform float restart;        // 1 when there is no previous worth blending with
-uniform float direct;         // 1: a matting model's alpha (MODNet), not MediaPipe's confidence
+uniform float direct;         // 1: a model's refined alpha (lib/humanseg.ts), not a raw confidence
 out vec4 color;
 void main() {
   ivec2 p = ivec2(gl_FragCoord.xy);
   ivec2 last = textureSize(current, 0) - 1;
   vec4 now = texelFetch(current, p, 0);
   float before = texelFetch(previous, p, 0).a;
-  /* A matting model's alpha is already the edge: none of what follows is for it. The hand
-   * recovery, the silhouette hysteresis and the band hold all exist to repair MediaPipe's
-   * coarse confidence, and on a clean matte they only move a good edge. What it does get
-   * is a light blend against flicker, let go where the picture moves so nothing trails. */
+  /* A model's refined alpha is already the edge and already smoothed over time: none of
+   * what follows is for it. The hand recovery, the silhouette hysteresis and the band hold
+   * all exist to repair a coarse confidence map, and on a clean matte they only move a
+   * good edge. */
   if (direct > 0.5) {
-    vec3 d = abs(now.rgb - texelFetch(previous, p, 0).rgb);
-    float moved = smoothstep(0.03, 0.12, max(d.r, max(d.g, d.b)) + abs(now.a - before));
-    float kd = mix(0.6, 1.0, moved);
-    color = vec4(now.rgb, mix(before, now.a, max(kd, restart)));
+    // The model's own frame-to-frame step (lib/humanseg.ts) has already been done.
+    color = now;
     return;
   }
   float motion = 0.0;
@@ -799,7 +794,7 @@ float skinAmt(vec2 p) {
 }
 float coverage(vec2 p) {
   float a = texture(alphaMap, p).r;
-  // The choke pulls MediaPipe's loose outline in off the wall. MODNet's is where the
+  // The choke pulls a loose confidence outline in off the wall. A refined alpha is where the
   // person is; choking it shaves their hair and shoulders.
   if (direct > 0.5) return a;
   float warm = skinAmt(p);
@@ -1073,28 +1068,6 @@ function canvas2d(w: number, h: number): Canvas2D {
  * the main bundle: it is 9MB of WASM glue and it is only needed once somebody turns a
  * background on. The dynamic import in createSegmenter is what keeps it out.
  */
-type MPMask = {
-  getAsWebGLTexture: () => WebGLTexture;
-  /** A readPixels. Only when the presenter lock needs the mask on the CPU. */
-  getAsFloat32Array: () => Float32Array;
-  width: number;
-  height: number;
-  close: () => void;
-};
-type SegmentResult = { confidenceMasks?: MPMask[]; close: () => void };
-type Segmenter = {
-  segmentForVideo: (
-    frame: VideoFrame,
-    timestampMs: number,
-    callback: (result: SegmentResult) => void,
-  ) => void;
-  close: () => void;
-};
-
-/** Edits a CPU copy of the mask in place before it goes into the matte. */
-type MaskEdit = (data: Float32Array, w: number, h: number) => void;
-
-/** 0 = low light only, 1 = blur, 2 = image. The composite's `mode`. */
 type Mode = 0 | 1 | 2;
 
 /* Everything that lives in one WebGL context: the canvas, the programs, the render targets,
@@ -1108,9 +1081,6 @@ type Mode = 0 | 1 | 2;
 class Engine {
   readonly canvas: AnyCanvas;
   readonly gl: WebGL2RenderingContext;
-  segmenter: Segmenter | null = null;
-  /** The model load in flight, so nothing starts a second one. */
-  loading: Promise<void> | null = null;
   /** The still currently uploaded, if any. */
   imageSrc: string | null = null;
   /** Whether the matte holds a mask of the current picture, rather than of nothing or of
@@ -1152,13 +1122,13 @@ class Engine {
   /** Tiny matte downsample + CPU buffer for the person-centre pan. */
   private trackTarget: Target | null = null;
   private trackPixels: Uint8Array | null = null;
-  /** A mask edited or produced on the CPU (presenter lock, MODNet), for INGEST to read. */
+  /** A mask edited or produced on the CPU (the model's refined mask), for INGEST to read. */
   private cpuMask: WebGLTexture | null = null;
   private cpuMaskW = 0;
   private cpuMaskH = 0;
   private cpuMaskBytes: Uint8Array | null = null;
-  /** The matte is a matting model's alpha (MODNet), used as it is. See useDirect. */
-  private direct = false;
+  /** The matte is the model's refined alpha, used as it is. Always, now. See useDirect. */
+  private direct = true;
   private image: WebGLTexture | null = null;
   private imageW = 1;
   private imageH = 1;
@@ -1278,49 +1248,8 @@ class Engine {
     if (mips) gl.generateMipmap(gl.TEXTURE_2D);
   }
 
-  /* Segmentation, straight into the matte.
-   *
-   * `segmentForVideo` with a callback is synchronous — the callback runs before it returns —
-   * so there is no stale-mask window. The mask must be consumed inside the callback:
-   * MediaPipe frees it on `result.close()`, and holding the texture past that point renders
-   * garbage. So the ingest pass runs in there, and the temporal pass straight after.
-   *
-   * Timestamps must strictly increase for as long as the MediaPipe instance lives, which is
-   * longer than any one track — hence the engine keeps the counter, not the processor. */
-  segment(segmenter: Segmenter, frame: VideoFrame, edit?: MaskEdit): boolean {
-    this.useDirect(false);
-    const timestamp = Math.max(performance.now(), this.lastTimestamp + 1);
-    this.lastTimestamp = timestamp;
-    let got = false;
-    segmenter.segmentForVideo(frame, timestamp, (result) => {
-      try {
-        const mask = result.confidenceMasks?.[0];
-        if (!mask) return;
-        if (edit) {
-          /* The presenter lock edits the mask on the CPU: one 256×144 readPixels, then the
-           * edited mask goes back up. Copied, because the array is MediaPipe's until close. */
-          const data = Float32Array.from(mask.getAsFloat32Array());
-          edit(data, mask.width, mask.height);
-          this.uploadMatte(data, mask.width, mask.height);
-          this.ingestMask(this.cpuMask!);
-        } else {
-          this.ingestMask(mask.getAsWebGLTexture());
-        }
-        got = true;
-        if (!this.describedMask) {
-          this.describedMask = true;
-          console.info("[background] first mask", { width: mask.width, height: mask.height });
-        }
-      } finally {
-        result.close();
-      }
-    });
-    if (got) this.smooth();
-    return got;
-  }
-
-  /** A mask from the CPU — MODNet's — straight into the matte, as segment() does for
-   *  MediaPipe's. `data` is w×h, 0..1, row 0 at the top. */
+  /** The model's refined mask, from the CPU, into the matte. `data` is w×h, 0..1, row 0
+   *  at the top. */
   ingestMatte(data: Float32Array, w: number, h: number): void {
     this.useDirect(true);
     this.uploadMatte(data, w, h);
@@ -1485,33 +1414,16 @@ class Engine {
 
   /* Gone, and everything in it.
    *
-   * MediaPipe's turn first — see oneAtATime — including when there is not yet a segmenter,
-   * so an in-flight createSegmenter finishes against a live context. The context only goes
-   * after that turn.
+   * The context is handed back at once: nothing else is drawing into it.
    */
   dispose(): Promise<void> {
     if (this.disposed) return Promise.resolve();
     this.disposed = true;
-    const segmenter = this.segmenter;
-    this.segmenter = null;
-    /* close AND loseContext must be the same oneAtATime turn.
-     *
-     * #175 queued only the close, then called release() from `.finally()` on the
-     * returned promise. That finally runs as a sibling microtask of the *next*
-     * queued createSegmenter — so loseContext could interleave with Module
-     * start-up and leave Emscripten's shared callback arrays half-drained
-     * ("callbacks.shift(...) is not a function"). Putting release inside the
-     * turn means the next create cannot start until this context is gone.
-     *
-     * Returned so SoftSegmenter.destroy can await teardown before openCamera
-     * builds a replacement processor. */
-    return oneAtATime(async () => {
-      try {
-        if (segmenter) await segmenter.close();
-      } finally {
-        this.release();
-      }
-    }).catch(() => {});
+    /* Nothing of MediaPipe's lives in this context any more (the model runs on the CPU and
+     * the face detector has its own), so the context can simply go. A promise still, so
+     * SoftSegmenter.destroy can await teardown before openCamera builds a replacement. */
+    this.release();
+    return Promise.resolve();
   }
 
   /* And then the context itself, explicitly. Deleting every resource in it is not the same
@@ -1591,11 +1503,9 @@ class Engine {
     this.panAt = 0;
   }
 
-  /* The matte at the model's resolution, not the frame's: 256 on the long side for
-   * MediaPipe, 512 for MODNet. It carries that much information however large the frame is;
-   * the joint upsample is what brings it to the frame. MODNet's used to be squeezed onto
-   * MediaPipe's grid — every other texel, nearest-sampled — which threw away exactly the
-   * hair and shoulder detail it is there for. */
+  /* The matte at the refined mask's resolution, not the frame's: 512 on the long side. It
+   * carries that much information however large the frame is; the joint upsample is what
+   * brings it to the frame. */
   private allocMatte(): void {
     const gl = this.gl;
     for (const t of [this.current, this.matte, this.spare]) {
@@ -1835,14 +1745,6 @@ function unpark(): Engine | null {
   return null;
 }
 
-/** True when MediaPipe/Emscripten start-up was corrupted mid-create (Chrome Mac often). */
-export function isMediaPipeInterrupted(err: unknown): boolean {
-  const text = (err instanceof Error ? `${err.name} ${err.message}` : String(err ?? "")).toLowerCase();
-  /* Narrow on purpose: a bare "is not a function" is too common in unrelated JS errors.
-   * callbacks.shift is the stable Emscripten signature we map to the presenter copy in
-   * describeBackgroundError. */
-  return /callbacks\.shift/.test(text) || /runtime.?callback/.test(text);
-}
 
 /* One shared module evaluation. Parallel `import("@mediapipe/tasks-vision")` from two
  * SoftSegmenters (or SoftSegmenter + LiveKit BackgroundProcessor) can race Emscripten
@@ -1853,58 +1755,7 @@ function loadVision() {
   return visionModule;
 }
 
-async function createSegmenter(engine: Engine): Promise<Segmenter> {
-  /* Checked before and after the download, because a download is seconds and the context
-   * can be taken in between. MediaPipe is handed our context below; if it is dead, the
-   * failure surfaces from inside the WASM as "Error querying for GL extensions" or a null
-   * property read, which is unreadable and unactionable. */
-  if (!engine.alive) throw new Error(CONTEXT_LOST);
-  // Loaded here rather than at module scope: 9MB of WASM that nobody who never
-  // turns a background on should download.
-  const vision = await loadVision();
-  const fileset = await vision.FilesetResolver.forVisionTasks(WASM_PATH);
-  if (!engine.alive) throw new Error(CONTEXT_LOST);
-
-  const options = {
-    runningMode: "VIDEO" as const,
-    outputConfidenceMasks: true,
-    outputCategoryMask: false,
-    /* Our canvas — the reason the mask never leaves the GPU.
-     *
-     * A second getContext("webgl2") on a canvas returns the context it already has, so
-     * MediaPipe renders into OUR context and `getAsWebGLTexture()` hands back a texture we
-     * can sample. The alternative is `getAsFloat32Array()`, which is a readPixels — a full
-     * GPU pipeline stall, every frame. */
-    canvas: engine.canvas,
-  };
-
-  try {
-    return (await vision.ImageSegmenter.createFromOptions(fileset, {
-      ...options,
-      baseOptions: { modelAssetPath: MODEL_PATH, delegate: "GPU" },
-    })) as unknown as Segmenter;
-  } catch (gpuErr) {
-    if (engine.gl.isContextLost()) throw new Error(CONTEXT_LOST, { cause: gpuErr });
-    /* A half-drained Emscripten Module will fail CPU the same way — skip the second
-     * createFromOptions so we do not dig the hole deeper. Reload / Beta is the recovery. */
-    if (isMediaPipeInterrupted(gpuErr)) throw gpuErr;
-    /* GPU create fails on some Chrome/Mac Metal setups with a quieter GL init error.
-     * CPU on the same canvas still feeds getAsWebGLTexture. */
-    console.warn("[background] GPU segmenter failed; trying CPU delegate", gpuErr);
-    if (!engine.alive) throw new Error(CONTEXT_LOST, { cause: gpuErr });
-    try {
-      return (await vision.ImageSegmenter.createFromOptions(fileset, {
-        ...options,
-        baseOptions: { modelAssetPath: MODEL_PATH, delegate: "CPU" },
-      })) as unknown as Segmenter;
-    } catch (cpuErr) {
-      if (engine.gl.isContextLost()) throw new Error(CONTEXT_LOST, { cause: cpuErr });
-      throw cpuErr;
-    }
-  }
-}
-
-// ---------------------------------------------------------------- presenter lock + MODNet
+// ---------------------------------------------------------------- presenter lock
 
 /* Which person is the presenter comes from faces: see lib/presenter-lock.ts. BlazeFace
  * short-range (Apache-2.0), vendored beside the selfie model for the same reason. */
@@ -1914,56 +1765,61 @@ const FACE_W = 320;
 const FACE_H = 180;
 /** Faces every other frame. The lock follows between detections; half the cost. */
 const FACE_EVERY = 2;
-/** With nobody else in view, the MediaPipe path runs the lock on one frame in this many. */
-const LOCK_IDLE_EVERY = 6;
 
-/* Build-time switches, for backing either out without a revert. Both default on. */
+/* Build-time switch, for backing the lock out without a revert. On by default. */
 const PRESENTER_LOCK = process.env.NEXT_PUBLIC_VB_PRESENTER_LOCK !== "0";
-const MODNET = process.env.NEXT_PUBLIC_VB_MODNET !== "0";
 
 const wantLock = () => PRESENTER_LOCK;
-const wantModnet = () => MODNET;
 
-/** MediaPipe's confidence: regions start at half (its low end is noisy). */
-const LOCK_REGION_MEDIAPIPE = 0.5;
-/** MODNet's alpha: clean near zero. */
-const LOCK_REGION_MODNET = 0.1;
-
-/* MODNet is trusted only once it agrees with MediaPipe on the camera's own frames — the
- * guard against a WebGPU runtime computing garbage without raising (lib/modnet.ts). */
-const MODNET_AGREE = 3;
-const MODNET_DISAGREE = 3;
-/** Slower than this on average and the video would visibly drop frames: use MediaPipe. */
-const MODNET_MAX_MS = 45;
-const MODNET_WINDOW = 30;
-/* MODNet's one failure that matters: on some frames of fast movement it loses the person —
- * the face and chest go to zero while the hands stay. Seen on a real webcam, not in the
- * synthetic tests. The face detector does not lose them on those frames, so it is the check:
- * a matte with a known face in it that is mostly not person is not sent. The last good matte
- * carries the frame instead (the frame itself is new; only the cut-out is a frame old). A
- * run of them is let through rather than frozen, and a device where it keeps happening goes
- * to MediaPipe, whose masks do not do this. */
-const MODNET_FACE_MIN = 0.5;
-const MODNET_MISS_RUN = 6;
-const MODNET_MISS_WINDOW = 90;
-const MODNET_MISS_MAX = 0.12;
-
-/** Mean alpha over the middle of a face box: how much of the face the matte kept. */
-function faceCoverage(alpha: Float32Array, w: number, h: number, f: FaceBox): number {
-  const x0 = Math.max(0, Math.floor((f.x + f.w * 0.2) * w));
-  const x1 = Math.min(w, Math.ceil((f.x + f.w * 0.8) * w));
-  const y0 = Math.max(0, Math.floor((f.y + f.h * 0.15) * h));
-  const y1 = Math.min(h, Math.ceil((f.y + f.h * 0.85) * h));
-  let sum = 0;
-  let n = 0;
-  for (let y = y0; y < y1; y++) {
-    for (let x = x0; x < x1; x++) {
-      sum += alpha[y * w + x]!;
-      n++;
-    }
-  }
-  return n ? sum / n : 1;
+/* Auto low light on or off (Manual). Page-wide, like the camera it is about, and read on
+ * every frame, so a change applies on the next one. Set through lib/backgrounds.ts. */
+let autoLowLight = true;
+export function setAutoLowLight(on: boolean): void {
+  autoLowLight = on;
 }
+
+/* Auto low light: the lift chosen from how bright the presenter's face is, as Zoom's and
+ * Teams' "auto" do.
+ *
+ * Metered on the face — BlazeFace's box from the presenter lock when there is one, else the
+ * middle of the frame where a webcam puts a face — because the room is the wrong thing to
+ * expose for: a bright window behind somebody makes a frame "bright" while their face is in
+ * shadow, and that is exactly when they need the lift.
+ *
+ * The amount is the one that takes the face's mean to AUTO_TARGET through the same gamma the
+ * shader applies (pow(y, 1/(1+a·LIFT)) = target, so a = (ln y / ln target − 1) / LIFT), not
+ * a new effect: the tone curve in low-light-curve.ts is what does the work, highlights
+ * protected as before. A face at or above AUTO_TARGET gets nothing. Small amounts are not
+ * worth the contrast they cost and are dropped (AUTO_MIN). The amount eases over AUTO_TAU_MS
+ * so a hand passing in front of the lens or somebody turning a light on does not pump the
+ * picture; the first reading is applied at once so nobody joins dark and fades up.
+ *
+ * Metering is a 64×36 draw and readback every AUTO_METER_EVERY frames: well under a
+ * millisecond, a few times a second. */
+const AUTO_TARGET = 0.46;
+const AUTO_MIN = 0.08;
+const AUTO_TAU_MS = 1500;
+const AUTO_METER_EVERY = 12;
+const AUTO_METER_W = 64;
+const AUTO_METER_H = 36;
+/** Where to meter with no face known: the centre, upper-middle — where a webcam frames one. */
+const AUTO_CENTRE: FaceBox = { x: 0.34, y: 0.16, w: 0.32, h: 0.46 };
+
+/** The lift that takes a face of mean brightness `y` (0..1) to AUTO_TARGET. 0..1. */
+function autoLiftFor(y: number): number {
+  if (!(y > 0.01) || y >= AUTO_TARGET) return 0;
+  const a = (Math.log(y) / Math.log(AUTO_TARGET) - 1) / LOW_LIGHT_LIFT;
+  return a < AUTO_MIN ? 0 : Math.min(1, a);
+}
+
+/** The model's mask: a region starts at half (its low end is soft, by design). */
+const LOCK_REGION = 0.5;
+/** Slower than this per frame on average and the video visibly drops frames: warn once. */
+const MODEL_SLOW_MS = 45;
+const MODEL_WINDOW = 30;
+/** Runs in a row that throw before the model is given up on (Retry tries again). */
+const MODEL_ERROR_LIMIT = 5;
+
 
 type FaceDetector = {
   detectForVideo: (
@@ -2010,8 +1866,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   /** Given up on, until retry(). null is "not failed". */
   private engineFailure: unknown = null;
   private modelFailure: unknown = null;
-  private segmentErrors = 0;
-  private segmenterRestarts = 0;
+  private loading: Promise<void> | null = null;
 
   /** The still asked for, once decoded — kept so a rebuilt engine can upload it again. */
   private image: { src: string; img: HTMLImageElement } | null = null;
@@ -2035,30 +1890,31 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   private faceCanvas: Canvas2D | null = null;
   private faceTs = 0;
   private frameNo = 0;
-  private maskFrame = 0;
   private lockWasOn = false;
 
-  /* MODNet: off until loaded, then checked against MediaPipe, then on — or rejected, which
-   * is MediaPipe with the lock for the rest of this processor's life. */
-  private modnet: Modnet | null = null;
-  private modnetState: "off" | "loading" | "checking" | "on" | "rejected" = "off";
-  private modnetBusy = false;
-  /** The newest frame that arrived while MODNet was busy, next in line. */
-  private modnetWaiting: {
+  /* Auto low light: the lift actually applied, eased toward what the face calls for. */
+  private liftApplied = 0;
+  private autoTarget = 0;
+  private autoMetered = false;
+  private autoFrame = 0;
+  private autoAt = 0;
+  private meter: Canvas2D | null = null;
+
+
+  /* The model: off until asked for, then loading, then on. One run at a time; the newest
+   * frame that arrives meanwhile waits for the next. */
+  private model: HumanSeg | null = null;
+  private modelBusy = false;
+  private modelWaiting: {
     engine: Engine;
-    modnet: Modnet;
     frame: VideoFrame;
     controller: TransformStreamDefaultController<VideoFrame>;
   } | null = null;
-  private modnetAgree = 0;
-  private modnetDisagree = 0;
-  private modnetMs: number[] = [];
-  /** Consecutive MODNet mattes that lost the face, and the recent ones (1 = lost). */
-  private modnetMissRun = 0;
-  private modnetMisses: number[] = [];
-  /** MediaPipe's own mask of the frame MODNet is being checked on. */
-  private modnetReference: { data: Float32Array; w: number; h: number } | null = null;
-  /** The last frame sent, so a late MODNet frame never goes out behind a newer one. */
+  private modelMs: number[] = [];
+  private warnedSlow = false;
+  /** Runs that threw since the last one that did not. */
+  private modelErrors = 0;
+  /** The last frame sent, so a late frame never goes out behind a newer one. */
   private lastSent = -Infinity;
 
   constructor(options: SegmenterOptions) {
@@ -2083,10 +1939,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   setBackground(background: Background): void {
     this.options = { ...this.options, background };
     if (background.kind === "image") this.requestImage(background.src);
-    if (background.kind !== "none") {
-      const engine = this.liveEngine();
-      if (engine) this.ensureModel(engine);
-    }
+    if (background.kind !== "none") this.ensureModel();
     this.refreshStatus();
   }
 
@@ -2116,29 +1969,16 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
 
   /** Forgets every failure and tries again: the presenter's "Retry". */
   retry(): void {
-    /* An interrupted MediaPipe Module may have half-initialized into this engine's
-     * context. createFromOptions on the same canvas fails forever — drop the engine
-     * (do not park it) so the next liveEngine builds a clean WebGL2 context. */
-    const hardReset =
-      isMediaPipeInterrupted(this.modelFailure) || isMediaPipeInterrupted(this.engineFailure);
-    const stale = hardReset ? this.engine : null;
-    if (hardReset) this.engine = null;
-
     this.engineFailure = null;
     this.modelFailure = null;
     this.imageFailure = null;
     this.rebuilds = 0;
     this.rebuildAt = 0;
-    this.segmentErrors = 0;
-    this.segmenterRestarts = 0;
     this.reportedFrameFailure = false;
-    if (stale) void stale.dispose();
     const { background } = this.options;
     if (background.kind === "image") this.requestImage(background.src);
-    if (this.needsEngine()) {
-      const engine = this.liveEngine();
-      if (engine && background.kind !== "none") this.ensureModel(engine);
-    }
+    if (this.needsEngine()) this.liveEngine();
+    if (background.kind !== "none") this.ensureModel();
     this.refreshStatus();
   }
 
@@ -2156,6 +1996,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     // A restart can be a different camera, whose picture the old matte is not of.
     this.engine?.forgetHistory();
     this.lock.reset();
+    this.model?.forget();
     if (this.needsEngine()) this.liveEngine();
     this.refreshStatus();
 
@@ -2163,8 +2004,8 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     // question anybody asks when a background looks wrong, and it was previously
     // unanswerable from outside the tab.
     console.info("[background] processor ready", {
-      model: this.engine?.segmenter
-        ? MODEL_PATH
+      model: this.model
+        ? "humanseg"
         : this.options.background.kind === "none"
           ? "none (low light only)"
           : "loading",
@@ -2195,8 +2036,9 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       frame.close();
       return;
     }
-    const { background, lowLight } = this.options;
+    const { background } = this.options;
     const wantsBackground = background.kind !== "none";
+    const lowLight = this.liftFor(frame);
 
     /* Nothing asked for, so the frame goes straight through without touching the GPU. The
      * processor stays attached for this — taking it off and putting it back is a flash of
@@ -2230,28 +2072,21 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     }
 
     const started = performance.now();
-    let segmentMs = 0;
+    const segmentMs = 0;
     let output: VideoFrame | null = null;
     try {
       let mode: Mode = 0;
       if (wantsBackground && !withoutModel) {
-        this.ensureModel(engine);
-        const segmenter = engine.segmenter;
-        if (segmenter) this.startExtras();
-        /* MODNet, once trusted: its frame goes out when its matte is back, and frames that
-         * arrive meanwhile are dropped, so the matte is always of the frame it cuts. */
-        if (segmenter && this.modnetState === "on" && this.modnet && wantModnet()) {
-          this.modnetFrame(engine, this.modnet, frame, controller);
+        this.ensureModel();
+        /* Once the model is up, its frame goes out when its mask is back, and frames that
+         * arrive meanwhile are dropped but the newest, so the mask is always of the frame it
+         * cuts. Until then, frames go out under the veil. */
+        if (this.model) {
+          this.modelFrame(engine, this.model, frame, controller);
           return;
         }
         engine.upload(frame, true);
-        if (segmenter) {
-          this.detectFaces(frame);
-          segmentMs = this.segmentWith(engine, segmenter, frame);
-          this.checkModnet(frame);
-        } else {
-          engine.forgetHistory();
-        }
+        engine.forgetHistory();
         mode = this.modeFor(engine, background);
         this.easeVeil(engine.hasHistory, started);
       } else {
@@ -2296,8 +2131,8 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
 
   // ------------------------------------------------------------------ internals
 
-  /* Presenter lock and MODNet, started once MediaPipe is up so neither delays the first
-   * background. Each is optional: whatever fails to load, the background carries on. */
+  /* The presenter lock's face detector, loaded alongside the model. Optional: if it fails
+   * to load, the background carries on without the lock. */
   private startExtras(): void {
     if (wantLock() && !this.facesAsked) {
       this.facesAsked = true;
@@ -2305,13 +2140,69 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
         if (!this.disposed) this.faces = d;
       });
     }
-    if (wantModnet() && this.modnetState === "off") {
-      this.modnetState = "loading";
-      void loadModnet().then((m) => {
-        if (this.modnetState !== "loading") return;
-        this.modnet = m;
-        this.modnetState = m ? "checking" : "rejected";
-      });
+  }
+
+  /* The lift for this frame, 0..1: the chosen amount, or with Auto on, what the face needs.
+   *
+   * Auto only acts while low light is switched on: the switch is still what says "adjust
+   * me", and Auto answers "by how much". Off, this is 0 and nothing is metered. */
+  private liftFor(frame: VideoFrame): number {
+    const chosen = this.options.lowLight;
+    if (chosen <= 0 || !autoLowLight) {
+      this.autoMetered = false;
+      this.liftApplied = chosen;
+      return chosen;
+    }
+    const now = performance.now();
+    this.autoFrame += 1;
+    if (!this.autoMetered || this.autoFrame % AUTO_METER_EVERY === 0) {
+      const y = this.meterFace(frame);
+      if (y !== null) {
+        this.autoTarget = autoLiftFor(y);
+        if (!this.autoMetered) {
+          // The first reading at once: nobody should join dark and fade up.
+          this.liftApplied = this.autoTarget;
+          this.autoMetered = true;
+          this.autoAt = now;
+          console.info("[background] auto low light", {
+            face: +y.toFixed(3),
+            lift: +this.autoTarget.toFixed(2),
+          });
+        }
+      }
+    }
+    const dt = Math.max(0, now - this.autoAt);
+    this.autoAt = now;
+    this.liftApplied += (this.autoTarget - this.liftApplied) * (1 - Math.exp(-dt / AUTO_TAU_MS));
+    // Close enough to none is none, so a lit room goes back to the untouched camera.
+    if (this.autoTarget === 0 && this.liftApplied < 0.01) this.liftApplied = 0;
+    return this.liftApplied;
+  }
+
+  /** Mean brightness (0..1) of the presenter's face, or of where one usually is. */
+  private meterFace(frame: VideoFrame): number | null {
+    try {
+      const fw = frame.displayWidth;
+      const fh = frame.displayHeight;
+      if (!fw || !fh) return null;
+      const face = (this.lockActive() && this.lock.presenterFace(performance.now())) || AUTO_CENTRE;
+      // The face box is forehead to chin; a little inside it, to keep hair and background out.
+      const sx = Math.max(0, (face.x + face.w * 0.15) * fw);
+      const sy = Math.max(0, (face.y + face.h * 0.15) * fh);
+      const sw = Math.min(fw - sx, face.w * 0.7 * fw);
+      const sh = Math.min(fh - sy, face.h * 0.7 * fh);
+      if (sw < 4 || sh < 4) return null;
+      this.meter ??= canvas2d(AUTO_METER_W, AUTO_METER_H);
+      const { ctx } = this.meter;
+      ctx.drawImage(frame, sx, sy, sw, sh, 0, 0, AUTO_METER_W, AUTO_METER_H);
+      const px = ctx.getImageData(0, 0, AUTO_METER_W, AUTO_METER_H).data;
+      let sum = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        sum += 0.2126 * px[i]! + 0.7152 * px[i + 1]! + 0.0722 * px[i + 2]!;
+      }
+      return sum / (px.length / 4) / 255;
+    } catch {
+      return null;
     }
   }
 
@@ -2347,129 +2238,73 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     }
   }
 
-  /* What to do with MediaPipe's mask on the CPU this frame, if anything.
-   *
-   * Getting the mask to the CPU is a readPixels, which waits for the GPU to finish the
-   * segmentation — measured at about 10 ms of the frame on an M-series Mac, against 4 for
-   * the lock itself. So with nobody else about, the lock looks every LOCK_IDLE_EVERY frames
-   * (enough to keep the presenter's outline fresh and to notice somebody arriving), and
-   * every frame only once there is somebody to take out. */
-  private maskEdit(): MaskEdit | undefined {
-    this.maskFrame += 1;
-    const lock =
-      this.lockActive() &&
-      (this.lock.busy(performance.now()) || this.maskFrame % LOCK_IDLE_EVERY === 0);
-    const check = wantModnet() && this.modnetState === "checking" && !this.modnetBusy;
-    if (!lock && !check) return undefined;
-    return (data, w, h) => {
-      if (check) this.modnetReference = { data: Float32Array.from(data), w, h };
-      if (lock) this.lock.apply(data, w, h, performance.now(), LOCK_REGION_MEDIAPIPE);
-    };
-  }
-
-  /* MODNet on the frame MediaPipe has just done, compared with MediaPipe's answer. Off the
-   * frame path: the frame goes out on MediaPipe's matte whatever this finds. */
-  private checkModnet(frame: VideoFrame): void {
-    const modnet = this.modnet;
-    const reference = this.modnetReference;
-    this.modnetReference = null;
-    if (this.modnetState !== "checking" || !modnet || !reference || this.modnetBusy) return;
-    this.modnetBusy = true;
-    const began = performance.now();
-    try {
-      modnet.prepare(frame);
-    } catch (err) {
-      this.modnetBusy = false;
-      this.rejectModnet(err);
-      return;
-    }
-    modnet.run().then(
-      (matte) => {
-        this.modnetBusy = false;
-        if (this.modnetState !== "checking") return;
-        this.noteModnetTime(performance.now() - began);
-        const agrees = agreesWithReference(matte, reference.data, reference.w, reference.h);
-        if (agrees === true) this.modnetAgree += 1;
-        if (agrees === false) this.modnetDisagree += 1;
-        if (this.modnetDisagree >= MODNET_DISAGREE) {
-          this.rejectModnet(new Error("MODNet disagrees with MediaPipe on this device"));
-        } else if (this.modnetAgree >= MODNET_AGREE && this.modnetState === "checking") {
-          this.modnetState = "on";
-          this.modnetMs = [];
-          console.info("[background] using MODNet on WebGPU", { presenterLock: this.lockActive() });
-        }
-      },
-      (err: unknown) => {
-        this.modnetBusy = false;
-        this.rejectModnet(err);
-      },
-    );
-  }
-
   /** Takes ownership of `frame`. One run at a time; a frame that arrives meanwhile waits
    *  (the newest only — an older waiting one is dropped) and starts the moment the run
    *  ends, so a model a little faster than the camera keeps up with it. */
-  private modnetFrame(
+  private modelFrame(
     engine: Engine,
-    modnet: Modnet,
+    model: HumanSeg,
     frame: VideoFrame,
     controller: TransformStreamDefaultController<VideoFrame>,
   ): void {
-    if (this.modnetBusy) {
-      this.modnetWaiting?.frame.close();
-      this.modnetWaiting = { engine, modnet, frame, controller };
+    if (this.modelBusy) {
+      this.modelWaiting?.frame.close();
+      this.modelWaiting = { engine, frame, controller };
       return;
     }
-    this.modnetBusy = true;
+    this.modelBusy = true;
     const began = performance.now();
     try {
-      modnet.prepare(frame);
+      model.prepare(frame);
       this.detectFaces(frame);
     } catch (err) {
-      this.modnetBusy = false;
-      this.rejectModnet(err);
+      this.modelBusy = false;
       frame.close();
+      this.modelBroke(err);
       return;
     }
     const next = () => {
-      const waiting = this.modnetWaiting;
-      this.modnetWaiting = null;
+      const waiting = this.modelWaiting;
+      this.modelWaiting = null;
       if (!waiting) return;
-      if (this.modnetState === "on" && wantModnet() && !this.disposed) {
-        this.modnetFrame(waiting.engine, waiting.modnet, waiting.frame, waiting.controller);
+      if (this.model === model && !this.disposed) {
+        this.modelFrame(waiting.engine, model, waiting.frame, waiting.controller);
       } else {
         waiting.frame.close();
       }
     };
-    modnet.run().then(
-      (matte) => {
-        this.modnetBusy = false;
+    model.run().then(
+      (mask) => {
+        this.modelBusy = false;
         const ms = performance.now() - began;
-        this.noteModnetTime(ms);
-        this.sendModnet(engine, frame, controller, matte, ms);
+        this.noteModelTime(ms);
+        this.sendFrame(engine, model, frame, controller, mask, ms);
         next();
       },
       (err: unknown) => {
-        this.modnetBusy = false;
-        this.rejectModnet(err);
+        this.modelBusy = false;
         frame.close();
+        this.modelBroke(err);
         next();
       },
     );
   }
 
-  /* MODNet's matte and the frame it is of, composited and sent. The same steps as the
-   * MediaPipe path in transform, after the fact. Dropped rather than sent if anything moved
-   * on while the model ran — the processor gone, the background turned off, or a newer frame
-   * already out — because a late frame would go out of order. */
-  private sendModnet(
+  /* The model's mask and the frame it is of: the lock on the model's own mask, then the
+   * model's frame-to-frame step and edge refinement, then composited and sent. Dropped
+   * rather than sent if anything moved on while the model ran — the processor gone, the
+   * background turned off, or a newer frame already out — because a late frame would go
+   * out of order. */
+  private sendFrame(
     engine: Engine,
+    model: HumanSeg,
     frame: VideoFrame,
     controller: TransformStreamDefaultController<VideoFrame>,
-    matte: Matte,
+    mask: Matte,
     inferMs: number,
   ): void {
-    const { background, lowLight } = this.options;
+    const { background } = this.options;
+    const lowLight = this.liftApplied;
     if (
       this.disposed ||
       this.engine !== engine ||
@@ -2484,12 +2319,10 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     const started = performance.now();
     let output: VideoFrame | null = null;
     try {
-      const { alpha, w, h } = matte;
-      const lost = this.modnetLostFace(alpha, w, h) && engine.hasHistory;
-      if (!lost && this.lockActive()) this.lock.apply(alpha, w, h, performance.now(), LOCK_REGION_MODNET);
+      if (this.lockActive()) this.lock.apply(mask.alpha, mask.w, mask.h, performance.now(), LOCK_REGION);
+      const refined = model.refine(mask);
       engine.upload(frame, true);
-      // Lost the face: the last matte stands for this frame; see MODNET_FACE_MIN.
-      if (!lost) engine.ingestMatte(alpha, w, h);
+      engine.ingestMatte(refined.alpha, refined.w, refined.h);
       const mode = this.modeFor(engine, background);
       this.easeVeil(engine.hasHistory, started);
       engine.render(mode, this.veil, lowLight, background.kind === "blur" ? background.radius : VEIL_RADIUS);
@@ -2519,54 +2352,33 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       output.close();
       return;
     }
-    /* totalMs is the time on the main thread, which is what the slow-device check is for.
-     * The model's own time is on the GPU, off this thread, and is policed by
-     * noteModnetTime instead — it falls back to MediaPipe rather than turning the
-     * background off. */
-    safely(() => this.onFrame?.({ totalMs: performance.now() - started, segmentMs: inferMs }));
+    /* totalMs is the time on the main thread, which is what the slow-device check is for;
+     * the model is on this thread too (WebAssembly), so it is counted in. */
+    safely(() => this.onFrame?.({ totalMs: performance.now() - started + inferMs, segmentMs: inferMs }));
   }
 
-  /* Whether this matte dropped the presenter's face, as the face detector sees it. Also
-   * keeps the tally that sends a device to MediaPipe when it keeps happening. */
-  private modnetLostFace(alpha: Float32Array, w: number, h: number): boolean {
-    const face = this.lockActive() ? this.lock.presenterFace(performance.now()) : null;
-    if (!face) return false;
-    const miss = faceCoverage(alpha, w, h, face) < MODNET_FACE_MIN;
-    const recent = this.modnetMisses;
-    recent.push(miss ? 1 : 0);
-    if (recent.length > MODNET_MISS_WINDOW) recent.shift();
-    if (recent.length === MODNET_MISS_WINDOW) {
-      const rate = recent.reduce((a, b) => a + b, 0) / recent.length;
-      if (rate > MODNET_MISS_MAX) {
-        this.rejectModnet(new Error(`MODNet keeps losing the face here (${Math.round(rate * 100)}% of frames)`));
-      }
-    }
-    if (!miss) {
-      this.modnetMissRun = 0;
-      return false;
-    }
-    this.modnetMissRun += 1;
-    // Held too long, a frozen cut-out is worse than the model's own answer.
-    return this.modnetMissRun <= MODNET_MISS_RUN;
-  }
-
-  private noteModnetTime(ms: number): void {
-    const window = this.modnetMs;
+  /** Once, if this machine cannot keep up: said, not acted on — there is nothing else to use. */
+  private noteModelTime(ms: number): void {
+    const window = this.modelMs;
     window.push(ms);
-    if (window.length > MODNET_WINDOW) window.shift();
-    if (this.modnetState !== "on" || window.length < MODNET_WINDOW) return;
+    if (window.length > MODEL_WINDOW) window.shift();
+    if (this.warnedSlow || window.length < MODEL_WINDOW) return;
     const avg = window.reduce((a, b) => a + b, 0) / window.length;
-    if (avg > MODNET_MAX_MS) {
-      this.rejectModnet(new Error(`MODNet too slow here (${Math.round(avg)} ms a frame)`));
+    if (avg > MODEL_SLOW_MS) {
+      this.warnedSlow = true;
+      console.warn("[background] segmentation is slow here", { ms: Math.round(avg) });
     }
   }
 
-  /** MediaPipe (with the lock) from here on. The engine's matte history carries across. */
-  private rejectModnet(reason: unknown): void {
-    if (this.modnetState === "rejected") return;
-    console.warn("[background] MODNet off; using MediaPipe", reason);
-    this.modnetState = "rejected";
-    this.modnetReference = null;
+  /** A run that threw. Once is a dropped frame; the model is kept. See modelErrors. */
+  private modelBroke(err: unknown): void {
+    this.modelErrors += 1;
+    if (this.modelErrors === 1) console.warn("[background] segmentation failed on a frame", err);
+    if (this.modelErrors >= MODEL_ERROR_LIMIT) {
+      this.model = null;
+      this.modelFailure = err ?? new Error("segmentation kept failing");
+      this.refreshStatus();
+    }
   }
 
   private needsEngine(): boolean {
@@ -2594,8 +2406,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       engine.forgetHistory();
       this.engine = engine;
       this.engineBorn = performance.now();
-      this.segmentErrors = 0;
-      if (this.options.background.kind !== "none") this.ensureModel(engine);
+      if (this.options.background.kind !== "none") this.ensureModel();
       return engine;
     } catch (err) {
       // Could not even build one. Retried on the same schedule as a loss, then given up on.
@@ -2628,109 +2439,37 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     this.rebuilds += 1;
   }
 
-  /* MediaPipe, loaded at most once per engine however many callers ask. */
-  private ensureModel(engine: Engine): void {
-    if (engine.segmenter || engine.loading || this.modelFailure !== null || this.disposed) return;
-    engine.loading = this.loadModel(engine).finally(() => {
-      engine.loading = null;
+  /* The model, loaded at most once however many callers ask, and retried on the way.
+   * Nothing to do with the GL context: it runs on the CPU, so a lost context does not
+   * take it with it. The session under it is shared by every processor on the page. */
+  private ensureModel(): void {
+    // The face detector alongside, not after: the lock should be on from the first frames.
+    if (!this.disposed) this.startExtras();
+    if (this.model || this.loading || this.modelFailure !== null || this.disposed) return;
+    this.loading = this.loadModel().finally(() => {
+      this.loading = null;
       this.refreshStatus();
     });
     this.refreshStatus();
   }
 
-  /* The model load, retried, with the context kept warm throughout.
-   *
-   * A failure while the context is alive is a failure of the load — the download, usually —
-   * and is retried here. A failure because the context died is not this function's to retry:
-   * the next frame sees the loss, builds a new engine, and that engine loads its own model.
-   */
-  private async loadModel(engine: Engine): Promise<void> {
-    const began = performance.now();
-    /* keepWarm only BETWEEN attempts — never during createFromOptions.
-     *
-     * The interval used to flush the shared WebGL context every 100 ms while MediaPipe was
-     * still inside ImageSegmenter.createFromOptions on that same context. On Chrome/Mac
-     * (ANGLE Metal) that interleave can half-drain Emscripten's start-up callbacks and
-     * surface as callbacks.shift(...) / "effect engine was interrupted". Holding the
-     * context with flushes between retries is enough to stop eviction during the download. */
+  private async loadModel(): Promise<void> {
     let failure: unknown = null;
-    try {
-      for (const delay of MODEL_RETRY_MS) {
-        if (delay) {
-          const warm = setInterval(() => engine.keepWarm(), 100);
-          try {
-            await sleep(delay);
-          } finally {
-            clearInterval(warm);
-          }
-        }
-        if (!engine.alive || this.engine !== engine) return;
-        try {
-          // In MediaPipe's turn as well as behind the per-engine guard: the two answer
-          // different questions, and only oneAtATime covers two engines at once.
-          const segmenter = await oneAtATime(() => createSegmenter(engine));
-          /* Disposed or replaced while the import was in the air. Closed here rather than
-           * kept: nothing else will see this one, and it would hold its GPU memory until
-           * the tab closed. Awaited so SoftSegmenter.dispose — which waits on this load —
-           * does not release the context before the close has taken its turn. */
-          if (!engine.alive || this.engine !== engine) {
-            await oneAtATime(async () => segmenter.close()).catch(() => {});
-            return;
-          }
-          engine.segmenter = segmenter;
-          console.info("[background] segmentation ready", {
-            model: MODEL_PATH,
-            ms: Math.round(performance.now() - began),
-          });
-          return;
-        } catch (err) {
-          if (!engine.alive) return;
-          failure = err;
-          console.warn("[background] segmentation model failed to load", err);
-          /* Interrupted Module: further retries on this context will not recover. Drop the
-           * engine now so Retry / a later SoftSegmenter does not unpark poisoned GL state. */
-          if (isMediaPipeInterrupted(err)) {
-            if (this.engine === engine) this.engine = null;
-            await engine.dispose().catch(() => {});
-            break;
-          }
-        }
-      }
-      this.modelFailure = failure ?? new Error("the segmentation model did not load");
-    } finally {
-      /* no persistent warm interval */
-    }
-  }
-
-  /* One frame's segmentation, surviving MediaPipe having a bad moment.
-   *
-   * A single error is a frame with the previous matte, which nobody can see. A run of them
-   * means its graph is wedged, and the cure is a fresh instance — a couple of times, and then
-   * the model is given up on like any other failure to load. Returns the time it took. */
-  private segmentWith(engine: Engine, segmenter: Segmenter, frame: VideoFrame): number {
-    const t0 = performance.now();
-    try {
-      engine.segment(segmenter, frame, this.maskEdit());
-      this.segmentErrors = 0;
-    } catch (err) {
-      if (engine.gl.isContextLost()) throw err;
-      this.segmentErrors += 1;
-      if (this.segmentErrors >= SEGMENT_ERROR_LIMIT) {
-        this.segmentErrors = 0;
-        engine.segmenter = null;
-        void oneAtATime(async () => segmenter.close()).catch(() => {});
-        engine.forgetHistory();
-        if (this.segmenterRestarts >= SEGMENTER_RESTART_LIMIT) {
-          this.modelFailure = err ?? new Error("segmentation kept failing");
-        } else {
-          this.segmenterRestarts += 1;
-          console.warn("[background] segmentation kept failing; restarting it", err);
-          this.ensureModel(engine);
-        }
-        this.refreshStatus();
+    for (const delay of MODEL_RETRY_MS) {
+      if (delay) await sleep(delay);
+      if (this.disposed) return;
+      try {
+        const model = await loadHumanSeg();
+        if (this.disposed) return;
+        this.model = model;
+        this.modelErrors = 0;
+        return;
+      } catch (err) {
+        failure = err;
+        console.warn("[background] segmentation model failed to load", err);
       }
     }
-    return performance.now() - t0;
+    this.modelFailure = failure ?? new Error("the segmentation model did not load");
   }
 
   /* Which composite this frame gets.
@@ -2859,24 +2598,15 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   private dispose(): Promise<void> {
     if (this.disposed) return Promise.resolve();
     this.disposed = true;
-    this.modnetWaiting?.frame.close();
-    this.modnetWaiting = null;
+    this.modelWaiting?.frame.close();
+    this.modelWaiting = null;
     const engine = this.engine;
     this.engine = null;
     let teardown = Promise.resolve();
     if (engine) {
-      /* A model load still in flight owns the context inside oneAtATime. Disposing it
-       * now would loseContext mid-createSegmenter — see Engine.dispose. Wait for the
-       * load to settle (it will orphan-close the segmenter because this.engine is
-       * already null), then tear down. Parking is only safe once nothing is loading.
-       *
-       * Always awaited: openCamera's failed-start path destroys then opens again, and
-       * useVirtualBackground may create a replacement in the same tick — both must see
-       * MediaPipe fully torn down first. */
-      const loading = engine.loading;
-      if (loading) {
-        teardown = loading.finally(() => engine.dispose()).then(() => undefined);
-      } else if (engine.alive) {
+      /* Parked while alive, for the next processor; the model is not in it (see
+       * ensureModel), so nothing is loading into it. */
+      if (engine.alive) {
         park(engine);
       } else {
         teardown = engine.dispose();
@@ -2924,7 +2654,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     const engine = this.engine;
     if (!engine) return { phase: "preparing" };
     if (background.kind === "none") return { phase: "ready" };
-    if (!engine.segmenter) return { phase: "preparing" };
+    if (!this.model) return { phase: "preparing" };
     if (
       background.kind === "image" &&
       engine.imageSrc !== background.src &&

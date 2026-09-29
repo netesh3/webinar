@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -84,6 +85,9 @@ type fakeGraph struct {
 	// expiring, until a test says otherwise. debugCalls counts the checks.
 	debug      map[string]any
 	debugCalls int
+
+	// created is every template submitted for approval; each is then listed as PENDING.
+	created []map[string]any
 }
 
 // tokenHealth sets what Meta's /debug_token reports about the host's token.
@@ -119,6 +123,16 @@ func newFakeGraph(t *testing.T) *fakeGraph {
 				"display_phone_number": testMetaDisplay,
 				"verified_name":        testMetaBusinessNm,
 			})
+		case strings.HasSuffix(r.URL.Path, "/message_templates") && r.Method == http.MethodPost:
+			var body map[string]any
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, &body)
+			g.created = append(g.created, body)
+			g.templates = append(g.templates, map[string]any{
+				"name": body["name"], "language": body["language"], "status": "PENDING",
+				"category": body["category"], "components": body["components"],
+			})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": fmt.Sprint(len(g.created)), "status": "PENDING"})
 		case strings.HasSuffix(r.URL.Path, "/message_templates") && r.Method == http.MethodGet:
 			g.templateCalls++
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": g.templates})
@@ -499,5 +513,31 @@ func TestWhatsAppWebhookRequiresAMetaSignature(t *testing.T) {
 				t.Errorf("status %d, want %d\n  body: %s", res.StatusCode, tc.want, raw)
 			}
 		})
+	}
+}
+
+/* A subscription Meta has dropped is put back without the host reconnecting.
+ *
+ * Connect subscribes once. If that call failed, or Meta later removed the app
+ * from the WABA, sends keep working and no inbound reply or delivery status is
+ * ever posted — the inbox shows only what we sent. The sweeper's ensure is what
+ * notices and subscribes again.
+ */
+func TestDroppedWhatsAppSubscriptionIsRestored(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+
+	g.mu.Lock()
+	g.subscribed = nil
+	g.mu.Unlock()
+
+	h.engage.EnsureWhatsAppSubscriptions(context.Background())
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.subscribed) != 1 || g.subscribed[0] != testMetaWABAID {
+		t.Fatalf("subscribed = %v, want [%s] again after Meta dropped it", g.subscribed, testMetaWABAID)
 	}
 }

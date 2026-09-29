@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,10 @@ type SupabaseIdentity struct {
 	Subject string
 	Email   string
 	Name    string
+	// Picture is Google's profile photo URL from user_metadata.picture (or
+	// avatar_url when picture is absent). Empty when the token has none, or
+	// when the value is not an https Google image URL.
+	Picture string
 }
 
 type supabaseClaims struct {
@@ -65,15 +70,16 @@ type jwkKey struct {
 	Y   string `json:"y"`
 }
 
-/* VerifySupabaseAccessToken checks a Supabase Auth access token.
+/*
+VerifySupabaseAccessToken checks a Supabase Auth access token.
 
- * Modern Supabase projects sign access tokens with ES256 and publish the public
- * key at {supabaseURL}/auth/v1/.well-known/jwks.json. Older projects (and some
- * rotated setups) still use the legacy HS256 JWT secret from Project Settings.
- *
- * We accept both: pick the verifier from the token's alg header. jwtSecret may
- * be empty when only asymmetric keys are in use.
- */
+* Modern Supabase projects sign access tokens with ES256 and publish the public
+* key at {supabaseURL}/auth/v1/.well-known/jwks.json. Older projects (and some
+* rotated setups) still use the legacy HS256 JWT secret from Project Settings.
+*
+* We accept both: pick the verifier from the token's alg header. jwtSecret may
+* be empty when only asymmetric keys are in use.
+*/
 func VerifySupabaseAccessToken(accessToken, jwtSecret, supabaseURL string) (SupabaseIdentity, error) {
 	if strings.TrimSpace(accessToken) == "" {
 		return SupabaseIdentity{}, ErrInvalidSupabaseToken
@@ -129,7 +135,47 @@ func VerifySupabaseAccessToken(accessToken, jwtSecret, supabaseURL string) (Supa
 		Subject: c.Subject,
 		Email:   email,
 		Name:    nameFromSupabaseClaims(c),
+		Picture: pictureFromSupabaseClaims(c),
 	}, nil
+}
+
+/* pictureFromSupabaseClaims reads Google's profile photo.
+ *
+ * Supabase copies the OpenID picture claim into user_metadata.picture and
+ * also sets avatar_url to the same address. picture is the claim Google
+ * issued; avatar_url is only the fallback when picture is missing.
+ *
+ * Anything that is not an https URL on googleusercontent.com is dropped.
+ * The token is signed, but the string is still stored and later handed to
+ * an <img>, so a javascript: URL or an off-site tracker must not survive.
+ */
+func pictureFromSupabaseClaims(c *supabaseClaims) string {
+	if c == nil {
+		return ""
+	}
+	for _, key := range []string{"picture", "avatar_url"} {
+		raw, _ := c.UserMetadata[key].(string)
+		if picture := sanitizePictureURL(raw); picture != "" {
+			return picture
+		}
+	}
+	return ""
+}
+
+func sanitizePictureURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > 2048 || strings.ContainsAny(raw, " \t\r\n") {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "googleusercontent.com" && !strings.HasSuffix(host, ".googleusercontent.com") {
+		return ""
+	}
+	return raw
 }
 
 func lookupSupabaseECDSA(supabaseURL, kid string) (*ecdsa.PublicKey, error) {

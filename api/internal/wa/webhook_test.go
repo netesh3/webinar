@@ -171,6 +171,41 @@ func TestParseWebhookRefusesNonJSON(t *testing.T) {
 	}
 }
 
+func TestParseWebhookReadsPricing(t *testing.T) {
+	const body = `{"entry":[{"id":"waba-1","changes":[{"field":"messages","value":{
+	  "metadata":{"phone_number_id":"phone-1"},
+	  "statuses":[
+	    {"id":"wamid.A","status":"delivered","timestamp":"1700000100","recipient_id":"919800011122",
+	     "pricing":{"billable":true,"pricing_model":"PMP","category":"utility"}},
+	    {"id":"wamid.B","status":"sent","timestamp":"1700000100","recipient_id":"14155550100",
+	     "pricing":{"billable":true,"category":"marketing","amount":0.78}},
+	    {"id":"wamid.C","status":"delivered","timestamp":"1700000100",
+	     "conversation":{"origin":{"type":"service"}}}
+	  ]}}]}]}`
+	d, err := ParseWebhook([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Statuses) != 3 {
+		t.Fatalf("statuses = %d", len(d.Statuses))
+	}
+	a := d.Statuses[0]
+	if a.RecipientID != "919800011122" || a.Pricing == nil || a.Pricing.Category != "utility" || a.Pricing.HasAmount {
+		t.Fatalf("category without amount: %+v", a.Pricing)
+	}
+	if a.Pricing.Billable == nil || !*a.Pricing.Billable {
+		t.Fatal("billable should be true")
+	}
+	b := d.Statuses[1]
+	if b.Pricing == nil || !b.Pricing.HasAmount || b.Pricing.Micros != 780_000 {
+		t.Fatalf("amount: %+v", b.Pricing)
+	}
+	c := d.Statuses[2]
+	if c.Pricing == nil || c.Pricing.Category != "service" || c.Pricing.HasAmount {
+		t.Fatalf("origin fallback: %+v", c.Pricing)
+	}
+}
+
 func TestUnixSecondsTreatsNonsenseAsAbsent(t *testing.T) {
 	for _, in := range []string{"", "0", "-1", "not-a-number"} {
 		if got := unixSeconds(in); !got.IsZero() {

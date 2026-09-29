@@ -13,6 +13,7 @@ import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import { ApiError, api } from "@/lib/api";
 import type { Account, Registration, Webinar } from "@/lib/api-types";
 import { openRoomTab } from "@/lib/open-room";
+import { CHECKBOX_YES } from "@/lib/registration-questions";
 import { WhatsAppOptInCheckbox } from "@/engage";
 
 /* Registration.
@@ -740,58 +741,74 @@ function RegisterFields({
         {/* host-defined questions */}
         {w.customQuestions.length > 0 && (
           <div className="mt-1 grid gap-3 border-t border-line pt-4">
-            {w.customQuestions.map((q) => (
-              <div key={q.id}>
-                <label className="label" htmlFor={q.id}>
-                  {q.label}
-                  {!q.required && (
-                    <span className="text-ink-3"> (optional)</span>
+            {w.customQuestions.map((q) => {
+              const optional = !q.required && (
+                <span className="text-ink-3"> (optional)</span>
+              );
+              const setAnswer = (v: string) =>
+                setAnswers((a) => ({ ...a, [q.id]: v }));
+              return (
+                <div key={q.id}>
+                  {q.type === "select" ? (
+                    <fieldset>
+                      <legend className="label">
+                        {q.label}
+                        {optional}
+                      </legend>
+                      <div className="grid gap-1.5">
+                        {(q.options ?? []).map((o) => (
+                          <label
+                            key={o}
+                            className="flex cursor-pointer items-center gap-2.5 text-[13px] text-ink-2"
+                          >
+                            <input
+                              type="radio"
+                              name={`q-${q.id}`}
+                              className="size-3.5 shrink-0 accent-brand"
+                              value={o}
+                              checked={answers[q.id] === o}
+                              onChange={() => setAnswer(o)}
+                            />
+                            {o}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  ) : q.type === "checkbox" ? (
+                    <label className="flex cursor-pointer items-start gap-2.5 text-[13px] text-ink-2">
+                      <input
+                        id={`q-${q.id}`}
+                        type="checkbox"
+                        className="mt-0.5 size-3.5 shrink-0 accent-brand"
+                        checked={answers[q.id] === CHECKBOX_YES}
+                        onChange={(e) =>
+                          setAnswer(e.target.checked ? CHECKBOX_YES : "")
+                        }
+                      />
+                      <span>
+                        {q.label}
+                        {optional}
+                      </span>
+                    </label>
+                  ) : (
+                    <>
+                      <label className="label" htmlFor={`q-${q.id}`}>
+                        {q.label}
+                        {optional}
+                      </label>
+                      <textarea
+                        id={`q-${q.id}`}
+                        className="field"
+                        rows={2}
+                        value={answers[q.id] ?? ""}
+                        onChange={(e) => setAnswer(e.target.value)}
+                      />
+                    </>
                   )}
-                </label>
-                {q.type === "select" ? (
-                  <select
-                    id={q.id}
-                    className="field"
-                    value={answers[q.id] ?? ""}
-                    onChange={(e) =>
-                      setAnswers({ ...answers, [q.id]: e.target.value })
-                    }
-                  >
-                    <option value="">Select an option</option>
-                    {q.options?.map((o) => (
-                      <option key={o}>{o}</option>
-                    ))}
-                  </select>
-                ) : q.type === "checkbox" ? (
-                  <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] text-ink-2">
-                    <input
-                      id={q.id}
-                      type="checkbox"
-                      className="mt-0.5 size-3.5 shrink-0 accent-brand"
-                      checked={answers[q.id] === "yes"}
-                      onChange={(e) =>
-                        setAnswers({
-                          ...answers,
-                          [q.id]: e.target.checked ? "yes" : "",
-                        })
-                      }
-                    />
-                    Yes
-                  </label>
-                ) : (
-                  <textarea
-                    id={q.id}
-                    className="field"
-                    rows={2}
-                    value={answers[q.id] ?? ""}
-                    onChange={(e) =>
-                      setAnswers({ ...answers, [q.id]: e.target.value })
-                    }
-                  />
-                )}
-                {fieldError(q.id)}
-              </div>
-            ))}
+                  {fieldError(q.id)}
+                </div>
+              );
+            })}
           </div>
         )}
 

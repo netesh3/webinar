@@ -181,13 +181,21 @@ type LowerHandMessage = {
  * make other clients re-read a list they are already entitled to. */
 type PollsChangedMessage = { kind: "polls-changed" };
 
+/* "The post-event survey changed" — launched, closed or edited. Server-only, for the same
+ * reason as PollsChangedMessage: each client re-reads its own view (see announceSurvey in
+ * api/internal/api/surveys.go). */
+type SurveyChangedMessage = { kind: "survey-changed" };
+
 /* "Someone from the audience just joined."
  *
  * Sent only by the SERVER, addressed to the host alone (see announceAttendeeJoined
  * in join.go) — not broadcast to the room, the way the join itself is not something
  * the audience needs to hear about one another. A host's own client never receives
  * this for anyone but the audience: the host and panelists connecting are visible
- * on screen the moment they do, so there is nothing this would add for them. */
+ * on screen the moment they do, so there is nothing this would add for them.
+ *
+ * Sent when the token is ISSUED, so it means "on their way", not "here": the client
+ * treats it as the joining hint and waits for the roster (see lib/join-toasts.ts). */
 type AttendeeJoinedMessage = { kind: "joined"; from: Sender };
 
 /* The host clearing the whole queue at once.
@@ -231,6 +239,7 @@ export type RoomMessage =
   | LowerHandMessage
   | HandsClearedMessage
   | PollsChangedMessage
+  | SurveyChangedMessage
   | ReactionMessage
   | UnmuteRequestMessage
   | AttendeeJoinedMessage
@@ -465,6 +474,8 @@ function decode(bytes: Uint8Array): RoomMessage | null {
     }
     case "polls-changed":
       return { kind: "polls-changed" };
+    case "survey-changed":
+      return { kind: "survey-changed" };
     case "hands-cleared": {
       const from = sender(msg.from);
       // Only the stage may clear the queue, the same rule as lower-hand. Without
@@ -688,6 +699,8 @@ export type Realtime = {
   /** Bumped when the server says the polls changed. A dependency to re-read on,
    *  not the polls themselves — see PollsChangedMessage. */
   pollsRevision: number;
+  /** Bumped when the server says the post-event survey changed. Same idea as pollsRevision. */
+  surveyRevision: number;
   /** Merges a history batch into the conversation, de-duplicating by id. `deleted`
    *  is the ids moderation removed while this client was away (see ChatBacklog). */
   mergeBacklog: (messages: ChatMessage[], deleted?: readonly string[]) => void;
@@ -722,6 +735,9 @@ export function useRealtime(
     onHandRaised?: (from: Sender) => void;
     /** Fires on the local participant's own hand being lowered by the host. */
     onHandLowered?: (reason: "granted" | "dismissed") => void;
+    /** Fires when the host lowers every hand at once. Whether this participant's own
+     *  hand was among them is the caller's to know. */
+    onHandsCleared?: () => void;
     /** Fires when an attendee joins. Only ever delivered to the host — see
      *  AttendeeJoinedMessage — so a caller need not check the role itself. */
     onAttendeeJoined?: (from: Sender) => void;
@@ -752,6 +768,7 @@ export function useRealtime(
   // A counter rather than the polls themselves. What the room is told is "something
   // changed"; what each client is entitled to see differs, so each fetches its own.
   const [pollsRevision, setPollsRevision] = useState(0);
+  const [surveyRevision, setSurveyRevision] = useState(0);
 
   // Refs so the send helpers keep a stable identity across re-renders: they end
   // up in the dependency arrays of components that would otherwise re-subscribe
@@ -917,8 +934,12 @@ export function useRealtime(
         case "polls-changed":
           setPollsRevision((n) => n + 1);
           break;
+        case "survey-changed":
+          setSurveyRevision((n) => n + 1);
+          break;
         case "hands-cleared":
           setHandMap({});
+          notify.current?.onHandsCleared?.();
           break;
         case "lower-hand":
           setHandMap((current) => {
@@ -1340,6 +1361,7 @@ export function useRealtime(
     lowerHand,
     clearHands,
     pollsRevision,
+    surveyRevision,
     mergeBacklog,
     mergeQuestions,
     chatCursor,

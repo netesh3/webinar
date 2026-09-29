@@ -4,7 +4,7 @@ import { useRemoteParticipants } from "@livekit/components-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { mergeHostCandidates } from "@/lib/host-transfer";
-import { Alert, ConfirmModal, Modal, Spinner } from "../controls";
+import { Alert, Modal, Spinner } from "../controls";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { participantRole } from "./participants";
@@ -33,11 +33,12 @@ export function HostLeaveMenu({
   const { join, roster } = useRoomUI();
   const remotes = useRemoteParticipants();
   const panel = useRef<HTMLDivElement | null>(null);
+  const reloadRoster = roster.reload;
 
   useEffect(() => {
     if (!open) return;
-    void roster.reload();
-  }, [open, roster.reload]);
+    void reloadRoster();
+  }, [open, reloadRoster]);
 
   useEffect(() => {
     if (!open) return;
@@ -144,14 +145,24 @@ export function HostAssignDialog({
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reloadRoster = roster.reload;
 
   useEffect(() => {
     if (!open) return;
-    void roster.reload();
-    setSelected(null);
-    setError(null);
-    setBusy(false);
-  }, [open, roster.reload]);
+    void reloadRoster();
+  }, [open, reloadRoster]);
+
+  // Start each opening fresh. Adjusted during render on the open edge rather
+  // than in an effect after it.
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setSelected(null);
+      setError(null);
+      setBusy(false);
+    }
+  }
 
   const candidates = useMemo(
     () =>
@@ -168,10 +179,10 @@ export function HostAssignDialog({
     [roster.live?.participants, remotes, join.identity],
   );
 
-  useEffect(() => {
-    if (!open || selected) return;
-    if (candidates[0]) setSelected(candidates[0].identity);
-  }, [open, candidates, selected]);
+  // Preselect the first eligible panelist until the host picks one.
+  if (open && !selected && candidates[0]) {
+    setSelected(candidates[0].identity);
+  }
 
   async function assignAndLeave() {
     if (!selected) return;
@@ -263,49 +274,5 @@ export function HostAssignDialog({
         </ul>
       )}
     </Modal>
-  );
-}
-
-/** Confirm ending the webinar for everyone (from the Leave menu). */
-export function HostEndConfirm({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const { slug } = useRoomUI();
-  const { notify } = useToast();
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!open) setBusy(false);
-  }, [open]);
-
-  async function endForEveryone() {
-    setBusy(true);
-    try {
-      await api.endWebinar(slug);
-      onClose();
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Could not end the webinar.", "error");
-      setBusy(false);
-    }
-  }
-
-  return (
-    <ConfirmModal
-      dark
-      open={open}
-      busy={busy}
-      onClose={() => {
-        if (busy) return;
-        onClose();
-      }}
-      onConfirm={() => void endForEveryone()}
-      title="End this webinar for everyone?"
-      body="Everyone is disconnected and the webinar is marked as ended. Registrations and the attendance record are kept, but nobody can rejoin."
-      confirmLabel="End for everyone"
-    />
   );
 }

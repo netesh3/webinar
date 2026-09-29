@@ -20,7 +20,7 @@ import {
   type TrackPublishOptions,
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { enableCamera } from "@/lib/backgrounds";
 import { roomOptions, SCREEN_SHARE_PUBLISH, useMediaPreferences } from "@/lib/media";
@@ -53,13 +53,21 @@ import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
 import { PreJoin } from "./prejoin";
 import { RecorderProvider, RecordingBanner, RecordingIndicator } from "./recording";
 import { useAudiencePolls } from "@/lib/polls";
-import { useHostRoster } from "./participants";
+import { handAudience } from "@/lib/hand-toasts";
+import { participantRole, useHostRoster } from "./participants";
+import { useJoinToasts } from "./join-toasts";
+import { useHandToasts } from "./hand-toasts";
+import { useConnectionToast } from "./connection-toast";
+import { useSelfHandToasts, type SelfHandEvent } from "./self-hand-toasts";
 import { VirtualBackground } from "./background-picker";
 import { NoiseSuppression } from "./noise-suppression";
 import { PollPopup } from "./poll-popup";
+import { SurveyPopup } from "./survey-popup";
+import { HostSurveyPill, HostSurveyProvider } from "./host-survey";
+import { SessionSurvey } from "../survey/session-survey";
+import { useAudienceSurvey } from "@/lib/use-audience-survey";
 import { CtaPopup } from "./cta-popup";
 import { CaptionOverlay } from "./caption-overlay";
-import { StageInviteDialog } from "./stage-invite-dialog";
 import { FileShareBar } from "./file-share-bar";
 import { MeetingInfo } from "./meeting-info";
 import { ViewsMenu } from "./views-menu";
@@ -176,7 +184,11 @@ export function WebinarRoom({
           ? await api.hostJoin(slug)
           : await api.join(slug, joinKey);
         return { url: fresh.url, token: fresh.token };
-      } catch {
+      } catch (e) {
+        // The server refusing a new token because the session is over is an answer, not a
+        // network fault: the ladder stops and says the webinar ended. Mid-session the
+        // audience's "not_joinable" can only mean that too — a draft never went live.
+        if (e instanceof ApiError && (e.code === "ended" || e.code === "not_joinable")) return "ended" as const;
         return null;
       }
     })();
@@ -527,11 +539,28 @@ function ConnectedRoom({
     join.controls,
     join.maxDurationMin,
   );
+  /* The session is over: the server said so in room metadata (it does, before it closes the
+   * room), or this host has just pressed End. From then on a disconnect is the end, whatever
+   * reason the SFU gives for it, and nothing says "Reconnecting…" — there is nothing to
+   * reconnect to. A ref for the disconnect handler, state for what renders. */
+  const [endingHere, setEndingHere] = useState(false);
+  const over = status === "ended" || endingHere;
+  const overRef = useRef(false);
+  useEffect(() => {
+    overRef.current = over;
+  }, [over]);
+  const markEnding = useCallback((on: boolean) => {
+    overRef.current = on;
+    setEndingHere(on);
+  }, []);
   const { notify } = useToast();
-  // Attendee identities already announced to the host this room session —
-  // see onAttendeeJoined below. A ref, not state: recording who has already
-  // been announced must never itself trigger a re-render.
-  const seenJoins = useRef(new Set<string>());
+  // The host's join toasts are fed from two places declared far apart: the server's
+  // "joined" packet arrives through useRealtime (below), and the roster they turn
+  // green against is read further down. This carries the first to the second.
+  const announceJoining = useRef<((from: Sender) => void) | null>(null);
+  // The same bridge for this person's own hand and stage toasts (self-hand-toasts.tsx),
+  // whose hook needs `realtime` and so is called below the handlers that feed it.
+  const selfHand = useRef<((event: SelfHandEvent) => void) | null>(null);
 
   // Temporary, for one performance-test window — see lib/telemetry.ts. `room`
   // is passed as null rather than skipping the call when the flag is off, so
@@ -570,54 +599,41 @@ function ConnectedRoom({
             `${from.name} would like you to unmute. Use the microphone button when you're ready.`,
             "info",
           ),
-        // Host, co-host, AND ordinary panelists are asked to notice — a badge
-        // alone means someone watching the video misses the person waiting to
-        // speak, which is the whole point of raising a hand. Panelists get a
-        // plain heads-up rather than the host's "open Participants to let them
-        // in" instruction: ParticipantsPanel gates its action buttons on isHost,
-        // not role, so an ordinary panelist has no roster action to take here —
-        // telling them to go act on it would be pointing at a button that isn't
-        // there.
-        onHandRaised: (from: Sender) => {
-          if (isHost) {
-            notify(
-              `${from.name} wants to speak — open Participants to let them in or dismiss it.`,
-              "info",
-            );
-          } else if (liveRole === "panelist") {
-            notify(`${from.name} raised their hand.`, "info");
-          }
-        },
+        // A raised hand is announced by useHandToasts (hand-toasts.tsx), from the
+        // queue itself rather than from this packet: the queue is what the
+        // Participants panel draws, and reading it is what lets the toast go the
+        // moment another host handles the hand. "X wants to speak" and "X raised
+        // their hand" were always this one event, worded for two audiences.
         onHandLowered: (reason: "granted" | "dismissed") => {
           // Being granted the microphone announces itself through the permission
-          // change, so saying it twice would be noise.
-          if (reason === "dismissed") {
-            notify("The host dismissed your request to speak for now.", "info");
-          }
+          // change; the self-hand toast only clears a lingering "raised" card for it.
+          selfHand.current?.({ kind: "lowered", reason });
         },
-        // The server addresses this to the host alone, but the check is kept
-        // here anyway — the same defensive habit as onHandRaised — rather than
-        // trusting that nothing else could ever deliver this packet.
-        //
-        // seenJoins (below) is what keeps this to one toast per attendee: the
-        // server fires this on every joinAsAttendee call, including a
-        // reconnect (dropped wifi, a reloaded tab) for someone already in the
-        // room, which is a real join as far as the API is concerned but not
-        // news to the host a second time.
+        onHandsCleared: () => {
+          selfHand.current?.({ kind: "lowered", reason: "cleared" });
+        },
+        // The server sends this when it ISSUES an attendee's token — before their
+        // browser has connected, and seconds before the Participants panel can list
+        // them. So it is a "joining" hint, not a "joined" fact: useJoinToasts shows
+        // "X is joining…" and turns it into "X joined" only once the roster the panel
+        // draws contains them. Reconnects, the host-only audience and a crowd filling
+        // up are handled there (lib/join-toasts.ts).
         onAttendeeJoined: (from: Sender) => {
-          if (!isHost) return;
-          if (seenJoins.current.has(from.identity)) return;
-          seenJoins.current.add(from.identity);
-          notify(`${from.name} joined.`, "info");
+          announceJoining.current?.(from);
         },
       }),
-      [notify, isHost, liveRole],
+      [notify],
     ),
   );
 
   // Being handed a microphone mid-session is easy to miss — the button simply
   // appears. Saying so is the difference between an attendee answering the host
   // and the host wondering why nobody replied.
+  // Set when the host moves this presenter to the audience, so getting the stage back is
+  // announced as such rather than greeted as a first connect.
+  const movedOffStage = useRef(false);
+  // The connection toast's greeting, set once that hook is running further down.
+  const greetConnected = useRef<() => void>(() => {});
   const announcePermissions = useCallback(
     (next: MediaPermissions, previous: MediaPermissions) => {
       // A host mute first: it also takes the microphone out of the grant, so
@@ -627,25 +643,31 @@ function ConnectedRoom({
         return;
       }
       if (next.canSpeak && !previous.canSpeak) {
-        notify(
-          previous.mutedByHost
-            ? "The host has allowed you to speak again."
-            : next.audioOnly
-              ? "The host has invited you to speak. Unmute yourself when you're ready."
-              /* A host or panelist reaching the stage is just "connected" — they arrived with
-               * publish rights and pressed Join, so a sentence about where the buttons are
-               * tells them something already on screen. A PROMOTED attendee is a different
-               * event: they did not ask for it and their bar has just grown two controls, so
-               * that case still says what happened. */
-              : join.canPublish
-                ? "Connected"
-                : "You're on the stage. Your microphone and camera controls are below.",
-          "ok",
-        );
+        /* A host or panelist reaching the stage on joining gets the connection toast's
+         * "You're connected" — the same card as "back online", polite and gone on its own —
+         * rather than a sentence about controls already on screen. The tracker says it once
+         * per room, so re-reading permissions after a reconnect stays quiet. A panelist moved
+         * to the audience and back is a change somebody else made, and is told so below. */
+        if (join.canPublish && !previous.mutedByHost && !movedOffStage.current) {
+          greetConnected.current();
+          return;
+        }
+        movedOffStage.current = false;
+        if (previous.mutedByHost) {
+          notify("The host has allowed you to speak again.", "ok");
+          return;
+        }
+        selfHand.current?.({
+          kind: "stage",
+          // An audio-only grant is "you can speak"; a PROMOTED attendee did not ask for
+          // the camera and their bar has just grown two controls, so that says so.
+          arrival: next.audioOnly ? "speak" : join.canPublish ? "back" : "stage",
+        });
         return;
       }
       if (!next.canPublish && !next.mutedByHost && previous.canPublish) {
-        notify("The host has moved you back to the audience.", "info");
+        movedOffStage.current = true;
+        selfHand.current?.({ kind: "audience" });
         onDemotedRef.current?.();
       }
     },
@@ -673,6 +695,10 @@ function ConnectedRoom({
    * track does nothing, and the track that matters here is precisely the one
    * LiveKit has just let go of without stopping. */
   const captured = useRef(new Set<LocalTrack>());
+  // Camera and microphone go off with the session, not when the SFU gets round to closing.
+  useEffect(() => {
+    if (status === "ended") stopLocalCapture(room, captured.current);
+  }, [status, room]);
   useEffect(() => {
     const onPublished = (pub: LocalTrackPublication) => {
       if (pub.track) captured.current.add(pub.track);
@@ -756,7 +782,7 @@ function ConnectedRoom({
 
     const onDisconnected = (reason?: DisconnectReason) => {
       if (cancelled) return;
-      const exitReason = classifyDisconnect(reason);
+      const exitReason = overRef.current && !leaving.current ? "ended" : classifyDisconnect(reason);
       if (!exitReason) {
         // Pressing Leave is as terminal for this browser's devices as being
         // thrown out is; only a retryable drop keeps them open.
@@ -797,9 +823,15 @@ function ConnectedRoom({
          * Only on a retry: the first attempt already holds a credential minted seconds ago,
          * and a second round trip before the first connect would cost every presenter time
          * to pay for a case that cannot have happened yet. */
-        const credential =
-          (attempts.current > 0 ? await freshCredential() : null) ?? join;
+        const fresh = attempts.current > 0 ? await freshCredential() : null;
         if (cancelled) return;
+        if (fresh === "ended" || (attempts.current > 0 && overRef.current)) {
+          setRecovering(null);
+          stopLocalCapture(room, captured.current);
+          setExit("ended");
+          return;
+        }
+        const credential = fresh ?? join;
         await connect(credential.url, credential.token, CONNECT_OPTIONS);
         if (cancelled) return;
         setRecovering(null);
@@ -1035,6 +1067,7 @@ function ConnectedRoom({
       host: 0,
       captions: 0,
       sharefile: 0,
+      youtube: 0,
     }),
     [chatVisible, qaVisible, chatCount, questionCount, seen, realtime.chat, realtime.questions, mountedAt, me.identity],
   );
@@ -1050,6 +1083,65 @@ function ConnectedRoom({
   // so the control bar's badge is right whether or not the panel is open.
   const roster = useHostRoster(slug, isHost, room);
 
+  // "X is joining…" → "X joined", for the host and co-hosts. The hook ignores the
+  // hint unless `isHost`, the same audience the old toast had.
+  const onJoining = useJoinToasts(room, join.identity, isHost, roster.live);
+  useEffect(() => {
+    announceJoining.current = onJoining;
+  }, [onJoining]);
+
+  // "Asha wants to speak", with the roster row's buttons, for the host and co-hosts;
+  // a plain heads-up for ordinary panelists, as before. See lib/hand-toasts.ts.
+  const openTool = tools.open;
+  const roleOfHand = useCallback(
+    (identity: string) => {
+      const p = room.getParticipantByIdentity(identity);
+      if (!p) return null;
+      const role = participantRole(p);
+      return role === "host" || role === "panelist" ? role : "attendee";
+    },
+    [room],
+  );
+  useHandToasts({
+    slug,
+    selfIdentity: join.identity,
+    audience: handAudience({ isHost, role: liveRole }),
+    hands: realtime.hands,
+    live: roster.live,
+    roleOf: roleOfHand,
+    lowerHand: realtime.lowerHand,
+    reloadRoster: roster.reload,
+    openParticipants: useCallback(() => openTool("participants"), [openTool]),
+    panelVisible: tools.panelTab === "participants",
+  });
+  // "You're connected" on joining the stage, then "Reconnecting…" → "You're back online" /
+  // "Connection lost", for everyone in this room.
+  const { greet } = useConnectionToast(
+    room,
+    recovering,
+    RECOVERY_BACKOFF_MS.length,
+    permissions.canPublish,
+    over || exit !== null,
+  );
+  useEffect(() => {
+    greetConnected.current = greet;
+  }, [greet]);
+  // This person's own hand and stage: "Your hand is raised", the host lowering it, the
+  // stage invitation (Join stage / Not now), arriving on stage and leaving it. See
+  // lib/self-hand-toasts.ts. Never overlaps the toasts above: those skip your own hand.
+  const announceSelfHand = useSelfHandToasts({
+    slug,
+    joinKey,
+    handRaised: realtime.myHandRaised,
+    invite: realtime.stageInvite,
+    recording,
+    canRaise: controls.raiseHandEnabled,
+    toggleHand: realtime.toggleHand,
+    dismissInvite: realtime.dismissStageInvite,
+  });
+  useEffect(() => {
+    selfHand.current = announceSelfHand;
+  }, [announceSelfHand]);
   // The audience's polls, for everyone who is not the host. Read here rather than in
   // the panel because a launched poll has to reach somebody who is not looking at the
   // panel — the pop-up is the point — and because the pop-up and the panel should agree
@@ -1062,6 +1154,8 @@ function ConnectedRoom({
     controls.pollsEnabled,
     room,
   );
+  // The post-event survey, for the audience only (the server hides it from the stage).
+  const survey = useAudienceSurvey(slug, joinKey, realtime.surveyRevision, !isHost);
 
   /* The connection, sampled from getStats, and the publish ladder held where it belongs.
    *
@@ -1114,6 +1208,8 @@ function ConnectedRoom({
        * parent before this component mounts, so it is stable anyway. */
       entryVideo,
       recovering,
+      over,
+      markEnding,
       realtime,
       roster,
       polls,
@@ -1131,6 +1227,8 @@ function ConnectedRoom({
     [
       entryVideo,
       recovering,
+      over,
+      markEnding,
       slug,
       join,
       joinKey,
@@ -1162,8 +1260,11 @@ function ConnectedRoom({
     ],
   );
 
-  if (exit) {
-    return <SessionOver reason={exit} onLeave={onLeave} />;
+  // The server announces the end in room metadata before it closes the room, so everyone
+  // lands on the ended screen straight away rather than watching the connection go.
+  const shownExit = exit ?? (status === "ended" ? "ended" : null);
+  if (shownExit) {
+    return <SessionOver reason={shownExit} onLeave={onLeave} slug={slug} joinKey={joinKey} />;
   }
 
   if (failure) {
@@ -1173,6 +1274,7 @@ function ConnectedRoom({
   return (
     <RoomContext.Provider value={room}>
       <RoomUIProvider value={ui}>
+        <HostSurveyProvider enabled={isHost}>
         <RecorderProvider>
           {/* The one subscription to voice activity in the app, publishing a single debounced
               identity for the green border. Wraps the tree rather than sitting inside the stage
@@ -1214,7 +1316,7 @@ function ConnectedRoom({
                       audience receives is captured from a hidden element elsewhere, so
                       none of this can reach a subscriber. */}
                   <FileShareBar />
-                  <ConnectionBanner />
+                  {!connected && <ConnectionBanner />}
                   <MeetingLimitBanner
                     startedAt={startedAt}
                     maxDurationMin={maxDurationMin}
@@ -1231,9 +1333,17 @@ function ConnectedRoom({
                     behind a button. Renders nothing for the stage and nothing when there is
                     no open poll they have yet to answer. */}
                   <PollPopup />
+                  <SurveyPopup
+                    slug={slug}
+                    joinKey={joinKey}
+                    survey={survey.data}
+                    onChange={survey.replace}
+                    enabled={!isHost}
+                  />
+                  {/* The host's side of it: answers coming in, and End. */}
+                  {isHost && <HostSurveyPill />}
                 <CtaPopup />
                 <CaptionOverlay />
-                <StageInviteDialog />
 
                 {/* Applies the stored virtual background to whatever camera track is
                     published, and re-applies it when the track is replaced. Renders nothing;
@@ -1277,6 +1387,7 @@ function ConnectedRoom({
           <AutoStartAudio room={room} />
           </ActiveSpeakerProvider>
         </RecorderProvider>
+        </HostSurveyProvider>
       </RoomUIProvider>
     </RoomContext.Provider>
   );
@@ -1463,13 +1574,17 @@ function LiveClock() {
   );
 }
 
-/** Reconnection state, shown over the stage.
+/** The first connect, shown over the stage.
  *
- *  A silent reconnect is worse than a visible one: people start clicking things
+ *  Only until this browser has been in the room once: after that a drop is the connection
+ *  toast's job (connection-toast.tsx), which waits out blips and says when it is over.
+ *  A silent connect is worse than a visible one: people start clicking things
  *  and end up rejoining, which drops them from the SFU and makes it slower. */
 function ConnectionBanner() {
   const state = useConnectionState();
-  const { recovering } = useRoomUI();
+  const { recovering, over } = useRoomUI();
+  // Ending, the connection closing is the point, not a fault: SessionOver takes over.
+  if (over) return null;
   if (state === ConnectionState.Connected && recovering === null) return null;
 
   /* Our own retry outranks the SDK's state.
@@ -1509,7 +1624,7 @@ type ExitReason = "ended" | "removed" | "duplicate" | "lost";
 /** Asks the API for a credential to reconnect with, or null if it cannot be reached.
  *  Implemented in WebinarRoom, which is the component that knows which gate minted the
  *  first one. See the comment there for why a retry needs a new one at all. */
-type Credential = () => Promise<{ url: string; token: string } | null>;
+type Credential = () => Promise<{ url: string; token: string } | "ended" | null>;
 
 /* Whether the capture behind a track is still running.
  *
@@ -1616,11 +1731,21 @@ const EXIT_COPY: Record<ExitReason, { title: string; body: string }> = {
   },
 };
 
-function SessionOver({ reason, onLeave }: { reason: ExitReason; onLeave: () => void }) {
+function SessionOver({
+  reason,
+  onLeave,
+  slug,
+  joinKey,
+}: {
+  reason: ExitReason;
+  onLeave: () => void;
+  slug: string;
+  joinKey?: string;
+}) {
   const copy = EXIT_COPY[reason];
   return (
-    <main className="grid min-h-dvh place-items-center bg-stage p-6 text-center">
-      <div className="max-w-sm">
+    <main className="grid min-h-dvh place-items-center bg-stage p-4 text-center sm:p-6">
+      <div className="flex w-full max-w-[460px] flex-col items-center">
         <h1 className="text-[18px] font-semibold text-white">{copy.title}</h1>
         <p className="mt-2 text-[13.5px] leading-relaxed text-white/60">{copy.body}</p>
         <div className="mt-5 flex flex-wrap justify-center gap-2">
@@ -1639,6 +1764,9 @@ function SessionOver({ reason, onLeave }: { reason: ExitReason; onLeave: () => v
             Back to webinars
           </button>
         </div>
+        {/* Ended for everyone is when the host's "send at the end" survey goes out, and
+            this screen is where everybody still in the room lands. */}
+        {reason === "ended" && <SessionSurvey slug={slug} joinKey={joinKey} className="mt-6" />}
       </div>
     </main>
   );

@@ -39,6 +39,8 @@ type Module struct {
 	// store is the CRM's own SQL, with the core store embedded for webinar and user reads.
 	store *crmstore.Store
 	log   *slog.Logger
+	// rates fills a cost when Meta names a category but not an amount.
+	rates RateTable
 	/* whatsapp is nil unless all three META_* values are set, and the handlers say so
 	 * rather than offering a Connect button that dead-ends. Every method on it tolerates a
 	 * nil receiver, which is what lets the webhook and the connect endpoint check Enabled()
@@ -67,7 +69,12 @@ func New(cfg config.Config, st *store.Store, log *slog.Logger) *Module {
 		}
 		log.Info("whatsapp connect enabled", "graph", whatsapp.Graph)
 	}
-	return &Module{cfg: cfg, store: crmstore.New(st), log: log, whatsapp: whatsapp}
+	rates, err := ParseRates(cfg.WhatsAppRates)
+	if err != nil {
+		log.Warn("whatsapp rates: using the built-in card", "error", err)
+		rates = DefaultRates()
+	}
+	return &Module{cfg: cfg, store: crmstore.New(st), log: log, whatsapp: whatsapp, rates: rates}
 }
 
 /* featureAllowed is the CRM's copy of the webinar API's per-account switch check: 403
@@ -120,6 +127,9 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Post("/crm/contacts/{id}/send", s.handleCRMSend)
 	host.Get("/crm/reminders", s.handleCRMReminders)
 	host.Put("/crm/reminders", s.handleSetCRMReminders)
+	host.Get("/crm/message-defaults", s.handleMessageDefaults)
+	host.Put("/crm/message-defaults", s.handleSetMessageDefaults)
+	host.Get("/crm/metrics", s.handleCRMMetrics)
 	host.Get("/crm/audience", s.handleCRMAudience)
 	host.Post("/crm/audience", s.handleCRMAudience)
 
@@ -128,8 +138,22 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Get("/crm/people/ids", s.handleCRMPeopleIDs)
 	host.Get("/crm/inbox", s.handleCRMInbox)
 	host.Put("/crm/contacts/{id}/done", s.handleCRMInboxDone)
+	host.Put("/crm/contacts/{id}/snooze", s.handleCRMInboxSnooze)
+	host.Get("/crm/snippets", s.handleCRMSnippets)
+	host.Post("/crm/snippets", s.handleCreateCRMSnippet)
+	host.Put("/crm/snippets/{id}", s.handleUpdateCRMSnippet)
+	host.Delete("/crm/snippets/{id}", s.handleDeleteCRMSnippet)
 	host.Get("/crm/replies", s.handleCRMReplies)
+	host.Get("/crm/summary", s.handleCRMSummary)
 	host.Get("/crm/webinars/{slug}/messages", s.handleCRMWebinarMessages)
+	host.Get("/crm/webinars/{slug}/metrics", s.handleCRMWebinarMetrics)
+	host.Put("/crm/webinars/{slug}/messages", s.handleSetWebinarMessages)
+	host.Get("/crm/webinars/{slug}/followups", s.handleCRMFollowups)
+	host.Get("/crm/recipes", s.handleCRMRecipes)
+	host.Get("/crm/audience/summary", s.handleCRMAudienceSummary)
+	host.Get("/crm/templates/starters", s.handleCRMStarterTemplates)
+	host.Post("/crm/templates/starters", s.handleCreateCRMStarterTemplates)
+	host.Put("/crm/recipes/{id}", s.handleSaveCRMRecipe)
 	host.Post("/crm/test-send", s.handleCRMTestSend)
 	host.Get("/crm/broadcasts", s.handleCRMBroadcasts)
 	host.Post("/crm/broadcasts", s.handleCreateCRMBroadcast)
@@ -178,6 +202,12 @@ func (s *Module) OnRegistered(ctx context.Context, wb types.Webinar, reg types.R
 	}
 	s.log.Info("crm contact", "webinar", wb.ID, "contact", contact.ID,
 		"whatsapp_opt_in", contact.WhatsAppOptIn)
+	// "Registered for N" moves now; scores follow when the webinar is scored.
+	if hostID, err := s.store.HostIDFor(ctx, wb.ID); err == nil {
+		if err := s.store.RefreshEngagementForContact(ctx, hostID, contact.ID); err != nil {
+			s.log.Warn("audience: refresh on registration", "contact", contact.ID, "error", err)
+		}
+	}
 
 	/* Queue their WhatsApp messages, including for a pending registration: the outbox
 	 * sweep requires an approved registration, so the confirmation waits for the host's
@@ -207,17 +237,25 @@ func (s *Module) OnRegistrationsDecided(ctx context.Context, slug string, declin
  * reminders already queued, and queues the times that are new for the opted-in contacts
  * who are due them — the CRM's side of the webinar's replanReminders.
  *
- * The WhatsApp switch off, or no reminder template chosen, means every unsent reminder is
- * dropped; turning either back on and saving queues them again.
+ * A reminder slot that does not send on WhatsApp drops every unsent reminder;
+ * turning it back on and saving queues them again.
  */
 func (s *Module) OnRescheduled(ctx context.Context, wb types.Webinar) {
 	starts, err := time.Parse(time.RFC3339, wb.StartsAt)
 	if err != nil {
 		return
 	}
-	offsets := wb.Options.Reminders
-	if !wb.Options.WhatsAppReminders {
-		offsets = []int{}
+	slots, err := s.ResolveSlots(ctx, wb.ID)
+	if err != nil {
+		s.log.Warn("crm: message slots", "slug", wb.ID, "error", err)
+		return
+	}
+	rem, _ := types.FindSlot(slots, types.SlotReminder)
+	var offsets []int
+	var wording *types.MessageSlot
+	if rem.Sends(types.ChannelWhatsApp) {
+		offsets = rem.BeforeMinutes()
+		wording = &rem
 	}
 	if err := s.store.ReplanWhatsAppReminders(ctx, wb.ID, starts, offsets); err != nil {
 		s.log.Warn("crm: could not replan whatsapp reminders", "slug", wb.ID, "error", err)
@@ -248,7 +286,7 @@ func (s *Module) OnRescheduled(ctx context.Context, wb types.Webinar) {
 			}
 			contacts[g.ContactID] = c
 		}
-		s.queueWhatsApp(ctx, hostID, wb, c, g.RegistrationID, types.NotifyWhatsAppReminder, g.OffsetMin)
+		s.queueWhatsApp(ctx, hostID, wb, c, g.RegistrationID, types.NotifyWhatsAppReminder, g.OffsetMin, wording)
 	}
 }
 
@@ -283,6 +321,9 @@ func (s *Module) DecorateRegistrants(ctx context.Context, host store.User, slug 
  * flushed, so a step that came due in the last thirty seconds goes out on this tick; bots
  * go after drips so a flow that enrols somebody and then waits is not a tick behind. */
 func (s *Module) Tick(ctx context.Context) {
+	// Before anything is sent: a number Meta is not posting to never gets the
+	// replies those sends are waiting on. See EnsureWhatsAppSubscriptions.
+	s.EnsureWhatsAppSubscriptions(ctx)
 	s.AdvanceDrips(ctx)
 	s.AdvanceBots(ctx)
 	s.flushWhatsAppOutbox(ctx)

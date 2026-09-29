@@ -21,12 +21,22 @@ export interface CRMPerson {
    */
   webinars: number /* int */;
   /**
+   * * How many of those they joined: "came to 2 of 3".
+   */
+  attendedWebinars: number /* int */;
+  /**
    * * The latest of those, by start time. Empty when there are none.
    */
   lastWebinar?: string;
   lastWebinarId?: string;
   attended: boolean;
   watchMin: number /* int */;
+  /**
+   * * Across webinars, from the Audience rollup: average score over the ones they joined
+   * 	 *  (0 when none), and their latest tier.
+   */
+  avgScore: number /* int */;
+  tier?: string;
 }
 /**
  *  People filters. Everyone is the empty filter.
@@ -45,6 +55,22 @@ export const PeopleReplied = "replied";
  */
 export const PeopleOptedIn = "opted_in";
 /**
+ * * Tagged by the hot-lead recipe.
+ */
+export const PeopleHotLeads = "hot_leads";
+/**
+ * * Came 2+ and average score 50+ (the Audience tab's "best people").
+ */
+export const PeopleHighlyEngaged = "highly_engaged";
+/**
+ * * Came to 2 or more.
+ */
+export const PeopleCameBack = "came_back";
+/**
+ * * Registered 2+ and never came.
+ */
+export const PeopleSlipping = "slipping";
+/**
  * CRMPeopleCounts are the chips over the People list, counted through the webinar filter
  * but not the search box or the chosen chip.
  */
@@ -54,6 +80,10 @@ export interface CRMPeopleCounts {
   neverAttended: number /* int */;
   replied: number /* int */;
   optedIn: number /* int */;
+  hotLeads: number /* int */;
+  highlyEngaged: number /* int */;
+  cameBack: number /* int */;
+  slipping: number /* int */;
 }
 /**
  * CRMWebinarRef names one of the host's webinars for a filter menu.
@@ -102,6 +132,14 @@ export const InboxAll = "all";
  */
 export const InboxDone = "done";
 /**
+ * * Waiting on the host but snoozed until later.
+ */
+export const InboxSnoozed = "snoozed";
+/**
+ * * Tagged by the hot-lead recipe.
+ */
+export const InboxHotLeads = "hot_leads";
+/**
  * CRMInboxThread is one row of the Messages tab.
  */
 export interface CRMInboxThread {
@@ -114,11 +152,51 @@ export interface CRMInboxThread {
    */
   webinar?: string;
   webinarId?: string;
+  /**
+   * * RFC3339 when a snooze is running, else empty.
+   */
+  snoozedUntil?: string;
+  /**
+   * * Tagged by the hot-lead recipe.
+   */
+  hotLead: boolean;
 }
 export interface CRMInboxCounts {
   needsReply: number /* int */;
   all: number /* int */;
   done: number /* int */;
+  snoozed: number /* int */;
+  hotLeads: number /* int */;
+}
+/**
+ * CRMSnoozeRequest snoozes a conversation until a time, or wakes it with an empty until.
+ */
+export interface CRMSnoozeRequest {
+  /**
+   * * RFC3339, in the future and within 30 days; empty wakes it now.
+   */
+  until: string;
+}
+/**
+ *  CRMSnippet is one of the host's saved quick replies.
+ */
+export interface CRMSnippet {
+  id: string;
+  title: string;
+  body: string;
+}
+/**
+ * CRMSnippetsResponse is the host's quick replies, in their order.
+ */
+export interface CRMSnippetsResponse {
+  snippets: CRMSnippet[];
+}
+/**
+ * CRMSnippetRequest writes one quick reply.
+ */
+export interface CRMSnippetRequest {
+  title: string;
+  body: string;
 }
 export interface CRMInboxResponse {
   threads: CRMInboxThread[];
@@ -131,6 +209,9 @@ export interface CRMInboxResponse {
    * 	 *  typed on the phone, and show up here.
    */
   coexistence: boolean;
+  /** Where this page starts, and how many threads the current view holds. */
+  offset: number;
+  total: number;
 }
 /**
  * CRMDoneRequest marks a conversation done, or reopens it.
@@ -144,6 +225,10 @@ export interface CRMDoneRequest {
 export interface CRMReplyAlert {
   contactId: string;
   name: string;
+  /**
+   * * Their last message, for a one-line preview.
+   */
+  preview?: string;
   webinar?: string;
   webinarId?: string;
   at: string;
@@ -198,7 +283,12 @@ export interface CRMWebinarMessagesResponse {
    * * Conversations with this webinar's people that need a reply, newest first.
    */
   waiting: CRMReplyAlert[];
+  results: CRMWebinarResults;
   whatsappConnected: boolean;
+  /**
+   * * Resolved message slots for this webinar, and which layer each field came from.
+   */
+  slots: MessageSlot[];
 }
 /**
  *  CRMTestSendRequest sends a template once to the host's own number, to see it.
@@ -217,6 +307,1151 @@ export interface CRMThreadMeta {
   webinars: number /* int */;
   watchMin: number /* int */;
   needsReply: boolean;
+  /**
+   * * Their webinars with this host, newest first: the profile panel's watch bars and
+   * 	 *  the thread's day markers ("Joined live, watched 55 of 60 min").
+   */
+  history: CRMThreadWebinar[];
+}
+/**
+ *  CRMThreadWebinar is one webinar a person registered for.
+ */
+export interface CRMThreadWebinar {
+  id: string;
+  topic: string;
+  startsAt: string;
+  durationMin: number /* int */;
+  ended: boolean;
+  joined: boolean;
+  watchMin: number /* int */;
+}
+/**
+ *  CRMWebinarResults is what WhatsApp did for one webinar: the Messages tab's results
+ *  * panel and the journey's Live step. Show-up is split by whether a WhatsApp reminder
+ *  * actually reached the registrant, which is the comparison a coach is paying for.
+ */
+export interface CRMWebinarResults {
+  registered: number /* int */;
+  joined: number /* int */;
+  avgWatchMin: number /* int */;
+  /**
+   * * Registrants a WhatsApp reminder was sent to, and how many of them joined.
+   */
+  reminded: number /* int */;
+  remindedJoined: number /* int */;
+  /**
+   * * Everybody else (email only), and how many of them joined.
+   */
+  others: number /* int */;
+  othersJoined: number /* int */;
+  /**
+   * * Messages about this webinar that left: automatic and follow-ups.
+   */
+  sent: number /* int */;
+  read: number /* int */;
+  /**
+   * * Of those, template messages — the ones Meta bills — by category.
+   */
+  marketing: number /* int */;
+  utility: number /* int */;
+  /**
+   * * People who wrote back after the first message about this webinar.
+   */
+  replied: number /* int */;
+}
+/**
+ *  CRMSummaryResponse is the Hosting home's "WhatsApp this week" card.
+ */
+export interface CRMSummaryResponse {
+  days: number /* int */;
+  sent: number /* int */;
+  read: number /* int */;
+  /**
+   * * People who wrote in during the period.
+   */
+  replied: number /* int */;
+  needsReply: number /* int */;
+  newOptIns: number /* int */;
+  connected: boolean;
+  /**
+   * * The next thing that will go out: a reminder or a scheduled follow-up.
+   */
+  nextSendAt?: string;
+  nextSendLabel?: string;
+}
+/**
+ *  CRMFollowupGroup is one card of the Engagement tab's Follow up: an engagement tier, or
+ *  * the no-shows, as the segment a send resolves — so the card, the count in the send
+ *  * dialog and the people messaged are the same.
+ */
+export interface CRMFollowupGroup {
+  /**
+   * * `high`, `engaged`, `passive`, `risk` or `no_show`.
+   */
+  id: EngagementTier;
+  segment: CRMSegment;
+  /**
+   * * Who in the group WhatsApp can reach, in the audience's four buckets.
+   */
+  audience: CRMAudienceResponse;
+  /**
+   * * A few reachable people, for the card's faces. Params is empty.
+   */
+  faces: CRMAudienceSample[];
+  /**
+   * * The latest follow-up sent or scheduled to exactly this group; nil when none.
+   */
+  broadcast?: CRMBroadcast;
+}
+/**
+ *  CRMFollowupsResponse is the Engagement tab's Follow up section.
+ */
+export interface CRMFollowupsResponse {
+  webinarId: string;
+  /**
+   * * False until the webinar's engagement has been computed: tiers match nobody yet.
+   */
+  scored: boolean;
+  groups: CRMFollowupGroup[];
+  whatsappConnected: boolean;
+}
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeReminders = "reminders";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeNoShow = "replay_no_show";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeHigh = "offer_high";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeEngaged = "thanks_engaged";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipePassive = "replay_passive";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeRisk = "replay_risk";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeKeywords = "keyword_replies";
+/**
+ *  A recipe is a ready-made automation a host turns on: a preset over the drip and bot
+ *  * engines (and one small rule of its own), so a coach starts from "Replay for people who
+ *  * missed it" rather than an empty builder. See migrations/0062.
+ */
+export const RecipeHotLeads = "hot_leads";
+/**
+ *  CRMRecipe is one card on the Automations page.
+ */
+export interface CRMRecipe {
+  /**
+   * * One of the Recipe constants.
+   */
+  id: string;
+  title: string;
+  /**
+   * * The flow in a few words, one per step: "Didn't join", "2 h after end", "Replay link".
+   */
+  flow: string[];
+  /**
+   * * `followup` (a drip after every webinar), `reminders` (the reminder settings),
+   * 	 *  `keywords` (a bot) or `hot_leads` (a tagging rule).
+   */
+  kind: string;
+  /**
+   * * The Follow up group a `followup` recipe is for: an engagement tier or `no_show`.
+   */
+  group?: EngagementTier;
+  /**
+   * * Whether it is running.
+   */
+  active: boolean;
+  /**
+   * * Set up but paused, so turning it on keeps what was chosen.
+   */
+  configured: boolean;
+  /**
+   * * A line from the coach's own data: "Would have reached 4 people from Morning Routines".
+   */
+  hint?: string;
+  /**
+   * * For `followup`: the template, its params, and minutes after the end.
+   */
+  template?: string;
+  language?: string;
+  params?: CRMParam[];
+  delayMin?: number /* int */;
+  /**
+   * * For `keywords`: word → reply. For `hot_leads`: the words.
+   */
+  keywords?: CRMRecipeKeyword[];
+  words?: string[];
+  /**
+   * * The drip or bot behind it, for "Open in builder".
+   */
+  dripId?: string;
+  botId?: string;
+  /**
+   * * Sent so far by the drip, or people tagged by the rule.
+   */
+  sent: number /* int */;
+}
+/**
+ *  CRMRecipeKeyword is one keyword reply: a word someone sends and what is sent back.
+ */
+export interface CRMRecipeKeyword {
+  word: string;
+  reply: string;
+}
+/**
+ *  CRMRecipesResponse is the Automations page.
+ */
+export interface CRMRecipesResponse {
+  recipes: CRMRecipe[];
+  whatsappConnected: boolean;
+}
+/**
+ *  CRMRecipeRequest turns a recipe on or off, with the choices it needs.
+ */
+export interface CRMRecipeRequest {
+  active: boolean;
+  template?: string;
+  language?: string;
+  params?: CRMParam[];
+  delayMin?: number /* int */;
+  keywords?: CRMRecipeKeyword[];
+  words?: string[];
+}
+/**
+ *  CRMStarterTemplate is one of the ready-made templates a host can submit to Meta from
+ *  * the Templates tab. Params are the merge fields to fill each {{n}} with.
+ */
+export interface CRMStarterTemplate {
+  name: string;
+  category: string;
+  /**
+   * * What it is for: Confirmation, Reminder, Replay, Follow up.
+   */
+  use: string;
+  body: string;
+  params: string[];
+  examples: string[];
+  buttons: CRMTemplateButton[];
+  /**
+   * * Meta's status once created (PENDING, APPROVED, REJECTED); empty when not yet.
+   */
+  status?: string;
+  /**
+   * * Meta's refusal, when submitting it failed.
+   */
+  error?: string;
+}
+export interface CRMStarterTemplatesResponse {
+  templates: CRMStarterTemplate[];
+}
+/**
+ *  CRMAudienceSummary is the Audience tab: engagement across the host's webinars, read from
+ *  * the per-person rollup (migrations/0065) and the saved per-webinar snapshots.
+ */
+export interface CRMAudienceSummary {
+  /**
+   * * People who registered for at least one webinar.
+   */
+  people: number /* int */;
+  /**
+   * * Came to 2 or more.
+   */
+  cameBack: number /* int */;
+  /**
+   * * Came 2+ and average score 50+, and registered 2+ but never came.
+   */
+  bestCount: number /* int */;
+  slippingCount: number /* int */;
+  /**
+   * * Came to a webinar in the last 30 days.
+   */
+  activeMonth: number /* int */;
+  /**
+   * * Over the webinars in Webinars: attended / registered, and the average session index.
+   */
+  showUpPct: number /* int */;
+  avgIndex: number /* int */;
+  webinars: CRMAudienceWebinar[];
+  best: CRMAudiencePerson[];
+  slipping: CRMAudiencePerson[];
+}
+export interface CRMAudienceWebinar {
+  id: string;
+  topic: string;
+  startsAt: string;
+  registered: number /* int */;
+  attended: number /* int */;
+  index: number /* int */;
+}
+export interface CRMAudiencePerson {
+  contactId: string;
+  name: string;
+  registered: number /* int */;
+  attended: number /* int */;
+  avgScore: number /* int */;
+  tier?: string;
+}
+
+//////////
+// source: engagement.go
+
+/**
+ * * `high`, `engaged`, `passive`, `risk`; `no_show` only ever appears as a count.
+ */
+export type EngagementTier = string;
+export const TierHigh: EngagementTier = "high";
+export const TierEngaged: EngagementTier = "engaged";
+export const TierPassive: EngagementTier = "passive";
+export const TierRisk: EngagementTier = "risk";
+export const TierNoShow: EngagementTier = "no_show";
+/**
+ * * `excellent`, `strong`, `good`, `attention` — the band of the session index.
+ */
+export type EngagementBand = string;
+export const BandExcellent: EngagementBand = "excellent";
+export const BandStrong: EngagementBand = "strong";
+export const BandGood: EngagementBand = "good";
+export const BandAttention: EngagementBand = "attention";
+/**
+ * * Why a summary has no numbers yet. Empty when it does.
+ */
+export type EngagementState = string;
+export const EngagementReady: EngagementState = "ready";
+export const EngagementNotStarted: EngagementState = "not_started";
+export const EngagementNoAudience: EngagementState = "no_audience";
+export interface EngagementWebinar {
+  slug: string;
+  title: string;
+  hostName: string;
+  timeZone: string;
+  status: string;
+  startedAt?: string;
+  endedAt?: string;
+  /**
+   * * Length of the live window in whole minutes (at least 1 once started).
+   */
+  sessionMin: number /* int */;
+}
+export interface EngagementKPIs {
+  registered: number /* int */;
+  attended: number /* int */;
+  noShows: number /* int */;
+  attendanceRatePct: number /* int */;
+  avgWatchMin: number /* int */;
+  medianWatchMin: number /* int */;
+  avgWatchPct: number /* int */;
+  stayedPastHalfPct: number /* int */;
+  peakLive: number /* int */;
+  peakMinute: number /* int */;
+  chatMessages: number /* int */;
+  chatters: number /* int */;
+  /**
+   * * Messages from the host and panelists: not in any audience figure, but shown so a
+   * 	 * session where only the stage chatted doesn't read as unused chat.
+   */
+  stageChatMessages?: number /* int */;
+  questions: number /* int */;
+  answeredQuestions: number /* int */;
+  upvotes: number /* int */;
+  /**
+   * * -1 when no poll ran.
+   */
+  pollResponsePct: number /* int */;
+  /**
+   * * -1 when no quiz ran.
+   */
+  quizAccuracyPct: number /* int */;
+  /**
+   * * Distinct attendees who answered at least one poll or quiz — the old Report's "poll
+   * 	 * voters". Absent from snapshots stored before it existed.
+   */
+  pollVoters?: number /* int */;
+  reactions: number /* int */;
+  handRaises: number /* int */;
+}
+/**
+ * * One retention sample: people in the room at Minute.
+ */
+export interface EngagementPoint {
+  minute: number /* int */;
+  live: number /* int */;
+}
+/**
+ * * Arrivals whose first join fell in [FromMin, FromMin+width). Open means "and later".
+ */
+export interface EngagementJoinBucket {
+  fromMin: number /* int */;
+  count: number /* int */;
+  open?: boolean;
+}
+export interface EngagementJoinSplit {
+  early: number /* int */;
+  onTime: number /* int */;
+  late: number /* int */;
+}
+/**
+ * * Interactions per bucket of BucketMin minutes from minute 0, one array per type.
+ */
+export interface EngagementActivity {
+  bucketMin: number /* int */;
+  chat: number /* int */[];
+  qa: number /* int */[];
+  poll: number /* int */[];
+  reaction: number /* int */[];
+}
+/**
+ * * `poll`, `quiz`, `qa`, `offer`, `rating`.
+ */
+export interface EngagementMarker {
+  minute: number /* int */;
+  kind: string;
+  label: string;
+}
+export interface EngagementTierCounts {
+  high: number /* int */;
+  engaged: number /* int */;
+  passive: number /* int */;
+  risk: number /* int */;
+  noShow: number /* int */;
+}
+export interface EngagementMoment {
+  minute: number /* int */;
+  actions: number /* int */;
+  /**
+   * * The type that contributed most: chat, qa, poll or reaction.
+   */
+  kind: string;
+}
+export interface EngagementDrop {
+  minute: number /* int */;
+  lost: number /* int */;
+}
+export interface EngagementRecap {
+  pollId: string;
+  question: string;
+  correctPct: number /* int */;
+}
+export interface EngagementCallouts {
+  bestMoment?: EngagementMoment;
+  biggestDrop?: EngagementDrop;
+  needsRecap?: EngagementRecap;
+}
+export interface EngagementPoll {
+  id: string;
+  kind: string;
+  question: string;
+  options: string[];
+  correct?: number /* int */;
+  votes: number /* int */[];
+  minute: number /* int */;
+  /**
+   * * Attendees in the room when it opened: the response-rate denominator.
+   */
+  liveAtOpen: number /* int */;
+}
+export interface EngagementCount {
+  label: string;
+  count: number /* int */;
+}
+/**
+ * * One emoji's reactions per bucket of the enclosing BucketMin.
+ */
+export interface EngagementEmojiSeries {
+  emoji: string;
+  total: number /* int */;
+  counts: number /* int */[];
+}
+export interface EngagementReactions {
+  bucketMin: number /* int */;
+  series: EngagementEmojiSeries[];
+}
+export interface EngagementChatLine {
+  minute: number /* int */;
+  name: string;
+  text: string;
+}
+export interface EngagementChat {
+  bucketMin: number /* int */;
+  perBucket: number /* int */[];
+  topChatters: EngagementCount[];
+  latest: EngagementChatLine[];
+}
+/**
+ * * A question as the dashboard lists it. Name is empty for an anonymous question.
+ */
+export interface EngagementQuestion {
+  id: string;
+  minute: number /* int */;
+  name: string;
+  text: string;
+  upvotes: number /* int */;
+  answered: boolean;
+}
+/**
+ * * One score component as configured for this session, after redistribution.
+ */
+export interface EngagementWeight {
+  key: string;
+  label: string;
+  baseWeight: number /* float64 */;
+  /**
+   * * Zero when the tool was not used in this session.
+   */
+  weight: number /* float64 */;
+  /**
+   * * Plain-language rule, e.g. "max at 5 messages".
+   */
+  rule: string;
+}
+/**
+ * * The column layout the attendee heatmap rows are bucketed on.
+ */
+export interface EngagementAxis {
+  bucketMin: number /* int */;
+  /**
+   * * Minute offset of column 0 (negative when lobby columns are included).
+   */
+  startMin: number /* int */;
+  columns: number /* int */;
+  /**
+   * * Columns before minute 0.
+   */
+  lobbyColumns: number /* int */;
+}
+/**
+ * * GET /api/host/webinars/{slug}/engagement
+ */
+export interface EngagementSummary {
+  formulaVersion: number /* int */;
+  computedAt: string;
+  state: EngagementState;
+  webinar: EngagementWebinar;
+  index: number /* int */;
+  band: EngagementBand;
+  kpis: EngagementKPIs;
+  retentionStep: number /* int */;
+  retention: EngagementPoint[];
+  joinHistogram: EngagementJoinBucket[];
+  joinBucketMin: number /* int */;
+  joinSplit: EngagementJoinSplit;
+  activity: EngagementActivity;
+  markers: EngagementMarker[];
+  tiers: EngagementTierCounts;
+  callouts: EngagementCallouts;
+  polls: EngagementPoll[];
+  reactions: EngagementReactions;
+  chat: EngagementChat;
+  questions: EngagementQuestion[];
+  weights: EngagementWeight[];
+  axis: EngagementAxis;
+}
+export interface EngagementCounts {
+  chats: number /* int */;
+  questions: number /* int */;
+  upvotes: number /* int */;
+  polls: number /* int */;
+  pollsPresent: number /* int */;
+  quizCorrect: number /* int */;
+  quizAnswered: number /* int */;
+  quizPresent: number /* int */;
+  reactions: number /* int */;
+  hands: number /* int */;
+  /**
+   * * Post-event survey: submitted, or (link mode) only opened; Rating is 1–5, 0 for none.
+   */
+  surveyDone?: boolean;
+  surveyClicked?: boolean;
+  rating?: number /* int */;
+}
+/**
+ * * `early`, `on_time` or `late`.
+ */
+export type JoinTiming = string;
+export const JoinEarly: JoinTiming = "early";
+export const JoinOnTime: JoinTiming = "on_time";
+export const JoinLate: JoinTiming = "late";
+/**
+ * * One heatmap row. Presence is percent of each Axis column present (0..100).
+ */
+export interface EngagementAttendeeRow {
+  identity: string;
+  name: string;
+  email?: string;
+  score: number /* int */;
+  tier: EngagementTier;
+  watchMin: number /* int */;
+  firstJoinMin: number /* int */;
+  lastLeaveMin: number /* int */;
+  joinTiming: JoinTiming;
+  visits: number /* int */;
+  counts: EngagementCounts;
+  presence: number /* int */[];
+  intensity: number /* int */[];
+}
+/**
+ * * `score`, `name`, `watch`, `join`.
+ */
+export type EngagementSort = string;
+export const SortScore: EngagementSort = "score";
+export const SortName: EngagementSort = "name";
+export const SortWatch: EngagementSort = "watch";
+export const SortJoin: EngagementSort = "join";
+/**
+ * * GET /engagement/attendees?sort=&dir=&tier=&q=&cursor=&limit=
+ */
+export interface EngagementAttendeePage {
+  rows: EngagementAttendeeRow[];
+  /**
+   * * Rows matching the filters, across every page.
+   */
+  total: number /* int */;
+  nextCursor?: string;
+  axis: EngagementAxis;
+}
+export interface EngagementComponent {
+  key: string;
+  label: string;
+  weight: number /* float64 */;
+  ratio: number /* float64 */;
+  points: number /* float64 */;
+  detail: string;
+}
+/**
+ * * `join`, `leave`, `chat`, `question`, `upvote`, `poll`, `quiz`, `reaction`, `hand`, `stage`.
+ */
+export type EngagementEventKind = string;
+export const EventJoin: EngagementEventKind = "join";
+export const EventLeave: EngagementEventKind = "leave";
+export const EventChat: EngagementEventKind = "chat";
+export const EventQuestion: EngagementEventKind = "question";
+export const EventUpvote: EngagementEventKind = "upvote";
+export const EventPoll: EngagementEventKind = "poll";
+export const EventQuiz: EngagementEventKind = "quiz";
+export const EventReaction: EngagementEventKind = "reaction";
+export const EventHand: EngagementEventKind = "hand";
+export const EventStage: EngagementEventKind = "stage";
+export interface EngagementTimelineEvent {
+  /**
+   * * Seconds from the start, so sub-minute order survives.
+   */
+  atSec: number /* int */;
+  kind: EngagementEventKind;
+  text: string;
+  correct?: boolean;
+  emoji?: string;
+}
+export interface EngagementVisitSpan {
+  fromMin: number /* int */;
+  /**
+   * * Absent (-1) while still in the room.
+   */
+  toMin: number /* int */;
+}
+/**
+ * * GET /engagement/attendees/{identity}
+ */
+export interface EngagementAttendeeDetail {
+  row: EngagementAttendeeRow;
+  components: EngagementComponent[];
+  visits: EngagementVisitSpan[];
+  timeline: EngagementTimelineEvent[];
+  /**
+   * * True when the timeline hit its cap and older entries were dropped.
+   */
+  truncated?: boolean;
+  /**
+   * * Nil when the person has no CRM contact to consult.
+   */
+  whatsAppOptIn?: boolean;
+  reactions: EngagementCount[];
+  sessionMin: number /* int */;
+}
+
+//////////
+// source: metrics.go
+
+export interface CRMMetricsResponse {
+  from?: string;
+  to: string;
+  sent: number /* int */;
+  delivered: number /* int */;
+  read: number /* int */;
+  failed: number /* int */;
+  costMicros: number /* int64 */;
+  costEstimated: boolean;
+  currency: string;
+  failures: CRMFailure[];
+}
+/**
+ *  CRMFailure is one grouped reason messages did not arrive, with a fix in
+ *  * plain language. Code is Meta's error code when the stored text has one.
+ */
+export interface CRMFailure {
+  code: string;
+  reason: string;
+  count: number /* int */;
+  fix: string;
+}
+/**
+ *  CRMWebinarMetricsResponse is one webinar's WhatsApp numbers.
+ *  *
+ *  * The same aggregate as CRMMetricsResponse, limited to messages stored against
+ *  * this webinar, plus how many people they went to and how the sent count splits
+ *  * across confirmation, reminders, replay and follow-ups. Follow-ups are the
+ *  * drip steps and the broadcasts sent for this webinar. A message with no
+ *  * notification kind still counts in the totals; it is not one of the four.
+ */
+export interface CRMWebinarMetricsResponse {
+  sent: number /* int */;
+  delivered: number /* int */;
+  read: number /* int */;
+  failed: number /* int */;
+  costMicros: number /* int64 */;
+  costEstimated: boolean;
+  currency: string;
+  failures: CRMFailure[];
+  people: number /* int */;
+  byKind: CRMMetricsByKind;
+}
+/**
+ *  CRMMetricsByKind is the sent count for each automatic message, in the order
+ *  * they happen. Sent only: queued rows are not in any of these.
+ */
+export interface CRMMetricsByKind {
+  confirmation: number /* int */;
+  reminders: number /* int */;
+  replay: number /* int */;
+  followUps: number /* int */;
+}
+
+//////////
+// source: slots.go
+
+export const SlotConfirmation = "confirmation";
+export const SlotReminder = "reminder";
+export const SlotReplay = "replay";
+export const SlotFollowupHigh = "followup_high";
+export const SlotFollowupEngaged = "followup_engaged";
+export const SlotFollowupPassive = "followup_passive";
+export const SlotFollowupRisk = "followup_risk";
+export const SlotFollowupNoShow = "followup_no_show";
+export const ChannelEmail = "email";
+export const ChannelWhatsApp = "whatsapp";
+export const TimingImmediate = "immediate";
+export const TimingBefore = "before";
+export const TimingOnPublish = "on_publish";
+export const TimingAfterEnd = "after_end";
+export const TimingNextMorning = "next_morning";
+/**
+ *  Where a resolved field came from. options is the legacy WebinarOptions read,
+ * 	 * used for confirmation and reminder when the webinar has no settings row yet.
+ */
+export const LayerBuiltin = "builtin";
+export const LayerDefault = "default";
+export const LayerOptions = "options";
+export const LayerWebinar = "webinar";
+/**
+ *  MessageTiming is when a slot sends.
+ *  *
+ *  * before carries minutes as a list (largest first). after_end carries minutes as
+ *  * one number on the wire. next_morning carries the hour in the webinar's time zone.
+ */
+export interface MessageTiming {
+  type: string;
+  /**
+   * * Minutes before the start (a list) or after the end (one number on the wire).
+   */
+  minutes?: number /* int */[];
+  /**
+   * * Hour of the morning after the webinar, 0–23, for next_morning.
+   */
+  hour?: number /* int */;
+}
+/**
+ *  MessageSlot is one resolved attendee message.
+ *  *
+ *  * Source is the highest layer that contributed a field. Layers says which layer
+ *  * each field came from, so a webinar that only overrides timing still shows the
+ *  * wording as the account default.
+ */
+export interface MessageSlot {
+  kind: string;
+  channels: string[];
+  timing: MessageTiming;
+  template: string;
+  language: string;
+  params: string[];
+  enabled: boolean;
+  source: string;
+  layers: MessageSlotLayers;
+}
+/**
+ *  MessageSlotLayers names the layer of each field: builtin, default, options or webinar.
+ */
+export interface MessageSlotLayers {
+  channels: string;
+  timing: string;
+  template: string;
+  language: string;
+  params: string;
+  enabled: string;
+}
+/**
+ *  MessageSlotPatch is one webinar override. A null or omitted field is stored as
+ *  * NULL and resolved from the account default.
+ */
+export interface MessageSlotPatch {
+  kind: string;
+  channels?: string[];
+  timing?: MessageTiming;
+  template?: string;
+  language?: string;
+  params?: string[];
+  enabled?: boolean;
+}
+/**
+ *  MessageDefaultsResponse is the coach's defaults, one slot per kind.
+ */
+export interface MessageDefaultsResponse {
+  slots: MessageSlot[];
+}
+/**
+ *  MessageDefaultsRequest replaces the kinds it names. Kinds left out are unchanged.
+ */
+export interface MessageDefaultsRequest {
+  slots: MessageSlot[];
+}
+/**
+ *  WebinarMessagesRequest replaces the override row for each named kind.
+ */
+export interface WebinarMessagesRequest {
+  slots: MessageSlotPatch[];
+}
+/**
+ *  WebinarSlotsResponse is the resolved slots for one webinar.
+ */
+export interface WebinarSlotsResponse {
+  webinarId: string;
+  slots: MessageSlot[];
+}
+
+//////////
+// source: survey.go
+
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyQuestions = 5;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyOptions = 6;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyPromptChars = 200;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyOptionChars = 80;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyTitleChars = 120;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyButtonChars = 40;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyURLChars = 2048;
+/**
+ * * Limits, enforced by the API and mirrored by the builder so the host is told before saving.
+ */
+export const MaxSurveyTextAnswerChars = 1000;
+/**
+ * * `builtin` (rating + questions) or `link` (an external form).
+ */
+export type SurveyMode = string;
+export const SurveyBuiltin: SurveyMode = "builtin";
+export const SurveyLink: SurveyMode = "link";
+/**
+ * * `draft` (not sent), `live` (attendees can answer) or `closed` (no more answers).
+ */
+export type SurveyStatus = string;
+export const SurveyDraft: SurveyStatus = "draft";
+export const SurveyLive: SurveyStatus = "live";
+export const SurveyClosed: SurveyStatus = "closed";
+/**
+ * * `manual`: the host puts it on screen from the room, usually just before ending (the
+ *  *  recommended way: people answer while they are still there);
+ *  *  `at_minute`: sent automatically SendAfterMin minutes after the webinar goes live;
+ *  *  `on_end`: sent when the host ends the webinar (and offered to anyone who leaves early).
+ *  *  Whichever is chosen, the host can still send it early from the room.
+ */
+export type SurveySendAt = string;
+export const SurveyOnEnd: SurveySendAt = "on_end";
+export const SurveyManual: SurveySendAt = "manual";
+export const SurveyAtMinute: SurveySendAt = "at_minute";
+/**
+ * * The latest minute an at_minute survey may be set for: ten hours.
+ */
+export const MaxSurveySendAfterMin = 600;
+/**
+ * * `rating_5` (1–5), `nps_10` (0–10), `single_choice` (an option index) or `text`.
+ */
+export type SurveyQuestionKind = string;
+export const SurveyRating5: SurveyQuestionKind = "rating_5";
+export const SurveyNPS10: SurveyQuestionKind = "nps_10";
+export const SurveySingleChoice: SurveyQuestionKind = "single_choice";
+export const SurveyText: SurveyQuestionKind = "text";
+export interface SurveyQuestion {
+  id: string;
+  kind: SurveyQuestionKind;
+  prompt: string;
+  required: boolean;
+  /**
+   * * Only for single_choice; empty otherwise.
+   */
+  options: string[];
+}
+export interface Survey {
+  id: string;
+  mode: SurveyMode;
+  title: string;
+  buttonLabel: string;
+  externalUrl: string;
+  askRating: boolean;
+  status: SurveyStatus;
+  sendAt: SurveySendAt;
+  /**
+   * * at_minute only: minutes after going live; 0 otherwise.
+   */
+  sendAfterMin: number /* int */;
+  /**
+   * * Only in builtin mode; always empty for link mode.
+   */
+  questions: SurveyQuestion[];
+  launchedAt?: string;
+  closedAt?: string;
+  updatedAt: string;
+  /**
+   * * Host view only: submitted responses and link clicks. Zero for the audience.
+   */
+  responses: number /* int */;
+  linkClicks: number /* int */;
+  /**
+   * * Host view only: once anyone has answered, the mode, the rating toggle and the questions
+   * 	 *  are fixed so every answer means what it meant when it was given.
+   */
+  locked: boolean;
+}
+export interface SurveyQuestionInput {
+  /**
+   * * The id of an existing question being kept; empty for a new one.
+   */
+  id?: string;
+  kind: SurveyQuestionKind;
+  prompt: string;
+  required: boolean;
+  options?: string[];
+}
+/**
+ * * PUT /api/host/webinars/{slug}/survey. The whole configuration, replacing what was there.
+ */
+export interface SurveyInput {
+  mode: SurveyMode;
+  title: string;
+  buttonLabel: string;
+  externalUrl: string;
+  askRating: boolean;
+  sendAt: SurveySendAt;
+  /**
+   * * Required for at_minute (1..MaxSurveySendAfterMin); ignored otherwise.
+   */
+  sendAfterMin?: number /* int */;
+  questions: SurveyQuestionInput[];
+}
+/**
+ * * GET /api/host/webinars/{slug}/survey. Survey is absent when none has been set up.
+ */
+export interface HostSurvey {
+  survey?: Survey;
+  /**
+   * * Attendees who have been in the room: the response-rate denominator.
+   */
+  attended: number /* int */;
+}
+/**
+ * * One answer as sent: Number for rating_5, nps_10 and single_choice (the option index),
+ *  *  Text for text.
+ */
+export interface SurveyAnswerInput {
+  questionId: string;
+  number?: number /* int */;
+  text?: string;
+}
+/**
+ * * POST /api/webinars/{slug}/survey/responses.
+ */
+export interface SurveySubmitRequest {
+  joinKey?: string;
+  /**
+   * * 1–5. Required in builtin mode and in link mode with AskRating.
+   */
+  rating?: number /* int */;
+  answers: SurveyAnswerInput[];
+}
+/**
+ * * POST /api/webinars/{slug}/survey/click.
+ */
+export interface SurveyClickRequest {
+  joinKey?: string;
+}
+/**
+ * * What the caller has already done, so a reload never asks twice.
+ */
+export interface MySurveyResponse {
+  submitted: boolean;
+  rating?: number /* int */;
+  linkClicked: boolean;
+  submittedAt?: string;
+}
+/**
+ * * GET /api/webinars/{slug}/survey — the audience's view.
+ *  *
+ *  *  Survey is present when it is live, or when it is armed to go out at the end (status draft,
+ *  *  sendAt on_end): an attendee leaving early is offered it then. Live says which, so the room
+ *  *  only pops it up once it is really sent. Absent otherwise, and always for the stage.
+ */
+export interface AudienceSurvey {
+  survey?: Survey;
+  live: boolean;
+  mine: MySurveyResponse;
+}
+export interface SurveyChoiceCount {
+  label: string;
+  count: number /* int */;
+}
+/**
+ * * NPS: the percentage of promoters (9–10) minus the percentage of detractors (0–6).
+ */
+export interface SurveyNPS {
+  score: number /* int */;
+  promoters: number /* int */;
+  passives: number /* int */;
+  detractors: number /* int */;
+  responses: number /* int */;
+}
+export interface SurveyQuestionResult {
+  id: string;
+  kind: SurveyQuestionKind;
+  prompt: string;
+  answered: number /* int */;
+  /**
+   * * rating_5 and nps_10: the mean, one decimal; -1 when nobody answered.
+   */
+  average: number /* float64 */;
+  /**
+   * * rating_5: counts for 1..5; nps_10: counts for 0..10; single_choice: one per option.
+   */
+  distribution: number /* int */[];
+  /**
+   * * single_choice only.
+   */
+  choices?: SurveyChoiceCount[];
+  /**
+   * * nps_10 only.
+   */
+  nps?: SurveyNPS;
+}
+export interface SurveyTextAnswer {
+  name: string;
+  text: string;
+  submittedAt: string;
+}
+/**
+ * * GET /api/host/webinars/{slug}/survey/results.
+ */
+export interface SurveyResults {
+  configured: boolean;
+  mode?: SurveyMode;
+  status?: SurveyStatus;
+  title?: string;
+  launchedAt?: string;
+  attended: number /* int */;
+  responses: number /* int */;
+  /**
+   * * responses / attended, 0..100; -1 when nobody attended.
+   */
+  responseRatePct: number /* int */;
+  /**
+   * * Link mode: attendees who pressed Open survey.
+   */
+  linkClicks: number /* int */;
+  /**
+   * * linkClicks / attended, 0..100; -1 when nobody attended.
+   */
+  clickThroughPct: number /* int */;
+  /**
+   * * The overall 1–5 rating: mean (one decimal, -1 when none) and counts for 1..5.
+   */
+  ratings: number /* int */;
+  averageRating: number /* float64 */;
+  ratingDistribution: number /* int */[];
+  /**
+   * * The first nps_10 question's score, when there is one.
+   */
+  nps?: SurveyNPS;
+  questions: SurveyQuestionResult[];
+  /**
+   * * The newest few answers to text questions, across all of them; the rest are paged.
+   */
+  comments: SurveyComment[];
+}
+export interface SurveyComment {
+  questionId: string;
+  prompt: string;
+  name: string;
+  text: string;
+  submittedAt: string;
+}
+/**
+ * * GET /api/host/webinars/{slug}/survey/answers?question=&cursor=&limit=
+ */
+export interface SurveyTextPage {
+  answers: SurveyTextAnswer[];
+  total: number /* int */;
+  nextCursor?: string;
 }
 
 //////////
@@ -326,6 +1561,22 @@ export const NotifyReplayReady: NotificationKind = "replay_ready";
  * 	 * who registered for the webinar it belongs to.
  */
 export const NotifyWhatsAppReplay: NotificationKind = "wa_replay";
+/**
+ *  NotifyWelcome is the one thank-you email a new account gets, from signup or a first
+ * 	 * Google sign-in. Addressed by email, never user_id, so it is not a host alert; one
+ * 	 * per address, enforced by a unique index (migration 0058).
+ */
+export const NotifyWelcome: NotificationKind = "welcome";
+/**
+ *  The panelist's side of a webinar: added to the stage (with the stage link and a
+ * 	 * calendar file), the start moved, the session cancelled. Addressed by email and tied to
+ * 	 * no registration — a panelist signs in rather than holding a join key, so the link in
+ * 	 * these is the same for every panelist and is not a credential. One invite per panelist
+ * 	 * per webinar (migration 0070); updates and cancellations are one per change.
+ */
+export const NotifyPanelistInvited: NotificationKind = "panelist_invited";
+export const NotifyPanelistRescheduled: NotificationKind = "panelist_rescheduled";
+export const NotifyPanelistCancelled: NotificationKind = "panelist_cancelled";
 export const MaxReminders = 3;
 export const MinReminderOffset = 1;
 export const MaxReminderOffset = 30 * 24 * 60;
@@ -415,7 +1666,9 @@ export interface WebinarOptions {
   multistream: boolean;
   postWebinarSurvey: boolean;
   /**
-   * EmailReminders defaults true for existing rows that never stored the key.
+   *  EmailReminders is kept so old rows still resolve. The messages editor no
+   * 	 * longer writes it; ResolveSlots reads it only when this webinar has no
+   * 	 * reminder settings row. Missing means on.
    */
   emailReminders: boolean;
   /**
@@ -1132,6 +2385,13 @@ export interface Account {
   initials: string;
   hue: string;
   /**
+   *  AvatarURL is the photo to show for this account.
+   * 	 * An uploaded picture wins over the Google profile photo. The upload is a
+   * 	 * path on this API (bytes live in the users row, same as a webinar cover);
+   * 	 * the Google photo is the https URL from sign-in. Empty means initials.
+   */
+  avatarUrl?: string;
+  /**
    * CanHost is GRANTED by an admin. It was once a checkbox on the signup form; see
    * migrations/0011 for why that had to stop.
    */
@@ -1418,6 +2678,12 @@ export interface CRMMessage {
    * * A person wrote it: from the inbox, or on the phone (Coexistence).
    */
   manual?: boolean;
+  /**
+   * * Sent by the outbox on its own: a confirmation, reminder or replay. The thread
+   * 	 *  folds these into one line so the conversation stays readable.
+   */
+  automatic?: boolean;
+  webinarId?: string;
 }
 /**
  *  CRMContactScope names the webinar a contacts list was narrowed to.
@@ -1732,6 +2998,28 @@ export interface CRMTemplate {
    * * Why not, in words, when Sendable is false.
    */
   unsupported?: string;
+  /**
+   * * IMAGE when the header is a picture — the webinar's cover is sent in it.
+   */
+  headerFormat?: string;
+  /**
+   * * Buttons, in order, as Meta approved them.
+   */
+  buttons: CRMTemplateButton[];
+}
+/**
+ *  CRMTemplateButton is one button on a template. A quick reply's tap comes back as a
+ *  * message with its text; a link opens the URL — for a dynamic one, the person's own join
+ *  * or replay link, filled in at send time.
+ */
+export interface CRMTemplateButton {
+  /**
+   * * QUICK_REPLY, URL or PHONE_NUMBER.
+   */
+  type: string;
+  text: string;
+  url?: string;
+  dynamic?: boolean;
 }
 /**
  * CRMTemplatesResponse is the host's cached template list, alphabetical.
@@ -1983,6 +3271,11 @@ export interface CRMSegment {
    * * Has written to the host on WhatsApp.
    */
   replied?: boolean;
+  /**
+   * * Engagement tiers from the webinar's latest score (engagement_scores). Implies joined.
+   * 	 * `no_show` is expressed with Attendance, not here.
+   */
+  tiers?: EngagementTier[];
 }
 export const SegmentJoined = "joined";
 export const SegmentNoShow = "no_show";
@@ -2158,6 +3451,20 @@ export interface CRMAudienceResponse {
   noOptIn: number /* int */;
   optedOut: number /* int */;
   noNumber: number /* int */;
+  /**
+   * * The first few recipients with their values filled in, for the send preview.
+   * 	 *  Only when the request carries params; each Params lines up with the template's
+   * 	 *  {{1}}, {{2}} … the way the broadcast will send them.
+   */
+  samples?: CRMAudienceSample[];
+}
+/**
+ * * One recipient as the send preview shows them.
+ */
+export interface CRMAudienceSample {
+  contactId: string;
+  name: string;
+  params: string[];
 }
 /**
  * * DripManual is a sequence the host puts people on themselves.
@@ -2186,6 +3493,43 @@ export const DripEnded = "ended";
  */
 export const DripTagAdded = "tag_added";
 /**
+ * * DripPollAnswer fires when someone picks an answer in a poll, matched by the poll's
+ * 	 *  question and the answer's text (Match.Question, Match.Answer).
+ */
+export const DripPollAnswer = "poll_answer";
+/**
+ * * DripButtonTap fires when someone taps a quick-reply button (Match.Text).
+ */
+export const DripButtonTap = "button_tap";
+/**
+ * * DripKeywordIn fires when someone sends a message containing a word (Match.Word).
+ */
+export const DripKeywordIn = "keyword_in";
+/**
+ * * What a rule's trigger has to match. Only the fields its trigger uses are set.
+ */
+export interface CRMDripMatch {
+  question?: string;
+  answer?: string;
+  text?: string;
+  word?: string;
+}
+/**
+ *  What a step does. A message is an approved template; tag and notify send nothing to the
+ *  * person.
+ */
+export const DripStepMessage = "message";
+/**
+ *  What a step does. A message is an approved template; tag and notify send nothing to the
+ *  * person.
+ */
+export const DripStepTag = "tag";
+/**
+ *  What a step does. A message is an approved template; tag and notify send nothing to the
+ *  * person.
+ */
+export const DripStepNotify = "notify";
+/**
  *  CRMDripStep is one message of a sequence.
  *  *
  *  * The delay is from the step before it — from entering, for the first one — because
@@ -2197,6 +3541,19 @@ export interface CRMDripStep {
    * * Minutes to wait after the previous step. 0 means as soon as they enter.
    */
   delayMinutes: number /* int */;
+  /**
+   * * DripStepMessage (the default when empty), DripStepTag or DripStepNotify.
+   */
+  kind?: string;
+  /**
+   * * For a tag step: the tag, and its name read-only.
+   */
+  tagId?: string;
+  tagName?: string;
+  /**
+   * * For a notify step: what the email to the host says, beside who it is about.
+   */
+  note?: string;
   /**
    * * The approved template's name and language — its identity at Meta.
    */
@@ -2247,6 +3604,19 @@ export interface CRMDrip {
    * * In order. A drip with no steps cannot be saved.
    */
   steps: CRMDripStep[];
+  /**
+   * * The engagement tiers an `attended` sequence is narrowed to, empty for everybody
+   * 	 *  who attended. Such a sequence starts once the webinar's engagement is computed.
+   */
+  tiers?: EngagementTier[];
+  /**
+   * * The recipe this sequence was made from (CRMRecipe.ID), empty for one built by hand.
+   */
+  recipe?: string;
+  /**
+   * * What a poll_answer, button_tap or keyword_in trigger matches.
+   */
+  match?: CRMDripMatch;
   stats: CRMDripStats;
   /**
    * * RFC3339.
@@ -2371,6 +3741,14 @@ export interface CRMDripRequest {
    * * Optional for `tag_added`, where empty means any tag. Ignored otherwise.
    */
   tagId?: string;
+  /**
+   * * Optional for `attended`: only these engagement tiers. Ignored otherwise.
+   */
+  tiers?: EngagementTier[];
+  /**
+   * * Required for poll_answer, button_tap and keyword_in.
+   */
+  match?: CRMDripMatch;
   /**
    * * Whether it runs. Absent is false, so a request that forgets it creates a
    * 	 *  paused sequence rather than one that starts messaging people.
@@ -3335,12 +4713,32 @@ export interface RegistrantRow {
   joined: boolean;
   watchMin: number /* int */;
   /**
+   *  Tier is their engagement level from the webinar's latest score (engagement_scores),
+   * 	 * empty until it has been computed or when they never joined.
+   */
+  tier?: EngagementTier;
+  /**
    *  ContactID is this registrant's CRM contact, which is who a message is addressed to;
    * 	 * empty for a guest. LastMessage is the latest message either way on WhatsApp, for the
    * 	 * "Last message" column. Both filled in by the CRM, like WhatsAppStatus.
    */
   contactId?: string;
   lastMessage?: CRMMessage;
+  /**
+   *  Answers to the webinar's registration questions, keyed by CustomQuestion.ID. A
+   * 	 * checkbox answer is "yes" when ticked; an unanswered question has no key.
+   */
+  answers?: { [key: string]: string};
+}
+/** One page of GET /api/host/webinars/{slug}/registrants. */
+export interface RegistrantPage {
+  items: RegistrantRow[];
+  total: number;
+  offset: number;
+  approved: number;
+  declined: number;
+  pending: number;
+  guests: number;
 }
 export interface PanelistRequest {
   email: string;
@@ -3465,4 +4863,145 @@ export interface APIError {
 }
 export interface StatusResponse {
   status: string;
+}
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationStatusConnected = "connected";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationStatusOff = "off";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationStatusSoon = "soon";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationCategoryMessaging = "messaging";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationCategoryStreaming = "streaming";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationCategorySoon = "soon";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionNavigate = "navigate";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionRedirect = "redirect";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionDelete = "delete";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionInterest = "interest";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionInfo = "info";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationActionSignup = "signup";
+export interface IntegrationStep {
+  title: string;
+  body: string;
+}
+export interface IntegrationAction {
+  id: string;
+  label: string;
+  href?: string;
+  method?: string;
+  kind: string;
+  detail?: string;
+  menu?: boolean;
+  steps?: IntegrationStep[];
+}
+export interface IntegrationCard {
+  id: string;
+  name: string;
+  tagline: string;
+  category: string;
+  status: string;
+  detail: string;
+  who?: string;
+  whoNote?: string;
+  warn?: string;
+  mark: string;
+  text?: string;
+  tone: string;
+  actions?: IntegrationAction[];
+  interested?: boolean;
+}
+export interface IntegrationsResponse {
+  integrations: IntegrationCard[];
 }

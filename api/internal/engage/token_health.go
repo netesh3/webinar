@@ -103,7 +103,7 @@ func tokenExpiryMessage(to string, expires time.Time, web string) notify.Message
 	body := fmt.Sprintf("Your WhatsApp connection stops working on %s. Meta issues these for a "+
 		"limited time and they can't be renewed automatically — after that date, no "+
 		"confirmations, reminders or follow-ups will send.\n\n"+
-		"Reconnect now (takes a minute, same number, nothing is lost):\n%s/account\n",
+		"Reconnect now (takes a minute, same number, nothing is lost):\n%s/settings#integrations\n",
 		day, strings.TrimRight(web, "/"))
 	return notify.Message{
 		To:      to,

@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
-import { CalendarIcon, ChevronDownIcon, PlayIcon } from "./icons";
-import { DEFAULT_ATTENDEE_LIMIT } from "./schedule-form";
-import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
+import { CalendarIcon, ChevronRightIcon, PlayIcon } from "./icons";
+import { DEFAULT_ATTENDEE_LIMIT } from "./schedule/form-state";
+import {
+  useAppConfig,
+  useSession,
+  useShareOrigin,
+  useToast,
+} from "./providers";
 import { ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar, WebinarInput } from "@/lib/api-types";
@@ -16,7 +22,7 @@ import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 
 /* An instant webinar is the same request a normal Create submits, just with
  * the form skipped: a topic that says what it is, starting now, and every
- * other field set to the same defaults schedule-form.tsx's blank form would
+ * other field set to the same defaults the schedule form's blank form would
  * have sent. It is not a different kind of webinar — a host can rename it or
  * change its settings afterwards exactly like any other. */
 function instantWebinarInput(maxAttendees: number): WebinarInput {
@@ -79,15 +85,41 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
   };
 }
 
+const actionCardClass =
+  "group flex w-full items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3.5 text-left " +
+  "shadow-[0_1px_2px_rgba(19,22,25,0.04)] transition-[border-color,box-shadow] " +
+  "hover:border-line-2 hover:shadow-[0_2px_8px_rgba(19,22,25,0.08)] " +
+  "outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-1 " +
+  "disabled:cursor-progress disabled:opacity-70";
+
+function ActionCardBody({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <>
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[14px] font-semibold text-ink">{title}</span>
+        <span className="mt-0.5 block text-[12.5px] text-ink-2">{subtitle}</span>
+      </span>
+      <ChevronRightIcon className="size-4 shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-ink-2" />
+    </>
+  );
+}
+
 /** Host Webinar home: create, run upcoming sessions, review past attendance.
  *
  *  No top nav entry of its own any more — the logo is this page for a host,
- *  see homeHrefFor in top-nav.tsx — and no page heading either: the two
- *  action tiles below say what this screen is for more directly than a title
- *  repeating them would. In-page segments (Upcoming / Past / Drafts) instead
- *  of a competing sidebar, and two action tiles up top (Instant / Schedule)
- *  instead of a pair of same-weight buttons, so which one to click is obvious
- *  without reading closely. */
+ *  see homeHrefFor in top-nav.tsx. The page opens on two action cards, Instant
+ *  webinar (go live now, no form) and Schedule a webinar (/host/new). */
 export function HostWebinarsScreen() {
   const { account, status } = useSession();
   const { maxAttendees } = useAppConfig();
@@ -114,7 +146,9 @@ export function HostWebinarsScreen() {
     const pendingTab = openPendingRoomTab();
     setStartingInstant(true);
     try {
-      const created = await api.createWebinar(instantWebinarInput(maxAttendees));
+      const created = await api.createWebinar(
+        instantWebinarInput(maxAttendees),
+      );
       await api.startWebinar(created.id);
       pendingTab.open(`/host/${created.id}/room`);
       // The whole point of "instant" is joining people who aren't in this
@@ -223,8 +257,8 @@ export function HostWebinarsScreen() {
             <ButtonLink href="/my-webinars" variant="secondary" size="sm">
               WatchList
             </ButtonLink>
-            <ButtonLink href="/account" variant="ghost" size="sm">
-              Account settings
+            <ButtonLink href="/settings#account" variant="ghost" size="sm">
+              Settings
             </ButtonLink>
           </div>
         </Card>
@@ -251,58 +285,45 @@ export function HostWebinarsScreen() {
         </div>
       )}
 
-      {/* Two distinct rows rather than two same-weight buttons: which one to
-          click should be obvious without reading closely, the way Zoom's own
-          "New Meeting" vs "Schedule" tiles are. Compact and horizontal, not a
-          tall card — the whole row is one action, so there is nothing to say
-          twice (a title plus a "Do the thing →" link under it repeats
-          itself). */}
-      <div className="mb-8 grid gap-2.5 sm:grid-cols-2">
+      {/* The visible heading gave way to the action cards; the page keeps its
+       * h1 for screen readers and the document outline. */}
+      <h1 className="sr-only">Your webinars</h1>
+      <div className="mb-6 grid gap-3 sm:grid-cols-2">
         <button
           type="button"
           onClick={startInstantWebinar}
           disabled={startingInstant}
-          className="group flex items-center gap-3 rounded-xl border border-line bg-surface p-3.5 text-left transition-colors hover:border-brand-line hover:bg-surface-2 disabled:opacity-60"
+          aria-busy={startingInstant}
+          className={actionCardClass}
         >
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
-            {startingInstant ? <Spinner className="size-4.5" /> : <PlayIcon className="size-4.5" />}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13.5px] font-semibold">
-              {startingInstant ? "Starting…" : "Instant webinar"}
-            </span>
-            <span className="block truncate text-[12px] text-ink-2">
-              Go live immediately, no form
-            </span>
-          </span>
-          <ChevronDownIcon className="size-4 shrink-0 -rotate-90 text-ink-3 transition-transform group-hover:translate-x-0.5" />
+          <ActionCardBody
+            icon={
+              startingInstant ? (
+                <Spinner className="size-4" />
+              ) : (
+                <PlayIcon className="size-3.5" />
+              )
+            }
+            title={startingInstant ? "Starting…" : "Instant webinar"}
+            subtitle="Go live immediately, no form"
+          />
         </button>
-
-        <ButtonLink
-          href="/host/new"
-          variant="secondary"
-          className="group h-auto items-center gap-3 whitespace-normal rounded-xl border-line p-3.5 text-left font-normal hover:border-brand-line"
-        >
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
-            <CalendarIcon className="size-4.5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13.5px] font-semibold">
-              Schedule a webinar
-            </span>
-            <span className="block truncate text-[12px] text-ink-2">
-              Pick a date and invite people
-            </span>
-          </span>
-          <ChevronDownIcon className="size-4 shrink-0 -rotate-90 text-ink-3 transition-transform group-hover:translate-x-0.5" />
-        </ButtonLink>
+        <Link href="/host/new" className={actionCardClass}>
+          <ActionCardBody
+            icon={<CalendarIcon className="size-4" />}
+            title="Schedule a webinar"
+            subtitle="Pick a date and invite people"
+          />
+        </Link>
       </div>
 
       <HostWebinarBrowser reloadToken={reloadToken} />
 
       {onStage.length > 0 && (
         <section className="mt-10">
-          <h2 className="mb-1 text-[15px] font-semibold">On stage as panelist</h2>
+          <h2 className="mb-1 text-[15px] font-semibold">
+            On stage as panelist
+          </h2>
           <p className="mb-3 text-[13px] text-ink-2">
             Sessions you were invited to present on — join when the host starts.
           </p>

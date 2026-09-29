@@ -83,7 +83,9 @@ func (s *Module) handleCRMInbox(w http.ResponseWriter, r *http.Request) {
 	if slug != "" && !s.crmWebinarAllowed(w, r, user.ID, slug) {
 		return
 	}
-	out, err := s.store.Inbox(r.Context(), user.ID, strings.TrimSpace(r.URL.Query().Get("view")), slug)
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	out, err := s.store.Inbox(r.Context(), user.ID, strings.TrimSpace(r.URL.Query().Get("view")), slug, limit, offset)
 	if errors.Is(err, store.ErrInvalid) {
 		httpx.Error(w, http.StatusBadRequest, "bad_view", "There is no such view.")
 		return
@@ -169,6 +171,26 @@ func (s *Module) handleCRMWebinarMessages(w http.ResponseWriter, r *http.Request
 		s.fail(w, r, "crm webinar messages: waiting", err)
 		return
 	}
+	if out.Results, err = s.store.WebinarResults(ctx, user.ID, slug); err != nil {
+		s.fail(w, r, "crm webinar messages: results", err)
+		return
+	}
+	if out.Slots, err = s.ResolveSlots(ctx, slug); err != nil {
+		s.fail(w, r, "crm webinar messages: slots", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// handleCRMSummary is the Hosting home's "WhatsApp this week" card.
+func (s *Module) handleCRMSummary(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
+	out, err := s.store.Summary(r.Context(), user.ID, 7)
+	if err != nil {
+		s.fail(w, r, "crm summary", err)
+		return
+	}
+	out.Connected = user.WhatsAppToken != "" && user.WhatsAppPhoneNumberID != ""
 	httpx.JSON(w, http.StatusOK, out)
 }
 
@@ -232,8 +254,13 @@ func (s *Module) handleCRMTestSend(w http.ResponseWriter, r *http.Request) {
 	}
 	me := types.CRMContact{Name: user.Name, Phone: phone}
 	params := resolveBroadcastParams(body.Params, me, wb, user.Name, 58)
-	if _, err := s.whatsapp.SendTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppPhoneNumberID,
-		wa.OutgoingTemplate{To: phone, Name: tmpl.Name, Language: tmpl.Language, BodyParams: params}); err != nil {
+	msg := wa.OutgoingTemplate{To: phone, Name: tmpl.Name, Language: tmpl.Language, BodyParams: params}
+	if reason := s.fillRich(r.Context(), &msg, tmpl, crmstore.WhatsAppOutbound{WebinarSlug: slug},
+		map[string]*types.Webinar{}); reason != "" {
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", reason)
+		return
+	}
+	if _, err := s.whatsapp.SendTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppPhoneNumberID, msg); err != nil {
 		s.noteWhatsAppError(r.Context(), user.ID, user.WhatsAppToken, err)
 		s.reportSendError(w, r, user.ID, err)
 		return

@@ -42,9 +42,9 @@ func registrants(t *testing.T, h *harness, slug string) []types.RegistrantRow {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("registrants: status %d body %s", res.StatusCode, raw)
 	}
-	var rows []types.RegistrantRow
-	h.decode(raw, &rows)
-	return rows
+	var page types.RegistrantPage
+	h.decode(raw, &page)
+	return page.Items
 }
 
 func postAudience(t *testing.T, h *harness, body types.CRMBroadcastRequest) (int, types.CRMAudienceResponse, []byte) {
@@ -181,7 +181,7 @@ func TestEngageV1WatchTimeSegmentsAndPicked(t *testing.T) {
 		t.Errorf("people counts = %+v", people.Counts)
 	}
 	for _, p := range people.People {
-		if p.Contact.ID == thandi.ID && (p.Webinars != 1 || p.WatchMin != 58 || !p.Attended ||
+		if p.Contact.ID == thandi.ID && (p.Webinars != 1 || p.AttendedWebinars != 1 || p.WatchMin != 58 || !p.Attended ||
 			p.LastWebinar != "Scale your coaching practice" || p.WhatsAppStatus != types.CRMStatusOptedIn) {
 			t.Errorf("thandi in people = %+v", p)
 		}
@@ -192,7 +192,7 @@ func TestEngageV1WatchTimeSegmentsAndPicked(t *testing.T) {
 	foundSam := false
 	for _, p := range people.People {
 		foundSam = foundSam || p.Contact.ID == sam.ID
-		if p.Attended || p.Contact.ID == thandi.ID {
+		if p.Attended || p.AttendedWebinars != 0 || p.Contact.ID == thandi.ID {
 			t.Errorf("never attended lists %+v", p)
 		}
 	}

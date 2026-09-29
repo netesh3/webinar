@@ -76,12 +76,7 @@ console.log("\nPARTICIPANT — the registration link is public");
 
 console.log("\nSIGNED-IN — marketing home redirects into the app");
 {
-  redirectedTo(
-    "/",
-    host,
-    "/host",
-    "a host opening / lands on Hosting",
-  );
+  redirectedTo("/", host, "/host", "a host opening / lands on Hosting");
   redirectedTo(
     "/",
     participant,
@@ -118,21 +113,30 @@ console.log("\nPARTICIPANT — host URLs are refused");
     "/account",
     "the schedule form is not a webinar slug — it must not redirect to /webinars/new",
   );
+  redirectedTo(
+    "/host/messages",
+    participant,
+    "/account",
+    "Messages is its own screen, not a webinar slug",
+  );
 }
 
 console.log("\nHOST — nothing is taken away");
 {
   allowed("/host", host, "the dashboard");
   allowed("/host/new", host, "the schedule form");
+  allowed("/host/messages", host, "the WhatsApp inbox");
   allowed("/host/redis-cache", host, "manage a webinar");
   allowed("/host/redis-cache/edit", host, "edit it");
   allowed("/host/redis-cache/room", host, "present in it");
-  allowed(
+  redirectedTo(
     "/my-webinars",
     host,
-    "a host is also a person who registers for things",
+    "/host?tab=attending",
+    "a host's registrations are the Attending tab on their home page",
   );
   allowed("/account", host, "account settings");
+  allowed("/settings", host, "settings");
 }
 
 console.log("\nHOST — signed out, and sent back where they were going");
@@ -192,12 +196,19 @@ console.log("\nACCOUNT PAGES — a session, not a capability");
     "/login?next=%2Faccount",
     "so does the account page",
   );
+  redirectedTo(
+    "/settings",
+    anonymous,
+    "/login?next=%2Fsettings",
+    "so does settings, which replaced it",
+  );
   allowed(
     "/my-webinars",
     participant,
     "a participant with an account may see their own list",
   );
   allowed("/account", participant, "…and their own settings");
+  allowed("/settings", participant, "…and settings");
 }
 
 /* A SESSION THE API COULD NOT CONFIRM
@@ -211,7 +222,14 @@ console.log("\nUNCONFIRMED SESSION — a lookup that failed, not a missing one")
 {
   const unknown: Viewer = { kind: "unknown" };
 
-  for (const path of ["/host", "/host/acme-launch", "/my-webinars", "/account", "/"]) {
+  for (const path of [
+    "/host",
+    "/host/acme-launch",
+    "/my-webinars",
+    "/account",
+    "/settings",
+    "/",
+  ]) {
     ok(
       decideAccess(path, unknown).allow === true,
       `${path} is allowed when the session could not be checked`,
@@ -307,7 +325,10 @@ console.log("\nEDGE CASES");
  * exactly the thing that drifts.
  */
 {
-  const middleware = readFileSync(new URL("../middleware.ts", import.meta.url), "utf8");
+  const middleware = readFileSync(
+    new URL("../middleware.ts", import.meta.url),
+    "utf8",
+  );
   const matcher = middleware.slice(middleware.indexOf("matcher:"));
 
   for (const [path, why] of [
@@ -315,6 +336,7 @@ console.log("\nEDGE CASES");
     ["/host", "the host portal"],
     ["/my-webinars", "an attendee's own list"],
     ["/account", "account settings"],
+    ["/settings", "settings"],
     ["/admin", "the admin area"],
   ] as const) {
     ok(
@@ -325,7 +347,7 @@ console.log("\nEDGE CASES");
   }
 
   // And each of those really is a path decideAccess refuses an anonymous visitor.
-  for (const path of ["/host", "/my-webinars", "/account", "/admin"]) {
+  for (const path of ["/host", "/my-webinars", "/account", "/settings", "/admin"]) {
     ok(
       decideAccess(path, anonymous).allow === false,
       `${path} refuses an anonymous visitor`,

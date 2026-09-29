@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { api } from "@/lib/api";
+import { dropCache } from "@/lib/http";
 import type { Registration, Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { useSession } from "./providers";
@@ -28,6 +29,62 @@ import { useSession } from "./providers";
  * Both are merged here so every screen asks one question and gets one answer. The
  * keys are the only client-side state; everything authoritative lives in Postgres.
  */
+
+const REGISTRATIONS_KEY = "/api/me/registrations";
+
+type OwnedSnap = {
+  gen: number;
+  accountId: string | null;
+  rows: Registration[] | null;
+  webinars: Record<string, Webinar>;
+};
+
+const EMPTY_OWNED: OwnedSnap = { gen: 0, accountId: null, rows: null, webinars: {} };
+let ownedSnap: OwnedSnap = EMPTY_OWNED;
+const ownedListeners = new Set<() => void>();
+let ownedFlight: { accountId: string; gen: number; promise: Promise<void> } | null = null;
+
+function publishOwned(next: OwnedSnap) {
+  ownedSnap = next;
+  ownedListeners.forEach((l) => l());
+}
+
+function subscribeOwned(onChange: () => void) {
+  ownedListeners.add(onChange);
+  return () => {
+    ownedListeners.delete(onChange);
+  };
+}
+
+/** One in-flight read of /api/me/registrations, shared by every useRegistrations.
+ *  Resolves immediately when this generation is already loaded. */
+function loadOwned(accountId: string, gen: number): Promise<void> {
+  if (ownedSnap.accountId === accountId && ownedSnap.rows && ownedSnap.gen === gen) {
+    return Promise.resolve();
+  }
+  if (ownedFlight?.accountId === accountId && ownedFlight.gen === gen && ownedFlight.promise) {
+    return ownedFlight.promise;
+  }
+  const promise = api
+    .myRegistrations()
+    .then((rows) => {
+      if (ownedFlight?.promise !== promise) return;
+      publishOwned({
+        gen,
+        accountId,
+        rows: rows.map((r) => r.registration),
+        webinars: {
+          ...ownedSnap.webinars,
+          ...Object.fromEntries(rows.map((r) => [r.webinar.id, r.webinar])),
+        },
+      });
+    })
+    .finally(() => {
+      if (ownedFlight?.promise === promise) ownedFlight = null;
+    });
+  ownedFlight = { accountId, gen, promise };
+  return promise;
+}
 
 const KEY = "webcast.joinkeys.v1";
 
@@ -186,17 +243,18 @@ export function useRegistrations() {
   // Tagged with the account it belongs to, so a response that lands after a
   // sign-out — or after signing in as somebody else — is recognisable as stale
   // rather than shown as the new person's registrations.
-  const [owned, setOwned] = useState<{
-    accountId: string;
-    rows: Registration[];
-  } | null>(null);
+  const owned = useSyncExternalStore(subscribeOwned, () => ownedSnap, () => EMPTY_OWNED);
   const [error, setError] = useState<string | null>(null);
   // Bumped by retry() to re-run both fetches. A rate-limited or briefly offline
   // attendee needs a way back without reloading the page.
   const [attempt, setAttempt] = useState(0);
+  // Local UI preview has no account registrations to fetch; see the effect below.
+  const bypass = isDevAuthBypassActive();
 
   const retry = useCallback(() => {
     setError(null);
+    dropCache(REGISTRATIONS_KEY);
+    publishOwned({ ...ownedSnap, gen: ownedSnap.gen + 1, rows: null });
     setAttempt((n) => n + 1);
   }, []);
 
@@ -240,22 +298,13 @@ export function useRegistrations() {
     if (!accountId) return;
 
     // Local UI preview: mock host has no API session cookie — skip the call
-    // so the badge does not spin on 401 noise.
-    if (isDevAuthBypassActive()) {
-      setOwned({ accountId, rows: [] });
-      return;
-    }
+    // so the badge does not spin on 401 noise. The empty list is derived below.
+    if (isDevAuthBypassActive()) return;
 
     let active = true;
-    api
-      .myRegistrations()
-      .then((rows) => {
-        if (!active) return;
-        setOwned({ accountId, rows: rows.map((r) => r.registration) });
-        setWebinars((prev) => ({
-          ...prev,
-          ...Object.fromEntries(rows.map((r) => [r.webinar.id, r.webinar])),
-        }));
+    loadOwned(accountId, owned.gen)
+      .then(() => {
+        if (active) setError(null);
       })
       .catch((e: unknown) => {
         // Same reasoning as the join-key lookup: report the failure rather than
@@ -271,7 +320,7 @@ export function useRegistrations() {
     return () => {
       active = false;
     };
-  }, [account?.id, attempt]);
+  }, [account?.id, attempt, owned.gen]);
 
   const registrations = useMemo(() => {
     if (keys === null || status === "loading") return null; // hydrating
@@ -281,9 +330,11 @@ export function useRegistrations() {
     // unknown until a response tagged with THAT account arrives.
     const fromAccount = !account
       ? []
-      : owned?.accountId === account.id
-        ? owned.rows
-        : null;
+      : bypass
+        ? []
+        : owned.accountId === account.id
+          ? owned.rows
+          : null;
 
     // Either source still loading means the answer is not yet known.
     if (held === null || fromAccount === null) return null;
@@ -294,7 +345,7 @@ export function useRegistrations() {
     for (const reg of held) merged.set(reg.webinarId, reg);
     for (const reg of fromAccount) merged.set(reg.webinarId, reg);
     return [...merged.values()];
-  }, [keys, fetched, owned, account, status]);
+  }, [keys, fetched, owned, account, status, bypass]);
 
   const isRegistered = useCallback(
     (slug: string) => !!registrations?.some((r) => r.webinarId === slug),
@@ -311,13 +362,25 @@ export function useRegistrations() {
    *  This runs from an event handler, not an effect. */
   const remember = useCallback(
     (reg: Registration) => {
+      dropCache(REGISTRATIONS_KEY);
+      if (account?.id) {
+        const rows = ownedSnap.accountId === account.id ? ownedSnap.rows : null;
+        publishOwned({
+          ...ownedSnap,
+          gen: ownedSnap.gen + 1,
+          accountId: account.id,
+          rows: rows
+            ? [...rows.filter((r) => r.webinarId !== reg.webinarId), reg]
+            : [reg],
+        });
+      }
       setFetched((prev) => [
         ...(prev ?? []).filter((r) => r.webinarId !== reg.webinarId),
         reg,
       ]);
       add(reg.joinKey, reg.webinarId);
     },
-    [add],
+    [account, add],
   );
 
   const forget = useCallback(
@@ -331,7 +394,10 @@ export function useRegistrations() {
   );
 
   /** The webinar behind a registration, from whichever response carried it. */
-  const webinarFor = useCallback((slug: string) => webinars[slug], [webinars]);
+  const webinarFor = useCallback(
+    (slug: string) => owned.webinars[slug] ?? webinars[slug],
+    [owned.webinars, webinars],
+  );
 
   return {
     registrations,

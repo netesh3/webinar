@@ -164,6 +164,7 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("webinar created", "slug", wb.ID, "host", user.ID, "status", wb.Status)
+	s.syncPanelistMail(r.Context(), wb, "")
 	httpx.JSON(w, http.StatusCreated, wb)
 }
 
@@ -189,6 +190,13 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
+	}
+
+	// The start as it was, so panelists already invited can be told if this save moves it.
+	// A draft's start was never announced to anyone, so it does not count as a move.
+	prevStartsAt := ""
+	if prev, err := s.store.WebinarBySlug(r.Context(), slug); err == nil && prev.Status != types.StatusDraft {
+		prevStartsAt = prev.StartsAt
 	}
 
 	wb, err := s.store.UpdateWebinar(r.Context(), slug, in)
@@ -219,6 +227,7 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	// replanReminders, and the CRM's side in Engage.OnRescheduled.
 	s.replanReminders(r.Context(), wb)
 	s.engage.OnRescheduled(r.Context(), wb)
+	s.syncPanelistMail(r.Context(), wb, prevStartsAt)
 	httpx.JSON(w, http.StatusOK, wb)
 }
 
@@ -327,6 +336,7 @@ func (s *Server) handleDeleteWebinarImage(w http.ResponseWriter, r *http.Request
 func (s *Server) handleDeleteWebinar(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
 
+	cancellations := s.panelistCancellations(r.Context(), slug)
 	deleted, err := s.deleteWebinarBySlug(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
@@ -336,6 +346,7 @@ func (s *Server) handleDeleteWebinar(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "delete webinar", err)
 		return
 	}
+	s.sendPanelistCancellations(r.Context(), cancellations)
 
 	s.logWebinarDeleted(slug, deleted)
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
@@ -562,6 +573,10 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool) (ty
 	}
 	if len(in.CustomQuestions) > 20 {
 		fields["customQuestions"] = "Twenty questions is the most a registration form can carry."
+	} else if qs, msg := normalizeQuestions(in.CustomQuestions); msg != "" {
+		fields["customQuestions"] = msg
+	} else {
+		in.CustomQuestions = qs
 	}
 	if list, msg := normalizeReminders(in.Options.Reminders); msg != "" {
 		fields["reminders"] = msg
@@ -797,6 +812,22 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 		return types.Webinar{}, err
 	}
 
+	/* Tell every browser in the room that the session is over before anything below takes
+	 * the room away. Without it the first sign an attendee (or the host) has of the end is
+	 * the connection closing — and a closing connection reads as a network drop, so they
+	 * were shown "Reconnecting…" for a webinar that had simply finished. With the status in
+	 * room metadata first, the client knows that whatever disconnect follows is the end. */
+	if sfu, err := s.sfuFor(ctx, wb); err == nil {
+		if meta, err := s.roomMetadata(ctx, wb); err == nil {
+			if err := sfu.SetMetadata(ctx, lk.RoomName(slug), meta); err != nil {
+				s.log.Warn("end webinar: could not announce the end", "slug", slug, "error", err)
+			}
+		}
+	}
+
+	// A survey armed for the end goes out now, while the room still exists to hear about it.
+	s.launchSurveyOnEnd(ctx, slug)
+
 	// Stop any active Egress recording before deleting the room so it uploads cleanly.
 	if recs, err := s.store.Recordings(ctx, slug); err == nil {
 		for _, r := range recs {
@@ -879,6 +910,7 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	if _, err := s.store.ComputeAndSaveReport(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not write report", "slug", slug, "error", err)
 	}
+	s.computeEngagementOnEnd(ctx, slug)
 
 	if stats, err := s.store.ChatStats(ctx, slug); err != nil {
 		s.log.Warn("end webinar: could not summarise chat", "slug", slug, "error", err)
@@ -1474,6 +1506,7 @@ func (s *Server) applyStageGrant(ctx context.Context, sfu RoomManager, wb types.
 		s.log.Warn("set stage: could not record grant",
 			"slug", slug, "identity", identity, "error", err)
 	}
+	s.recordStage(slug, identity, promoting)
 	return nil
 }
 
@@ -1511,17 +1544,29 @@ func (s *Server) handleRemoveParticipant(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handleHostRegistrants(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
-	rows, err := s.store.Registrants(r.Context(), slug, 500)
+	limit := 500
+	offset := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			limit = n
+		}
+	}
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			offset = n
+		}
+	}
+	page, err := s.store.RegistrantPage(r.Context(), slug, limit, offset)
 	if err != nil {
 		s.fail(w, r, "registrants", err)
 		return
 	}
 	// Watch time is the webinar's own fact; a failure leaves the columns at zero.
-	if err := s.store.AttachWatch(r.Context(), slug, rows); err != nil {
+	if err := s.store.AttachWatch(r.Context(), slug, page.Items); err != nil {
 		s.log.Warn("registrants: watch time", "error", err, "slug", slug)
 	}
-	s.engage.DecorateRegistrants(r.Context(), userFromContext(r.Context()), slug, rows)
-	httpx.JSON(w, http.StatusOK, rows)
+	s.engage.DecorateRegistrants(r.Context(), userFromContext(r.Context()), slug, page.Items)
+	httpx.JSON(w, http.StatusOK, page)
 }
 
 func (s *Server) handleSessionReport(w http.ResponseWriter, r *http.Request) {
@@ -1571,7 +1616,7 @@ func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request) {
 	for _, a := range rep.Attendees {
 		// The person: their whole session, with first in, last out and the summed total.
 		_ = cw.Write([]string{
-			"attended", a.Name, a.Email, a.Role,
+			"attended", csvText(a.Name), csvText(a.Email), a.Role,
 			a.FirstJoinedAt, a.LastLeftAt, fmt.Sprint(a.WatchMin), fmt.Sprint(len(a.Visits)),
 			"", "",
 		})
@@ -1585,7 +1630,7 @@ func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, v := range a.Visits {
 			_ = cw.Write([]string{
-				"visit", a.Name, a.Email, a.Role,
+				"visit", csvText(a.Name), csvText(a.Email), a.Role,
 				v.JoinedAt, v.LeftAt, fmt.Sprint(v.Minutes), "",
 				"", "",
 			})
@@ -1598,9 +1643,9 @@ func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request) {
 			name = "Anonymous"
 		}
 		_ = cw.Write([]string{
-			"question", name, "", "",
+			"question", csvText(name), "", "",
 			"", "", "", "",
-			q.Text, fmt.Sprint(q.Answered),
+			csvText(q.Text), fmt.Sprint(q.Answered),
 		})
 	}
 	cw.Flush()
@@ -1680,6 +1725,11 @@ func (s *Server) handleExportRegistrants(w http.ResponseWriter, r *http.Request)
 	// the export is FOR, and "who has not replied to me on WhatsApp" is the list a host
 	// would otherwise have to rebuild by hand from two screens.
 	s.engage.DecorateRegistrants(r.Context(), userFromContext(r.Context()), slug, rows)
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "export registrants: load webinar", err)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition",
@@ -1693,10 +1743,15 @@ func (s *Server) handleExportRegistrants(w http.ResponseWriter, r *http.Request)
 	// has always had, because a column that moves breaks whatever the host built on top of
 	// this export just as surely as one that disappears. Both are present even for a host
 	// with no WhatsApp connected, and empty there — for the same reason `guest` is.
-	_ = cw.Write([]string{
+	// The registration questions come last, one column each, for the same reason.
+	header := []string{
 		"name", "email", "phone", "company", "job title", "state", "registered at",
 		"has account", "guest", "whatsapp", "whatsapp replied at",
-	})
+	}
+	for _, q := range wb.CustomQuestions {
+		header = append(header, csvText(q.Label))
+	}
+	_ = cw.Write(header)
 	for _, row := range rows {
 		/* The number is prefixed with a tab.
 		 *
@@ -1708,11 +1763,15 @@ func (s *Server) handleExportRegistrants(w http.ResponseWriter, r *http.Request)
 		if phone != "" {
 			phone = "\t" + phone
 		}
-		_ = cw.Write([]string{
+		record := []string{
 			row.Name, row.Email, phone, row.Company, row.JobTitle,
 			string(row.State), row.CreatedAt, fmt.Sprint(row.HasAccount),
 			fmt.Sprint(row.IsGuest), row.WhatsAppStatus, row.LastInboundAt,
-		})
+		}
+		for _, q := range wb.CustomQuestions {
+			record = append(record, csvText(row.Answers[q.ID]))
+		}
+		_ = cw.Write(record)
 	}
 	cw.Flush()
 	if err := cw.Error(); err != nil {
@@ -1806,6 +1865,9 @@ func (s *Server) handleAddPanelist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("panelist added", "slug", slug, "user", person.ID)
+	if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+		s.syncPanelistMail(r.Context(), wb, "")
+	}
 	httpx.JSON(w, http.StatusOK, person)
 }
 
@@ -1824,6 +1886,9 @@ func (s *Server) handleRemovePanelist(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.RevokeStage(r.Context(), slug, hostIdentity(userID)); err != nil {
 		s.log.Warn("remove panelist: could not clear stage grant",
 			"slug", slug, "user", userID, "error", err)
+	}
+	if err := s.store.ForgetPanelistInvites(r.Context(), slug); err != nil {
+		s.log.Warn("remove panelist: could not drop their invitation", "slug", slug, "error", err)
 	}
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "removed"})
 }

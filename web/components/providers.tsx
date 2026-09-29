@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { ApiError, api } from "@/lib/api";
+import { dropCache, writeCache } from "@/lib/http";
 import type { Account, AppConfig, ProfilePatch } from "@/lib/api-types";
 import { DEV_BYPASS_ACCOUNT, isDevAuthBypass } from "@/lib/dev-bypass";
 import {
@@ -53,8 +54,19 @@ const CONFIG_FALLBACK: AppConfig = {
 
 const ConfigContext = createContext<AppConfig>(CONFIG_FALLBACK);
 
+/** Whether useAppConfig() is the real config yet: "ready" once the server
+ *  render or the client fetch supplied it, "loading" while CONFIG_FALLBACK's
+ *  guesses are standing in, "failed" when the API could not be reached. */
+export type ConfigStatus = "loading" | "ready" | "failed";
+
+const ConfigStatusContext = createContext<ConfigStatus>("ready");
+
 export function useAppConfig(): AppConfig {
   return useContext(ConfigContext);
+}
+
+export function useAppConfigStatus(): ConfigStatus {
+  return useContext(ConfigStatusContext);
 }
 
 /* The browser's own origin, read through useSyncExternalStore.
@@ -65,6 +77,8 @@ export function useAppConfig(): AppConfig {
 const subscribeNothing = () => () => {};
 const readOrigin = () => window.location.origin;
 const readOriginOnServer = () => "";
+const readHydrated = () => true;
+const readNotHydrated = () => false;
 
 /** The public URL to build share links from. Falls back to this browser's own
  *  origin, which is right in every single-origin deployment and never produces a
@@ -112,12 +126,45 @@ export function useSession(): SessionValue {
 
 // ------------------------------------------------------------------- toasts
 
-export type Toast = { id: number; message: string; tone: "info" | "ok" | "error" };
+export type Toast = {
+  id: number;
+  message: string;
+  tone: "info" | "ok" | "error";
+  /** Set for a toast placed with `upsert`, which the caller updates in place. */
+  key?: string;
+  /** Custom content, drawn instead of `message` inside the toast's own card. */
+  node?: ReactNode;
+  /** The node has buttons of its own, so the toast is not one big dismiss button. */
+  interactive?: boolean;
+  /** On its way out: drawn fading for a beat, then removed. */
+  leaving?: boolean;
+  onDismiss?: () => void;
+  /** Announced assertively rather than politely. For "you have lost the room", not news. */
+  urgent?: boolean;
+};
+
+export type KeyedToast = {
+  /** Plain text for the fallback card — also what a custom node should say. */
+  message: string;
+  tone?: Toast["tone"];
+  node?: ReactNode;
+  /** The node has its own buttons (and its own close): drawn in a plain wrapper
+   *  instead of a click-anywhere-to-close button, which could not contain them. */
+  interactive?: boolean;
+  /** Called when the person clicks it away (not when the caller dismisses it). */
+  onDismiss?: () => void;
+  urgent?: boolean;
+};
 
 type ToastValue = {
   toasts: Toast[];
   notify: (message: string, tone?: Toast["tone"]) => void;
   dismiss: (id: number) => void;
+  /** Show or update the toast with this key, in place. It stays until the caller
+   *  calls `dismissKey` — keyed toasts have a lifecycle of their own (a join that is
+   *  still in progress), so there is no timer here to fight it. */
+  upsert: (key: string, toast: KeyedToast) => void;
+  dismissKey: (key: string) => void;
 };
 
 const ToastContext = createContext<ToastValue | null>(null);
@@ -131,6 +178,8 @@ export function useToast(): ToastValue {
 }
 
 const TOAST_MS = 4500;
+/** Long enough for the fade in globals.css (toast-out) to finish. */
+const TOAST_LEAVE_MS = 200;
 
 // ------------------------------------------------------------------ provider
 
@@ -143,6 +192,7 @@ export function AppProviders({
   initialConfig?: AppConfig | null;
 }) {
   const [config, setConfig] = useState<AppConfig>(initialConfig ?? CONFIG_FALLBACK);
+  const [configStatus, setConfigStatus] = useState<ConfigStatus>(initialConfig ? "ready" : "loading");
   const [account, setAccount] = useState<Account | null>(null);
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -150,13 +200,19 @@ export function AppProviders({
   const nextToastId = useRef(0);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
+  // Marks the toast as leaving and removes it once the fade has run. The timer map
+  // holds either its auto-dismiss or its removal, never both.
   const dismiss = useCallback((id: number) => {
-    setToasts((current) => current.filter((t) => t.id !== id));
     const timer = timers.current.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timers.current.delete(id);
-    }
+    if (timer) clearTimeout(timer);
+    setToasts((current) => current.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
+    timers.current.set(
+      id,
+      setTimeout(() => {
+        timers.current.delete(id);
+        setToasts((current) => current.filter((t) => t.id !== id || !t.leaving));
+      }, TOAST_LEAVE_MS),
+    );
   }, []);
 
   const notify = useCallback(
@@ -167,6 +223,50 @@ export function AppProviders({
         id,
         setTimeout(() => dismiss(id), TOAST_MS),
       );
+    },
+    [dismiss],
+  );
+
+  // Keyed toasts keep their id — and so their place in the stack and their DOM node —
+  // across updates, which is what lets "joining…" turn into "joined" rather than one
+  // toast vanishing as another appears.
+  const keyed = useRef(new Map<string, number>());
+
+  const upsert = useCallback((key: string, toast: KeyedToast) => {
+    let id = keyed.current.get(key);
+    if (id !== undefined) {
+      const pending = timers.current.get(id);
+      if (pending) {
+        clearTimeout(pending);
+        timers.current.delete(id);
+      }
+    } else {
+      id = ++nextToastId.current;
+      keyed.current.set(key, id);
+    }
+    const next: Toast = {
+      id,
+      key,
+      message: toast.message,
+      tone: toast.tone ?? "info",
+      node: toast.node,
+      interactive: toast.interactive,
+      onDismiss: toast.onDismiss,
+      urgent: toast.urgent,
+    };
+    setToasts((current) =>
+      current.some((t) => t.id === id)
+        ? current.map((t) => (t.id === id ? next : t))
+        : [...current, next],
+    );
+  }, []);
+
+  const dismissKey = useCallback(
+    (key: string) => {
+      const id = keyed.current.get(key);
+      if (id === undefined) return;
+      keyed.current.delete(key);
+      dismiss(id);
     },
     [dismiss],
   );
@@ -192,7 +292,7 @@ export function AppProviders({
       return;
     }
     try {
-      const me = await api.me();
+      const me = await api.me(true);
       setAccount(me);
       setStatus("signed-in");
     } catch (err) {
@@ -206,19 +306,24 @@ export function AppProviders({
     }
   }, []);
 
+  // Local preview settles the session from sessionStorage, which the server
+  // cannot read. That happens during the first render after hydration rather
+  // than in the effect below; status never returns to "loading", so it runs once.
+  const hydrated = useSyncExternalStore(subscribeNothing, readHydrated, readNotHydrated);
+  if (hydrated && status === "loading" && isDevAuthBypass()) {
+    if (isDevAuthBypassActive()) {
+      setAccount(DEV_BYPASS_ACCOUNT);
+      setStatus("signed-in");
+    } else {
+      setAccount(null);
+      setStatus("anonymous");
+    }
+  }
+
   // The promise chain is inline rather than a call to `refresh`, so every state
   // write happens in a callback instead of synchronously inside the effect.
   useEffect(() => {
-    if (isDevAuthBypass()) {
-      if (isDevAuthBypassActive()) {
-        setAccount(DEV_BYPASS_ACCOUNT);
-        setStatus("signed-in");
-      } else {
-        setAccount(null);
-        setStatus("anonymous");
-      }
-      return;
-    }
+    if (isDevAuthBypass()) return;
     let active = true;
     api
       .me()
@@ -237,23 +342,29 @@ export function AppProviders({
     };
   }, []);
 
-  // Config is refreshed on the client even when the server already provided it:
-  // operator settings — a feature flag, whether email is configured — can change
-  // from the admin screen while a tab has been open since before that happened.
+  // The server render already fetched config. Seeding the 5-minute cache skips
+  // the extra client refetch; a later read within that window is the same answer.
   useEffect(() => {
+    if (initialConfig) {
+      writeCache("/api/config", initialConfig);
+      return;
+    }
     let active = true;
     api
       .config()
       .then((c) => {
-        if (active) setConfig(c);
+        if (!active) return;
+        setConfig(c);
+        setConfigStatus("ready");
       })
       .catch(() => {
         // Keep whatever we already have. The shell must still render.
+        if (active) setConfigStatus((s) => (s === "loading" ? "failed" : s));
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialConfig]);
 
   const session = useMemo<SessionValue>(
     () => ({
@@ -261,12 +372,14 @@ export function AppProviders({
       status,
       signIn: async (email, password) => {
         const me = await api.login(email, password);
+        writeCache("/api/auth/me", me);
         setAccount(me);
         setStatus("signed-in");
         return me;
       },
       signUp: async (input) => {
         const me = await api.signup(input);
+        writeCache("/api/auth/me", me);
         setAccount(me);
         setStatus("signed-in");
         return me;
@@ -284,6 +397,7 @@ export function AppProviders({
         } finally {
           // Drop local state even if the request failed: the cookie may already
           // be gone, and leaving a stale avatar in the nav is worse.
+          dropCache("/api/auth/me");
           setAccount(null);
           setStatus("anonymous");
         }
@@ -295,6 +409,8 @@ export function AppProviders({
           return next;
         }
         const me = await api.updateProfile(patch);
+        dropCache("/api/auth/me");
+        writeCache("/api/auth/me", me);
         setAccount(me);
         return me;
       },
@@ -304,18 +420,20 @@ export function AppProviders({
   );
 
   const toastValue = useMemo<ToastValue>(
-    () => ({ toasts, notify, dismiss }),
-    [toasts, notify, dismiss],
+    () => ({ toasts, notify, dismiss, upsert, dismissKey }),
+    [toasts, notify, dismiss, upsert, dismissKey],
   );
 
   return (
     <ConfigContext.Provider value={config}>
-      <SessionContext.Provider value={session}>
-        <ToastContext.Provider value={toastValue}>
-          {children}
-          <ToastViewport />
-        </ToastContext.Provider>
-      </SessionContext.Provider>
+      <ConfigStatusContext.Provider value={configStatus}>
+        <SessionContext.Provider value={session}>
+          <ToastContext.Provider value={toastValue}>
+            {children}
+            <ToastViewport />
+          </ToastContext.Provider>
+        </SessionContext.Provider>
+      </ConfigStatusContext.Provider>
     </ConfigContext.Provider>
   );
 }
@@ -327,26 +445,70 @@ const toastTone: Record<Toast["tone"], string> = {
 };
 
 function ToastViewport() {
-  const { toasts, dismiss } = useToast();
-  if (toasts.length === 0) return null;
+  const { toasts, dismiss, dismissKey } = useToast();
+
+  const close = (t: Toast) => {
+    t.onDismiss?.();
+    if (t.key) dismissKey(t.key);
+    else dismiss(t.id);
+  };
+
+  /* Both live regions are rendered even when empty: a region that appears together with
+   * its first message is often not announced at all. An urgent toast is announced through
+   * the assertive one and muted in the polite stack (aria-live="off" on its item), so it is
+   * said once, immediately — while its card, and any button on it, stays in the tree. */
+  const urgent = toasts.filter((t) => t.urgent && !t.leaving);
 
   return (
-    // Above the room's own overlays, and inset-x on small screens so a long
-    // message wraps instead of running off the side of a phone.
-    <div
-      className="toast-viewport pointer-events-none fixed inset-x-3 z-[100] flex flex-col items-center gap-2 sm:inset-x-auto sm:right-4 sm:items-end"
-      role="status"
-      aria-live="polite"
-    >
-      {toasts.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => dismiss(t.id)}
-          className={`pointer-events-auto w-full max-w-sm rounded-xl border px-4 py-2.5 text-left text-[13px] font-medium shadow-lg backdrop-blur transition-opacity hover:opacity-90 sm:w-auto ${toastTone[t.tone]}`}
-        >
-          {t.message}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="sr-only" role="alert" aria-live="assertive" aria-atomic="true">
+        {urgent.map((t) => (
+          <p key={t.id}>{t.message}</p>
+        ))}
+      </div>
+      {/* Above the room's own overlays, and inset-x on small screens so a long
+          message wraps instead of running off the side of a phone. */}
+      <div
+        className="toast-viewport pointer-events-none fixed inset-x-3 z-[100] flex flex-col items-center gap-2 sm:inset-x-auto sm:right-4 sm:items-end"
+        role="status"
+        aria-live="polite"
+      >
+        {toasts.map((t) =>
+          t.node && t.interactive ? (
+            // The card has buttons of its own, and a button inside a button is not a
+            // button anybody can press — so this one is a plain box.
+            <div
+              key={t.id}
+              aria-live={t.urgent ? "off" : undefined}
+              className={`toast-item pointer-events-auto w-full max-w-sm text-left sm:w-auto ${t.leaving ? "toast-leaving" : ""}`}
+            >
+              {t.node}
+            </div>
+          ) : t.node ? (
+            // The custom card draws its own surface; this is only the click target.
+            // tabIndex -1: a toast arriving must never pull focus or join the tab order
+            // in the middle of somebody presenting.
+            <button
+              key={t.id}
+              type="button"
+              tabIndex={-1}
+              aria-live={t.urgent ? "off" : undefined}
+              onClick={() => close(t)}
+              className={`toast-item pointer-events-auto w-full max-w-sm text-left sm:w-auto ${t.leaving ? "toast-leaving" : ""}`}
+            >
+              {t.node}
+            </button>
+          ) : (
+            <button
+              key={t.id}
+              onClick={() => close(t)}
+              className={`toast-item pointer-events-auto w-full max-w-sm rounded-xl border px-4 py-2.5 text-left text-[13px] font-medium shadow-lg backdrop-blur transition-opacity hover:opacity-90 sm:w-auto ${toastTone[t.tone]} ${t.leaving ? "toast-leaving" : ""}`}
+            >
+              {t.message}
+            </button>
+          ),
+        )}
+      </div>
+    </>
   );
 }

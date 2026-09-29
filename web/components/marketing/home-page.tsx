@@ -391,9 +391,9 @@ function CallTile({ person, panelist }: { person: CallPerson; panelist?: boolean
   return (
     <div className={`home-call-tile ${person.speaking ? "home-call-tile-speaking" : ""}`}>
       {person.photo ? (
-        // eslint-disable-next-line @next/next/no-img-element -- pre-sized and
-        // pre-compressed at the source (see the comment above CallGrid); the
-        // optimizer next/image would run has already been done once, by hand.
+        // Pre-sized and pre-compressed at the source (see the comment above
+        // CallGrid); the optimizer next/image would run has already been done once, by hand.
+        // eslint-disable-next-line @next/next/no-img-element
         <img src={person.photo} alt="" loading="eager" />
       ) : (
         <div className="home-call-avatar">{person.initials}</div>

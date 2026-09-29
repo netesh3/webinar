@@ -31,6 +31,23 @@ type Invite struct {
 	 * message goes to are the ones the host already approved — sending them a link they
 	 * cannot open would be a notification about a door that is locked. */
 	Passcode string
+	/* SurveyURL is the host's external survey (https, validated when saved), included in the
+	 * replay mail when one is live. Public like ReplayURL; SurveyTitle is its heading. */
+	SurveyURL   string
+	SurveyTitle string
+	/* StageURL is a panelist's way onto the stage. Not a credential: the page asks them to
+	 * sign in with the account they were added as, so it is the same for every panelist and
+	 * safe in a calendar. Separate from JoinURL so no renderer mixes the two up. */
+	StageURL string
+
+	/* For the panelist mails only. WasText is the start before a reschedule, already
+	 * formatted; Email is the address the panelist signs in with; Product names the
+	 * sign-off when there is no host name; Calendar says a calendar file is attached, so
+	 * the copy never promises one that could not be built. */
+	WasText  string
+	Email    string
+	Product  string
+	Calendar bool
 }
 
 // greeting avoids "Hi ," for a registrant who gave no name.
@@ -48,9 +65,9 @@ func greeting(name string) string {
  * both a privacy problem and a way for the same key to be used twice.
  */
 func ApprovalRequested(in Invite, waiting int) (subject, body string) {
-	subject = fmt.Sprintf("Someone is waiting to join %q", in.Topic)
+	subject = fmt.Sprintf("Someone is waiting to join %s", quoted(in.Topic))
 	if waiting > 1 {
-		subject = fmt.Sprintf("%d people are waiting to join %q", waiting, in.Topic)
+		subject = fmt.Sprintf("%d people are waiting to join %s", waiting, quoted(in.Topic))
 	}
 
 	who := strings.TrimSpace(in.Name)
@@ -59,8 +76,8 @@ func ApprovalRequested(in Invite, waiting int) (subject, body string) {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s registered for %q and needs your approval before they can join.\n\n",
-		who, in.Topic)
+	fmt.Fprintf(&b, "%s registered for %s and needs your approval before they can join.\n\n",
+		who, quoted(in.Topic))
 	if in.WhenText != "" {
 		fmt.Fprintf(&b, "The session starts %s.\n\n", in.WhenText)
 	}
@@ -77,7 +94,7 @@ func RegistrationApproved(in Invite) (subject, body string) {
 
 	var b strings.Builder
 	b.WriteString(greeting(in.Name) + "\n\n")
-	fmt.Fprintf(&b, "Your registration for %q has been approved.\n\n", in.Topic)
+	fmt.Fprintf(&b, "Your registration for %s has been approved.\n\n", quoted(in.Topic))
 	if in.WhenText != "" {
 		fmt.Fprintf(&b, "When: %s\n\n", in.WhenText)
 	}
@@ -109,8 +126,7 @@ func RegistrationDeclined(in Invite) (subject, body string) {
 
 	var b strings.Builder
 	b.WriteString(greeting(in.Name) + "\n\n")
-	fmt.Fprintf(&b, "Your registration for %q wasn't approved, so you won't be able to join this session.\n\n",
-		in.Topic)
+	fmt.Fprintf(&b, "Your registration for %s wasn't approved, so you won't be able to join this session.\n\n", quoted(in.Topic))
 	b.WriteString("If you think that's a mistake, reply to this message and the host can take another look.\n")
 	return subject, b.String()
 }

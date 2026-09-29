@@ -1,12 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { engageApi } from "../api";
-import { Alert, Modal, Select, Spinner, openPickerOnClick } from "@/components/controls";
-import { SendIcon } from "@/components/icons";
+import {
+  Alert,
+  Modal,
+  Select,
+  Spinner,
+  openPickerOnClick,
+} from "@/components/controls";
+import { WhatsAppIcon } from "@/components/icons";
 import { useSession, useToast } from "@/components/providers";
 import { Button } from "@/components/ui";
 import { ApiError } from "@/lib/api";
+import { API_BASE } from "@/lib/http";
 import {
   AudienceContacts,
   AudienceSegment,
@@ -20,66 +27,133 @@ import {
   type CRMTemplate,
 } from "@/lib/api-types";
 import { localTimeZone, zonedToInstant } from "@/lib/format";
-import { exampleFor, renderTemplate, templateKey } from "./crm-templates";
+import { exampleFor, templateKey } from "./crm-templates";
+import {
+  PhonePreview,
+  RecipientStrip,
+  TemplateCards,
+  bestTemplate,
+} from "./send-parts";
+import { WA_SEND, estimateCost, rupees } from "./wa-kit";
 
 /* The one send dialog: "Message these N" from the Attendees tab, the People tab, and a
  * webinar's Messages tab all open this.
  *
  * Who is fixed by the caller — a watch-time bucket of one webinar, or people ticked by
- * hand — and shown at the top with its real count from the server. The rest is the
- * broadcast form cut to what a follow-up needs: a template, its values, now or later,
- * a preview, and a test to your own phone.
+ * hand — and shown at the top as four numbers from the server. The template is picked
+ * from cards, the best one for this group first; the preview is the message as each
+ * real recipient will read it (the server fills their values), on a phone, with an
+ * estimate of what Meta will charge.
  */
 
 export type SendTarget =
-  | { kind: "segment"; webinarId: string; segment: CRMSegment; label: string }
-  | { kind: "contacts"; contactIds: string[]; webinarId?: string; label: string };
+  | {
+      kind: "segment";
+      webinarId: string;
+      segment: CRMSegment;
+      label: string;
+      hints?: string[];
+    }
+  | {
+      kind: "contacts";
+      contactIds: string[];
+      webinarId?: string;
+      label: string;
+      hints?: string[];
+    }
+  | {
+      /** A recipe with no webinar to count against (the Automations page). */
+      kind: "recipe";
+      webinarId?: undefined;
+      label: string;
+      hints?: string[];
+    };
+
+/* The dialog's other job: saving a follow-up recipe — the same message, sent to this
+ * group after every webinar — instead of sending it now. The template and blanks are
+ * picked the same way; "When" becomes how long after the end. */
+export type Automate = {
+  recipeId: string;
+  delayMin: number;
+  template?: string;
+  language?: string;
+  params?: CRMParam[];
+};
+
+const DELAYS = [
+  { min: 60, title: "1 hour after", hint: "While it's fresh" },
+  { min: 120, title: "2 hours after", hint: "Most coaches pick this" },
+  { min: 1440, title: "Next day", hint: "Same time, a day later" },
+] as const;
 
 const LITERAL = "\u0000text";
+
+/** Enough to get names back for the avatars before a template is picked. */
+const NAME_ONLY: CRMParam[] = [{ field: "first_name" }];
 
 export function SendDialog({
   open,
   target,
   onClose,
   onSent,
+  automate,
 }: {
   open: boolean;
   target: SendTarget | null;
   onClose: () => void;
   onSent?: () => void;
+  /** Save as an automatic follow-up after every webinar instead of sending. */
+  automate?: Automate;
 }) {
   if (!open || !target) return null;
-  return <SendDialogBody target={target} onClose={onClose} onSent={onSent} />;
+  return (
+    <SendDialogBody
+      target={target}
+      onClose={onClose}
+      onSent={onSent}
+      automate={automate}
+    />
+  );
 }
 
-function audienceBody(target: SendTarget): CRMBroadcastRequest {
+function audienceBody(
+  target: Exclude<SendTarget, { kind: "recipe" }>,
+  params: CRMParam[] = [],
+): CRMBroadcastRequest {
+  const base = { name: "", template: "", language: "", params };
   return target.kind === "segment"
     ? {
-        name: "",
-        template: "",
-        language: "",
+        ...base,
         audience: AudienceSegment,
         webinarId: target.webinarId,
         segment: target.segment,
       }
     : {
-        name: "",
-        template: "",
-        language: "",
+        ...base,
         audience: AudienceContacts,
         contactIds: target.contactIds,
         webinarId: target.webinarId,
       };
 }
 
+/** 9 AM tomorrow, local, as the datetime-local value the picker uses. */
+function tomorrowNine(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T09:00`;
+}
+
 function SendDialogBody({
   target,
   onClose,
   onSent,
+  automate,
 }: {
   target: SendTarget;
   onClose: () => void;
   onSent?: () => void;
+  automate?: Automate;
 }) {
   const { notify } = useToast();
   const { account } = useSession();
@@ -88,110 +162,212 @@ function SendDialogBody({
   const [audience, setAudience] = useState<CRMAudienceResponse | null>(null);
   const [audienceError, setAudienceError] = useState<string | null>(null);
   const [chosen, setChosen] = useState("");
+  const [best, setBest] = useState("");
   const [params, setParams] = useState<CRMParam[]>([]);
-  const [timing, setTiming] = useState<"now" | "later">("now");
+  const [timing, setTiming] = useState<"now" | "tomorrow" | "later">("now");
+  const [delayMin, setDelayMin] = useState(automate?.delayMin ?? 120);
   const [at, setAt] = useState("");
+  const [testOpen, setTestOpen] = useState(false);
   const [testPhone, setTestPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const connected = Boolean(account?.whatsapp?.connected);
+  const from =
+    account?.whatsapp?.verifiedName || account?.name || "Your business";
 
+  // A recipe's message is always about the webinar that just ended.
+  const hasWebinar = Boolean(target.webinarId) || Boolean(automate);
+  const offered = fields.filter(
+    (f) => hasWebinar || !["topic", "when", "watched"].includes(f.token),
+  );
+
+  function paramsFor(
+    t: CRMTemplate | undefined,
+    available: CRMMergeField[],
+  ): CRMParam[] {
+    if (!t) return [];
+    const order = ["first_name", "topic", "when", "host"].filter((tok) =>
+      available.some(
+        (f) =>
+          f.token === tok && (hasWebinar || !["topic", "when"].includes(tok)),
+      ),
+    );
+    return Array.from({ length: t.variables }, (_, i) =>
+      order[i] ? { field: order[i] } : { text: "" },
+    );
+  }
+
+  // Templates and fields, once; the best template for this group is picked for them.
   useEffect(() => {
     let cancelled = false;
     Promise.all([engageApi.crmTemplates(), engageApi.crmBroadcasts()])
       .then(([t, b]) => {
         if (cancelled) return;
-        setTemplates(t.templates.filter((x) => x.sendable));
+        const sendable = t.templates.filter((x) => x.sendable);
         // Fields that only mean something on an automatic message are not offered.
-        setFields(
-          b.fields.filter(
-            (f) =>
-              !f.onlyKind ||
-              (f.onlyKind !== NotifyWhatsAppReplay && f.onlyKind !== NotifyWhatsAppReminder),
+        const f = b.fields.filter(
+          (x) =>
+            !x.onlyKind ||
+            (x.onlyKind !== NotifyWhatsAppReplay &&
+              x.onlyKind !== NotifyWhatsAppReminder),
+        );
+        const saved = automate?.template
+          ? sendable.find(
+              (x) =>
+                x.name === automate.template &&
+                x.language === automate.language,
+            )
+          : undefined;
+        const top = saved
+          ? templateKey(saved)
+          : bestTemplate(sendable, target.hints ?? []);
+        // The best one first, then the order Meta returned them in.
+        setTemplates(
+          [...sendable].sort(
+            (a, z) =>
+              Number(templateKey(z) === top) - Number(templateKey(a) === top),
           ),
         );
+        setFields(f);
+        setBest(top);
+        if (top) {
+          setChosen(top);
+          setParams(
+            saved && automate?.params?.length === saved.variables
+              ? automate.params
+              : paramsFor(
+                  sendable.find((x) => templateKey(x) === top),
+                  f,
+                ),
+          );
+        }
       })
       .catch(() => {
         if (!cancelled) setTemplates([]);
       });
-    engageApi
-      .crmAudienceFor(audienceBody(target))
-      .then((a) => {
-        if (!cancelled) setAudience(a);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled)
-          setAudienceError(e instanceof ApiError ? e.message : "Could not count these people.");
-      });
     return () => {
       cancelled = true;
     };
-  }, [target]);
+    // Once per dialog: the target does not change while it is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* Who gets it, and each of the first few with their values filled in. Re-read as
+   * the values change, a moment after the last keystroke. */
+  const seq = useRef(0);
+  const ready = params.every((p) => p.field || (p.text ?? "").trim());
+  const paramsKey = JSON.stringify(params);
+  useEffect(() => {
+    if (target.kind === "recipe") return;
+    const mine = ++seq.current;
+    const handle = setTimeout(() => {
+      engageApi
+        .crmAudienceFor(
+          audienceBody(target, params.length && ready ? params : NAME_ONLY),
+        )
+        .then((a) => {
+          if (mine === seq.current) setAudience(a);
+        })
+        .catch((e: unknown) => {
+          if (mine === seq.current)
+            setAudienceError(
+              e instanceof ApiError
+                ? e.message
+                : "Could not count these people.",
+            );
+        });
+    }, 250);
+    return () => clearTimeout(handle);
+    // paramsKey stands for params.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, paramsKey, ready]);
 
   const template = (templates ?? []).find((t) => templateKey(t) === chosen);
-  const hasWebinar = Boolean(target.webinarId);
-  const offered = fields.filter(
-    (f) => hasWebinar || !["topic", "when", "watched"].includes(f.token),
-  );
 
   function pick(key: string) {
     setChosen(key);
-    const t = (templates ?? []).find((x) => templateKey(x) === key);
-    const order = ["first_name", "topic", "when", "host"].filter((tok) =>
-      offered.some((f) => f.token === tok),
-    );
     setParams(
-      t
-        ? Array.from({ length: t.variables }, (_, i) =>
-            order[i] ? { field: order[i] } : { text: "" },
-          )
-        : [],
+      paramsFor(
+        (templates ?? []).find((x) => templateKey(x) === key),
+        fields,
+      ),
     );
   }
 
-  const filled = params.map((p) => (p.field ? exampleFor(fields, p.field) : (p.text ?? "")));
-  const scheduledAt =
-    timing === "later" && at ? zonedToInstant(at.slice(0, 10), at.slice(11, 16), localTimeZone()) : null;
+  const when =
+    timing === "tomorrow" ? tomorrowNine() : timing === "later" ? at : "";
+  const scheduledAt = when
+    ? zonedToInstant(when.slice(0, 10), when.slice(11, 16), localTimeZone())
+    : null;
+  const reach = audience?.recipients ?? 0;
 
   const blocker = !connected
     ? "Connect WhatsApp in Account settings to send."
     : !template
       ? "Pick a template."
-      : params.some((p) => !p.field && !(p.text ?? "").trim())
-        ? "Fill every {{n}} — WhatsApp rejects a message with a blank in it."
-        : timing === "later" && !scheduledAt
+      : !ready
+        ? "Fill every blank — WhatsApp rejects a message with a gap in it."
+        : timing !== "now" && !scheduledAt
           ? "Pick when to send it."
-          : audience && audience.recipients === 0
+          : audience && reach === 0
             ? "None of these people can be messaged on WhatsApp."
             : null;
 
-  function request(): CRMBroadcastRequest {
-    return {
-      ...audienceBody(target),
-      name: target.label,
-      template: template?.name ?? "",
-      language: template?.language ?? "",
-      params,
-      scheduledAt: scheduledAt ? scheduledAt.toISOString() : undefined,
-    };
-  }
+  const samples = params.length && ready ? (audience?.samples ?? []) : [];
+  const fallback = params.map((p) =>
+    p.field ? exampleFor(fields, p.field) : (p.text ?? ""),
+  );
+  const category = template?.category.toUpperCase() ?? "";
+  const cost = estimateCost({
+    marketing: category === "MARKETING" ? reach : 0,
+    utility:
+      category === "UTILITY" || category === "AUTHENTICATION" ? reach : 0,
+  });
 
   async function send() {
     if (blocker || !template) return;
+    if (automate) return turnOn();
+    if (target.kind === "recipe") return;
     setSaving(true);
     try {
-      const b = await engageApi.createCrmBroadcast(request());
+      const b = await engageApi.createCrmBroadcast({
+        ...audienceBody(target, params),
+        name: target.label,
+        template: template.name,
+        language: template.language,
+        scheduledAt: scheduledAt ? scheduledAt.toISOString() : undefined,
+      });
+      const n = b.stats.recipients;
       notify(
-        scheduledAt
-          ? `Scheduled for ${b.stats.recipients} ${b.stats.recipients === 1 ? "person" : "people"}.`
-          : `Sending to ${b.stats.recipients} ${b.stats.recipients === 1 ? "person" : "people"}.`,
+        `${scheduledAt ? "Scheduled for" : "Sending to"} ${n} ${n === 1 ? "person" : "people"}.`,
         "ok",
       );
       onSent?.();
       onClose();
     } catch (e: unknown) {
       setError(e instanceof ApiError ? e.message : "Could not send that.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function turnOn() {
+    if (!template || !automate) return;
+    setSaving(true);
+    try {
+      await engageApi.saveCrmRecipe(automate.recipeId, {
+        active: true,
+        template: template.name,
+        language: template.language,
+        params,
+        delayMin,
+      });
+      notify(`On — ${target.label} get this after every webinar.`, "ok");
+      onSent?.();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof ApiError ? e.message : "Could not turn that on.");
     } finally {
       setSaving(false);
     }
@@ -210,194 +386,299 @@ function SendDialogBody({
       });
       notify("Test sent to your phone.", "ok");
     } catch (e: unknown) {
-      notify(e instanceof ApiError ? e.message : "Could not send the test.", "error");
+      notify(
+        e instanceof ApiError ? e.message : "Could not send the test.",
+        "error",
+      );
     } finally {
       setTesting(false);
     }
   }
 
-  const reach = audience?.recipients ?? 0;
-  const left = audience ? audience.noOptIn + audience.optedOut + audience.noNumber : 0;
-
   return (
     <Modal
       open
       onClose={onClose}
-      size="lg"
-      title={`Message ${target.label.toLowerCase()}`}
-      description="Sent on WhatsApp from your number, billed to your Meta account."
+      size="xl"
+      title={
+        automate
+          ? `After every webinar · ${target.label}`
+          : `Message · ${target.label}`
+      }
+      description={`Sent on WhatsApp from ${account?.whatsapp?.displayPhone || "your number"}, billed to your Meta account.`}
       footer={
-        <>
+        <div className="flex w-full flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="mr-auto text-[12.5px] font-medium text-brand hover:underline disabled:opacity-50"
+            onClick={() => setTestOpen((v) => !v)}
+            disabled={!template}
+          >
+            Send a test to my phone
+          </button>
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={send} disabled={saving || blocker !== null}>
-            {saving ? <Spinner className="size-3.5" /> : <SendIcon className="size-3.5" />}
-            {timing === "later" ? "Schedule" : `Send to ${reach}`}
-          </Button>
-        </>
+          <button
+            type="button"
+            onClick={send}
+            disabled={saving || blocker !== null}
+            className="inline-flex h-9 items-center gap-2 rounded-lg px-4 text-[13px] font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ background: WA_SEND }}
+          >
+            {saving ? (
+              <Spinner className="size-3.5" />
+            ) : (
+              <WhatsAppIcon className="size-4" />
+            )}
+            {automate
+              ? "Turn on for every webinar"
+              : timing === "now"
+                ? `Send to ${reach} on WhatsApp`
+                : `Schedule for ${reach}`}
+          </button>
+        </div>
       }
     >
-      <div className="grid gap-4">
-        {error && <Alert tone="error">{error}</Alert>}
+      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_17.5rem]">
+        <div className="grid content-start gap-4">
+          {error && <Alert tone="error">{error}</Alert>}
 
-        <div className="rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-[12.5px]">
-          <div className="font-medium text-ink">To: {target.label}</div>
-          <div className="mt-0.5 text-ink-2">
-            {audienceError ? (
-              audienceError
-            ) : audience === null ? (
-              "Counting…"
+          <section className="grid gap-1.5">
+            <span className="label">Who gets it</span>
+            {target.kind === "recipe" ? (
+              <p className="rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-[12.5px] text-ink-2">
+                Everyone in <b className="text-ink">{target.label}</b> after
+                each webinar who agreed to WhatsApp messages.
+              </p>
             ) : (
               <>
-                <span className="font-medium text-ok">{reach} will get it</span>
-                {left > 0 && (
-                  <>
-                    {" · "}
-                    {left} can&apos;t be messaged (
-                    {[
-                      audience.noOptIn && `${audience.noOptIn} didn't opt in`,
-                      audience.optedOut && `${audience.optedOut} opted out`,
-                      audience.noNumber && `${audience.noNumber} no number`,
-                    ]
-                      .filter(Boolean)
-                      .join(", ")}
-                    )
-                  </>
+                <RecipientStrip audience={audience} error={audienceError} />
+                {automate && (
+                  <p className="text-[11.5px] text-ink-3">
+                    From this webinar. After every webinar from now on, the same
+                    group gets it.
+                  </p>
                 )}
               </>
             )}
-          </div>
-        </div>
+          </section>
 
-        {templates === null ? (
-          <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
-            <Spinner className="size-4" /> Loading templates…
-          </div>
-        ) : templates.length === 0 ? (
-          <Alert tone="warn">
-            No approved templates yet. WhatsApp only lets you message people who haven&apos;t
-            written to you with a template Meta has approved — create one in WhatsApp Manager.
-          </Alert>
-        ) : (
-          <Select label="Template" value={chosen} onChange={pick}>
-            <option value="">Choose a template…</option>
-            {templates.map((t) => (
-              <option key={templateKey(t)} value={templateKey(t)}>
-                {t.name} · {t.language} · {t.category.toLowerCase()}
-              </option>
-            ))}
-          </Select>
-        )}
-
-        {template && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid content-start gap-2">
-              {params.map((p, i) => (
-                <div key={i} className="grid gap-1.5">
-                  <Select
-                    label={`{{${i + 1}}}`}
-                    value={p.field || LITERAL}
-                    onChange={(next) =>
-                      setParams((prev) =>
-                        prev.map((q, j) =>
-                          j === i ? (next === LITERAL ? { text: "" } : { field: next }) : q,
-                        ),
-                      )
-                    }
-                  >
-                    {offered.map((f) => (
-                      <option key={f.token} value={f.token}>
-                        {f.label}
-                      </option>
-                    ))}
-                    <option value={LITERAL}>Type the words</option>
-                  </Select>
-                  {!p.field && (
-                    <input
-                      className="field"
-                      aria-label={`What {{${i + 1}}} says`}
-                      value={p.text ?? ""}
-                      onChange={(e) =>
-                        setParams((prev) =>
-                          prev.map((q, j) => (j === i ? { text: e.target.value } : q)),
-                        )
-                      }
-                    />
-                  )}
-                </div>
-              ))}
-              {params.length === 0 && (
-                <p className="text-[12px] text-ink-3">This template has nothing to fill in.</p>
-              )}
-            </div>
-            <div>
-              <span className="label">Preview</span>
-              <div className="rounded-2xl rounded-tl-sm border border-line bg-[#e7f7e1] px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap text-ink">
-                {template.header && <p className="font-semibold">{template.header}</p>}
-                {renderTemplate(template.body ?? "", filled)}
-                {template.footer && (
-                  <p className="mt-1 text-[11px] text-ink-3">{template.footer}</p>
-                )}
+          <section className="grid gap-1.5">
+            <span className="label">Message</span>
+            {templates === null ? (
+              <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
+                <Spinner className="size-4" /> Loading templates…
               </div>
-            </div>
-          </div>
-        )}
-
-        <fieldset className="grid gap-2">
-          <legend className="label">When</legend>
-          <div className="flex flex-wrap items-center gap-4 text-[13px]">
-            {(["now", "later"] as const).map((t) => (
-              <label key={t} className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="send-timing"
-                  className="size-4 accent-brand"
-                  checked={timing === t}
-                  onChange={() => setTiming(t)}
-                />
-                {t === "now" ? "Send now" : "Schedule"}
-              </label>
-            ))}
-            {timing === "later" && (
-              <input
-                type="datetime-local"
-                aria-label="When to send it"
-                onClick={openPickerOnClick}
-                className="field h-9 sm:max-w-60"
-                value={at}
-                onChange={(e) => setAt(e.target.value)}
+            ) : templates.length === 0 ? (
+              <Alert tone="warn">
+                No approved templates yet. WhatsApp only lets you message people
+                who haven&apos;t written to you with a template Meta has
+                approved — create one in WhatsApp Manager.
+              </Alert>
+            ) : (
+              <TemplateCards
+                templates={templates}
+                chosen={chosen}
+                best={best}
+                onPick={pick}
               />
             )}
-          </div>
-        </fieldset>
+          </section>
 
-        {template && (
-          <div className="flex flex-wrap items-end gap-2 border-t border-line pt-3">
-            <div className="min-w-0 flex-1">
-              <label className="label" htmlFor="send-test-phone">
-                Send a test to your phone
-              </label>
-              <input
-                id="send-test-phone"
-                className="field"
-                placeholder="+91 98765 43210"
-                value={testPhone}
-                onChange={(e) => setTestPhone(e.target.value)}
-              />
+          {template && params.length > 0 && (
+            <section className="grid gap-2">
+              <span className="label">Filled in with</span>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {params.map((p, i) => (
+                  <div key={i} className="grid gap-1.5">
+                    <Select
+                      label={`Blank ${i + 1}`}
+                      value={p.field || LITERAL}
+                      onChange={(next) =>
+                        setParams((prev) =>
+                          prev.map((q, j) =>
+                            j === i
+                              ? next === LITERAL
+                                ? { text: "" }
+                                : { field: next }
+                              : q,
+                          ),
+                        )
+                      }
+                    >
+                      {offered.map((f) => (
+                        <option key={f.token} value={f.token}>
+                          {f.label}
+                        </option>
+                      ))}
+                      <option value={LITERAL}>Type the words</option>
+                    </Select>
+                    {!p.field && (
+                      <input
+                        className="field"
+                        aria-label={`What blank ${i + 1} says`}
+                        value={p.text ?? ""}
+                        onChange={(e) =>
+                          setParams((prev) =>
+                            prev.map((q, j) =>
+                              j === i ? { text: e.target.value } : q,
+                            ),
+                          )
+                        }
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {automate ? (
+            <fieldset className="grid gap-1.5">
+              <legend className="label">When, after it ends</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {DELAYS.map((o) => (
+                  <label
+                    key={o.min}
+                    className={`cursor-pointer rounded-xl border px-3 py-2.5 transition ${
+                      delayMin === o.min
+                        ? "border-brand ring-1 ring-brand"
+                        : "border-line hover:border-line-2"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="recipe-delay"
+                      className="sr-only"
+                      checked={delayMin === o.min}
+                      onChange={() => setDelayMin(o.min)}
+                    />
+                    <span className="block text-[13px] font-medium text-ink">
+                      {o.title}
+                    </span>
+                    <span className="block text-[11px] text-ink-3">
+                      {o.hint}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : (
+            <fieldset className="grid gap-1.5">
+              <legend className="label">When</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    { id: "now", title: "Now", hint: "Goes out in a minute" },
+                    {
+                      id: "tomorrow",
+                      title: "Tomorrow 9 AM",
+                      hint: "Most people read in the morning",
+                    },
+                    {
+                      id: "later",
+                      title: "Pick a time",
+                      hint: "Your time zone",
+                    },
+                  ] as const
+                ).map((o) => (
+                  <label
+                    key={o.id}
+                    className={`cursor-pointer rounded-xl border px-3 py-2.5 transition ${
+                      timing === o.id
+                        ? "border-brand ring-1 ring-brand"
+                        : "border-line hover:border-line-2"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="send-timing"
+                      className="sr-only"
+                      checked={timing === o.id}
+                      onChange={() => setTiming(o.id)}
+                    />
+                    <span className="block text-[13px] font-medium text-ink">
+                      {o.title}
+                    </span>
+                    <span className="block text-[11px] text-ink-3">
+                      {o.hint}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {timing === "later" && (
+                <input
+                  type="datetime-local"
+                  aria-label="When to send it"
+                  onClick={openPickerOnClick}
+                  className="field h-9 sm:max-w-60"
+                  value={at}
+                  onChange={(e) => setAt(e.target.value)}
+                />
+              )}
+            </fieldset>
+          )}
+
+          {testOpen && template && (
+            <div className="flex flex-wrap items-end gap-2 rounded-lg border border-line bg-surface-2 p-3">
+              <div className="min-w-0 flex-1">
+                <label className="label" htmlFor="send-test-phone">
+                  Your phone, with country code
+                </label>
+                <input
+                  id="send-test-phone"
+                  className="field"
+                  placeholder="+91 98765 43210"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                />
+              </div>
+              <Button
+                variant="secondary"
+                onClick={sendTest}
+                disabled={testing || !testPhone.trim() || !connected}
+              >
+                {testing ? <Spinner className="size-3.5" /> : null}
+                Send test
+              </Button>
             </div>
-            <Button
-              variant="secondary"
-              onClick={sendTest}
-              disabled={testing || !testPhone.trim() || !connected}
-            >
-              {testing ? <Spinner className="size-3.5" /> : null}
-              Send test
-            </Button>
-          </div>
-        )}
+          )}
 
-        {blocker && <p className="text-[11.5px] text-ink-3">{blocker}</p>}
+          {blocker && <p className="text-[11.5px] text-ink-3">{blocker}</p>}
+        </div>
+
+        <aside className="grid content-start gap-3">
+          {template ? (
+            <>
+              <PhonePreview
+                template={template}
+                samples={samples}
+                fallback={fallback}
+                from={from}
+                cover={
+                  target.webinarId
+                    ? `${API_BASE}/api/webinars/${encodeURIComponent(target.webinarId)}/image`
+                    : undefined
+                }
+              />
+              {reach > 0 && !automate && (
+                <div className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[12px] leading-relaxed text-ink-2">
+                  <div className="text-[13.5px] font-semibold text-ink">
+                    ≈ {rupees(cost)} on your Meta account
+                  </div>
+                  {reach} {category.toLowerCase() || "template"} message
+                  {reach === 1 ? "" : "s"}, estimated at Meta&apos;s India rate.
+                  Their replies, and yours within 24 hours, are free.
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="grid min-h-64 place-items-center rounded-2xl border border-dashed border-line px-4 text-center text-[12.5px] text-ink-3">
+              Pick a template to see it the way they will.
+            </div>
+          )}
+        </aside>
       </div>
     </Modal>
   );

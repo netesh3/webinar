@@ -107,6 +107,26 @@ export function groupPolls(list: Poll[]): PollGroups {
   return { live, drafts, closed };
 }
 
+/* What the host's panel shows, and whether it has the bottom "New poll or quiz" bar.
+ *
+ * The bar belongs to a list: once there are questions, the empty state's own button
+ * has gone and the bar replaces it. It must not appear while nothing has loaded yet,
+ * or the panel opens with a bar at the bottom that jumps to the middle a moment later
+ * when the list turns out to be empty. Loading and a failed first read therefore sit
+ * in the empty state's spot with no bar, so the only thing that changes when the
+ * answer arrives is what fills that spot. */
+export type HostPanelBody = "loading" | "failed" | "empty" | "list";
+
+export function hostPanelView(
+  polls: readonly unknown[] | null,
+  error: string | null,
+  composing: boolean,
+): { body: HostPanelBody; footer: boolean } {
+  if (polls === null) return { body: error ? "failed" : "loading", footer: false };
+  if (polls.length === 0) return { body: "empty", footer: false };
+  return { body: "list", footer: !composing };
+}
+
 function stamp(at: string | undefined): number {
   const t = at ? Date.parse(at) : NaN;
   return Number.isNaN(t) ? 0 : t;

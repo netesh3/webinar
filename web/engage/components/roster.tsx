@@ -24,7 +24,7 @@ export function useRosterMessaging({
   /** The rows on screen, after the chip. */
   rows: RegistrantRow[];
   /** The chip, as a segment and in words; null for everyone. */
-  bucket: { segment: CRMSegment; label: string } | null;
+  bucket: { segment: CRMSegment; label: string; hints?: string[] } | null;
 }) {
   const { account } = useSession();
   const enabled = Boolean(account?.whatsapp);
@@ -59,6 +59,7 @@ export function useRosterMessaging({
         webinarId,
         segment: bucket?.segment ?? {},
         label: bucket?.label ?? "Everyone registered",
+        hints: bucket?.hints,
       });
     }
   }

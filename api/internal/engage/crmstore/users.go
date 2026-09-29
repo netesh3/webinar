@@ -118,6 +118,40 @@ func (s *Store) MarkWhatsAppTokenRejected(ctx context.Context, userID, token str
 	return err
 }
 
+// WhatsAppGrant is a connected host whose WABA we can subscribe to our webhook.
+type WhatsAppGrant struct {
+	HostID string
+	Token  string
+	WABAID string
+}
+
+/* WhatsAppGrants is every host who can currently send.
+ *
+ * A rejected token is left out: subscribing with it fails the same way every
+ * call does, and the host has already been told to reconnect. */
+func (s *Store) WhatsAppGrants(ctx context.Context) ([]WhatsAppGrant, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id::text, whatsapp_access_token, whatsapp_waba_id
+		  FROM users
+		 WHERE coalesce(whatsapp_access_token, '') <> ''
+		   AND coalesce(whatsapp_waba_id, '') <> ''
+		   AND whatsapp_token_rejected_at IS NULL
+		 ORDER BY whatsapp_connected_at NULLS LAST`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WhatsAppGrant
+	for rows.Next() {
+		var g WhatsAppGrant
+		if err := rows.Scan(&g.HostID, &g.Token, &g.WABAID); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
 // TokenCheck is one host whose WhatsApp token is due its daily look.
 type TokenCheck struct {
 	HostID    string

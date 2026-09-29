@@ -2,20 +2,35 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { HostMessagesTab, HostPeopleTab, useReplies } from "@/engage";
-import { useAppConfig } from "./providers";
+import { HostPeopleTab } from "@/engage";
+import { EndedNudge } from "./ended-nudge";
+import { useAppConfig, useSession } from "./providers";
 import { HostWebinarRows } from "./host-webinar-list";
 import { MyWebinarsList } from "./my-webinars-list";
 import { useRegistrations } from "./registrations";
 import { Alert, openPickerOnClick, Spinner, Tabs } from "./controls";
 import { CloseIcon, SearchIcon } from "./icons";
-import { Button, ButtonLink, Empty } from "./ui";
+import { Button, ButtonLink, Empty, ListPager } from "./ui";
 import { ApiError, api, type HostWebinarTab } from "@/lib/api";
-import type { HostWebinarCounts, HostWebinarPage, Webinar } from "@/lib/api-types";
+import {
+  hostListFilterKey,
+  hostListPageKey,
+  onHostListsDropped,
+  rememberCursors,
+  rememberPage,
+  rememberedCursors,
+  rememberedPage,
+} from "@/lib/host-list-cache";
+import { readCache, TTL_LIST, writeCache } from "@/lib/http";
+import type {
+  HostWebinarCounts,
+  HostWebinarPage,
+  Webinar,
+} from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
-/* The host's own list: Upcoming / Past / Drafts, searchable, date-filtered, and
+/* The host's own list: Upcoming / Completed / Drafts, searchable, date-filtered, and
  * read one page at a time.
  *
  * All four of those are the server's job, which is the whole reason this
@@ -25,13 +40,12 @@ import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
  * and a date are one request each, and the tab badges come back with the page
  * because nothing here can count rows it was never sent.
  *
- * WatchList sits on the end of that row, and is the one tab this endpoint knows
- * nothing about: it is the sessions this account signed up for as an attendee,
- * which used to be "My Webinar" in the top nav. Hosting and attending are two
- * things one person does, not two places they go — and a nav entry per list made
- * "where is that webinar again?" a question about which door to use. So it moved
- * in here after Drafts, where every other list of this person's sessions already
- * was.
+ * Attending sits on the end of that row, and is the one tab this endpoint knows
+ * nothing about: it is the sessions other people host that this account signed up
+ * for as an attendee, which used to be "My Webinar" in the top nav and then an
+ * entry in the account menu. Hosting and attending are two things one person
+ * does, not two places they go — so it lives here, where every other list of this
+ * person's sessions already is, and only shows up once there is something in it.
  */
 
 const TABS: readonly HostWebinarTab[] = ["upcoming", "past", "drafts"];
@@ -40,38 +54,43 @@ const TABS: readonly HostWebinarTab[] = ["upcoming", "past", "drafts"];
  * paged endpoint by accident: MyWebinarsList resolves join keys and
  * /api/me/registrations itself. Everything that fetches below narrows this out
  * first. */
-const REGISTERED = "registered";
+const ATTENDING = "attending";
+/** The tab's old ?tab= name, from when the account menu linked to it. Still read, so a
+ *  link or bookmark made then opens the same list. */
+const ATTENDING_LEGACY = "registered";
 
-/* People and Messages: Engage's two tabs, rendered by it and only offered when this
- * deployment can connect WhatsApp. Beside the webinar lists rather than in a separate
- * CRM, because "who came, and who wrote back" is asked from the same place a host
- * plans the next session. Like WatchList, neither is a HostWebinarTab. */
+/* Audience: Engage's tab, rendered by it and only offered when this deployment can
+ * connect WhatsApp. Beside the webinar lists rather than in a separate CRM, because
+ * "who came" is asked from the same place a host plans the next session. Like
+ * Attending, it is not a HostWebinarTab. Messages is not a tab here — it is
+ * /host/messages, and an old ?tab=messages link is sent there. */
 const PEOPLE = "people";
 const MESSAGES = "messages";
-type ViewTab = HostWebinarTab | typeof REGISTERED | typeof PEOPLE | typeof MESSAGES;
+type ViewTab = HostWebinarTab | typeof ATTENDING | typeof PEOPLE;
 
-const BASE_TABS: readonly ViewTab[] = [...TABS, REGISTERED];
-const ENGAGE_TABS: readonly ViewTab[] = [...BASE_TABS, PEOPLE, MESSAGES];
+/* Shown in the tab row: the webinar lists, then Audience (engagement across all of them;
+ * ?tab=people), then Attending — webinars other people host that this account signed up
+ * for — but only once there is at least one: for most hosts it would be an empty tab
+ * forever. */
+const BASE_TABS: readonly ViewTab[] = [...TABS];
+const ENGAGE_TABS: readonly ViewTab[] = [...BASE_TABS, PEOPLE];
+const LINKABLE: readonly ViewTab[] = [...TABS, ATTENDING, PEOPLE];
 
 /** The tabs that do not read the paged webinar endpoint, and so hide its filters. */
-function ownList(
-  t: ViewTab,
-): t is typeof REGISTERED | typeof PEOPLE | typeof MESSAGES {
-  return t === REGISTERED || t === PEOPLE || t === MESSAGES;
+function ownList(t: ViewTab): t is typeof ATTENDING | typeof PEOPLE {
+  return t === ATTENDING || t === PEOPLE;
 }
 
 const TAB_LABELS: Record<ViewTab, string> = {
   upcoming: "Upcoming",
-  past: "Past",
+  past: "Completed",
   drafts: "Drafts",
-  registered: "WatchList",
-  people: "People",
-  messages: "Messages",
+  attending: "Attending",
+  people: "Audience",
 };
 
 /** Matches store.DefaultHostWebinarLimit. Sent explicitly rather than left to
- *  the server's default so the number the UI reasons about ("of 34", when to
- *  offer Load more) is the number it actually asked for. */
+ *  the server's default so "10 per page · 1–10 of 24" is the number asked for. */
 const PAGE_SIZE = 10;
 
 /** Long enough that a host typing a title is one request rather than fifteen,
@@ -130,29 +149,56 @@ export function HostWebinarBrowser({
    * costs the same request the top nav already makes on every page, and the
    * alternative — an unbadged tab — loses the one number that says whether it is
    * worth opening. */
-  const { registrations } = useRegistrations();
+  const { registrations, webinarFor } = useRegistrations();
+  const { account } = useSession();
+  /* Other people's webinars only: a host who registered for their own session to
+   * see the attendee side has it under Upcoming or Completed already. Unknown
+   * (still loading) counts as none: the tab appears once the answer is in,
+   * rather than showing and then vanishing for a host with nothing to attend. */
+  const attendingCount =
+    registrations?.filter((r) => {
+      const w = webinarFor(r.webinarId);
+      return w !== undefined && w.host.id !== account?.id;
+    }).length ?? 0;
   const { whatsappConnect } = useAppConfig();
-  const viewTabs = whatsappConnect ? ENGAGE_TABS : BASE_TABS;
-  const replies = useReplies();
+  const listTabs = whatsappConnect ? ENGAGE_TABS : BASE_TABS;
+  const viewTabs: readonly ViewTab[] =
+    attendingCount > 0 ? [...listTabs, ATTENDING] : listTabs;
 
-  /* ?tab= picks the tab, so the bell and People's rows can link straight into
-   * Messages — and followed, not just read once, because those links are usually
-   * clicked while the host is already on this page. */
+  /* ?tab= picks the tab, and is followed, not just read once, because those links
+   * are usually clicked while the host is already on this page. Messages used to
+   * be one of them; it is its own screen now, so that query leaves this page. */
   const router = useRouter();
   const search = useSearchParams();
-  const askedTab = (search.get("tab") ?? "") as ViewTab;
+  const rawTab = search.get("tab") ?? "";
+  const messagesLink = rawTab === MESSAGES;
+  const askedTab = (
+    rawTab === ATTENDING_LEGACY ? ATTENDING : rawTab
+  ) as ViewTab;
   const linkedContact = search.get("contact") ?? "";
   const linkedWebinar = search.get("webinar") ?? "";
+  const reachable = (t: ViewTab) =>
+    viewTabs.includes(t) ||
+    t === ATTENDING ||
+    (whatsappConnect && LINKABLE.includes(t));
   const [tab, setTabState] = useState<ViewTab>(() =>
-    viewTabs.includes(askedTab) ? askedTab : "upcoming",
+    messagesLink || !reachable(askedTab) ? "upcoming" : askedTab,
   );
   // Adjusted while rendering rather than in an effect: a new link is a new tab now.
   const linkKey = search.toString();
   const [seenLink, setSeenLink] = useState(linkKey);
   if (linkKey !== seenLink) {
     setSeenLink(linkKey);
-    if (viewTabs.includes(askedTab)) setTabState(askedTab);
+    if (!messagesLink && reachable(askedTab)) setTabState(askedTab);
   }
+  useEffect(() => {
+    if (!messagesLink) return;
+    const params = new URLSearchParams();
+    if (linkedContact) params.set("contact", linkedContact);
+    if (linkedWebinar) params.set("webinar", linkedWebinar);
+    const q = params.toString();
+    router.replace(q ? `/host/messages?${q}` : "/host/messages");
+  }, [messagesLink, linkedContact, linkedWebinar, router]);
   /* Switching tabs by hand drops whatever a link had narrowed to. */
   const setTab = useCallback(
     (next: ViewTab) => {
@@ -169,20 +215,46 @@ export function HostWebinarBrowser({
   const [to, setTo] = useState("");
 
   const [items, setItems] = useState<Webinar[] | null>(null);
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [counts, setCounts] = useState<HostWebinarCounts>(NO_COUNTS);
   const [total, setTotal] = useState(0);
   const [pending, setPending] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
   /* Every reply is checked against this before it is allowed to write state.
    *
-   * A debounced search and a Load more in flight at the same time are two
+   * A debounced search and a page change in flight at the same time are two
    * requests whose replies can arrive in either order; without a sequence
-   * number, a slow first page can land after the page it was superseded by, or
-   * an append can staple yesterday's rows onto today's filter. */
+   * number, a slow first page can land after the page it was superseded by. */
   const seq = useRef(0);
+
+  const listing = !ownList(tab);
+  const listKey = listing ? hostListFilterKey(tab, q, from, to) : "";
+  const [seenList, setSeenList] = useState(listKey);
+  const pageNow = listKey !== "" && listKey !== seenList ? rememberedPage(listKey) : page;
+  if (listKey !== seenList) {
+    setSeenList(listKey);
+    if (listKey !== "") setPage(rememberedPage(listKey));
+  }
+  const cacheKey = listKey ? hostListPageKey(listKey, pageNow) : "";
+  const [seenCache, setSeenCache] = useState("");
+  if (listing && cacheKey !== seenCache) {
+    setSeenCache(cacheKey);
+    const hit = readCache<HostWebinarPage>(cacheKey, TTL_LIST);
+    if (hit) {
+      setItems(hit.value.items ?? []);
+      setCounts(hit.value.counts);
+      setTotal(hit.value.total);
+      setError(null);
+      setPending(false);
+      const stack = rememberedCursors(listKey).slice();
+      if (hit.value.nextCursor) stack[pageNow + 1] = hit.value.nextCursor;
+      rememberCursors(listKey, stack);
+    } else {
+      setItems(null);
+      setPending(true);
+    }
+  }
 
   const filtersActive = q !== "" || from !== "" || to !== "";
   const nothingAtAll =
@@ -216,17 +288,24 @@ export function HostWebinarBrowser({
     /* Nothing to ask this endpoint for. Returning before the sequence number is
      * bumped deliberately leaves any reply still in the air free to land: it is
      * the answer for the tab behind this one, which is where a host goes back to. */
-    if (ownList(tab)) return;
+    if (!listKey || ownList(tab)) return;
+    const hit = readCache<HostWebinarPage>(cacheKey, TTL_LIST);
+    if (hit?.fresh) return;
 
     const mine = ++seq.current;
-    fetchPage({ tab, q, from, to })
-      .then((page) => {
+    const cursor = rememberedCursors(listKey)[pageNow];
+    fetchPage({ tab, q, from, to }, cursor)
+      .then((result) => {
         if (seq.current !== mine) return;
-        setItems(page.items);
-        setCursor(page.nextCursor);
-        setCounts(page.counts);
-        setTotal(page.total);
+        setItems(result.items ?? []);
+        setCounts(result.counts);
+        setTotal(result.total);
         setError(null);
+        const stack = rememberedCursors(listKey).slice();
+        if (result.nextCursor) stack[pageNow + 1] = result.nextCursor;
+        else stack.length = pageNow + 1;
+        rememberCursors(listKey, stack);
+        writeCache(hostListPageKey(listKey, pageNow), result);
       })
       .catch((e: unknown) => {
         if (seq.current !== mine) return;
@@ -243,39 +322,33 @@ export function HostWebinarBrowser({
       .finally(() => {
         if (seq.current === mine) setPending(false);
       });
-  }, [fetchPage, tab, q, from, to]);
+  }, [fetchPage, tab, q, from, to, listKey, cacheKey, pageNow]);
 
-  useEffect(load, [load, reloadToken]);
+  const [listGen, setListGen] = useState(0);
+  useEffect(load, [load, reloadToken, listGen]);
 
-  function loadMore() {
-    if (!cursor || loadingMore || ownList(tab)) return;
-    const mine = seq.current;
-    setLoadingMore(true);
-    fetchPage({ tab, q, from, to }, cursor)
-      .then((page) => {
-        // A filter changed while this was in the air: those rows answer a
-        // question nobody is asking any more.
-        if (seq.current !== mine) return;
-        setItems((prev) => [...(prev ?? []), ...page.items]);
-        setCursor(page.nextCursor);
-        setCounts(page.counts);
-        setTotal(page.total);
-      })
-      .catch((e: unknown) => {
-        if (seq.current !== mine) return;
-        setError(e instanceof Error ? e.message : "Could not load more.");
-      })
-      .finally(() => {
-        if (seq.current === mine) setLoadingMore(false);
-      });
+  useEffect(
+    () =>
+      onHostListsDropped(() => {
+        setPage(0);
+        setItems(null);
+        setPending(true);
+        setListGen((n) => n + 1);
+      }),
+    [],
+  );
+
+  function goTo(index: number) {
+    if (!listKey || index < 0 || index === pageNow) return;
+    if (index > pageNow && rememberedCursors(listKey)[index] === undefined) return;
+    rememberPage(listKey, index);
+    setPage(index);
   }
 
-  /** Any filter change restarts the list from the first page — a cursor is a
-   *  position in one specific result set and means nothing in the next one. */
+  /** A search or a date starts again at page 1. A tab click restores that tab's page. */
   function refilter(apply: () => void) {
     apply();
     setPending(true);
-    setCursor(undefined);
   }
 
   function clearFilters() {
@@ -297,9 +370,9 @@ export function HostWebinarBrowser({
           <div className="min-w-0">
             <Tabs
               bare
-              tabs={viewTabs}
+              tabs={viewTabs.includes(tab) ? viewTabs : [...viewTabs, tab]}
               value={tab}
-              /* WatchList has nothing to re-filter and fetches itself, so it
+              /* Attending has nothing to re-filter and fetches itself, so it
                  skips refilter: that would raise the pending flag for a request
                  this tab never makes, and leave the rows behind it dimmed. */
               onChange={(next) =>
@@ -308,14 +381,12 @@ export function HostWebinarBrowser({
               labels={TAB_LABELS}
               counts={{
                 ...counts,
-                [REGISTERED]: registrations?.length ?? 0,
-                // Waiting replies, not every conversation: the number worth a badge.
-                [MESSAGES]: replies?.needsReply ?? 0,
+                [ATTENDING]: attendingCount,
               }}
             />
           </div>
 
-          {/* Hidden on WatchList rather than disabled. Both controls are
+          {/* Hidden on Attending rather than disabled. Both controls are
               arguments to the host's paged endpoint; leaving them up over a list
               they cannot narrow is a control that lies about what it does. */}
           {!ownList(tab) && (
@@ -377,61 +448,82 @@ export function HostWebinarBrowser({
         </div>
       )}
 
-      {tab === REGISTERED ? (
+      {messagesLink ? (
+        <div className="grid place-items-center py-16">
+          <Spinner />
+        </div>
+      ) : tab === ATTENDING ? (
         /* Its own loading, empty and error states, unchanged from the page this
            used to be: the rows carry a join key and a calendar link, which is
            what an attendee came for and is nothing like a host row. */
-        <MyWebinarsList />
+        <MyWebinarsList othersOnly />
       ) : tab === PEOPLE ? (
-        <HostPeopleTab key={linkedWebinar} initialWebinar={linkedWebinar} />
-      ) : tab === MESSAGES ? (
-        <HostMessagesTab key={linkedContact} initialContact={linkedContact} />
+        <HostPeopleTab
+          key={linkedWebinar}
+          initialWebinar={linkedWebinar}
+          summary
+        />
       ) : items === null ? (
         <div className="grid gap-3">
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
         </div>
-      ) : items.length === 0 ? (
-        error ? null : (
-          <EmptyList
-            tab={tab}
-            filtersActive={filtersActive}
-            nothingAtAll={nothingAtAll}
-            onClear={clearFilters}
-          />
-        )
-      ) : (
+      ) : error && items.length === 0 && pageNow === 0 ? null : (
         <>
           {/* Dimmed rather than replaced with a spinner while a new filter is
               in flight: the rows underneath are still the answer to the last
               question, and blanking them makes the page jump on every
-              keystroke. */}
-          <div className={pending ? "opacity-50 transition-opacity" : undefined}>
-            <HostWebinarRows webinars={items} />
-          </div>
-
-          {cursor ? (
-            <div className="mt-4 flex flex-col items-center gap-1.5">
-              <Button
-                variant="secondary"
-                onClick={loadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore ? <Spinner className="size-3.5" /> : "Load more"}
-              </Button>
-              <p className="text-[12px] text-ink-3 tabular-nums">
-                Showing {items.length} of {total}
-              </p>
-            </div>
+              keystroke. A cached page is shown as it is, then refreshed. */}
+          {items.length === 0 && pageNow === 0 ? (
+            <EmptyList
+              tab={tab}
+              filtersActive={filtersActive}
+              nothingAtAll={nothingAtAll}
+              onClear={clearFilters}
+            />
+          ) : items.length === 0 ? (
+            <Empty
+              title={tab === "drafts" ? "No drafts on this page" : "Nobody on this page"}
+              hint={
+                tab === "drafts"
+                  ? "The last draft was published while this page was open. Page 1 still has the rest."
+                  : "The last webinars on this page were removed, or the page is past the end of the list."
+              }
+              action={
+                <Button variant="secondary" onClick={() => goTo(0)}>
+                  Back to page 1
+                </Button>
+              }
+            />
           ) : (
-            items.length > PAGE_SIZE && (
-              <p className="mt-4 text-center text-[12px] text-ink-3 tabular-nums">
-                All {items.length} shown
-              </p>
-            )
+            <div
+              className={pending ? "opacity-50 transition-opacity" : undefined}
+            >
+              <HostWebinarRows webinars={items} />
+            </div>
           )}
+
+          {/* Always under the list, including one page and an empty list.
+              Page 1 of 1 leaves Previous and Next disabled. */}
+          <ListPager
+            page={pageNow + 1}
+            pages={
+              listKey && rememberedCursors(listKey)[pageNow + 1]
+                ? Math.max(pageNow + 1, Math.ceil(total / PAGE_SIZE) || 1)
+                : pageNow + 1
+            }
+            pageSize={PAGE_SIZE}
+            start={items.length === 0 ? 0 : pageNow * PAGE_SIZE + 1}
+            end={items.length === 0 ? 0 : pageNow * PAGE_SIZE + items.length}
+            total={total}
+            busy={pending}
+            onPrevious={() => goTo(pageNow - 1)}
+            onNext={() => goTo(pageNow + 1)}
+          />
         </>
       )}
+
+      {tab === "upcoming" && <EndedNudge />}
     </>
   );
 }
@@ -497,7 +589,14 @@ function EmptyList({
   }
 
   if (tab === "drafts") return <Empty title="No drafts" />;
-  if (tab === "past") return <Empty title="No past webinars" />;
+  if (tab === "past") {
+    return (
+      <Empty
+        title="No completed webinars yet"
+        hint="Once a session ends, it moves here with who came and how it went."
+      />
+    );
+  }
   return (
     <Empty
       title="Nothing upcoming"
@@ -547,7 +646,7 @@ function bypassPage(p: PageQuery): HostWebinarPage {
     );
 
   // The cursor is the previous page's last slug, matching the server's keyset
-  // shape closely enough that Load more exercises the same code path.
+  // shape closely enough that Next exercises the same code path.
   const start = p.cursor ? inTab.findIndex((w) => w.id === p.cursor) + 1 : 0;
   const items = inTab.slice(start, start + p.limit);
   const last = items.at(-1);

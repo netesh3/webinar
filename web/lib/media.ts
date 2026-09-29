@@ -259,6 +259,9 @@ export type MediaPreferences = DeviceChoices & {
    *  same reason again, and more strongly: a room's lighting is a property of the room,
    *  so somebody who needed 40% last Thursday needs it again this Thursday. */
   lowLight: number;
+  /** With low light on: pick the amount from the face's brightness (Auto) rather than use
+   *  `lowLight` as set (Manual). See the auto low light note in lib/segmenter.ts. */
+  lowLightAuto: boolean;
 };
 
 export const DEFAULT_PREFERENCES: MediaPreferences = {
@@ -279,6 +282,8 @@ export const DEFAULT_PREFERENCES: MediaPreferences = {
    * well-lit room does not need it, and applying it unasked would brighten every
    * presenter who was already fine and make them look washed out instead. */
   lowLight: 0,
+  // Once somebody turns low light on, Auto is what they get unless they choose an amount.
+  lowLightAuto: true,
 };
 
 /**
@@ -426,6 +431,7 @@ function readPreferences(): MediaPreferences {
        * storage inverts the picture and a huge one flattens it to white, either of which
        * a presenter would be looking at with nothing in the UI to explain it. */
       lowLight: asLowLight(parsed.lowLight),
+      lowLightAuto: typeof parsed.lowLightAuto === "boolean" ? parsed.lowLightAuto : true,
     };
   } catch {
     return DEFAULT_PREFERENCES;

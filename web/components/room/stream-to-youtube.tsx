@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import type { SetStreamRequest, Webinar } from "@/lib/api-types";
 import { CopyField, Modal, Spinner } from "../controls";
-import { YouTubeIcon } from "../icons";
 import { useAppConfig, useSession, useToast } from "../providers";
 import { Button } from "../ui";
 import { useRoomUI } from "./context";
@@ -13,9 +12,23 @@ import { useRoomUI } from "./context";
  *
  * Prefer the connected channel (OAuth creates the live and the watch URL).
  * Pasting a Studio key is still here for hosts who have not linked, or who
- * want a restreamer that is not YouTube. */
+ * want a restreamer that is not YouTube.
+ *
+ * A hook rather than a button, because the button can live in two places —
+ * its home on the toolbar, or the More grid once somebody tucks it away (see
+ * lib/tools.ts HOME_BAR_TOOLS). The state and the dialog stay mounted in the
+ * control bar either way, so the live indicator never depends on where the
+ * button is, and the dialog survives More closing behind it. */
 
-export function StreamButton() {
+export type YouTubeStream = {
+  /** Whether a stream is configured — what the live indicator shows. */
+  configured: boolean;
+  open: () => void;
+  /** The dialog, to render once wherever the hook is used. */
+  dialog: ReactNode;
+};
+
+export function useYouTubeStream(): YouTubeStream {
   const { slug, isHost } = useRoomUI();
   const { notify } = useToast();
   const { account } = useSession();
@@ -31,23 +44,21 @@ export function StreamButton() {
   const connected = Boolean(account?.youtube?.connected);
   const channel = account?.youtube?.channelTitle;
 
-  const load = useCallback(async () => {
-    try {
-      const next = await api.hostWebinar(slug);
-      setWb(next);
-      setWatch(next.streamWatchUrl ?? "");
-    } catch {
-      // The host view is the only source of streamConfigured. Failure here
-      // just leaves the button in its idle state.
-    }
-  }, [slug]);
-
+  // Inline promise chain rather than an async helper, so every state write is
+  // visibly in a callback instead of looking synchronous to the effect.
   useEffect(() => {
     if (!isHost) return;
-    void load();
-  }, [isHost, load]);
-
-  if (!isHost) return null;
+    api
+      .hostWebinar(slug)
+      .then((next) => {
+        setWb(next);
+        setWatch(next.streamWatchUrl ?? "");
+      })
+      .catch(() => {
+        // The host view is the only source of streamConfigured. Failure here
+        // just leaves the button in its idle state.
+      });
+  }, [isHost, slug]);
 
   const configured = Boolean(wb?.streamConfigured);
   // A key from an earlier take in this session is still on file, so going live
@@ -105,144 +116,126 @@ export function StreamButton() {
     }
   }
 
-  return (
-    <>
-      <button
-        type="button"
-        aria-label={configured ? "YouTube stream is on" : "Stream to YouTube"}
-        aria-pressed={configured}
-        title={configured ? "YouTube stream is on — click to change" : "Stream to YouTube"}
-        onClick={() => setOpen(true)}
-        className={`relative inline-flex h-10 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:min-w-14 ${
-          configured
-            ? "bg-live/20 text-live-soft"
-            : "text-white/75 hover:bg-white/10 hover:text-white"
-        }`}
-      >
-        <YouTubeIcon className="size-5" />
-        <span className="hidden text-[9.5px] leading-none font-medium sm:block">
-          {configured ? "On YT" : "YouTube"}
-        </span>
-      </button>
-
-      <Modal
-        open={open}
-        onClose={() => !busy && setOpen(false)}
-        title="Stream to YouTube"
-        description={
-          connected
-            ? `We'll create the live on ${channel || "your connected channel"} and push the same mix attendees already see.`
-            : "Connect your YouTube channel to create the live automatically, or paste a stream key from YouTube Studio."
-        }
-        footer={
-          <div className="flex w-full items-center justify-end gap-2">
-            {configured && (
-              <Button variant="ghost" onClick={() => void stop()} disabled={busy}>
-                Stop streaming
-              </Button>
-            )}
-            <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
-              Cancel
+  const dialog = !isHost ? null : (
+    <Modal
+      open={open}
+      onClose={() => !busy && setOpen(false)}
+      title="Stream to YouTube"
+      description={
+        connected
+          ? `We'll create the live on ${channel || "your connected channel"} and push the same mix attendees already see.`
+          : "Connect your YouTube channel to create the live automatically, or paste a stream key from YouTube Studio."
+      }
+      footer={
+        <div className="flex w-full items-center justify-end gap-2">
+          {configured && (
+            <Button variant="ghost" onClick={() => void stop()} disabled={busy}>
+              Stop streaming
             </Button>
-            {connected && !paste ? (
-              <Button variant="primary" onClick={() => void goLiveOnChannel()} disabled={busy}>
-                {busy ? <Spinner className="size-4" /> : configured ? "Update live" : "Go live"}
-              </Button>
-            ) : (
-              <Button variant="primary" onClick={() => void savePasted()} disabled={busy}>
-                {busy ? <Spinner className="size-4" /> : configured ? "Update" : "Go live"}
-              </Button>
-            )}
-          </div>
-        }
-      >
-        <div className="space-y-3 py-1">
-          {/* The link the audience needs. Only on the connected path — the
-            * paste path already renders it as an editable field below. */}
-          {watch && connected && !paste && (
-            <div className="space-y-2 rounded-lg border border-line bg-surface-2 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[12.5px] font-medium text-ink">
-                  Share this live
-                </span>
-                <a
-                  href={watch}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
-                >
-                  Open on YouTube
-                </a>
-              </div>
-              <CopyField value={watch} />
-              <p className="text-[12px] leading-relaxed text-ink-3">
-                It can take up to a minute for YouTube to show the first frames
-                after going live.
-              </p>
-            </div>
           )}
-
-          {youtubeOAuth && !connected && (
-            <a
-              href={api.youtubeConnectURL(typeof window === "undefined" ? "/account" : window.location.pathname)}
-              className="inline-flex h-9 items-center rounded-lg bg-brand px-3 text-[13px] font-medium text-white"
-            >
-              Connect YouTube
-            </a>
-          )}
-
-          {connected && !paste && (
-            <label className="grid gap-1">
-              <span className="text-[12.5px] font-medium text-ink">Who can watch</span>
-              <select
-                value={privacy}
-                onChange={(e) => setPrivacy(e.target.value as typeof privacy)}
-                className="h-10 rounded-lg border border-line bg-surface px-3 text-[13px] outline-none focus:ring-2 focus:ring-brand/40"
-              >
-                <option value="unlisted">Unlisted — link only (good as a recording)</option>
-                <option value="private">Private — only you</option>
-                <option value="public">Public</option>
-              </select>
-            </label>
-          )}
-
-          {(paste || !connected) && (
-            <>
-              <label className="grid gap-1">
-                <span className="text-[12.5px] font-medium text-ink">YouTube watch link</span>
-                <input
-                  type="url"
-                  value={watch}
-                  onChange={(e) => setWatch(e.target.value)}
-                  placeholder="https://youtu.be/…"
-                  className="h-10 rounded-lg border border-line bg-surface px-3 text-[13px] outline-none focus:ring-2 focus:ring-brand/40"
-                />
-              </label>
-              <label className="grid gap-1">
-                <span className="text-[12.5px] font-medium text-ink">Stream key</span>
-                <input
-                  type="password"
-                  autoComplete="off"
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  placeholder={keySaved ? "Already saved — paste a new key to replace" : "xxxx-xxxx-xxxx-xxxx"}
-                  className="h-10 rounded-lg border border-line bg-surface px-3 font-mono text-[13px] outline-none focus:ring-2 focus:ring-brand/40"
-                />
-              </label>
-            </>
-          )}
-
-          {connected && (
-            <button
-              type="button"
-              className="text-[12px] text-ink-3 underline-offset-2 hover:underline"
-              onClick={() => setPaste((v) => !v)}
-            >
-              {paste ? "Use the connected channel instead" : "Paste a Studio stream key instead"}
-            </button>
+          <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+            Cancel
+          </Button>
+          {connected && !paste ? (
+            <Button variant="primary" onClick={() => void goLiveOnChannel()} disabled={busy}>
+              {busy ? <Spinner className="size-4" /> : configured ? "Update live" : "Go live"}
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={() => void savePasted()} disabled={busy}>
+              {busy ? <Spinner className="size-4" /> : configured ? "Update" : "Go live"}
+            </Button>
           )}
         </div>
-      </Modal>
-    </>
+      }
+    >
+      <div className="space-y-3 py-1">
+        {/* The link the audience needs. Only on the connected path — the
+          * paste path already renders it as an editable field below. */}
+        {watch && connected && !paste && (
+          <div className="space-y-2 rounded-lg border border-line bg-surface-2 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[12.5px] font-medium text-ink">
+                Share this live
+              </span>
+              <a
+                href={watch}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
+              >
+                Open on YouTube
+              </a>
+            </div>
+            <CopyField value={watch} />
+            <p className="text-[12px] leading-relaxed text-ink-3">
+              It can take up to a minute for YouTube to show the first frames
+              after going live.
+            </p>
+          </div>
+        )}
+
+        {youtubeOAuth && !connected && (
+          <a
+            href={api.youtubeConnectURL(typeof window === "undefined" ? "/account" : window.location.pathname)}
+            className="inline-flex h-9 items-center rounded-lg bg-brand px-3 text-[13px] font-medium text-white"
+          >
+            Connect YouTube
+          </a>
+        )}
+
+        {connected && !paste && (
+          <label className="grid gap-1">
+            <span className="text-[12.5px] font-medium text-ink">Who can watch</span>
+            <select
+              value={privacy}
+              onChange={(e) => setPrivacy(e.target.value as typeof privacy)}
+              className="h-10 rounded-lg border border-line bg-surface px-3 text-[13px] outline-none focus:ring-2 focus:ring-brand/40"
+            >
+              <option value="unlisted">Unlisted — link only (good as a recording)</option>
+              <option value="private">Private — only you</option>
+              <option value="public">Public</option>
+            </select>
+          </label>
+        )}
+
+        {(paste || !connected) && (
+          <>
+            <label className="grid gap-1">
+              <span className="text-[12.5px] font-medium text-ink">YouTube watch link</span>
+              <input
+                type="url"
+                value={watch}
+                onChange={(e) => setWatch(e.target.value)}
+                placeholder="https://youtu.be/…"
+                className="h-10 rounded-lg border border-line bg-surface px-3 text-[13px] outline-none focus:ring-2 focus:ring-brand/40"
+              />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-[12.5px] font-medium text-ink">Stream key</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                placeholder={keySaved ? "Already saved — paste a new key to replace" : "xxxx-xxxx-xxxx-xxxx"}
+                className="h-10 rounded-lg border border-line bg-surface px-3 font-mono text-[13px] outline-none focus:ring-2 focus:ring-brand/40"
+              />
+            </label>
+          </>
+        )}
+
+        {connected && (
+          <button
+            type="button"
+            className="text-[12px] text-ink-3 underline-offset-2 hover:underline"
+            onClick={() => setPaste((v) => !v)}
+          >
+            {paste ? "Use the connected channel instead" : "Paste a Studio stream key instead"}
+          </button>
+        )}
+      </div>
+    </Modal>
   );
+
+  return { configured, open: () => setOpen(true), dialog };
 }

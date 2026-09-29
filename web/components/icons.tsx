@@ -32,7 +32,52 @@ function Icon({ children, ...rest }: IconProps) {
   );
 }
 
-/** Google Material Symbols / Material Icons font renderer */
+/* Tailwind's default spacing scale, which `size-*` multiplies by 0.25rem.
+ * Kept here so a Material Symbol can use the same lengths as its box: the
+ * glyph is an em-square, and width/height alone do not shrink it. */
+const SYMBOL_SIZE: Record<string, string> = {
+  "0": "0px",
+  px: "1px",
+  "0.5": "0.125rem",
+  "1": "0.25rem",
+  "1.5": "0.375rem",
+  "2": "0.5rem",
+  "2.5": "0.625rem",
+  "3": "0.75rem",
+  "3.5": "0.875rem",
+  "4": "1rem",
+  "5": "1.25rem",
+  "6": "1.5rem",
+  "7": "1.75rem",
+  "8": "2rem",
+  "9": "2.25rem",
+  "10": "2.5rem",
+  "11": "2.75rem",
+  "12": "3rem",
+  "14": "3.5rem",
+  "16": "4rem",
+  "20": "5rem",
+  "24": "6rem",
+};
+
+/** Length from a `size-*` / `size-[...]` class, if the caller sized the icon that way. */
+function symbolSize(className: string): string | undefined {
+  const match = className.match(/(?:^|\s)!?size-(\[[^\]]+\]|px|\d+(?:\.\d+)?)(?=\s|$)/);
+  if (!match) return undefined;
+  const token = match[1];
+  if (token.startsWith("[")) return token.slice(1, -1);
+  return SYMBOL_SIZE[token];
+}
+
+/** Google Material Symbols / Material Icons font renderer.
+ *
+ * The font stylesheet (and globals.css) set `.material-symbols-outlined` to
+ * font-size 24px and display inline-block. Those rules are not in a Tailwind
+ * layer, and the font CSS often loads after ours, so `size-*` only shrinks the
+ * element's box — the 24px glyph paints outside it and sits on the text
+ * baseline. Inline styles win over that stylesheet: `size-*` becomes the
+ * glyph's font-size and its box, and `!text-[Npx]` still wins because it is
+ * important, with the box tracking that font-size at 1em. */
 export function MaterialIcon({
   name,
   className = "size-5",
@@ -42,10 +87,24 @@ export function MaterialIcon({
   className?: string;
   fill?: boolean;
 }) {
+  const sized = symbolSize(className);
+  const textSized = /(?:^|\s)!?text-\[/.test(className);
+  const box = textSized || !sized ? "1em" : sized;
   return (
     <span
-      className={`material-symbols-outlined select-none leading-none inline-flex items-center justify-center ${className}`}
-      style={fill ? { fontVariationSettings: "'FILL' 1" } : undefined}
+      className={`material-symbols-outlined select-none ${className}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        verticalAlign: "middle",
+        lineHeight: 1,
+        width: box,
+        height: box,
+        ...(sized && !textSized ? { fontSize: sized } : {}),
+        ...(fill ? { fontVariationSettings: "'FILL' 1" } : {}),
+      }}
       aria-hidden="true"
     >
       {name}
@@ -300,6 +359,14 @@ export function ChevronDownIcon(props: IconProps) {
   );
 }
 
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <polyline points="9 6 15 12 9 18" />
+    </Icon>
+  );
+}
+
 export function PinIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -404,6 +471,35 @@ export function PollIcon(props: IconProps) {
       <line x1="18" x2="18" y1="20" y2="4" />
       <line x1="12" x2="12" y1="20" y2="10" />
       <line x1="6" x2="6" y1="20" y2="14" />
+    </Icon>
+  );
+}
+
+export function StarIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />
+    </Icon>
+  );
+}
+
+export function ClipboardIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5" y="4.5" width="14" height="16.5" rx="2" />
+      <path d="M9 4.5V3.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+      <path d="M8.5 11l2 2 4-4" />
+      <line x1="8.5" x2="15.5" y1="16.5" y2="16.5" />
+    </Icon>
+  );
+}
+
+export function ExternalLinkIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M14 4h6v6" />
+      <line x1="20" x2="11" y1="4" y2="13" />
+      <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
     </Icon>
   );
 }

@@ -6,7 +6,7 @@
  * load the page.
  *
  * What it asserts, on /host under NEXT_PUBLIC_DEV_BYPASS_AUTH=1:
- *   1. the tab row reads Upcoming · Past · Drafts · WatchList, in that order
+ *   1. the tab row reads Upcoming · Completed · Drafts · WatchList, in that order
  *   2. the top nav no longer offers the attendee list at all
  *   3. clicking the tab swaps the list in without throwing
  *   4. the search box and date range — arguments to the host's paged endpoint — go away
@@ -105,8 +105,8 @@ const tabs = await evaluate(
 );
 console.log(`  tabs: ${JSON.stringify(tabs)}`);
 const labels = (tabs ?? []).map((t) => t.replace(/\d+$/, "").trim());
-JSON.stringify(labels) === JSON.stringify(["Upcoming", "Past", "Drafts", "WatchList"])
-  ? ok("tab row is Upcoming · Past · Drafts · WatchList")
+JSON.stringify(labels) === JSON.stringify(["Upcoming", "Completed", "Drafts", "WatchList"])
+  ? ok("tab row is Upcoming · Completed · Drafts · WatchList")
   : bad(`tab row is ${JSON.stringify(labels)}`);
 
 /* -------------------------------------------------------------- 2. the nav */

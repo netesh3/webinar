@@ -5,10 +5,10 @@ import { api } from "@/lib/api";
 import type { Poll } from "@/lib/api-types";
 import { groupPolls, letterFor } from "@/lib/poll-view";
 import { Alert, Spinner } from "../controls";
-import { CheckIcon, PollIcon } from "../icons";
+import { CheckIcon } from "../icons";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
-import { KindPill, ResultRows, SectionLabel, StatePill } from "./poll-pieces";
+import { EmptySlot, KindPill, ResultRows, RetryButton, SectionLabel, StatePill } from "./poll-pieces";
 import { LivePill, OptionChoice } from "./poll-popup";
 import { HostPolls } from "./polls-host";
 
@@ -57,21 +57,17 @@ function AudiencePolls() {
     );
   }
   if (polls.list === null) {
+    // Both sit in the empty state's spot, so the answer arriving fills it in place.
     return polls.error ? (
-      <div className="space-y-2 px-3 py-4">
-        <Alert tone="error">{polls.error}</Alert>
-        <button
-          type="button"
-          onClick={polls.reload}
-          className="inline-flex h-9 items-center rounded-lg border border-line-2 px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
-        >
-          Try again
-        </button>
-      </div>
+      <EmptySlot
+        className="px-6"
+        title="Couldn't load the polls"
+        action={<RetryButton onClick={polls.reload} />}
+      >
+        {polls.error}
+      </EmptySlot>
     ) : (
-      <div className="grid flex-1 place-items-center">
-        <Spinner className="size-5 text-ink-3" />
-      </div>
+      <EmptySlot className="px-6" loading title="Loading polls…" />
     );
   }
   if (polls.list.length === 0) {
@@ -280,12 +276,8 @@ function OutcomeCard({ poll }: { poll: Poll }) {
 
 function Empty({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center px-6 py-10 text-center">
-      <span className="grid size-11 place-items-center rounded-2xl bg-surface-2 text-ink-3">
-        <PollIcon className="size-5" />
-      </span>
-      <p className="mt-3 text-[13px] font-semibold text-ink">{title}</p>
-      <p className="mt-1 max-w-[16rem] text-[12px] leading-relaxed text-ink-3">{children}</p>
-    </div>
+    <EmptySlot className="px-6" title={title}>
+      {children}
+    </EmptySlot>
   );
 }

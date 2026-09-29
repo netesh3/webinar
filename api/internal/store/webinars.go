@@ -563,6 +563,33 @@ func (s *Store) HostWebinarTopic(ctx context.Context, hostID, slug string) (stri
 	return topic, err
 }
 
+// PanelistContact is who a panelist is and where to write to them.
+type PanelistContact struct {
+	UserID string
+	Name   string
+	Email  string
+}
+
+// PanelistContacts lists a webinar's scheduled panelists with their account email, in
+// stage order. Only mail reads the address; the Webinar payload never carries it.
+func (s *Store) PanelistContacts(ctx context.Context, slug string) ([]PanelistContact, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT u.id::text, u.name, u.email
+		  FROM webinar_panelists p
+		  JOIN webinars w ON w.id = p.webinar_id
+		  JOIN users u ON u.id = p.user_id
+		 WHERE w.slug = $1 AND u.email <> ''
+		 ORDER BY p.position`, slug)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (PanelistContact, error) {
+		var c PanelistContact
+		err := row.Scan(&c.UserID, &c.Name, &c.Email)
+		return c, err
+	})
+}
+
 // PanelistIDs returns the user ids allowed to publish alongside the host.
 func (s *Store) PanelistIDs(ctx context.Context, slug string) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `

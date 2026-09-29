@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/netkumar/webcast/api/types"
@@ -57,6 +58,8 @@ type Notification struct {
 	// TemplateParams fill the template's {{1}}, {{2}} … in order, already resolved
 	// for this recipient.
 	TemplateParams []string
+	// LinkURL is where a dynamic link button on the template goes (migrations/0064).
+	LinkURL string
 	/* BroadcastID is set on exactly the broadcast rows, and on nothing else — the
 	 * constraint in 0045 enforces the "exactly". The reminder sweeps use its absence
 	 * to mean "this is not part of a broadcast", so moving a webinar cannot rewrite
@@ -70,9 +73,12 @@ type Notification struct {
 	// Slug, not the uuid. The caller already has the slug on every path that emits one, and
 	// resolving it in the INSERT saves a round trip whose only purpose would be to translate
 	// an identifier the caller was holding anyway.
-	WebinarSlug    string
-	Subject        string
-	Body           string
+	WebinarSlug string
+	Subject     string
+	Body        string
+	// HTML is an optional rich alternative to Body (migration 0058). Empty for every
+	// kind except the welcome email; Body is always the complete plain-text message.
+	HTML           string
 	ICS            string
 	RegistrationID string
 	DueAt          time.Time // zero means send as soon as the outbox is flushed
@@ -111,16 +117,16 @@ func (s *Store) Notify(ctx context.Context, q Querier, n Notification) error {
 	_, err := q.Exec(ctx, `
 		INSERT INTO notifications (user_id, email, kind, webinar_id, subject, body, ics, registration_id, due_at,
 		                           channel, contact_id, template_name, template_language, template_params,
-		                           broadcast_id, drip_enrollment_id, offset_min)
+		                           broadcast_id, drip_enrollment_id, offset_min, html, link_url)
 		VALUES (NULLIF($1,'')::uuid, $2, $3,
 		        (SELECT id FROM webinars WHERE slug = $4), $5, $6, $7, NULLIF($8,'')::uuid,
 		        COALESCE($9::timestamptz, now()),
 		        $10, NULLIF($11,'')::uuid, $12, $13, $14, NULLIF($15,'')::uuid,
-		        NULLIF($16,'')::uuid, NULLIF($17, 0))`,
+		        NULLIF($16,'')::uuid, NULLIF($17, 0), $18, $19)`,
 		n.UserID, strings.ToLower(strings.TrimSpace(n.Email)), string(n.Kind),
 		n.WebinarSlug, n.Subject, n.Body, n.ICS, n.RegistrationID, due,
 		channel, n.ContactID, n.TemplateName, n.TemplateLanguage, params, n.BroadcastID,
-		n.DripEnrollmentID, n.OffsetMin)
+		n.DripEnrollmentID, n.OffsetMin, n.HTML, n.LinkURL)
 	if isUniqueViolation(err) {
 		return nil
 	}
@@ -224,6 +230,7 @@ type Outbound struct {
 	Email    string
 	Subject  string
 	Body     string
+	HTML     string
 	ICS      string
 	Attempts int
 }
@@ -238,7 +245,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, email, subject, body, ics, attempts
+		SELECT id::text, email, subject, body, html, ics, attempts
 		  FROM notifications
 		 WHERE delivery = 'pending' AND email <> '' AND due_at <= now()
 		   AND (webinar_id IS NULL OR EXISTS (
@@ -248,13 +255,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		             * it is the one that must survive the session ending — every other kind
 		             * here is a promise about something that is going to happen, and an
 		             * ended webinar is the reason not to keep it. */
-		            AND (notifications.kind = 'replay_ready' OR (
-		              w.status NOT IN ('ended','draft')
-		              AND (
-		                notifications.kind <> 'reminder'
-		                OR COALESCE((w.options->>'emailReminders')::boolean, true)
-		              )
-		            ))
+		            AND (notifications.kind = 'replay_ready' OR w.status NOT IN ('ended','draft'))
 		       ))
 		   AND (registration_id IS NULL OR EXISTS (
 		         SELECT 1 FROM registrations r
@@ -272,7 +273,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 	out := []Outbound{}
 	for rows.Next() {
 		var o Outbound
-		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.ICS, &o.Attempts); err != nil {
+		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.HTML, &o.ICS, &o.Attempts); err != nil {
 			return nil, err
 		}
 		out = append(out, o)
@@ -422,6 +423,43 @@ func (s *Store) ReminderGaps(ctx context.Context, slug string, offsets []int) ([
 		out = append(out, g)
 	}
 	return out, rows.Err()
+}
+
+// InvitedPanelistEmails is the set of (lowercased) addresses already holding a panelist
+// invitation for this webinar, whatever its delivery state.
+func (s *Store) InvitedPanelistEmails(ctx context.Context, slug string) (map[string]bool, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT n.email FROM notifications n JOIN webinars w ON w.id = n.webinar_id
+		 WHERE w.slug = $1 AND n.kind = 'panelist_invited'`, slug)
+	if err != nil {
+		return nil, err
+	}
+	emails, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(emails))
+	for _, e := range emails {
+		out[e] = true
+	}
+	return out, nil
+}
+
+/* ForgetPanelistInvites drops the invitation of anybody no longer on a webinar's panel, sent
+ * or not, and any update still waiting to reach them. Called after the panel changes: an
+ * unsent invite to somebody the host just removed must not go out, and removing a sent one
+ * is what lets adding them back invite them again (one invite per panelist; migration 0070). */
+func (s *Store) ForgetPanelistInvites(ctx context.Context, slug string) error {
+	_, err := s.pool.Exec(ctx, `
+		DELETE FROM notifications n
+		 USING webinars w
+		 WHERE n.webinar_id = w.id AND w.slug = $1
+		   AND (n.kind = 'panelist_invited'
+		        OR (n.kind = 'panelist_rescheduled' AND n.delivery = 'pending'))
+		   AND NOT EXISTS (
+		         SELECT 1 FROM webinar_panelists p JOIN users u ON u.id = p.user_id
+		          WHERE p.webinar_id = w.id AND lower(u.email) = n.email)`, slug)
+	return err
 }
 
 // SkipRemindersForEndedWebinar stops emailing people about a session that will not happen.

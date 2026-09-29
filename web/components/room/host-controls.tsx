@@ -16,6 +16,7 @@ import {
 } from "../icons";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
+import { EndWebinarDialog } from "./host-survey";
 
 /* The host's in-session control panel.
  *
@@ -30,7 +31,6 @@ export function HostControls() {
   const { notify } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const [ending, setEnding] = useState(false);
   const [confirmAllowAll, setConfirmAllowAll] = useState(false);
   const [allowingAll, setAllowingAll] = useState(false);
   const [confirmStageAll, setConfirmStageAll] = useState(false);
@@ -152,17 +152,6 @@ export function HostControls() {
       setError(err instanceof Error ? err.message : "Could not revoke everyone's speaking permission.");
     } finally {
       setBusy(null);
-    }
-  }
-
-  async function endForAll() {
-    setEnding(true);
-    try {
-      await api.endWebinar(slug);
-      setConfirmEnd(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not end the webinar.");
-      setEnding(false);
     }
   }
 
@@ -459,16 +448,7 @@ export function HostControls() {
         </div>
       </div>
 
-      <ConfirmModal
-        dark
-        open={confirmEnd}
-        busy={ending}
-        onClose={() => setConfirmEnd(false)}
-        onConfirm={() => void endForAll()}
-        title="End this webinar for everyone?"
-        body="Everyone is disconnected and the webinar is marked as ended. Registrations and the attendance record are kept, but nobody can rejoin."
-        confirmLabel="End for everyone"
-      />
+      <EndWebinarDialog open={confirmEnd} onClose={() => setConfirmEnd(false)} />
 
       <ConfirmModal
         dark

@@ -12,6 +12,9 @@ import type {
   ChatStats,
   CoHostPatch,
   ControlsPatch,
+  EngagementAttendeeDetail,
+  EngagementAttendeePage,
+  EngagementSummary,
   FeatureGrant,
   HostWebinarPage,
   JoinResponse,
@@ -28,6 +31,7 @@ import type {
   PollInput,
   PollVoteRequest,
   QuestionPatch,
+  RegistrantPage,
   RegistrantRow,
   RegistrationState,
   Role,
@@ -38,6 +42,15 @@ import type {
   StageAllResponse,
   StatusResponse,
   SetStreamRequest,
+  AudienceSurvey,
+  HostSurvey,
+  Survey,
+  SurveyClickRequest,
+  SurveyInput,
+  SurveyResults,
+  SurveySubmitRequest,
+  SurveyTextPage,
+  IntegrationsResponse,
   Webinar,
   WebinarInput,
 } from "./api-types";
@@ -60,17 +73,30 @@ import type {
  * pointless hop back out through the proxy. Without this the root layout's config
  * fetch fails at render time with "Failed to parse URL".
  */
+import { dropHostWebinarLists, HOST_LIST_PICKER_KEY } from "./host-list-cache";
 import {
   API_BASE,
   ApiError,
   baseFor,
+  cachedGet,
   del,
+  dropCache,
   fresh,
   patch,
   post,
+  put,
+  readCache,
   request,
   seg,
+  TTL_CONFIG,
+  TTL_SESSION,
+  writeCache,
 } from "./http";
+
+const ME_KEY = "/api/auth/me";
+const INTEGRATIONS_KEY = "/api/host/integrations";
+const REGISTRATIONS_KEY = "/api/me/registrations";
+import { toSearchParams, type AttendeeQuery } from "./engagement/query";
 
 export { API_BASE, ApiError };
 
@@ -88,7 +114,7 @@ export type HostWebinarTab = "upcoming" | "past" | "drafts";
 export const api = {
   /** Branding, public URLs and limits an operator sets. Read once at boot so no
    *  such value is baked into the bundle. */
-  config: () => request<AppConfig>("/api/config", fresh),
+  config: () => cachedGet<AppConfig>("/api/config", { ttl: TTL_CONFIG }),
 
   /** What THIS account may see: hosted, presenting, or registered. Requires a
    *  session — an anonymous caller gets 401, not an empty list, because "nothing
@@ -100,8 +126,11 @@ export const api = {
   getWebinar: (slug: string) =>
     request<Webinar>(`/api/webinars/${seg(slug)}`, fresh),
 
-  register: (slug: string, body: RegisterRequest) =>
-    post<Registration>(`/api/webinars/${seg(slug)}/register`, body),
+  register: async (slug: string, body: RegisterRequest) => {
+    const reg = await post<Registration>(`/api/webinars/${seg(slug)}/register`, body);
+    dropCache(REGISTRATIONS_KEY);
+    return reg;
+  },
 
   /** Resolves locally-held join keys back into registrations, WITH the webinar
    *  attached. The webinar used to be looked up from the public catalogue; there
@@ -150,6 +179,19 @@ export const api = {
 
   vote: (slug: string, id: string, body: PollVoteRequest) =>
     post<Poll>(`/api/webinars/${seg(slug)}/polls/${seg(id)}/vote`, body),
+
+  /** The post-event survey as this attendee may see it, with their own response. */
+  audienceSurvey: (slug: string, joinKey?: string, signal?: AbortSignal) =>
+    request<AudienceSurvey>(
+      `/api/webinars/${seg(slug)}/survey${joinKey ? `?joinKey=${seg(joinKey)}` : ""}`,
+      { ...fresh, signal },
+    ),
+
+  submitSurvey: (slug: string, body: SurveySubmitRequest) =>
+    post<AudienceSurvey>(`/api/webinars/${seg(slug)}/survey/responses`, body),
+
+  surveyClick: (slug: string, body: SurveyClickRequest) =>
+    post<StatusResponse>(`/api/webinars/${seg(slug)}/survey/click`, body),
 
   /** What this participant has not seen.
    *
@@ -240,12 +282,32 @@ export const api = {
 
   logout: () => post<StatusResponse>("/api/auth/logout"),
 
-  me: () => request<Account>("/api/auth/me", fresh),
+  me: (force = false) => cachedGet<Account>(ME_KEY, { ttl: TTL_SESSION, force }),
 
   updateProfile: (body: ProfilePatch) => patch<Account>("/api/auth/me", body),
 
-  myRegistrations: () =>
-    request<RegisteredWebinar[]>("/api/me/registrations", fresh),
+  /** Replaces the account's profile photo. The body is the raw image — see
+   *  lib/profile-photo.ts, which crops to a square before this is called.
+   *  Returns the account; avatarUrl then points at the stored bytes. */
+  uploadAvatar: async (blob: Blob, mime: string) => {
+    const me = await request<Account>("/api/auth/avatar", {
+      method: "POST",
+      body: blob,
+      headers: { "Content-Type": mime },
+    });
+    writeCache(ME_KEY, me);
+    return me;
+  },
+
+  /** Removes the upload. The account falls back to its Google photo, if any. */
+  deleteAvatar: async () => {
+    const me = await del<Account>("/api/auth/avatar");
+    writeCache(ME_KEY, me);
+    return me;
+  },
+
+  myRegistrations: (force = false) =>
+    cachedGet<RegisteredWebinar[]>(REGISTRATIONS_KEY, { ttl: TTL_SESSION, force }),
 
   // ------------------------------------------------------------------ host
 
@@ -286,6 +348,8 @@ export const api = {
    *  a page. Drafts are left out: a draft has never been scheduled, so nobody has
    *  registered for it and there is nobody to message about it. */
   hostWebinarsForPicker: async (): Promise<Webinar[]> => {
+    const hit = readCache<Webinar[]>(HOST_LIST_PICKER_KEY, TTL_SESSION);
+    if (hit?.fresh) return hit.value;
     const out: Webinar[] = [];
     for (const tab of ["upcoming", "past"] satisfies HostWebinarTab[]) {
       let cursor = "";
@@ -304,6 +368,7 @@ export const api = {
         cursor = res.nextCursor;
       }
     }
+    writeCache(HOST_LIST_PICKER_KEY, out);
     return out;
   },
 
@@ -322,8 +387,11 @@ export const api = {
   hostWebinar: (slug: string) =>
     request<Webinar>(`/api/host/webinars/${seg(slug)}/`, fresh),
 
-  createWebinar: (body: WebinarInput) =>
-    post<Webinar>("/api/host/webinars", body),
+  createWebinar: async (body: WebinarInput) => {
+    const webinar = await post<Webinar>("/api/host/webinars", body);
+    dropHostWebinarLists();
+    return webinar;
+  },
 
   updateWebinar: (slug: string, body: WebinarInput) =>
     patch<Webinar>(`/api/host/webinars/${seg(slug)}/`, body),
@@ -333,15 +401,40 @@ export const api = {
     patch<Webinar>(`/api/host/webinars/${seg(slug)}/stream`, body),
 
   /** Browser navigation to Google (not fetch) — needs a top-level redirect. */
-  youtubeConnectURL: (returnTo = "/account") => {
-    const next = returnTo.startsWith("/") ? returnTo : "/account";
+  youtubeConnectURL: (returnTo = "/settings") => {
+    const next = returnTo.startsWith("/") ? returnTo : "/settings";
     return `${baseFor()}/api/host/youtube/connect?return=${encodeURIComponent(next)}`;
   },
 
-  disconnectYouTube: () => del<Account>("/api/host/youtube"),
+  disconnectYouTube: async () => {
+    const account = await del<Account>("/api/host/youtube");
+    dropCache(INTEGRATIONS_KEY);
+    dropCache(ME_KEY);
+    return account;
+  },
 
-  deleteWebinar: (slug: string) =>
-    del<StatusResponse>(`/api/host/webinars/${seg(slug)}/`),
+  hostIntegrations: (force = false) =>
+    cachedGet<IntegrationsResponse>(INTEGRATIONS_KEY, { ttl: TTL_SESSION, force }),
+
+  /** "Notify me" for a coming-soon integration. Returns the card list. */
+  integrationInterest: (id: string) =>
+    post<IntegrationsResponse>(`/api/host/integrations/${seg(id)}/interest`),
+
+  /** Follow a card action the registry described (disconnect). href is an /api path. */
+  integrationCall: async (href: string, method: "DELETE" | "POST") => {
+    const res =
+      method === "DELETE"
+        ? await del<IntegrationsResponse | Account>(href)
+        : await post<IntegrationsResponse | Account>(href);
+    dropCache(INTEGRATIONS_KEY);
+    return res;
+  },
+
+  deleteWebinar: async (slug: string) => {
+    const res = await del<StatusResponse>(`/api/host/webinars/${seg(slug)}/`);
+    dropHostWebinarLists();
+    return res;
+  },
 
   /** Replaces the webinar's cover image. The body is the raw, already-compressed
    *  image — see lib/webinar-image.ts, which crops to 16:9 and re-encodes to at
@@ -358,11 +451,17 @@ export const api = {
   deleteWebinarImage: (slug: string) =>
     del<Webinar>(`/api/host/webinars/${seg(slug)}/image`),
 
-  startWebinar: (slug: string) =>
-    post<Webinar>(`/api/host/webinars/${seg(slug)}/start`),
+  startWebinar: async (slug: string) => {
+    const webinar = await post<Webinar>(`/api/host/webinars/${seg(slug)}/start`);
+    dropHostWebinarLists();
+    return webinar;
+  },
 
-  endWebinar: (slug: string) =>
-    post<Webinar>(`/api/host/webinars/${seg(slug)}/end`),
+  endWebinar: async (slug: string) => {
+    const webinar = await post<Webinar>(`/api/host/webinars/${seg(slug)}/end`);
+    dropHostWebinarLists();
+    return webinar;
+  },
 
   /** Hands ownership to another panelist already in the room, then the caller leaves. */
   transferHost: (slug: string, identity: string) =>
@@ -556,22 +655,83 @@ export const api = {
 
   // ------------------------------------------------------------ registrants
 
-  hostRegistrants: (slug: string) =>
-    request<RegistrantRow[]>(
-      `/api/host/webinars/${seg(slug)}/registrants`,
+  hostRegistrants: (slug: string, page: { limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (page.limit) qs.set("limit", String(page.limit));
+    if (page.offset) qs.set("offset", String(page.offset));
+    const s = qs.toString();
+    return request<RegistrantPage>(
+      `/api/host/webinars/${seg(slug)}/registrants${s ? `?${s}` : ""}`,
       fresh,
-    ),
+    );
+  },
 
   /** The CSV export is a plain link rather than a fetch, so the browser's own
    *  download machinery handles it. */
   registrantsCsvUrl: (slug: string) =>
     `${API_BASE}/api/host/webinars/${seg(slug)}/registrants.csv`,
 
-  sessionReport: (slug: string) =>
-    request<SessionReport>(`/api/host/webinars/${seg(slug)}/report`, fresh),
+  /** The attendance report, now read only for the stage's own rows (the Engagement tab's
+   *  "Hosts & panelists" list); its CSV twin is the Export menu's attendance log. */
+  sessionReport: (slug: string, signal?: AbortSignal) =>
+    request<SessionReport>(`/api/host/webinars/${seg(slug)}/report`, { ...fresh, signal }),
+
+  hostSurvey: (slug: string) =>
+    request<HostSurvey>(`/api/host/webinars/${seg(slug)}/survey`, fresh),
+
+  saveSurvey: (slug: string, body: SurveyInput) =>
+    put<Survey>(`/api/host/webinars/${seg(slug)}/survey`, body),
+
+  deleteSurvey: (slug: string) =>
+    del<StatusResponse>(`/api/host/webinars/${seg(slug)}/survey`),
+
+  launchSurvey: (slug: string) =>
+    post<Survey>(`/api/host/webinars/${seg(slug)}/survey/launch`),
+
+  closeSurvey: (slug: string) =>
+    post<Survey>(`/api/host/webinars/${seg(slug)}/survey/close`),
+
+  surveyResults: (slug: string, signal?: AbortSignal) =>
+    request<SurveyResults>(`/api/host/webinars/${seg(slug)}/survey/results`, { ...fresh, signal }),
+
+  surveyAnswers: (slug: string, question: string, cursor?: string, limit = 20) =>
+    request<SurveyTextPage>(
+      `/api/host/webinars/${seg(slug)}/survey/answers?question=${seg(question)}&limit=${limit}${
+        cursor ? `&cursor=${seg(cursor)}` : ""
+      }`,
+      fresh,
+    ),
 
   reportCsvUrl: (slug: string) =>
     `${API_BASE}/api/host/webinars/${seg(slug)}/report.csv`,
+
+  /** The Engagement page's headline read. `state` says why there are no numbers yet;
+   *  a live webinar's summary changes, so the page polls it. */
+  engagementSummary: (slug: string, signal?: AbortSignal) =>
+    request<EngagementSummary>(`/api/host/webinars/${seg(slug)}/engagement`, {
+      ...fresh,
+      signal,
+    }),
+
+  /** One page of the attendee heatmap, sorted, filtered and paged server-side.
+   *  `cursor` is the previous page's `nextCursor`, opaque. */
+  engagementAttendees: (slug: string, query: AttendeeQuery, signal?: AbortSignal) =>
+    request<EngagementAttendeePage>(
+      `/api/host/webinars/${seg(slug)}/engagement/attendees?${toSearchParams(query).toString()}`,
+      { ...fresh, signal },
+    ),
+
+  engagementAttendee: (slug: string, identity: string, signal?: AbortSignal) =>
+    request<EngagementAttendeeDetail>(
+      `/api/host/webinars/${seg(slug)}/engagement/attendees/${seg(identity)}`,
+      { ...fresh, signal },
+    ),
+
+  engagementCsvUrl: (slug: string) =>
+    `${API_BASE}/api/host/webinars/${seg(slug)}/engagement.csv`,
+
+  recomputeEngagement: (slug: string) =>
+    post<EngagementSummary>(`/api/host/webinars/${seg(slug)}/engagement/recompute`),
 
   approveAll: (slug: string) =>
     post<MuteAllResponse>(

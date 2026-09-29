@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useJoinKeyFor, useRegistrations } from "./registrations";
 import { WebinarRoom } from "./room/webinar-room";
+import { LeftSession } from "./survey/session-survey";
 import { Spinner } from "./controls";
 import { useSession } from "./providers";
 import { Button, ButtonLink, Card } from "./ui";
@@ -40,6 +41,10 @@ export function AttendeeRoomGate({
   const [join, setJoin] = useState<JoinResponse | null>(null);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // Pressing Leave (or "Back to webinars") lands on the way-out screen, which offers the
+  // post-event survey when there is one to answer and otherwise goes straight on.
+  const [left, setLeft] = useState(false);
+  const goOn = useCallback(() => router.push(`/webinars/${slug}`), [router, slug]);
 
   // A ref, not state: guards against the double-invoke of effects in dev
   // StrictMode without triggering a synchronous setState inside the effect.
@@ -103,6 +108,17 @@ export function AttendeeRoomGate({
       });
   }, [registrations, reg, directKey, slug, attempt, status, account]);
 
+  if (join && left) {
+    return (
+      <LeftSession
+        slug={slug}
+        joinKey={directKey ?? reg?.joinKey}
+        topic={join.topic || topic}
+        onContinue={goOn}
+      />
+    );
+  }
+
   if (join) {
     return (
       <WebinarRoom
@@ -115,7 +131,7 @@ export function AttendeeRoomGate({
         // Undefined for somebody who joined on their session alone, which the API
         // accepts too.
         joinKey={directKey ?? reg?.joinKey}
-        onLeave={() => router.push(`/webinars/${slug}`)}
+        onLeave={() => setLeft(true)}
       />
     );
   }

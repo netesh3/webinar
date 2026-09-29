@@ -435,6 +435,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	// though it no longer changes the outcome either way.
 	s.log.Info("signup", "user", user.ID, "can_host", user.CanHost,
 		"requested_host", req.WantsHost, "email_domain", domainOf(user.Email))
+	s.queueWelcome(r.Context(), user)
 	httpx.JSON(w, http.StatusCreated, user.Public())
 }
 
@@ -624,6 +625,14 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if pic := identity.Picture; pic != "" && pic != user.GooglePicture {
+		if err := s.store.SetGooglePicture(r.Context(), user.ID, pic); err != nil {
+			s.log.Warn("supabase auth: picture", "error", err, "user", user.ID)
+		} else {
+			user.GooglePicture = pic
+		}
+	}
+
 	token, exp, err := s.sessions.Issue(user.ID)
 	if err != nil {
 		s.fail(w, r, "supabase auth: issue session", err)
@@ -636,6 +645,10 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusOK
 	if created {
 		status = http.StatusCreated
+		// Only on the request that created the account. A returning Google user, or one
+		// linking to an existing password account, was welcomed when that account was
+		// made (or predates the welcome email and is deliberately never sent one).
+		s.queueWelcome(r.Context(), user)
 	}
 	httpx.JSON(w, status, user.Public())
 }

@@ -9,8 +9,10 @@ import { useSession } from "@/components/providers";
 import { Badge, Card } from "@/components/ui";
 import { WhatsAppCard } from "./whatsapp-card";
 import { api } from "@/lib/api";
+import { ChannelWhatsApp } from "@/lib/api-types";
 import type { CRMSetup, CRMTemplate, Webinar } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
+import { channelEnabled, useWebinarMessageSlots } from "../slot-counts";
 
 /* Setting WhatsApp up, as a checklist a host can finish in one place.
  *
@@ -335,6 +337,15 @@ function Step({
  *  stays a step — the whole list is one click away on the host's own dashboard. */
 const WEBINARS_SHOWN = 5;
 
+/* On when any resolved slot sends WhatsApp. The legacy flag is only the answer
+ * when the messages request fails — a new webinar leaves it false. */
+function WhatsAppReminderBadge({ webinar }: { webinar: Webinar }) {
+  const slots = useWebinarMessageSlots(webinar.id);
+  const on = channelEnabled(slots, ChannelWhatsApp, webinar.options.whatsappReminders);
+  if (on === null) return <Spinner className="size-3.5 text-ink-3" />;
+  return on ? <Badge tone="ok">On</Badge> : <Badge>Off</Badge>;
+}
+
 /* The webinars whose switch is off, by name, each linking to its own settings.
  *
  * Named rather than counted, because "2 of 6 have WhatsApp on" leaves a host to work
@@ -397,11 +408,7 @@ function WebinarSwitches({ setup }: { setup: CRMSetup | null }) {
               >
                 {w.topic}
               </Link>
-              {w.options.whatsappReminders ? (
-                <Badge tone="ok">On</Badge>
-              ) : (
-                <Badge>Off</Badge>
-              )}
+              <WhatsAppReminderBadge webinar={w} />
             </li>
           ))}
         </ul>

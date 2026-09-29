@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Webinar people · page 2 (perf mock)</title><link rel="stylesheet" href="assets/simple.css">
+<style>
+  table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.t th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--ink-3); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  table.t td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .pager { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; }
+  .pager .mid { font-size:12.5px; color:var(--ink-2); }
+  .pager .mid b { color:var(--ink); }
+</style></head>
+<body>
+<div data-nav></div>
+<main>
+  <a class="back" href="perf-home.html">← Your webinars</a>
+  <div class="row between" style="align-items:flex-start">
+    <div>
+      <span class="badge brand"><span class="dot"></span>In 2 days</span>
+      <h1 style="margin-top:8px">Mindful Money: Budgeting Without Guilt</h1>
+      <p class="small muted" style="margin-top:4px">Thu 1 Oct · 7:00 – 8:00 PM IST</p>
+    </div>
+    <div class="row"><button class="btn ghost">⋯</button><button class="btn">▶ Go live</button></div>
+  </div>
+
+  <div class="tabs" style="margin-top:18px">
+    <a class="tab" href="webinar-before.html">Overview</a>
+    <a class="tab on" href="#">People <span class="count">86</span></a>
+    <a class="tab" href="#">Setup</a>
+  </div>
+
+  <div class="card p0">
+    <div class="row between" style="padding:12px 16px; border-bottom:1px solid var(--line)">
+      <span class="small muted">Registered for this webinar</span>
+      <input class="field sm" style="width:220px" placeholder="Search name or email">
+    </div>
+    <table class="t">
+      <tr><th>Person</th><th>Registered</th><th>Approval</th><th>WhatsApp</th></tr>
+      <tr><td><div class="row"><span class="av sm a6">AS</span><div><b>Aditi Shah</b><div class="xs faint">aditi@example.com</div></div></div></td><td class="xs muted">Mon</td><td><span class="badge ok">Approved</span></td><td><span class="badge">Opted in</span></td></tr>
+      <tr><td><div class="row"><span class="av sm a8">RG</span><div><b>Rohit Gupta</b><div class="xs faint">rohit@example.com</div></div></div></td><td class="xs muted">Mon</td><td><span class="badge ok">Approved</span></td><td><span class="badge">Opted in</span></td></tr>
+      <tr><td><div class="row"><span class="av sm a3">KM</span><div><b>Karan Mehta</b><div class="xs faint">karan@example.com</div></div></div></td><td class="xs muted">Sun</td><td><span class="badge warn">Waiting</span></td><td><span class="badge">No number</span></td></tr>
+      <tr><td><div class="row"><span class="av sm a1">LM</span><div><b>Leela Menon</b><div class="xs faint">leela@example.com</div></div></div></td><td class="xs muted">Sun</td><td><span class="badge ok">Approved</span></td><td><span class="badge">Opted in</span></td></tr>
+    </table>
+    <div class="pager">
+      <button class="btn sm sec">Previous</button>
+      <div class="mid"><b>Page 2 of 4</b> <span class="xs faint">· 25 per page · 26–50 of 86</span></div>
+      <button class="btn sm sec">Next</button>
+    </div>
+  </div>
+</main>
+<div class="note"><b>One webinar’s People tab, page 2.</b> Paginated: today Manage loads every registrant in one response, capped at 500, before the page can draw. Proposed page size is 25, with the same Previous / Next row as Audience. Cached: the webinar’s own settings and its message slots, for the session. The approval queue and a live session’s attendance stay fresh. An empty last page looks like Drafts: the table says nobody is on this page, and Previous is the way back.</div>
+<script src="assets/nav.js"></script>
+</body></html>
