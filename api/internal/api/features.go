@@ -90,3 +90,27 @@ func (s *Server) hostCloudRecording(ctx context.Context, hostID string) bool {
 	}
 	return host.HasFeature(types.FeatureCloudRecording)
 }
+
+/* requireHostFeature allows the request only when this host has the switch.
+ *
+ * The host, not whoever pressed the button, same as requireCloudRecording. Returns
+ * false after writing 403 feature_off. Callers return immediately.
+ */
+func (s *Server) requireHostFeature(w http.ResponseWriter, r *http.Request, hostID, key string) bool {
+	if hostID == "" {
+		httpx.Error(w, http.StatusForbidden, "feature_off",
+			featureLabel(key)+" isn't switched on for this account.")
+		return false
+	}
+	caller := userFromContext(r.Context())
+	subject := caller
+	if hostID != caller.ID {
+		host, err := s.store.UserByID(r.Context(), hostID)
+		if err != nil {
+			s.fail(w, r, "feature: load host", err)
+			return false
+		}
+		subject = host
+	}
+	return s.featureAllowed(w, subject, key)
+}

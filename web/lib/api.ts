@@ -142,11 +142,14 @@ export const api = {
 
   /** The name-only door: creates a registration and returns a token in one call.
    *
-   *  Refused with 409 `guest_join_disabled` when the host approves each attendee, and
-   *  403 `passcode_required` when there is a passcode — both of which the landing page
-   *  already knows from `webinar.guestJoinAllowed`, so reaching either means the webinar
-   *  changed while the page was open. The response carries `joinKey`, which is the only
-   *  thing that gets a guest back in after a reload. */
+   *  Refused with 403 `registration_required` when the host's account does not
+   *  allow joining without registering, or this webinar still requires it — the
+   *  landing page should show Register. Also 409 `guest_join_disabled` when the
+   *  host approves each attendee, and 403 `passcode_required` when there is a
+   *  passcode. The landing page already knows from `webinar.guestJoinAllowed`,
+   *  so reaching any of these means the webinar changed while the page was open.
+   *  The response carries `joinKey`, which is the only thing that gets a guest
+   *  back in after a reload. */
   guestJoin: (slug: string, name: string) =>
     post<JoinResponse>(`/api/webinars/${seg(slug)}/guest-join`, { name }),
 

@@ -154,6 +154,17 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := userFromContext(r.Context())
+	if in.Instant && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
+		return
+	}
+	/* Registration off is the name-only door. Without the switch it is not saved:
+	 * an omitted field and an explicit false both become required, so a client that
+	 * never heard of the field keeps working and a direct call cannot leave the door
+	 * open. The join path checks the switch again, in case this row was saved while
+	 * the switch was on and an administrator has since turned it off. */
+	if !user.HasFeature(types.FeatureJoinWithoutRegistration) {
+		in.RegistrationRequired = true
+	}
 	if in.Options.AutoRecord && !s.requireCloudRecording(w, r, user.ID) {
 		return
 	}
@@ -193,6 +204,29 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
+	}
+
+	// Registration off is the host's switch, so a co-host cannot open the name-only
+	// door for an account that does not have it. Without the switch the save keeps
+	// registration required, the same as create.
+	if !in.RegistrationRequired {
+		hostID, err := s.store.HostIDFor(r.Context(), slug)
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+			return
+		}
+		if err != nil {
+			s.fail(w, r, "update webinar: host", err)
+			return
+		}
+		host, err := s.store.UserByID(r.Context(), hostID)
+		if err != nil {
+			s.fail(w, r, "update webinar: host features", err)
+			return
+		}
+		if !host.HasFeature(types.FeatureJoinWithoutRegistration) {
+			in.RegistrationRequired = true
+		}
 	}
 
 	// "Record automatically" is a cloud recording. The host's switch, so a co-host

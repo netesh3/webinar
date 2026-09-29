@@ -20,6 +20,7 @@ import { ApiError, api } from "@/lib/api";
 import {
   ChannelEmail,
   FeatureCloudRecording,
+  FeatureJoinWithoutRegistration,
   type CustomQuestion,
   type EngagementTierCounts,
   type Recording,
@@ -919,6 +920,9 @@ function StageTab({
 function SettingsTab({ webinar: w }: { webinar: Webinar }) {
   const { account } = useSession();
   const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
+  const openJoin = (account?.features ?? []).includes(
+    FeatureJoinWithoutRegistration,
+  );
   const rows: [string, boolean | string][] = [
     ["Attendees hidden from each other", w.controls.hideAttendees],
     ["Panelists muted on entry", w.controls.muteOnEntry],
@@ -928,7 +932,9 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     ["Raise hand", w.controls.raiseHandEnabled],
     ["Reactions", w.controls.reactionsEnabled],
     ["Locked to new attendees", w.controls.locked],
-    ["Registration required", w.registrationRequired],
+    ...(openJoin
+      ? ([["Registration required", w.registrationRequired]] as [string, boolean][])
+      : []),
     ...(cloudRecording
       ? ([["Record automatically", w.options.autoRecord]] as [string, boolean][])
       : []),

@@ -140,13 +140,13 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	w.Panelists = []types.Person{}
 	w.CustomQuestions = []types.CustomQuestion{}
 
-	/* Derived here, so every read carries it and no caller has to remember.
+	/* The guest door is finished in attachChildren, not here.
 	 *
-	 * After Approval and Passcode are scanned, and before publicWebinar gets a chance to blank
-	 * the passcode — computing it any later would read an empty string and quietly open the
-	 * guest door on every passcode-protected webinar.
+	 * It depends on the host's FeatureJoinWithoutRegistration as well as on this row, and
+	 * the host's features are not in this scan. Left false until that pass, which is the
+	 * restrictive answer if a caller ever forgot to attach. The passcode is still on the
+	 * struct then: publicWebinar blanks it only after the store has returned.
 	 */
-	w.GuestJoinAllowed = types.GuestJoinAllowedFor(w)
 	return w, hostID, nil
 }
 
@@ -1509,7 +1509,57 @@ func (s *Store) attachChildren(ctx context.Context, list []types.Webinar) ([]typ
 			list[i].CustomQuestions = append(list[i].CustomQuestions, q)
 		}
 	}
-	return list, qRows.Err()
+	if err := qRows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.applyOpenJoin(ctx, list); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+/* applyOpenJoin sets GuestJoinAllowed from the webinar and the host's switch.
+ *
+ * One query for the whole page, not one per webinar. A host who is missing from
+ * the result is treated as off: the name-only door stays closed, which is the
+ * default (migrations/0073).
+ */
+func (s *Store) applyOpenJoin(ctx context.Context, list []types.Webinar) error {
+	open := map[string]bool{}
+	ids := make([]string, 0, len(list))
+	seen := map[string]bool{}
+	for _, w := range list {
+		if w.Host.ID == "" || seen[w.Host.ID] {
+			continue
+		}
+		seen[w.Host.ID] = true
+		ids = append(ids, w.Host.ID)
+	}
+	if len(ids) > 0 {
+		rows, err := s.pool.Query(ctx, `
+			SELECT id::text, $2 = ANY(COALESCE(features, '{}'))
+			  FROM users
+			 WHERE id::text = ANY($1)`, ids, types.FeatureJoinWithoutRegistration)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			var allowed bool
+			if err := rows.Scan(&id, &allowed); err != nil {
+				return err
+			}
+			open[id] = allowed
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+	}
+	for i := range list {
+		list[i].GuestJoinAllowed = types.GuestJoinAllowedFor(list[i], open[list[i].Host.ID])
+	}
+	return nil
 }
 
 /* ClaimSFUProject records which LiveKit project a webinar's room lives on, and reports what was

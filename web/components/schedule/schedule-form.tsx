@@ -18,6 +18,7 @@ import { API_BASE, ApiError, api } from "@/lib/api";
 import type { MessagesSaveHandle } from "@/engage";
 import {
   FeatureCloudRecording,
+  FeatureJoinWithoutRegistration,
   type MessageSlot,
   type Webinar,
   type WebinarInput,
@@ -157,6 +158,9 @@ function ScheduleFormBody({
   const config = useAppConfig();
   const { account } = useSession();
   const { notify } = useToast();
+  const openJoin = (account?.features ?? []).includes(
+    FeatureJoinWithoutRegistration,
+  );
   const editing = webinar !== null;
 
   /* The step, mirrored into ?step= so a reload or a shared link opens the
@@ -386,7 +390,7 @@ function ScheduleFormBody({
         ? { simuliveRecordingId: form.simuliveRecordingId }
         : {}),
       status,
-      registrationRequired: form.registrationRequired,
+      registrationRequired: openJoin ? form.registrationRequired : true,
       approval: form.approval,
       attendeeLimit: form.attendeeLimit,
       passcode: form.passcode.trim(),
@@ -558,7 +562,10 @@ function ScheduleFormBody({
     hydrated && startsAtPreview && form.timeZone
       ? shortTimeZone(form.timeZone, startsAtPreview)
       : "";
-  const summary = scheduleSummary(form, summaryZone);
+  const summary = scheduleSummary(
+    openJoin ? form : { ...form, registrationRequired: true },
+    summaryZone,
+  );
   const showDraft = !editing || webinar.status === "draft";
 
   const questionProblem =
