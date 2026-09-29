@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { FeatureReplayLinks } from "@/lib/api-types";
+import { FeatureWhatsAppCRM } from "@/lib/api-types";
 import type { Recording, Webinar } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { formatBytes, formatClock } from "@/lib/format";
@@ -234,7 +234,7 @@ function ShareRecordingModal({
    * an account without it publishes a recording and nothing is sent, which is
    * how this worked before the replay existed. */
   const tellsRegistrants = (account?.features ?? []).includes(
-    FeatureReplayLinks,
+    FeatureWhatsAppCRM,
   );
   const [isPublic, setIsPublic] = useState(rec.isPublic);
   const [passcode, setPasscode] = useState(rec.passcode ?? "");

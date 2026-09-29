@@ -175,7 +175,7 @@ func (s *Module) saveDrip(w http.ResponseWriter, r *http.Request, id string) {
 		tagID = ""
 	}
 	if trigger == types.DripTagAdded {
-		if !s.featureAllowed(w, user, types.FeatureCRMTags) {
+		if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 			return
 		}
 		if tagID != "" && !s.crmTagAllowed(w, r, user.ID, tagID) {
@@ -349,7 +349,7 @@ func (s *Module) stepsAllowed(
 				httpx.Error(w, http.StatusUnprocessableEntity, "crm_step_no_tag", at+"pick the tag to put on them.")
 				return nil, false
 			}
-			if !s.featureAllowed(w, user, types.FeatureCRMTags) || !s.crmTagAllowed(w, r, user.ID, tagID) {
+			if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) || !s.crmTagAllowed(w, r, user.ID, tagID) {
 				return nil, false
 			}
 			out = append(out, types.CRMDripStep{DelayMinutes: step.DelayMinutes, Kind: types.DripStepTag,

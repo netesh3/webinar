@@ -2441,24 +2441,16 @@ export interface Account {
   whatsapp?: WhatsAppLink;
 }
 /**
- * FeatureCRMTags is labelling contacts, and everything that reads a label: the
- * tag audience for a broadcast, the "tag added" sequence trigger, the bot step.
+ *  FeatureWhatsAppCRM is the host CRM surface: contact tags and notes, sharing
+ * 	 * a replay link, registering a WhatsApp number, and the sequences and contact
+ * 	 * tools that used to be separate switches (crm_tags, crm_notes, replay_links,
+ * 	 * whatsapp_register).
+ * 	 *
+ * 	 * Off — the default for a brand-new account, the same as each of those keys —
+ * 	 * means none of that surface. An account that already had any of them keeps
+ * 	 * it; see migrations/0074.
  */
-export const FeatureCRMTags = "crm_tags";
-/**
- * FeatureCRMNotes is writing private notes on a contact.
- */
-export const FeatureCRMNotes = "crm_notes";
-/**
- * FeatureReplayLinks is the replay email, and the WhatsApp replay message with
- * it: sharing a recording tells everybody who registered where to watch it.
- */
-export const FeatureReplayLinks = "replay_links";
-/**
- * FeatureWhatsAppRegister is registering the connected number with Cloud API from
- * the connect flow, using a two-step PIN the host types.
- */
-export const FeatureWhatsAppRegister = "whatsapp_register";
+export const FeatureWhatsAppCRM = "whatsapp_crm";
 /**
  *  FeatureCloudRecording is storing the session on this instance: the recordings
  * 	 * tab, "Record to the Cloud", and "Record automatically".
@@ -3190,7 +3182,7 @@ export interface CRMSetup {
   verifiedName?: string;
   /**
    * * Whether registering the number is this host's step at all. False when the
-   * 	 *  `whatsapp_register` switch is off for the account, in which case the step is not
+   * 	 *  `whatsapp_crm` switch is off for the account, in which case the step is not
    * 	 *  undone — it is not theirs, and showing it as outstanding would describe work
    * 	 *  they have no button for.
    */

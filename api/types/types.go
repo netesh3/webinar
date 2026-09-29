@@ -944,32 +944,31 @@ type Account struct {
 /* Per-account features, switched on and off by an admin.
  *
  * A list of keys on the account rather than a boolean column each, unlike CanHost
- * and CanCdnBroadcast. Those two are old enough to be part of what an account IS;
- * these are the switches on individual pieces of the CRM, and there will be more of
- * them with every phase. One column, one endpoint and one catalogue means the next
- * feature is a line here instead of a migration, a handler, a scan list and a toggle
- * — and the admin screen renders whatever this server declares rather than a list
- * the browser keeps its own copy of.
+ * and CanCdnBroadcast. Those two are old enough to be part of what an account IS.
+ * WhatsApp CRM is one switch for the whole host CRM surface — tags, notes, replay
+ * links, number registration, sequences, and the contact tools those used to gate
+ * one by one. The other keys are distinct product switches. One column, one
+ * endpoint and one catalogue means the next feature is a line here instead of a
+ * migration, a handler, a scan list and a toggle — and the admin screen renders
+ * whatever this server declares rather than a list the browser keeps its own copy of.
  *
  * Absent means off. There is no feature that defaults to on. An administrator
- * turning one on for an account is the record that somebody decided to — for the
- * CRM switches because they spend money or write to other people's phones, for
+ * turning one on for an account is the record that somebody decided to — for
+ * WhatsApp CRM because it spends money or writes to other people's phones, for
  * cloud recording because storing a session is a decision per customer, and for
  * join-without-registration and instant webinars because the default is the
  * restrictive one: everyone registers, and every webinar is scheduled.
  */
 const (
-	// FeatureCRMTags is labelling contacts, and everything that reads a label: the
-	// tag audience for a broadcast, the "tag added" sequence trigger, the bot step.
-	FeatureCRMTags = "crm_tags"
-	// FeatureCRMNotes is writing private notes on a contact.
-	FeatureCRMNotes = "crm_notes"
-	// FeatureReplayLinks is the replay email, and the WhatsApp replay message with
-	// it: sharing a recording tells everybody who registered where to watch it.
-	FeatureReplayLinks = "replay_links"
-	// FeatureWhatsAppRegister is registering the connected number with Cloud API from
-	// the connect flow, using a two-step PIN the host types.
-	FeatureWhatsAppRegister = "whatsapp_register"
+	/* FeatureWhatsAppCRM is the host CRM surface: contact tags and notes, sharing
+	 * a replay link, registering a WhatsApp number, and the sequences and contact
+	 * tools that used to be separate switches (crm_tags, crm_notes, replay_links,
+	 * whatsapp_register).
+	 *
+	 * Off — the default for a brand-new account, the same as each of those keys —
+	 * means none of that surface. An account that already had any of them keeps
+	 * it; see migrations/0074. */
+	FeatureWhatsAppCRM = "whatsapp_crm"
 	/* FeatureCloudRecording is storing the session on this instance: the recordings
 	 * tab, "Record to the Cloud", and "Record automatically".
 	 *
@@ -1008,24 +1007,9 @@ type Feature struct {
  */
 var Features = []Feature{
 	{
-		Key:         FeatureCRMTags,
-		Label:       "Contact tags",
-		Description: "Label contacts, message a tag, and start a sequence when one is added.",
-	},
-	{
-		Key:         FeatureCRMNotes,
-		Label:       "Contact notes",
-		Description: "Keep private notes on a contact, visible only to this account.",
-	},
-	{
-		Key:         FeatureReplayLinks,
-		Label:       "Replay links",
-		Description: "Sharing a recording emails the replay link to everyone who registered, and sends it on WhatsApp where a template is set.",
-	},
-	{
-		Key:         FeatureWhatsAppRegister,
-		Label:       "Register WhatsApp number",
-		Description: "Let this host register a number created in the signup dialog, with a two-step PIN they choose.",
+		Key:         FeatureWhatsAppCRM,
+		Label:       "WhatsApp CRM",
+		Description: "Contact tags and notes, replay links, WhatsApp number registration, sequences, and the other host contact tools.",
 	},
 	{
 		Key:         FeatureCloudRecording,
@@ -1595,7 +1579,7 @@ type CRMSetup struct {
 	DisplayPhone string `json:"displayPhone,omitempty"`
 	VerifiedName string `json:"verifiedName,omitempty"`
 	/** Whether registering the number is this host's step at all. False when the
-	 *  `whatsapp_register` switch is off for the account, in which case the step is not
+	 *  `whatsapp_crm` switch is off for the account, in which case the step is not
 	 *  undone — it is not theirs, and showing it as outstanding would describe work
 	 *  they have no button for. */
 	RegisterStep bool `json:"registerStep"`

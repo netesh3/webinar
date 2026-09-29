@@ -70,10 +70,10 @@ func TestCRMSetupTracksEachStep(t *testing.T) {
 	 * Read from the same switch that decides whether the form is rendered, so the
 	 * count and the buttons cannot disagree. */
 	if fresh.RegisterStep {
-		t.Error("registerStep true without the whatsapp_register switch: " +
+		t.Error("registerStep true without the whatsapp_crm switch: " +
 			"the checklist would count a step with no button")
 	}
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppRegister)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 	if s := crmSetup(t, h); !s.RegisterStep || s.RegisteredAt != "" {
 		t.Errorf("after the switch: registerStep %v, registeredAt %q, want true and undone",
 			s.RegisterStep, s.RegisteredAt)

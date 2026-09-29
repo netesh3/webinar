@@ -44,7 +44,7 @@ func TestCRMNotes(t *testing.T) {
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureCRMNotes)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 
 	wb := autoWebinar(t, h, "Scaling Postgres")
 	thandi := registerOptedIn(t, h, wb.ID)
@@ -136,7 +136,7 @@ func TestCRMNotesAreOnePerHost(t *testing.T) {
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureCRMNotes)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 
 	wb := autoWebinar(t, h, "Scaling Postgres")
 	thandi := registerOptedIn(t, h, wb.ID)
@@ -144,7 +144,7 @@ func TestCRMNotesAreOnePerHost(t *testing.T) {
 
 	h.logout()
 	other := h.signup("Other Host", "other-notes@test.dev", true)
-	grantFeature(t, h, other.ID, types.FeatureCRMNotes)
+	grantFeature(t, h, other.ID, types.FeatureWhatsAppCRM)
 
 	for _, tc := range []struct{ name, method, path string }{
 		{"read", http.MethodGet, "/api/host/crm/contacts/" + thandi.ID + "/notes"},
@@ -177,13 +177,13 @@ func TestCRMNotesSurviveTheSwitchGoingOff(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
 	me := meAccount(t, h)
-	grantFeature(t, h, me.ID, types.FeatureCRMNotes)
+	grantFeature(t, h, me.ID, types.FeatureWhatsAppCRM)
 
 	wb := autoWebinar(t, h, "Scaling Postgres")
 	thandi := registerOptedIn(t, h, wb.ID)
 	note := addNote(t, h, thandi.ID, "Wants a call after 5pm.")
 
-	if _, err := h.store.SetFeature(t.Context(), me.ID, types.FeatureCRMNotes, false); err != nil {
+	if _, err := h.store.SetFeature(t.Context(), me.ID, types.FeatureWhatsAppCRM, false); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
 	res, raw := h.do(http.MethodGet, "/api/host/crm/contacts/"+thandi.ID+"/notes", nil)
@@ -194,7 +194,7 @@ func TestCRMNotesSurviveTheSwitchGoingOff(t *testing.T) {
 		t.Errorf("the thread still carries %d notes with the switch off", n)
 	}
 
-	grantFeature(t, h, me.ID, types.FeatureCRMNotes)
+	grantFeature(t, h, me.ID, types.FeatureWhatsAppCRM)
 	notes := contactNotes(t, h, thandi.ID)
 	if len(notes) != 1 || notes[0].ID != note.ID {
 		t.Errorf("notes = %+v after switching the feature back on, want the one written before", notes)

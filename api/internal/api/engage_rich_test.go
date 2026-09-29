@@ -87,7 +87,7 @@ func TestStarterTemplatesAndQuickReplyActions(t *testing.T) {
 	g := newFakeGraph(t)
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureCRMTags)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 	connectWhatsApp(t, h)
 
 	res, raw := h.do(http.MethodPost, "/api/host/crm/templates/starters", nil)

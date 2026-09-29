@@ -27,14 +27,14 @@ import (
  * per person per label — a host clicking a chip twice, or a flow a contact walks through
  * again, must not restart a sequence. One function, one decision.
  *
- * Gated on types.FeatureCRMTags for every endpoint here. The tables are not: a switch that
+ * Gated on types.FeatureWhatsAppCRM for every endpoint here. The tables are not: a switch that
  * is turned off has to be turnable back on without losing what the host wrote under it.
  */
 
 // handleCRMTags lists the host's labels with their contact counts.
 func (s *Module) handleCRMTags(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return
 	}
 	tags, err := s.store.Tags(r.Context(), user.ID)
@@ -53,7 +53,7 @@ func (s *Module) handleCRMTags(w http.ResponseWriter, r *http.Request) {
  */
 func (s *Module) handleCreateCRMTag(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return
 	}
 
@@ -83,7 +83,7 @@ func (s *Module) handleCreateCRMTag(w http.ResponseWriter, r *http.Request) {
 // handleRenameCRMTag changes a label's name, keeping it on everybody who has it.
 func (s *Module) handleRenameCRMTag(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return
 	}
 
@@ -125,7 +125,7 @@ func (s *Module) handleRenameCRMTag(w http.ResponseWriter, r *http.Request) {
  */
 func (s *Module) handleDeleteCRMTag(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -158,7 +158,7 @@ func (s *Module) handleDeleteCRMTag(w http.ResponseWriter, r *http.Request) {
  */
 func (s *Module) handleAddCRMContactTag(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return
 	}
 	contactID := chi.URLParam(r, "id")
@@ -196,7 +196,7 @@ func (s *Module) handleAddCRMContactTag(w http.ResponseWriter, r *http.Request) 
 // the host stops that by exiting the enrollment, which is its own visible action.
 func (s *Module) handleRemoveCRMContactTag(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return
 	}
 	contactID := chi.URLParam(r, "id")
@@ -276,7 +276,7 @@ func (s *Module) crmTagAllowed(w http.ResponseWriter, r *http.Request, hostID, t
  * are a control on somebody else's screen, and the contacts are what was asked for.
  */
 func (s *Module) hostTags(ctx context.Context, user store.User) []types.CRMTag {
-	if !user.HasFeature(types.FeatureCRMTags) {
+	if !user.HasFeature(types.FeatureWhatsAppCRM) {
 		return []types.CRMTag{}
 	}
 	tags, err := s.store.Tags(ctx, user.ID)

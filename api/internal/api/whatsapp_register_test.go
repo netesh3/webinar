@@ -27,7 +27,7 @@ func TestWhatsAppRegisterPassesTheHostsPinToMeta(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
 	me := meAccount(t, h)
-	grantFeature(t, h, me.ID, types.FeatureWhatsAppRegister)
+	grantFeature(t, h, me.ID, types.FeatureWhatsAppCRM)
 
 	if me.WhatsApp == nil || me.WhatsApp.RegisteredAt != "" {
 		t.Fatalf("a freshly connected account is already registered: %+v", me.WhatsApp)
@@ -97,7 +97,7 @@ func TestWhatsAppRegisterRefusals(t *testing.T) {
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
 	me := meAccount(t, h)
-	grantFeature(t, h, me.ID, types.FeatureWhatsAppRegister)
+	grantFeature(t, h, me.ID, types.FeatureWhatsAppCRM)
 
 	// Nothing to register before the host has connected anything.
 	res, raw := h.do(http.MethodPost, "/api/host/whatsapp/register",

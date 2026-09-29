@@ -6,7 +6,7 @@ import { Alert, Spinner } from "@/components/controls";
 import { Button } from "@/components/ui";
 import { WhatsAppIcon } from "@/components/icons";
 import { ApiError } from "@/lib/api";
-import { FeatureWhatsAppRegister } from "@/lib/api-types";
+import { FeatureWhatsAppCRM } from "@/lib/api-types";
 import type { Account, WhatsAppSignup } from "@/lib/api-types";
 import { useNow } from "@/lib/clock";
 import { formatRelative } from "@/lib/format";
@@ -285,7 +285,7 @@ export function WhatsAppCard({
       {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="ok">{notice}</Alert>}
 
-      {connected && !account.whatsapp?.coexistence && (account.features ?? []).includes(FeatureWhatsAppRegister) && (
+      {connected && !account.whatsapp?.coexistence && (account.features ?? []).includes(FeatureWhatsAppCRM) && (
         <RegisterNumber account={account} onChanged={onChanged} />
       )}
     </div>

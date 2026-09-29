@@ -213,7 +213,7 @@ func (s *Module) handleWhatsAppRegister(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	user := authctx.User(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureWhatsAppRegister) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return
 	}
 

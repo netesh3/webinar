@@ -99,7 +99,7 @@ func (s *Module) handleCRMContacts(w http.ResponseWriter, r *http.Request) {
 	/* The chips are filled in for the whole page in one more query — see AttachTags.
 	 * A failure is logged rather than fatal: the inbox is what the host asked for, and a
 	 * list with no labels on it is still the list. */
-	if user.HasFeature(types.FeatureCRMTags) {
+	if user.HasFeature(types.FeatureWhatsAppCRM) {
 		if err := s.store.AttachTags(r.Context(), user.ID, contacts); err != nil {
 			s.log.Warn("crm contacts: tags", "error", err, "host", user.ID)
 		}
@@ -156,14 +156,14 @@ func (s *Module) handleCRMThread(w http.ResponseWriter, r *http.Request) {
 	 * thread wants the chips and the notes pane already there. Both are logged and
 	 * dropped on failure for the reason the service window below is — the messages are
 	 * what the request was for. */
-	if user.HasFeature(types.FeatureCRMTags) {
+	if user.HasFeature(types.FeatureWhatsAppCRM) {
 		if tags, err := s.store.ContactTags(r.Context(), user.ID, contact.ID); err != nil {
 			s.log.Warn("crm thread: tags", "error", err, "host", user.ID)
 		} else {
 			res.Contact.Tags = tags
 		}
 	}
-	if user.HasFeature(types.FeatureCRMNotes) {
+	if user.HasFeature(types.FeatureWhatsAppCRM) {
 		if notes, err := s.store.Notes(r.Context(), user.ID, contact.ID); err != nil {
 			s.log.Warn("crm thread: notes", "error", err, "host", user.ID)
 		} else {

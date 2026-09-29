@@ -163,7 +163,7 @@ func (s *Module) onQuickReply(ctx context.Context, host store.User, contactID, k
 	default:
 		return
 	}
-	if !host.HasFeature(types.FeatureCRMTags) {
+	if !host.HasFeature(types.FeatureWhatsAppCRM) {
 		return
 	}
 	tag, err := s.store.CreateTag(ctx, host.ID, tagName)

@@ -411,7 +411,7 @@ func (s *Module) saveKeywordRecipe(w http.ResponseWriter, r *http.Request, user 
 // saveHotLeadRecipe writes the rule, creating the "Hot lead" tag the first time.
 func (s *Module) saveHotLeadRecipe(w http.ResponseWriter, r *http.Request, user store.User, body types.CRMRecipeRequest) bool {
 	ctx := r.Context()
-	if !s.featureAllowed(w, user, types.FeatureCRMTags) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return false
 	}
 	words := []string{}

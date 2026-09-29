@@ -75,7 +75,7 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 
 	// A host cannot grant themselves anything.
 	res, raw := h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",
-		types.FeatureGrant{Feature: types.FeatureCRMTags, Enabled: true})
+		types.FeatureGrant{Feature: types.FeatureWhatsAppCRM, Enabled: true})
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("host granting itself a feature: status %d, want 403\n  body: %s", res.StatusCode, raw)
 	}
@@ -87,44 +87,44 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 	h.login("neeraj@acme.dev")
 
 	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",
-		types.FeatureGrant{Feature: types.FeatureCRMTags, Enabled: true})
+		types.FeatureGrant{Feature: types.FeatureWhatsAppCRM, Enabled: true})
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("grant: status %d body %s", res.StatusCode, raw)
 	}
 	var updated types.Account
 	h.decode(raw, &updated)
-	if !hasFeature(updated.Features, types.FeatureCRMTags) {
-		t.Fatalf("features = %v after granting tags", updated.Features)
+	if !hasFeature(updated.Features, types.FeatureWhatsAppCRM) {
+		t.Fatalf("features = %v after granting WhatsApp CRM", updated.Features)
 	}
 
 	// A second switch on the same account does not replace the first: the column is
 	// a set, and two admins deciding two things must not clobber each other.
 	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",
-		types.FeatureGrant{Feature: types.FeatureCRMNotes, Enabled: true})
+		types.FeatureGrant{Feature: types.FeatureCloudRecording, Enabled: true})
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("second grant: status %d body %s", res.StatusCode, raw)
 	}
 	h.decode(raw, &updated)
-	if !hasFeature(updated.Features, types.FeatureCRMTags) || !hasFeature(updated.Features, types.FeatureCRMNotes) {
+	if !hasFeature(updated.Features, types.FeatureWhatsAppCRM) || !hasFeature(updated.Features, types.FeatureCloudRecording) {
 		t.Fatalf("features = %v, want both", updated.Features)
 	}
 
 	// Granting the same thing twice is not two grants.
 	_, raw = h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",
-		types.FeatureGrant{Feature: types.FeatureCRMTags, Enabled: true})
+		types.FeatureGrant{Feature: types.FeatureWhatsAppCRM, Enabled: true})
 	h.decode(raw, &updated)
 	if len(updated.Features) != 2 {
-		t.Errorf("features = %v after re-granting tags, want two", updated.Features)
+		t.Errorf("features = %v after re-granting WhatsApp CRM, want two", updated.Features)
 	}
 
 	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",
-		types.FeatureGrant{Feature: types.FeatureCRMTags, Enabled: false})
+		types.FeatureGrant{Feature: types.FeatureWhatsAppCRM, Enabled: false})
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("revoke: status %d body %s", res.StatusCode, raw)
 	}
 	h.decode(raw, &updated)
-	if hasFeature(updated.Features, types.FeatureCRMTags) || !hasFeature(updated.Features, types.FeatureCRMNotes) {
-		t.Fatalf("features = %v after revoking tags, want notes only", updated.Features)
+	if hasFeature(updated.Features, types.FeatureWhatsAppCRM) || !hasFeature(updated.Features, types.FeatureCloudRecording) {
+		t.Fatalf("features = %v after revoking WhatsApp CRM, want cloud recording only", updated.Features)
 	}
 
 	// The column has no CHECK, so this endpoint is the only thing standing between a
@@ -136,7 +136,7 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 	}
 
 	res, raw = h.do(http.MethodPatch, "/api/admin/users/00000000-0000-0000-0000-000000000000/features",
-		types.FeatureGrant{Feature: types.FeatureCRMTags, Enabled: true})
+		types.FeatureGrant{Feature: types.FeatureWhatsAppCRM, Enabled: true})
 	if res.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown account: status %d, want 404\n  body: %s", res.StatusCode, raw)
 	}
@@ -148,8 +148,8 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 	if len(users) == 0 {
 		t.Fatalf("admin list does not contain the target: %s", raw)
 	}
-	if !hasFeature(users[0].Features, types.FeatureCRMNotes) {
-		t.Errorf("admin list features = %v, want notes", users[0].Features)
+	if !hasFeature(users[0].Features, types.FeatureCloudRecording) {
+		t.Errorf("admin list features = %v, want cloud recording", users[0].Features)
 	}
 }
 
@@ -206,6 +206,68 @@ func TestFeaturesAreRefusedWhenSwitchedOff(t *testing.T) {
 	thread := crmThread(t, h, contact.ID)
 	if thread.Notes == nil {
 		t.Error("thread.notes is null rather than an empty list")
+	}
+}
+
+/* WhatsApp CRM is one catalogue switch for the surface that used to be four.
+ *
+ * crm_tags, crm_notes, replay_links and whatsapp_register are gone. An account
+ * without whatsapp_crm is refused a previously gated CRM action; an account with
+ * it can do that action. A brand-new signup does not receive the switch.
+ */
+func TestWhatsAppCRMIsOneSwitch(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+
+	var cfg types.AppConfig
+	_, raw := h.do(http.MethodGet, "/api/config", nil)
+	h.decode(raw, &cfg)
+	keys := featureKeys(cfg.FeatureCatalogue)
+	for _, gone := range []string{"crm_tags", "crm_notes", "replay_links", "whatsapp_register"} {
+		if hasFeature(keys, gone) {
+			t.Errorf("catalogue still offers %s", gone)
+		}
+	}
+	var crmRows int
+	for _, f := range cfg.FeatureCatalogue {
+		if f.Key == types.FeatureWhatsAppCRM {
+			crmRows++
+			if f.Label != "WhatsApp CRM" || f.Description == "" {
+				t.Errorf("whatsapp_crm row = %+v", f)
+			}
+		}
+	}
+	if crmRows != 1 {
+		t.Fatalf("whatsapp_crm appears %d times in the catalogue, want 1: %+v", crmRows, cfg.FeatureCatalogue)
+	}
+	for _, stay := range []string{
+		types.FeatureCloudRecording,
+		types.FeatureJoinWithoutRegistration,
+		types.FeatureInstantWebinar,
+	} {
+		if !hasFeature(keys, stay) {
+			t.Errorf("catalogue is missing %s", stay)
+		}
+	}
+
+	fresh := h.signup("CRM Default", "crm-default@test.dev", true)
+	if hasFeature(fresh.Features, types.FeatureWhatsAppCRM) {
+		t.Fatalf("new account features = %v, want WhatsApp CRM off", fresh.Features)
+	}
+
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+	me := meAccount(t, h)
+	res, raw := h.do(http.MethodPost, "/api/host/crm/tags", types.CRMTagRequest{Name: "VIP"})
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
+		t.Fatalf("without whatsapp_crm: status %d code %q, want 403 feature_off\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+
+	grantFeature(t, h, me.ID, types.FeatureWhatsAppCRM)
+	res, raw = h.do(http.MethodPost, "/api/host/crm/tags", types.CRMTagRequest{Name: "VIP"})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("with whatsapp_crm: status %d, want 201\n  body: %s", res.StatusCode, raw)
 	}
 }
 

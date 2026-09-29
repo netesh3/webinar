@@ -35,7 +35,7 @@ func TestRulePollAnswer(t *testing.T) {
 	g := newFakeGraph(t)
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureCRMTags)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 	connectWhatsApp(t, h)
 	tag := ruleTag(t, h, "Wants 1:1")
 
@@ -104,7 +104,7 @@ func TestRuleKeywordAndButton(t *testing.T) {
 	g := newFakeGraph(t)
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureCRMTags)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 	connectWhatsApp(t, h)
 	vip := ruleTag(t, h, "Asked about price")
 	more := ruleTag(t, h, "Tapped more")
