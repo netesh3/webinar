@@ -19,6 +19,8 @@ shot webinar-before webinar-before.html 900
 shot webinar-after  webinar-after.html  1160
 shot audience       audience.html       1180
 shot whatsapp       whatsapp.html       3010
+shot whatsapp-templates-drawer whatsapp-templates-drawer.html 1522
+shot whatsapp-templates-inline whatsapp-templates-inline.html 2928
 shot create-tabs-webinar  create-tabs-webinar.html  2330
 shot create-tabs-messages create-tabs-messages.html 1120
 shot settings settings.html 1200
