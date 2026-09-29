@@ -1497,6 +1497,7 @@ export type RegistrationState = string;
 export const RegApproved: RegistrationState = "approved";
 export const RegPending: RegistrationState = "pending";
 export const RegDeclined: RegistrationState = "declined";
+export const RegUnverified: RegistrationState = "unverified";
 /**
  * NotificationKind is why somebody is being told something.
  */
@@ -4215,6 +4216,11 @@ export interface AdminUser {
   hue: string;
   canHost: boolean;
   isAdmin: boolean;
+  /**
+   * False until the address is confirmed. A webinar registrant is an account
+   * in this list before that, with hosting off.
+   */
+  emailVerified: boolean;
   createdAt: string;
   /**
    * WebinarCount is why revoking is not always safe: an account that owns scheduled
@@ -4394,6 +4400,10 @@ export interface Registration {
   state: RegistrationState;
   joinKey: string;
   registeredAt: string;
+  /** Set when this response is not a way in yet. The join key arrives by email. */
+  needsEmailVerification?: boolean;
+  /** Tells the person to check their email. Empty once they are in. */
+  message?: string;
 }
 /**
  * RegisteredWebinar is one row of "My webinars" for a signed-in account: the

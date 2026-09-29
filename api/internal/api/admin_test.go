@@ -640,7 +640,9 @@ func TestAdminStats(t *testing.T) {
 	}
 
 	after := h.adminStats(t).stats
-	if after.Accounts != st.Accounts+1 || after.Hosts != st.Hosts || after.CdnBroadcast != st.CdnBroadcast+1 || after.NewAccounts7d != st.NewAccounts7d+1 {
+	// The viewer is one new account. The registrant is another: registering
+	// creates an account, and it does not grant hosting.
+	if after.Accounts != st.Accounts+2 || after.Hosts != st.Hosts || after.CdnBroadcast != st.CdnBroadcast+1 || after.NewAccounts7d != st.NewAccounts7d+2 {
 		t.Errorf("after account create: accounts %d hosts %d cdn %d new %d, before %+v",
 			after.Accounts, after.Hosts, after.CdnBroadcast, after.NewAccounts7d, st)
 	}

@@ -512,6 +512,9 @@ type harness struct {
 	 * bytes, and every version of that claim checked against the database alone would have
 	 * passed while leaving the files on disk for ever. */
 	recordingsDir string
+	// holdVerification leaves a new registration waiting on the email link.
+	// The default opens that link, so tests about the room see a finished registration.
+	holdVerification bool
 }
 
 // newHarness builds a server against the test database. `tweak` adjusts the
@@ -738,6 +741,34 @@ func (h *harness) do(method, path string, body any) (*http.Response, []byte) {
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
+	return h.openedRegistration(method, path, res, raw)
+}
+
+/* openedRegistration finishes the email link for a registration the harness just made.
+ *
+ * Most tests are about what happens after somebody is registered, not about the
+ * wait itself. The link is the real one: the same POST /api/auth/email/verify
+ * the mail points at. A test that is about the wait sets holdVerification and
+ * sees the unverified response.
+ */
+func (h *harness) openedRegistration(method, path string, res *http.Response, raw []byte) (*http.Response, []byte) {
+	h.t.Helper()
+	if h.holdVerification || method != http.MethodPost || !strings.HasSuffix(path, "/register") {
+		return res, raw
+	}
+	var reg types.Registration
+	if err := json.Unmarshal(raw, &reg); err != nil || reg.State != types.RegUnverified || reg.Email == "" {
+		return res, raw
+	}
+	// Same skip as the mailer: a .invalid address is a fixture, not an inbox.
+	if strings.HasSuffix(strings.ToLower(reg.Email), ".invalid") {
+		return res, raw
+	}
+	reg = h.finishRegistration(reg.WebinarID, reg.Email, reg)
+	raw, err := json.Marshal(reg)
+	if err != nil {
+		h.t.Fatal(err)
+	}
 	return res, raw
 }
 
@@ -956,17 +987,63 @@ func (h *harness) goLive(slug string) {
 
 func (h *harness) registerAs(slug, email string) types.Registration {
 	h.t.Helper()
+	reg := h.postRegister(slug, email, "Test", "User", h.validAnswers(slug))
+	return h.finishRegistration(slug, email, reg)
+}
+
+/* postRegister is the public form, and nothing after it.
+ *
+ * A new address comes back unverified, with no join key. Tests that want a
+ * person who is already in the room use finishRegistration.
+ */
+func (h *harness) postRegister(slug, email, first, last string, answers map[string]string) types.Registration {
+	h.t.Helper()
 	res, raw := h.do(http.MethodPost, "/api/webinars/"+slug+"/register", types.RegisterRequest{
-		FirstName: "Test", LastName: "User", Email: email, Consent: true,
+		FirstName: first, LastName: last, Email: email, Consent: true,
 		Passcode: seedPasscode,
 		Phone:    testPhone,
-		Answers:  h.validAnswers(slug),
+		Answers:  answers,
 	})
 	if res.StatusCode != http.StatusCreated && res.StatusCode != http.StatusOK {
 		h.t.Fatalf("register: status %d body %s", res.StatusCode, raw)
 	}
 	var reg types.Registration
 	h.decode(raw, &reg)
+	return reg
+}
+
+/* finishRegistration opens the verification link when the form asked for one,
+ * then reads the registration back. The second read is the database, not
+ * another POST, so the confirmation mail is sent once.
+ */
+func (h *harness) finishRegistration(slug, email string, reg types.Registration) types.Registration {
+	h.t.Helper()
+	if reg.State != types.RegUnverified {
+		return reg
+	}
+	token := h.latestVerifyToken(email)
+	res, raw := h.do(http.MethodPost, "/api/auth/email/verify", types.VerifyEmailRequest{Token: token})
+	if res.StatusCode != http.StatusOK {
+		h.t.Fatalf("verify %s: status %d body %s", email, res.StatusCode, raw)
+	}
+	if strings.Contains(res.Header.Get("Set-Cookie"), "webcast_session") {
+		h.t.Fatal("verification set a session cookie")
+	}
+	err := h.store.Pool().QueryRow(context.Background(), `
+		SELECT r.id::text, r.join_key, r.state, r.email, r.first_name, r.last_name
+		  FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		 WHERE w.slug = $1 AND lower(r.email) = lower($2)`, slug, email).Scan(
+		&reg.ID, &reg.JoinKey, &reg.State, &reg.Email, &reg.FirstName, &reg.LastName)
+	if err != nil {
+		h.t.Fatalf("registration after verify: %v", err)
+	}
+	reg.WebinarID = slug
+	reg.NeedsEmailVerification = false
+	reg.Message = ""
+	if reg.JoinKey == "" || reg.State == types.RegUnverified {
+		h.t.Fatalf("verification did not finish registration: %+v", reg)
+	}
 	return reg
 }
 
@@ -1019,7 +1096,7 @@ func (h *harness) registerAsGuest(slug, email string) types.Registration {
 	}
 	var reg types.Registration
 	h.decode(raw, &reg)
-	return reg
+	return h.finishRegistration(slug, email, reg)
 }
 
 func (h *harness) acceptStage(slug, joinKey string) {
@@ -1116,6 +1193,7 @@ func TestWebinarListRequiresASessionAndIsScoped(t *testing.T) {
  */
 func TestRegistrationLinkWorksWithoutASession(t *testing.T) {
 	h := newHarness(t)
+	h.holdVerification = true
 
 	res, raw := h.do(http.MethodGet, "/api/webinars/simulive-playbook", nil)
 	if res.StatusCode != http.StatusOK {
@@ -1127,9 +1205,8 @@ func TestRegistrationLinkWorksWithoutASession(t *testing.T) {
 		t.Fatalf("wrong webinar: %q", wb.ID)
 	}
 
-	// And registering, still anonymously, all the way to a join key. simulive-playbook
-	// rather than a passcoded fixture: what is under test is that no SESSION is needed,
-	// not that no passcode is.
+	// Registering still needs no session. The join key waits on the same email
+	// link as signup; opening it does not sign anybody in.
 	res, raw = h.do(http.MethodPost, "/api/webinars/simulive-playbook/register",
 		types.RegisterRequest{
 			FirstName: "No", LastName: "Account",
@@ -1138,10 +1215,17 @@ func TestRegistrationLinkWorksWithoutASession(t *testing.T) {
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("anonymous register: status %d body %s, want 201", res.StatusCode, raw)
 	}
+	if strings.Contains(res.Header.Get("Set-Cookie"), "webcast_session") {
+		t.Fatal("registration set a session cookie")
+	}
 	var reg types.Registration
 	h.decode(raw, &reg)
-	if reg.JoinKey == "" {
-		t.Error("registered but got no join key; the guest has no way back in")
+	if reg.JoinKey != "" || !reg.NeedsEmailVerification || reg.State != types.RegUnverified {
+		t.Fatalf("anonymous register handed out a way in before verification: %+v", reg)
+	}
+	reg = h.finishRegistration("simulive-playbook", "no-account@test.dev", reg)
+	if reg.JoinKey == "" || reg.State != types.RegApproved {
+		t.Fatalf("after the email link: %+v", reg)
 	}
 }
 

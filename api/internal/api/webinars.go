@@ -207,6 +207,25 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("registration",
 		"webinar", slug, "state", reg.State, "email_domain", domainOf(reg.Email))
 
+	/* An unverified address is not in yet.
+	 *
+	 * Same one-time link as password signup. No session, no join key in this
+	 * response, no confirmation mail. Opening that link is what finishes the
+	 * registration. A person who already verified does not get another link.
+	 */
+	if reg.State == types.RegUnverified {
+		if user, uerr := s.store.UserByEmail(r.Context(), reg.Email); uerr == nil {
+			s.queueEmailVerification(r.Context(), user)
+		} else if !errors.Is(uerr, store.ErrNotFound) {
+			s.log.Error("register: verification mail", "webinar", slug, "err", uerr)
+		}
+		reg.JoinKey = ""
+		reg.NeedsEmailVerification = true
+		reg.Message = "Check your email to confirm this address. Your join link arrives after you verify."
+		httpx.JSON(w, http.StatusCreated, reg)
+		return
+	}
+
 	/* Tell the host somebody is waiting.
 	 *
 	 * Only for a PENDING registration. On an automatic-approval webinar there is no decision

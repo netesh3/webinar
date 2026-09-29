@@ -51,6 +51,9 @@ const (
 	RegApproved RegistrationState = "approved"
 	RegPending  RegistrationState = "pending"
 	RegDeclined RegistrationState = "declined"
+	// RegUnverified is waiting on the same email-verification link as signup.
+	// Not a host decision, and not a way into the room.
+	RegUnverified RegistrationState = "unverified"
 )
 
 // Decidable reports whether a host may set a registration to this state.
@@ -2361,12 +2364,15 @@ type AdminUser struct {
 	// Phone is E.164 shape, same as Account.Phone — the number given at signup, so an
 	// admin can reach the account holder about hosting without going to the database.
 	// Admin-only: it is still absent from Person, which is what other attendees see.
-	Phone     string `json:"phone,omitempty"`
-	Initials  string `json:"initials"`
-	Hue       string `json:"hue"`
-	CanHost   bool   `json:"canHost"`
-	IsAdmin   bool   `json:"isAdmin"`
-	CreatedAt string `json:"createdAt"`
+	Phone    string `json:"phone,omitempty"`
+	Initials string `json:"initials"`
+	Hue      string `json:"hue"`
+	CanHost  bool   `json:"canHost"`
+	IsAdmin  bool   `json:"isAdmin"`
+	// EmailVerified is false until the address is confirmed. A webinar
+	// registrant is an account in this list before that, with hosting off.
+	EmailVerified bool   `json:"emailVerified"`
+	CreatedAt     string `json:"createdAt"`
 	// WebinarCount is why revoking is not always safe: an account that owns scheduled
 	// sessions still needs to be able to start them.
 	WebinarCount int `json:"webinarCount"`
@@ -2530,6 +2536,11 @@ type Registration struct {
 	State        RegistrationState `json:"state"`
 	JoinKey      string            `json:"joinKey"`
 	RegisteredAt string            `json:"registeredAt"`
+	// NeedsEmailVerification is set when this response is not a way in yet.
+	// The join key is withheld; the same one-time link signup uses finishes it.
+	NeedsEmailVerification bool `json:"needsEmailVerification,omitempty"`
+	// Message tells the person to check their email. Empty once they are in.
+	Message string `json:"message,omitempty"`
 }
 
 // RegisteredWebinar is one row of "My webinars" for a signed-in account: the
