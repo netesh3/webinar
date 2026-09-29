@@ -12,8 +12,11 @@
  *   temporal   block-matching motion between frames (luma at 160×90); the previous mask is
  *              moved along it, and where the new mask drops something the moved picture
  *              says is still there, most of the old value is kept. See Temporal.
- *   guided     the guided filter (He, Sun & Tang 2010) against the frame's luma at 512×288,
- *              so the 256×144 mask's edge lands on the picture's edge. See Guided.
+ *   guided     off. The guided filter (He, Sun & Tang 2010) used to pull the 256×144 mask
+ *              onto the picture's edges at 512×288. On a real camera that softened the
+ *              person: shoulders and hair went translucent and parts of them disappeared
+ *              into the background. The model's own cut, after the frame-to-frame step,
+ *              is the edge. The filter is still in this file. See GUIDED_FILTER.
  *
  * Runtime: the onnxruntime-web build captions already ship (public/onnxruntime), on its
  * WebAssembly backend. WebAssembly runs everywhere, which is why this has no fallback: the
@@ -29,9 +32,15 @@ const MODEL_PATH = "/models/humanseg.onnx";
 /** Model input. Fixed in the export. */
 export const MODEL_W = 256;
 export const MODEL_H = 144;
-/** The refined mask handed to the compositor. */
+/** The refined mask handed to the compositor when the guided filter is on. */
 export const OUT_W = 512;
 export const OUT_H = 288;
+
+/* The second filter, after the frame-to-frame step.
+ *
+ * Off. It made the mask follow luma edges, and on a webcam that reads as the person
+ * blurred into the background or missing in patches. The model's mask is the cut. */
+const GUIDED_FILTER = false;
 
 /* Declared rather than imported: this onnxruntime-web build's package.json "exports" has
  * no "types" condition, so its own types cannot be reached. Only what is used here. */
@@ -113,7 +122,7 @@ export class HumanSeg {
   private readonly input = canvas2d(MODEL_W, MODEL_H);
   private readonly tensor = new Float32Array(3 * MODEL_W * MODEL_H);
   private readonly temporal = new Temporal(MODEL_W, MODEL_H);
-  private readonly guided = new Guided(OUT_W, OUT_H, 4, 2e-3);
+  private readonly guided = GUIDED_FILTER ? new Guided(OUT_W, OUT_H, 4, 2e-3) : null;
 
   constructor(shared: Shared) {
     this.shared = shared;
@@ -133,7 +142,7 @@ export class HumanSeg {
       t[2 * n + i] = px[i * 4 + 2]! / 127.5 - 1;
     }
     this.temporal.see(frame);
-    this.guided.see(frame);
+    this.guided?.see(frame);
   }
 
   /** The model's mask of the last prepare()d frame, MODEL_W×MODEL_H, 0..1, row 0 at the top. */
@@ -157,10 +166,11 @@ export class HumanSeg {
     return turn;
   }
 
-  /** The frame-to-frame step and the edge refinement, on a mask from run() (after the lock
-   *  has had it). OUT_W×OUT_H. The array is reused by the next call. */
+  /** The frame-to-frame step, then — only when GUIDED_FILTER is on — the edge refinement,
+   *  on a mask from run() (after the lock has had it). The array is reused by the next call. */
   refine(mask: Matte): Matte {
     const held = this.temporal.step(mask.alpha);
+    if (!this.guided) return { alpha: held, w: MODEL_W, h: MODEL_H };
     return { alpha: this.guided.run(held, MODEL_W, MODEL_H), w: OUT_W, h: OUT_H };
   }
 
