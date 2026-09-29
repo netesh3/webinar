@@ -128,6 +128,8 @@ type Server struct {
 	// sayLimit is keyed on the sender, not on their IP, so it lives here rather
 	// than in the middleware stack. See sayPerMin.
 	sayLimit *httpx.RateLimiter
+	// emailResend caps verification-link requests per address and per IP.
+	emailResend *httpx.RateLimiter
 	/* How approval emails leave, if they leave at all.
 	 *
 	 * Derived from config inside NewServer rather than passed in, which keeps the
@@ -180,17 +182,18 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 	}
 
 	srv := &Server{
-		cfg:        cfg,
-		store:      st,
-		sfu:        sfu,
-		youtube:    youtube,
-		recordings: rec,
-		sessions:   auth.NewSessions(cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure),
-		log:        log,
-		sayLimit:   httpx.NewRateLimiter(sayPerMin, time.Minute),
-		mail:       mail,
-		invites:    map[string]pendingStage{},
-		engage:     NoEngage{},
+		cfg:         cfg,
+		store:       st,
+		sfu:         sfu,
+		youtube:     youtube,
+		recordings:  rec,
+		sessions:    auth.NewSessions(cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure),
+		log:         log,
+		sayLimit:    httpx.NewRateLimiter(sayPerMin, time.Minute),
+		emailResend: httpx.NewRateLimiter(3, 15*time.Minute),
+		mail:        mail,
+		invites:     map[string]pendingStage{},
+		engage:      NoEngage{},
 	}
 	srv.initEngagement()
 	return srv
@@ -359,6 +362,10 @@ func (s *Server) Routes() http.Handler {
 		// ---------------- auth ----------------
 		r.With(signupLimit.Middleware).Post("/auth/signup", s.handleSignup)
 		r.With(loginLimit.Middleware).Post("/auth/login", s.handleLogin)
+		// The link in the mail lands on a page that calls this. No session: that is
+		// how an unverified account gets in.
+		r.Post("/auth/email/verify", s.handleVerifyEmail)
+		r.Post("/auth/email/resend", s.handleResendVerification)
 		// Same budget as login: exchanging a Google token is a sign-in attempt.
 		r.With(loginLimit.Middleware).Post("/auth/supabase", s.handleSupabaseAuth)
 		r.Post("/auth/logout", s.handleLogout)

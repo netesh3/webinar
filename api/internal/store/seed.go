@@ -48,8 +48,8 @@ func (s *Store) SeedDev(ctx context.Context, hashedPassword string) error {
 		// database the migration runs before the seed, so its backfill would
 		// find no rows and every seeded account would be unable to host.
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO users (email, password_hash, name, title, org, initials, hue, can_host)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,true) RETURNING id::text`,
+			INSERT INTO users (email, password_hash, name, title, org, initials, hue, can_host, email_verified_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,true, now()) RETURNING id::text`,
 			p.email, hashedPassword, p.name, p.title, p.org, p.initials, p.hue,
 		).Scan(&id); err != nil {
 			return fmt.Errorf("seed user %s: %w", p.email, err)

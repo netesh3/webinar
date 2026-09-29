@@ -31,6 +31,14 @@ type SupabaseIdentity struct {
 	// avatar_url when picture is absent). Empty when the token has none, or
 	// when the value is not an https Google image URL.
 	Picture string
+	/* EmailVerified is whether Google already confirmed the address.
+	 *
+	 * The claim lives in user_metadata.email_verified. When it is absent this
+	 * door still treats the address as verified: the only provider wired here
+	 * is Google, and Google does not issue a session for an unconfirmed mailbox.
+	 * An explicit false is the exception and is not signed in.
+	 */
+	EmailVerified bool
 }
 
 type supabaseClaims struct {
@@ -132,11 +140,27 @@ func VerifySupabaseAccessToken(accessToken, jwtSecret, supabaseURL string) (Supa
 	}
 
 	return SupabaseIdentity{
-		Subject: c.Subject,
-		Email:   email,
-		Name:    nameFromSupabaseClaims(c),
-		Picture: pictureFromSupabaseClaims(c),
+		Subject:       c.Subject,
+		Email:         email,
+		Name:          nameFromSupabaseClaims(c),
+		Picture:       pictureFromSupabaseClaims(c),
+		EmailVerified: emailVerifiedFromClaims(c),
 	}, nil
+}
+
+func emailVerifiedFromClaims(c *supabaseClaims) bool {
+	if c == nil || c.UserMetadata == nil {
+		return true
+	}
+	v, ok := c.UserMetadata["email_verified"]
+	if !ok {
+		return true
+	}
+	verified, ok := v.(bool)
+	if !ok {
+		return true
+	}
+	return verified
 }
 
 /* pictureFromSupabaseClaims reads Google's profile photo.

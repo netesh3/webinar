@@ -13,7 +13,7 @@ import {
 } from "react";
 import { ApiError, api } from "@/lib/api";
 import { dropCache, writeCache } from "@/lib/http";
-import type { Account, AppConfig, ProfilePatch } from "@/lib/api-types";
+import type { Account, AppConfig, ProfilePatch, SignupResponse } from "@/lib/api-types";
 import { DEV_BYPASS_ACCOUNT, isDevAuthBypass } from "@/lib/dev-bypass";
 import {
   isDevAuthBypassActive,
@@ -108,7 +108,7 @@ type SessionValue = {
     phone?: string;
     org?: string;
     title?: string;
-  }) => Promise<Account>;
+  }) => Promise<SignupResponse>;
   signOut: () => Promise<void>;
   updateProfile: (patch: ProfilePatch) => Promise<Account>;
   refresh: () => Promise<void>;
@@ -377,13 +377,7 @@ export function AppProviders({
         setStatus("signed-in");
         return me;
       },
-      signUp: async (input) => {
-        const me = await api.signup(input);
-        writeCache("/api/auth/me", me);
-        setAccount(me);
-        setStatus("signed-in");
-        return me;
-      },
+      signUp: async (input) => api.signup(input),
       signOut: async () => {
         if (isDevAuthBypass()) {
           // Opt out of the fake host session for this tab (sessionStorage + cookie).
