@@ -325,17 +325,20 @@ function ChannelTab({
       role="tab"
       aria-selected={selected}
       onClick={onClick}
-      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-[6px] ${
-        selected ? "bg-surface font-medium text-ink shadow-sm" : "text-ink-2"
-      }`}
+      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-[6px] font-medium ${
+        selected ? "bg-surface shadow-sm" : ""
+      } ${channel === ChannelWhatsApp ? "text-ok" : "text-brand"}`}
     >
       <ChannelIcon
         channel={channel}
-        className={`size-4 ${channel === ChannelWhatsApp ? "text-ok" : "text-ink-2"}`}
+        className={`size-4 ${channel === ChannelWhatsApp ? "text-ok" : "text-brand"}`}
       />
       {label}
       {included && (
-        <MaterialIcon name="check" className="size-[14px] text-ok" />
+        <MaterialIcon
+          name="check"
+          className={`size-[14px] ${channel === ChannelWhatsApp ? "text-ok" : "text-brand"}`}
+        />
       )}
     </button>
   );
