@@ -1573,6 +1573,12 @@ export const NotifyWhatsAppReplay: NotificationKind = "wa_replay";
  */
 export const NotifyWelcome: NotificationKind = "welcome";
 /**
+ *  NotifyEmailVerify is the one-time link a password signup needs before it can sign in.
+ * 	 * Addressed by email, like welcome, so it is not an in-app alert. Resending writes another
+ * 	 * row; there is no unique index, unlike welcome.
+ */
+export const NotifyEmailVerify: NotificationKind = "email_verify";
+/**
  *  The panelist's side of a webinar: added to the stage (with the stage link and a
  * 	 * calendar file), the start moved, the session cancelled. Addressed by email and tied to
  * 	 * no registration — a panelist signs in rather than holding a join key, so the link in
@@ -2385,6 +2391,13 @@ export interface SetStreamRequest {
 export interface Account {
   id: string;
   email: string;
+  /**
+   *  EmailVerified is false until the address is confirmed. Password signup leaves it
+   * 	 * false and sign-in is refused until the link is used. Google sign-in sets it
+   * 	 * immediately, because Google already confirmed the address. Accounts that already
+   * 	 * existed were marked verified when the column was added, so they were not locked out.
+   */
+  emailVerified: boolean;
   name: string;
   title: string;
   org: string;
@@ -4133,6 +4146,30 @@ export interface SignupRequest {
    * 	 * unknown fields, so the request still parses and the value is ignored.
    */
   wantsHost: boolean;
+}
+/**
+ *  SignupResponse is what password signup returns instead of a session.
+ *  *
+ *  * The account exists and cannot be used yet. No cookie is set. The person confirms
+ *  * the address from the link in the mail, then signs in.
+ */
+export interface SignupResponse {
+  status: string;
+  email: string;
+  message: string;
+}
+/**
+ * VerifyEmailRequest is the token from the link in the verification mail.
+ */
+export interface VerifyEmailRequest {
+  token: string;
+}
+/**
+ * ResendVerificationRequest asks for another link. It does not require a session:
+ * an unverified account cannot sign in, so the only place to ask is this form.
+ */
+export interface ResendVerificationRequest {
+  email: string;
 }
 /**
  * HostGrant is an admin's decision about one account's hosting capability —

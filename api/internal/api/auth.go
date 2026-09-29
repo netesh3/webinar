@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/mail"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/netkumar/webcast/api/internal/authctx"
@@ -108,6 +109,11 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (store.Use
 		httpx.Error(w, http.StatusUnauthorized, "unauthenticated", "Please sign in again.")
 		return store.User{}, false
 	}
+	if !user.EmailVerified() {
+		s.sessions.ClearCookie(w)
+		httpx.Error(w, http.StatusForbidden, "email_unverified", verifyEmailMessage)
+		return store.User{}, false
+	}
 	return user, true
 }
 
@@ -123,7 +129,14 @@ func (s *Server) sessionUser(r *http.Request) (store.User, error) {
 	if err != nil {
 		return store.User{}, err
 	}
-	return s.store.UserByID(r.Context(), userID)
+	user, err := s.store.UserByID(r.Context(), userID)
+	if err != nil {
+		return store.User{}, err
+	}
+	if !user.EmailVerified() {
+		return store.User{}, errors.New("email not verified")
+	}
+	return user, nil
 }
 
 // bypassUser provisions an account for a caller who has none, and signs them in.
@@ -167,6 +180,13 @@ func (s *Server) bypassUser(w http.ResponseWriter, r *http.Request) (store.User,
 		s.fail(w, r, "auth bypass: create user", err)
 		return store.User{}, false
 	}
+	// Bypass is a demo door, not a password signup. It has to be able to sign in.
+	if err := s.store.MarkEmailVerified(r.Context(), user.ID); err != nil {
+		s.fail(w, r, "auth bypass: verify", err)
+		return store.User{}, false
+	}
+	now := time.Now()
+	user.EmailVerifiedAt = &now
 
 	token, exp, err := s.sessions.Issue(user.ID)
 	if err != nil {
@@ -194,7 +214,7 @@ func (s *Server) optionalUser(r *http.Request) (store.User, bool) {
 		return store.User{}, false
 	}
 	user, err := s.store.UserByID(r.Context(), userID)
-	if err != nil {
+	if err != nil || !user.EmailVerified() {
 		return store.User{}, false
 	}
 	return user, true
@@ -423,18 +443,18 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, exp, err := s.sessions.Issue(user.ID)
-	if err != nil {
-		s.fail(w, r, "signup: issue session", err)
-		return
-	}
-	s.sessions.SetCookie(w, token, exp)
-	// can_host should always read false for a fresh signup; requested_host is kept for
-	// the record even though it never changes the outcome.
+	// No session. The account cannot sign in until the address is confirmed.
+	// can_host is always false for a fresh signup; requested_host is logged
+	// even though it never changes the outcome.
 	s.log.Info("signup", "user", user.ID, "can_host", user.CanHost,
 		"requested_host", req.WantsHost, "email_domain", domainOf(user.Email))
 	s.queueWelcome(r.Context(), user)
-	httpx.JSON(w, http.StatusCreated, user.Public())
+	s.queueEmailVerification(r.Context(), user)
+	httpx.JSON(w, http.StatusCreated, types.SignupResponse{
+		Status:  "verify_email",
+		Email:   user.Email,
+		Message: verifyEmailMessage,
+	})
 }
 
 /* validateSignup. Password has no length floor here on purpose — the
@@ -545,6 +565,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !user.EmailVerified() {
+		httpx.Error(w, http.StatusForbidden, "email_unverified", verifyEmailMessage)
+		return
+	}
+
 	token, exp, err := s.sessions.Issue(user.ID)
 	if err != nil {
 		s.fail(w, r, "login: issue session", err)
@@ -629,6 +654,27 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 		} else {
 			user.GooglePicture = pic
 		}
+	}
+
+	/* Google has already confirmed the address, so this door never sends a verification
+	 * mail and never refuses sign-in for that reason. A token that explicitly says the
+	 * address is not verified is the exception: treat it like a password signup. */
+	if identity.EmailVerified {
+		if !user.EmailVerified() {
+			if err := s.store.MarkEmailVerified(r.Context(), user.ID); err != nil {
+				s.fail(w, r, "supabase auth: verify", err)
+				return
+			}
+			now := time.Now()
+			user.EmailVerifiedAt = &now
+		}
+	} else if !user.EmailVerified() {
+		if created {
+			s.queueWelcome(r.Context(), user)
+		}
+		s.queueEmailVerification(r.Context(), user)
+		httpx.Error(w, http.StatusForbidden, "email_unverified", verifyEmailMessage)
+		return
 	}
 
 	token, exp, err := s.sessions.Issue(user.ID)

@@ -801,6 +801,17 @@ func (h *harness) signup(name, email string, wantsHost bool) types.Account {
 	if res.StatusCode != http.StatusCreated {
 		h.t.Fatalf("signup %s: status %d body %s", email, res.StatusCode, raw)
 	}
+	/* Password signup does not sign the account in. The rest of the suite is about
+	 * what a signed-in account can do, so the fixture confirms the address here —
+	 * the same write the verification link performs — and then signs in. */
+	if err := h.store.MarkEmailVerifiedByEmail(context.Background(), email); err != nil {
+		h.t.Fatalf("verify %s: %v", email, err)
+	}
+	h.login(email)
+	res, raw = h.do(http.MethodGet, "/api/auth/me", nil)
+	if res.StatusCode != http.StatusOK {
+		h.t.Fatalf("me after signup %s: status %d body %s", email, res.StatusCode, raw)
+	}
 	var acct types.Account
 	h.decode(raw, &acct)
 
@@ -1463,8 +1474,8 @@ func TestSignupValidatesAndSignsIn(t *testing.T) {
 		}
 	}
 
-	// The happy path signs the new account in, so /auth/me works immediately
-	// without a second round trip through login.
+	// The harness confirms the address and signs in. Signup itself does not
+	// issue a session; that refusal is TestUnverifiedAccountCannotSignIn.
 	acct := h.signup("Ada Lovelace", "ada@test.dev", false)
 	if acct.CanHost {
 		t.Error("an account that did not ask to host was given the capability")
