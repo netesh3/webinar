@@ -28,7 +28,7 @@ import (
 // handleCRMNotes lists one contact's notes, newest first.
 func (s *Module) handleCRMNotes(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureCRMNotes) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return
 	}
 	contactID := chi.URLParam(r, "id")
@@ -54,7 +54,7 @@ func (s *Module) handleCRMNotes(w http.ResponseWriter, r *http.Request) {
 // handleCreateCRMNote writes one down.
 func (s *Module) handleCreateCRMNote(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureCRMNotes) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return
 	}
 
@@ -88,7 +88,7 @@ func (s *Module) handleCreateCRMNote(w http.ResponseWriter, r *http.Request) {
 // because that is the whole of what identifies it and the host is looking at the note.
 func (s *Module) handleDeleteCRMNote(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureCRMNotes) {
+	if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
 		return
 	}
 

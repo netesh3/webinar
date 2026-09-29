@@ -1,9 +1,6 @@
 import {
-  FeatureCRMNotes,
-  FeatureCRMTags,
   FeatureCloudRecording,
-  FeatureReplayLinks,
-  FeatureWhatsAppRegister,
+  FeatureWhatsAppCRM,
 } from "@/lib/api-types";
 import type {
   Account,
@@ -45,10 +42,7 @@ export const DEV_BYPASS_ACCOUNT: Account = {
    * so a renamed key breaks the build here rather than silently previewing a
    * feature the server has never heard of. */
   features: [
-    FeatureCRMTags,
-    FeatureCRMNotes,
-    FeatureReplayLinks,
-    FeatureWhatsAppRegister,
+    FeatureWhatsAppCRM,
     FeatureCloudRecording,
   ],
 };

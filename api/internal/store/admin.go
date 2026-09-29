@@ -179,8 +179,8 @@ func (s *Store) SetCdnBroadcastCapability(ctx context.Context, userID string, ca
  *
  * Set arithmetic in SQL rather than read-modify-write in Go, which is what makes it
  * safe for two admins on two screens: array_remove then append touches only the key
- * being changed, so a request about `crm_tags` cannot undo a decision about
- * `replay_links` somebody made a second earlier. Turning on something already on, and
+ * being changed, so a request about `whatsapp_crm` cannot undo a decision about
+ * `cloud_recording` somebody made a second earlier. Turning on something already on, and
  * off something already off, both land as no-ops rather than as a duplicate key.
  *
  * The key is checked against types.Features by the handler before it gets here — the

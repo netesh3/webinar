@@ -27,6 +27,16 @@ import (
 // typo, and an uncapped duration makes the "ends at" arithmetic meaningless.
 const maxDurationMin = 24 * 60
 
+/* minScheduleLead is how far ahead a host may set a webinar's start.
+ *
+ * One hour, the same interval the schedule form uses (MIN_SCHEDULE_LEAD_MS).
+ * "Now" and the next five-minute mark are both too soon: the host is still
+ * filling the form, and a room that opens immediately is not a scheduled webinar.
+ */
+const minScheduleLead = time.Hour
+
+const scheduleLeadError = "Schedule it at least an hour from now."
+
 /* handleHostWebinars is GET /api/host/webinars — one page of the sessions this
  * account owns, in the bucket the portal is showing.
  *
@@ -147,7 +157,7 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
-	in, fields := s.normalizeWebinarInput(in, true)
+	in, fields := s.normalizeWebinarInput(in, true, "")
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
@@ -200,7 +210,14 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
-	in, fields := s.normalizeWebinarInput(in, false)
+	/* The start already stored, so an edit that does not move it is not asked to
+	 * satisfy the one-hour lead. A missing webinar leaves this empty; the update
+	 * then 404s instead of failing the time check. */
+	prevLead := ""
+	if prev, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+		prevLead = prev.StartsAt
+	}
+	in, fields := s.normalizeWebinarInput(in, false, prevLead)
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
@@ -498,16 +515,20 @@ func localTime(at time.Time, zone string) string { return notify.LocalTime(at, z
  * who types 5000 attendees means "as many as possible", and failing the whole
  * form over it teaches them nothing the clamped value doesn't.
  *
- * `isCreate` gates the one check that must NOT apply to an edit: a brand new
- * scheduled webinar starting in the past is always a mistake — a stale date left
- * over from a copy-paste, or a timezone picked wrong — and there is no cost to
- * refusing it before it exists. An EXISTING webinar can legitimately have a past
- * startsAt (it ran, or it is a draft nobody has gotten back to), and a host
- * fixing an unrelated typo on one must not be blocked by a date they did not
- * touch. Drafts are exempt even on create: a draft is not a commitment to run at
+ * `isCreate` gates the lead check's create half. A brand new scheduled webinar
+ * has to start at least an hour from now — a stale date, a timezone picked
+ * wrong, or "right now" are all the same mistake, and there is no cost to
+ * refusing them before the webinar exists. An EXISTING webinar can legitimately
+ * have a start inside that hour or in the past (it is about to begin, or it
+ * already ran), and a host fixing an unrelated typo must not be blocked by a
+ * time they did not touch. Changing that start to something inside the hour is
+ * refused. Drafts are exempt on create: a draft is not a commitment to run at
  * that instant, and it is normal to sketch one out before picking a real time.
+ *
+ * prevStartsAt is the start already stored, empty on create and when the
+ * webinar could not be loaded.
  */
-func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool) (types.WebinarInput, map[string]string) {
+func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, prevStartsAt string) (types.WebinarInput, map[string]string) {
 	fields := map[string]string{}
 
 	in.Topic = strings.TrimSpace(in.Topic)
@@ -573,24 +594,24 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool) (ty
 		fields["status"] = "A webinar can only be saved as scheduled or a draft."
 	}
 
-	/* A brand new scheduled webinar starting in the past is always a mistake — a
-	 * stale date left over from a copy-paste, or a timezone picked wrong — and
-	 * there is no cost to refusing it before it exists.
+	/* At least an hour from now. See minScheduleLead.
 	 *
-	 * isCreate: an EXISTING webinar can legitimately have a past startsAt (it
-	 * ran, or it is a draft nobody has gotten back to), and a host fixing an
-	 * unrelated typo on one must not be blocked by a date they did not touch.
+	 * Create, and only a scheduled webinar: a draft is not a commitment to run
+	 * at that instant. Anything sooner than the lead — including a time that
+	 * has already passed — is the same refusal.
 	 *
-	 * status == scheduled: a draft is not a commitment to run at that instant,
-	 * so it is normal to sketch one out before picking a real time — this only
-	 * bites the moment somebody actually schedules it.
+	 * Update: only when this save moves the start onto a time inside the lead.
+	 * A webinar about to begin, or one that already ran, can still be edited.
 	 *
 	 * fields["startsAt"] == "": skipped when the date was already rejected above
-	 * (empty or unparsable) so this does not overwrite that message with a less
-	 * useful one about a zero time.Time being "in the past". */
-	if isCreate && in.Status == types.StatusScheduled &&
-		fields["startsAt"] == "" && startsAt.Before(time.Now()) {
-		fields["startsAt"] = "Pick a date and time that hasn't already passed."
+	 * (empty or unparsable) so this does not overwrite that message. */
+	if fields["startsAt"] == "" && startsAt.Before(time.Now().Add(minScheduleLead)) {
+		switch {
+		case isCreate && in.Status == types.StatusScheduled:
+			fields["startsAt"] = scheduleLeadError
+		case !isCreate && startChanged(prevStartsAt, startsAt):
+			fields["startsAt"] = scheduleLeadError
+		}
 	}
 
 	switch in.Approval {
@@ -647,6 +668,26 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool) (ty
 	}
 
 	return in, fields
+}
+
+/* startChanged reports whether this save moves the start to a different minute.
+ *
+ * Minute, not the exact instant: the schedule form only has a minute field, so
+ * saving an edit round-trips a start that was stored with seconds into the
+ * minute it was shown as. That is not the host changing the time. An empty
+ * previous start means the webinar was not loaded; the update then fails as
+ * not found rather than as a too-soon time.
+ */
+func startChanged(prev string, next time.Time) bool {
+	prev = strings.TrimSpace(prev)
+	if prev == "" {
+		return false
+	}
+	parsed, err := time.Parse(time.RFC3339, prev)
+	if err != nil {
+		return true
+	}
+	return !parsed.Truncate(time.Minute).Equal(next.Truncate(time.Minute))
 }
 
 /* normalizeReminders checks a webinar's reminder times and puts them in order.

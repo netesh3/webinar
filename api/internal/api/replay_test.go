@@ -110,7 +110,7 @@ func TestPublishingARecordingTellsTheRegistrants(t *testing.T) {
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureReplayLinks)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 
 	// whatsappReminders deliberately OFF for this webinar: the replay is not a reminder
 	// and is not governed by that switch. See the note in PendingWhatsApp.
@@ -228,7 +228,7 @@ func TestReplayStillGoesOutAfterTheWebinarHasEnded(t *testing.T) {
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureReplayLinks)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 
 	const topic = "A webinar that is over"
 	wb := remindersWebinar(t, h, topic, false)
@@ -302,7 +302,7 @@ func TestReplayNeedsTheSwitchAndAChosenTemplate(t *testing.T) {
 	}
 
 	// Now with the switch on and no replay template chosen: email only.
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureReplayLinks)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 	setReminders(t, h) // clears every template, including the replay one
 	const only = "Email only"
 	wb2 := remindersWebinar(t, h, only, false)

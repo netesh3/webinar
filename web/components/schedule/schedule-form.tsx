@@ -51,7 +51,13 @@ import {
   savedAgo,
   writeDraft,
 } from "./draft-store";
-import { defaultWhen, initialState, type FormState } from "./form-state";
+import {
+  MIN_SCHEDULE_LEAD_MS,
+  SCHEDULE_LEAD_ERROR,
+  defaultWhen,
+  initialState,
+  type FormState,
+} from "./form-state";
 import { MessagesTab } from "./messages-tab";
 import { panelId, StepCards, StepPanel, stepFrom, type Step } from "./stepper";
 import { scheduleSummary, shortTimeZone } from "./summary";
@@ -88,6 +94,15 @@ function targetForFields(fields: Record<string, string>): string | null {
   }
   if (keys.includes("panelistEmails")) return "panelists";
   return "settings-the-basics";
+}
+
+/** True when both instants fall in the same minute. The form has no seconds. */
+function sameStartMinute(a: Date, b: Date): boolean {
+  return (
+    Number.isFinite(a.getTime()) &&
+    Number.isFinite(b.getTime()) &&
+    Math.floor(a.getTime() / 60_000) === Math.floor(b.getTime() / 60_000)
+  );
 }
 
 /* Scroll to an element and, when it is (or holds) the field at fault, focus
@@ -234,10 +249,12 @@ function ScheduleFormBody({
       const draft = readDraft(storageKey, base);
       if (!draft) return { form: serverForm, restored: null };
       const merged = mergeDraft(serverForm, draft.form);
-      // A new webinar's kept start can have slipped into the past while it
-      // waited; the server would refuse it, so offer the next slot instead.
+      // A new webinar's kept start can have slipped inside the hour while it
+      // waited; the server would refuse it, so offer the next legal slot.
       const at = zonedToInstant(merged.date, merged.time, merged.timeZone);
-      const stale = !editing && (!at || at.getTime() < Date.now());
+      const stale =
+        !editing &&
+        (!at || at.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS);
       return {
         form: stale ? { ...merged, ...defaultWhen() } : merged,
         restored: {
@@ -373,6 +390,20 @@ function ScheduleFormBody({
     const startsAt = zonedToInstant(form.date, form.time, form.timeZone);
     if (!startsAt) {
       setFields({ startsAt: "Pick a valid date and time." });
+      flushSync(() => go("webinar"));
+      focusTarget("date");
+      return null;
+    }
+    /* Same hour as the API. A new scheduled webinar, and an edit that moves
+     * the start, have to clear it. Leaving the start where it already is —
+     * a webinar about to begin, or one that already ran — does not. */
+    const tooSoon = startsAt.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS;
+    const movingStart =
+      editing &&
+      webinar != null &&
+      !sameStartMinute(new Date(webinar.startsAt), startsAt);
+    if (tooSoon && ((!editing && status === "scheduled") || movingStart)) {
+      setFields({ startsAt: SCHEDULE_LEAD_ERROR });
       flushSync(() => go("webinar"));
       focusTarget("date");
       return null;

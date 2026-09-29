@@ -101,23 +101,28 @@ console.log("\nPARTICIPANT — host URLs are refused");
     "/webinars/redis-cache",
     "…and so is the edit page",
   );
-  redirectedTo(
+  allowed(
     "/host",
     participant,
-    "/account",
-    "bare /host has no webinar to fall back to, so they go where hosting is turned on",
+    "bare /host opens and says hosting isn't enabled for this account",
   );
   redirectedTo(
     "/host/new",
     participant,
-    "/account",
+    "/host",
     "the schedule form is not a webinar slug — it must not redirect to /webinars/new",
   );
   redirectedTo(
     "/host/messages",
     participant,
-    "/account",
+    "/host",
     "Messages is its own screen, not a webinar slug",
+  );
+  redirectedTo(
+    "/host/crm",
+    participant,
+    "/host",
+    "the WhatsApp page is its own screen, not a webinar slug",
   );
 }
 

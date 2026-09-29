@@ -72,7 +72,7 @@ func tagsHost(t *testing.T) (*fakeGraph, *harness) {
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
-	grantFeature(t, h, meAccount(t, h).ID, types.FeatureCRMTags)
+	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 	return g, h
 }
 

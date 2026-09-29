@@ -244,9 +244,8 @@ func (s *Store) UserByID(ctx context.Context, id string) (User, error) {
  * canHost is a parameter rather than always true because not every caller
  * wants it granted — AuthBypass's dev fixture and the admin-invite path both
  * make their own choice — but handleSignup and handleSupabaseAuth, the two
- * real account-creation paths, both pass true: every new account can host from
- * the moment it exists. An admin can still take it away with SetHostCapability
- * (see admin.go) — that stays the only way hosting is ever revoked.
+ * real account-creation paths, both pass false: a new account attends, and
+ * hosts only once an admin grants it with SetHostCapability (see admin.go).
  */
 func (s *Store) CreateUser(ctx context.Context, email, hashedPassword, name, title, org, phone string, canHost bool) (User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))

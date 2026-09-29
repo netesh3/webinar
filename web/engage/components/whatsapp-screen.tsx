@@ -9,7 +9,7 @@ import { useSession, useToast } from "@/components/providers";
 import { Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import {
-  FeatureCRMTags,
+  FeatureWhatsAppCRM,
   type CRMSetup,
   type CRMTag,
   type CRMTemplate,
@@ -68,7 +68,7 @@ export function WhatsAppScreen() {
   const viewParam = (search.get("view") ?? "").trim();
   const { tab, build } = fromView(viewParam);
   const canHost = account?.canHost ?? false;
-  const tagsOn = (account?.features ?? []).includes(FeatureCRMTags);
+  const tagsOn = (account?.features ?? []).includes(FeatureWhatsAppCRM);
 
   const go = useCallback(
     (t: Tab, b: BuildView | null = null) => {

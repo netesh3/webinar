@@ -19,16 +19,15 @@ import { DEFAULT_REMINDERS } from "../reminder-times";
 
 export const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 
-/** Default start: today, at the next five-minute mark, in the host's own
- *  zone — a host opening this form usually means to go live soon, not next
- *  week, and having to touch both the date and the time picker on every
- *  single webinar was friction for that common case.
- *
- *  Rounded up, not the exact current minute: the server refuses a start
- *  time already in the past, and "now" stops being now the moment a host
- *  spends even a few seconds on the rest of the form. Five minutes is
- *  enough runway for that without defaulting somebody who really does mean
- *  "right now" oddly far into the future.
+/** How far ahead a webinar must start. The API uses the same hour
+ *  (minScheduleLead in host.go). */
+export const MIN_SCHEDULE_LEAD_MS = 60 * 60 * 1000;
+
+export const SCHEDULE_LEAD_ERROR = "Schedule it at least an hour from now.";
+
+/** Default start: the next five-minute mark at or after an hour from now,
+ *  in the host's own zone. Opening the form on "now" would already be
+ *  invalid — the server refuses anything sooner than an hour.
  *
  *  Epoch-based rounding rather than manipulating a local Date's fields
  *  directly, so a spring-forward/fall-back transition can't produce an
@@ -36,7 +35,8 @@ export const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
  *  multiple of 5 minutes, so this always lands on a clean local mark too. */
 export function defaultWhen(): { date: string; time: string } {
   const STEP_MS = 5 * 60_000;
-  const rounded = new Date(Math.ceil(Date.now() / STEP_MS) * STEP_MS);
+  const earliest = Date.now() + MIN_SCHEDULE_LEAD_MS;
+  const rounded = new Date(Math.ceil(earliest / STEP_MS) * STEP_MS);
   const hh = String(rounded.getHours()).padStart(2, "0");
   const mm = String(rounded.getMinutes()).padStart(2, "0");
   return { date: rounded.toLocaleDateString("en-CA"), time: `${hh}:${mm}` };

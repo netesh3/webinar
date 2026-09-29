@@ -2291,7 +2291,8 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   }
 
   /* The model's mask and the frame it is of: the lock on the model's own mask, then the
-   * model's frame-to-frame step and edge refinement, then composited and sent. Dropped
+   * model's frame-to-frame step (the guided-filter edge pass is off — see GUIDED_FILTER),
+   * then composited and sent. Dropped
    * rather than sent if anything moved on while the model ran — the processor gone, the
    * background turned off, or a newer frame already out — because a late frame would go
    * out of order. */

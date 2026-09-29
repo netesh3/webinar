@@ -8,8 +8,7 @@ import { useSession, useToast } from "@/components/providers";
 import { Card, Empty } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import {
-  FeatureCRMNotes,
-  FeatureCRMTags,
+  FeatureWhatsAppCRM,
   InboxAll,
   InboxDone,
   InboxHotLeads,
@@ -60,8 +59,9 @@ export function HostMessagesTab({
   const { account } = useSession();
   const { notify } = useToast();
   const features = account?.features ?? [];
-  const tagsOn = features.includes(FeatureCRMTags);
-  const notesOn = features.includes(FeatureCRMNotes);
+  const crmOn = features.includes(FeatureWhatsAppCRM);
+  const tagsOn = crmOn;
+  const notesOn = crmOn;
 
   // Opening a named person from People shows every conversation, not just waiting ones.
   const [view, setView] = useState<string>(
