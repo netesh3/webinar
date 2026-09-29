@@ -26,6 +26,7 @@ export { isDevAuthBypass };
 export const DEV_BYPASS_ACCOUNT: Account = {
   id: "dev-bypass-host",
   email: "preview@localhost.dev",
+  emailVerified: true,
   name: "Preview Host",
   title: "Product",
   org: "Local Preview",

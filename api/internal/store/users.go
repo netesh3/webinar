@@ -81,7 +81,14 @@ type User struct {
 	// AvatarData, loaded only when serving the image — not on every user read.
 	AvatarKey  string
 	AvatarMime string
+
+	// EmailVerifiedAt is when the address was confirmed. Nil means the account
+	// cannot sign in. See migrations/0074.
+	EmailVerifiedAt *time.Time
 }
+
+// EmailVerified reports whether this account may sign in.
+func (u User) EmailVerified() bool { return u.EmailVerifiedAt != nil }
 
 /* HasFeature reports whether a per-account switch is on.
  *
@@ -102,6 +109,7 @@ func (u User) Public() types.Account {
 	a := types.Account{
 		ID:              u.ID,
 		Email:           u.Email,
+		EmailVerified:   u.EmailVerified(),
 		Name:            u.Name,
 		Title:           u.Title,
 		Org:             u.Org,
@@ -170,7 +178,8 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 	coalesce(whatsapp_verified_name,''),
 	whatsapp_token_expires_at, whatsapp_connected_at, whatsapp_registered_at,
 	whatsapp_coexistence, whatsapp_token_rejected_at,
-	coalesce(google_picture,''), coalesce(avatar_key,''), coalesce(avatar_mime,'')`
+	coalesce(google_picture,''), coalesce(avatar_key,''), coalesce(avatar_mime,''),
+	email_verified_at`
 
 func scanUser(row scanner) (User, error) {
 	var u User
@@ -181,7 +190,7 @@ func scanUser(row scanner) (User, error) {
 		&u.WhatsAppToken, &u.WhatsAppWABAID, &u.WhatsAppPhoneNumberID, &u.WhatsAppDisplayPhone,
 		&u.WhatsAppVerifiedName, &u.WhatsAppTokenExpiresAt, &u.WhatsAppConnectedAt,
 		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence, &u.WhatsAppTokenRejectedAt,
-		&u.GooglePicture, &u.AvatarKey, &u.AvatarMime)
+		&u.GooglePicture, &u.AvatarKey, &u.AvatarMime, &u.EmailVerifiedAt)
 	return u, err
 }
 
@@ -235,9 +244,8 @@ func (s *Store) UserByID(ctx context.Context, id string) (User, error) {
  * canHost is a parameter rather than always true because not every caller
  * wants it granted — AuthBypass's dev fixture and the admin-invite path both
  * make their own choice — but handleSignup and handleSupabaseAuth, the two
- * real account-creation paths, both pass true: every new account can host from
- * the moment it exists. An admin can still take it away with SetHostCapability
- * (see admin.go) — that stays the only way hosting is ever revoked.
+ * real account-creation paths, both pass false: a new account attends, and
+ * hosts only once an admin grants it with SetHostCapability (see admin.go).
  */
 func (s *Store) CreateUser(ctx context.Context, email, hashedPassword, name, title, org, phone string, canHost bool) (User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))

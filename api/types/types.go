@@ -123,6 +123,11 @@ const (
 	 * per address, enforced by a unique index (migration 0058). */
 	NotifyWelcome NotificationKind = "welcome"
 
+	/* NotifyEmailVerify is the one-time link a password signup needs before it can sign in.
+	 * Addressed by email, like welcome, so it is not an in-app alert. Resending writes another
+	 * row; there is no unique index, unlike welcome. */
+	NotifyEmailVerify NotificationKind = "email_verify"
+
 	/* The panelist's side of a webinar: added to the stage (with the stage link and a
 	 * calendar file), the start moved, the session cancelled. Addressed by email and tied to
 	 * no registration — a panelist signs in rather than holding a join key, so the link in
@@ -903,9 +908,14 @@ type SetStreamRequest struct {
 type Account struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
-	Name  string `json:"name"`
-	Title string `json:"title"`
-	Org   string `json:"org"`
+	/* EmailVerified is false until the address is confirmed. Password signup leaves it
+	 * false and sign-in is refused until the link is used. Google sign-in sets it
+	 * immediately, because Google already confirmed the address. Accounts that already
+	 * existed were marked verified when the column was added, so they were not locked out. */
+	EmailVerified bool   `json:"emailVerified"`
+	Name          string `json:"name"`
+	Title         string `json:"title"`
+	Org           string `json:"org"`
 	// Phone is E.164 shape (`+` then digits), same convention as
 	// Registration.Phone — the caller's own number, never shown to anyone
 	// else (not on Person, the type other attendees/panelists see).
@@ -2281,16 +2291,38 @@ type SignupRequest struct {
 	Phone string `json:"phone,omitempty"`
 	/* WantsHost is ACCEPTED AND IGNORED, and the field is kept for exactly that reason.
 	 *
-	 * Every new account gets hosting automatically now (see handleSignup) — nothing left to
-	 * ask for. Removing the field outright would make an older cached bundle's signup fail
-	 * on an unknown-field error, since this API rejects unknown fields, so the request still
-	 * parses and the value no longer does anything either way.
+	 * Every new account starts without hosting (see handleSignup) and only an admin can
+	 * grant it, so asking here does nothing. Removing the field outright would make an
+	 * older cached bundle's signup fail on an unknown-field error, since this API rejects
+	 * unknown fields, so the request still parses and the value is ignored.
 	 */
 	WantsHost bool `json:"wantsHost"`
 }
 
+/* SignupResponse is what password signup returns instead of a session.
+ *
+ * The account exists and cannot be used yet. No cookie is set. The person confirms
+ * the address from the link in the mail, then signs in.
+ */
+type SignupResponse struct {
+	Status  string `json:"status"`
+	Email   string `json:"email"`
+	Message string `json:"message"`
+}
+
+// VerifyEmailRequest is the token from the link in the verification mail.
+type VerifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
+// ResendVerificationRequest asks for another link. It does not require a session:
+// an unverified account cannot sign in, so the only place to ask is this form.
+type ResendVerificationRequest struct {
+	Email string `json:"email"`
+}
+
 // HostGrant is an admin's decision about one account's hosting capability —
-// still the only way to take it away from an account after signup.
+// the only way an account gains or loses it.
 type HostGrant struct {
 	CanHost bool `json:"canHost"`
 }

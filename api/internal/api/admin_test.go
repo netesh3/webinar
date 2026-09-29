@@ -1,18 +1,16 @@
 package api_test
 
-/* Hosting is granted automatically at signup now, and only an admin takes it away.
+/* Hosting is off for every new account, and only an admin turns it on or off.
  *
- * This used to be the other way around — hosting was an admin-only grant, and neither
- * of these requests could produce one:
+ * Neither of these requests grants it:
  *
  *   POST /api/auth/signup  {"wantsHost": true}
- *   PATCH /api/auth/me          {"wantsHost": true}
+ *   PATCH /api/auth/me     {"wantsHost": true}
  *
- * Signup grants hosting unconditionally now, whatever wantsHost says — see handleSignup.
- * PATCH /api/auth/me still cannot grant it after the fact, which is the one piece of the
- * old policy that stayed: an admin's SetHostCapability is still the only way hosting is
- * ever taken away, and self-service can't hand it back once it's gone. wantsHost is kept
- * on the wire, accepted and ignored either way, so an older cached bundle keeps working.
+ * A new account can register for and attend webinars straight away; hosting waits for
+ * an admin's SetHostCapability. Accounts that already had can_host keep it — nothing
+ * rewrites the column for them. wantsHost is kept on the wire, accepted and ignored, so
+ * an older cached bundle keeps working.
  */
 
 import (
@@ -27,48 +25,89 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-// TestSignupGrantsHosting: every new account can host immediately, whatever
-// wantsHost said — the field is accepted and ignored, not honoured.
-func TestSignupGrantsHosting(t *testing.T) {
+// TestSignupStartsWithoutHosting: a new account cannot create a webinar, even when it
+// asked to host, until an admin grants it — and then it can.
+func TestSignupStartsWithoutHosting(t *testing.T) {
 	h := newHarness(t)
 
 	res, raw := h.do(http.MethodPost, "/api/auth/signup", map[string]any{
-		"name":      "New Host",
-		"email":     "newhost@test.dev",
+		"name":      "New Signup",
+		"email":     "newsignup@test.dev",
 		"password":  "a-long-enough-password",
-		"wantsHost": false,
+		"wantsHost": true,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("signup: status %d body %s", res.StatusCode, raw)
 	}
+	var pending types.SignupResponse
+	h.decode(raw, &pending)
+	if pending.Status != "verify_email" {
+		t.Fatalf("signup body = %s, want a verify-email response and no session", raw)
+	}
+	if strings.Contains(res.Header.Get("Set-Cookie"), "webcast_session") {
+		t.Fatal("signup issued a session before the email was verified")
+	}
+
+	// The capability is on the account even though sign-in is refused until the
+	// link is used. Confirm the address, then sign in, then use it.
+	if err := h.store.MarkEmailVerifiedByEmail(t.Context(), "newhost@test.dev"); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	res, raw = h.do(http.MethodPost, "/api/auth/login", map[string]string{
+		"email": "newhost@test.dev", "password": "a-long-enough-password",
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("login after verify: status %d body %s", res.StatusCode, raw)
+	}
 	var acct types.Account
 	h.decode(raw, &acct)
-
-	if !acct.CanHost {
-		t.Error("signup did not grant the hosting capability")
+	if acct.CanHost {
+		t.Fatal("signup granted the hosting capability")
 	}
 	if acct.IsAdmin {
 		t.Error("signup produced an admin")
 	}
 
-	// And the capability actually works, not merely present in the response.
-	res, raw = h.do(http.MethodPost, "/api/host/webinars", map[string]any{
-		"topic": "A brand new host's first webinar", "startsAt": soon(), "durationMin": 30,
-		"status": "scheduled",
+	create := func(topic string) (*http.Response, []byte) {
+		return h.do(http.MethodPost, "/api/host/webinars", map[string]any{
+			"topic": topic, "startsAt": soon(), "durationMin": 30, "status": "scheduled",
+		})
+	}
+	if res, raw := create("Before the grant"); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("create before grant: status %d body %s, want 403", res.StatusCode, raw)
+	}
+
+	// Attending still works: register for a seeded webinar and list it.
+	h.registerAs("scaling-webrtc-10k", "newsignup@test.dev")
+	if res, raw := h.do(http.MethodGet, "/api/me/registrations", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("my registrations without hosting: status %d body %s", res.StatusCode, raw)
+	}
+
+	// An admin grants it through the endpoint the Accounts screen uses.
+	if _, _, err := h.store.PromoteAdmins(t.Context(), []string{"neeraj@acme.dev"}); err != nil {
+		t.Fatalf("promote admin: %v", err)
+	}
+	h.login("neeraj@acme.dev")
+	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+acct.ID+"/host", types.HostGrant{CanHost: true})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("grant: status %d body %s", res.StatusCode, raw)
+	}
+
+	res, raw = h.do(http.MethodPost, "/api/auth/login", types.LoginRequest{
+		Email: "newsignup@test.dev", Password: "a-long-enough-password",
 	})
-	if res.StatusCode != http.StatusCreated {
-		t.Errorf("creating a webinar: status %d body %s, want 201", res.StatusCode, raw)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("login: status %d body %s", res.StatusCode, raw)
+	}
+	if res, raw := create("After the grant"); res.StatusCode != http.StatusCreated {
+		t.Fatalf("create after grant: status %d body %s, want 201", res.StatusCode, raw)
 	}
 }
 
-// TestAdminCanRevokeHostingAfterSignup: the safety valve signup's automatic
-// grant needs, now that it can't be withheld in the first place.
-func TestAdminCanRevokeHostingAfterSignup(t *testing.T) {
+// TestAdminCanRevokeHosting: the grant is reversible, and the next request sees it.
+func TestAdminCanRevokeHosting(t *testing.T) {
 	h := newHarness(t)
 	acct := h.signup("Revocable Host", "revocable@test.dev", true)
-	if !acct.CanHost {
-		t.Fatal("fixture setup: signup did not grant hosting")
-	}
 
 	if _, err := h.store.SetHostCapability(context.Background(), acct.ID, false); err != nil {
 		t.Fatalf("revoke hosting: %v", err)

@@ -87,7 +87,7 @@ func TestSignupSendsExactlyOneWelcomeEmail(t *testing.T) {
 	}
 	if m.HTML == "" || !strings.Contains(m.Body, "webinarliv@gmail.com") ||
 		!strings.Contains(m.Body, "+91-9852411280") ||
-		!strings.Contains(m.Body, "http://localhost:3000/host") {
+		!strings.Contains(m.Body, "http://localhost:3000/my-webinars") {
 		t.Errorf("welcome body incomplete:\n%s", m.Body)
 	}
 	if strings.Contains(m.HTML, "<b>Sharma</b>") {
@@ -95,6 +95,10 @@ func TestSignupSendsExactlyOneWelcomeEmail(t *testing.T) {
 	}
 
 	// Signing in again, or signing up again with the same address, sends nothing more.
+	// Signup itself does not sign in; confirm the address the way the link does.
+	if err := h.store.MarkEmailVerifiedByEmail(context.Background(), "priya.new@test.dev"); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
 	res, raw = h.do(http.MethodPost, "/api/auth/logout", nil)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("logout: %d %s", res.StatusCode, raw)
@@ -183,9 +187,10 @@ func TestWelcomeMailFailureDoesNotFailSignup(t *testing.T) {
 	if total, pending := h.welcomeRows("asha-fail@test.dev"); total != 1 || pending != 1 {
 		t.Errorf("welcome rows total=%d pending=%d, want 1 pending", total, pending)
 	}
+	// A mail failure must not sign them in either. The account stays unverified.
 	res, _ = h.do(http.MethodGet, "/api/auth/me", nil)
-	if res.StatusCode != http.StatusOK {
-		t.Errorf("the new session does not work after a mail failure: %d", res.StatusCode)
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("signup issued a session despite an unverified address: %d", res.StatusCode)
 	}
 }
 

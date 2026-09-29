@@ -801,34 +801,42 @@ func (h *harness) signup(name, email string, wantsHost bool) types.Account {
 	if res.StatusCode != http.StatusCreated {
 		h.t.Fatalf("signup %s: status %d body %s", email, res.StatusCode, raw)
 	}
+	/* Password signup does not sign the account in. The rest of the suite is about
+	 * what a signed-in account can do, so the fixture confirms the address here —
+	 * the same write the verification link performs — and then signs in. */
+	if err := h.store.MarkEmailVerifiedByEmail(context.Background(), email); err != nil {
+		h.t.Fatalf("verify %s: %v", email, err)
+	}
+	h.login(email)
+	res, raw = h.do(http.MethodGet, "/api/auth/me", nil)
+	if res.StatusCode != http.StatusOK {
+		h.t.Fatalf("me after signup %s: status %d body %s", email, res.StatusCode, raw)
+	}
 	var acct types.Account
 	h.decode(raw, &acct)
 
-	/* Every signup grants hosting unconditionally now — see handleSignup — so
-	 * acct.CanHost is true here regardless of what wantsHost (the parameter,
-	 * or the wire field of the same name, which the server ignores either
-	 * way) said. A test that wants a fixture WITHOUT hosting is the one case
-	 * that now needs an explicit extra step: revoke it through the store, the
-	 * same write an admin's PATCH performs — an admin taking hosting away is
-	 * still the only way an account ends up without it after signup.
+	/* Signup never grants hosting — see handleSignup — so acct.CanHost is false
+	 * here whatever wantsHost (the parameter, or the wire field of the same
+	 * name, which the server ignores) said. A test that wants a HOST fixture
+	 * gets one the way production does: an admin's grant, written through the
+	 * store, the same write the admin PATCH performs.
 	 *
 	 * Done in the harness rather than in the ~90 tests that call it, because
 	 * those tests are about what a host can or cannot DO, not about how the
-	 * fixture account came to have (or not have) the capability. The grant
-	 * and revoke paths themselves are tested directly in admin_test.go.
+	 * fixture account came to have the capability. The grant and revoke paths
+	 * themselves are tested directly in admin_test.go.
 	 *
-	 * No re-login needed either way: authenticate() re-reads the account from
-	 * the database on every request, so a capability change here applies to
-	 * the very next call.
+	 * No re-login needed: authenticate() re-reads the account from the
+	 * database on every request, so the grant applies to the very next call.
 	 */
-	if !acct.CanHost {
-		h.t.Fatalf("signup did not grant hosting to %s; the automatic-hosting policy is broken", email)
+	if acct.CanHost {
+		h.t.Fatalf("signup granted hosting to %s; new accounts must start without it", email)
 	}
-	if !wantsHost {
-		if _, err := h.store.SetHostCapability(context.Background(), acct.ID, false); err != nil {
-			h.t.Fatalf("revoke hosting from %s: %v", email, err)
+	if wantsHost {
+		if _, err := h.store.SetHostCapability(context.Background(), acct.ID, true); err != nil {
+			h.t.Fatalf("grant hosting to %s: %v", email, err)
 		}
-		acct.CanHost = false
+		acct.CanHost = true
 	}
 	return acct
 }
@@ -1466,8 +1474,8 @@ func TestSignupValidatesAndSignsIn(t *testing.T) {
 		}
 	}
 
-	// The happy path signs the new account in, so /auth/me works immediately
-	// without a second round trip through login.
+	// The harness confirms the address and signs in. Signup itself does not
+	// issue a session; that refusal is TestUnverifiedAccountCannotSignIn.
 	acct := h.signup("Ada Lovelace", "ada@test.dev", false)
 	if acct.CanHost {
 		t.Error("an account that did not ask to host was given the capability")

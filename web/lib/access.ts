@@ -37,11 +37,11 @@ const ALLOW: Decision = { allow: true };
 
 /* First segments under /host that are pages rather than webinar slugs.
  *
- * `/host/new` is the schedule form, `/host/login` is the way in, and `/host/messages`
- * is the WhatsApp inbox. Everything else after /host is a slug. Getting this list
- * wrong would make one of those pages look like a webinar and redirect a participant
- * to /webinars/new, which does not exist. */
-const HOST_PAGES = new Set(["login", "new", "messages"]);
+ * `/host/new` is the schedule form, `/host/login` is the way in, `/host/messages`
+ * is the WhatsApp inbox and `/host/crm` is the WhatsApp page. Everything else after
+ * /host is a slug. Getting this list wrong would make one of those pages look like a
+ * webinar and redirect a participant to /webinars/new, which does not exist. */
+const HOST_PAGES = new Set(["login", "new", "messages", "crm"]);
 
 /**
  * decideAccess answers one request.
@@ -142,17 +142,17 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
   // Everything else under /host is the dashboard, and the dashboard needs the capability.
   if (viewer.canHost) return ALLOW;
 
-  /* A signed-in participant who typed a host URL.
+  /* A signed-in account without hosting — every new signup, until an admin turns it on.
    *
-   * Sent to the public page for the webinar they were evidently looking for, which is both
-   * what they can actually use and the least confusing thing to land on. With no slug to go
-   * on — bare /host — they go to their account page, which is where hosting is turned on, so
-   * somebody who genuinely wants to host is one toggle away rather than stuck.
+   * Bare /host opens: it renders "Hosting isn't enabled for this account", plus any
+   * sessions they are a panelist on, and makes no host-only request. The host pages
+   * (schedule, WhatsApp) go there too, so they land on that explanation rather than a
+   * form the API would refuse. A webinar slug goes to its public page, which is what they
+   * can actually use.
    */
-  if (second && !HOST_PAGES.has(second)) {
-    return { allow: false, redirectTo: `/webinars/${second}` };
-  }
-  return { allow: false, redirectTo: "/account" };
+  if (!second) return ALLOW;
+  if (HOST_PAGES.has(second)) return { allow: false, redirectTo: "/host" };
+  return { allow: false, redirectTo: `/webinars/${second}` };
 }
 
 /** A redirect that remembers where the person was going, so signing in continues the
