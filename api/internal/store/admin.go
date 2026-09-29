@@ -47,15 +47,23 @@ func (s *Store) EnsureAdminAccount(ctx context.Context, email, name, passwordHas
 	// can_host false here: PromoteAdmins sets both is_admin and can_host immediately after, and
 	// having one writer for those two columns is what keeps them from disagreeing.
 	_, err := s.CreateUser(ctx, email, passwordHash, name, "", "", "", false)
+	created := false
 	switch {
 	case err == nil:
-		return true, nil
+		created = true
 	case errors.Is(err, ErrConflict):
 		// Already there. The whole point.
-		return false, nil
 	default:
 		return false, err
 	}
+	// The operator account has to be able to sign in. Password signup leaves a row
+	// unverified; this bootstrap path does not. Idempotent, so a retry after a
+	// failed mark still ends verified, and an account that already was is left at
+	// its original time.
+	if err := s.MarkEmailVerifiedByEmail(ctx, email); err != nil {
+		return false, err
+	}
+	return created, nil
 }
 
 /* NameFromEmail is a passable display name for an account nobody filled in a form for.

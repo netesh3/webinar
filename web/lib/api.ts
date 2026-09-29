@@ -38,6 +38,7 @@ import type {
   SendMessageRequest,
   SendMessageResponse,
   SessionReport,
+  SignupResponse,
   ShareRecordingRequest,
   StageAllResponse,
   StatusResponse,
@@ -274,10 +275,18 @@ export const api = {
     phone?: string;
     org?: string;
     title?: string;
-  }) => post<Account>("/api/auth/signup", body),
+  }) => post<SignupResponse>("/api/auth/signup", body),
 
   login: (email: string, password: string) =>
     post<Account>("/api/auth/login", { email, password }),
+
+  /** Confirms the address from the link in the verification mail. No session. */
+  verifyEmail: (token: string) =>
+    post<StatusResponse>("/api/auth/email/verify", { token }),
+
+  /** Asks for another link. Rate-limited. Works with no session. */
+  resendVerification: (email: string) =>
+    post<StatusResponse>("/api/auth/email/resend", { email }),
 
   /** Exchange a Supabase Auth access token for the webcast_session cookie. */
   supabaseAuth: (accessToken: string) =>

@@ -8,7 +8,7 @@ import { AuthDivider, GoogleContinueButton } from "./google-continue";
 import { ContinueAsPreviewHost } from "./continue-as-preview-host";
 import { useAppConfig, useSession } from "./providers";
 import { Button, Card } from "./ui";
-import { ApiError } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { DIAL_CODES, dialOptions } from "@/lib/dial-codes";
 
 /* Sign in and sign up.
@@ -35,17 +35,22 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [unverified, setUnverified] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setUnverified(false);
     try {
       await signIn(email, password);
       router.push(next);
       router.refresh();
     } catch (err) {
+      if (err instanceof ApiError && err.code === "email_unverified") {
+        setUnverified(true);
+      }
       setError(
         err instanceof ApiError
           ? err.message
@@ -53,6 +58,10 @@ export function LoginForm() {
       );
       setBusy(false);
     }
+  }
+
+  if (unverified) {
+    return <VerifyEmailNotice email={email} message={error ?? "Verify your email to continue."} />;
   }
 
   return (
@@ -125,7 +134,6 @@ export function LoginForm() {
 }
 
 export function SignupForm() {
-  const router = useRouter();
   const params = useSearchParams();
   const { signUp } = useSession();
   const { appName, signupOpen, googleAuth } = useAppConfig();
@@ -139,6 +147,7 @@ export function SignupForm() {
   const [password, setPassword] = useState("");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   if (!signupOpen) {
@@ -172,9 +181,9 @@ export function SignupForm() {
     }
     try {
       const phone = digits ? `+${DIAL_CODES[dialIso] ?? ""}${digits}` : "";
-      const account = await signUp({ name, email, password, phone });
-      router.push(account.canHost ? "/host" : next);
-      router.refresh();
+      const pending = await signUp({ name, email, password, phone });
+      setPendingEmail(pending.email);
+      setBusy(false);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.fields) setFields(err.fields);
@@ -184,6 +193,15 @@ export function SignupForm() {
       }
       setBusy(false);
     }
+  }
+
+  if (pendingEmail) {
+    return (
+      <VerifyEmailNotice
+        email={pendingEmail}
+        message="Verify your email to continue."
+      />
+    );
   }
 
   return (
@@ -338,5 +356,58 @@ function Field({
         </p>
       )}
     </div>
+  );
+}
+
+/* Shown after password signup, and when sign-in is refused because the address
+ * is still unconfirmed. There is no session either way, so resend is the way
+ * to get another link. */
+function VerifyEmailNotice({ email, message }: { email: string; message: string }) {
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function resend() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.resendVerification(email);
+      setSent(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not send another link.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mx-auto w-full max-w-sm p-6">
+      <h1 className="text-[18px] font-semibold">Verify your email</h1>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">{message}</p>
+      <p className="mt-3 text-[13px] leading-relaxed text-ink-2">
+        We sent a link to <span className="font-medium text-ink">{email}</span>. It
+        works once and expires in 24 hours.
+      </p>
+      {error && (
+        <div className="mt-3">
+          <Alert tone="error">{error}</Alert>
+        </div>
+      )}
+      {sent && (
+        <div className="mt-3">
+          <Alert tone="ok">Sent. Check your inbox for the new link.</Alert>
+        </div>
+      )}
+      <Button type="button" disabled={busy} className="mt-4 w-full" onClick={() => void resend()}>
+        {busy && <Spinner className="size-4" />}
+        {busy ? "Sending…" : "Resend link"}
+      </Button>
+      <p className="mt-4 border-t border-line pt-3 text-center text-[12.5px] text-ink-2">
+        Already verified?{" "}
+        <Link href="/login" className="font-medium text-brand hover:underline">
+          Sign in
+        </Link>
+      </p>
+    </Card>
   );
 }

@@ -41,6 +41,26 @@ func TestSignupGrantsHosting(t *testing.T) {
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("signup: status %d body %s", res.StatusCode, raw)
 	}
+	var pending types.SignupResponse
+	h.decode(raw, &pending)
+	if pending.Status != "verify_email" {
+		t.Fatalf("signup body = %s, want a verify-email response and no session", raw)
+	}
+	if strings.Contains(res.Header.Get("Set-Cookie"), "webcast_session") {
+		t.Fatal("signup issued a session before the email was verified")
+	}
+
+	// The capability is on the account even though sign-in is refused until the
+	// link is used. Confirm the address, then sign in, then use it.
+	if err := h.store.MarkEmailVerifiedByEmail(t.Context(), "newhost@test.dev"); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	res, raw = h.do(http.MethodPost, "/api/auth/login", map[string]string{
+		"email": "newhost@test.dev", "password": "a-long-enough-password",
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("login after verify: status %d body %s", res.StatusCode, raw)
+	}
 	var acct types.Account
 	h.decode(raw, &acct)
 
