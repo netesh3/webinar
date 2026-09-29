@@ -129,7 +129,7 @@ export function RoomSection({
             [
               ["autoRecord", "Record automatically"],
               ["captions", "Live captions"],
-              ["multistream", "Stream to YouTube / LinkedIn"],
+              ["multistream", "Stream to YouTube"],
             ] as const
           ).map(([key, label]) => (
             <Toggle
