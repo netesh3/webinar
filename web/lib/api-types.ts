@@ -4140,10 +4140,10 @@ export interface SignupRequest {
   /**
    *  WantsHost is ACCEPTED AND IGNORED, and the field is kept for exactly that reason.
    * 	 *
-   * 	 * Every new account gets hosting automatically now (see handleSignup) — nothing left to
-   * 	 * ask for. Removing the field outright would make an older cached bundle's signup fail
-   * 	 * on an unknown-field error, since this API rejects unknown fields, so the request still
-   * 	 * parses and the value no longer does anything either way.
+   * 	 * Every new account starts without hosting (see handleSignup) and only an admin can
+   * 	 * grant it, so asking here does nothing. Removing the field outright would make an
+   * 	 * older cached bundle's signup fail on an unknown-field error, since this API rejects
+   * 	 * unknown fields, so the request still parses and the value is ignored.
    */
   wantsHost: boolean;
 }
@@ -4173,7 +4173,7 @@ export interface ResendVerificationRequest {
 }
 /**
  * HostGrant is an admin's decision about one account's hosting capability —
- * still the only way to take it away from an account after signup.
+ * the only way an account gains or loses it.
  */
 export interface HostGrant {
   canHost: boolean;

@@ -423,13 +423,12 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	/* Always created WITH the hosting capability now — every new account can host from
-	 * the moment it exists, whatever req.WantsHost says (see its own doc comment: kept
-	 * on the wire but no longer meaningful either way, since the answer is always yes).
-	 * An admin can still take it away afterward with SetHostCapability; that stays the
-	 * only way hosting is ever revoked. */
+	/* Always created WITHOUT the hosting capability, whatever req.WantsHost says (see its
+	 * own doc comment: kept on the wire, never honoured). A new account can register for
+	 * and attend webinars straight away; hosting waits until an admin turns it on with
+	 * SetHostCapability, which is the only way it is ever granted or revoked. */
 	user, err := s.store.CreateUser(r.Context(), req.Email, hash,
-		req.Name, req.Title, req.Org, req.Phone, true)
+		req.Name, req.Title, req.Org, req.Phone, false)
 	if errors.Is(err, store.ErrConflict) {
 		// Naming the conflict is the right call here. The address is already
 		// discoverable by trying to sign in, and hiding it only produces
@@ -445,6 +444,8 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// No session. The account cannot sign in until the address is confirmed.
+	// can_host is always false for a fresh signup; requested_host is logged
+	// even though it never changes the outcome.
 	s.log.Info("signup", "user", user.ID, "can_host", user.CanHost,
 		"requested_host", req.WantsHost, "email_domain", domainOf(user.Email))
 	s.queueWelcome(r.Context(), user)
@@ -628,11 +629,11 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 				"New accounts are closed on this instance.")
 			return
 		}
-		// Same policy as handleSignup: every new account can host from the
-		// moment it exists, whichever door they signed up through. No phone
-		// either way — Google sign-in doesn't collect one.
+		// Same policy as handleSignup: no hosting until an admin grants it,
+		// whichever door they signed up through. No phone either way — Google
+		// sign-in doesn't collect one.
 		user, err = s.store.CreateUser(r.Context(), identity.Email, "",
-			identity.Name, "", "", "", true)
+			identity.Name, "", "", "", false)
 		if errors.Is(err, store.ErrConflict) {
 			// Race with a parallel signup: look up again.
 			user, err = s.store.UserByEmail(r.Context(), identity.Email)
