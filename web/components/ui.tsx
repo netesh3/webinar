@@ -164,12 +164,12 @@ const btnBase =
   "disabled:opacity-50 disabled:pointer-events-none";
 
 const btnVariant = {
-  primary: "bg-brand text-white hover:bg-brand-hover",
+  primary: "bg-brand text-on-brand hover:bg-brand-hover",
   secondary: "border border-line-2 bg-surface text-ink hover:bg-surface-2",
   ghost: "text-ink-2 hover:bg-surface-2 hover:text-ink",
   danger: "border border-live/30 bg-surface text-live hover:bg-live-soft",
   /** For the one irreversible action on a screen — "End for all". */
-  destructive: "bg-live text-white hover:bg-live/90",
+  destructive: "bg-live text-on-live hover:bg-live/90",
 } as const;
 
 const btnSize = {

@@ -9,17 +9,18 @@ import { ButtonLink, Card } from "../ui";
 import type { IntegrationCard } from "@/lib/api-types";
 import { api } from "@/lib/api";
 import { AccountSection } from "./account-section";
+import { AppearanceSection } from "./appearance-section";
 import { IntegrationsSection } from "./integrations-section";
 import { ProfileSection } from "./profile-section";
 
-const SECTIONS = ["profile", "integrations", "account"] as const;
+const SECTIONS = ["profile", "appearance", "integrations", "account"] as const;
 type Section = (typeof SECTIONS)[number];
 
 function isSection(value: string): value is Section {
   return (SECTIONS as readonly string[]).includes(value);
 }
 
-/** Settings: profile, integrations, and the account itself.
+/** Settings: profile, appearance, integrations, and the account itself.
  *  The left nav is the only way between them. Sign out lives there too. */
 export function SettingsScreen() {
   const router = useRouter();
@@ -98,6 +99,7 @@ export function SettingsScreen() {
 
   const items: { id: Section; label: string; icon: string }[] = [
     { id: "profile", label: "Profile", icon: "person" },
+    { id: "appearance", label: "Appearance", icon: "contrast" },
     { id: "integrations", label: "Integrations", icon: "extension" },
     { id: "account", label: "Account", icon: "manage_accounts" },
   ];
@@ -157,6 +159,7 @@ export function SettingsScreen() {
 
         <div>
           {section === "profile" && <ProfileSection account={account} />}
+          {section === "appearance" && <AppearanceSection />}
           {section === "integrations" && (
             <IntegrationsSection
               canHost={account.canHost}

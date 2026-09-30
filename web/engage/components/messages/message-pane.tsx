@@ -116,10 +116,10 @@ function Chip({
       onClick={onClick}
       className={`inline-flex h-[26px] w-max min-w-max shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full border px-[9px] text-[12px] font-medium ${
         dashed
-          ? "border-dashed border-line-2 bg-surface text-ink-3 hover:bg-white"
+          ? "border-dashed border-line-2 bg-surface text-ink-3 hover:bg-surface-2"
           : on
             ? "border-brand-line bg-brand-soft text-brand"
-            : "border-line-2 bg-surface text-ink-2 hover:bg-white"
+            : "border-line-2 bg-surface text-ink-2 hover:bg-surface-2"
       }`}
     >
       {children}
