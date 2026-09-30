@@ -19,6 +19,7 @@ import {
   type MessageSlotPatch,
   type NotificationKind,
 } from "@/lib/api-types";
+import { hourLabel } from "../message-timing";
 
 /* The Messages tab's catalogue: one row per slot, in the order the mock shows them,
  * and the short "when" line each row prints. Timing words live here so the list and
@@ -157,7 +158,9 @@ export function reminderWhen(minutes: number[] | undefined): string {
 export function laterWhen(slot: MessageSlot): string {
   if (slot.timing.type === TimingOnPublish) return "when you publish the recording";
   if (slot.timing.type === TimingImmediate) return "when they register";
-  if (slot.timing.type === TimingNextMorning) return "next day";
+  if (slot.timing.type === TimingNextMorning) {
+    return `next morning, ${hourLabel(slot.timing.hour ?? 9)}`;
+  }
   const minutes = slot.timing.minutes?.[0] ?? 0;
   if (minutes <= 0) return "when it ends";
   if (minutes % 1440 === 0) {
