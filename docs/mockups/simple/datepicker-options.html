@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Date picker — three directions</title>
+<link rel="stylesheet" href="assets/datepicker.css">
+</head>
+<body>
+<header class="nav"><div class="nav-in">
+  <a class="logo" href="datepicker-options.html"><span class="logo-mark">W</span><b>Webinar Liv</b><span class="beta">Beta</span></a>
+  <span class="grow"></span>
+  <span class="bell" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><i class="dot"></i></span>
+  <span class="acct">Aarti Menon <span class="av sm">AM</span></span>
+</div></header>
+<main class="wide">
+  <h1>Date picker</h1>
+  <p class="lede">Three directions for every place a host picks a date or a time. Indian dates (Fri, 2 Oct 2026), IST as the default, and nothing earlier than one hour from now — it is 7:45 PM IST on Wed, 30 Sep 2026, so today only starts at 8:45 PM.</p>
+  <nav class="jumps">
+    <a href="datepicker-schedule.html"><b>Schedule</b></a>
+    <a href="datepicker-host-filter.html"><b>Host list</b></a>
+    <a href="datepicker-message-timing.html"><b>Message timing</b></a>
+    <a href="datepicker-send.html"><b>Send later</b></a>
+    <a href="datepicker-broadcast.html"><b>Broadcast</b></a>
+    <a href="datepicker-admin.html"><b>Admin</b></a>
+    <a href="datepicker-metrics.html"><b>Metrics</b></a>
+  </nav>
+
+  <div class="trio">
+    <!-- A -->
+    <section class="card opt reco-card">
+      <div class="opt-h">
+        <span class="letter">A</span>
+        <div class="grow">
+          <div class="row wrap"><h2>Popover calendar</h2><span class="reco">Recommended</span></div>
+        </div>
+      </div>
+      <p class="why">Presets for the usual days, a month for the rest, a 15-minute list, and IST always in view.</p>
+      <div class="dp">
+        <div class="presets">
+          <span class="chip">Today</span>
+          <span class="chip">Tomorrow</span>
+          <span class="chip">This weekend</span>
+          <span class="chip">Next week</span>
+        </div>
+        <div class="month">
+          <div class="mh"><span class="icon">‹</span><b>October 2026</b><span class="icon">›</span></div>
+          <div class="grid7">
+            <span class="dow">Su</span><span class="dow">Mo</span><span class="dow">Tu</span><span class="dow">We</span><span class="dow">Th</span><span class="dow">Fr</span><span class="dow">Sa</span>
+            <span class="day past out">27</span><span class="day past out">28</span><span class="day past out">29</span><span class="day today out">30</span><span class="day">1</span><span class="day on">2</span><span class="day">3</span>
+            <span class="day">4</span><span class="day">5</span><span class="day">6</span><span class="day">7</span><span class="day">8</span><span class="day">9</span><span class="day">10</span>
+            <span class="day">11</span><span class="day">12</span><span class="day">13</span><span class="day">14</span><span class="day">15</span><span class="day">16</span><span class="day">17</span>
+            <span class="day">18</span><span class="day">19</span><span class="day">20</span><span class="day">21</span><span class="day">22</span><span class="day">23</span><span class="day">24</span>
+            <span class="day">25</span><span class="day">26</span><span class="day">27</span><span class="day">28</span><span class="day">29</span><span class="day">30</span><span class="day">31</span>
+          </div>
+        </div>
+        <div class="legend"><span><i class="sw-past"></i>Past</span><span><i class="sw-today"></i>Today</span><span><i class="sw-on"></i>Fri, 2 Oct</span></div>
+        <div class="times">
+          <span class="time">6:30 PM</span>
+          <span class="time">6:45 PM</span>
+          <span class="time on">7:00 PM <span class="ck">✓</span></span>
+          <span class="time">7:15 PM</span>
+          <span class="time">7:30 PM</span>
+        </div>
+        <div class="dp-foot">
+          <span class="tz">IST · Asia/Kolkata</span>
+          <span class="rule">At least 1 hour from now</span>
+          <span class="actions"><span class="btn ghost sm">Cancel</span><span class="btn sm">Done</span></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- B -->
+    <section class="card opt">
+      <div class="opt-h"><span class="letter">B</span><div><h2>Inline calendar</h2></div></div>
+      <p class="why">Always open. Compact month, time as chips. Clear, and tall inside an already long form.</p>
+      <div class="dp flat">
+        <div class="month">
+          <div class="mh"><span class="icon">‹</span><b>October 2026</b><span class="icon">›</span></div>
+          <div class="grid7">
+            <span class="dow">Su</span><span class="dow">Mo</span><span class="dow">Tu</span><span class="dow">We</span><span class="dow">Th</span><span class="dow">Fr</span><span class="dow">Sa</span>
+            <span class="day past out">27</span><span class="day past out">28</span><span class="day past out">29</span><span class="day today out">30</span><span class="day">1</span><span class="day on">2</span><span class="day">3</span>
+            <span class="day">4</span><span class="day">5</span><span class="day">6</span><span class="day">7</span><span class="day">8</span><span class="day">9</span><span class="day">10</span>
+            <span class="day">11</span><span class="day">12</span><span class="day">13</span><span class="day">14</span><span class="day">15</span><span class="day">16</span><span class="day">17</span>
+            <span class="day">18</span><span class="day">19</span><span class="day">20</span><span class="day">21</span><span class="day">22</span><span class="day">23</span><span class="day">24</span>
+            <span class="day">25</span><span class="day">26</span><span class="day">27</span><span class="day">28</span><span class="day">29</span><span class="day">30</span><span class="day">31</span>
+          </div>
+        </div>
+        <div class="xs faint" style="padding:2px 12px 6px">Start time</div>
+        <div class="chips-in">
+          <span class="tchip">6:00</span><span class="tchip">6:15</span><span class="tchip">6:30</span><span class="tchip">6:45</span>
+          <span class="tchip on">7:00 PM</span><span class="tchip">7:15</span><span class="tchip">7:30</span><span class="tchip">7:45</span>
+          <span class="tchip">8:00</span>
+        </div>
+        <div class="xs faint" style="padding:0 12px 6px">If today were selected — 7:45 PM is now</div>
+        <div class="chips-in">
+          <span class="tchip past">7:00 PM</span><span class="tchip past">8:00 PM</span><span class="tchip">8:45 PM</span><span class="tchip">9:00 PM</span>
+        </div>
+        <div class="dp-foot">
+          <span class="tz">IST · Asia/Kolkata</span>
+          <span class="rule">Fri, 2 Oct 2026 · 7:00 PM</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- C -->
+    <section class="card opt">
+      <div class="opt-h"><span class="letter">C</span><div><h2>Natural language</h2></div></div>
+      <p class="why">Type “Fri 7pm”. Fast when the phrase is right; the 1-hour rule shows up only after it parses.</p>
+      <div class="dp">
+        <div class="nl">
+          <label class="label" for="nl">When</label>
+          <input id="nl" class="field open" value="Fri 7pm">
+        </div>
+        <div class="sugs">
+          <div class="sug on"><div><b>Friday, 2 Oct 2026 · 7:00 PM</b><span class="sub">IST · Asia/Kolkata · in 2 days</span></div><span class="ck">✓</span></div>
+          <div class="sug"><div><b>Friday, 9 Oct 2026 · 7:00 PM</b><span class="sub">IST · next Friday</span></div></div>
+          <div class="sug"><div><b>Friday, 2 Oct 2026 · 7:30 PM</b><span class="sub">IST · 15 minutes later</span></div></div>
+        </div>
+        <div class="fallback">Or pick on the calendar</div>
+        <div class="month" style="padding-top:0">
+          <div class="mh"><span class="icon">‹</span><b>October 2026</b><span class="icon">›</span></div>
+          <div class="grid7">
+            <span class="dow">Su</span><span class="dow">Mo</span><span class="dow">Tu</span><span class="dow">We</span><span class="dow">Th</span><span class="dow">Fr</span><span class="dow">Sa</span>
+            <span class="day past out">27</span><span class="day past out">28</span><span class="day past out">29</span><span class="day today out">30</span><span class="day">1</span><span class="day on">2</span><span class="day">3</span>
+            <span class="day">4</span><span class="day">5</span><span class="day">6</span><span class="day">7</span><span class="day">8</span><span class="day">9</span><span class="day">10</span>
+            <span class="day">11</span><span class="day">12</span><span class="day">13</span><span class="day">14</span><span class="day">15</span><span class="day">16</span><span class="day">17</span>
+            <span class="day">18</span><span class="day">19</span><span class="day">20</span><span class="day">21</span><span class="day">22</span><span class="day">23</span><span class="day">24</span>
+            <span class="day">25</span><span class="day">26</span><span class="day">27</span><span class="day">28</span><span class="day">29</span><span class="day">30</span><span class="day">31</span>
+          </div>
+        </div>
+        <div class="dp-foot">
+          <span class="tz">IST</span>
+          <span class="rule">“today 7pm” is refused — earliest is 8:45 PM</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card range-card">
+    <div class="row wrap" style="margin-bottom:6px"><h2>Ranges</h2><span class="reco">Same direction as A</span></div>
+    <p class="why" style="margin:0 0 12px;font-size:12.5px;color:var(--ink-2)">Host list, admin, and metrics. Preset chips answer the usual question; Custom opens a two-month calendar. Replaces the two native dd/mm/yyyy fields.</p>
+    <div class="dp">
+      <div class="presets">
+        <span class="chip on">Next 7 days</span>
+        <span class="chip">This month</span>
+        <span class="chip">Last 30 days</span>
+        <span class="chip">Custom</span>
+      </div>
+      <div style="padding:8px 12px 0">
+        <div class="anchor" style="max-width:340px"><span>Thu, 1 Oct</span><span class="arr">→</span><span>Wed, 7 Oct 2026</span></div>
+      </div>
+      <div class="pair">
+        <div class="month">
+          <div class="mh"><span class="icon">‹</span><b>September 2026</b><span class="icon" style="visibility:hidden">›</span></div>
+          <div class="grid7">
+            <span class="dow">Su</span><span class="dow">Mo</span><span class="dow">Tu</span><span class="dow">We</span><span class="dow">Th</span><span class="dow">Fr</span><span class="dow">Sa</span>
+            <span class="day out">30</span><span class="day out">31</span><span class="day">1</span><span class="day">2</span><span class="day">3</span><span class="day">4</span><span class="day">5</span>
+            <span class="day">6</span><span class="day">7</span><span class="day">8</span><span class="day">9</span><span class="day">10</span><span class="day">11</span><span class="day">12</span>
+            <span class="day">13</span><span class="day">14</span><span class="day">15</span><span class="day">16</span><span class="day">17</span><span class="day">18</span><span class="day">19</span>
+            <span class="day">20</span><span class="day">21</span><span class="day">22</span><span class="day">23</span><span class="day">24</span><span class="day">25</span><span class="day">26</span>
+            <span class="day">27</span><span class="day">28</span><span class="day">29</span><span class="day today">30</span><span class="day start out">1</span><span class="day mid out">2</span><span class="day mid out">3</span>
+          </div>
+        </div>
+        <div class="month">
+          <div class="mh"><span class="icon" style="visibility:hidden">‹</span><b>October 2026</b><span class="icon">›</span></div>
+          <div class="grid7">
+            <span class="dow">Su</span><span class="dow">Mo</span><span class="dow">Tu</span><span class="dow">We</span><span class="dow">Th</span><span class="dow">Fr</span><span class="dow">Sa</span>
+            <span class="day out">27</span><span class="day out">28</span><span class="day out">29</span><span class="day today out">30</span><span class="day start">1</span><span class="day mid">2</span><span class="day mid">3</span>
+            <span class="day mid">4</span><span class="day mid">5</span><span class="day mid">6</span><span class="day end">7</span><span class="day">8</span><span class="day">9</span><span class="day">10</span>
+            <span class="day">11</span><span class="day">12</span><span class="day">13</span><span class="day">14</span><span class="day">15</span><span class="day">16</span><span class="day">17</span>
+            <span class="day">18</span><span class="day">19</span><span class="day">20</span><span class="day">21</span><span class="day">22</span><span class="day">23</span><span class="day">24</span>
+            <span class="day">25</span><span class="day">26</span><span class="day">27</span><span class="day">28</span><span class="day">29</span><span class="day">30</span><span class="day">31</span>
+          </div>
+        </div>
+      </div>
+      <div class="dp-foot">
+        <span class="rule">Thu, 1 Oct – Wed, 7 Oct 2026</span>
+        <span class="actions"><span class="btn ghost sm">Clear</span><span class="btn sm">Apply</span></span>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

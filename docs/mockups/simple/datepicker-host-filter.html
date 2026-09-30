@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Date picker — host list filter</title>
+<link rel="stylesheet" href="assets/datepicker.css">
+</head>
+<body>
+<header class="nav"><div class="nav-in">
+  <a class="logo" href="datepicker-options.html"><span class="logo-mark">W</span><b>Webinar Liv</b><span class="beta">Beta</span></a>
+  <span class="grow"></span>
+  <span class="row"><span class="btn sec sm">Go live now</span><span class="btn sm">+ New webinar</span></span>
+  <span class="acct">Aarti Menon <span class="av sm">AM</span></span>
+</div></header>
+<main>
+  <a class="back" href="datepicker-options.html">← Directions</a>
+  <div class="row between">
+    <div>
+      <h1>Your webinars</h1>
+      <p class="small muted" style="margin-top:4px">Direction A as a range. Replaces the two native dates and the arrow between them.</p>
+      <div class="kicker">Host list · host-webinar-browser.tsx</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <span class="tab on">Upcoming <span class="count">2</span></span>
+    <span class="tab">Completed <span class="count">6</span></span>
+    <span class="tab">Drafts <span class="count">1</span></span>
+    <span class="tabsep"></span>
+    <span class="tab">Audience</span>
+  </div>
+
+  <div class="tools">
+    <input class="search" value="" placeholder="Search by name…" aria-label="Search by name">
+    <div class="anchor"><span>Thu, 1 Oct</span><span class="arr">→</span><span>Wed, 7 Oct 2026</span></div>
+    <span class="btn ghost sm">Clear</span>
+  </div>
+
+  <div class="dp host-pop">
+    <div class="presets">
+      <span class="chip on">Next 7 days</span>
+      <span class="chip">This month</span>
+      <span class="chip">Last 30 days</span>
+      <span class="chip">Custom</span>
+    </div>
+    <div class="pair">
+      <div class="month">
+        <div class="mh"><span class="icon">‹</span><b>September 2026</b><span class="icon" style="visibility:hidden">›</span></div>
+        <div class="grid7">
+          <span class="dow">Su</span><span class="dow">Mo</span><span class="dow">Tu</span><span class="dow">We</span><span class="dow">Th</span><span class="dow">Fr</span><span class="dow">Sa</span>
+          <span class="day out">30</span><span class="day out">31</span><span class="day">1</span><span class="day">2</span><span class="day">3</span><span class="day">4</span><span class="day">5</span>
+          <span class="day">6</span><span class="day">7</span><span class="day">8</span><span class="day">9</span><span class="day">10</span><span class="day">11</span><span class="day">12</span>
+          <span class="day">13</span><span class="day">14</span><span class="day">15</span><span class="day">16</span><span class="day">17</span><span class="day">18</span><span class="day">19</span>
+          <span class="day">20</span><span class="day">21</span><span class="day">22</span><span class="day">23</span><span class="day">24</span><span class="day">25</span><span class="day">26</span>
+          <span class="day">27</span><span class="day">28</span><span class="day">29</span><span class="day today">30</span><span class="day start out">1</span><span class="day mid out">2</span><span class="day mid out">3</span>
+        </div>
+      </div>
+      <div class="month">
+        <div class="mh"><span class="icon" style="visibility:hidden">‹</span><b>October 2026</b><span class="icon">›</span></div>
+        <div class="grid7">
+          <span class="dow">Su</span><span class="dow">Mo</span><span class="dow">Tu</span><span class="dow">We</span><span class="dow">Th</span><span class="dow">Fr</span><span class="dow">Sa</span>
+          <span class="day out">27</span><span class="day out">28</span><span class="day out">29</span><span class="day today out">30</span><span class="day start">1</span><span class="day mid">2</span><span class="day mid">3</span>
+          <span class="day mid">4</span><span class="day mid">5</span><span class="day mid">6</span><span class="day end">7</span><span class="day">8</span><span class="day">9</span><span class="day">10</span>
+          <span class="day">11</span><span class="day">12</span><span class="day">13</span><span class="day">14</span><span class="day">15</span><span class="day">16</span><span class="day">17</span>
+          <span class="day">18</span><span class="day">19</span><span class="day">20</span><span class="day">21</span><span class="day">22</span><span class="day">23</span><span class="day">24</span>
+          <span class="day">25</span><span class="day">26</span><span class="day">27</span><span class="day">28</span><span class="day">29</span><span class="day">30</span><span class="day">31</span>
+        </div>
+      </div>
+    </div>
+    <div class="dp-foot">
+      <span class="rule">Thu, 1 Oct – Wed, 7 Oct 2026 · 2 webinars</span>
+      <span class="actions"><span class="btn ghost sm">Clear</span><span class="btn sm">Apply</span></span>
+    </div>
+  </div>
+
+  <div class="card wcard">
+    <div class="grow">
+      <div class="row"><span class="badge brand"><span class="dot"></span>In 2 days</span><span class="xs faint">Fri, 2 Oct 2026 · 7:00 PM IST · 1 hr</span></div>
+      <div style="font-size:15px;font-weight:600;margin-top:6px">Sleep Better in 7 Days</div>
+      <div class="meta">9 registered · reminders on</div>
+    </div>
+    <span class="btn sec sm">Copy link</span>
+    <span class="btn sm">Manage</span>
+  </div>
+  <div class="card wcard">
+    <div class="grow">
+      <div class="row"><span class="badge"><span class="dot"></span>In 7 days</span><span class="xs faint">Wed, 7 Oct 2026 · 7:00 PM IST · 45 min</span></div>
+      <div style="font-size:15px;font-weight:600;margin-top:6px">Mindful Money: Budgeting Without Guilt</div>
+      <div class="meta">3 registered · reminders on</div>
+    </div>
+    <span class="btn sec sm">Copy link</span>
+    <span class="btn sm">Manage</span>
+  </div>
+</main>
+</body>
+</html>

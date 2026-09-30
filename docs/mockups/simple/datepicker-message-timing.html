@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Date picker — message timing</title>
+<link rel="stylesheet" href="assets/datepicker.css">
+</head>
+<body>
+<header class="nav"><div class="nav-in">
+  <a class="logo" href="datepicker-options.html"><span class="logo-mark">W</span><b>Webinar Liv</b><span class="beta">Beta</span></a>
+  <span class="grow"></span>
+  <span class="acct">Aarti Menon <span class="av sm">AM</span></span>
+</div></header>
+<main class="narrow">
+  <a class="back" href="datepicker-options.html">← Directions</a>
+  <h1>Messages &amp; follow-ups</h1>
+  <p class="small muted" style="margin-top:4px">Reminders and “next morning” are offsets from the webinar, not a calendar date. Same chips and time list as direction A. Replay is when the recording is published.</p>
+  <div class="kicker">timing-picker.tsx · reminder-times.tsx · recordings publish</div>
+
+  <div class="mm" style="margin-top:16px">
+    <div class="mlist">
+      <div class="mstage">Before</div>
+      <div class="mi"><span class="ic">✉</span><div class="grow"><b>Confirmation</b><small>when they register</small></div></div>
+      <div class="mi sel"><span class="ic">⏰</span><div class="grow"><b>Reminder</b><small>1 day and 1 hour before</small></div></div>
+      <div class="mstage">After</div>
+      <div class="mi"><span class="ic">▶</span><div class="grow"><b>Replay</b><small>when you publish the recording</small></div></div>
+      <div class="mi"><span class="ic">↗</span><div class="grow"><b>Didn't join</b><small>next morning · 9:00 AM IST</small></div></div>
+    </div>
+
+    <div class="stack">
+      <div class="card pane">
+        <div class="row between"><b>Reminder</b><span class="xs muted">before it starts</span></div>
+        <div class="label" style="margin-top:12px">When</div>
+        <div class="row wrap">
+          <span class="pickc">1 day before <span class="x">×</span></span>
+          <span class="pickc">1 hour before <span class="x">×</span></span>
+          <span class="pickc add">+ Add a time</span>
+        </div>
+        <div class="dp" style="margin-top:10px">
+          <div class="dp-h">Add a reminder <span class="xs faint">up to 3</span></div>
+          <div class="presets">
+            <span class="chip">10 minutes before</span>
+            <span class="chip">30 minutes before</span>
+            <span class="chip off">1 hour before · added</span>
+            <span class="chip off">1 day before · added</span>
+          </div>
+          <div class="row" style="padding:10px 12px 12px;gap:8px">
+            <input class="field sm" style="width:64px;text-align:center" value="10" aria-label="Amount">
+            <input class="field sm" style="width:110px" value="minutes">
+            <span class="small muted">before</span>
+            <span class="grow"></span>
+            <span class="btn sm">Add</span>
+          </div>
+        </div>
+        <p class="hint">Counted back from Fri, 2 Oct 2026 · 7:00 PM IST. 10 minutes before is 6:50 PM that evening.</p>
+      </div>
+
+      <div class="card pane">
+        <div class="row between"><b>Didn't join</b><span class="xs muted">after it ends</span></div>
+        <div class="label" style="margin-top:12px">When</div>
+        <div class="presets" style="padding:0">
+          <span class="chip">1 hour after</span>
+          <span class="chip">2 hours after</span>
+          <span class="chip on">Next morning · 9:00 AM</span>
+          <span class="chip">1 day after</span>
+          <span class="chip">Custom…</span>
+        </div>
+        <div class="dp" style="margin-top:10px">
+          <div class="dp-h">Next morning <span class="xs faint">the day after it ends</span></div>
+          <div class="times">
+            <span class="time">8:00 AM</span>
+            <span class="time on">9:00 AM <span class="ck">✓</span></span>
+            <span class="time">10:00 AM</span>
+            <span class="time">11:00 AM</span>
+          </div>
+          <div class="dp-foot">
+            <span class="tz">IST · Asia/Kolkata</span>
+            <span class="rule">Sat, 3 Oct 2026 · 9:00 AM</span>
+            <span class="actions"><span class="btn sm">Save</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card pane">
+        <div class="row between"><b>Replay</b><span class="xs muted">recording</span></div>
+        <p class="hint" style="margin-top:4px">Publishing the recording is the send. There is no separate publish date.</p>
+        <div class="presets" style="padding:8px 0 0">
+          <span class="chip on">When I publish</span>
+          <span class="chip">1 hour after it ends</span>
+          <span class="chip">2 hours after</span>
+          <span class="chip">Next morning · 9:00 AM</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+</body>
+</html>
