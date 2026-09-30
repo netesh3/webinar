@@ -125,6 +125,27 @@ b { font-weight: 600; }
 }
 .navitem.on:hover { background: #e3edff; }
 .nav-gap { height: 1px; background: var(--line); margin: 8px 10px; }
+.nav-sec {
+  margin: 16px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.navitem.in { padding-left: 22px; }
+.side-foot { margin-top: auto; }
+.side-foot .account { margin-top: 0; }
+
+.yt-list { display: flex; flex-direction: column; gap: 10px; max-width: 920px; }
+.yt-row { display: grid; grid-template-columns: minmax(0, 1fr) 88px minmax(180px, 280px); gap: 16px; align-items: center; padding: 14px 16px; }
+.yt-row h2 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.yt-row p { margin-top: 3px; font-size: 12.5px; color: var(--ink-3); }
+.yt-views { text-align: right; }
+.yt-views b { display: block; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.yt-views span { font-size: 11.5px; color: var(--ink-3); }
+.yt-row a { font-size: 13px; color: var(--brand); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yt-row a:hover { text-decoration: underline; }
 .badge-n {
   margin-left: auto;
   min-width: 18px;
