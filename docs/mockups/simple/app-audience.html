@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Audience · Webinar Liv</title>
+<link rel="stylesheet" href="assets/home-dashboard.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M6.2 3.6v8.8L12.6 8 6.2 3.6z" fill="#fff"/></svg>
+      </div>
+      <div class="brand-copy">
+        <strong>Webinar Liv</strong>
+        <span class="beta">Beta</span>
+      </div>
+      <button class="collapse" type="button" aria-label="Collapse sidebar">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg>
+      </button>
+    </div>
+    <nav class="nav" aria-label="Primary">
+      <a class="navitem" href="home-dashboard.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5"/><path d="M6.5 9.8V20h11V9.8"/><path d="M10 20v-5.5h4V20"/></svg></span>
+        Home
+      </a>
+      <a class="navitem" id="webinars" href="app-webinars.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3.5V7M16 3.5V7"/></svg></span>
+        Webinars
+      </a>
+      <a class="navitem" href="app-whatsapp.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg></span>
+        WhatsApp
+        <span class="badge-n">2</span>
+      </a>
+      <a class="navitem" href="app-email.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/></svg></span>
+        Email
+      </a>
+      <div class="nav-gap" role="separator"></div>
+      <a class="navitem" on href="app-audience.html" aria-current="page">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="2.4"/><path d="M4.6 18.5c.5-2.5 2.3-4 4.4-4s3.9 1.5 4.4 4"/><circle cx="16.2" cy="9.2" r="1.9"/><path d="M14.4 18.5c.25-1.7 1.3-2.9 2.6-2.9 1.4 0 2.4 1.1 2.7 2.9"/></svg></span>
+        Audience
+      </a>
+      <a class="navitem" href="app-settings.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6.2 6.2l1.5 1.5M16.3 16.3l1.5 1.5M17.8 6.2l-1.5 1.5M7.7 16.3l-1.5 1.5"/></svg></span>
+        Settings
+      </a>
+    </nav>
+    <div class="account">
+      <span class="av" aria-hidden="true">MS</span>
+      <div class="who">
+        <div class="nm">Meera Shah</div>
+        <div class="em">meera@mindfulmoney.in</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <div class="copy">
+        <h1>Audience</h1>
+        <p>Everyone who registered for your webinars. Click a person to see their history.</p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sec" type="button">Export CSV</button>
+        <button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg>Message all 186</button>
+      </div>
+    </header>
+
+    <p class="sum"><b>186</b> people from 14 webinars · <span class="ok">119 came</span> · 67 didn’t</p>
+
+    <div class="tools">
+      <label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" placeholder="Search name, email or phone" aria-label="Search people" style="width:250px"></label>
+      <select class="field" aria-label="Webinar" style="width:190px;height:36px"><option>All webinars</option></select>
+      <div class="chips" role="group" aria-label="Last activity">
+        <button class="chip" type="button">Next 7 days</button>
+        <button class="chip" type="button">This month</button>
+        <button class="chip on" type="button" aria-pressed="true">Last 30 days</button>
+        <button class="chip" type="button">Custom</button>
+      </div>
+      <span class="range"><b>31 Aug – 30 Sep</b> · active</span>
+    </div>
+
+    <div class="filters" role="group" aria-label="Show">
+      <button class="pill on" type="button">Everyone <b>186</b></button>
+      <button class="pill" type="button">Came <b>119</b></button>
+      <button class="pill" type="button">Didn’t come <b>67</b></button>
+      <button class="pill" type="button">Highly engaged <b>24</b></button>
+      <button class="pill" type="button">Replied <b>41</b></button>
+      <button class="pill" type="button">Hot leads <b>6</b></button>
+    </div>
+
+    <section class="card clip stage" aria-label="People">
+      <div class="people">
+        <div class="phead"><span class="ck"></span><span>Person</span><span>Webinars</span><span>Engagement</span><span>Last activity</span></div>
+          <div class="prow on" role="button" tabindex="0">
+            <span class="ck on"></span>
+            <span class="who"><span class="av" style="background:#0f766e" aria-hidden="true">KI</span><span class="txt"><span class="nm" style="display:block">Kavya Iyer</span><span class="em" style="display:block">+91 99001 44120 · kavya.iyer@gmail.com</span></span></span>
+            <span class="cell ok">Came to 4 of 4</span>
+            <span class="cell"><span style="display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--ok);margin-right:6px"></span>High · 88</span>
+            <span class="cell">Replied by email · 9:14 PM</span>
+          </div>
+          <div class="prow" role="button" tabindex="0">
+            <span class="ck"></span>
+            <span class="who"><span class="av" style="background:#7c3aed" aria-hidden="true">AR</span><span class="txt"><span class="nm" style="display:block">Ananya Rao</span><span class="em" style="display:block">+91 98450 12873 · ananya.rao@outlook.com</span></span></span>
+            <span class="cell ok">Came to 3 of 4</span>
+            <span class="cell"><span style="display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--ok);margin-right:6px"></span>High · 81</span>
+            <span class="cell">WhatsApp reply · 7:42 PM</span>
+          </div>
+          <div class="prow" role="button" tabindex="0">
+            <span class="ck"></span>
+            <span class="who"><span class="av" style="background:#b45309" aria-hidden="true">RM</span><span class="txt"><span class="nm" style="display:block">Rohit Menon</span><span class="em" style="display:block">+91 97310 55802 · rohit.m@gmail.com</span></span></span>
+            <span class="cell ok">Came to 2 of 3</span>
+            <span class="cell"><span style="display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--brand);margin-right:6px"></span>Engaged · 64</span>
+            <span class="cell">WhatsApp reply · 6:18 PM</span>
+          </div>
+          <div class="prow" role="button" tabindex="0">
+            <span class="ck"></span>
+            <span class="who"><span class="av" style="background:#be185d" aria-hidden="true">PN</span><span class="txt"><span class="nm" style="display:block">Priya Nair</span><span class="em" style="display:block">+91 99860 21347 · priya.nair@yahoo.in</span></span></span>
+            <span class="cell ok">Came to 2 of 2</span>
+            <span class="cell"><span style="display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--brand);margin-right:6px"></span>Engaged · 70</span>
+            <span class="cell">Watched replay · yesterday</span>
+          </div>
+          <div class="prow" role="button" tabindex="0">
+            <span class="ck"></span>
+            <span class="who"><span class="av" style="background:#1d4ed8" aria-hidden="true">AM</span><span class="txt"><span class="nm" style="display:block">Arjun Mehta</span><span class="em" style="display:block">+91 98191 77420 · arjun.mehta@gmail.com</span></span></span>
+            <span class="cell ok">Came to 1 of 2</span>
+            <span class="cell"><span style="display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--warn);margin-right:6px"></span>Passive · 41</span>
+            <span class="cell">Registered · Mon</span>
+          </div>
+          <div class="prow" role="button" tabindex="0">
+            <span class="ck"></span>
+            <span class="who"><span class="av" style="background:#15803d" aria-hidden="true">SK</span><span class="txt"><span class="nm" style="display:block">Sneha Kulkarni</span><span class="em" style="display:block">+91 90040 38116 · sneha.k@gmail.com</span></span></span>
+            <span class="cell ok">Came to 1 of 1</span>
+            <span class="cell"><span style="display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--brand);margin-right:6px"></span>Engaged · 58</span>
+            <span class="cell">Registered · Mon</span>
+          </div>
+          <div class="prow" role="button" tabindex="0">
+            <span class="ck"></span>
+            <span class="who"><span class="av" style="background:#9333ea" aria-hidden="true">RD</span><span class="txt"><span class="nm" style="display:block">Rahul Deshpande</span><span class="em" style="display:block">rahul.deshpande@infosys.com</span></span></span>
+            <span class="cell ok">Came to 1 of 3</span>
+            <span class="cell"><span style="display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--live);margin-right:6px"></span>Left early · 22</span>
+            <span class="cell">Replied by email · 6:02 PM</span>
+          </div>
+          <div class="prow" role="button" tabindex="0">
+            <span class="ck"></span>
+            <span class="who"><span class="av" style="background:#c2410c" aria-hidden="true">NJ</span><span class="txt"><span class="nm" style="display:block">Neha Joshi</span><span class="em" style="display:block">+91 98335 60291 · neha.joshi@gmail.com</span></span></span>
+            <span class="cell">Not yet — 1 upcoming</span>
+            <span class="cell">—</span>
+            <span class="cell">Registered · 4:31 PM</span>
+          </div>
+          <div class="prow" role="button" tabindex="0">
+            <span class="ck"></span>
+            <span class="who"><span class="av" style="background:#0e7490" aria-hidden="true">AK</span><span class="txt"><span class="nm" style="display:block">Aditya Kapoor</span><span class="em" style="display:block">+91 99200 81455 · aditya.k@gmail.com</span></span></span>
+            <span class="cell">Missed all 2</span>
+            <span class="cell">—</span>
+            <span class="cell">Opened reminder · yesterday</span>
+          </div>
+          <div class="prow" role="button" tabindex="0">
+            <span class="ck"></span>
+            <span class="who"><span class="av" style="background:#4d7c0f" aria-hidden="true">FQ</span><span class="txt"><span class="nm" style="display:block">Farhan Qureshi</span><span class="em" style="display:block">+91 97690 13384 · farhanq@gmail.com</span></span></span>
+            <span class="cell ok">Came to 2 of 2</span>
+            <span class="cell"><span style="display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--ok);margin-right:6px"></span>High · 79</span>
+            <span class="cell">Watched replay · Sun</span>
+          </div>
+        <div class="pager split">
+          <button class="btn sec sm" type="button" disabled>Previous</button>
+          <div class="who"><b>Page 1 of 19</b><span>10 per page · 1–10 of 186</span></div>
+          <button class="btn sec sm" type="button">Next</button>
+        </div>
+      </div>
+
+      <aside class="drawer" aria-label="Kavya Iyer">
+        <div class="dhead">
+          <span class="av" style="background:#0f766e" aria-hidden="true">KI</span>
+          <div style="min-width:0">
+            <div class="nm">Kavya Iyer</div>
+            <div class="sub">kavya.iyer@gmail.com<br>+91 99001 44120 · Bengaluru</div>
+            <div style="display:flex;gap:6px;margin-top:6px"><span class="badge ok">Highly engaged</span><span class="badge">Replied</span></div>
+          </div>
+          <button class="x" type="button" aria-label="Close"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+        </div>
+        <div class="dsec">
+          <h3>At a glance</h3>
+          <div class="kv"><span>Webinars</span><b>Came to 4 of 4</b></div>
+          <div class="kv"><span>Average watched</span><b>52 of 60 min</b></div>
+          <div class="kv"><span>Engagement</span><b>88 · High</b></div>
+          <div class="kv"><span>WhatsApp</span><b style="color:var(--ok)">Opted in</b></div>
+        </div>
+        <div class="dsec">
+          <h3>Webinars</h3>
+          <div class="wline"><b>Mindful Money</b><span style="color:var(--brand)">Registered · Thu 1 Oct</span></div>
+          <div class="wline"><b>Diwali Money Plan</b><span style="color:var(--ok)">Came · 58 min</span></div>
+          <div class="wline"><b>Fund Basics</b><span style="color:var(--ok)">Came · 47 min</span></div>
+          <div class="wline"><b>Credit Score 101</b><span style="color:var(--ok)">Came · 51 min</span></div>
+        </div>
+        <div class="dsec">
+          <h3>Recent activity</h3>
+          <div class="kv"><span>Replied by email · “Re: Your replay”</span><b>9:14 PM</b></div>
+          <div class="kv"><span>Opened the reminder email</span><b>6:10 PM</b></div>
+          <div class="kv"><span>Read WhatsApp confirmation</span><b>Mon</b></div>
+        </div>
+        <div class="dactions">
+          <button class="btn sm" type="button" style="flex:1">Message on WhatsApp</button>
+          <button class="btn sec sm" type="button" style="flex:1">Open email</button>
+        </div>
+      </aside>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

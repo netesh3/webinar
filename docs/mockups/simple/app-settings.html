@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Settings · Webinar Liv</title>
+<link rel="stylesheet" href="assets/home-dashboard.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M6.2 3.6v8.8L12.6 8 6.2 3.6z" fill="#fff"/></svg>
+      </div>
+      <div class="brand-copy">
+        <strong>Webinar Liv</strong>
+        <span class="beta">Beta</span>
+      </div>
+      <button class="collapse" type="button" aria-label="Collapse sidebar">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg>
+      </button>
+    </div>
+    <nav class="nav" aria-label="Primary">
+      <a class="navitem" href="home-dashboard.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5"/><path d="M6.5 9.8V20h11V9.8"/><path d="M10 20v-5.5h4V20"/></svg></span>
+        Home
+      </a>
+      <a class="navitem" id="webinars" href="app-webinars.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3.5V7M16 3.5V7"/></svg></span>
+        Webinars
+      </a>
+      <a class="navitem" href="app-whatsapp.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg></span>
+        WhatsApp
+        <span class="badge-n">2</span>
+      </a>
+      <a class="navitem" href="app-email.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/></svg></span>
+        Email
+      </a>
+      <div class="nav-gap" role="separator"></div>
+      <a class="navitem" href="app-audience.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="2.4"/><path d="M4.6 18.5c.5-2.5 2.3-4 4.4-4s3.9 1.5 4.4 4"/><circle cx="16.2" cy="9.2" r="1.9"/><path d="M14.4 18.5c.25-1.7 1.3-2.9 2.6-2.9 1.4 0 2.4 1.1 2.7 2.9"/></svg></span>
+        Audience
+      </a>
+      <a class="navitem" on href="app-settings.html" aria-current="page">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6.2 6.2l1.5 1.5M16.3 16.3l1.5 1.5M17.8 6.2l-1.5 1.5M7.7 16.3l-1.5 1.5"/></svg></span>
+        Settings
+      </a>
+    </nav>
+    <div class="account">
+      <span class="av" aria-hidden="true">MS</span>
+      <div class="who">
+        <div class="nm">Meera Shah</div>
+        <div class="em">meera@mindfulmoney.in</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <div class="copy">
+        <h1>Settings</h1>
+        <p>Your details, messaging defaults and the apps Webinar Liv works with.</p>
+      </div>
+    </header>
+
+    <div class="setgrid">
+      <nav class="subnav" aria-label="Settings">
+        <a class="subitem" href="#profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.2"/><path d="M5.5 19.5c.9-3.2 3.4-5 6.5-5s5.6 1.8 6.5 5"/></svg>Profile</a>
+        <a class="subitem on" href="#integrations" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6v4h4v6h-4v6H9v-6H5V8h4z"/></svg>Integrations<span class="oncount">2 on</span></a>
+        <a class="subitem" href="#messaging"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg>Messaging defaults</a>
+        <a class="subitem" href="#billing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M3.5 10h17"/></svg>Billing &amp; plan</a>
+        <a class="subitem" href="#team"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="2.4"/><path d="M4.6 18.5c.5-2.5 2.3-4 4.4-4s3.9 1.5 4.4 4"/><circle cx="16.2" cy="9.2" r="1.9"/><path d="M14.4 18.5c.25-1.7 1.3-2.9 2.6-2.9 1.4 0 2.4 1.1 2.7 2.9"/></svg>Team</a>
+        <div class="nav-gap" role="separator"></div>
+        <a class="subitem" href="#signout" style="color:var(--ink-3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.5h4.5v15H14M10 8l-4 4 4 4M6 12h9"/></svg>Sign out</a>
+      </nav>
+
+      <div class="stack16">
+        <div>
+          <div class="h2">Integrations</div>
+          <div class="lead">Connect once. Every webinar uses them.</div>
+        </div>
+        <section>
+          <h3 class="grouplab">Messaging</h3>
+          <div class="card clip">
+            <div class="icard">
+              <span class="imark wa"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg></span>
+              <div style="min-width:0">
+                <div class="ihead"><b>WhatsApp Business</b><span class="st ok"><i></i>Connected</span></div>
+                <div class="itag">+91 98200 45123 · Mindful Money</div>
+                <div class="idet">Meta bills each message to your account — about ₹0.13 each. We never charge for messages.</div>
+              </div>
+              <div style="display:flex;gap:6px"><a class="btn sec sm" href="app-whatsapp.html">Manage</a><button class="kebab" type="button" aria-label="More for WhatsApp"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg></button></div>
+            </div>
+            <div class="icard">
+              <span class="imark tg soon"><svg viewBox="0 0 24 24" fill="#fff"><path d="M20.5 4.5 3.8 11c-.9.4-.9 1.5 0 1.8l4.2 1.4 1.6 5c.3.8 1.2 1 1.8.4l2.4-2.3 4.3 3.1c.7.5 1.6.1 1.8-.7L22.3 6c.2-1-.8-1.8-1.8-1.5z"/></svg></span>
+              <div style="min-width:0">
+                <div class="ihead"><b>Telegram</b><span class="st soon">Coming soon</span></div>
+                <div class="itag">Reminders and follow-ups, for attendees who prefer it to WhatsApp</div>
+              </div>
+              <button class="btn sec sm" type="button">Notify me</button>
+            </div>
+          </div>
+        </section>
+        <section>
+          <h3 class="grouplab">Streaming</h3>
+          <div class="card clip">
+            <div class="icard">
+              <span class="imark yt"><svg viewBox="0 0 24 24" fill="#fff"><path d="M9.5 8.3v7.4L16 12z"/></svg></span>
+              <div style="min-width:0">
+                <div class="ihead"><b>YouTube</b><span class="st ok"><i></i>Connected</span></div>
+                <div class="itag">Mindful Money with Meera · new lives start as Unlisted</div>
+                <div class="idet">Goes live on your channel at the same time. The watch link lands in the Recording tab.</div>
+              </div>
+              <button class="btn sec sm" type="button">Disconnect</button>
+            </div>
+            <div class="icard">
+              <span class="imark li">in</span>
+              <div style="min-width:0">
+                <div class="ihead"><b>LinkedIn Live</b><span class="st muted"><i></i>Not connected</span></div>
+                <div class="itag">Paste a stream key when you go live</div>
+                <div class="idet">LinkedIn hasn’t approved an app connection, so this stays a stream key.</div>
+              </div>
+              <button class="btn sec sm" type="button">How it works</button>
+            </div>
+          </div>
+        </section>
+        <section>
+          <h3 class="grouplab">Coming soon</h3>
+          <div class="card" style="padding:10px 14px;font-size:12.5px;color:var(--ink-2)">Google Calendar · Instagram · Mailchimp · Zapier</div>
+        </section>
+      </div>
+
+      <div class="stack16">
+        <div>
+          <div class="h2">Profile</div>
+          <div class="lead">Shown to everyone in a webinar you present on.</div>
+        </div>
+        <section class="card prof" style="padding:14px">
+          <div class="photo">
+            <span class="av lg" aria-hidden="true">MS</span>
+            <div style="min-width:0">
+              <div class="label" style="margin:0">Profile photo</div>
+              <div class="hint" style="margin-top:2px">JPEG, PNG or WebP. Shown in place of your initials.</div>
+              <div style="display:flex;gap:6px;margin-top:8px"><span class="file">Upload photo</span></div>
+            </div>
+          </div>
+          <div class="formgrid">
+            <div><label class="label">Full name</label><input class="field" value="Meera Shah"></div>
+            <div><label class="label">Job title</label><input class="field" value="Money coach"></div>
+            <div><label class="label">Organisation</label><input class="field" value="Mindful Money"></div>
+          </div>
+          <div class="formgrid">
+            <div class="h2" style="font-size:13.5px">Email your webinars send</div>
+            <div><label class="label">From</label><input class="field" value="Meera Shah via Webinar Liv" readonly><div class="hint">Sent from notify@webinarliv.com, so it doesn’t land in spam.</div></div>
+            <div><label class="label">Reply-To</label><input class="field" value="meera@webinarliv.com"><div class="hint">Replies land in Email. Concept — forwards a copy to meera@mindfulmoney.in.</div></div>
+            <div><button class="btn sm" type="button">Save changes</button></div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+  </main>
+</div>
+</body>
+</html>
