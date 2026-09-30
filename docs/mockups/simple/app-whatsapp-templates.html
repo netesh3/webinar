@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Webinars · Webinar Liv</title>
+<title>Templates · WhatsApp · Webinar Liv</title>
 <link rel="stylesheet" href="assets/home-dashboard.css">
 <script>
 (function () {
@@ -32,7 +32,7 @@
       <button class="collapse" type="button" aria-label="Collapse sidebar"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg></button>
     </div>
     <nav class="nav" aria-label="Primary">
-      <a class="navitem on" id="webinars" href="app-webinars.html" aria-current="page">
+      <a class="navitem" id="webinars" href="app-webinars.html">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3.5V7M16 3.5V7"/></svg></span>
         <span class="lbl">Webinars</span>
         <span class="fly">Webinars</span>
@@ -50,7 +50,7 @@
       <div class="tree-wrap" id="int-tree">
         <div class="tree">
           <div class="tree-in">
-      <a class="navitem" href="app-whatsapp.html">
+      <a class="navitem on" href="app-whatsapp.html" aria-current="page">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg></span>
         <span class="lbl">WhatsApp</span>
         <span class="badge-n">2</span>
@@ -100,115 +100,51 @@
   <div class="scrim" aria-hidden="true"></div>
 
   <main class="main">
-    <div class="cur">
-    <h1 class="sr-only">Your webinars</h1>
-    <div class="cur-actions">
-      <a class="cur-action" href="#">
-        <span class="cur-aic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg></span>
-        <span class="cur-atx"><b>Schedule a webinar</b><span>Pick a date and invite people</span></span>
-        <span class="cur-chev"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span>
-      </a>
-    </div>
-
-    <div class="cur-bar">
-      <div class="cur-tabs" role="tablist">
-        <button class="ctab on" role="tab" aria-selected="true">Upcoming <span class="cnt">4</span></button>
-        <button class="ctab" role="tab">Completed <span class="cnt">12</span></button>
-        <button class="ctab" role="tab">Drafts <span class="cnt">1</span></button>
-        <button class="ctab" role="tab">Attending <span class="cnt">2</span></button>
+    <header class="top"><div class="copy"><h1>WhatsApp</h1></div><button class="cbtn" type="button">New template</button></header>
+    <div class="wa-conn"><span class="okdot"></span><b>Connected</b><span>+91 98200 45123 (Mindful Money)</span><a class="more" href="app-settings.html">Settings</a></div>
+    <nav class="tabs" aria-label="WhatsApp">
+      <a class="tab" href="app-whatsapp.html">Metrics</a>
+      <a class="tab" href="app-whatsapp-messages.html">Chats <span class="count">2</span></a>
+      <a class="tab on" href="app-whatsapp-templates.html" aria-current="page">Templates <span class="count">12</span></a>
+      <a class="tab" href="app-whatsapp-automations.html">Automations <span class="count">4 on</span></a>
+    </nav>
+    <div class="tpl-bar">
+      <label class="cur-search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg><input type="search" placeholder="Search templates" aria-label="Search templates"></label>
+      <div class="segs">
+        <button class="seg on" type="button">All</button>
+        <button class="seg" type="button">Approved</button>
+        <button class="seg" type="button">Pending</button>
+        <button class="seg" type="button">Rejected</button>
       </div>
-      <div class="cur-tools">
-        <label class="cur-search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg><input type="search" placeholder="Search by name…" aria-label="Search webinars by name"></label>
-        <button class="cur-date-btn" type="button" aria-label="Filter webinars by date"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg><span>Any dates</span></button>
+      <div class="segs">
+        <button class="seg on" type="button">Any category</button>
+        <button class="seg" type="button">Utility</button>
+        <button class="seg" type="button">Marketing</button>
+        <button class="seg" type="button">Authentication</button>
       </div>
     </div>
-
-    <div class="cur-list">
-      <article class="cur-card cur-row">
-        <div class="cur-body">
-          <div class="cur-kick">
-            <span class="cbadge brand"><span class="dot"></span>In 21 hours</span>
-            <span class="cur-date">Thu 1 Oct · 19:00 – 20:00 IST · 1 hr</span>
-            <span class="cbadge warn">Admit required</span>
-          </div>
-          <h3>Mindful Money: Budgeting Without Guilt</h3>
-          <p class="cur-meta">47 registered · reminders on (email + WhatsApp)</p>
+    <div class="tpl-split" id="tpls">
+      <div class="card clip tpl-table">
+        <div class="thd"><span>Name</span><span>Category</span><span>Language</span><span>Status</span><span>Updated</span><span>Used in</span></div>
+        <button class="trow on" type="button" data-open="#tpls"><span><b>Reminder 1 hour</b><span style="display:block;font-size:11.5px;color:var(--ink-3)">webinar_reminder_1h</span></span><span class="cat">Utility</span><span>en</span><span class="st-ok">Approved</span><span>28 Sep</span><span>Reminder — 1 hour before</span></button>
+        <button class="trow" type="button"><span><b>Registration confirmed</b><span style="display:block;font-size:11.5px;color:var(--ink-3)">registration_confirmed</span></span><span class="cat">Utility</span><span>en</span><span class="st-ok">Approved</span><span>12 Sep</span><span>Confirmation</span></button>
+        <button class="trow" type="button"><span><b>Replay ready</b><span style="display:block;font-size:11.5px;color:var(--ink-3)">replay_ready</span></span><span class="cat">Utility</span><span>en</span><span class="st-ok">Approved</span><span>9 Sep</span><span>Replay</span></button>
+        <button class="trow" type="button"><span><b>Missed you</b><span style="display:block;font-size:11.5px;color:var(--ink-3)">missed_you_v2</span></span><span class="cat">Marketing</span><span>en</span><span class="st-pend">Pending</span><span>30 Sep</span><span>—</span></button>
+        <button class="trow" type="button"><span><b>Festival offer</b><span style="display:block;font-size:11.5px;color:var(--ink-3)">festival_offer</span></span><span class="cat">Marketing</span><span>en</span><span><span class="st-no">Rejected</span><span style="display:block;font-size:11px;color:var(--ink-3)">Promotional wording</span></span><span>26 Sep</span><span>—</span></button>
+        <button class="trow" type="button"><span><b>Sign-in code</b><span style="display:block;font-size:11.5px;color:var(--ink-3)">otp_login</span></span><span class="cat">Authentication</span><span>en</span><span class="st-ok">Approved</span><span>2 Sep</span><span>—</span></button>
+        <div class="pager split"><button class="btn sec sm" type="button" disabled>Previous</button><div class="who"><b>Page 1 of 2</b><span>6 per page · 1–6 of 12</span></div><button class="btn sec sm" type="button">Next</button></div>
+      </div>
+      <aside class="mpane">
+        <button class="back cbtn sec" type="button" data-back="#tpls">← Back</button>
+        <div><h2 style="font-size:14px">Reminder 1 hour</h2><p style="font-size:12px;color:var(--ink-2)">Utility · en · <span class="st-ok">Approved</span></p></div>
+        <div class="phone"><div class="ph">Meera Shah<br><span style="font-weight:400;font-size:10.5px;opacity:.8">Business account</span></div>
+          <div class="pb">Hi Ananya, Mindful Money: Budgeting Without Guilt starts in 1 hour. Your link: webinar.liv/w/mindful-money<span class="btnline">Join webinar</span></div>
         </div>
-        <div class="cur-act">
-          <div class="cur-btns">
-            <button class="cbtn sec" type="button">Copy link</button>
-            <button class="cbtn" type="button" disabled>Go live</button>
-            <button class="cur-more" type="button" aria-label="More for Mindful Money: Budgeting Without Guilt">⋯</button>
-          </div>
-          <p class="cur-wait">Opens 5 minutes before start (18:55 IST)</p>
-        </div>
-      </article>
-      <article class="cur-card cur-row">
-        <div class="cur-body">
-          <div class="cur-kick">
-            <span class="cbadge brand"><span class="dot"></span>In 4 days</span>
-            <span class="cur-date">Sun 4 Oct · 11:00 – 11:30 IST · 30 min</span>
-            
-          </div>
-          <h3>Ask Meera: Live Money Q&amp;A</h3>
-          <p class="cur-meta">8 registered · reminders on</p>
-        </div>
-        <div class="cur-act">
-          <div class="cur-btns">
-            <button class="cbtn sec" type="button">Copy link</button>
-            <button class="cbtn" type="button" disabled>Go live</button>
-            <button class="cur-more" type="button" aria-label="More for Ask Meera: Live Money Q&amp;A">⋯</button>
-          </div>
-          <p class="cur-wait">Opens 5 minutes before start (10:55 IST)</p>
-        </div>
-      </article>
-      <article class="cur-card cur-row">
-        <div class="cur-body">
-          <div class="cur-kick">
-            <span class="cbadge brand"><span class="dot"></span>In 7 days</span>
-            <span class="cur-date">Wed 7 Oct · 19:00 – 19:45 IST · 45 min</span>
-            
-          </div>
-          <h3>Sleep Reset: 5 Habits That Work</h3>
-          <p class="cur-meta">14 registered · reminders on (email + WhatsApp)</p>
-        </div>
-        <div class="cur-act">
-          <div class="cur-btns">
-            <button class="cbtn sec" type="button">Copy link</button>
-            <button class="cbtn" type="button" disabled>Go live</button>
-            <button class="cur-more" type="button" aria-label="More for Sleep Reset: 5 Habits That Work">⋯</button>
-          </div>
-          <p class="cur-wait">Opens 5 minutes before start (18:55 IST)</p>
-        </div>
-      </article>
-      <article class="cur-card cur-row">
-        <div class="cur-body">
-          <div class="cur-kick">
-            <span class="cbadge brand"><span class="dot"></span>In 2 weeks</span>
-            <span class="cur-date">Thu 15 Oct · 18:30 – 19:30 IST · 1 hr</span>
-            
-          </div>
-          <h3>Focus Blocks for Busy Weeks</h3>
-          <p class="cur-meta">6 registered · reminders on</p>
-        </div>
-        <div class="cur-act">
-          <div class="cur-btns">
-            <button class="cbtn sec" type="button">Copy link</button>
-            <button class="cbtn" type="button" disabled>Go live</button>
-            <button class="cur-more" type="button" aria-label="More for Focus Blocks for Busy Weeks">⋯</button>
-          </div>
-          <p class="cur-wait">Opens 5 minutes before start (18:25 IST)</p>
-        </div>
-      </article>
+        <p style="font-size:12.5px;color:var(--ink-2)">About ₹0.13 a message</p>
+        <p style="font-size:12px;color:var(--ink-3)">Used in Reminder — 1 hour before</p>
+      </aside>
     </div>
-
-    <div class="cur-pager">
-      <button class="cbtn sec" type="button" disabled>Previous</button>
-      <div class="who"><b>Page 1 of 1</b><span>10 per page · 1–4 of 4</span></div>
-      <button class="cbtn sec" type="button" disabled>Next</button>
-    </div>
-    </div>
-  </main>
+</main>
 </div>
 
 <script>
