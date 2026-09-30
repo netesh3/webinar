@@ -10,17 +10,16 @@ import type { IntegrationCard } from "@/lib/api-types";
 import { api } from "@/lib/api";
 import { AccountSection } from "./account-section";
 import { IntegrationsSection } from "./integrations-section";
-import { NotificationsSection } from "./notifications-section";
 import { ProfileSection } from "./profile-section";
 
-const SECTIONS = ["profile", "integrations", "notifications", "account"] as const;
+const SECTIONS = ["profile", "integrations", "account"] as const;
 type Section = (typeof SECTIONS)[number];
 
 function isSection(value: string): value is Section {
   return (SECTIONS as readonly string[]).includes(value);
 }
 
-/** Settings: profile, integrations, notifications, and the account itself.
+/** Settings: profile, integrations, and the account itself.
  *  The left nav is the only way between them. Sign out lives there too. */
 export function SettingsScreen() {
   const router = useRouter();
@@ -100,7 +99,6 @@ export function SettingsScreen() {
   const items: { id: Section; label: string; icon: string }[] = [
     { id: "profile", label: "Profile", icon: "person" },
     { id: "integrations", label: "Integrations", icon: "extension" },
-    { id: "notifications", label: "Notifications", icon: "notifications" },
     { id: "account", label: "Account", icon: "manage_accounts" },
   ];
 
@@ -167,7 +165,6 @@ export function SettingsScreen() {
               onReload={reloadCards}
             />
           )}
-          {section === "notifications" && <NotificationsSection />}
           {section === "account" && <AccountSection account={account} />}
         </div>
       </div>
