@@ -7,6 +7,11 @@ import {
   ChannelWhatsApp,
   MaxReminders,
   SlotConfirmation,
+  SlotFollowupEngaged,
+  SlotFollowupHigh,
+  SlotFollowupNoShow,
+  SlotFollowupPassive,
+  SlotFollowupRisk,
   SlotReminder,
   SlotReplay,
   TimingAfterEnd,
@@ -18,12 +23,12 @@ import {
   type MessageSlot,
 } from "@/lib/api-types";
 import { exampleFor, renderTemplate } from "../crm-templates";
+import { durationLabel, hourLabel } from "../message-timing";
 import { PersonAvatar, PhoneFrame } from "../wa-kit";
 import { guessParams } from "../wa-messages";
 import {
   hasChannel,
   isFollowup,
-  laterWhen,
   metaFor,
   withChannel,
   wordingKind,
@@ -41,11 +46,24 @@ export type ReminderTimesEditor = (props: {
   disabled?: boolean;
 }) => ReactNode;
 
-const AFTER_CHOICES: { label: string; minutes: number }[] = [
-  { label: "1 hour after", minutes: 60 },
-  { label: "2 hours after", minutes: 120 },
-  { label: "1 day after", minutes: 24 * 60 },
+/* Who each follow-up is for, in the same words the rest of Engage uses. */
+const FOLLOWUP_WHO: Record<string, string> = {
+  [SlotFollowupHigh]: "People who stayed and joined in.",
+  [SlotFollowupEngaged]: "People who stayed most of the session.",
+  [SlotFollowupNoShow]: "People who registered but missed it.",
+  [SlotFollowupPassive]: "People who stayed but didn't chat.",
+  [SlotFollowupRisk]: "People who left before the end.",
+};
+
+const FOLLOWUP_PRESETS: { key: string; label: string; note: string; minutes?: number }[] = [
+  { key: "hour", label: "1 hour after", note: "While they remember it", minutes: 60 },
+  { key: "two", label: "2 hours after", note: "A little later", minutes: 120 },
+  { key: "morning", label: "Next morning", note: "When they check their phone" },
+  { key: "day", label: "Next day", note: "A full day later", minutes: 24 * 60 },
 ];
+
+const MORNING_HOURS = [7, 8, 9, 10, 11];
+const MAX_AFTER_MINUTES = 90 * 24 * 60;
 
 function Check({
   checked,
@@ -452,64 +470,242 @@ function WhenEditor({
       </div>
     );
   }
-  if (slot.kind === SlotReplay) {
-    const published = slot.timing.type === TimingOnPublish;
-    return (
-      <WhenBox>
-        <Chip
-          on={published}
-          onClick={() => onChange({ ...slot, timing: { type: TimingOnPublish } })}
-        >
-          When you publish the recording
-        </Chip>
-        <Chip
-          on={!published}
-          onClick={() =>
-            onChange({
-              ...slot,
-              timing: { type: TimingAfterEnd, minutes: [slot.timing.minutes?.[0] || 120] },
-            })
-          }
-        >
-          {published ? "2 hours after it ends" : laterWhen(slot)}
-        </Chip>
-      </WhenBox>
-    );
-  }
+  if (slot.kind === SlotReplay) return <ReplayWhen slot={slot} onChange={onChange} />;
+  if (isFollowup(slot.kind)) return <FollowupWhen slot={slot} onChange={onChange} />;
+  return null;
+}
+
+function FollowupWhen({
+  slot,
+  onChange,
+}: {
+  slot: MessageSlot;
+  onChange: (next: MessageSlot) => void;
+}) {
   const morning = slot.timing.type === TimingNextMorning;
-    return (
-    <WhenBox>
-      {AFTER_CHOICES.map((choice) => {
-        const on =
-          !morning &&
-          slot.timing.type === TimingAfterEnd &&
-          slot.timing.minutes?.[0] === choice.minutes;
-        return (
-          <Chip
-            key={choice.label}
-            on={on}
+  const minutes = slot.timing.minutes?.[0] ?? 60;
+  const hour = slot.timing.hour ?? 9;
+  const preset = morning
+    ? "morning"
+    : FOLLOWUP_PRESETS.find((choice) => choice.minutes === minutes)?.key;
+  const setAfter = (next: number) =>
+    onChange({ ...slot, timing: { type: TimingAfterEnd, minutes: [next] } });
+  const setMorning = (next: number) =>
+    onChange({ ...slot, timing: { type: TimingNextMorning, hour: next } });
+
+  return (
+    <WhenPanel>
+      <p className="text-[12.5px] leading-snug text-ink">
+        {FOLLOWUP_WHO[slot.kind] ?? "People in this group."}
+      </p>
+      <div className="grid grid-cols-2 gap-1.5">
+        {FOLLOWUP_PRESETS.map((choice) => (
+          <Choice
+            key={choice.key}
+            on={preset === choice.key}
+            title={choice.label}
+            note={choice.note}
             onClick={() =>
-              onChange({
-                ...slot,
-                timing: { type: TimingAfterEnd, minutes: [choice.minutes] },
-              })
+              choice.key === "morning" ? setMorning(hour) : setAfter(choice.minutes ?? 60)
             }
-          >
-            {choice.label}
-          </Chip>
-        );
-      })}
-      <Chip
-        on={morning}
-        onClick={() =>
-          onChange({
-            ...slot,
-            timing: { type: TimingNextMorning, hour: slot.timing.hour ?? 9 },
-          })
-        }
+          />
+        ))}
+      </div>
+      {morning ? (
+        <MorningHour hour={hour} onChange={setMorning} />
+      ) : (
+        <OwnTime key={minutes} label="Or set your own" minutes={minutes} onCommit={setAfter} />
+      )}
+      <p className="text-[11.5px] text-ink-3">
+        {morning
+          ? `Sends the next morning at ${hourLabel(hour)}, in the webinar's time zone.`
+          : minutes <= 0
+            ? "Sends as soon as the webinar ends."
+            : `Sends ${durationLabel(minutes)} after the webinar ends.`}
+      </p>
+    </WhenPanel>
+  );
+}
+
+function ReplayWhen({
+  slot,
+  onChange,
+}: {
+  slot: MessageSlot;
+  onChange: (next: MessageSlot) => void;
+}) {
+  const published = slot.timing.type === TimingOnPublish;
+  const minutes = slot.timing.minutes?.[0] || 120;
+  return (
+    <WhenPanel>
+      <p className="text-[12.5px] leading-snug text-ink">
+        Everyone who registered, once there is a recording.
+      </p>
+      <div className="grid gap-1.5">
+        <Choice
+          on={published}
+          title="When you publish it"
+          note="You choose the moment."
+          onClick={() => onChange({ ...slot, timing: { type: TimingOnPublish } })}
+        />
+        <Choice
+          on={!published}
+          title="After the webinar ends"
+          note="A set wait, whether or not you have published."
+          onClick={() =>
+            onChange({ ...slot, timing: { type: TimingAfterEnd, minutes: [minutes] } })
+          }
+        />
+      </div>
+      {!published && (
+        <OwnTime
+          key={minutes}
+          label="How long after it ends"
+          minutes={minutes}
+          onCommit={(next) =>
+            onChange({ ...slot, timing: { type: TimingAfterEnd, minutes: [next] } })
+          }
+        />
+      )}
+      <p className="text-[11.5px] text-ink-3">
+        {published
+          ? "Sends the moment the recording is public."
+          : minutes <= 0
+            ? "Sends as soon as the webinar ends."
+            : `Sends ${durationLabel(minutes)} after the webinar ends.`}
+      </p>
+    </WhenPanel>
+  );
+}
+
+function Choice({
+  on,
+  title,
+  note,
+  onClick,
+}: {
+  on: boolean;
+  title: string;
+  note: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      className={`rounded-lg border px-2.5 py-2 text-left ${
+        on ? "border-brand bg-brand-soft" : "border-line bg-surface hover:bg-surface-2"
+      }`}
+    >
+      <span className={`block text-[12.5px] font-medium ${on ? "text-brand" : "text-ink"}`}>
+        {title}
+      </span>
+      <span className="mt-0.5 block text-[11px] leading-snug text-ink-3">{note}</span>
+    </button>
+  );
+}
+
+function MorningHour({ hour, onChange }: { hour: number; onChange: (hour: number) => void }) {
+  const hours = MORNING_HOURS.includes(hour)
+    ? MORNING_HOURS
+    : [...MORNING_HOURS, hour].sort((a, b) => a - b);
+  return (
+    <label className="flex flex-wrap items-center gap-2 text-[12.5px] text-ink">
+      The next morning at
+      <select
+        aria-label="Morning hour"
+        value={hour}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px] text-ink"
       >
-        Next morning
-      </Chip>
-    </WhenBox>
+        {hours.map((value) => (
+          <option key={value} value={value}>
+            {hourLabel(value)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+type WaitUnit = "minutes" | "hours" | "days";
+
+function splitWait(minutes: number): { amount: string; unit: WaitUnit } {
+  if (minutes > 0 && minutes % (24 * 60) === 0) {
+    return { amount: String(minutes / (24 * 60)), unit: "days" };
+  }
+  if (minutes > 0 && minutes % 60 === 0) {
+    return { amount: String(minutes / 60), unit: "hours" };
+  }
+  return { amount: String(Math.max(0, minutes)), unit: "minutes" };
+}
+
+function OwnTime({
+  label,
+  minutes,
+  onCommit,
+}: {
+  label: string;
+  minutes: number;
+  onCommit: (minutes: number) => void;
+}) {
+  const [amount, setAmount] = useState(() => splitWait(minutes).amount);
+  const [unit, setUnit] = useState<WaitUnit>(() => splitWait(minutes).unit);
+  const [error, setError] = useState("");
+
+  const commit = (nextAmount: string, nextUnit: WaitUnit) => {
+    const count = Math.round(Number(nextAmount));
+    const factor = nextUnit === "days" ? 24 * 60 : nextUnit === "hours" ? 60 : 1;
+    const next = count * factor;
+    if (nextAmount.trim() === "" || !Number.isFinite(count) || count < 0 || next > MAX_AFTER_MINUTES) {
+      setError("Choose a wait from right away up to 90 days.");
+      return;
+    }
+    setError("");
+    if (next !== minutes) onCommit(next);
+  };
+
+  return (
+    <div className="grid gap-1">
+      <label className="text-[11px] font-medium text-ink-2">{label}</label>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <input
+          type="number"
+          min={0}
+          inputMode="numeric"
+          aria-label={label}
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
+          onBlur={() => commit(amount, unit)}
+          className="w-16 rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px] text-ink"
+        />
+        <select
+          aria-label="Time unit"
+          value={unit}
+          onChange={(event) => {
+            const next = event.target.value as WaitUnit;
+            setUnit(next);
+            commit(amount, next);
+          }}
+          className="rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px] text-ink"
+        >
+          <option value="minutes">minutes</option>
+          <option value="hours">hours</option>
+          <option value="days">days</option>
+        </select>
+        <span className="text-[12px] text-ink-2">after it ends</span>
+      </div>
+      {error ? <p className="text-[11px] text-warn">{error}</p> : null}
+    </div>
+  );
+}
+
+function WhenPanel({ children }: { children: ReactNode }) {
+  return (
+    <div className="grid gap-2 rounded-[10px] border border-line bg-surface-2 px-2.5 py-2.5">
+      <span className="text-[12px] font-medium text-ink-2">When</span>
+      {children}
+    </div>
   );
 }
