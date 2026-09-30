@@ -985,9 +985,11 @@ select.field {
 .wa-conn { display: flex; align-items: center; gap: 8px; margin: -4px 0 14px; font-size: 12.5px; color: var(--ink-2); }
 .wa-conn b { color: var(--ink); font-weight: 600; }
 .wa-conn .more { margin-left: 4px; }
-.wm-range { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 12px; font-size: 12.5px; color: var(--ink-2); }
-.wm-range b { color: var(--ink); font-weight: 600; }
-.wm-range .seg { margin-left: 0; }
+.wm-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 14px; }
+.wm-filters .cur-search input { width: 200px; }
+.wm-filters .cur-date-btn { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(11, 92, 255, 0.16); }
+.wm-presets, .wm-status { display: flex; flex-wrap: wrap; gap: 6px; }
+.wm-status { margin-left: auto; }
 .wm-totals { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 16px; }
 .wm-t { padding: 16px 18px 16px; border-left: 1px solid var(--line); min-width: 0; }
 .wm-t:first-child { border-left: 0; }
