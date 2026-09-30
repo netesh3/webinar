@@ -10,11 +10,11 @@ import {
   Alert,
   ConfirmModal,
   Disclosure,
-  openPickerOnClick,
   Spinner,
   Tabs,
   Toggle,
 } from "./controls";
+import { DateRangeField } from "./date-picker";
 import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
 import { ArrowLeftIcon } from "./icons";
@@ -617,32 +617,16 @@ function AdminWebinars({
               </button>
             ))}
           </div>
-          <label className="text-[12px] text-ink-3">
-            From
-            <input
-              type="date"
-              onClick={openPickerOnClick}
-              className="field mt-0.5 block"
-              value={from}
-              onChange={(e) => {
-                setFrom(e.target.value);
-                setPageIndex(0);
-              }}
-            />
-          </label>
-          <label className="text-[12px] text-ink-3">
-            To
-            <input
-              type="date"
-              onClick={openPickerOnClick}
-              className="field mt-0.5 block"
-              value={to}
-              onChange={(e) => {
-                setTo(e.target.value);
-                setPageIndex(0);
-              }}
-            />
-          </label>
+          <DateRangeField
+            from={from}
+            to={to}
+            ariaLabel="Filter webinars by date"
+            onChange={(nextFrom, nextTo) => {
+              setFrom(nextFrom);
+              setTo(nextTo);
+              setPageIndex(0);
+            }}
+          />
         </div>
 
         <input

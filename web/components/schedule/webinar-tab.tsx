@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
-import { openPickerOnClick, Select } from "../controls";
+import { Select } from "../controls";
+import { DateTimeField } from "../date-picker";
 import { CalendarIcon } from "../icons";
-import { useHydrated } from "@/lib/clock";
+import { useHydrated, useNow } from "@/lib/clock";
 import {
+  instantToZoned,
   localTimeZone,
   timeZoneLabel,
   timeZoneNames,
@@ -16,7 +18,7 @@ import { BasicsSection } from "./basics";
 import { FormGroup, FormSection } from "./chrome";
 import {
   DURATIONS,
-  todayInputValue,
+  MIN_SCHEDULE_LEAD_MS,
   type FormState,
   type SetForm,
 } from "./form-state";
@@ -116,48 +118,39 @@ function WhenSection({
   hydrated: boolean;
   startsAtPreview: Date | null;
 }) {
+  /* Only a new webinar. An existing one may already be in the past, and an
+   * edit that does not move the start must not be blocked by it — the server
+   * applies the hour only when the start changes. */
+  const now = useNow(30_000);
+  const minDate =
+    !editing && now != null
+      ? instantToZoned(new Date(now).toISOString(), form.timeZone).date
+      : undefined;
+  const notBeforeMs =
+    !editing && now != null ? now + MIN_SCHEDULE_LEAD_MS : undefined;
+
   return (
     <FormSection
       title="When"
       description="The webinar has to start at least an hour from now."
     >
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.5fr)]">
-        <div>
-          <label className="label" htmlFor="date">
-            Date
-          </label>
-          <input
-            id="date"
-            type="date"
-            onClick={openPickerOnClick}
-            className="field"
-            value={form.date}
-            onChange={(e) => set("date", e.target.value)}
-            // Only on a NEW webinar — an existing one may legitimately show a
-            // past date (it already ran, or it's a draft nobody finished), and
-            // an edit that touches an unrelated field must not be blocked by a
-            // date the host never touched. The server enforces the real rule,
-            // including the one-hour lead (see normalizeWebinarInput); this
-            // min only keeps yesterday out of a new webinar. The hour itself
-            // is the message under the fields, not a time-input min.
-            min={editing ? undefined : todayInputValue()}
-            required
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor="time">
-            Start time
-          </label>
-          <input
-            id="time"
-            type="time"
-            onClick={openPickerOnClick}
-            className="field"
-            value={form.time}
-            onChange={(e) => set("time", e.target.value)}
-            required
-          />
-        </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,1.4fr)]">
+        <DateTimeField
+          id="date"
+          label="Starts"
+          ariaLabel="Date and start time"
+          date={form.date}
+          time={form.time}
+          timeZone={form.timeZone}
+          minDate={minDate}
+          notBeforeMs={notBeforeMs}
+          rule="At least 1 hour from now"
+          invalid={Boolean(fields.startsAt)}
+          onChange={(date, time) => {
+            set("date", date);
+            set("time", time);
+          }}
+        />
         <Select
           label="Duration"
           value={String(form.durationMin)}

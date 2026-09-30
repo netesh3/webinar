@@ -2,13 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { engageApi } from "../api";
-import {
-  Alert,
-  Modal,
-  Select,
-  Spinner,
-  openPickerOnClick,
-} from "@/components/controls";
+import { Alert, Modal, Select, Spinner } from "@/components/controls";
+import { DateTimeField } from "@/components/date-picker";
 import { WhatsAppIcon } from "@/components/icons";
 import { useSession, useToast } from "@/components/providers";
 import { Button } from "@/components/ui";
@@ -26,7 +21,8 @@ import {
   type CRMSegment,
   type CRMTemplate,
 } from "@/lib/api-types";
-import { localTimeZone, zonedToInstant } from "@/lib/format";
+import { instantToZoned, localTimeZone, zonedToInstant } from "@/lib/format";
+import { useNow } from "@/lib/clock";
 import { exampleFor, templateKey } from "./crm-templates";
 import {
   PhonePreview,
@@ -172,6 +168,8 @@ function SendDialogBody({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const now = useNow(30_000);
+  const zone = localTimeZone();
   const connected = Boolean(account?.whatsapp?.connected);
   const from =
     account?.whatsapp?.verifiedName || account?.name || "Your business";
@@ -608,13 +606,20 @@ function SendDialogBody({
                 ))}
               </div>
               {timing === "later" && (
-                <input
-                  type="datetime-local"
-                  aria-label="When to send it"
-                  onClick={openPickerOnClick}
-                  className="field h-9 sm:max-w-60"
-                  value={at}
-                  onChange={(e) => setAt(e.target.value)}
+                <DateTimeField
+                  ariaLabel="When to send it"
+                  className="sm:max-w-sm"
+                  date={at.slice(0, 10)}
+                  time={at.length >= 16 ? at.slice(11, 16) : ""}
+                  timeZone={zone}
+                  minDate={
+                    now != null
+                      ? instantToZoned(new Date(now).toISOString(), zone).date
+                      : undefined
+                  }
+                  notBeforeMs={now ?? undefined}
+                  rule="Must be in the future"
+                  onChange={(date, time) => setAt(`${date}T${time}`)}
                 />
               )}
             </fieldset>

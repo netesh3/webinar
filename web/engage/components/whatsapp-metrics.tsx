@@ -4,23 +4,42 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { engageApi } from "../api";
 import { Spinner } from "@/components/controls";
+import { DateRangeField } from "@/components/date-picker";
 import type { CRMMetricsResponse, CRMSetup } from "@/lib/api-types";
+import { DEFAULT_TIME_ZONE, instantToZoned } from "@/lib/format";
 import { FailureDialog, MetricTiles, StatusBar } from "./metric-tiles";
 
-type Period = "7d" | "30d" | "all";
+/* 7 days and 30 days stay rolling windows — that is what the page already
+ * asked for. This month and Custom are calendar dates, which GET /crm/metrics
+ * already accepts (YYYY-MM-DD, the whole UTC day). "30 days" is already the
+ * last 30 days, so it is not offered twice. */
 
-const PERIODS: { id: Period; label: string }[] = [
+type Period =
+  | { id: "7d" | "30d" | "all" | "month" }
+  | { id: "custom"; from: string; to: string };
+
+const PRESETS: { id: "7d" | "30d" | "month" | "all"; label: string }[] = [
   { id: "7d", label: "7 days" },
   { id: "30d", label: "30 days" },
+  { id: "month", label: "This month" },
   { id: "all", label: "All" },
 ];
 
-function windowFor(period: Period): { from: string; to: string } {
+function windowFor(period: Period): { from: string; to: string } | null {
   const to = new Date();
-  if (period === "all") return { from: "", to: to.toISOString() };
-  const days = period === "7d" ? 7 : 30;
-  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
-  return { from: from.toISOString(), to: to.toISOString() };
+  if (period.id === "all") return { from: "", to: to.toISOString() };
+  if (period.id === "7d" || period.id === "30d") {
+    const days = period.id === "7d" ? 7 : 30;
+    const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+    return { from: from.toISOString(), to: to.toISOString() };
+  }
+  if (period.id === "month") {
+    const { date } = instantToZoned(to.toISOString(), DEFAULT_TIME_ZONE);
+    const [y, m] = date.split("-");
+    return { from: `${y}-${m}-01`, to: date };
+  }
+  if (period.id !== "custom" || !period.from || !period.to) return null;
+  return { from: period.from, to: period.to };
 }
 
 const empty: CRMMetricsResponse = {
@@ -43,7 +62,7 @@ export function WhatsAppMetrics({
   setup: CRMSetup | null;
   onSettings: () => void;
 }) {
-  const [period, setPeriod] = useState<Period>("30d");
+  const [period, setPeriod] = useState<Period>({ id: "30d" });
   const [metrics, setMetrics] = useState<CRMMetricsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [why, setWhy] = useState(false);
@@ -51,7 +70,9 @@ export function WhatsAppMetrics({
 
   useEffect(() => {
     let cancelled = false;
-    const { from, to } = windowFor(period);
+    const bounds = windowFor(period);
+    if (!bounds) return;
+    const { from, to } = bounds;
     engageApi
       .crmMetrics(from, to)
       .then((res) => {
@@ -110,26 +131,34 @@ export function WhatsAppMetrics({
             </button>
           )}
         </div>
-        <div
-          className="inline-flex shrink-0 rounded-lg border border-line bg-surface-2 p-0.5"
-          role="group"
-          aria-label="Period"
-        >
-          {PERIODS.map((p) => (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Period">
+          {PRESETS.map((p) => (
             <button
               key={p.id}
               type="button"
-              aria-pressed={period === p.id}
-              onClick={() => setPeriod(p.id)}
-              className={`h-6 rounded-md px-2.5 text-[12px] ${
-                period === p.id
-                  ? "bg-surface font-semibold text-ink shadow-sm"
-                  : "text-ink-2"
+              aria-pressed={period.id === p.id}
+              onClick={() => setPeriod({ id: p.id })}
+              className={`inline-flex h-7 items-center rounded-full border px-2.5 text-[12px] whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                period.id === p.id
+                  ? "border-brand-line bg-brand-soft font-semibold text-brand"
+                  : "border-line-2 bg-surface text-ink-2 hover:bg-surface-2"
               }`}
             >
               {p.label}
             </button>
           ))}
+          <DateRangeField
+            appearance="chip"
+            presets={false}
+            pressed={period.id === "custom"}
+            timeZone={DEFAULT_TIME_ZONE}
+            ariaLabel="Custom date range"
+            from={period.id === "custom" ? period.from : ""}
+            to={period.id === "custom" ? period.to : ""}
+            onChange={(from, to) =>
+              setPeriod(from && to ? { id: "custom", from, to } : { id: "30d" })
+            }
+          />
         </div>
       </div>
       {error && !metrics ? (
