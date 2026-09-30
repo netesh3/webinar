@@ -10,324 +10,286 @@
 <body>
 <div class="wrap">
   <p class="banner">
-    <span><b>Mock only.</b> Same Messages list, on the schedule form and on Setup. Channels and times are on the row. The pane keeps the choice that does not fit there.</span>
-    <span>Not built</span>
+    <span><b>Mock only.</b> The Messages list on the schedule form and on Setup. Each row has labelled controls for on/off, when, and channels. Wording and preview open under the row.</span>
+    <span>Not built · purple pins are notes</span>
   </p>
 
-  <div class="split">
+  <div class="layout">
     <div class="card list">
-      <div class="group">
-        <div class="glabel"><span class="gl">Before</span><span class="gcount">2</span></div>
+      <div class="thead cols">
+        <span>On</span>
+        <span>Message</span>
+        <span>When</span>
+        <span>Send by</span>
+        <span>Wording</span>
+      </div>
 
-        <div class="row">
-          <button type="button" class="sw on" aria-pressed="true" aria-label="Confirmation"><i></i></button>
-          <span class="ms ic">mark_email_read</span>
-          <div class="name">
-            <b>Confirmation</b>
-            <span class="sub">when they register</span>
-          </div>
-          <div class="chips">
-            <button type="button" class="chip email on" aria-pressed="true"><span class="ms">mail</span>Email<span class="ms tick fill">check</span></button>
-            <button type="button" class="chip wa on" aria-pressed="true"><span class="ms">chat</span>WhatsApp<span class="ms tick fill">check</span></button>
-          </div>
+      <div class="group">
+        <div class="glabel">
+          <span class="gl">Before<em><span class="badge"><span class="dot"></span>2 sending</span></em></span>
         </div>
 
-        <div class="row">
-          <button type="button" class="sw on" aria-pressed="true" aria-label="Reminder"><i></i></button>
-          <span class="ms ic">alarm</span>
-          <div class="name">
-            <b>Reminder</b>
-            <div class="whenline">
-              <select class="when" aria-label="Reminder time">
-                <option>5 minutes before</option>
-                <option selected>10 minutes before</option>
-                <option>30 minutes before</option>
-                <option>1 hour before</option>
-                <option>1 day before</option>
-                <option>1 day and 1 hour before</option>
-              </select>
-            </div>
+        <div class="row cols">
+          <button type="button" class="sw on" role="switch" aria-checked="true" aria-label="Confirmation"><span class="track"><i></i></span></button>
+          <div class="name"><span class="ms ic">mark_email_read</span><span class="txt"><b>Confirmation</b><span class="sub">Everyone who registers</span></span></div>
+          <div class="fixed">When they register</div>
+          <div class="checks">
+            <label class="check on"><input type="checkbox" checked><span class="ms box">check_box</span>Email</label>
+            <label class="check on"><input type="checkbox" checked><span class="ms box">check_box</span>WhatsApp</label>
           </div>
-          <div class="chips">
-            <button type="button" class="chip email on" aria-pressed="true"><span class="ms">mail</span>Email<span class="ms tick fill">check</span></button>
-            <button type="button" class="chip wa off" aria-pressed="false"><span class="ms">chat</span>WhatsApp</button>
+          <button type="button" class="btn full" aria-expanded="false">Wording &amp; preview<span class="ms">expand_more</span></button>
+        </div>
+
+        <div class="row cols">
+          <button type="button" class="sw on" role="switch" aria-checked="true" aria-label="Reminder"><span class="track"><i></i></span></button>
+          <div class="name"><span class="ms ic">alarm</span><span class="txt"><b>Reminder</b><span class="sub">Up to 3 times before it starts</span></span></div>
+          <div class="whenpair">
+            <select class="select" aria-label="Reminder time">
+              <option>5 minutes before</option>
+              <option selected>10 minutes before</option>
+              <option>1 hour before</option>
+              <option>1 day before</option>
+            </select>
+            <button type="button" class="btn sm" aria-label="Add another reminder time"><span class="ms">add</span>Add</button>
           </div>
+          <div class="checks">
+            <label class="check on"><input type="checkbox" checked><span class="ms box">check_box</span>Email</label>
+            <label class="check"><input type="checkbox"><span class="ms box">check_box_outline_blank</span>WhatsApp</label>
+          </div>
+          <button type="button" class="btn full" aria-expanded="false">Wording &amp; preview<span class="ms">expand_more</span></button>
         </div>
       </div>
 
       <div class="group">
         <div class="glabel">
-          <span class="gl">After</span>
-          <span class="gr">
-            <button type="button" class="bulk">Turn on follow-ups</button>
-            <span class="gcount">1 of 6</span>
+          <span class="gl">After<em><span class="badge"><span class="dot"></span>1 of 6 sending</span></em></span>
+          <span class="gr" style="position:relative">
+            <span class="gnote">Left early needs a wording first</span>
+            <button type="button" class="btn soft"><span class="ms">done_all</span>Turn on 4 ready follow-ups</button>
+            <span class="pin" style="top:-8px; right:-8px">5</span>
           </span>
         </div>
 
-        <div class="row sel">
-          <button type="button" class="sw on" aria-pressed="true" aria-label="Replay"><i></i></button>
-          <span class="ms ic">play_circle</span>
-          <div class="name">
-            <b>Replay</b>
-            <span class="sub">when you publish the recording</span>
+        <div class="row cols open">
+          <button type="button" class="sw on" role="switch" aria-checked="true" aria-label="Replay"><span class="track"><i></i></span></button>
+          <div class="name"><span class="ms ic">play_circle</span><span class="txt"><b>Replay</b><span class="sub">Sends the moment the recording is public</span></span></div>
+          <div class="seg" role="group" aria-label="When Replay sends">
+            <button type="button" aria-pressed="true">On publish</button>
+            <button type="button" aria-pressed="false">After it ends</button>
           </div>
-          <div class="chips">
-            <button type="button" class="chip email on" aria-pressed="true"><span class="ms">mail</span>Email<span class="ms tick fill">check</span></button>
-            <button type="button" class="chip wa on" aria-pressed="true"><span class="ms">chat</span>WhatsApp<span class="ms tick fill">check</span></button>
+          <div class="checks">
+            <label class="check on"><input type="checkbox" checked><span class="ms box">check_box</span>Email</label>
+            <label class="check on"><input type="checkbox" checked><span class="ms box">check_box</span>WhatsApp</label>
           </div>
+          <button type="button" class="btn full on" aria-expanded="true">Hide wording<span class="ms">expand_less</span></button>
         </div>
-
-        <div class="row">
-          <button type="button" class="sw" aria-pressed="false" aria-label="Highly engaged"><i></i></button>
-          <span class="ms ic">local_fire_department</span>
-          <div class="name">
-            <b>Highly engaged</b>
-            <div class="whenline">
-              <select class="when" aria-label="Highly engaged time">
-                <option selected>1 hour after</option>
-                <option>2 hours after</option>
-                <option>Next morning, 9 AM</option>
-                <option>Next day</option>
-              </select>
+        <div class="row open" style="padding-top:0; border-top:0">
+          <div class="detail">
+            <div>
+              <span class="dlabel">WhatsApp wording<span>Approved by WhatsApp. Email uses the same text.</span></span>
+              <button type="button" class="opt on" role="radio" aria-checked="true">
+                <span class="ms fill">radio_button_checked</span>
+                <span class="grow"><b>Replay link</b><small>Hi pavan, the replay for aasdas is now available here.</small></span>
+                <span class="cost">≈ ₹0.13</span>
+              </button>
+              <button type="button" class="opt" role="radio" aria-checked="false">
+                <span class="ms">radio_button_unchecked</span>
+                <span class="grow"><b>Short replay</b><small>The recording of aasdas is ready whenever you are.</small></span>
+                <span class="cost">≈ ₹0.13</span>
+              </button>
+              <div class="dfoot">
+                <button type="button" class="btn ghost"><span class="ms">add</span>Write your own</button>
+                <button type="button" class="btn ghost">See all 4 wordings</button>
+              </div>
+              <label class="allcb"><span class="ms">check_box_outline_blank</span>Use this for all my webinars</label>
+              <p class="fine">Changes here are for this webinar unless you tick the box.</p>
+            </div>
+            <div class="previews">
+              <div class="pv">
+                <h4><span class="ms mail">mail</span>Email preview</h4>
+                <div class="phone">
+                  <div class="top mail"><span class="av2"><span class="ms">mail</span></span><div><b>Inbox</b><small>Email</small></div></div>
+                  <div class="body mail">
+                    <div class="letter">
+                      <p class="subj">Replay: aasdas</p>
+                      Hi pavan, the replay for aasdas is now available here:
+                      <a href="#">webinarliv.com/w/aasdas/recording</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="pv">
+                <h4><span class="ms wa">chat</span>WhatsApp preview</h4>
+                <div class="phone">
+                  <div class="top wa"><span class="av2">A</span><div><b>Aicoachportal</b><small>Business account</small></div></div>
+                  <div class="body wa">
+                    <div class="bubble">
+                      Hi pavan, the replay for <b>aasdas</b> is now available.
+                      <div class="btnrow"><span class="ms">play_circle</span>Watch replay</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="chips">
-            <button type="button" class="chip email off" aria-pressed="false"><span class="ms">mail</span>Email</button>
-            <button type="button" class="chip wa on" aria-pressed="true"><span class="ms">chat</span>WhatsApp<span class="ms tick fill">check</span></button>
-          </div>
         </div>
 
-        <div class="row">
-          <button type="button" class="sw" aria-pressed="false" aria-label="Didn't join"><i></i></button>
-          <span class="ms ic">person_off</span>
-          <div class="name">
-            <b>Didn't join</b>
-            <div class="whenline">
-              <select class="when" aria-label="Didn't join time">
-                <option>1 hour after</option>
-                <option>2 hours after</option>
-                <option selected>Next morning, 9 AM</option>
-                <option>Next day</option>
-              </select>
-            </div>
+        <div class="row cols hover">
+          <span style="position:relative; display:block">
+            <button type="button" class="sw" role="switch" aria-checked="false" aria-label="Highly engaged"><span class="track"><i></i></span></button>
+            <span class="pin" style="top:-6px; left:-8px">1</span>
+          </span>
+          <div class="name"><span class="ms ic">local_fire_department</span><span class="txt"><b>Highly engaged</b><span class="sub">People who stayed and joined in · offer</span></span></div>
+          <span style="position:relative; display:block">
+            <select class="select" aria-label="Highly engaged time">
+              <option selected>1 hour after it ends</option>
+              <option>2 hours after it ends</option>
+              <option>Next morning, 9 AM</option>
+              <option>Next day</option>
+            </select>
+            <span class="pin" style="top:-8px; left:-8px">2</span>
+          </span>
+          <div class="checks" style="position:relative">
+            <label class="check hov"><input type="checkbox"><span class="ms box">check_box_outline_blank</span>Email</label>
+            <label class="check on focus"><input type="checkbox" checked><span class="ms box">check_box</span>WhatsApp</label>
+            <span class="ms cursor" style="top:17px; left:62px">arrow_selector_tool</span>
+            <span class="pin" style="top:-8px; right:-8px">3</span>
           </div>
-          <div class="chips">
-            <button type="button" class="chip email off" aria-pressed="false"><span class="ms">mail</span>Email</button>
-            <button type="button" class="chip wa on" aria-pressed="true"><span class="ms">chat</span>WhatsApp<span class="ms tick fill">check</span></button>
-          </div>
+          <span style="position:relative; display:block">
+            <button type="button" class="btn full" aria-expanded="false">Wording &amp; preview<span class="ms">expand_more</span></button>
+            <span class="pin" style="top:-8px; right:-8px">4</span>
+          </span>
         </div>
 
-        <div class="row">
-          <button type="button" class="sw" aria-pressed="false" aria-label="Engaged"><i></i></button>
-          <span class="ms ic">favorite</span>
-          <div class="name">
-            <b>Engaged</b>
-            <div class="whenline">
-              <select class="when" aria-label="Engaged time">
-                <option selected>1 hour after</option>
-                <option>2 hours after</option>
-                <option>Next morning, 9 AM</option>
-                <option>Next day</option>
-              </select>
-              <span class="hint">· thank-you</span>
-            </div>
+        <div class="row cols">
+          <button type="button" class="sw" role="switch" aria-checked="false" aria-label="Didn't join"><span class="track"><i></i></span></button>
+          <div class="name"><span class="ms ic">person_off</span><span class="txt"><b>Didn't join</b><span class="sub">People who registered but missed it</span></span></div>
+          <select class="select" aria-label="Didn't join time">
+            <option>1 hour after it ends</option>
+            <option selected>Next morning, 9 AM</option>
+            <option>Next day</option>
+          </select>
+          <div class="checks">
+            <label class="check"><input type="checkbox"><span class="ms box">check_box_outline_blank</span>Email</label>
+            <label class="check on"><input type="checkbox" checked><span class="ms box">check_box</span>WhatsApp</label>
           </div>
-          <div class="chips">
-            <button type="button" class="chip email off" aria-pressed="false"><span class="ms">mail</span>Email</button>
-            <button type="button" class="chip wa on" aria-pressed="true"><span class="ms">chat</span>WhatsApp<span class="ms tick fill">check</span></button>
-          </div>
+          <button type="button" class="btn full" aria-expanded="false">Wording &amp; preview<span class="ms">expand_more</span></button>
         </div>
 
-        <div class="row">
-          <button type="button" class="sw" aria-pressed="false" aria-label="Passive"><i></i></button>
-          <span class="ms ic">visibility_off</span>
-          <div class="name">
-            <b>Passive</b>
-            <div class="whenline">
-              <select class="when" aria-label="Passive time">
-                <option>1 hour after</option>
-                <option>2 hours after</option>
-                <option>Next morning, 9 AM</option>
-                <option selected>Next day</option>
-              </select>
-            </div>
+        <div class="row cols">
+          <button type="button" class="sw" role="switch" aria-checked="false" aria-label="Engaged"><span class="track"><i></i></span></button>
+          <div class="name"><span class="ms ic">favorite</span><span class="txt"><b>Engaged</b><span class="sub">People who stayed most of it · thank-you</span></span></div>
+          <select class="select" aria-label="Engaged time">
+            <option selected>1 hour after it ends</option>
+            <option>Next morning, 9 AM</option>
+            <option>Next day</option>
+          </select>
+          <div class="checks">
+            <label class="check"><input type="checkbox"><span class="ms box">check_box_outline_blank</span>Email</label>
+            <label class="check on"><input type="checkbox" checked><span class="ms box">check_box</span>WhatsApp</label>
           </div>
-          <div class="chips">
-            <button type="button" class="chip email off" aria-pressed="false"><span class="ms">mail</span>Email</button>
-            <button type="button" class="chip wa on" aria-pressed="true"><span class="ms">chat</span>WhatsApp<span class="ms tick fill">check</span></button>
-          </div>
+          <button type="button" class="btn full" aria-expanded="false">Wording &amp; preview<span class="ms">expand_more</span></button>
         </div>
 
-        <div class="row">
-          <button type="button" class="sw" aria-pressed="false" aria-label="Left early" disabled title="Choose Email, or add a WhatsApp wording"><i></i></button>
-          <span class="ms ic">logout</span>
-          <div class="name">
-            <b>Left early</b>
-            <span class="sub miss">Needs a WhatsApp wording. Choose Email to send it.</span>
+        <div class="row cols">
+          <button type="button" class="sw" role="switch" aria-checked="false" aria-label="Passive"><span class="track"><i></i></span></button>
+          <div class="name"><span class="ms ic">visibility_off</span><span class="txt"><b>Passive</b><span class="sub">People who stayed but didn't chat · recap</span></span></div>
+          <select class="select" aria-label="Passive time">
+            <option>1 hour after it ends</option>
+            <option>Next morning, 9 AM</option>
+            <option selected>Next day</option>
+          </select>
+          <div class="checks">
+            <label class="check"><input type="checkbox"><span class="ms box">check_box_outline_blank</span>Email</label>
+            <label class="check on"><input type="checkbox" checked><span class="ms box">check_box</span>WhatsApp</label>
           </div>
-          <div class="chips">
-            <button type="button" class="chip email off" aria-pressed="false"><span class="ms">mail</span>Email</button>
-            <button type="button" class="chip blocked" disabled aria-pressed="false" title="Needs an approved WhatsApp wording"><span class="ms">chat</span>WhatsApp</button>
+          <button type="button" class="btn full" aria-expanded="false">Wording &amp; preview<span class="ms">expand_more</span></button>
+        </div>
+
+        <div class="row cols">
+          <button type="button" class="sw" role="switch" aria-checked="false" aria-label="Left early" disabled><span class="track"><i></i></span></button>
+          <div class="name" style="position:relative"><span class="ms ic">logout</span><span class="txt"><b>Left early</b><span class="sub warn">Needs a wording, or tick Email</span></span></div>
+          <select class="select" aria-label="Left early time">
+            <option>1 hour after it ends</option>
+            <option selected>Next day</option>
+          </select>
+          <div class="checks">
+            <label class="check"><input type="checkbox"><span class="ms box">check_box_outline_blank</span>Email</label>
+            <label class="check dis" title="Choose a WhatsApp wording first"><input type="checkbox" disabled><span class="ms box">check_box_outline_blank</span>WhatsApp</label>
           </div>
+          <span style="position:relative; display:block">
+            <button type="button" class="btn full primary" aria-expanded="false">Choose wording<span class="ms">expand_more</span></button>
+            <span class="pin" style="top:-8px; right:-8px">6</span>
+          </span>
         </div>
       </div>
 
       <div class="group">
-        <div class="glabel"><span class="gl">Automations</span><span class="gcount">2 on</span></div>
-
-        <div class="row">
-          <button type="button" class="sw on" aria-pressed="true" aria-label="When someone answers PRICE"><i></i></button>
-          <span class="ms ic">poll</span>
-          <div class="name">
-            <b><span class="faint">When </span>someone answers “PRICE”</b>
-            <span class="sub"><span class="ms arr">arrow_forward</span>send This Program Cost will be ₹9999. For More Details call On 9852411280.</span>
-          </div>
-          <a class="go" href="whatsapp.html" aria-label="Open on the WhatsApp page"><span class="ms">chevron_right</span></a>
+        <div class="glabel">
+          <span class="gl">Automations<em><span class="badge"><span class="dot"></span>2 on</span></em></span>
         </div>
-
-        <div class="row">
-          <button type="button" class="sw on" aria-pressed="true" aria-label="When a reply mentions price, program or 1:1"><i></i></button>
-          <span class="ms ic">sell</span>
-          <div class="name">
-            <b><span class="faint">When </span>a reply mentions price, program or 1:1</b>
-            <span class="sub"><span class="ms arr">arrow_forward</span>tag Hot lead</span>
-          </div>
-          <a class="go" href="whatsapp.html" aria-label="Open on the WhatsApp page"><span class="ms">chevron_right</span></a>
+        <div class="row cols">
+          <button type="button" class="sw on" role="switch" aria-checked="true" aria-label="When someone answers PRICE"><span class="track"><i></i></span></button>
+          <div class="name" style="grid-column: 2 / 5"><span class="ms ic">poll</span><span class="txt"><b><span class="faint">When </span>someone answers “PRICE”</b><span class="sub"><span class="ms arr">arrow_forward</span>send This Program Cost will be ₹9999. For More Details call On 9852411280.</span></span></div>
+          <a class="btn full" href="whatsapp.html">Edit on WhatsApp page<span class="ms">open_in_new</span></a>
         </div>
-
+        <div class="row cols">
+          <button type="button" class="sw on" role="switch" aria-checked="true" aria-label="When a reply mentions price, program or 1:1"><span class="track"><i></i></span></button>
+          <div class="name" style="grid-column: 2 / 5"><span class="ms ic">sell</span><span class="txt"><b><span class="faint">When </span>a reply mentions price, program or 1:1</b><span class="sub"><span class="ms arr">arrow_forward</span>tag Hot lead</span></span></div>
+          <a class="btn full" href="whatsapp.html">Edit on WhatsApp page<span class="ms">open_in_new</span></a>
+        </div>
         <div class="mfoot">
-          <a class="xlink" href="whatsapp.html"><span class="ms">add</span>New automation</a>
+          <a class="btn ghost" href="whatsapp.html"><span class="ms">add</span>New automation</a>
         </div>
       </div>
     </div>
 
-    <aside class="card pane">
+    <aside class="card notes">
       <div>
-        <h2>Replay</h2>
-        <p class="blurb">after it ends</p>
+        <h2>What each control does</h2>
+        <p class="lead">Everything that changes sending is a labelled control on the row. The row turns grey on hover.</p>
       </div>
-      <p class="sendline">Sending on <b>Email</b> and <b>WhatsApp</b>. Change that on the row.</p>
 
-      <p class="who">Everyone who registered, once there is a recording.</p>
-      <div class="choices">
-        <button type="button" class="choice on" aria-pressed="true">
-          <b>When you publish it</b>
-          <span>You choose the moment.</span>
-        </button>
-        <button type="button" class="choice" aria-pressed="false">
-          <b>After the webinar ends</b>
-          <span>A set wait, whether or not you have published.</span>
-        </button>
+      <div class="note"><span class="pin">1</span><div><b>Switch turns it on</b><p>The only on/off control. Its 40×32 hit area is bigger than the track.</p><span class="why">Clear signifier · Fitts's law</span></div></div>
+      <div class="note"><span class="pin">2</span><div><b>“When” is a dropdown</b><p>It has a caret and shows the choice, so you don't need to remember the options. Replay's two options are a segmented control.</p><span class="why">Recognition over recall</span></div></div>
+      <div class="note"><span class="pin">3</span><div><b>“Send by” is two checkboxes</b><p>Labelled boxes with a border. On Highly engaged, Email shows hover (darker border) and WhatsApp shows keyboard focus (blue ring). Both can be ticked.</p><span class="why">Affordance · consistency</span></div></div>
+      <div class="note"><span class="pin">4</span><div><b>Wording &amp; preview opens under the row</b><p>A labelled button with a chevron. It shows the wordings and both previews side by side.</p><span class="why">Progressive disclosure</span></div></div>
+      <div class="note"><span class="pin">5</span><div><b>One button for the group</b><p>Turns on the follow-ups that can send, and says which one it skips and why.</p><span class="why">Efficiency · visibility of status</span></div></div>
+      <div class="note"><span class="pin">6</span><div><b>It can't be on until it can send</b><p>The switch stays disabled, the reason is on the row, and the fix is a button.</p><span class="why">Error prevention</span></div></div>
+
+      <div class="divider"></div>
+
+      <div class="legend">
+        <div class="lrow"><span class="badge"><span class="dot"></span>2 sending</span>Status. Read-only, no border.</div>
+        <div class="lrow"><label class="check on" style="height:28px"><span class="ms box">check_box</span>Email</label>Control. Bordered, with a box.</div>
       </div>
-      <p class="sends">Sends the moment the recording is public.</p>
 
-      <div class="word">
-        <h3>Message <span>Wording approved by WhatsApp</span></h3>
-        <button type="button" class="opt on" role="radio" aria-checked="true">
-          <span class="ms fill">radio_button_checked</span>
-          <span class="grow"><b>Replay link</b><small>Hi pavan, the replay for aasdas is now available here.</small></span>
-          <span class="cost">≈ ₹0.13</span>
-        </button>
-        <button type="button" class="opt" role="radio" aria-checked="false">
-          <span class="ms">radio_button_unchecked</span>
-          <span class="grow"><b>Short replay</b><small>The recording of aasdas is ready whenever you are.</small></span>
-          <span class="cost">≈ ₹0.13</span>
-        </button>
-        <div class="wordfoot">
-          <a class="xlink" href="#"><span class="ms">add</span>Write your own</a>
-          <a class="xlink" href="#">See all 4</a>
+      <div class="state">
+        <p class="st">When WhatsApp isn't connected</p>
+        <div class="checks">
+          <label class="check on"><span class="ms box">check_box</span>Email</label>
+          <label class="check dis"><span class="ms box">check_box_outline_blank</span>WhatsApp</label>
+          <a class="connect" href="settings.html">Connect<span class="ms">arrow_forward</span></a>
         </div>
-        <p class="fine">WhatsApp checks a new wording first, usually in minutes. Email sends either way.</p>
+        <p>WhatsApp can't be ticked. The link goes to Settings. Email still sends.</p>
       </div>
-
-      <div class="prevhead">
-        <span class="lbl">Preview</span>
-        <div class="psegs" role="tablist" aria-label="Preview channel">
-          <button type="button" class="email on" role="tab" aria-selected="true"><span class="ms">mail</span>Email</button>
-          <button type="button" class="wa" role="tab" aria-selected="false"><span class="ms">chat</span>WhatsApp</button>
-        </div>
-      </div>
-      <p class="prevnote">Switches the preview only. It does not change what gets sent.</p>
-
-      <div class="phone">
-        <div class="bezel">
-          <div class="top">
-            <span class="bubble-ic"><span class="ms">mail</span></span>
-            <div><b>Inbox</b><small>Email</small></div>
-          </div>
-          <div class="body">
-            <div class="letter">
-              <p class="subj">Replay: aasdas</p>
-              <div class="from">
-                <span class="av">A</span>
-                <div><b>Aicoachportal</b><small>to you</small></div>
-              </div>
-              <p>Hi pavan, the replay for aasdas is now available here: <a href="#">https://webinarliv.com/w/aasdas/recording</a></p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <label class="all"><span class="ms">check_box_outline_blank</span>Use this for all my webinars</label>
-      <p class="foot">Channels, times and wording here are for this webinar. Tick “Use this for all my webinars” to make it your default.</p>
     </aside>
   </div>
 
   <section class="counts">
     <h2>Clicks, before and after</h2>
-    <p class="lead">Counted on the current Messages screen, starting where the screenshot sits: Replay is open, and the Email tab is showing. A tab click today does not turn a channel on — the checkbox under it does. Turning a switch on also opens that row.</p>
+    <p class="lead">Counted from the screen in the screenshot: the Replay row is selected and its pane shows the Email tab. Today, clicking a tab does not change the channel. The tick box under it does.</p>
     <table>
       <thead>
-        <tr>
-          <th>Task</th>
-          <th class="n">Today</th>
-          <th class="n">Proposed</th>
-          <th>Why it changes</th>
-        </tr>
+        <tr><th>Task</th><th class="n">Today</th><th class="n">Proposed</th><th>How, in the proposal</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Turn on Didn’t join and also send Email</td>
-          <td class="n">3</td>
-          <td class="n less">2</td>
-          <td class="why">Toggle, then the Email chip. Today that is the toggle, the Email tab, and “Send on Email”.</td>
-        </tr>
-        <tr>
-          <td>Add WhatsApp on Reminder</td>
-          <td class="n">3</td>
-          <td class="n less">1</td>
-          <td class="why">The WhatsApp chip is on the row. Today you open Reminder, switch to the WhatsApp tab, then tick the checkbox.</td>
-        </tr>
-        <tr>
-          <td>Change the reminder from 10 minutes to 1 day before</td>
-          <td class="n">5</td>
-          <td class="n less">2</td>
-          <td class="why">Open the time menu and pick 1 day. Today “Add a time” inserts the next preset, so you add an hour, add a day, then remove the hour.</td>
-        </tr>
-        <tr>
-          <td>Pick a different Replay wording</td>
-          <td class="n">2</td>
-          <td class="n less">1</td>
-          <td class="why">Wording stays in the pane. Today it is only on the WhatsApp tab, so the Email preview has to be switched first.</td>
-        </tr>
-        <tr>
-          <td>Preview Replay on WhatsApp</td>
-          <td class="n">1</td>
-          <td class="n same">1</td>
-          <td class="why">Same number of clicks. The preview switch no longer looks like the control that turns sending on.</td>
-        </tr>
-        <tr>
-          <td>Turn on the after-webinar follow-ups</td>
-          <td class="n">5</td>
-          <td class="n less">1</td>
-          <td class="why">One button turns on the four that can send. Left early stays off until it has a wording or Email is chosen — today the fifth toggle would show it as on with nothing to send.</td>
-        </tr>
-        <tr>
-          <td>Set Replay to send after the webinar ends</td>
-          <td class="n">1</td>
-          <td class="n same">1</td>
-          <td class="why">Same click, on a flat choice. It is no longer inside a When card under the channel tabs. From another row, both versions are 2.</td>
-        </tr>
+        <tr><td>Turn on Didn’t join, and send it by Email as well</td><td class="n">3</td><td class="n less">2</td><td class="how">Switch, then the Email checkbox, both on the row. Today: switch, Email tab, “Send on Email”.</td></tr>
+        <tr><td>Add WhatsApp to the Reminder</td><td class="n">3</td><td class="n less">1</td><td class="how">Tick WhatsApp on the Reminder row. Today: select the row, WhatsApp tab, tick box.</td></tr>
+        <tr><td>Change the reminder from 10 minutes to 1 day before</td><td class="n">5</td><td class="n less">2</td><td class="how">Open the dropdown and pick “1 day before”. Today: select the row, add a time twice, then remove the two you don’t want.</td></tr>
+        <tr><td>Turn on the after-webinar follow-ups</td><td class="n">5</td><td class="n less">1</td><td class="how">“Turn on 4 ready follow-ups”. Left early stays off and says why.</td></tr>
+        <tr><td>Send Replay after the webinar ends instead</td><td class="n">1</td><td class="n same">1</td><td class="how">“After it ends” on the row. If another row is selected, today takes 2.</td></tr>
+        <tr><td>Change the Replay wording and see it on both channels</td><td class="n">3</td><td class="n less">2</td><td class="how">“Wording &amp; preview”, then pick a wording. Both previews are shown together. Today: WhatsApp tab, pick, Email tab to check the email.</td></tr>
       </tbody>
     </table>
   </section>
