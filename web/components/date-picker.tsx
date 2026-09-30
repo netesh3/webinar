@@ -160,39 +160,61 @@ const DATE_PRESETS: { id: string; label: string; day: (today: YMD) => YMD }[] = 
   { id: "next", label: "Next week", day: nextMonday },
 ];
 
-type RangePreset = { id: string; label: string; range: (today: YMD) => { from: YMD; to: YMD } };
+/** A chip above the range calendar. Offsets are inclusive days after today. */
+export type DateRangePreset = {
+  id: string;
+  label: string;
+  /** Inclusive start, as days after today. Negative reaches into the past. */
+  fromOffset?: number;
+  /** Inclusive end, as days after today. */
+  toOffset?: number;
+  /** Start on the first of the current month instead of fromOffset. */
+  fromMonthStart?: boolean;
+  /** End on the last of the current month instead of toOffset. */
+  toMonthEnd?: boolean;
+  /** Empty range. Used by a preset that clears, such as "All". */
+  clear?: boolean;
+};
 
-const RANGE_PRESETS: RangePreset[] = [
-  {
-    id: "next7",
-    label: "Next 7 days",
-    range: (t) => {
-      const from = addDays(t, 1);
-      return { from, to: addDays(from, 6) };
-    },
-  },
-  {
-    id: "month",
-    label: "This month",
-    range: (t) => ({
-      from: { y: t.y, m: t.m, d: 1 },
-      to: { y: t.y, m: t.m, d: daysInMonth(t.y, t.m) },
-    }),
-  },
-  {
-    id: "last30",
-    label: "Last 30 days",
-    range: (t) => ({ from: addDays(t, -29), to: t }),
-  },
+const DEFAULT_RANGE_PRESETS: DateRangePreset[] = [
+  { id: "next7", label: "Next 7 days", fromOffset: 1, toOffset: 7 },
+  { id: "month", label: "This month", fromMonthStart: true, toMonthEnd: true },
+  { id: "last30", label: "Last 30 days", fromOffset: -29, toOffset: 0 },
 ];
 
-function matchingPreset(from: string, to: string, today: YMD): string | null {
-  if (!from && !to) return null;
-  for (const p of RANGE_PRESETS) {
-    const r = p.range(today);
-    if (ymdKey(r.from) === from && ymdKey(r.to) === to) return p.id;
+function presetBounds(preset: DateRangePreset, today: YMD): { from: string; to: string } {
+  if (preset.clear) return { from: "", to: "" };
+  const from = preset.fromMonthStart
+    ? { y: today.y, m: today.m, d: 1 }
+    : addDays(today, preset.fromOffset ?? 0);
+  const to = preset.toMonthEnd
+    ? { y: today.y, m: today.m, d: daysInMonth(today.y, today.m) }
+    : addDays(today, preset.toOffset ?? 0);
+  const start = ymdKey(from);
+  const end = ymdKey(to);
+  return start <= end ? { from: start, to: end } : { from: end, to: start };
+}
+
+function matchingPresetId(
+  from: string,
+  to: string,
+  today: YMD,
+  presets: readonly DateRangePreset[],
+): string | null {
+  for (const preset of presets) {
+    const range = presetBounds(preset, today);
+    if (range.from === from && range.to === to) return preset.id;
   }
-  return "custom";
+  return null;
+}
+
+/** Inclusive YYYY-MM-DD bounds for a preset, using today in `timeZone`. */
+export function presetRange(
+  preset: DateRangePreset,
+  timeZone: string,
+  now = new Date(),
+): { from: string; to: string } {
+  return presetBounds(preset, todayIn(timeZone, now));
 }
 
 function formatRange(from: string, to: string): string {
@@ -666,7 +688,7 @@ export function DateTimeField({
   );
 }
 
-/** A from/to pair. Presets apply immediately; Custom opens two months. */
+/** A from/to pair. Presets and day clicks fill a draft; Apply commits it. */
 export function DateRangeField({
   from,
   to,
@@ -675,9 +697,7 @@ export function DateRangeField({
   ariaLabel = "Date range",
   emptyLabel = "Any dates",
   size = "md",
-  appearance = "field",
-  presets = true,
-  pressed,
+  presets = DEFAULT_RANGE_PRESETS,
   className = "",
 }: {
   from: string;
@@ -688,15 +708,12 @@ export function DateRangeField({
   ariaLabel?: string;
   emptyLabel?: string;
   size?: "sm" | "md";
-  appearance?: "field" | "chip";
-  /** False skips the chips and opens the two-month calendar (a Custom control). */
-  presets?: boolean;
-  pressed?: boolean;
+  /** Chips above the calendar. Defaults to Next 7 days, This month, and Last 30 days. */
+  presets?: readonly DateRangePreset[];
   className?: string;
 }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [showCal, setShowCal] = useState(!presets);
   const [draftFrom, setDraftFrom] = useState(from);
   const [draftTo, setDraftTo] = useState(to);
   const [awaitingEnd, setAwaitingEnd] = useState(false);
@@ -717,16 +734,17 @@ export function DateRangeField({
     setDraftTo(to);
     setAwaitingEnd(false);
     setView({ y: start.y, m: start.m });
-    const match = matchingPreset(from, to, now);
-    setShowCal(!presets || match === "custom");
     setOpen(true);
   }
 
-  function applyPreset(p: RangePreset) {
+  function selectPreset(preset: DateRangePreset) {
     if (!today) return;
-    const r = p.range(today);
-    onChange(ymdKey(r.from), ymdKey(r.to));
-    close();
+    const range = presetBounds(preset, today);
+    setDraftFrom(range.from);
+    setDraftTo(range.to);
+    setAwaitingEnd(false);
+    const start = parseYmd(range.from);
+    if (start) setView({ y: start.y, m: start.m });
   }
 
   function pickDay(day: YMD) {
@@ -746,21 +764,26 @@ export function DateRangeField({
     setAwaitingEnd(false);
   }
 
-  function applyCustom() {
-    if (!draftFrom) return;
+  function applyDraft() {
+    if (!draftFrom) {
+      onChange("", "");
+      close();
+      return;
+    }
     const end = draftTo || draftFrom;
     const [lo, hi] = draftFrom <= end ? [draftFrom, end] : [end, draftFrom];
     onChange(lo, hi);
     close();
   }
 
-  const labelText =
-    from && to
-      ? formatRange(from, to)
-      : appearance === "chip"
-        ? "Custom"
-        : emptyLabel;
-  const activePreset = today && presets ? matchingPreset(from, to, today) : null;
+  const labelText = from && to ? formatRange(from, to) : emptyLabel;
+  const draftPreset = today ? matchingPresetId(draftFrom, draftTo, today, presets) : null;
+  const clearSelected = presets.some((preset) => preset.id === draftPreset && preset.clear);
+  const summary = draftFrom
+    ? formatRange(draftFrom, draftTo || draftFrom)
+    : clearSelected
+      ? (presets.find((preset) => preset.id === draftPreset)?.label ?? emptyLabel)
+      : "Pick a start and an end";
   const height = size === "sm" ? "h-9 text-[13px]" : "h-10 text-[14px]";
   const right = shiftMonth(view.y, view.m, 1);
 
@@ -772,21 +795,12 @@ export function DateRangeField({
         aria-label={ariaLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-pressed={appearance === "chip" ? pressed || Boolean(from) : undefined}
         onClick={() => (open ? close() : openPanel())}
-        className={
-          appearance === "chip"
-            ? `inline-flex h-7 items-center rounded-full border px-2.5 text-[12px] whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                pressed || from
-                  ? "border-brand-line bg-brand-soft font-semibold text-brand"
-                  : "border-line-2 bg-surface text-ink-2 hover:bg-surface-2"
-              }`
-            : `flex ${height} w-full items-center gap-2 rounded-lg border bg-surface px-2.5 text-left text-ink outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/20 sm:w-auto ${
-                open ? "border-brand ring-2 ring-brand/20" : "border-line"
-              }`
-        }
+        className={`flex ${height} w-full items-center gap-2 rounded-lg border bg-surface px-2.5 text-left text-ink outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/20 sm:w-auto ${
+          open ? "border-brand ring-2 ring-brand/20" : "border-line"
+        }`}
       >
-        {appearance === "field" && <CalendarIcon className="size-3.5 shrink-0 text-ink-3" />}
+        <CalendarIcon className="size-3.5 shrink-0 text-ink-3" />
         <span className="truncate">{labelText}</span>
       </button>
       <AnchoredPopover
@@ -794,26 +808,23 @@ export function DateRangeField({
         anchor={anchor}
         onClose={close}
         label={ariaLabel}
-        watch={`${showCal}-${view.y}-${view.m}-${draftFrom}-${draftTo}`}
-        className={
-          showCal
-            ? "w-[min(40rem,calc(100vw-16px))]"
-            : "w-[min(22rem,calc(100vw-16px))]"
-        }
+        watch={`${view.y}-${view.m}-${draftFrom}-${draftTo}`}
+        className="w-[min(40rem,calc(100vw-16px))]"
       >
-        {presets && (
+        {presets.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-2.5" role="group" aria-label="Presets">
-            {RANGE_PRESETS.map((p) => (
-              <Chip key={p.id} on={activePreset === p.id} onClick={() => applyPreset(p)}>
-                {p.label}
+            {presets.map((preset) => (
+              <Chip
+                key={preset.id}
+                on={draftPreset === preset.id}
+                onClick={() => selectPreset(preset)}
+              >
+                {preset.label}
               </Chip>
             ))}
-            <Chip on={showCal} onClick={() => setShowCal(true)}>
-              Custom
-            </Chip>
           </div>
         )}
-        {showCal && today && (
+        {today && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2">
               <MonthGrid
@@ -851,21 +862,21 @@ export function DateRangeField({
                   >
                     Clear
                   </Button>
-                  <Button type="button" size="sm" disabled={!draftFrom} onClick={applyCustom}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!draftFrom && !clearSelected}
+                    onClick={applyDraft}
+                  >
                     Apply
                   </Button>
                 </>
               }
             >
-              <span className="text-[11.5px] text-ink-3">
-                {draftFrom
-                  ? formatRange(draftFrom, draftTo || draftFrom)
-                  : "Pick a start and an end"}
-              </span>
+              <span className="text-[11.5px] text-ink-3">{summary}</span>
             </Footer>
           </>
         )}
-        {presets && !showCal && <div className="h-2.5" />}
       </AnchoredPopover>
     </div>
   );
