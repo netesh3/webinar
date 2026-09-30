@@ -4,7 +4,7 @@
  * entry, and the CRM page itself. Everything else under engage/ (the components, the API
  * client, the Embedded Signup loader) is private to it, and eslint.config.mjs refuses a
  * deeper import from outside. In the other direction the CRM may use the shared UI kit
- * (components/ui, controls, icons, providers) and read the webinar client, as the Go
+ * (components/ui, controls, icons, providers, date-picker) and read the webinar client, as the Go
  * module reads the core store; it does not render webinar screens.
  */
 export {

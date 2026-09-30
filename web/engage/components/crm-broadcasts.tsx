@@ -3,7 +3,8 @@
 import { engageApi } from "../api";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, ConfirmModal, openPickerOnClick, Select, Spinner } from "@/components/controls";
+import { Alert, ConfirmModal, Select, Spinner } from "@/components/controls";
+import { DateTimeField } from "@/components/date-picker";
 import {
   BlockedList,
   RefreshTemplates,
@@ -30,12 +31,8 @@ import type {
   CRMTemplate,
   Webinar,
 } from "@/lib/api-types";
-import {
-  formatRelative,
-  instantToZoned,
-  localTimeZone,
-  zonedToInstant,
-} from "@/lib/format";
+import { formatRelative, instantToZoned, localTimeZone, zonedToInstant } from "@/lib/format";
+import { useNow } from "@/lib/clock";
 
 /* Broadcasts — one message to many people.
  *
@@ -389,6 +386,8 @@ function Composer({
    * reading the clock during a render makes the answer depend on when React
    * happens to re-render. The server treats a past time as "now" either way. */
   const [when, setWhen] = useState({ at: "", past: false });
+  const now = useNow(30_000);
+  const zone = localTimeZone();
   const [webinars, setWebinars] = useState<Webinar[] | null>(null);
   const [counted, setCounted] = useState<Counted | null>(null);
   const [saving, setSaving] = useState(false);
@@ -787,24 +786,28 @@ function Composer({
         </div>
         {timing === "later" && (
           <div>
-            <label className="sr-only" htmlFor="broadcast-at">
-              When to send it
-            </label>
-            <input
+            <DateTimeField
               id="broadcast-at"
-              type="datetime-local"
-              onClick={openPickerOnClick}
-              className="field sm:max-w-64"
-              min={localNow()}
-              value={when.at}
-              onChange={(e) => setWhen(chose(e.target.value))}
+              ariaLabel="When to send it"
+              className="sm:max-w-sm"
+              date={when.at.slice(0, 10)}
+              time={when.at.length >= 16 ? when.at.slice(11, 16) : ""}
+              timeZone={zone}
+              minDate={
+                now != null
+                  ? instantToZoned(new Date(now).toISOString(), zone).date
+                  : undefined
+              }
+              notBeforeMs={now ?? undefined}
+              rule="Must be in the future"
+              onChange={(date, time) => setWhen(chose(`${date}T${time}`))}
             />
             {/* The reader's own clock, said out loud: a host in Cape Town
                 scheduling 09:00 means their 09:00, and a webinar's time zone is
                 a different setting on a different screen. */}
             <p className="mt-1 text-[11.5px] text-ink-3">
-              Your time zone ({localTimeZone()}). Messages go out within a
-              minute or two of it.
+              Your time zone ({zone}). Messages go out within a minute or two
+              of it.
             </p>
           </div>
         )}
@@ -959,16 +962,6 @@ function chose(value: string): { at: string; past: boolean } {
     at: value,
     past: instant !== null && instant.getTime() < Date.now(),
   };
-}
-
-/** Now, as a `datetime-local` value, so the picker will not offer a time that
- *  has already gone. */
-function localNow(): string {
-  const { date, time } = instantToZoned(
-    new Date().toISOString(),
-    localTimeZone(),
-  );
-  return `${date}T${time}`;
 }
 
 /** A `datetime-local` value as the arguments zonedToInstant takes, read in the

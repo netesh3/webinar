@@ -8,7 +8,8 @@ import { useAppConfig, useSession } from "./providers";
 import { HostWebinarRows } from "./host-webinar-list";
 import { MyWebinarsList } from "./my-webinars-list";
 import { useRegistrations } from "./registrations";
-import { Alert, openPickerOnClick, Spinner, Tabs } from "./controls";
+import { Alert, Spinner, Tabs } from "./controls";
+import { DateRangeField } from "./date-picker";
 import { CloseIcon, SearchIcon } from "./icons";
 import { Button, ButtonLink, Empty, ListPager } from "./ui";
 import { ApiError, api, type HostWebinarTab } from "@/lib/api";
@@ -407,26 +408,18 @@ export function HostWebinarBrowser({
                 )}
               </label>
 
-              {/* One bordered group, not two loose inputs: a range is a single
-                  idea, and the arrow between the ends says which way it runs. No
-                  icon of our own in front — each date input draws its own picker
-                  indicator, and a third calendar glyph on one control is clutter
-                  pretending to be a label. */}
-              <div className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
-                <DateEnd
-                  label="Show webinars from this date"
-                  value={from}
-                  onChange={(v) => refilter(() => setFrom(v))}
-                />
-                <span aria-hidden className="text-[11px] text-ink-3">
-                  →
-                </span>
-                <DateEnd
-                  label="Show webinars up to this date"
-                  value={to}
-                  onChange={(v) => refilter(() => setTo(v))}
-                />
-              </div>
+              <DateRangeField
+                from={from}
+                to={to}
+                size="sm"
+                ariaLabel="Filter webinars by date"
+                onChange={(nextFrom, nextTo) =>
+                  refilter(() => {
+                    setFrom(nextFrom);
+                    setTo(nextTo);
+                  })
+                }
+              />
 
               {filtersActive && (
                 <button
@@ -526,29 +519,6 @@ export function HostWebinarBrowser({
 
       {tab === "upcoming" && <EndedNudge />}
     </>
-  );
-}
-
-/** One end of the range. Bare inside its group's border — a field outline
- *  around each end would read as two separate filters. */
-function DateEnd({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-}) {
-  return (
-    <input
-      type="date"
-      onClick={openPickerOnClick}
-      aria-label={label}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-[6.6rem] bg-transparent text-[12.5px] text-ink outline-none [&::-webkit-calendar-picker-indicator]:opacity-45"
-    />
   );
 }
 
