@@ -28,6 +28,11 @@ func (s *Module) handleCRMPeople(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.store.People(r.Context(), user.ID, f)
+	if errors.Is(err, crmstore.ErrBadSort) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_sort",
+			"Sort by name, attendance, engagement, or last.")
+		return
+	}
 	if errors.Is(err, store.ErrInvalid) {
 		httpx.Error(w, http.StatusBadRequest, "bad_filter", "There is no such filter.")
 		return
@@ -67,6 +72,8 @@ func (s *Module) peopleFilter(w http.ResponseWriter, r *http.Request) (crmstore.
 		WebinarSlug: strings.TrimSpace(q.Get("webinarId")),
 		Filter:      strings.TrimSpace(q.Get("filter")),
 		Query:       strings.TrimSpace(q.Get("q")),
+		Sort:        strings.TrimSpace(q.Get("sort")),
+		Order:       strings.TrimSpace(q.Get("order")),
 	}
 	f.Offset, _ = strconv.Atoi(q.Get("offset"))
 	f.Limit, _ = strconv.Atoi(q.Get("limit"))

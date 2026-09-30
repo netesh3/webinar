@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import type { EngagementAttendeeRow, EngagementAxis, EngagementTierCounts } from "@/lib/api-types";
+import { SortHeader } from "@/components/sort-header";
 import { Button } from "@/components/ui";
 import { Spinner } from "@/components/controls";
 import { useEngagementAttendees } from "@/lib/engagement/hooks";
-import { DEFAULT_FILTERS, nextSort, type AttendeeFilters, type SortKey } from "@/lib/engagement/query";
+import { DEFAULT_FILTERS, defaultDir, nextSort, type AttendeeFilters, type SortKey } from "@/lib/engagement/query";
 import { TIER_META, TIER_ORDER, asTier, type Tier } from "@/lib/engagement/score";
 import type { EngagementSource } from "@/lib/engagement/source";
 import { HEAT_LEGEND, cellColor, columnLabels, columnStartMin, joinLabel, pct } from "@/lib/engagement/viz";
@@ -18,40 +19,6 @@ import { ErrorState } from "./states";
  * bucket they were present for, darkened by how much they did — a solid dark row stayed and
  * took part; a pale row with gaps is the person to follow up. Sorting, filtering and paging
  * happen on the server; this only asks. */
-
-function SortHeader({
-  label,
-  column,
-  filters,
-  onSort,
-  className = "",
-}: {
-  label: string;
-  column: SortKey;
-  filters: AttendeeFilters;
-  onSort: (k: SortKey) => void;
-  className?: string;
-}) {
-  const active = filters.sort === column;
-  return (
-    <th
-      scope="col"
-      className={`px-2 py-2 font-medium ${className}`}
-      aria-sort={active ? (filters.dir === "asc" ? "ascending" : "descending") : "none"}
-    >
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 rounded outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
-        onClick={() => onSort(column)}
-      >
-        {label}
-        <span aria-hidden className={active ? "text-brand" : "text-ink-3/60"}>
-          {active && filters.dir === "asc" ? "▲" : "▼"}
-        </span>
-      </button>
-    </th>
-  );
-}
 
 function HeatCells({ row, axis }: { row: EngagementAttendeeRow; axis: EngagementAxis }) {
   return (
@@ -166,10 +133,10 @@ export function AttendeeHeatmap({
           <caption className="sr-only">Attendees, when they were in the room, and their presence across the session</caption>
           <thead className="sticky top-0 z-10 bg-surface-2 text-left text-[11.5px] text-ink-2 shadow-[0_1px_0_#e5e9ec]">
             <tr>
-              <SortHeader label="Attendee" column="name" filters={filters} onSort={onSort} className="pl-3" />
-              <SortHeader label="Score" column="score" filters={filters} onSort={onSort} />
-              <SortHeader label="Watched" column="watch" filters={filters} onSort={onSort} />
-              <SortHeader label="In → Out" column="join" filters={filters} onSort={onSort} />
+              <SortHeader label="Attendee" active={filters.sort === "name"} dir={filters.dir} hintDir={defaultDir("name")} onSort={() => onSort("name")} className="px-2 py-2 pl-3 font-medium" />
+              <SortHeader label="Score" active={filters.sort === "score"} dir={filters.dir} hintDir={defaultDir("score")} onSort={() => onSort("score")} className="px-2 py-2 font-medium" />
+              <SortHeader label="Watched" active={filters.sort === "watch"} dir={filters.dir} hintDir={defaultDir("watch")} onSort={() => onSort("watch")} className="px-2 py-2 font-medium" />
+              <SortHeader label="In → Out" active={filters.sort === "join"} dir={filters.dir} hintDir={defaultDir("join")} onSort={() => onSort("join")} className="px-2 py-2 font-medium" />
               <th scope="col" className="px-2 py-2 font-medium">
                 <span className="sr-only">Presence by {axis.bucketMin}-minute bucket</span>
                 <div className="grid gap-[2px] tabular-nums text-ink-3" aria-hidden style={{ gridTemplateColumns: `repeat(${axis.columns}, minmax(0, 1fr))` }}>

@@ -8,7 +8,9 @@ import { RecordingsTab } from "./recordings-tab";
 import { EngagementTab } from "./engagement/engagement-tab";
 import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
 import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
+import { SortHeader, useSort } from "./sort-header";
 import { Avatar, Badge, Button, ButtonLink, Card, ListPager, SectionTitle } from "./ui";
+import { sortBy, type SortKind, type SortValue } from "@/lib/table-sort";
 import {
   formatCount,
   formatDay,
@@ -446,6 +448,35 @@ function OverviewTab({
   );
 }
 
+const ROSTER_DEFAULT_DIR = {
+  name: "asc",
+  company: "asc",
+  watched: "desc",
+  registered: "asc",
+  status: "asc",
+} as const;
+
+type RosterSortKey = keyof typeof ROSTER_DEFAULT_DIR;
+
+function rosterValue(row: RegistrantRow, key: RosterSortKey): SortValue {
+  switch (key) {
+    case "name":
+      return row.name;
+    case "company":
+      return row.company;
+    case "watched":
+      return row.joined ? row.watchMin : null;
+    case "registered":
+      return row.createdAt;
+    case "status":
+      return row.state;
+  }
+}
+
+function rosterKind(key: RosterSortKey): SortKind {
+  return key === "watched" ? "number" : key === "registered" ? "date" : "string";
+}
+
 function AttendeesTab({
   webinar: w,
   counts,
@@ -458,17 +489,24 @@ function AttendeesTab({
   const bypass = isDevAuthBypassActive();
   const whatsappOn = useRosterWhatsAppColumns();
   const [offset, setOffset] = useState(0);
+  const { sort, onSort } = useSort<RosterSortKey>({ defaultDir: ROSTER_DEFAULT_DIR });
   const [page, setPage] = useState<RegistrantPage | null>(null);
-  const [seenOffset, setSeenOffset] = useState(0);
-  if (offset !== seenOffset) {
-    setSeenOffset(offset);
+  const requestKey = `${w.id}|${offset}|${sort.key ?? ""}|${sort.dir}`;
+  const [seenRequest, setSeenRequest] = useState(requestKey);
+  if (requestKey !== seenRequest) {
+    setSeenRequest(requestKey);
     setPage(null);
   }
   useEffect(() => {
     if (bypass) return;
     let cancelled = false;
     api
-      .hostRegistrants(w.id, { limit: PEOPLE_PAGE, offset })
+      .hostRegistrants(w.id, {
+        limit: PEOPLE_PAGE,
+        offset,
+        sort: sort.key ?? undefined,
+        order: sort.key ? sort.dir : undefined,
+      })
       .then((next) => {
         if (!cancelled) setPage(next);
       })
@@ -488,9 +526,13 @@ function AttendeesTab({
     return () => {
       cancelled = true;
     };
-  }, [bypass, w.id, offset, rosterToken]);
+  }, [bypass, w.id, offset, rosterToken, sort.key, sort.dir]);
 
-  const registrants = bypass ? DEV_BYPASS_REGISTRANTS : (page?.items ?? []);
+  const registrants = bypass
+    ? sort.key
+      ? sortBy(DEV_BYPASS_REGISTRANTS, sort.dir, (row) => rosterValue(row, sort.key!), rosterKind(sort.key!))
+      : DEV_BYPASS_REGISTRANTS
+    : (page?.items ?? []);
   const roster = bypass
     ? {
         total: DEV_BYPASS_REGISTRANTS.length,
@@ -525,6 +567,11 @@ function AttendeesTab({
   const [bucketId, setBucketId] = useState("");
   const bucket = buckets.find((b) => b.id === bucketId) ?? null;
   const rows = bucket ? registrants.filter(bucket.test) : registrants;
+  function onRosterSort(key: RosterSortKey) {
+    const next = onSort(key);
+    if (next.key !== sort.key) setOffset(0);
+  }
+
   const messaging = useRosterMessaging({
     webinarId: w.id,
     rows,
@@ -636,15 +683,52 @@ function AttendeesTab({
               <thead>
                 <tr className="border-b border-line text-left text-[11.5px] text-ink-3">
                   {messaging.headerCell}
-                  <th className="py-2 pr-3 font-medium">Name</th>
-                  <th className="py-2 pr-3 font-medium">Company</th>
+                  <SortHeader
+                    label="Name"
+                    active={sort.key === "name"}
+                    dir={sort.dir}
+                    hintDir={ROSTER_DEFAULT_DIR.name}
+                    onSort={() => onRosterSort("name")}
+                    className="py-2 pr-3 font-medium"
+                  />
+                  <SortHeader
+                    label="Company"
+                    active={sort.key === "company"}
+                    dir={sort.dir}
+                    hintDir={ROSTER_DEFAULT_DIR.company}
+                    onSort={() => onRosterSort("company")}
+                    className="py-2 pr-3 font-medium"
+                  />
                   {asked.length > 0 && (
                     <th className="py-2 pr-3 font-medium">Answers</th>
                   )}
-                  {ended && <th className="py-2 pr-3 font-medium">Watched</th>}
+                  {ended && (
+                    <SortHeader
+                      label="Watched"
+                      active={sort.key === "watched"}
+                      dir={sort.dir}
+                      hintDir={ROSTER_DEFAULT_DIR.watched}
+                      onSort={() => onRosterSort("watched")}
+                      className="py-2 pr-3 font-medium"
+                    />
+                  )}
                   {whatsappOn && <RosterWhatsAppHeaders />}
-                  <th className="py-2 pr-3 font-medium">Registered</th>
-                  <th className="py-2 font-medium">Status</th>
+                  <SortHeader
+                    label="Registered"
+                    active={sort.key === "registered"}
+                    dir={sort.dir}
+                    hintDir={ROSTER_DEFAULT_DIR.registered}
+                    onSort={() => onRosterSort("registered")}
+                    className="py-2 pr-3 font-medium"
+                  />
+                  <SortHeader
+                    label="Status"
+                    active={sort.key === "status"}
+                    dir={sort.dir}
+                    hintDir={ROSTER_DEFAULT_DIR.status}
+                    onSort={() => onRosterSort("status")}
+                    className="py-2 font-medium"
+                  />
                 </tr>
               </thead>
               <tbody>

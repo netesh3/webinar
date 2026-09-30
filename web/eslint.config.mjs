@@ -28,8 +28,9 @@ const eslintConfig = defineConfig([
     },
   },
   /* And the other way: the CRM may use the shared kit (components/ui, controls, icons,
-   * providers, date-picker; lib/*) but not a webinar screen. A CRM view that needs something
-   * a webinar screen has gets it moved into the kit, or asks the API. */
+   * providers, date-picker, sort-header; lib/*) but not a webinar screen. A CRM view that
+   * needs something a webinar screen has gets it moved into the kit, or asks the API.
+   * sort-header is the shared column control, not a screen. */
   {
     files: ["engage/**/*.{ts,tsx}"],
     rules: {
@@ -39,9 +40,9 @@ const eslintConfig = defineConfig([
           patterns: [
             {
               regex:
-                "^@/components/(?!(ui|controls|icons|providers|date-picker)$)",
+                "^@/components/(?!(ui|controls|icons|providers|date-picker|sort-header)$)",
               message:
-                "The CRM uses the shared UI kit only (ui, controls, icons, providers, date-picker), not webinar screens.",
+                "The CRM uses the shared UI kit only (ui, controls, icons, providers, date-picker, sort-header), not webinar screens.",
             },
             { regex: "^@/app/", message: "The CRM does not import app routes." },
           ],

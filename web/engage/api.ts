@@ -365,8 +365,17 @@ export const engageApi = {
   // ------------------------------------------------------------- engage v1
 
   /** The Hosting page's People tab. `filter` is one of the People* values. */
-  crmPeople: (opts: { webinarId?: string; filter?: string; q?: string; offset?: number; limit?: number } = {}) =>
-    request<CRMPeopleResponse>(`/api/host/crm/people${peopleQuery(opts)}`, fresh),
+  crmPeople: (
+    opts: {
+      webinarId?: string;
+      filter?: string;
+      q?: string;
+      offset?: number;
+      limit?: number;
+      sort?: string;
+      order?: "asc" | "desc";
+    } = {},
+  ) => request<CRMPeopleResponse>(`/api/host/crm/people${peopleQuery(opts)}`, fresh),
 
   /** The Audience tab: engagement across webinars, from the stored rollup. */
   crmAudienceSummary: (last = 6) =>
@@ -501,6 +510,8 @@ function peopleQuery(opts: {
   q?: string;
   offset?: number;
   limit?: number;
+  sort?: string;
+  order?: "asc" | "desc";
 }) {
   const params = new URLSearchParams();
   if (opts.webinarId) params.set("webinarId", opts.webinarId);
@@ -508,6 +519,10 @@ function peopleQuery(opts: {
   if (opts.q?.trim()) params.set("q", opts.q.trim());
   if (opts.offset) params.set("offset", String(opts.offset));
   if (opts.limit) params.set("limit", String(opts.limit));
+  if (opts.sort) {
+    params.set("sort", opts.sort);
+    if (opts.order) params.set("order", opts.order);
+  }
   const q = params.toString();
   return q ? `?${q}` : "";
 }

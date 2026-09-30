@@ -5,7 +5,9 @@ import { api } from "@/lib/api";
 import type { RegistrantRow, RegistrationState } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { useToast } from "./providers";
+import { SortHeader, useSort } from "./sort-header";
 import { Button, Card, SectionTitle } from "./ui";
+import { sortBy, type SortValue } from "@/lib/table-sort";
 import { Spinner } from "./controls";
 import { formatRelative } from "@/lib/format";
 import { useNow } from "@/lib/clock";
@@ -38,6 +40,9 @@ export function ApprovalQueue({
   onChanged: () => Promise<void> | void;
 }) {
   const { notify } = useToast();
+  const { sort, onSort } = useSort<"name" | "email" | "registered">({
+    defaultDir: { name: "asc", email: "asc", registered: "asc" },
+  });
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<null | "batch" | string>(null);
   // null until hydration, so the server and the browser render the same relative times.
@@ -120,6 +125,17 @@ export function ApprovalQueue({
 
   if (pending.length === 0) return null;
 
+  const sortKey = sort.key;
+  const rows = sortKey
+    ? sortBy(
+        pending,
+        sort.dir,
+        (row): SortValue =>
+          sortKey === "email" ? row.email : sortKey === "registered" ? row.createdAt : row.name,
+        sortKey === "registered" ? "date" : "string",
+      )
+    : pending;
+
   return (
     <Card className="p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -166,22 +182,37 @@ export function ApprovalQueue({
                   aria-label={allChosen ? "Deselect all" : "Select all"}
                 />
               </th>
-              <th scope="col" className="py-2 font-medium">
-                Name
-              </th>
-              <th scope="col" className="py-2 font-medium">
-                Email
-              </th>
-              <th scope="col" className="hidden py-2 font-medium sm:table-cell">
-                Registered
-              </th>
+              <SortHeader
+                label="Name"
+                active={sort.key === "name"}
+                dir={sort.dir}
+                hintDir="asc"
+                onSort={() => onSort("name")}
+                className="py-2 font-medium"
+              />
+              <SortHeader
+                label="Email"
+                active={sort.key === "email"}
+                dir={sort.dir}
+                hintDir="asc"
+                onSort={() => onSort("email")}
+                className="py-2 font-medium"
+              />
+              <SortHeader
+                label="Registered"
+                active={sort.key === "registered"}
+                dir={sort.dir}
+                hintDir="asc"
+                onSort={() => onSort("registered")}
+                className="hidden py-2 font-medium sm:table-cell"
+              />
               <th scope="col" className="py-2 pr-1 text-right font-medium">
                 Action
               </th>
             </tr>
           </thead>
           <tbody>
-            {pending.map((r) => {
+            {rows.map((r) => {
               const picked = live.includes(r.id);
               return (
                 <tr
