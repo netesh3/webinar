@@ -127,7 +127,7 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
       <div
-        className="absolute inset-0 bg-ink/45 backdrop-blur-sm"
+        className="absolute inset-0 bg-scrim/45 backdrop-blur-sm"
         aria-hidden
       />
       <div
@@ -214,7 +214,7 @@ export function ConfirmModal({
           <button
             onClick={onConfirm}
             disabled={busy}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-live px-3.5 text-[13px] font-medium text-white hover:bg-live/90 disabled:opacity-50"
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-live px-3.5 text-[13px] font-medium text-on-live hover:bg-live/90 disabled:opacity-50"
           >
             {busy && <Spinner className="size-3.5" />}
             {confirmLabel}

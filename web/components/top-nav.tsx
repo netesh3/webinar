@@ -8,6 +8,7 @@ import { CloseIcon, MenuIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { AccountAvatar } from "./account-avatar";
+import { ThemeToggle } from "./theme";
 import { ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 import { MessagesNavButton } from "@/engage";
@@ -110,6 +111,8 @@ export function TopNav() {
         </nav>
 
         <div className="flex-1" />
+
+        <ThemeToggle />
 
         {status === "loading" ? (
           <span className="size-7 animate-pulse rounded-full bg-surface-2" />

@@ -19,6 +19,7 @@ import {
   isDevAuthBypassActive,
   setDevBypassOptedOut,
 } from "@/lib/dev-bypass-session";
+import { ThemeProvider } from "./theme";
 
 /* App-wide client state: who is signed in, what the operator named this
  * instance, and transient toasts.
@@ -423,8 +424,10 @@ export function AppProviders({
       <ConfigStatusContext.Provider value={configStatus}>
         <SessionContext.Provider value={session}>
           <ToastContext.Provider value={toastValue}>
-            {children}
-            <ToastViewport />
+            <ThemeProvider>
+              {children}
+              <ToastViewport />
+            </ThemeProvider>
           </ToastContext.Provider>
         </SessionContext.Provider>
       </ConfigStatusContext.Provider>
