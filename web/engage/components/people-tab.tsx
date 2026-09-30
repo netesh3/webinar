@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { engageApi } from "../api";
 import { Spinner } from "@/components/controls";
 import { ChevronDownIcon, SearchIcon, SendIcon } from "@/components/icons";
+import { SortHeader, useSort } from "@/components/sort-header";
 import { Button, Card, Empty, ListPager } from "@/components/ui";
 import { dropCache, readCache, TTL_LIST, writeCache } from "@/lib/http";
 import {
@@ -54,8 +55,31 @@ const FILTERS: { id: string; label: string; count: (c: CRMPeopleCounts) => numbe
 
 const PAGE = 25;
 
-function peopleKey(webinar: string, filter: string, query: string, offset: number) {
-  return `crm-people:${webinar}:${filter}:${query}:${offset}`;
+const PEOPLE_DEFAULT_DIR = {
+  name: "asc",
+  attendance: "desc",
+  engagement: "desc",
+  last: "desc",
+} as const;
+
+type PeopleSortKey = keyof typeof PEOPLE_DEFAULT_DIR;
+
+/** Engagement and last webinar are hidden once the list is one webinar. */
+function visiblePeopleSort(key: PeopleSortKey | null, scoped: boolean): PeopleSortKey | null {
+  if (!key) return null;
+  if (scoped && (key === "engagement" || key === "last")) return null;
+  return key;
+}
+
+function peopleKey(
+  webinar: string,
+  filter: string,
+  query: string,
+  offset: number,
+  sort: string,
+  order: string,
+) {
+  return `crm-people:${webinar}:${filter}:${query}:${offset}:${sort}:${order}`;
 }
 
 export function HostPeopleTab({
@@ -73,10 +97,13 @@ export function HostPeopleTab({
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
+  const { sort, onSort } = useSort<PeopleSortKey>({ defaultDir: PEOPLE_DEFAULT_DIR });
+  const activeSort = visiblePeopleSort(sort.key, Boolean(webinar));
+  const sortOrder = activeSort ? sort.dir : "";
   const [data, setData] = useState<CRMPeopleResponse | null>(
     () =>
       readCache<CRMPeopleResponse>(
-        peopleKey(initialWebinar, initialFilter, "", 0),
+        peopleKey(initialWebinar, initialFilter, "", 0, "", ""),
         TTL_LIST,
       )?.value ?? null,
   );
@@ -84,7 +111,7 @@ export function HostPeopleTab({
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState<SendTarget | null>(null);
   const [opening, setOpening] = useState(false);
-  const listKey = peopleKey(webinar, filter, query, offset);
+  const listKey = peopleKey(webinar, filter, query, offset, activeSort ?? "", sortOrder);
   const [seenPeople, setSeenPeople] = useState(listKey);
   if (listKey !== seenPeople) {
     setSeenPeople(listKey);
@@ -110,11 +137,19 @@ export function HostPeopleTab({
   }
 
   useEffect(() => {
-    const key = peopleKey(webinar, filter, query, offset);
+    const key = peopleKey(webinar, filter, query, offset, activeSort ?? "", sortOrder);
     if (readCache<CRMPeopleResponse>(key, TTL_LIST)?.fresh) return;
     let cancelled = false;
     engageApi
-      .crmPeople({ webinarId: webinar, filter, q: query, offset, limit: PAGE })
+      .crmPeople({
+        webinarId: webinar,
+        filter,
+        q: query,
+        offset,
+        limit: PAGE,
+        sort: activeSort ?? undefined,
+        order: activeSort ? sort.dir : undefined,
+      })
       .then((res) => {
         if (cancelled) return;
         const emptyPage = offset > 0 && (res.people?.length ?? 0) === 0;
@@ -129,7 +164,7 @@ export function HostPeopleTab({
     return () => {
       cancelled = true;
     };
-  }, [webinar, filter, query, offset]);
+  }, [webinar, filter, query, offset, activeSort, sort.dir, sortOrder]);
 
   if (error && !data) return <Empty title={error} />;
   if (!data)
@@ -176,6 +211,12 @@ export function HostPeopleTab({
       webinarId: webinar || undefined,
       label: displayName(p),
     });
+  }
+
+  function onPeopleSort(key: PeopleSortKey) {
+    const next = onSort(key);
+    const nextVisible = visiblePeopleSort(next.key, Boolean(webinar));
+    if (nextVisible !== activeSort) setOffset(0);
   }
 
   function toggle(id: string) {
@@ -345,7 +386,10 @@ export function HostPeopleTab({
           )
         ) : (
           <>
-            <div className="hidden items-center gap-3 border-b border-line px-4 py-2 text-[11.5px] text-ink-3 sm:flex">
+            <div
+              role="row"
+              className="hidden items-center gap-3 border-b border-line px-4 py-2 text-[11.5px] text-ink-3 sm:flex"
+            >
               {canMessage && (
                 <input
                   type="checkbox"
@@ -364,10 +408,46 @@ export function HostPeopleTab({
                   }
                 />
               )}
-              <span className="flex-1">Person</span>
-              <span className="w-44">{webinar ? "At this webinar" : "Attendance"}</span>
-              {!webinar && <span className="hidden w-36 lg:block">Engagement</span>}
-              {!webinar && <span className="hidden w-56 md:block">Last webinar</span>}
+              <SortHeader
+                as="columnheader"
+                label="Person"
+                active={activeSort === "name"}
+                dir={sort.dir}
+                hintDir={PEOPLE_DEFAULT_DIR.name}
+                onSort={() => onPeopleSort("name")}
+                className="min-w-0 flex-1"
+              />
+              <SortHeader
+                as="columnheader"
+                label={webinar ? "At this webinar" : "Attendance"}
+                active={activeSort === "attendance"}
+                dir={sort.dir}
+                hintDir={PEOPLE_DEFAULT_DIR.attendance}
+                onSort={() => onPeopleSort("attendance")}
+                className="w-44"
+              />
+              {!webinar && (
+                <SortHeader
+                  as="columnheader"
+                  label="Engagement"
+                  active={activeSort === "engagement"}
+                  dir={sort.dir}
+                  hintDir={PEOPLE_DEFAULT_DIR.engagement}
+                  onSort={() => onPeopleSort("engagement")}
+                  className="hidden w-36 lg:block"
+                />
+              )}
+              {!webinar && (
+                <SortHeader
+                  as="columnheader"
+                  label="Last webinar"
+                  active={activeSort === "last"}
+                  dir={sort.dir}
+                  hintDir={PEOPLE_DEFAULT_DIR.last}
+                  onSort={() => onPeopleSort("last")}
+                  className="hidden w-56 md:block"
+                />
+              )}
               {canMessage && <span className="w-24" />}
             </div>
             <ul className="divide-y divide-line">

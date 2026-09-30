@@ -1704,7 +1704,25 @@ func (s *Server) handleHostRegistrants(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
-	page, err := s.store.RegistrantPage(r.Context(), slug, limit, offset)
+	sortKey := strings.TrimSpace(r.URL.Query().Get("sort"))
+	order := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("order")))
+	desc := false
+	if sortKey != "" {
+		switch order {
+		case "", "asc":
+		case "desc":
+			desc = true
+		default:
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_order", "order must be asc or desc.")
+			return
+		}
+	}
+	page, err := s.store.RegistrantPage(r.Context(), slug, limit, offset, sortKey, desc)
+	if errors.Is(err, store.ErrInvalid) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_sort",
+			"Sort by name, company, watched, registered, or status.")
+		return
+	}
 	if err != nil {
 		s.fail(w, r, "registrants", err)
 		return

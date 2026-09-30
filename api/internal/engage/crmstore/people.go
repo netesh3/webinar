@@ -37,7 +37,8 @@ WITH reg AS (
 	       bool_or(joined) AS attended,
 	       sum(watch_min)::int AS watch_min,
 	       (array_agg(topic ORDER BY starts_at DESC NULLS LAST))[1] AS last_topic,
-	       (array_agg(slug ORDER BY starts_at DESC NULLS LAST))[1] AS last_slug
+	       (array_agg(slug ORDER BY starts_at DESC NULLS LAST))[1] AS last_slug,
+	       (array_agg(starts_at ORDER BY starts_at DESC NULLS LAST))[1] AS last_starts
 	  FROM reg GROUP BY contact_id
 )`
 
@@ -90,6 +91,10 @@ type PeopleFilter struct {
 	Query       string
 	Limit       int
 	Offset      int
+	// Sort is a whitelist key (name, attendance, engagement, last). Empty keeps
+	// the default order. Order is asc or desc.
+	Sort  string
+	Order string
 }
 
 const peoplePageMax = 100
@@ -107,6 +112,10 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 	}
 	offset := max(f.Offset, 0)
 	slug := strings.TrimSpace(f.WebinarSlug)
+	orderBy, err := PeopleOrderSQL(f.Sort, f.Order, slug != "")
+	if err != nil {
+		return out, err
+	}
 	q := strings.TrimSpace(f.Query)
 
 	with := peopleWith()
@@ -157,7 +166,7 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		        ORDER BY created_at DESC, id DESC LIMIT 1
 		  ) m ON true
 		 WHERE c.host_id = $1::uuid`+peopleScope+pred+search+`
-		 ORDER BY coalesce(c.last_seen_at, c.created_at) DESC, c.id DESC
+		 ORDER BY `+orderBy+`
 		 LIMIT $4 OFFSET $5`, hostID, slug, q, limit, offset)
 	if err != nil {
 		return out, err

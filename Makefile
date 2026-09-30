@@ -203,6 +203,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/host-tabs.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/engagement/tab.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/engagement/folds.test.mts
+	# And table header sorting: numbers and dates must not sort as text, empty
+	# cells stay last, and a third click returns to the list's own order.
+	cd web && node --experimental-strip-types --no-warnings lib/table-sort.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

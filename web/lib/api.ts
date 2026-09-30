@@ -667,10 +667,17 @@ export const api = {
 
   // ------------------------------------------------------------ registrants
 
-  hostRegistrants: (slug: string, page: { limit?: number; offset?: number } = {}) => {
+  hostRegistrants: (
+    slug: string,
+    page: { limit?: number; offset?: number; sort?: string; order?: "asc" | "desc" } = {},
+  ) => {
     const qs = new URLSearchParams();
     if (page.limit) qs.set("limit", String(page.limit));
     if (page.offset) qs.set("offset", String(page.offset));
+    if (page.sort) {
+      qs.set("sort", page.sort);
+      if (page.order) qs.set("order", page.order);
+    }
     const s = qs.toString();
     return request<RegistrantPage>(
       `/api/host/webinars/${seg(slug)}/registrants${s ? `?${s}` : ""}`,
