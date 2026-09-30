@@ -191,13 +191,26 @@ function HostCard({
   const waitReasonId = useId();
   const roomHref = bypass ? "/preview/room" : `/host/${w.id}/room`;
   const registerUrl = `${origin}/webinars/${w.id}`;
+  /* Upcoming (including a live session) opens the schedule. A draft opens setup,
+   * the same place as Finish setup. Panelist rows stay a title link only. */
+  const rowHref = readOnly
+    ? `/webinars/${w.id}`
+    : isDraft
+      ? `/host/${w.id}/edit`
+      : `/host/${w.id}`;
   const scheduled = !isDraft && !isEnded && !isLive;
   const liveOpen = isLive || (scheduled && canGoLive(w.startsAt, now));
   const showWait = !readOnly && scheduled && now != null && !canGoLive(w.startsAt, now);
   const waitReason = goLiveWaitReason(w.startsAt, w.timeZone);
 
   return (
-    <Card className="p-4 sm:p-5">
+    <Card
+      className={
+        readOnly
+          ? "p-4 sm:p-5"
+          : "group relative cursor-pointer p-4 transition-colors hover:border-line-2 hover:bg-surface-2/40 sm:p-5"
+      }
+    >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
@@ -222,9 +235,15 @@ function HostCard({
           </div>
 
           <h3 className="text-[15px] font-semibold tracking-[-0.01em]">
+            {/* Stretched over the card so anywhere on it opens the row. Buttons
+                sit above it (z-10) and keep their own clicks. */}
             <Link
-              href={readOnly ? `/webinars/${w.id}` : `/host/${w.id}`}
-              className="hover:text-brand"
+              href={rowHref}
+              className={
+                readOnly
+                  ? "hover:text-brand"
+                  : "outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] group-hover:text-brand focus-visible:after:ring-2 focus-visible:after:ring-brand/40"
+              }
             >
               {w.topic}
             </Link>
@@ -255,8 +274,12 @@ function HostCard({
           </p>
         </div>
 
-        {/* Primary actions — Go live / Share / Manage / Attendees (or Admit). */}
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
+        {/* Primary actions — Go live / Share. Manage is the row itself. */}
+        <div
+          className={`flex shrink-0 flex-col items-end gap-1.5 ${
+            readOnly ? "" : "pointer-events-none relative z-10"
+          }`}
+        >
           <div className="flex flex-wrap items-center justify-end gap-2">
           {readOnly ? (
             <ButtonLink
@@ -268,7 +291,7 @@ function HostCard({
               Join stage
             </ButtonLink>
           ) : isDraft ? (
-            <ButtonLink href={`/host/${w.id}/edit`} size="sm">
+            <ButtonLink href={`/host/${w.id}/edit`} size="sm" className="pointer-events-auto">
               Finish setup
             </ButtonLink>
           ) : (
@@ -276,6 +299,7 @@ function HostCard({
               <Button
                 variant="secondary"
                 size="sm"
+                className="pointer-events-auto"
                 onClick={() =>
                   void navigator.clipboard
                     .writeText(registerUrl)
@@ -288,6 +312,7 @@ function HostCard({
               {scheduled && (
                 <Button
                   size="sm"
+                  className="pointer-events-auto"
                   onClick={onStart}
                   disabled={busy || !liveOpen}
                   aria-describedby={showWait ? waitReasonId : undefined}
@@ -295,41 +320,45 @@ function HostCard({
                   {busy ? "Starting…" : "Go live"}
                 </Button>
               )}
-              {isLive ? (
-                <ButtonLink href={roomHref} size="sm" target="_blank" rel="noopener noreferrer">
+              {isLive && (
+                <ButtonLink
+                  href={roomHref}
+                  size="sm"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pointer-events-auto"
+                >
                   Rejoin
-                </ButtonLink>
-              ) : (
-                <ButtonLink href={`/host/${w.id}`} size="sm" variant="secondary">
-                  Manage
                 </ButtonLink>
               )}
             </>
           )}
           {!readOnly && (
-            <Menu
-              label={`More for ${w.topic}`}
-              trigger={
-                <span className="grid size-8 place-items-center rounded-lg text-[17px] text-ink-2 hover:bg-surface-2">
-                  ⋯
-                </span>
-              }
-              items={[
-                ...(!isDraft
-                  ? [
-                      ...(isLive
-                        ? [{ kind: "action" as const, label: "Manage", onSelect: () => router.push(`/host/${w.id}`) }]
-                        : []),
-                      ...(needsAdmit
-                        ? [{ kind: "action" as const, label: "Admit people", onSelect: () => router.push(`/host/${w.id}?tab=people`) }]
-                        : []),
-                      { kind: "action" as const, label: "Edit", onSelect: () => router.push(`/host/${w.id}/edit`) },
-                      { kind: "separator" as const },
-                    ]
-                  : []),
-                { kind: "action" as const, label: "Delete", danger: true, onSelect: onDelete },
-              ]}
-            />
+            <div className="pointer-events-auto">
+              <Menu
+                label={`More for ${w.topic}`}
+                trigger={
+                  <span className="grid size-8 place-items-center rounded-lg text-[17px] text-ink-2 hover:bg-surface-2">
+                    ⋯
+                  </span>
+                }
+                items={[
+                  ...(!isDraft
+                    ? [
+                        ...(isLive
+                          ? [{ kind: "action" as const, label: "Manage", onSelect: () => router.push(`/host/${w.id}`) }]
+                          : []),
+                        ...(needsAdmit
+                          ? [{ kind: "action" as const, label: "Admit people", onSelect: () => router.push(`/host/${w.id}?tab=people`) }]
+                          : []),
+                        { kind: "action" as const, label: "Edit", onSelect: () => router.push(`/host/${w.id}/edit`) },
+                        { kind: "separator" as const },
+                      ]
+                    : []),
+                  { kind: "action" as const, label: "Delete", danger: true, onSelect: onDelete },
+                ]}
+              />
+            </div>
           )}
           </div>
           {showWait && (

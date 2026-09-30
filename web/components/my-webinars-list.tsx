@@ -196,7 +196,7 @@ function RegisteredCard({
   };
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="group relative cursor-pointer overflow-hidden transition-colors hover:border-line-2 hover:bg-surface-2/40">
       <TopicStripe webinar={w} />
       <div className="flex flex-col gap-4 p-4 sm:flex-row">
         <div className="min-w-0 flex-1">
@@ -220,7 +220,13 @@ function RegisteredCard({
           </div>
 
           <h3 className="text-[15px] leading-snug font-semibold">
-            <Link href={`/webinars/${w.id}`} className="hover:text-brand">
+            {/* Stretched over the card. The attendee page is the row; Join,
+                calendar, and Forget sit above it and keep their own clicks.
+                ring-inset: the card clips overflow for the colour stripe. */}
+            <Link
+              href={`/webinars/${w.id}`}
+              className="outline-none after:absolute after:inset-0 after:content-[''] group-hover:text-brand focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-brand/40"
+            >
               {w.topic}
             </Link>
           </h3>
@@ -245,13 +251,14 @@ function RegisteredCard({
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col justify-center gap-2 sm:w-[180px]">
+        <div className="pointer-events-none relative z-10 flex shrink-0 flex-col justify-center gap-2 sm:w-[180px]">
           {joinable && (
             <ButtonLink
               href={`/webinars/${w.id}/room`}
               size="sm"
               target="_blank"
               rel="noopener noreferrer"
+              className="pointer-events-auto"
             >
               {live ? "Join now" : "Join the webinar"}
             </ButtonLink>
@@ -277,7 +284,7 @@ function RegisteredCard({
                 rel="noopener noreferrer"
                 variant="secondary"
                 size="sm"
-                className="px-2"
+                className="pointer-events-auto px-2"
               >
                 <CalendarIcon className="size-3.5" />
                 Google
@@ -285,7 +292,7 @@ function RegisteredCard({
               <Button
                 variant="secondary"
                 size="sm"
-                className="px-2"
+                className="pointer-events-auto px-2"
                 onClick={() =>
                   downloadIcs(event, `${w.id}-${r.joinKey}`, `${w.id}.ics`)
                 }
@@ -302,8 +309,9 @@ function RegisteredCard({
           )}
 
           <button
+            type="button"
             onClick={onForget}
-            className="text-[11.5px] text-ink-3 hover:text-live hover:underline"
+            className="pointer-events-auto text-[11.5px] text-ink-3 hover:text-live hover:underline"
           >
             Forget on this device
           </button>
