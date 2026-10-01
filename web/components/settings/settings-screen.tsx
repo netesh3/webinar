@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { MaterialIcon } from "../icons";
 import { Spinner } from "../controls";
@@ -21,10 +20,10 @@ function isSection(value: string): value is Section {
 }
 
 /** Settings: profile, appearance, integrations, and the account itself.
- *  The left nav is the only way between them. Sign out lives there too. */
+ *  The tabs along the top are the only way between them. Sign out is in the
+ *  account menu at the top right. */
 export function SettingsScreen() {
-  const router = useRouter();
-  const { account, status, signOut } = useSession();
+  const { account, status } = useSession();
   const { appName } = useAppConfig();
   const [section, setSection] = useState<Section>("profile");
   const [cards, setCards] = useState<IntegrationCard[] | null>(null);
@@ -148,18 +147,6 @@ export function SettingsScreen() {
             </button>
           );
         })}
-        <button
-          type="button"
-          data-tour="settings-sign-out"
-          onClick={async () => {
-            await signOut();
-            router.push("/");
-          }}
-          className="-mb-px inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-[13.5px] text-ink-2 hover:text-ink"
-        >
-          <MaterialIcon name="logout" className="!text-[18px] text-ink-3" />
-          Sign out
-        </button>
       </nav>
 
       <div className="mt-5">
