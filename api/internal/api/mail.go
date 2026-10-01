@@ -50,10 +50,14 @@ func (s *Server) enqueueApprovedInvite(
 	var subject, body string
 	switch kind {
 	case types.NotifyRegistrationConfirmed:
-		subject, body = notify.RegistrationConfirmed(in)
+		subject, body = s.registrantMail(ctx, wb.Host.ID, notify.TplRegistrationConfirmed, in, "", func() (string, string) {
+			return notify.RegistrationConfirmed(in)
+		})
 	default:
 		kind = types.NotifyRegistrationApproved
-		subject, body = notify.RegistrationApproved(in)
+		subject, body = s.registrantMail(ctx, wb.Host.ID, notify.TplRegistrationApproved, in, "", func() (string, string) {
+			return notify.RegistrationApproved(in)
+		})
 	}
 
 	starts, _ := time.Parse(time.RFC3339, wb.StartsAt)
@@ -118,7 +122,10 @@ func (s *Server) enqueueReminders(
 			// Its time already passed (the webinar is soon). No "in 24 hours" mail at T-10m.
 			continue
 		}
-		subject, body := notify.Reminder(in, notify.StartsIn(offset))
+		window := notify.StartsIn(offset)
+		subject, body := s.registrantMail(ctx, wb.Host.ID, notify.TplReminder, in, window, func() (string, string) {
+			return notify.Reminder(in, window)
+		})
 		if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
 			Email:          email,
 			Kind:           types.NotifyReminder,
@@ -346,9 +353,13 @@ func (s *Server) syncPanelistMail(ctx context.Context, wb types.Webinar, prevSta
 			if prev, err := time.Parse(time.RFC3339, prevStartsAt); err == nil {
 				in.WasText = notify.EventStart(prev, wb.TimeZone)
 			}
-			subject, text, html = notify.PanelistRescheduled(in)
+			subject, text, html = s.panelistMail(ctx, wb.Host.ID, notify.TplPanelistRescheduled, in, func() (string, string, string) {
+				return notify.PanelistRescheduled(in)
+			})
 		} else {
-			subject, text, html = notify.PanelistInvited(in)
+			subject, text, html = s.panelistMail(ctx, wb.Host.ID, notify.TplPanelistInvited, in, func() (string, string, string) {
+				return notify.PanelistInvited(in)
+			})
 		}
 		if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
 			Email:       email,
@@ -393,7 +404,10 @@ func (s *Server) panelistCancellations(ctx context.Context, slug string) []store
 			continue
 		}
 		ics := s.panelistICS(ctx, wb, p, true)
-		subject, text, html := notify.PanelistCancelled(s.panelistInvite(wb, p, ics != ""))
+		in := s.panelistInvite(wb, p, ics != "")
+		subject, text, html := s.panelistMail(ctx, wb.Host.ID, notify.TplPanelistCancelled, in, func() (string, string, string) {
+			return notify.PanelistCancelled(in)
+		})
 		out = append(out, store.Notification{
 			Email: email, Kind: types.NotifyPanelistCancelled, Subject: subject, Body: text,
 			HTML: html, ICS: ics,
