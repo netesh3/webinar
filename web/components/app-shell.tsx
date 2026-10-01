@@ -11,10 +11,16 @@ import {
   type ReactNode,
 } from "react";
 import { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, useReplies } from "@/engage";
+import { ApiError, api } from "@/lib/api";
+import {
+  IntegrationActionNavigate,
+  IntegrationStatusConnected,
+  type IntegrationCard,
+} from "@/lib/api-types";
 import { toggleSidebar } from "@/lib/sidebar";
 import { AccountAvatar } from "./account-avatar";
 import { HostAlerts } from "./host-alerts";
-import { CalendarIcon, MenuIcon, SettingsIcon, UsersIcon } from "./icons";
+import { CalendarIcon, MaterialIcon, MenuIcon, SettingsIcon, UsersIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
 import { useTheme } from "./theme";
 
@@ -142,15 +148,109 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Pages the sidebar already opens. Anything else connected goes to Settings. */
+const HOST_INTEGRATION: Record<string, { href: string; label: string }> = {
+  whatsapp: { href: ENGAGE_HOME, label: "WhatsApp" },
+  email: { href: "/host/email", label: "Email" },
+};
+
+type SidebarIntegration = {
+  id: string;
+  href: string;
+  label: string;
+  icon: ReactNode;
+};
+
+/* Settings cards have one section anchor, #integrations, and no per-card id.
+ * A connected app with no host page lands there. A card with neither an icon
+ * (mark or text) nor any destination is left out of the list. */
+function knownIcon(id: string): ReactNode | null {
+  if (id === "whatsapp") return <WhatsAppGlyph />;
+  if (id === "email") return <MailGlyph />;
+  return null;
+}
+
+function sidebarIntegration(card: IntegrationCard): SidebarIntegration | null {
+  const known = HOST_INTEGRATION[card.id];
+  const icon = known ? knownIcon(card.id) : integrationIcon(card);
+  const href = known?.href ?? hostPage(card) ?? (icon ? "/settings#integrations" : null);
+  if (!href || !icon) return null;
+  return { id: card.id, href, label: known?.label ?? card.name, icon };
+}
+
+function hostPage(card: IntegrationCard): string | null {
+  for (const action of card.actions ?? []) {
+    if (action.kind !== IntegrationActionNavigate || !action.href?.startsWith("/host")) continue;
+    return action.href;
+  }
+  return null;
+}
+
+function integrationIcon(card: IntegrationCard): ReactNode | null {
+  if (card.mark) {
+    return <MaterialIcon name={card.mark} fill className="size-[18px]" />;
+  }
+  if (card.text) return <span className="sb-int-mark">{card.text}</span>;
+  return null;
+}
+
+function integrationActive(
+  row: SidebarIntegration,
+  pathname: string,
+  onWhatsApp: boolean,
+  onEmail: boolean,
+): boolean {
+  if (row.id === "whatsapp") return onWhatsApp;
+  if (row.id === "email") return onEmail;
+  if (row.href.startsWith("/settings")) return false;
+  const path = row.href.split("?")[0] ?? row.href;
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
+function connectedName(label: string, badge?: string): string {
+  return badge ? `${label}, Connected, ${badge} unread` : `${label}, Connected`;
+}
+
 function PrimaryNav() {
   const pathname = usePathname();
   const replies = useReplies();
   const { account, status } = useSession();
   const unread = replies?.needsReply ?? 0;
-  const connected =
-    status === "loading" ? null : account?.whatsapp ? 1 : 0;
   const chrome = useChrome();
   const [open, setOpen] = useState(true);
+  const [slot, setSlot] = useState<{ id: string; cards: IntegrationCard[] } | null>(null);
+
+  /* Same list Settings uses for the Connected badge and the "N on" count:
+   * GET /api/host/integrations, status === "connected". Session cache, so a
+   * settings reload is what the sidebar reads next. */
+  useEffect(() => {
+    if (status !== "signed-in" || !account) return;
+    const id = account.id;
+    let cancelled = false;
+    api
+      .hostIntegrations()
+      .then((res) => {
+        if (!cancelled) setSlot({ id, cards: res.integrations ?? [] });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          setSlot(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status, account]);
+
+  const cards =
+    status === "signed-in" && account && slot?.id === account.id ? slot.cards : null;
+  const rows = (cards ?? []).flatMap((card) => {
+    if (card.status !== IntegrationStatusConnected) return [];
+    const row = sidebarIntegration(card);
+    return row ? [row] : [];
+  });
+  const connected = cards === null ? null : rows.length;
 
   const onPeople =
     pathname === "/host/audience" || pathname.startsWith("/host/audience/");
@@ -160,10 +260,16 @@ function PrimaryNav() {
     pathname === MESSAGES_HREF ||
     pathname.startsWith(`${MESSAGES_HREF}/`);
   const onEmail = pathname === "/host/email" || pathname.startsWith("/host/email/");
+  const onListedHost = rows.some((row) => {
+    if (row.id === "whatsapp" || row.id === "email" || row.href.startsWith("/settings")) return false;
+    const path = row.href.split("?")[0] ?? row.href;
+    return pathname === path || pathname.startsWith(`${path}/`);
+  });
   const onWebinars =
     !onPeople &&
     !onWhatsApp &&
     !onEmail &&
+    !onListedHost &&
     pathname !== "/host/login" &&
     (pathname === "/host" || pathname.startsWith("/host/"));
 
@@ -212,15 +318,27 @@ function PrimaryNav() {
       <div className={open ? "sb-tree-wrap" : "sb-tree-wrap shut"} id="int-tree">
         <div className="sb-tree">
           <div className="sb-tree-in">
-            <Item
-              href={ENGAGE_HOME}
-              label="WhatsApp"
-              active={onWhatsApp}
-              icon={<WhatsAppGlyph />}
-              badge={unread > 0 ? (unread > 99 ? "99+" : String(unread)) : undefined}
-              fly={whatsAppFly}
-            />
-            <Item href="/host/email" label="Email" active={onEmail} icon={<MailGlyph />} />
+            {rows.map((row) => {
+              const badge =
+                row.id === "whatsapp" && unread > 0
+                  ? unread > 99
+                    ? "99+"
+                    : String(unread)
+                  : undefined;
+              return (
+                <Item
+                  key={row.id}
+                  href={row.href}
+                  label={row.label}
+                  active={integrationActive(row, pathname, onWhatsApp, onEmail)}
+                  icon={row.icon}
+                  live
+                  badge={badge}
+                  fly={row.id === "whatsapp" ? whatsAppFly : undefined}
+                  ariaLabel={connectedName(row.label, badge)}
+                />
+              );
+            })}
             <Link href="/settings#integrations" className="sb-int-add" onClick={closeDrawer}>
               + Add integration
             </Link>
@@ -247,6 +365,7 @@ function Item({
   badge,
   fly,
   ariaLabel,
+  live,
 }: {
   href: string;
   label: string;
@@ -256,6 +375,8 @@ function Item({
   fly?: ReactNode;
   /** Kept when the visible label is hidden on the collapsed rail. */
   ariaLabel?: string;
+  /** Green live dot. The row name includes "Connected" so it is not color-only. */
+  live?: boolean;
 }) {
   return (
     <Link
@@ -266,7 +387,14 @@ function Item({
       aria-label={ariaLabel}
       onClick={closeDrawer}
     >
-      <span className="sb-ic">{icon}</span>
+      <span className="sb-ic">
+        {icon}
+        {live && (
+          <span className="sb-live" title="Connected">
+            <span className="sr-only">Connected</span>
+          </span>
+        )}
+      </span>
       <span className="sb-lbl">{label}</span>
       {badge && <span className="sb-badge">{badge}</span>}
       <span className="sb-fly">{fly ?? label}</span>
