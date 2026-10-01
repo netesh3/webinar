@@ -233,6 +233,9 @@ type Outbound struct {
 	HTML     string
 	ICS      string
 	Attempts int
+	// InboxLocal is the host's users.inbox_local, empty when that host has no
+	// receiving address yet. The sender turns it into Reply-To.
+	InboxLocal string
 }
 
 /* PendingDeliveries returns notifications with an address that are due now.
@@ -245,7 +248,13 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, email, subject, body, html, ics, attempts
+		SELECT id::text, email, subject, body, html, ics, attempts,
+		       COALESCE((
+		         SELECT u.inbox_local
+		           FROM webinars w
+		           JOIN users u ON u.id = w.host_id
+		          WHERE w.id = notifications.webinar_id
+		       ), '')
 		  FROM notifications
 		 WHERE delivery = 'pending' AND email <> '' AND due_at <= now()
 		   AND (webinar_id IS NULL OR EXISTS (
@@ -273,7 +282,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 	out := []Outbound{}
 	for rows.Next() {
 		var o Outbound
-		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.HTML, &o.ICS, &o.Attempts); err != nil {
+		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.HTML, &o.ICS, &o.Attempts, &o.InboxLocal); err != nil {
 			return nil, err
 		}
 		out = append(out, o)

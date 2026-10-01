@@ -28,6 +28,7 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -44,6 +45,10 @@ type Message struct {
 	// ICS is an optional iCalendar payload. Empty means a plain-text message.
 	ICS     string
 	ICSName string
+	// ReplyTo is an optional Reply-To header. Empty leaves the header off, so a
+	// recipient's reply still goes to From (SMTP_FROM). Set it to the host's
+	// inbox address (see InboxAddress) once that mailbox can actually receive.
+	ReplyTo string
 }
 
 // Transport delivers a message, or explains why it did not.
@@ -150,6 +155,14 @@ func (s SMTP) compose(m Message, now time.Time) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", from)
 	fmt.Fprintf(&b, "To: %s\r\n", header(m.To))
+	// Reply-To is omitted when empty or unparsable. A value that does not parse
+	// as an address is dropped rather than written raw: the field is host-adjacent
+	// data, and a bad value must not become a second header.
+	if reply := header(m.ReplyTo); reply != "" {
+		if a, err := mail.ParseAddress(reply); err == nil {
+			fmt.Fprintf(&b, "Reply-To: %s\r\n", a.String())
+		}
+	}
 	// Q-encoded when it is not plain ASCII: a subject carrying a registrant's name in
 	// Devanagari or an accented Latin name is otherwise raw 8-bit in a header, which
 	// some relays reject and some clients show as mojibake. ASCII is left unchanged.
@@ -220,4 +233,21 @@ func quotedPrintable(s string) string {
 // header strips CR and LF so a value cannot terminate the header block and inject its own.
 func header(v string) string {
 	return strings.NewReplacer("\r", " ", "\n", " ").Replace(strings.TrimSpace(v))
+}
+
+/* InboxAddress is local@webinarliv.com, the per-host address replies should land on.
+ *
+ * Empty, or anything that is not a single dot-atom local part, returns "" so the
+ * message is sent with no Reply-To. The pattern is the same one as users.inbox_local
+ * (migration 0071). The mailbox does not exist until inbound mail is provisioned;
+ * callers only set that column once it does.
+ */
+var inboxLocal = regexp.MustCompile(`^[a-z0-9]([a-z0-9._-]{0,30}[a-z0-9])?$`)
+
+func InboxAddress(local string) string {
+	local = strings.ToLower(strings.TrimSpace(local))
+	if !inboxLocal.MatchString(local) {
+		return ""
+	}
+	return local + "@webinarliv.com"
 }
