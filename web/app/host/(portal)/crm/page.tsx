@@ -3,11 +3,11 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Spinner } from "@/components/controls";
-import { MESSAGES_HREF, PEOPLE_HREF, WhatsAppScreen } from "@/engage";
+import { MESSAGES_HREF, audienceHref, WhatsAppScreen } from "@/engage";
 
 /* The WhatsApp page: Automations, Templates, Number & billing.
  *
- * Audience is a Hosting tab and Messages is /host/messages, so the old Contacts
+ * Audience is /host/audience and Messages is /host/messages, so the old Contacts
  * links — ?webinar=, ?status=, ?view=contacts — land on Audience (with the webinar
  * filter carried over), and ?view=inbox on Messages. Everything else opens here: a
  * plain /host/crm is the WhatsApp page, ?view=setup is Number & billing (Account
@@ -34,11 +34,7 @@ function CRMRoute() {
       return;
     }
     const webinar = (search.get("webinar") ?? "").trim();
-    router.replace(
-      webinar
-        ? `${PEOPLE_HREF}&webinar=${encodeURIComponent(webinar)}`
-        : PEOPLE_HREF,
-    );
+    router.replace(audienceHref(webinar));
   }, [keep, view, search, router]);
 
   if (!keep) return <Loading />;

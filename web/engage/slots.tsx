@@ -25,11 +25,12 @@ import {
   ENGAGE_HOME,
   MESSAGES_HREF,
   PEOPLE_HREF,
+  audienceHref,
   messagesHref,
 } from "./hrefs";
 import { useReplies } from "./components/replies";
 
-export { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, messagesHref };
+export { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, audienceHref, messagesHref };
 
 /* The registration form's WhatsApp consent box.
  *
@@ -120,7 +121,7 @@ export function WhatsAppAccountRow() {
 export function RosterContactsLink({ slug }: { slug: string }) {
   return (
     <ButtonLink
-      href={`${PEOPLE_HREF}&webinar=${encodeURIComponent(slug)}`}
+      href={audienceHref(slug)}
       size="sm"
       variant="secondary"
     >
