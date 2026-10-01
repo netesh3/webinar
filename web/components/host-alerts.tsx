@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
 import type { HostAlert } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
@@ -30,14 +31,14 @@ import { ReplyAlerts, useReplies } from "@/engage";
 
 const POLL_MS = 60_000;
 
-export function HostAlerts() {
+export function HostAlerts({ placement = "bar" }: { placement?: "bar" | "side" }) {
   const [alerts, setAlerts] = useState<HostAlert[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const now = useNow();
   // WhatsApp replies waiting — owned by Engage, shown in this one bell.
   const replies = useReplies();
-  const badge = unread + (replies?.needsReply ?? 0);
+  const badge = unread + (replies?.unread ?? 0);
 
   /* Not an async function, and the state is written inside .then().
    *
@@ -85,6 +86,17 @@ export function HostAlerts() {
    * badge on open means a host who opens it in passing loses the only signal that somebody is
    * still waiting. Marking read is an explicit action.
    */
+  /* Clicking one notification is reading it. The number drops now; the request
+   * persists that, and a failure asks for the list again so a still-unread row
+   * comes back. */
+  function openAlert(a: HostAlert) {
+    setOpen(false);
+    if (!a.unread) return;
+    setAlerts((prev) => prev.map((row) => (row.id === a.id ? { ...row, unread: false } : row)));
+    setUnread((n) => Math.max(0, n - 1));
+    void api.readHostAlerts([a.id]).catch(() => load());
+  }
+
   async function markAllRead() {
     try {
       await api.readHostAlerts();
@@ -101,10 +113,14 @@ export function HostAlerts() {
    * the header strip and clicks on the page never closed the panel. Checking
    * `root.contains` keeps the button's own click from closing and reopening. */
   const root = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [beside, setBeside] = useState<{ left: number; bottom: number } | null>(null);
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (root.current?.contains(target) || panel.current?.contains(target)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -117,34 +133,16 @@ export function HostAlerts() {
     };
   }, [open]);
 
-  return (
-    <div className="relative" ref={root}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="relative grid size-9 place-items-center rounded-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
-        aria-label={
-          badge > 0 ? `Notifications (${badge} unread)` : "Notifications"
-        }
-        aria-expanded={open}
-      >
-        <BellIcon />
-        {badge > 0 && (
-          <span
-            className="absolute top-1 right-1 grid min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] leading-4 font-semibold text-white"
-            // The count is already in the button's aria-label, so the badge itself is
-            // decorative — announcing it twice makes a screen reader read the number and
-            // then read it again.
-            aria-hidden
-          >
-            {badge > 9 ? "9+" : badge}
-          </span>
-        )}
-      </button>
+  function toggle() {
+    if (!open && placement === "side" && root.current) {
+      const rect = root.current.getBoundingClientRect();
+      setBeside({ left: rect.right + 8, bottom: window.innerHeight - rect.bottom });
+    }
+    setOpen((v) => !v);
+  }
 
-      {open && (
-        <>
-          <div className="absolute right-0 z-50 mt-1 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-surface shadow-lg">
+  const body = (
+    <div className="w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-surface shadow-lg">
             <div className="flex items-center justify-between border-b border-line px-3 py-2">
               <span className="text-[12.5px] font-semibold">Notifications</span>
               {unread > 0 && (
@@ -177,7 +175,7 @@ export function HostAlerts() {
                           ? `/host/${a.webinarId}?tab=registrants`
                           : "/host"
                       }
-                      onClick={() => setOpen(false)}
+                      onClick={() => openAlert(a)}
                       className="block px-3 py-2.5 hover:bg-surface-2"
                     >
                       <div className="text-[12.5px] leading-snug font-medium">
@@ -196,9 +194,60 @@ export function HostAlerts() {
                 ))}
               </ul>
             )}
-          </div>
-        </>
-      )}
+    </div>
+  );
+
+  return (
+    <div className={placement === "side" ? "sb-alerts" : "relative"} ref={root}>
+      <button
+        type="button"
+        onClick={toggle}
+        className={
+          placement === "side"
+            ? "text-ink-2"
+            : "relative grid size-9 place-items-center rounded-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
+        }
+        aria-label={
+          badge > 0 ? `Notifications (${badge} unread)` : "Notifications"
+        }
+        aria-expanded={open}
+      >
+        <BellIcon />
+        {placement === "side" && <span className="sb-lbl">Notifications</span>}
+        {badge > 0 && (
+          <span
+            className={
+              placement === "side"
+                ? "sb-badge"
+                : "absolute top-1 right-1 grid min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] leading-4 font-semibold text-white"
+            }
+            // The count is already in the button's aria-label, so the badge itself is
+            // decorative — announcing it twice makes a screen reader read the number and
+            // then read it again.
+            aria-hidden
+          >
+            {badge > 9 ? "9+" : badge}
+          </span>
+        )}
+      </button>
+      {placement === "side" && <span className="sb-fly">Notifications</span>}
+
+      {open && placement === "side" && beside
+        ? createPortal(
+            <div
+              ref={panel}
+              className="fixed z-50"
+              style={{ left: beside.left, bottom: beside.bottom }}
+            >
+              {body}
+            </div>,
+            document.body,
+          )
+        : open && (
+            <div ref={panel} className="absolute right-0 z-50 mt-1">
+              {body}
+            </div>
+          )}
     </div>
   );
 }

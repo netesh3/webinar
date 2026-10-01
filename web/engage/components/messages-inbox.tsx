@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { engageApi } from "../api";
+import { noteThreadRead, refreshReplies } from "./replies";
 import { Alert, Spinner } from "@/components/controls";
 import {
   ArrowLeftIcon,
@@ -17,7 +18,7 @@ import { ApiError } from "@/lib/api";
 import { ListPager } from "@/components/ui";
 import {
   InboxAll,
-  InboxNeedsReply,
+  InboxUnread,
   type CRMContact,
   type CRMInboxThread,
   type CRMMessage,
@@ -39,6 +40,22 @@ import { PersonAvatar, Ticks } from "./wa-kit";
  * returns, so those facts are absent rather than filled in. The thread read is
  * capped, not paged, so there is no Load more.
  */
+
+function useLaidOut(ref: { readonly current: HTMLElement | null }): boolean {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setShown(el.getClientRects().length > 0);
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    // A promise, not a direct call: measuring in the effect body is a setState
+    // the hook rule rejects, and the observer's first note is what paints it.
+    Promise.resolve().then(update);
+    return () => ro.disconnect();
+  }, [ref]);
+  return shown;
+}
 
 const POLL_MS = 20_000;
 const PAGE = 30;
@@ -72,7 +89,7 @@ export function HostMessagesInbox() {
   const [templates, setTemplates] = useState<CRMTemplate[] | null>(null);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
 
-  const view = filter === "unread" ? InboxNeedsReply : InboxAll;
+  const view = filter === "unread" ? InboxUnread : InboxAll;
   const webinarId = filter !== "unread" && filter !== "" ? filter : "";
   const [seenInbox, setSeenInbox] = useState(`${view}:${webinarId}`);
   if (`${view}:${webinarId}` !== seenInbox) {
@@ -81,12 +98,15 @@ export function HostMessagesInbox() {
     setThreads(null);
   }
 
+  const inboxSeq = useRef(0);
+
   useEffect(() => {
+    const seq = ++inboxSeq.current;
     let cancelled = false;
     engageApi
       .crmInbox(view, webinarId, offset, PAGE)
       .then((res) => {
-        if (cancelled) return;
+        if (cancelled || seq !== inboxSeq.current) return;
         setThreads(res.threads ?? []);
         setTotal(res.total);
         setWebinars(res.webinars);
@@ -152,10 +172,58 @@ export function HostMessagesInbox() {
   function choose(id: string) {
     setPickedId(id);
     setMobileOpen(true);
+    const row = threads?.find((t) => t.contact.id === id);
+    if (row?.unread) {
+      inboxSeq.current += 1;
+      noteThreadRead(id);
+      if (view === InboxUnread) {
+        setTotal((n) => Math.max(0, n - 1));
+        setThreads((prev) => prev?.filter((t) => t.contact.id !== id) ?? prev);
+      } else {
+        setThreads((prev) =>
+          prev?.map((t) => (t.contact.id === id ? { ...t, unread: false } : t)) ?? prev,
+        );
+      }
+    }
     const params = new URLSearchParams(search.toString());
     params.set("contact", id);
     router.replace(`/host/messages?${params.toString()}`, { scroll: false });
   }
+
+  const paneRef = useRef<HTMLElement>(null);
+  const paneShown = useLaidOut(paneRef);
+
+  useEffect(() => {
+    if (!paneShown || !selectedId) return;
+    const id = selectedId;
+    const was = Boolean(threads?.find((t) => t.contact.id === id)?.unread);
+    if (was) inboxSeq.current += 1;
+    let cancelled = false;
+    engageApi
+      .markCrmRead(id)
+      .then(() => {
+        if (cancelled) return;
+        if (was) {
+          setPickedId((cur) => cur ?? id);
+          noteThreadRead(id);
+          if (view === InboxUnread) {
+            setTotal((n) => Math.max(0, n - 1));
+            setThreads((prev) => prev?.filter((t) => t.contact.id !== id) ?? prev);
+          } else {
+            setThreads((prev) =>
+              prev?.map((t) => (t.contact.id === id ? { ...t, unread: false } : t)) ?? prev,
+            );
+          }
+        }
+        refreshReplies();
+      })
+      .catch(() => {
+        if (!cancelled) refreshReplies();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [paneShown, selectedId, tick, threads, view]);
 
   const selected =
     threads?.find((t) => t.contact.id === selectedId) ?? null;
@@ -227,7 +295,7 @@ export function HostMessagesInbox() {
                 : query.trim()
                   ? "No conversations match that search."
                   : filter === "unread"
-                    ? "You're all caught up. Nobody is waiting on a reply."
+                    ? "You're all caught up. No unread conversations."
                     : "No conversations yet."}
             </p>
           ) : (
@@ -259,6 +327,7 @@ export function HostMessagesInbox() {
           </aside>
 
           <section
+            ref={paneRef}
             className={`${mobileOpen ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-col`}
           >
         {selectedId ? (
@@ -349,7 +418,7 @@ function ConversationRow({
           </span>
         )}
       </span>
-      {t.needsReply ? (
+      {t.unread ? (
         <span className="size-2.5 rounded-full bg-ok" title="Unread" />
       ) : (
         <span />

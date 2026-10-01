@@ -321,6 +321,64 @@ func TestHostIsAlertedWhenSomebodyIsWaiting(t *testing.T) {
 	}
 }
 
+/* Clicking one notification marks that one read and leaves the rest of the badge. */
+func TestMarkingOneAlertReadLeavesTheOthers(t *testing.T) {
+	h := newHarness(t)
+	h.login("neeraj@acme.dev")
+	wb := manualWebinar(t, h, "Alert me twice")
+
+	res, raw := h.do(http.MethodGet, "/api/host/alerts", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("alerts: status %d body %s", res.StatusCode, raw)
+	}
+	var before types.AlertsResponse
+	h.decode(raw, &before)
+
+	registerGuest(t, h, wb.ID, "one@test.dev")
+	registerGuest(t, h, wb.ID, "two@test.dev")
+	h.login("neeraj@acme.dev")
+
+	res, raw = h.do(http.MethodGet, "/api/host/alerts", nil)
+	var after types.AlertsResponse
+	h.decode(raw, &after)
+	if after.Unread != before.Unread+2 || len(after.Alerts) < 2 {
+		t.Fatalf("unread = %d (was %d), alerts %d, want two new", after.Unread, before.Unread, len(after.Alerts))
+	}
+	clicked := after.Alerts[0]
+	if !clicked.Unread || clicked.ID == "" {
+		t.Fatalf("top alert = %+v", clicked)
+	}
+
+	res, raw = h.do(http.MethodPost, "/api/host/alerts/read", map[string][]string{"ids": {clicked.ID}})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("mark one read: status %d body %s", res.StatusCode, raw)
+	}
+	res, raw = h.do(http.MethodGet, "/api/host/alerts", nil)
+	var left types.AlertsResponse
+	h.decode(raw, &left)
+	if left.Unread != after.Unread-1 {
+		t.Fatalf("unread = %d, want %d", left.Unread, after.Unread-1)
+	}
+	var sawClicked, sawOther bool
+	for _, a := range left.Alerts {
+		if a.ID == clicked.ID {
+			sawClicked = true
+			if a.Unread {
+				t.Errorf("clicked alert still unread: %+v", a)
+			}
+		}
+		if a.ID == after.Alerts[1].ID {
+			sawOther = true
+			if !a.Unread {
+				t.Errorf("the other alert was marked read: %+v", a)
+			}
+		}
+	}
+	if !sawClicked || !sawOther {
+		t.Fatalf("alerts after one click = %+v, want both rows still listed", left.Alerts)
+	}
+}
+
 /* TestOneHostCannotSeeAnotherHostsAlerts.
  *
  * The alerts endpoint takes no id, so the scope is entirely the SQL predicate on user_id.

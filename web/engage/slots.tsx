@@ -190,21 +190,21 @@ function WhatsAppStatusBadge({ status }: { status?: string }) {
   return <Badge>No consent</Badge>;
 }
 
-/* The top bar's inbox: a chat icon with how many conversations are waiting, opening
+/* The top bar's inbox: a chat icon with how many conversations are unread, opening
  * the Messages screen. Absent when this account has no WhatsApp, where there is no
- * inbox to open. */
+ * inbox to open. Opening a thread marks it read, and this number follows that. */
 export function MessagesNavButton() {
   const replies = useReplies();
   const { account } = useSession();
   const pathname = usePathname();
   if (!account?.canHost || !account?.whatsapp) return null;
-  const n = replies?.needsReply ?? 0;
+  const n = replies?.unread ?? 0;
   const here =
     pathname === MESSAGES_HREF || pathname.startsWith(`${MESSAGES_HREF}/`);
   return (
     <Link
       href={MESSAGES_HREF}
-      aria-label={n ? `Messages, ${n} waiting` : "Messages"}
+      aria-label={n ? `Messages, ${n} unread` : "Messages"}
       aria-current={here ? "page" : undefined}
       title="Messages"
       className={`relative grid size-9 place-items-center rounded-lg ${

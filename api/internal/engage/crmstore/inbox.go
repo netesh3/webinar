@@ -34,6 +34,18 @@ const (
 
 	needsReply = `(` + waitingOnHost + ` AND NOT ` + snoozedNow + `)`
 
+	/* latestInboundUnread is true when their newest message has not been opened.
+	 * A contact who has never written in is not unread. */
+	latestInboundUnread = `COALESCE((
+	 SELECT u.host_read_at IS NULL FROM crm_messages u
+	  WHERE u.contact_id = c.id AND u.direction = 'in'
+	  ORDER BY u.created_at DESC, u.id DESC LIMIT 1), false)`
+
+	/* unreadNow is what the chat badge counts. Opening the thread marks the inbound
+	 * rows read, so this drops without treating that as an answer. Snooze still
+	 * hides it, and a message after the snooze was set wakes it, same as Needs reply. */
+	unreadNow = `(` + latestInboundUnread + ` AND NOT ` + snoozedNow + `)`
+
 	/* hotLead is a contact carrying the hot-lead recipe's tag. */
 	hotLead = `EXISTS (SELECT 1 FROM crm_hot_leads h JOIN crm_contact_tags ct ON ct.tag_id = h.tag_id
 	 WHERE h.host_id = c.host_id AND ct.contact_id = c.id)`
@@ -92,6 +104,8 @@ func inboxViewPredicate(view string) (string, error) {
 		return ` AND ` + waitingOnHost + ` AND ` + snoozedNow, nil
 	case types.InboxHotLeads:
 		return ` AND ` + hasThread + ` AND ` + hotLead, nil
+	case types.InboxUnread:
+		return ` AND ` + unreadNow, nil
 	}
 	return "", store.ErrInvalid
 }
@@ -121,16 +135,17 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string, lim
 		       count(*) FILTER (WHERE `+hasThread+`),
 		       count(*) FILTER (WHERE `+contactReplied+` AND NOT `+waitingOnHost+`),
 		       count(*) FILTER (WHERE `+waitingOnHost+` AND `+snoozedNow+`),
-		       count(*) FILTER (WHERE `+hasThread+` AND `+hotLead+`)
+		       count(*) FILTER (WHERE `+hasThread+` AND `+hotLead+`),
+		       count(*) FILTER (WHERE `+unreadNow+`)
 		  FROM crm_contacts c
 		 WHERE c.host_id = $1::uuid`+scope, hostID, slug).Scan(
 		&out.Counts.NeedsReply, &out.Counts.All, &out.Counts.Done,
-		&out.Counts.Snoozed, &out.Counts.HotLeads); err != nil {
+		&out.Counts.Snoozed, &out.Counts.HotLeads, &out.Counts.Unread); err != nil {
 		return out, err
 	}
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT `+crmContactColumns+`, `+lastInboundAt+`, `+needsReply+`,
+		SELECT `+crmContactColumns+`, `+lastInboundAt+`, `+needsReply+`, `+unreadNow+`,
 		       CASE WHEN `+snoozedNow+` THEN c.inbox_snoozed_until END, `+hotLead+`,
 		       COALESCE(tw.slug, ''), COALESCE(tw.topic, ''),
 		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status, m.created_at,
@@ -162,7 +177,7 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string, lim
 		c := &t.Contact
 		if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
 			&optIn, &optOut, &lastSeen, &created, &botPaused,
-			&inbound, &t.NeedsReply, &snoozed, &t.HotLead, &t.WebinarID, &t.Webinar,
+			&inbound, &t.NeedsReply, &t.Unread, &snoozed, &t.HotLead, &t.WebinarID, &t.Webinar,
 			&m.ID, &m.Direction, &m.Body, &m.Kind, &m.TemplateName, &m.Status, &mAt, &mMedia); err != nil {
 			return out, err
 		}
@@ -191,6 +206,8 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string, lim
 		out.Total = out.Counts.Snoozed
 	case types.InboxHotLeads:
 		out.Total = out.Counts.HotLeads
+	case types.InboxUnread:
+		out.Total = out.Counts.Unread
 	default:
 		out.Total = out.Counts.NeedsReply
 	}
@@ -212,6 +229,31 @@ func (s *Store) SetInboxDone(ctx context.Context, hostID, contactID string, done
 		return store.ErrNotFound
 	}
 	return nil
+}
+
+/* MarkInboxRead marks this host's inbound messages in one thread read.
+ *
+ * Scoped to host_id twice: the contact lookup, and the message update. Another host's
+ * contact id changes nothing and comes back as not found. Messages that arrive after
+ * this update are new rows with host_read_at still null, so they count as unread.
+ */
+func (s *Store) MarkInboxRead(ctx context.Context, hostID, contactID string) error {
+	var found bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT true FROM crm_contacts
+		 WHERE id = $1::uuid AND host_id = $2::uuid`, contactID, hostID).Scan(&found)
+	if noRows(err) {
+		return store.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE crm_messages
+		   SET host_read_at = now()
+		 WHERE contact_id = $1::uuid AND host_id = $2::uuid
+		   AND direction = 'in' AND host_read_at IS NULL`, contactID, hostID)
+	return err
 }
 
 /* SetInboxSnooze hides a conversation from Needs reply until `until`, or wakes it when
@@ -257,15 +299,24 @@ func (s *Store) ThreadMeta(ctx context.Context, hostID, contactID string) (types
 	return meta, err
 }
 
-// Replies is the bell's view of the inbox.
+// Replies is the bell's view of the inbox. Recent is the unread conversations — the
+// ones the badge counts. NeedsReply stays the unanswered total, which opening a
+// thread does not change.
 func (s *Store) Replies(ctx context.Context, hostID string) (types.CRMRepliesResponse, error) {
 	out := types.CRMRepliesResponse{Recent: []types.CRMReplyAlert{}, ByWebinar: map[string]int{}}
+	if err := s.pool.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE `+needsReply+`),
+		       count(*) FILTER (WHERE `+unreadNow+`)
+		  FROM crm_contacts c
+		 WHERE c.host_id = $1::uuid`, hostID).Scan(&out.NeedsReply, &out.Unread); err != nil {
+		return out, err
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.id::text, c.name, c.phone, COALESCE(tw.slug, ''), COALESCE(tw.topic, ''), `+lastInboundAt+`,
 		       `+lastInboundBody+`
 		  FROM crm_contacts c
 		  `+threadWebinar+`
-		 WHERE c.host_id = $1::uuid AND `+needsReply+`
+		 WHERE c.host_id = $1::uuid AND `+unreadNow+`
 		 ORDER BY 6 DESC
 		 LIMIT 500`, hostID)
 	if err != nil {
@@ -285,7 +336,6 @@ func (s *Store) Replies(ctx context.Context, hostID string) (types.CRMRepliesRes
 			a.Name = phone
 		}
 		a.At = at.Format(time.RFC3339)
-		out.NeedsReply++
 		if a.WebinarID != "" {
 			out.ByWebinar[a.WebinarID]++
 		}

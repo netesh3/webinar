@@ -117,7 +117,7 @@ export function SettingsScreen() {
       </p>
 
       <div className="mt-5 grid items-start gap-7 md:grid-cols-[13rem_minmax(0,1fr)]">
-        <nav className="sticky top-20 grid gap-0.5" aria-label="Settings">
+        <nav className="sticky top-4 grid gap-0.5" aria-label="Settings">
           {items.map((item) => {
             const on = section === item.id;
             return (

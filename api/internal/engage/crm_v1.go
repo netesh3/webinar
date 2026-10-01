@@ -133,6 +133,27 @@ func (s *Module) handleCRMInboxDone(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleCRMInboxRead marks the inbound messages in one thread read. Opening the
+// conversation is what calls it. Another host's contact is not found.
+func (s *Module) handleCRMInboxRead(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
+	id := chi.URLParam(r, "id")
+	if !looksLikeUUID(id) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such contact.")
+		return
+	}
+	err := s.store.MarkInboxRead(r.Context(), user.ID, id)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such contact.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "crm inbox read", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleCRMReplies is the bell's count of conversations waiting.
 func (s *Module) handleCRMReplies(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())

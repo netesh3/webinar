@@ -1,6 +1,7 @@
 "use client";
 
 import { engageApi } from "../api";
+import { markThreadRead } from "./replies";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
@@ -1343,6 +1344,7 @@ export function Thread({
         setWindowUntil(res.serviceWindowUntil ?? "");
         setConnected(res.whatsappConnected);
         setError(null);
+        markThreadRead(contactId);
       })
       .catch((e: unknown) => {
         if (cancelled) return;

@@ -56,6 +56,9 @@ export function beginWhatsAppHome(): Promise<WhatsAppHomeBundle> {
         recipes,
         rules: (drips?.drips ?? []).filter((x) => !x.recipe),
         tags: drips?.tags ?? [],
+        // The chat badge does not keep this. It is one snapshot from login, and
+        // opening a thread must drop the number before the next visit. The live
+        // count is useReplies; this is only the first paint before that returns.
         needsReply: summary?.needsReply ?? 0,
       }))
       .catch((err: unknown) => {

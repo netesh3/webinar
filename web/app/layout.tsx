@@ -4,8 +4,11 @@ import Script from "next/script";
 import { AppProviders } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { AppConfig } from "@/lib/api-types";
+import { SidebarBoot } from "@/components/sidebar-boot";
+import { sidebarBootScript } from "@/lib/sidebar";
 import { themeBootScript } from "@/lib/theme";
 import "./globals.css";
+import "./sidebar.css";
 
 const GA_MEASUREMENT_ID = "G-C79Q63GQLN";
 const GTM_CONTAINER_ID = "GTM-MNTKG425";
@@ -73,6 +76,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             when neither says dark. suppressHydrationWarning is on <html>
             because this sets data-theme ahead of React. */}
         <script dangerouslySetInnerHTML={{ __html: themeBootScript() }} />
+        {/* Before paint: collapsed rail when that choice was saved, or when the
+            window is under 1280px. suppressHydrationWarning is already on <html>. */}
+        <script dangerouslySetInnerHTML={{ __html: sidebarBootScript() }} />
         {/* Google Material Symbols */}
         <link
           rel="stylesheet"
@@ -99,6 +105,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         </Script>
       </head>
       <body className="flex min-h-full flex-col font-sans">
+        <SidebarBoot />
         {/* Google Tag Manager (noscript) */}
         <noscript>
           <iframe
