@@ -12,7 +12,6 @@ import {
 } from "react";
 import { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, useReplies } from "@/engage";
 import { toggleSidebar } from "@/lib/sidebar";
-import type { ThemeChoice } from "@/lib/theme";
 import { AccountAvatar } from "./account-avatar";
 import { HostAlerts } from "./host-alerts";
 import { CalendarIcon, MenuIcon, SettingsIcon, UsersIcon } from "./icons";
@@ -22,10 +21,10 @@ import { useTheme } from "./theme";
 /* The host shell.
  *
  * The brand stays pinned at the top of the sidebar and links home — it is not
- * a menu. Webinars, Audience and Integrations stay in the rail. Settings, the
- * theme switch and notifications used to be footer rows; they now sit at the
- * top-right of the main column, on every page this shell wraps. The bell is
- * the existing notification panel. The avatar opens account, theme and
+ * a menu. Webinars, Audience and Integrations stay in the rail. Settings and
+ * a one-click light/dark button are pinned to the bottom of that same pane,
+ * with the nav above and empty space between. The bell stays at the top-right
+ * of the main column. The avatar opens Admin (for admins), the account and
  * sign-out. A nav click never toggles the rail. */
 
 function subscribeChrome(onChange: () => void) {
@@ -131,6 +130,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <PrimaryNav />
+        <SidebarFooter />
       </aside>
       <div className="sb-scrim" aria-hidden="true" onClick={closeDrawer} />
 
@@ -246,6 +246,7 @@ function Item({
   icon,
   badge,
   fly,
+  ariaLabel,
 }: {
   href: string;
   label: string;
@@ -253,6 +254,8 @@ function Item({
   icon: ReactNode;
   badge?: string;
   fly?: ReactNode;
+  /** Kept when the visible label is hidden on the collapsed rail. */
+  ariaLabel?: string;
 }) {
   return (
     <Link
@@ -260,6 +263,7 @@ function Item({
       data-tour={`nav-${label.toLowerCase()}`}
       className={active ? "sb-navitem on" : "sb-navitem"}
       aria-current={active ? "page" : undefined}
+      aria-label={ariaLabel}
       onClick={closeDrawer}
     >
       <span className="sb-ic">{icon}</span>
@@ -302,15 +306,44 @@ function Chrome() {
   );
 }
 
-const THEME_OPTIONS: { id: ThemeChoice; label: string }[] = [
-  { id: "light", label: "Light" },
-  { id: "dark", label: "Dark" },
-];
+/** Settings, then the one-click theme button, pinned under the nav. */
+function SidebarFooter() {
+  const pathname = usePathname();
+  const { theme, setTheme } = useTheme();
+  const dark = theme === "dark";
+  const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  const themeLabel = dark ? "Switch to light theme" : "Switch to dark theme";
+
+  return (
+    <div className="sb-foot">
+      <Item
+        href="/settings"
+        label="Settings"
+        active={onSettings}
+        icon={<SettingsIcon />}
+        ariaLabel="Settings"
+      />
+      <button
+        type="button"
+        className="sb-navitem sb-theme"
+        onClick={() => setTheme(dark ? "light" : "dark")}
+        aria-label={themeLabel}
+      >
+        <span className="sb-ic sb-moon">
+          <Moon />
+        </span>
+        <span className="sb-ic sb-sun">
+          <Sun />
+        </span>
+        <span className="sb-fly">{themeLabel}</span>
+      </button>
+    </div>
+  );
+}
 
 export function AccountMenu() {
   const router = useRouter();
   const { account, signOut } = useSession();
-  const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -358,73 +391,26 @@ export function AccountMenu() {
         <div
           role="dialog"
           aria-label="Account"
-          /* Wide enough for Settings plus the Light/Dark control. The kebab
-           * menus stay on Menu's shrink-to-label width; this panel is not
-           * that component. */
-          className="absolute top-full right-0 z-[70] mt-2 w-[17.75rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-line bg-surface py-1.5 shadow-xl"
+          className="absolute top-full right-0 z-[70] mt-2 w-64 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-line bg-surface py-1.5 shadow-xl"
         >
-          <button
-            type="button"
-            onClick={() => {
-              close();
-              router.push("/settings");
-            }}
-            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13.5px] font-medium text-ink hover:bg-surface-2"
-          >
-            <SettingsIcon className="size-4 text-ink-2" />
-            Settings
-          </button>
           {account.isAdmin && (
-            <button
-              type="button"
-              onClick={() => {
-                close();
-                router.push("/admin");
-              }}
-              className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13.5px] font-medium text-ink hover:bg-surface-2"
-            >
-              <span className="grid size-4 place-items-center text-ink-2" aria-hidden>
-                <AdminGlyph />
-              </span>
-              Admin
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  close();
+                  router.push("/admin");
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13.5px] font-medium text-ink hover:bg-surface-2"
+              >
+                <span className="grid size-4 place-items-center text-ink-2" aria-hidden>
+                  <AdminGlyph />
+                </span>
+                Admin
+              </button>
+              <div className="my-1 h-px bg-line" role="separator" />
+            </>
           )}
-
-          <div className="my-1 h-px bg-line" role="separator" />
-          <div className="px-3 pt-1.5 pb-1 text-[10.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase">
-            Preferences
-          </div>
-          <div className="flex items-center justify-between gap-3 px-3 py-2">
-            <span className="text-[13px] font-medium text-ink">Theme</span>
-            <div
-              role="radiogroup"
-              aria-label="Theme"
-              className="flex shrink-0 rounded-lg bg-surface-2 p-0.5"
-            >
-              {THEME_OPTIONS.map((option) => {
-                const on = theme === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    onClick={() => setTheme(option.id)}
-                    className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12.5px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                      on
-                        ? "bg-surface text-ink shadow-sm"
-                        : "text-ink-3 hover:text-ink"
-                    }`}
-                  >
-                    {option.id === "light" ? <Sun /> : <Moon />}
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="my-1 h-px bg-line" role="separator" />
           <div className="flex items-center gap-2.5 px-3 py-2.5">
             <AccountAvatar
               initials={account.initials}

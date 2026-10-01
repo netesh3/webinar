@@ -326,10 +326,23 @@
 
 .sb-foot {
   margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 8px 12px;
+}
+.sb-foot > .sb-navitem:not(.sb-theme) {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .sb-theme {
-  width: calc(100% - 16px);
-  margin: 0 8px 4px;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
 }
 .sb-theme .sb-lbl {
   text-align: left;
@@ -342,6 +355,22 @@ html[data-theme="dark"] .sb-theme .sb-moon {
 }
 html[data-theme="dark"] .sb-theme .sb-sun {
   display: grid;
+}
+/* Icon only, so the same rail tooltip shows while the sidebar is open.
+   It sits above the button: the open sidebar clips anything past its edge. */
+.sb-theme > .sb-fly {
+  left: auto;
+  right: 0;
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform: translateY(4px);
+}
+.sb-theme:hover > .sb-fly,
+.sb-theme:focus-visible > .sb-fly {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: opacity 120ms ease-out, transform 120ms ease-out, visibility 0s;
 }
 
 .sb-alerts {
@@ -579,9 +608,26 @@ html[data-theme="dark"] .sb-theme .sb-sun {
     font-size: 9px;
     box-shadow: 0 0 0 2px var(--color-surface);
   }
-  html.side-collapsed .sb-theme,
   html.side-collapsed .sb-alerts {
     margin: 0 12px 8px;
+  }
+  html.side-collapsed .sb-foot {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px 14px;
+  }
+  html.side-collapsed .sb-foot > .sb-navitem:not(.sb-theme),
+  html.side-collapsed .sb-theme {
+    flex: 0 0 40px;
+    margin: 0;
+  }
+  html.side-collapsed .sb-theme > .sb-fly {
+    left: calc(100% + 10px);
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    transform: translate(-4px, -50%);
   }
   html.side-collapsed .sb-account {
     justify-content: center;
