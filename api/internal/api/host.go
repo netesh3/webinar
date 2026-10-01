@@ -753,6 +753,14 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "start webinar", err)
 		return
 	}
+	/* A scheduled webinar whose end has passed without going live is already
+	 * over. DidntGoLive is decided when the row is read, from start + duration,
+	 * so this does not wait for a sweeper — and a session that is live is not
+	 * marked, so this never closes one that is on the air. */
+	if existing.DidntGoLive {
+		httpx.Error(w, http.StatusForbidden, "ended", "This webinar's scheduled time has passed.")
+		return
+	}
 	/* Already live is a rejoin, not a new start. Ended is left to SetStatus.
 	 * Scheduled and draft wait until five minutes before the start. */
 	if existing.Status == types.StatusScheduled || existing.Status == types.StatusDraft {

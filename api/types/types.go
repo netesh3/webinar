@@ -722,15 +722,20 @@ type Webinar struct {
 	 * every time the image is replaced, so a cache never serves stale bytes under a
 	 * URL that looks unchanged. Empty when no image was uploaded; the frontend falls
 	 * back to its own generated cover in that case. */
-	ImageURL       string        `json:"imageUrl,omitempty"`
-	StartsAt       string        `json:"startsAt"` // RFC3339
-	Duration       int           `json:"durationMin"`
-	TimeZone       string        `json:"timeZone"`
-	Kind           WebinarKind   `json:"kind"`
-	Status         WebinarStatus `json:"status"`
-	StartedAt      string        `json:"startedAt,omitempty"`
-	EndedAt        string        `json:"endedAt,omitempty"`
-	MaxDurationMin int           `json:"maxDurationMin"`
+	ImageURL  string        `json:"imageUrl,omitempty"`
+	StartsAt  string        `json:"startsAt"` // RFC3339
+	Duration  int           `json:"durationMin"`
+	TimeZone  string        `json:"timeZone"`
+	Kind      WebinarKind   `json:"kind"`
+	Status    WebinarStatus `json:"status"`
+	StartedAt string        `json:"startedAt,omitempty"`
+	EndedAt   string        `json:"endedAt,omitempty"`
+	/* DidntGoLive is set when a scheduled webinar never went live and its
+	 * scheduled end has passed. The row is reported as ended so it leaves
+	 * Upcoming; the flag is how a completed card tells that apart from a
+	 * session that actually ran. Not stored — derived when the webinar is read. */
+	DidntGoLive    bool `json:"didntGoLive,omitempty"`
+	MaxDurationMin int  `json:"maxDurationMin"`
 	// SimuliveRecordingID is the ready recording played as the audience video
 	// when Kind is simulive.
 	SimuliveRecordingID string `json:"simuliveRecordingId,omitempty"`

@@ -294,8 +294,8 @@ func (s *Store) AdminStats(ctx context.Context) (types.AdminStats, error) {
 		  (SELECT count(*) FILTER (WHERE created_at >= now() - interval '7 days') FROM users),
 		  (SELECT count(*) FROM webinars),
 		  (SELECT count(*) FILTER (WHERE status = 'live') FROM webinars),
-		  (SELECT count(*) FILTER (WHERE status = 'scheduled') FROM webinars),
-		  (SELECT count(*) FILTER (WHERE status = 'ended') FROM webinars),
+		  (SELECT count(*) FILTER (WHERE status = 'scheduled' AND NOT `+LapsedScheduledCond("")+`) FROM webinars),
+		  (SELECT count(*) FILTER (WHERE status = 'ended' OR `+LapsedScheduledCond("")+`) FROM webinars),
 		  (SELECT count(*) FILTER (WHERE status = 'draft') FROM webinars),
 		  (SELECT count(*) FILTER (WHERE kind = 'live') FROM webinars),
 		  (SELECT count(*) FILTER (WHERE kind = 'simulive') FROM webinars),
@@ -355,13 +355,13 @@ func (s *Store) AdminStats(ctx context.Context) (types.AdminStats, error) {
 		return types.AdminStats{}, err
 	}
 	out.Upcoming, err = s.adminGlances(ctx,
-		"w.status = 'scheduled'",
+		"w.status = 'scheduled' AND NOT "+LapsedScheduledCond("w"),
 		"w.starts_at ASC")
 	if err != nil {
 		return types.AdminStats{}, err
 	}
 	out.Recent, err = s.adminGlances(ctx,
-		"w.status = 'ended'",
+		"(w.status = 'ended' OR "+LapsedScheduledCond("w")+")",
 		"COALESCE(w.ended_at, w.starts_at) DESC")
 	if err != nil {
 		return types.AdminStats{}, err
@@ -412,6 +412,12 @@ func (s *Store) adminGlances(ctx context.Context, where, order string) ([]types.
 		}
 		if ended != nil {
 			g.EndedAt = ended.Format(time.RFC3339)
+		}
+		/* Same read-time rule as the host list. The badge would otherwise still
+		 * say scheduled on a row the Completed count already includes. */
+		if g.Status == string(types.StatusScheduled) && g.StartedAt == "" &&
+			!starts.Add(time.Duration(g.DurationMin)*time.Minute).After(time.Now()) {
+			g.Status = string(types.StatusEnded)
 		}
 		out = append(out, g)
 	}

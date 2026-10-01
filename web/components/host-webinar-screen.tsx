@@ -19,6 +19,7 @@ import {
 import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
 import type { RosterCounts } from "./host-webinar-tabs";
 import { bypassWebinar, DEV_BYPASS_REGISTRANTS } from "@/lib/dev-bypass";
+import { presentForHostList } from "@/lib/webinar-status";
 import {
   isDevAuthBypassActive,
   useDevAuthBypassActive,
@@ -68,7 +69,8 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   // the load effect. The hook is false on the server and while hydrating, the
   // same moment that effect first ran, so the first paint still matches.
   const showPreview = useDevAuthBypassActive();
-  const preview = showPreview ? bypassWebinar(slug) : undefined;
+  const rawPreview = showPreview ? bypassWebinar(slug) : undefined;
+  const preview = rawPreview ? presentForHostList(rawPreview, Date.now()) : undefined;
   const webinar = showPreview ? (preview ?? null) : fetchedWebinar;
   const previewRows =
     showPreview && preview && preview.status !== "draft"
@@ -270,6 +272,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
             <Badge tone={kind.tone} dot={isLive}>
               {kind.text}
             </Badge>
+            {webinar.didntGoLive && <Badge tone="neutral">Didn't go live</Badge>}
             {webinar.approval === "manual" && !isEnded && (
               <Badge tone="warn">
                 {waiting > 0 ? `${waiting} waiting to admit` : "Manual admit"}
@@ -368,10 +371,10 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
           ) : (
             <GoLiveButton
               busy={busy}
-              open={canGoLive(webinar.startsAt, now)}
+              open={canGoLive(webinar.startsAt, now, webinar.durationMin)}
               reason={goLiveWaitReason(webinar.startsAt, webinar.timeZone)}
               reasonId={waitReasonId}
-              showReason={now != null && !canGoLive(webinar.startsAt, now)}
+              showReason={now != null && !canGoLive(webinar.startsAt, now, webinar.durationMin)}
               onStart={() => void start()}
             />
           )}

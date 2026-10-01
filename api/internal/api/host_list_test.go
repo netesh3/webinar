@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -347,4 +348,129 @@ func TestHostListRejectsUnusableParameters(t *testing.T) {
 	if got := h.hostPage("?limit=100000"); len(got.Items) != 1 {
 		t.Errorf("clamped limit returned %d rows, want the 1 that exists", len(got.Items))
 	}
+}
+
+/* A scheduled webinar that never went live leaves Upcoming once its end passes.
+ *
+ * The row stays scheduled in the database. The list, the tab counts and Go live
+ * all read the same instant — start plus duration — so this does not wait for
+ * a sweeper. A session that is live stays upcoming, and a draft stays a draft.
+ */
+func TestHostListLapsedScheduledIsCompleted(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Lapsed Host", "lapsed@test.dev", true)
+
+	future := h.createAt("Still ahead", time.Now().Add(48*time.Hour).UTC().Format(time.RFC3339), "scheduled")
+	missed := h.createAt("Never started", time.Now().Add(48*time.Hour).UTC().Format(time.RFC3339), "scheduled")
+	draft := h.createAt("Unfinished", time.Now().Add(48*time.Hour).UTC().Format(time.RFC3339), "draft")
+	live := h.createAt("On the air", time.Now().Add(48*time.Hour).UTC().Format(time.RFC3339), "scheduled")
+
+	// createAt's duration is 30 minutes, so two hours ago the slot is over.
+	past := time.Now().Add(-2 * time.Hour)
+	h.placeFixtureStart(missed, past)
+	h.placeFixtureStart(draft, past)
+	h.placeFixtureStart(live, past)
+	if _, err := h.store.SetStatus(t.Context(), live, types.StatusLive); err != nil {
+		t.Fatalf("mark live: %v", err)
+	}
+
+	upcoming := h.hostPage("?tab=upcoming")
+	if upcoming.Counts.Upcoming != 2 || upcoming.Counts.Past != 1 || upcoming.Counts.Drafts != 1 {
+		t.Fatalf("counts = %+v, want 2 upcoming, 1 past, 1 draft", upcoming.Counts)
+	}
+	for _, w := range upcoming.Items {
+		if w.ID == missed || w.ID == draft {
+			t.Errorf("upcoming listed %s (%s)", w.Topic, w.Status)
+		}
+		if w.DidntGoLive {
+			t.Errorf("upcoming row %s is marked didn't-go-live", w.Topic)
+		}
+	}
+	gotIDs := map[string]bool{}
+	for _, w := range upcoming.Items {
+		gotIDs[w.ID] = true
+	}
+	if !gotIDs[future] || !gotIDs[live] {
+		t.Errorf("upcoming = %v, want the future session and the live one", topics(upcoming.Items))
+	}
+	for _, w := range upcoming.Items {
+		if w.ID == live && w.Status != types.StatusLive {
+			t.Errorf("live session status = %s, want live", w.Status)
+		}
+	}
+
+	pastPage := h.hostPage("?tab=past")
+	if len(pastPage.Items) != 1 || pastPage.Items[0].ID != missed {
+		t.Fatalf("past = %v, want only the session that never started", topics(pastPage.Items))
+	}
+	if pastPage.Items[0].Status != types.StatusEnded || !pastPage.Items[0].DidntGoLive {
+		t.Errorf("lapsed row = status %s didntGoLive %v, want ended and flagged",
+			pastPage.Items[0].Status, pastPage.Items[0].DidntGoLive)
+	}
+	if pastPage.Items[0].StartedAt != "" || pastPage.Items[0].EndedAt != "" {
+		t.Errorf("lapsed row carries a session clock started %q ended %q",
+			pastPage.Items[0].StartedAt, pastPage.Items[0].EndedAt)
+	}
+
+	drafts := h.hostPage("?tab=drafts")
+	if len(drafts.Items) != 1 || drafts.Items[0].ID != draft || drafts.Items[0].Status != types.StatusDraft {
+		t.Fatalf("drafts = %v, want the unfinished draft unchanged", topics(drafts.Items))
+	}
+
+	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+missed+"/start", nil)
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "ended" {
+		t.Fatalf("go live after the slot: status %d body %s, want 403 ended", res.StatusCode, raw)
+	}
+
+	// The live one can still be rejoined. Its scheduled end has passed.
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+live+"/start", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("rejoin a live webinar: status %d body %s", res.StatusCode, raw)
+	}
+}
+
+/* A reminder that is already due must not go out once the slot has passed
+ * without the webinar ever going live. Replay mail is a different kind and
+ * is not what this holds back. */
+func TestLapsedWebinarIsNotReminded(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Quiet Host", "quiet-reminder@test.dev", true)
+	slug := h.createAt("No show", time.Now().Add(48*time.Hour).UTC().Format(time.RFC3339), "scheduled")
+	if err := h.store.Notify(t.Context(), h.store.DB(), store.Notification{
+		Email:       "guest@test.dev",
+		Kind:        types.NotifyReminder,
+		WebinarSlug: slug,
+		Subject:     "Starts soon",
+		Body:        "Starts soon",
+		DueAt:       time.Now().Add(-time.Minute),
+		OffsetMin:   60,
+	}); err != nil {
+		t.Fatalf("queue reminder: %v", err)
+	}
+
+	if !pendingSubject(t, h, "Starts soon") {
+		t.Fatal("a due reminder for a webinar that is still ahead was held back")
+	}
+
+	if _, err := h.store.Pool().Exec(t.Context(),
+		`UPDATE webinars SET starts_at = now() - interval '2 hours' WHERE slug = $1`, slug); err != nil {
+		t.Fatalf("move start: %v", err)
+	}
+	if pendingSubject(t, h, "Starts soon") {
+		t.Fatal("a reminder was still due for a webinar that never went live")
+	}
+}
+
+func pendingSubject(t *testing.T, h *harness, subject string) bool {
+	t.Helper()
+	due, err := h.store.PendingDeliveries(t.Context(), 50)
+	if err != nil {
+		t.Fatalf("pending: %v", err)
+	}
+	for _, d := range due {
+		if d.Subject == subject {
+			return true
+		}
+	}
+	return false
 }

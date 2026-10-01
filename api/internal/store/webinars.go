@@ -101,6 +101,11 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	if endedAt != nil {
 		w.EndedAt = endedAt.Format(time.RFC3339)
 	}
+	/* A scheduled webinar that never went live is over once its scheduled end
+	 * has passed. The database row stays scheduled: this is a read, and a job
+	 * is not what makes the list right. EndedAt is left empty on purpose — a
+	 * follow-up is for a session people could have attended. */
+	markLapsed(&w, startsAt)
 	if priceCents != nil {
 		usd := *priceCents / 100
 		w.PriceUsd = &usd
@@ -148,6 +153,34 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	 * struct then: publicWebinar blanks it only after the store has returned.
 	 */
 	return w, hostID, nil
+}
+
+/* LapsedScheduledCond is the SQL form of markLapsed.
+ *
+ * starts_at is timestamptz, so adding the duration is an absolute instant.
+ * The webinar's time zone only decides how that instant is shown; applying it
+ * again here would move the end by a second offset. A live row is not matched,
+ * so a session that is on the air is never filed as over. A draft is not
+ * matched either. qual is the table qualifier ("w") or empty when webinars is
+ * not aliased. */
+func LapsedScheduledCond(qual string) string {
+	if qual != "" {
+		qual += "."
+	}
+	return "(" + qual + "status = 'scheduled' AND " + qual + "started_at IS NULL AND " +
+		qual + "starts_at + make_interval(mins => " + qual + "duration_min) <= now())"
+}
+
+func markLapsed(w *types.Webinar, startsAt time.Time) {
+	if w.Status != types.StatusScheduled || w.StartedAt != "" {
+		return
+	}
+	end := startsAt.Add(time.Duration(w.Duration) * time.Minute)
+	if end.After(time.Now()) {
+		return
+	}
+	w.Status = types.StatusEnded
+	w.DidntGoLive = true
 }
 
 func (s *Store) queryWebinars(ctx context.Context, where string, args ...any) ([]types.Webinar, error) {
@@ -233,17 +266,22 @@ const (
 	HostTabDrafts   HostWebinarTab = "drafts"
 )
 
-// statuses is the lifecycle states one tab holds. An unrecognised tab reads as
-// upcoming, matching the portal's own default, so a missing parameter lands on
-// the same page a host sees when they arrive.
-func (t HostWebinarTab) statuses() []string {
+/* statusWhere is the lifecycle states one tab holds, plus the read-time rule
+ * that a scheduled webinar whose end has passed without going live is completed.
+ *
+ * An unrecognised tab reads as upcoming, matching the portal's own default, so
+ * a missing parameter lands on the same page a host sees when they arrive. A
+ * live webinar stays upcoming even after its scheduled end: only a session that
+ * never started ages out of this tab.
+ */
+func (t HostWebinarTab) statusWhere() string {
 	switch t {
 	case HostTabPast:
-		return []string{string(types.StatusEnded)}
+		return "(w.status = 'ended' OR " + LapsedScheduledCond("w") + ")"
 	case HostTabDrafts:
-		return []string{string(types.StatusDraft)}
+		return "w.status = 'draft'"
 	default:
-		return []string{string(types.StatusScheduled), string(types.StatusLive)}
+		return "((w.status = 'scheduled' OR w.status = 'live') AND NOT " + LapsedScheduledCond("w") + ")"
 	}
 }
 
@@ -328,7 +366,7 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 	countArgs := slices.Clone(args)
 
 	where := " WHERE w.host_id = $1" + narrow +
-		" AND w.status = ANY(" + arg(f.Tab.statuses()) + ")"
+		" AND " + f.Tab.statusWhere()
 
 	if f.Cursor != "" {
 		slug, err := decodeHostCursor(f.Cursor)
@@ -404,35 +442,18 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 }
 
 // hostWebinarCounts tallies all three tabs in one pass under the same narrowing
-// clause as the page. Grouping by status and folding into buckets here keeps the
-// tab definition in exactly one place — HostWebinarTab.statuses.
+// clause as the page. The buckets are HostWebinarTab.statusWhere, so a lapsed
+// scheduled webinar is counted under Completed and not also under Upcoming.
 func (s *Store) hostWebinarCounts(ctx context.Context, narrow string, args ...any) (types.HostWebinarCounts, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT w.status, count(*) FROM webinars w
-		 WHERE w.host_id = $1`+narrow+`
-		 GROUP BY w.status`, args...)
-	if err != nil {
-		return types.HostWebinarCounts{}, err
-	}
-	defer rows.Close()
-
 	var out types.HostWebinarCounts
-	for rows.Next() {
-		var status string
-		var n int
-		if err := rows.Scan(&status, &n); err != nil {
-			return types.HostWebinarCounts{}, err
-		}
-		switch types.WebinarStatus(status) {
-		case types.StatusEnded:
-			out.Past += n
-		case types.StatusDraft:
-			out.Drafts += n
-		case types.StatusScheduled, types.StatusLive:
-			out.Upcoming += n
-		}
-	}
-	return out, rows.Err()
+	err := s.pool.QueryRow(ctx, `
+		SELECT
+		  count(*) FILTER (WHERE `+HostTabUpcoming.statusWhere()+`),
+		  count(*) FILTER (WHERE `+HostTabPast.statusWhere()+`),
+		  count(*) FILTER (WHERE `+HostTabDrafts.statusWhere()+`)
+		  FROM webinars w
+		 WHERE w.host_id = $1`+narrow, args...).Scan(&out.Upcoming, &out.Past, &out.Drafts)
+	return out, err
 }
 
 /* likeLiteral makes a host's search text mean itself inside an ILIKE pattern.
@@ -500,7 +521,13 @@ func (s *Store) AdminWebinars(ctx context.Context, f AdminWebinarFilter) ([]type
 		return fmt.Sprintf("$%d", len(args))
 	}
 
-	if f.Status != "" {
+	switch f.Status {
+	case types.StatusScheduled:
+		where += " AND w.status = 'scheduled' AND NOT " + LapsedScheduledCond("w")
+	case types.StatusEnded:
+		where += " AND (w.status = 'ended' OR " + LapsedScheduledCond("w") + ")"
+	case "":
+	default:
 		where += " AND w.status = " + arg(f.Status)
 	}
 	if !f.From.IsZero() {
@@ -1794,7 +1821,9 @@ func (s *Store) DueSimuliveSlugs(ctx context.Context) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT slug FROM webinars
 		 WHERE kind = 'simulive' AND status = 'scheduled'
-		   AND starts_at <= now() AND simulive_recording_id IS NOT NULL`)
+		   AND starts_at <= now()
+		   AND starts_at + make_interval(mins => duration_min) > now()
+		   AND simulive_recording_id IS NOT NULL`)
 	if err != nil {
 		return nil, err
 	}

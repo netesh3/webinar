@@ -88,7 +88,12 @@ func (s *Store) SeedDev(ctx context.Context, hashedPassword string) error {
 	}
 
 	price49 := 4900
-	base := time.Date(2026, 9, 17, 9, 0, 0, 0, time.FixedZone("IST", 5*3600+1800))
+	/* Two days out, not a fixed calendar date. A date in the source aged into
+	 * the past, and a scheduled fixture whose end has passed is completed —
+	 * which is what the host list does, and not what these rows are for. */
+	ist := time.FixedZone("IST", 5*3600+1800)
+	now := time.Now().In(ist)
+	base := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, ist).AddDate(0, 0, 2)
 
 	webinars := []webinar{
 		{

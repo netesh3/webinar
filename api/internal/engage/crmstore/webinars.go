@@ -11,6 +11,8 @@ package crmstore
 import (
 	"context"
 	"time"
+
+	"github.com/netkumar/webcast/api/internal/store"
 )
 
 // waReminderKinds are the WhatsApp kinds that promise something about a future session.
@@ -141,7 +143,8 @@ func (s *Store) LiveWebinarSlugs(ctx context.Context, hostID string) ([]string, 
 	rows, err := s.pool.Query(ctx, `
 		SELECT w.slug
 		  FROM webinars w
-		 WHERE w.host_id = $1 AND w.status NOT IN ('ended','draft')`,
+		 WHERE w.host_id = $1 AND w.status NOT IN ('ended','draft')
+		   AND NOT `+store.LapsedScheduledCond("w"),
 		hostID)
 	if err != nil {
 		return nil, err

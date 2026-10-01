@@ -107,7 +107,7 @@ export function HostWebinarRows({
     <>
       <div className="grid gap-3">
         {webinars.map((w) =>
-          w.status === "ended" && !readOnly ? (
+          (w.status === "ended" || w.didntGoLive) && !readOnly ? (
             <CompletedCard key={w.id} webinar={w} />
           ) : (
             <HostCard
@@ -199,8 +199,8 @@ function HostCard({
       ? `/host/${w.id}/edit`
       : `/host/${w.id}`;
   const scheduled = !isDraft && !isEnded && !isLive;
-  const liveOpen = isLive || (scheduled && canGoLive(w.startsAt, now));
-  const showWait = !readOnly && scheduled && now != null && !canGoLive(w.startsAt, now);
+  const liveOpen = isLive || (scheduled && canGoLive(w.startsAt, now, w.durationMin));
+  const showWait = !readOnly && scheduled && now != null && !canGoLive(w.startsAt, now, w.durationMin);
   const waitReason = goLiveWaitReason(w.startsAt, w.timeZone);
 
   return (
@@ -399,6 +399,11 @@ function CompletedCard({ webinar: w }: { webinar: Webinar }) {
     <Card className="group relative p-4 transition-colors hover:border-line-2 hover:bg-surface-2/40 sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1">
+          {w.didntGoLive && (
+            <div className="mb-1.5">
+              <Badge tone="neutral">Didn't go live</Badge>
+            </div>
+          )}
           <h3 className="text-[15px] font-semibold tracking-[-0.01em]">
             {/* Stretched over the card so anywhere on it opens the results. */}
             <Link
