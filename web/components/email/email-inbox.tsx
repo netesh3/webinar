@@ -1,13 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "@/components/providers";
 import { Button } from "@/components/ui";
 import { textRuns } from "@/lib/chat-text";
 import { ApiError, fresh, put, request } from "@/lib/http";
 import { Alert } from "../controls";
-import { INBOX_LIST_MIN, useInboxListWidth } from "./inbox-split";
+import {
+  INBOX_LIST_MIN,
+  INBOX_MEASURE_DEBOUNCE_MS,
+  INBOX_PAGER_FALLBACK,
+  INBOX_PAGE_DEFAULT,
+  INBOX_ROW_FALLBACK,
+  inboxRowsThatFit,
+  useInboxListWidth,
+} from "./inbox-split";
 
 type EmailMessage = {
   id: string;
@@ -190,9 +198,35 @@ function ReplyIcon() {
   );
 }
 
-function inboxPath(cursor?: string) {
-  if (!cursor) return "/api/host/email-inbox";
-  return `/api/host/email-inbox?${new URLSearchParams({ cursor })}`;
+function inboxPath(cursor: string | undefined, pageLimit: number) {
+  const params = new URLSearchParams({ limit: String(pageLimit) });
+  if (cursor) params.set("cursor", cursor);
+  return `/api/host/email-inbox?${params}`;
+}
+
+/* Height the rows may use. Desktop uses the list pane above the pager.
+ * Below 900px the panes stack and the list is capped (max-h-80), so the
+ * budget is that cap with the pager kept visible. Width changes (the
+ * divider) do not change this height. */
+function measureInboxPage(rows: HTMLElement): number | null {
+  const sample = rows.querySelector<HTMLElement>("[data-inbox-row]");
+  const row = sample && sample.offsetHeight > 0 ? sample.offsetHeight : INBOX_ROW_FALLBACK;
+  const column = rows.parentElement;
+  const pager = column?.querySelector<HTMLElement>("[data-inbox-pager]");
+  const pagerH = pager && pager.offsetHeight > 0 ? pager.offsetHeight : INBOX_PAGER_FALLBACK;
+  const stacked = window.matchMedia("(max-width: 899px)").matches;
+  if (stacked) {
+    if (!column) return null;
+    const style = getComputedStyle(column);
+    const max = Number.parseFloat(style.maxHeight);
+    if (!Number.isFinite(max) || max <= 0) return null;
+    const border =
+      (Number.parseFloat(style.borderTopWidth) || 0) +
+      (Number.parseFloat(style.borderBottomWidth) || 0);
+    return inboxRowsThatFit(max - border - pagerH, row);
+  }
+  const available = pager ? rows.clientHeight : rows.clientHeight - pagerH;
+  return inboxRowsThatFit(available, row);
 }
 
 export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => void }) {
@@ -210,16 +244,61 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
   const [replying, setReplying] = useState(false);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [limit, setLimit] = useState(INBOX_PAGE_DEFAULT);
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const limitRef = useRef(INBOX_PAGE_DEFAULT);
   const nav = useRef(false);
   const split = useInboxListWidth(sectionRef);
+
+  const adoptPageSize = useCallback((next: number | null) => {
+    if (next == null || next === limitRef.current) return;
+    limitRef.current = next;
+    setBefore([]);
+    setOrigin(1);
+    setCursor(undefined);
+    setLimit(next);
+    setLoading(true);
+  }, []);
+
+  const threads = useMemo(() => threadsOf(data?.items ?? []), [data]);
+
+  useLayoutEffect(() => {
+    const rows = rowsRef.current;
+    if (!rows) return;
+    adoptPageSize(measureInboxPage(rows));
+  }, [adoptPageSize, threads.length]);
+
+  useEffect(() => {
+    const rows = rowsRef.current;
+    if (!rows) return;
+    let timer = 0;
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const el = rowsRef.current;
+        if (!el) return;
+        adoptPageSize(measureInboxPage(el));
+      }, INBOX_MEASURE_DEBOUNCE_MS);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(rows);
+    if (rows.parentElement) observer.observe(rows.parentElement);
+    const media = window.matchMedia("(min-width: 900px)");
+    media.addEventListener("change", schedule);
+    return () => {
+      window.clearTimeout(timer);
+      observer.disconnect();
+      media.removeEventListener("change", schedule);
+    };
+  }, [adoptPageSize]);
 
   useEffect(() => {
     let gone = false;
     const requested = cursor ?? "";
     nav.current = true;
-    request<EmailInbox>(inboxPath(cursor), fresh)
+    request<EmailInbox>(inboxPath(cursor, limit), fresh)
       .then((next) => {
         if (gone) return;
         setData(next);
@@ -238,9 +317,8 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
     return () => {
       gone = true;
     };
-  }, [cursor, reload, onCount]);
+  }, [cursor, limit, reload, onCount]);
 
-  const threads = useMemo(() => threadsOf(data?.items ?? []), [data]);
   const pageToken = `${cursor ?? ""}\0${dataCursor ?? ""}\0${threads.map((thread) => thread.key).join("\0")}\0${urlId ?? ""}`;
   const [seenPage, setSeenPage] = useState(pageToken);
   if (pageToken !== seenPage) {
@@ -348,7 +426,7 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
           aria-busy={loading}
           className="flex max-h-80 w-full min-w-0 flex-col border-b border-line min-[900px]:max-h-none min-[900px]:min-h-0 min-[900px]:w-[var(--inbox-list)] min-[900px]:shrink-0 min-[900px]:border-b-0"
         >
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div ref={rowsRef} className="min-h-0 flex-1 overflow-y-auto">
           {data && threads.length === 0 && (
             <p className="px-4 py-8 text-center text-[13px] text-ink-3">No email yet.</p>
           )}
@@ -362,6 +440,7 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
               <button
                 key={thread.key}
                 type="button"
+                data-inbox-row=""
                 data-tour="email-message"
                 onClick={() => selectThread(thread.key)}
                 className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 border-b border-line px-3 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 focus-visible:ring-inset ${
@@ -394,7 +473,10 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
           })}
           </div>
           {data && (
-            <div className="flex items-center justify-between gap-3 border-t border-line px-3 py-2.5">
+            <div
+              data-inbox-pager=""
+              className="flex items-center justify-between gap-3 border-t border-line px-3 py-2.5"
+            >
               <Button size="sm" variant="secondary" onClick={goPrev} disabled={loading || before.length === 0}>
                 Previous
               </Button>
