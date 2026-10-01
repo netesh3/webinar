@@ -385,6 +385,7 @@ func (s *Server) Routes() http.Handler {
 		r.Route("/me", func(r chi.Router) {
 			r.Use(s.requireUser)
 			r.Get("/registrations", s.handleMyRegistrations)
+			r.Post("/host-request", s.handleHostRequest)
 		})
 
 		// ---------------- host and stage ----------------

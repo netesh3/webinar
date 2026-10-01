@@ -413,12 +413,30 @@ html[data-theme="dark"] .sb-theme .sb-sun {
 }
 
 .sb-main {
+  position: relative;
   min-width: 0;
   margin-left: var(--side-w);
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: visible;
   transition: margin-left var(--sb-dur) var(--sb-ease);
+}
+
+/* Bell and avatar. In flow so the page starts under them, and a stacking
+   context above the column so the account menu paints over the cards. */
+.sb-chrome {
+  position: relative;
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px 0;
+  overflow: visible;
+}
+.sb-main > main {
+  padding-top: 1rem;
 }
 
 .sb-mbar,
