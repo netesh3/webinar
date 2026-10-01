@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MaterialIcon } from "@/components/icons";
 import type { CRMRecipe, MessageSlot } from "@/lib/api-types";
-import { ENGAGE_HOME } from "../../slots";
+import { NEW_AUTOMATION_ID, automationsHref } from "../../hrefs";
 import {
   MESSAGE_ROWS,
   rowWhen,
@@ -58,6 +58,7 @@ export function MessageList({
   onSelect,
   onToggle,
   onToggleAutomation,
+  activeAutomation = "",
 }: {
   slots: MessageSlot[];
   selected: string;
@@ -65,6 +66,8 @@ export function MessageList({
   onSelect: (kind: string) => void;
   onToggle: (kind: string, on: boolean) => void;
   onToggleAutomation: (recipe: CRMRecipe, on: boolean) => void;
+  /** Recipe open on the Automations tab, from ?automation=. */
+  activeAutomation?: string;
 }) {
   const router = useRouter();
   const byKind = new Map(slots.map((slot) => [slot.kind, slot]));
@@ -98,10 +101,7 @@ export function MessageList({
                   enabled={Boolean(slot?.enabled)}
                   switchLabel={`${meta.title} for this webinar`}
                   onSelect={() => onSelect(meta.kind)}
-                  onToggle={(next) => {
-                    onSelect(meta.kind);
-                    onToggle(meta.kind, next);
-                  }}
+                  onToggle={(next) => onToggle(meta.kind, next)}
                   badges={<ChannelBadges channels={slot?.channels ?? []} />}
                 />
               );
@@ -133,13 +133,17 @@ export function MessageList({
                   {copy.then}
                 </span>
               }
+              selected={activeAutomation === recipe.id}
               enabled={recipe.active}
               switchLabel={recipe.title}
-              onSelect={() => router.push(ENGAGE_HOME)}
+              onSelect={() =>
+                router.push(automationsHref(recipe.id), { scroll: false })
+              }
               onToggle={(on) => onToggleAutomation(recipe, on)}
               trailing={
                 <Link
-                  href={ENGAGE_HOME}
+                  href={automationsHref(recipe.id)}
+                  scroll={false}
                   aria-label={`Open ${recipe.title} on the WhatsApp page`}
                   className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink"
                   onClick={(event) => event.stopPropagation()}
@@ -152,7 +156,8 @@ export function MessageList({
         })}
         <div className="flex items-center justify-end px-3 py-3 text-[12.5px]">
           <Link
-            href={ENGAGE_HOME}
+            href={automationsHref(NEW_AUTOMATION_ID)}
+            scroll={false}
             className="inline-flex items-center gap-1 font-medium text-brand hover:underline"
           >
             <MaterialIcon name="add" className="size-[15px] shrink-0" />

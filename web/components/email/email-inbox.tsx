@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useSearchParams } from "next/navigation";
 import { useSession } from "@/components/providers";
-import { Button, ListPager } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { textRuns } from "@/lib/chat-text";
 import { ApiError, fresh, put, request } from "@/lib/http";
 import { Alert } from "../controls";
+import { INBOX_LIST_MIN, useInboxListWidth } from "./inbox-split";
 
 type EmailMessage = {
   id: string;
@@ -23,11 +25,14 @@ type EmailInbox = {
   local: string;
   canRename: boolean;
   alias?: string;
-  messages: EmailMessage[];
-  page: number;
-  pageSize: number;
+  items: EmailMessage[];
+  nextCursor: string | null;
   total: number;
 };
+
+type PageMark = { cursor: string; origin: number };
+
+type InboxSelection = { key: string | null; pinned: boolean };
 
 type Thread = {
   key: string;
@@ -185,76 +190,122 @@ function ReplyIcon() {
   );
 }
 
+function inboxPath(cursor?: string) {
+  if (!cursor) return "/api/host/email-inbox";
+  return `/api/host/email-inbox?${new URLSearchParams({ cursor })}`;
+}
+
 export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => void }) {
   const { account } = useSession();
+  const urlId = useSearchParams().get("id");
   const [data, setData] = useState<EmailInbox | null>(null);
+  const [dataCursor, setDataCursor] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [before, setBefore] = useState<PageMark[]>([]);
+  const [origin, setOrigin] = useState(1);
+  const [reload, setReload] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [selection, setSelection] = useState<InboxSelection>({ key: null, pinned: false });
   const [draft, setDraft] = useState("");
   const [replying, setReplying] = useState(false);
   const [sending, setSending] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const replyRef = useRef<HTMLTextAreaElement>(null);
-
-  const load = useCallback(
-    async (nextPage: number) => {
-      const next = await request<EmailInbox>(`/api/host/email-inbox?page=${nextPage}`, fresh);
-      setData(next);
-      setError(null);
-      onCount?.(next.total);
-      return next;
-    },
-    [onCount],
-  );
+  const sectionRef = useRef<HTMLElement>(null);
+  const nav = useRef(false);
+  const split = useInboxListWidth(sectionRef);
 
   useEffect(() => {
     let gone = false;
-    request<EmailInbox>("/api/host/email-inbox?page=1", fresh)
+    const requested = cursor ?? "";
+    nav.current = true;
+    request<EmailInbox>(inboxPath(cursor), fresh)
       .then((next) => {
         if (gone) return;
         setData(next);
+        setDataCursor(requested);
         setError(null);
         onCount?.(next.total);
       })
       .catch((err: unknown) => {
         if (!gone) setError(err instanceof Error ? err.message : "Could not load email.");
+      })
+      .finally(() => {
+        if (gone) return;
+        nav.current = false;
+        setLoading(false);
       });
     return () => {
       gone = true;
     };
-  }, [onCount]);
+  }, [cursor, reload, onCount]);
 
-  const threads = useMemo(() => threadsOf(data?.messages ?? []), [data]);
-  const selected = threads.find((thread) => thread.key === openKey) ?? null;
+  const threads = useMemo(() => threadsOf(data?.items ?? []), [data]);
+  const pageToken = `${cursor ?? ""}\0${dataCursor ?? ""}\0${threads.map((thread) => thread.key).join("\0")}\0${urlId ?? ""}`;
+  const [seenPage, setSeenPage] = useState(pageToken);
+  if (pageToken !== seenPage) {
+    setSeenPage(pageToken);
+    if (data && dataCursor === (cursor ?? "")) {
+      if (threads.length === 0) {
+        if (selection.key !== null) {
+          setSelection({ key: null, pinned: selection.pinned });
+          setDraft("");
+          setReplying(false);
+        }
+      } else {
+        const fromUrl =
+          !selection.pinned && urlId
+            ? threads.find(
+                (thread) =>
+                  thread.key === urlId || thread.messages.some((message) => message.id === urlId),
+              )
+            : undefined;
+        const still =
+          selection.key != null && threads.some((thread) => thread.key === selection.key);
+        const nextKey = fromUrl && fromUrl.key !== selection.key ? fromUrl.key : !still ? threads[0].key : null;
+        if (nextKey && nextKey !== selection.key) {
+          setSelection({ key: nextKey, pinned: fromUrl ? false : selection.pinned });
+          setDraft("");
+          setReplying(false);
+        }
+      }
+    }
+  }
+  const selected = threads.find((thread) => thread.key === selection.key) ?? null;
   const latest = selected?.messages.at(-1) ?? null;
-  const page = data?.page || 1;
-  const pageSize = data?.pageSize || 10;
-  const total = data?.total ?? 0;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  const start = threads.length === 0 ? 0 : (page - 1) * pageSize + 1;
-  const end = threads.length === 0 ? 0 : start + threads.length - 1;
+  const rangeStart = threads.length === 0 ? 0 : origin;
+  const rangeEnd = threads.length === 0 ? 0 : origin + threads.length - 1;
 
   useEffect(() => {
     if (replying) replyRef.current?.focus();
-  }, [replying, openKey]);
+  }, [replying, selection.key]);
 
   function selectThread(key: string) {
-    setOpenKey(key);
+    setSelection({ key, pinned: true });
     if (!draft.trim()) setReplying(false);
   }
 
-  async function go(nextPage: number) {
-    setOpenKey(null);
+  function turnPage(nextCursor: string | undefined, stack: PageMark[], nextOrigin: number) {
+    if (nav.current) return;
+    nav.current = true;
+    setSelection((current) => ({ key: current.key, pinned: true }));
     setDraft("");
     setReplying(false);
+    setBefore(stack);
+    setOrigin(nextOrigin);
+    setCursor(nextCursor);
     setLoading(true);
-    try {
-      await load(nextPage);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load email.");
-    } finally {
-      setLoading(false);
-    }
+  }
+
+  function goNext() {
+    if (!data?.nextCursor) return;
+    turnPage(data.nextCursor, [...before, { cursor: cursor ?? "", origin }], origin + threads.length);
+  }
+
+  function goPrev() {
+    const prev = before[before.length - 1];
+    if (!prev) return;
+    turnPage(prev.cursor || undefined, before.slice(0, -1), prev.origin);
   }
 
   async function send() {
@@ -268,8 +319,12 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
         body: JSON.stringify({ body: draft.trim() }),
       });
       setDraft("");
-      setOpenKey(keep);
-      await load(1);
+      setSelection({ key: keep, pinned: true });
+      setBefore([]);
+      setOrigin(1);
+      setCursor(undefined);
+      setLoading(true);
+      setReload((n) => n + 1);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not send that reply.");
     } finally {
@@ -283,12 +338,15 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
     <div className="flex min-h-0 w-full flex-1 flex-col gap-3">
       {error && <Alert tone="error">{error}</Alert>}
       <section
-        className="grid w-full rounded-xl border border-line bg-surface shadow-sm min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:overflow-hidden min-[900px]:grid-cols-[minmax(20rem,42%)_minmax(0,1fr)]"
+        ref={sectionRef}
+        style={{ "--inbox-list": `${split.width}px` } as CSSProperties}
+        className={`flex w-full flex-col rounded-xl border border-line bg-surface shadow-sm min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:flex-row min-[900px]:overflow-hidden ${split.dragging ? "select-none" : ""}`}
         aria-label="Email inbox"
       >
         <div
           data-tour="email-inbox"
-          className="flex max-h-80 min-w-0 flex-col border-b border-line min-[900px]:max-h-none min-[900px]:min-h-0 min-[900px]:border-r min-[900px]:border-b-0"
+          aria-busy={loading}
+          className="flex max-h-80 w-full min-w-0 flex-col border-b border-line min-[900px]:max-h-none min-[900px]:min-h-0 min-[900px]:w-[var(--inbox-list)] min-[900px]:shrink-0 min-[900px]:border-b-0"
         >
           <div className="min-h-0 flex-1 overflow-y-auto">
           {data && threads.length === 0 && (
@@ -336,28 +394,50 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
           })}
           </div>
           {data && (
-            <ListPager
-              layout="split"
-              range="stack"
-              className="border-t border-line px-3 py-2.5"
-              page={page}
-              pages={pages}
-              pageSize={pageSize}
-              start={start}
-              end={end}
-              total={total}
-              busy={loading}
-              onPrevious={() => void go(page - 1)}
-              onNext={() => void go(page + 1)}
-            />
+            <div className="flex items-center justify-between gap-3 border-t border-line px-3 py-2.5">
+              <Button size="sm" variant="secondary" onClick={goPrev} disabled={loading || before.length === 0}>
+                Previous
+              </Button>
+              <div className="text-center text-[12px] text-ink-3">
+                {rangeStart > 0 ? (
+                  <>
+                    {rangeStart}–{rangeEnd}
+                    {data.total > 0 ? ` of ${data.total}` : ""}
+                  </>
+                ) : (
+                  "0"
+                )}
+              </div>
+              <Button size="sm" variant="secondary" onClick={goNext} disabled={loading || !data.nextCursor}>
+                Next
+              </Button>
+            </div>
           )}
         </div>
 
-        <article className="flex min-h-[16rem] min-w-0 flex-col min-[900px]:min-h-0">
-          {!selected && (
-            <p className="grid flex-1 place-items-center px-4 text-[13px] text-ink-3">
-              {data ? (threads.length === 0 ? "No email yet." : "Select a message.") : ""}
-            </p>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize conversation list"
+          aria-valuemin={INBOX_LIST_MIN}
+          aria-valuemax={split.max}
+          aria-valuenow={split.width}
+          tabIndex={0}
+          onPointerDown={split.onPointerDown}
+          onKeyDown={split.onKeyDown}
+          className="group relative hidden w-2 shrink-0 cursor-col-resize touch-none select-none min-[900px]:block focus-visible:outline-none"
+        >
+          <span
+            aria-hidden
+            className={`absolute inset-y-0 left-1/2 -translate-x-1/2 bg-line group-hover:w-0.5 group-hover:bg-[#2563EB] group-focus-visible:w-0.5 group-focus-visible:bg-[#2563EB] ${
+              split.dragging ? "w-0.5 bg-[#2563EB]" : "w-px"
+            }`}
+          />
+        </div>
+
+        <article className="flex min-h-[16rem] min-w-0 flex-col min-[900px]:min-h-0 min-[900px]:flex-1">
+          {data && threads.length === 0 && (
+            <p className="grid flex-1 place-items-center px-4 text-[13px] text-ink-3">No email yet.</p>
           )}
           {selected && latest && (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">

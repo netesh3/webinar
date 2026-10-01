@@ -3,6 +3,7 @@ package engage
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"net/http"
@@ -21,14 +22,13 @@ import (
 const inboxSecretHeader = "X-Inbox-Webhook-Secret"
 
 type inboxView struct {
-	Address   string         `json:"address"`
-	Local     string         `json:"local"`
-	CanRename bool           `json:"canRename"`
-	Alias     string         `json:"alias,omitempty"`
-	Messages  []inboxMessage `json:"messages"`
-	Page      int            `json:"page"`
-	PageSize  int            `json:"pageSize"`
-	Total     int            `json:"total"`
+	Address    string         `json:"address"`
+	Local      string         `json:"local"`
+	CanRename  bool           `json:"canRename"`
+	Alias      string         `json:"alias,omitempty"`
+	Items      []inboxMessage `json:"items"`
+	NextCursor *string        `json:"nextCursor"`
+	Total      int            `json:"total"`
 }
 
 type inboxMessage struct {
@@ -69,7 +69,16 @@ func (s *Module) mountEmail(public, host chi.Router) {
 
 func (s *Module) handleEmailInbox(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
-	view, err := s.inboxFor(r, user)
+	limit, err := inboxLimit(r)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_limit", "limit must be a positive whole number.")
+		return
+	}
+	view, err := s.inboxFor(r, user, limit)
+	if errors.Is(err, store.ErrInvalid) {
+		httpx.Error(w, http.StatusBadRequest, "bad_cursor", "That page marker isn't valid.")
+		return
+	}
 	if err != nil {
 		s.fail(w, r, "email inbox", err)
 		return
@@ -100,12 +109,12 @@ func (s *Module) handleRenameEmailInbox(w http.ResponseWriter, r *http.Request) 
 		}
 		return
 	}
-	msgs, total, page, err := s.store.ListHostEmailPage(r.Context(), user.ID, 1)
+	page, err := s.store.ListHostEmailPage(r.Context(), user.ID, store.EmailInboxPageSize, "")
 	if err != nil {
 		s.fail(w, r, "email inbox", err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, inboxJSON(inbox, msgs, page, total))
+	httpx.JSON(w, http.StatusOK, inboxJSON(inbox, page))
 }
 
 func (s *Module) handleReplyEmail(w http.ResponseWriter, r *http.Request) {
@@ -226,43 +235,48 @@ func (s *Module) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]bool{"stored": true})
 }
 
-func (s *Module) inboxFor(r *http.Request, user store.User) (inboxView, error) {
+func (s *Module) inboxFor(r *http.Request, user store.User, limit int) (inboxView, error) {
 	inbox, err := s.store.EnsureInbox(r.Context(), user.ID, user.Name)
 	if err != nil {
 		return inboxView{}, err
 	}
-	msgs, total, page, err := s.store.ListHostEmailPage(r.Context(), user.ID, inboxPage(r))
+	page, err := s.store.ListHostEmailPage(r.Context(), user.ID, limit, r.URL.Query().Get("cursor"))
 	if err != nil {
 		return inboxView{}, err
 	}
-	return inboxJSON(inbox, msgs, page, total), nil
+	return inboxJSON(inbox, page), nil
 }
 
-func inboxPage(r *http.Request) int {
-	raw := strings.TrimSpace(r.URL.Query().Get("page"))
+func inboxLimit(r *http.Request) (int, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get("limit"))
 	if raw == "" {
-		return 1
+		return store.EmailInboxPageSize, nil
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 1 {
-		return 1
+		return 0, store.ErrInvalid
 	}
-	return n
+	if n > store.EmailInboxMaxPage {
+		n = store.EmailInboxMaxPage
+	}
+	return n, nil
 }
 
-func inboxJSON(inbox store.Inbox, msgs []store.HostEmail, page, total int) inboxView {
+func inboxJSON(inbox store.Inbox, page store.EmailPage) inboxView {
 	view := inboxView{
 		Address:   inbox.Address,
 		Local:     inbox.Local,
 		CanRename: !inbox.Renamed,
 		Alias:     inbox.Alias,
-		Messages:  []inboxMessage{},
-		Page:      page,
-		PageSize:  store.EmailInboxPageSize,
-		Total:     total,
+		Items:     []inboxMessage{},
+		Total:     page.Total,
 	}
-	for _, m := range msgs {
-		view.Messages = append(view.Messages, inboxMessage{
+	if page.NextCursor != "" {
+		next := page.NextCursor
+		view.NextCursor = &next
+	}
+	for _, m := range page.Messages {
+		view.Items = append(view.Items, inboxMessage{
 			ID: m.ID, Direction: m.Direction, From: m.From, To: m.To,
 			Subject: m.Subject, Body: m.Body, At: m.CreatedAt.UTC().Format(time.RFC3339),
 			ThreadID: m.ThreadID,

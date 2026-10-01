@@ -1,6 +1,16 @@
 /** WhatsApp setup — not in the nav; reached from Account settings. */
 export const ENGAGE_HOME = "/host/crm";
 
+/** Query value that opens the new-automation editor on the Automations tab. */
+export const NEW_AUTOMATION_ID = "new";
+
+/** Automations tab. With an id, also opens that recipe or the new-automation editor. */
+export function automationsHref(automation?: string): string {
+  const view = `${ENGAGE_HOME}?view=automations`;
+  if (!automation) return view;
+  return `${view}&automation=${encodeURIComponent(automation)}`;
+}
+
 /** Audience, its own page. Old /host?tab=people links redirect here. */
 export const PEOPLE_HREF = "/host/audience";
 

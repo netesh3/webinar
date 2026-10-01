@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { SearchIcon } from "@/components/icons";
 import { Button } from "@/components/ui";
 import { ApiError, del, fresh, post, put, request } from "@/lib/http";
@@ -34,6 +35,50 @@ const blank = (): Draft => ({
   customized: false,
 });
 
+function toDraft(template: EmailTemplate): Draft {
+  return {
+    id: template.id,
+    name: template.name,
+    subject: template.subject,
+    body: template.body,
+    key: template.key ?? "",
+    customized: Boolean(template.customized),
+  };
+}
+
+function visibleTemplates(rows: EmailTemplate[], query: string): EmailTemplate[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((template) =>
+    `${template.name} ${template.subject} ${template.body}`.toLowerCase().includes(q),
+  );
+}
+
+/* URL id, then the first visible row. Used only when nothing is selected yet. */
+function initialId(rows: EmailTemplate[], query: string, requestedId: string | null): string | null {
+  const visible = visibleTemplates(rows, query);
+  if (requestedId && visible.some((template) => template.id === requestedId)) return requestedId;
+  if (requestedId && rows.some((template) => template.id === requestedId)) {
+    return visible[0]?.id ?? requestedId;
+  }
+  return visible[0]?.id ?? null;
+}
+
+/* Search: keep the open template when it is still visible, otherwise the first
+ * visible row. When nothing matches, keep the id so clearing search can restore it. */
+function selectionAfterFilter(
+  rows: EmailTemplate[],
+  query: string,
+  current: string | null,
+  requestedId: string | null,
+): string | null {
+  const visible = visibleTemplates(rows, query);
+  if (current && visible.some((template) => template.id === current)) return current;
+  if (current && rows.some((template) => template.id === current)) return visible[0]?.id ?? current;
+  if (current) return visible[0]?.id ?? null;
+  return initialId(rows, query, requestedId);
+}
+
 function updatedLabel(iso: string): string {
   return new Date(iso).toLocaleString([], {
     day: "numeric",
@@ -45,20 +90,35 @@ function updatedLabel(iso: string): string {
 }
 
 export function EmailTemplates({ onCount }: { onCount?: (count: number) => void }) {
+  const params = useSearchParams();
+  const requestedId = useMemo(() => {
+    const named = params.get("template") || params.get("templateId") || params.get("id");
+    if (named) return named;
+    return null;
+  }, [params]);
   const [templates, setTemplates] = useState<EmailTemplate[] | null>(null);
   const [query, setQuery] = useState("");
+  const [preferredId, setPreferredId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmRevert, setConfirmRevert] = useState(false);
+  const queryRef = useRef(query);
 
   useEffect(() => {
     let gone = false;
+    const requested = requestedId;
     request<{ templates: EmailTemplate[] }>("/api/host/email-templates", fresh)
       .then((res) => {
         if (gone) return;
         const rows = res.templates ?? [];
         setTemplates(rows);
+        setPreferredId((current) => {
+          if (current && rows.some((template) => template.id === current)) return current;
+          if (current) return visibleTemplates(rows, queryRef.current)[0]?.id ?? null;
+          return initialId(rows, queryRef.current, requested);
+        });
         setError(null);
         onCount?.(rows.length);
       })
@@ -68,60 +128,70 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
     return () => {
       gone = true;
     };
-  }, [onCount]);
+  }, [onCount, requestedId]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const rows = templates ?? [];
-    if (!q) return rows;
-    return rows.filter((template) =>
-      `${template.name} ${template.subject} ${template.body}`.toLowerCase().includes(q),
-    );
-  }, [templates, query]);
+  const filtered = useMemo(
+    () => visibleTemplates(templates ?? [], query),
+    [templates, query],
+  );
+
+  const active = useMemo(() => {
+    if (creating || templates === null || filtered.length === 0) return null;
+    if (preferredId) {
+      const inView = filtered.find((template) => template.id === preferredId);
+      if (inView) return inView;
+      const kept = templates.find((template) => template.id === preferredId);
+      if (kept) return kept;
+    }
+    if (requestedId) {
+      const fromUrl = filtered.find((template) => template.id === requestedId);
+      if (fromUrl) return fromUrl;
+    }
+    return filtered[0] ?? null;
+  }, [creating, templates, filtered, preferredId, requestedId]);
+
+  const form =
+    creating
+      ? draft
+      : draft?.id && active && draft.id === active.id
+        ? draft
+        : active
+          ? toDraft(active)
+          : null;
 
   function open(template: EmailTemplate) {
     setError(null);
     setConfirmRevert(false);
-    setDraft({
-      id: template.id,
-      name: template.name,
-      subject: template.subject,
-      body: template.body,
-      key: template.key ?? "",
-      customized: Boolean(template.customized),
-    });
+    setCreating(false);
+    setPreferredId(template.id);
+    setDraft(toDraft(template));
   }
 
   function remember(saved: EmailTemplate) {
+    setCreating(false);
+    setPreferredId(saved.id);
     setTemplates((cur) => {
       const rest = (cur ?? []).filter((template) => template.id !== saved.id);
       const next = [saved, ...rest];
       onCount?.(next.length);
       return next;
     });
-    setDraft({
-      id: saved.id,
-      name: saved.name,
-      subject: saved.subject,
-      body: saved.body,
-      key: saved.key ?? "",
-      customized: Boolean(saved.customized),
-    });
+    setDraft(toDraft(saved));
   }
 
   async function save() {
-    if (!draft) return;
+    if (!form) return;
     const payload = {
-      name: draft.name.trim(),
-      subject: draft.subject.trim(),
-      body: draft.body.trim(),
+      name: form.name.trim(),
+      subject: form.subject.trim(),
+      body: form.body.trim(),
     };
     if (!payload.name || !payload.subject || !payload.body) return;
     setSaving(true);
     setError(null);
     try {
-      const saved = draft.id
-        ? await put<EmailTemplate>(`/api/host/email-templates/${draft.id}`, payload)
+      const saved = form.id
+        ? await put<EmailTemplate>(`/api/host/email-templates/${form.id}`, payload)
         : await post<EmailTemplate>("/api/host/email-templates", payload);
       remember(saved);
       setConfirmRevert(false);
@@ -133,11 +203,11 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
   }
 
   async function revert() {
-    if (!draft?.id) return;
+    if (!form?.id) return;
     setSaving(true);
     setError(null);
     try {
-      const saved = await post<EmailTemplate>(`/api/host/email-templates/${draft.id}/revert`);
+      const saved = await post<EmailTemplate>(`/api/host/email-templates/${form.id}/revert`);
       remember(saved);
       setConfirmRevert(false);
     } catch (err) {
@@ -148,16 +218,26 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
   }
 
   async function remove() {
-    if (!draft?.id || draft.key) return;
+    if (!form?.id || form.key) return;
+    const id = form.id;
     setSaving(true);
     setError(null);
     try {
-      await del(`/api/host/email-templates/${draft.id}`);
+      await del(`/api/host/email-templates/${id}`);
       setTemplates((cur) => {
-        const next = (cur ?? []).filter((template) => template.id !== draft.id);
+        const next = (cur ?? []).filter((template) => template.id !== id);
         onCount?.(next.length);
         return next;
       });
+      setPreferredId((current) =>
+        selectionAfterFilter(
+          (templates ?? []).filter((template) => template.id !== id),
+          query,
+          current === id ? null : current,
+          null,
+        ),
+      );
+      setCreating(false);
       setDraft(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete that template.");
@@ -166,8 +246,8 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
     }
   }
 
-  const ready = Boolean(draft?.name.trim() && draft.subject.trim() && draft.body.trim());
-  const tokens = [...new Set(draft?.body.match(/\{\{[a-z_]+\}\}/g) ?? [])];
+  const ready = Boolean(form?.name.trim() && form.subject.trim() && form.body.trim());
+  const tokens = [...new Set(form?.body.match(/\{\{[a-z_]+\}\}/g) ?? [])];
 
   return (
     <div className="grid gap-3">
@@ -179,7 +259,14 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
           <input
             type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              const nextQuery = e.target.value;
+              queryRef.current = nextQuery;
+              setQuery(nextQuery);
+              const next = selectionAfterFilter(templates ?? [], nextQuery, preferredId, requestedId);
+              if (next !== preferredId) setConfirmRevert(false);
+              setPreferredId(next);
+            }}
             placeholder="Search templates"
             className="field h-9 w-full pl-8 text-[13px]"
           />
@@ -189,6 +276,7 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
           onClick={() => {
             setError(null);
             setConfirmRevert(false);
+            setCreating(true);
             setDraft(blank());
           }}
         >
@@ -223,7 +311,7 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
                   </tr>
                 ) : (
                   filtered.map((template) => {
-                    const on = draft?.id === template.id;
+                    const on = active?.id === template.id;
                     return (
                       <tr
                         key={template.id}
@@ -262,19 +350,25 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
             void save();
           }}
         >
-          {!draft ? (
-            <p className="py-8 text-center text-[13px] text-ink-3">Select a template.</p>
+          {!form ? (
+            <p className="py-8 text-center text-[13px] text-ink-3">
+              {templates === null
+                ? "Loading…"
+                : templates.length === 0
+                  ? "Select a template."
+                  : "No templates match that."}
+            </p>
           ) : (
             <>
               <h2 className="text-[15px] font-semibold tracking-[-0.02em]">
-                {draft.id ? "Edit template" : "New template"}
+                {form.id ? "Edit template" : "New template"}
               </h2>
               <label className="grid gap-1 text-[12px] font-medium text-ink-2">
                 Name
                 <input
-                  value={draft.name}
-                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  disabled={Boolean(draft.key)}
+                  value={form.name}
+                  onChange={(e) => setDraft({ ...form, name: e.target.value })}
+                  disabled={Boolean(form.key)}
                   className="field text-[13.5px] disabled:bg-surface-2"
                   maxLength={80}
                 />
@@ -282,8 +376,8 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
               <label className="grid gap-1 text-[12px] font-medium text-ink-2">
                 Subject
                 <input
-                  value={draft.subject}
-                  onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+                  value={form.subject}
+                  onChange={(e) => setDraft({ ...form, subject: e.target.value })}
                   className="field text-[13.5px]"
                   maxLength={200}
                 />
@@ -291,8 +385,8 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
               <label className="grid gap-1 text-[12px] font-medium text-ink-2">
                 Body
                 <textarea
-                  value={draft.body}
-                  onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                  value={form.body}
+                  onChange={(e) => setDraft({ ...form, body: e.target.value })}
                   rows={8}
                   className="field text-[13.5px]"
                   maxLength={8000}
@@ -319,7 +413,7 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
                 </div>
               ) : (
                 <div className="flex justify-end gap-2">
-                  {draft.id && !draft.key && (
+                  {form.id && !form.key && (
                     <Button
                       type="button"
                       variant="secondary"
@@ -330,7 +424,7 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
                       Delete
                     </Button>
                   )}
-                  {draft.key && draft.customized && (
+                  {form.key && form.customized && (
                     <Button
                       type="button"
                       variant="secondary"
@@ -341,7 +435,16 @@ export function EmailTemplates({ onCount }: { onCount?: (count: number) => void 
                       Revert
                     </Button>
                   )}
-                  <Button type="button" variant="secondary" size="sm" onClick={() => setDraft(null)}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setConfirmRevert(false);
+                      setCreating(false);
+                      setDraft(null);
+                    }}
+                  >
                     Cancel
                   </Button>
                   <Button type="submit" size="sm" disabled={saving || !ready}>

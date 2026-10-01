@@ -239,6 +239,10 @@ export function WhatsAppScreen() {
         <ScheduleMessagesTab
           accountDefaults
           reminderTimes={() => null}
+          automation={(search.get("automation") ?? "").trim()}
+          onAutomationClose={() =>
+            router.replace("/host/crm?view=automations", { scroll: false })
+          }
         />
       )}
 

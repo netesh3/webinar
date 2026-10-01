@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -204,8 +207,18 @@ func (s *Store) InsertHostEmail(ctx context.Context, m HostEmail) (HostEmail, er
 	return m, err
 }
 
-// EmailInboxPageSize is how many conversations one inbox page lists.
-const EmailInboxPageSize = 10
+// EmailInboxPageSize is the default number of conversations one inbox page lists.
+const EmailInboxPageSize = 5
+
+// EmailInboxMaxPage is the most conversations one request may ask for.
+const EmailInboxMaxPage = 50
+
+// EmailPage is one cursor page of a host's conversations, newest activity first.
+type EmailPage struct {
+	Messages   []HostEmail
+	NextCursor string
+	Total      int
+}
 
 // ListHostEmails returns one host's messages, oldest first.
 //
@@ -217,16 +230,26 @@ func (s *Store) ListHostEmails(ctx context.Context, userID string) ([]HostEmail,
 
 // ListHostEmailPage returns one page of conversations for that host.
 //
+// limit defaults to EmailInboxPageSize and is capped at EmailInboxMaxPage.
+// cursor is opaque, from a previous page's NextCursor; empty starts at the
+// newest conversation. A malformed cursor returns ErrInvalid.
+//
 // A conversation is a reply chain (In-Reply-To / message id), not everyone who
-// shares an address. total is the number of conversations. page is clamped to
-// the last page that exists.
-func (s *Store) ListHostEmailPage(ctx context.Context, userID string, page int) ([]HostEmail, int, int, error) {
+// shares an address. Total is the number of conversations. Ordering is the
+// latest message time descending, then the thread id descending. The cursor
+// carries that pair for the last row, so mail that arrives later does not
+// skip or repeat a conversation the caller has already been shown.
+func (s *Store) ListHostEmailPage(ctx context.Context, userID string, limit int, cursor string) (EmailPage, error) {
+	if strings.TrimSpace(cursor) != "" {
+		if _, err := decodeInboxCursor(cursor); err != nil {
+			return EmailPage{}, err
+		}
+	}
 	all, err := s.listHostEmails(ctx, userID)
 	if err != nil {
-		return nil, 0, 1, err
+		return EmailPage{}, err
 	}
-	out, total, page := pageEmailThreads(groupEmailThreads(all), page)
-	return out, total, page, nil
+	return pageEmailThreads(groupEmailThreads(all), limit, cursor)
 }
 
 func (s *Store) listHostEmails(ctx context.Context, userID string) ([]HostEmail, error) {
@@ -269,33 +292,110 @@ func (s *Store) listHostEmails(ctx context.Context, userID string) ([]HostEmail,
 	return out, rows.Err()
 }
 
-// pageEmailThreads slices conversations, not raw messages. page is 1-based and
-// clamped to the last page that exists. An empty mailbox is page 1.
-func pageEmailThreads(threads [][]HostEmail, page int) ([]HostEmail, int, int) {
-	total := len(threads)
-	if page < 1 {
-		page = 1
+// pageEmailThreads slices conversations, not raw messages.
+//
+// threads are already newest-first. cursor empty is the first page. The cursor
+// is the sort key of the last conversation on the previous page; this page
+// starts at the first conversation strictly after that key.
+func pageEmailThreads(threads [][]HostEmail, limit int, cursor string) (EmailPage, error) {
+	limit = clampInboxLimit(limit)
+	var after *inboxCursor
+	if strings.TrimSpace(cursor) != "" {
+		c, err := decodeInboxCursor(cursor)
+		if err != nil {
+			return EmailPage{}, err
+		}
+		after = &c
 	}
-	pages := 1
-	if total > 0 {
-		pages = (total + EmailInboxPageSize - 1) / EmailInboxPageSize
+	start := 0
+	if after != nil {
+		start = len(threads)
+		for i, thread := range threads {
+			if len(thread) == 0 {
+				continue
+			}
+			if inboxAfter(thread, *after) {
+				start = i
+				break
+			}
+		}
 	}
-	if page > pages {
-		page = pages
+	rest := threads[start:]
+	n := limit
+	if n > len(rest) {
+		n = len(rest)
 	}
-	start := (page - 1) * EmailInboxPageSize
-	if start > total {
-		start = total
+	var msgs []HostEmail
+	for _, thread := range rest[:n] {
+		msgs = append(msgs, thread...)
 	}
-	end := start + EmailInboxPageSize
-	if end > total {
-		end = total
+	page := EmailPage{Messages: msgs, Total: len(threads)}
+	if len(rest) > limit && n > 0 {
+		last := rest[n-1]
+		page.NextCursor = encodeInboxCursor(inboxLatest(last).CreatedAt, inboxThreadID(last))
 	}
-	var out []HostEmail
-	for _, thread := range threads[start:end] {
-		out = append(out, thread...)
+	return page, nil
+}
+
+// inboxCursor is the keyset for one conversation: latest message time, then
+// thread id. Encoded opaquely so a client cannot depend on the layout.
+type inboxCursor struct {
+	At int64  `json:"at"`
+	ID string `json:"id"`
+}
+
+func encodeInboxCursor(at time.Time, id string) string {
+	raw, err := json.Marshal(inboxCursor{At: at.UTC().UnixNano(), ID: id})
+	if err != nil {
+		return ""
 	}
-	return out, total, page
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeInboxCursor(raw string) (inboxCursor, error) {
+	buf, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(raw))
+	if err != nil || len(buf) == 0 {
+		return inboxCursor{}, fmt.Errorf("%w: cursor", ErrInvalid)
+	}
+	var c inboxCursor
+	if err := json.Unmarshal(buf, &c); err != nil || c.At == 0 || strings.TrimSpace(c.ID) == "" {
+		return inboxCursor{}, fmt.Errorf("%w: cursor", ErrInvalid)
+	}
+	c.ID = strings.TrimSpace(c.ID)
+	return c, nil
+}
+
+func clampInboxLimit(limit int) int {
+	if limit <= 0 {
+		return EmailInboxPageSize
+	}
+	if limit > EmailInboxMaxPage {
+		return EmailInboxMaxPage
+	}
+	return limit
+}
+
+// inboxAfter reports whether thread sorts after c. Order is latest message
+// time descending, then thread id descending, so a later row is an earlier
+// time, or the same time with a smaller id.
+func inboxAfter(thread []HostEmail, c inboxCursor) bool {
+	at := inboxLatest(thread).CreatedAt.UTC().UnixNano()
+	id := inboxThreadID(thread)
+	if at != c.At {
+		return at < c.At
+	}
+	return id < c.ID
+}
+
+func inboxLatest(thread []HostEmail) HostEmail {
+	return thread[len(thread)-1]
+}
+
+func inboxThreadID(thread []HostEmail) string {
+	if id := strings.TrimSpace(thread[0].ThreadID); id != "" {
+		return id
+	}
+	return thread[0].ID
 }
 
 // groupEmailThreads joins messages only when they share a reply-chain id.
@@ -383,7 +483,7 @@ func groupEmailThreads(msgs []HostEmail) [][]HostEmail {
 		la := threads[a][len(threads[a])-1]
 		lb := threads[b][len(threads[b])-1]
 		if la.CreatedAt.Equal(lb.CreatedAt) {
-			return la.ID > lb.ID
+			return inboxThreadID(threads[a]) > inboxThreadID(threads[b])
 		}
 		return la.CreatedAt.After(lb.CreatedAt)
 	})

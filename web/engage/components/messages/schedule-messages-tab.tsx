@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { engageApi } from "../../api";
+import { NEW_AUTOMATION_ID } from "../../hrefs";
 import { Alert, Spinner } from "@/components/controls";
 import { useSession, useToast } from "@/components/providers";
 import { ApiError } from "@/lib/api";
@@ -19,9 +20,12 @@ import {
   type CRMMergeField,
   type CRMRecipe,
   type CRMStarterTemplate,
+  type CRMTag,
   type CRMTemplate,
   type MessageSlot,
 } from "@/lib/api-types";
+import { KeywordsDialog } from "../automations";
+import { RuleBuilder } from "../rule-builder";
 import {
   resolveStarterTemplate,
   slotWithWording,
@@ -85,6 +89,10 @@ export const ScheduleMessagesTab = forwardRef<
     onPendingChange?: (slots: MessageSlot[]) => void;
     /** The account WhatsApp page has no single webinar. Every edit is the default. */
     accountDefaults?: boolean;
+    /** From ?automation= on the WhatsApp page: a recipe id, or the new-automation editor. */
+    automation?: string;
+    /** Drop ?automation= while staying on the Automations tab. */
+    onAutomationClose?: () => void;
   }
 >(function ScheduleMessagesTab(
   {
@@ -97,6 +105,8 @@ export const ScheduleMessagesTab = forwardRef<
     initialPending,
     onPendingChange,
     accountDefaults = false,
+    automation = "",
+    onAutomationClose,
   },
   ref,
 ) {
@@ -108,6 +118,7 @@ export const ScheduleMessagesTab = forwardRef<
   const [templates, setTemplates] = useState<CRMTemplate[]>([]);
   const [fields, setFields] = useState<CRMMergeField[]>([]);
   const [automations, setAutomations] = useState<CRMRecipe[]>([]);
+  const [tags, setTags] = useState<CRMTag[]>([]);
   const [selected, setSelected] = useState(SlotReminder);
   const [forAll, setForAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,6 +195,22 @@ export const ScheduleMessagesTab = forwardRef<
       cancelled = true;
     };
   }, [slug, tick]);
+
+  useEffect(() => {
+    if (automation !== NEW_AUTOMATION_ID) return;
+    let cancelled = false;
+    engageApi
+      .crmTags()
+      .then((res) => {
+        if (!cancelled) setTags(res.tags ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setTags([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [automation]);
 
   useEffect(() => {
     if (!slots) return;
@@ -300,6 +327,7 @@ export const ScheduleMessagesTab = forwardRef<
   }
 
   const slot = slots.find((item) => item.kind === selected) ?? slots[0];
+  const openRecipe = automations.find((recipe) => recipe.id === automation);
   const when = webinar?.startsAt
     ? whenText(webinar.startsAt, webinar.timeZone)
     : "";
@@ -334,6 +362,7 @@ export const ScheduleMessagesTab = forwardRef<
         slots={slots}
         selected={slot?.kind ?? selected}
         automations={automations}
+        activeAutomation={automation}
         onSelect={select}
         onToggle={(kind, on) => {
           const current = slots.find((item) => item.kind === kind);
@@ -370,12 +399,35 @@ export const ScheduleMessagesTab = forwardRef<
           <WriteWordingDialog
             connected={connected}
             onClose={() => setWriting(false)}
-            onCreated={() => setTick((n) => n + 1)}
-            onUse={applyWording}
-          />,
-          document.body,
-        )}
+          onCreated={() => setTick((n) => n + 1)}
+          onUse={applyWording}
+        />,
+        document.body,
+      )}
       </div>
+      {openRecipe?.kind === "keywords" && (
+        <KeywordsDialog
+          recipe={openRecipe}
+          onClose={() => onAutomationClose?.()}
+          onSaved={(data) => {
+            setAutomations(
+              data.recipes.filter(
+                (item) => item.kind === "keywords" || item.kind === "hot_leads",
+              ),
+            );
+            onAutomationClose?.();
+          }}
+        />
+      )}
+      {automation === NEW_AUTOMATION_ID && (
+        <RuleBuilder
+          templates={templates}
+          tags={tags}
+          fields={fields}
+          onClose={() => onAutomationClose?.()}
+          onSaved={() => onAutomationClose?.()}
+        />
+      )}
     </div>
   );
 });

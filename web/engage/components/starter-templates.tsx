@@ -122,18 +122,11 @@ export function StarterTemplates({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-xl">
           <h2 className="text-[15px] font-semibold">Starter templates</h2>
-          <p className="mt-0.5 text-[12.5px] text-ink-2">
-            {ready ? (
-              "These are approved. Use one on this message."
-            ) : (
-              <>
-                Written for webinars: your cover as the picture, a button that opens
-                each person&apos;s own link, and replies this app acts on —
-                &ldquo;Can&apos;t make it&rdquo; tags them for the replay,
-                &ldquo;Tell me more&rdquo; marks a hot lead.
-              </>
-            )}
-          </p>
+          {ready && (
+            <p className="mt-0.5 text-[12.5px] text-ink-2">
+              These are approved. Use one on this message.
+            </p>
+          )}
         </div>
         {missing > 0 && (
           <Button size="sm" onClick={create} disabled={busy || !connected}>
