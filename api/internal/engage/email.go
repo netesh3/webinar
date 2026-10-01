@@ -59,6 +59,7 @@ func (s *Module) mountEmail(public, host chi.Router) {
 	host.Get("/email-inbox", s.handleEmailInbox)
 	host.Put("/email-inbox/address", s.handleRenameEmailInbox)
 	host.Post("/email-inbox/{id}/reply", s.handleReplyEmail)
+	s.mountEmailTemplates(host)
 }
 
 func (s *Module) handleEmailInbox(w http.ResponseWriter, r *http.Request) {
