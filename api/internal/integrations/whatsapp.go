@@ -59,7 +59,9 @@ func (whatsapp) Status(_ context.Context, user store.User) (types.IntegrationCar
 		}
 	}
 	c.Actions = []types.IntegrationAction{
-		{ID: "manage", Label: "Manage", Href: whatsappManage, Kind: types.IntegrationActionNavigate},
+		/* Number & billing, where the connected number lives. /host/crm with no
+		 * view is the WhatsApp page, and that page opens on Metrics. */
+		{ID: "manage", Label: "Manage", Href: whatsappSetup, Kind: types.IntegrationActionNavigate},
 		{ID: "open", Label: "Open the WhatsApp page", Href: whatsappManage, Kind: types.IntegrationActionNavigate, Menu: true},
 		{ID: "reconnect", Label: "Reconnect now", Href: whatsappSetup, Kind: types.IntegrationActionNavigate, Menu: true},
 		{

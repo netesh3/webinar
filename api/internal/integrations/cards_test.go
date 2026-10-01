@@ -78,7 +78,7 @@ func TestWhatsAppConnectedCard(t *testing.T) {
 	}
 	var manage, disconnect bool
 	for _, a := range wa.Actions {
-		if a.ID == "manage" && a.Href == "/host/crm" && !a.Menu {
+		if a.ID == "manage" && a.Href == "/host/crm?view=setup" && !a.Menu {
 			manage = true
 		}
 		if a.ID == "disconnect" && a.Href == "/api/host/whatsapp" && a.Menu {
