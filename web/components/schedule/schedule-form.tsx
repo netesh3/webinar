@@ -20,6 +20,7 @@ import type { MessagesSaveHandle } from "@/engage";
 import {
   FeatureCloudRecording,
   FeatureJoinWithoutRegistration,
+  FeatureZoom,
   type MessageSlot,
   type Webinar,
   type WebinarInput,
@@ -464,7 +465,7 @@ function ScheduleFormBody({
           : { autoRecord: false }),
       },
       controls: form.controls,
-      venue: form.venue,
+      venue: (account?.features ?? []).includes(FeatureZoom) ? form.venue : "app",
     };
   }
 

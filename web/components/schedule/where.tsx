@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { FeatureZoom } from "@/lib/api-types";
+import { useSession } from "../providers";
 import { FormGroup, FormSection } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
 
@@ -34,9 +36,18 @@ export function WhereSection({
   set: SetForm;
   fields: Record<string, string>;
 }) {
+  const { account, status } = useSession();
+  const zoomAllowed =
+    status === "signed-in" && (account?.features ?? []).includes(FeatureZoom);
   const [zoomConnected, setZoomConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (status === "loading" || zoomAllowed || form.venue === "app") return;
+    set("venue", "app");
+  }, [status, zoomAllowed, form.venue, set]);
+
+  useEffect(() => {
+    if (!zoomAllowed) return;
     let active = true;
     api
       .hostIntegrations()
@@ -51,9 +62,10 @@ export function WhereSection({
     return () => {
       active = false;
     };
-  }, []);
+  }, [zoomAllowed]);
 
-  const zoomOff = zoomConnected !== true;
+  const choices = zoomAllowed ? CHOICES : CHOICES.filter((c) => c.id === "app");
+  const zoomOff = zoomAllowed && zoomConnected !== true;
 
   return (
     <FormGroup label="Where it runs">
@@ -62,8 +74,11 @@ export function WhereSection({
         description="WhatsApp and email still go out either way."
         first
       >
-        <div id="where-it-runs" className="grid gap-2 sm:grid-cols-3">
-          {CHOICES.map((choice) => {
+        <div
+          id="where-it-runs"
+          className={`grid gap-2 ${choices.length > 1 ? "sm:grid-cols-3" : ""}`}
+        >
+          {choices.map((choice) => {
             const selected = form.venue === choice.id;
             const disabled = choice.id !== "app" && zoomOff;
             return (
@@ -89,7 +104,7 @@ export function WhereSection({
             );
           })}
         </div>
-        {form.venue !== "app" && (
+        {zoomAllowed && form.venue !== "app" && (
           <p className="mt-3 text-[12.5px] leading-relaxed text-ink-2">
             People still get your WhatsApp and email. The join link is a
             personal Zoom link. Meetings need a paid Zoom license.

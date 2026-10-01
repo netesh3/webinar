@@ -16,7 +16,9 @@ func TestCatalogue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"zoom", "whatsapp", "email", "telegram", "youtube", "linkedin", "google-calendar", "instagram", "mailchimp", "zapier"}
+	/* Zoom is a per-account switch. An account with none of the switches on
+	 * does not get the card. The rest of the catalogue is unchanged. */
+	want := []string{"whatsapp", "email", "telegram", "youtube", "linkedin", "google-calendar", "instagram", "mailchimp", "zapier"}
 	if len(cards) != len(want) {
 		t.Fatalf("got %d cards, want %d", len(cards), len(want))
 	}
@@ -39,8 +41,8 @@ func TestCatalogue(t *testing.T) {
 	if !strings.Contains(by["linkedin"].Detail, "stream key") || by["linkedin"].Status == types.IntegrationStatusSoon {
 		t.Errorf("linkedin should say the stream key is how you connect, got %+v", by["linkedin"])
 	}
-	if by["zoom"].Actions[0].Kind != types.IntegrationActionInfo || !strings.Contains(by["zoom"].Detail, "not configured") {
-		t.Errorf("zoom without config = %+v", by["zoom"])
+	if _, ok := by["zoom"]; ok {
+		t.Errorf("zoom card shown without the switch: %+v", by["zoom"])
 	}
 	if by["youtube"].Actions[0].Kind != types.IntegrationActionRedirect {
 		t.Errorf("youtube connect = %+v", by["youtube"].Actions)
@@ -129,7 +131,7 @@ func TestZoomConnectedCard(t *testing.T) {
 			return "", false, nil
 		},
 	})
-	cards, err := reg.List(context.Background(), store.User{ID: "host-a"})
+	cards, err := reg.List(context.Background(), store.User{ID: "host-a", Features: []string{types.FeatureZoom}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +147,7 @@ func TestZoomConnectedCard(t *testing.T) {
 	if zoom.Actions[0].Kind != types.IntegrationActionDelete || zoom.Actions[0].Confirm == "" {
 		t.Fatalf("disconnect = %+v", zoom.Actions)
 	}
-	other, err := reg.List(context.Background(), store.User{ID: "host-b"})
+	other, err := reg.List(context.Background(), store.User{ID: "host-b", Features: []string{types.FeatureZoom}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,5 +155,48 @@ func TestZoomConnectedCard(t *testing.T) {
 		if c.ID == "zoom" && (c.Status == types.IntegrationStatusConnected || c.Who == "a@example.com") {
 			t.Fatalf("host b saw host a: %+v", c)
 		}
+	}
+}
+
+func TestZoomCardFollowsTheSwitch(t *testing.T) {
+	reg := New(nil, false, nil, ZoomHooks{Configured: true})
+	off, err := reg.List(context.Background(), store.User{ID: "host-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range off {
+		if c.ID == "zoom" {
+			t.Fatalf("zoom card without the switch: %+v", c)
+		}
+	}
+	if err := reg.Disconnect(context.Background(), store.User{ID: "host-a"}, "zoom"); err != ErrUnavailable {
+		t.Errorf("disconnect without the switch = %v, want ErrUnavailable", err)
+	}
+
+	on, err := reg.List(context.Background(), store.User{ID: "host-a", Features: []string{types.FeatureZoom}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var zoom types.IntegrationCard
+	for _, c := range on {
+		if c.ID == "zoom" {
+			zoom = c
+		}
+	}
+	if zoom.ID != "zoom" || zoom.Actions[0].Kind != types.IntegrationActionRedirect {
+		t.Fatalf("zoom with the switch = %+v", zoom)
+	}
+	blocked, err := reg.ConnectURL(context.Background(), store.User{ID: "host-a"}, "zoom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocked != "" {
+		t.Fatalf("connect url without the switch = %q", blocked)
+	}
+	open, err := reg.ConnectURL(context.Background(), store.User{
+		ID: "host-a", Features: []string{types.FeatureZoom},
+	}, "zoom")
+	if err != nil || open == "" {
+		t.Fatalf("connect url with the switch = %q, %v", open, err)
 	}
 }

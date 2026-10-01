@@ -987,9 +987,11 @@ type Account struct {
  * Absent means off. There is no feature that defaults to on. An administrator
  * turning one on for an account is the record that somebody decided to — for
  * WhatsApp CRM because it spends money or writes to other people's phones, for
- * cloud recording because storing a session is a decision per customer, and for
+ * cloud recording because storing a session is a decision per customer, for
  * join-without-registration and instant webinars because the default is the
- * restrictive one: everyone registers, and every webinar is scheduled.
+ * restrictive one: everyone registers, and every webinar is scheduled, and for
+ * Zoom because connecting a host's Zoom account and creating meetings there
+ * is a decision per customer.
  */
 const (
 	/* FeatureWhatsAppCRM is the host CRM surface: contact tags and notes, sharing
@@ -1019,6 +1021,14 @@ const (
 	 * Off — the default — means every webinar is scheduled first. See
 	 * migrations/0073. */
 	FeatureInstantWebinar = "instant_webinar"
+	/* FeatureZoom lets a host connect Zoom and run a session there.
+	 *
+	 * Off — the default, including for accounts that already exist — means
+	 * the Zoom card is not on their Integrations page, Zoom is not a choice
+	 * when they schedule, and the Zoom routes refuse them. A new key is off
+	 * for every account because absent means off; see migrations/0048.
+	 * Sessions stay in this app. */
+	FeatureZoom = "zoom"
 )
 
 /* Feature is one switch as the admin screen renders it.
@@ -1057,6 +1067,11 @@ var Features = []Feature{
 		Key:         FeatureInstantWebinar,
 		Label:       "Instant webinar",
 		Description: "Let this host go live immediately, without scheduling a webinar. Off means every webinar is scheduled first.",
+	},
+	{
+		Key:         FeatureZoom,
+		Label:       "Zoom",
+		Description: "Let this host connect Zoom and schedule a session as a Zoom meeting or webinar. Off means sessions stay in this app.",
 	},
 }
 
