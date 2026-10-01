@@ -109,7 +109,6 @@
           <a class="sx-ni" href="#profile" data-sec="profile"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg><span>Profile</span></a>
           <a class="sx-ni" href="#appearance" data-sec="appearance"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor"/></svg><span>Appearance</span></a>
           <a class="sx-ni" href="#integrations" data-sec="integrations"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2 2 0 1 1 4 0V6h4v4h-1.5a2 2 0 1 0 0 4H17v4.5h-4.5V17a2 2 0 1 0-4 0v1.5H4.5V14H6a2 2 0 1 0 0-4H4.5V6H9V4.5z"/></svg><span>Integrations</span><span class="sx-on">2 on</span></a>
-          <a class="sx-ni" href="#account" data-sec="account"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="8" r="3.5"/><path d="M3.5 19.5c.7-3.3 3.3-5 6.5-5 1 0 2 .2 2.8.5"/><circle cx="18" cy="17" r="2"/><path d="M18 13.5v1.5M18 19v1.5M21.5 17H20M16 17h-1.5"/></svg><span>Account</span></a>
           <div class="sx-sep"></div>
           <button class="sx-ni out" type="button"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4.5h4.5v15H14M10 8l-4 4 4 4M6 12h9"/></svg><span>Sign out</span></button>
         </nav>
@@ -127,6 +126,12 @@
                 <div><label class="label" for="org">Organisation</label><input id="org" class="field" value="Mindful Money"></div>
                 <div><button class="cbtn" type="submit">Save changes</button></div>
               </form>
+            </div>
+            <h2 class="sx-h2b">Account</h2>
+            <p class="sx-d">Sign-in and hosting. An administrator changes hosting; you don&apos;t.</p>
+            <div class="sx-box sx-lg sx-acct">
+              <div><div class="sx-k">Email</div><div class="sx-v">meera@mindfulmoney.in</div></div>
+              <div class="sx-host"><div><b>Hosting access</b><span>You can schedule and run webinars.</span></div><span class="sx-badge">Granted</span></div>
             </div>
           </section>
           <section class="sx-sec" data-sec="appearance" hidden>
@@ -176,14 +181,6 @@
               <div class="sx-srow"><span class="sx-mk sm zp"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z" fill="currentColor" stroke="none"/></svg></span><div><b>Zapier</b><small>Send new registrations to thousands of other apps</small></div></div>
             </div>
             <div class="sx-miss"><span>Missing an app you use?</span><a href="mailto:support@webinarliv.com?subject=Integration%20request">Tell us which one</a></div>
-          </section>
-          <section class="sx-sec" data-sec="account" hidden>
-            <h2>Account</h2>
-            <p class="sx-d">Sign-in and hosting. An administrator changes hosting; you don&apos;t.</p>
-            <div class="sx-box sx-lg sx-acct">
-              <div><div class="sx-k">Email</div><div class="sx-v">meera@mindfulmoney.in</div></div>
-              <div class="sx-host"><div><b>Hosting access</b><span>You can schedule and run webinars.</span></div><span class="sx-badge">Granted</span></div>
-            </div>
           </section>
         </div>
       </div>
@@ -257,7 +254,7 @@
 </script>
 <script>
 (function () {
-  var ids = ["profile", "appearance", "integrations", "account"];
+  var ids = ["profile", "appearance", "integrations"];
   function show() {
     var h = location.hash.replace("#", "");
     if (ids.indexOf(h) < 0) h = "profile";

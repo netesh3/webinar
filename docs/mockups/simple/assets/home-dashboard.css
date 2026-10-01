@@ -1770,6 +1770,7 @@ html[data-theme="dark"] .ib-auto b { color: var(--ink); }
 .sx-on { font-size: 11px; font-weight: 600; color: var(--ok); }
 .sx-sep { height: 1px; margin: 8px 10px; background: var(--line); }
 .sx-sec h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.sx-h2b { margin-top: 28px; }
 .sx-d { max-width: 36rem; margin: 4px 0 0; font-size: 12.5px; color: var(--ink-3); }
 .sx-box { margin-top: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 20px; box-shadow: 0 1px 2px rgba(19, 22, 25, 0.04); }
 .sx-lg { max-width: 32rem; }
