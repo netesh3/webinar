@@ -205,8 +205,9 @@ export function HostWebinarsScreen() {
     api.myRegistrations().catch(() => {
       dropCache("/api/me/registrations");
     });
-    /* The follow-up column asks for the recent past page. It only mounts once
-     * the session is allowed to draw, so start it here or those cards wait again. */
+    /* The follow-up column asks for the three most recent past rows. It only
+     * mounts once the session is allowed to draw, so start it here or those
+     * cards wait again. */
     const pastKey = followUpListCacheKey(HOST_LIST_PREFIX);
     api
       .hostWebinars({ tab: "past", limit: FOLLOW_UP_FETCH_LIMIT })

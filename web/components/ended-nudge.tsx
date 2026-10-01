@@ -1,23 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ButtonLink, Card } from "./ui";
 import { api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
-import {
-  FOLLOW_UP_FETCH_LIMIT,
-  FOLLOW_UP_VISIBLE,
-  eligibleFollowUps,
-} from "@/lib/follow-up-nudge";
+import { FOLLOW_UP_FETCH_LIMIT, recentFollowUps } from "@/lib/follow-up-nudge";
 import { formatRelative } from "@/lib/format";
 
-/* On Hosting's Upcoming tab: webinars that just ended, and the one next step.
- * The first days after a webinar are when a follow-up works, and the Completed
- * tab is one click too far to remember it. Shown for a week after the end.
- * The first five sit in view; the rest of that week scroll inside the column. */
+/* On Hosting's Upcoming tab: the three webinars that just ended, and the one
+ * next step. The first days after a webinar are when a follow-up works, and
+ * the Completed tab is one click too far to remember it. Shown for a week
+ * after the end. Three cards, then stop — a fourth is not drawn. */
 
 export function EndedNudge() {
+  const titleId = useId();
   const [rows, setRows] = useState<Webinar[] | null>(null);
   useEffect(() => {
     if (isDevAuthBypassActive()) return;
@@ -25,7 +22,7 @@ export function EndedNudge() {
     api
       .hostWebinars({ tab: "past", limit: FOLLOW_UP_FETCH_LIMIT })
       .then((page) => {
-        if (!cancelled) setRows(eligibleFollowUps(page.items, Date.now()));
+        if (!cancelled) setRows(recentFollowUps(page.items, Date.now()));
       })
       .catch(() => {});
     return () => {
@@ -33,33 +30,26 @@ export function EndedNudge() {
     };
   }, []);
   if (!rows || rows.length === 0) return null;
-  const scrollable = rows.length > FOLLOW_UP_VISIBLE;
   return (
     <aside
-      aria-label="Follow up"
+      aria-labelledby={titleId}
       className="w-full min-[900px]:w-[17.5rem] min-[900px]:shrink-0"
     >
-      {/* The hidden copies are the height of the first five cards, whatever
-          those titles wrap to. The list on top of them scrolls once a sixth
-          session is still inside the week. */}
-      <div className="relative">
-        <div
-          className="invisible grid gap-3 overflow-y-auto [scrollbar-gutter:stable]"
-          inert
-          aria-hidden
+      <div className="mb-2.5">
+        <h2
+          id={titleId}
+          className="text-[14px] font-semibold tracking-[-0.01em] text-ink"
         >
-          {rows.slice(0, FOLLOW_UP_VISIBLE).map((w) => (
-            <FollowUpCard key={w.id} webinar={w} />
-          ))}
-        </div>
-        <div
-          className="absolute inset-0 grid content-start gap-3 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
-          tabIndex={scrollable ? 0 : undefined}
-        >
-          {rows.map((w) => (
-            <FollowUpCard key={w.id} webinar={w} />
-          ))}
-        </div>
+          Recent webinars
+        </h2>
+        <p className="mt-0.5 text-[12.5px] leading-snug text-ink-2">
+          Follow up while it&apos;s fresh
+        </p>
+      </div>
+      <div className="grid gap-2.5">
+        {rows.map((w) => (
+          <FollowUpCard key={w.id} webinar={w} />
+        ))}
       </div>
     </aside>
   );
@@ -69,22 +59,24 @@ function FollowUpCard({ webinar }: { webinar: Webinar }) {
   if (!webinar.endedAt) return null;
   const came = webinar.report?.attended ?? 0;
   const missed = Math.max(0, webinar.registrantCount - came);
-  const title = `${webinar.topic} ended ${formatRelative(webinar.endedAt, new Date())}`;
-  const detail = `${came} came${missed > 0 ? ` · ${missed} missed it` : ""} — follow up while it's fresh.`;
+  const when = formatRelative(webinar.endedAt, new Date());
+  const attendance = `${came} came${missed > 0 ? ` · ${missed} missed it` : ""}`;
   const href = `/host/${encodeURIComponent(webinar.id)}?tab=follow-up`;
   return (
-    <Card className="grid gap-3 border-brand-line bg-brand-soft/40 p-4">
-      <span
-        className="grid size-9 place-items-center rounded-lg bg-brand text-white"
-        aria-hidden
-      >
-        ✦
-      </span>
+    <Card className="grid gap-2.5 bg-surface p-3">
       <div className="min-w-0">
-        <p className="text-[13.5px] font-semibold text-ink">{title}</p>
-        <p className="mt-1 text-[12px] leading-relaxed text-ink-2">{detail}</p>
+        <p className="text-[14px] font-semibold leading-snug tracking-[-0.01em] text-ink">
+          {webinar.topic}
+        </p>
+        <p className="mt-0.5 text-[13px] text-ink-2">ended {when}</p>
+        <p className="mt-1 text-[14px] leading-snug text-ink-2">{attendance}</p>
       </div>
-      <ButtonLink href={href} size="sm" className="w-full">
+      <ButtonLink
+        href={href}
+        size="sm"
+        className="w-full"
+        aria-label={`Follow up on ${webinar.topic}`}
+      >
         Follow up
       </ButtonLink>
     </Card>
