@@ -94,7 +94,7 @@ function useDoorsOpen(w: Webinar): { open: boolean; remaining: number | null } {
   };
 }
 
-function JoinGate({ w }: { w: Webinar }) {
+function JoinGate({ w, lead = false }: { w: Webinar; lead?: boolean }) {
   const { open, remaining } = useDoorsOpen(w);
 
   if (open) {
@@ -113,7 +113,11 @@ function JoinGate({ w }: { w: Webinar }) {
      * already saved to this browser and is recoverable from the webinar's own
      * page besides. */
     return (
-      <ButtonLink href={`/webinars/${w.id}/room`} size="lg" className="mt-2 w-full">
+      <ButtonLink
+        href={`/webinars/${w.id}/room`}
+        size="lg"
+        className={lead ? "mb-5 w-full" : "mt-2 w-full"}
+      >
         {w.status === "live" ? "Join now — live" : "Join now"}
       </ButtonLink>
     );
@@ -123,7 +127,9 @@ function JoinGate({ w }: { w: Webinar }) {
    * absolute time and no countdown is the honest render for that instant; the countdown
    * appears a moment later. */
   return (
-    <div className="mt-2 rounded-lg border border-line bg-surface-2 px-3.5 py-3 text-center">
+    <div
+      className={`${lead ? "mb-5" : "mt-2"} rounded-lg border border-line bg-surface-2 px-3.5 py-3 text-center`}
+    >
       <p className="text-[12px] tracking-[0.04em] text-ink-3 uppercase">
         Doors open in
       </p>
@@ -187,7 +193,7 @@ function doorsOpen(w: Webinar, now: number | null): boolean {
 }
 
 export function RegisterForm({ webinar: w }: { webinar: Webinar }) {
-  const { registrationFor, remember, forget, registrations, error, retry } =
+  const { registrationFor, remember, registrations, error, retry } =
     useRegistrations();
   const { account, status } = useSession();
   const existing = registrationFor(w.id);
@@ -227,13 +233,7 @@ export function RegisterForm({ webinar: w }: { webinar: Webinar }) {
   }
 
   if (existing) {
-    return (
-      <Confirmed
-        webinar={w}
-        registration={existing}
-        onCancel={() => forget(existing)}
-      />
-    );
+    return <Confirmed webinar={w} registration={existing} />;
   }
 
   // Keyed by the account so the prefilled values come from props on mount rather
@@ -985,11 +985,9 @@ function RegisterFields({
 function Confirmed({
   webinar: w,
   registration: r,
-  onCancel,
 }: {
   webinar: Webinar;
   registration: Registration;
-  onCancel: () => void;
 }) {
   const origin = useShareOrigin();
   const { emailConfigured } = useAppConfig();
@@ -1005,9 +1003,16 @@ function Confirmed({
     durationMin: w.durationMin,
     url: joinUrl,
   };
+  const ended = w.status === "ended";
+  const canJoin = !pending && !declined && !awaitingEmail;
 
   return (
     <div>
+      {/* Upcoming and live sessions lead with the way in. A finished session
+          does not: the page heading says it has ended, and Join now stays a
+          secondary action under the registration details. */}
+      {canJoin && !ended && <JoinGate w={w} lead />}
+
       <div
         className={`mb-4 grid size-11 place-items-center rounded-full ${
           declined
@@ -1033,7 +1038,7 @@ function Confirmed({
               ? "Registration submitted"
               : `You're registered${r.firstName ? `, ${r.firstName}` : ""}`}
       </h2>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
+      <p className="mt-1.5 text-[14px] leading-relaxed text-ink-2">
         {declined ? (
           <>The host didn&apos;t approve this registration.</>
         ) : awaitingEmail ? (
@@ -1074,7 +1079,7 @@ function Confirmed({
             a screenshot of a confirmation page. */}
       </dl>
 
-      {!pending && !declined && !awaitingEmail && (
+      {canJoin && (
         <>
           <div className="mb-3">
             <CopyField label="Your join key" value={r.joinKey} />
@@ -1102,29 +1107,19 @@ function Confirmed({
             </Button>
           </div>
 
-          {/* Join, but only when there is something to join.
-              This button used to show the moment a registration succeeded, whatever the
-              date — so registering for a session three weeks out offered to take you into
-              it, and the room then said "waiting for the host to start". The API refuses
-              early joins now; this is the half that stops offering in the first place, and
-              says the thing an attendee actually wants to know instead. */}
-          <JoinGate w={w} />
+          {/* A finished webinar keeps the door, but not as the thing the card
+              is for. Upcoming and live put JoinGate above this block. */}
+          {ended && (
+            <ButtonLink
+              href={`/webinars/${w.id}/room`}
+              variant="secondary"
+              className="mt-3 w-full"
+            >
+              Join now
+            </ButtonLink>
+          )}
         </>
       )}
-
-      {/* No "All my webinars" link.
-          This screen is the end of a registration link, and /my-webinars is the signed-in
-          product's own navigation — offering it here hands a participant a door into an
-          application they were never invited to. What stays is the one action that is about
-          THIS registration: dropping it from this browser. */}
-      <div className="mt-4 flex items-center justify-end gap-3 border-t border-line pt-3 text-[12px]">
-        <button
-          onClick={onCancel}
-          className="text-ink-3 hover:text-live hover:underline"
-        >
-          Forget on this device
-        </button>
-      </div>
     </div>
   );
 }
