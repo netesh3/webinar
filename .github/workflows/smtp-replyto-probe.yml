@@ -4,6 +4,10 @@ name: SMTP reply-to probe
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - ".github/workflows/smtp-replyto-probe.yml"
 
 permissions:
   contents: read
@@ -32,6 +36,7 @@ jobs:
           import (
           	"crypto/tls"
           	"fmt"
+          	"mime"
           	"net"
           	"net/mail"
           	"net/smtp"
@@ -92,15 +97,22 @@ jobs:
           		fmt.Println("SMTP_RESULT data_rejected", redact(err.Error(), user, pass, fromRaw))
           		os.Exit(1)
           	}
+          	parent := "<CAArN=F32qv8vtwCUZoY+KFAxB6FrZaDt4be7wyJ5-9Ke8sU7SA@mail.gmail.com>"
+          	now := time.Now()
           	msg := "From: " + fromRaw + "\r\n" +
           		"To: ganesh.s.p006@gmail.com\r\n" +
           		"Reply-To: gsp@webinarliv.com\r\n" +
-          		"Subject: WebinarLiv inbox test — please reply\r\n" +
+          		"Subject: " + mime.QEncoding.Encode("utf-8", "Re: WebinarLiv inbox test — please reply") + "\r\n" +
+          		"Date: " + now.Format(time.RFC1123Z) + "\r\n" +
+          		fmt.Sprintf("Message-ID: <%d.inbox-reply@webinarliv.com>\r\n", now.UnixNano()) +
+          		"In-Reply-To: " + parent + "\r\n" +
+          		"References: " + parent + "\r\n" +
           		"MIME-Version: 1.0\r\n" +
           		"Content-Type: text/plain; charset=utf-8\r\n" +
           		"\r\n" +
-          		"This is a WebinarLiv inbox test.\r\n" +
-          		"Please reply to this email. Your reply should go to gsp@webinarliv.com.\r\n"
+          		"Hi Ganesh,\r\n\r\n" +
+          		"This is the WebinarLiv inbox replying to your \"Got it!\". Your reply reached gsp@webinarliv.com.\r\n\r\n" +
+          		"Reply again and it will come back to the same inbox.\r\n"
           	if _, err = w.Write([]byte(msg)); err != nil {
           		fmt.Println("SMTP_RESULT write_failed", redact(err.Error(), user, pass, fromRaw))
           		os.Exit(1)
