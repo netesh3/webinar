@@ -173,6 +173,17 @@ func TestComposeReplyTo(t *testing.T) {
 	if strings.Contains(with, "From: gsp@") {
 		t.Error("Reply-To must not replace From")
 	}
+	threaded := s.compose(Message{
+		To: "a@example.com", Subject: "Re: Hi", Body: "hello",
+		ReplyTo: "gsp@webinarliv.com", InReplyTo: "<abc@mail.gmail.com>", References: "<abc@mail.gmail.com>",
+	}, time.Unix(0, 0))
+	if !strings.Contains(threaded, "In-Reply-To: <abc@mail.gmail.com>\r\n") ||
+		!strings.Contains(threaded, "References: <abc@mail.gmail.com>\r\n") {
+		t.Errorf("threading headers missing:\n%s", threaded)
+	}
+	if strings.Contains(threaded, "From: gsp@") {
+		t.Error("threaded reply must keep SMTP From")
+	}
 
 	plain := s.compose(Message{To: "a@example.com", Subject: "Hi", Body: "hello"}, time.Unix(0, 0))
 	if strings.Contains(plain, "Reply-To:") {

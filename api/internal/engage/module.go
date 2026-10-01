@@ -109,6 +109,7 @@ func (s *Module) Mount(public, host chi.Router) {
 	 * raw body in handleWhatsAppWebhook. The GET is the one-off subscription check. */
 	public.Get("/webhooks/whatsapp", s.handleWhatsAppWebhookVerify)
 	public.Post("/webhooks/whatsapp", s.handleWhatsAppWebhook)
+	s.mountEmail(public, host)
 
 	/* Connect WhatsApp. A POST callback rather than a GET one, because Embedded Signup
 	 * hands the code to the page that opened the dialog instead of redirecting back here. */

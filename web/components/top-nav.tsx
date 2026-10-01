@@ -12,6 +12,7 @@ import { ThemeToggle } from "./theme";
 import { ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 import { MessagesNavButton } from "@/engage";
+import { EmailNavLink } from "./email/email-nav";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
@@ -118,6 +119,7 @@ export function TopNav() {
           <span className="size-7 animate-pulse rounded-full bg-surface-2" />
         ) : account ? (
           <>
+            {account.canHost && <EmailNavLink />}
             {account.canHost && <MessagesNavButton />}
             {account.canHost && <HostAlerts />}
             <Menu

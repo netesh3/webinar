@@ -197,6 +197,9 @@ type Config struct {
 	SMTPUsername string
 	SMTPPassword string
 	SMTPFrom     string
+	/* InboxWebhookSecret authenticates the Cloudflare email worker's POST to
+	 * /api/webhooks/email. Empty means that route refuses every request. */
+	InboxWebhookSecret string
 
 	/* The welcome email sent once to every new account (see notify.WelcomeEmail).
 	 *
@@ -376,6 +379,7 @@ func Load() (Config, error) {
 		// Falls back to SUPPORT_EMAIL, because an operator who has already said where mail
 		// comes from should not have to say it twice.
 		SMTPFrom:                env("SMTP_FROM", env("SUPPORT_EMAIL", "")),
+		InboxWebhookSecret:      strings.TrimSpace(env("INBOX_WEBHOOK_SECRET", "")),
 		ContactEmail:            strings.TrimSpace(env("CONTACT_EMAIL", "webinarliv@gmail.com")),
 		ContactPhone:            strings.TrimSpace(env("CONTACT_PHONE", "+91-9852411280")),
 		GoogleClientID:          env("GOOGLE_CLIENT_ID", ""),

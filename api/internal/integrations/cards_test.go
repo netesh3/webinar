@@ -16,7 +16,7 @@ func TestCatalogue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"whatsapp", "telegram", "youtube", "linkedin", "google-calendar", "instagram", "mailchimp", "zapier"}
+	want := []string{"whatsapp", "email", "telegram", "youtube", "linkedin", "google-calendar", "instagram", "mailchimp", "zapier"}
 	if len(cards) != len(want) {
 		t.Fatalf("got %d cards, want %d", len(cards), len(want))
 	}
@@ -89,7 +89,12 @@ func TestYouTubeWithoutOAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	yt := cards[2]
+	var yt types.IntegrationCard
+	for _, c := range cards {
+		if c.ID == "youtube" {
+			yt = c
+		}
+	}
 	if yt.Actions[0].Kind != types.IntegrationActionInfo || !strings.Contains(yt.Detail, "stream key") {
 		t.Errorf("youtube without oauth = %+v", yt)
 	}
