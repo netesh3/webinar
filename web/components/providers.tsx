@@ -112,6 +112,7 @@ type SessionValue = {
   }) => Promise<SignupResponse>;
   signOut: () => Promise<void>;
   updateProfile: (patch: ProfilePatch) => Promise<Account>;
+  requestHost: (phone?: string) => Promise<Account>;
   refresh: () => Promise<void>;
 };
 
@@ -404,6 +405,16 @@ export function AppProviders({
           return next;
         }
         const me = await api.updateProfile(patch);
+        dropCache("/api/auth/me");
+        writeCache("/api/auth/me", me);
+        setAccount(me);
+        return me;
+      },
+      requestHost: async (phone) => {
+        if (isDevAuthBypassActive()) {
+          return account ?? DEV_BYPASS_ACCOUNT;
+        }
+        const me = await api.requestHost(phone);
         dropCache("/api/auth/me");
         writeCache("/api/auth/me", me);
         setAccount(me);

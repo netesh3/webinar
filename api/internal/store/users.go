@@ -85,6 +85,9 @@ type User struct {
 	// EmailVerifiedAt is when the address was confirmed. Nil means the account
 	// cannot sign in. See migrations/0074.
 	EmailVerifiedAt *time.Time
+	// HostRequestedAt is when this account asked to host. Nil means they have
+	// not asked. It does not grant CanHost. See migrations/0080.
+	HostRequestedAt *time.Time
 }
 
 // EmailVerified reports whether this account may sign in.
@@ -124,6 +127,9 @@ func (u User) Public() types.Account {
 		// Never nil on the wire: a browser that has to guard a list guards it
 		// differently on every screen.
 		Features: append([]string{}, u.Features...),
+	}
+	if u.HostRequestedAt != nil {
+		a.HostRequestedAt = u.HostRequestedAt.UTC().Format(time.RFC3339)
 	}
 	if u.YouTubeRefresh != "" {
 		a.YouTube = &types.YouTubeLink{
@@ -179,7 +185,7 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 	whatsapp_token_expires_at, whatsapp_connected_at, whatsapp_registered_at,
 	whatsapp_coexistence, whatsapp_token_rejected_at,
 	coalesce(google_picture,''), coalesce(avatar_key,''), coalesce(avatar_mime,''),
-	email_verified_at`
+	email_verified_at, host_requested_at`
 
 func scanUser(row scanner) (User, error) {
 	var u User
@@ -190,7 +196,8 @@ func scanUser(row scanner) (User, error) {
 		&u.WhatsAppToken, &u.WhatsAppWABAID, &u.WhatsAppPhoneNumberID, &u.WhatsAppDisplayPhone,
 		&u.WhatsAppVerifiedName, &u.WhatsAppTokenExpiresAt, &u.WhatsAppConnectedAt,
 		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence, &u.WhatsAppTokenRejectedAt,
-		&u.GooglePicture, &u.AvatarKey, &u.AvatarMime, &u.EmailVerifiedAt)
+		&u.GooglePicture, &u.AvatarKey, &u.AvatarMime, &u.EmailVerifiedAt,
+		&u.HostRequestedAt)
 	return u, err
 }
 
@@ -333,6 +340,67 @@ func (s *Store) UpdateProfile(ctx context.Context, id string, p types.ProfilePat
 		return User{}, ErrNotFound
 	}
 	return u, err
+}
+
+/* RecordHostRequest stores one open request to host and, when the account
+ * has no phone yet, the number that goes in the notification.
+ *
+ * The UPDATE is the lock: it only matches an account that cannot host and
+ * has not already asked. A second call finds no row and returns
+ * ErrHostRequested, so the caller does not send another email. An existing
+ * phone is left as stored — the argument is used only to fill an empty one.
+ * CanHost is never written here.
+ */
+func (s *Store) RecordHostRequest(ctx context.Context, id, phone string) (User, error) {
+	current, err := s.UserByID(ctx, id)
+	if err != nil {
+		return User{}, err
+	}
+	if current.CanHost {
+		return current, ErrAlreadyHost
+	}
+	if current.HostRequestedAt != nil {
+		return current, ErrHostRequested
+	}
+
+	nextPhone := current.Phone
+	if nextPhone == "" {
+		nextPhone = NormalisePhone(phone)
+		if nextPhone == "" {
+			return current, ErrPhoneRequired
+		}
+	}
+
+	u, err := scanUser(s.pool.QueryRow(ctx, `
+		UPDATE users
+		   SET phone = CASE WHEN phone = '' THEN $2 ELSE phone END,
+		       host_requested_at = now()
+		 WHERE id = $1
+		   AND can_host = false
+		   AND host_requested_at IS NULL
+		RETURNING `+userColumns,
+		id, nextPhone))
+	if noRows(err) {
+		again, err2 := s.UserByID(ctx, id)
+		if err2 != nil {
+			return User{}, err2
+		}
+		if again.CanHost {
+			return again, ErrAlreadyHost
+		}
+		if again.HostRequestedAt != nil {
+			return again, ErrHostRequested
+		}
+		return again, ErrNotFound
+	}
+	return u, err
+}
+
+// ClearHostRequest drops the open request so a failed send can be tried again.
+// The phone, if one was just saved, stays.
+func (s *Store) ClearHostRequest(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE users SET host_requested_at = NULL WHERE id = $1`, id)
+	return err
 }
 
 /* DeleteUser removes an account, for the admin panel.

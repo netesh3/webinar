@@ -48,6 +48,15 @@ var (
 	 * the sequence in its refusal, which is the only thing that makes it actionable.
 	 */
 	ErrInUse = errors.New("still referenced")
+	// ErrAlreadyHost means this account can already host, so a request to
+	// become a host is refused. The request never grants that itself.
+	ErrAlreadyHost = errors.New("already a host")
+	// ErrHostRequested means an open hosting request is already recorded.
+	// A second one must not send another email.
+	ErrHostRequested = errors.New("hosting already requested")
+	// ErrPhoneRequired means the account has no phone and the request did
+	// not include one that could be stored.
+	ErrPhoneRequired = errors.New("phone required")
 )
 
 type Store struct {

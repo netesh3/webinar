@@ -297,7 +297,7 @@ const THEME_OPTIONS: { id: ThemeChoice; label: string }[] = [
   { id: "dark", label: "Dark" },
 ];
 
-function AccountMenu() {
+export function AccountMenu() {
   const router = useRouter();
   const { account, signOut } = useSession();
   const { theme, setTheme } = useTheme();
