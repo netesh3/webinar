@@ -342,7 +342,11 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
                     },
                   ]
                 : []),
-              { kind: "separator" as const },
+              /* A rule with nothing above it is a stray line. Drafts and
+                 completed webinars only have Delete in this menu. */
+              ...(!isDraft && !isEnded
+                ? [{ kind: "separator" as const }]
+                : []),
               {
                 kind: "action" as const,
                 label: "Delete webinar",
