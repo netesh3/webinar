@@ -17,6 +17,7 @@ type Registry struct {
 func New(st *store.Store, oauth bool, revoke YouTubeRevoke) *Registry {
 	list := []Provider{
 		whatsappProvider(),
+		emailInboxProvider(st),
 		telegramProvider(),
 		youtubeProvider{oauth: oauth, revoke: revoke, store: st},
 		linkedinProvider(),

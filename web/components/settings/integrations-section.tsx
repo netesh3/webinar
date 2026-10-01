@@ -5,6 +5,7 @@ import { Alert } from "../controls";
 import { useAppConfig, useSession } from "../providers";
 import { ApiError } from "@/lib/api";
 import type { IntegrationCard } from "@/lib/api-types";
+import { EmailIntegration } from "../email/email-inbox";
 import { IntegrationCard as IntegrationCardView, SoonRow } from "./integration-card";
 
 function youtubeReturn(result: string | null): { notice: string | null; error: string | null } {
@@ -120,9 +121,17 @@ export function IntegrationsSection({
                 {group.label}
               </h3>
               <div className="grid gap-3 lg:grid-cols-2">
-                {rows.map((card) => (
-                  <IntegrationCardView key={card.id} card={card} onChange={changed} />
-                ))}
+                {rows.map((card) =>
+                  card.id === "email" ? (
+                    <EmailIntegration
+                      key={card.id}
+                      address={card.who ?? ""}
+                      note={card.whoNote ?? ""}
+                    />
+                  ) : (
+                    <IntegrationCardView key={card.id} card={card} onChange={changed} />
+                  ),
+                )}
               </div>
             </div>
           );

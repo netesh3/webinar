@@ -431,7 +431,12 @@ commit real values — placeholders only in `deploy/cloudrun.env.example`.
 Email is optional: set the `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`,
 `SMTP_PASSWORD` and `SMTP_FROM` secrets to deliver approval invitations,
 reminders and the one-time welcome email for new accounts. Without them every
-message is kept in the `notifications` outbox as `skipped`. The welcome email's
+message is kept in the `notifications` outbox as `skipped`. Nothing in the
+code names a mail provider; production sets `SMTP_HOST=smtp.gmail.com`.
+`SMTP_FROM` must be that Gmail account or a verified "Send mail as" alias
+(Gmail rewrites or rejects any other From), and `SMTP_PASSWORD` must be an
+app password on a 2FA account. Per-host addresses such as `gsp@webinarliv.com`
+are Reply-To only. The welcome email's
 "reach us" details are the `CONTACT_EMAIL` / `CONTACT_PHONE` repository
 variables (defaults `webinarliv@gmail.com` / `+91-9852411280`); `WELCOME_EMAIL=false`
 turns it off.

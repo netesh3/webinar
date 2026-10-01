@@ -28,6 +28,7 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -44,6 +45,16 @@ type Message struct {
 	// ICS is an optional iCalendar payload. Empty means a plain-text message.
 	ICS     string
 	ICSName string
+	// ReplyTo is optional. Empty leaves the header off, so a reply falls through
+	// to From. When set, it is the host inbox (InboxAddress). It is never copied
+	// into From or the SMTP envelope: those stay SMTP.From, which for Gmail must
+	// be the authenticated account or a verified "Send mail as" alias.
+	ReplyTo string
+	// InReplyTo and References thread this message under an earlier one.
+	// Both are Message-IDs, including the angle brackets. Empty leaves the
+	// header off. Neither is copied into From.
+	InReplyTo  string
+	References string
 }
 
 // Transport delivers a message, or explains why it did not.
@@ -150,10 +161,24 @@ func (s SMTP) compose(m Message, now time.Time) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", from)
 	fmt.Fprintf(&b, "To: %s\r\n", header(m.To))
+	// Reply-To is omitted when empty or unparsable. A value that does not parse
+	// as an address is dropped rather than written raw: the field is host-adjacent
+	// data, and a bad value must not become a second header.
+	if reply := header(m.ReplyTo); reply != "" {
+		if a, err := mail.ParseAddress(reply); err == nil {
+			fmt.Fprintf(&b, "Reply-To: %s\r\n", a.String())
+		}
+	}
 	// Q-encoded when it is not plain ASCII: a subject carrying a registrant's name in
 	// Devanagari or an accented Latin name is otherwise raw 8-bit in a header, which
 	// some relays reject and some clients show as mojibake. ASCII is left unchanged.
 	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", header(m.Subject)))
+	if id := header(m.InReplyTo); id != "" {
+		fmt.Fprintf(&b, "In-Reply-To: %s\r\n", id)
+	}
+	if refs := header(m.References); refs != "" {
+		fmt.Fprintf(&b, "References: %s\r\n", refs)
+	}
 	fmt.Fprintf(&b, "Date: %s\r\n", now.Format(time.RFC1123Z))
 	b.WriteString("MIME-Version: 1.0\r\n")
 	boundary := "wl" + fmt.Sprintf("%d", now.UnixNano())
@@ -220,4 +245,22 @@ func quotedPrintable(s string) string {
 // header strips CR and LF so a value cannot terminate the header block and inject its own.
 func header(v string) string {
 	return strings.NewReplacer("\r", " ", "\n", " ").Replace(strings.TrimSpace(v))
+}
+
+/* InboxAddress is local@webinarliv.com, the per-host Reply-To.
+ *
+ * It is not a From address. Outbound mail is one shared mailbox (production: Gmail);
+ * Gmail rejects or rewrites a From it did not authenticate. Empty, or anything that
+ * is not a single dot-atom local part, returns "" so the message is sent with no
+ * Reply-To. The pattern is lowercase letters, digits and hyphens, matching
+ * users.inbox_local. Callers set that column once the address can receive.
+ */
+var inboxLocal = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`)
+
+func InboxAddress(local string) string {
+	local = strings.ToLower(strings.TrimSpace(local))
+	if !inboxLocal.MatchString(local) {
+		return ""
+	}
+	return local + "@webinarliv.com"
 }

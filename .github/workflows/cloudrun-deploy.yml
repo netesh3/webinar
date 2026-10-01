@@ -142,6 +142,7 @@ jobs:
       SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
+      INBOX_WEBHOOK_SECRET: ${{ secrets.INBOX_WEBHOOK_SECRET }}
       WELCOME_EMAIL: ${{ vars.WELCOME_EMAIL }}
       CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
       CONTACT_PHONE: ${{ vars.CONTACT_PHONE }}

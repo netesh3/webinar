@@ -154,9 +154,11 @@ function PrimaryNav({ tab }: { tab: string | null }) {
     pathname.startsWith(`${ENGAGE_HOME}/`) ||
     pathname === MESSAGES_HREF ||
     pathname.startsWith(`${MESSAGES_HREF}/`);
+  const onEmail = pathname === "/host/email" || pathname.startsWith("/host/email/");
   const onWebinars =
     !onPeople &&
     !onWhatsApp &&
+    !onEmail &&
     pathname !== "/host/login" &&
     (pathname === "/host" || pathname.startsWith("/host/"));
 
@@ -212,6 +214,7 @@ function PrimaryNav({ tab }: { tab: string | null }) {
               badge={unread > 0 ? (unread > 99 ? "99+" : String(unread)) : undefined}
               fly={whatsAppFly}
             />
+            <Item href="/host/email" label="Email" active={onEmail} icon={<MailGlyph />} />
             <Link href="/settings#integrations" className="sb-int-add" onClick={closeDrawer}>
               + Add integration
             </Link>
@@ -389,6 +392,23 @@ function ChevronDown() {
       aria-hidden
     >
       <path d="M3 4.5 6 7.5l3-3" />
+    </svg>
+  );
+}
+
+function MailGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+      <path d="m4.5 7 7.5 6 7.5-6" />
     </svg>
   );
 }

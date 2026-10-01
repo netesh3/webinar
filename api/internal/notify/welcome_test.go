@@ -161,6 +161,55 @@ func TestComposeSendsHTMLAsAlternative(t *testing.T) {
 	}
 }
 
+func TestComposeReplyTo(t *testing.T) {
+	s := SMTP{Host: "h", From: "Webinar Liv <hello@example.test>"}
+	with := s.compose(Message{
+		To: "a@example.com", Subject: "Hi", Body: "hello", ReplyTo: "gsp@webinarliv.com",
+	}, time.Unix(0, 0))
+	if !strings.Contains(with, "Reply-To: <gsp@webinarliv.com>\r\n") &&
+		!strings.Contains(with, "Reply-To: gsp@webinarliv.com\r\n") {
+		t.Errorf("Reply-To missing:\n%s", with)
+	}
+	if strings.Contains(with, "From: gsp@") {
+		t.Error("Reply-To must not replace From")
+	}
+	threaded := s.compose(Message{
+		To: "a@example.com", Subject: "Re: Hi", Body: "hello",
+		ReplyTo: "gsp@webinarliv.com", InReplyTo: "<abc@mail.gmail.com>", References: "<abc@mail.gmail.com>",
+	}, time.Unix(0, 0))
+	if !strings.Contains(threaded, "In-Reply-To: <abc@mail.gmail.com>\r\n") ||
+		!strings.Contains(threaded, "References: <abc@mail.gmail.com>\r\n") {
+		t.Errorf("threading headers missing:\n%s", threaded)
+	}
+	if strings.Contains(threaded, "From: gsp@") {
+		t.Error("threaded reply must keep SMTP From")
+	}
+
+	plain := s.compose(Message{To: "a@example.com", Subject: "Hi", Body: "hello"}, time.Unix(0, 0))
+	if strings.Contains(plain, "Reply-To:") {
+		t.Error("empty ReplyTo must not emit a header")
+	}
+
+	injected := s.compose(Message{
+		To: "a@example.com", Subject: "Hi", Body: "hello",
+		ReplyTo: "gsp@webinarliv.com\r\nBcc: victim@example.com",
+	}, time.Unix(0, 0))
+	if strings.Contains(injected, "Bcc:") {
+		t.Error("Reply-To must not inject headers")
+	}
+}
+
+func TestInboxAddress(t *testing.T) {
+	if got := InboxAddress(" GSP "); got != "gsp@webinarliv.com" {
+		t.Errorf("InboxAddress = %q", got)
+	}
+	for _, bad := range []string{"", "a b", "has@at", "bad!", "../x"} {
+		if got := InboxAddress(bad); got != "" {
+			t.Errorf("InboxAddress(%q) = %q, want empty", bad, got)
+		}
+	}
+}
+
 func TestComposeEncodesANonASCIISubject(t *testing.T) {
 	s := SMTP{Host: "h", From: "a@example.test"}
 	msg := s.compose(Message{To: "b@example.test", Subject: "Welcome to Webinar Liv, प्रिया", Body: "x"}, time.Unix(0, 0))

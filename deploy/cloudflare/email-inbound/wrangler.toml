@@ -1,0 +1,16 @@
+name = "webinar-email-inbound"
+main = "src/index.js"
+compatibility_date = "2026-03-01"
+workers_dev = false
+
+# Production API. The route is added with the inbox PR; until that deploy,
+# the worker still accepts the message and records the API status.
+[vars]
+API_BASE_URL = "https://webcast-api-65278594492.asia-south1.run.app"
+INBOUND_HOST = "webinarliv.com"
+
+# Temporary hold so a reply is not dropped while POST /api/webhooks/email
+# is not deployed on the API yet. The worker still POSTs first.
+[[kv_namespaces]]
+binding = "INBOX"
+id = "c469f6a2205040db9c531a4a8615bee1"
