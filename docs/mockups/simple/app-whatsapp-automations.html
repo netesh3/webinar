@@ -11,6 +11,7 @@
     var saved = localStorage.getItem("wl-theme");
     var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (dark) document.documentElement.setAttribute("data-theme", "dark");
+    if (localStorage.getItem("wl-sidebar") === "collapsed") document.documentElement.classList.add("side-collapsed");
   } catch (e) {}
 })();
 </script>
@@ -225,16 +226,18 @@
   var tablet = window.matchMedia("(min-width: 768px) and (max-width: 1279px)");
   var phone = window.matchMedia("(max-width: 767px)");
   var btn = document.querySelector(".collapse");
+  var root = document.documentElement;
   function rail() {
-    return b.classList.contains("side-collapsed") || (tablet.matches && !b.classList.contains("side-expanded"));
+    return root.classList.contains("side-collapsed") || b.classList.contains("side-collapsed") || (tablet.matches && !b.classList.contains("side-expanded"));
   }
+  function save(v) { try { localStorage.setItem("wl-sidebar", v); } catch (e) {} }
   function label() {
     if (btn) btn.setAttribute("aria-label", phone.matches ? "Close menu" : rail() ? "Expand sidebar" : "Collapse sidebar");
   }
   if (btn) btn.addEventListener("click", function () {
     if (phone.matches) { b.classList.remove("nav-open"); return; }
-    if (rail()) { b.classList.remove("side-collapsed"); b.classList.add("side-expanded"); }
-    else { b.classList.add("side-collapsed"); b.classList.remove("side-expanded"); }
+    if (rail()) { root.classList.remove("side-collapsed"); b.classList.remove("side-collapsed"); b.classList.add("side-expanded"); save("expanded"); }
+    else { root.classList.add("side-collapsed"); b.classList.remove("side-expanded"); save("collapsed"); }
     label();
   });
   var menu = document.querySelector(".mbar .menu");
