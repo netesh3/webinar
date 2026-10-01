@@ -286,6 +286,16 @@ func TestTemplatesFollowsPaging(t *testing.T) {
 	}
 }
 
+func TestTemplateLanguageMayBeACodeObject(t *testing.T) {
+	got := readTemplate(graphTemplateFromJSON(t, `{
+		"name":"webinar_reminder","language":{"code":"en_US"},"status":"APPROVED",
+		"components":[{"type":"BODY","text":"Hi {{1}}."}]
+	}`))
+	if got.Name != "webinar_reminder" || got.Language != "en_US" || got.Variables != 1 {
+		t.Fatalf("template = %+v, want the code inside the language object", got)
+	}
+}
+
 func TestTemplatesNeedsTokenAndWABA(t *testing.T) {
 	c := newTestClient("http://127.0.0.1:1")
 	if _, err := c.Templates(context.Background(), "", "waba-1"); !errors.Is(err, ErrNotConnected) {

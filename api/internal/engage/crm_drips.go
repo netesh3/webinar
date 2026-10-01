@@ -372,7 +372,7 @@ func (s *Module) stepsAllowed(
 		tmpl, err := s.templateForSend(r.Context(), user, strings.TrimSpace(step.Template), step.Language)
 		if errors.Is(err, store.ErrNotFound) {
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_template",
-				at+"that template is not in your WhatsApp account. Refresh your templates and try again.")
+				at+noTemplateMessage(step.Template))
 			return nil, false
 		}
 		if err != nil {
