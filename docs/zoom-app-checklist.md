@@ -65,7 +65,7 @@ User-managed names only. Do not add the `:admin` twin of any of these.
 - `webinar:read:list_past_participants`
 - `webinar:read:list_absentees`
 - `webinar:read:list_polls`
-- `webinar:read:list_qa`
+- `webinar:read:past_qa`
 - `cloud_recording:read:list_user_recordings`
 
 Not requested: any `:admin` scope, report scopes, survey scopes, chat-message scopes, `webinar:write:panelist`, `user:write`.

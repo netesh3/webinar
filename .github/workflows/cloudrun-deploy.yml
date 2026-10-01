@@ -32,6 +32,10 @@
 #     Cloud Scheduler calls every minute so reminders send while scaled to zero.
 #   META_WEBHOOK_VERIFY_TOKEN — must match the Verify token on the Meta app's
 #     WhatsApp webhook, whose callback is {API}/api/webhooks/whatsapp
+#   ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET / ZOOM_REDIRECT_URL / ZOOM_TOKEN_KEY —
+#     Connect Zoom. All four or the card stays "Zoom is not configured".
+#     ZOOM_WEBHOOK_SECRET signs POST /api/webhooks/zoom; unset, that route
+#     refuses the body. See docs/zoom-app-checklist.md.
 #   TELEMETRY_ENABLED — hardcoded below (not a secret): "true" turns on
 #     POST /telemetry for a performance-test window. Flip to "false" and
 #     redeploy when the test is done.
@@ -143,6 +147,11 @@ jobs:
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
       INBOX_WEBHOOK_SECRET: ${{ secrets.INBOX_WEBHOOK_SECRET }}
+      ZOOM_CLIENT_ID: ${{ secrets.ZOOM_CLIENT_ID }}
+      ZOOM_CLIENT_SECRET: ${{ secrets.ZOOM_CLIENT_SECRET }}
+      ZOOM_REDIRECT_URL: ${{ secrets.ZOOM_REDIRECT_URL }}
+      ZOOM_TOKEN_KEY: ${{ secrets.ZOOM_TOKEN_KEY }}
+      ZOOM_WEBHOOK_SECRET: ${{ secrets.ZOOM_WEBHOOK_SECRET }}
       WELCOME_EMAIL: ${{ vars.WELCOME_EMAIL }}
       CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
       CONTACT_PHONE: ${{ vars.CONTACT_PHONE }}

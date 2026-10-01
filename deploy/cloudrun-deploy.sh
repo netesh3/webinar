@@ -183,6 +183,14 @@ fi
 [[ -n "${SMTP_PASSWORD:-}" ]] && ENV_VARS+=("SMTP_PASSWORD=${SMTP_PASSWORD}")
 [[ -n "${SMTP_FROM:-}" ]] && ENV_VARS+=("SMTP_FROM=${SMTP_FROM}")
 [[ -n "${INBOX_WEBHOOK_SECRET:-}" ]] && ENV_VARS+=("INBOX_WEBHOOK_SECRET=${INBOX_WEBHOOK_SECRET}")
+# Connect Zoom. The API offers Connect only when id, secret, redirect, and
+# token key are all set. The webhook secret is separate: unset, the webhook
+# route refuses the body and the rest of the API still boots.
+[[ -n "${ZOOM_CLIENT_ID:-}" ]] && ENV_VARS+=("ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID}")
+[[ -n "${ZOOM_CLIENT_SECRET:-}" ]] && ENV_VARS+=("ZOOM_CLIENT_SECRET=${ZOOM_CLIENT_SECRET}")
+[[ -n "${ZOOM_REDIRECT_URL:-}" ]] && ENV_VARS+=("ZOOM_REDIRECT_URL=${ZOOM_REDIRECT_URL}")
+[[ -n "${ZOOM_TOKEN_KEY:-}" ]] && ENV_VARS+=("ZOOM_TOKEN_KEY=${ZOOM_TOKEN_KEY}")
+[[ -n "${ZOOM_WEBHOOK_SECRET:-}" ]] && ENV_VARS+=("ZOOM_WEBHOOK_SECRET=${ZOOM_WEBHOOK_SECRET}")
 [[ -n "${WELCOME_EMAIL:-}" ]] && ENV_VARS+=("WELCOME_EMAIL=${WELCOME_EMAIL}")
 [[ -n "${CONTACT_EMAIL:-}" ]] && ENV_VARS+=("CONTACT_EMAIL=${CONTACT_EMAIL}")
 [[ -n "${CONTACT_PHONE:-}" ]] && ENV_VARS+=("CONTACT_PHONE=${CONTACT_PHONE}")
