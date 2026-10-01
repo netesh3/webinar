@@ -137,6 +137,7 @@
   padding-right: 34px;
 }
 .sb-ic {
+  position: relative;
   width: 18px;
   height: 18px;
   flex-shrink: 0;
@@ -146,6 +147,51 @@
 .sb-ic svg {
   width: 18px;
   height: 18px;
+}
+.sb-int-mark {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+/* Live dot sits on the icon corner. The unread badge stays at the right of
+   the row (and the top-right of the rail button), so the two do not overlap. */
+.sb-live {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  z-index: 1;
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--color-ok);
+  box-shadow: 0 0 0 2px var(--color-surface);
+}
+.sb-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-ok);
+  opacity: 0.4;
+  animation: sb-live-ping 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes sb-live-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  75%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-live::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 .sb-lbl {
   flex: 1 1 auto;
