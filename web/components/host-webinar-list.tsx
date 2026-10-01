@@ -204,11 +204,17 @@ function HostCard({
   const waitReason = goLiveWaitReason(w.startsAt, w.timeZone);
 
   return (
+    /* The action column is z-10 so its buttons sit above the stretched link.
+     * That z-10 is its own stacking context, so the menu's z-50 cannot climb
+     * out of it: the next card's action column is also z-10 and later in the
+     * tree, and paints over this open menu (and the same would happen over
+     * the pager and the follow-up banner if those ever stacked too). While
+     * the menu is open, lift the whole card above those siblings. */
     <Card
       className={
         readOnly
           ? "p-4 sm:p-5"
-          : "group relative cursor-pointer p-4 transition-colors hover:border-line-2 hover:bg-surface-2/40 sm:p-5"
+          : "group relative cursor-pointer p-4 transition-colors hover:border-line-2 hover:bg-surface-2/40 sm:p-5 [&:has([aria-expanded=true])]:z-20"
       }
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
