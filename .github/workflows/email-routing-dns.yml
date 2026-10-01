@@ -1,0 +1,116 @@
+# One-shot: point webinarliv.com mail at Cloudflare and merge SPF.
+# workflow_dispatch, plus one pull_request run so it can execute before it is on main.
+# The API token is only used as an env var and is never printed.
+name: Email routing DNS
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - ".github/workflows/email-routing-dns.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dns:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Replace MX and merge SPF
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ZONE: "6717189071a056a7cceb07525413e26c"
+        run: |
+          set -euo pipefail
+          python3 << 'PY'
+          import json, os, urllib.request, urllib.error
+          token = os.environ["CLOUDFLARE_API_TOKEN"]
+          zone = os.environ["ZONE"]
+          base = f"https://api.cloudflare.com/client/v4/zones/{zone}"
+
+          def cf(method, path, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(
+                  base + path, data=data, method=method,
+                  headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=40) as r:
+                      return r.status, json.loads(r.read().decode())
+              except urllib.error.HTTPError as e:
+                  raw = e.read().decode(errors="replace").replace(token, "[redacted]")
+                  try:
+                      data = json.loads(raw)
+                  except Exception:
+                      data = {"raw": raw[:400]}
+                  return e.code, data
+
+          def brief(data):
+              errs = data.get("errors")
+              print(" errors", errs)
+
+          code, data = cf("GET", "/dns_records?per_page=100")
+          print("list", code, data.get("success"))
+          if not data.get("success"):
+              brief(data)
+              raise SystemExit(1)
+          records = data.get("result") or []
+          merged = "v=spf1 include:_spf.mx.cloudflare.net include:spf.spacemail.com ~all"
+          want_mx = [
+              (30, "route3.mx.cloudflare.net"),
+              (46, "route1.mx.cloudflare.net"),
+              (64, "route2.mx.cloudflare.net"),
+          ]
+
+          for rec in records:
+              if rec.get("type") == "MX" and "spacemail.com" in (rec.get("content") or ""):
+                  c, d = cf("DELETE", f"/dns_records/{rec['id']}")
+                  print("delete_mx", c, d.get("success"), rec.get("content"))
+                  if not d.get("success"):
+                      brief(d)
+                      raise SystemExit(1)
+
+          existing_mx = {(rec.get("priority"), (rec.get("content") or "").rstrip("."))
+                         for rec in records if rec.get("type") == "MX" and "spacemail.com" not in (rec.get("content") or "")}
+          for prio, host in want_mx:
+              if (prio, host) in existing_mx:
+                  print("mx_exists", prio, host)
+                  continue
+              c, d = cf("POST", "/dns_records", {
+                  "type": "MX", "name": "webinarliv.com", "content": host, "priority": prio, "ttl": 1,
+              })
+              print("add_mx", c, d.get("success"), prio, host)
+              if not d.get("success"):
+                  brief(d)
+                  raise SystemExit(1)
+
+          spf = [rec for rec in records if rec.get("type") == "TXT" and "v=spf1" in (rec.get("content") or "")]
+          if spf:
+              c, d = cf("PATCH", f"/dns_records/{spf[0]['id']}", {
+                  "type": "TXT", "name": "webinarliv.com", "content": merged, "ttl": 1,
+              })
+              print("patch_spf", c, d.get("success"))
+              if not d.get("success"):
+                  brief(d)
+                  raise SystemExit(1)
+          else:
+              c, d = cf("POST", "/dns_records", {
+                  "type": "TXT", "name": "webinarliv.com", "content": merged, "ttl": 1,
+              })
+              print("add_spf", c, d.get("success"))
+              if not d.get("success"):
+                  brief(d)
+                  raise SystemExit(1)
+
+          code, data = cf("GET", "/dns_records?per_page=100")
+          print("reread", code, data.get("success"))
+          if not data.get("success"):
+              brief(data)
+              raise SystemExit(1)
+          for rec in data.get("result") or []:
+              if rec.get("type") == "MX" or (rec.get("type") == "TXT" and "v=spf1" in (rec.get("content") or "")):
+                  print(rec.get("type"), rec.get("priority"), rec.get("name"), rec.get("content"))
+              elif rec.get("type") == "TXT" and "domainkey" in (rec.get("name") or ""):
+                  print("TXT", rec.get("name"), "len", len(rec.get("content") or ""))
+          PY
