@@ -126,7 +126,9 @@ func (s *Server) enqueueReplay(ctx context.Context, slug string, rec types.Recor
 				SurveyURL:   surveyURL,
 				SurveyTitle: surveyLabel,
 			}
-			subject, body := notify.ReplayReady(in)
+			subject, body := s.registrantMail(ctx, hostID, notify.TplReplayReady, in, "", func() (string, string) {
+				return notify.ReplayReady(in)
+			})
 			if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
 				Email:          p.Email,
 				Kind:           types.NotifyReplayReady,

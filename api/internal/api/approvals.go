@@ -143,7 +143,9 @@ func (s *Server) notifyDecisions(
 			continue
 		case types.RegDeclined:
 			kind = types.NotifyRegistrationDeclined
-			subject, bodyText = notify.RegistrationDeclined(in)
+			subject, bodyText = s.registrantMail(ctx, wb.Host.ID, notify.TplRegistrationDeclined, in, "", func() (string, string) {
+				return notify.RegistrationDeclined(in)
+			})
 			_ = s.store.SkipPendingRemindersForRegistration(ctx, row.ID)
 			declined = append(declined, row.ID)
 		default:
