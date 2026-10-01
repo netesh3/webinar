@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audience · Webinar Liv</title>
+<link rel="stylesheet" href="assets/home-dashboard.css">
+<script>
+(function () {
+  try {
+    var saved = localStorage.getItem("wl-theme");
+    var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (dark) document.documentElement.setAttribute("data-theme", "dark");
+    if (localStorage.getItem("wl-sidebar") === "collapsed") document.documentElement.classList.add("side-collapsed");
+  } catch (e) {}
+})();
+</script>
+</head>
+<body>
+<header class="mbar">
+  <button class="menu" type="button" aria-label="Open menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <span class="mark" aria-hidden="true"></span>
+  <strong>Webinar Liv</strong>
+</header>
+<div class="app">
+  <aside class="side" aria-label="Sidebar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div class="brand-copy">
+        <strong>Webinar Liv</strong>
+        <span class="beta">Beta</span>
+      </div>
+      <button class="collapse" type="button" aria-label="Collapse sidebar"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg></button>
+    </div>
+    <nav class="nav" aria-label="Primary">
+      <a class="navitem" id="webinars" href="app-webinars.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3.5V7M16 3.5V7"/></svg></span>
+        <span class="lbl">Webinars</span>
+        <span class="fly">Webinars</span>
+      </a>
+      <a class="navitem on" href="app-audience.html" aria-current="page">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="2.4"/><path d="M4.6 18.5c.5-2.5 2.3-4 4.4-4s3.9 1.5 4.4 4"/><circle cx="16.2" cy="9.2" r="1.9"/><path d="M14.4 18.5c.25-1.7 1.3-2.9 2.6-2.9 1.4 0 2.4 1.1 2.7 2.9"/></svg></span>
+        <span class="lbl">Audience</span>
+        <span class="fly">Audience</span>
+      </a>
+      <button class="int-h" type="button" aria-expanded="true" aria-controls="int-tree">
+        <span class="chev" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6 7.5l3-3"/></svg></span>
+        <span class="lbl">Integrations</span>
+        <span class="cnt">3 connected</span>
+      </button>
+      <div class="tree-wrap" id="int-tree">
+        <div class="tree">
+          <div class="tree-in">
+      <a class="navitem" href="app-whatsapp.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg></span>
+        <span class="lbl">WhatsApp</span>
+        <span class="badge-n">2</span>
+        <span class="fly">WhatsApp · <em>2 unread</em></span>
+      </a>
+      <a class="navitem" href="app-email.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/></svg></span>
+        <span class="lbl">Email</span>
+        <span class="cdot" title="Connected"></span>
+        <span class="fly">Email · <em>Connected</em></span>
+      </a>
+      <a class="navitem" href="app-youtube.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6.5" width="17" height="11" rx="3"/><path d="m10.2 9.4 4.6 2.6-4.6 2.6z"/></svg></span>
+        <span class="lbl">YouTube</span>
+        <span class="cdot" title="Connected"></span>
+        <span class="fly">YouTube · <em>Connected</em></span>
+      </a>
+            <a class="int-add" href="app-settings.html">+ Add integration</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+    <div class="side-foot">
+      <nav class="nav" aria-label="Settings">
+      <a class="navitem" href="app-settings.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
+        <span class="lbl">Settings</span>
+        <span class="fly">Settings</span>
+      </a>
+      </nav>
+      <button class="navitem theme" type="button" aria-label="Switch to dark mode">
+        <span class="ic moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5z"/></svg></span>
+        <span class="ic sun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg></span>
+        <span class="lbl">Dark</span>
+        <span class="fly">Dark mode</span>
+      </button>
+      <div class="account">
+        <span class="av" aria-hidden="true">MS</span>
+        <div class="who">
+          <div class="nm">Meera Shah</div>
+          <div class="em">meera@mindfulmoney.in</div>
+        </div>
+        <span class="fly">Meera Shah</span>
+      </div>
+    </div>
+  </aside>
+  <div class="scrim" aria-hidden="true"></div>
+
+  <main class="main">
+    <div class="cur">
+    <h1 class="au-title">Audience</h1>
+    <div class="au">
+      <div class="au-sumhead">
+        <span>Across your last 6 webinars</span>
+        <div class="au-chips">
+          <button class="au-chip on" type="button">Last 6</button>
+          <button class="au-chip" type="button">Last 12</button>
+          <button class="au-chip" type="button">All</button>
+        </div>
+      </div>
+
+      <div class="au-kpis">
+        <div class="cur-card au-kpi"><div class="l">People reached</div><div class="v">214</div><div class="n">38 came this month</div></div>
+        <div class="cur-card au-kpi"><div class="l">Show-up rate</div><div class="v">64%</div><div class="n">of those who registered</div></div>
+        <div class="cur-card au-kpi"><div class="l">Avg engagement</div><div class="v">59</div><div class="n">session index, out of 100</div></div>
+        <div class="cur-card au-kpi"><div class="l">Came back</div><div class="v">41</div><div class="n">joined 2 or more</div></div>
+      </div>
+
+      <div class="au-grid">
+        <div class="cur-card au-chart">
+          <div class="au-ch">
+            <h3>Webinar by webinar</h3>
+            <span class="au-legend"><span><i class="soft"></i>Showed up %</span><span><i></i>Engagement</span></span>
+          </div>
+          <div class="au-bars">
+            <a class="au-bar" href="#" title="Morning Routines: 66% showed up · engagement 61">
+              <span class="au-pair"><span class="soft" style="height:66%"></span><span style="height:61%"></span></span>
+              <span class="au-bl">Morning Routines</span>
+            </a>
+            <a class="au-bar" href="#" title="Ask Meera Q&amp;A: 58% showed up · engagement 54">
+              <span class="au-pair"><span class="soft" style="height:58%"></span><span style="height:54%"></span></span>
+              <span class="au-bl">Ask Meera Q&amp;A</span>
+            </a>
+            <a class="au-bar" href="#" title="Salary Week: 63% showed up · engagement 57">
+              <span class="au-pair"><span class="soft" style="height:63%"></span><span style="height:57%"></span></span>
+              <span class="au-bl">Salary Week</span>
+            </a>
+            <a class="au-bar" href="#" title="Fund Picking 101: 67% showed up · engagement 62">
+              <span class="au-pair"><span class="soft" style="height:67%"></span><span style="height:62%"></span></span>
+              <span class="au-bl">Fund Picking 101</span>
+            </a>
+            <a class="au-bar" href="#" title="Credit Score Basics: 59% showed up · engagement 55">
+              <span class="au-pair"><span class="soft" style="height:59%"></span><span style="height:55%"></span></span>
+              <span class="au-bl">Credit Score Basics</span>
+            </a>
+            <a class="au-bar" href="#" title="Diwali Money Plan: 69% showed up · engagement 64">
+              <span class="au-pair"><span class="soft" style="height:69%"></span><span style="height:64%"></span></span>
+              <span class="au-bl">Diwali Money Plan</span>
+            </a>
+          </div>
+        </div>
+        <div class="au-side">
+          <div class="cur-card au-pl">
+            <div class="au-plh"><h3>Your best people</h3><span>came 2+, engaged</span></div>
+            <ul>
+              <li><span class="pav" style="background:#7c3aed;width:28px;height:28px;font-size:10px" aria-hidden="true">AM</span><span><b>Arjun Mehta</b><span>came to 4 of 4 · avg 82</span></span></li>
+              <li><span class="pav" style="background:#b45309;width:28px;height:28px;font-size:10px" aria-hidden="true">PN</span><span><b>Priya Nair</b><span>came to 3 of 3 · avg 78</span></span></li>
+              <li><span class="pav" style="background:#be185d;width:28px;height:28px;font-size:10px" aria-hidden="true">AR</span><span><b>Ananya Rao</b><span>came to 2 of 3 · avg 74</span></span></li>
+            </ul>
+            <div class="au-plf"><button class="cbtn" type="button">Message these 18</button><button class="au-link" type="button">See all 18</button></div>
+          </div>
+          <div class="cur-card au-pl">
+            <div class="au-plh"><h3>Slipping away</h3><span>registered 2+, never came</span></div>
+            <ul>
+              <li><span class="pav" style="background:#c2410c;width:28px;height:28px;font-size:10px" aria-hidden="true">KS</span><span><b>Karan Shah</b><span>came to 0 of 3</span></span></li>
+              <li><span class="pav" style="background:#0369a1;width:28px;height:28px;font-size:10px" aria-hidden="true">DM</span><span><b>Divya Menon</b><span>came to 0 of 2</span></span></li>
+              <li><span class="pav" style="background:#9333ea;width:28px;height:28px;font-size:10px" aria-hidden="true">NJ</span><span><b>Nikhil Joshi</b><span>came to 0 of 2</span></span></li>
+            </ul>
+            <div class="au-plf"><button class="cbtn sec" type="button">Message these 9</button><button class="au-link" type="button">See all 9</button></div>
+          </div>
+        </div>
+      </div>
+
+      <p class="au-line"><b>214</b> people from 7 webinars · <span class="ok">136 came</span> · 78 didn’t</p>
+
+      <div class="au-tools">
+        <label class="au-search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg><input type="search" placeholder="Search name, email or phone" aria-label="Search people"></label>
+        <select class="au-select" aria-label="Webinar"><option>All webinars</option></select>
+        <button class="cbtn au-msg" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>Message all 214</button>
+      </div>
+
+      <div class="au-pills" role="group" aria-label="Show">
+        <button class="au-pill on" type="button">Everyone <span>214</span></button>
+        <button class="au-pill" type="button">Came <span>136</span></button>
+        <button class="au-pill" type="button">Didn't come <span>78</span></button>
+        <button class="au-pill" type="button">Highly engaged <span>18</span></button>
+        <button class="au-pill" type="button">Came back <span>41</span></button>
+        <button class="au-pill" type="button">Slipping away <span>9</span></button>
+        <button class="au-pill" type="button">Replied <span>23</span></button>
+        <button class="au-pill" type="button">Hot leads <span>6</span></button>
+      </div>
+
+      <div class="cur-card au-table">
+        <div class="au-hd">
+          <input type="checkbox" aria-label="Pick everyone on this page">
+          <span class="c-person">Person</span>
+          <span class="c-att">Attendance</span>
+          <span class="c-eng">Engagement</span>
+          <span class="c-last">Last webinar</span>
+          <span class="c-act"></span>
+        </div>
+        <ul>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Ananya Rao">
+            <span class="c-person"><span class="pav" style="background:#0f766e;width:34px;height:34px;font-size:13px" aria-hidden="true">AR</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Ananya Rao</a><span class="rep">Replied</span></span><span class="sec">+91 98450 12873 · ananya.rao@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 2 of 3</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-eng"></i><b>74</b><span>Engaged</span></span></span>
+            <span class="c-last" title="Diwali Money Plan">Diwali Money Plan</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Arjun Mehta">
+            <span class="c-person"><span class="pav" style="background:#7c3aed;width:34px;height:34px;font-size:13px" aria-hidden="true">AM</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Arjun Mehta</a><span class="rep">Replied</span></span><span class="sec">+91 99301 44821 · arjun.mehta@outlook.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 4 of 4</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-high"></i><b>82</b><span>Highly engaged</span></span></span>
+            <span class="c-last" title="Diwali Money Plan">Diwali Money Plan</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Priya Nair">
+            <span class="c-person"><span class="pav" style="background:#b45309;width:34px;height:34px;font-size:13px" aria-hidden="true">PN</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Priya Nair</a></span><span class="sec">+91 98860 21134 · priya.nair@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 3 of 3</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-high"></i><b>78</b><span>Highly engaged</span></span></span>
+            <span class="c-last" title="Credit Score Basics">Credit Score Basics</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Rohit Menon">
+            <span class="c-person"><span class="pav" style="background:#be185d;width:34px;height:34px;font-size:13px" aria-hidden="true">RM</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Rohit Menon</a><span class="rep">Replied</span></span><span class="sec">+91 97420 88310 · rohit.m@yahoo.in</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 1 of 2</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-pas"></i><b>49</b><span>Passive</span></span></span>
+            <span class="c-last" title="Diwali Money Plan">Diwali Money Plan</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Sneha Kulkarni">
+            <span class="c-person"><span class="pav" style="background:#1d4ed8;width:34px;height:34px;font-size:13px" aria-hidden="true">SK</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Sneha Kulkarni</a></span><span class="sec">+91 90040 55219 · sneha.k@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-eng"></i><b>66</b><span>Engaged</span></span></span>
+            <span class="c-last" title="Fund Picking 101">Fund Picking 101</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Vikram Singh">
+            <span class="c-person"><span class="pav" style="background:#15803d;width:34px;height:34px;font-size:13px" aria-hidden="true">VS</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Vikram Singh</a></span><span class="sec">+91 98110 73602 · vikram.singh@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 2 of 2</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-eng"></i><b>71</b><span>Engaged</span></span></span>
+            <span class="c-last" title="Credit Score Basics">Credit Score Basics</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Karan Shah">
+            <span class="c-person"><span class="pav" style="background:#c2410c;width:34px;height:34px;font-size:13px" aria-hidden="true">KS</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Karan Shah</a></span><span class="sec">+91 99870 11245 · karan.shah@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2"><i></i>Missed all 3</span></span>
+            <span class="c-eng"><span class="mute">—</span></span>
+            <span class="c-last" title="Diwali Money Plan">Diwali Money Plan</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Meghna Das">
+            <span class="c-person"><span class="pav" style="background:#0369a1;width:34px;height:34px;font-size:13px" aria-hidden="true">MD</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Meghna Das</a></span><span class="sec">+91 98300 62417 · meghna.das@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-risk"></i><b>38</b><span>At risk</span></span></span>
+            <span class="c-last" title="Salary Week: Where the Money Goes">Salary Week: Where the Money Goes</span>
+            <span class="c-act"><span class="blk">Not opted in</span></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Rahul Verma">
+            <span class="c-person"><span class="pav" style="background:#9333ea;width:34px;height:34px;font-size:13px" aria-hidden="true">RV</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Rahul Verma</a></span><span class="sec">rahul.verma@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 1 of 2</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-eng"></i><b>57</b><span>Engaged</span></span></span>
+            <span class="c-last" title="Fund Picking 101">Fund Picking 101</span>
+            <span class="c-act"><span class="blk">No phone number</span></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Divya Menon">
+            <span class="c-person"><span class="pav" style="background:#4d7c0f;width:34px;height:34px;font-size:13px" aria-hidden="true">DM</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Divya Menon</a></span><span class="sec">+91 97890 30456 · divya.menon@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2"><i></i>Missed all 2</span></span>
+            <span class="c-eng"><span class="mute">—</span></span>
+            <span class="c-last" title="Credit Score Basics">Credit Score Basics</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Aditya Kapoor">
+            <span class="c-person"><span class="pav" style="background:#0f766e;width:34px;height:34px;font-size:13px" aria-hidden="true">AK</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Aditya Kapoor</a></span><span class="sec">+91 98201 99034 · aditya.k@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 2 of 4</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-eng"></i><b>61</b><span>Engaged</span></span></span>
+            <span class="c-last" title="Diwali Money Plan">Diwali Money Plan</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Pooja Reddy">
+            <span class="c-person"><span class="pav" style="background:#7c3aed;width:34px;height:34px;font-size:13px" aria-hidden="true">PR</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Pooja Reddy</a></span><span class="sec">+91 90000 41822 · pooja.reddy@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-pas"></i><b>52</b><span>Passive</span></span></span>
+            <span class="c-last" title="Morning Routines">Morning Routines</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Nikhil Joshi">
+            <span class="c-person"><span class="pav" style="background:#b45309;width:34px;height:34px;font-size:13px" aria-hidden="true">NJ</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Nikhil Joshi</a></span><span class="sec">+91 98670 23419 · nikhil.joshi@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2"><i></i>Missed all 2</span></span>
+            <span class="c-eng"><span class="mute">—</span></span>
+            <span class="c-last" title="Salary Week: Where the Money Goes">Salary Week: Where the Money Goes</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Ishita Bose">
+            <span class="c-person"><span class="pav" style="background:#be185d;width:34px;height:34px;font-size:13px" aria-hidden="true">IB</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Ishita Bose</a><span class="rep">Replied</span></span><span class="sec">+91 98311 50277 · ishita.bose@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 3 of 3</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-high"></i><b>80</b><span>Highly engaged</span></span></span>
+            <span class="c-last" title="Diwali Money Plan">Diwali Money Plan</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Sanjay Pillai">
+            <span class="c-person"><span class="pav" style="background:#1d4ed8;width:34px;height:34px;font-size:13px" aria-hidden="true">SP</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Sanjay Pillai</a></span><span class="sec">+91 94470 81236 · sanjay.pillai@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 1 of 3</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-pas"></i><b>44</b><span>Passive</span></span></span>
+            <span class="c-last" title="Fund Picking 101">Fund Picking 101</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Neha Agarwal">
+            <span class="c-person"><span class="pav" style="background:#15803d;width:34px;height:34px;font-size:13px" aria-hidden="true">NA</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Neha Agarwal</a></span><span class="sec">+91 98100 67421 · neha.agarwal@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2"><i></i>Didn't come</span></span>
+            <span class="c-eng"><span class="mute">—</span></span>
+            <span class="c-last" title="Credit Score Basics">Credit Score Basics</span>
+            <span class="c-act"><span class="blk">Opted out</span></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Farhan Qureshi">
+            <span class="c-person"><span class="pav" style="background:#c2410c;width:34px;height:34px;font-size:13px" aria-hidden="true">FQ</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Farhan Qureshi</a></span><span class="sec">+91 98190 38850 · farhan.q@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 2 of 2</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-eng"></i><b>69</b><span>Engaged</span></span></span>
+            <span class="c-last" title="Ask Meera: Live Money Q&amp;A">Ask Meera: Live Money Q&amp;A</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Lakshmi Iyer">
+            <span class="c-person"><span class="pav" style="background:#0369a1;width:34px;height:34px;font-size:13px" aria-hidden="true">LI</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Lakshmi Iyer</a></span><span class="sec">+91 94440 12098 · lakshmi.iyer@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-eng"></i><b>63</b><span>Engaged</span></span></span>
+            <span class="c-last" title="Diwali Money Plan">Diwali Money Plan</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Tarun Malhotra">
+            <span class="c-person"><span class="pav" style="background:#9333ea;width:34px;height:34px;font-size:13px" aria-hidden="true">TM</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Tarun Malhotra</a></span><span class="sec">+91 98710 55643 · tarun.m@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 1 of 2</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-pas"></i><b>41</b><span>Passive</span></span></span>
+            <span class="c-last" title="Salary Week: Where the Money Goes">Salary Week: Where the Money Goes</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Kavya Iyer">
+            <span class="c-person"><span class="pav" style="background:#4d7c0f;width:34px;height:34px;font-size:13px" aria-hidden="true">KI</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Kavya Iyer</a></span><span class="sec">+91 99000 87712 · kavya.iyer@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2"><i></i>Didn't come</span></span>
+            <span class="c-eng"><span class="mute">—</span></span>
+            <span class="c-last" title="Mindful Money: Budgeting Without Guilt">Mindful Money: Budgeting Without Guilt</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Manish Gupta">
+            <span class="c-person"><span class="pav" style="background:#0f766e;width:34px;height:34px;font-size:13px" aria-hidden="true">MG</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Manish Gupta</a></span><span class="sec">+91 98181 20933 · manish.gupta@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 2 of 3</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-eng"></i><b>58</b><span>Engaged</span></span></span>
+            <span class="c-last" title="Credit Score Basics">Credit Score Basics</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Ritu Sharma">
+            <span class="c-person"><span class="pav" style="background:#7c3aed;width:34px;height:34px;font-size:13px" aria-hidden="true">RS</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Ritu Sharma</a><span class="rep">Replied</span></span><span class="sec">+91 98111 44570 · ritu.sharma@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-eng"></i><b>72</b><span>Engaged</span></span></span>
+            <span class="c-last" title="Diwali Money Plan">Diwali Money Plan</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Deepak Nair">
+            <span class="c-person"><span class="pav" style="background:#b45309;width:34px;height:34px;font-size:13px" aria-hidden="true">DN</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Deepak Nair</a></span><span class="sec">+91 94950 63321 · deepak.nair@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 1 of 2</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-risk"></i><b>35</b><span>At risk</span></span></span>
+            <span class="c-last" title="Fund Picking 101">Fund Picking 101</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Shreya Ghosh">
+            <span class="c-person"><span class="pav" style="background:#be185d;width:34px;height:34px;font-size:13px" aria-hidden="true">SG</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Shreya Ghosh</a></span><span class="sec">+91 98302 71154 · shreya.ghosh@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came to 2 of 2</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-high"></i><b>76</b><span>Highly engaged</span></span></span>
+            <span class="c-last" title="Credit Score Basics">Credit Score Basics</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+          <li class="au-row">
+            <input type="checkbox" aria-label="Pick Amit Desai">
+            <span class="c-person"><span class="pav" style="background:#1d4ed8;width:34px;height:34px;font-size:13px" aria-hidden="true">AD</span><span class="who"><span class="nmrow"><a href="app-whatsapp-messages.html">Amit Desai</a></span><span class="sec">+91 98200 16688 · amit.desai@gmail.com</span></span></span>
+            <span class="c-att"><span class="st2 ok"><i></i>Came</span></span>
+            <span class="c-eng"><span class="eng"><i class="t-eng"></i><b>55</b><span>Engaged</span></span></span>
+            <span class="c-last" title="Morning Routines">Morning Routines</span>
+            <span class="c-act"><button class="cbtn sec" type="button">Message</button></span>
+          </li>
+        </ul>
+        <div class="au-pager">
+          <button class="cbtn sec" type="button" disabled>Previous</button>
+          <div class="who"><b>Page 1 of 9</b><span> · 25 per page · 1–25 of 214</span></div>
+          <button class="cbtn sec" type="button">Next</button>
+        </div>
+      </div>
+    </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  var b = document.body;
+  var tablet = window.matchMedia("(min-width: 768px) and (max-width: 1279px)");
+  var phone = window.matchMedia("(max-width: 767px)");
+  var btn = document.querySelector(".collapse");
+  var root = document.documentElement;
+  function rail() {
+    return root.classList.contains("side-collapsed") || b.classList.contains("side-collapsed") || (tablet.matches && !b.classList.contains("side-expanded"));
+  }
+  function save(v) { try { localStorage.setItem("wl-sidebar", v); } catch (e) {} }
+  function label() {
+    if (btn) btn.setAttribute("aria-label", phone.matches ? "Close menu" : rail() ? "Expand sidebar" : "Collapse sidebar");
+  }
+  if (btn) btn.addEventListener("click", function () {
+    if (phone.matches) { b.classList.remove("nav-open"); return; }
+    if (rail()) { root.classList.remove("side-collapsed"); b.classList.remove("side-collapsed"); b.classList.add("side-expanded"); save("expanded"); }
+    else { root.classList.add("side-collapsed"); b.classList.remove("side-expanded"); save("collapsed"); }
+    label();
+  });
+  var menu = document.querySelector(".mbar .menu");
+  var scrim = document.querySelector(".scrim");
+  if (menu) menu.addEventListener("click", function () { b.classList.add("nav-open"); });
+  if (scrim) scrim.addEventListener("click", function () { b.classList.remove("nav-open"); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") b.classList.remove("nav-open"); });
+  var head = document.querySelector(".int-h");
+  var wrap = document.querySelector(".tree-wrap");
+  if (head && wrap) head.addEventListener("click", function () {
+    var shut = wrap.classList.toggle("shut");
+    head.setAttribute("aria-expanded", shut ? "false" : "true");
+  });
+  document.querySelectorAll("[data-open]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var pane = document.querySelector(el.getAttribute("data-open"));
+      if (pane) pane.classList.add("show-detail");
+    });
+  });
+  document.querySelectorAll("[data-back]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var pane = document.querySelector(el.getAttribute("data-back"));
+      if (pane) pane.classList.remove("show-detail");
+    });
+  });
+  tablet.addEventListener("change", label);
+  phone.addEventListener("change", label);
+  label();
+  var themeBtn = document.querySelector(".theme");
+  function paintTheme() {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    if (!themeBtn) return;
+    themeBtn.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+    var lbl = themeBtn.querySelector(".lbl");
+    var fly = themeBtn.querySelector(".fly");
+    if (lbl) lbl.textContent = dark ? "Light" : "Dark";
+    if (fly) fly.textContent = dark ? "Light mode" : "Dark mode";
+  }
+  if (themeBtn) themeBtn.addEventListener("click", function () {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    if (dark) document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", "dark");
+    try { localStorage.setItem("wl-theme", dark ? "light" : "dark"); } catch (e) {}
+    paintTheme();
+  });
+  paintTheme();
+})();
+</script>
+</body>
+</html>

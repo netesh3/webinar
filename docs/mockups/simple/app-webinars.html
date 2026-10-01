@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Webinars · Webinar Liv</title>
+<link rel="stylesheet" href="assets/home-dashboard.css">
+<script>
+(function () {
+  try {
+    var saved = localStorage.getItem("wl-theme");
+    var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (dark) document.documentElement.setAttribute("data-theme", "dark");
+    if (localStorage.getItem("wl-sidebar") === "collapsed") document.documentElement.classList.add("side-collapsed");
+  } catch (e) {}
+})();
+</script>
+</head>
+<body>
+<header class="mbar">
+  <button class="menu" type="button" aria-label="Open menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <span class="mark" aria-hidden="true"></span>
+  <strong>Webinar Liv</strong>
+</header>
+<div class="app">
+  <aside class="side" aria-label="Sidebar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div class="brand-copy">
+        <strong>Webinar Liv</strong>
+        <span class="beta">Beta</span>
+      </div>
+      <button class="collapse" type="button" aria-label="Collapse sidebar"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg></button>
+    </div>
+    <nav class="nav" aria-label="Primary">
+      <a class="navitem on" id="webinars" href="app-webinars.html" aria-current="page">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3.5V7M16 3.5V7"/></svg></span>
+        <span class="lbl">Webinars</span>
+        <span class="fly">Webinars</span>
+      </a>
+      <a class="navitem" href="app-audience.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="2.4"/><path d="M4.6 18.5c.5-2.5 2.3-4 4.4-4s3.9 1.5 4.4 4"/><circle cx="16.2" cy="9.2" r="1.9"/><path d="M14.4 18.5c.25-1.7 1.3-2.9 2.6-2.9 1.4 0 2.4 1.1 2.7 2.9"/></svg></span>
+        <span class="lbl">Audience</span>
+        <span class="fly">Audience</span>
+      </a>
+      <button class="int-h" type="button" aria-expanded="true" aria-controls="int-tree">
+        <span class="chev" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6 7.5l3-3"/></svg></span>
+        <span class="lbl">Integrations</span>
+        <span class="cnt">3 connected</span>
+      </button>
+      <div class="tree-wrap" id="int-tree">
+        <div class="tree">
+          <div class="tree-in">
+      <a class="navitem" href="app-whatsapp.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg></span>
+        <span class="lbl">WhatsApp</span>
+        <span class="badge-n">2</span>
+        <span class="fly">WhatsApp · <em>2 unread</em></span>
+      </a>
+      <a class="navitem" href="app-email.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/></svg></span>
+        <span class="lbl">Email</span>
+        <span class="cdot" title="Connected"></span>
+        <span class="fly">Email · <em>Connected</em></span>
+      </a>
+      <a class="navitem" href="app-youtube.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6.5" width="17" height="11" rx="3"/><path d="m10.2 9.4 4.6 2.6-4.6 2.6z"/></svg></span>
+        <span class="lbl">YouTube</span>
+        <span class="cdot" title="Connected"></span>
+        <span class="fly">YouTube · <em>Connected</em></span>
+      </a>
+            <a class="int-add" href="app-settings.html">+ Add integration</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+    <div class="side-foot">
+      <nav class="nav" aria-label="Settings">
+      <a class="navitem" href="app-settings.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
+        <span class="lbl">Settings</span>
+        <span class="fly">Settings</span>
+      </a>
+      </nav>
+      <button class="navitem theme" type="button" aria-label="Switch to dark mode">
+        <span class="ic moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5z"/></svg></span>
+        <span class="ic sun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg></span>
+        <span class="lbl">Dark</span>
+        <span class="fly">Dark mode</span>
+      </button>
+      <div class="account">
+        <span class="av" aria-hidden="true">MS</span>
+        <div class="who">
+          <div class="nm">Meera Shah</div>
+          <div class="em">meera@mindfulmoney.in</div>
+        </div>
+        <span class="fly">Meera Shah</span>
+      </div>
+    </div>
+  </aside>
+  <div class="scrim" aria-hidden="true"></div>
+
+  <main class="main">
+    <div class="cur">
+    <h1 class="sr-only">Your webinars</h1>
+    <div class="cur-actions">
+      <a class="cur-action" href="#">
+        <span class="cur-aic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg></span>
+        <span class="cur-atx"><b>Schedule a webinar</b><span>Pick a date and invite people</span></span>
+        <span class="cur-chev"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span>
+      </a>
+    </div>
+
+    <div class="cur-bar">
+      <div class="cur-tabs" role="tablist">
+        <button class="ctab on" role="tab" aria-selected="true">Upcoming <span class="cnt">4</span></button>
+        <button class="ctab" role="tab">Completed <span class="cnt">12</span></button>
+        <button class="ctab" role="tab">Drafts <span class="cnt">1</span></button>
+        <button class="ctab" role="tab">Attending <span class="cnt">2</span></button>
+      </div>
+      <div class="cur-tools">
+        <label class="cur-search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg><input type="search" placeholder="Search by name…" aria-label="Search webinars by name"></label>
+        <button class="cur-date-btn" type="button" aria-label="Filter webinars by date"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg><span>Any dates</span></button>
+      </div>
+    </div>
+
+    <div class="cur-list">
+      <article class="cur-card cur-row">
+        <div class="cur-body">
+          <div class="cur-kick">
+            <span class="cbadge brand"><span class="dot"></span>In 21 hours</span>
+            <span class="cur-date">Thu 1 Oct · 19:00 – 20:00 IST · 1 hr</span>
+            <span class="cbadge warn">Admit required</span>
+          </div>
+          <h3>Mindful Money: Budgeting Without Guilt</h3>
+          <p class="cur-meta">47 registered · reminders on (email + WhatsApp)</p>
+        </div>
+        <div class="cur-act">
+          <div class="cur-btns">
+            <button class="cbtn sec" type="button">Copy link</button>
+            <button class="cbtn" type="button" disabled>Go live</button>
+            <button class="cur-more" type="button" aria-label="More for Mindful Money: Budgeting Without Guilt">⋯</button>
+          </div>
+          <p class="cur-wait">Opens 5 minutes before start (18:55 IST)</p>
+        </div>
+      </article>
+      <article class="cur-card cur-row">
+        <div class="cur-body">
+          <div class="cur-kick">
+            <span class="cbadge brand"><span class="dot"></span>In 4 days</span>
+            <span class="cur-date">Sun 4 Oct · 11:00 – 11:30 IST · 30 min</span>
+            
+          </div>
+          <h3>Ask Meera: Live Money Q&amp;A</h3>
+          <p class="cur-meta">8 registered · reminders on</p>
+        </div>
+        <div class="cur-act">
+          <div class="cur-btns">
+            <button class="cbtn sec" type="button">Copy link</button>
+            <button class="cbtn" type="button" disabled>Go live</button>
+            <button class="cur-more" type="button" aria-label="More for Ask Meera: Live Money Q&amp;A">⋯</button>
+          </div>
+          <p class="cur-wait">Opens 5 minutes before start (10:55 IST)</p>
+        </div>
+      </article>
+      <article class="cur-card cur-row">
+        <div class="cur-body">
+          <div class="cur-kick">
+            <span class="cbadge brand"><span class="dot"></span>In 7 days</span>
+            <span class="cur-date">Wed 7 Oct · 19:00 – 19:45 IST · 45 min</span>
+            
+          </div>
+          <h3>Sleep Reset: 5 Habits That Work</h3>
+          <p class="cur-meta">14 registered · reminders on (email + WhatsApp)</p>
+        </div>
+        <div class="cur-act">
+          <div class="cur-btns">
+            <button class="cbtn sec" type="button">Copy link</button>
+            <button class="cbtn" type="button" disabled>Go live</button>
+            <button class="cur-more" type="button" aria-label="More for Sleep Reset: 5 Habits That Work">⋯</button>
+          </div>
+          <p class="cur-wait">Opens 5 minutes before start (18:55 IST)</p>
+        </div>
+      </article>
+      <article class="cur-card cur-row">
+        <div class="cur-body">
+          <div class="cur-kick">
+            <span class="cbadge brand"><span class="dot"></span>In 2 weeks</span>
+            <span class="cur-date">Thu 15 Oct · 18:30 – 19:30 IST · 1 hr</span>
+            
+          </div>
+          <h3>Focus Blocks for Busy Weeks</h3>
+          <p class="cur-meta">6 registered · reminders on</p>
+        </div>
+        <div class="cur-act">
+          <div class="cur-btns">
+            <button class="cbtn sec" type="button">Copy link</button>
+            <button class="cbtn" type="button" disabled>Go live</button>
+            <button class="cur-more" type="button" aria-label="More for Focus Blocks for Busy Weeks">⋯</button>
+          </div>
+          <p class="cur-wait">Opens 5 minutes before start (18:25 IST)</p>
+        </div>
+      </article>
+    </div>
+
+    <div class="cur-pager">
+      <button class="cbtn sec" type="button" disabled>Previous</button>
+      <div class="who"><b>Page 1 of 1</b><span>10 per page · 1–4 of 4</span></div>
+      <button class="cbtn sec" type="button" disabled>Next</button>
+    </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  var b = document.body;
+  var tablet = window.matchMedia("(min-width: 768px) and (max-width: 1279px)");
+  var phone = window.matchMedia("(max-width: 767px)");
+  var btn = document.querySelector(".collapse");
+  var root = document.documentElement;
+  function rail() {
+    return root.classList.contains("side-collapsed") || b.classList.contains("side-collapsed") || (tablet.matches && !b.classList.contains("side-expanded"));
+  }
+  function save(v) { try { localStorage.setItem("wl-sidebar", v); } catch (e) {} }
+  function label() {
+    if (btn) btn.setAttribute("aria-label", phone.matches ? "Close menu" : rail() ? "Expand sidebar" : "Collapse sidebar");
+  }
+  if (btn) btn.addEventListener("click", function () {
+    if (phone.matches) { b.classList.remove("nav-open"); return; }
+    if (rail()) { root.classList.remove("side-collapsed"); b.classList.remove("side-collapsed"); b.classList.add("side-expanded"); save("expanded"); }
+    else { root.classList.add("side-collapsed"); b.classList.remove("side-expanded"); save("collapsed"); }
+    label();
+  });
+  var menu = document.querySelector(".mbar .menu");
+  var scrim = document.querySelector(".scrim");
+  if (menu) menu.addEventListener("click", function () { b.classList.add("nav-open"); });
+  if (scrim) scrim.addEventListener("click", function () { b.classList.remove("nav-open"); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") b.classList.remove("nav-open"); });
+  var head = document.querySelector(".int-h");
+  var wrap = document.querySelector(".tree-wrap");
+  if (head && wrap) head.addEventListener("click", function () {
+    var shut = wrap.classList.toggle("shut");
+    head.setAttribute("aria-expanded", shut ? "false" : "true");
+  });
+  document.querySelectorAll("[data-open]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var pane = document.querySelector(el.getAttribute("data-open"));
+      if (pane) pane.classList.add("show-detail");
+    });
+  });
+  document.querySelectorAll("[data-back]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var pane = document.querySelector(el.getAttribute("data-back"));
+      if (pane) pane.classList.remove("show-detail");
+    });
+  });
+  tablet.addEventListener("change", label);
+  phone.addEventListener("change", label);
+  label();
+  var themeBtn = document.querySelector(".theme");
+  function paintTheme() {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    if (!themeBtn) return;
+    themeBtn.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+    var lbl = themeBtn.querySelector(".lbl");
+    var fly = themeBtn.querySelector(".fly");
+    if (lbl) lbl.textContent = dark ? "Light" : "Dark";
+    if (fly) fly.textContent = dark ? "Light mode" : "Dark mode";
+  }
+  if (themeBtn) themeBtn.addEventListener("click", function () {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    if (dark) document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", "dark");
+    try { localStorage.setItem("wl-theme", dark ? "light" : "dark"); } catch (e) {}
+    paintTheme();
+  });
+  paintTheme();
+})();
+</script>
+</body>
+</html>

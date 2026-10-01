@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automations · WhatsApp · Webinar Liv</title>
+<link rel="stylesheet" href="assets/home-dashboard.css">
+<script>
+(function () {
+  try {
+    var saved = localStorage.getItem("wl-theme");
+    var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (dark) document.documentElement.setAttribute("data-theme", "dark");
+    if (localStorage.getItem("wl-sidebar") === "collapsed") document.documentElement.classList.add("side-collapsed");
+  } catch (e) {}
+})();
+</script>
+</head>
+<body>
+<header class="mbar">
+  <button class="menu" type="button" aria-label="Open menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <span class="mark" aria-hidden="true"></span>
+  <strong>Webinar Liv</strong>
+</header>
+<div class="app">
+  <aside class="side" aria-label="Sidebar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div class="brand-copy">
+        <strong>Webinar Liv</strong>
+        <span class="beta">Beta</span>
+      </div>
+      <button class="collapse" type="button" aria-label="Collapse sidebar"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg></button>
+    </div>
+    <nav class="nav" aria-label="Primary">
+      <a class="navitem" id="webinars" href="app-webinars.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3.5V7M16 3.5V7"/></svg></span>
+        <span class="lbl">Webinars</span>
+        <span class="fly">Webinars</span>
+      </a>
+      <a class="navitem" href="app-audience.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="2.4"/><path d="M4.6 18.5c.5-2.5 2.3-4 4.4-4s3.9 1.5 4.4 4"/><circle cx="16.2" cy="9.2" r="1.9"/><path d="M14.4 18.5c.25-1.7 1.3-2.9 2.6-2.9 1.4 0 2.4 1.1 2.7 2.9"/></svg></span>
+        <span class="lbl">Audience</span>
+        <span class="fly">Audience</span>
+      </a>
+      <button class="int-h" type="button" aria-expanded="true" aria-controls="int-tree">
+        <span class="chev" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6 7.5l3-3"/></svg></span>
+        <span class="lbl">Integrations</span>
+        <span class="cnt">3 connected</span>
+      </button>
+      <div class="tree-wrap" id="int-tree">
+        <div class="tree">
+          <div class="tree-in">
+      <a class="navitem on" href="app-whatsapp.html" aria-current="page">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg></span>
+        <span class="lbl">WhatsApp</span>
+        <span class="badge-n">2</span>
+        <span class="fly">WhatsApp · <em>2 unread</em></span>
+      </a>
+      <a class="navitem" href="app-email.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/></svg></span>
+        <span class="lbl">Email</span>
+        <span class="cdot" title="Connected"></span>
+        <span class="fly">Email · <em>Connected</em></span>
+      </a>
+      <a class="navitem" href="app-youtube.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6.5" width="17" height="11" rx="3"/><path d="m10.2 9.4 4.6 2.6-4.6 2.6z"/></svg></span>
+        <span class="lbl">YouTube</span>
+        <span class="cdot" title="Connected"></span>
+        <span class="fly">YouTube · <em>Connected</em></span>
+      </a>
+            <a class="int-add" href="app-settings.html">+ Add integration</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+    <div class="side-foot">
+      <nav class="nav" aria-label="Settings">
+      <a class="navitem" href="app-settings.html">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
+        <span class="lbl">Settings</span>
+        <span class="fly">Settings</span>
+      </a>
+      </nav>
+      <button class="navitem theme" type="button" aria-label="Switch to dark mode">
+        <span class="ic moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5z"/></svg></span>
+        <span class="ic sun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg></span>
+        <span class="lbl">Dark</span>
+        <span class="fly">Dark mode</span>
+      </button>
+      <div class="account">
+        <span class="av" aria-hidden="true">MS</span>
+        <div class="who">
+          <div class="nm">Meera Shah</div>
+          <div class="em">meera@mindfulmoney.in</div>
+        </div>
+        <span class="fly">Meera Shah</span>
+      </div>
+    </div>
+  </aside>
+  <div class="scrim" aria-hidden="true"></div>
+
+  <main class="main">
+    <header class="top"><div class="copy"><h1>WhatsApp</h1></div></header>
+    <div class="wa-conn"><span class="okdot"></span><b>Connected</b><span>+91 98200 45123 (Mindful Money)</span><a class="more" href="app-settings.html">Settings</a></div>
+    <nav class="tabs" aria-label="WhatsApp">
+      <a class="tab" href="app-whatsapp.html">Metrics</a>
+      <a class="tab" href="app-whatsapp-messages.html">Chats <span class="count">2</span></a>
+      <a class="tab" href="app-whatsapp-templates.html">Templates <span class="count">12</span></a>
+      <a class="tab on" href="app-whatsapp-automations.html" aria-current="page">Automations <span class="count">4 on</span></a>
+    </nav>
+    
+<div class="sched-split" id="autos">
+  <div class="slist">
+    <div class="sgroup">
+      <div class="slab"><span>Before</span><span>2</span></div>
+      <div class="srow">
+      <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Confirmation for this webinar"><i></i></button>
+      <button class="hit" type="button" ><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4V6zm0 0 8 6 8-6"/></svg><span><b>Confirmation</b><small>when they register</small></span></button>
+      <span class="cbs"><span class="cb em"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4V6zm0 0 8 6 8-6"/></svg>Email</span><span class="cb wa"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l1.2-3.4A8 8 0 1 1 8.2 18.2L5 19z"/></svg>WhatsApp</span></span>
+      <span></span>
+    </div>
+      <div class="srow">
+      <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Reminder for this webinar"><i></i></button>
+      <button class="hit" type="button" ><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5l3 2M6.5 4.5 4 7M17.5 4.5 20 7M6 20h12"/></svg><span><b>Reminder</b><small>10 minutes before</small></span></button>
+      <span class="cbs"><span class="cb em"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4V6zm0 0 8 6 8-6"/></svg>Email</span><span class="cb wa"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l1.2-3.4A8 8 0 1 1 8.2 18.2L5 19z"/></svg>WhatsApp</span></span>
+      <span></span>
+    </div>
+    </div>
+    <div class="sgroup">
+      <div class="slab"><span>After</span><span>5 of 6</span></div>
+      <div class="srow on">
+      <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Replay for this webinar"><i></i></button>
+      <button class="hit" type="button" aria-current='true'><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM10 9l6 3-6 3V9z"/></svg><span><b>Replay</b><small>when you publish the recording</small></span></button>
+      <span class="cbs"><span class="cb em"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4V6zm0 0 8 6 8-6"/></svg>Email</span><span class="cb wa"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l1.2-3.4A8 8 0 1 1 8.2 18.2L5 19z"/></svg>WhatsApp</span></span>
+      <span></span>
+    </div>
+      <div class="srow">
+      <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Highly engaged for this webinar"><i></i></button>
+      <button class="hit" type="button" ><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s5 4 5 9a5 5 0 0 1-10 0c0-2 1.5-3.5 1.5-3.5S9 11 10 11c0-3 2-8 2-8z"/></svg><span><b>Highly engaged</b><small>1 hour after · offer</small></span></button>
+      <span class="cbs"><span class="cb wa"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l1.2-3.4A8 8 0 1 1 8.2 18.2L5 19z"/></svg>WhatsApp</span></span>
+      <span></span>
+    </div>
+      <div class="srow">
+      <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Didn't join for this webinar"><i></i></button>
+      <button class="hit" type="button" ><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM5 20a7 7 0 0 1 14 0M4 4l16 16"/></svg><span><b>Didn't join</b><small>next morning, 9 AM · replay link</small></span></button>
+      <span class="cbs"><span class="cb wa"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l1.2-3.4A8 8 0 1 1 8.2 18.2L5 19z"/></svg>WhatsApp</span></span>
+      <span></span>
+    </div>
+      <div class="srow">
+      <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Engaged for this webinar"><i></i></button>
+      <button class="hit" type="button" ><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19s-7-4.4-7-9a4 4 0 0 1 7-2 4 4 0 0 1 7 2c0 4.6-7 9-7 9z"/></svg><span><b>Engaged</b><small>1 hour after · thank-you</small></span></button>
+      <span class="cbs"><span class="cb em"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4V6zm0 0 8 6 8-6"/></svg>Email</span></span>
+      <span></span>
+    </div>
+      <div class="srow dim">
+      <button class="sw off" type="button" role="switch" aria-checked="false" aria-label="Passive for this webinar"><i></i></button>
+      <button class="hit" type="button" ><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6zM4 4l16 16M9.5 9.5A3 3 0 0 0 14 14"/></svg><span><b>Passive</b><small>next day · recap</small></span></button>
+      <span class="cbs"><span class="cb wa"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l1.2-3.4A8 8 0 1 1 8.2 18.2L5 19z"/></svg>WhatsApp</span></span>
+      <span></span>
+    </div>
+      <div class="srow">
+      <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Left early for this webinar"><i></i></button>
+      <button class="hit" type="button" ><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 7V5h9v14h-9v-2M13 12H4m0 0 3-3m-3 3 3 3"/></svg><span><b>Left early</b><small>next day · replay</small></span></button>
+      <span class="cbs"><span class="cb wa"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l1.2-3.4A8 8 0 1 1 8.2 18.2L5 19z"/></svg>WhatsApp</span></span>
+      <span></span>
+    </div>
+    </div>
+    <div class="sgroup last">
+      <div class="slab"><span>Automations</span><span>1 on</span></div>
+      <div class="srow">
+      <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Keyword replies"><i></i></button>
+      <button class="hit" type="button" ><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19V10M10 19V5M15 19v-7M20 19V8"/></svg><span><b><span class="when-k">When </span>someone answers “PRICE”</b><small><span class="then"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m0 0-4-4m4 4-4 4"/></svg>send your reply</span></small></span></button>
+      <span></span>
+      <span class="trail"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+    </div>
+      <div class="srow dim">
+      <button class="sw off" type="button" role="switch" aria-checked="false" aria-label="Hot leads"><i></i></button>
+      <button class="hit" type="button" ><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8L3 12zm4-5.5h.01"/></svg><span><b><span class="when-k">When </span>a reply mentions price, program or 1:1</b><small><span class="then"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m0 0-4-4m4 4-4 4"/></svg>tag Hot lead</span></small></span></button>
+      <span></span>
+      <span class="trail"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+    </div>
+      <div class="sadd"><a href="app-whatsapp.html"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>New automation</a></div>
+    </div>
+  </div>
+  <aside class="spane">
+    <button class="back cbtn sec" type="button" data-back="#autos">← Back</button>
+    <div class="shead"><h2>Replay</h2><p>after it ends</p></div>
+    <div class="chtabs" role="tablist" aria-label="Channel">
+      <button type="button" class="on wa" role="tab" aria-selected="true"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l1.2-3.4A8 8 0 1 1 8.2 18.2L5 19z"/></svg>WhatsApp<svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></button>
+      <button type="button" class="em" role="tab" aria-selected="false"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4V6zm0 0 8 6 8-6"/></svg>Email<svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></button>
+    </div>
+    <label class="sendon"><input type="checkbox" checked> Send on WhatsApp</label>
+    <p class="sendhelp">Send on WhatsApp, email, or both.</p>
+    <div class="when">
+      <span class="wl">When</span>
+      <p class="who">Everyone who registered, once there is a recording.</p>
+      <button class="choice on" type="button" aria-pressed="true"><b>When you publish it</b><span>You choose the moment.</span></button>
+      <button class="choice" type="button" aria-pressed="false"><b>After the webinar ends</b><span>A set wait, whether or not you have published.</span></button>
+      <p class="snote">Sends the moment the recording is public.</p>
+    </div>
+    <div class="word">
+      <div class="wh"><span>Message</span><span>Wording approved by WhatsApp</span></div>
+      <div role="radiogroup" aria-label="Message wording">
+        <button class="wrow on" type="button" role="radio" aria-checked="true"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg><span><b>Replay ready</b><span>The recording of Mindful Money: Budgeting Without Guilt is ready to watch.</span></span><span class="rate">≈ ₹0.13</span></button>
+        <button class="wrow" type="button" role="radio" aria-checked="false"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg><span><b>Watch the replay</b><span>Hi Ananya, the recording is up. Watch it here before Sunday.</span></span><span class="rate">≈ ₹0.13</span></button>
+        <button class="wrow" type="button" role="radio" aria-checked="false"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg><span><b>Replay link</b><span>Hi {{1}}, here’s the recording of {{2}}.</span></span><span class="rate">≈ ₹0.13</span></button>
+      </div>
+      <div class="wlinks"><button type="button"><svg class="mi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Write your own</button><button type="button">See all 12</button></div>
+      <p>WhatsApp checks it first, usually in minutes.</p>
+    </div>
+    <div class="phone"><div class="ph">Meera Shah<br><span>Business account</span></div>
+      <div class="pb">The recording of Mindful Money: Budgeting Without Guilt is ready to watch.<span class="btnline">Watch replay</span></div>
+    </div>
+    <label class="forall"><input type="checkbox"> Use this for all my webinars</label>
+    <p class="sfoot">Channels, times and wording here are for this webinar. Tick “Use this for all my webinars” to make it your default.</p>
+  </aside>
+</div>
+
+</main>
+</div>
+
+<script>
+(function () {
+  var b = document.body;
+  var tablet = window.matchMedia("(min-width: 768px) and (max-width: 1279px)");
+  var phone = window.matchMedia("(max-width: 767px)");
+  var btn = document.querySelector(".collapse");
+  var root = document.documentElement;
+  function rail() {
+    return root.classList.contains("side-collapsed") || b.classList.contains("side-collapsed") || (tablet.matches && !b.classList.contains("side-expanded"));
+  }
+  function save(v) { try { localStorage.setItem("wl-sidebar", v); } catch (e) {} }
+  function label() {
+    if (btn) btn.setAttribute("aria-label", phone.matches ? "Close menu" : rail() ? "Expand sidebar" : "Collapse sidebar");
+  }
+  if (btn) btn.addEventListener("click", function () {
+    if (phone.matches) { b.classList.remove("nav-open"); return; }
+    if (rail()) { root.classList.remove("side-collapsed"); b.classList.remove("side-collapsed"); b.classList.add("side-expanded"); save("expanded"); }
+    else { root.classList.add("side-collapsed"); b.classList.remove("side-expanded"); save("collapsed"); }
+    label();
+  });
+  var menu = document.querySelector(".mbar .menu");
+  var scrim = document.querySelector(".scrim");
+  if (menu) menu.addEventListener("click", function () { b.classList.add("nav-open"); });
+  if (scrim) scrim.addEventListener("click", function () { b.classList.remove("nav-open"); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") b.classList.remove("nav-open"); });
+  var head = document.querySelector(".int-h");
+  var wrap = document.querySelector(".tree-wrap");
+  if (head && wrap) head.addEventListener("click", function () {
+    var shut = wrap.classList.toggle("shut");
+    head.setAttribute("aria-expanded", shut ? "false" : "true");
+  });
+  document.querySelectorAll("[data-open]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var pane = document.querySelector(el.getAttribute("data-open"));
+      if (pane) pane.classList.add("show-detail");
+    });
+  });
+  document.querySelectorAll("[data-back]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var pane = document.querySelector(el.getAttribute("data-back"));
+      if (pane) pane.classList.remove("show-detail");
+    });
+  });
+  tablet.addEventListener("change", label);
+  phone.addEventListener("change", label);
+  label();
+  var themeBtn = document.querySelector(".theme");
+  function paintTheme() {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    if (!themeBtn) return;
+    themeBtn.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+    var lbl = themeBtn.querySelector(".lbl");
+    var fly = themeBtn.querySelector(".fly");
+    if (lbl) lbl.textContent = dark ? "Light" : "Dark";
+    if (fly) fly.textContent = dark ? "Light mode" : "Dark mode";
+  }
+  if (themeBtn) themeBtn.addEventListener("click", function () {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    if (dark) document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", "dark");
+    try { localStorage.setItem("wl-theme", dark ? "light" : "dark"); } catch (e) {}
+    paintTheme();
+  });
+  paintTheme();
+})();
+</script>
+</body>
+</html>
