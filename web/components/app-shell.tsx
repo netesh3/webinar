@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, useReplies } from "@/engage";
 import { toggleSidebar } from "@/lib/sidebar";
 import { AccountAvatar } from "./account-avatar";
@@ -120,9 +120,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <Suspense fallback={<PrimaryNav tab={null} />}>
-          <PrimaryNavSearch />
-        </Suspense>
+        <PrimaryNav />
 
         <Footer />
       </aside>
@@ -133,12 +131,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function PrimaryNavSearch() {
-  const tab = useSearchParams().get("tab");
-  return <PrimaryNav tab={tab} />;
-}
-
-function PrimaryNav({ tab }: { tab: string | null }) {
+function PrimaryNav() {
   const pathname = usePathname();
   const replies = useReplies();
   const { account, status } = useSession();
@@ -148,7 +141,8 @@ function PrimaryNav({ tab }: { tab: string | null }) {
   const chrome = useChrome();
   const [open, setOpen] = useState(true);
 
-  const onPeople = pathname === "/host" && tab === "people";
+  const onPeople =
+    pathname === "/host/audience" || pathname.startsWith("/host/audience/");
   const onWhatsApp =
     pathname === ENGAGE_HOME ||
     pathname.startsWith(`${ENGAGE_HOME}/`) ||

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { engageApi } from "../api";
 import { Spinner } from "@/components/controls";
 import { useSession, useToast } from "@/components/providers";
-import { Button, Card } from "@/components/ui";
+import { Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import {
   FeatureWhatsAppCRM,
@@ -13,7 +13,6 @@ import {
   type CRMTag,
   type CRMTemplate,
 } from "@/lib/api-types";
-import { MaterialIcon } from "@/components/icons";
 import type { BuildView } from "./automations";
 import { Broadcasts } from "./crm-broadcasts";
 import { RemindersSettings } from "./crm-screen";
@@ -216,14 +215,6 @@ export function WhatsAppScreen() {
     <WhatsAppFrame
       tab={frameTab(tab)}
       templateCount={templates?.length ?? null}
-      actions={
-        tab === "metrics" || tab === "templates" || tab === "automations" ? (
-          <Button type="button" onClick={() => go("broadcasts")}>
-            <MaterialIcon name="send" className="mr-1.5 !text-[17px]" />
-            Send a message
-          </Button>
-        ) : null
-      }
     >
       {tab !== "metrics" && tab !== "templates" && tab !== "automations" && (
         <button

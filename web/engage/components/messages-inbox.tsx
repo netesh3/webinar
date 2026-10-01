@@ -235,12 +235,6 @@ export function HostMessagesInbox() {
 
   return (
     <div>
-      <Link
-        href="/host"
-        className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-brand"
-      >
-        ← Your webinars
-      </Link>
       <h1 className="mb-1 text-[24px] font-semibold tracking-[-0.02em]">
         Messages
       </h1>

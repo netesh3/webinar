@@ -143,7 +143,8 @@ function ActionCardBody({
  *  see homeHrefFor in top-nav.tsx. The page opens on two action cards, Instant
  *  webinar (go live now, no form) and Schedule a webinar (/host/new). */
 /** The list tab this visit will paint, when the address names one. Anything else
- *  (Audience, Attending, an old Messages link) still opens on Upcoming. */
+ *  (an old Audience or Messages link, Attending) still opens on Upcoming until
+ *  that link is redirected. */
 function listTabFromQuery(raw: string): HostWebinarTab {
   if (raw === "past" || raw === "drafts" || raw === "upcoming") return raw;
   return "upcoming";
