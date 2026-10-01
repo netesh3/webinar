@@ -96,7 +96,6 @@ export function SettingsScreen() {
   }
 
   const connected = (cards ?? []).filter((c) => c.status === "connected").length;
-  const home = account.canHost ? "/host" : "/my-webinars";
 
   const items: { id: Section; label: string; icon: string }[] = [
     { id: "profile", label: "Profile", icon: "person" },
@@ -107,10 +106,7 @@ export function SettingsScreen() {
 
   return (
     <div>
-      <a href={home} className="text-[13px] text-ink-3 hover:text-ink">
-        ← Your webinars
-      </a>
-      <h1 className="mt-3 text-[28px] font-semibold tracking-[-0.02em]">Settings</h1>
+      <h1 className="text-[28px] font-semibold tracking-[-0.02em]">Settings</h1>
       <p className="mt-1 text-[13.5px] text-ink-3">
         Your details, and the apps {appName || "Webinar Liv"} works with.
       </p>
