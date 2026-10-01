@@ -163,9 +163,22 @@ console.log("\nHOST — signed out, and sent back where they were going");
     anonymous,
     "the host sign-in page itself must always open",
   );
-  /* The trap in this rule: gating /host/login on being signed in locks a signed-out host
-   * out of their own product with no way back. */
-  allowed("/host/login", participant, "…for anybody, whatever they are");
+  /* The trap in this rule: gating /host/login on being signed out locks a
+   * signed-out host out of their own product with no way back. A session that
+   * is already valid is the other direction — they have nothing to sign in
+   * to, and the URL must not draw the portal around the form. */
+  redirectedTo(
+    "/host/login",
+    participant,
+    "/host",
+    "a signed-in account opening /host/login is sent to the portal",
+  );
+  redirectedTo(
+    "/host/login",
+    host,
+    "/host",
+    "…and a host the same way",
+  );
 }
 
 console.log("\nPANELIST — an invitation, not a capability");
@@ -230,10 +243,12 @@ console.log("\nUNCONFIRMED SESSION — a lookup that failed, not a missing one")
   for (const path of [
     "/host",
     "/host/acme-launch",
+    "/host/login",
     "/my-webinars",
     "/account",
     "/settings",
     "/",
+    "/login",
   ]) {
     ok(
       decideAccess(path, unknown).allow === true,
@@ -292,6 +307,24 @@ console.log("\nEDGE CASES");
     anonymous,
     "sign-in pages open for the signed-out, obviously",
   );
+  redirectedTo(
+    "/login",
+    host,
+    "/host",
+    "a signed-in host opening /login is sent home, not shown the form",
+  );
+  redirectedTo(
+    "/login",
+    participant,
+    "/host",
+    "a signed-in participant opening /login is sent home too",
+  );
+  redirectedTo(
+    "/login/",
+    host,
+    "/host",
+    "a trailing slash does not leave the form up for someone already signed in",
+  );
   allowed("/signup", anonymous, "and so does signup");
 
   /* The admin area. Two different refusals, deliberately.
@@ -339,6 +372,7 @@ console.log("\nEDGE CASES");
   for (const [path, why] of [
     ["/", "marketing home (signed-in redirect)"],
     ["/host", "the host portal"],
+    ["/login", "sign-in, so a signed-in visitor is redirected before the form"],
     ["/my-webinars", "an attendee's own list"],
     ["/account", "account settings"],
     ["/settings", "settings"],

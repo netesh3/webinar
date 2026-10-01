@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 
 /** Kept as a redirect rather than deleted: /host/login was the host sign-in URL
- *  before accounts were unified, so it exists in bookmarks and in the E2E script. */
+ *  before accounts were unified, so it exists in bookmarks and in the E2E script.
+ *
+ *  It sits outside the host portal group on purpose. That group's layout is the
+ *  sidebar shell, and a sign-in URL must not draw it. */
 export default async function HostLoginPage({
   searchParams,
 }: PageProps<"/host/login">) {
