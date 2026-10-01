@@ -239,6 +239,23 @@ type Config struct {
 	YouTubeAPIURL   string
 	YouTubeTokenURL string
 
+	/* Zoom is per-host OAuth against an unpublished development app.
+	 *
+	 * All four of client id, secret, redirect URL, and a 32-byte token key
+	 * are required before Connect is offered. A partial set leaves the card
+	 * on "Zoom is not configured" rather than a button that cannot finish.
+	 * The webhook secret signs POST /api/webhooks/zoom. Unset, that route
+	 * refuses the body. None of these values are logged. */
+	ZoomClientID      string
+	ZoomClientSecret  string
+	ZoomRedirectURL   string
+	ZoomTokenKey      string
+	ZoomWebhookSecret string
+	/* ZoomAPIURL / ZoomOAuthURL override Zoom's hosts. Empty in production.
+	 * Tests point them at httptest.Server. */
+	ZoomAPIURL   string
+	ZoomOAuthURL string
+
 	/* Meta WhatsApp Cloud API — Connect WhatsApp, via Meta Embedded Signup.
 	 *
 	 * MetaAppID and MetaWhatsAppConfigID are public values by design, the same way
@@ -385,6 +402,13 @@ func Load() (Config, error) {
 		GoogleClientID:          env("GOOGLE_CLIENT_ID", ""),
 		GoogleAPIKey:            env("GOOGLE_API_KEY", ""),
 		GoogleClientSecret:      env("GOOGLE_CLIENT_SECRET", ""),
+		ZoomClientID:            strings.TrimSpace(env("ZOOM_CLIENT_ID", "")),
+		ZoomClientSecret:        strings.TrimSpace(env("ZOOM_CLIENT_SECRET", "")),
+		ZoomRedirectURL:         strings.TrimSpace(env("ZOOM_REDIRECT_URL", "")),
+		ZoomTokenKey:            strings.TrimSpace(env("ZOOM_TOKEN_KEY", "")),
+		ZoomWebhookSecret:       strings.TrimSpace(env("ZOOM_WEBHOOK_SECRET", "")),
+		ZoomAPIURL:              strings.TrimRight(env("ZOOM_API_URL", ""), "/"),
+		ZoomOAuthURL:            strings.TrimRight(env("ZOOM_OAUTH_URL", ""), "/"),
 		MetaAppID:               env("META_APP_ID", ""),
 		MetaAppSecret:           env("META_APP_SECRET", ""),
 		MetaWhatsAppConfigID:    env("META_WHATSAPP_CONFIG_ID", ""),
@@ -472,6 +496,12 @@ func (c Config) GoogleAuthEnabled() bool {
 // Web client id AND secret; the picker-only client id is not enough.
 func (c Config) YouTubeOAuthEnabled() bool {
 	return strings.TrimSpace(c.GoogleClientID) != "" && strings.TrimSpace(c.GoogleClientSecret) != ""
+}
+
+/* ZoomEnabled is Connect, create, and registrant push. The token key is
+ * checked again at startup; a key that is not 32 bytes leaves this false. */
+func (c Config) ZoomEnabled() bool {
+	return c.ZoomClientID != "" && c.ZoomClientSecret != "" && c.ZoomRedirectURL != "" && c.ZoomTokenKey != ""
 }
 
 /* WhatsAppConnectEnabled is the Connect WhatsApp path: Embedded Signup, and the

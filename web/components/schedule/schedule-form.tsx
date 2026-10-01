@@ -94,6 +94,7 @@ function targetForFields(fields: Record<string, string>): string | null {
     return "settings-registration";
   }
   if (keys.includes("panelistEmails")) return "panelists";
+  if (keys.includes("venue")) return "where-it-runs";
   return "settings-the-basics";
 }
 
@@ -463,6 +464,7 @@ function ScheduleFormBody({
           : { autoRecord: false }),
       },
       controls: form.controls,
+      venue: form.venue,
     };
   }
 
@@ -489,6 +491,7 @@ function ScheduleFormBody({
       let saved = editing
         ? await api.updateWebinar(webinar.id, input)
         : await api.createWebinar(input);
+      if (saved.zoomNotice) notify(saved.zoomNotice, "info");
       /* The webinar exists now, so the local copy has done its job — and must
        * go, or the next "Schedule a webinar" would reopen this one. From here
        * on nothing is written back and leaving the page does not warn. */

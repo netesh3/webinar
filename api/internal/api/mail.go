@@ -8,6 +8,7 @@ import (
 
 	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
+	"github.com/netkumar/webcast/api/internal/zoom"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -180,7 +181,7 @@ func (s *Server) replanReminders(ctx context.Context, wb types.Webinar) {
 		// added later reads exactly like one queued at sign-up.
 		one := wb
 		one.Options.Reminders = []int{g.OffsetMin}
-		joinURL := s.joinURLFromKey(wb.ID, g.JoinKey)
+		joinURL := s.messageJoinURL(ctx, wb, g.RegistrationID, g.JoinKey)
 		ics := notify.ICSFile(notify.CalendarEvent{
 			UID:         g.RegistrationID + "@webinarliv.com",
 			Title:       wb.Topic,
@@ -193,8 +194,20 @@ func (s *Server) replanReminders(ctx context.Context, wb types.Webinar) {
 	}
 }
 
+func (s *Server) messageJoinURL(ctx context.Context, wb types.Webinar, registrationID, key string) string {
+	if zoom.IsVenue(wb.Venue) && registrationID != "" {
+		if u, err := s.store.RegistrationZoomJoin(ctx, registrationID); err == nil && u != "" {
+			return u
+		}
+	}
+	if key != "" {
+		return s.joinURLFromKey(wb.ID, key)
+	}
+	return s.joinURLFor(ctx, wb.ID, registrationID)
+}
+
 func (s *Server) notifyNewRegistration(ctx context.Context, wb types.Webinar, reg types.Registration, _ bool) {
-	joinURL := s.joinURLFromKey(wb.ID, reg.JoinKey)
+	joinURL := s.messageJoinURL(ctx, wb, reg.ID, reg.JoinKey)
 	name := strings.TrimSpace(reg.FirstName + " " + reg.LastName)
 	s.enqueueApprovedInvite(ctx, wb, reg.Email, name, reg.ID, joinURL, types.NotifyRegistrationConfirmed)
 	s.flushOutbox(ctx)

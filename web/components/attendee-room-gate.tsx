@@ -40,6 +40,7 @@ export function AttendeeRoomGate({
   const { account, status } = useSession();
   const [join, setJoin] = useState<JoinResponse | null>(null);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  const [openingZoom, setOpeningZoom] = useState(false);
   const [attempt, setAttempt] = useState(0);
   // Pressing Leave (or "Back to webinars") lands on the way-out screen, which offers the
   // post-event survey when there is one to answer and otherwise goes straight on.
@@ -96,7 +97,13 @@ export function AttendeeRoomGate({
     api
       .join(slug, key)
       .then((res) => {
-        if (current()) setJoin(res);
+        if (!current()) return;
+        if (res.zoomJoinUrl) {
+          setOpeningZoom(true);
+          window.location.assign(res.zoomJoinUrl);
+          return;
+        }
+        setJoin(res);
       })
       .catch((e: unknown) => {
         if (!current()) return;
@@ -209,7 +216,9 @@ export function AttendeeRoomGate({
         ) : (
           <div className="flex flex-col items-center gap-3">
             <Spinner className="size-5 text-ink-3" />
-            <p className="text-[13.5px] text-ink-2">Connecting to the webinar…</p>
+            <p className="text-[13.5px] text-ink-2">
+              {openingZoom ? "Opening Zoom…" : "Connecting to the webinar…"}
+            </p>
           </div>
         )}
       </Card>
@@ -227,6 +236,8 @@ function errorTitle(code: string): string {
       return "The webinar is full";
     case "not_joinable":
       return "This webinar isn't running";
+    case "zoom_link_missing":
+      return "Your Zoom link isn't ready";
     case "not_registered":
     case "registration_required":
     case "no_join_key":

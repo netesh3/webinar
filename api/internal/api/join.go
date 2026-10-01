@@ -13,6 +13,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/store"
+	"github.com/netkumar/webcast/api/internal/zoom"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -95,6 +96,10 @@ func (s *Server) joinAsAttendee(
 	w http.ResponseWriter, r *http.Request, wb types.Webinar, reg types.Registration,
 ) {
 	slug := wb.ID
+	if zoom.IsVenue(wb.Venue) {
+		s.joinZoomAttendee(w, r, wb, reg)
+		return
+	}
 	if b := s.audienceBarrier(wb); b != nil {
 		httpx.Error(w, b.status, b.code, b.message)
 		return
@@ -393,6 +398,15 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 	if wb.Status == types.StatusEnded {
 		httpx.Error(w, http.StatusConflict, "ended",
 			"This webinar has ended. Reopen it from the dashboard to run it again.")
+		return
+	}
+	if zoom.IsVenue(wb.Venue) {
+		if role != types.RoleHost {
+			httpx.Error(w, http.StatusConflict, "runs_in_zoom",
+				"This session runs in Zoom. The host starts it there.")
+			return
+		}
+		s.zoomGoLive(w, r, wb)
 		return
 	}
 

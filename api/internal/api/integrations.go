@@ -17,7 +17,7 @@ func (s *Server) integrationRegistry() *integrations.Registry {
 	if oauth {
 		revoke = s.youtube.Revoke
 	}
-	return integrations.New(s.store, oauth, revoke)
+	return integrations.New(s.store, oauth, revoke, s.zoomHooks())
 }
 
 func (s *Server) handleListIntegrations(w http.ResponseWriter, r *http.Request) {

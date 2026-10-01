@@ -743,6 +743,9 @@ function AttendeesTab({
                       <div className="text-[11.5px] text-ink-3">
                         {r.isGuest ? "No email — joined as a guest" : r.email}
                       </div>
+                      {r.zoomNote && (
+                        <div className="text-[11.5px] text-warn">{r.zoomNote}</div>
+                      )}
                       {/* The number was on the wire all along and never rendered,
                           which left the WhatsApp columns beside it unexplainable:
                           "no number" is only an answer if the numbers are visible.

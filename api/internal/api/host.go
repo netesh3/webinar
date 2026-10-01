@@ -20,6 +20,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/yt"
+	"github.com/netkumar/webcast/api/internal/zoom"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -194,6 +195,19 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 	if in.Options.AutoRecord && !s.requireCloudRecording(w, r, user.ID) {
 		return
 	}
+	savedZoom, venueFields, err := s.resolveZoom(r.Context(), user.ID, "", &in)
+	if len(venueFields) > 0 {
+		httpx.Fields(w, venueFields)
+		return
+	}
+	if err != nil {
+		if zoomWriteErr(w, err) {
+			s.log.Warn("zoom create", "host", user.ID, "status", zoomStatus(err))
+			return
+		}
+		s.fail(w, r, "create webinar: zoom", err)
+		return
+	}
 	wb, err := s.store.CreateWebinar(r.Context(), user.ID, in, s.cfg.DefaultMaxMeetingMin)
 	if errors.Is(err, store.ErrInvalid) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "invalid", err.Error())
@@ -203,7 +217,19 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "create webinar", err)
 		return
 	}
-	s.log.Info("webinar created", "slug", wb.ID, "host", user.ID, "status", wb.Status)
+	if err := s.persistZoom(r.Context(), wb.ID, savedZoom); err != nil {
+		s.fail(w, r, "create webinar: zoom save", err)
+		return
+	}
+	if savedZoom.ZoomID != "" || savedZoom.Notice != "" {
+		wb, err = s.store.WebinarBySlug(r.Context(), wb.ID)
+		if err != nil {
+			s.fail(w, r, "create webinar: reload", err)
+			return
+		}
+	}
+	wb.ZoomNotice = savedZoom.Notice
+	s.log.Info("webinar created", "slug", wb.ID, "host", user.ID, "status", wb.Status, "venue", wb.Venue)
 	s.syncPanelistMail(r.Context(), wb, "")
 	httpx.JSON(w, http.StatusCreated, wb)
 }
@@ -282,8 +308,30 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	// The start as it was, so panelists already invited can be told if this save moves it.
 	// A draft's start was never announced to anyone, so it does not count as a move.
 	prevStartsAt := ""
-	if prev, err := s.store.WebinarBySlug(r.Context(), slug); err == nil && prev.Status != types.StatusDraft {
-		prevStartsAt = prev.StartsAt
+	var hostID string
+	if prev, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+		hostID = prev.Host.ID
+		if prev.Status != types.StatusDraft {
+			prevStartsAt = prev.StartsAt
+		}
+	}
+	if hostID == "" {
+		if id, err := s.store.HostIDFor(r.Context(), slug); err == nil {
+			hostID = id
+		}
+	}
+	savedZoom, venueFields, err := s.resolveZoom(r.Context(), hostID, slug, &in)
+	if len(venueFields) > 0 {
+		httpx.Fields(w, venueFields)
+		return
+	}
+	if err != nil {
+		if zoomWriteErr(w, err) {
+			s.log.Warn("zoom update", "slug", slug, "status", zoomStatus(err))
+			return
+		}
+		s.fail(w, r, "update webinar: zoom", err)
+		return
 	}
 
 	wb, err := s.store.UpdateWebinar(r.Context(), slug, in)
@@ -309,6 +357,17 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.pushRoomMetadata(r, sfu, wb)
 	}
+
+	if err := s.persistZoom(r.Context(), wb.ID, savedZoom); err != nil {
+		s.fail(w, r, "update webinar: zoom save", err)
+		return
+	}
+	wb, err = s.store.WebinarBySlug(r.Context(), wb.ID)
+	if err != nil {
+		s.fail(w, r, "update webinar: reload", err)
+		return
+	}
+	wb.ZoomNotice = savedZoom.Notice
 
 	// Start time and reminder times both apply to what is already queued: see
 	// replanReminders, and the CRM's side in Engage.OnRescheduled.
@@ -596,6 +655,17 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 	default:
 		fields["kind"] = "Pick live, simulive or a recurring series."
 	}
+
+	switch in.Venue {
+	case "", zoom.VenueApp:
+		in.Venue = zoom.VenueApp
+	case zoom.VenueMeeting, zoom.VenueWebinar:
+	default:
+		fields["venue"] = "Choose this app, a Zoom meeting, or a Zoom webinar."
+	}
+	if zoom.IsVenue(in.Venue) && in.Kind == types.KindSimulive {
+		fields["venue"] = "A simulive session stays in this app."
+	}
 	if in.Kind == types.KindSimulive && strings.TrimSpace(in.SimuliveRecordingID) == "" {
 		fields["simuliveRecordingId"] = "Pick a recording to play as the live session."
 	}
@@ -768,6 +838,12 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, http.StatusForbidden, "too_soon", msg)
 			return
 		}
+	}
+	/* Zoom opens in the Zoom app. Status stays scheduled until phase 4 hears
+	 * that the meeting ended. LiveKit is not created. */
+	if zoom.IsVenue(existing.Venue) {
+		s.zoomGoLive(w, r, existing)
+		return
 	}
 
 	wb, err := s.store.SetStatus(r.Context(), slug, types.StatusLive)
@@ -1087,6 +1163,13 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 // audience watching a dead stage, waiting for them to come back.
 func (s *Server) handleEndWebinar(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
+
+	if existing, err := s.store.WebinarBySlug(r.Context(), slug); err == nil && zoom.IsVenue(existing.Venue) {
+		/* Ending happens in Zoom. Phase 4's webhook is what marks the row ended. */
+		httpx.Error(w, http.StatusConflict, "ends_in_zoom",
+			"This session ends in Zoom. We'll mark it ended when Zoom tells us the meeting is over.")
+		return
+	}
 
 	wb, err := s.endWebinarSession(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {

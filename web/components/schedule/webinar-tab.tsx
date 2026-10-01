@@ -23,6 +23,7 @@ import {
   type SetForm,
 } from "./form-state";
 import { RegistrationSection } from "./registration";
+import { WhereSection } from "./where";
 import { RoomSection } from "./room";
 import { SurveySection } from "./survey-section";
 import { formatDuration } from "./summary";
@@ -88,6 +89,7 @@ export function WebinarTab({
           startsAtPreview={startsAtPreview}
         />
       </FormGroup>
+      <WhereSection form={form} set={set} fields={fields} />
       <RegistrationSection form={form} set={set} fields={fields} />
       <RoomSection
         form={form}
