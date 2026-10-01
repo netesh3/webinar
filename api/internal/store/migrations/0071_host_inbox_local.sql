@@ -1,9 +1,11 @@
 /* Per-host inbox local-part for Reply-To.
  *
  * NULL is the default and means "do not set Reply-To", which is today's behaviour:
- * replies follow From (SMTP_FROM). A value is the local part of local@webinarliv.com.
- * Set it only after that address can actually receive — a Reply-To that 554s is worse
- * than none. Uniqueness is among hosts who have one, so two hosts cannot share a mailbox.
+ * replies follow From. From stays SMTP_FROM — the shared Gmail account, or a verified
+ * "Send mail as" alias — and is never this address. A value is the local part of
+ * local@webinarliv.com, used only as Reply-To. Set it only after that address can
+ * actually receive. Uniqueness is among hosts who have one, so two hosts cannot share
+ * a mailbox.
  */
 ALTER TABLE users ADD COLUMN inbox_local text;
 

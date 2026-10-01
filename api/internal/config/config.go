@@ -183,6 +183,14 @@ type Config struct {
 	 * Deliberately not defaulted to a real server. A half-configured mail path that errors
 	 * on every approval makes a working feature look broken, and teaches whoever is on call
 	 * to ignore the log line that will one day be a genuine delivery failure.
+	 *
+	 * Host, port, username, password and From all come from the environment. No provider
+	 * is named in code. Production sets SMTP_HOST to smtp.gmail.com. Gmail accepts From
+	 * only when it is the authenticated account or a verified "Send mail as" alias, and
+	 * it rewrites or rejects anything else — so a per-host address such as
+	 * gsp@webinarliv.com is Reply-To only (notify.InboxAddress), never SMTP_FROM.
+	 * Gmail will not take the account's normal password: SMTP_PASSWORD has to be an app
+	 * password on a 2FA account. OAuth is the other way in; this client speaks SMTP AUTH.
 	 */
 	SMTPHost     string
 	SMTPPort     int

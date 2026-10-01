@@ -45,9 +45,10 @@ type Message struct {
 	// ICS is an optional iCalendar payload. Empty means a plain-text message.
 	ICS     string
 	ICSName string
-	// ReplyTo is an optional Reply-To header. Empty leaves the header off, so a
-	// recipient's reply still goes to From (SMTP_FROM). Set it to the host's
-	// inbox address (see InboxAddress) once that mailbox can actually receive.
+	// ReplyTo is optional. Empty leaves the header off, so a reply falls through
+	// to From. When set, it is the host inbox (InboxAddress). It is never copied
+	// into From or the SMTP envelope: those stay SMTP.From, which for Gmail must
+	// be the authenticated account or a verified "Send mail as" alias.
 	ReplyTo string
 }
 
@@ -235,12 +236,13 @@ func header(v string) string {
 	return strings.NewReplacer("\r", " ", "\n", " ").Replace(strings.TrimSpace(v))
 }
 
-/* InboxAddress is local@webinarliv.com, the per-host address replies should land on.
+/* InboxAddress is local@webinarliv.com, the per-host Reply-To.
  *
- * Empty, or anything that is not a single dot-atom local part, returns "" so the
- * message is sent with no Reply-To. The pattern is the same one as users.inbox_local
- * (migration 0071). The mailbox does not exist until inbound mail is provisioned;
- * callers only set that column once it does.
+ * It is not a From address. Outbound mail is one shared mailbox (production: Gmail);
+ * Gmail rejects or rewrites a From it did not authenticate. Empty, or anything that
+ * is not a single dot-atom local part, returns "" so the message is sent with no
+ * Reply-To. The pattern matches users.inbox_local (migration 0071). The mailbox does
+ * not exist until inbound mail is provisioned; callers only set that column once it does.
  */
 var inboxLocal = regexp.MustCompile(`^[a-z0-9]([a-z0-9._-]{0,30}[a-z0-9])?$`)
 
