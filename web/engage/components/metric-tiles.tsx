@@ -85,11 +85,11 @@ export function MetricTiles({
     },
   ];
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 sm:grid-cols-3 min-[900px]:grid-cols-5">
       {tiles.map((t, i) => (
         <div
           key={t.label}
-          className={`${pad} min-w-0 border-line lg:border-l ${i === 0 ? "lg:border-l-0" : ""} ${
+          className={`${pad} min-w-0 border-line min-[900px]:border-l ${i === 0 ? "min-[900px]:border-l-0" : ""} ${
             t.bad ? "bg-warn-soft" : ""
           }`}
         >

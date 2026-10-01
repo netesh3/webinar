@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { EndedNudge } from "./ended-nudge";
 import { useSession } from "./providers";
@@ -9,8 +9,15 @@ import { MyWebinarsList } from "./my-webinars-list";
 import { useRegistrations } from "./registrations";
 import { Alert, Spinner, Tabs } from "./controls";
 import { DateRangeField } from "./date-picker";
-import { CloseIcon, SearchIcon } from "./icons";
-import { Button, ButtonLink, Empty, ListPager } from "./ui";
+import {
+  CalendarIcon,
+  CheckIcon,
+  ClipboardIcon,
+  CloseIcon,
+  SearchIcon,
+  UsersIcon,
+} from "./icons";
+import { Button, ButtonLink, Card, Empty, ListPager } from "./ui";
 import { ApiError, api, type HostWebinarTab } from "@/lib/api";
 import {
   HOST_WEBINAR_PAGE_SIZE,
@@ -436,6 +443,8 @@ export function HostWebinarBrowser({
         </div>
       </div>
 
+      <div className="grid items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_17.5rem]">
+        <div className="min-w-0">
       {error && !ownList(tab) && (
         <div className="mb-4">
           <Alert tone="error">{error}</Alert>
@@ -510,9 +519,65 @@ export function HostWebinarBrowser({
           />
         </>
       )}
-
-      {tab === "upcoming" && <EndedNudge />}
+        </div>
+        <aside className="grid content-start gap-3">
+          <AtAGlance counts={counts} attending={attendingCount} />
+          {tab === "upcoming" && <EndedNudge rail />}
+        </aside>
+      </div>
     </>
+  );
+}
+
+/** Counts already on this page: the tab badges, plus Attending. */
+function AtAGlance({
+  counts,
+  attending,
+}: {
+  counts: HostWebinarCounts;
+  attending: number;
+}) {
+  const rows: { label: string; value: number; icon: ReactNode; tint: string }[] = [
+    {
+      label: "Upcoming",
+      value: counts.upcoming,
+      icon: <CalendarIcon className="size-4" />,
+      tint: "bg-brand-soft text-brand",
+    },
+    {
+      label: "Completed",
+      value: counts.past,
+      icon: <CheckIcon className="size-4" />,
+      tint: "bg-ok-soft text-ok",
+    },
+    {
+      label: "Drafts",
+      value: counts.drafts,
+      icon: <ClipboardIcon className="size-4" />,
+      tint: "bg-surface-2 text-ink-2",
+    },
+    {
+      label: "Attending",
+      value: attending,
+      icon: <UsersIcon className="size-4" />,
+      tint: "bg-brand-soft text-brand",
+    },
+  ];
+  return (
+    <Card className="p-4">
+      <h2 className="text-[14px] font-semibold text-ink">At a glance</h2>
+      <ul className="mt-3 grid gap-2.5">
+        {rows.map((row) => (
+          <li key={row.label} className="flex items-center gap-2.5">
+            <span className={`grid size-8 shrink-0 place-items-center rounded-lg ${row.tint}`}>
+              {row.icon}
+            </span>
+            <span className="min-w-0 flex-1 text-[13px] text-ink-2">{row.label}</span>
+            <span className="text-[14px] font-semibold tabular-nums text-ink">{row.value}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

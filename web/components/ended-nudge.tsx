@@ -12,7 +12,7 @@ import { formatRelative } from "@/lib/format";
  * click too far to remember it. Shown for a week after the end. */
 const WEEK = 7 * 24 * 3_600_000;
 
-export function EndedNudge() {
+export function EndedNudge({ rail = false }: { rail?: boolean }) {
   const [w, setW] = useState<Webinar | null>(null);
   useEffect(() => {
     if (isDevAuthBypassActive()) return;
@@ -32,6 +32,28 @@ export function EndedNudge() {
   if (!w || !w.endedAt) return null;
   const came = w.report?.attended ?? 0;
   const missed = Math.max(0, w.registrantCount - came);
+  const title = `${w.topic} ended ${formatRelative(w.endedAt, new Date())}`;
+  const detail = `${came} came${missed > 0 ? ` · ${missed} missed it` : ""} — follow up while it's fresh.`;
+  const href = `/host/${encodeURIComponent(w.id)}?tab=follow-up`;
+  if (rail) {
+    return (
+      <Card className="grid gap-3 border-brand-line bg-brand-soft/40 p-4">
+        <span
+          className="grid size-9 place-items-center rounded-lg bg-brand text-white"
+          aria-hidden
+        >
+          ✦
+        </span>
+        <div className="min-w-0">
+          <p className="text-[13.5px] font-semibold text-ink">{title}</p>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-2">{detail}</p>
+        </div>
+        <ButtonLink href={href} size="sm" className="w-full">
+          Follow up
+        </ButtonLink>
+      </Card>
+    );
+  }
   return (
     <Card className="mt-4 flex flex-wrap items-center gap-3 border-brand-line bg-brand-soft/40 px-4 py-3">
       <span
@@ -41,18 +63,10 @@ export function EndedNudge() {
         ✦
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13.5px] font-semibold text-ink">
-          {w.topic} ended {formatRelative(w.endedAt, new Date())}
-        </p>
-        <p className="text-[12px] text-ink-2">
-          {came} came{missed > 0 ? ` · ${missed} missed it` : ""} — follow up
-          while it&apos;s fresh.
-        </p>
+        <p className="truncate text-[13.5px] font-semibold text-ink">{title}</p>
+        <p className="text-[12px] text-ink-2">{detail}</p>
       </div>
-      <ButtonLink
-        href={`/host/${encodeURIComponent(w.id)}?tab=follow-up`}
-        size="sm"
-      >
+      <ButtonLink href={href} size="sm">
         Follow up
       </ButtonLink>
     </Card>

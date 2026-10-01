@@ -381,7 +381,7 @@ export function HostWebinarsScreen() {
         className={
           instantAllowed
             ? "mb-6 grid gap-3 sm:grid-cols-2"
-            : "mb-6 grid gap-3 sm:max-w-md"
+            : "mb-6 grid gap-3"
         }
       >
         {instantAllowed && (

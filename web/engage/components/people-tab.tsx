@@ -248,8 +248,9 @@ export function HostPeopleTab({
           canMessage={canMessage}
         />
       )}
+      <div className="flex flex-col gap-3 min-[900px]:flex-row min-[900px]:items-center">
       {/* The answer before the list: how big the audience is, and how much of it showed. */}
-      <p className="text-[13px] text-ink-2">
+      <p className="min-w-0 text-[13px] text-ink-2 min-[900px]:max-w-[42%]">
         <span className="font-semibold text-ink tabular-nums">{c.everyone}</span>{" "}
         {c.everyone === 1 ? "person" : "people"}{" "}
         {webinarName ? (
@@ -275,7 +276,7 @@ export function HostPeopleTab({
         )}
       </p>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
         <label className="relative min-w-0 flex-1 sm:max-w-72">
           <span className="sr-only">Search people</span>
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-3" />
@@ -329,6 +330,7 @@ export function HostPeopleTab({
             )}
           </div>
         )}
+      </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show">

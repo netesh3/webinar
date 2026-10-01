@@ -338,8 +338,8 @@ export function WhatsAppMetricsView() {
         )}
       </section>
 
-      <div className="flex items-center gap-2">
-        <label className="relative min-w-0 flex-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative min-w-0 w-full max-w-sm">
           <span className="sr-only">Search webinars</span>
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
           <input
@@ -353,6 +353,7 @@ export function WhatsAppMetricsView() {
             className="field h-9 w-full pl-8 text-[13px]"
           />
         </label>
+        <div className="min-[900px]:ml-auto">
         <DateRangeField
           from={period.from}
           to={period.to}
@@ -366,6 +367,7 @@ export function WhatsAppMetricsView() {
             setPage(0);
           }}
         />
+        </div>
       </div>
 
       <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm">

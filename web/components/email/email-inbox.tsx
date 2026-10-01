@@ -75,8 +75,8 @@ export function EmailInboxScreen() {
   }
 
   return (
-    <div className="mx-auto grid max-w-5xl gap-4">
-      <div>
+    <div className="flex min-h-0 w-full flex-1 flex-col gap-3">
+      <div className="shrink-0">
         <h1 className="text-[20px] font-semibold tracking-[-0.02em]">Email</h1>
         <p className="mt-1 text-[13px] text-ink-3">
           {data
@@ -85,8 +85,8 @@ export function EmailInboxScreen() {
         </p>
       </div>
       {error && <Alert tone="error">{error}</Alert>}
-      <div className="grid min-h-[420px] overflow-hidden rounded-xl border border-line md:grid-cols-[280px_1fr]">
-        <ul className="divide-y divide-line border-b border-line md:border-r md:border-b-0">
+      <div className="grid min-h-[28rem] flex-1 overflow-hidden rounded-xl border border-line min-[900px]:min-h-0 min-[900px]:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
+        <ul className="max-h-80 divide-y divide-line overflow-y-auto border-b border-line min-[900px]:max-h-none min-[900px]:min-h-0 min-[900px]:border-r min-[900px]:border-b-0">
           {(data?.messages.length ?? 0) === 0 && (
             <li className="p-4 text-[13px] text-ink-3">No email yet.</li>
           )}
@@ -110,7 +110,7 @@ export function EmailInboxScreen() {
             </li>
           ))}
         </ul>
-        <div className="flex min-h-[320px] flex-col">
+        <div className="flex min-h-[20rem] min-w-0 flex-col min-[900px]:min-h-0">
           {!selected && <p className="p-4 text-[13px] text-ink-3">Select a message.</p>}
           {selected && (
             <>
@@ -206,7 +206,7 @@ export function EmailIntegration({
   }
 
   return (
-    <article className="rounded-xl border border-line bg-surface p-4">
+    <article className="flex h-full flex-col rounded-xl border border-line bg-surface p-4">
       <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">Email</div>
       <h3 className="mt-1 text-[15px] font-semibold">Your reply inbox</h3>
       <p className="mt-1 text-[13px] text-ink">{current || address}</p>

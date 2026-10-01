@@ -423,6 +423,15 @@ html[data-theme="dark"] .sb-theme .sb-sun {
   transition: margin-left var(--sb-dur) var(--sb-ease);
 }
 
+/* Desktop column is the viewport, so a full-height page (the inbox) can fill
+ * it and scroll inside. Taller pages still spill and the document scrolls.
+ * Phones keep the top bar, so the column is not locked to 100dvh there. */
+@media (min-width: 768px) {
+  .sb-main {
+    height: 100dvh;
+  }
+}
+
 /* Bell and avatar. In flow so the page starts under them, and a stacking
    context above the column so the account menu paints over the cards. */
 .sb-chrome {
