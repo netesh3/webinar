@@ -6,10 +6,10 @@ import { useRegistrations } from "./registrations";
 import { Alert } from "./controls";
 import { CalendarIcon } from "./icons";
 import { useSession, useShareOrigin } from "./providers";
-import { Badge, Button, ButtonLink, Card, Empty, TopicStripe } from "./ui";
+import { Badge, Button, ButtonLink, Empty } from "./ui";
+import { WebinarListCard } from "./webinar-list-card";
 import {
-  formatDay,
-  formatDuration,
+  formatDayShort,
   formatRelative,
   formatTimeRange,
   tzLabel,
@@ -181,11 +181,12 @@ function RegisteredCard({
   // is no artificial waiting room: an attendee who arrives early sees "waiting
   // for the host", which is more informative than a disabled button.
   const joinable = !past && !pending && !declined;
-  // A past row has no join or calendar actions, so it does not keep an empty
-  // column beside the title.
+  // Past rows take View, where Completed puts See results. This column is only
+  // the upcoming and live actions: Join, the calendar, or a pending decision.
   const hasSide =
     joinable || pending || declined || (!past && !live && now !== null);
 
+  const pageHref = `/webinars/${w.id}`;
   const event = {
     title: w.topic,
     description: w.summary || w.description,
@@ -195,70 +196,56 @@ function RegisteredCard({
   };
 
   return (
-    <Card className="group relative cursor-pointer overflow-hidden transition-colors hover:border-line-2 hover:bg-surface-2/40">
-      <TopicStripe webinar={w} />
-      <div className="flex flex-col gap-4 p-4 sm:flex-row">
-        <div className="min-w-0 flex-1">
-          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-            {live ? (
-              <Badge tone="live" dot>
-                Live now
-              </Badge>
-            ) : declined ? (
-              <Badge tone="live">Declined</Badge>
-            ) : pending ? (
-              <Badge tone="warn">Awaiting approval</Badge>
-            ) : past ? (
-              <Badge>Ended</Badge>
-            ) : (
-              <Badge tone="ok" dot>
-                Registered
-              </Badge>
-            )}
-            {w.track && <Badge>{w.track}</Badge>}
-          </div>
-
-          <h3 className="text-[15px] leading-snug font-semibold">
-            {/* Stretched over the card. The attendee page is the row; Join
-                and calendar sit above it and keep their own clicks.
-                ring-inset: the card clips overflow for the colour stripe. */}
-            <Link
-              href={`/webinars/${w.id}`}
-              className="outline-none after:absolute after:inset-0 after:content-[''] group-hover:text-brand focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-brand/40"
-            >
-              {w.topic}
-            </Link>
-          </h3>
-
-          <p className="mt-1.5 text-[13px] text-ink-2">
-            {formatDay(w.startsAt, w.timeZone)} ·{" "}
-            {formatTimeRange(w.startsAt, w.durationMin, w.timeZone)}{" "}
-            {tzLabel(w.startsAt, w.timeZone)} · {formatDuration(w.durationMin)}
-          </p>
-
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ink-3">
+    <WebinarListCard
+      href={pageHref}
+      title={w.topic}
+      badge={
+        <>
+          {live ? (
+            <Badge tone="live" dot>
+              Live now
+            </Badge>
+          ) : declined ? (
+            <Badge tone="live">Declined</Badge>
+          ) : pending ? (
+            <Badge tone="warn">Awaiting approval</Badge>
+          ) : past ? (
+            <Badge>Ended</Badge>
+          ) : (
+            <Badge tone="ok" dot>
+              Registered
+            </Badge>
+          )}
+          {w.track && <Badge>{w.track}</Badge>}
+        </>
+      }
+      when={`${formatDayShort(w.startsAt, w.timeZone)} · ${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}`}
+      meta={
+        <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ink-3">
+          <span>
+            Webinar ID <span className="tabular-nums">{w.webinarId}</span>
+          </span>
+          {!pending && !declined && (
             <span>
-              Webinar ID <span className="tabular-nums">{w.webinarId}</span>
+              Join key <span className="font-mono text-ink-2">{r.joinKey}</span>
             </span>
-            {!pending && !declined && (
-              <span>
-                Join key{" "}
-                <span className="font-mono text-ink-2">{r.joinKey}</span>
-              </span>
-            )}
-            <span>Hosted by {w.host.name}</span>
-          </div>
-        </div>
-
-        {hasSide && (
-          <div className="pointer-events-none relative z-10 flex shrink-0 flex-col justify-center gap-2 sm:w-[180px]">
+          )}
+          <span>Hosted by {w.host.name}</span>
+        </p>
+      }
+      action={
+        past ? (
+          <ButtonLink href={pageHref} size="sm">
+            View
+          </ButtonLink>
+        ) : hasSide ? (
+          <div className="flex flex-col gap-2 sm:w-[180px]">
             {joinable && (
               <ButtonLink
                 href={`/webinars/${w.id}/room`}
                 size="sm"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="pointer-events-auto"
               >
                 {live ? "Join now" : "Join the webinar"}
               </ButtonLink>
@@ -284,7 +271,7 @@ function RegisteredCard({
                   rel="noopener noreferrer"
                   variant="secondary"
                   size="sm"
-                  className="pointer-events-auto px-2"
+                  className="px-2"
                 >
                   <CalendarIcon className="size-3.5" />
                   Google
@@ -292,7 +279,7 @@ function RegisteredCard({
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="pointer-events-auto px-2"
+                  className="px-2"
                   onClick={() =>
                     downloadIcs(event, `${w.id}-${r.joinKey}`, `${w.id}.ics`)
                   }
@@ -302,14 +289,14 @@ function RegisteredCard({
               </div>
             )}
 
-            {!past && !live && now !== null && (
+            {!live && now !== null && (
               <p className="text-center text-[11px] text-ink-3">
                 Starts {formatRelative(w.startsAt, new Date(now))}
               </p>
             )}
           </div>
-        )}
-      </div>
-    </Card>
+        ) : undefined
+      }
+    />
   );
 }
