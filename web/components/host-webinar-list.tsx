@@ -6,6 +6,7 @@ import { useId, useState } from "react";
 import { ConfirmModal, Menu } from "./controls";
 import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, kindLabel } from "./ui";
+import { WebinarListCard } from "./webinar-list-card";
 import {
   formatCount,
   formatDayShort,
@@ -397,64 +398,46 @@ function CompletedCard({ webinar: w }: { webinar: Webinar }) {
     r && registered > 0 ? Math.min(100, Math.round((r.attended / registered) * 100)) : null;
 
   return (
-    <Card className="group relative p-4 transition-colors hover:border-line-2 hover:bg-surface-2/40 sm:p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 flex-1">
-          {w.didntGoLive && (
-            <div className="mb-1.5">
-              <Badge tone="neutral">Didn't go live</Badge>
-            </div>
-          )}
-          <h3 className="text-[15px] font-semibold tracking-[-0.01em]">
-            {/* Stretched over the card so anywhere on it opens the results. */}
-            <Link
-              href={href}
-              data-tour="webinar-title"
-              className="outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] group-hover:text-brand focus-visible:after:ring-2 focus-visible:after:ring-brand/40"
-            >
-              {w.topic}
-            </Link>
-          </h3>
-          <p className="mt-1 text-[13px] text-ink-2">
-            {formatDayShort(w.startsAt, w.timeZone)} ·{" "}
-            {formatTimeRange(w.startsAt, w.durationMin, w.timeZone)}{" "}
-            {tzLabel(w.startsAt, w.timeZone)}
-          </p>
-
-          <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+    <WebinarListCard
+      href={href}
+      title={w.topic}
+      titleDataTour
+      badge={
+        w.didntGoLive ? <Badge tone="neutral">Didn&apos;t go live</Badge> : undefined
+      }
+      when={`${formatDayShort(w.startsAt, w.timeZone)} · ${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}`}
+      meta={
+        <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+          <Figure
+            label="Attended"
+            value={r ? formatCount(r.attended) : "—"}
+            note={`of ${formatCount(registered)} registered`}
+          />
+          {turnout !== null && (
             <Figure
-              label="Attended"
-              value={r ? formatCount(r.attended) : "—"}
-              note={`of ${formatCount(registered)} registered`}
+              label="Turnout"
+              value={`${turnout}%`}
+              tone={turnout >= 50 ? "ok" : turnout >= 25 ? "neutral" : "warn"}
             />
-            {turnout !== null && (
-              <Figure
-                label="Turnout"
-                value={`${turnout}%`}
-                tone={turnout >= 50 ? "ok" : turnout >= 25 ? "neutral" : "warn"}
-              />
-            )}
-            {r && r.attended > 0 && (
-              <Figure
-                label="Avg. time watched"
-                value={formatDuration(r.avgWatchMin)}
-                note={`of ${formatDuration(w.durationMin)}`}
-              />
-            )}
-            {r && r.questions > 0 && (
-              <Figure label="Questions" value={formatCount(r.questions)} />
-            )}
-          </dl>
-        </div>
-
-        {/* Positioned so it paints above the stretched link that comes before it. */}
-        <div className="relative shrink-0">
-          <ButtonLink href={href} size="sm">
-            See results
-          </ButtonLink>
-        </div>
-      </div>
-    </Card>
+          )}
+          {r && r.attended > 0 && (
+            <Figure
+              label="Avg. time watched"
+              value={formatDuration(r.avgWatchMin)}
+              note={`of ${formatDuration(w.durationMin)}`}
+            />
+          )}
+          {r && r.questions > 0 && (
+            <Figure label="Questions" value={formatCount(r.questions)} />
+          )}
+        </dl>
+      }
+      action={
+        <ButtonLink href={href} size="sm">
+          See results
+        </ButtonLink>
+      }
+    />
   );
 }
 
