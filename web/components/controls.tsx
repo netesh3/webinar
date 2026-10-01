@@ -391,22 +391,16 @@ export function Menu({
       {open && (
         <div
           role="menu"
-          /* Bounded on both ends, not just a min-width: a hint long enough to
-           * need its own line (see below) used to be laid out NEXT to the
-           * label instead, so the menu grew exactly as wide as label+hint
-           * combined demanded — wide enough, once a hint like "camera, mic,
-           * and screen share" landed here, to hang off the left edge of the
-           * narrow participants panel this menu opens inside of. That panel
-           * scrolls vertically (`overflow-y-auto` in participants.tsx), and
-           * the CSS spec computes an implicit `overflow-x: auto` for a box
-           * whose overflow-y is non-visible — there is no way to keep the
-           * y-scroll without it — so the overhanging part was silently
-           * clipped rather than pushed on screen: a label cut down to "Allo…"
-           * and a second row missing its label entirely. Capping the width
-           * here keeps every menu, whatever its items, inside the space this
-           * particular host panel actually has — on a phone's narrower
-           * sheet too, where the same math applies at a smaller number. */
-          className={`absolute z-50 w-[15.5rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl ${position}`}
+          /* Shrink to the labels, then stop. A fixed 15.5rem made a one-word
+           * action ("Delete webinar") a wide empty card floating in the
+           * header, away from the button it hangs from. max-content keeps
+           * that menu as wide as its words. The cap is what a long hint used
+           * to break: laid out beside its label, "camera, mic, and screen
+           * share" grew the menu past the participants panel, and that
+           * panel's vertical scroll implies overflow-x auto, so the overhang
+           * was clipped instead of shown. Hints stack under the label, and
+           * this max-width is where they wrap — including on a phone. */
+          className={`absolute z-50 w-max max-w-[min(15.5rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl ${position}`}
         >
           {items.map((item, i) => {
             if (item.kind === "separator") {
@@ -444,16 +438,15 @@ export function Menu({
                     {item.icon}
                   </span>
                 )}
-                {/* Hint stacks under the label instead of beside it — a subtitle,
-                    not a trailing column. That is what keeps the menu's width
-                    driven by the label alone (see the width comment above), and
-                    it reads better on a touch target besides: two short lines are
-                    easier to tap and scan than one line eliding the label to fit
-                    a number of words squeezed in on the right. */}
-                <span className="min-w-0 flex-1">
+                {/* Hint stacks under the label. No flex-grow and no flex-basis
+                    of 0: those make the row's intrinsic width ignore the text,
+                    so a shrink-wrapped menu collapses and the label truncates
+                    to nothing. min-w-0 still lets a label ellipsize once the
+                    menu hits its max-width. */}
+                <span className="min-w-0 max-w-full">
                   <span className="block truncate">{item.label}</span>
                   {item.hint && (
-                    <span className="mt-0.5 block text-[11px] text-ink-3">
+                    <span className="mt-0.5 block text-[11px] whitespace-normal text-ink-3">
                       {item.hint}
                     </span>
                   )}
