@@ -523,7 +523,11 @@ func (s *Module) handleSetMessageDefaults(w http.ResponseWriter, r *http.Request
 		norm.Template = strings.TrimSpace(in.Template)
 		norm.Language = strings.TrimSpace(in.Language)
 		norm.Enabled = in.Enabled
-		if !s.checkSlotWording(w, r, user, norm.Template, norm.Language, norm.Params) {
+		/* Off does not send. A template Meta no longer has must not block the
+		 * switch, and the wording stays so turning it back on can be checked
+		 * then. On, or a change while it stays on, still has to name a template
+		 * this account can send. */
+		if norm.Enabled && !s.checkSlotWording(w, r, user, norm.Template, norm.Language, norm.Params) {
 			return
 		}
 		if err := s.store.UpsertMessageDefault(r.Context(), user.ID, norm); err != nil {
@@ -593,7 +597,12 @@ func (s *Module) handleSetWebinarMessages(w http.ResponseWriter, r *http.Request
 			if patch.Params != nil {
 				ps = *patch.Params
 			}
-			if !s.checkSlotWording(w, r, user, *in.Template, lang, ps) {
+			/* Same rule as the account default: turning the slot off keeps the
+			 * wording without asking Meta whether that template still exists.
+			 * An omitted enabled flag is not "off" — a template change still
+			 * has to be one this account can send. */
+			turningOff := in.Enabled != nil && !*in.Enabled
+			if !turningOff && !s.checkSlotWording(w, r, user, *in.Template, lang, ps) {
 				return
 			}
 			name := strings.TrimSpace(*in.Template)
