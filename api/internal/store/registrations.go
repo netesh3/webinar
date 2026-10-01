@@ -566,7 +566,8 @@ func (s *Store) RegistrantPage(ctx context.Context, slug string, limit, offset i
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, r.first_name, r.last_name, r.email, r.company,
 		       r.job_title, r.phone, r.state, r.created_at, r.user_id IS NOT NULL,
-		       r.is_guest, r.answers, coalesce(r.zoom_push_error, '')
+		       r.is_guest, r.answers, coalesce(r.zoom_push_error, ''),
+		       (r.zoom_registrant_id = '' AND coalesce(r.zoom_join_url, '') <> '' AND coalesce(r.zoom_push_error, '') = '')
 		  FROM registrations r
 		  JOIN webinars w ON w.id = r.webinar_id
 		  `+join+`
@@ -588,7 +589,7 @@ func (s *Store) RegistrantPage(ctx context.Context, slug string, limit, offset i
 		)
 		if err := rows.Scan(&r.ID, &first, &last, &r.Email, &r.Company,
 			&r.JobTitle, &r.Phone, &r.State, &createdAt, &r.HasAccount,
-			&r.IsGuest, &answers, &r.ZoomNote); err != nil {
+			&r.IsGuest, &answers, &r.ZoomNote, &r.ZoomShared); err != nil {
 			return out, err
 		}
 		if err := json.Unmarshal(answers, &r.Answers); err != nil {

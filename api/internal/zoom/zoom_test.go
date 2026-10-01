@@ -1,11 +1,15 @@
 package zoom
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -100,11 +104,17 @@ func TestEmailsOffAndRegistrantJoinURL(t *testing.T) {
 		t.Fatalf("zoom emails not off: %+v", off)
 	}
 
-	if err := f.Push(context.Background(), "host-a", VenueMeeting, saved.ZoomID, "reg-1", "one@example.com", "One", "A"); err != nil {
+	if saved.JoinURL != "https://zoom.us/j/generic" {
+		t.Fatalf("shared join = %q", saved.JoinURL)
+	}
+	if err := f.Push(context.Background(), "host-a", VenueMeeting, saved.ZoomID, "reg-1", "one@example.com", "One", "A", saved.JoinURL); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.Push(context.Background(), "host-a", VenueMeeting, saved.ZoomID, "reg-2", "two@example.com", "Two", "B"); err != nil {
+	if err := f.Push(context.Background(), "host-a", VenueMeeting, saved.ZoomID, "reg-2", "two@example.com", "Two", "B", saved.JoinURL); err != nil {
 		t.Fatal(err)
+	}
+	if repo.regIDs["reg-1"] == "" || repo.joins["reg-1"] == saved.JoinURL {
+		t.Fatalf("personal link was not kept: id=%q join=%q", repo.regIDs["reg-1"], repo.joins["reg-1"])
 	}
 	a, err := f.AttendeeJoin(context.Background(), "reg-1")
 	if err != nil {
@@ -294,11 +304,12 @@ func errorsIsNotConnected(err error) bool {
 }
 
 type memRepo struct {
-	mu     sync.Mutex
-	conns  map[string]Connection
-	joins  map[string]string
-	notes  map[string]string
-	regIDs map[string]string
+	mu           sync.Mutex
+	conns        map[string]Connection
+	joins        map[string]string
+	notes        map[string]string
+	regIDs       map[string]string
+	meetingJoins map[string]string
 }
 
 func newMem() *memRepo {
@@ -379,4 +390,276 @@ func (m *memRepo) RegistrantJoin(_ context.Context, regID string) (string, error
 	return m.joins[regID], nil
 }
 
+func (m *memRepo) RegistrantRef(_ context.Context, regID string) (string, string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.regIDs[regID], m.joins[regID], nil
+}
+
+func (m *memRepo) SaveMeetingJoin(_ context.Context, zoomID, joinURL string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.meetingJoins == nil {
+		m.meetingJoins = map[string]string{}
+	}
+	m.meetingJoins[zoomID] = joinURL
+	return nil
+}
+
 func (m *memRepo) PushedCount(context.Context, string) (int, error) { return 0, nil }
+
+func TestRegistrationUnavailable(t *testing.T) {
+	paid := &APIError{Status: 400, Code: 200, Message: "Only available for Paid users."}
+	off := &APIError{Status: 400, Code: 300, Message: "Registration has not been enabled for this meeting."}
+	off3000 := &APIError{Status: 400, Code: 3000, Message: "Registration has not been enabled for this meeting."}
+	missing := &APIError{Status: 404, Code: 3001, Message: "Meeting does not exist: 1001."}
+	scope := &APIError{Status: 400, Code: 4711, Message: "Invalid access token, does not contain scopes:[meeting:write:registrant]."}
+	rate := &APIError{Status: 429, Code: 429, Message: "You have exceeded the daily rate limit."}
+	if !RegistrationUnavailable(paid) || !RegistrationUnavailable(off) || !RegistrationUnavailable(off3000) {
+		t.Fatal("registration refusals should be recognized")
+	}
+	if RegistrationUnavailable(missing) || RegistrationUnavailable(scope) || RegistrationUnavailable(rate) || RegistrationUnavailable(errors.New("dial")) {
+		t.Fatal("real failures must not look like a registration refusal")
+	}
+}
+
+func TestPushMeetingSharedLinkFallback(t *testing.T) {
+	const shared = "https://zoom.us/j/shared-meeting"
+	const personal = "https://zoom.us/j/personal"
+	cases := []struct {
+		name      string
+		venue     string
+		status    int
+		body      string
+		shared    string
+		fetch     bool
+		priorID   string
+		priorJoin string
+		wantJoin  string
+		wantNote  string
+		wantReg   string
+		wantErr   bool
+		wantCode  int
+		logMsg    string
+	}{
+		{
+			name:     "paid meeting uses the shared link",
+			venue:    VenueMeeting,
+			status:   400,
+			body:     `{"code":200,"message":"Only available for Paid users."}`,
+			shared:   shared,
+			wantJoin: shared,
+			logMsg:   "Only available for Paid users.",
+			wantCode: 200,
+		},
+		{
+			name:     "registration disabled uses the shared link",
+			venue:    VenueMeeting,
+			status:   400,
+			body:     `{"code":300,"message":"Registration has not been enabled for this meeting."}`,
+			shared:   shared,
+			wantJoin: shared,
+			wantCode: 300,
+		},
+		{
+			name:     "code 3000 registration refusal uses the shared link",
+			venue:    VenueMeeting,
+			status:   400,
+			body:     `{"code":3000,"message":"Registration has not been enabled for this meeting."}`,
+			shared:   shared,
+			wantJoin: shared,
+			wantCode: 3000,
+		},
+		{
+			name:     "missing stored link is read back from the meeting",
+			venue:    VenueMeeting,
+			status:   400,
+			body:     `{"code":200,"message":"Only available for Paid users."}`,
+			fetch:    true,
+			wantJoin: shared,
+			wantCode: 200,
+		},
+		{
+			name:     "deleted meeting stays an error",
+			venue:    VenueMeeting,
+			status:   404,
+			body:     `{"code":3001,"message":"Meeting does not exist: 1001."}`,
+			shared:   shared,
+			wantNote: "Zoom didn't accept this person. They have no Zoom link yet.",
+			wantErr:  true,
+			wantCode: 3001,
+		},
+		{
+			name:     "missing scope stays an error",
+			venue:    VenueMeeting,
+			status:   400,
+			body:     `{"code":4711,"message":"Invalid access token, does not contain scopes:[meeting:write:registrant]."}`,
+			shared:   shared,
+			wantNote: "Zoom didn't accept this person. They have no Zoom link yet.",
+			wantErr:  true,
+			wantCode: 4711,
+		},
+		{
+			name:     "rate limit stays an error",
+			venue:    VenueMeeting,
+			status:   429,
+			body:     `{"code":429,"message":"You have exceeded the daily rate limit."}`,
+			shared:   shared,
+			wantNote: "Zoom is limiting requests. This person has no Zoom link yet.",
+			wantErr:  true,
+			wantCode: 429,
+		},
+		{
+			name:     "webinar registration refusal is not a shared link",
+			venue:    VenueWebinar,
+			status:   400,
+			body:     `{"code":200,"message":"Only available for Paid users."}`,
+			shared:   shared,
+			wantNote: "Zoom didn't accept this person. They have no Zoom link yet.",
+			wantErr:  true,
+			wantCode: 200,
+		},
+		{
+			name:     "a personal registrant link wins",
+			venue:    VenueMeeting,
+			status:   201,
+			body:     `{"registrant_id":"rid-1","join_url":"` + personal + `"}`,
+			shared:   shared,
+			wantJoin: personal,
+			wantReg:  "rid-1",
+		},
+		{
+			name:      "an existing personal link is left alone",
+			venue:     VenueMeeting,
+			status:    500,
+			body:      `{"code":200,"message":"Only available for Paid users."}`,
+			shared:    shared,
+			priorID:   "rid-1",
+			priorJoin: personal,
+			wantJoin:  personal,
+			wantReg:   "rid-1",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls int
+			mux := http.NewServeMux()
+			mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"access_token":"access-1","refresh_token":"refresh-2","expires_in":3600}`)
+			})
+			kind := "meetings"
+			if tc.venue == VenueWebinar {
+				kind = "webinars"
+			}
+			mux.HandleFunc("/v2/"+kind+"/1001", func(w http.ResponseWriter, r *http.Request) {
+				if !tc.fetch {
+					t.Errorf("unexpected read of the zoom object")
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"id":1001,"start_url":"https://zoom.us/s/host","join_url":"`+shared+`"}`)
+			})
+			mux.HandleFunc("/v2/"+kind+"/1001/registrants", func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.Header().Set("Content-Type", "application/json")
+				if tc.status >= 300 {
+					w.WriteHeader(tc.status)
+				}
+				_, _ = io.WriteString(w, tc.body)
+			})
+			srv := httptest.NewServer(mux)
+			defer srv.Close()
+			key, _ := ParseKey("0123456789abcdef0123456789abcdef")
+			blob, _ := Seal(key, "refresh-1")
+			repo := newMem()
+			repo.conns["host-a"] = Connection{UserID: "host-a", Email: "a@example.com", Refresh: blob}
+			if tc.priorJoin != "" {
+				repo.joins["reg-1"] = tc.priorJoin
+				repo.regIDs["reg-1"] = tc.priorID
+			}
+			var logs bytes.Buffer
+			f := &Flow{
+				Client: &Client{ID: "id", Secret: "secret", API: srv.URL + "/v2", OAuth: srv.URL, HTTP: srv.Client()},
+				Repo:   repo,
+				Seal:   func(p string) ([]byte, error) { return Seal(key, p) },
+				Open:   func(b []byte) (string, error) { return Open(key, b) },
+				Log:    slog.New(slog.NewTextHandler(&logs, nil)),
+			}
+			err := f.Push(context.Background(), "host-a", tc.venue, "1001", "reg-1", "one@example.com", "One", "A", tc.shared)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				var api *APIError
+				if !errors.As(err, &api) || api.Code != tc.wantCode {
+					t.Fatalf("err = %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if repo.joins["reg-1"] != tc.wantJoin || repo.notes["reg-1"] != tc.wantNote || repo.regIDs["reg-1"] != tc.wantReg {
+				t.Fatalf("join=%q note=%q reg=%q", repo.joins["reg-1"], repo.notes["reg-1"], repo.regIDs["reg-1"])
+			}
+			if tc.priorID != "" && calls != 0 {
+				t.Fatalf("zoom was called %d times for an existing personal link", calls)
+			}
+			if tc.fetch && repo.meetingJoins["1001"] != shared {
+				t.Fatalf("stored meeting join = %q", repo.meetingJoins["1001"])
+			}
+			logged := logs.String()
+			if strings.Contains(logged, "zoom.us/") {
+				t.Fatalf("log contains a join link:\n%s", logged)
+			}
+			if tc.logMsg != "" && !strings.Contains(logged, tc.logMsg) {
+				t.Fatalf("log missing %q:\n%s", tc.logMsg, logged)
+			}
+			if tc.wantJoin == shared && tc.wantCode != 0 && !strings.Contains(logged, "code="+strconv.Itoa(tc.wantCode)) {
+				t.Fatalf("log missing code %d:\n%s", tc.wantCode, logged)
+			}
+		})
+	}
+}
+
+func TestSharedLinkUpgradesWhenRegistrationWorks(t *testing.T) {
+	const shared = "https://zoom.us/j/shared-meeting"
+	const personal = "https://zoom.us/j/personal"
+	var n int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"access-1","refresh_token":"refresh-1","expires_in":3600}`)
+	})
+	mux.HandleFunc("/v2/meetings/1001/registrants", func(w http.ResponseWriter, r *http.Request) {
+		n++
+		w.Header().Set("Content-Type", "application/json")
+		if n == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"code":200,"message":"Only available for Paid users."}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"registrant_id":"rid-2","join_url":"`+personal+`"}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	key, _ := ParseKey("0123456789abcdef0123456789abcdef")
+	blob, _ := Seal(key, "refresh-1")
+	repo := newMem()
+	repo.conns["host-a"] = Connection{UserID: "host-a", Refresh: blob}
+	f := &Flow{
+		Client: &Client{ID: "id", Secret: "secret", API: srv.URL + "/v2", OAuth: srv.URL, HTTP: srv.Client()},
+		Repo:   repo,
+		Open:   func(b []byte) (string, error) { return Open(key, b) },
+	}
+	if err := f.Push(context.Background(), "host-a", VenueMeeting, "1001", "reg-1", "one@example.com", "One", "A", shared); err != nil {
+		t.Fatal(err)
+	}
+	if repo.joins["reg-1"] != shared || repo.regIDs["reg-1"] != "" || repo.notes["reg-1"] != "" {
+		t.Fatalf("after refusal: join=%q reg=%q note=%q", repo.joins["reg-1"], repo.regIDs["reg-1"], repo.notes["reg-1"])
+	}
+	if err := f.Push(context.Background(), "host-a", VenueMeeting, "1001", "reg-1", "one@example.com", "One", "A", shared); err != nil {
+		t.Fatal(err)
+	}
+	if repo.joins["reg-1"] != personal || repo.regIDs["reg-1"] != "rid-2" || repo.notes["reg-1"] != "" {
+		t.Fatalf("after upgrade: join=%q reg=%q note=%q", repo.joins["reg-1"], repo.regIDs["reg-1"], repo.notes["reg-1"])
+	}
+}

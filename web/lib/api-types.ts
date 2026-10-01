@@ -4913,6 +4913,11 @@ export interface RegistrantRow {
   /** Why this person has no Zoom link. Empty otherwise. Never a join URL. */
   zoomNote?: string;
   /**
+   * True when this person uses the meeting's shared Zoom link because Zoom
+   * would not register them. They still have a link. Never a join URL.
+   */
+  zoomShared?: boolean;
+  /**
    *  Joined is whether this registrant was in the room at all, and WatchMin how long
    * 	 * they watched once it was live — the session report's numbers, per registration
    * 	 * (store.AttachWatch). Zero and false before the webinar has run.

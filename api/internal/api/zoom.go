@@ -39,6 +39,7 @@ func (s *Server) zoomFlow() *zoom.Flow {
 		Repo:   zoomRepo{store: s.store},
 		Seal:   func(plain string) ([]byte, error) { return zoom.Seal(key, plain) },
 		Open:   func(blob []byte) (string, error) { return zoom.Open(key, blob) },
+		Log:    s.log,
 	}
 }
 
@@ -280,6 +281,9 @@ func (s *Server) resolveZoom(ctx context.Context, hostID, slug string, in *types
 				if u, err := s.store.ZoomStartURL(ctx, slug); err == nil {
 					prev.StartURL = u
 				}
+				if u, err := s.store.ZoomMeetingJoin(ctx, slug); err == nil {
+					prev.JoinURL = u
+				}
 			}
 		}
 	}
@@ -314,7 +318,7 @@ func (s *Server) persistZoom(ctx context.Context, slug string, saved zoom.Saved)
 	if saved.Venue == "" {
 		saved.Venue = zoom.VenueApp
 	}
-	return s.store.SetWebinarZoom(ctx, slug, saved.Venue, saved.ZoomID, saved.StartURL)
+	return s.store.SetWebinarZoom(ctx, slug, saved.Venue, saved.ZoomID, saved.StartURL, saved.JoinURL)
 }
 
 func (s *Server) pushZoomRegistrant(ctx context.Context, wb types.Webinar, regID, email, first, last string) {
@@ -326,8 +330,15 @@ func (s *Server) pushZoomRegistrant(ctx context.Context, wb types.Webinar, regID
 		_ = s.store.SaveZoomRegistrant(ctx, regID, "", "", "Zoom is not configured, so this person has no Zoom link.")
 		return
 	}
-	if err := flow.Push(ctx, wb.Host.ID, wb.Venue, wb.ZoomID, regID, email, first, last); err != nil {
-		s.log.Warn("zoom registrant", "webinar", wb.ID, "registration", regID, "status", zoomStatus(err))
+	shared := ""
+	if wb.Venue == zoom.VenueMeeting {
+		if u, err := s.store.ZoomMeetingJoin(ctx, wb.ID); err == nil {
+			shared = u
+		}
+	}
+	if err := flow.Push(ctx, wb.Host.ID, wb.Venue, wb.ZoomID, regID, email, first, last, shared); err != nil {
+		status, code, msg := zoom.ErrorParts(err)
+		s.log.Warn("zoom registrant", "webinar", wb.ID, "registration", regID, "status", status, "code", code, "zoom", msg)
 	}
 }
 
@@ -447,6 +458,14 @@ func (r zoomRepo) RegistrantJoin(ctx context.Context, regID string) (string, err
 		return "", nil
 	}
 	return u, err
+}
+
+func (r zoomRepo) RegistrantRef(ctx context.Context, regID string) (string, string, error) {
+	return r.store.RegistrationZoomRef(ctx, regID)
+}
+
+func (r zoomRepo) SaveMeetingJoin(ctx context.Context, zoomID, joinURL string) error {
+	return r.store.SaveMeetingJoin(ctx, zoomID, joinURL)
 }
 
 func (r zoomRepo) PushedCount(ctx context.Context, slug string) (int, error) {

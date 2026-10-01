@@ -1,6 +1,9 @@
 package store
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 /* ZoomConnection is one host's grant. Refresh is ciphertext. Callers must not
  * log it, and must not log zoom_start_url or a registrant's join URL.
@@ -75,12 +78,13 @@ func (s *Store) DeleteZoomByZoomUser(ctx context.Context, zoomUserID string) err
 }
 
 /* SetWebinarZoom writes the venue and the Zoom id. startURL is the host link.
- * It is stored and never selected onto the public webinar. */
-func (s *Store) SetWebinarZoom(ctx context.Context, slug, venue, zoomID, startURL string) error {
+ * joinURL is the meeting's shared attendee link. Both are stored and never
+ * selected onto the public webinar, and neither is logged. */
+func (s *Store) SetWebinarZoom(ctx context.Context, slug, venue, zoomID, startURL, joinURL string) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE webinars
-		   SET venue = $2, zoom_id = $3, zoom_start_url = $4, updated_at = now()
-		 WHERE slug = $1`, slug, venue, zoomID, startURL)
+		   SET venue = $2, zoom_id = $3, zoom_start_url = $4, zoom_join_url = $5, updated_at = now()
+		 WHERE slug = $1`, slug, venue, zoomID, startURL, joinURL)
 	if err != nil {
 		return err
 	}
@@ -88,6 +92,30 @@ func (s *Store) SetWebinarZoom(ctx context.Context, slug, venue, zoomID, startUR
 		return ErrNotFound
 	}
 	return nil
+}
+
+/* ZoomMeetingJoin is the shared attendee link stored for this webinar.
+ * Callers must not log it. */
+func (s *Store) ZoomMeetingJoin(ctx context.Context, slug string) (string, error) {
+	var u string
+	err := s.pool.QueryRow(ctx, `SELECT coalesce(zoom_join_url, '') FROM webinars WHERE slug = $1`, slug).Scan(&u)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
+	return u, err
+}
+
+/* SaveMeetingJoin fills an empty shared link for a Zoom meeting, looked up by
+ * Zoom's own id. It does not log joinURL. */
+func (s *Store) SaveMeetingJoin(ctx context.Context, zoomID, joinURL string) error {
+	if zoomID == "" || strings.TrimSpace(joinURL) == "" {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE webinars
+		   SET zoom_join_url = $2, updated_at = now()
+		 WHERE zoom_id = $1 AND venue = 'zoom_meeting' AND zoom_join_url = ''`, zoomID, joinURL)
+	return err
 }
 
 func (s *Store) ZoomStartURL(ctx context.Context, slug string) (string, error) {
@@ -133,6 +161,17 @@ func (s *Store) ZoomPushNote(ctx context.Context, regID string) (string, error) 
 		return "", ErrNotFound
 	}
 	return note, err
+}
+
+func (s *Store) RegistrationZoomRef(ctx context.Context, regID string) (string, string, error) {
+	var id, join string
+	err := s.pool.QueryRow(ctx, `
+		SELECT coalesce(zoom_registrant_id, ''), coalesce(zoom_join_url, '')
+		  FROM registrations WHERE id = $1::uuid`, regID).Scan(&id, &join)
+	if noRows(err) {
+		return "", "", nil
+	}
+	return id, join, err
 }
 
 func (s *Store) RegistrationZoomJoin(ctx context.Context, regID string) (string, error) {

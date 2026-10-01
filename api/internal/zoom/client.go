@@ -93,6 +93,9 @@ type Spec struct {
 type Created struct {
 	ID       string
 	StartURL string
+	/* JoinURL is the meeting's shared attendee link, not a registrant's
+	 * personal one. Callers store it and must not log it. */
+	JoinURL string
 }
 
 type Person struct {
@@ -204,6 +207,7 @@ func (c *Client) Create(ctx context.Context, access, venue string, spec Spec) (C
 	var out struct {
 		ID       zoomID `json:"id"`
 		StartURL string `json:"start_url"`
+		JoinURL  string `json:"join_url"`
 	}
 	if err := c.do(ctx, http.MethodPost, "/users/me/"+kind, access, specBody(venue, spec), &out); err != nil {
 		return Created{}, err
@@ -211,7 +215,7 @@ func (c *Client) Create(ctx context.Context, access, venue string, spec Spec) (C
 	if out.ID.String() == "" {
 		return Created{}, &APIError{Status: http.StatusBadGateway, Message: "Zoom did not return a meeting id."}
 	}
-	return Created{ID: out.ID.String(), StartURL: out.StartURL}, nil
+	return Created{ID: out.ID.String(), StartURL: out.StartURL, JoinURL: out.JoinURL}, nil
 }
 
 func (c *Client) Update(ctx context.Context, access, venue, id string, spec Spec) error {
@@ -239,20 +243,28 @@ func (c *Client) Delete(ctx context.Context, access, venue, id string) error {
 }
 
 func (c *Client) StartURL(ctx context.Context, access, venue, id string) (string, error) {
+	start, _, err := c.Links(ctx, access, venue, id)
+	return start, err
+}
+
+/* Links reads the host start link and the shared attendee join link.
+ * Neither value is logged by this package. */
+func (c *Client) Links(ctx context.Context, access, venue, id string) (start, join string, err error) {
 	kind, err := resource(venue)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	var out struct {
 		StartURL string `json:"start_url"`
+		JoinURL  string `json:"join_url"`
 	}
 	if err := c.do(ctx, http.MethodGet, "/"+kind+"/"+url.PathEscape(id), access, nil, &out); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if out.StartURL == "" {
-		return "", &APIError{Status: http.StatusBadGateway, Message: "Zoom did not return a host link."}
+		return "", "", &APIError{Status: http.StatusBadGateway, Message: "Zoom did not return a host link."}
 	}
-	return out.StartURL, nil
+	return out.StartURL, out.JoinURL, nil
 }
 
 func (c *Client) AddRegistrant(ctx context.Context, access, venue, id string, person Person) (Registrant, error) {
@@ -442,6 +454,81 @@ func IsPlan(venue string, err error) bool {
 		return true
 	}
 	return false
+}
+
+/* RegistrationUnavailable reports that Zoom refused to add a meeting
+ * registrant because registration is not something this account or meeting
+ * offers: a Basic (free) user, or registration left off. A deleted meeting,
+ * a bad token, a missing scope, a duplicate, and a rate limit are not this.
+ */
+func RegistrationUnavailable(err error) bool {
+	var api *APIError
+	if !errors.As(err, &api) {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(api.Message))
+	if api.Status == http.StatusNotFound || api.Status == http.StatusUnauthorized || api.Status == http.StatusForbidden || api.Status == http.StatusTooManyRequests {
+		return false
+	}
+	if api.Code == 3001 || api.Code == 4711 {
+		return false
+	}
+	if strings.Contains(msg, "not found") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "expired") {
+		return false
+	}
+	if strings.Contains(msg, "scope") || strings.Contains(msg, "token") || strings.Contains(msg, "unauthorized") || strings.Contains(msg, "invalid access") {
+		return false
+	}
+	if strings.Contains(msg, "already") && (strings.Contains(msg, "regist") || strings.Contains(msg, "exist")) {
+		return false
+	}
+	if strings.Contains(msg, "registration has not been enabled") ||
+		strings.Contains(msg, "registration is not enabled") ||
+		strings.Contains(msg, "registration has not been turned on") ||
+		strings.Contains(msg, "not been enabled for this meeting") ||
+		strings.Contains(msg, "registration is not available") ||
+		strings.Contains(msg, "registration not available") ||
+		strings.Contains(msg, "only available for paid") ||
+		strings.Contains(msg, "only available to paid") ||
+		strings.Contains(msg, "paid users") ||
+		strings.Contains(msg, "paid user") ||
+		strings.Contains(msg, "licensed user") ||
+		strings.Contains(msg, "licensed users") ||
+		strings.Contains(msg, "basic user") ||
+		(strings.Contains(msg, "registration") && strings.Contains(msg, "licen")) {
+		return true
+	}
+	switch api.Code {
+	case 200:
+		return strings.Contains(msg, "paid") || strings.Contains(msg, "licen") || strings.Contains(msg, "basic") || strings.Contains(msg, "registration")
+	case 300, 3000:
+		return strings.Contains(msg, "registration") || strings.Contains(msg, "paid")
+	default:
+		return false
+	}
+}
+
+/* ErrorParts is the Zoom status, code, and a message safe to log.
+ * Join URLs and bearer tokens are not included. */
+func ErrorParts(err error) (status, code int, message string) {
+	var api *APIError
+	if !errors.As(err, &api) || api == nil {
+		return 0, 0, ""
+	}
+	return api.Status, api.Code, api.forLog()
+}
+
+func (e *APIError) forLog() string {
+	if e == nil {
+		return ""
+	}
+	msg := strings.TrimSpace(e.Message)
+	low := strings.ToLower(msg)
+	if msg == "" || len(msg) > 240 || strings.Contains(low, "bearer") ||
+		strings.Contains(low, "http://") || strings.Contains(low, "https://") || strings.Contains(low, "zoom.us/") {
+		return "Zoom refused that request."
+	}
+	return msg
 }
 
 func PlanNotice(venue string) string {
