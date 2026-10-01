@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,9 @@ type inboxView struct {
 	CanRename bool           `json:"canRename"`
 	Alias     string         `json:"alias,omitempty"`
 	Messages  []inboxMessage `json:"messages"`
+	Page      int            `json:"page"`
+	PageSize  int            `json:"pageSize"`
+	Total     int            `json:"total"`
 }
 
 type inboxMessage struct {
@@ -35,6 +39,7 @@ type inboxMessage struct {
 	Subject   string `json:"subject"`
 	Body      string `json:"body"`
 	At        string `json:"at"`
+	ThreadID  string `json:"threadId,omitempty"`
 }
 
 type inboxRename struct {
@@ -95,12 +100,12 @@ func (s *Module) handleRenameEmailInbox(w http.ResponseWriter, r *http.Request) 
 		}
 		return
 	}
-	msgs, err := s.store.ListHostEmails(r.Context(), user.ID)
+	msgs, total, page, err := s.store.ListHostEmailPage(r.Context(), user.ID, 1)
 	if err != nil {
 		s.fail(w, r, "email inbox", err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, inboxJSON(inbox, msgs))
+	httpx.JSON(w, http.StatusOK, inboxJSON(inbox, msgs, page, total))
 }
 
 func (s *Module) handleReplyEmail(w http.ResponseWriter, r *http.Request) {
@@ -139,17 +144,16 @@ func (s *Module) handleReplyEmail(w http.ResponseWriter, r *http.Request) {
 		to = parent.To
 	}
 	subject := replySubject(parent.Subject)
-	thread := parent.MessageID
-	if thread != "" && !strings.HasPrefix(thread, "<") {
-		thread = "<" + thread + ">"
-	}
+	// SMTP gets a real Message-ID only. The stored link also accepts the parent
+	// row id, so a reply still sits on that letter when the parent has none.
+	smtpThread, storedThread := replyLink(parent)
 	msg := notify.Message{
 		To:         to,
 		Subject:    subject,
 		Body:       text,
 		ReplyTo:    notify.InboxAddress(inbox.Local),
-		InReplyTo:  thread,
-		References: thread,
+		InReplyTo:  smtpThread,
+		References: smtpThread,
 	}
 	if err := s.mail.Send(r.Context(), msg); err != nil {
 		s.fail(w, r, "email reply send", err)
@@ -162,7 +166,7 @@ func (s *Module) handleReplyEmail(w http.ResponseWriter, r *http.Request) {
 		To:        to,
 		Subject:   subject,
 		Body:      text,
-		InReplyTo: thread,
+		InReplyTo: storedThread,
 	})
 	if err != nil {
 		s.fail(w, r, "email reply store", err)
@@ -227,28 +231,58 @@ func (s *Module) inboxFor(r *http.Request, user store.User) (inboxView, error) {
 	if err != nil {
 		return inboxView{}, err
 	}
-	msgs, err := s.store.ListHostEmails(r.Context(), user.ID)
+	msgs, total, page, err := s.store.ListHostEmailPage(r.Context(), user.ID, inboxPage(r))
 	if err != nil {
 		return inboxView{}, err
 	}
-	return inboxJSON(inbox, msgs), nil
+	return inboxJSON(inbox, msgs, page, total), nil
 }
 
-func inboxJSON(inbox store.Inbox, msgs []store.HostEmail) inboxView {
+func inboxPage(r *http.Request) int {
+	raw := strings.TrimSpace(r.URL.Query().Get("page"))
+	if raw == "" {
+		return 1
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 1
+	}
+	return n
+}
+
+func inboxJSON(inbox store.Inbox, msgs []store.HostEmail, page, total int) inboxView {
 	view := inboxView{
 		Address:   inbox.Address,
 		Local:     inbox.Local,
 		CanRename: !inbox.Renamed,
 		Alias:     inbox.Alias,
 		Messages:  []inboxMessage{},
+		Page:      page,
+		PageSize:  store.EmailInboxPageSize,
+		Total:     total,
 	}
 	for _, m := range msgs {
 		view.Messages = append(view.Messages, inboxMessage{
 			ID: m.ID, Direction: m.Direction, From: m.From, To: m.To,
 			Subject: m.Subject, Body: m.Body, At: m.CreatedAt.UTC().Format(time.RFC3339),
+			ThreadID: m.ThreadID,
 		})
 	}
 	return view
+}
+
+// replyLink keeps an in-app reply on the message it answered.
+// smtp is empty when the parent has no Message-ID; we do not invent one.
+// stored is that Message-ID, or the parent row id when there is none.
+func replyLink(parent store.HostEmail) (smtp, stored string) {
+	id := strings.TrimSpace(parent.MessageID)
+	if id == "" {
+		return "", parent.ID
+	}
+	if !strings.HasPrefix(id, "<") {
+		id = "<" + id + ">"
+	}
+	return id, id
 }
 
 func localPart(addr string) string {

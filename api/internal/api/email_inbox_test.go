@@ -3,9 +3,11 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/internal/notify"
@@ -20,12 +22,16 @@ type inboxBody struct {
 	Local     string `json:"local"`
 	CanRename bool   `json:"canRename"`
 	Alias     string `json:"alias"`
+	Page      int    `json:"page"`
+	PageSize  int    `json:"pageSize"`
+	Total     int    `json:"total"`
 	Messages  []struct {
 		ID        string `json:"id"`
 		Direction string `json:"direction"`
 		From      string `json:"from"`
 		Subject   string `json:"subject"`
 		Body      string `json:"body"`
+		ThreadID  string `json:"threadId"`
 	} `json:"messages"`
 }
 
@@ -258,6 +264,195 @@ func TestSentMailShowsForThatHostOnly(t *testing.T) {
 	for _, m := range inboxB.Messages {
 		if m.Subject == "See you soon" || m.Subject == "Earlier reminder" || m.Subject == "Re: See you soon" {
 			t.Fatalf("host B saw %s (%s)", m.Subject, m.Direction)
+		}
+	}
+}
+
+// Mail to the same person about different webinars stays as separate rows.
+// A reply stays on the letter it answered, including when that letter has no
+// Message-ID. Another host's pages do not include those rows.
+func TestEmailInboxThreadsStaySeparate(t *testing.T) {
+	h := newHarness(t, func(c *config.Config) {
+		c.InboxWebhookSecret = inboxTestSecret
+	})
+	mail := &captureMail{}
+	h.engage.UseMail(mail)
+
+	a := h.signup("Host A", "threads-a@example.com", true)
+	ctx := context.Background()
+	base := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	insert := func(subject, messageID string, at time.Time) store.HostEmail {
+		t.Helper()
+		row, err := h.store.InsertHostEmail(ctx, store.HostEmail{
+			UserID:    a.ID,
+			Direction: "out",
+			To:        "guest@example.com",
+			Subject:   subject,
+			Body:      subject,
+			MessageID: messageID,
+			CreatedAt: at,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return row
+	}
+	alpha := insert("You're registered: Alpha", "outbox:alpha", base)
+	beta := insert("Reminder: Beta", "outbox:beta", base.Add(time.Minute))
+	plain := insert("Panelist invite", "", base.Add(2*time.Minute))
+
+	var inbox inboxBody
+	res, raw := h.do(http.MethodGet, "/api/host/email-inbox?page=1", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("inbox: %d %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &inbox)
+	if inbox.Total != 3 || len(inbox.Messages) != 3 {
+		t.Fatalf("inbox = total %d messages %d, want 3 separate rows", inbox.Total, len(inbox.Messages))
+	}
+	threads := map[string]string{}
+	for _, m := range inbox.Messages {
+		threads[m.Subject] = m.ThreadID
+	}
+	if threads[alpha.Subject] == "" || threads[alpha.Subject] == threads[beta.Subject] || threads[beta.Subject] == threads[plain.Subject] || threads[alpha.Subject] == threads[plain.Subject] {
+		t.Fatalf("same recipient was combined: %+v", threads)
+	}
+
+	res, raw = h.do(http.MethodPost, "/api/host/email-inbox/"+alpha.ID+"/reply", map[string]string{"body": "See you there"})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("reply alpha: %d %s", res.StatusCode, raw)
+	}
+	if len(mail.msgs) != 1 || mail.msgs[0].InReplyTo != "<outbox:alpha>" || mail.msgs[0].References != "<outbox:alpha>" {
+		t.Fatalf("alpha smtp headers = %+v", mail.msgs)
+	}
+	res, raw = h.do(http.MethodPost, "/api/host/email-inbox/"+plain.ID+"/reply", map[string]string{"body": "You're on the panel"})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("reply plain: %d %s", res.StatusCode, raw)
+	}
+	if mail.msgs[1].InReplyTo != "" || mail.msgs[1].References != "" {
+		t.Fatalf("invented a Message-ID: %+v", mail.msgs[1])
+	}
+
+	res, raw = h.do(http.MethodGet, "/api/host/email-inbox?page=1", nil)
+	h.decode(raw, &inbox)
+	got := map[string]string{}
+	for _, m := range inbox.Messages {
+		got[m.Subject] = m.ThreadID
+	}
+	if got["Re: You're registered: Alpha"] != threads[alpha.Subject] {
+		t.Fatalf("reply left its letter: %+v", got)
+	}
+	if got["Re: Panelist invite"] != threads[plain.Subject] {
+		t.Fatalf("reply without a Message-ID left its letter: %+v", got)
+	}
+	if got[beta.Subject] != threads[beta.Subject] || got[beta.Subject] == got["Re: You're registered: Alpha"] {
+		t.Fatalf("beta was pulled into another thread: %+v", got)
+	}
+	if inbox.Total != 3 {
+		t.Fatalf("total threads = %d, want 3", inbox.Total)
+	}
+
+	h.logout()
+	h.signup("Host B", "threads-b@example.com", true)
+	for _, page := range []string{"1", "2"} {
+		res, raw = h.do(http.MethodGet, "/api/host/email-inbox?page="+page, nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("host B page %s: %d %s", page, res.StatusCode, raw)
+		}
+		var other inboxBody
+		h.decode(raw, &other)
+		for _, m := range other.Messages {
+			if strings.Contains(m.Subject, "Alpha") || strings.Contains(m.Subject, "Beta") || strings.Contains(m.Subject, "Panelist") {
+				t.Fatalf("host B page %s saw %s", page, m.Subject)
+			}
+		}
+	}
+}
+
+func TestEmailInboxPagesAreHostScoped(t *testing.T) {
+	h := newHarness(t, func(c *config.Config) {})
+	a := h.signup("Host A", "pages-a@example.com", true)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	for i := 0; i < 26; i++ {
+		if _, err := h.store.InsertHostEmail(ctx, store.HostEmail{
+			UserID:    a.ID,
+			Direction: "out",
+			To:        "guest@example.com",
+			Subject:   fmt.Sprintf("Letter %02d", i),
+			Body:      "body",
+			MessageID: fmt.Sprintf("outbox:letter-%02d", i),
+			CreatedAt: base.Add(time.Duration(i) * time.Minute),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	load := func(page string) inboxBody {
+		t.Helper()
+		res, raw := h.do(http.MethodGet, "/api/host/email-inbox?page="+page, nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("page %s: %d %s", page, res.StatusCode, raw)
+		}
+		var inbox inboxBody
+		h.decode(raw, &inbox)
+		return inbox
+	}
+	page1 := load("1")
+	page2 := load("2")
+	if page1.Page != 1 || page2.Page != 2 || page1.Total != 26 || page2.Total != 26 {
+		t.Fatalf("pages: %+v / %+v", page1.Page, page2.Page)
+	}
+	if page1.PageSize != 25 || len(page1.Messages) != 25 || len(page2.Messages) != 1 {
+		t.Fatalf("sizes page1=%d page2=%d pageSize=%d", len(page1.Messages), len(page2.Messages), page1.PageSize)
+	}
+	seen := map[string]bool{}
+	for _, m := range page1.Messages {
+		seen[m.ID] = true
+		if m.ThreadID == "" {
+			t.Fatalf("page 1 row missing thread id: %+v", m)
+		}
+	}
+	for _, m := range page2.Messages {
+		if seen[m.ID] {
+			t.Fatalf("page 2 repeats %s (%s)", m.ID, m.Subject)
+		}
+	}
+	subjects1 := map[string]bool{}
+	for _, m := range page1.Messages {
+		subjects1[m.Subject] = true
+	}
+	if !subjects1["Letter 25"] || subjects1["Letter 00"] {
+		t.Fatalf("page 1 subjects = %+v", subjects1)
+	}
+	if page2.Messages[0].Subject != "Letter 00" {
+		t.Fatalf("last page = %s", page2.Messages[0].Subject)
+	}
+
+	h.logout()
+	b := h.signup("Host B", "pages-b@example.com", true)
+	if _, err := h.store.InsertHostEmail(ctx, store.HostEmail{
+		UserID:    b.ID,
+		Direction: "out",
+		To:        "other@example.com",
+		Subject:   "Host B only",
+		Body:      "mine",
+		MessageID: "outbox:host-b",
+		CreatedAt: base,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, page := range []string{"1", "2"} {
+		inbox := load(page)
+		for _, m := range inbox.Messages {
+			if strings.HasPrefix(m.Subject, "Letter ") {
+				t.Fatalf("host B page %s saw %s", page, m.Subject)
+			}
+		}
+		if page == "1" {
+			if inbox.Total != 1 || len(inbox.Messages) != 1 || inbox.Messages[0].Subject != "Host B only" {
+				t.Fatalf("host B page 1 = total %d %+v", inbox.Total, inbox.Messages)
+			}
 		}
 	}
 }

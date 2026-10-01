@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "@/components/providers";
-import { Button } from "@/components/ui";
+import { Button, ListPager } from "@/components/ui";
 import { ApiError, fresh, put, request } from "@/lib/http";
 import { Alert } from "../controls";
 
@@ -14,6 +14,7 @@ type EmailMessage = {
   subject: string;
   body: string;
   at: string;
+  threadId?: string;
 };
 
 type EmailInbox = {
@@ -22,6 +23,9 @@ type EmailInbox = {
   canRename: boolean;
   alias?: string;
   messages: EmailMessage[];
+  page: number;
+  pageSize: number;
+  total: number;
 };
 
 type Thread = {
@@ -44,28 +48,25 @@ function party(message: EmailMessage): { name: string; email: string } {
 
 function threadsOf(messages: EmailMessage[]): Thread[] {
   const groups = new Map<string, Thread>();
+  const order: string[] = [];
   for (const message of messages) {
+    const key = message.threadId || message.id;
+    let thread = groups.get(key);
+    if (!thread) {
+      const who = party(message);
+      thread = { key, name: who.name, email: who.email, messages: [] };
+      groups.set(key, thread);
+      order.push(key);
+    }
     const who = party(message);
-    const key = who.email.toLowerCase() || message.id;
-    const thread = groups.get(key) ?? {
-      key,
-      name: who.name,
-      email: who.email,
-      messages: [],
-    };
     if (who.name && who.name !== who.email) thread.name = who.name;
     thread.messages.push(message);
-    groups.set(key, thread);
   }
-  const threads = [...groups.values()];
-  for (const thread of threads) {
+  return order.map((key) => {
+    const thread = groups.get(key)!;
     thread.messages.sort((a, b) => a.at.localeCompare(b.at));
-  }
-  threads.sort((a, b) => {
-    const last = (thread: Thread) => thread.messages.at(-1)?.at ?? "";
-    return last(b).localeCompare(last(a));
+    return thread;
   });
-  return threads;
 }
 
 function preview(body: string): string {
@@ -106,23 +107,27 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    const next = await request<EmailInbox>("/api/host/email-inbox", fresh);
-    setData(next);
-    setError(null);
-    onCount?.(next.messages.length);
-    return next;
-  }, [onCount]);
+  const load = useCallback(
+    async (nextPage: number) => {
+      const next = await request<EmailInbox>(`/api/host/email-inbox?page=${nextPage}`, fresh);
+      setData(next);
+      setError(null);
+      onCount?.(next.total);
+      return next;
+    },
+    [onCount],
+  );
 
   useEffect(() => {
     let gone = false;
-    request<EmailInbox>("/api/host/email-inbox", fresh)
+    request<EmailInbox>("/api/host/email-inbox?page=1", fresh)
       .then((next) => {
         if (gone) return;
         setData(next);
         setError(null);
-        onCount?.(next.messages.length);
+        onCount?.(next.total);
       })
       .catch((err: unknown) => {
         if (!gone) setError(err instanceof Error ? err.message : "Could not load email.");
@@ -133,11 +138,31 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
   }, [onCount]);
 
   const threads = useMemo(() => threadsOf(data?.messages ?? []), [data]);
-  const selected = threads.find((thread) => thread.key === openKey) ?? threads[0] ?? null;
+  const selected = threads.find((thread) => thread.key === openKey) ?? null;
   const latest = selected?.messages.at(-1) ?? null;
+  const page = data?.page || 1;
+  const pageSize = data?.pageSize || 25;
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const start = threads.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = threads.length === 0 ? 0 : start + threads.length - 1;
+
+  async function go(nextPage: number) {
+    setOpenKey(null);
+    setDraft("");
+    setLoading(true);
+    try {
+      await load(nextPage);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load email.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function send() {
-    if (!latest || !draft.trim()) return;
+    if (!selected || !latest || !draft.trim()) return;
+    const keep = selected.key;
     setSending(true);
     setError(null);
     try {
@@ -146,8 +171,8 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
         body: JSON.stringify({ body: draft.trim() }),
       });
       setDraft("");
-      setOpenKey(selected?.key ?? null);
-      await load();
+      setOpenKey(keep);
+      await load(1);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not send that reply.");
     } finally {
@@ -166,8 +191,9 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
       >
         <div
           data-tour="email-inbox"
-          className="flex max-h-80 min-w-0 flex-col overflow-y-auto border-b border-line min-[900px]:max-h-none min-[900px]:min-h-0 min-[900px]:border-r min-[900px]:border-b-0"
+          className="flex max-h-80 min-w-0 flex-col border-b border-line min-[900px]:max-h-none min-[900px]:min-h-0 min-[900px]:border-r min-[900px]:border-b-0"
         >
+          <div className="min-h-0 flex-1 overflow-y-auto">
           {data && threads.length === 0 && (
             <p className="px-4 py-8 text-center text-[13px] text-ink-3">No email yet.</p>
           )}
@@ -210,12 +236,29 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
               </button>
             );
           })}
+          </div>
+          {data && (
+            <ListPager
+              layout="split"
+              range="stack"
+              className="border-t border-line px-3 py-2.5"
+              page={page}
+              pages={pages}
+              pageSize={pageSize}
+              start={start}
+              end={end}
+              total={total}
+              busy={loading}
+              onPrevious={() => void go(page - 1)}
+              onNext={() => void go(page + 1)}
+            />
+          )}
         </div>
 
         <article className="flex min-h-[20rem] min-w-0 flex-col min-[900px]:min-h-0">
           {!selected && (
             <p className="grid flex-1 place-items-center px-4 text-[13px] text-ink-3">
-              {data ? "No email yet." : ""}
+              {data ? (threads.length === 0 ? "No email yet." : "Select a message.") : ""}
             </p>
           )}
           {selected && latest && (

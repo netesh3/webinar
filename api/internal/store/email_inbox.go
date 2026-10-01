@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -42,6 +43,9 @@ type HostEmail struct {
 	MessageID string
 	InReplyTo string
 	CreatedAt time.Time
+	// ThreadID is the conversation this message belongs to. It is not a column:
+	// it is the oldest message in a reply chain, or this message when nothing links it.
+	ThreadID string
 }
 
 const inboxLocalPattern = `^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`
@@ -200,13 +204,32 @@ func (s *Store) InsertHostEmail(ctx context.Context, m HostEmail) (HostEmail, er
 	return m, err
 }
 
+// EmailInboxPageSize is how many conversations one inbox page lists.
+const EmailInboxPageSize = 25
+
 // ListHostEmails returns one host's messages, oldest first.
 //
-// host_emails holds inbound replies and copies of mail sent for this host.
-// Notifications already marked sent, and not copied yet, are included so mail
-// that went out before the copy existed still shows. Another host's rows never
-// match: both sides are filtered by this user id.
+// Kept for callers that want the whole mailbox. The inbox page groups these
+// into reply chains and then slices.
 func (s *Store) ListHostEmails(ctx context.Context, userID string) ([]HostEmail, error) {
+	return s.listHostEmails(ctx, userID)
+}
+
+// ListHostEmailPage returns one page of conversations for that host.
+//
+// A conversation is a reply chain (In-Reply-To / message id), not everyone who
+// shares an address. total is the number of conversations. page is clamped to
+// the last page that exists.
+func (s *Store) ListHostEmailPage(ctx context.Context, userID string, page int) ([]HostEmail, int, int, error) {
+	all, err := s.listHostEmails(ctx, userID)
+	if err != nil {
+		return nil, 0, 1, err
+	}
+	out, total, page := pageEmailThreads(groupEmailThreads(all), page)
+	return out, total, page, nil
+}
+
+func (s *Store) listHostEmails(ctx context.Context, userID string) ([]HostEmail, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, user_id, direction, from_addr, to_addr, subject, body, message_id, in_reply_to, created_at
 		   FROM (
@@ -228,8 +251,9 @@ func (s *Store) ListHostEmails(ctx context.Context, userID string) ([]HostEmail,
 		             AND h.message_id = 'outbox:' || n.id::text
 		        )
 		   ) mail
-		  ORDER BY created_at ASC
-		  LIMIT 200`, userID)
+		  ORDER BY created_at ASC`, userID)
+	// No row cap: the inbox pages conversations after they are grouped. A cap
+	// here would drop mail before the page slice and make later pages wrong.
 	if err != nil {
 		return nil, err
 	}
@@ -243,6 +267,143 @@ func (s *Store) ListHostEmails(ctx context.Context, userID string) ([]HostEmail,
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// pageEmailThreads slices conversations, not raw messages. page is 1-based and
+// clamped to the last page that exists. An empty mailbox is page 1.
+func pageEmailThreads(threads [][]HostEmail, page int) ([]HostEmail, int, int) {
+	total := len(threads)
+	if page < 1 {
+		page = 1
+	}
+	pages := 1
+	if total > 0 {
+		pages = (total + EmailInboxPageSize - 1) / EmailInboxPageSize
+	}
+	if page > pages {
+		page = pages
+	}
+	start := (page - 1) * EmailInboxPageSize
+	if start > total {
+		start = total
+	}
+	end := start + EmailInboxPageSize
+	if end > total {
+		end = total
+	}
+	var out []HostEmail
+	for _, thread := range threads[start:end] {
+		out = append(out, thread...)
+	}
+	return out, total, page
+}
+
+// groupEmailThreads joins messages only when they share a reply-chain id.
+//
+// A link is In-Reply-To (or any id in that header) matching another row's
+// message id or row id. Messages that cite the same id are one chain even when
+// the parent row is not in the mailbox. The same address or the same subject
+// is not a link. Each chain's id is its oldest message.
+func groupEmailThreads(msgs []HostEmail) [][]HostEmail {
+	n := len(msgs)
+	if n == 0 {
+		return nil
+	}
+	parent := make([]int, n)
+	for i := range parent {
+		parent[i] = i
+	}
+	var find func(int) int
+	find = func(i int) int {
+		if parent[i] != i {
+			parent[i] = find(parent[i])
+		}
+		return parent[i]
+	}
+	union := func(a, b int) {
+		ra, rb := find(a), find(b)
+		if ra != rb {
+			parent[rb] = ra
+		}
+	}
+
+	byID := map[string]int{}
+	for i, m := range msgs {
+		for _, id := range []string{normMailID(m.ID), normMailID(m.MessageID)} {
+			if id == "" {
+				continue
+			}
+			if prev, ok := byID[id]; ok && prev != i {
+				union(prev, i)
+			}
+			byID[id] = i
+		}
+	}
+	shared := map[string]int{}
+	for i, m := range msgs {
+		for _, ref := range mailRefs(m.InReplyTo) {
+			if prev, ok := byID[ref]; ok {
+				union(prev, i)
+			}
+			if prev, ok := shared[ref]; ok {
+				union(prev, i)
+			} else {
+				shared[ref] = i
+			}
+		}
+	}
+
+	order := make([]int, 0, n)
+	groups := map[int][]HostEmail{}
+	seen := map[int]bool{}
+	for i := range msgs {
+		root := find(i)
+		if !seen[root] {
+			seen[root] = true
+			order = append(order, root)
+		}
+		groups[root] = append(groups[root], msgs[i])
+	}
+	threads := make([][]HostEmail, 0, len(order))
+	for _, root := range order {
+		thread := groups[root]
+		sort.SliceStable(thread, func(a, b int) bool {
+			if thread[a].CreatedAt.Equal(thread[b].CreatedAt) {
+				return thread[a].ID < thread[b].ID
+			}
+			return thread[a].CreatedAt.Before(thread[b].CreatedAt)
+		})
+		id := thread[0].ID
+		for i := range thread {
+			thread[i].ThreadID = id
+		}
+		threads = append(threads, thread)
+	}
+	sort.SliceStable(threads, func(a, b int) bool {
+		la := threads[a][len(threads[a])-1]
+		lb := threads[b][len(threads[b])-1]
+		if la.CreatedAt.Equal(lb.CreatedAt) {
+			return la.ID > lb.ID
+		}
+		return la.CreatedAt.After(lb.CreatedAt)
+	})
+	return threads
+}
+
+func normMailID(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, "<>")
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func mailRefs(s string) []string {
+	var out []string
+	for _, part := range strings.Fields(s) {
+		if id := normMailID(part); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // HostEmailForUser loads one message only when it belongs to that host.
