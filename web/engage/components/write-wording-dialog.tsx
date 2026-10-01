@@ -169,7 +169,7 @@ export function WriteWordingDialog({
   }
 
   return (
-    <Modal open onClose={onClose} size="lg" title="Write your own wording">
+    <Modal open onClose={onClose} size="lg" title="Create Template">
       <div className="grid gap-3">
         <Alert tone="info">
           {ready
