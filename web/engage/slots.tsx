@@ -8,6 +8,7 @@
  * A webinar screen never reads account.whatsapp or config.whatsappConnect itself.
  */
 
+import { previewLabel } from "./message-kind";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppConfig, useSession } from "@/components/providers";
@@ -161,7 +162,7 @@ export function RosterWhatsAppCells({ row }: { row: RegistrantRow }) {
               className={`truncate ${row.lastMessage.direction === "in" ? "text-ok" : ""}`}
             >
               {row.lastMessage.direction === "in" ? "Replied: " : ""}
-              {row.lastMessage.body || row.lastMessage.templateName || "—"}
+              {previewLabel(row.lastMessage)}
             </div>
             <div className="text-[11px] text-ink-3">
               {row.lastMessage.direction === "out" &&

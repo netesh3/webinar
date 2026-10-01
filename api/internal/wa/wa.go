@@ -27,6 +27,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -364,6 +365,108 @@ func (c *Client) base() string {
 
 func (c *Client) get(ctx context.Context, token, path string, dest any) error {
 	return c.do(ctx, token, http.MethodGet, path, nil, dest)
+}
+
+// mediaIDPattern is Meta's media id: a long decimal string. Anything else is
+// refused before it is placed in a URL.
+var mediaIDPattern = regexp.MustCompile(`^[0-9]{1,128}$`)
+
+// MediaDownload is the bytes behind a stored media id. The caller closes Body.
+type MediaDownload struct {
+	Body     io.ReadCloser
+	MimeType string
+}
+
+/* OpenMedia downloads one WhatsApp attachment.
+ *
+ * Two requests, both authenticated with the host's token and neither of them
+ * visible to the browser. The first asks Graph for a short-lived URL; the second
+ * fetches that URL. The URL is only followed when it is https on Meta's media
+ * hosts, or on the configured Graph host (so a test server can stand in). The
+ * token is never written into the URL.
+ */
+func (c *Client) OpenMedia(ctx context.Context, token, mediaID string) (*MediaDownload, error) {
+	if c == nil {
+		return nil, ErrNotConfigured
+	}
+	if strings.TrimSpace(token) == "" {
+		return nil, ErrNotConnected
+	}
+	id := strings.TrimSpace(mediaID)
+	if !mediaIDPattern.MatchString(id) {
+		return nil, errors.New("invalid whatsapp media id")
+	}
+	var meta struct {
+		URL      string `json:"url"`
+		MimeType string `json:"mime_type"`
+	}
+	if err := c.get(ctx, token, "/"+url.PathEscape(id), &meta); err != nil {
+		return nil, err
+	}
+	if !c.mediaURLAllowed(meta.URL) {
+		return nil, errors.New("whatsapp media url was not on Meta's hosts")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, meta.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	base := c.http()
+	client := &http.Client{
+		Timeout:   base.Timeout,
+		Transport: base.Transport,
+		CheckRedirect: func(r *http.Request, _ []*http.Request) error {
+			if !c.mediaURLAllowed(r.URL.String()) {
+				return errors.New("whatsapp media redirect left Meta's hosts")
+			}
+			return nil
+		},
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode >= 300 {
+		raw, readErr := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		res.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		return nil, graphError(raw, res.StatusCode)
+	}
+	return &MediaDownload{Body: res.Body, MimeType: strings.TrimSpace(meta.MimeType)}, nil
+}
+
+func (c *Client) mediaURLAllowed(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if u.Scheme == "https" && metaMediaHost(host) {
+		return true
+	}
+	base, err := url.Parse(c.base())
+	if err != nil || base.Host == "" {
+		return false
+	}
+	/* The configured Graph origin, including an httptest server. Host includes
+	 * the port, so a second local server on the same machine is not the Graph
+	 * host and does not receive the token. Production media bytes live on
+	 * lookaside.fbsbx.com, which metaMediaHost already allows. */
+	if strings.EqualFold(u.Host, base.Host) && (u.Scheme == "https" || u.Scheme == "http") {
+		return true
+	}
+	return false
+}
+
+func metaMediaHost(host string) bool {
+	switch host {
+	case "lookaside.fbsbx.com", "graph.facebook.com", "facebook.com", "www.facebook.com":
+		return true
+	}
+	return strings.HasSuffix(host, ".fbsbx.com") || strings.HasSuffix(host, ".fbcdn.net") ||
+		strings.HasSuffix(host, ".facebook.com")
 }
 
 func (c *Client) post(ctx context.Context, token, path string, body, dest any) error {

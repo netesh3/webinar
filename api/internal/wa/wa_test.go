@@ -7,9 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 )
 
@@ -196,6 +198,71 @@ func TestVerifySignature(t *testing.T) {
 	// No secret configured is no basis for trust, whatever the header says.
 	if (&Client{}).VerifySignature(body, "sha256="+good) {
 		t.Error("verified without an app secret")
+	}
+}
+
+func TestOpenMediaStreamsFromGraph(t *testing.T) {
+	var sawAuth atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer host-token" {
+			t.Errorf("authorization = %q", r.Header.Get("Authorization"))
+		}
+		sawAuth.Store(true)
+		switch r.URL.Path {
+		case "/1001":
+			writeJSON(w, map[string]any{
+				"url":       "http://" + r.Host + "/bytes",
+				"mime_type": "image/jpeg",
+				"id":        "1001",
+			})
+		case "/bytes":
+			w.Header().Set("Content-Type", "image/jpeg")
+			_, _ = w.Write([]byte("jpeg-bytes"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	file, err := newTestClient(srv.URL).OpenMedia(context.Background(), "host-token", "1001")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer file.Body.Close()
+	got, err := io.ReadAll(file.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "jpeg-bytes" || file.MimeType != "image/jpeg" {
+		t.Fatalf("download = %q %q", got, file.MimeType)
+	}
+	if !sawAuth.Load() {
+		t.Fatal("graph was not called")
+	}
+}
+
+func TestOpenMediaRefusesAForeignURL(t *testing.T) {
+	var evilHits atomic.Int32
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		evilHits.Add(1)
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("token was sent to a foreign host")
+		}
+		_, _ = w.Write([]byte("nope"))
+	}))
+	defer evil.Close()
+
+	graph := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"url": evil.URL + "/steal", "mime_type": "image/jpeg"})
+	}))
+	defer graph.Close()
+
+	_, err := newTestClient(graph.URL).OpenMedia(context.Background(), "host-token", "1001")
+	if err == nil {
+		t.Fatal("want a refusal for a media url off Meta's hosts")
+	}
+	if evilHits.Load() != 0 {
+		t.Fatalf("foreign host was contacted %d times", evilHits.Load())
 	}
 }
 
