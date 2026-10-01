@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSession } from "@/components/providers";
+import { Button } from "@/components/ui";
 import { ApiError, fresh, put, request } from "@/lib/http";
 import { Alert } from "../controls";
 
@@ -22,10 +24,86 @@ type EmailInbox = {
   messages: EmailMessage[];
 };
 
-export function EmailInboxScreen() {
+type Thread = {
+  key: string;
+  name: string;
+  email: string;
+  messages: EmailMessage[];
+};
+
+function party(message: EmailMessage): { name: string; email: string } {
+  const raw = (message.direction === "out" ? message.to : message.from).trim();
+  const named = raw.match(/^(.*?)\s*<([^>]+)>\s*$/);
+  if (named) {
+    const email = named[2].trim();
+    const name = named[1].replace(/^"|"$/g, "").trim();
+    return { name: name || email, email };
+  }
+  return { name: raw || "Unknown", email: raw };
+}
+
+function threadsOf(messages: EmailMessage[]): Thread[] {
+  const groups = new Map<string, Thread>();
+  for (const message of messages) {
+    const who = party(message);
+    const key = who.email.toLowerCase() || message.id;
+    const thread = groups.get(key) ?? {
+      key,
+      name: who.name,
+      email: who.email,
+      messages: [],
+    };
+    if (who.name && who.name !== who.email) thread.name = who.name;
+    thread.messages.push(message);
+    groups.set(key, thread);
+  }
+  const threads = [...groups.values()];
+  for (const thread of threads) {
+    thread.messages.sort((a, b) => a.at.localeCompare(b.at));
+  }
+  threads.sort((a, b) => {
+    const last = (thread: Thread) => thread.messages.at(-1)?.at ?? "";
+    return last(b).localeCompare(last(a));
+  });
+  return threads;
+}
+
+function preview(body: string): string {
+  const line = body.replace(/\s+/g, " ").trim();
+  if (!line) return "";
+  return line.length > 90 ? `${line.slice(0, 89)}…` : line;
+}
+
+function listWhen(iso: string): string {
+  const at = new Date(iso);
+  const now = new Date();
+  if (at.toDateString() === now.toDateString()) {
+    return at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (at.toDateString() === yesterday.toDateString()) return "Yesterday";
+  const days = (now.getTime() - at.getTime()) / 86_400_000;
+  if (days < 7) return at.toLocaleDateString([], { weekday: "short" });
+  return at.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function letterWhen(iso: string): string {
+  return new Date(iso).toLocaleString([], {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => void }) {
+  const { account } = useSession();
   const [data, setData] = useState<EmailInbox | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -33,9 +111,9 @@ export function EmailInboxScreen() {
     const next = await request<EmailInbox>("/api/host/email-inbox", fresh);
     setData(next);
     setError(null);
-    setOpen((cur) => cur ?? next.messages.at(-1)?.id ?? null);
+    onCount?.(next.messages.length);
     return next;
-  }, []);
+  }, [onCount]);
 
   useEffect(() => {
     let gone = false;
@@ -44,7 +122,7 @@ export function EmailInboxScreen() {
         if (gone) return;
         setData(next);
         setError(null);
-        setOpen((cur) => cur ?? next.messages.at(-1)?.id ?? null);
+        onCount?.(next.messages.length);
       })
       .catch((err: unknown) => {
         if (!gone) setError(err instanceof Error ? err.message : "Could not load email.");
@@ -52,20 +130,23 @@ export function EmailInboxScreen() {
     return () => {
       gone = true;
     };
-  }, []);
+  }, [onCount]);
 
-  const selected = data?.messages.find((m) => m.id === open) ?? null;
+  const threads = useMemo(() => threadsOf(data?.messages ?? []), [data]);
+  const selected = threads.find((thread) => thread.key === openKey) ?? threads[0] ?? null;
+  const latest = selected?.messages.at(-1) ?? null;
 
   async function send() {
-    if (!selected || !draft.trim()) return;
+    if (!latest || !draft.trim()) return;
     setSending(true);
     setError(null);
     try {
-      await request<EmailMessage>(`/api/host/email-inbox/${selected.id}/reply`, {
+      await request<EmailMessage>(`/api/host/email-inbox/${latest.id}/reply`, {
         method: "POST",
         body: JSON.stringify({ body: draft.trim() }),
       });
       setDraft("");
+      setOpenKey(selected?.key ?? null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not send that reply.");
@@ -74,85 +155,134 @@ export function EmailInboxScreen() {
     }
   }
 
+  const replyName = account?.name?.trim() || "you";
+
   return (
-    <div className="mx-auto grid max-w-5xl gap-4">
-      <div>
-        <h1 className="text-[20px] font-semibold tracking-[-0.02em]">Email</h1>
-        <p className="mt-1 text-[13px] text-ink-3">
-          {data
-            ? `Replies to ${data.address}, and mail sent for you, both show here. Sending still uses the shared From address, with this address as Reply-To.`
-            : "Loading your inbox…"}
-        </p>
-      </div>
+    <div className="grid gap-3">
       {error && <Alert tone="error">{error}</Alert>}
-      <div className="grid min-h-[420px] overflow-hidden rounded-xl border border-line md:grid-cols-[280px_1fr]">
-        <ul className="divide-y divide-line border-b border-line md:border-r md:border-b-0">
-          {(data?.messages.length ?? 0) === 0 && (
-            <li className="p-4 text-[13px] text-ink-3">No email yet.</li>
+      <section
+        className="grid min-h-[420px] overflow-hidden rounded-xl border border-line bg-surface shadow-sm md:h-[560px] md:grid-cols-[300px_minmax(0,1fr)]"
+        aria-label="Email inbox"
+      >
+        <div className="flex min-w-0 flex-col overflow-y-auto border-b border-line md:border-r md:border-b-0">
+          {data && threads.length === 0 && (
+            <p className="px-4 py-8 text-center text-[13px] text-ink-3">No email yet.</p>
           )}
-          {data?.messages.map((m) => (
-            <li key={m.id}>
+          {!data && !error && (
+            <p className="px-4 py-8 text-center text-[13px] text-ink-3">Loading…</p>
+          )}
+          {threads.map((thread) => {
+            const last = thread.messages.at(-1)!;
+            const on = selected?.key === thread.key;
+            return (
               <button
+                key={thread.key}
                 type="button"
-                onClick={() => setOpen(m.id)}
-                className={`block w-full px-3 py-3 text-left ${open === m.id ? "bg-brand-soft" : "hover:bg-surface-2"}`}
+                onClick={() => setOpenKey(thread.key)}
+                className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b border-line px-3 py-2.5 text-left ${
+                  on ? "bg-brand-soft" : "hover:bg-surface-2"
+                }`}
               >
-                <div className="flex items-center gap-2">
-                  <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-ink-2 uppercase">
-                    {m.direction === "out" ? "Sent" : "Received"}
+                <span className="min-w-0">
+                  <span className="block truncate text-[13px] font-medium text-ink">
+                    {thread.name}
+                    {thread.messages.length > 1 && (
+                      <span className="font-medium text-ink-3"> ({thread.messages.length})</span>
+                    )}
                   </span>
-                  <span className="truncate text-[13px] font-medium">{m.subject || "(no subject)"}</span>
-                </div>
-                <div className="truncate text-[12px] text-ink-3">
-                  {m.direction === "out" ? `To ${m.to}` : `From ${m.from}`}
-                </div>
+                  <span className="mt-0.5 block truncate text-[13px] font-semibold text-ink">
+                    {last.subject || "(no subject)"}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[12px] text-ink-3">{preview(last.body)}</span>
+                </span>
+                <span className="flex flex-col items-end gap-1.5">
+                  <time className="text-[11px] text-ink-3 tabular-nums" dateTime={last.at}>
+                    {listWhen(last.at)}
+                  </time>
+                  <span className="text-[10px] font-semibold tracking-wide text-ink-3 uppercase">
+                    {last.direction === "out" ? "Sent" : "Received"}
+                  </span>
+                </span>
               </button>
-            </li>
-          ))}
-        </ul>
-        <div className="flex min-h-[320px] flex-col">
-          {!selected && <p className="p-4 text-[13px] text-ink-3">Select a message.</p>}
-          {selected && (
+            );
+          })}
+        </div>
+
+        <article className="flex min-h-[320px] min-w-0 flex-col">
+          {!selected && (
+            <p className="grid flex-1 place-items-center px-4 text-[13px] text-ink-3">
+              {data ? "No email yet." : ""}
+            </p>
+          )}
+          {selected && latest && (
             <>
-              <div className="border-b border-line px-4 py-3">
-                <div className="text-[15px] font-medium">{selected.subject || "(no subject)"}</div>
-                <div className="mt-1 text-[12px] text-ink-3">
-                  {selected.direction === "out" ? "Sent" : "Received"}
+              <div className="border-b border-line px-4 pt-3.5 pb-3">
+                <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-ink">
+                  {latest.subject || "(no subject)"}
+                </h2>
+                <p className="mt-2 text-[12px] leading-normal text-ink-2">
+                  {latest.direction === "out" ? "To " : ""}
+                  <b className="font-semibold text-ink">{selected.name}</b>
+                  {selected.email ? ` <${selected.email}>` : ""}
+                  {latest.direction === "in" && data?.address ? ` · to ${data.address}` : ""}
+                  <br />
+                  {letterWhen(latest.at)}
                   {" · "}
-                  {selected.direction === "out" ? `To ${selected.to}` : `From ${selected.from}`}
-                  {" · "}
-                  {new Date(selected.at).toLocaleString()}
-                </div>
+                  {latest.direction === "out" ? "Sent" : "Received"}
+                  {selected.messages.length > 1
+                    ? ` · ${selected.messages.length} messages in this thread`
+                    : ""}
+                </p>
               </div>
-              <pre className="flex-1 overflow-auto px-4 py-3 font-sans text-[13px] whitespace-pre-wrap text-ink">
-                {selected.body}
-              </pre>
+              <div className="flex-1 overflow-auto px-4 py-3.5 text-[13.5px] leading-relaxed text-ink">
+                {selected.messages.length === 1 ? (
+                  <p className="whitespace-pre-wrap">{latest.body}</p>
+                ) : (
+                  <div className="grid gap-4">
+                    {selected.messages.map((message) => (
+                      <div key={message.id} className="border-l-2 border-line-2 pl-3">
+                        <div className="text-[12px] text-ink-2">
+                          <b className="font-semibold text-ink">
+                            {message.direction === "out" ? "Sent" : "Received"}
+                          </b>
+                          {" · "}
+                          {letterWhen(message.at)}
+                        </div>
+                        <p className="mt-1.5 whitespace-pre-wrap">{message.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <form
-                className="border-t border-line p-3"
+                className="mt-auto border-t border-line p-3"
                 onSubmit={(e) => {
                   e.preventDefault();
                   void send();
                 }}
               >
+                <div className="mb-2 text-[12px] text-ink-2">
+                  Reply as <b className="font-semibold text-ink">{replyName}</b>
+                  {data?.address ? ` <${data.address}>` : ""}
+                </div>
                 <textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   rows={3}
-                  placeholder="Reply…"
-                  className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px]"
+                  placeholder="Write a reply…"
+                  aria-label="Your reply"
+                  className="field text-[13.5px]"
                 />
-                <button
-                  type="submit"
-                  disabled={sending || !draft.trim()}
-                  className="mt-2 rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
-                >
-                  {sending ? "Sending…" : "Send reply"}
-                </button>
+                <div className="mt-2 flex justify-end">
+                  <Button type="submit" size="sm" disabled={sending || !draft.trim()}>
+                    {sending ? "Sending…" : "Send reply"}
+                  </Button>
+                </div>
               </form>
             </>
           )}
-        </div>
-      </div>
+        </article>
+      </section>
     </div>
   );
 }
