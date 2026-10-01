@@ -164,7 +164,10 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
         className="grid min-h-[420px] overflow-hidden rounded-xl border border-line bg-surface shadow-sm md:h-[560px] md:grid-cols-[300px_minmax(0,1fr)]"
         aria-label="Email inbox"
       >
-        <div className="flex min-w-0 flex-col overflow-y-auto border-b border-line md:border-r md:border-b-0">
+        <div
+          data-tour="email-inbox"
+          className="flex min-w-0 flex-col overflow-y-auto border-b border-line md:border-r md:border-b-0"
+        >
           {data && threads.length === 0 && (
             <p className="px-4 py-8 text-center text-[13px] text-ink-3">No email yet.</p>
           )}
@@ -178,6 +181,7 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
               <button
                 key={thread.key}
                 type="button"
+                data-tour="email-message"
                 onClick={() => setOpenKey(thread.key)}
                 className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b border-line px-3 py-2.5 text-left ${
                   on ? "bg-brand-soft" : "hover:bg-surface-2"
@@ -266,6 +270,7 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
                   {data?.address ? ` <${data.address}>` : ""}
                 </div>
                 <textarea
+                  data-tour="email-reply"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   rows={3}
@@ -336,7 +341,7 @@ export function EmailIntegration({
   }
 
   return (
-    <article className="rounded-xl border border-line bg-surface p-4">
+    <article data-tour="email-address" className="rounded-xl border border-line bg-surface p-4">
       <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">Email</div>
       <h3 className="mt-1 text-[15px] font-semibold">Your reply inbox</h3>
       <p className="mt-1 text-[13px] text-ink">{current || address}</p>

@@ -245,6 +245,7 @@ function HostCard({
                 sit above it (z-10) and keep their own clicks. */}
             <Link
               href={rowHref}
+              data-tour="webinar-title"
               className={
                 readOnly
                   ? "hover:text-brand"
@@ -402,6 +403,7 @@ function CompletedCard({ webinar: w }: { webinar: Webinar }) {
             {/* Stretched over the card so anywhere on it opens the results. */}
             <Link
               href={href}
+              data-tour="webinar-title"
               className="outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] group-hover:text-brand focus-visible:after:ring-2 focus-visible:after:ring-brand/40"
             >
               {w.topic}

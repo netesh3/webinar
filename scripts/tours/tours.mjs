@@ -4,5 +4,18 @@ import { home, create } from "./tours-start.mjs";
 import { invite, results, followup } from "./tours-webinar.mjs";
 import { live } from "./tours-live.mjs";
 import { messages, whatsapp, audience } from "./tours-engage.mjs";
+import { email, emailAddress } from "./tours-email.mjs";
 
-export const TOURS = [home, create, invite, live, results, followup, messages, whatsapp, audience];
+export const TOURS = [
+  home,
+  create,
+  invite,
+  live,
+  results,
+  followup,
+  messages,
+  whatsapp,
+  audience,
+  email,
+  emailAddress,
+];

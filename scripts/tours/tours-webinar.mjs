@@ -1,6 +1,6 @@
 /* Tours 3, 5, 6: before the webinar (invite), results, follow up. */
 
-import { btn, dialog, ENDED, link, tab, UPCOMING } from "./common.mjs";
+import { anchor, btn, dialog, ENDED, link, tab, UPCOMING } from "./common.mjs";
 
 export const invite = {
   id: "03-invite",
@@ -12,8 +12,8 @@ export const invite = {
       { kicker: "WebinarLiv guided tour · 3", title: "Invite people and get ready", sub: "Share one link — WebinarLiv does the reminding" },
       "Your webinar is scheduled. Now let's get people to register, and get ready for the day.",
     );
-    await t.say("Open your webinar with Manage.", async () => {
-      await t.click(link(page, /^Manage$/), { settle: 1800 });
+    await t.say("Open a webinar from the list. The title is the way in.", async () => {
+      await t.click(anchor(page, "webinar-title").first(), { settle: 1800 });
     });
     await t.say("The bar at the top shows where you are: Create, Invite, Go live, and Follow up. Right now, we're inviting.", async () => {
       await t.point(page.getByText("Invite", { exact: true }).first());
@@ -43,8 +43,10 @@ export const invite = {
       await t.point(page.getByRole("heading", { name: /On the stage/ }));
       await t.point(page.getByRole("heading", { name: "Host and panelist link" }));
     });
-    await t.say("To change anything, like the date or the reminders, click Edit.", async () => {
-      await t.point(link(page, /^Edit$/));
+    await t.say("To change the date or the reminders, open More actions, then Edit webinar.", async () => {
+      await t.click(btn(page, /^More actions$/), { settle: 1200 });
+      await t.point(page.getByRole("menuitem", { name: /^Edit webinar$/ }));
+      await t.key("Escape");
     });
     await t.say("And when it's time, the green Go live button takes you into the room. That's the next video.", async () => {
       await t.point(btn(page, /Go live/));
@@ -84,7 +86,7 @@ export const results = {
       await t.point(btn(page, /^Polls/));
     });
     await t.say("At the bottom, everyone lands in one engagement group, from highly engaged to no-show, based on how they took part.", async () => {
-      await t.click(btn(page, /^Follow up Everyone/), { settle: 1500 });
+      await t.click(btn(page, /^Follow up/), { settle: 1500 });
     });
     await t.say("Up top, you can export everything, or recompute the scores if new data came in.", async () => {
       await t.scroll(-3000);
