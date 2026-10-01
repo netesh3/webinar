@@ -1,19 +1,18 @@
 /* Which ended webinars the host home still asks the coach to follow up.
  *
- * The column used to ask for a single past row. A coach with several sessions
- * in the same week only saw the latest, so the read now takes as many as the
- * host-list endpoint will return and the week rule below drops the rest.
- * That rule is unchanged: a follow-up is worth showing for a week after the
- * end, and not after. store.MaxHostWebinarLimit is the cap on the read. */
+ * The column shows the three that ended most recently, and nothing else.
+ * A follow-up is worth showing for a week after the end, and not after —
+ * the same bound the single card used. Upcoming and live sessions are not
+ * in this read: it asks the past tab for just those three rows. */
 
 /** Shown for a week after the end. The same bound the single card used. */
 export const FOLLOW_UP_WINDOW_MS = 7 * 24 * 3_600_000;
 
-/** Cards in view before the column scrolls. */
-export const FOLLOW_UP_VISIBLE = 5;
+/** Cards in the column. There is no fourth, and no scroll of the rest. */
+export const FOLLOW_UP_LIMIT = 3;
 
-/** store.MaxHostWebinarLimit. One page is the eligible set. */
-export const FOLLOW_UP_FETCH_LIMIT = 100;
+/** One short past page. The column never shows more than FOLLOW_UP_LIMIT. */
+export const FOLLOW_UP_FETCH_LIMIT = FOLLOW_UP_LIMIT;
 
 /** Cache key for that one read. The prefetch and the column share it, so the
  *  cards are already in memory when the column mounts. `prefix` is
@@ -34,11 +33,24 @@ export function withinFollowUpWindow(endedAt: string | undefined, now: number): 
   return Number.isFinite(ended) && now - ended < FOLLOW_UP_WINDOW_MS;
 }
 
-/** The past page, newest first, narrowed to the week. Order is the page's
- *  order, so the first card is the session the single card used to show. */
+/** The past page, narrowed to the week. Order is the page's order. */
 export function eligibleFollowUps<T extends { endedAt?: string }>(
   items: readonly T[],
   now: number,
 ): T[] {
   return items.filter((w) => withinFollowUpWindow(w.endedAt, now));
+}
+
+/** The three most recently ended webinars still inside the week.
+ *
+ *  Anything older than the week is already gone. A longer eligible list is
+ *  cut here, so the column cannot grow a fourth card or a scrollbar. */
+export function recentFollowUps<T extends { endedAt?: string }>(
+  items: readonly T[],
+  now: number,
+): T[] {
+  return eligibleFollowUps(items, now)
+    .slice()
+    .sort((a, b) => Date.parse(b.endedAt ?? "") - Date.parse(a.endedAt ?? ""))
+    .slice(0, FOLLOW_UP_LIMIT);
 }
