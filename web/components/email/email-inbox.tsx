@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "@/components/providers";
 import { Button, ListPager } from "@/components/ui";
+import { textRuns } from "@/lib/chat-text";
 import { ApiError, fresh, put, request } from "@/lib/http";
 import { Alert } from "../controls";
 
@@ -90,14 +91,98 @@ function listWhen(iso: string): string {
 }
 
 function letterWhen(iso: string): string {
-  return new Date(iso).toLocaleString([], {
+  const at = new Date(iso);
+  const date = at.toLocaleDateString([], {
     weekday: "short",
     day: "numeric",
     month: "short",
     year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
   });
+  const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `${date}, ${time}`;
+}
+
+const MONOGRAM_COLORS = ["#2563EB", "#0F766E", "#7C3AED", "#1D4ED8"];
+
+function monogramHue(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 33 + seed.charCodeAt(i)) >>> 0;
+  return MONOGRAM_COLORS[hash % MONOGRAM_COLORS.length];
+}
+
+function initials(name: string): string {
+  const parts = name.replace(/@.*/, "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function Monogram({ name }: { name: string }) {
+  return (
+    <span
+      aria-hidden
+      className="grid size-9 shrink-0 place-items-center rounded-full text-[12px] font-semibold text-white"
+      style={{ backgroundColor: monogramHue(name || "?") }}
+    >
+      {initials(name)}
+    </span>
+  );
+}
+
+function StatusMark({ direction }: { direction: EmailMessage["direction"] }) {
+  return (
+    <span className="text-[10px] font-semibold tracking-[0.08em] text-ink-3 uppercase">
+      {direction === "out" ? "Sent" : "Received"}
+    </span>
+  );
+}
+
+function addressedTo(message: EmailMessage): string {
+  const raw = message.to.trim();
+  const named = raw.match(/<([^>]+)>/);
+  return (named ? named[1] : raw).trim();
+}
+
+function MessageText({ body }: { body: string }) {
+  const runs = textRuns(body);
+  return (
+    <p className="text-[14px] leading-relaxed whitespace-pre-wrap text-ink">
+      {runs.map((run, index) =>
+        "href" in run ? (
+          <a
+            key={index}
+            href={run.href}
+            target="_blank"
+            rel="noreferrer"
+            className="break-all text-[#2563EB] dark:text-brand"
+          >
+            {run.text}
+          </a>
+        ) : (
+          <span key={index}>{run.text}</span>
+        ),
+      )}
+    </p>
+  );
+}
+
+function ReplyIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <polyline points="9 14 4 9 9 4" />
+      <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+    </svg>
+  );
 }
 
 export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => void }) {
@@ -106,8 +191,10 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
   const [error, setError] = useState<string | null>(null);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [replying, setReplying] = useState(false);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
+  const replyRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(
     async (nextPage: number) => {
@@ -147,9 +234,19 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
   const start = threads.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = threads.length === 0 ? 0 : start + threads.length - 1;
 
+  useEffect(() => {
+    if (replying) replyRef.current?.focus();
+  }, [replying, openKey]);
+
+  function selectThread(key: string) {
+    setOpenKey(key);
+    if (!draft.trim()) setReplying(false);
+  }
+
   async function go(nextPage: number) {
     setOpenKey(null);
     setDraft("");
+    setReplying(false);
     setLoading(true);
     try {
       await load(nextPage);
@@ -186,7 +283,7 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
     <div className="flex min-h-0 w-full flex-1 flex-col gap-3">
       {error && <Alert tone="error">{error}</Alert>}
       <section
-        className="grid min-h-[28rem] flex-1 overflow-hidden rounded-xl border border-line bg-surface shadow-sm min-[900px]:min-h-0 min-[900px]:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]"
+        className="grid w-full rounded-xl border border-line bg-surface shadow-sm min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:overflow-hidden min-[900px]:grid-cols-[minmax(20rem,42%)_minmax(0,1fr)]"
         aria-label="Email inbox"
       >
         <div
@@ -208,30 +305,31 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
                 key={thread.key}
                 type="button"
                 data-tour="email-message"
-                onClick={() => setOpenKey(thread.key)}
-                className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b border-line px-3 py-2.5 text-left ${
-                  on ? "bg-brand-soft" : "hover:bg-surface-2"
+                onClick={() => selectThread(thread.key)}
+                className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 border-b border-line px-3 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 focus-visible:ring-inset ${
+                  on
+                    ? "bg-[#EFF6FF] shadow-[inset_3px_0_0_#2563EB] dark:bg-brand-soft dark:shadow-[inset_3px_0_0_var(--color-brand)]"
+                    : "hover:bg-surface-2"
                 }`}
               >
+                <Monogram name={thread.name} />
                 <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-medium text-ink">
+                  <span className="block truncate text-[13px] font-semibold text-ink">
                     {thread.name}
                     {thread.messages.length > 1 && (
                       <span className="font-medium text-ink-3"> ({thread.messages.length})</span>
                     )}
                   </span>
-                  <span className="mt-0.5 block truncate text-[13px] font-semibold text-ink">
+                  <span className="mt-0.5 block truncate text-[13px] text-ink">
                     {last.subject || "(no subject)"}
                   </span>
                   <span className="mt-0.5 block truncate text-[12px] text-ink-3">{preview(last.body)}</span>
                 </span>
-                <span className="flex flex-col items-end gap-1.5">
-                  <time className="text-[11px] text-ink-3 tabular-nums" dateTime={last.at}>
+                <span className="flex flex-col items-end gap-1.5 pt-0.5">
+                  <time className="text-[12px] text-ink-3 tabular-nums" dateTime={last.at}>
                     {listWhen(last.at)}
                   </time>
-                  <span className="text-[10px] font-semibold tracking-wide text-ink-3 uppercase">
-                    {last.direction === "out" ? "Sent" : "Received"}
-                  </span>
+                  <StatusMark direction={last.direction} />
                 </span>
               </button>
             );
@@ -255,79 +353,106 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
           )}
         </div>
 
-        <article className="flex min-h-[20rem] min-w-0 flex-col min-[900px]:min-h-0">
+        <article className="flex min-h-[16rem] min-w-0 flex-col min-[900px]:min-h-0">
           {!selected && (
             <p className="grid flex-1 place-items-center px-4 text-[13px] text-ink-3">
               {data ? (threads.length === 0 ? "No email yet." : "Select a message.") : ""}
             </p>
           )}
           {selected && latest && (
-            <>
-              <div className="border-b border-line px-4 pt-3.5 pb-3">
-                <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-ink">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <div className="flex min-h-full flex-col px-5 py-4">
+                <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-ink">
                   {latest.subject || "(no subject)"}
                 </h2>
-                <p className="mt-2 text-[12px] leading-normal text-ink-2">
-                  {latest.direction === "out" ? "To " : ""}
-                  <b className="font-semibold text-ink">{selected.name}</b>
-                  {selected.email ? ` <${selected.email}>` : ""}
-                  {latest.direction === "in" && data?.address ? ` · to ${data.address}` : ""}
-                  <br />
-                  {letterWhen(latest.at)}
-                  {" · "}
-                  {latest.direction === "out" ? "Sent" : "Received"}
-                  {selected.messages.length > 1
-                    ? ` · ${selected.messages.length} messages in this thread`
-                    : ""}
-                </p>
-              </div>
-              <div className="flex-1 overflow-auto px-4 py-3.5 text-[13.5px] leading-relaxed text-ink">
-                {selected.messages.length === 1 ? (
-                  <p className="whitespace-pre-wrap">{latest.body}</p>
-                ) : (
-                  <div className="grid gap-4">
-                    {selected.messages.map((message) => (
-                      <div key={message.id} className="border-l-2 border-line-2 pl-3">
-                        <div className="text-[12px] text-ink-2">
-                          <b className="font-semibold text-ink">
-                            {message.direction === "out" ? "Sent" : "Received"}
-                          </b>
-                          {" · "}
-                          {letterWhen(message.at)}
-                        </div>
-                        <p className="mt-1.5 whitespace-pre-wrap">{message.body}</p>
-                      </div>
-                    ))}
+                <div className="mt-4 flex items-start gap-3">
+                  <Monogram name={selected.name} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <p className="min-w-0 text-[13px] leading-snug">
+                        <b className="font-semibold text-ink">{selected.name}</b>
+                        {selected.email && selected.email !== selected.name && (
+                          <span className="ml-2 break-all text-ink-3">{selected.email}</span>
+                        )}
+                      </p>
+                      <p className="flex shrink-0 items-center gap-2 text-[12px] text-ink-3">
+                        <time dateTime={latest.at}>{letterWhen(latest.at)}</time>
+                        <StatusMark direction={latest.direction} />
+                      </p>
+                    </div>
+                    {addressedTo(latest) && (
+                      <p className="mt-0.5 text-[12px] text-ink-3">To {addressedTo(latest)}</p>
+                    )}
+                    {selected.messages.length > 1 && (
+                      <p className="mt-0.5 text-[12px] text-ink-3">
+                        {selected.messages.length} messages in this thread
+                      </p>
+                    )}
                   </div>
-                )}
+                </div>
+                <div className="mt-5">
+                  {selected.messages.length === 1 ? (
+                    <MessageText body={latest.body} />
+                  ) : (
+                    <div className="grid gap-4">
+                      {selected.messages.map((message) => (
+                        <div key={message.id} className="border-l-2 border-line-2 pl-3">
+                          <div className="text-[12px] text-ink-2">
+                            <b className="font-semibold text-ink">
+                              {message.direction === "out" ? "Sent" : "Received"}
+                            </b>
+                            {" · "}
+                            {letterWhen(message.at)}
+                          </div>
+                          <div className="mt-1.5">
+                            <MessageText body={message.body} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="mt-auto pt-6">
+                  {replying ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void send();
+                      }}
+                    >
+                      <div className="mb-2 text-[12px] text-ink-2">
+                        Reply as <b className="font-semibold text-ink">{replyName}</b>
+                        {data?.address ? ` <${data.address}>` : ""}
+                      </div>
+                      <textarea
+                        ref={replyRef}
+                        data-tour="email-reply"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        rows={3}
+                        placeholder="Write a reply…"
+                        aria-label="Your reply"
+                        className="field text-[13.5px]"
+                      />
+                      <div className="mt-2 flex justify-end">
+                        <Button type="submit" size="sm" disabled={sending || !draft.trim()}>
+                          {sending ? "Sending…" : "Send reply"}
+                        </Button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setReplying(true)}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#2563EB] bg-surface px-3.5 text-[13.5px] font-medium text-[#2563EB] outline-none hover:bg-[#EFF6FF] focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 dark:border-brand dark:text-brand dark:hover:bg-brand-soft"
+                    >
+                      <ReplyIcon />
+                      Reply
+                    </button>
+                  )}
+                </div>
               </div>
-              <form
-                className="mt-auto border-t border-line p-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void send();
-                }}
-              >
-                <div className="mb-2 text-[12px] text-ink-2">
-                  Reply as <b className="font-semibold text-ink">{replyName}</b>
-                  {data?.address ? ` <${data.address}>` : ""}
-                </div>
-                <textarea
-                  data-tour="email-reply"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  rows={3}
-                  placeholder="Write a reply…"
-                  aria-label="Your reply"
-                  className="field text-[13.5px]"
-                />
-                <div className="mt-2 flex justify-end">
-                  <Button type="submit" size="sm" disabled={sending || !draft.trim()}>
-                    {sending ? "Sending…" : "Send reply"}
-                  </Button>
-                </div>
-              </form>
-            </>
+            </div>
           )}
         </article>
       </section>

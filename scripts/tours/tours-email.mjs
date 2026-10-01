@@ -23,6 +23,7 @@ export const email = {
       await t.click(anchor(page, "email-message").first(), { settle: 1200 });
     });
     await t.say("Reply at the bottom. It goes out with your webinar address as Reply-To.", async () => {
+      await t.click(btn(page, /^Reply$/), { settle: 600 });
       await t.point(anchor(page, "email-reply"));
       await t.point(btn(page, /^Send reply$/));
     });
