@@ -15,6 +15,7 @@ export function HostRoomGate({ slug }: { slug: string }) {
   const router = useRouter();
   const [join, setJoin] = useState<JoinResponse | null>(null);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  const [openingZoom, setOpeningZoom] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -22,7 +23,13 @@ export function HostRoomGate({ slug }: { slug: string }) {
     api
       .hostJoin(slug)
       .then((res) => {
-        if (active) setJoin(res);
+        if (!active) return;
+        if (res.zoomStartUrl) {
+          setOpeningZoom(true);
+          window.location.assign(res.zoomStartUrl);
+          return;
+        }
+        setJoin(res);
       })
       .catch((e: unknown) => {
         if (!active) return;
@@ -79,7 +86,9 @@ export function HostRoomGate({ slug }: { slug: string }) {
                 ? "Please sign in"
                 : notInvited
                   ? "You're not on this stage"
-                  : "Can't start"}
+                  : error.code === "runs_in_zoom"
+                    ? "This session runs in Zoom"
+                    : "Can't start"}
             </h1>
             <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
               {error.message}
@@ -103,7 +112,9 @@ export function HostRoomGate({ slug }: { slug: string }) {
         ) : (
           <div className="flex flex-col items-center gap-3">
             <Spinner className="size-5 text-ink-3" />
-            <p className="text-[13.5px] text-ink-2">Setting up the room…</p>
+            <p className="text-[13.5px] text-ink-2">
+              {openingZoom ? "Opening Zoom…" : "Setting up the room…"}
+            </p>
           </div>
         )}
       </Card>

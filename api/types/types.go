@@ -806,6 +806,14 @@ type Webinar struct {
 	 */
 	SFUProject string `json:"sfuProject,omitempty"`
 
+	/* Venue is where people join: app (LiveKit, the default), zoom_meeting,
+	 * or zoom_webinar. ZoomID is the meeting or webinar id on the host's
+	 * Zoom account. The host start link is not on this type. */
+	Venue  string `json:"venue,omitempty"`
+	ZoomID string `json:"zoomId,omitempty"`
+	/* ZoomNotice is set on a save Zoom's plan refused. Not stored. */
+	ZoomNotice string `json:"zoomNotice,omitempty"`
+
 	Report *WebinarReport `json:"report,omitempty"`
 }
 
@@ -881,6 +889,9 @@ type WebinarInput struct {
 
 	Options  WebinarOptions  `json:"options"`
 	Controls SessionControls `json:"controls"`
+
+	/* Venue is app, zoom_meeting, or zoom_webinar. Empty means this app. */
+	Venue string `json:"venue,omitempty"`
 }
 
 // SetStreamRequest is the host's RTMP destination.
@@ -2661,6 +2672,11 @@ type JoinResponse struct {
 	// LiveKit room metadata rather than by polling this endpoint.
 	Controls SessionControls `json:"controls"`
 	Topic    string          `json:"topic"`
+	/* ZoomJoinURL is this registrant's personal Zoom link. Set only for that
+	 * person, and only when the webinar runs on Zoom. ZoomStartURL is the
+	 * host's fresh start link, returned from Go live and host join. */
+	ZoomJoinURL  string `json:"zoomJoinUrl,omitempty"`
+	ZoomStartURL string `json:"zoomStartUrl,omitempty"`
 	/* StartedAt is when the host took the webinar live (RFC3339).
 	 *
 	 * The room header clock counts from this, not from the browser's connect
@@ -2964,6 +2980,9 @@ type RegistrantRow struct {
 	/* RFC3339 of the last message this person sent to the host's WhatsApp number, empty
 	 * when they never have — which is the ordinary case and reads as a dash. */
 	LastInboundAt string `json:"lastInboundAt,omitempty"`
+	/* ZoomNote is why this person has no Zoom link, when the session runs on
+	 * Zoom. Empty otherwise. Never a join URL. */
+	ZoomNote string `json:"zoomNote,omitempty"`
 	/* Joined is whether this registrant was in the room at all, and WatchMin how long
 	 * they watched once it was live — the session report's numbers, per registration
 	 * (store.AttachWatch). Zero and false before the webinar has run. */
@@ -3102,6 +3121,7 @@ const (
 	IntegrationStatusOff       = "off"
 	IntegrationStatusSoon      = "soon"
 
+	IntegrationCategoryMeetings  = "meetings"
 	IntegrationCategoryMessaging = "messaging"
 	IntegrationCategoryStreaming = "streaming"
 	IntegrationCategorySoon      = "soon"
@@ -3120,14 +3140,15 @@ type IntegrationStep struct {
 }
 
 type IntegrationAction struct {
-	ID     string            `json:"id"`
-	Label  string            `json:"label"`
-	Href   string            `json:"href,omitempty"`
-	Method string            `json:"method,omitempty"`
-	Kind   string            `json:"kind"`
-	Detail string            `json:"detail,omitempty"`
-	Menu   bool              `json:"menu,omitempty"`
-	Steps  []IntegrationStep `json:"steps,omitempty"`
+	ID      string            `json:"id"`
+	Label   string            `json:"label"`
+	Href    string            `json:"href,omitempty"`
+	Method  string            `json:"method,omitempty"`
+	Kind    string            `json:"kind"`
+	Detail  string            `json:"detail,omitempty"`
+	Confirm string            `json:"confirm,omitempty"`
+	Menu    bool              `json:"menu,omitempty"`
+	Steps   []IntegrationStep `json:"steps,omitempty"`
 }
 
 type IntegrationCard struct {

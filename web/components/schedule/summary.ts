@@ -67,6 +67,8 @@ export function scheduleSummary(
   const parts: string[] = [];
   const duration = formatDuration(form.durationMin);
   if (duration) parts.push(duration);
+  if (form.venue === "zoom_meeting") parts.push("Zoom meeting");
+  if (form.venue === "zoom_webinar") parts.push("Zoom webinar");
   parts.push(
     form.registrationRequired
       ? form.approval === "manual"

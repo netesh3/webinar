@@ -31,6 +31,7 @@ const webinarColumns = `
 	w.polls_enabled, w.captions_enabled, w.locked, w.sfu_project, w.image_key,
 	w.simulive_recording_id::text,
 	w.stream_watch, w.stream_on, (w.stream_ingest <> ''),
+	coalesce(w.venue, 'app'), coalesce(w.zoom_id, ''),
 	h.id, h.name, h.title, h.org, h.initials, h.hue,
 	(SELECT count(*) FROM registrations r
 	  WHERE r.webinar_id = w.id AND r.state <> 'declined') AS registrant_count`
@@ -68,6 +69,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.PollsEnabled, &c.CaptionsEnabled, &c.Locked, &w.SFUProject, &imageKey,
 		&simuliveID,
 		&streamWatch, &streamOn, &streamSaved,
+		&w.Venue, &w.ZoomID,
 		&hostID, &w.Host.Name, &w.Host.Title, &w.Host.Org, &w.Host.Initials, &w.Host.Hue,
 		&w.RegistrantCount,
 	)

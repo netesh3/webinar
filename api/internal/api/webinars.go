@@ -78,6 +78,7 @@ func publicWebinar(wb types.Webinar) types.Webinar {
 	wb.StreamWatchURL = ""
 	wb.StreamConfigured = false
 	wb.StreamKeySaved = false
+	wb.ZoomID = ""
 	return wb
 }
 
@@ -240,7 +241,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if reg.State == types.RegPending {
 		s.alertHostOfPending(r.Context(), wb, reg)
 	} else if strings.TrimSpace(reg.Email) != "" {
+		s.pushZoomRegistrant(r.Context(), wb, reg.ID, reg.Email, reg.FirstName, reg.LastName)
 		s.notifyNewRegistration(r.Context(), wb, reg, true)
+	} else if reg.State == types.RegApproved {
+		s.pushZoomRegistrant(r.Context(), wb, reg.ID, "", reg.FirstName, reg.LastName)
 	}
 
 	/* The CRM's side of the same event: a contact, their WhatsApp confirmation, the

@@ -17,6 +17,7 @@ const TONE: Record<string, string> = {
   ig: "bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#8134af]",
   mc: "bg-[#f2c200] text-[#241c15]",
   zp: "bg-[#ff4f00]",
+  zm: "bg-[#0b5cff]",
 };
 
 function Mark({ card, compact }: { card: IntegrationCard; compact?: boolean }) {
@@ -72,6 +73,7 @@ export function IntegrationCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<IntegrationAction | null>(null);
+  const [confirm, setConfirm] = useState<IntegrationAction | null>(null);
   const actions = card.actions ?? [];
   const primary = actions.find((a) => !a.menu);
   const menu = actions.filter((a) => a.menu);
@@ -161,7 +163,10 @@ export function IntegrationCard({
             size="sm"
             variant={card.status === "connected" ? "secondary" : "primary"}
             disabled={busy}
-            onClick={() => void run(primary)}
+            onClick={() => {
+              if (primary.confirm) setConfirm(primary);
+              else void run(primary);
+            }}
           >
             {busy ? <Spinner className="size-3.5" /> : null}
             {primary.kind === "interest" && <MaterialIcon name="notifications" className="!text-[16px]" />}
@@ -186,6 +191,34 @@ export function IntegrationCard({
           />
         )}
       </div>
+
+      <Modal
+        open={confirm !== null}
+        onClose={() => setConfirm(null)}
+        title={`Disconnect ${card.name}?`}
+        description={confirm?.confirm}
+        footer={
+          <div className="flex w-full items-center justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={busy}
+              onClick={() => {
+                const action = confirm;
+                setConfirm(null);
+                if (action) void run(action);
+              }}
+            >
+              Disconnect
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-[13px] leading-relaxed text-ink-2">{confirm?.confirm}</p>
+      </Modal>
 
       <Modal
         open={dialog !== null}

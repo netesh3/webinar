@@ -11,12 +11,12 @@ import (
 )
 
 func TestCatalogue(t *testing.T) {
-	reg := New(nil, true, nil)
+	reg := New(nil, true, nil, ZoomHooks{})
 	cards, err := reg.List(context.Background(), store.User{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"whatsapp", "email", "telegram", "youtube", "linkedin", "google-calendar", "instagram", "mailchimp", "zapier"}
+	want := []string{"zoom", "whatsapp", "email", "telegram", "youtube", "linkedin", "google-calendar", "instagram", "mailchimp", "zapier"}
 	if len(cards) != len(want) {
 		t.Fatalf("got %d cards, want %d", len(cards), len(want))
 	}
@@ -39,6 +39,9 @@ func TestCatalogue(t *testing.T) {
 	if !strings.Contains(by["linkedin"].Detail, "stream key") || by["linkedin"].Status == types.IntegrationStatusSoon {
 		t.Errorf("linkedin should say the stream key is how you connect, got %+v", by["linkedin"])
 	}
+	if by["zoom"].Actions[0].Kind != types.IntegrationActionInfo || !strings.Contains(by["zoom"].Detail, "not configured") {
+		t.Errorf("zoom without config = %+v", by["zoom"])
+	}
 	if by["youtube"].Actions[0].Kind != types.IntegrationActionRedirect {
 		t.Errorf("youtube connect = %+v", by["youtube"].Actions)
 	}
@@ -49,7 +52,7 @@ func TestCatalogue(t *testing.T) {
 
 func TestWhatsAppConnectedCard(t *testing.T) {
 	exp := time.Now().Add(52*24*time.Hour + time.Hour)
-	reg := New(nil, false, nil)
+	reg := New(nil, false, nil, ZoomHooks{})
 	cards, err := reg.List(context.Background(), store.User{
 		WhatsAppToken:          "tok",
 		WhatsAppDisplayPhone:   "+91 98200 11223",
@@ -59,7 +62,12 @@ func TestWhatsAppConnectedCard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wa := cards[0]
+	var wa types.IntegrationCard
+	for _, c := range cards {
+		if c.ID == "whatsapp" {
+			wa = c
+		}
+	}
 	if wa.Status != types.IntegrationStatusConnected || wa.Who != "+91 98200 11223" {
 		t.Fatalf("card = %+v", wa)
 	}
@@ -84,7 +92,7 @@ func TestWhatsAppConnectedCard(t *testing.T) {
 }
 
 func TestYouTubeWithoutOAuth(t *testing.T) {
-	reg := New(nil, false, nil)
+	reg := New(nil, false, nil, ZoomHooks{})
 	cards, err := reg.List(context.Background(), store.User{})
 	if err != nil {
 		t.Fatal(err)
@@ -101,12 +109,49 @@ func TestYouTubeWithoutOAuth(t *testing.T) {
 }
 
 func TestInterestOnlyOnSoonNotify(t *testing.T) {
-	reg := New(nil, true, nil)
+	reg := New(nil, true, nil, ZoomHooks{})
 	user := store.User{ID: "u"}
 	if err := reg.RecordInterest(context.Background(), user, "youtube"); err != ErrUnavailable {
 		t.Errorf("youtube interest = %v", err)
 	}
 	if err := reg.RecordInterest(context.Background(), user, "missing"); err != ErrNotFound {
 		t.Errorf("missing = %v", err)
+	}
+}
+
+func TestZoomConnectedCard(t *testing.T) {
+	reg := New(nil, false, nil, ZoomHooks{
+		Configured: true,
+		Lookup: func(_ context.Context, user store.User) (string, bool, error) {
+			if user.ID == "host-a" {
+				return "a@example.com", false, nil
+			}
+			return "", false, nil
+		},
+	})
+	cards, err := reg.List(context.Background(), store.User{ID: "host-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var zoom types.IntegrationCard
+	for _, c := range cards {
+		if c.ID == "zoom" {
+			zoom = c
+		}
+	}
+	if zoom.Status != types.IntegrationStatusConnected || zoom.Who != "a@example.com" {
+		t.Fatalf("connected = %+v", zoom)
+	}
+	if zoom.Actions[0].Kind != types.IntegrationActionDelete || zoom.Actions[0].Confirm == "" {
+		t.Fatalf("disconnect = %+v", zoom.Actions)
+	}
+	other, err := reg.List(context.Background(), store.User{ID: "host-b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range other {
+		if c.ID == "zoom" && (c.Status == types.IntegrationStatusConnected || c.Who == "a@example.com") {
+			t.Fatalf("host b saw host a: %+v", c)
+		}
 	}
 }

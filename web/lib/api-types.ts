@@ -2298,6 +2298,11 @@ export interface Webinar {
    * 	 * somebody has to think about again later.
    */
   sfuProject?: string;
+  /** app, zoom_meeting, or zoom_webinar. Empty means this app. */
+  venue?: string;
+  zoomId?: string;
+  /** Set on a save Zoom's plan refused. Not stored. */
+  zoomNotice?: string;
   report?: WebinarReport;
 }
 /**
@@ -2382,6 +2387,8 @@ export interface WebinarInput {
   panelistEmails: string[];
   options: WebinarOptions;
   controls: SessionControls;
+  /** app, zoom_meeting, or zoom_webinar. Empty means this app. */
+  venue?: "app" | "zoom_meeting" | "zoom_webinar";
 }
 /**
  * SetStreamRequest is the host's RTMP destination.
@@ -4551,6 +4558,10 @@ export interface JoinResponse {
    */
   controls: SessionControls;
   topic: string;
+  /** This registrant's personal Zoom link, when the session runs on Zoom. */
+  zoomJoinUrl?: string;
+  /** The host's fresh Zoom start link, from Go live or the host room. */
+  zoomStartUrl?: string;
   /**
    *  StartedAt is when the host took the webinar live (RFC3339).
    * 	 *
@@ -4892,6 +4903,8 @@ export interface RegistrantRow {
    * 	 * when they never have — which is the ordinary case and reads as a dash.
    */
   lastInboundAt?: string;
+  /** Why this person has no Zoom link. Empty otherwise. Never a join URL. */
+  zoomNote?: string;
   /**
    *  Joined is whether this registrant was in the room at all, and WatchMin how long
    * 	 * they watched once it was live — the session report's numbers, per registration
@@ -5160,6 +5173,7 @@ export interface IntegrationAction {
   method?: string;
   kind: string;
   detail?: string;
+  confirm?: string;
   menu?: boolean;
   steps?: IntegrationStep[];
 }

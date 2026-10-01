@@ -158,6 +158,8 @@ type WhatsAppOutbound struct {
 	WebinarSlug string
 	// LinkURL is where a dynamic link button goes; empty means the webinar's page.
 	LinkURL string
+	// RegistrationID is the person this message is about, when there is one.
+	RegistrationID string
 
 	Attempts int
 }
@@ -200,7 +202,7 @@ func (s *Store) PendingWhatsApp(ctx context.Context, limit int) ([]WhatsAppOutbo
 		       COALESCE((SELECT w.slug FROM webinars w
 		                  WHERE w.id = COALESCE(n.webinar_id,
 		                        (SELECT b.webinar_id FROM crm_broadcasts b WHERE b.id = n.broadcast_id))), ''),
-		       n.link_url
+		       n.link_url, COALESCE(n.registration_id::text, '')
 		  FROM notifications n
 		  JOIN crm_contacts c ON c.id = n.contact_id
 		  JOIN users u        ON u.id = c.host_id
@@ -243,7 +245,7 @@ func (s *Store) PendingWhatsApp(ctx context.Context, limit int) ([]WhatsAppOutbo
 		var m WhatsAppOutbound
 		if err := rows.Scan(&m.ID, &m.Kind, &m.HostID, &m.Token, &m.PhoneNumberID,
 			&m.ContactID, &m.Phone, &m.TemplateName, &m.TemplateLanguage,
-			&m.Params, &m.BroadcastID, &m.Attempts, &m.WebinarSlug, &m.LinkURL); err != nil {
+			&m.Params, &m.BroadcastID, &m.Attempts, &m.WebinarSlug, &m.LinkURL, &m.RegistrationID); err != nil {
 			return nil, err
 		}
 		if m.Params == nil {

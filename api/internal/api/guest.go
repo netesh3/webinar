@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
+	"github.com/netkumar/webcast/api/internal/zoom"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -88,9 +89,11 @@ func (s *Server) handleGuestJoin(w http.ResponseWriter, r *http.Request) {
 	 * behind an emailless registration row nobody can act on. joinAsAttendee still runs it —
 	 * this is not a substitute for the check, it is the same check, sooner.
 	 */
-	if b := s.audienceBarrier(wb); b != nil {
-		httpx.Error(w, b.status, b.code, b.message)
-		return
+	if !zoom.IsVenue(wb.Venue) {
+		if b := s.audienceBarrier(wb); b != nil {
+			httpx.Error(w, b.status, b.code, b.message)
+			return
+		}
 	}
 
 	/* Registration, checked before anything is created.
@@ -145,6 +148,7 @@ func (s *Server) handleGuestJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("guest registration", "webinar", slug)
+	s.pushZoomRegistrant(r.Context(), wb, reg.ID, "", name, "")
 
 	/* Hand straight to the shared join path.
 	 *

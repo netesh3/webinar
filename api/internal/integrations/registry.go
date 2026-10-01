@@ -14,8 +14,9 @@ type Registry struct {
 	byID  map[string]Provider
 }
 
-func New(st *store.Store, oauth bool, revoke YouTubeRevoke) *Registry {
+func New(st *store.Store, oauth bool, revoke YouTubeRevoke, zoom ZoomHooks) *Registry {
 	list := []Provider{
+		zoomProvider{hooks: zoom},
 		whatsappProvider(),
 		emailInboxProvider(st),
 		telegramProvider(),

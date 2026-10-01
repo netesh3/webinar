@@ -153,8 +153,8 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
     const pendingTab = openPendingRoomTab();
     setBusy(true);
     try {
-      await api.startWebinar(slug);
-      pendingTab.open(`/host/${slug}/room`);
+      const started = await api.startWebinar(slug);
+      pendingTab.open(started.zoomStartUrl || `/host/${slug}/room`);
       await load();
     } catch (e) {
       pendingTab.cancel();
@@ -248,6 +248,8 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   }
 
   const kind = kindLabel(webinar);
+  const isZoom =
+    webinar.venue === "zoom_meeting" || webinar.venue === "zoom_webinar";
   const isLive = webinar.status === "live";
   const isEnded = webinar.status === "ended";
   const isDraft = webinar.status === "draft";
@@ -276,6 +278,11 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
               </Badge>
             )}
           </div>
+          {isZoom && (
+            <p className="mb-2 text-[13px] text-ink-2">
+              This session runs in Zoom. Go live opens Zoom as the host. It ends in Zoom.
+            </p>
+          )}
           <h1 className="text-[20px] leading-snug font-semibold tracking-[-0.02em] sm:text-[22px]">
             {webinar.topic}
           </h1>
@@ -332,7 +339,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
                     },
                   ]
                 : []),
-              ...(isLive
+              ...(isLive && !isZoom
                 ? [
                     {
                       kind: "action" as const,
@@ -357,7 +364,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
           />
           {isDraft ? (
             <ButtonLink href={`/host/${slug}/edit`}>Finish setup</ButtonLink>
-          ) : isEnded ? null : isLive ? (
+          ) : isEnded ? null : isLive && !isZoom ? (
             <ButtonLink
               href={bypass ? "/preview/room" : `/host/${slug}/room`}
               target="_blank"

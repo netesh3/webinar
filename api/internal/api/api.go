@@ -24,6 +24,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/yt"
+	"github.com/netkumar/webcast/api/internal/zoom"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -119,6 +120,10 @@ type Server struct {
 	// youtube is nil when GOOGLE_CLIENT_SECRET is unset. Pasted stream keys
 	// still work; Connect YouTube and viaYouTube do not.
 	youtube *yt.Client
+	// zoom is nil when the Zoom env is incomplete. Connect then says so
+	// instead of sending the host to Zoom. zoomKey opens refresh tokens.
+	zoom    *zoom.Client
+	zoomKey []byte
 	// recordings is nil when recording is turned off for this instance, which the
 	// handlers check — an operator who disables it gets a clear 503 rather than a
 	// button that appears to work and drops the bytes.
@@ -181,11 +186,32 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		log.Info("youtube oauth enabled")
 	}
 
+	var zoomClient *zoom.Client
+	var zoomKey []byte
+	if cfg.ZoomEnabled() {
+		key, err := zoom.ParseKey(cfg.ZoomTokenKey)
+		if err != nil {
+			log.Warn("zoom disabled", "reason", "token key")
+		} else {
+			zoomClient = zoom.New(cfg.ZoomClientID, cfg.ZoomClientSecret)
+			if cfg.ZoomAPIURL != "" {
+				zoomClient.API = cfg.ZoomAPIURL
+			}
+			if cfg.ZoomOAuthURL != "" {
+				zoomClient.OAuth = cfg.ZoomOAuthURL
+			}
+			zoomKey = key
+			log.Info("zoom oauth enabled")
+		}
+	}
+
 	srv := &Server{
 		cfg:         cfg,
 		store:       st,
 		sfu:         sfu,
 		youtube:     youtube,
+		zoom:        zoomClient,
+		zoomKey:     zoomKey,
 		recordings:  rec,
 		sessions:    auth.NewSessions(cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure),
 		log:         log,
@@ -256,6 +282,7 @@ func (s *Server) Routes() http.Handler {
 		publicAPI := r
 		r.Get("/config", s.handleConfig)
 		r.Post("/webhooks/livekit", s.handleLiveKitWebhook)
+		r.Post("/webhooks/zoom", s.handleZoomWebhook)
 		/* The background job, run on request, for a deployment that scales to zero. Not
 		 * mounted without a secret. See tick.go. */
 		if s.cfg.TickSecret != "" {
@@ -410,6 +437,7 @@ func (s *Server) Routes() http.Handler {
 		})
 
 		r.Get("/host/youtube/callback", s.handleYouTubeCallback)
+		r.Get("/host/zoom/callback", s.handleZoomCallback)
 
 		r.Route("/host", func(r chi.Router) {
 			r.Use(s.requireUser)
@@ -460,6 +488,7 @@ func (s *Server) Routes() http.Handler {
 
 				r.Get("/youtube/connect", s.handleYouTubeConnect)
 				r.Delete("/youtube", s.handleYouTubeDisconnect)
+				r.Get("/zoom/connect", s.handleZoomConnect)
 
 				r.Get("/integrations", s.handleListIntegrations)
 				r.Post("/integrations/{id}/interest", s.handleIntegrationInterest)

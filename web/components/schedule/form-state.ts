@@ -75,6 +75,7 @@ export type FormState = {
   controls: SessionControls;
   streamKey: string;
   streamWatchUrl: string;
+  venue: "app" | "zoom_meeting" | "zoom_webinar";
 };
 
 export type SetForm = <K extends keyof FormState>(
@@ -160,6 +161,10 @@ export function initialState(
       controls: webinar.controls,
       streamKey: "",
       streamWatchUrl: webinar.streamWatchUrl ?? "",
+      venue:
+        webinar.venue === "zoom_meeting" || webinar.venue === "zoom_webinar"
+          ? webinar.venue
+          : "app",
     };
   }
 
@@ -231,5 +236,6 @@ export function initialState(
     },
     streamKey: "",
     streamWatchUrl: "",
+    venue: "app",
   };
 }

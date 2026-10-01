@@ -22,7 +22,17 @@ func (s *Module) publicBase() string {
 }
 
 // joinLink is one registrant's personal join link, or the webinar page without one.
+// A Zoom session uses that person's Zoom join_url when we have one.
 func (s *Module) joinLink(ctx context.Context, slug, registrationID string) string {
+	if registrationID != "" {
+		if u, err := s.store.RegistrationZoomJoin(ctx, registrationID); err == nil && u != "" {
+			return u
+		}
+	}
+	return s.roomLink(ctx, slug, registrationID)
+}
+
+func (s *Module) roomLink(ctx context.Context, slug, registrationID string) string {
 	base := s.publicBase() + "/webinars/" + slug
 	if registrationID == "" {
 		return base
@@ -58,6 +68,12 @@ func (s *Module) fillRich(ctx context.Context, out *wa.OutgoingTemplate, tmpl ty
 	}
 	if dynamic {
 		link := m.LinkURL
+		/* A Zoom join_url is not on this app's domain, and a WhatsApp button
+		 * can only extend the template's own URL. The room route redirects
+		 * this registrant to that same personal link. */
+		if link != "" && m.WebinarSlug != "" && !strings.HasPrefix(link, s.publicBase()) {
+			link = s.roomLink(ctx, m.WebinarSlug, m.RegistrationID)
+		}
 		if link == "" {
 			if wb == nil {
 				return "template " + tmpl.Name + " has a link button and this message is not about a webinar"

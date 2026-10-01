@@ -58,7 +58,8 @@ export function HostWebinarRows({
     // does have an await in front of it — see openPendingRoomTab's doc
     // comment for why that turns a same-tick window.open() into one Safari
     // silently blocks.
-    if (w.status === "live") {
+    const isZoom = w.venue === "zoom_meeting" || w.venue === "zoom_webinar";
+    if (w.status === "live" && !isZoom) {
       openRoomTab(`/host/${w.id}/room`);
       router.refresh();
       return;
@@ -66,8 +67,8 @@ export function HostWebinarRows({
     const pendingTab = openPendingRoomTab();
     setBusy(w.id);
     try {
-      await api.startWebinar(w.id);
-      pendingTab.open(`/host/${w.id}/room`);
+      const started = await api.startWebinar(w.id);
+      pendingTab.open(started.zoomStartUrl || `/host/${w.id}/room`);
       /* router.refresh(), not location.reload(): the tab opened a line above is
        * still an about:blank whose navigation was started by THIS document, and
        * tearing this document down in the same tick cancels it — the room tab

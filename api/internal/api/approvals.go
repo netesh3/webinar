@@ -135,7 +135,9 @@ func (s *Server) notifyDecisions(
 		var subject, bodyText string
 		switch state {
 		case types.RegApproved:
-			in.JoinURL = s.joinURLFor(ctx, slug, row.ID)
+			first, last := splitName(row.Name)
+			s.pushZoomRegistrant(ctx, wb, row.ID, row.Email, first, last)
+			in.JoinURL = s.messageJoinURL(ctx, wb, row.ID, "")
 			kind = types.NotifyRegistrationApproved
 			subject, bodyText = notify.RegistrationApproved(in)
 			s.enqueueApprovedInvite(ctx, wb, row.Email, row.Name, row.ID, in.JoinURL, types.NotifyRegistrationApproved)

@@ -508,7 +508,9 @@ export const api = {
     del<Webinar>(`/api/host/webinars/${seg(slug)}/image`),
 
   startWebinar: async (slug: string) => {
-    const webinar = await post<Webinar>(`/api/host/webinars/${seg(slug)}/start`);
+    const webinar = await post<Webinar & { zoomStartUrl?: string }>(
+      `/api/host/webinars/${seg(slug)}/start`,
+    );
     dropHostWebinarLists();
     return webinar;
   },
