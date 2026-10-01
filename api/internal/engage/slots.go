@@ -441,25 +441,39 @@ func ValidateMessageSlot(kind string, channels []string, timing types.MessageTim
 	return types.MessageSlot{Kind: kind, Channels: ch, Timing: tm, Params: ps}, nil
 }
 
-func (s *Module) checkSlotWording(w http.ResponseWriter, r *http.Request, user store.User, template, language string, params []string) bool {
+/* slotWordingNeedsCheck is true only when this save would start sending the
+ * wording, or would change which wording is sent. A time change, a channel
+ * change, turning the slot off, or saving it while it stays off must not ask
+ * Meta whether the old template still exists. */
+func slotWordingNeedsCheck(prev types.MessageSlot, enabled bool, template, language string) bool {
+	if !enabled {
+		return false
+	}
+	if !prev.Enabled {
+		return true
+	}
+	return strings.TrimSpace(prev.Template) != strings.TrimSpace(template) ||
+		strings.TrimSpace(prev.Language) != strings.TrimSpace(language)
+}
+
+func (s *Module) checkSlotWording(w http.ResponseWriter, r *http.Request, user store.User, template, language string, params []string) (types.CRMTemplate, bool) {
 	name := strings.TrimSpace(template)
 	if name == "" {
-		return true
+		return types.CRMTemplate{}, true
 	}
 	if user.WhatsAppToken == "" {
 		httpx.Error(w, http.StatusUnprocessableEntity, "whatsapp_not_connected",
 			"Connect your WhatsApp Business account before choosing templates.")
-		return false
+		return types.CRMTemplate{}, false
 	}
 	tmpl, err := s.templateForSend(r.Context(), user, name, language)
 	if errors.Is(err, store.ErrNotFound) {
-		httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_template",
-			"That template is not in your WhatsApp account. Refresh your templates and try again.")
-		return false
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_template", noTemplateMessage(name))
+		return types.CRMTemplate{}, false
 	}
 	if err != nil {
 		s.fail(w, r, "message slots: template", err)
-		return false
+		return types.CRMTemplate{}, false
 	}
 	if !tmpl.Sendable {
 		msg := tmpl.Unsupported
@@ -467,14 +481,14 @@ func (s *Module) checkSlotWording(w http.ResponseWriter, r *http.Request, user s
 			msg = "Meta has not approved that template yet — it is " + strings.ToLower(tmpl.Status) + "."
 		}
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", msg)
-		return false
+		return types.CRMTemplate{}, false
 	}
 	if len(params) != tmpl.Variables {
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_params",
 			"That template needs exactly "+strconv.Itoa(tmpl.Variables)+" value(s) filling in.")
-		return false
+		return types.CRMTemplate{}, false
 	}
-	return true
+	return tmpl, true
 }
 
 func writeSlotError(w http.ResponseWriter, err error) bool {
@@ -505,6 +519,11 @@ func (s *Module) handleSetMessageDefaults(w http.ResponseWriter, r *http.Request
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
+	current, err := s.ResolveDefaults(r.Context(), user.ID)
+	if err != nil {
+		s.fail(w, r, "message defaults: read", err)
+		return
+	}
 	seen := map[string]bool{}
 	for _, in := range body.Slots {
 		if seen[in.Kind] {
@@ -523,12 +542,20 @@ func (s *Module) handleSetMessageDefaults(w http.ResponseWriter, r *http.Request
 		norm.Template = strings.TrimSpace(in.Template)
 		norm.Language = strings.TrimSpace(in.Language)
 		norm.Enabled = in.Enabled
-		/* Off does not send. A template Meta no longer has must not block the
-		 * switch, and the wording stays so turning it back on can be checked
-		 * then. On, or a change while it stays on, still has to name a template
-		 * this account can send. */
-		if norm.Enabled && !s.checkSlotWording(w, r, user, norm.Template, norm.Language, norm.Params) {
-			return
+		prev, _ := types.FindSlot(current, norm.Kind)
+		/* The wording is checked when this save turns the slot on or picks a
+		 * different template. A time change on a slot that is already on, and
+		 * any save that leaves it off, keeps the old name even if Meta no
+		 * longer has it. */
+		if slotWordingNeedsCheck(prev, norm.Enabled, norm.Template, norm.Language) {
+			tmpl, ok := s.checkSlotWording(w, r, user, norm.Template, norm.Language, norm.Params)
+			if !ok {
+				return
+			}
+			if tmpl.Name != "" {
+				norm.Template = tmpl.Name
+				norm.Language = tmpl.Language
+			}
 		}
 		if err := s.store.UpsertMessageDefault(r.Context(), user.ID, norm); err != nil {
 			s.fail(w, r, "message defaults: save", err)
@@ -554,6 +581,11 @@ func (s *Module) handleSetWebinarMessages(w http.ResponseWriter, r *http.Request
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
+	current, err := s.ResolveSlots(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "webinar messages: read", err)
+		return
+	}
 	seen := map[string]bool{}
 	for _, in := range body.Slots {
 		kind := strings.TrimSpace(in.Kind)
@@ -566,6 +598,7 @@ func (s *Module) handleSetWebinarMessages(w http.ResponseWriter, r *http.Request
 			return
 		}
 		seen[kind] = true
+		prev, _ := types.FindSlot(current, kind)
 		patch := types.MessageSlotPatch{Kind: kind, Enabled: in.Enabled, Template: in.Template, Language: in.Language}
 		if in.Channels != nil {
 			ch, err := normalizeChannels(*in.Channels)
@@ -588,29 +621,36 @@ func (s *Module) handleSetWebinarMessages(w http.ResponseWriter, r *http.Request
 			}
 			patch.Params = &ps
 		}
+		enabled := prev.Enabled
+		if in.Enabled != nil {
+			enabled = *in.Enabled
+		}
+		template := prev.Template
 		if in.Template != nil {
-			lang := ""
-			if in.Language != nil {
-				lang = *in.Language
-			}
+			template = strings.TrimSpace(*in.Template)
+			patch.Template = &template
+		}
+		language := prev.Language
+		if in.Language != nil {
+			language = strings.TrimSpace(*in.Language)
+			patch.Language = &language
+		}
+		if slotWordingNeedsCheck(prev, enabled, template, language) {
 			ps := []string{}
 			if patch.Params != nil {
 				ps = *patch.Params
+			} else {
+				ps = prev.Params
 			}
-			/* Same rule as the account default: turning the slot off keeps the
-			 * wording without asking Meta whether that template still exists.
-			 * An omitted enabled flag is not "off" — a template change still
-			 * has to be one this account can send. */
-			turningOff := in.Enabled != nil && !*in.Enabled
-			if !turningOff && !s.checkSlotWording(w, r, user, *in.Template, lang, ps) {
+			tmpl, ok := s.checkSlotWording(w, r, user, template, language, ps)
+			if !ok {
 				return
 			}
-			name := strings.TrimSpace(*in.Template)
-			patch.Template = &name
-		}
-		if in.Language != nil {
-			lang := strings.TrimSpace(*in.Language)
-			patch.Language = &lang
+			if tmpl.Name != "" {
+				name, lang := tmpl.Name, tmpl.Language
+				patch.Template = &name
+				patch.Language = &lang
+			}
 		}
 		if err := s.store.UpsertWebinarMessage(r.Context(), slug, patch); err != nil {
 			s.fail(w, r, "webinar messages: save", err)

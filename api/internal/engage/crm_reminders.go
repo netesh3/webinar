@@ -152,8 +152,7 @@ func (s *Module) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
 
 		tmpl, err := s.templateForSend(r.Context(), user, name, want.Language)
 		if errors.Is(err, store.ErrNotFound) {
-			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_template",
-				"That template is not in your WhatsApp account. Refresh your templates and try again.")
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_template", noTemplateMessage(name))
 			return
 		}
 		if err != nil {

@@ -465,8 +465,7 @@ func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
 	} else {
 		tmpl, err := s.templateForSend(r.Context(), user, name, body.Language)
 		if errors.Is(err, store.ErrNotFound) {
-			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_template",
-				"That template is not in your WhatsApp account. Refresh your templates and try again.")
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_template", noTemplateMessage(name))
 			return
 		}
 		if err != nil {
@@ -547,7 +546,7 @@ func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
  * cost a Graph call on every attempt.
  */
 func (s *Module) templateForSend(ctx context.Context, user store.User, name, language string) (types.CRMTemplate, error) {
-	tmpl, err := s.store.Template(ctx, user.ID, name, language)
+	tmpl, err := s.findTemplate(ctx, user.ID, name, language)
 	if !errors.Is(err, store.ErrNotFound) {
 		return tmpl, err
 	}
@@ -555,7 +554,79 @@ func (s *Module) templateForSend(ctx context.Context, user store.User, name, lan
 		s.log.Warn("crm send: template sync", "error", serr, "host", user.ID)
 		return types.CRMTemplate{}, err
 	}
-	return s.store.Template(ctx, user.ID, name, language)
+	return s.findTemplate(ctx, user.ID, name, language)
+}
+
+/* findTemplate is an exact name and language, then the same template under a
+ * spelling Meta actually stored: different capitalisation, "en" against "en_US",
+ * or a blank language when this account has that name only once. */
+func (s *Module) findTemplate(ctx context.Context, hostID, name, language string) (types.CRMTemplate, error) {
+	tmpl, err := s.store.Template(ctx, hostID, name, language)
+	if err == nil || !errors.Is(err, store.ErrNotFound) {
+		return tmpl, err
+	}
+	all, _, err := s.store.Templates(ctx, hostID)
+	if err != nil {
+		return types.CRMTemplate{}, err
+	}
+	return pickTemplate(all, name, language)
+}
+
+func noTemplateMessage(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "That template is not in your WhatsApp account. Refresh your templates and try again."
+	}
+	return `"` + name + `" is not in your WhatsApp account. Refresh your templates and try again.`
+}
+
+func pickTemplate(list []types.CRMTemplate, name, language string) (types.CRMTemplate, error) {
+	name = strings.TrimSpace(name)
+	language = canonLang(language)
+	var same []types.CRMTemplate
+	for _, t := range list {
+		if !strings.EqualFold(strings.TrimSpace(t.Name), name) {
+			continue
+		}
+		same = append(same, t)
+		if canonLang(t.Language) == language && language != "" {
+			return t, nil
+		}
+	}
+	if len(same) == 0 {
+		return types.CRMTemplate{}, store.ErrNotFound
+	}
+	if language == "" && len(same) == 1 {
+		return same[0], nil
+	}
+	var family []types.CRMTemplate
+	for _, t := range same {
+		if sameLanguage(t.Language, language) {
+			family = append(family, t)
+		}
+	}
+	if len(family) == 1 {
+		return family[0], nil
+	}
+	return types.CRMTemplate{}, store.ErrNotFound
+}
+
+func canonLang(s string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), "-", "_"))
+}
+
+/* sameLanguage is true when the codes are the same, or one is the base of the
+ * other (en and en_US). en_US and en_GB are not the same: both exist, and
+ * picking one would send the wrong translation. */
+func sameLanguage(stored, want string) bool {
+	a, b := canonLang(stored), canonLang(want)
+	if a == "" || b == "" {
+		return false
+	}
+	if a == b {
+		return true
+	}
+	return strings.HasPrefix(a, b+"_") || strings.HasPrefix(b, a+"_")
 }
 
 /* reportSendError turns a Graph failure into something the host can act on.

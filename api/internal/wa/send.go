@@ -1,7 +1,9 @@
 package wa
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -168,11 +170,42 @@ type templateList struct {
 	} `json:"paging"`
 }
 
+/* graphLanguage is Meta's language field.
+ *
+ * The list endpoint usually sends a code ("en_US"). Some responses send the
+ * same code as an object ({"code":"en_US"}), which a plain string would reject
+ * and which would drop the whole page of templates. */
+type graphLanguage string
+
+func (g *graphLanguage) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || string(data) == "null" {
+		*g = ""
+		return nil
+	}
+	if data[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*g = graphLanguage(s)
+		return nil
+	}
+	var obj struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	*g = graphLanguage(obj.Code)
+	return nil
+}
+
 type graphTemplate struct {
-	Name       string `json:"name"`
-	Language   string `json:"language"`
-	Status     string `json:"status"`
-	Category   string `json:"category"`
+	Name       string        `json:"name"`
+	Language   graphLanguage `json:"language"`
+	Status     string        `json:"status"`
+	Category   string        `json:"category"`
 	Components []struct {
 		Type   string `json:"type"`
 		Format string `json:"format"`
@@ -197,7 +230,7 @@ type graphTemplate struct {
 func readTemplate(t graphTemplate) Template {
 	out := Template{
 		Name:     strings.TrimSpace(t.Name),
-		Language: strings.TrimSpace(t.Language),
+		Language: strings.TrimSpace(string(t.Language)),
 		Status:   strings.ToUpper(strings.TrimSpace(t.Status)),
 		Category: strings.ToUpper(strings.TrimSpace(t.Category)),
 	}

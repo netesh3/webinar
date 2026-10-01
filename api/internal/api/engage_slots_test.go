@@ -474,7 +474,8 @@ func TestTurningASlotOffIgnoresAMissingTemplate(t *testing.T) {
 		Slots: []types.MessageSlot{reminderDefault(true)},
 	})
 	if res.StatusCode != http.StatusUnprocessableEntity || errorCode(t, raw) != "crm_no_template" ||
-		!strings.Contains(string(raw), "That template is not in your WhatsApp account") {
+		!strings.Contains(string(raw), testTemplateUtility) ||
+		!strings.Contains(string(raw), "not in your WhatsApp account") {
 		t.Fatalf("enable missing template: status %d code %q body %s", res.StatusCode, errorCode(t, raw), raw)
 	}
 	still := slotOf(t, getDefaults(t, h), types.SlotReminder)
@@ -506,5 +507,72 @@ func TestTurningASlotOffIgnoresAMissingTemplate(t *testing.T) {
 	back := slotOf(t, getDefaults(t, h), types.SlotReminder)
 	if !back.Enabled || back.Template != testTemplateMarketing {
 		t.Fatalf("valid template did not turn on: %+v", back)
+	}
+}
+
+/* A time change sends the whole slot, including a template Meta has since
+ * deleted. The time is not the wording, so the save has to land and the old
+ * name has to stay. Picking a different missing name is still refused, and the
+ * refusal names it. */
+func TestChangingTheTimeKeepsAMissingTemplate(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+	wb := remindersWebinar(t, h, "Move the time", true)
+	putDefaults(t, h, reminderDefault(true))
+	putWebinarSlots(t, h, wb.ID, reminderOverride(true))
+
+	var kept []map[string]any
+	for _, tmpl := range defaultFakeTemplates() {
+		if tmpl["name"] != testTemplateUtility {
+			kept = append(kept, tmpl)
+		}
+	}
+	g.setTemplates(kept)
+	crmTemplates(t, h, "?refresh=1")
+
+	moved := reminderDefault(true)
+	moved.Timing.Minutes = []int{15}
+	saved := putDefaults(t, h, moved)
+	rem := slotOf(t, saved, types.SlotReminder)
+	if !rem.Enabled || rem.Template != testTemplateUtility || len(rem.Timing.Minutes) != 1 || rem.Timing.Minutes[0] != 15 {
+		t.Fatalf("time change = %+v, want 15 minutes, still on, wording kept", rem)
+	}
+
+	overIn := reminderOverride(true)
+	overIn.Timing.Minutes = []int{15}
+	over := slotOf(t, putWebinarSlots(t, h, wb.ID, overIn), types.SlotReminder)
+	if !over.Enabled || over.Template != testTemplateUtility || over.Timing.Minutes[0] != 15 {
+		t.Fatalf("webinar time change = %+v", over)
+	}
+
+	gone := "retired_wording"
+	moved.Template = gone
+	res, raw := h.do(http.MethodPut, "/api/host/crm/message-defaults", types.MessageDefaultsRequest{
+		Slots: []types.MessageSlot{moved},
+	})
+	if res.StatusCode != http.StatusUnprocessableEntity || errorCode(t, raw) != "crm_no_template" ||
+		!strings.Contains(string(raw), gone) {
+		t.Fatalf("new wording: status %d code %q body %s", res.StatusCode, errorCode(t, raw), raw)
+	}
+	still := slotOf(t, getDefaults(t, h), types.SlotReminder)
+	if still.Template != testTemplateUtility || still.Timing.Minutes[0] != 15 {
+		t.Fatalf("refused wording change altered the slot: %+v", still)
+	}
+}
+
+/* Meta stores en_US. A save that says "en" is the same template, not a missing one. */
+func TestTemplateLanguageFamilyStillCounts(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+	slot := reminderDefault(true)
+	slot.Language = "en"
+	saved := putDefaults(t, h, slot)
+	rem := slotOf(t, saved, types.SlotReminder)
+	if !rem.Enabled || rem.Template != testTemplateUtility || rem.Language != "en_US" {
+		t.Fatalf("language family = %+v, want the en_US template", rem)
 	}
 }
