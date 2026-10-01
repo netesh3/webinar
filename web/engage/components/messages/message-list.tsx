@@ -33,7 +33,8 @@ function ruleCopy(recipe: CRMRecipe): { title: string; then: string } {
       then: first.reply ? `send ${first.reply}` : "send your reply",
     };
   }
-  const steps = recipe.flow.filter((_, index) => index % 2 === 1);
+  // A tagging rule has no keyword flow. Reading flow here throws.
+  const steps = (recipe.flow ?? []).filter((_, index) => index % 2 === 1);
   return {
     title: "When someone sends a keyword",
     then: steps.join(" · ") || "reply automatically",

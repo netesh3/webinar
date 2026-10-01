@@ -16,6 +16,7 @@ import { Alert, Spinner } from "@/components/controls";
 import { useSession, useToast } from "@/components/providers";
 import { ApiError } from "@/lib/api";
 import {
+  RecipeHotLeads,
   SlotReminder,
   type CRMMergeField,
   type CRMRecipe,
@@ -307,6 +308,12 @@ export const ScheduleMessagesTab = forwardRef<
 
   function select(kind: string) {
     setSelected(kind);
+    const recipe = automations.find((item) => item.id === automation);
+    // The hot-lead query has no editor. Leaving it set keeps that panel up,
+    // so the message just clicked would not appear.
+    if (recipe?.kind === "hot_leads" || automation === RecipeHotLeads) {
+      onAutomationClose?.();
+    }
     const slot = slots?.find((item) => item.kind === kind);
     if (unconfigured(slot)) {
       requestAnimationFrame(() => {
@@ -328,6 +335,12 @@ export const ScheduleMessagesTab = forwardRef<
 
   const slot = slots.find((item) => item.kind === selected) ?? slots[0];
   const openRecipe = automations.find((recipe) => recipe.id === automation);
+  // hot_leads is a tagging rule. It is not a keyword recipe — KeywordsDialog
+  // reads keywords — and not a message id — the pane reads a slot's timing.
+  // Either assumption throws, or the previous message stays on screen.
+  const hotLeadOpen =
+    openRecipe?.kind === "hot_leads" ||
+    (automation === RecipeHotLeads && openRecipe?.kind !== "keywords");
   const when = webinar?.startsAt
     ? whenText(webinar.startsAt, webinar.timeZone)
     : "";
@@ -360,7 +373,7 @@ export const ScheduleMessagesTab = forwardRef<
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(17rem,0.9fr)]">
       <MessageList
         slots={slots}
-        selected={slot?.kind ?? selected}
+        selected={hotLeadOpen ? "" : (slot?.kind ?? selected)}
         automations={automations}
         activeAutomation={automation}
         onSelect={select}
@@ -374,7 +387,10 @@ export const ScheduleMessagesTab = forwardRef<
         }}
         onToggleAutomation={(recipe, on) => void toggleAutomation(recipe, on)}
       />
-      {slot && (
+      {hotLeadOpen ? (
+        <HotLeadPanel recipe={openRecipe?.kind === "hot_leads" ? openRecipe : undefined} />
+      ) : (
+        slot && (
         <MessagePane
           key={slot.kind}
           slot={slot}
@@ -393,6 +409,7 @@ export const ScheduleMessagesTab = forwardRef<
           }}
           onWriteOwn={() => setWriting(true)}
         />
+        )
       )}
       {writing &&
         createPortal(
@@ -431,6 +448,37 @@ export const ScheduleMessagesTab = forwardRef<
     </div>
   );
 });
+
+/* The hot-lead rule has no editor. The pane names the rule and what it tags.
+ * No switch and no save — the row's own toggle is the only control. */
+function HotLeadPanel({ recipe }: { recipe?: CRMRecipe }) {
+  const words = (recipe?.words ?? [])
+    .map((word) => word.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  const listed = words.length > 0 ? words.join(", ") : "price, fee, cost";
+  const mention =
+    words.length === 0
+      ? "price, fee, or cost"
+      : words.length === 1
+        ? words[0]
+        : words.length === 2
+          ? `${words[0]} or ${words[1]}`
+          : `${words.slice(0, -1).join(", ")}, or ${words[words.length - 1]}`;
+  const title = words.length
+    ? `When a reply mentions ${listed}`
+    : recipe?.title.trim() || "When a reply mentions price, fee, cost";
+
+  return (
+    <aside className="grid min-w-0 content-start gap-2 rounded-xl border border-line bg-surface p-3.5">
+      <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
+      <p className="text-[13px] text-ink-2">tag Hot lead</p>
+      <p className="text-[13px] leading-relaxed text-ink-2">
+        Tags a reply that mentions {mention} as a hot lead.
+      </p>
+    </aside>
+  );
+}
 
 /* The server's "when" format — notify.LocalTime: "14:00 on 14 October 2026 IST". */
 function whenText(at: Date, timeZone: string): string {
