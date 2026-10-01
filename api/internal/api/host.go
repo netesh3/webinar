@@ -200,6 +200,11 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		httpx.Fields(w, venueFields)
 		return
 	}
+	if errors.Is(err, errZoomFeatureOff) {
+		httpx.Error(w, http.StatusForbidden, "feature_off",
+			featureLabel(types.FeatureZoom)+" isn't switched on for this account.")
+		return
+	}
 	if err != nil {
 		if zoomWriteErr(w, err) {
 			s.log.Warn("zoom create", "host", user.ID, "status", zoomStatus(err))
@@ -323,6 +328,11 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	savedZoom, venueFields, err := s.resolveZoom(r.Context(), hostID, slug, &in)
 	if len(venueFields) > 0 {
 		httpx.Fields(w, venueFields)
+		return
+	}
+	if errors.Is(err, errZoomFeatureOff) {
+		httpx.Error(w, http.StatusForbidden, "feature_off",
+			featureLabel(types.FeatureZoom)+" isn't switched on for this account.")
 		return
 	}
 	if err != nil {

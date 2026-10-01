@@ -20,6 +20,11 @@ import (
 
 const zoomStateCookie = "webcast_zoom"
 
+/* errZoomFeatureOff is a host asking Zoom to do something this account has
+ * not been allowed to do. The HTTP handlers answer 403 feature_off. A hidden
+ * card is not the control. */
+var errZoomFeatureOff = errors.New("zoom feature off")
+
 type zoomState struct {
 	jwt.RegisteredClaims
 	Return string `json:"return"`
@@ -68,11 +73,14 @@ func (s *Server) zoomHooks() integrations.ZoomHooks {
 }
 
 func (s *Server) handleZoomConnect(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r.Context())
+	if !s.featureAllowed(w, user, types.FeatureZoom) {
+		return
+	}
 	if !s.zoomOn() {
 		httpx.Error(w, http.StatusServiceUnavailable, "zoom_not_configured", "Zoom is not configured.")
 		return
 	}
-	user := userFromContext(r.Context())
 	ret := safeReturnPath(r.URL.Query().Get("return"))
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, zoomState{
@@ -136,6 +144,10 @@ func (s *Server) handleZoomCallback(w http.ResponseWriter, r *http.Request) {
 	ret = safeReturnPath(st.Return)
 	user, err := s.sessionUser(r)
 	if err != nil || user.ID != st.Subject {
+		fail("error")
+		return
+	}
+	if !user.HasFeature(types.FeatureZoom) {
 		fail("error")
 		return
 	}
@@ -286,6 +298,15 @@ func (s *Server) resolveZoom(ctx context.Context, hostID, slug string, in *types
 	if !zoom.IsVenue(in.Venue) && !zoom.IsVenue(prev.Venue) {
 		return zoom.Saved{Venue: zoom.VenueApp}, nil, nil
 	}
+	/* The switch is the host's, not whoever pressed save. Off refuses a Zoom
+	 * venue and, when the save is leaving Zoom, drops it locally without
+	 * calling Zoom. */
+	if hostID != "" && !s.hostHasZoom(ctx, hostID) {
+		if zoom.IsVenue(in.Venue) {
+			return zoom.Saved{}, nil, errZoomFeatureOff
+		}
+		return zoom.Saved{Venue: zoom.VenueApp}, nil, nil
+	}
 	flow := s.zoomFlow()
 	if zoom.IsVenue(in.Venue) && flow == nil {
 		return zoom.Saved{}, map[string]string{"venue": "Zoom is not configured."}, nil
@@ -321,6 +342,11 @@ func (s *Server) pushZoomRegistrant(ctx context.Context, wb types.Webinar, regID
 	if !zoom.IsVenue(wb.Venue) || wb.ZoomID == "" || regID == "" {
 		return
 	}
+	/* Registration still succeeds in this app. Zoom is not told about the
+	 * person when the host's switch is off — the same refusal as connect. */
+	if !s.hostHasZoom(ctx, wb.Host.ID) {
+		return
+	}
 	flow := s.zoomFlow()
 	if flow == nil {
 		_ = s.store.SaveZoomRegistrant(ctx, regID, "", "", "Zoom is not configured, so this person has no Zoom link.")
@@ -332,6 +358,9 @@ func (s *Server) pushZoomRegistrant(ctx context.Context, wb types.Webinar, regID
 }
 
 func (s *Server) zoomGoLive(w http.ResponseWriter, r *http.Request, wb types.Webinar) {
+	if !s.requireHostFeature(w, r, wb.Host.ID, types.FeatureZoom) {
+		return
+	}
 	flow := s.zoomFlow()
 	if flow == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "zoom_not_configured", "Zoom is not configured.")
@@ -364,6 +393,18 @@ func (s *Server) joinZoomAttendee(w http.ResponseWriter, r *http.Request, wb typ
 		return
 	}
 	httpx.JSON(w, http.StatusOK, types.JoinResponse{ZoomJoinURL: u, Topic: wb.Topic})
+}
+
+func (s *Server) hostHasZoom(ctx context.Context, hostID string) bool {
+	if hostID == "" {
+		return false
+	}
+	host, err := s.store.UserByID(ctx, hostID)
+	if err != nil {
+		s.log.Warn("zoom feature: load host", "host", hostID, "error", err)
+		return false
+	}
+	return host.HasFeature(types.FeatureZoom)
 }
 
 func zoomWriteErr(w http.ResponseWriter, err error) bool {

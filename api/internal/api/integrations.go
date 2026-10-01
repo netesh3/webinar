@@ -37,6 +37,9 @@ func (s *Server) handleIntegrationInterest(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleIntegrationDisconnect(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
 	id := chi.URLParam(r, "id")
+	if id == "zoom" && !s.featureAllowed(w, user, types.FeatureZoom) {
+		return
+	}
 	if err := s.integrationRegistry().Disconnect(r.Context(), user, id); err != nil {
 		s.integrationError(w, r, err)
 		return

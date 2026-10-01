@@ -60,6 +60,12 @@ func (r *Registry) List(ctx context.Context, user store.User) ([]types.Integrati
 		if err != nil {
 			return nil, err
 		}
+		/* Zoom is one of the per-account switches (types.FeatureZoom), the
+		 * same list as the others. Absent means this account does not have
+		 * the card. The other cards are not that switch. */
+		if card.ID == "zoom" && !user.HasFeature(types.FeatureZoom) {
+			continue
+		}
 		if asked[card.ID] {
 			card.Interested = true
 			kept := make([]types.IntegrationAction, 0, len(card.Actions))

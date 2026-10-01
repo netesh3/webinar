@@ -83,15 +83,15 @@ func (p zoomProvider) Status(ctx context.Context, user store.User) (types.Integr
 	return c, nil
 }
 
-func (p zoomProvider) ConnectURL(context.Context, store.User) (string, error) {
-	if !p.hooks.Configured {
+func (p zoomProvider) ConnectURL(_ context.Context, user store.User) (string, error) {
+	if !user.HasFeature(types.FeatureZoom) || !p.hooks.Configured {
 		return "", nil
 	}
 	return "/api/host/zoom/connect?return=" + url.QueryEscape(zoomReturn), nil
 }
 
 func (p zoomProvider) Disconnect(ctx context.Context, user store.User) error {
-	if p.hooks.Disconnect == nil {
+	if !user.HasFeature(types.FeatureZoom) || p.hooks.Disconnect == nil {
 		return ErrUnavailable
 	}
 	return p.hooks.Disconnect(ctx, user)
