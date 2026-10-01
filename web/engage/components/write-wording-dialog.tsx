@@ -174,7 +174,7 @@ export function WriteWordingDialog({
         <Alert tone="info">
           {ready
             ? "These starters are approved. Use one on this message, or type your own wording below. Meta reviews new wording, usually in minutes."
-            : "Meta approves every message before it can be sent, usually in minutes. Submit a starter to use it, or type your own wording below."}
+            : "Meta approves every message before it can be sent, usually in minutes."}
         </Alert>
         <StarterTemplates
           connected={connected}
@@ -189,13 +189,7 @@ export function WriteWordingDialog({
             void submitOwn();
           }}
         >
-          <div>
-            <h3 className="text-[15px] font-semibold">Write your own</h3>
-            <p className="mt-0.5 text-[12.5px] text-ink-2">
-              Type the message. Use {"{{1}}"}, {"{{2}}"} for the parts that change,
-              such as a name or the webinar.
-            </p>
-          </div>
+          <h3 className="text-[15px] font-semibold">Write your own</h3>
           <textarea
             className="field min-h-24 resize-y py-2"
             value={draft}

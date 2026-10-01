@@ -1,6 +1,8 @@
 package store
 
 import (
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -60,32 +62,147 @@ func TestGroupEmailThreadsUsesRowID(t *testing.T) {
 	}
 }
 
-func TestEmailThreadPagesDoNotRepeat(t *testing.T) {
-	threads := make([][]HostEmail, 30)
-	for i := range threads {
-		id := fmt.Sprintf("m%02d", i)
-		threads[i] = []HostEmail{{ID: id, ThreadID: id}}
-	}
-	page1, total, page := pageEmailThreads(threads, 1)
-	page2, _, pageOut := pageEmailThreads(threads, 2)
-	if total != 30 || page != 1 || pageOut != 2 || len(page1) != EmailInboxPageSize || len(page2) != 5 {
-		t.Fatalf("page1=%d page2=%d total=%d page numbers %d %d", len(page1), len(page2), total, page, pageOut)
-	}
+func conversationIDs(msgs []HostEmail) []string {
+	var out []string
 	seen := map[string]bool{}
-	for _, m := range page1 {
-		seen[m.ID] = true
+	for _, m := range msgs {
+		id := m.ThreadID
+		if id == "" {
+			id = m.ID
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
 	}
-	for _, m := range page2 {
-		if seen[m.ID] {
-			t.Fatalf("page 2 repeats %s", m.ID)
+	return out
+}
+
+func datedThreads(n int) [][]HostEmail {
+	base := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	msgs := make([]HostEmail, n)
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("m%03d", i)
+		msgs[i] = HostEmail{ID: id, CreatedAt: base.Add(time.Duration(i) * time.Minute)}
+	}
+	return groupEmailThreads(msgs)
+}
+
+func TestEmailThreadCursorPages(t *testing.T) {
+	threads := datedThreads(12)
+	page1, err := pageEmailThreads(threads, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page1.Total != 12 || page1.NextCursor == "" {
+		t.Fatalf("first page total=%d cursor=%q", page1.Total, page1.NextCursor)
+	}
+	got1 := conversationIDs(page1.Messages)
+	if len(got1) != EmailInboxPageSize || got1[0] != "m011" || got1[4] != "m007" {
+		t.Fatalf("first page = %v, want the 5 newest", got1)
+	}
+
+	page2, err := pageEmailThreads(threads, EmailInboxPageSize, page1.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got2 := conversationIDs(page2.Messages)
+	if len(got2) != 5 || got2[0] != "m006" || got2[4] != "m002" || page2.NextCursor == "" {
+		t.Fatalf("second page = %v cursor=%q", got2, page2.NextCursor)
+	}
+	for _, id := range got2 {
+		for _, prev := range got1 {
+			if id == prev {
+				t.Fatalf("page 2 repeats %s", id)
+			}
 		}
 	}
-	empty, total0, page0 := pageEmailThreads(nil, 5)
-	if len(empty) != 0 || total0 != 0 || page0 != 1 {
-		t.Fatalf("empty page = %d messages, total %d, page %d", len(empty), total0, page0)
+
+	page3, err := pageEmailThreads(threads, EmailInboxPageSize, page2.NextCursor)
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, _, clamped := pageEmailThreads(threads, 9)
-	if clamped != 2 {
-		t.Fatalf("page past the end = %d, want the last page", clamped)
+	got3 := conversationIDs(page3.Messages)
+	if len(got3) != 2 || got3[0] != "m001" || got3[1] != "m000" || page3.NextCursor != "" {
+		t.Fatalf("last page = %v cursor=%q, want m001 m000 and no nextCursor", got3, page3.NextCursor)
+	}
+
+	empty, err := pageEmailThreads(nil, 5, "")
+	if err != nil || len(empty.Messages) != 0 || empty.Total != 0 || empty.NextCursor != "" {
+		t.Fatalf("empty page = %+v err=%v", empty, err)
+	}
+
+	wide, err := pageEmailThreads(datedThreads(60), 1000, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conversationIDs(wide.Messages)) != EmailInboxMaxPage || wide.NextCursor == "" {
+		t.Fatalf("cap = %d cursor=%q, want %d and a next cursor", len(conversationIDs(wide.Messages)), wide.NextCursor, EmailInboxMaxPage)
+	}
+}
+
+// Same timestamp on the page boundary must not drop or repeat a row. A cursor
+// that only stored the time would either skip the rest or hand them back again.
+func TestEmailThreadCursorTiebreaker(t *testing.T) {
+	at := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	var msgs []HostEmail
+	for _, id := range []string{"a", "b", "c", "d", "e", "f", "g"} {
+		msgs = append(msgs, HostEmail{ID: id, CreatedAt: at})
+	}
+	threads := groupEmailThreads(msgs)
+	page1, err := pageEmailThreads(threads, 5, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page2, err := pageEmailThreads(threads, 5, page1.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := append(conversationIDs(page1.Messages), conversationIDs(page2.Messages)...)
+	want := []string{"g", "f", "e", "d", "c", "b", "a"}
+	if len(got) != len(want) || page2.NextCursor != "" {
+		t.Fatalf("pages = %v next=%q, want %v and no further page", got, page2.NextCursor, want)
+	}
+	seen := map[string]bool{}
+	for i, id := range got {
+		if id != want[i] || seen[id] {
+			t.Fatalf("order = %v, want %v", got, want)
+		}
+		seen[id] = true
+	}
+
+	// A letter newer than the cursor belongs on the first page. Asking for the
+	// next page with the old cursor still starts where it did.
+	newer := []HostEmail{{ID: "z", CreatedAt: at.Add(time.Minute)}}
+	again, err := pageEmailThreads(groupEmailThreads(append(newer, msgs...)), 5, page1.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rest := conversationIDs(again.Messages)
+	if len(rest) != 2 || rest[0] != "b" || rest[1] != "a" {
+		t.Fatalf("after a newer letter, page 2 = %v, want b a", rest)
+	}
+}
+
+// The handler maps ErrInvalid from a bad cursor to HTTP 400.
+func TestEmailThreadCursorRejectsMalformed(t *testing.T) {
+	bad := []string{
+		"%%%",
+		"not-a-cursor",
+		base64.RawURLEncoding.EncodeToString([]byte("{}")),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"at":0,"id":"x"}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"id":"abc"}`)),
+		base64.RawURLEncoding.EncodeToString([]byte("[]")),
+		base64.RawURLEncoding.EncodeToString([]byte("null")),
+	}
+	for _, cursor := range bad {
+		_, err := pageEmailThreads(nil, 5, cursor)
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("cursor %q err = %v, want ErrInvalid", cursor, err)
+		}
+	}
+	if _, err := pageEmailThreads(nil, 5, "   "); err != nil {
+		t.Fatalf("blank cursor err = %v", err)
 	}
 }

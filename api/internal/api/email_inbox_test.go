@@ -2,9 +2,11 @@ package api_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -18,21 +20,20 @@ import (
 const inboxTestSecret = "inbox-test-secret"
 
 type inboxBody struct {
-	Address   string `json:"address"`
-	Local     string `json:"local"`
-	CanRename bool   `json:"canRename"`
-	Alias     string `json:"alias"`
-	Page      int    `json:"page"`
-	PageSize  int    `json:"pageSize"`
-	Total     int    `json:"total"`
-	Messages  []struct {
+	Address    string  `json:"address"`
+	Local      string  `json:"local"`
+	CanRename  bool    `json:"canRename"`
+	Alias      string  `json:"alias"`
+	Total      int     `json:"total"`
+	NextCursor *string `json:"nextCursor"`
+	Messages   []struct {
 		ID        string `json:"id"`
 		Direction string `json:"direction"`
 		From      string `json:"from"`
 		Subject   string `json:"subject"`
 		Body      string `json:"body"`
 		ThreadID  string `json:"threadId"`
-	} `json:"messages"`
+	} `json:"items"`
 }
 
 type captureMail struct{ msgs []notify.Message }
@@ -388,46 +389,64 @@ func TestEmailInboxPagesAreHostScoped(t *testing.T) {
 		}
 	}
 
-	load := func(page string) inboxBody {
+	load := func(cursor string) inboxBody {
 		t.Helper()
-		res, raw := h.do(http.MethodGet, "/api/host/email-inbox?page="+page, nil)
+		path := "/api/host/email-inbox"
+		if cursor != "" {
+			path += "?cursor=" + url.QueryEscape(cursor)
+		}
+		res, raw := h.do(http.MethodGet, path, nil)
 		if res.StatusCode != http.StatusOK {
-			t.Fatalf("page %s: %d %s", page, res.StatusCode, raw)
+			t.Fatalf("cursor %q: %d %s", cursor, res.StatusCode, raw)
 		}
 		var inbox inboxBody
 		h.decode(raw, &inbox)
 		return inbox
 	}
-	page1 := load("1")
-	page2 := load("2")
-	if page1.Page != 1 || page2.Page != 2 || page1.Total != 26 || page2.Total != 26 {
-		t.Fatalf("pages: %+v / %+v", page1.Page, page2.Page)
+	nextOf := func(inbox inboxBody) string {
+		t.Helper()
+		if inbox.NextCursor == nil {
+			return ""
+		}
+		return *inbox.NextCursor
 	}
-	if page1.PageSize != 25 || len(page1.Messages) != 25 || len(page2.Messages) != 1 {
-		t.Fatalf("sizes page1=%d page2=%d pageSize=%d", len(page1.Messages), len(page2.Messages), page1.PageSize)
+
+	page1 := load("")
+	if page1.Total != 26 || len(page1.Messages) != 5 || nextOf(page1) == "" {
+		t.Fatalf("first page total=%d rows=%d next=%q", page1.Total, len(page1.Messages), nextOf(page1))
+	}
+	if page1.Messages[0].Subject != "Letter 25" || page1.Messages[4].Subject != "Letter 21" {
+		t.Fatalf("first page subjects start %s end %s", page1.Messages[0].Subject, page1.Messages[4].Subject)
 	}
 	seen := map[string]bool{}
 	for _, m := range page1.Messages {
 		seen[m.ID] = true
 		if m.ThreadID == "" {
-			t.Fatalf("page 1 row missing thread id: %+v", m)
+			t.Fatalf("row missing thread id: %+v", m)
 		}
 	}
-	for _, m := range page2.Messages {
-		if seen[m.ID] {
-			t.Fatalf("page 2 repeats %s (%s)", m.ID, m.Subject)
+	cursor := nextOf(page1)
+	var last inboxBody
+	for page := 2; page <= 8; page++ {
+		last = load(cursor)
+		if last.Total != 26 {
+			t.Fatalf("page %d total = %d", page, last.Total)
+		}
+		for _, m := range last.Messages {
+			if seen[m.ID] {
+				t.Fatalf("page %d repeats %s (%s)", page, m.ID, m.Subject)
+			}
+			seen[m.ID] = true
+		}
+		cursor = nextOf(last)
+		if cursor == "" {
+			break
 		}
 	}
-	subjects1 := map[string]bool{}
-	for _, m := range page1.Messages {
-		subjects1[m.Subject] = true
+	if cursor != "" || len(seen) != 26 || len(last.Messages) != 1 || last.Messages[0].Subject != "Letter 00" {
+		t.Fatalf("walked %d rows, last=%d %q next=%q", len(seen), len(last.Messages), subjectOf(last), cursor)
 	}
-	if !subjects1["Letter 25"] || subjects1["Letter 00"] {
-		t.Fatalf("page 1 subjects = %+v", subjects1)
-	}
-	if page2.Messages[0].Subject != "Letter 00" {
-		t.Fatalf("last page = %s", page2.Messages[0].Subject)
-	}
+	hostACursor := nextOf(page1)
 
 	h.logout()
 	b := h.signup("Host B", "pages-b@example.com", true)
@@ -442,17 +461,43 @@ func TestEmailInboxPagesAreHostScoped(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, page := range []string{"1", "2"} {
-		inbox := load(page)
+	for _, cursor := range []string{"", hostACursor} {
+		inbox := load(cursor)
 		for _, m := range inbox.Messages {
 			if strings.HasPrefix(m.Subject, "Letter ") {
-				t.Fatalf("host B page %s saw %s", page, m.Subject)
+				t.Fatalf("host B cursor %q saw %s", cursor, m.Subject)
 			}
 		}
-		if page == "1" {
-			if inbox.Total != 1 || len(inbox.Messages) != 1 || inbox.Messages[0].Subject != "Host B only" {
-				t.Fatalf("host B page 1 = total %d %+v", inbox.Total, inbox.Messages)
+		if cursor == "" {
+			if inbox.Total != 1 || len(inbox.Messages) != 1 || inbox.Messages[0].Subject != "Host B only" || nextOf(inbox) != "" {
+				t.Fatalf("host B first page = total %d next %q %+v", inbox.Total, nextOf(inbox), inbox.Messages)
 			}
 		}
+	}
+}
+
+func subjectOf(inbox inboxBody) string {
+	if len(inbox.Messages) == 0 {
+		return ""
+	}
+	return inbox.Messages[0].Subject
+}
+
+func TestEmailInboxMalformedCursor(t *testing.T) {
+	h := newHarness(t, func(c *config.Config) {})
+	h.signup("Host A", "cursor-a@example.com", true)
+	for _, cursor := range []string{"nope", "%%%", base64.RawURLEncoding.EncodeToString([]byte("{}"))} {
+		res, raw := h.do(http.MethodGet, "/api/host/email-inbox?cursor="+url.QueryEscape(cursor), nil)
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("cursor %q: %d %s", cursor, res.StatusCode, raw)
+		}
+	}
+	res, raw := h.do(http.MethodGet, "/api/host/email-inbox?limit=0", nil)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("limit 0: %d %s", res.StatusCode, raw)
+	}
+	res, raw = h.do(http.MethodGet, "/api/host/email-inbox", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("first page: %d %s", res.StatusCode, raw)
 	}
 }
