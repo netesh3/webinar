@@ -17,7 +17,7 @@ import {
   SearchIcon,
   UsersIcon,
 } from "./icons";
-import { Button, ButtonLink, Card, Empty, ListPager } from "./ui";
+import { Button, ButtonLink, Empty, ListPager } from "./ui";
 import { ApiError, api, type HostWebinarTab } from "@/lib/api";
 import {
   HOST_WEBINAR_PAGE_SIZE,
@@ -89,6 +89,14 @@ const TAB_LABELS: Record<ViewTab, string> = {
   past: "Completed",
   drafts: "Drafts",
   attending: "Attending",
+};
+
+/** The same glyphs the glance rail used, now on the tab that already shows the count. */
+const TAB_ICONS: Record<ViewTab, ReactNode> = {
+  upcoming: <CalendarIcon className="size-3.5 shrink-0" />,
+  past: <CheckIcon className="size-3.5 shrink-0" />,
+  drafts: <ClipboardIcon className="size-3.5 shrink-0" />,
+  attending: <UsersIcon className="size-3.5 shrink-0" />,
 };
 
 /** Matches store.DefaultHostWebinarLimit. Sent explicitly rather than left to
@@ -388,6 +396,7 @@ export function HostWebinarBrowser({
                 ownList(next) ? setTab(next) : refilter(() => setTab(next))
               }
               labels={TAB_LABELS}
+              icons={TAB_ICONS}
               counts={{
                 ...counts,
                 [ATTENDING]: attendingCount,
@@ -443,8 +452,6 @@ export function HostWebinarBrowser({
         </div>
       </div>
 
-      <div className="grid items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_17.5rem]">
-        <div className="min-w-0">
       {error && !ownList(tab) && (
         <div className="mb-4">
           <Alert tone="error">{error}</Alert>
@@ -519,65 +526,9 @@ export function HostWebinarBrowser({
           />
         </>
       )}
-        </div>
-        <aside className="grid content-start gap-3">
-          <AtAGlance counts={counts} attending={attendingCount} />
-          {tab === "upcoming" && <EndedNudge rail />}
-        </aside>
-      </div>
-    </>
-  );
-}
 
-/** Counts already on this page: the tab badges, plus Attending. */
-function AtAGlance({
-  counts,
-  attending,
-}: {
-  counts: HostWebinarCounts;
-  attending: number;
-}) {
-  const rows: { label: string; value: number; icon: ReactNode; tint: string }[] = [
-    {
-      label: "Upcoming",
-      value: counts.upcoming,
-      icon: <CalendarIcon className="size-4" />,
-      tint: "bg-brand-soft text-brand",
-    },
-    {
-      label: "Completed",
-      value: counts.past,
-      icon: <CheckIcon className="size-4" />,
-      tint: "bg-ok-soft text-ok",
-    },
-    {
-      label: "Drafts",
-      value: counts.drafts,
-      icon: <ClipboardIcon className="size-4" />,
-      tint: "bg-surface-2 text-ink-2",
-    },
-    {
-      label: "Attending",
-      value: attending,
-      icon: <UsersIcon className="size-4" />,
-      tint: "bg-brand-soft text-brand",
-    },
-  ];
-  return (
-    <Card className="p-4">
-      <h2 className="text-[14px] font-semibold text-ink">At a glance</h2>
-      <ul className="mt-3 grid gap-2.5">
-        {rows.map((row) => (
-          <li key={row.label} className="flex items-center gap-2.5">
-            <span className={`grid size-8 shrink-0 place-items-center rounded-lg ${row.tint}`}>
-              {row.icon}
-            </span>
-            <span className="min-w-0 flex-1 text-[13px] text-ink-2">{row.label}</span>
-            <span className="text-[14px] font-semibold tabular-nums text-ink">{row.value}</span>
-          </li>
-        ))}
-      </ul>
-    </Card>
+      {tab === "upcoming" && <EndedNudge />}
+    </>
   );
 }
 

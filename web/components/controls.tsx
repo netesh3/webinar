@@ -468,6 +468,7 @@ export function Tabs<T extends string>({
   onChange,
   counts,
   labels,
+  icons,
   bare = false,
 }: {
   tabs: readonly T[];
@@ -477,6 +478,8 @@ export function Tabs<T extends string>({
   /** Display text per tab, for when the tab id is not what a person should read
    *  — "qa" is an identifier, "Q&A" is a label. */
   labels?: Partial<Record<T, string>>;
+  /** Glyph before the label. The icon is decorative: the tab already has a name. */
+  icons?: Partial<Record<T, ReactNode>>;
   /** Drop the bottom rule because the caller draws its own — for a row that
    *  puts filters beside the tabs and wants one line under both, rather than a
    *  rule under the tabs and a second one under the toolbar. The active tab's
@@ -506,6 +509,7 @@ export function Tabs<T extends string>({
               active ? "font-medium text-brand" : "text-ink-2 hover:text-ink"
             }`}
           >
+            {icons?.[tab]}
             {labels?.[tab] ?? tab}
             {count !== undefined && count > 0 && (
               <span
