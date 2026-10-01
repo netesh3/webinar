@@ -352,12 +352,18 @@ export function Menu({
   align = "end",
   side = "bottom",
   label,
+  className = "",
+  wrapClassName = "",
 }: {
   trigger: ReactNode;
   items: MenuItem[];
   align?: "start" | "end";
   side?: "top" | "bottom";
   label: string;
+  /** Extra classes on the trigger button. */
+  className?: string;
+  /** Extra classes on the positioning wrapper. */
+  wrapClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -370,14 +376,14 @@ export function Menu({
   ].join(" ");
 
   return (
-    <div ref={wrap} className="relative">
+    <div ref={wrap} className={`relative ${wrapClassName}`}>
       <button
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={label}
         onClick={() => setOpen((v) => !v)}
-        className="outline-none focus-visible:ring-2 focus-visible:ring-brand/40 rounded-lg"
+        className={`rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${className}`}
       >
         {trigger}
       </button>
