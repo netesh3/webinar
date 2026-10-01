@@ -9,10 +9,11 @@ import { BrowseList } from "./browse-list";
 import { useSession } from "./providers";
 import { Button, ButtonLink, Empty } from "./ui";
 
-/* Browse — sessions you're involved in (or the public catalogue when signed out).
+/* Browse — sessions you're involved in.
  *
- * Hosting work (create / start / admit / past) lives under Hosting in the top
- * nav, not as a second dashboard here. Keep this page a single list.
+ * Signed out, there is nothing to list: the API only answers for an account.
+ * Hosting work (create / start / admit / past) lives on the host home, not as
+ * a second dashboard here. Keep this page a single list.
  */
 
 export function BrowseScreen() {
@@ -60,10 +61,10 @@ export function BrowseScreen() {
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-[24px] font-semibold tracking-[-0.02em] sm:text-[26px]">
+          <h1 className="text-[24px] font-semibold tracking-[-0.02em]">
             {signedOut ? "Webinars" : "Browse"}
           </h1>
-          <p className="mt-1.5 max-w-xl text-[14px] leading-relaxed text-ink-2">
+          <p className="mt-1.5 max-w-xl text-[13.5px] leading-relaxed text-ink-2">
             {signedOut
               ? "Sign in to see sessions you're hosting, presenting at, or registered for."
               : canHost
