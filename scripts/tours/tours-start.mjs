@@ -81,11 +81,9 @@ export const home = {
       await t.click(btn(page, /^Notifications/), { settle: 400 });
     });
     await t.say(
-      "Your account menu is there too. Settings holds your profile, appearance and integrations.",
+      "Settings sits at the bottom of the sidebar. It holds your profile, appearance and integrations. The button beside it switches light and dark.",
       async () => {
-        await t.click(btn(page, /^Your account/), { settle: 1400 });
-        await t.point(page.getByRole("menuitem", { name: /^Settings$/ }));
-        await t.key("Escape");
+        await t.point(anchor(page, "nav-settings"));
       },
     );
     await t.say("That's your webinars. Next, let's schedule one.");
