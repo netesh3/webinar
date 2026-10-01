@@ -21,6 +21,27 @@ const SEPARATOR = 8;
 const DEFAULT_WIDTH = 380;
 const STORAGE_KEY = "wl-email-inbox-list";
 
+/* Conversations per page. The list card stays full height; this is how many
+ * rows fit above the pager. Clamped so a short pane still shows a page and a
+ * large monitor does not request the whole mailbox. */
+
+export const INBOX_PAGE_MIN = 3;
+export const INBOX_PAGE_MAX = 15;
+export const INBOX_PAGE_DEFAULT = 5;
+/** Three-line row (13/13/12, py-3, border) until a real row is measured. */
+export const INBOX_ROW_FALLBACK = 86;
+/** Pager footer before it mounts: border, py-2.5, and the h-8 button. */
+export const INBOX_PAGER_FALLBACK = 53;
+export const INBOX_MEASURE_DEBOUNCE_MS = 200;
+
+/** Rows that fit in `availablePx`, or null when the pane has not been measured. */
+export function inboxRowsThatFit(availablePx: number, rowPx: number): number | null {
+  if (!(availablePx > 0) || !(rowPx > 0)) return null;
+  const fit = Math.floor(availablePx / rowPx);
+  if (!Number.isFinite(fit)) return null;
+  return Math.min(INBOX_PAGE_MAX, Math.max(INBOX_PAGE_MIN, fit));
+}
+
 const listeners = new Set<() => void>();
 let cached: number | null = null;
 
