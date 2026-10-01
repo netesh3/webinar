@@ -110,7 +110,7 @@ export function IntegrationCard({
 
   return (
     <article
-      className={`flex flex-col rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(19,22,25,0.04)] ${
+      className={`flex h-full flex-col rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(19,22,25,0.04)] ${
         card.status === "soon" ? "text-ink-3" : ""
       }`}
     >

@@ -80,7 +80,7 @@ export function AdminDashboard({
         <h2 className="mb-2 text-[12px] font-semibold tracking-[0.02em] text-ink-2 uppercase">
           Accounts
         </h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-4">
           <StatLink onClick={onAccounts}>
             <Stat
               className="h-full transition-colors hover:border-brand-line"
@@ -126,7 +126,7 @@ export function AdminDashboard({
         <h2 className="mb-2 text-[12px] font-semibold tracking-[0.02em] text-ink-2 uppercase">
           Webinars
         </h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-3 xl:grid-cols-6">
           <StatLink onClick={() => onWebinars("")}>
             <Stat
               className="h-full transition-colors hover:border-brand-line"
@@ -179,15 +179,14 @@ export function AdminDashboard({
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid gap-4 min-[900px]:grid-cols-5">
         <StartTrend daily={stats.daily} />
         <FormatBreakdown stats={stats} />
       </div>
 
-      {/* md is 768px, the same line useCompact treats as a phone (max-width
-          767px). Below it the two lists stack; beside each other they are a
+      {/* Below 900px the two lists stack. Beside each other they are a
           glance, not the filterable table on the Webinars tab. */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 min-[900px]:grid-cols-2">
         <GlanceList
           title="Coming up"
           rows={stats.upcoming}
@@ -406,7 +405,7 @@ function StartTrend({ daily }: { daily: AdminDayCount[] }) {
   }
 
   return (
-    <Card className="p-4 lg:col-span-3">
+    <Card className="p-4 min-[900px]:col-span-3">
       <h2 className="text-[13px] font-semibold tracking-[0.01em] text-ink">
         Starts per day
       </h2>
@@ -482,7 +481,7 @@ function FormatBreakdown({ stats }: { stats: AdminStats }) {
     },
   ];
   return (
-    <Card className="p-4 lg:col-span-2">
+    <Card className="p-4 min-[900px]:col-span-2">
       <h2 className="text-[13px] font-semibold tracking-[0.01em] text-ink">
         Format
       </h2>
@@ -541,12 +540,12 @@ function DashboardSkeleton() {
   return (
     <div className="grid gap-6" aria-hidden>
       <div className="h-12 animate-pulse rounded-xl bg-surface-2" />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-4">
         {Array.from({ length: 4 }, (_, i) => (
           <div key={i} className="h-[92px] animate-pulse rounded-xl bg-surface-2" />
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-3 xl:grid-cols-6">
         {Array.from({ length: 6 }, (_, i) => (
           <div key={i} className="h-[92px] animate-pulse rounded-xl bg-surface-2" />
         ))}

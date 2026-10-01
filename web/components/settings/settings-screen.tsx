@@ -116,52 +116,53 @@ export function SettingsScreen() {
         Your details, and the apps {appName || "Webinar Liv"} works with.
       </p>
 
-      <div className="mt-5 grid items-start gap-7 md:grid-cols-[13rem_minmax(0,1fr)]">
-        <nav className="sticky top-4 grid gap-0.5" aria-label="Settings">
-          {items.map((item) => {
-            const on = section === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => open(item.id)}
-                data-tour={`settings-${item.id}`}
-                aria-current={on ? "page" : undefined}
-                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] ${
-                  on
-                    ? "bg-brand-soft font-medium text-brand"
-                    : "text-ink-2 hover:bg-surface-2"
-                }`}
-              >
-                <MaterialIcon
-                  name={item.icon}
-                  className={`!text-[19px] ${on ? "text-brand" : "text-ink-3"}`}
-                />
-                <span className="flex-1">{item.label}</span>
-                {item.id === "integrations" && connected > 0 && (
-                  <span className="text-[11px] font-semibold text-ok">
-                    {connected} on
-                  </span>
-                )}
-              </button>
-            );
-          })}
-          <div className="mx-2.5 my-2 h-px bg-line" />
-          <button
-            type="button"
-            data-tour="settings-sign-out"
-            onClick={async () => {
-              await signOut();
-              router.push("/");
-            }}
-            className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-ink-3 hover:bg-surface-2"
-          >
-            <MaterialIcon name="logout" className="!text-[19px]" />
-            Sign out
-          </button>
-        </nav>
+      <nav
+        className="mt-5 flex flex-wrap items-end gap-1 border-b border-line"
+        aria-label="Settings"
+      >
+        {items.map((item) => {
+          const on = section === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => open(item.id)}
+              data-tour={`settings-${item.id}`}
+              aria-current={on ? "page" : undefined}
+              className={`-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2.5 text-[13.5px] ${
+                on
+                  ? "border-brand font-medium text-brand"
+                  : "border-transparent text-ink-2 hover:text-ink"
+              }`}
+            >
+              <MaterialIcon
+                name={item.icon}
+                className={`!text-[18px] ${on ? "text-brand" : "text-ink-3"}`}
+              />
+              {item.label}
+              {item.id === "integrations" && connected > 0 && (
+                <span className="text-[11px] font-semibold text-ok">
+                  {connected} on
+                </span>
+              )}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          data-tour="settings-sign-out"
+          onClick={async () => {
+            await signOut();
+            router.push("/");
+          }}
+          className="-mb-px inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-[13.5px] text-ink-2 hover:text-ink"
+        >
+          <MaterialIcon name="logout" className="!text-[18px] text-ink-3" />
+          Sign out
+        </button>
+      </nav>
 
-        <div>
+      <div className="mt-5">
           {section === "profile" && <ProfileSection account={account} />}
           {section === "appearance" && <AppearanceSection />}
           {section === "integrations" && (
@@ -173,7 +174,6 @@ export function SettingsScreen() {
             />
           )}
           {section === "account" && <AccountSection account={account} />}
-        </div>
       </div>
     </div>
   );

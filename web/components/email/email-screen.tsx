@@ -24,9 +24,9 @@ export function EmailScreen() {
   ];
 
   return (
-    <div className="grid gap-4">
-      <h1 className="text-[24px] font-semibold tracking-[-0.02em]">Email</h1>
-      <nav className="flex gap-1 border-b border-line" aria-label="Email">
+    <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
+      <h1 className="shrink-0 text-[24px] font-semibold tracking-[-0.02em]">Email</h1>
+      <nav className="flex shrink-0 gap-1 border-b border-line" aria-label="Email">
         {tabs.map((item) => {
           const on = item.id === tab;
           const count = item.count != null && item.count > 0 ? item.count : null;

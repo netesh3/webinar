@@ -158,15 +158,15 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
   const replyName = account?.name?.trim() || "you";
 
   return (
-    <div className="grid gap-3">
+    <div className="flex min-h-0 w-full flex-1 flex-col gap-3">
       {error && <Alert tone="error">{error}</Alert>}
       <section
-        className="grid min-h-[420px] overflow-hidden rounded-xl border border-line bg-surface shadow-sm md:h-[560px] md:grid-cols-[300px_minmax(0,1fr)]"
+        className="grid min-h-[28rem] flex-1 overflow-hidden rounded-xl border border-line bg-surface shadow-sm min-[900px]:min-h-0 min-[900px]:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]"
         aria-label="Email inbox"
       >
         <div
           data-tour="email-inbox"
-          className="flex min-w-0 flex-col overflow-y-auto border-b border-line md:border-r md:border-b-0"
+          className="flex max-h-80 min-w-0 flex-col overflow-y-auto border-b border-line min-[900px]:max-h-none min-[900px]:min-h-0 min-[900px]:border-r min-[900px]:border-b-0"
         >
           {data && threads.length === 0 && (
             <p className="px-4 py-8 text-center text-[13px] text-ink-3">No email yet.</p>
@@ -212,7 +212,7 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
           })}
         </div>
 
-        <article className="flex min-h-[320px] min-w-0 flex-col">
+        <article className="flex min-h-[20rem] min-w-0 flex-col min-[900px]:min-h-0">
           {!selected && (
             <p className="grid flex-1 place-items-center px-4 text-[13px] text-ink-3">
               {data ? "No email yet." : ""}
@@ -341,7 +341,10 @@ export function EmailIntegration({
   }
 
   return (
-    <article data-tour="email-address" className="rounded-xl border border-line bg-surface p-4">
+    <article
+      data-tour="email-address"
+      className="flex h-full flex-col rounded-xl border border-line bg-surface p-4"
+    >
       <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">Email</div>
       <h3 className="mt-1 text-[15px] font-semibold">Your reply inbox</h3>
       <p className="mt-1 text-[13px] text-ink">{current || address}</p>

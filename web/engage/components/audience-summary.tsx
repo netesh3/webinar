@@ -76,16 +76,17 @@ export function AudienceSummary({
         <span className="text-[12.5px] text-ink-2">
           Across your last {data.webinars.length || last} webinars
         </span>
-        <div className="flex gap-1.5">
+        <div className="flex rounded-lg border border-line bg-surface p-0.5" role="group" aria-label="Webinars in this summary">
           {[6, 12, 50].map((n) => (
             <button
               key={n}
               type="button"
               onClick={() => setLast(n)}
-              className={`rounded-full border px-3 py-1 text-[12px] font-medium ${
+              aria-pressed={last === n}
+              className={`rounded-md px-3 py-1 text-[12.5px] font-medium ${
                 last === n
-                  ? "border-brand bg-brand-soft text-brand"
-                  : "border-line bg-surface text-ink-2 hover:text-ink"
+                  ? "bg-brand-soft text-brand"
+                  : "text-ink-3 hover:text-ink"
               }`}
             >
               {n === 50 ? "All" : `Last ${n}`}
@@ -94,7 +95,7 @@ export function AudienceSummary({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-4">
         <Kpi
           label="People reached"
           value={String(data.people)}
@@ -117,7 +118,7 @@ export function AudienceSummary({
         />
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      <div className="grid items-start gap-4 min-[900px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <Card className="p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-[13.5px] font-semibold text-ink">
