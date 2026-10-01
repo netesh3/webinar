@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { Spinner } from "@/components/controls";
-import { HostMessagesInbox } from "@/engage";
+import { HostMessagesInbox, WhatsAppFrame } from "@/engage";
 
-/* WhatsApp Messages, its own route. The chat icon in the top bar opens it;
+/* WhatsApp Chats. The inbox itself is unchanged; the WhatsApp tabs sit above it.
  * ?tab=messages on Your webinars redirects here so older links still land. */
 
 export default function HostMessagesPage() {
@@ -14,7 +14,9 @@ export default function HostMessagesPage() {
         </div>
       }
     >
-      <HostMessagesInbox />
+      <WhatsAppFrame tab="chats">
+        <HostMessagesInbox />
+      </WhatsAppFrame>
     </Suspense>
   );
 }

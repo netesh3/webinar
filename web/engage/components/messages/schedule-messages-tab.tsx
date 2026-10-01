@@ -83,6 +83,8 @@ export const ScheduleMessagesTab = forwardRef<
     initialPending?: MessageSlot[];
     /** Fired when those waiting overrides change, so the form can keep them. */
     onPendingChange?: (slots: MessageSlot[]) => void;
+    /** The account WhatsApp page has no single webinar. Every edit is the default. */
+    accountDefaults?: boolean;
   }
 >(function ScheduleMessagesTab(
   {
@@ -94,6 +96,7 @@ export const ScheduleMessagesTab = forwardRef<
     onLoadError,
     initialPending,
     onPendingChange,
+    accountDefaults = false,
   },
   ref,
 ) {
@@ -215,7 +218,7 @@ export const ScheduleMessagesTab = forwardRef<
       const previous = slots;
       applyLocal(next);
       try {
-        if (asDefault) {
+        if (asDefault || accountDefaults) {
           await engageApi.setMessageDefaults({ slots: [next] });
           pending.current.delete(next.kind);
           pendingChanged();
@@ -247,7 +250,7 @@ export const ScheduleMessagesTab = forwardRef<
         return false;
       }
     },
-    [applyLocal, notify, pendingChanged, slug, slots],
+    [accountDefaults, applyLocal, notify, pendingChanged, slug, slots],
   );
 
   async function toggleAutomation(recipe: CRMRecipe, on: boolean) {
@@ -334,7 +337,11 @@ export const ScheduleMessagesTab = forwardRef<
         onSelect={select}
         onToggle={(kind, on) => {
           const current = slots.find((item) => item.kind === kind);
-          if (current) void commit({ ...current, enabled: on }, forAll && kind === slot?.kind);
+          if (current)
+            void commit(
+              { ...current, enabled: on },
+              accountDefaults || (forAll && kind === slot?.kind),
+            );
         }}
         onToggleAutomation={(recipe, on) => void toggleAutomation(recipe, on)}
       />
@@ -350,10 +357,10 @@ export const ScheduleMessagesTab = forwardRef<
           whenText={when}
           forAll={forAll}
           reminderTimes={reminderTimes}
-          onChange={(next) => void commit(next, forAll)}
+          onChange={(next) => void commit(next, accountDefaults || forAll)}
           onForAll={(on) => {
             setForAll(on);
-            if (on) void commit(slot, true);
+            if (on || accountDefaults) void commit(slot, true);
           }}
           onWriteOwn={() => setWriting(true)}
         />

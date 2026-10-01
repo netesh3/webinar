@@ -21,6 +21,7 @@ export {
   MessagesNavButton,
 } from "./slots";
 export { WhatsAppScreen } from "./components/whatsapp-screen";
+export { WhatsAppFrame, type WhatsAppTab } from "./components/whatsapp-frame";
 export { useRosterMessaging } from "./components/roster";
 export { followupGroups, type FollowupGroup } from "./buckets";
 export { HostPeopleTab } from "./components/people-tab";
