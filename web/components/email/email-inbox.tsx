@@ -492,7 +492,7 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
                     </div>
                   )}
                 </div>
-                <div className="mt-auto pt-6">
+                <div className="mt-6">
                   {replying ? (
                     <form
                       onSubmit={(e) => {

@@ -987,9 +987,11 @@ type Account struct {
  * Absent means off. There is no feature that defaults to on. An administrator
  * turning one on for an account is the record that somebody decided to — for
  * WhatsApp CRM because it spends money or writes to other people's phones, for
- * cloud recording because storing a session is a decision per customer, and for
+ * cloud recording because storing a session is a decision per customer, for
  * join-without-registration and instant webinars because the default is the
- * restrictive one: everyone registers, and every webinar is scheduled.
+ * restrictive one: everyone registers, and every webinar is scheduled, and for
+ * Zoom because connecting a host's Zoom account and creating meetings there
+ * is a decision per customer.
  */
 const (
 	/* FeatureWhatsAppCRM is the host CRM surface: contact tags and notes, sharing
@@ -1019,6 +1021,14 @@ const (
 	 * Off — the default — means every webinar is scheduled first. See
 	 * migrations/0073. */
 	FeatureInstantWebinar = "instant_webinar"
+	/* FeatureZoom lets a host connect Zoom and run a session there.
+	 *
+	 * Off — the default, including for accounts that already exist — means
+	 * the Zoom card is not on their Integrations page, Zoom is not a choice
+	 * when they schedule, and the Zoom routes refuse them. A new key is off
+	 * for every account because absent means off; see migrations/0048.
+	 * Sessions stay in this app. */
+	FeatureZoom = "zoom"
 )
 
 /* Feature is one switch as the admin screen renders it.
@@ -1057,6 +1067,11 @@ var Features = []Feature{
 		Key:         FeatureInstantWebinar,
 		Label:       "Instant webinar",
 		Description: "Let this host go live immediately, without scheduling a webinar. Off means every webinar is scheduled first.",
+	},
+	{
+		Key:         FeatureZoom,
+		Label:       "Zoom",
+		Description: "Let this host connect Zoom and schedule a session as a Zoom meeting or webinar. Off means sessions stay in this app.",
 	},
 }
 
@@ -2986,8 +3001,13 @@ type RegistrantRow struct {
 	 * when they never have — which is the ordinary case and reads as a dash. */
 	LastInboundAt string `json:"lastInboundAt,omitempty"`
 	/* ZoomNote is why this person has no Zoom link, when the session runs on
-	 * Zoom. Empty otherwise. Never a join URL. */
+	 * Zoom. Empty otherwise. Never a join URL. A shared-link attendee has an
+	 * empty note and ZoomShared set. */
 	ZoomNote string `json:"zoomNote,omitempty"`
+	/* ZoomShared is true when this person uses the meeting's shared Zoom link
+	 * because Zoom would not register them. They still have a link. Never a
+	 * join URL, and not set when they have a personal registrant link. */
+	ZoomShared bool `json:"zoomShared,omitempty"`
 	/* Joined is whether this registrant was in the room at all, and WatchMin how long
 	 * they watched once it was live — the session report's numbers, per registration
 	 * (store.AttachWatch). Zero and false before the webinar has run. */

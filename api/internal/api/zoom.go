@@ -20,6 +20,11 @@ import (
 
 const zoomStateCookie = "webcast_zoom"
 
+/* errZoomFeatureOff is a host asking Zoom to do something this account has
+ * not been allowed to do. The HTTP handlers answer 403 feature_off. A hidden
+ * card is not the control. */
+var errZoomFeatureOff = errors.New("zoom feature off")
+
 type zoomState struct {
 	jwt.RegisteredClaims
 	Return string `json:"return"`
@@ -39,6 +44,7 @@ func (s *Server) zoomFlow() *zoom.Flow {
 		Repo:   zoomRepo{store: s.store},
 		Seal:   func(plain string) ([]byte, error) { return zoom.Seal(key, plain) },
 		Open:   func(blob []byte) (string, error) { return zoom.Open(key, blob) },
+		Log:    s.log,
 	}
 }
 
@@ -68,11 +74,14 @@ func (s *Server) zoomHooks() integrations.ZoomHooks {
 }
 
 func (s *Server) handleZoomConnect(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r.Context())
+	if !s.featureAllowed(w, user, types.FeatureZoom) {
+		return
+	}
 	if !s.zoomOn() {
 		httpx.Error(w, http.StatusServiceUnavailable, "zoom_not_configured", "Zoom is not configured.")
 		return
 	}
-	user := userFromContext(r.Context())
 	ret := safeReturnPath(r.URL.Query().Get("return"))
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, zoomState{
@@ -136,6 +145,10 @@ func (s *Server) handleZoomCallback(w http.ResponseWriter, r *http.Request) {
 	ret = safeReturnPath(st.Return)
 	user, err := s.sessionUser(r)
 	if err != nil || user.ID != st.Subject {
+		fail("error")
+		return
+	}
+	if !user.HasFeature(types.FeatureZoom) {
 		fail("error")
 		return
 	}
@@ -204,9 +217,11 @@ func (s *Server) zoomFront(path, result string) string {
 
 /* handleZoomWebhook is the public seam Zoom calls.
  *
- * This pass handles the CRC check and app_deauthorized (delete the host's
- * tokens). Attendance, polls, Q&A, and recordings are phase 4: those events
- * are acknowledged so Zoom does not retry, and nothing else is done with them.
+ * The URL challenge and app_deauthorized are handled inline. A meeting or
+ * webinar ending marks that webinar ended. Join and leave, and the
+ * past-participant list fetched when it ends, are written to the attendance
+ * tables the host page already reads. Anything else, including
+ * recording.completed, is acknowledged so Zoom does not retry.
  */
 func (s *Server) handleZoomWebhook(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
@@ -258,10 +273,92 @@ func (s *Server) handleZoomWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusOK)
 	default:
-		/* Phase 4: meeting.ended, webinar.ended, participant_joined,
-		 * participant_left, recording.completed. */
+		ev, ok := zoom.ParseSessionEvent(body)
+		if !ok {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if err := s.applyZoomSession(r.Context(), ev); err != nil {
+			s.log.Warn("zoom session", "event", env.Event, "error", err)
+			httpx.Error(w, http.StatusInternalServerError, "zoom", "Could not record that Zoom session.")
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+/* applyZoomSession records a join, a leave, or the end of the Zoom session.
+ *
+ * An id we do not have is acknowledged. Zoom retries non-2xx responses, and
+ * an unknown meeting will never start matching. A known meeting that fails
+ * to save is returned so Zoom tries again.
+ */
+func (s *Server) applyZoomSession(ctx context.Context, ev zoom.SessionEvent) error {
+	if ev.MeetingID == "" {
+		return nil
+	}
+	wb, err := s.store.WebinarByZoomID(ctx, ev.MeetingID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if ev.Person != nil {
+		if err := s.recordZoomPerson(ctx, wb.Slug, *ev.Person); err != nil {
+			return err
+		}
+	}
+	if ev.Kind != "ended" {
+		if wb.Status == string(types.StatusEnded) {
+			return s.refreshZoomAttendance(ctx, wb.Slug)
+		}
+		return nil
+	}
+	if ev.Start.IsZero() {
+		ev.Start = wb.StartsAt
+	}
+	if err := s.store.NoteZoomStarted(ctx, wb.Slug, ev.Start); err != nil {
+		return err
+	}
+	if flow := s.zoomFlow(); flow != nil {
+		people, err := flow.PastParticipants(ctx, wb.HostID, wb.Venue, ev.MeetingID)
+		if err != nil {
+			/* Status only. Zoom's message can echo an address, and the
+			 * access token must not land in the log either. */
+			s.log.Warn("zoom attendance report", "slug", wb.Slug, "status", zoomStatus(err))
+		}
+		for _, p := range people {
+			if err := s.recordZoomPerson(ctx, wb.Slug, p); err != nil {
+				return err
+			}
+		}
+	}
+	if wb.Status == string(types.StatusEnded) {
+		return s.refreshZoomAttendance(ctx, wb.Slug)
+	}
+	_, err = s.endWebinarSession(ctx, wb.Slug)
+	return err
+}
+
+func (s *Server) recordZoomPerson(ctx context.Context, slug string, p zoom.Participant) error {
+	var left *time.Time
+	if !p.Left.IsZero() {
+		t := p.Left
+		left = &t
+	}
+	return s.store.RecordZoomPerson(ctx, slug, p.Name, p.Email, p.RegistrantID, p.ZoomUserID, p.MeetingUserID, p.Joined, left)
+}
+
+func (s *Server) refreshZoomAttendance(ctx context.Context, slug string) error {
+	if err := s.store.CloseOpenVisits(ctx, slug, time.Now()); err != nil {
+		return err
+	}
+	if _, err := s.store.ComputeAndSaveReport(ctx, slug); err != nil {
+		return err
+	}
+	s.computeEngagementOnEnd(ctx, slug)
+	return nil
 }
 
 /* resolveZoom runs before a webinar is saved. A plan error rewrites the venue
@@ -280,10 +377,22 @@ func (s *Server) resolveZoom(ctx context.Context, hostID, slug string, in *types
 				if u, err := s.store.ZoomStartURL(ctx, slug); err == nil {
 					prev.StartURL = u
 				}
+				if u, err := s.store.ZoomMeetingJoin(ctx, slug); err == nil {
+					prev.JoinURL = u
+				}
 			}
 		}
 	}
 	if !zoom.IsVenue(in.Venue) && !zoom.IsVenue(prev.Venue) {
+		return zoom.Saved{Venue: zoom.VenueApp}, nil, nil
+	}
+	/* The switch is the host's, not whoever pressed save. Off refuses a Zoom
+	 * venue and, when the save is leaving Zoom, drops it locally without
+	 * calling Zoom. */
+	if hostID != "" && !s.hostHasZoom(ctx, hostID) {
+		if zoom.IsVenue(in.Venue) {
+			return zoom.Saved{}, nil, errZoomFeatureOff
+		}
 		return zoom.Saved{Venue: zoom.VenueApp}, nil, nil
 	}
 	flow := s.zoomFlow()
@@ -314,11 +423,16 @@ func (s *Server) persistZoom(ctx context.Context, slug string, saved zoom.Saved)
 	if saved.Venue == "" {
 		saved.Venue = zoom.VenueApp
 	}
-	return s.store.SetWebinarZoom(ctx, slug, saved.Venue, saved.ZoomID, saved.StartURL)
+	return s.store.SetWebinarZoom(ctx, slug, saved.Venue, saved.ZoomID, saved.StartURL, saved.JoinURL)
 }
 
 func (s *Server) pushZoomRegistrant(ctx context.Context, wb types.Webinar, regID, email, first, last string) {
 	if !zoom.IsVenue(wb.Venue) || wb.ZoomID == "" || regID == "" {
+		return
+	}
+	/* Registration still succeeds in this app. Zoom is not told about the
+	 * person when the host's switch is off — the same refusal as connect. */
+	if !s.hostHasZoom(ctx, wb.Host.ID) {
 		return
 	}
 	flow := s.zoomFlow()
@@ -326,12 +440,22 @@ func (s *Server) pushZoomRegistrant(ctx context.Context, wb types.Webinar, regID
 		_ = s.store.SaveZoomRegistrant(ctx, regID, "", "", "Zoom is not configured, so this person has no Zoom link.")
 		return
 	}
-	if err := flow.Push(ctx, wb.Host.ID, wb.Venue, wb.ZoomID, regID, email, first, last); err != nil {
-		s.log.Warn("zoom registrant", "webinar", wb.ID, "registration", regID, "status", zoomStatus(err))
+	shared := ""
+	if wb.Venue == zoom.VenueMeeting {
+		if u, err := s.store.ZoomMeetingJoin(ctx, wb.ID); err == nil {
+			shared = u
+		}
+	}
+	if err := flow.Push(ctx, wb.Host.ID, wb.Venue, wb.ZoomID, regID, email, first, last, shared); err != nil {
+		status, code, msg := zoom.ErrorParts(err)
+		s.log.Warn("zoom registrant", "webinar", wb.ID, "registration", regID, "status", status, "code", code, "zoom", msg)
 	}
 }
 
 func (s *Server) zoomGoLive(w http.ResponseWriter, r *http.Request, wb types.Webinar) {
+	if !s.requireHostFeature(w, r, wb.Host.ID, types.FeatureZoom) {
+		return
+	}
 	flow := s.zoomFlow()
 	if flow == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "zoom_not_configured", "Zoom is not configured.")
@@ -364,6 +488,18 @@ func (s *Server) joinZoomAttendee(w http.ResponseWriter, r *http.Request, wb typ
 		return
 	}
 	httpx.JSON(w, http.StatusOK, types.JoinResponse{ZoomJoinURL: u, Topic: wb.Topic})
+}
+
+func (s *Server) hostHasZoom(ctx context.Context, hostID string) bool {
+	if hostID == "" {
+		return false
+	}
+	host, err := s.store.UserByID(ctx, hostID)
+	if err != nil {
+		s.log.Warn("zoom feature: load host", "host", hostID, "error", err)
+		return false
+	}
+	return host.HasFeature(types.FeatureZoom)
 }
 
 func zoomWriteErr(w http.ResponseWriter, err error) bool {
@@ -447,6 +583,14 @@ func (r zoomRepo) RegistrantJoin(ctx context.Context, regID string) (string, err
 		return "", nil
 	}
 	return u, err
+}
+
+func (r zoomRepo) RegistrantRef(ctx context.Context, regID string) (string, string, error) {
+	return r.store.RegistrationZoomRef(ctx, regID)
+}
+
+func (r zoomRepo) SaveMeetingJoin(ctx context.Context, zoomID, joinURL string) error {
+	return r.store.SaveMeetingJoin(ctx, zoomID, joinURL)
 }
 
 func (r zoomRepo) PushedCount(ctx context.Context, slug string) (int, error) {

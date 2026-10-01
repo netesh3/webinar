@@ -3,6 +3,7 @@ package zoom
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -12,6 +13,7 @@ type Object struct {
 	Venue    string
 	ID       string
 	StartURL string
+	JoinURL  string
 }
 
 /* Saved is what to persist after a schedule save. Notice is set when Zoom's
@@ -20,7 +22,9 @@ type Saved struct {
 	Venue    string
 	ZoomID   string
 	StartURL string
-	Notice   string
+	/* JoinURL is the shared attendee link from Zoom. It is not logged. */
+	JoinURL string
+	Notice  string
 }
 
 /* Connection is one host's Zoom grant. Refresh is ciphertext. */
@@ -44,6 +48,12 @@ type Repo interface {
 	DeleteByZoomUser(ctx context.Context, zoomUserID string) error
 	SaveRegistrant(ctx context.Context, regID, registrantID, joinURL, note string) error
 	RegistrantJoin(ctx context.Context, regID string) (string, error)
+	/* RegistrantRef is the Zoom registrant id and the stored join link.
+	 * A personal registration has both. A shared-link fallback has only the link. */
+	RegistrantRef(ctx context.Context, regID string) (registrantID, joinURL string, err error)
+	/* SaveMeetingJoin stores the shared join link on the meeting when Zoom
+	 * did not return it at create time. Implementations must not log joinURL. */
+	SaveMeetingJoin(ctx context.Context, zoomID, joinURL string) error
 	PushedCount(ctx context.Context, slug string) (int, error)
 }
 
@@ -52,6 +62,8 @@ type Flow struct {
 	Repo   Repo
 	Seal   func(plain string) ([]byte, error)
 	Open   func(blob []byte) (string, error)
+	/* Log receives Zoom's error code and message. It must not receive a join URL. */
+	Log *slog.Logger
 }
 
 /* ConnectedEmail is the address on this host's card, or empty when they have
@@ -112,11 +124,11 @@ func (f *Flow) Save(ctx context.Context, hostID string, spec Spec, prev Object, 
 			}
 			return Saved{}, err
 		}
-		start, err := f.Client.StartURL(ctx, access, spec.Venue, prev.ID)
+		start, join, err := f.Client.Links(ctx, access, spec.Venue, prev.ID)
 		if err != nil {
-			start = prev.StartURL
+			start, join = prev.StartURL, prev.JoinURL
 		}
-		return Saved{Venue: spec.Venue, ZoomID: prev.ID, StartURL: start}, nil
+		return Saved{Venue: spec.Venue, ZoomID: prev.ID, StartURL: start, JoinURL: join}, nil
 	}
 	if prev.ID != "" && prev.Venue != spec.Venue && IsVenue(prev.Venue) {
 		if pushed > 0 {
@@ -133,7 +145,12 @@ func (f *Flow) Save(ctx context.Context, hostID string, spec Spec, prev Object, 
 		}
 		return Saved{}, err
 	}
-	return Saved{Venue: spec.Venue, ZoomID: created.ID, StartURL: created.StartURL}, nil
+	if created.JoinURL == "" && spec.Venue == VenueMeeting {
+		if _, join, lerr := f.Client.Links(ctx, access, spec.Venue, created.ID); lerr == nil {
+			created.JoinURL = join
+		}
+	}
+	return Saved{Venue: spec.Venue, ZoomID: created.ID, StartURL: created.StartURL, JoinURL: created.JoinURL}, nil
 }
 
 func (f *Flow) leave(ctx context.Context, hostID string, prev Object, pushed int) (Saved, error) {
@@ -141,7 +158,7 @@ func (f *Flow) leave(ctx context.Context, hostID string, prev Object, pushed int
 		return Saved{Venue: VenueApp}, nil
 	}
 	if pushed > 0 {
-		return Saved{Venue: VenueApp, ZoomID: prev.ID, StartURL: prev.StartURL}, nil
+		return Saved{Venue: VenueApp, ZoomID: prev.ID, StartURL: prev.StartURL, JoinURL: prev.JoinURL}, nil
 	}
 	access, err := f.access(ctx, hostID)
 	if err != nil && !errors.Is(err, ErrNotConnected) {
@@ -157,20 +174,36 @@ func (f *Flow) leave(ctx context.Context, hostID string, prev Object, pushed int
 
 /* Push adds one registrant and stores their personal join URL.
  * A person with no email is not sent to Zoom.
+ *
+ * sharedJoin is the meeting's shared join link, already stored on the webinar.
+ * When Zoom refuses meeting registration (a free plan, or registration turned
+ * off), that link is stored for this person instead of leaving them with none.
+ * A personal registrant link always wins. Webinars do not use sharedJoin.
  */
-func (f *Flow) Push(ctx context.Context, hostID, venue, zoomID, regID, email, first, last string) error {
+func (f *Flow) Push(ctx context.Context, hostID, venue, zoomID, regID, email, first, last, sharedJoin string) error {
 	if !IsVenue(venue) || zoomID == "" || regID == "" {
 		return nil
 	}
-	if existing, err := f.Repo.RegistrantJoin(ctx, regID); err == nil && existing != "" {
+	regZoomID, existing, err := f.Repo.RegistrantRef(ctx, regID)
+	if err != nil {
+		return err
+	}
+	if regZoomID != "" && existing != "" {
 		return nil
 	}
 	email = strings.TrimSpace(email)
 	if email == "" {
+		if existing != "" {
+			return nil
+		}
 		return f.Repo.SaveRegistrant(ctx, regID, "", "", "Zoom needs an email, so this person was not added in Zoom.")
 	}
 	access, err := f.access(ctx, hostID)
 	if err != nil {
+		if existing != "" {
+			f.warnZoom("zoom registrant", regID, err)
+			return nil
+		}
 		note := "Zoom isn't connected, so this person has no Zoom link."
 		if !errors.Is(err, ErrNotConnected) {
 			note = "Zoom didn't accept this person. They have no Zoom link yet."
@@ -182,6 +215,19 @@ func (f *Flow) Push(ctx context.Context, hostID, venue, zoomID, regID, email, fi
 		Email: email, FirstName: first, LastName: last,
 	})
 	if err != nil {
+		if venue == VenueMeeting && RegistrationUnavailable(err) {
+			join := existing
+			if join == "" {
+				join = f.meetingJoin(ctx, access, zoomID, sharedJoin)
+			}
+			if join != "" {
+				f.warnZoom("zoom registrant shared link", regID, err)
+				if existing == join {
+					return nil
+				}
+				return f.Repo.SaveRegistrant(ctx, regID, "", join, "")
+			}
+		}
 		note := "Zoom didn't accept this person. They have no Zoom link yet."
 		var api *APIError
 		if errors.As(err, &api) && api.Status == http.StatusTooManyRequests {
@@ -191,6 +237,31 @@ func (f *Flow) Push(ctx context.Context, hostID, venue, zoomID, regID, email, fi
 		return err
 	}
 	return f.Repo.SaveRegistrant(ctx, regID, got.ID, got.JoinURL, "")
+}
+
+/* meetingJoin is the shared attendee link: the one we already stored, or
+ * Zoom's join_url read back from the meeting. */
+func (f *Flow) meetingJoin(ctx context.Context, access, zoomID, stored string) string {
+	if strings.TrimSpace(stored) != "" {
+		return strings.TrimSpace(stored)
+	}
+	_, join, err := f.Client.Links(ctx, access, VenueMeeting, zoomID)
+	if err != nil || strings.TrimSpace(join) == "" {
+		return ""
+	}
+	join = strings.TrimSpace(join)
+	if err := f.Repo.SaveMeetingJoin(ctx, zoomID, join); err != nil && f.Log != nil {
+		f.Log.Warn("zoom meeting join save", "error", "could not store the shared join link")
+	}
+	return join
+}
+
+func (f *Flow) warnZoom(msg, regID string, err error) {
+	if f == nil || f.Log == nil {
+		return
+	}
+	status, code, message := ErrorParts(err)
+	f.Log.Warn(msg, "registration", regID, "status", status, "code", code, "zoom", message)
 }
 
 /* GoLive fetches a fresh host start link. The stored one expires. */
@@ -206,6 +277,22 @@ func (f *Flow) GoLive(ctx context.Context, hostID, venue, zoomID string) (string
 		return "", err
 	}
 	return f.Client.StartURL(ctx, access, venue, zoomID)
+}
+
+/* PastParticipants reads who attended, with this host's token.
+ *
+ * The access token is not stored. A failure is returned as-is so the caller
+ * can still mark the session ended from the webhook itself.
+ */
+func (f *Flow) PastParticipants(ctx context.Context, hostID, venue, zoomID string) ([]Participant, error) {
+	if f == nil || f.Client == nil {
+		return nil, ErrNotConfigured
+	}
+	access, err := f.access(ctx, hostID)
+	if err != nil {
+		return nil, err
+	}
+	return f.Client.PastParticipants(ctx, access, venue, zoomID)
 }
 
 /* AttendeeJoin is this registration's personal join URL and nobody else's. */

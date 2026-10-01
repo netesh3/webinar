@@ -1,6 +1,7 @@
 import {
   FeatureCloudRecording,
   FeatureWhatsAppCRM,
+  FeatureZoom,
 } from "@/lib/api-types";
 import type {
   Account,
@@ -44,6 +45,7 @@ export const DEV_BYPASS_ACCOUNT: Account = {
   features: [
     FeatureWhatsAppCRM,
     FeatureCloudRecording,
+    FeatureZoom,
   ],
 };
 

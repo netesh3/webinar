@@ -2305,10 +2305,16 @@ export interface Webinar {
    * 	 * somebody has to think about again later.
    */
   sfuProject?: string;
-  /** app, zoom_meeting, or zoom_webinar. Empty means this app. */
+  /**
+   *  Venue is where people join: app (LiveKit, the default), zoom_meeting,
+   * 	 * or zoom_webinar. ZoomID is the meeting or webinar id on the host's
+   * 	 * Zoom account. The host start link is not on this type.
+   */
   venue?: string;
   zoomId?: string;
-  /** Set on a save Zoom's plan refused. Not stored. */
+  /**
+   *  ZoomNotice is set on a save Zoom's plan refused. Not stored.
+   */
   zoomNotice?: string;
   report?: WebinarReport;
 }
@@ -2394,8 +2400,10 @@ export interface WebinarInput {
   panelistEmails: string[];
   options: WebinarOptions;
   controls: SessionControls;
-  /** app, zoom_meeting, or zoom_webinar. Empty means this app. */
-  venue?: "app" | "zoom_meeting" | "zoom_webinar";
+  /**
+   *  Venue is app, zoom_meeting, or zoom_webinar. Empty means this app.
+   */
+  venue?: string;
 }
 /**
  * SetStreamRequest is the host's RTMP destination.
@@ -2531,6 +2539,16 @@ export const FeatureJoinWithoutRegistration = "join_without_registration";
  * 	 * migrations/0073.
  */
 export const FeatureInstantWebinar = "instant_webinar";
+/**
+ *  FeatureZoom lets a host connect Zoom and run a session there.
+ * 	 *
+ * 	 * Off — the default, including for accounts that already exist — means
+ * 	 * the Zoom card is not on their Integrations page, Zoom is not a choice
+ * 	 * when they schedule, and the Zoom routes refuse them. A new key is off
+ * 	 * for every account because absent means off; see migrations/0048.
+ * 	 * Sessions stay in this app.
+ */
+export const FeatureZoom = "zoom";
 /**
  *  Feature is one switch as the admin screen renders it.
  *  *
@@ -4565,9 +4583,12 @@ export interface JoinResponse {
    */
   controls: SessionControls;
   topic: string;
-  /** This registrant's personal Zoom link, when the session runs on Zoom. */
+  /**
+   *  ZoomJoinURL is this registrant's personal Zoom link. Set only for that
+   * 	 * person, and only when the webinar runs on Zoom. ZoomStartURL is the
+   * 	 * host's fresh start link, returned from Go live and host join.
+   */
   zoomJoinUrl?: string;
-  /** The host's fresh Zoom start link, from Go live or the host room. */
   zoomStartUrl?: string;
   /**
    *  StartedAt is when the host took the webinar live (RFC3339).
@@ -4910,8 +4931,16 @@ export interface RegistrantRow {
    * 	 * when they never have — which is the ordinary case and reads as a dash.
    */
   lastInboundAt?: string;
-  /** Why this person has no Zoom link. Empty otherwise. Never a join URL. */
+  /**
+   *  ZoomNote is why this person has no Zoom link, when the session runs on
+   * 	 * Zoom. Empty otherwise. Never a join URL.
+   */
   zoomNote?: string;
+  /**
+   * True when this person uses the meeting's shared Zoom link because Zoom
+   * would not register them. They still have a link. Never a join URL.
+   */
+  zoomShared?: boolean;
   /**
    *  Joined is whether this registrant was in the room at all, and WatchMin how long
    * 	 * they watched once it was live — the session report's numbers, per registration
@@ -5088,6 +5117,15 @@ export const IntegrationStatusOff = "off";
  *  * this type is only what the browser is allowed to see.
  */
 export const IntegrationStatusSoon = "soon";
+/**
+ *  Integration cards on Settings. One shape for every provider, so the page
+ *  * renders the list and does not grow a branch when another app is added.
+ *  *
+ *  * Status is connected, off, or soon. Category is messaging, streaming, or soon
+ *  * (the compact "coming soon" rows). Credentials stay in their existing columns;
+ *  * this type is only what the browser is allowed to see.
+ */
+export const IntegrationCategoryMeetings = "meetings";
 /**
  *  Integration cards on Settings. One shape for every provider, so the page
  *  * renders the list and does not grow a branch when another app is added.
