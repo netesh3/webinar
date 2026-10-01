@@ -143,14 +143,6 @@ function rememberSlug(slug: string, joinKey: string): void {
   writeSlugIndex({ ...readSlugIndex(), [slug]: joinKey });
 }
 
-function forgetSlug(joinKey: string): void {
-  const index = readSlugIndex();
-  for (const [slug, key] of Object.entries(index)) {
-    if (key === joinKey) delete index[slug];
-  }
-  writeSlugIndex(index);
-}
-
 let cache: string[] | null = null;
 const listeners = new Set<() => void>();
 
@@ -215,12 +207,7 @@ export function useJoinKeys() {
     if (!current.includes(joinKey)) writeKeys([...current, joinKey]);
   }, []);
 
-  const remove = useCallback((joinKey: string) => {
-    writeKeys(getSnapshot().filter((k) => k !== joinKey));
-    forgetSlug(joinKey);
-  }, []);
-
-  return { keys, add, remove };
+  return { keys, add };
 }
 
 /** Resolves the held keys and the signed-in account into one list.
@@ -229,7 +216,7 @@ export function useJoinKeys() {
  *  hydration, and the first lookup — which is the signal to render a skeleton.
  */
 export function useRegistrations() {
-  const { keys, add, remove } = useJoinKeys();
+  const { keys, add } = useJoinKeys();
   const { account, status } = useSession();
   const [fetched, setFetched] = useState<Registration[] | null>(null);
   /* The webinars behind those registrations, keyed by slug.
@@ -383,16 +370,6 @@ export function useRegistrations() {
     [account, add],
   );
 
-  const forget = useCallback(
-    (reg: Registration) => {
-      setFetched((prev) =>
-        (prev ?? []).filter((r) => r.joinKey !== reg.joinKey),
-      );
-      remove(reg.joinKey);
-    },
-    [remove],
-  );
-
   /** The webinar behind a registration, from whichever response carried it. */
   const webinarFor = useCallback(
     (slug: string) => owned.webinars[slug] ?? webinars[slug],
@@ -408,6 +385,5 @@ export function useRegistrations() {
     isRegistered,
     registrationFor,
     remember,
-    forget,
   };
 }

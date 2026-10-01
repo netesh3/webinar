@@ -44,8 +44,7 @@ export function MyWebinarsList({
 }: {
   othersOnly?: boolean;
 } = {}) {
-  const { registrations, webinarFor, forget, error, retry } =
-    useRegistrations();
+  const { registrations, webinarFor, error, retry } = useRegistrations();
   // Still needed for the "saved in this browser" nudge; the registration fetching it
   // used to do is now useRegistrations' job.
   const { account } = useSession();
@@ -135,7 +134,6 @@ export function MyWebinarsList({
                 key={webinar.id}
                 webinar={webinar}
                 registration={reg}
-                onForget={() => forget(reg)}
               />
             ))}
           </div>
@@ -154,7 +152,6 @@ export function MyWebinarsList({
                 webinar={webinar}
                 registration={reg}
                 past
-                onForget={() => forget(reg)}
               />
             ))}
           </div>
@@ -168,12 +165,10 @@ function RegisteredCard({
   webinar: w,
   registration: r,
   past = false,
-  onForget,
 }: {
   webinar: Webinar;
   registration: Registration;
   past?: boolean;
-  onForget: () => void;
 }) {
   const origin = useShareOrigin();
   // null until after hydration, so the server and the browser render the same
@@ -186,6 +181,10 @@ function RegisteredCard({
   // is no artificial waiting room: an attendee who arrives early sees "waiting
   // for the host", which is more informative than a disabled button.
   const joinable = !past && !pending && !declined;
+  // A past row has no join or calendar actions, so it does not keep an empty
+  // column beside the title.
+  const hasSide =
+    joinable || pending || declined || (!past && !live && now !== null);
 
   const event = {
     title: w.topic,
@@ -220,8 +219,8 @@ function RegisteredCard({
           </div>
 
           <h3 className="text-[15px] leading-snug font-semibold">
-            {/* Stretched over the card. The attendee page is the row; Join,
-                calendar, and Forget sit above it and keep their own clicks.
+            {/* Stretched over the card. The attendee page is the row; Join
+                and calendar sit above it and keep their own clicks.
                 ring-inset: the card clips overflow for the colour stripe. */}
             <Link
               href={`/webinars/${w.id}`}
@@ -251,71 +250,65 @@ function RegisteredCard({
           </div>
         </div>
 
-        <div className="pointer-events-none relative z-10 flex shrink-0 flex-col justify-center gap-2 sm:w-[180px]">
-          {joinable && (
-            <ButtonLink
-              href={`/webinars/${w.id}/room`}
-              size="sm"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="pointer-events-auto"
-            >
-              {live ? "Join now" : "Join the webinar"}
-            </ButtonLink>
-          )}
-
-          {pending && (
-            <div className="flex h-9 items-center justify-center rounded-lg bg-warn-soft text-[12.5px] font-medium text-warn">
-              Pending approval
-            </div>
-          )}
-
-          {declined && (
-            <div className="flex h-9 items-center justify-center rounded-lg bg-live-soft text-[12.5px] font-medium text-live">
-              Not approved
-            </div>
-          )}
-
-          {joinable && (
-            <div className="grid grid-cols-2 gap-1.5">
+        {hasSide && (
+          <div className="pointer-events-none relative z-10 flex shrink-0 flex-col justify-center gap-2 sm:w-[180px]">
+            {joinable && (
               <ButtonLink
-                href={googleCalendarUrl(event)}
+                href={`/webinars/${w.id}/room`}
+                size="sm"
                 target="_blank"
                 rel="noopener noreferrer"
-                variant="secondary"
-                size="sm"
-                className="pointer-events-auto px-2"
+                className="pointer-events-auto"
               >
-                <CalendarIcon className="size-3.5" />
-                Google
+                {live ? "Join now" : "Join the webinar"}
               </ButtonLink>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="pointer-events-auto px-2"
-                onClick={() =>
-                  downloadIcs(event, `${w.id}-${r.joinKey}`, `${w.id}.ics`)
-                }
-              >
-                .ics
-              </Button>
-            </div>
-          )}
+            )}
 
-          {!past && !live && now !== null && (
-            <p className="text-center text-[11px] text-ink-3">
-              Starts {formatRelative(w.startsAt, new Date(now))}
-            </p>
-          )}
+            {pending && (
+              <div className="flex h-9 items-center justify-center rounded-lg bg-warn-soft text-[12.5px] font-medium text-warn">
+                Pending approval
+              </div>
+            )}
 
-          <button
-            type="button"
-            onClick={onForget}
-            className="pointer-events-auto text-[11.5px] text-ink-3 hover:text-live hover:underline"
-          >
-            Forget on this device
-          </button>
-        </div>
+            {declined && (
+              <div className="flex h-9 items-center justify-center rounded-lg bg-live-soft text-[12.5px] font-medium text-live">
+                Not approved
+              </div>
+            )}
+
+            {joinable && (
+              <div className="grid grid-cols-2 gap-1.5">
+                <ButtonLink
+                  href={googleCalendarUrl(event)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="secondary"
+                  size="sm"
+                  className="pointer-events-auto px-2"
+                >
+                  <CalendarIcon className="size-3.5" />
+                  Google
+                </ButtonLink>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="pointer-events-auto px-2"
+                  onClick={() =>
+                    downloadIcs(event, `${w.id}-${r.joinKey}`, `${w.id}.ics`)
+                  }
+                >
+                  .ics
+                </Button>
+              </div>
+            )}
+
+            {!past && !live && now !== null && (
+              <p className="text-center text-[11px] text-ink-3">
+                Starts {formatRelative(w.startsAt, new Date(now))}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </Card>
   );

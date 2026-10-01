@@ -23,12 +23,18 @@ import { useAppConfig } from "./providers";
  * the host dashboard by middleware.ts and by the API, both of which refuse the URL. This only
  * decides that the page they are allowed to see does not advertise the pages they are not.
  */
-export function ParticipantHeader() {
+export function ParticipantHeader({ wide = false }: { wide?: boolean }) {
   const { appName } = useAppConfig();
 
   return (
     <header className="border-b border-line bg-surface">
-      <div className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-5">
+      <div
+        className={
+          wide
+            ? "flex h-14 w-full items-center px-4 sm:px-6"
+            : "mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-5"
+        }
+      >
         <Link href="/" className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element -- a fixed
               brand asset, not a page image next/image would optimize. */}
