@@ -100,109 +100,95 @@
   <div class="scrim" aria-hidden="true"></div>
 
   <main class="main">
-    <header class="top">
-      <div class="copy">
-        <h1>Settings</h1>
-      </div>
-    </header>
-
-    <div class="setgrid">
-      <nav class="subnav" aria-label="Settings">
-        <a class="subitem" href="#profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.2"/><path d="M5.5 19.5c.9-3.2 3.4-5 6.5-5s5.6 1.8 6.5 5"/></svg>Profile</a>
-        <a class="subitem on" href="#integrations" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6v4h4v6h-4v6H9v-6H5V8h4z"/></svg>Integrations<span class="oncount">2 on</span></a>
-        <a class="subitem" href="#messaging"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg>Messaging defaults</a>
-        <a class="subitem" href="#billing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M3.5 10h17"/></svg>Billing &amp; plan</a>
-        <a class="subitem" href="#team"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="2.4"/><path d="M4.6 18.5c.5-2.5 2.3-4 4.4-4s3.9 1.5 4.4 4"/><circle cx="16.2" cy="9.2" r="1.9"/><path d="M14.4 18.5c.25-1.7 1.3-2.9 2.6-2.9 1.4 0 2.4 1.1 2.7 2.9"/></svg>Team</a>
-        <div class="nav-gap" role="separator"></div>
-        <a class="subitem" href="#signout" style="color:var(--ink-3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.5h4.5v15H14M10 8l-4 4 4 4M6 12h9"/></svg>Sign out</a>
-      </nav>
-
-      <div class="stack16">
+    <div class="sx">
+      <a class="sx-home" href="app-webinars.html">← Your webinars</a>
+      <h1 class="sx-h1">Settings</h1>
+      <p class="sx-sub">Your details, and the apps Webinar Liv works with.</p>
+      <div class="sx-grid">
+        <nav class="sx-nav" aria-label="Settings">
+          <a class="sx-ni" href="#profile" data-sec="profile"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg><span>Profile</span></a>
+          <a class="sx-ni" href="#appearance" data-sec="appearance"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor"/></svg><span>Appearance</span></a>
+          <a class="sx-ni" href="#integrations" data-sec="integrations"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2 2 0 1 1 4 0V6h4v4h-1.5a2 2 0 1 0 0 4H17v4.5h-4.5V17a2 2 0 1 0-4 0v1.5H4.5V14H6a2 2 0 1 0 0-4H4.5V6H9V4.5z"/></svg><span>Integrations</span><span class="sx-on">2 on</span></a>
+          <a class="sx-ni" href="#account" data-sec="account"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="8" r="3.5"/><path d="M3.5 19.5c.7-3.3 3.3-5 6.5-5 1 0 2 .2 2.8.5"/><circle cx="18" cy="17" r="2"/><path d="M18 13.5v1.5M18 19v1.5M21.5 17H20M16 17h-1.5"/></svg><span>Account</span></a>
+          <div class="sx-sep"></div>
+          <button class="sx-ni out" type="button"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4.5h4.5v15H14M10 8l-4 4 4 4M6 12h9"/></svg><span>Sign out</span></button>
+        </nav>
         <div>
-          <div class="h2">Integrations</div>
-          <div class="lead">Connect once. Every webinar uses them.</div>
+          <section class="sx-sec" data-sec="profile">
+            <h2>Profile</h2>
+            <p class="sx-d">Shown to everyone in a webinar you present on.</p>
+            <div class="sx-box sx-lg">
+              <div class="sx-photo"><span class="pav2" style="background:#0f766e;width:56px;height:56px;font-size:20px">MS</span>
+                <div><label class="sx-pl" for="profile-photo">Profile photo</label><p>JPEG, PNG or WebP. Shown in place of your initials.</p><input id="profile-photo" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload profile picture"></div>
+              </div>
+              <form class="sx-form" onsubmit="return false">
+                <div><label class="label" for="name">Full name</label><input id="name" class="field" value="Meera Shah"></div>
+                <div><label class="label" for="title">Job title</label><input id="title" class="field" value="Money coach"></div>
+                <div><label class="label" for="org">Organisation</label><input id="org" class="field" value="Mindful Money"></div>
+                <div><button class="cbtn" type="submit">Save changes</button></div>
+              </form>
+            </div>
+          </section>
+          <section class="sx-sec" data-sec="appearance" hidden>
+            <h2>Appearance</h2>
+            <p class="sx-d">Light is the current look. Your choice is saved in this browser and overrides the system setting.</p>
+            <div class="sx-box">
+              <div class="sx-themes" role="radiogroup" aria-label="Color theme">
+                <button type="button" role="radio" data-theme-set="light"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></svg>Light</button>
+                <button type="button" role="radio" data-theme-set="dark"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>Dark</button>
+              </div>
+            </div>
+          </section>
+          <section class="sx-sec" data-sec="integrations" hidden>
+            <h2>Integrations</h2>
+            <p class="sx-d">Connect the apps you already use. Each one is optional — you can switch it off any time.</p>
+            <h3 class="sx-g">Messaging</h3>
+            <div class="sx-cards">
+              <article class="sx-card">
+              <div class="sx-ch"><span class="sx-mk wa"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z" fill="currentColor" stroke="none"/></svg></span><div class="sx-nm"><b>WhatsApp Business</b><span>Messages to your attendees</span></div><span class="sx-st on"><i></i>Connected</span></div>
+              <p class="sx-det">Confirmations, reminders and follow-ups on WhatsApp, from your own business number.</p>
+              <div class="sx-ft"><div class="sx-who"><b>+91 98200 45123</b><small>Mindful Money</small></div><a class="sbtn" href="app-whatsapp.html">Manage</a><span class="sx-more" aria-label="WhatsApp Business actions"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18" cy="12" r="1.3" fill="currentColor"/></svg></span></div>
+            </article>
+              <article class="sx-card soon">
+              <div class="sx-ch"><span class="sx-mk tg"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11.5 20.5 4l-4 16-5-5.5-8-3z" fill="currentColor" stroke="none"/></svg></span><div class="sx-nm"><b>Telegram</b><span>Reminders and follow-ups</span></div><span class="sx-soon">Coming soon</span></div>
+              <p class="sx-det">Send reminders and follow-ups on Telegram, for attendees who prefer it to WhatsApp.</p>
+              <div class="sx-ft"><div class="sx-who"><small>We&apos;ll email you the day it&apos;s ready.</small></div><button class="cbtn sm" type="button"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 1.5H5zM10 20.5h4"/></svg>Notify me</button></div>
+            </article>
+            </div>
+            <h3 class="sx-g">Streaming</h3>
+            <div class="sx-cards">
+              <article class="sx-card">
+              <div class="sx-ch"><span class="sx-mk yt"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="3" fill="currentColor" stroke="none"/><path d="M10.5 9.5v5l4-2.5z" fill="#e62117" stroke="none"/></svg></span><div class="sx-nm"><b>YouTube</b><span>Go live on your channel too</span></div><span class="sx-st on"><i></i>Connected</span></div>
+              <p class="sx-det">Go live on YouTube at the same time, automatically. The watch link lands in the webinar&apos;s Recording tab.</p>
+              <div class="sx-ft"><div class="sx-who"><b>Mindful Money with Meera</b><small>New lives start as Unlisted</small></div><button class="sbtn" type="button">Disconnect</button></div>
+            </article>
+              <article class="sx-card">
+              <div class="sx-ch"><span class="sx-mk li"><b>in</b></span><div class="sx-nm"><b>LinkedIn Live</b><span>Go live on your profile or page</span></div><span class="sx-st"><i></i>Not connected</span></div>
+              <p class="sx-det">Stream your webinar to LinkedIn, so your network can watch without registering. LinkedIn has not approved an app connection, so this stays a stream key you paste when you go live.</p>
+              <div class="sx-ft"><div class="sx-who"><small>Paste a stream key when you go live</small></div><button class="cbtn sm" type="button">Connect</button></div>
+            </article>
+            </div>
+            <h3 class="sx-g">Coming soon</h3>
+            <div class="sx-soonl">
+              <div class="sx-srow"><span class="sx-mk sm gc"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg></span><div><b>Google Calendar</b><small>Your webinars on your calendar, time blocked</small></div></div>
+              <div class="sx-srow"><span class="sx-mk sm ig"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.5"/></svg></span><div><b>Instagram</b><small>Reminders by Instagram message</small></div></div>
+              <div class="sx-srow"><span class="sx-mk sm mc"><b>M</b></span><div><b>Mailchimp</b><small>Add everyone who registers to your email list</small></div></div>
+              <div class="sx-srow"><span class="sx-mk sm zp"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z" fill="currentColor" stroke="none"/></svg></span><div><b>Zapier</b><small>Send new registrations to thousands of other apps</small></div></div>
+            </div>
+            <div class="sx-miss"><span>Missing an app you use?</span><a href="mailto:support@webinarliv.com?subject=Integration%20request">Tell us which one</a></div>
+          </section>
+          <section class="sx-sec" data-sec="account" hidden>
+            <h2>Account</h2>
+            <p class="sx-d">Sign-in and hosting. An administrator changes hosting; you don&apos;t.</p>
+            <div class="sx-box sx-lg sx-acct">
+              <div><div class="sx-k">Email</div><div class="sx-v">meera@mindfulmoney.in</div></div>
+              <div class="sx-host"><div><b>Hosting access</b><span>You can schedule and run webinars.</span></div><span class="sx-badge">Granted</span></div>
+            </div>
+          </section>
         </div>
-        <section>
-          <h3 class="grouplab">Messaging</h3>
-          <div class="card clip">
-            <div class="icard">
-              <span class="imark wa"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z"/></svg></span>
-              <div style="min-width:0">
-                <div class="ihead"><b>WhatsApp Business</b><span class="st ok"><i></i>Connected</span></div>
-                <div class="itag">+91 98200 45123 · Mindful Money</div>
-                <div class="idet">Meta bills each message to your account — about ₹0.13 each. We never charge for messages.</div>
-              </div>
-              <div style="display:flex;gap:6px"><a class="btn sec sm" href="app-whatsapp.html">Manage</a><button class="kebab" type="button" aria-label="More for WhatsApp"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg></button></div>
-            </div>
-            <div class="icard">
-              <span class="imark tg soon"><svg viewBox="0 0 24 24" fill="#fff"><path d="M20.5 4.5 3.8 11c-.9.4-.9 1.5 0 1.8l4.2 1.4 1.6 5c.3.8 1.2 1 1.8.4l2.4-2.3 4.3 3.1c.7.5 1.6.1 1.8-.7L22.3 6c.2-1-.8-1.8-1.8-1.5z"/></svg></span>
-              <div style="min-width:0">
-                <div class="ihead"><b>Telegram</b><span class="st soon">Coming soon</span></div>
-                <div class="itag">Reminders and follow-ups, for attendees who prefer it to WhatsApp</div>
-              </div>
-              <button class="btn sec sm" type="button">Notify me</button>
-            </div>
-          </div>
-        </section>
-        <section>
-          <h3 class="grouplab">Streaming</h3>
-          <div class="card clip">
-            <div class="icard">
-              <span class="imark yt"><svg viewBox="0 0 24 24" fill="#fff"><path d="M9.5 8.3v7.4L16 12z"/></svg></span>
-              <div style="min-width:0">
-                <div class="ihead"><b>YouTube</b><span class="st ok"><i></i>Connected</span></div>
-                <div class="itag">Mindful Money with Meera · new lives start as Unlisted</div>
-                <div class="idet">Goes live on your channel at the same time. The watch link lands in the Recording tab.</div>
-              </div>
-              <div style="display:flex;gap:6px"><a class="btn sec sm" href="app-youtube.html">Watch links</a><button class="btn sec sm" type="button">Disconnect</button></div>
-            </div>
-            <div class="icard">
-              <span class="imark li">in</span>
-              <div style="min-width:0">
-                <div class="ihead"><b>LinkedIn Live</b><span class="st muted"><i></i>Not connected</span></div>
-                <div class="itag">Paste a stream key when you go live</div>
-                <div class="idet">LinkedIn hasn’t approved an app connection, so this stays a stream key.</div>
-              </div>
-              <button class="btn sec sm" type="button">How it works</button>
-            </div>
-          </div>
-        </section>
-        <section>
-          <h3 class="grouplab">Coming soon</h3>
-          <div class="card" style="padding:10px 14px;font-size:12.5px;color:var(--ink-2)">Google Calendar · Instagram · Mailchimp · Zapier</div>
-        </section>
-      </div>
-
-      <div class="stack16">
-        <div>
-          <div class="h2">Profile</div>
-          <div class="lead">Shown to everyone in a webinar you present on.</div>
-        </div>
-        <section class="card prof" style="padding:14px">
-          <div class="photo">
-            <span class="av lg" aria-hidden="true">MS</span>
-            <div style="min-width:0">
-              <div class="label" style="margin:0">Profile photo</div>
-              <div class="hint" style="margin-top:2px">JPEG, PNG or WebP. Shown in place of your initials.</div>
-              <div style="display:flex;gap:6px;margin-top:8px"><span class="file">Upload photo</span></div>
-            </div>
-          </div>
-          <div class="formgrid">
-            <div><label class="label">Full name</label><input class="field" value="Meera Shah"></div>
-            <div><label class="label">Job title</label><input class="field" value="Money coach"></div>
-            <div><label class="label">Organisation</label><input class="field" value="Mindful Money"></div>
-          </div>
-          <div class="formgrid">
-            <div class="h2" style="font-size:13.5px">Email your webinars send</div>
-            <div><label class="label">From</label><input class="field" value="Meera Shah via Webinar Liv" readonly><div class="hint">Sent from notify@webinarliv.com, so it doesn’t land in spam.</div></div>
-            <div><label class="label">Reply-To</label><input class="field" value="meera@webinarliv.com"><div class="hint">Replies land in Email. Concept — forwards a copy to meera@mindfulmoney.in.</div></div>
-            <div><button class="btn sm" type="button">Save changes</button></div>
-          </div>
-        </section>
       </div>
     </div>
-
-  </main>
+</main>
 </div>
 
 <script>
@@ -267,6 +253,48 @@
     paintTheme();
   });
   paintTheme();
+})();
+</script>
+<script>
+(function () {
+  var ids = ["profile", "appearance", "integrations", "account"];
+  function show() {
+    var h = location.hash.replace("#", "");
+    if (ids.indexOf(h) < 0) h = "profile";
+    document.querySelectorAll(".sx-sec").forEach(function (s) { s.hidden = s.dataset.sec !== h; });
+    document.querySelectorAll(".sx-nav a.sx-ni").forEach(function (a) {
+      var on = a.dataset.sec === h;
+      a.classList.toggle("on", on);
+      if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
+  }
+  function paint() {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    document.querySelectorAll("[data-theme-set]").forEach(function (b) {
+      var on = (b.dataset.themeSet === "dark") === dark;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-checked", on ? "true" : "false");
+    });
+  }
+  document.querySelectorAll("[data-theme-set]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = b.dataset.themeSet;
+      document.documentElement.setAttribute("data-theme", v);
+      try { localStorage.setItem("wl-theme", v); } catch (e) {}
+      paint();
+      var t = document.querySelector(".navitem.theme");
+      if (t) {
+        var next = v === "dark" ? "Light" : "Dark";
+        t.setAttribute("aria-label", "Switch to " + next.toLowerCase() + " mode");
+        t.querySelector(".lbl").textContent = next;
+        t.querySelector(".fly").textContent = next + " mode";
+      }
+    });
+  });
+  new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  window.addEventListener("hashchange", show);
+  show();
+  paint();
 })();
 </script>
 </body>
