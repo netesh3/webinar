@@ -17,11 +17,23 @@ export function goLiveOpensAt(startsAt: string): Date | null {
  *
  *  `now` is null until the clock is safe to read (see useNow). Until then the
  *  answer is false, so a scheduled Go live does not flash enabled and then lock. */
-export function canGoLive(startsAt: string, now: number | null): boolean {
+export function canGoLive(
+  startsAt: string,
+  now: number | null,
+  durationMin?: number,
+): boolean {
   if (now == null) return false;
   const opens = goLiveOpensAt(startsAt);
   if (!opens) return false;
-  return now >= opens.getTime();
+  if (now < opens.getTime()) return false;
+  /* Once the scheduled end has passed there is nothing to go live for. A
+   * missing duration leaves the old answer, so a caller that has not been
+   * told the length cannot accidentally lock a session that is still open. */
+  if (durationMin != null && Number.isFinite(durationMin)) {
+    const end = new Date(startsAt).getTime() + durationMin * 60_000;
+    if (Number.isFinite(end) && now >= end) return false;
+  }
+  return true;
 }
 
 /** Shown beside a disabled Go live. The clock is the webinar's own zone. */

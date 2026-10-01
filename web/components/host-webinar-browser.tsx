@@ -37,6 +37,7 @@ import {
   type Webinar,
 } from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
+import { presentForHostList } from "@/lib/webinar-status";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
 /* The host's own list: Upcoming / Completed / Drafts, searchable, date-filtered, and
@@ -610,13 +611,14 @@ function EmptyList({
  */
 function bypassPage(p: PageQuery): HostWebinarPage {
   const q = p.q?.toLowerCase() ?? "";
+  const now = Date.now();
   const narrowed = DEV_BYPASS_WEBINARS.filter((w) => {
     if (q && !w.topic.toLowerCase().includes(q)) return false;
     const day = w.startsAt.slice(0, 10);
     if (p.from && day < p.from) return false;
     if (p.to && day > p.to) return false;
     return true;
-  });
+  }).map((w) => presentForHostList(w, now));
 
   const counts: HostWebinarCounts = {
     upcoming: narrowed.filter(

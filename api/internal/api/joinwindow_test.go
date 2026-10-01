@@ -110,11 +110,11 @@ func TestStartingEarlyOpensTheDoors(t *testing.T) {
 func TestALateStartDoesNotLockTheAudienceOut(t *testing.T) {
 	h := newHarness(t)
 	h.signup("Late Host", "late-host@test.dev", true)
-	/* Scheduled for two hours ago and only being started now. The clock is well past the
-	 * window in both directions, so a naive "within grace of startsAt" rule would refuse
-	 * everybody — which is the failure mode that matters, because it happens exactly when
-	 * an audience is already sitting there. */
-	wb := scheduleAt(t, h, "Running Late", -2*time.Hour)
+	/* Twenty minutes into a 60-minute slot: the host is late, and the scheduled
+	 * end has not passed. A start that only looked at "is now inside the early
+	 * window" would refuse the audience. A slot whose end has already passed
+	 * is a different rule — see TestGoLiveRefusesAfterTheScheduledEnd. */
+	wb := scheduleAt(t, h, "Running Late", -20*time.Minute)
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("start: status %d body %s", res.StatusCode, raw)
 	}
@@ -126,6 +126,19 @@ func TestALateStartDoesNotLockTheAudienceOut(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("a live webinar refused an attendee because of its scheduled time: status %d body %s",
 			res.StatusCode, raw)
+	}
+}
+
+func TestGoLiveRefusesAfterTheScheduledEnd(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Late Host", "after-end@test.dev", true)
+	/* Three hours ago, and newWebinar's duration is 60 minutes, so the slot
+	 * ended two hours ago. Starting it now would be a session nobody was
+	 * invited to any longer. */
+	wb := scheduleAt(t, h, "Already Over", -3*time.Hour)
+	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil)
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "ended" {
+		t.Fatalf("start after the end: status %d body %s, want 403 ended", res.StatusCode, raw)
 	}
 }
 

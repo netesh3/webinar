@@ -274,9 +274,12 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		          WHERE w.id = notifications.webinar_id
 		            /* The replay is the one message that is ABOUT a webinar being over, so
 		             * it is the one that must survive the session ending — every other kind
-		             * here is a promise about something that is going to happen, and an
-		             * ended webinar is the reason not to keep it. */
-		            AND (notifications.kind = 'replay_ready' OR w.status NOT IN ('ended','draft'))
+		             * here is a promise about something that is going to happen. An ended
+		             * webinar is the reason not to keep it, and so is a scheduled one whose
+		             * time passed without ever going live. */
+		            AND (notifications.kind = 'replay_ready' OR (
+		                  w.status NOT IN ('ended','draft')
+		                  AND NOT `+LapsedScheduledCond("w")+`))
 		       ))
 		   AND (registration_id IS NULL OR EXISTS (
 		         SELECT 1 FROM registrations r

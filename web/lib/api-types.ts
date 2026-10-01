@@ -2218,6 +2218,13 @@ export interface Webinar {
   status: WebinarStatus;
   startedAt?: string;
   endedAt?: string;
+  /**
+   *  DidntGoLive is set when a scheduled webinar never went live and its
+   * 	 * scheduled end has passed. The row is reported as ended so it leaves
+   * 	 * Upcoming; the flag is how a completed card tells that apart from a
+   * 	 * session that actually ran. Not stored — derived when the webinar is read.
+   */
+  didntGoLive?: boolean;
   maxDurationMin: number /* int */;
   /**
    * SimuliveRecordingID is the ready recording played as the audience video
