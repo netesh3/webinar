@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Chats · WhatsApp · Webinar Liv</title>
+<title>WhatsApp · Metrics · Webinar Liv</title>
 <link rel="stylesheet" href="assets/home-dashboard.css">
 <script>
 (function () {
@@ -100,65 +100,64 @@
   <div class="scrim" aria-hidden="true"></div>
 
   <main class="main">
-    <header class="top"><div class="copy"><h1>WhatsApp</h1></div></header>
-    <div class="wa-conn"><span class="okdot"></span><b>Connected</b><span>+91 98200 45123 (Mindful Money)</span><a class="more" href="app-settings.html">Settings</a></div>
+    <header class="top">
+      <div class="copy">
+        <h1>WhatsApp</h1>
+      </div>
+    </header>
+
+    <div class="wa-conn">
+      <span class="okdot"></span><b>Connected</b>
+      <span>+91 98200 45123 (Mindful Money)</span>
+      <a class="more" href="app-settings.html">Settings</a>
+    </div>
+
     <nav class="tabs" aria-label="WhatsApp">
-      <a class="tab" href="app-whatsapp.html">Metrics</a>
+      <a class="tab" href="app-whatsapp.html" >Metrics</a>
       <a class="tab on" href="app-whatsapp-messages.html" aria-current="page">Chats <span class="count">2</span></a>
       <a class="tab" href="app-whatsapp-templates.html">Templates <span class="count">12</span></a>
       <a class="tab" href="app-whatsapp-automations.html">Automations <span class="count">4 on</span></a>
     </nav>
-    <div class="ib">
-      <div class="ib-bar">
-        <div class="ib-views">
-          <button class="ib-view on" type="button">Needs reply <span>2</span></button>
-          <button class="ib-view" type="button">Hot leads <span>1</span></button>
-          <button class="ib-view" type="button">All <span>6</span></button>
-          <button class="ib-view" type="button">Done <span>3</span></button>
+<div class="mx" id="mx">
+      <aside class="mx-list">
+        <div class="mx-tools">
+          <label class="cur-search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg><input type="search" placeholder="Search name or number" aria-label="Search name or number"></label>
+          <select class="field" aria-label="Filter"><option>All webinars</option><option>Unread</option><option>Mindful Money: Budgeting Without Guilt</option><option>Diwali Money Plan</option></select>
         </div>
-        <div class="ib-web"><label class="label" for="ib-webinar">Webinar</label><select id="ib-webinar" class="field"><option>All webinars</option><option>Mindful Money: Budgeting Without Guilt</option><option>Diwali Money Plan</option></select></div>
-      </div>
-      <div class="ib-keys"><span></span><button type="button"><kbd>?</kbd>Keyboard shortcuts</button></div>
-      <div class="ib-grid" id="chats">
-        <div class="ib-list">
-          <button class="ib-row need on" type="button" data-open="#chats"><span class="pav2" style="background:#0f766e;width:36px;height:36px;font-size:13px" aria-hidden="true">AR</span><span class="ib-c"><span class="ib-l1"><span class="ib-nm">Ananya Rao</span><span class="ib-t">2 hours ago</span></span><span class="ib-l2"><span class="ib-pv">Is the link the same as the one in the email?</span><span class="ib-dot" aria-label="Needs reply"></span></span><span class="ib-l3">Mindful Money: Budgeting Without Guilt</span></span></button>
-          <button class="ib-row need" type="button" data-open="#chats"><span class="pav2" style="background:#7c3aed;width:36px;height:36px;font-size:13px" aria-hidden="true">RM</span><span class="ib-c"><span class="ib-l1"><span class="ib-nm">Rohit Menon</span><span class="ib-hot">Hot</span><span class="ib-t">3 hours ago</span></span><span class="ib-l2"><span class="ib-pv">Can I join from my phone tomorrow?</span><span class="ib-dot" aria-label="Needs reply"></span></span><span class="ib-l3">Mindful Money: Budgeting Without Guilt</span></span></button>
+        <div class="mx-rows">
+          <button class="mx-row on" type="button" aria-current="true" data-open="#mx"><span class="pav2" style="background:#7c3aed;width:36px;height:36px;font-size:13px" aria-hidden="true">AR</span><span class="mx-c"><span class="mx-l1"><span class="mx-nm">Ananya Rao</span><span class="mx-tm">2:15 AM</span></span><span class="mx-l2"><span class="mx-pv">Is the link the same as the one in the email?</span></span><span class="mx-web">Mindful Money: Budgeting Without Guilt</span></span><span class="mx-dot" title="Unread"></span></button>
+          <button class="mx-row" type="button" data-open="#mx"><span class="pav2" style="background:#6d28d9;width:36px;height:36px;font-size:13px" aria-hidden="true">RM</span><span class="mx-c"><span class="mx-l1"><span class="mx-nm">Rohit Menon</span><span class="mx-tm">Yesterday</span></span><span class="mx-l2"><span class="mx-pv">Can I join from my phone tomorrow?</span></span><span class="mx-web">Mindful Money: Budgeting Without Guilt</span></span><span class="mx-dot" title="Unread"></span></button>
+          <button class="mx-row" type="button" data-open="#mx"><span class="pav2" style="background:#7c3aed;width:36px;height:36px;font-size:13px" aria-hidden="true">PN</span><span class="mx-c"><span class="mx-l1"><span class="mx-nm">Priya Nair</span><span class="mx-tm">Mon</span></span><span class="mx-l2"><span class="mx-you">You<span> ·</span></span><span class="mx-pv">Here&apos;s the replay — it&apos;s up till Sunday</span><svg class="tk" viewBox="0 0 18 12" aria-label="Read"><path d="M1 6.5 4.5 10 11 2.5M7 9l1 1 6.5-7.5" fill="none" stroke="#53bdeb" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="mx-web">Diwali Money Plan</span></span><span></span></button>
+          <button class="mx-row" type="button" data-open="#mx"><span class="pav2" style="background:#7c3aed;width:36px;height:36px;font-size:13px" aria-hidden="true">+</span><span class="mx-c"><span class="mx-l1"><span class="mx-nm">+91 98450 22110</span><span class="mx-tm">Sun</span></span><span class="mx-l2"><span class="mx-pv">Sent a photo</span></span><span class="mx-web">Fund Picking 101</span></span><span class="mx-dot" title="Unread"></span></button>
+          <button class="mx-row" type="button" data-open="#mx"><span class="pav2" style="background:#6d28d9;width:36px;height:36px;font-size:13px" aria-hidden="true">AM</span><span class="mx-c"><span class="mx-l1"><span class="mx-nm">Arjun Mehta</span><span class="mx-tm">29 Sep</span></span><span class="mx-l2"><span class="mx-pv">Thanks Meera, the SIP sheet helped a lot</span></span><span class="mx-web">Credit Score Basics</span></span><span></span></button>
+          <button class="mx-row" type="button" data-open="#mx"><span class="pav2" style="background:#5b21b6;width:36px;height:36px;font-size:13px" aria-hidden="true">SK</span><span class="mx-c"><span class="mx-l1"><span class="mx-nm">Sneha Kulkarni</span><span class="mx-tm">28 Sep</span></span><span class="mx-l2"><span class="mx-pv">Can my husband join on the same link?</span></span><span class="mx-web">Salary Week: Where the Money Goes</span></span><span></span></button>
         </div>
-        <div class="ib-thread">
-          <div class="ib-main">
-            <header class="ib-th">
-              <button class="ib-back" type="button" data-back="#chats" aria-label="Back to conversations"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m0 0 6-6m-6 6 6 6"/></svg></button>
-              <span class="pav2" style="background:#0f766e;width:34px;height:34px;font-size:13px" aria-hidden="true">AR</span>
-              <div class="ib-who"><div class="ib-tn">Ananya Rao</div><div class="ib-ts">+91 98450 12873 · wrote 2 hours ago</div></div>
-              <button class="gbtn" type="button">Snooze</button>
-              <button class="sbtn" type="button"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Done</button>
-            </header>
-            <div class="ib-wall">
-              <div class="ib-day">30 Sep</div>
-              <div class="ib-auto"><span><b>2 automatic messages</b> · confirmation, reminders · all read</span><button type="button">Show</button></div>
-              <div class="ib-b in">Thanks! Will be there.<span class="ib-bt">7:40 PM</span></div>
-              <div class="ib-b in">Is the link the same as the one in the email?<span class="ib-bt">7:42 PM</span></div>
-              <div class="ib-win"><i></i>You can reply freely for 21 more hours</div>
-            </div>
-            <div class="ib-compose">
-              <div class="ib-tabs" role="tablist"><button class="on" type="button" role="tab" aria-selected="true">Reply</button><button type="button" role="tab" aria-selected="false">Template</button></div>
-              <div class="ib-snips"><button type="button">+ Save a quick reply</button></div>
-              <textarea id="crm-reply" class="field" placeholder="Reply to Ananya Rao…" aria-label="Your reply"></textarea>
-              <div class="ib-send"><p>WhatsApp&apos;s 24-hour window closes in 21 hours. After that, only an approved template can be sent. <span>⌘↵ to send.</span></p><button class="cbtn sm" type="button" disabled><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12 20 4l-6 16-3-7-7-1z"/></svg>Send</button></div>
-            </div>
-          </div>
-          <aside class="ib-prof">
-            <section class="ib-pid"><span class="pav2" style="background:#0f766e;width:60px;height:60px;font-size:22px" aria-hidden="true">AR</span><div class="ib-pn">Ananya Rao</div><div class="ib-pe">ananya.rao@gmail.com</div><div class="ib-badges"><span class="ib-badge ok"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19l1.2-3.4A8 8 0 1 1 8.2 18.2L5 19z"/></svg>Opted in</span></div></section>
-            <section class="ib-ph"><h4>Webinars</h4>
-              <div class="ib-w"><div><span>Mindful Money: Budgeting Without Guilt</span><span>Thu, 1 Oct</span></div><div class="ib-bar0"><i style="width:0%"></i></div></div>
-              <div class="ib-w"><div><span>Credit Score Basics</span><span>52 / 60 min</span></div><div class="ib-bar0"><i style="width:87%"></i></div></div>
-              <div class="ib-w"><div><span>Fund Picking 101</span><span>Didn&apos;t join</span></div><div class="ib-bar0"><i class="no" style="width:0%"></i></div></div>
-            </section>
-            <section class="ib-opt"><button type="button">Mark opted out</button></section>
-          </aside>
+        <div class="mx-pager"><button class="sbtn" type="button" disabled>Previous</button><div><b>Page 1 of 1</b><span>30 per page · 1–6 of 6</span></div><button class="sbtn" type="button" disabled>Next</button></div>
+      </aside>
+      <section class="mx-thread">
+        <header class="mx-th">
+          <button class="mx-back" type="button" data-back="#mx" aria-label="Back to conversations"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5m0 0 6-6m-6 6 6 6"/></svg></button>
+          <span class="pav2" style="background:#7c3aed;width:34px;height:34px;font-size:13px" aria-hidden="true">AR</span>
+          <div><div class="mx-tn">Ananya Rao</div><div class="mx-ts">+91 98450 12873 · WhatsApp</div></div>
+        </header>
+        <div class="mx-facts">
+          <div><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="14" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg><div><div class="k">Customer since</div><div class="v">12 Sep 2026</div></div></div>
+          <div><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6.5 6.5 12 6.5 21.5 12 21.5 12 17.5 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/></svg><div><div class="k">Last seen</div><div class="v">30 Sep 2026, 7:42 PM</div></div></div>
         </div>
-      </div>
+        <div class="mx-wall">
+          <div class="mx-b out"><div><div class="bx">Yes — same link as the email. Thu 1 Oct, 7:00 PM IST.</div><div class="st">Tue 29 Sep · 7:44 PM · You <svg class="tk" viewBox="0 0 18 12" aria-label="Read"><path d="M1 6.5 4.5 10 11 2.5M7 9l1 1 6.5-7.5" fill="none" stroke="#53bdeb" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div></div>
+          <div class="mx-b in"><div><div class="bx">Thanks! Will be there.</div><div class="st">7:40 PM</div></div></div>
+          <div class="mx-b in"><div><div class="bx">Is the link the same as the one in the email?</div><div class="st">7:42 PM</div></div></div>
+        </div>
+        <div class="mx-box">
+          <label class="sr" for="inbox-reply">Your reply</label>
+          <textarea id="inbox-reply" class="field" rows="2" placeholder="Reply to Ananya Rao…"></textarea>
+          <button class="cbtn sm" type="button" disabled><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12 20 4l-6 16-3-7-7-1z"/></svg>Send</button>
+        </div>
+      </section>
     </div>
+
+
 </main>
 </div>
 
