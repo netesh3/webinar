@@ -19,6 +19,11 @@ import { Broadcasts } from "./crm-broadcasts";
 import { RemindersSettings } from "./crm-screen";
 import { SetupChecklist } from "./crm-setup";
 import { WhatsAppSimple } from "./whatsapp-simple";
+import {
+  beginWhatsAppHome,
+  beginWhatsAppMetrics,
+  resetWhatsAppBoot,
+} from "../whatsapp-boot";
 
 /* The WhatsApp page: /host/crm. One simple page (WhatsAppSimple) — connection, the
  * messages everyone gets, automations — linking to Settings and a one-off broadcast.
@@ -95,8 +100,20 @@ export function WhatsAppScreen() {
   const [syncing, setSyncing] = useState(false);
   const [tags, setTags] = useState<CRMTag[] | null>(null);
 
+  /* Setup, templates and the home bundle need the cookie, not the account
+   * body. They start while the login check is still out. The page below still
+   * waits to draw until that check says this is a host; a rejection throws
+   * the answers away. */
   useEffect(() => {
-    if (status !== "signed-in" || !canHost) return;
+    if (status === "anonymous") {
+      resetWhatsAppBoot();
+      return;
+    }
+    beginWhatsAppHome().catch(() => {});
+    beginWhatsAppMetrics().catch(() => {});
+  }, [status]);
+
+  useEffect(() => {
     let cancelled = false;
     engageApi
       .crmSetup()
@@ -119,10 +136,9 @@ export function WhatsAppScreen() {
     return () => {
       cancelled = true;
     };
-  }, [status, canHost, setupTick]);
+  }, [setupTick]);
 
   useEffect(() => {
-    if (status !== "signed-in" || !canHost) return;
     let cancelled = false;
     engageApi
       .crmTemplates()
@@ -140,15 +156,14 @@ export function WhatsAppScreen() {
             : "Could not load your WhatsApp templates.",
         );
       });
-    if (tagsOn)
-      engageApi
-        .crmTags()
-        .then((r) => !cancelled && setTags(r.tags))
-        .catch(() => !cancelled && setTags([]));
+    engageApi
+      .crmTags()
+      .then((r) => !cancelled && setTags(r.tags))
+      .catch(() => !cancelled && setTags([]));
     return () => {
       cancelled = true;
     };
-  }, [status, canHost, tagsOn]);
+  }, []);
 
   const refreshTemplates = useCallback(async () => {
     setSyncing(true);

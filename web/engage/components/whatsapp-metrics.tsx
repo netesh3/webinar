@@ -12,6 +12,7 @@ import {
 import type { CRMMetricsResponse, CRMSetup } from "@/lib/api-types";
 import { DEFAULT_TIME_ZONE } from "@/lib/format";
 import { FailureDialog, MetricTiles, StatusBar } from "./metric-tiles";
+import { whatsAppMetricsFlightFor } from "../whatsapp-boot";
 
 /* The same range field as the webinar lists. 7 days, 30 days, and This month
  * are inclusive calendar dates in IST, which GET /crm/metrics already accepts
@@ -62,8 +63,12 @@ export function WhatsAppMetrics({
   useEffect(() => {
     let cancelled = false;
     const { from, to } = metricQuery(period.from, period.to);
-    engageApi
-      .crmMetrics(from, to)
+    // The first window was asked for when the page mounted, beside the login
+    // check. A later range is a new question and asks again. Reuse the
+    // prefetch only when it is the same calendar window the card is showing.
+    const load =
+      whatsAppMetricsFlightFor(from, to) ?? engageApi.crmMetrics(from, to);
+    load
       .then((res) => {
         if (!cancelled) {
           setMetrics(res);

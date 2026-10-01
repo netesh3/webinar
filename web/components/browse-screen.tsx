@@ -39,19 +39,21 @@ export function BrowseScreen() {
       });
   }, []);
 
-  // Local preview has nothing to fetch: the fixture list is derived below
-  // rather than copied into state by this effect.
+  // The catalogue only needs the session cookie, which this request sends on its
+  // own. It starts with the login check rather than after it. Local preview has
+  // nothing to fetch: the fixture list is derived below.
   useEffect(() => {
-    if (status === "loading" || bypass) return;
+    if (bypass) return;
     load();
-  }, [status, bypass, load]);
+  }, [bypass, load]);
 
   const webinars = bypass
     ? DEV_BYPASS_WEBINARS.filter((w) => w.status !== "draft")
     : fetchedWebinars;
   const state = bypass ? (status === "loading" ? "loading" : "ok") : fetchState;
 
-  const signedOut = state === "signed-out" || (state !== "loading" && !account);
+  const signedOut =
+    state === "signed-out" || (status === "anonymous" && state !== "loading");
   const canHost = account?.canHost === true;
 
   return (

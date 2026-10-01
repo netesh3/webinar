@@ -6,6 +6,10 @@ import { dropCachePrefix } from "./http";
 
 export const HOST_LIST_PREFIX = "host-webinars:";
 
+/** Rows per page on the host home. The list request and its cache key both use this,
+ *  so a prefetch and the screen share one read instead of asking twice. */
+export const HOST_WEBINAR_PAGE_SIZE = 10;
+
 const cursors = new Map<string, (string | undefined)[]>();
 const pages = new Map<string, number>();
 const resets = new Set<() => void>();

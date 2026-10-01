@@ -26,6 +26,7 @@ import { WhatsAppAuto } from "./whatsapp-auto";
 import { WhatsAppMetrics } from "./whatsapp-metrics";
 import { WhatsAppReplies } from "./whatsapp-replies";
 import { minutesOf, timingForSave } from "./message-timing";
+import { beginWhatsAppHome } from "../whatsapp-boot";
 import {
   filterForSlot,
   WordingDrawer,
@@ -85,21 +86,15 @@ export function WhatsAppSimple({
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      engageApi.crmMessageDefaults(),
-      engageApi.crmReminders().catch(() => null),
-      engageApi.crmRecipes().catch(() => null),
-      engageApi.crmDrips().catch(() => null),
-      engageApi.crmSummary().catch(() => null),
-    ])
-      .then(([defaults, reminders, rc, drips, summary]) => {
+    beginWhatsAppHome()
+      .then((home) => {
         if (cancelled) return;
-        setSlots(defaults.slots.map(normalizeSlot));
-        setFields(reminders?.fields ?? []);
-        setRecipes(rc);
-        setRules((drips?.drips ?? []).filter((x) => !x.recipe));
-        setTags(drips?.tags ?? []);
-        setNeedsReply(summary?.needsReply ?? 0);
+        setSlots(home.slots.map(normalizeSlot));
+        setFields(home.fields);
+        setRecipes(home.recipes);
+        setRules(home.rules);
+        setTags(home.tags);
+        setNeedsReply(home.needsReply);
       })
       .catch(() => {
         if (!cancelled) setSlots([]);

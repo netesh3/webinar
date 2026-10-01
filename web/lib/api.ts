@@ -55,6 +55,7 @@ import type {
   Webinar,
   WebinarInput,
 } from "./api-types";
+import { toSearchParams, type AttendeeQuery } from "./engagement/query";
 
 /* Typed fetch client for the Go API.
  *
@@ -74,7 +75,14 @@ import type {
  * pointless hop back out through the proxy. Without this the root layout's config
  * fetch fails at render time with "Failed to parse URL".
  */
-import { dropHostWebinarLists, HOST_LIST_PICKER_KEY } from "./host-list-cache";
+import {
+  dropHostWebinarLists,
+  HOST_LIST_PICKER_KEY,
+  HOST_LIST_PREFIX,
+  HOST_WEBINAR_PAGE_SIZE,
+  hostListFilterKey,
+  hostListPageKey,
+} from "./host-list-cache";
 import {
   API_BASE,
   ApiError,
@@ -90,6 +98,7 @@ import {
   request,
   seg,
   TTL_CONFIG,
+  TTL_LIST,
   TTL_SESSION,
   writeCache,
 } from "./http";
@@ -97,7 +106,7 @@ import {
 const ME_KEY = "/api/auth/me";
 const INTEGRATIONS_KEY = "/api/host/integrations";
 const REGISTRATIONS_KEY = "/api/me/registrations";
-import { toSearchParams, type AttendeeQuery } from "./engagement/query";
+const TRACKS_KEY = "/api/host/tracks";
 
 export { API_BASE, ApiError };
 
@@ -109,6 +118,50 @@ export { API_BASE, ApiError };
  * Go string type as `string`, which would accept "upcomming" silently. Same
  * reason adminWebinars inlines its own status union. */
 export type HostWebinarTab = "upcoming" | "past" | "drafts";
+
+type HostWebinarQuery = {
+  tab?: HostWebinarTab;
+  q?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  cursor?: string;
+};
+
+/** Where one host-list read is kept.
+ *
+ *  The first page at the portal's page size uses the same key the screen paints
+ *  from, so a request started beside the login check is the page the screen
+ *  shows — not a second round trip. Other limits and later pages keep their own
+ *  key under the same prefix, which is what a create or delete drops. */
+function hostWebinarsKey(params: HostWebinarQuery): string {
+  const tab = params.tab ?? "upcoming";
+  const filter = hostListFilterKey(tab, params.q ?? "", params.from ?? "", params.to ?? "");
+  const limit = params.limit ?? HOST_WEBINAR_PAGE_SIZE;
+  if (!params.cursor && limit === HOST_WEBINAR_PAGE_SIZE) {
+    return hostListPageKey(filter, 0);
+  }
+  const qs = new URLSearchParams();
+  qs.set("tab", tab);
+  if (params.q) qs.set("q", params.q);
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  qs.set("limit", String(limit));
+  if (params.cursor) qs.set("cursor", params.cursor);
+  return `${HOST_LIST_PREFIX}${qs.toString()}`;
+}
+
+function hostWebinarsPath(params: HostWebinarQuery): string {
+  const qs = new URLSearchParams();
+  if (params.tab) qs.set("tab", params.tab);
+  if (params.q) qs.set("q", params.q);
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.cursor) qs.set("cursor", params.cursor);
+  const s = qs.toString();
+  return `/api/host/webinars${s ? `?${s}` : ""}`;
+}
 
 // ------------------------------------------------------------------- public
 
@@ -328,29 +381,11 @@ export const api = {
    *  `tab` defaults to upcoming, `q` matches the topic, `from`/`to` are plain
    *  YYYY-MM-DD dates inclusive on both ends, and `cursor` is the previous
    *  page's `nextCursor` (opaque: pass it back, don't read it). */
-  hostWebinars: (
-    params: {
-      tab?: HostWebinarTab;
-      q?: string;
-      from?: string;
-      to?: string;
-      limit?: number;
-      cursor?: string;
-    } = {},
-  ) => {
-    const qs = new URLSearchParams();
-    if (params.tab) qs.set("tab", params.tab);
-    if (params.q) qs.set("q", params.q);
-    if (params.from) qs.set("from", params.from);
-    if (params.to) qs.set("to", params.to);
-    if (params.limit) qs.set("limit", String(params.limit));
-    if (params.cursor) qs.set("cursor", params.cursor);
-    const s = qs.toString();
-    return request<HostWebinarPage>(
-      `/api/host/webinars${s ? `?${s}` : ""}`,
-      fresh,
-    );
-  },
+  hostWebinars: (params: HostWebinarQuery = {}) =>
+    cachedGet<HostWebinarPage>(hostWebinarsPath(params), {
+      ttl: TTL_LIST,
+      key: hostWebinarsKey(params),
+    }),
   /** Every session this host has, upcoming and past, for a PICKER rather than a
    *  list — the CRM asks "which webinar is this broadcast about", and a broadcast
    *  to the people who came to last week's is the most obvious one there is, so
@@ -391,7 +426,7 @@ export const api = {
    *  not this one's taxonomy — so a brand-new tag typed here needs no
    *  separate "create" step: saving the webinar with it is enough for it to
    *  come back as a suggestion next time. */
-  hostTracks: () => request<string[]>("/api/host/tracks", fresh),
+  hostTracks: () => cachedGet<string[]>(TRACKS_KEY, { ttl: TTL_LIST }),
 
   /** Sessions this account is a panelist on but does not own. */
   stageWebinars: () => request<Webinar[]>("/api/host/stage", fresh),
@@ -402,11 +437,15 @@ export const api = {
   createWebinar: async (body: WebinarInput) => {
     const webinar = await post<Webinar>("/api/host/webinars", body);
     dropHostWebinarLists();
+    dropCache(TRACKS_KEY);
     return webinar;
   },
 
-  updateWebinar: (slug: string, body: WebinarInput) =>
-    patch<Webinar>(`/api/host/webinars/${seg(slug)}/`, body),
+  updateWebinar: async (slug: string, body: WebinarInput) => {
+    const webinar = await patch<Webinar>(`/api/host/webinars/${seg(slug)}/`, body);
+    dropCache(TRACKS_KEY);
+    return webinar;
+  },
 
   /** Save or clear the host's RTMP destination (YouTube stream key + watch URL). */
   setWebinarStream: (slug: string, body: SetStreamRequest) =>

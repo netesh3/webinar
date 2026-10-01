@@ -15,6 +15,7 @@ import { Alert } from "../controls";
 import { useAppConfig, useSession, useToast } from "../providers";
 import { Button } from "../ui";
 import { API_BASE, ApiError, api } from "@/lib/api";
+import { dropCache } from "@/lib/http";
 import type { MessagesSaveHandle } from "@/engage";
 import {
   FeatureCloudRecording,
@@ -149,6 +150,22 @@ function ScheduleFallback() {
 function ScheduleFormGate({ webinar }: { webinar: Webinar | null }) {
   const hydrated = useHydrated();
   const { account, status } = useSession();
+  /* Topic suggestions need the cookie, not the account body. Ask while the
+   * session check is still out, so the form does not wait a second time. */
+  const statusRef = useRef(status);
+  useEffect(() => {
+    statusRef.current = status;
+    if (status === "anonymous") {
+      dropCache("/api/host/tracks");
+      return;
+    }
+    api
+      .hostTracks()
+      .then(() => {
+        if (statusRef.current === "anonymous") dropCache("/api/host/tracks");
+      })
+      .catch(() => {});
+  }, [status]);
   if (!hydrated || status === "loading") return <ScheduleFallback />;
   return (
     <ScheduleFormBody

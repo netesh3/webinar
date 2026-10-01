@@ -20,6 +20,25 @@ function peopleHint(n: number): string {
   return `to ${n} people`;
 }
 
+const webinarMetrics = new Map<string, Promise<CRMWebinarMetricsResponse | null>>();
+
+/** Starts this webinar's WhatsApp numbers. The host screen calls it with the
+ *  slug from the address, beside the webinar read. The card joins the same
+ *  promise when it mounts. */
+export function beginWebinarWhatsAppMetrics(
+  slug: string,
+): Promise<CRMWebinarMetricsResponse | null> {
+  let flight = webinarMetrics.get(slug);
+  if (!flight) {
+    flight = engageApi.crmWebinarMetrics(slug).catch(() => {
+      webinarMetrics.delete(slug);
+      return null;
+    });
+    webinarMetrics.set(slug, flight);
+  }
+  return flight;
+}
+
 export function WebinarWhatsAppMetrics({
   slug,
   topic,
@@ -34,20 +53,14 @@ export function WebinarWhatsAppMetrics({
   const [why, setWhy] = useState(false);
 
   useEffect(() => {
-    if (!connected) return;
     let cancelled = false;
-    engageApi
-      .crmWebinarMetrics(slug)
-      .then((res) => {
-        if (!cancelled) setMetrics(res);
-      })
-      .catch(() => {
-        if (!cancelled) setMetrics(null);
-      });
+    beginWebinarWhatsAppMetrics(slug).then((res) => {
+      if (!cancelled) setMetrics(res);
+    });
     return () => {
       cancelled = true;
     };
-  }, [slug, connected]);
+  }, [slug]);
 
   if (!connected || !metrics || metrics.sent === 0) return null;
 

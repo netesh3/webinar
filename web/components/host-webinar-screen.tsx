@@ -28,6 +28,7 @@ import { useNow } from "@/lib/clock";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
+import { beginWebinarWhatsAppMetrics } from "@/engage";
 
 const NONE: RegistrantRow[] = [];
 const NO_RECORDINGS: Recording[] = [];
@@ -89,32 +90,32 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const load = useCallback(() => {
     if (bypass) return Promise.resolve();
 
+    beginWebinarWhatsAppMetrics(slug);
     return Promise.all([
       api.hostWebinar(slug),
       api.recordings(slug).catch(() => [] as Recording[]),
+      // Counts only need the slug in the address. They ride with the webinar
+      // read; a draft has no roster, so that answer is dropped below.
+      api.hostRegistrants(slug, { limit: 1 }).catch(() => null),
     ])
-      .then(([w, recs]) => {
+      .then(([w, recs, roster]) => {
         setWebinar(w);
         setRecordings(recs);
         setError(null);
         setRosterToken((n) => n + 1);
-        if (w.status === "draft") {
+        if (w.status === "draft" || !roster) {
           setCounts(null);
           setPendingRows([]);
-          return;
+          if (w.status === "draft") return;
+        } else {
+          setCounts({
+            total: roster.total,
+            approved: roster.approved,
+            declined: roster.declined,
+            pending: roster.pending,
+            guests: roster.guests,
+          });
         }
-        void api
-          .hostRegistrants(slug, { limit: 1 })
-          .then((page) =>
-            setCounts({
-              total: page.total,
-              approved: page.approved,
-              declined: page.declined,
-              pending: page.pending,
-              guests: page.guests,
-            }),
-          )
-          .catch(() => {});
         if (w.approval === "manual") {
           void api
             .pendingApprovals(slug)

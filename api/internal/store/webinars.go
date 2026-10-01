@@ -358,8 +358,25 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 	where += " ORDER BY w.starts_at " + dir + ", w.slug " + dir +
 		" LIMIT " + arg(limit+1)
 
-	rows, err := s.queryWebinarRows(ctx, where, args...)
-	if err != nil {
+	/* The page and the tab counts do not depend on each other. Panelists, custom
+	 * questions and the join flag run together inside attachChildren, after the
+	 * page is known, because they are about those rows. */
+	var (
+		rows   []types.Webinar
+		counts types.HostWebinarCounts
+	)
+	if err := RunParallel(ctx,
+		func(ctx context.Context) error {
+			var err error
+			rows, err = s.queryWebinarRows(ctx, where, args...)
+			return err
+		},
+		func(ctx context.Context) error {
+			var err error
+			counts, err = s.hostWebinarCounts(ctx, narrow, countArgs...)
+			return err
+		},
+	); err != nil {
 		return types.HostWebinarPage{}, err
 	}
 	more := len(rows) > limit
@@ -367,11 +384,6 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 		rows = rows[:limit]
 	}
 	items, err := s.attachChildren(ctx, rows)
-	if err != nil {
-		return types.HostWebinarPage{}, err
-	}
-
-	counts, err := s.hostWebinarCounts(ctx, narrow, countArgs...)
 	if err != nil {
 		return types.HostWebinarPage{}, err
 	}
@@ -1446,20 +1458,57 @@ func slugify(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// attachChildren fills panelists and custom questions for a batch of webinars
-// with two queries total rather than two per webinar.
+// attachChildren fills panelists, custom questions and the name-only join flag
+// for a batch of webinars. The three reads are independent, so they run together
+// — two queries total used to be the point, and they still are two plus the
+// join flag, just not one after another.
 func (s *Store) attachChildren(ctx context.Context, list []types.Webinar) ([]types.Webinar, error) {
 	if len(list) == 0 {
 		return list, nil
 	}
 	slugs := make([]string, len(list))
-	idx := make(map[string]int, len(list))
 	for i, w := range list {
 		slugs[i] = w.ID
-		idx[w.ID] = i
 	}
 
-	panelRows, err := s.pool.Query(ctx, `
+	var (
+		panelists map[string][]types.Person
+		questions map[string][]types.CustomQuestion
+		open      map[string]bool
+	)
+	if err := RunParallel(ctx,
+		func(ctx context.Context) error {
+			var err error
+			panelists, err = s.panelistsBySlug(ctx, slugs)
+			return err
+		},
+		func(ctx context.Context) error {
+			var err error
+			questions, err = s.questionsBySlug(ctx, slugs)
+			return err
+		},
+		func(ctx context.Context) error {
+			var err error
+			open, err = s.openJoinFlags(ctx, list)
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+	for i := range list {
+		if p := panelists[list[i].ID]; len(p) > 0 {
+			list[i].Panelists = p
+		}
+		if q := questions[list[i].ID]; len(q) > 0 {
+			list[i].CustomQuestions = q
+		}
+		list[i].GuestJoinAllowed = types.GuestJoinAllowedFor(list[i], open[list[i].Host.ID])
+	}
+	return list, nil
+}
+
+func (s *Store) panelistsBySlug(ctx context.Context, slugs []string) (map[string][]types.Person, error) {
+	rows, err := s.pool.Query(ctx, `
 		SELECT w.slug, u.id::text, u.name, u.title, u.org, u.initials, u.hue
 		  FROM webinar_panelists p
 		  JOIN webinars w ON w.id = p.webinar_id
@@ -1469,23 +1518,21 @@ func (s *Store) attachChildren(ctx context.Context, list []types.Webinar) ([]typ
 	if err != nil {
 		return nil, err
 	}
-	for panelRows.Next() {
+	defer rows.Close()
+	out := map[string][]types.Person{}
+	for rows.Next() {
 		var slug string
 		var p types.Person
-		if err := panelRows.Scan(&slug, &p.ID, &p.Name, &p.Title, &p.Org, &p.Initials, &p.Hue); err != nil {
-			panelRows.Close()
+		if err := rows.Scan(&slug, &p.ID, &p.Name, &p.Title, &p.Org, &p.Initials, &p.Hue); err != nil {
 			return nil, err
 		}
-		if i, ok := idx[slug]; ok {
-			list[i].Panelists = append(list[i].Panelists, p)
-		}
+		out[slug] = append(out[slug], p)
 	}
-	panelRows.Close()
-	if err := panelRows.Err(); err != nil {
-		return nil, err
-	}
+	return out, rows.Err()
+}
 
-	qRows, err := s.pool.Query(ctx, `
+func (s *Store) questionsBySlug(ctx context.Context, slugs []string) (map[string][]types.CustomQuestion, error) {
+	rows, err := s.pool.Query(ctx, `
 		SELECT w.slug, q.key, q.label, q.type, q.required, q.options
 		  FROM custom_questions q
 		  JOIN webinars w ON w.id = q.webinar_id
@@ -1494,37 +1541,28 @@ func (s *Store) attachChildren(ctx context.Context, list []types.Webinar) ([]typ
 	if err != nil {
 		return nil, err
 	}
-	defer qRows.Close()
-	for qRows.Next() {
+	defer rows.Close()
+	out := map[string][]types.CustomQuestion{}
+	for rows.Next() {
 		var slug string
 		var q types.CustomQuestion
 		var opts []byte
-		if err := qRows.Scan(&slug, &q.ID, &q.Label, &q.Type, &q.Required, &opts); err != nil {
+		if err := rows.Scan(&slug, &q.ID, &q.Label, &q.Type, &q.Required, &opts); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(opts, &q.Options); err != nil {
 			return nil, err
 		}
-		if i, ok := idx[slug]; ok {
-			list[i].CustomQuestions = append(list[i].CustomQuestions, q)
-		}
+		out[slug] = append(out[slug], q)
 	}
-	if err := qRows.Err(); err != nil {
-		return nil, err
-	}
-	if err := s.applyOpenJoin(ctx, list); err != nil {
-		return nil, err
-	}
-	return list, nil
+	return out, rows.Err()
 }
 
-/* applyOpenJoin sets GuestJoinAllowed from the webinar and the host's switch.
+/* openJoinFlags reports which of these hosts may open the name-only door.
  *
- * One query for the whole page, not one per webinar. A host who is missing from
- * the result is treated as off: the name-only door stays closed, which is the
- * default (migrations/0073).
- */
-func (s *Store) applyOpenJoin(ctx context.Context, list []types.Webinar) error {
+ * One query for the whole page. A host missing from the result is left out of
+ * the map, and the caller treats that as off — the default (migrations/0073). */
+func (s *Store) openJoinFlags(ctx context.Context, list []types.Webinar) (map[string]bool, error) {
 	open := map[string]bool{}
 	ids := make([]string, 0, len(list))
 	seen := map[string]bool{}
@@ -1535,31 +1573,26 @@ func (s *Store) applyOpenJoin(ctx context.Context, list []types.Webinar) error {
 		seen[w.Host.ID] = true
 		ids = append(ids, w.Host.ID)
 	}
-	if len(ids) > 0 {
-		rows, err := s.pool.Query(ctx, `
-			SELECT id::text, $2 = ANY(COALESCE(features, '{}'))
-			  FROM users
-			 WHERE id::text = ANY($1)`, ids, types.FeatureJoinWithoutRegistration)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id string
-			var allowed bool
-			if err := rows.Scan(&id, &allowed); err != nil {
-				return err
-			}
-			open[id] = allowed
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
+	if len(ids) == 0 {
+		return open, nil
 	}
-	for i := range list {
-		list[i].GuestJoinAllowed = types.GuestJoinAllowedFor(list[i], open[list[i].Host.ID])
+	rows, err := s.pool.Query(ctx, `
+		SELECT id::text, $2 = ANY(COALESCE(features, '{}'))
+		  FROM users
+		 WHERE id::text = ANY($1)`, ids, types.FeatureJoinWithoutRegistration)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var allowed bool
+		if err := rows.Scan(&id, &allowed); err != nil {
+			return nil, err
+		}
+		open[id] = allowed
+	}
+	return open, rows.Err()
 }
 
 /* ClaimSFUProject records which LiveKit project a webinar's room lives on, and reports what was

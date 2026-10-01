@@ -14,6 +14,7 @@ import { CloseIcon, SearchIcon } from "./icons";
 import { Button, ButtonLink, Empty, ListPager } from "./ui";
 import { ApiError, api, type HostWebinarTab } from "@/lib/api";
 import {
+  HOST_WEBINAR_PAGE_SIZE,
   hostListFilterKey,
   hostListPageKey,
   onHostListsDropped,
@@ -92,8 +93,9 @@ const TAB_LABELS: Record<ViewTab, string> = {
 };
 
 /** Matches store.DefaultHostWebinarLimit. Sent explicitly rather than left to
- *  the server's default so "10 per page · 1–10 of 24" is the number asked for. */
-const PAGE_SIZE = 10;
+ *  the server's default so "10 per page · 1–10 of 24" is the number asked for.
+ *  Shared with the prefetch on the host home so both ask for the same page. */
+const PAGE_SIZE = HOST_WEBINAR_PAGE_SIZE;
 
 /** Long enough that a host typing a title is one request rather than fifteen,
  *  short enough that stopping to read the result never feels like waiting. */
