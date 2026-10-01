@@ -2,21 +2,31 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, useReplies } from "@/engage";
 import { toggleSidebar } from "@/lib/sidebar";
+import type { ThemeChoice } from "@/lib/theme";
 import { AccountAvatar } from "./account-avatar";
-import { Menu, type MenuItem } from "./controls";
 import { HostAlerts } from "./host-alerts";
 import { CalendarIcon, MenuIcon, SettingsIcon, UsersIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
 import { useTheme } from "./theme";
 
-/* The host shell from the approved sidebar mock.
+/* The host shell.
  *
- * Webinars, Audience, WhatsApp, Settings, the theme switch and the account
- * sit here. Page bodies are unchanged — this only replaces the top bar on the
- * host portal and on Settings. A nav click never toggles the rail. */
+ * The brand stays pinned at the top of the sidebar and links home — it is not
+ * a menu. Webinars, Audience and Integrations stay in the rail. Settings, the
+ * theme switch and notifications used to be footer rows; they now sit at the
+ * top-right of the main column, on every page this shell wraps. The bell is
+ * the existing notification panel. The avatar opens account, theme and
+ * sign-out. A nav click never toggles the rail. */
 
 function subscribeChrome(onChange: () => void) {
   const obs = new MutationObserver(onChange);
@@ -121,12 +131,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <PrimaryNav />
-
-        <Footer />
       </aside>
       <div className="sb-scrim" aria-hidden="true" onClick={closeDrawer} />
 
-      <div className="sb-main">{children}</div>
+      <div className="sb-main">
+        <Chrome />
+        {children}
+      </div>
     </div>
   );
 }
@@ -249,107 +260,188 @@ function Item({
   );
 }
 
-function Footer() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const { account, status, signOut } = useSession();
-  const { theme, toggle } = useTheme();
-  const dark = theme === "dark";
-  const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-
-  const items: MenuItem[] = account
-    ? [
-        { kind: "label", text: account.email },
-        ...(account.isAdmin
-          ? [
-              {
-                kind: "action" as const,
-                label: "Admin",
-                onSelect: () => router.push("/admin"),
-              },
-            ]
-          : []),
-        {
-          kind: "action",
-          label: "Settings",
-          onSelect: () => router.push("/settings"),
-        },
-        { kind: "separator" },
-        {
-          kind: "action",
-          label: "Sign out",
-          onSelect: async () => {
-            await signOut();
-            router.push("/");
-          },
-        },
-      ]
-    : [];
+/** Bell and avatar, top-right of the main column. The menu floats over the
+ *  page; it is not a row in the sidebar. */
+function Chrome() {
+  const { account, status } = useSession();
 
   return (
-    <div className="sb-foot">
-      <nav className="sb-nav" aria-label="Settings">
-        <Item
-          href="/settings"
-          label="Settings"
-          active={onSettings}
-          icon={<SettingsIcon />}
-        />
-      </nav>
+    <div className="sb-chrome">
+      {account?.canHost && <HostAlerts />}
+      {status === "loading" ? (
+        <span className="size-9 animate-pulse rounded-full bg-surface-2" aria-hidden />
+      ) : account ? (
+        <AccountMenu />
+      ) : (
+        <div className="flex items-center gap-1">
+          <Link
+            href="/login"
+            className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/signup"
+            className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
+          >
+            Create account
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const THEME_OPTIONS: { id: ThemeChoice; label: string }[] = [
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+];
+
+function AccountMenu() {
+  const router = useRouter();
+  const { account, signOut } = useSession();
+  const { theme, setTheme } = useTheme();
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        close();
+      }
+    };
+    const onPointer = (e: PointerEvent) => {
+      if (wrap.current && !wrap.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [open, close]);
+
+  if (!account) return null;
+
+  return (
+    <div ref={wrap} className="relative">
       <button
         type="button"
-        className="sb-navitem sb-theme"
-        onClick={toggle}
-        aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label="Your account"
+        onClick={() => setOpen((v) => !v)}
+        className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
       >
-        <span className="sb-ic sb-moon">
-          <Moon />
-        </span>
-        <span className="sb-ic sb-sun">
-          <Sun />
-        </span>
-        <span className="sb-lbl">{dark ? "Light" : "Dark"}</span>
-        <span className="sb-fly">{dark ? "Light mode" : "Dark mode"}</span>
-      </button>
-      {account?.canHost && <HostAlerts placement="side" />}
-      {status === "loading" ? (
-        <div className="sb-account" aria-hidden>
-          <span className="size-8 animate-pulse rounded-full bg-surface-2" />
-        </div>
-      ) : account ? (
-        <Menu
-          label="Your account"
-          align="start"
-          side="top"
-          wrapClassName="w-full"
-          className="sb-account"
-          trigger={
-            <>
-              <AccountAvatar
-                initials={account.initials}
-                hue={account.hue}
-                photo={account.avatarUrl}
-                size={32}
-              />
-              <span className="sb-who">
-                <span className="sb-nm">{account.name}</span>
-                <span className="sb-em">{account.email}</span>
-              </span>
-              <span className="sb-fly">{account.name}</span>
-            </>
-          }
-          items={items}
+        <AccountAvatar
+          initials={account.initials}
+          hue={account.hue}
+          photo={account.avatarUrl}
+          size={36}
         />
-      ) : (
-        <div className="sb-signin">
-          <Link href="/login" className="sb-navitem" onClick={closeDrawer}>
-            <span className="sb-lbl">Sign in</span>
-            <span className="sb-fly">Sign in</span>
-          </Link>
-          <Link href="/signup" className="sb-navitem" onClick={closeDrawer}>
-            <span className="sb-lbl">Create account</span>
-            <span className="sb-fly">Create account</span>
-          </Link>
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Account"
+          /* Wide enough for Settings plus the Light/Dark control. The kebab
+           * menus stay on Menu's shrink-to-label width; this panel is not
+           * that component. */
+          className="absolute top-full right-0 z-[70] mt-2 w-[17.75rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-line bg-surface py-1.5 shadow-xl"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              close();
+              router.push("/settings");
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13.5px] font-medium text-ink hover:bg-surface-2"
+          >
+            <SettingsIcon className="size-4 text-ink-2" />
+            Settings
+          </button>
+          {account.isAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                close();
+                router.push("/admin");
+              }}
+              className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13.5px] font-medium text-ink hover:bg-surface-2"
+            >
+              <span className="grid size-4 place-items-center text-ink-2" aria-hidden>
+                <AdminGlyph />
+              </span>
+              Admin
+            </button>
+          )}
+
+          <div className="my-1 h-px bg-line" role="separator" />
+          <div className="px-3 pt-1.5 pb-1 text-[10.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase">
+            Preferences
+          </div>
+          <div className="flex items-center justify-between gap-3 px-3 py-2">
+            <span className="text-[13px] font-medium text-ink">Theme</span>
+            <div
+              role="radiogroup"
+              aria-label="Theme"
+              className="flex shrink-0 rounded-lg bg-surface-2 p-0.5"
+            >
+              {THEME_OPTIONS.map((option) => {
+                const on = theme === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => setTheme(option.id)}
+                    className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12.5px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                      on
+                        ? "bg-surface text-ink shadow-sm"
+                        : "text-ink-3 hover:text-ink"
+                    }`}
+                  >
+                    {option.id === "light" ? <Sun /> : <Moon />}
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="my-1 h-px bg-line" role="separator" />
+          <div className="flex items-center gap-2.5 px-3 py-2.5">
+            <AccountAvatar
+              initials={account.initials}
+              hue={account.hue}
+              photo={account.avatarUrl}
+              size={36}
+            />
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] font-semibold text-ink">
+                {account.name}
+              </span>
+              <span className="mt-0.5 block truncate text-[12px] text-ink-3">
+                {account.email}
+              </span>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              close();
+              void signOut().then(() => router.push("/"));
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13.5px] font-medium text-ink hover:bg-surface-2"
+          >
+            <SignOutGlyph />
+            Sign out
+          </button>
         </div>
       )}
     </div>
@@ -424,10 +516,47 @@ function WhatsAppGlyph() {
   );
 }
 
+function AdminGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 3 5 6v5c0 4.2 2.8 7.4 7 9 4.2-1.6 7-4.8 7-9V6l-7-3z" />
+    </svg>
+  );
+}
+
+function SignOutGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-4 text-ink-2"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 6H6.5A1.5 1.5 0 0 0 5 7.5v9A1.5 1.5 0 0 0 6.5 18H9" />
+      <path d="M10 12h9" />
+      <path d="m15.5 8.5 3.5 3.5-3.5 3.5" />
+    </svg>
+  );
+}
+
 function Moon() {
   return (
     <svg
       viewBox="0 0 24 24"
+      className="size-3.5"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.75"
@@ -444,6 +573,7 @@ function Sun() {
   return (
     <svg
       viewBox="0 0 24 24"
+      className="size-3.5"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.75"
