@@ -399,12 +399,15 @@ func TestEmailInboxPagesAreHostScoped(t *testing.T) {
 		return inbox
 	}
 	page1 := load("1")
-	page2 := load("2")
-	if page1.Page != 1 || page2.Page != 2 || page1.Total != 26 || page2.Total != 26 {
-		t.Fatalf("pages: %+v / %+v", page1.Page, page2.Page)
+	const letters = 26
+	lastN := (letters + store.EmailInboxPageSize - 1) / store.EmailInboxPageSize
+	last := load(fmt.Sprintf("%d", lastN))
+	wantLast := letters - (lastN-1)*store.EmailInboxPageSize
+	if page1.Page != 1 || last.Page != lastN || page1.Total != letters || last.Total != letters {
+		t.Fatalf("pages: %+v / %+v", page1.Page, last.Page)
 	}
-	if page1.PageSize != 25 || len(page1.Messages) != 25 || len(page2.Messages) != 1 {
-		t.Fatalf("sizes page1=%d page2=%d pageSize=%d", len(page1.Messages), len(page2.Messages), page1.PageSize)
+	if page1.PageSize != store.EmailInboxPageSize || len(page1.Messages) != store.EmailInboxPageSize || len(last.Messages) != wantLast {
+		t.Fatalf("sizes page1=%d last=%d pageSize=%d", len(page1.Messages), len(last.Messages), page1.PageSize)
 	}
 	seen := map[string]bool{}
 	for _, m := range page1.Messages {
@@ -413,9 +416,9 @@ func TestEmailInboxPagesAreHostScoped(t *testing.T) {
 			t.Fatalf("page 1 row missing thread id: %+v", m)
 		}
 	}
-	for _, m := range page2.Messages {
+	for _, m := range last.Messages {
 		if seen[m.ID] {
-			t.Fatalf("page 2 repeats %s (%s)", m.ID, m.Subject)
+			t.Fatalf("last page repeats %s (%s)", m.ID, m.Subject)
 		}
 	}
 	subjects1 := map[string]bool{}
@@ -425,8 +428,8 @@ func TestEmailInboxPagesAreHostScoped(t *testing.T) {
 	if !subjects1["Letter 25"] || subjects1["Letter 00"] {
 		t.Fatalf("page 1 subjects = %+v", subjects1)
 	}
-	if page2.Messages[0].Subject != "Letter 00" {
-		t.Fatalf("last page = %s", page2.Messages[0].Subject)
+	if last.Messages[len(last.Messages)-1].Subject != "Letter 00" {
+		t.Fatalf("last page = %s", last.Messages[len(last.Messages)-1].Subject)
 	}
 
 	h.logout()
