@@ -99,6 +99,18 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
       if (viewer.kind === "anonymous") return redirect("/login", path);
       return viewer.isAdmin ? ALLOW : { allow: false, redirectTo: "/account" };
     }
+    /* Sign-in is for people who are not signed in.
+     *
+     * Leaving /login open for an account is how the form and the account chrome
+     * ended up on the same screen: the page mounted the old top bar, the
+     * session resolved, and nothing had sent them on. /host is where a session
+     * already lives. */
+    if (path === "/login") {
+      if (viewer.kind === "account") {
+        return { allow: false, redirectTo: "/host" };
+      }
+      return ALLOW;
+    }
     if (path === "/my-webinars" || path === "/account" || path === "/settings") {
       if (viewer.kind === "anonymous") return redirect("/login", path);
       /* A host's registrations are the Attending tab on their home page now. The
@@ -115,8 +127,18 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
 
   const second = segments[1];
 
-  // The host's way in. Always reachable, or a signed-out host cannot sign back in.
-  if (second === "login") return ALLOW;
+  /* The host's way in, when there is no session yet.
+   *
+   * A signed-out host has to be able to open it, or they cannot sign back in.
+   * A signed-in account must not: this URL used to live inside the host portal
+   * layout, so the visit drew the sidebar around a redirect to the sign-in
+   * form. Send them to the portal before that layout runs. */
+  if (second === "login") {
+    if (viewer.kind === "account") {
+      return { allow: false, redirectTo: "/host" };
+    }
+    return ALLOW;
+  }
 
   if (viewer.kind === "anonymous") return redirect("/host/login", path);
 

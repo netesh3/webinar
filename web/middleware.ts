@@ -78,11 +78,20 @@ export async function middleware(request: NextRequest) {
     }
 
     if (!optedOut) {
+      const bare = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
       if (pathname === "/" || pathname === "") {
         if (wantMarketing) {
           return NextResponse.next();
         }
         /* Signed-in-style skip of marketing. */
+        const url = request.nextUrl.clone();
+        url.pathname = "/host";
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+      /* Preview is a signed-in host. The sign-in URL should not paint the
+       * account bar around the form while the bypass session is active. */
+      if (bare === "/login" || bare === "/host/login") {
         const url = request.nextUrl.clone();
         url.pathname = "/host";
         url.search = "";
@@ -187,5 +196,11 @@ export const config = {
      * security one — a non-admin got an error card instead of a redirect. */
     "/admin",
     "/admin/:path*",
+    /* /login has to be listed or a signed-in visit never reaches decideAccess.
+     *
+     * The page then renders anyway: the old top bar reads the client session
+     * and paints Email, the bell and the account around the sign-in card.
+     * Same failure /admin had — the rule exists, the matcher never calls it. */
+    "/login",
   ],
 };
