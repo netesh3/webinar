@@ -206,6 +206,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And table header sorting: numbers and dates must not sort as text, empty
 	# cells stay last, and a third click returns to the list's own order.
 	cd web && node --experimental-strip-types --no-warnings lib/table-sort.test.mts
+	# And WhatsApp inbox labels: Meta's type "unsupported" must not read as
+	# "Sent a unsupported", and a photo stored before media ids existed still
+	# reads as a photo.
+	cd web && node --experimental-strip-types --no-warnings engage/message-kind.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

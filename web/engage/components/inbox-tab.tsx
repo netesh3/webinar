@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { engageApi } from "../api";
+import { previewLabel } from "../message-kind";
 import { Select, Spinner } from "@/components/controls";
 import { useSession, useToast } from "@/components/providers";
 import { Card, Empty } from "@/components/ui";
@@ -441,7 +442,7 @@ function InboxRow({
               className={`min-w-0 flex-1 truncate text-[12px] ${t.needsReply ? "text-ink" : "text-ink-3"}`}
             >
               {m.direction === "out" ? "You: " : ""}
-              {m.body || m.templateName || (m.kind ? `[${m.kind}]` : "")}
+              {previewLabel(m)}
             </span>
             {t.needsReply && (
               <span

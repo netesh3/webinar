@@ -206,6 +206,87 @@ func TestParseWebhookReadsPricing(t *testing.T) {
 	}
 }
 
+func TestParseWebhookReadsMediaPayloads(t *testing.T) {
+	const body = `{"entry":[{"id":"waba-1","changes":[{"field":"messages","value":{
+	  "metadata":{"phone_number_id":"phone-1"},
+	  "messages":[
+	    {"from":"917795802154","id":"wamid.IMG","timestamp":"1700000000","type":"image",
+	     "image":{"caption":"the ticket","mime_type":"image/jpeg","sha256":"abc","id":"1001"}},
+	    {"from":"917795802154","id":"wamid.VOICE","timestamp":"1700000001","type":"audio",
+	     "audio":{"mime_type":"audio/ogg; codecs=opus","sha256":"abc","id":"1002","voice":true}},
+	    {"from":"917795802154","id":"wamid.DOC","timestamp":"1700000002","type":"document",
+	     "document":{"caption":"please see","filename":"invoice.pdf","mime_type":"application/pdf","sha256":"abc","id":"1003"}},
+	    {"from":"917795802154","id":"wamid.STICK","timestamp":"1700000003","type":"sticker",
+	     "sticker":{"mime_type":"image/webp","sha256":"abc","id":"1004","animated":false}},
+	    {"from":"917795802154","id":"wamid.LOC","timestamp":"1700000004","type":"location",
+	     "location":{"latitude":12.9716,"longitude":77.5946,"name":"Cubbon Park","address":"Bengaluru"}},
+	    {"from":"917795802154","id":"wamid.REACT","timestamp":"1700000005","type":"reaction",
+	     "reaction":{"message_id":"wamid.TARGET","emoji":"👍"}},
+	    {"from":"917795802154","id":"wamid.LIST","timestamp":"1700000006","type":"interactive",
+	     "interactive":{"type":"list_reply","list_reply":{"id":"row1","title":"Price for the course","description":"Flow testing"}}},
+	    {"from":"917795802154","id":"wamid.BTN","timestamp":"1700000007","type":"interactive",
+	     "interactive":{"type":"button_reply","button_reply":{"id":"btn1","title":"Remind me"}}},
+	    {"from":"917795802154","id":"wamid.UNSUP","timestamp":"1700000008","type":"unsupported",
+	     "errors":[{"code":131051,"title":"Message type unknown","message":"Message type unknown",
+	       "error_data":{"details":"Message type is currently not supported."}}]},
+	    {"from":"917795802154","id":"wamid.ORDER","timestamp":"1700000009","type":"order",
+	     "order":{"catalog_id":"c1","text":"2 items"}}
+	  ]}}]}]}`
+	d, err := ParseWebhook([]byte(body))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(d.Messages) != 10 {
+		t.Fatalf("want 10 messages, got %d", len(d.Messages))
+	}
+
+	img := d.Messages[0]
+	if img.Kind != "image" || img.Body != "the ticket" || img.Media.ID != "1001" || img.Media.MimeType != "image/jpeg" {
+		t.Fatalf("image: kind=%q body=%q media=%+v", img.Kind, img.Body, img.Media)
+	}
+	voice := d.Messages[1]
+	if voice.Kind != "voice" || voice.Body != "" || voice.Media.ID != "1002" || voice.Media.MimeType != "audio/ogg; codecs=opus" {
+		t.Fatalf("voice: kind=%q body=%q media=%+v", voice.Kind, voice.Body, voice.Media)
+	}
+	doc := d.Messages[2]
+	if doc.Kind != "document" || doc.Body != "please see" || doc.Media.Filename != "invoice.pdf" || doc.Media.ID != "1003" {
+		t.Fatalf("document: kind=%q body=%q media=%+v", doc.Kind, doc.Body, doc.Media)
+	}
+	stick := d.Messages[3]
+	if stick.Kind != "sticker" || stick.Media.ID != "1004" || stick.Media.MimeType != "image/webp" {
+		t.Fatalf("sticker: %+v media=%+v", stick.Kind, stick.Media)
+	}
+	loc := d.Messages[4]
+	if loc.Kind != "location" || !loc.Media.HasLocation || loc.Media.Name != "Cubbon Park" || loc.Media.Latitude != 12.9716 || loc.Media.Longitude != 77.5946 {
+		t.Fatalf("location: %+v", loc.Media)
+	}
+	react := d.Messages[5]
+	if react.Kind != "reaction" || react.Media.Emoji != "👍" || react.Media.Target != "wamid.TARGET" {
+		t.Fatalf("reaction: %+v", react.Media)
+	}
+	list := d.Messages[6]
+	if list.Kind != "interactive" || list.Body != "Price for the course" || list.ReplyID != "row1" {
+		t.Fatalf("list reply: kind=%q body=%q reply=%q", list.Kind, list.Body, list.ReplyID)
+	}
+	btn := d.Messages[7]
+	if btn.Kind != "button" || btn.Body != "Remind me" || btn.ReplyID != "btn1" {
+		t.Fatalf("button reply: kind=%q body=%q reply=%q", btn.Kind, btn.Body, btn.ReplyID)
+	}
+	unsup := d.Messages[8]
+	if unsup.Kind != "unsupported" || unsup.Body != "" || unsup.Media.ErrorCode != 131051 || unsup.Media.ErrorTitle != "Message type unknown" {
+		t.Fatalf("unsupported: kind=%q body=%q media=%+v", unsup.Kind, unsup.Body, unsup.Media)
+	}
+	if unsup.Media.ErrorDetail != "Message type is currently not supported." {
+		t.Fatalf("unsupported detail = %q", unsup.Media.ErrorDetail)
+	}
+	// A type this code has no case for stays that type. It is not rewritten to
+	// "unsupported", which is a type Meta sends, not a label we invent.
+	order := d.Messages[9]
+	if order.Kind != "order" {
+		t.Fatalf("order kind = %q, want order (not unsupported)", order.Kind)
+	}
+}
+
 func TestUnixSecondsTreatsNonsenseAsAbsent(t *testing.T) {
 	for _, in := range []string{"", "0", "-1", "not-a-number"} {
 		if got := unixSeconds(in); !got.IsZero() {

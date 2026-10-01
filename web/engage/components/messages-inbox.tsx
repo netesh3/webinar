@@ -24,7 +24,8 @@ import {
   type CRMTemplate,
   type CRMThreadResponse,
 } from "@/lib/api-types";
-import { kindText } from "./crm-screen";
+import { previewLabel } from "../message-kind";
+import { MessageContent } from "./message-content";
 import { templateKey } from "./crm-templates";
 import { PersonAvatar, Ticks } from "./wa-kit";
 
@@ -338,11 +339,7 @@ function ConversationRow({
                 You<span className="text-ink-3"> ·</span>
               </span>
             )}
-            <span className="min-w-0 truncate">
-              {m.body?.trim() ||
-                m.templateName?.replace(/_/g, " ") ||
-                kindText(m.kind)}
-            </span>
+            <span className="min-w-0 truncate">{previewLabel(m)}</span>
             {m.direction === "out" && <Ticks status={m.status} />}
           </span>
         )}
@@ -535,11 +532,7 @@ function Bubble({ m }: { m: CRMMessage }) {
               Template
             </div>
           )}
-          {m.body ? (
-            <span className="whitespace-pre-wrap">{m.body}</span>
-          ) : (
-            <span className="italic opacity-80">{kindText(m.kind)}</span>
-          )}
+          <MessageContent message={m} />
         </div>
         <div
           className={`mt-1 flex items-center gap-1.5 text-[10.5px] text-ink-3 ${

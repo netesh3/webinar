@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/netkumar/webcast/api/internal/authctx"
 	"github.com/netkumar/webcast/api/internal/engage/crmstore"
@@ -439,6 +442,14 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 		if !ok {
 			continue
 		}
+		if m.Kind == "unsupported" {
+			// Code and title are Meta's, from the message's errors array. The body
+			// is not logged: there isn't one, and a customer's words do not belong
+			// in a log line either way.
+			s.log.Info("whatsapp unsupported message",
+				"host", h.ID, "wamid", m.WAMID,
+				"code", m.Media.ErrorCode, "title", m.Media.ErrorTitle)
+		}
 		/* Someone writing to the business is a contact, whether or not they ever
 		 * registered for anything — and they are matched to the registrant they
 		 * already are by phone number, which is why the number is normalised the
@@ -460,11 +471,12 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 			continue
 		}
 		if _, err := s.store.AppendMessage(ctx, h.ID, contact.ID, crmstore.MessageInput{
-			Direction: "in",
-			Body:      m.Body,
-			Kind:      m.Kind,
-			WAMID:     m.WAMID,
-			At:        m.At,
+			Direction:  "in",
+			Body:       m.Body,
+			Kind:       m.Kind,
+			WAMID:      m.WAMID,
+			At:         m.At,
+			Attachment: attachmentFrom(m.Media),
 		}); err != nil {
 			s.log.Error("whatsapp webhook: append", "error", err, "host", h.ID, "wamid", m.WAMID)
 			continue
@@ -521,14 +533,20 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 			s.log.Error("whatsapp webhook: echo contact", "error", err, "host", h.ID)
 			continue
 		}
+		if e.Kind == "unsupported" {
+			s.log.Info("whatsapp unsupported message",
+				"host", h.ID, "wamid", e.WAMID,
+				"code", e.Media.ErrorCode, "title", e.Media.ErrorTitle)
+		}
 		if _, err := s.store.AppendMessage(ctx, h.ID, contact.ID, crmstore.MessageInput{
-			Direction: "out",
-			Body:      e.Body,
-			Kind:      e.Kind,
-			WAMID:     e.WAMID,
-			Status:    "sent",
-			At:        e.At,
-			Manual:    true,
+			Direction:  "out",
+			Body:       e.Body,
+			Kind:       e.Kind,
+			WAMID:      e.WAMID,
+			Status:     "sent",
+			At:         e.At,
+			Manual:     true,
+			Attachment: attachmentFrom(e.Media),
 		}); err != nil {
 			s.log.Error("whatsapp webhook: echo append", "error", err, "host", h.ID, "wamid", e.WAMID)
 		}
@@ -609,4 +627,120 @@ func whatsappAPIError(w http.ResponseWriter, err error) bool {
 		return false
 	}
 	return true
+}
+
+func attachmentFrom(m wa.Media) *types.CRMAttachment {
+	if m.Empty() {
+		return nil
+	}
+	a := &types.CRMAttachment{
+		ID:               m.ID,
+		MimeType:         m.MimeType,
+		Filename:         m.Filename,
+		Name:             m.Name,
+		Address:          m.Address,
+		Emoji:            m.Emoji,
+		Target:           m.Target,
+		Contacts:         m.Contacts,
+		UnsupportedCode:  m.ErrorCode,
+		UnsupportedTitle: m.ErrorTitle,
+	}
+	if m.HasLocation {
+		lat, lng := m.Latitude, m.Longitude
+		a.Latitude = &lat
+		a.Longitude = &lng
+	}
+	return a
+}
+
+// maxWhatsAppMedia is above Meta's image and voice limits and at the document
+// limit, so a thumbnail or a voice note streams and a huge file is cut off
+// rather than buffered.
+const maxWhatsAppMedia = 100 << 20
+
+/* handleCRMMessageMedia streams one stored attachment.
+ *
+ * The browser asks for the message id, not Meta's media id, and never sees the
+ * host's token. The row has to belong to the caller; another host's id is a 404,
+ * the same answer as a missing message.
+ */
+func (s *Module) handleCRMMessageMedia(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
+	att, err := s.store.MessageAttachment(r.Context(), user.ID, chi.URLParam(r, "id"))
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such attachment.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "crm message media", err)
+		return
+	}
+	if s.whatsapp == nil {
+		httpx.Error(w, http.StatusServiceUnavailable, "whatsapp_unset",
+			"WhatsApp is not set up on this instance.")
+		return
+	}
+	if strings.TrimSpace(user.WhatsAppToken) == "" {
+		httpx.Error(w, http.StatusUnprocessableEntity, "whatsapp_not_connected",
+			"Connect WhatsApp to load this attachment.")
+		return
+	}
+	file, err := s.whatsapp.OpenMedia(r.Context(), user.WhatsAppToken, att.ID)
+	if err != nil {
+		if whatsappAPIError(w, err) {
+			s.noteWhatsAppError(r.Context(), user.ID, user.WhatsAppToken, err)
+			return
+		}
+		s.log.Warn("whatsapp media download", "error", err, "host", user.ID, "message", chi.URLParam(r, "id"))
+		httpx.Error(w, http.StatusBadGateway, "whatsapp_media",
+			"WhatsApp could not load this attachment.")
+		return
+	}
+	defer file.Body.Close()
+
+	ctype, download := safeMediaType(file.MimeType)
+	if att.MimeType != "" && ctype == "application/octet-stream" {
+		// Graph's metadata mime wins when the download response did not name one
+		// we are willing to inline.
+		if alt, altDownload := safeMediaType(att.MimeType); !altDownload {
+			ctype, download = alt, altDownload
+		}
+	}
+	w.Header().Set("Content-Type", ctype)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	w.Header().Set("Content-Disposition", contentDisposition(att.Filename, download))
+	_, _ = io.Copy(w, io.LimitReader(file.Body, maxWhatsAppMedia))
+}
+
+func safeMediaType(mime string) (string, bool) {
+	mime = strings.ToLower(strings.TrimSpace(mime))
+	if i := strings.IndexByte(mime, ';'); i >= 0 {
+		mime = strings.TrimSpace(mime[:i])
+	}
+	switch {
+	case strings.HasPrefix(mime, "image/"),
+		strings.HasPrefix(mime, "audio/"),
+		strings.HasPrefix(mime, "video/"),
+		mime == "application/pdf":
+		return mime, false
+	default:
+		return "application/octet-stream", true
+	}
+}
+
+func contentDisposition(filename string, download bool) string {
+	name := strings.Map(func(r rune) rune {
+		if r < 0x20 || r == '"' || r == '\\' || unicode.IsControl(r) {
+			return '_'
+		}
+		return r
+	}, strings.TrimSpace(filename))
+	if name == "" {
+		name = "attachment"
+	}
+	if download {
+		return `attachment; filename="` + name + `"`
+	}
+	return "inline"
 }

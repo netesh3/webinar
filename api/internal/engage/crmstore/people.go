@@ -156,12 +156,12 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		       COALESCE(per.attended, false), COALESCE(per.watch_min, 0),
 		       COALESCE(ce.avg_score, 0), COALESCE(ce.last_tier, ''),
 		       `+lastInboundAt+`,
-		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status, m.created_at
+		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status, m.created_at, m.media
 		  FROM crm_contacts c
 		  LEFT JOIN per ON per.contact_id = c.id
 		  `+engagementJoin+`
 		  LEFT JOIN LATERAL (
-		       SELECT id, direction, body, kind, template_name, status, created_at
+		       SELECT id, direction, body, kind, template_name, status, created_at, media
 		         FROM crm_messages WHERE contact_id = c.id
 		        ORDER BY created_at DESC, id DESC LIMIT 1
 		  ) m ON true
@@ -181,13 +181,14 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 			mID, mDir, mBody, mKind, mTemplate *string
 			mStatus                            *string
 			mAt                                *time.Time
+			mMedia                             []byte
 		)
 		c := &p.Contact
 		if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
 			&optIn, &optOut, &lastSeen, &created, &botPaused,
 			&p.WhatsAppStatus, &p.Webinars, &p.AttendedWebinars, &p.LastWebinar, &p.LastWebinarID, &p.Attended, &p.WatchMin,
 			&p.AvgScore, &p.Tier,
-			&inbound, &mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mAt); err != nil {
+			&inbound, &mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mAt, &mMedia); err != nil {
 			return out, err
 		}
 		fillContactTimes(c, optIn, optOut, lastSeen, created, botPaused)
@@ -198,6 +199,7 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 			c.LastMessage = &types.CRMMessage{
 				ID: *mID, ContactID: c.ID, Direction: derefString(mDir), Body: derefString(mBody),
 				Kind: derefString(mKind), TemplateName: derefString(mTemplate), Status: derefString(mStatus),
+				Media: mediaPtr(mMedia),
 			}
 			if mAt != nil {
 				c.LastMessage.CreatedAt = mAt.Format(time.RFC3339)
