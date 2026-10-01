@@ -217,9 +217,11 @@ func (s *Server) zoomFront(path, result string) string {
 
 /* handleZoomWebhook is the public seam Zoom calls.
  *
- * This pass handles the CRC check and app_deauthorized (delete the host's
- * tokens). Attendance, polls, Q&A, and recordings are phase 4: those events
- * are acknowledged so Zoom does not retry, and nothing else is done with them.
+ * The URL challenge and app_deauthorized are handled inline. A meeting or
+ * webinar ending marks that webinar ended. Join and leave, and the
+ * past-participant list fetched when it ends, are written to the attendance
+ * tables the host page already reads. Anything else, including
+ * recording.completed, is acknowledged so Zoom does not retry.
  */
 func (s *Server) handleZoomWebhook(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
@@ -271,10 +273,92 @@ func (s *Server) handleZoomWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusOK)
 	default:
-		/* Phase 4: meeting.ended, webinar.ended, participant_joined,
-		 * participant_left, recording.completed. */
+		ev, ok := zoom.ParseSessionEvent(body)
+		if !ok {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if err := s.applyZoomSession(r.Context(), ev); err != nil {
+			s.log.Warn("zoom session", "event", env.Event, "error", err)
+			httpx.Error(w, http.StatusInternalServerError, "zoom", "Could not record that Zoom session.")
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+/* applyZoomSession records a join, a leave, or the end of the Zoom session.
+ *
+ * An id we do not have is acknowledged. Zoom retries non-2xx responses, and
+ * an unknown meeting will never start matching. A known meeting that fails
+ * to save is returned so Zoom tries again.
+ */
+func (s *Server) applyZoomSession(ctx context.Context, ev zoom.SessionEvent) error {
+	if ev.MeetingID == "" {
+		return nil
+	}
+	wb, err := s.store.WebinarByZoomID(ctx, ev.MeetingID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if ev.Person != nil {
+		if err := s.recordZoomPerson(ctx, wb.Slug, *ev.Person); err != nil {
+			return err
+		}
+	}
+	if ev.Kind != "ended" {
+		if wb.Status == string(types.StatusEnded) {
+			return s.refreshZoomAttendance(ctx, wb.Slug)
+		}
+		return nil
+	}
+	if ev.Start.IsZero() {
+		ev.Start = wb.StartsAt
+	}
+	if err := s.store.NoteZoomStarted(ctx, wb.Slug, ev.Start); err != nil {
+		return err
+	}
+	if flow := s.zoomFlow(); flow != nil {
+		people, err := flow.PastParticipants(ctx, wb.HostID, wb.Venue, ev.MeetingID)
+		if err != nil {
+			/* Status only. Zoom's message can echo an address, and the
+			 * access token must not land in the log either. */
+			s.log.Warn("zoom attendance report", "slug", wb.Slug, "status", zoomStatus(err))
+		}
+		for _, p := range people {
+			if err := s.recordZoomPerson(ctx, wb.Slug, p); err != nil {
+				return err
+			}
+		}
+	}
+	if wb.Status == string(types.StatusEnded) {
+		return s.refreshZoomAttendance(ctx, wb.Slug)
+	}
+	_, err = s.endWebinarSession(ctx, wb.Slug)
+	return err
+}
+
+func (s *Server) recordZoomPerson(ctx context.Context, slug string, p zoom.Participant) error {
+	var left *time.Time
+	if !p.Left.IsZero() {
+		t := p.Left
+		left = &t
+	}
+	return s.store.RecordZoomPerson(ctx, slug, p.Name, p.Email, p.RegistrantID, p.ZoomUserID, p.MeetingUserID, p.Joined, left)
+}
+
+func (s *Server) refreshZoomAttendance(ctx context.Context, slug string) error {
+	if err := s.store.CloseOpenVisits(ctx, slug, time.Now()); err != nil {
+		return err
+	}
+	if _, err := s.store.ComputeAndSaveReport(ctx, slug); err != nil {
+		return err
+	}
+	s.computeEngagementOnEnd(ctx, slug)
+	return nil
 }
 
 /* resolveZoom runs before a webinar is saved. A plan error rewrites the venue

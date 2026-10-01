@@ -279,6 +279,22 @@ func (f *Flow) GoLive(ctx context.Context, hostID, venue, zoomID string) (string
 	return f.Client.StartURL(ctx, access, venue, zoomID)
 }
 
+/* PastParticipants reads who attended, with this host's token.
+ *
+ * The access token is not stored. A failure is returned as-is so the caller
+ * can still mark the session ended from the webhook itself.
+ */
+func (f *Flow) PastParticipants(ctx context.Context, hostID, venue, zoomID string) ([]Participant, error) {
+	if f == nil || f.Client == nil {
+		return nil, ErrNotConfigured
+	}
+	access, err := f.access(ctx, hostID)
+	if err != nil {
+		return nil, err
+	}
+	return f.Client.PastParticipants(ctx, access, venue, zoomID)
+}
+
 /* AttendeeJoin is this registration's personal join URL and nobody else's. */
 func (f *Flow) AttendeeJoin(ctx context.Context, regID string) (string, error) {
 	u, err := f.Repo.RegistrantJoin(ctx, regID)

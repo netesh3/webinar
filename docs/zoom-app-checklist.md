@@ -40,7 +40,7 @@ Subscribe to:
 - `webinar.ended`
 - `recording.completed`
 
-This pass validates the URL challenge and deletes the host's connection on `app_deauthorized`. The other events are accepted and left for the attendance pass. Ending a Zoom session is done in Zoom; our status will move when `meeting.ended` or `webinar.ended` arrives.
+The URL challenge and `app_deauthorized` are handled on their own. `meeting.ended` and `webinar.ended` mark the webinar ended and pull who attended. Join and leave events record the same attendance while the session is open. `recording.completed` is acknowledged and not stored. Ending the session still happens in Zoom.
 
 ## Scopes
 

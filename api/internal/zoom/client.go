@@ -267,6 +267,67 @@ func (c *Client) Links(ctx context.Context, access, venue, id string) (start, jo
 	return out.StartURL, out.JoinURL, nil
 }
 
+/* PastParticipants lists who was in a meeting or webinar that has ended.
+ *
+ * The meeting id is Zoom's numeric id. Names and emails come back from Zoom
+ * and are not logged here. A few pages is enough; a session larger than that
+ * still returns the first pages rather than looping forever.
+ */
+func (c *Client) PastParticipants(ctx context.Context, access, venue, id string) ([]Participant, error) {
+	var kind string
+	switch venue {
+	case VenueMeeting:
+		kind = "past_meetings"
+	case VenueWebinar:
+		kind = "past_webinars"
+	default:
+		return nil, fmt.Errorf("not a zoom venue %q", venue)
+	}
+	if strings.TrimSpace(id) == "" {
+		return nil, fmt.Errorf("missing zoom id")
+	}
+	var all []Participant
+	pageToken := ""
+	for page := 0; page < 10; page++ {
+		q := url.Values{"page_size": {"300"}}
+		if pageToken != "" {
+			q.Set("next_page_token", pageToken)
+		}
+		path := "/" + kind + "/" + url.PathEscape(id) + "/participants?" + q.Encode()
+		var out struct {
+			Next         string `json:"next_page_token"`
+			Participants []struct {
+				ID           string `json:"id"`
+				UserID       string `json:"user_id"`
+				Name         string `json:"name"`
+				Email        string `json:"user_email"`
+				RegistrantID string `json:"registrant_id"`
+				Join         string `json:"join_time"`
+				Leave        string `json:"leave_time"`
+			} `json:"participants"`
+		}
+		if err := c.do(ctx, http.MethodGet, path, access, nil, &out); err != nil {
+			return all, err
+		}
+		for _, p := range out.Participants {
+			all = append(all, Participant{
+				Name:          strings.TrimSpace(p.Name),
+				Email:         strings.TrimSpace(p.Email),
+				RegistrantID:  strings.TrimSpace(p.RegistrantID),
+				ZoomUserID:    strings.TrimSpace(p.ID),
+				MeetingUserID: strings.TrimSpace(p.UserID),
+				Joined:        parseZoomTime(p.Join),
+				Left:          parseZoomTime(p.Leave),
+			})
+		}
+		if out.Next == "" || out.Next == pageToken {
+			break
+		}
+		pageToken = out.Next
+	}
+	return all, nil
+}
+
 func (c *Client) AddRegistrant(ctx context.Context, access, venue, id string, person Person) (Registrant, error) {
 	kind, err := resource(venue)
 	if err != nil {

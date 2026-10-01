@@ -69,7 +69,7 @@ func TestZoomIsOffUntilAnAdminAllowsIt(t *testing.T) {
 	 * that does not ask for Zoom does not call Zoom to leave. */
 	wb := h.newWebinar("Already in Zoom", nil)
 	wb = h.placeFixtureStart(wb.ID, time.Now())
-	if err := h.store.SetWebinarZoom(context.Background(), wb.ID, zoom.VenueMeeting, "999", "https://zoom.us/s/host"); err != nil {
+	if err := h.store.SetWebinarZoom(context.Background(), wb.ID, zoom.VenueMeeting, "999", "https://zoom.us/s/host", ""); err != nil {
 		t.Fatal(err)
 	}
 	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil)
