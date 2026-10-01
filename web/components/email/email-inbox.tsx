@@ -86,7 +86,7 @@ export function EmailInboxScreen() {
       </div>
       {error && <Alert tone="error">{error}</Alert>}
       <div className="grid min-h-[420px] overflow-hidden rounded-xl border border-line md:grid-cols-[280px_1fr]">
-        <ul className="divide-y divide-line border-b border-line md:border-r md:border-b-0">
+        <ul data-tour="email-inbox" className="divide-y divide-line border-b border-line md:border-r md:border-b-0">
           {(data?.messages.length ?? 0) === 0 && (
             <li className="p-4 text-[13px] text-ink-3">No email yet.</li>
           )}
@@ -94,6 +94,7 @@ export function EmailInboxScreen() {
             <li key={m.id}>
               <button
                 type="button"
+                data-tour="email-message"
                 onClick={() => setOpen(m.id)}
                 className={`block w-full px-3 py-3 text-left ${open === m.id ? "bg-brand-soft" : "hover:bg-surface-2"}`}
               >
@@ -135,6 +136,7 @@ export function EmailInboxScreen() {
                 }}
               >
                 <textarea
+                  data-tour="email-reply"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   rows={3}
@@ -206,7 +208,7 @@ export function EmailIntegration({
   }
 
   return (
-    <article className="rounded-xl border border-line bg-surface p-4">
+    <article data-tour="email-address" className="rounded-xl border border-line bg-surface p-4">
       <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">Email</div>
       <h3 className="mt-1 text-[15px] font-semibold">Your reply inbox</h3>
       <p className="mt-1 text-[13px] text-ink">{current || address}</p>
