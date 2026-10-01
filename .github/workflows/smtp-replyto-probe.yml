@@ -101,11 +101,12 @@ jobs:
           	msg := "From: " + fromRaw + "\r\n" +
           		"To: ganesh.s.p006@gmail.com\r\n" +
           		"Reply-To: gsp@webinarliv.com\r\n" +
-          		"Subject: Webinar Liv reply-to probe\r\n" +
+          		"Subject: WebinarLiv inbox test — please reply\r\n" +
           		"MIME-Version: 1.0\r\n" +
           		"Content-Type: text/plain; charset=utf-8\r\n" +
           		"\r\n" +
-          		"One-off probe. From is the configured SMTP_FROM. Reply-To is gsp@webinarliv.com.\r\n"
+          		"This is a WebinarLiv inbox test.\r\n" +
+          		"Please reply to this email. Your reply should go to gsp@webinarliv.com.\r\n"
           	if _, err = w.Write([]byte(msg)); err != nil {
           		fmt.Println("SMTP_RESULT write_failed", redact(err.Error(), user, pass, fromRaw))
           		os.Exit(1)

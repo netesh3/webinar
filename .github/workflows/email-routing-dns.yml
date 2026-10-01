@@ -5,10 +5,6 @@ name: Email routing DNS
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [synchronize]
-    paths:
-      - ".github/workflows/email-routing-dns.yml"
 
 permissions:
   contents: read
