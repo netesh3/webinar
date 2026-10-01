@@ -200,6 +200,10 @@ func (s *Store) UnreadAlertCount(ctx context.Context, userID string) (int, error
  * The user_id predicate is not decoration. Without it, an id in a request body would let one
  * host mark another host's alerts read — harmless-looking, and it would hide a pending
  * registration from the person who needed to act on it.
+ *
+ * A listed id is compared as text. The column is uuid and the body is a list of strings;
+ * ANY of that list against the uuid column matches nothing, so a click would leave the
+ * badge where it was.
  */
 func (s *Store) MarkAlertsRead(ctx context.Context, userID string, ids []string) (int, error) {
 	var (
@@ -216,7 +220,7 @@ func (s *Store) MarkAlertsRead(ctx context.Context, userID string, ids []string)
 		}
 		tag, err = s.pool.Exec(ctx, `
 			UPDATE notifications SET read_at = now()
-			 WHERE user_id = $1 AND read_at IS NULL AND id = ANY($2)`, userID, ids)
+			 WHERE user_id = $1 AND read_at IS NULL AND id::text = ANY($2::text[])`, userID, ids)
 	}
 	if err != nil {
 		return 0, err

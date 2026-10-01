@@ -27,6 +27,7 @@ import { WhatsAppMetrics } from "./whatsapp-metrics";
 import { WhatsAppReplies } from "./whatsapp-replies";
 import { minutesOf, timingForSave } from "./message-timing";
 import { beginWhatsAppHome } from "../whatsapp-boot";
+import { useReplies } from "./replies";
 import {
   filterForSlot,
   WordingDrawer,
@@ -64,6 +65,7 @@ export function WhatsAppSimple({
   const [recipes, setRecipes] = useState<CRMRecipesResponse | null>(null);
   const [rules, setRules] = useState<CRMDrip[]>([]);
   const [tags, setTags] = useState<CRMTag[]>([]);
+  const replies = useReplies();
   const [needsReply, setNeedsReply] = useState(0);
   const [drawer, setDrawer] = useState<{
     filter: WordingFilter;
@@ -219,9 +221,9 @@ export function WhatsAppSimple({
           >
             <MaterialIcon name="forum" className="mr-1.5 !text-[17px]" />
             Open inbox
-            {needsReply > 0 && (
+            {(replies?.unread ?? needsReply) > 0 && (
               <span className="ml-1.5 inline-grid h-[18px] min-w-[18px] place-items-center rounded-full bg-brand px-1 text-[11px] font-semibold text-white">
-                {needsReply}
+                {replies?.unread ?? needsReply}
               </span>
             )}
           </Link>

@@ -210,6 +210,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# "Sent a unsupported", and a photo stored before media ids existed still
 	# reads as a photo.
 	cd web && node --experimental-strip-types --no-warnings engage/message-kind.test.mts
+	# And the unread badges: opening a thread or a notification takes it off the
+	# count once, including a thread that was past the bell's short preview.
+	cd web && node --experimental-strip-types --no-warnings engage/unread.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
