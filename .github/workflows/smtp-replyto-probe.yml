@@ -4,12 +4,6 @@ name: SMTP reply-to probe
 
 on:
   workflow_dispatch:
-  # One run from this pull request so the probe can execute before the file
-  # exists on main. Removed after that run; dispatch stays the only trigger.
-  pull_request:
-    types: [synchronize]
-    paths:
-      - ".github/workflows/smtp-replyto-probe.yml"
 
 permissions:
   contents: read
