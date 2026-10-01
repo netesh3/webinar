@@ -351,6 +351,11 @@ export const api = {
 
   updateProfile: (body: ProfilePatch) => patch<Account>("/api/auth/me", body),
 
+  /** Asks to host. Phone is sent only when the account does not already have one.
+   *  Does not grant hosting. A second call is refused once a request is open. */
+  requestHost: (phone?: string) =>
+    post<Account>("/api/me/host-request", phone ? { phone } : {}),
+
   /** Replaces the account's profile photo. The body is the raw image — see
    *  lib/profile-photo.ts, which crops to a square before this is called.
    *  Returns the account; avatarUrl then points at the stored bytes. */

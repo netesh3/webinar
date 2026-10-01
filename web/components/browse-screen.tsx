@@ -6,6 +6,7 @@ import type { Webinar } from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { BrowseList } from "./browse-list";
+import { HostRequest } from "./host-request";
 import { useSession } from "./providers";
 import { Button, ButtonLink, Empty } from "./ui";
 
@@ -77,6 +78,10 @@ export function BrowseScreen() {
           </ButtonLink>
         )}
       </div>
+
+      {account && !signedOut && !canHost && (
+        <HostRequest account={account} placement="home" />
+      )}
 
       {bypass && !signedOut && (
         <p className="mb-6 text-[13px] text-ink-3">
