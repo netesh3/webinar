@@ -273,7 +273,7 @@ export function WordingDrawer({
   const node = (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
-        className="absolute inset-0 bg-ink/35"
+        className="absolute inset-0 bg-scrim/35"
         onClick={onClose}
         aria-hidden
       />

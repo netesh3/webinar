@@ -47,6 +47,7 @@ type Echo struct {
 	WAMID string
 	Kind  string
 	Body  string
+	Media Media
 	At    time.Time
 }
 
@@ -74,6 +75,10 @@ type Inbound struct {
 	// The readable content: the text, a button's label, a list selection's title.
 	// Empty for the kinds that have no text at all, like an image with no caption.
 	Body string
+	/* Media is everything that is not the text: a media id, a filename, a pin,
+	 * a reaction, contact names, or the error Meta attached to type "unsupported".
+	 * Zero for plain text. */
+	Media Media
 	/* The id of the button or list row that was tapped, for the kinds that have one.
 	 *
 	 * Separate from Body because they answer different questions. Body is what the
@@ -186,19 +191,74 @@ type webhookMessage struct {
 			Title string `json:"title"`
 		} `json:"list_reply"`
 	} `json:"interactive"`
-	Image struct {
-		Caption string `json:"caption"`
-	} `json:"image"`
-	Video struct {
-		Caption string `json:"caption"`
-	} `json:"video"`
-	Audio struct {
-		Voice bool `json:"voice"`
-	} `json:"audio"`
-	Document struct {
-		Caption  string `json:"caption"`
-		Filename string `json:"filename"`
-	} `json:"document"`
+	Image    binaryMedia `json:"image"`
+	Video    binaryMedia `json:"video"`
+	Audio    binaryMedia `json:"audio"`
+	Document binaryMedia `json:"document"`
+	Sticker  binaryMedia `json:"sticker"`
+	Location struct {
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+		Name      string  `json:"name"`
+		Address   string  `json:"address"`
+	} `json:"location"`
+	Contacts []struct {
+		Name struct {
+			FormattedName string `json:"formatted_name"`
+			FirstName     string `json:"first_name"`
+			LastName      string `json:"last_name"`
+		} `json:"name"`
+	} `json:"contacts"`
+	Reaction struct {
+		MessageID string `json:"message_id"`
+		Emoji     string `json:"emoji"`
+	} `json:"reaction"`
+	System struct {
+		Body string `json:"body"`
+	} `json:"system"`
+	// Errors is set on type "unsupported": Meta's explanation of what it could
+	// not deliver (code 131051 is the usual one).
+	Errors []webhookError `json:"errors"`
+}
+
+// binaryMedia is the object Meta nests under image, video, audio, document and sticker.
+type binaryMedia struct {
+	ID       string `json:"id"`
+	MimeType string `json:"mime_type"`
+	Caption  string `json:"caption"`
+	Filename string `json:"filename"`
+	Voice    bool   `json:"voice"`
+}
+
+/* Media is the non-text payload of one message.
+ *
+ * Empty means the message is fully described by Kind and Body. ID is Meta's media
+ * id, which is what a later download asks Graph for — not a URL, and not a token.
+ */
+type Media struct {
+	ID          string
+	MimeType    string
+	Filename    string
+	HasLocation bool
+	Latitude    float64
+	Longitude   float64
+	Name        string
+	Address     string
+	Emoji       string
+	// Target is the wamid a reaction points at.
+	Target    string
+	Contacts  []string
+	ErrorCode int
+	// ErrorTitle is Meta's errors[].title (or message, when title is empty).
+	ErrorTitle  string
+	ErrorDetail string
+}
+
+// Empty is true when nothing besides Kind and Body was parsed.
+func (m Media) Empty() bool {
+	return m.ID == "" && m.MimeType == "" && m.Filename == "" && !m.HasLocation &&
+		m.Name == "" && m.Address == "" && m.Emoji == "" && m.Target == "" &&
+		len(m.Contacts) == 0 && m.ErrorCode == 0 && m.ErrorTitle == "" && m.ErrorDetail == ""
 }
 
 type webhookEcho struct {
@@ -217,6 +277,11 @@ type webhookError struct {
 	Title   string `json:"title"`
 	Message string `json:"message"`
 	Details string `json:"details"`
+	// Inbound unsupported messages nest the sentence under error_data.details.
+	// Status callbacks usually put it on details directly. Both are read.
+	ErrorData struct {
+		Details string `json:"details"`
+	} `json:"error_data"`
 }
 
 // ParseWebhook flattens one delivery. An error means the body was not JSON;
@@ -241,7 +306,7 @@ func ParseWebhook(raw []byte) (Delivery, error) {
 				}
 			}
 			for _, m := range v.Messages {
-				kind, body := readMessageBody(m)
+				kind, body, media := readMessageBody(m)
 				out.Messages = append(out.Messages, Inbound{
 					PhoneNumberID: v.Metadata.PhoneNumberID,
 					WABAID:        entry.ID,
@@ -250,18 +315,20 @@ func ParseWebhook(raw []byte) (Delivery, error) {
 					WAMID:         strings.TrimSpace(m.ID),
 					Kind:          kind,
 					Body:          body,
+					Media:         media,
 					ReplyID:       readReplyID(m),
 					At:            unixSeconds(m.Timestamp),
 				})
 			}
 			for _, e := range v.MessageEchoes {
-				kind, body := readMessageBody(e.webhookMessage)
+				kind, body, media := readMessageBody(e.webhookMessage)
 				out.Echoes = append(out.Echoes, Echo{
 					PhoneNumberID: v.Metadata.PhoneNumberID,
 					To:            strings.TrimSpace(e.To),
 					WAMID:         strings.TrimSpace(e.ID),
 					Kind:          kind,
 					Body:          body,
+					Media:         media,
 					At:            unixSeconds(e.Timestamp),
 				})
 			}
@@ -290,47 +357,110 @@ func ParseWebhook(raw []byte) (Delivery, error) {
 	return out, nil
 }
 
-/* readMessageBody turns one message into (kind, body).
+/* readMessageBody turns one message into (kind, body, media).
  *
- * Text is the case worth getting right, and it comes back with an empty kind so
- * the thread renders it as what somebody said. Everything else keeps its Meta type
- * and contributes whatever text it has: a photo's caption, the label of the button
- * that was tapped, the filename of a document. A kind with no text is not a
- * failure — the UI has the type and can say "sent a voice note" without inventing
- * words the sender did not use.
+ * Text comes back with an empty kind so the thread renders it as what somebody
+ * said. Everything else keeps Meta's own type. "unsupported" is one of those
+ * types — Meta sends it when it cannot deliver the payload (a poll, a view-once
+ * message, some media from a newer client) — and this function does not invent
+ * it for a type it has not seen. An unknown type is stored under its own name.
+ *
+ * Body is the words: a caption, a button title, a system line, a contact's name.
+ * A document's filename lives on Media, not in Body, so a caption and a filename
+ * can both be kept. A kind with no words is not a failure.
  */
-func readMessageBody(m webhookMessage) (string, string) {
+func readMessageBody(m webhookMessage) (string, string, Media) {
 	switch strings.TrimSpace(strings.ToLower(m.Type)) {
 	case "text", "":
-		return "", m.Text.Body
+		return "", m.Text.Body, Media{}
 	// A template's quick-reply button, tapped. The label is the reply, and a bot
 	// matches on it when there is no id to match on.
 	case "button":
-		return "button", m.Button.Text
+		return "button", m.Button.Text, Media{}
 	case "interactive":
 		if t := m.Interactive.ButtonReply.Title; t != "" {
-			return "button", t
+			return "button", t, Media{}
 		}
-		return "interactive", m.Interactive.ListReply.Title
+		return "interactive", m.Interactive.ListReply.Title, Media{}
 	case "image":
-		return "image", m.Image.Caption
+		return "image", m.Image.Caption, mediaOf(m.Image)
 	case "video":
-		return "video", m.Video.Caption
+		return "video", m.Video.Caption, mediaOf(m.Video)
 	case "audio":
 		// A voice note and an audio file are the same message type with a flag, and
 		// they read completely differently in a thread.
 		if m.Audio.Voice {
-			return "voice", ""
+			return "voice", "", mediaOf(m.Audio)
 		}
-		return "audio", ""
+		return "audio", "", mediaOf(m.Audio)
 	case "document":
-		if m.Document.Caption != "" {
-			return "document", m.Document.Caption
+		return "document", m.Document.Caption, mediaOf(m.Document)
+	case "sticker":
+		return "sticker", "", mediaOf(m.Sticker)
+	case "location":
+		return "location", "", Media{
+			HasLocation: true,
+			Latitude:    m.Location.Latitude,
+			Longitude:   m.Location.Longitude,
+			Name:        strings.TrimSpace(m.Location.Name),
+			Address:     strings.TrimSpace(m.Location.Address),
 		}
-		return "document", m.Document.Filename
+	case "contacts":
+		names := contactNames(m)
+		body := strings.Join(names, ", ")
+		return "contacts", body, Media{Contacts: names}
+	case "reaction":
+		return "reaction", "", Media{
+			Emoji:  m.Reaction.Emoji,
+			Target: strings.TrimSpace(m.Reaction.MessageID),
+		}
+	case "system":
+		return "system", m.System.Body, Media{}
+	case "unsupported":
+		return "unsupported", "", mediaFromErrors(m.Errors)
 	default:
-		return strings.TrimSpace(strings.ToLower(m.Type)), ""
+		// Meta's type, unchanged. Relabelling this "unsupported" would make a
+		// future type look like the specific type Meta uses when it dropped the
+		// payload, and the inbox would show the wrong sentence.
+		return strings.TrimSpace(strings.ToLower(m.Type)), "", mediaFromErrors(m.Errors)
 	}
+}
+
+func mediaOf(b binaryMedia) Media {
+	return Media{
+		ID:       strings.TrimSpace(b.ID),
+		MimeType: strings.TrimSpace(b.MimeType),
+		Filename: strings.TrimSpace(b.Filename),
+	}
+}
+
+func contactNames(m webhookMessage) []string {
+	names := make([]string, 0, len(m.Contacts))
+	for _, c := range m.Contacts {
+		n := strings.TrimSpace(c.Name.FormattedName)
+		if n == "" {
+			n = strings.TrimSpace(strings.TrimSpace(c.Name.FirstName) + " " + strings.TrimSpace(c.Name.LastName))
+		}
+		if n != "" {
+			names = append(names, n)
+		}
+	}
+	return names
+}
+
+func mediaFromErrors(errs []webhookError) Media {
+	for _, e := range errs {
+		title := strings.TrimSpace(e.Title)
+		if title == "" {
+			title = strings.TrimSpace(e.Message)
+		}
+		detail := e.detail()
+		if e.Code == 0 && title == "" && detail == "" {
+			continue
+		}
+		return Media{ErrorCode: e.Code, ErrorTitle: title, ErrorDetail: detail}
+	}
+	return Media{}
 }
 
 /* readReplyID is the id of whatever was tapped, or "" if nothing was.
@@ -407,12 +537,19 @@ func amountToMicros(raw json.RawMessage) (int64, bool) {
 	return int64(math.Round(f * 1_000_000)), true
 }
 
+func (e webhookError) detail() string {
+	if text := strings.TrimSpace(e.Details); text != "" {
+		return text
+	}
+	return strings.TrimSpace(e.ErrorData.Details)
+}
+
 func firstError(errs []webhookError) string {
 	for _, e := range errs {
 		// Details is the sentence that says what to do about it; Title is the
 		// category. Preferred in that order, with the code kept because it is what
 		// Meta's own documentation is indexed by.
-		text := strings.TrimSpace(e.Details)
+		text := e.detail()
 		if text == "" {
 			text = strings.TrimSpace(e.Message)
 		}

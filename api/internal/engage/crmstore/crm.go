@@ -2,6 +2,8 @@ package crmstore
 
 import (
 	"context"
+	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 
@@ -386,10 +388,10 @@ func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+crmContactColumns+`,
 		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status,
-		       m.error, m.created_at, `+lastInboundAt+`
+		       m.error, m.created_at, m.media, `+lastInboundAt+`
 		  FROM crm_contacts c
 		  LEFT JOIN LATERAL (
-		       SELECT id, direction, body, kind, template_name, status, error, created_at
+		       SELECT id, direction, body, kind, template_name, status, error, created_at, media
 		         FROM crm_messages
 		        WHERE contact_id = c.id
 		        ORDER BY created_at DESC, id DESC
@@ -417,7 +419,7 @@ func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([
 			lastSeen  *time.Time
 			created   time.Time
 			botPaused *time.Time
-			// All eight nullable together, from the LEFT JOIN: a contact with no
+			// All nullable together, from the LEFT JOIN: a contact with no
 			// messages yet is the ordinary case on a freshly imported list.
 			mID       *string
 			mDir      *string
@@ -427,12 +429,13 @@ func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([
 			mStatus   *string
 			mError    *string
 			mAt       *time.Time
+			mMedia    []byte
 			// Null for the majority of any list: most leads never write back.
 			inboundAt *time.Time
 		)
 		if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
 			&optIn, &optOut, &lastSeen, &created, &botPaused,
-			&mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mError, &mAt,
+			&mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mError, &mAt, &mMedia,
 			&inboundAt); err != nil {
 			return nil, zero, err
 		}
@@ -464,6 +467,7 @@ func (s *Store) Contacts(ctx context.Context, hostID string, f ContactFilter) ([
 				TemplateName: derefString(mTemplate),
 				Status:       derefString(mStatus),
 				Error:        derefString(mError),
+				Media:        mediaPtr(mMedia),
 			}
 			if mAt != nil {
 				c.LastMessage.CreatedAt = mAt.Format(time.RFC3339)
@@ -516,7 +520,7 @@ func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows 
 	 */
 	found, err := s.pool.Query(ctx, `
 		SELECT r.id::text, wa.status, wa.last_inbound_at, wa.contact_id,
-		       m.direction, m.body, m.template_name, m.status, m.created_at
+		       m.direction, m.body, m.kind, m.template_name, m.status, m.created_at, m.media
 		  FROM registrations r
 		  JOIN webinars w ON w.id = r.webinar_id
 		  LEFT JOIN LATERAL (
@@ -539,7 +543,7 @@ func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows 
 		        LIMIT 1
 		  ) wa ON true
 		  LEFT JOIN LATERAL (
-		       SELECT direction, body, template_name, status, created_at
+		       SELECT direction, body, kind, template_name, status, created_at, media
 		         FROM crm_messages
 		        WHERE contact_id = wa.contact_id::uuid
 		        ORDER BY created_at DESC, id DESC
@@ -566,12 +570,14 @@ func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows 
 			contactID *string
 			mDir      *string
 			mBody     *string
+			mKind     *string
 			mTemplate *string
 			mStatus   *string
 			mAt       *time.Time
+			mMedia    []byte
 		)
 		if err := found.Scan(&id, &status, &inboundAt, &contactID,
-			&mDir, &mBody, &mTemplate, &mStatus, &mAt); err != nil {
+			&mDir, &mBody, &mKind, &mTemplate, &mStatus, &mAt, &mMedia); err != nil {
 			return err
 		}
 		// Both null for a registrant with no contact at all — a guest, or somebody whose
@@ -584,8 +590,10 @@ func (s *Store) AttachRegistrantWhatsApp(ctx context.Context, slug string, rows 
 					ContactID:    st.contactID,
 					Direction:    *mDir,
 					Body:         derefString(mBody),
+					Kind:         derefString(mKind),
 					TemplateName: derefString(mTemplate),
 					Status:       derefString(mStatus),
+					Media:        mediaPtr(mMedia),
 				}
 				if mAt != nil {
 					st.last.CreatedAt = mAt.Format(time.RFC3339)
@@ -639,7 +647,7 @@ func (s *Store) Thread(ctx context.Context, hostID, contactID string) (types.CRM
 		SELECT recent.id::text, recent.contact_id::text, recent.direction, recent.body,
 		       recent.kind, recent.template_name, recent.status, recent.error,
 		       COALESCE(b.name,''), recent.created_at, COALESCE(w.topic, ''), recent.manual,
-		       recent.notification_id IS NOT NULL, COALESCE(w.slug, '')
+		       recent.notification_id IS NOT NULL, COALESCE(w.slug, ''), recent.media
 		  FROM (
 		       SELECT * FROM crm_messages
 		        WHERE host_id = $1 AND contact_id = $2::uuid
@@ -657,15 +665,17 @@ func (s *Store) Thread(ctx context.Context, hostID, contactID string) (types.CRM
 	msgs := make([]types.CRMMessage, 0, 32)
 	for rows.Next() {
 		var (
-			m       types.CRMMessage
-			created time.Time
+			m        types.CRMMessage
+			created  time.Time
+			mediaRaw []byte
 		)
 		if err := rows.Scan(&m.ID, &m.ContactID, &m.Direction, &m.Body, &m.Kind,
 			&m.TemplateName, &m.Status, &m.Error, &m.FromBot, &created, &m.Webinar, &m.Manual,
-			&m.Automatic, &m.WebinarID); err != nil {
+			&m.Automatic, &m.WebinarID, &mediaRaw); err != nil {
 			return types.CRMContact{}, nil, err
 		}
 		m.CreatedAt = created.Format(time.RFC3339)
+		m.Media = mediaPtr(mediaRaw)
 		msgs = append(msgs, m)
 	}
 	return contact, msgs, rows.Err()
@@ -731,6 +741,9 @@ type MessageInput struct {
 	// ignored because a batch that reaches us an hour late still belongs where it
 	// happened in the conversation.
 	At time.Time
+	// Attachment is the media id, filename, location, reaction or unsupported
+	// error. Nil for text.
+	Attachment *types.CRMAttachment
 }
 
 /* AppendMessage records a message against a contact and bumps their last-seen.
@@ -764,8 +777,9 @@ func (s *Store) AppendMessage(ctx context.Context, hostID, contactID string, in 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var (
-		m       types.CRMMessage
-		created time.Time
+		m        types.CRMMessage
+		created  time.Time
+		mediaRaw []byte
 	)
 	at := in.At
 	if at.IsZero() {
@@ -774,18 +788,21 @@ func (s *Store) AppendMessage(ctx context.Context, hostID, contactID string, in 
 	err = tx.QueryRow(ctx, `
 		INSERT INTO crm_messages
 			(host_id, contact_id, direction, body, kind, template_name, wamid, status,
-			 error, created_at, broadcast_id, bot_id, notification_id, webinar_id, manual)
+			 error, created_at, broadcast_id, bot_id, notification_id, webinar_id, manual,
+			 media)
 		VALUES ($1,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,NULLIF($11,'')::uuid,
 		        NULLIF($12,'')::uuid, NULLIF($13,'')::uuid,
-		        (SELECT id FROM webinars WHERE slug = NULLIF($14,'') AND host_id = $1::uuid), $15)
+		        (SELECT id FROM webinars WHERE slug = NULLIF($14,'') AND host_id = $1::uuid), $15,
+		        $16::jsonb)
 		ON CONFLICT (host_id, wamid) WHERE wamid <> '' DO NOTHING
 		RETURNING id::text, contact_id::text, direction, body, kind, template_name,
-		          status, error, created_at`,
+		          status, error, created_at, media`,
 		hostID, contactID, dir, in.Body, strings.TrimSpace(in.Kind),
 		strings.TrimSpace(in.TemplateName), strings.TrimSpace(in.WAMID), status, in.Error, at,
 		in.BroadcastID, in.BotID, in.NotificationID, in.WebinarID, in.Manual,
+		attachmentJSON(in.Attachment),
 	).Scan(&m.ID, &m.ContactID, &m.Direction, &m.Body, &m.Kind, &m.TemplateName,
-		&m.Status, &m.Error, &created)
+		&m.Status, &m.Error, &created, &mediaRaw)
 	if noRows(err) {
 		// Already stored, from an earlier delivery of the same message. Return the
 		// row that exists so the caller has nothing to special-case, and leave
@@ -800,6 +817,7 @@ func (s *Store) AppendMessage(ctx context.Context, hostID, contactID string, in 
 		return types.CRMMessage{}, err
 	}
 	m.CreatedAt = created.Format(time.RFC3339)
+	m.Media = mediaPtr(mediaRaw)
 
 	// greatest() so a message that arrives out of order — Meta batches, and a
 	// retry can overtake — cannot move a conversation backwards in the inbox.
@@ -814,15 +832,16 @@ func (s *Store) AppendMessage(ctx context.Context, hostID, contactID string, in 
 
 func messageByWAMID(ctx context.Context, q querier, hostID, wamid string) (types.CRMMessage, error) {
 	var (
-		m       types.CRMMessage
-		created time.Time
+		m        types.CRMMessage
+		created  time.Time
+		mediaRaw []byte
 	)
 	err := q.QueryRow(ctx, `
 		SELECT id::text, contact_id::text, direction, body, kind, template_name,
-		       status, error, created_at
+		       status, error, created_at, media
 		  FROM crm_messages WHERE host_id = $1 AND wamid = $2`, hostID, wamid).
 		Scan(&m.ID, &m.ContactID, &m.Direction, &m.Body, &m.Kind, &m.TemplateName,
-			&m.Status, &m.Error, &created)
+			&m.Status, &m.Error, &created, &mediaRaw)
 	if noRows(err) {
 		return types.CRMMessage{}, store.ErrNotFound
 	}
@@ -830,7 +849,69 @@ func messageByWAMID(ctx context.Context, q querier, hostID, wamid string) (types
 		return types.CRMMessage{}, err
 	}
 	m.CreatedAt = created.Format(time.RFC3339)
+	m.Media = mediaPtr(mediaRaw)
 	return m, nil
+}
+
+var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+/* MessageAttachment is the stored media id for one of this host's messages.
+ *
+ * ErrNotFound covers a missing row, another host's row, a message that has no
+ * downloadable media, and an id that is not a uuid — the last so a bad path
+ * does not surface as a database error.
+ */
+func (s *Store) MessageAttachment(ctx context.Context, hostID, messageID string) (types.CRMAttachment, error) {
+	if !uuidPattern.MatchString(strings.TrimSpace(messageID)) {
+		return types.CRMAttachment{}, store.ErrNotFound
+	}
+	var raw []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT media FROM crm_messages
+		 WHERE host_id = $1 AND id = $2::uuid`, hostID, messageID).Scan(&raw)
+	if noRows(err) {
+		return types.CRMAttachment{}, store.ErrNotFound
+	}
+	if err != nil {
+		return types.CRMAttachment{}, err
+	}
+	a := mediaPtr(raw)
+	if a == nil || a.ID == "" {
+		return types.CRMAttachment{}, store.ErrNotFound
+	}
+	return *a, nil
+}
+
+func attachmentJSON(a *types.CRMAttachment) string {
+	if a == nil || attachmentBlank(*a) {
+		return "{}"
+	}
+	b, err := json.Marshal(a)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+func mediaPtr(raw []byte) *types.CRMAttachment {
+	if len(raw) == 0 || string(raw) == "{}" || string(raw) == "null" {
+		return nil
+	}
+	var a types.CRMAttachment
+	if err := json.Unmarshal(raw, &a); err != nil {
+		return nil
+	}
+	if attachmentBlank(a) {
+		return nil
+	}
+	return &a
+}
+
+func attachmentBlank(a types.CRMAttachment) bool {
+	return a.ID == "" && a.MimeType == "" && a.Filename == "" &&
+		a.Latitude == nil && a.Longitude == nil &&
+		a.Name == "" && a.Address == "" && a.Emoji == "" && a.Target == "" &&
+		len(a.Contacts) == 0 && a.UnsupportedCode == 0 && a.UnsupportedTitle == ""
 }
 
 /* SetMessageStatus applies one of Meta's delivery statuses to a message.

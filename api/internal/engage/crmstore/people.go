@@ -37,7 +37,8 @@ WITH reg AS (
 	       bool_or(joined) AS attended,
 	       sum(watch_min)::int AS watch_min,
 	       (array_agg(topic ORDER BY starts_at DESC NULLS LAST))[1] AS last_topic,
-	       (array_agg(slug ORDER BY starts_at DESC NULLS LAST))[1] AS last_slug
+	       (array_agg(slug ORDER BY starts_at DESC NULLS LAST))[1] AS last_slug,
+	       (array_agg(starts_at ORDER BY starts_at DESC NULLS LAST))[1] AS last_starts
 	  FROM reg GROUP BY contact_id
 )`
 
@@ -90,6 +91,10 @@ type PeopleFilter struct {
 	Query       string
 	Limit       int
 	Offset      int
+	// Sort is a whitelist key (name, attendance, engagement, last). Empty keeps
+	// the default order. Order is asc or desc.
+	Sort  string
+	Order string
 }
 
 const peoplePageMax = 100
@@ -107,6 +112,10 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 	}
 	offset := max(f.Offset, 0)
 	slug := strings.TrimSpace(f.WebinarSlug)
+	orderBy, err := PeopleOrderSQL(f.Sort, f.Order, slug != "")
+	if err != nil {
+		return out, err
+	}
 	q := strings.TrimSpace(f.Query)
 
 	with := peopleWith()
@@ -159,17 +168,17 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		       COALESCE(per.attended, false), COALESCE(per.watch_min, 0),
 		       COALESCE(ce.avg_score, 0), COALESCE(ce.last_tier, ''),
 		       `+lastInboundAt+`,
-		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status, m.created_at
+		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status, m.created_at, m.media
 		  FROM crm_contacts c
 		  LEFT JOIN per ON per.contact_id = c.id
 		  `+engagementJoin+`
 		  LEFT JOIN LATERAL (
-		       SELECT id, direction, body, kind, template_name, status, created_at
+		       SELECT id, direction, body, kind, template_name, status, created_at, media
 		         FROM crm_messages WHERE contact_id = c.id
 		        ORDER BY created_at DESC, id DESC LIMIT 1
 		  ) m ON true
 		 WHERE c.host_id = $1::uuid`+peopleScope+pred+search+`
-		 ORDER BY coalesce(c.last_seen_at, c.created_at) DESC, c.id DESC
+		 ORDER BY `+orderBy+`
 		 LIMIT $4 OFFSET $5`, hostID, slug, q, limit, offset)
 			if err != nil {
 				return err
@@ -184,13 +193,14 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 					mID, mDir, mBody, mKind, mTemplate *string
 					mStatus                            *string
 					mAt                                *time.Time
+					mMedia                             []byte
 				)
 				c := &p.Contact
 				if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
 					&optIn, &optOut, &lastSeen, &created, &botPaused,
 					&p.WhatsAppStatus, &p.Webinars, &p.AttendedWebinars, &p.LastWebinar, &p.LastWebinarID, &p.Attended, &p.WatchMin,
 					&p.AvgScore, &p.Tier,
-					&inbound, &mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mAt); err != nil {
+					&inbound, &mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mAt, &mMedia); err != nil {
 					return err
 				}
 				fillContactTimes(c, optIn, optOut, lastSeen, created, botPaused)
@@ -201,6 +211,7 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 					c.LastMessage = &types.CRMMessage{
 						ID: *mID, ContactID: c.ID, Direction: derefString(mDir), Body: derefString(mBody),
 						Kind: derefString(mKind), TemplateName: derefString(mTemplate), Status: derefString(mStatus),
+						Media: mediaPtr(mMedia),
 					}
 					if mAt != nil {
 						c.LastMessage.CreatedAt = mAt.Format(time.RFC3339)

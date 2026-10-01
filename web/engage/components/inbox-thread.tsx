@@ -19,7 +19,8 @@ import type {
 import { useNow } from "@/lib/clock";
 import { formatRelative } from "@/lib/format";
 import { NotesPane } from "./crm-notes";
-import { Compose, ConsentBadge, kindText } from "./crm-screen";
+import { MessageContent } from "./message-content";
+import { Compose, ConsentBadge } from "./crm-screen";
 import { ContactTags } from "./crm-tags";
 import { PersonAvatar, Ticks, WA_BUBBLE, WA_WALL } from "./wa-kit";
 
@@ -448,11 +449,7 @@ function Bubble({ m }: { m: CRMMessage }) {
               : m.templateName?.replace(/_/g, " ")}
           </div>
         )}
-        {m.body ? (
-          <span className="whitespace-pre-wrap">{m.body}</span>
-        ) : (
-          <span className="italic opacity-70">{kindText(m.kind)}</span>
-        )}
+        <MessageContent message={m} />
         <span className="float-right mt-1.5 ml-2 flex items-center gap-1 text-[10px] text-[#667781]">
           {time}
           {!inbound && <Ticks status={m.status} />}

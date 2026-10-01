@@ -224,7 +224,7 @@ export function AttendeeDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-ink/35 backdrop-blur-[2px]" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-scrim/35 backdrop-blur-[2px]" onClick={onClose} aria-hidden />
       <div
         ref={panel}
         role="dialog"

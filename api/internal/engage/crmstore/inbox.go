@@ -38,8 +38,28 @@ const (
 	hotLead = `EXISTS (SELECT 1 FROM crm_hot_leads h JOIN crm_contact_tags ct ON ct.tag_id = h.tag_id
 	 WHERE h.host_id = c.host_id AND ct.contact_id = c.id)`
 
-	// lastInboundBody is their newest message's text, for a one-line preview.
-	lastInboundBody = `COALESCE((SELECT inb.body FROM crm_messages inb
+	/* lastInboundBody is their newest message, as one line for the bell.
+	 *
+	 * The inbox itself labels from the message the API returns. This is the same
+	 * words for the kinds that have no text, so a photo or an unsupported message
+	 * does not show up as a blank row. Captions and filenames stay on the inbox,
+	 * which has the whole message. */
+	lastInboundBody = `COALESCE((SELECT CASE inb.kind
+	    WHEN 'unsupported' THEN 'Message type not supported by WhatsApp''s API (open WhatsApp on your phone to view)'
+	    WHEN 'image' THEN '📷 Photo'
+	    WHEN 'video' THEN '🎥 Video'
+	    WHEN 'voice' THEN '🎤 Voice message'
+	    WHEN 'audio' THEN '🎵 Audio'
+	    WHEN 'document' THEN '📄 Document'
+	    WHEN 'sticker' THEN 'Sticker'
+	    WHEN 'location' THEN '📍 Location'
+	    WHEN 'reaction' THEN 'Reacted'
+	    WHEN 'contacts' THEN COALESCE(NULLIF(btrim(inb.body), ''), 'Contact')
+	    WHEN 'button' THEN COALESCE(NULLIF(btrim(inb.body), ''), 'Tapped a button')
+	    WHEN 'interactive' THEN COALESCE(NULLIF(btrim(inb.body), ''), 'Tapped a button')
+	    ELSE COALESCE(NULLIF(btrim(inb.body), ''), NULLIF(inb.kind, ''), '')
+	  END
+	  FROM crm_messages inb
 	 WHERE inb.contact_id = c.id AND inb.direction = 'in'
 	 ORDER BY inb.created_at DESC LIMIT 1), '')`
 
@@ -113,11 +133,12 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string, lim
 		SELECT `+crmContactColumns+`, `+lastInboundAt+`, `+needsReply+`,
 		       CASE WHEN `+snoozedNow+` THEN c.inbox_snoozed_until END, `+hotLead+`,
 		       COALESCE(tw.slug, ''), COALESCE(tw.topic, ''),
-		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status, m.created_at
+		       m.id::text, m.direction, m.body, m.kind, m.template_name, m.status, m.created_at,
+		       m.media
 		  FROM crm_contacts c
 		  `+threadWebinar+`
 		  JOIN LATERAL (
-		       SELECT id, direction, body, kind, template_name, status, created_at
+		       SELECT id, direction, body, kind, template_name, status, created_at, media
 		         FROM crm_messages WHERE contact_id = c.id
 		        ORDER BY created_at DESC, id DESC LIMIT 1
 		  ) m ON true
@@ -136,12 +157,13 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string, lim
 			inbound, snoozed                   *time.Time
 			m                                  types.CRMMessage
 			mAt                                time.Time
+			mMedia                             []byte
 		)
 		c := &t.Contact
 		if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
 			&optIn, &optOut, &lastSeen, &created, &botPaused,
 			&inbound, &t.NeedsReply, &snoozed, &t.HotLead, &t.WebinarID, &t.Webinar,
-			&m.ID, &m.Direction, &m.Body, &m.Kind, &m.TemplateName, &m.Status, &mAt); err != nil {
+			&m.ID, &m.Direction, &m.Body, &m.Kind, &m.TemplateName, &m.Status, &mAt, &mMedia); err != nil {
 			return out, err
 		}
 		fillContactTimes(c, optIn, optOut, lastSeen, created, botPaused)
@@ -153,6 +175,7 @@ func (s *Store) Inbox(ctx context.Context, hostID, view, webinarSlug string, lim
 		}
 		m.ContactID = c.ID
 		m.CreatedAt = mAt.Format(time.RFC3339)
+		m.Media = mediaPtr(mMedia)
 		t.LastMessage = &m
 		out.Threads = append(out.Threads, t)
 	}

@@ -4,6 +4,7 @@ import Script from "next/script";
 import { AppProviders } from "@/components/providers";
 import { api } from "@/lib/api";
 import type { AppConfig } from "@/lib/api-types";
+import { themeBootScript } from "@/lib/theme";
 import "./globals.css";
 
 const GA_MEASUREMENT_ID = "G-C79Q63GQLN";
@@ -65,8 +66,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       className={`${geistSans.variable} ${homeDisplay.variable} ${homeSans.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <head>
+        {/* Before paint: stored choice, otherwise prefers-color-scheme. Light
+            when neither says dark. suppressHydrationWarning is on <html>
+            because this sets data-theme ahead of React. */}
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript() }} />
         {/* Google Material Symbols */}
         <link
           rel="stylesheet"

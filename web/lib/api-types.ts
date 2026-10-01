@@ -1497,6 +1497,10 @@ export type RegistrationState = string;
 export const RegApproved: RegistrationState = "approved";
 export const RegPending: RegistrationState = "pending";
 export const RegDeclined: RegistrationState = "declined";
+/**
+ * RegUnverified is waiting on the same email-verification link as signup.
+ * Not a host decision, and not a way into the room.
+ */
 export const RegUnverified: RegistrationState = "unverified";
 /**
  * NotificationKind is why somebody is being told something.
@@ -2677,6 +2681,49 @@ export interface CRMContact {
   lastInboundAt?: string;
 }
 /**
+ *  CRMAttachment is the part of a WhatsApp message that is not the text.
+ *  *
+ *  * Set for a photo, video, voice note, audio file, document, sticker, location,
+ *  * shared contact or reaction. Also set for Meta's own type "unsupported", where
+ *  * UnsupportedCode and UnsupportedTitle are the errors object Meta sent — kept so
+ *  * a later look at the row can say which kind of undeliverable message it was.
+ *  * The bytes themselves are not stored; ID is what the media endpoint downloads
+ *  * with the host's token.
+ */
+export interface CRMAttachment {
+  /**
+   * * Meta's media id.
+   */
+  id?: string;
+  mimeType?: string;
+  filename?: string;
+  /**
+   * * Set together for a location pin. Zero is a real coordinate, so these are
+   * 	 * pointers: absent means "not a location".
+   */
+  latitude?: number /* float64 */;
+  longitude?: number /* float64 */;
+  name?: string;
+  address?: string;
+  /**
+   * * A reaction's emoji. Empty when the reaction was removed.
+   */
+  emoji?: string;
+  /**
+   * * The wamid the reaction refers to.
+   */
+  target?: string;
+  contacts?: string[];
+  /**
+   * * Meta's errors[].code when Kind is `unsupported`.
+   */
+  unsupportedCode?: number /* int */;
+  /**
+   * * Meta's errors[].title (or message) for that same case.
+   */
+  unsupportedTitle?: string;
+}
+/**
  * * CRMMessage is one message in a thread, from the host's point of view:
  *  *  `in` is the contact writing to the business.
  */
@@ -2690,10 +2737,16 @@ export interface CRMMessage {
   body?: string;
   /**
    * * Meta's own type for an inbound message that is not text — `image`, `audio`,
-   * 	 *  `location`, `button`. Empty for text, which is the only kind with a Body
-   * 	 *  worth showing.
+   * 	 *  `location`, `button`, or Meta's `unsupported`. Empty for text, which is the
+   * 	 *  only kind with a Body worth showing on its own.
    */
   kind?: string;
+  /**
+   * * The photo, file, pin, reaction or contact card attached to this message.
+   * 	 *  Absent for text, and absent on rows stored before attachments were kept —
+   * 	 *  those still have Kind, and the inbox labels them from that.
+   */
+  media?: CRMAttachment;
   templateName?: string;
   /**
    * * queued / sent / delivered / read / failed. Inbound messages are written
@@ -4217,8 +4270,8 @@ export interface AdminUser {
   canHost: boolean;
   isAdmin: boolean;
   /**
-   * False until the address is confirmed. A webinar registrant is an account
-   * in this list before that, with hosting off.
+   * EmailVerified is false until the address is confirmed. A webinar
+   * registrant is an account in this list before that, with hosting off.
    */
   emailVerified: boolean;
   createdAt: string;
@@ -4400,9 +4453,14 @@ export interface Registration {
   state: RegistrationState;
   joinKey: string;
   registeredAt: string;
-  /** Set when this response is not a way in yet. The join key arrives by email. */
+  /**
+   * NeedsEmailVerification is set when this response is not a way in yet.
+   * The join key is withheld; the same one-time link signup uses finishes it.
+   */
   needsEmailVerification?: boolean;
-  /** Tells the person to check their email. Empty once they are in. */
+  /**
+   * Message tells the person to check their email. Empty once they are in.
+   */
   message?: string;
 }
 /**

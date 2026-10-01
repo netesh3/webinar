@@ -13,7 +13,9 @@ import {
   Spinner,
   Tabs,
 } from "@/components/controls";
+import { previewLabel } from "../message-kind";
 import { Broadcasts } from "./crm-broadcasts";
+import { MessageContent } from "./message-content";
 import { NotesPane } from "./crm-notes";
 import { SetupChecklist, setupTodo } from "./crm-setup";
 import { ContactTags, TagChips, TagManager } from "./crm-tags";
@@ -1567,14 +1569,7 @@ function Bubble({ message: m }: { message: CRMMessage }) {
                 : "rounded-br-md bg-brand text-white"
           }`}
         >
-          {m.body ? (
-            <span className="whitespace-pre-wrap">{m.body}</span>
-          ) : (
-            // A sticker, a location pin, a voice note: the body is genuinely
-            // empty, and skipping the message would leave a gap in a
-            // conversation the host is trying to follow.
-            <span className="italic opacity-80">{kindText(m.kind)}</span>
-          )}
+          <MessageContent message={m} />
         </div>
         <div
           className={`mt-1 flex items-center gap-1.5 text-[10.5px] text-ink-3 ${
@@ -2004,39 +1999,6 @@ function whenText(iso?: string): string {
 }
 
 function previewOf(m: CRMMessage): string {
-  const text = m.body || kindText(m.kind);
+  const text = previewLabel(m);
   return m.direction === "out" ? `You: ${text}` : text;
-}
-
-/** What to show for a message whose content is not text. Meta's own vocabulary,
- *  turned into a sentence rather than left as a bare `document`. */
-export function kindText(kind?: string): string {
-  switch (kind) {
-    case "image":
-      return "Sent a photo";
-    case "video":
-      return "Sent a video";
-    case "voice":
-      return "Sent a voice note";
-    case "audio":
-      return "Sent audio";
-    case "document":
-      return "Sent a document";
-    case "sticker":
-      return "Sent a sticker";
-    case "location":
-      return "Shared a location";
-    case "contacts":
-      return "Shared a contact";
-    case "button":
-    case "interactive":
-      return "Tapped a button";
-    case "":
-    case undefined:
-      return "No message text";
-    default:
-      // A type Meta added after this was written. Naming it is more use to a
-      // host than "unsupported message".
-      return `Sent a ${kind}`;
-  }
 }

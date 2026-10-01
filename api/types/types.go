@@ -1197,6 +1197,36 @@ type CRMContact struct {
 	LastInboundAt string `json:"lastInboundAt,omitempty"`
 }
 
+/* CRMAttachment is the part of a WhatsApp message that is not the text.
+ *
+ * Set for a photo, video, voice note, audio file, document, sticker, location,
+ * shared contact or reaction. Also set for Meta's own type "unsupported", where
+ * UnsupportedCode and UnsupportedTitle are the errors object Meta sent — kept so
+ * a later look at the row can say which kind of undeliverable message it was.
+ * The bytes themselves are not stored; ID is what the media endpoint downloads
+ * with the host's token. */
+type CRMAttachment struct {
+	/** Meta's media id. */
+	ID       string `json:"id,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
+	Filename string `json:"filename,omitempty"`
+	/** Set together for a location pin. Zero is a real coordinate, so these are
+	 * pointers: absent means "not a location". */
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
+	Name      string   `json:"name,omitempty"`
+	Address   string   `json:"address,omitempty"`
+	/** A reaction's emoji. Empty when the reaction was removed. */
+	Emoji string `json:"emoji,omitempty"`
+	/** The wamid the reaction refers to. */
+	Target   string   `json:"target,omitempty"`
+	Contacts []string `json:"contacts,omitempty"`
+	/** Meta's errors[].code when Kind is `unsupported`. */
+	UnsupportedCode int `json:"unsupportedCode,omitempty"`
+	/** Meta's errors[].title (or message) for that same case. */
+	UnsupportedTitle string `json:"unsupportedTitle,omitempty"`
+}
+
 /** CRMMessage is one message in a thread, from the host's point of view:
  *  `in` is the contact writing to the business. */
 type CRMMessage struct {
@@ -1206,10 +1236,14 @@ type CRMMessage struct {
 	Direction string `json:"direction"`
 	Body      string `json:"body,omitempty"`
 	/** Meta's own type for an inbound message that is not text — `image`, `audio`,
-	 *  `location`, `button`. Empty for text, which is the only kind with a Body
-	 *  worth showing. */
-	Kind         string `json:"kind,omitempty"`
-	TemplateName string `json:"templateName,omitempty"`
+	 *  `location`, `button`, or Meta's `unsupported`. Empty for text, which is the
+	 *  only kind with a Body worth showing on its own. */
+	Kind string `json:"kind,omitempty"`
+	/** The photo, file, pin, reaction or contact card attached to this message.
+	 *  Absent for text, and absent on rows stored before attachments were kept —
+	 *  those still have Kind, and the inbox labels them from that. */
+	Media        *CRMAttachment `json:"media,omitempty"`
+	TemplateName string         `json:"templateName,omitempty"`
 	/** queued / sent / delivered / read / failed. Inbound messages are written
 	 *  `delivered`: they arrived, and nothing further will be reported. */
 	Status string `json:"status"`

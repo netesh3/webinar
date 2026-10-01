@@ -7,6 +7,8 @@
  * so a later visit can try again. resetWhatsAppBoot drops a result that arrived
  * for a session the login check then rejected. */
 
+import { presetRange } from "@/components/date-picker";
+import { DEFAULT_TIME_ZONE } from "@/lib/format";
 import { engageApi } from "./api";
 import type {
   CRMDrip,
@@ -28,6 +30,16 @@ export type WhatsAppHomeBundle = {
 
 let homeFlight: Promise<WhatsAppHomeBundle> | null = null;
 let metricsFlight: Promise<CRMMetricsResponse> | null = null;
+let metricsKey: string | null = null;
+
+/* Same 30-day chip the metrics card opens on: inclusive calendar dates in the
+ * app time zone, not a rolling timestamp window. */
+const metricsDefaultPreset = {
+  id: "30d",
+  label: "30 days",
+  fromOffset: -29,
+  toOffset: 0,
+};
 
 export function beginWhatsAppHome(): Promise<WhatsAppHomeBundle> {
   if (!homeFlight) {
@@ -54,22 +66,31 @@ export function beginWhatsAppHome(): Promise<WhatsAppHomeBundle> {
   return homeFlight;
 }
 
-/** Last 30 days, the metrics card's first window. Later period changes ask again. */
+/** The metrics card's first window. Later range changes ask again. */
 export function beginWhatsAppMetrics(): Promise<CRMMetricsResponse> {
   if (!metricsFlight) {
-    const to = new Date();
-    const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
-    metricsFlight = engageApi
-      .crmMetrics(from.toISOString(), to.toISOString())
-      .catch((err: unknown) => {
-        metricsFlight = null;
-        throw err;
-      });
+    const { from, to } = presetRange(metricsDefaultPreset, DEFAULT_TIME_ZONE);
+    metricsKey = `${from}|${to}`;
+    metricsFlight = engageApi.crmMetrics(from, to).catch((err: unknown) => {
+      metricsFlight = null;
+      metricsKey = null;
+      throw err;
+    });
   }
   return metricsFlight;
+}
+
+/** The prefetch, when `from`/`to` are the window it already asked for. */
+export function whatsAppMetricsFlightFor(
+  from: string,
+  to: string,
+): Promise<CRMMetricsResponse> | null {
+  if (metricsFlight && metricsKey === `${from}|${to}`) return metricsFlight;
+  return null;
 }
 
 export function resetWhatsAppBoot(): void {
   homeFlight = null;
   metricsFlight = null;
+  metricsKey = null;
 }

@@ -2,9 +2,42 @@
 
 import { Fragment, useState } from "react";
 import type { AttendanceRow } from "@/lib/api-types";
+import { SortHeader, useSort } from "@/components/sort-header";
 import { Badge } from "@/components/ui";
 import { ChevronDownIcon } from "@/components/icons";
 import { formatDuration, formatTime } from "@/lib/format";
+import { sortBy, type SortKind, type SortValue } from "@/lib/table-sort";
+
+const ATTENDANCE_DEFAULT_DIR = {
+  name: "asc",
+  in: "asc",
+  out: "asc",
+  total: "desc",
+  visits: "desc",
+} as const;
+
+type AttendanceSortKey = keyof typeof ATTENDANCE_DEFAULT_DIR;
+
+function attendanceValue(row: AttendanceRow, key: AttendanceSortKey): SortValue {
+  switch (key) {
+    case "name":
+      return row.name;
+    case "in":
+      return row.firstJoinedAt || null;
+    case "out":
+      return row.lastLeftAt || null;
+    case "total":
+      return row.watchMin;
+    case "visits":
+      return row.visits.length;
+  }
+}
+
+function attendanceKind(key: AttendanceSortKey): SortKind {
+  if (key === "total" || key === "visits") return "number";
+  if (key === "in" || key === "out") return "date";
+  return "string";
+}
 
 /* Who was in the room, when, and for how long — the old Report's attendance table, kept for
  * the rows the engagement numbers leave out on purpose: the host and panelists.
@@ -16,6 +49,10 @@ import { formatDuration, formatTime } from "@/lib/format";
 export function AttendanceTable({ rows, timeZone }: { rows: AttendanceRow[]; timeZone: string }) {
   // Keyed by identity rather than a flag on the row, so a refetch keeps what was open.
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const { sort, onSort } = useSort<AttendanceSortKey>({ defaultDir: ATTENDANCE_DEFAULT_DIR });
+  const shown = sort.key
+    ? sortBy(rows, sort.dir, (row) => attendanceValue(row, sort.key!), attendanceKind(sort.key!))
+    : rows;
   const toggle = (identity: string) =>
     setOpen((prev) => {
       const next = new Set(prev);
@@ -28,15 +65,15 @@ export function AttendanceTable({ rows, timeZone }: { rows: AttendanceRow[]; tim
       <table className="w-full min-w-[560px] text-[12.5px]">
         <thead>
           <tr className="border-b border-line text-left text-[11.5px] text-ink-3">
-            <th scope="col" className="py-2 pr-3 font-medium">Name</th>
-            <th scope="col" className="py-2 pr-3 font-medium">In</th>
-            <th scope="col" className="py-2 pr-3 font-medium">Out</th>
-            <th scope="col" className="py-2 pr-3 text-right font-medium">Total</th>
-            <th scope="col" className="py-2 text-right font-medium">Visits</th>
+            <SortHeader label="Name" active={sort.key === "name"} dir={sort.dir} hintDir="asc" onSort={() => onSort("name")} className="py-2 pr-3 font-medium" />
+            <SortHeader label="In" active={sort.key === "in"} dir={sort.dir} hintDir="asc" onSort={() => onSort("in")} className="py-2 pr-3 font-medium" />
+            <SortHeader label="Out" active={sort.key === "out"} dir={sort.dir} hintDir="asc" onSort={() => onSort("out")} className="py-2 pr-3 font-medium" />
+            <SortHeader label="Total" active={sort.key === "total"} dir={sort.dir} hintDir="desc" onSort={() => onSort("total")} align="right" className="py-2 pr-3 text-right font-medium" />
+            <SortHeader label="Visits" active={sort.key === "visits"} dir={sort.dir} hintDir="desc" onSort={() => onSort("visits")} align="right" className="py-2 text-right font-medium" />
           </tr>
         </thead>
         <tbody>
-          {rows.map((a) => {
+          {shown.map((a) => {
             const expandable = a.visits.length > 1;
             const isOpen = open.has(a.identity);
             return (

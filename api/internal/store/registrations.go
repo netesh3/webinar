@@ -530,7 +530,7 @@ func (s *Store) Registrants(ctx context.Context, slug string, limit int) ([]type
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	page, err := s.RegistrantPage(ctx, slug, limit, 0)
+	page, err := s.RegistrantPage(ctx, slug, limit, 0, "", false)
 	if err != nil {
 		return nil, err
 	}
@@ -539,15 +539,19 @@ func (s *Store) Registrants(ctx context.Context, slug string, limit int) ([]type
 
 // RegistrantPage is one page of the host's People tab, plus the counts the
 // header still needs once the table no longer holds every row.
-func (s *Store) RegistrantPage(ctx context.Context, slug string, limit, offset int) (types.RegistrantPage, error) {
+func (s *Store) RegistrantPage(ctx context.Context, slug string, limit, offset int, sort string, desc bool) (types.RegistrantPage, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 500
 	}
 	if offset < 0 {
 		offset = 0
 	}
+	join, orderBy, err := RegistrantOrderSQL(sort, desc)
+	if err != nil {
+		return types.RegistrantPage{}, err
+	}
 	out := types.RegistrantPage{Items: []types.RegistrantRow{}, Offset: offset}
-	err := s.pool.QueryRow(ctx, `
+	err = s.pool.QueryRow(ctx, `
 		SELECT count(*),
 		       count(*) FILTER (WHERE r.state = 'approved'),
 		       count(*) FILTER (WHERE r.state = 'declined'),
@@ -565,8 +569,9 @@ func (s *Store) RegistrantPage(ctx context.Context, slug string, limit, offset i
 		       r.is_guest, r.answers
 		  FROM registrations r
 		  JOIN webinars w ON w.id = r.webinar_id
+		  `+join+`
 		 WHERE w.slug = $1
-		 ORDER BY r.created_at DESC
+		 ORDER BY `+orderBy+`
 		 LIMIT $2 OFFSET $3`, slug, limit, offset)
 	if err != nil {
 		return out, err

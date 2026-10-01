@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Class strategy: `dark:` follows the explicit choice on <html>, not the OS.
+   An empty choice still follows prefers-color-scheme, but only until the
+   visitor toggles — see the boot script in the root layout. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* The glyph is an em-square. font-size is the size; the box tracks it so a
  * 24px default cannot paint outside a smaller control. MaterialIcon repeats
  * this as inline style because the Google font stylesheet sets the same class
@@ -73,7 +78,93 @@
   --color-onair: #22c55e;
   --color-onair-soft: #d6fbe4;
 
+  /* Label on a solid fill. Light mode keeps white on the saturated brand / live /
+     ok colours. Dark mode lightens those fills (so text-brand stays readable on
+     a near-black surface), and these flip to near-black so the label still
+     clears the fill. Scrim stays dark in both themes — it is a veil, not ink. */
+  --color-on-brand: #ffffff;
+  --color-on-live: #ffffff;
+  --color-on-ok: #ffffff;
+  --color-on-warn: #ffffff;
+  --color-on-ink: #ffffff;
+  --color-scrim: #131619;
+
   --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+}
+
+/* Portal dark theme. Same tokens as @theme above, re-pointed — components keep
+   using bg-surface / text-ink / border-line. Values match .room-dark's contrast
+   pass (ink-2 and ink-3 lifted so they still clear 4.5:1 on these surfaces).
+
+   --color-onair and --color-onair-soft are intentionally not listed. The room
+   chrome is dark either way, and a green that flipped with the portal theme
+   would put that label dark-on-dark for anyone whose portal is light. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-page: #0d0d11;
+  --color-surface: #16161c;
+  --color-surface-2: #202028;
+
+  --color-ink: #f1f1f4;
+  --color-ink-2: #b0b0bd;
+  --color-ink-3: #8b8b99;
+
+  --color-line: #2b2b35;
+  --color-line-2: #3c3c48;
+
+  --color-brand: #7fb2ff;
+  --color-brand-hover: #a3c8ff;
+  --color-brand-soft: #1c2740;
+  --color-brand-line: #33486f;
+
+  --color-ok: #4ade80;
+  --color-ok-soft: #15301f;
+  --color-warn: #fbbf24;
+  --color-warn-soft: #332810;
+  --color-live: #fb8078;
+  --color-live-soft: #3a1917;
+
+  --color-on-brand: #0b1220;
+  --color-on-live: #2a0c0a;
+  --color-on-ok: #052e16;
+  --color-on-warn: #1f1500;
+  --color-on-ink: #131619;
+  --color-scrim: #000000;
+
+  /* Tailwind's ring offset defaults to white, which draws a light gap around a
+     focused control on a dark surface. */
+  --tw-ring-offset-color: var(--color-surface);
+}
+
+html[data-theme="dark"] * {
+  --tw-ring-offset-color: var(--color-surface);
+}
+
+/* A solid fill and a white utility label cannot both stay as they are once the
+   fill lightens. Unlayered so this beats `text-white` (a utilities-layer
+   class) without a second palette on every button. Disabled controls opt out:
+   several of them swap to bg-line and text-ink-3, and forcing the fill's
+   foreground would paint near-black on that dark track. */
+html[data-theme="dark"] .bg-brand:not(:disabled),
+.room-dark .bg-brand:not(:disabled) {
+  color: var(--color-on-brand);
+}
+html[data-theme="dark"] .bg-live:not(:disabled),
+.room-dark .bg-live:not(:disabled) {
+  color: var(--color-on-live);
+}
+html[data-theme="dark"] .bg-ok:not(:disabled),
+.room-dark .bg-ok:not(:disabled) {
+  color: var(--color-on-ok);
+}
+html[data-theme="dark"] .bg-warn:not(:disabled),
+.room-dark .bg-warn:not(:disabled) {
+  color: var(--color-on-warn);
+}
+html[data-theme="dark"] .bg-ink:not(:disabled),
+.room-dark .bg-ink:not(:disabled) {
+  color: var(--color-on-ink);
 }
 
 /* The room's own dark surface, applied to the side panel and to the dialogs the
@@ -140,8 +231,20 @@
     --color-live: #fb8078;
     --color-live-soft: #3a1917;
 
+    --color-on-brand: #0b1220;
+    --color-on-live: #2a0c0a;
+    --color-on-ok: #052e16;
+    --color-on-warn: #1f1500;
+    --color-on-ink: #131619;
+
     color: var(--color-ink);
+    color-scheme: dark;
+    --tw-ring-offset-color: var(--color-surface);
   }
+}
+
+.room-dark * {
+  --tw-ring-offset-color: var(--color-surface);
 }
 
 /* Toasts slide in and fade out. `toast-leaving` is set for the 200 ms before the
@@ -541,9 +644,72 @@
   }
 }
 
+html {
+  color-scheme: light;
+}
+
 body {
   background: var(--color-page);
   color: var(--color-ink);
+}
+
+/* Marketing pages keep their own tokens. Dark re-points those the same way the
+   portal re-points --color-*, and the few surfaces that were painted white in
+   the stylesheet follow. The stage mock stays dark in both themes. */
+html[data-theme="dark"] .home {
+  --home-ink: #e8eef8;
+  --home-ink-2: #b4c0d4;
+  --home-ink-3: #8b9bb3;
+  --home-mist: #1a2740;
+  --home-mist-2: #243352;
+  --home-paper: #0e1626;
+  --home-accent: #7fb2ff;
+  --home-accent-hover: #a3c8ff;
+  --home-accent-soft: #1c2740;
+}
+
+html[data-theme="dark"] .home-btn-primary {
+  color: var(--color-on-brand);
+}
+
+html[data-theme="dark"] .home-hero-atmosphere {
+  background:
+    radial-gradient(ellipse 62% 48% at 50% -6%, rgba(59, 130, 246, 0.22) 0%, transparent 62%),
+    radial-gradient(ellipse 42% 42% at 6% 38%, rgba(99, 102, 241, 0.14) 0%, transparent 62%),
+    radial-gradient(ellipse 42% 42% at 94% 26%, rgba(56, 189, 248, 0.14) 0%, transparent 62%),
+    linear-gradient(180deg, #121a2c 0%, var(--home-paper) 58%);
+}
+
+html[data-theme="dark"] .home-chip {
+  background: rgba(22, 28, 42, 0.92);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--home-ink);
+}
+
+html[data-theme="dark"] .home-section-alt {
+  background: color-mix(in oklab, var(--home-mist) 70%, var(--home-paper));
+}
+
+html[data-theme="dark"] .home-control-visual {
+  background: linear-gradient(145deg, #1a2740, #121c30);
+}
+
+html[data-theme="dark"] .home-control-row {
+  background: rgba(14, 22, 38, 0.72);
+}
+
+html[data-theme="dark"] .home-cta-band {
+  background:
+    radial-gradient(ellipse 60% 80% at 80% 20%, #1c3058 0%, transparent 55%),
+    linear-gradient(180deg, #152238, var(--home-paper));
+}
+
+html[data-theme="dark"] .home-legal-footer {
+  background: color-mix(in oklab, var(--home-mist) 55%, var(--home-paper));
+}
+
+html[data-theme="dark"] .legal {
+  background: var(--home-paper);
 }
 
 /* ------------------------------------------------------------------ marketing home
@@ -1768,6 +1934,9 @@ body {
     @apply pr-8 appearance-none bg-no-repeat;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%238a9199' stroke-width='1.5' d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
     background-position: right 10px center;
+  }
+  html[data-theme="dark"] select.field {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23b0b0bd' stroke-width='1.5' d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
   }
   .label {
     @apply block text-[12.5px] font-medium text-ink-2 mb-1.5;
