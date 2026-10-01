@@ -294,7 +294,6 @@ export function CRMScreen() {
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
-    if (status !== "signed-in" || !canHost) return;
     let cancelled = false;
     engageApi
       .crmTemplates()
@@ -315,7 +314,7 @@ export function CRMScreen() {
     return () => {
       cancelled = true;
     };
-  }, [status, canHost]);
+  }, []);
 
   /* Asking Meta again, on purpose. Behind a button because it is a real Graph
    * call against a per-WABA rate limit — the host who has just created a template
@@ -358,7 +357,6 @@ export function CRMScreen() {
    * case and also the "cleared the box" case, both of which want the answer now.
    */
   useEffect(() => {
-    if (status !== "signed-in" || !canHost) return;
     let cancelled = false;
     const run = () => {
       engageApi
@@ -395,7 +393,7 @@ export function CRMScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, webinarSlug, statusFilter, tick, status, canHost]);
+  }, [query, webinarSlug, statusFilter, tick]);
 
   /* What is left to set up, for the checklist and for the count on its tab.
    *
@@ -410,7 +408,6 @@ export function CRMScreen() {
   const reloadSetup = useCallback(() => setSetupTick((n) => n + 1), []);
 
   useEffect(() => {
-    if (status !== "signed-in" || !canHost) return;
     let cancelled = false;
     // Not set back to true on a reload: by then the checklist is on screen, and
     // replacing five answered steps with a spinner because one of them was just
@@ -436,7 +433,7 @@ export function CRMScreen() {
     return () => {
       cancelled = true;
     };
-  }, [status, canHost, setupTick]);
+  }, [setupTick]);
 
   if (status === "loading") {
     return (

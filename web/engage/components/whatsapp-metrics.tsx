@@ -8,6 +8,7 @@ import { DateRangeField } from "@/components/date-picker";
 import type { CRMMetricsResponse, CRMSetup } from "@/lib/api-types";
 import { DEFAULT_TIME_ZONE, instantToZoned } from "@/lib/format";
 import { FailureDialog, MetricTiles, StatusBar } from "./metric-tiles";
+import { beginWhatsAppMetrics } from "../whatsapp-boot";
 
 /* 7 days and 30 days stay rolling windows — that is what the page already
  * asked for. This month and Custom are calendar dates, which GET /crm/metrics
@@ -73,8 +74,13 @@ export function WhatsAppMetrics({
     const bounds = windowFor(period);
     if (!bounds) return;
     const { from, to } = bounds;
-    engageApi
-      .crmMetrics(from, to)
+    // The first window was asked for when the page mounted, beside the login
+    // check. Changing the period is a new question and asks again.
+    const load =
+      period.id === "30d"
+        ? beginWhatsAppMetrics()
+        : engageApi.crmMetrics(from, to);
+    load
       .then((res) => {
         if (!cancelled) {
           setMetrics(res);

@@ -7,7 +7,7 @@ import { Spinner } from "../controls";
 import { useAppConfig, useSession } from "../providers";
 import { ButtonLink, Card } from "../ui";
 import type { IntegrationCard } from "@/lib/api-types";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { AccountSection } from "./account-section";
 import { IntegrationsSection } from "./integrations-section";
 import { ProfileSection } from "./profile-section";
@@ -42,26 +42,28 @@ export function SettingsScreen() {
     return () => window.removeEventListener("hashchange", apply);
   }, []);
 
+  /* Integrations are a host-only read, but the cookie is enough to ask. This
+   * starts with the login check. A visitor who is not a host gets nothing to
+   * show — the section says so — and a failed read is not an error banner for
+   * them. */
   useEffect(() => {
-    if (!account?.canHost) return;
     let cancelled = false;
     api
       .hostIntegrations()
       .then((res) => {
-        if (!cancelled) {
-          setCards(res.integrations ?? []);
-          setCardsError(null);
-        }
+        if (cancelled) return;
+        setCards(res.integrations ?? []);
+        setCardsError(null);
       })
       .catch((err: unknown) => {
-        if (!cancelled) {
-          setCardsError(err instanceof Error ? err.message : "Could not load integrations.");
-        }
+        if (cancelled) return;
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) return;
+        setCardsError(err instanceof Error ? err.message : "Could not load integrations.");
       });
     return () => {
       cancelled = true;
     };
-  }, [account?.canHost, account?.id]);
+  }, [account?.id]);
 
   function open(next: Section) {
     setSection(next);

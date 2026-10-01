@@ -21,6 +21,8 @@ export function EditWebinarScreen({ slug }: { slug: string }) {
 
   useEffect(() => {
     let active = true;
+    // Tag suggestions don't need this webinar. Ask beside it.
+    api.hostTracks().catch(() => {});
     api
       .hostWebinar(slug)
       .then((w) => {

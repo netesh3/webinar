@@ -31,7 +31,10 @@ export { ReplyAlerts, useReplies } from "./components/replies";
 export { WhatsAppWeekCard } from "./components/week-card";
 export { EngagementFollowUp } from "./components/engagement-follow-up";
 export { WebinarWhatsAppOverview } from "./components/webinar-overview";
-export { WebinarWhatsAppMetrics } from "./components/webinar-whatsapp-metrics";
+export {
+  beginWebinarWhatsAppMetrics,
+  WebinarWhatsAppMetrics,
+} from "./components/webinar-whatsapp-metrics";
 export { EngagementFollowUpPage } from "./components/follow-up-page";
 export {
   ScheduleMessagesTab,

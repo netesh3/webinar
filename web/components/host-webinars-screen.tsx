@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
@@ -14,7 +15,14 @@ import {
   useToast,
 } from "./providers";
 import { ButtonLink, Card } from "./ui";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, type HostWebinarTab } from "@/lib/api";
+import { dropCache } from "@/lib/http";
+import {
+  HOST_LIST_PREFIX,
+  HOST_WEBINAR_PAGE_SIZE,
+  hostListFilterKey,
+  hostListPageKey,
+} from "@/lib/host-list-cache";
 import {
   FeatureInstantWebinar,
   type Webinar,
@@ -134,11 +142,20 @@ function ActionCardBody({
  *  No top nav entry of its own any more — the logo is this page for a host,
  *  see homeHrefFor in top-nav.tsx. The page opens on two action cards, Instant
  *  webinar (go live now, no form) and Schedule a webinar (/host/new). */
+/** The list tab this visit will paint, when the address names one. Anything else
+ *  (Audience, Attending, an old Messages link) still opens on Upcoming. */
+function listTabFromQuery(raw: string): HostWebinarTab {
+  if (raw === "past" || raw === "drafts" || raw === "upcoming") return raw;
+  return "upcoming";
+}
+
 export function HostWebinarsScreen() {
   const { account, status } = useSession();
   const { maxAttendees } = useAppConfig();
   const { notify } = useToast();
   const origin = useShareOrigin();
+  const search = useSearchParams();
+  const listTab = listTabFromQuery(search.get("tab") ?? "");
   const [onStage, setOnStage] = useState<Webinar[]>([]);
   const [startingInstant, setStartingInstant] = useState(false);
   /* The host's own list is paged server-side, so this screen no longer holds
@@ -151,6 +168,67 @@ export function HostWebinarsScreen() {
   const instantAllowed = (account?.features ?? []).includes(
     FeatureInstantWebinar,
   );
+  /* Read during the prefetch's callback. The prefetch itself must not restart when
+   * the session resolves, or it would drop the list it just fetched. */
+  const statusRef = useRef(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  /* The login check (GET /api/auth/me) is already in flight from the app shell.
+   * These start with it, not after it. The screen below still waits for the
+   * session before it draws anything: a 401 throws the list away, and a signed-in
+   * host finds the page already in memory. */
+  useEffect(() => {
+    if (bypass) return;
+    let live = true;
+    const key = hostListPageKey(hostListFilterKey(listTab, "", "", ""), 0);
+    api
+      .hostWebinars({ tab: listTab, limit: HOST_WEBINAR_PAGE_SIZE })
+      .then(() => {
+        if (statusRef.current === "anonymous") dropCache(key);
+      })
+      .catch(() => {
+        dropCache(key);
+      });
+    api
+      .stageWebinars()
+      .then((rows) => {
+        if (!live || statusRef.current === "anonymous") return;
+        setOnStage(rows);
+      })
+      .catch(() => {
+        if (live && statusRef.current !== "anonymous") setOnStage([]);
+      });
+    api.myRegistrations().catch(() => {
+      dropCache("/api/me/registrations");
+    });
+    /* The "just ended" card asks for one past row. It only mounts once the
+     * session is allowed to draw, so start it here or that card waits again. */
+    const pastKey = `${HOST_LIST_PREFIX}tab=past&limit=1`;
+    api
+      .hostWebinars({ tab: "past", limit: 1 })
+      .then(() => {
+        if (statusRef.current === "anonymous") dropCache(pastKey);
+      })
+      .catch(() => {
+        dropCache(pastKey);
+      });
+    return () => {
+      live = false;
+    };
+  }, [bypass, listTab]);
+
+  useEffect(() => {
+    if (status !== "anonymous") return;
+    dropCache(hostListPageKey(hostListFilterKey(listTab, "", "", ""), 0));
+    dropCache(`${HOST_LIST_PREFIX}tab=past&limit=1`);
+    dropCache("/api/me/registrations");
+    /* After the effect, so this is not a setState in the effect body. The
+     * signed-out screen does not render these rows either way. */
+    const clear = () => setOnStage([]);
+    queueMicrotask(clear);
+  }, [status, listTab]);
 
   async function startInstantWebinar() {
     if (bypass) {
@@ -198,13 +276,12 @@ export function HostWebinarsScreen() {
     if (bypass) return;
     api
       .stageWebinars()
-      .then(setOnStage)
+      .then((rows) => {
+        if (statusRef.current === "anonymous") return;
+        setOnStage(rows);
+      })
       .catch(() => setOnStage([]));
   }, [bypass]);
-
-  useEffect(() => {
-    if (status === "signed-in") loadStage();
-  }, [status, loadStage]);
 
   /** After starting an instant webinar: the host's own list lives inside
    *  HostWebinarBrowser and fetches itself, so it gets nudged rather than

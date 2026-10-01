@@ -110,7 +110,24 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 	q := strings.TrimSpace(f.Query)
 
 	with := peopleWith()
-	if err := s.pool.QueryRow(ctx, with+`
+	search := ` AND ($3 = '' OR c.name ILIKE '%' || $3 || '%'
+	                  OR c.email ILIKE '%' || $3 || '%'
+	                  OR c.phone ILIKE '%' || $3 || '%')`
+
+	/* Chip counts, the filtered total, the page, the webinar menu and the
+	 * webinar count are independent. They share the host and the filter, not
+	 * each other's results, so they run together. RunParallel keeps this under
+	 * the pool's connection cap. */
+	var (
+		counts       types.CRMPeopleCounts
+		total        int
+		people       = []types.CRMPerson{}
+		webinars     []types.CRMWebinarRef
+		webinarCount int
+	)
+	if err := store.RunParallel(ctx,
+		func(ctx context.Context) error {
+			return s.pool.QueryRow(ctx, with+`
 		SELECT count(*),
 		       count(*) FILTER (WHERE COALESCE(per.attended, false)),
 		       count(*) FILTER (WHERE NOT COALESCE(per.attended, false)),
@@ -124,23 +141,18 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		  LEFT JOIN per ON per.contact_id = c.id
 		  `+engagementJoin+`
 		 WHERE c.host_id = $1::uuid`+peopleScope, hostID, slug).Scan(
-		&out.Counts.Everyone, &out.Counts.Attended, &out.Counts.NeverAttended,
-		&out.Counts.Replied, &out.Counts.OptedIn, &out.Counts.HotLeads,
-		&out.Counts.HighlyEngaged, &out.Counts.CameBack, &out.Counts.Slipping); err != nil {
-		return out, err
-	}
-
-	search := ` AND ($3 = '' OR c.name ILIKE '%' || $3 || '%'
-	                  OR c.email ILIKE '%' || $3 || '%'
-	                  OR c.phone ILIKE '%' || $3 || '%')`
-	if err := s.pool.QueryRow(ctx, with+`
+				&counts.Everyone, &counts.Attended, &counts.NeverAttended,
+				&counts.Replied, &counts.OptedIn, &counts.HotLeads,
+				&counts.HighlyEngaged, &counts.CameBack, &counts.Slipping)
+		},
+		func(ctx context.Context) error {
+			return s.pool.QueryRow(ctx, with+`
 		SELECT count(*) FROM crm_contacts c LEFT JOIN per ON per.contact_id = c.id
 		  `+engagementJoin+`
-		 WHERE c.host_id = $1::uuid`+peopleScope+pred+search, hostID, slug, q).Scan(&out.Total); err != nil {
-		return out, err
-	}
-
-	rows, err := s.pool.Query(ctx, with+`
+		 WHERE c.host_id = $1::uuid`+peopleScope+pred+search, hostID, slug, q).Scan(&total)
+		},
+		func(ctx context.Context) error {
+			rows, err := s.pool.Query(ctx, with+`
 		SELECT `+crmContactColumns+`, `+contactStatusCase+`,
 		       COALESCE(per.webinars, 0), COALESCE(per.attended_webinars, 0),
 		       COALESCE(per.last_topic, ''), COALESCE(per.last_slug, ''),
@@ -159,58 +171,65 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		 WHERE c.host_id = $1::uuid`+peopleScope+pred+search+`
 		 ORDER BY coalesce(c.last_seen_at, c.created_at) DESC, c.id DESC
 		 LIMIT $4 OFFSET $5`, hostID, slug, q, limit, offset)
-	if err != nil {
-		return out, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var (
-			p                                  types.CRMPerson
-			optIn, optOut, lastSeen, botPaused *time.Time
-			created                            time.Time
-			inbound                            *time.Time
-			mID, mDir, mBody, mKind, mTemplate *string
-			mStatus                            *string
-			mAt                                *time.Time
-		)
-		c := &p.Contact
-		if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
-			&optIn, &optOut, &lastSeen, &created, &botPaused,
-			&p.WhatsAppStatus, &p.Webinars, &p.AttendedWebinars, &p.LastWebinar, &p.LastWebinarID, &p.Attended, &p.WatchMin,
-			&p.AvgScore, &p.Tier,
-			&inbound, &mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mAt); err != nil {
-			return out, err
-		}
-		fillContactTimes(c, optIn, optOut, lastSeen, created, botPaused)
-		if inbound != nil {
-			c.LastInboundAt = inbound.Format(time.RFC3339)
-		}
-		if mID != nil {
-			c.LastMessage = &types.CRMMessage{
-				ID: *mID, ContactID: c.ID, Direction: derefString(mDir), Body: derefString(mBody),
-				Kind: derefString(mKind), TemplateName: derefString(mTemplate), Status: derefString(mStatus),
+			if err != nil {
+				return err
 			}
-			if mAt != nil {
-				c.LastMessage.CreatedAt = mAt.Format(time.RFC3339)
+			defer rows.Close()
+			for rows.Next() {
+				var (
+					p                                  types.CRMPerson
+					optIn, optOut, lastSeen, botPaused *time.Time
+					created                            time.Time
+					inbound                            *time.Time
+					mID, mDir, mBody, mKind, mTemplate *string
+					mStatus                            *string
+					mAt                                *time.Time
+				)
+				c := &p.Contact
+				if err := rows.Scan(&c.ID, &c.Phone, &c.Email, &c.Name, &c.Company, &c.Source,
+					&optIn, &optOut, &lastSeen, &created, &botPaused,
+					&p.WhatsAppStatus, &p.Webinars, &p.AttendedWebinars, &p.LastWebinar, &p.LastWebinarID, &p.Attended, &p.WatchMin,
+					&p.AvgScore, &p.Tier,
+					&inbound, &mID, &mDir, &mBody, &mKind, &mTemplate, &mStatus, &mAt); err != nil {
+					return err
+				}
+				fillContactTimes(c, optIn, optOut, lastSeen, created, botPaused)
+				if inbound != nil {
+					c.LastInboundAt = inbound.Format(time.RFC3339)
+				}
+				if mID != nil {
+					c.LastMessage = &types.CRMMessage{
+						ID: *mID, ContactID: c.ID, Direction: derefString(mDir), Body: derefString(mBody),
+						Kind: derefString(mKind), TemplateName: derefString(mTemplate), Status: derefString(mStatus),
+					}
+					if mAt != nil {
+						c.LastMessage.CreatedAt = mAt.Format(time.RFC3339)
+					}
+				}
+				people = append(people, p)
 			}
-		}
-		out.People = append(out.People, p)
-	}
-	if err := rows.Err(); err != nil {
-		return out, err
-	}
-
-	out.Webinars, err = s.webinarRefs(ctx, hostID)
-	if err != nil {
-		return out, err
-	}
-	if err := s.pool.QueryRow(ctx, `
+			return rows.Err()
+		},
+		func(ctx context.Context) error {
+			var err error
+			webinars, err = s.webinarRefs(ctx, hostID)
+			return err
+		},
+		func(ctx context.Context) error {
+			return s.pool.QueryRow(ctx, `
 		SELECT count(DISTINCT w.id) FROM webinars w
 		 WHERE w.host_id = $1::uuid AND EXISTS (
 		       SELECT 1 FROM registrations r WHERE r.webinar_id = w.id AND r.state <> 'declined')`,
-		hostID).Scan(&out.WebinarCount); err != nil {
+				hostID).Scan(&webinarCount)
+		},
+	); err != nil {
 		return out, err
 	}
+	out.Counts = counts
+	out.Total = total
+	out.People = people
+	out.Webinars = webinars
+	out.WebinarCount = webinarCount
 	return out, nil
 }
 
