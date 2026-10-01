@@ -239,6 +239,20 @@ func (s *Server) flushOutbox(ctx context.Context) {
 			_ = s.store.MarkDelivered(ctx, m.ID, "failed", err.Error())
 			continue
 		}
+		if m.HostID != "" {
+			// The Email tab reads host_emails. From stays SMTP_FROM; this row
+			// only records that the message went out for this host.
+			if _, err := s.store.InsertHostEmail(ctx, store.HostEmail{
+				UserID:    m.HostID,
+				Direction: "out",
+				To:        m.Email,
+				Subject:   m.Subject,
+				Body:      m.Body,
+				MessageID: "outbox:" + m.ID,
+			}); err != nil {
+				s.log.Error("outbox: inbox copy failed", "to", m.Email, "err", err)
+			}
+		}
 		_ = s.store.MarkDelivered(ctx, m.ID, "sent", "")
 	}
 }

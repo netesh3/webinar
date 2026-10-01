@@ -9,6 +9,8 @@ import (
 
 	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/internal/notify"
+	"github.com/netkumar/webcast/api/internal/store"
+	"github.com/netkumar/webcast/api/types"
 )
 
 const inboxTestSecret = "inbox-test-secret"
@@ -173,4 +175,89 @@ func TestEmailInboxRoutingRenameAndIsolation(t *testing.T) {
 		t.Fatalf("To = %s", sent.To)
 	}
 	_ = a
+}
+
+// A reminder the app sends for host A shows in A's inbox as sent, including a
+// row that was already marked sent, and never in host B's. An inbound reply
+// still shows as received, and only for the host it was addressed to.
+func TestSentMailShowsForThatHostOnly(t *testing.T) {
+	h := newHarness(t, func(c *config.Config) {
+		c.InboxWebhookSecret = inboxTestSecret
+		c.TickSecret = testTickSecret
+	})
+	mail := &captureMail{}
+	h.server.UseMail(mail)
+
+	h.signup("Host A", "sent-a@example.com", true)
+	res, raw := h.do(http.MethodGet, "/api/host/email-inbox", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("inbox A: %d %s", res.StatusCode, raw)
+	}
+	var inboxA inboxBody
+	h.decode(raw, &inboxA)
+	wb := h.newWebinar("Sent on behalf", nil)
+
+	ctx := context.Background()
+	if _, err := h.store.Pool().Exec(ctx, `
+		INSERT INTO notifications (email, kind, webinar_id, subject, body, delivery, delivered_at)
+		VALUES ('past@example.com', 'registration_confirmed', $1::uuid,
+		        'Earlier reminder', 'already sent', 'sent', now())`, wb.WebinarID); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.store.Notify(ctx, h.store.DB(), store.Notification{
+		Email:       "guest@example.com",
+		Kind:        types.NotifyRegistrationConfirmed,
+		WebinarSlug: wb.ID,
+		Subject:     "See you soon",
+		Body:        "Your seat is confirmed.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := tick(t, h, testTickSecret); code != http.StatusOK || !strings.Contains(body, `"ran"`) {
+		t.Fatalf("tick: %d %s", code, body)
+	}
+	if len(mail.msgs) != 1 {
+		t.Fatalf("smtp sends = %d", len(mail.msgs))
+	}
+	// Message has no From field. The transport keeps SMTP_FROM and only adds Reply-To.
+	if mail.msgs[0].ReplyTo != inboxA.Address || mail.msgs[0].To != "guest@example.com" {
+		t.Fatalf("sent message = %+v, want Reply-To %s", mail.msgs[0], inboxA.Address)
+	}
+
+	payload, _ := json.Marshal(map[string]string{
+		"to": inboxA.Address, "from": "guest@example.com",
+		"subject": "Re: See you soon", "text": "Thanks", "messageId": "<reply-a@x>",
+	})
+	res, raw = h.doRaw(http.MethodPost, "/api/webhooks/email", "application/json", payload,
+		map[string]string{"X-Inbox-Webhook-Secret": inboxTestSecret})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("inbound: %d %s", res.StatusCode, raw)
+	}
+
+	res, raw = h.do(http.MethodGet, "/api/host/email-inbox", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("inbox A after send: %d %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &inboxA)
+	got := map[string]string{}
+	for _, m := range inboxA.Messages {
+		got[m.Subject] = m.Direction
+	}
+	if got["See you soon"] != "out" || got["Earlier reminder"] != "out" || got["Re: See you soon"] != "in" {
+		t.Fatalf("A messages = %+v", inboxA.Messages)
+	}
+
+	h.logout()
+	h.signup("Host B", "sent-b@example.com", true)
+	res, raw = h.do(http.MethodGet, "/api/host/email-inbox", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("inbox B: %d %s", res.StatusCode, raw)
+	}
+	var inboxB inboxBody
+	h.decode(raw, &inboxB)
+	for _, m := range inboxB.Messages {
+		if m.Subject == "See you soon" || m.Subject == "Earlier reminder" || m.Subject == "Re: See you soon" {
+			t.Fatalf("host B saw %s (%s)", m.Subject, m.Direction)
+		}
+	}
 }

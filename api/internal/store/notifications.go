@@ -240,6 +240,9 @@ type Outbound struct {
 	// InboxLocal is the host's users.inbox_local, empty when that host has no
 	// receiving address yet. The sender turns it into Reply-To.
 	InboxLocal string
+	// HostID is the webinar owner this message was sent for. Empty when the
+	// row is not tied to a webinar (a welcome mail, for example).
+	HostID string
 }
 
 /* PendingDeliveries returns notifications with an address that are due now.
@@ -257,6 +260,11 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		         SELECT u.inbox_local
 		           FROM webinars w
 		           JOIN users u ON u.id = w.host_id
+		          WHERE w.id = notifications.webinar_id
+		       ), ''),
+		       COALESCE((
+		         SELECT w.host_id::text
+		           FROM webinars w
 		          WHERE w.id = notifications.webinar_id
 		       ), '')
 		  FROM notifications
@@ -286,7 +294,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 	out := []Outbound{}
 	for rows.Next() {
 		var o Outbound
-		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.HTML, &o.ICS, &o.Attempts, &o.InboxLocal); err != nil {
+		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.HTML, &o.ICS, &o.Attempts, &o.InboxLocal, &o.HostID); err != nil {
 			return nil, err
 		}
 		out = append(out, o)

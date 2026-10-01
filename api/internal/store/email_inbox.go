@@ -200,14 +200,36 @@ func (s *Store) InsertHostEmail(ctx context.Context, m HostEmail) (HostEmail, er
 	return m, err
 }
 
-// ListHostEmails returns one host's messages, newest last so a thread reads
-// top to bottom.
+// ListHostEmails returns one host's messages, oldest first.
+//
+// host_emails holds inbound replies and copies of mail sent for this host.
+// Notifications already marked sent, and not copied yet, are included so mail
+// that went out before the copy existed still shows. Another host's rows never
+// match: both sides are filtered by this user id.
 func (s *Store) ListHostEmails(ctx context.Context, userID string) ([]HostEmail, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, user_id, direction, from_addr, to_addr, subject, body, message_id, in_reply_to, created_at
-		   FROM host_emails WHERE user_id = $1
-		   ORDER BY created_at ASC
-		   LIMIT 200`, userID)
+		   FROM (
+		     SELECT id::text, user_id::text, direction, from_addr, to_addr, subject, body,
+		            message_id, in_reply_to, created_at
+		       FROM host_emails
+		      WHERE user_id = $1
+		     UNION ALL
+		     SELECT n.id::text, w.host_id::text, 'out', '', n.email, n.subject, n.body,
+		            '', '', COALESCE(n.delivered_at, n.created_at)
+		       FROM notifications n
+		       JOIN webinars w ON w.id = n.webinar_id
+		      WHERE w.host_id = $1
+		        AND n.delivery = 'sent'
+		        AND n.email <> ''
+		        AND NOT EXISTS (
+		          SELECT 1 FROM host_emails h
+		           WHERE h.user_id = w.host_id
+		             AND h.message_id = 'outbox:' || n.id::text
+		        )
+		   ) mail
+		  ORDER BY created_at ASC
+		  LIMIT 200`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -227,8 +249,15 @@ func (s *Store) ListHostEmails(ctx context.Context, userID string) ([]HostEmail,
 func (s *Store) HostEmailForUser(ctx context.Context, userID, id string) (HostEmail, error) {
 	var m HostEmail
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, user_id, direction, from_addr, to_addr, subject, body, message_id, in_reply_to, created_at
-		   FROM host_emails WHERE id = $1 AND user_id = $2`, id, userID).
+		`SELECT id::text, user_id::text, direction, from_addr, to_addr, subject, body, message_id, in_reply_to, created_at
+		   FROM host_emails WHERE id = $1 AND user_id = $2
+		 UNION ALL
+		 SELECT n.id::text, w.host_id::text, 'out', '', n.email, n.subject, n.body,
+		        '', '', COALESCE(n.delivered_at, n.created_at)
+		   FROM notifications n
+		   JOIN webinars w ON w.id = n.webinar_id
+		  WHERE n.id = $1 AND w.host_id = $2 AND n.delivery = 'sent' AND n.email <> ''
+		  LIMIT 1`, id, userID).
 		Scan(&m.ID, &m.UserID, &m.Direction, &m.From, &m.To, &m.Subject, &m.Body, &m.MessageID, &m.InReplyTo, &m.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return HostEmail{}, ErrNotFound

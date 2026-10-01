@@ -80,7 +80,7 @@ export function EmailInboxScreen() {
         <h1 className="text-[20px] font-semibold tracking-[-0.02em]">Email</h1>
         <p className="mt-1 text-[13px] text-ink-3">
           {data
-            ? `Replies to ${data.address} land here. Mail you send uses the shared From address, with this address as Reply-To.`
+            ? `Replies to ${data.address}, and mail sent for you, both show here. Sending still uses the shared From address, with this address as Reply-To.`
             : "Loading your inbox…"}
         </p>
       </div>
@@ -88,7 +88,7 @@ export function EmailInboxScreen() {
       <div className="grid min-h-[420px] overflow-hidden rounded-xl border border-line md:grid-cols-[280px_1fr]">
         <ul className="divide-y divide-line border-b border-line md:border-r md:border-b-0">
           {(data?.messages.length ?? 0) === 0 && (
-            <li className="p-4 text-[13px] text-ink-3">No replies yet.</li>
+            <li className="p-4 text-[13px] text-ink-3">No email yet.</li>
           )}
           {data?.messages.map((m) => (
             <li key={m.id}>
@@ -97,9 +97,14 @@ export function EmailInboxScreen() {
                 onClick={() => setOpen(m.id)}
                 className={`block w-full px-3 py-3 text-left ${open === m.id ? "bg-brand-soft" : "hover:bg-surface-2"}`}
               >
-                <div className="truncate text-[13px] font-medium">{m.subject || "(no subject)"}</div>
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-ink-2 uppercase">
+                    {m.direction === "out" ? "Sent" : "Received"}
+                  </span>
+                  <span className="truncate text-[13px] font-medium">{m.subject || "(no subject)"}</span>
+                </div>
                 <div className="truncate text-[12px] text-ink-3">
-                  {m.direction === "out" ? `You → ${m.to}` : m.from}
+                  {m.direction === "out" ? `To ${m.to}` : `From ${m.from}`}
                 </div>
               </button>
             </li>
@@ -112,8 +117,9 @@ export function EmailInboxScreen() {
               <div className="border-b border-line px-4 py-3">
                 <div className="text-[15px] font-medium">{selected.subject || "(no subject)"}</div>
                 <div className="mt-1 text-[12px] text-ink-3">
-                  {selected.direction === "out" ? "Sent to" : "From"}{" "}
-                  {selected.direction === "out" ? selected.to : selected.from}
+                  {selected.direction === "out" ? "Sent" : "Received"}
+                  {" · "}
+                  {selected.direction === "out" ? `To ${selected.to}` : `From ${selected.from}`}
                   {" · "}
                   {new Date(selected.at).toLocaleString()}
                 </div>
