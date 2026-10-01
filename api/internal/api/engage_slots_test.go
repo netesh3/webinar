@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -412,3 +413,98 @@ func TestEngageSlotsReminderSender(t *testing.T) {
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+func reminderDefault(enabled bool) types.MessageSlot {
+	return types.MessageSlot{
+		Kind: types.SlotReminder, Channels: []string{types.ChannelWhatsApp},
+		Timing:   types.MessageTiming{Type: types.TimingBefore, Minutes: []int{60}},
+		Template: testTemplateUtility, Language: "en_US", Params: []string{"starts_in"},
+		Enabled: enabled,
+	}
+}
+
+func reminderOverride(enabled bool) types.MessageSlotPatch {
+	lang, name := "en_US", testTemplateUtility
+	return types.MessageSlotPatch{
+		Kind: types.SlotReminder, Channels: &[]string{types.ChannelWhatsApp},
+		Timing:   &types.MessageTiming{Type: types.TimingBefore, Minutes: []int{60}},
+		Template: &name, Language: &lang, Params: &[]string{"starts_in"},
+		Enabled: boolPtr(enabled),
+	}
+}
+
+/* Turning an automation off must not depend on the wording still existing at Meta.
+ * The toggle sends the whole slot, including a template that was deleted after it
+ * was chosen. Off keeps that name and persists; on is still refused. */
+func TestTurningASlotOffIgnoresAMissingTemplate(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+	wb := remindersWebinar(t, h, "Missing wording", true)
+
+	putDefaults(t, h, reminderDefault(true))
+	putWebinarSlots(t, h, wb.ID, reminderOverride(true))
+
+	var kept []map[string]any
+	for _, tmpl := range defaultFakeTemplates() {
+		if tmpl["name"] != testTemplateUtility {
+			kept = append(kept, tmpl)
+		}
+	}
+	g.setTemplates(kept)
+	refreshed := crmTemplates(t, h, "?refresh=1")
+	for _, tmpl := range refreshed.Templates {
+		if tmpl.Name == testTemplateUtility {
+			t.Fatal("refresh left the deleted template in the cache")
+		}
+	}
+
+	saved := putDefaults(t, h, reminderDefault(false))
+	rem := slotOf(t, saved, types.SlotReminder)
+	if rem.Enabled || rem.Template != testTemplateUtility || rem.Language != "en_US" {
+		t.Fatalf("account default off = %+v, want the wording kept and the switch off", rem)
+	}
+	again := slotOf(t, getDefaults(t, h), types.SlotReminder)
+	if again.Enabled || again.Template != testTemplateUtility {
+		t.Fatalf("account default did not persist: %+v", again)
+	}
+
+	res, raw := h.do(http.MethodPut, "/api/host/crm/message-defaults", types.MessageDefaultsRequest{
+		Slots: []types.MessageSlot{reminderDefault(true)},
+	})
+	if res.StatusCode != http.StatusUnprocessableEntity || errorCode(t, raw) != "crm_no_template" ||
+		!strings.Contains(string(raw), "That template is not in your WhatsApp account") {
+		t.Fatalf("enable missing template: status %d code %q body %s", res.StatusCode, errorCode(t, raw), raw)
+	}
+	still := slotOf(t, getDefaults(t, h), types.SlotReminder)
+	if still.Enabled || still.Template != testTemplateUtility {
+		t.Fatalf("failed enable changed the account default: %+v", still)
+	}
+
+	over := slotOf(t, putWebinarSlots(t, h, wb.ID, reminderOverride(false)), types.SlotReminder)
+	if over.Enabled || over.Template != testTemplateUtility || over.Layers.Template != types.LayerWebinar {
+		t.Fatalf("webinar override off = %+v, want this webinar's wording kept", over)
+	}
+	res, raw = h.do(http.MethodPut, "/api/host/crm/webinars/"+wb.ID+"/messages", types.WebinarMessagesRequest{
+		Slots: []types.MessageSlotPatch{reminderOverride(true)},
+	})
+	if res.StatusCode != http.StatusUnprocessableEntity || errorCode(t, raw) != "crm_no_template" {
+		t.Fatalf("enable webinar slot: status %d code %q body %s", res.StatusCode, errorCode(t, raw), raw)
+	}
+	over = slotOf(t, webinarSlots(t, h, wb.ID), types.SlotReminder)
+	if over.Enabled || over.Template != testTemplateUtility {
+		t.Fatalf("failed enable changed the webinar slot: %+v", over)
+	}
+
+	// A template this account still has can be turned on. The check did not go away.
+	putDefaults(t, h, types.MessageSlot{
+		Kind: types.SlotReminder, Channels: []string{types.ChannelWhatsApp},
+		Timing:   types.MessageTiming{Type: types.TimingBefore, Minutes: []int{60}},
+		Template: testTemplateMarketing, Language: "en_US", Enabled: true,
+	})
+	back := slotOf(t, getDefaults(t, h), types.SlotReminder)
+	if !back.Enabled || back.Template != testTemplateMarketing {
+		t.Fatalf("valid template did not turn on: %+v", back)
+	}
+}
