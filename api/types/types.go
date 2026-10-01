@@ -2986,8 +2986,13 @@ type RegistrantRow struct {
 	 * when they never have — which is the ordinary case and reads as a dash. */
 	LastInboundAt string `json:"lastInboundAt,omitempty"`
 	/* ZoomNote is why this person has no Zoom link, when the session runs on
-	 * Zoom. Empty otherwise. Never a join URL. */
+	 * Zoom. Empty otherwise. Never a join URL. A shared-link attendee has an
+	 * empty note and ZoomShared set. */
 	ZoomNote string `json:"zoomNote,omitempty"`
+	/* ZoomShared is true when this person uses the meeting's shared Zoom link
+	 * because Zoom would not register them. They still have a link. Never a
+	 * join URL, and not set when they have a personal registrant link. */
+	ZoomShared bool `json:"zoomShared,omitempty"`
 	/* Joined is whether this registrant was in the room at all, and WatchMin how long
 	 * they watched once it was live — the session report's numbers, per registration
 	 * (store.AttachWatch). Zero and false before the webinar has run. */
