@@ -213,6 +213,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the unread badges: opening a thread or a notification takes it off the
 	# count once, including a thread that was past the bell's short preview.
 	cd web && node --experimental-strip-types --no-warnings engage/unread.test.mts
+	# And the host-home follow-up column: a week after the end, and no wider,
+	# so a session from last month does not sit beside Upcoming.
+	cd web && node --experimental-strip-types --no-warnings lib/follow-up-nudge.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

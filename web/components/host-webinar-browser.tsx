@@ -452,6 +452,11 @@ export function HostWebinarBrowser({
         </div>
       </div>
 
+      {/* The follow-up column sits beside this list from 900px up and under it
+          below that. It draws nothing until a session ended inside the week, so
+          an empty week leaves the list the full width. */}
+      <div className="flex flex-col gap-4 min-[900px]:flex-row min-[900px]:items-start">
+      <div className="min-w-0 w-full min-[900px]:w-auto min-[900px]:flex-1">
       {error && !ownList(tab) && (
         <div className="mb-4">
           <Alert tone="error">{error}</Alert>
@@ -526,8 +531,9 @@ export function HostWebinarBrowser({
           />
         </>
       )}
-
+      </div>
       {tab === "upcoming" && <EndedNudge />}
+      </div>
     </>
   );
 }

@@ -17,6 +17,7 @@ import {
 import { ButtonLink, Card } from "./ui";
 import { ApiError, api, type HostWebinarTab } from "@/lib/api";
 import { dropCache } from "@/lib/http";
+import { FOLLOW_UP_FETCH_LIMIT, followUpListCacheKey } from "@/lib/follow-up-nudge";
 import {
   HOST_LIST_PREFIX,
   HOST_WEBINAR_PAGE_SIZE,
@@ -204,11 +205,11 @@ export function HostWebinarsScreen() {
     api.myRegistrations().catch(() => {
       dropCache("/api/me/registrations");
     });
-    /* The "just ended" card asks for one past row. It only mounts once the
-     * session is allowed to draw, so start it here or that card waits again. */
-    const pastKey = `${HOST_LIST_PREFIX}tab=past&limit=1`;
+    /* The follow-up column asks for the recent past page. It only mounts once
+     * the session is allowed to draw, so start it here or those cards wait again. */
+    const pastKey = followUpListCacheKey(HOST_LIST_PREFIX);
     api
-      .hostWebinars({ tab: "past", limit: 1 })
+      .hostWebinars({ tab: "past", limit: FOLLOW_UP_FETCH_LIMIT })
       .then(() => {
         if (statusRef.current === "anonymous") dropCache(pastKey);
       })
@@ -223,7 +224,7 @@ export function HostWebinarsScreen() {
   useEffect(() => {
     if (status !== "anonymous") return;
     dropCache(hostListPageKey(hostListFilterKey(listTab, "", "", ""), 0));
-    dropCache(`${HOST_LIST_PREFIX}tab=past&limit=1`);
+    dropCache(followUpListCacheKey(HOST_LIST_PREFIX));
     dropCache("/api/me/registrations");
     /* After the effect, so this is not a setState in the effect body. The
      * signed-out screen does not render these rows either way. */
