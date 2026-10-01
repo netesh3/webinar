@@ -127,6 +127,7 @@ export function SettingsScreen() {
               key={item.id}
               type="button"
               onClick={() => open(item.id)}
+              data-tour={`settings-${item.id}`}
               aria-current={on ? "page" : undefined}
               className={`-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2.5 text-[13.5px] ${
                 on
@@ -149,6 +150,7 @@ export function SettingsScreen() {
         })}
         <button
           type="button"
+          data-tour="settings-sign-out"
           onClick={async () => {
             await signOut();
             router.push("/");

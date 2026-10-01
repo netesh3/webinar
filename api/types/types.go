@@ -931,8 +931,11 @@ type Account struct {
 	 * the Google photo is the https URL from sign-in. Empty means initials. */
 	AvatarURL string `json:"avatarUrl,omitempty"`
 	// CanHost is GRANTED by an admin. It was once a checkbox on the signup form; see
-	// migrations/0011 for why that had to stop.
+	// migrations/0011 for why that had to stop. A hosting request does not set this.
 	CanHost bool `json:"canHost"`
+	// HostRequestedAt is when this account asked to host, RFC3339. Empty means
+	// they have not asked. See migrations/0080.
+	HostRequestedAt string `json:"hostRequestedAt,omitempty"`
 	// IsAdmin may grant CanHost to others. Set only from ADMIN_EMAILS at boot — there is no
 	// endpoint that promotes an admin, deliberately, because a privilege grantable in-band is
 	// grantable by whoever takes over one account.
@@ -2511,6 +2514,15 @@ type LoginRequest struct {
  */
 type SupabaseAuthRequest struct {
 	AccessToken string `json:"accessToken"`
+}
+
+/* HostRequest is POST /api/me/host-request.
+ *
+ * Phone is required only when the account has none stored. When one is
+ * already there, this field is ignored and that number is reused.
+ */
+type HostRequest struct {
+	Phone string `json:"phone,omitempty"`
 }
 
 type ProfilePatch struct {

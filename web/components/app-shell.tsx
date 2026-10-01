@@ -193,6 +193,7 @@ function PrimaryNav() {
       <button
         type="button"
         className="sb-int-h"
+        data-tour="nav-integrations"
         aria-expanded={open}
         aria-controls="int-tree"
         tabIndex={chrome.rail ? -1 : 0}
@@ -256,6 +257,7 @@ function Item({
   return (
     <Link
       href={href}
+      data-tour={`nav-${label.toLowerCase()}`}
       className={active ? "sb-navitem on" : "sb-navitem"}
       aria-current={active ? "page" : undefined}
       onClick={closeDrawer}
@@ -305,7 +307,7 @@ const THEME_OPTIONS: { id: ThemeChoice; label: string }[] = [
   { id: "dark", label: "Dark" },
 ];
 
-function AccountMenu() {
+export function AccountMenu() {
   const router = useRouter();
   const { account, signOut } = useSession();
   const { theme, setTheme } = useTheme();

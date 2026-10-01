@@ -1,19 +1,22 @@
-/* Tours 7–9: replying on WhatsApp, automations, your audience. */
+/* Tours 7–9: WhatsApp chats, the WhatsApp page, your audience. */
 
-import { btn, dialog, link, tab } from "./common.mjs";
+import { anchor, btn, dialog } from "./common.mjs";
 
 export const messages = {
   id: "07-messages",
   title: "Reply to messages",
-  warm: ["/host?tab=messages"],
+  warm: ["/host/messages"],
   async run(t, page) {
     await t.goto("/host");
     await t.card(
       { kicker: "WebinarLiv guided tour · 7", title: "Reply to messages", sub: "Every WhatsApp reply, in one inbox" },
-      "When people reply on WhatsApp, their messages land here. Let's answer a few.",
+      "When people reply on WhatsApp, their messages land in Chats. Let's answer a few.",
     );
-    await t.say("Click the chat icon at the top. The number is how many people are waiting for a reply.", async () => {
-      await t.click(link(page, /^Messages/), { settle: 2000 });
+    await t.say("Open WhatsApp in the sidebar.", async () => {
+      await t.click(anchor(page, "nav-whatsapp"), { settle: 1800 });
+    });
+    await t.say("Chats is the inbox. The number is how many people are waiting for a reply.", async () => {
+      await t.click(anchor(page, "whatsapp-chats"), { settle: 2000 });
     });
     await t.say("Needs reply shows only the conversations waiting on you. Hot leads are people who asked about price or your program.", async () => {
       await t.point(btn(page, /^Needs reply/));
@@ -37,96 +40,91 @@ export const messages = {
       await t.click(btn(page, /Keyboard shortcuts/), { settle: 1800 });
       await t.key("Escape");
     });
-    await t.say("That's the inbox. Next, let's set up automations.");
+    await t.say("That's the inbox. Next, metrics, templates and automations.");
   },
 };
 
 export const whatsapp = {
   id: "08-whatsapp",
-  title: "WhatsApp and automations",
-  warm: ["/host/crm"],
+  title: "WhatsApp",
+  warm: ["/host/crm", "/host/crm?view=templates", "/host/crm?view=automations"],
   async run(t, page) {
     await t.goto("/host");
     await t.card(
-      { kicker: "WebinarLiv guided tour · 8", title: "WhatsApp and automations", sub: "Reminders, replays and automations that run for you" },
-      "In this video, we'll look at your WhatsApp page, and set up an automation.",
+      { kicker: "WebinarLiv guided tour · 8", title: "WhatsApp", sub: "What went out, the wording, and what sends itself" },
+      "In this video, we'll look at Metrics, Templates and Automations. Chats was the last one.",
     );
-    await t.say("Open Settings, then Integrations. WhatsApp is one of the apps.", async () => {
-      await t.goto("/settings#integrations");
-      await t.point(page.getByRole("heading", { name: "Integrations" }));
-      await t.point(page.getByRole("heading", { name: "WhatsApp Business" }).or(page.getByText("WhatsApp Business").first()));
-    });
-    await t.say("Manage opens the WhatsApp page. Messages come from your own business number.", async () => {
-      await t.click(link(page, /^Manage$/).or(page.getByRole("link", { name: /WhatsApp/ })).first(), { settle: 2000 });
+    await t.say("Open WhatsApp from the sidebar. Metrics opens first.", async () => {
+      await t.click(anchor(page, "nav-whatsapp"), { settle: 2000 });
       await t.point(page.getByRole("heading", { name: "WhatsApp", exact: true }));
-      await t.point(page.getByText(/^Connected/).or(page.getByText("Not connected")).first());
     });
-    await t.say("The numbers at the top are what went out: sent, delivered, read, failed, and what Meta charged.", async () => {
-      await t.point(page.getByRole("group", { name: "Period" }));
+    await t.say("The tiles are what went out: sent, delivered, read, failed, and the cost.", async () => {
+      await t.point(page.getByText("Sent", { exact: true }).first());
+      await t.point(page.getByText("Delivered", { exact: true }).first());
     });
-    await t.say("What goes out automatically is split into before the webinar and after it. Confirmation, the reminder, the replay, and each follow-up.", async () => {
-      await t.point(page.getByRole("heading", { name: "What goes out automatically" }));
-      await t.point(page.getByText("Before the webinar", { exact: true }));
+    await t.say("Search finds a webinar. The date range limits the totals, and which webinars are listed.", async () => {
+      await t.point(page.getByRole("searchbox", { name: "Search webinars" }));
+      await t.point(btn(page, "Metrics date range"));
     });
-    await t.say("Click Edit to change the wording. Pick a message, and see it before you save.", async () => {
-      await t.click(btn(page, /^Edit$/).first(), { settle: 1800 });
-      await t.point(dialog(page).getByRole("heading", { name: /^Edit / }));
-      await t.click(dialog(page).getByRole("button", { name: /^Cancel$/ }));
+    await t.say("Each row is one webinar, with its own sent, delivered, read, failed and cost.", async () => {
+      await t.point(btn(page, /^Webinar$/).first());
     });
-    await t.say("Settings on this page goes back to Integrations.", async () => {
-      await t.point(link(page, /^Settings$/));
+    await t.say("Templates are the messages Meta has approved. Search the list, or start a new one.", async () => {
+      await t.click(anchor(page, "whatsapp-templates"), { settle: 1600 });
+      await t.point(page.getByRole("searchbox", { name: "Search templates" }));
     });
-    await t.say("Automatic replies run when someone writes back. Each one is a sentence with a switch.", async () => {
-      await t.point(page.getByRole("heading", { name: "Automatic replies" }));
+    await t.say("New template opens Create Template. Type the wording here. Meta reviews it before it can be sent.", async () => {
+      await t.click(btn(page, /^New template$/), { settle: 1400 });
+      await t.point(dialog(page).getByRole("heading", { name: "Create Template" }));
     });
-    await t.say("Add an automatic reply to write your own.", async () => {
-      await t.click(btn(page, /Add an automatic reply/), { settle: 1600 });
+    await t.say("We'll close this one without submitting.", async () => {
+      await t.click(dialog(page).getByRole("button", { name: /^Close$/ }));
     });
-    await t.say("First, pick the When. Let's say, when someone answers a poll.", async () => {
-      await t.click(dialog(page).getByRole("button", { name: "answers a poll" }));
+    await t.say("Automations are the messages that go out before a webinar, and after it.", async () => {
+      await t.click(anchor(page, "whatsapp-automations"), { settle: 1600 });
+      await t.point(page.getByText("Before", { exact: true }));
+      await t.point(page.getByText("After", { exact: true }));
     });
-    await t.say("Type the poll question, and the answer to look for.", async () => {
-      await t.type(dialog(page).getByPlaceholder(/poll's question/), "Want 1:1 coaching?");
-      await t.type(dialog(page).getByPlaceholder(/^Answer/), "Yes");
+    await t.say("Open a message, like the reminder, to change when it sends and what it says.", async () => {
+      await t.click(btn(page, /^Reminder/), { settle: 1200 });
     });
-    await t.say("Then add what should happen. Wait, send a message, tag them, or tell you. Let's tag them.", async () => {
-      await t.click(dialog(page).getByRole("button", { name: /^Tag them$/ }), { settle: 1200 });
-    });
-    await t.say("Click Turn on, and it runs for every webinar from now on. We'll cancel this one.", async () => {
-      await t.point(dialog(page).getByRole("button", { name: /^Turn on$/ }));
-      await t.click(dialog(page).getByRole("button", { name: /^Cancel$/ }));
-    });
-    await t.say("That's WhatsApp. Last up, your audience.");
+    await t.say("That's WhatsApp. Next, your audience.");
   },
 };
 
 export const audience = {
   id: "09-audience",
   title: "Your audience",
-  warm: ["/host"],
+  warm: ["/host/audience"],
   async run(t, page) {
     await t.goto("/host");
     await t.card(
       { kicker: "WebinarLiv guided tour · 9", title: "Your audience", sub: "Everyone who's come, across every webinar" },
       "Your audience is everyone who has registered for any of your webinars. Let's see who they are.",
     );
-    await t.say("On your home page, open the Audience tab.", async () => {
-      await t.click(tab(page, /^Audience/), { settle: 2200 });
+    await t.say("Open Audience in the sidebar.", async () => {
+      await t.click(anchor(page, "nav-audience"), { settle: 2200 });
     });
     await t.say("The numbers at the top show how many people you've reached, and how many keep coming back.", async () => {
-      await t.wait(600);
+      await t.point(page.getByText("People reached", { exact: true }));
+      await t.point(page.getByText("Came back", { exact: true }).first());
     });
     await t.say("The chart compares your webinars side by side, so you can see which topics drew the best crowd.", async () => {
-      await t.scroll(350);
+      await t.point(page.getByRole("heading", { name: "Webinar by webinar" }));
     });
     await t.say("Your best people are the ones who come often, and take part. Slipping away shows regulars who have stopped coming.", async () => {
-      await t.scroll(350);
+      await t.point(page.getByRole("heading", { name: "Your best people" }));
+      await t.point(page.getByRole("heading", { name: "Slipping away" }));
     });
-    await t.say("Below is everyone, with how many webinars they came to, and how engaged they were. Filter it to find exactly who you need.", async () => {
-      await t.scroll(500);
+    await t.say("Search by name, email or phone, or narrow the list to one webinar.", async () => {
+      await t.point(page.getByRole("searchbox", { name: "Search people" }));
+      await t.point(page.getByRole("combobox", { name: "Webinar" }));
     });
-    await t.say("Pick people, and message them on WhatsApp in one go. Thanks for watching, and happy hosting with WebinarLiv.", async () => {
-      await t.wait(400);
+    await t.say("Everyone is the full list. Came and Didn't come split who showed up.", async () => {
+      await t.point(btn(page, /^Everyone/));
+      await t.point(btn(page, /^Came \d/));
+      await t.point(btn(page, /^Didn't come/));
     });
+    await t.say("Pick people, and message them on WhatsApp in one go. Next, your email inbox.");
   },
 };

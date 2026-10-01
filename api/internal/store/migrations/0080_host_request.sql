@@ -1,0 +1,11 @@
+-- One open request to host, per account.
+--
+-- host_requested_at is set when the account asks, and only then. NULL means
+-- they have not asked. The column is not can_host: an administrator still
+-- grants hosting, and this request only records that the ask was made so a
+-- second one does not send another email.
+--
+-- Nullable rather than a sentinel timestamp, matching email_verified_at:
+-- "not yet" is NULL, so a reader does not have to treat a zero time as
+-- special, and existing accounts are left untouched.
+ALTER TABLE users ADD COLUMN host_requested_at timestamptz;

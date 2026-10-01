@@ -85,6 +85,7 @@ export function WhatsAppFrame({
             <Link
               key={item.id}
               href={item.href}
+              data-tour={`whatsapp-${item.id}`}
               aria-current={on ? "page" : undefined}
               className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] font-medium ${
                 on
