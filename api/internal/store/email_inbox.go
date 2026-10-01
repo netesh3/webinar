@@ -205,7 +205,7 @@ func (s *Store) InsertHostEmail(ctx context.Context, m HostEmail) (HostEmail, er
 }
 
 // EmailInboxPageSize is how many conversations one inbox page lists.
-const EmailInboxPageSize = 25
+const EmailInboxPageSize = 10
 
 // ListHostEmails returns one host's messages, oldest first.
 //

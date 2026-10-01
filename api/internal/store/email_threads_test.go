@@ -68,7 +68,12 @@ func TestEmailThreadPagesDoNotRepeat(t *testing.T) {
 	}
 	page1, total, page := pageEmailThreads(threads, 1)
 	page2, _, pageOut := pageEmailThreads(threads, 2)
-	if total != 30 || page != 1 || pageOut != 2 || len(page1) != EmailInboxPageSize || len(page2) != 5 {
+	pages := (len(threads) + EmailInboxPageSize - 1) / EmailInboxPageSize
+	want2 := EmailInboxPageSize
+	if rest := len(threads) - EmailInboxPageSize; rest < want2 {
+		want2 = rest
+	}
+	if total != 30 || page != 1 || pageOut != 2 || len(page1) != EmailInboxPageSize || len(page2) != want2 {
 		t.Fatalf("page1=%d page2=%d total=%d page numbers %d %d", len(page1), len(page2), total, page, pageOut)
 	}
 	seen := map[string]bool{}
@@ -85,7 +90,7 @@ func TestEmailThreadPagesDoNotRepeat(t *testing.T) {
 		t.Fatalf("empty page = %d messages, total %d, page %d", len(empty), total0, page0)
 	}
 	_, _, clamped := pageEmailThreads(threads, 9)
-	if clamped != 2 {
+	if clamped != pages {
 		t.Fatalf("page past the end = %d, want the last page", clamped)
 	}
 }

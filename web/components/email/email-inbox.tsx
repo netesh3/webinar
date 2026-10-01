@@ -228,7 +228,7 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
   const selected = threads.find((thread) => thread.key === openKey) ?? null;
   const latest = selected?.messages.at(-1) ?? null;
   const page = data?.page || 1;
-  const pageSize = data?.pageSize || 25;
+  const pageSize = data?.pageSize || 10;
   const total = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const start = threads.length === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -412,7 +412,7 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
                     </div>
                   )}
                 </div>
-                <div className="mt-auto pt-6">
+                <div className="mt-6">
                   {replying ? (
                     <form
                       onSubmit={(e) => {
