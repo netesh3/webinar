@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { engageApi } from "../api";
+import { markThreadRead } from "./replies";
 import { Alert, ConfirmModal, Spinner } from "@/components/controls";
 import { ArrowLeftIcon, CheckIcon } from "@/components/icons";
 import { useToast } from "@/components/providers";
@@ -95,6 +96,7 @@ export function InboxThread({
         setWindowUntil(res.serviceWindowUntil ?? "");
         setConnected(res.whatsappConnected);
         setError(null);
+        markThreadRead(contactId);
       })
       .catch((e: unknown) => {
         if (cancelled) return;

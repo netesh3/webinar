@@ -37,7 +37,7 @@ export function HostAlerts() {
   const now = useNow();
   // WhatsApp replies waiting — owned by Engage, shown in this one bell.
   const replies = useReplies();
-  const badge = unread + (replies?.needsReply ?? 0);
+  const badge = unread + (replies?.unread ?? 0);
 
   /* Not an async function, and the state is written inside .then().
    *
@@ -85,6 +85,17 @@ export function HostAlerts() {
    * badge on open means a host who opens it in passing loses the only signal that somebody is
    * still waiting. Marking read is an explicit action.
    */
+  /* Clicking one notification is reading it. The number drops now; the request
+   * persists that, and a failure asks for the list again so a still-unread row
+   * comes back. */
+  function openAlert(a: HostAlert) {
+    setOpen(false);
+    if (!a.unread) return;
+    setAlerts((prev) => prev.map((row) => (row.id === a.id ? { ...row, unread: false } : row)));
+    setUnread((n) => Math.max(0, n - 1));
+    void api.readHostAlerts([a.id]).catch(() => load());
+  }
+
   async function markAllRead() {
     try {
       await api.readHostAlerts();
@@ -177,7 +188,7 @@ export function HostAlerts() {
                           ? `/host/${a.webinarId}?tab=registrants`
                           : "/host"
                       }
-                      onClick={() => setOpen(false)}
+                      onClick={() => openAlert(a)}
                       className="block px-3 py-2.5 hover:bg-surface-2"
                     >
                       <div className="text-[12.5px] leading-snug font-medium">

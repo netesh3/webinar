@@ -7,6 +7,7 @@ import { useSession } from "@/components/providers";
 import type { CRMRepliesResponse } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
 import { messagesHref } from "../hrefs";
+import { applyThreadRead } from "../unread";
 import { PersonAvatar } from "./wa-kit";
 
 /* WhatsApp replies waiting on the host, for the top bar's bell.
@@ -24,19 +25,61 @@ let replySnap: CRMRepliesResponse | null = null;
 const replyListeners = new Set<() => void>();
 let pollers = 0;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+/* Bumped when a read lands, so a poll that started before the read cannot
+ * paint the old count back over the optimistic one. */
+let replyGen = 0;
+const readOnce = new Set<string>();
 
 function emitReplies() {
   replyListeners.forEach((cb) => cb());
 }
 
 function loadReplies() {
+  const gen = ++replyGen;
   engageApi
     .crmReplies()
     .then((res) => {
+      if (gen !== replyGen) return;
       replySnap = res;
+      readOnce.clear();
       emitReplies();
     })
     .catch(() => {});
+}
+
+/** Drop one opened thread from the chat badge immediately. A later poll replaces
+ *  this with the server's count. Calling it again for the same thread does not
+ *  drop the number a second time. */
+export function noteThreadRead(contactId: string) {
+  replyGen += 1;
+  if (!replySnap) {
+    readOnce.add(contactId);
+    return;
+  }
+  const next = applyThreadRead(replySnap, contactId, readOnce);
+  if (next === replySnap) return;
+  replySnap = next;
+  emitReplies();
+}
+
+/** Ask for the badge again. Used after a read has been saved. */
+export function refreshReplies() {
+  loadReplies();
+}
+
+/** Save a read, then refresh the badge. `wasUnread` also drops the number now. */
+export function markThreadRead(contactId: string, wasUnread = false): void {
+  void engageApi
+    .markCrmRead(contactId)
+    .then(() => {
+      if (wasUnread) noteThreadRead(contactId);
+      else replyGen += 1;
+      loadReplies();
+    })
+    .catch(() => {
+      replyGen += 1;
+      loadReplies();
+    });
 }
 
 function startReplyPoll() {
@@ -78,8 +121,8 @@ export function useReplies(): CRMRepliesResponse | null {
   return enabled ? data : null;
 }
 
-/** The bell panel's WhatsApp section: replies waiting, newest first. Rendered by the
- *  webinar app's bell (components/host-alerts), which adds `needsReply` to its badge. */
+/** The bell panel's WhatsApp section: chats not opened yet, newest first. Rendered by the
+ *  webinar app's bell (components/host-alerts), which adds `unread` to its badge. */
 export function ReplyAlerts({
   data,
   onNavigate,
@@ -87,7 +130,7 @@ export function ReplyAlerts({
   data: CRMRepliesResponse | null;
   onNavigate: () => void;
 }) {
-  if (!data || data.needsReply === 0) return null;
+  if (!data || data.unread === 0) return null;
   return (
     <div className="border-b border-line">
       <Link
@@ -96,7 +139,7 @@ export function ReplyAlerts({
         className="flex items-center justify-between px-3 py-2 text-[12px] font-semibold text-ok hover:bg-surface-2"
       >
         <span>
-          {data.needsReply} WhatsApp {data.needsReply === 1 ? "reply" : "replies"} to answer
+          {data.unread} WhatsApp {data.unread === 1 ? "reply" : "replies"} to answer
         </span>
         <span className="font-medium text-brand">Open Messages</span>
       </Link>
@@ -105,7 +148,10 @@ export function ReplyAlerts({
           <li key={r.contactId}>
             <Link
               href={messagesHref(r.contactId)}
-              onClick={onNavigate}
+              onClick={() => {
+                onNavigate();
+                noteThreadRead(r.contactId);
+              }}
               className="flex gap-2.5 bg-ok/5 px-3 py-2 hover:bg-surface-2"
             >
               <PersonAvatar name={r.name} seed={r.contactId} size={28} />

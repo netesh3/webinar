@@ -91,6 +91,8 @@ const (
 	InboxSnoozed = "snoozed"
 	/** Tagged by the hot-lead recipe. */
 	InboxHotLeads = "hot_leads"
+	/** Their newest inbound message has not been opened, and the thread is not snoozed. */
+	InboxUnread = "unread"
 )
 
 // CRMInboxThread is one row of the Messages tab.
@@ -98,6 +100,9 @@ type CRMInboxThread struct {
 	Contact     CRMContact  `json:"contact"`
 	LastMessage *CRMMessage `json:"lastMessage,omitempty"`
 	NeedsReply  bool        `json:"needsReply"`
+	/** Their newest inbound message has not been opened. Independent of NeedsReply:
+	 *  opening the thread clears this without counting as an answer. */
+	Unread bool `json:"unread"`
 	/** The webinar of the last message sent to them — what the line under a name says.
 	 *  Empty when none was about a webinar. */
 	Webinar   string `json:"webinar,omitempty"`
@@ -114,6 +119,8 @@ type CRMInboxCounts struct {
 	Done       int `json:"done"`
 	Snoozed    int `json:"snoozed"`
 	HotLeads   int `json:"hotLeads"`
+	/** Conversations whose newest inbound message the host has not opened. */
+	Unread int `json:"unread"`
 }
 
 // CRMSnoozeRequest snoozes a conversation until a time, or wakes it with an empty until.
@@ -174,9 +181,13 @@ type CRMReplyAlert struct {
 /* CRMRepliesResponse is the bell's share of the inbox: how many are waiting, the newest
  * few, and the waiting count per webinar for "N replies to answer" on its card. */
 type CRMRepliesResponse struct {
-	NeedsReply int             `json:"needsReply"`
-	Recent     []CRMReplyAlert `json:"recent"`
-	ByWebinar  map[string]int  `json:"byWebinar"`
+	NeedsReply int `json:"needsReply"`
+	/** Conversations the host has not opened. This is the chat badge. NeedsReply
+	 *  stays the unanswered count: opening a thread clears Unread and leaves
+	 *  NeedsReply until they answer or mark it done. */
+	Unread    int             `json:"unread"`
+	Recent    []CRMReplyAlert `json:"recent"`
+	ByWebinar map[string]int  `json:"byWebinar"`
 }
 
 /* CRMAutomaticStats is one automatic message for one webinar: the confirmation, one

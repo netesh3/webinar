@@ -140,12 +140,21 @@ export const InboxSnoozed = "snoozed";
  */
 export const InboxHotLeads = "hot_leads";
 /**
+ * * Their newest inbound message has not been opened, and the thread is not snoozed.
+ */
+export const InboxUnread = "unread";
+/**
  * CRMInboxThread is one row of the Messages tab.
  */
 export interface CRMInboxThread {
   contact: CRMContact;
   lastMessage?: CRMMessage;
   needsReply: boolean;
+  /**
+   * * Their newest inbound message has not been opened. Independent of NeedsReply:
+   * 	 *  opening the thread clears this without counting as an answer.
+   */
+  unread: boolean;
   /**
    * * The webinar of the last message sent to them — what the line under a name says.
    * 	 *  Empty when none was about a webinar.
@@ -167,6 +176,10 @@ export interface CRMInboxCounts {
   done: number /* int */;
   snoozed: number /* int */;
   hotLeads: number /* int */;
+  /**
+   * * Conversations whose newest inbound message the host has not opened.
+   */
+  unread: number /* int */;
 }
 /**
  * CRMSnoozeRequest snoozes a conversation until a time, or wakes it with an empty until.
@@ -244,6 +257,12 @@ export interface CRMReplyAlert {
  */
 export interface CRMRepliesResponse {
   needsReply: number /* int */;
+  /**
+   * * Conversations the host has not opened. This is the chat badge. NeedsReply
+   * 	 *  stays the unanswered count: opening a thread clears Unread and leaves
+   * 	 *  NeedsReply until they answer or mark it done.
+   */
+  unread: number /* int */;
   recent: CRMReplyAlert[];
   byWebinar: { [key: string]: number /* int */};
 }

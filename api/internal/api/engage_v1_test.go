@@ -312,3 +312,62 @@ func TestEngageV1InboxNeedsReply(t *testing.T) {
 		t.Errorf("another host marking done: status %d, want 404", res.StatusCode)
 	}
 }
+
+/* Opening a thread marks its inbound messages read for that host only.
+ *
+ * Needs reply stays: reading is not an answer. The unread badge is the thing
+ * that drops, and a later message from them brings it back.
+ */
+func TestOpeningAThreadClearsUnread(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+	wb := autoWebinar(t, h, "Scale your coaching practice")
+	thandi := registerWithPhone(t, h, wb.ID, "Thandi", "thandi-unread@example.com", crmContactPhone, true)
+
+	postWebhook(t, h, inboundNow("wamid.UNREAD1", crmPhoneDigits, "Thandi", "Is there a replay?"))
+	got := inbox(t, h, types.InboxUnread)
+	if got.Counts.Unread != 1 || got.Total != 1 || len(got.Threads) != 1 || !got.Threads[0].Unread || got.Threads[0].Contact.ID != thandi.ID {
+		t.Fatalf("unread inbox = %+v threads %+v", got.Counts, got.Threads)
+	}
+	if got.Counts.NeedsReply != 1 {
+		t.Fatalf("needs reply = %d, want 1 before anyone answers", got.Counts.NeedsReply)
+	}
+
+	res, raw := h.do(http.MethodGet, "/api/host/crm/replies", nil)
+	var replies types.CRMRepliesResponse
+	h.decode(raw, &replies)
+	if res.StatusCode != http.StatusOK || replies.Unread != 1 || replies.NeedsReply != 1 || len(replies.Recent) != 1 {
+		t.Fatalf("replies = %d %+v", res.StatusCode, replies)
+	}
+
+	res, raw = h.do(http.MethodPost, "/api/host/crm/contacts/"+thandi.ID+"/read", nil)
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("mark read: status %d body %s", res.StatusCode, raw)
+	}
+	got = inbox(t, h, types.InboxUnread)
+	if got.Counts.Unread != 0 || len(got.Threads) != 0 {
+		t.Fatalf("after opening = %+v threads %d, want nothing unread", got.Counts, len(got.Threads))
+	}
+	if waiting := inbox(t, h, types.InboxNeedsReply); waiting.Counts.NeedsReply != 1 || len(waiting.Threads) != 1 || waiting.Threads[0].Unread {
+		t.Fatalf("still needs a reply, and that row is read: %+v", waiting)
+	}
+	res, raw = h.do(http.MethodGet, "/api/host/crm/replies", nil)
+	h.decode(raw, &replies)
+	if res.StatusCode != http.StatusOK || replies.Unread != 0 || replies.NeedsReply != 1 || len(replies.Recent) != 0 {
+		t.Fatalf("replies after opening = %d %+v", res.StatusCode, replies)
+	}
+
+	time.Sleep(1100 * time.Millisecond)
+	postWebhook(t, h, inboundNow("wamid.UNREAD2", crmPhoneDigits, "Thandi", "And the slides?"))
+	if got = inbox(t, h, types.InboxUnread); got.Counts.Unread != 1 || !got.Threads[0].Unread {
+		t.Fatalf("a new message is unread again: %+v", got)
+	}
+
+	h.logout()
+	h.login("lucia@cabify.com")
+	if res, _ := h.do(http.MethodPost, "/api/host/crm/contacts/"+thandi.ID+"/read", nil); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("another host marking read: status %d, want 404", res.StatusCode)
+	}
+}

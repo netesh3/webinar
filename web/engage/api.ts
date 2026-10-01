@@ -397,6 +397,10 @@ export const engageApi = {
     return request<CRMInboxResponse>(`/api/host/crm/inbox?${params.toString()}`, fresh);
   },
 
+  /** Mark this thread's inbound messages read. Opening the conversation calls it. */
+  markCrmRead: (id: string) =>
+    request<void>(`/api/host/crm/contacts/${seg(id)}/read`, { method: "POST" }),
+
   /** Mark done, or reopen. A new message reopens it by itself. */
   setCrmDone: (id: string, done: boolean) =>
     request<void>(`/api/host/crm/contacts/${seg(id)}/done`, {
