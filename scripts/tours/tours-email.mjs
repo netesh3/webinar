@@ -62,8 +62,9 @@ export const emailAddress = {
     await t.say("If you do change it, the previous address stays as an alias. Mail to the old one still reaches you.", async () => {
       await t.point(page.getByText("@webinarliv.com").first());
     });
-    await t.say("Sign out is at the bottom of this list. That's the tour. Happy hosting.", async () => {
-      await t.point(anchor(page, "settings-sign-out"));
+    await t.say("Sign out is in your account menu, top right. That's the tour. Happy hosting.", async () => {
+      await t.click(btn(page, /^Your account/), { settle: 800 });
+      await t.point(page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: /^Sign out$/ }));
     });
   },
 };
