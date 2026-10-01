@@ -36,14 +36,18 @@ export function EmailScreen() {
               href={item.href}
               aria-current={on ? "page" : undefined}
               className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] font-medium ${
-                on ? "border-brand text-brand" : "border-transparent text-ink-2 hover:text-ink"
+                on
+                  ? "border-[#2563EB] text-[#2563EB] dark:border-brand dark:text-brand"
+                  : "border-transparent text-ink-2 hover:text-ink"
               }`}
             >
               {item.label}
               {count != null && (
                 <span
                   className={`inline-grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-[11px] font-semibold ${
-                    on ? "bg-brand-soft text-brand" : "bg-surface-2 text-ink-2"
+                    on
+                      ? "bg-[#EFF6FF] text-[#2563EB] dark:bg-brand-soft dark:text-brand"
+                      : "bg-surface-2 text-ink-2"
                   }`}
                 >
                   {count}
