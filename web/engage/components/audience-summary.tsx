@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { engageApi } from "../api";
+import { Spinner } from "@/components/controls";
 import { useToast } from "@/components/providers";
 import { Button, Card } from "@/components/ui";
 import { ApiError } from "@/lib/api";
@@ -15,8 +16,15 @@ import {
 } from "@/lib/api-types";
 import { PersonAvatar } from "./wa-kit";
 
+/** Fast responses never paint a placeholder. Slow ones get a shaped skeleton. */
+const PLACEHOLDER_DELAY_MS = 200;
+
 /* The top of the Audience tab: how people engage across your webinars. Read from the
- * stored rollup (migrations/0065) — nothing is recomputed to draw it. */
+ * stored rollup (migrations/0065) — nothing is recomputed to draw it.
+ *
+ * Each range is kept in the session memory cache (`crm-audience:${last}`). Switching
+ * back paints that copy immediately. A range that is not cached yet leaves the
+ * summary already on screen in place and revalidates behind it. */
 export function AudienceSummary({
   onPick,
   onMessage,
@@ -31,12 +39,20 @@ export function AudienceSummary({
   const [data, setData] = useState<CRMAudienceSummary | null>(
     () => readCache<CRMAudienceSummary>(`crm-audience:6`, TTL_AUDIENCE)?.value ?? null,
   );
+  const [loading, setLoading] = useState(
+    () => !readCache<CRMAudienceSummary>(`crm-audience:6`, TTL_AUDIENCE)?.fresh,
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [showPlaceholder, setShowPlaceholder] = useState(false);
   const [busy, setBusy] = useState("");
   const audienceKey = `crm-audience:${last}`;
   const [seenAudience, setSeenAudience] = useState(audienceKey);
   if (audienceKey !== seenAudience) {
     setSeenAudience(audienceKey);
-    setData(readCache<CRMAudienceSummary>(audienceKey, TTL_AUDIENCE)?.value ?? null);
+    const cached = readCache<CRMAudienceSummary>(audienceKey, TTL_AUDIENCE);
+    if (cached) setData(cached.value);
+    setLoading(!cached?.fresh);
+    setError(null);
   }
   const { notify } = useToast();
 
@@ -45,12 +61,27 @@ export function AudienceSummary({
     let cancelled = false;
     engageApi
       .crmAudienceSummary(last)
-      .then((r) => !cancelled && setData(r))
-      .catch(() => {});
+      .then((r) => {
+        if (cancelled) return;
+        setData(r);
+        setError(null);
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setLoading(false);
+        setError(e instanceof ApiError ? e.message : "Could not load this summary.");
+      });
     return () => {
       cancelled = true;
     };
   }, [last]);
+
+  useEffect(() => {
+    if (data) return;
+    const id = window.setTimeout(() => setShowPlaceholder(true), PLACEHOLDER_DELAY_MS);
+    return () => window.clearTimeout(id);
+  }, [data]);
 
   async function message(filter: string, label: string) {
     setBusy(filter);
@@ -67,8 +98,11 @@ export function AudienceSummary({
     }
   }
 
-  if (!data)
-    return <div className="h-40 animate-pulse rounded-xl bg-surface-2" />;
+  if (!data) {
+    if (error) return <SummaryError message={error} />;
+    if (!showPlaceholder) return null;
+    return <SummarySkeleton />;
+  }
 
   return (
     <div className="grid gap-4">
@@ -83,18 +117,28 @@ export function AudienceSummary({
               type="button"
               onClick={() => setLast(n)}
               aria-pressed={last === n}
-              className={`rounded-md px-3 py-1 text-[12.5px] font-medium ${
+              aria-busy={loading && last === n ? true : undefined}
+              className={`relative rounded-md px-3 py-1 text-[12.5px] font-medium ${
                 last === n
                   ? "bg-brand-soft text-brand"
                   : "text-ink-3 hover:text-ink"
               }`}
             >
               {n === 50 ? "All" : `Last ${n}`}
+              {loading && last === n && (
+                <Spinner className="pointer-events-none absolute -top-1 -right-0.5 size-3 motion-reduce:animate-none" />
+              )}
             </button>
           ))}
         </div>
       </div>
 
+      {error && <SummaryError message={error} />}
+
+      <div
+        className={`grid gap-4${loading ? " opacity-60 transition-opacity duration-150 motion-reduce:transition-none" : ""}`}
+        aria-busy={loading || undefined}
+      >
       <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-4">
         <Kpi
           label="People reached"
@@ -212,7 +256,93 @@ export function AudienceSummary({
           />
         </div>
       </div>
+      </div>
     </div>
+  );
+}
+
+function SummaryError({ message }: { message: string }) {
+  return (
+    <p role="alert" className="text-[12.5px] text-live">
+      {message}
+    </p>
+  );
+}
+
+const BONE = "animate-pulse bg-surface-2 motion-reduce:animate-none";
+
+function Bone({ className }: { className: string }) {
+  return <div className={`${BONE} ${className}`} />;
+}
+
+/** Same stack as the loaded summary, so the people table does not jump when data arrives. */
+function SummarySkeleton() {
+  return (
+    <div className="grid gap-4" aria-busy="true" aria-label="Loading audience summary">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Bone className="h-[1lh] w-56 rounded-md text-[12.5px]" />
+        <div className="flex rounded-lg border border-line bg-surface p-0.5" aria-hidden>
+          {[6, 12, 50].map((n) => (
+            <span
+              key={n}
+              className={`${BONE} rounded-md px-3 py-1 text-[12.5px] font-medium text-transparent`}
+            >
+              {n === 50 ? "All" : `Last ${n}`}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-4">
+        {["People reached", "Show-up rate", "Avg engagement", "Came back"].map((label) => (
+          <Card key={label} className="px-4 py-3">
+            <Bone className="h-[1lh] w-24 rounded-md text-[12px]" />
+            <Bone className="mt-1 h-[1lh] w-14 rounded-md text-[22px] leading-tight" />
+            <Bone className="mt-0.5 h-[1lh] w-32 rounded-md text-[11.5px]" />
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid items-start gap-4 min-[900px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <Card className="p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <Bone className="h-[1lh] w-36 rounded-md text-[13.5px]" />
+            <Bone className="h-[1lh] w-40 rounded-md text-[11.5px]" />
+          </div>
+          <Bone className="h-40 w-full rounded-md" />
+        </Card>
+        <div className="grid gap-4">
+          <PanelSkeleton />
+          <PanelSkeleton />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PanelSkeleton() {
+  return (
+    <Card className="p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <Bone className="h-[1lh] w-32 rounded-md text-[13.5px]" />
+        <Bone className="h-[1lh] w-24 rounded-md text-[11.5px]" />
+      </div>
+      <ul className="mt-2 divide-y divide-line">
+        {[0, 1, 2].map((i) => (
+          <li key={i} className="flex items-center gap-2.5 py-2">
+            <Bone className="size-7 shrink-0 rounded-full" />
+            <span className="min-w-0 flex-1">
+              <Bone className="h-[1lh] w-28 rounded-md text-[13px]" />
+              <Bone className="h-[1lh] w-36 rounded-md text-[11.5px]" />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <Bone className="h-8 w-36 rounded-lg" />
+        <Bone className="h-[1lh] w-16 rounded-md text-[12px]" />
+      </div>
+    </Card>
   );
 }
 
