@@ -92,7 +92,7 @@ ok(key("?k=Q25S+5CDRKFTB") === null, "a '+' decodes to a space, which no key con
 // ---------------------------------------------------------------- joinProvesKey
 
 ok(joinProvesKey({ joined: true }), "a successful join proves the key");
-for (const code of ["too_early", "not_joinable", "locked", "not_approved", "email_unverified", "room_full", "zoom_link_missing"]) {
+for (const code of ["too_early", "not_joinable", "not_started", "ended", "locked", "not_approved", "email_unverified", "room_full", "zoom_link_missing"]) {
   ok(joinProvesKey({ code }), `"${code}" comes after the key matched, so the key is real`);
 }
 for (const code of ["invalid_join_key", "not_registered", "no_join_key", "bad_request", "unknown", "internal_error"]) {

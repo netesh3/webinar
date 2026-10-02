@@ -238,6 +238,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the guest journey: a first-time registrant's just-made registration has no key
 	# until the email is confirmed, and the emailed ?k= link is then the only way in.
 	cd web && node --experimental-strip-types --no-warnings lib/guest-registration.test.mts
+	# And the attendee join card: a finished webinar is not "isn't running"
+	# with a retry, and the body does not repeat the title.
+	cd web && node --experimental-strip-types --no-warnings lib/join-refusal.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

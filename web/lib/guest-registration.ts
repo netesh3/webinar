@@ -60,6 +60,8 @@ const REFUSED_AFTER_KEY_MATCHED = new Set([
   "email_unverified",
   "not_approved",
   "not_joinable",
+  "not_started",
+  "ended",
   "too_early",
   "locked",
   "room_full",

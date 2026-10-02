@@ -12,6 +12,7 @@ import { Button, ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { isAwaitingEmail, joinProvesKey } from "@/lib/guest-registration";
+import { attendeeJoinRefusal } from "@/lib/join-refusal";
 
 /** Exchanges the caller's credential for a LiveKit token, then hands off to the
  *  room.
@@ -216,35 +217,15 @@ export function AttendeeRoomGate({
             </ButtonLink>
           </>
         ) : error ? (
-          <>
-            <h1 className="text-[17px] font-semibold">{errorTitle(error.code)}</h1>
-            <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
-              {error.message}
-            </p>
-            <div className="mt-5 grid gap-2">
-              {error.code === "not_registered" ||
-              error.code === "registration_required" ||
-              error.code === "no_join_key" ||
-              error.code === "invalid_join_key" ? (
-                <ButtonLink href={`/webinars/${slug}`}>Register now</ButtonLink>
-              ) : (
-                <Button
-                  onClick={() => {
-                    setError(null);
-                    setAttempt((n) => n + 1);
-                  }}
-                >
-                  Try again
-                </Button>
-              )}
-              <Link
-                href={`/webinars/${slug}`}
-                className="text-[12.5px] text-brand hover:underline"
-              >
-                Back to the webinar
-              </Link>
-            </div>
-          </>
+          <JoinRefusal
+            slug={slug}
+            code={error.code}
+            message={error.message}
+            onRetry={() => {
+              setError(null);
+              setAttempt((n) => n + 1);
+            }}
+          />
         ) : (
           <div className="flex flex-col items-center gap-3">
             <Spinner className="size-5 text-ink-3" />
@@ -258,25 +239,37 @@ export function AttendeeRoomGate({
   );
 }
 
-function errorTitle(code: string): string {
-  switch (code) {
-    case "not_approved":
-      return "Waiting for approval";
-    case "locked":
-      return "The webinar is locked";
-    case "room_full":
-      return "The webinar is full";
-    case "not_joinable":
-      return "This webinar isn't running";
-    case "zoom_link_missing":
-      return "Your Zoom link isn't ready";
-    case "not_registered":
-    case "registration_required":
-    case "no_join_key":
-      return "You're not registered yet";
-    case "invalid_join_key":
-      return "This join link isn't valid";
-    default:
-      return "Can't join yet";
-  }
+function JoinRefusal({
+  slug,
+  code,
+  message,
+  onRetry,
+}: {
+  slug: string;
+  code: string;
+  message: string;
+  onRetry: () => void;
+}) {
+  const refusal = attendeeJoinRefusal(code, message);
+  return (
+    <>
+      <h1 className="text-[17px] font-semibold">{refusal.title}</h1>
+      {refusal.body ? (
+        <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">{refusal.body}</p>
+      ) : null}
+      <div className="mt-5 grid gap-2">
+        {refusal.action === "register" ? (
+          <ButtonLink href={`/webinars/${slug}`}>Register now</ButtonLink>
+        ) : refusal.action === "retry" ? (
+          <Button onClick={onRetry}>Try again</Button>
+        ) : null}
+        <Link
+          href={`/webinars/${slug}`}
+          className="text-[12.5px] text-brand hover:underline"
+        >
+          Back to the webinar
+        </Link>
+      </div>
+    </>
+  );
 }
