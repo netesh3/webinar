@@ -13,7 +13,6 @@ import {
   type CRMTag,
   type CRMTemplate,
 } from "@/lib/api-types";
-import type { BuildView } from "./automations";
 import { Broadcasts } from "./crm-broadcasts";
 import { RemindersSettings } from "./crm-screen";
 import { SetupChecklist } from "./crm-setup";
@@ -29,11 +28,12 @@ import {
 } from "../whatsapp-boot";
 
 /* The WhatsApp page: /host/crm. Metrics is the first tab. Chats is /host/messages.
- * Templates and Automations are the other tabs. Setup and a one-off broadcast stay
- * on the addresses they already had. A ?view= this page does not know, including
- * the retired sequences and bots builders, is Metrics. */
+ * Templates, Automations and Broadcasts are the other tabs. Setup stays on
+ * ?view=setup. ?view=broadcasts is the Broadcasts tab, not a separate page.
+ * A ?view= this page does not know, including the retired sequences and bots
+ * builders, is Metrics. */
 
-type Tab = WhatsAppTab | "broadcasts" | "number";
+type Tab = WhatsAppTab | "number";
 
 /** Views this page still opens. Anything else, including sequences and bots, is metrics. */
 const KNOWN_VIEWS = new Set([
@@ -46,23 +46,19 @@ const KNOWN_VIEWS = new Set([
   "chats",
 ]);
 
-function fromView(v: string): { tab: Tab; build: BuildView | null } {
-  if (v === "setup" || v === "number") return { tab: "number", build: null };
-  if (v === "broadcasts") return { tab: "broadcasts", build: "broadcasts" };
-  if (v === "templates") return { tab: "templates", build: null };
-  if (v === "automations") return { tab: "automations", build: null };
-  if (v === "chats") return { tab: "chats", build: null };
-  return { tab: "metrics", build: null };
+function fromView(v: string): Tab {
+  if (v === "setup" || v === "number") return "number";
+  if (v === "broadcasts") return "broadcasts";
+  if (v === "templates") return "templates";
+  if (v === "automations") return "automations";
+  if (v === "chats") return "chats";
+  return "metrics";
 }
 
 function frameTab(tab: Tab): WhatsAppTab | null {
-  if (tab === "broadcasts" || tab === "number") return null;
+  if (tab === "number") return null;
   return tab;
 }
-
-const BUILD_TITLES: Record<BuildView, string> = {
-  broadcasts: "Broadcasts",
-};
 
 export function WhatsAppScreen() {
   const { account, status } = useSession();
@@ -70,7 +66,9 @@ export function WhatsAppScreen() {
   const router = useRouter();
   const search = useSearchParams();
   const viewParam = (search.get("view") ?? "").trim();
-  const { tab, build } = fromView(viewParam);
+  const tab = fromView(viewParam);
+  const [broadcastCount, setBroadcastCount] = useState<number | null>(null);
+  const onBroadcastCount = useCallback((n: number) => setBroadcastCount(n), []);
   const canHost = account?.canHost ?? false;
   const tagsOn = (account?.features ?? []).includes(FeatureWhatsAppCRM);
 
@@ -215,8 +213,9 @@ export function WhatsAppScreen() {
     <WhatsAppFrame
       tab={frameTab(tab)}
       templateCount={templates?.length ?? null}
+      broadcastCount={broadcastCount}
     >
-      {tab !== "metrics" && tab !== "templates" && tab !== "automations" && (
+      {tab === "number" && (
         <button
           type="button"
           onClick={() => go("")}
@@ -246,18 +245,16 @@ export function WhatsAppScreen() {
         />
       )}
 
-      {tab === "broadcasts" && build && (
-        <div className="grid gap-4">
-          <h2 className="text-[18px] font-semibold">{BUILD_TITLES[build]}</h2>
-          <Broadcasts
-            whatsappConnected={connected}
-            templates={templates}
-            templatesError={templatesError}
-            syncing={syncing}
-            tags={tagsOn ? (tags ?? []) : null}
-            onRefreshTemplates={refreshTemplates}
-          />
-        </div>
+      {tab === "broadcasts" && (
+        <Broadcasts
+          whatsappConnected={connected}
+          templates={templates}
+          templatesError={templatesError}
+          syncing={syncing}
+          tags={tagsOn ? (tags ?? []) : null}
+          onRefreshTemplates={refreshTemplates}
+          onCount={onBroadcastCount}
+        />
       )}
 
       {tab === "number" && (
