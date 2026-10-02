@@ -168,6 +168,7 @@ export function IntegrationsSection({
                         key={card.id}
                         address={card.who ?? ""}
                         note={card.whoNote ?? ""}
+                        status={card.status}
                       />
                     ) : (
                       <IntegrationCardView key={card.id} card={card} onChange={changed} />

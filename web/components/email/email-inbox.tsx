@@ -7,6 +7,7 @@ import { Button } from "@/components/ui";
 import { textRuns } from "@/lib/chat-text";
 import { ApiError, fresh, put, request } from "@/lib/http";
 import { Alert } from "../controls";
+import { MaterialIcon } from "../icons";
 import {
   INBOX_LIST_MIN,
   INBOX_MEASURE_DEBOUNCE_MS,
@@ -622,12 +623,38 @@ export function EmailInboxScreen({ onCount }: { onCount?: (count: number) => voi
   );
 }
 
+function EmailStatus({ status }: { status: string }) {
+  if (status === "connected") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium whitespace-nowrap text-ok">
+        <span className="size-[7px] rounded-full bg-ok" />
+        Connected
+      </span>
+    );
+  }
+  if (status === "soon") {
+    return (
+      <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11.5px] font-medium text-ink-3">
+        Coming soon
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium whitespace-nowrap text-ink-3">
+      <span className="size-[7px] rounded-full bg-line-2" />
+      Not connected
+    </span>
+  );
+}
+
 export function EmailIntegration({
   address,
   note,
+  status = "connected",
 }: {
   address: string;
   note: string;
+  status?: string;
 }) {
   const [local, setLocal] = useState("");
   const [canRename, setCanRename] = useState(true);
@@ -670,51 +697,64 @@ export function EmailIntegration({
     }
   }
 
+  const reply = current || address;
+
   return (
     <article
       data-tour="email-address"
-      className="flex h-full flex-col rounded-xl border border-line bg-surface p-4"
+      className="flex h-full flex-col rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(19,22,25,0.04)]"
     >
-      <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">Email</div>
-      <h3 className="mt-1 text-[15px] font-semibold">Your reply inbox</h3>
-      <p className="mt-1 text-[13px] text-ink">{current || address}</p>
-      <p className="mt-1 text-[12.5px] text-ink-3">
+      <div className="flex items-center gap-3 px-4 pt-3.5">
+        <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-[#0b5cff] text-[20px] text-white">
+          <MaterialIcon name="mail" fill className="!text-[20px]" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <b className="block text-[14px] font-semibold text-ink">Email</b>
+          <span className="block text-[11.5px] text-ink-3">Your reply inbox</span>
+        </div>
+        <EmailStatus status={status} />
+      </div>
+      <p className="flex-1 px-4 pt-2 pb-3.5 text-[12.5px] leading-relaxed text-ink-2">
         Replies to your webinars arrive at this address. Outbound mail stays on the shared Gmail
         account, with this address as Reply-To.
+        {alias ? ` Mail to ${alias}@webinarliv.com still reaches you.` : ""}
       </p>
-      {alias && (
-        <p className="mt-1 text-[12.5px] text-ink-3">
-          Mail to {alias}@webinarliv.com still reaches you.
-        </p>
-      )}
-      <label className="mt-3 block text-[12px] font-medium text-ink-2" htmlFor="inbox-local">
-        Address
-      </label>
-      <div className="mt-1 flex items-center gap-2">
-        <input
-          id="inbox-local"
-          value={local}
-          disabled={!canRename || saving}
-          onChange={(e) => setLocal(e.target.value.toLowerCase())}
-          className="w-40 rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px] disabled:bg-surface-2"
-        />
-        <span className="text-[13px] text-ink-3">@webinarliv.com</span>
+      <div className="flex min-h-[53px] flex-wrap items-center gap-2 border-t border-line px-4 py-2.5">
+        <div className="min-w-0 flex-1 text-[12px] leading-snug text-ink-2">
+          {reply && <b className="font-medium break-all text-ink">{reply}</b>}
+          <small className="block text-[11.5px] text-ink-3">Reply inbox</small>
+          <small className="block text-[11.5px] text-ink-3">
+            {canRename
+              ? note || "You can change this once."
+              : "Contact support to change this address."}
+          </small>
+        </div>
         {canRename && (
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void save()}
-            className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
-          >
-            Save
-          </button>
+          <div className="flex max-w-full flex-wrap items-center gap-2">
+            <label className="text-[12px] font-medium text-ink-2" htmlFor="inbox-local">
+              Address
+            </label>
+            <input
+              id="inbox-local"
+              value={local}
+              disabled={!canRename || saving}
+              onChange={(e) => setLocal(e.target.value.toLowerCase())}
+              className="w-40 max-w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px] disabled:bg-surface-2"
+            />
+            <span className="text-[13px] text-ink-3">@webinarliv.com</span>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void save()}
+              className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
+            >
+              Save
+            </button>
+          </div>
         )}
       </div>
-      <p className="mt-2 text-[12px] text-ink-3">
-        {canRename ? note || "You can change this once." : "Contact support to change this address."}
-      </p>
       {error && (
-        <div className="mt-2">
+        <div className="px-4 pb-3">
           <Alert tone="error">{error}</Alert>
         </div>
       )}
