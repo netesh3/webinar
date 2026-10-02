@@ -458,6 +458,7 @@ func (s *Store) CreateBroadcast(ctx context.Context, hostID string, in Broadcast
 	if due.IsZero() {
 		due = time.Now()
 	}
+	in.ScheduledAt = due
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -481,8 +482,20 @@ func (s *Store) CreateBroadcast(ctx context.Context, hostID string, in Broadcast
 		return "", err
 	}
 
+	if err := s.queueRecipients(ctx, tx, id, in, to); err != nil {
+		return "", err
+	}
+	return id, tx.Commit(ctx)
+}
+
+// queueRecipients writes one outbox row per person, in the caller's transaction.
+func (s *Store) queueRecipients(ctx context.Context, q store.Querier, id string, in BroadcastInput, to []BroadcastRecipient) error {
+	due := in.ScheduledAt
+	if due.IsZero() {
+		due = time.Now()
+	}
 	for _, rec := range to {
-		if err := s.Notify(ctx, tx, store.Notification{
+		if err := s.Notify(ctx, q, store.Notification{
 			Kind:             types.NotifyWhatsAppBroadcast,
 			Channel:          "whatsapp",
 			ContactID:        rec.ContactID,
@@ -492,10 +505,100 @@ func (s *Store) CreateBroadcast(ctx context.Context, hostID string, in Broadcast
 			TemplateParams:   rec.Params,
 			DueAt:            due,
 		}); err != nil {
-			return "", err
+			return err
 		}
 	}
-	return id, tx.Commit(ctx)
+	return nil
+}
+
+/* ReplaceScheduledBroadcast rewrites a broadcast that has not started sending.
+ *
+ * The queued rows are the audience frozen at create time. Editing means throwing
+ * those away and freezing the new audience in the same transaction — a message
+ * that has already left, or a conversation row filed for one, makes that unsafe,
+ * and store.ErrConflict is the refusal. Pending outbox rows are not chat history;
+ * crm_messages are, and this does not touch them.
+ */
+func (s *Store) ReplaceScheduledBroadcast(ctx context.Context, hostID, id string, in BroadcastInput, to []BroadcastRecipient) error {
+	if len(to) == 0 {
+		return store.ErrConflict
+	}
+	params := in.Params
+	if params == nil {
+		params = []types.CRMParam{}
+	}
+	due := in.ScheduledAt
+	if due.IsZero() {
+		due = time.Now()
+	}
+	in.ScheduledAt = due
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var canceled, deleted *time.Time
+	err = tx.QueryRow(ctx, `
+		SELECT canceled_at, deleted_at FROM crm_broadcasts
+		 WHERE host_id = $1::uuid AND id = $2::uuid
+		 FOR UPDATE`, hostID, id).Scan(&canceled, &deleted)
+	if noRows(err) {
+		return store.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if deleted != nil {
+		return store.ErrNotFound
+	}
+	if canceled != nil {
+		return store.ErrConflict
+	}
+
+	var started int
+	if err := tx.QueryRow(ctx, `
+		SELECT (SELECT count(*) FROM notifications n
+		         WHERE n.broadcast_id = $1::uuid AND n.delivery <> 'pending')
+		     + (SELECT count(*) FROM crm_messages m WHERE m.broadcast_id = $1::uuid)`,
+		id).Scan(&started); err != nil {
+		return err
+	}
+	if started > 0 {
+		return store.ErrConflict
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE crm_broadcasts SET
+			name = $3,
+			template_name = $4,
+			template_language = $5,
+			params = $6,
+			audience = $7,
+			webinar_id = (SELECT id FROM webinars WHERE slug = $8 AND host_id = $1::uuid),
+			scheduled_at = $9,
+			tag_id = (SELECT id FROM crm_tags WHERE id = NULLIF($10,'')::uuid AND host_id = $1::uuid),
+			segment = $11,
+			updated_at = now()
+		 WHERE host_id = $1::uuid AND id = $2::uuid AND deleted_at IS NULL`,
+		hostID, id, strings.TrimSpace(in.Name), in.TemplateName, in.TemplateLanguage,
+		params, in.Audience, in.WebinarSlug, due, in.TagID, in.Segment)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return store.ErrNotFound
+	}
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM notifications
+		 WHERE broadcast_id = $1::uuid AND delivery = 'pending'`, id); err != nil {
+		return err
+	}
+	if err := s.queueRecipients(ctx, tx, id, in, to); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 /* The broadcast read, with its stats.
@@ -638,7 +741,7 @@ func (s *Store) broadcasts(ctx context.Context, hostID, slug string, limit int) 
 		limit = 50
 	}
 	rows, err := s.pool.Query(ctx, broadcastSelect+`
-		 WHERE b.host_id = $1::uuid AND ($3 = '' OR w.slug = $3)
+		 WHERE b.host_id = $1::uuid AND b.deleted_at IS NULL AND ($3 = '' OR w.slug = $3)
 		 ORDER BY b.created_at DESC
 		 LIMIT $2`, hostID, limit, slug)
 	if err != nil {
@@ -660,7 +763,7 @@ func (s *Store) broadcasts(ctx context.Context, hostID, slug string, limit int) 
 // Broadcast reads one. Another host's id is store.ErrNotFound, like every other CRM read.
 func (s *Store) Broadcast(ctx context.Context, hostID, id string) (types.CRMBroadcast, error) {
 	row := s.pool.QueryRow(ctx, broadcastSelect+`
-		 WHERE b.host_id = $1::uuid AND b.id = $2::uuid`, hostID, id)
+		 WHERE b.host_id = $1::uuid AND b.id = $2::uuid AND b.deleted_at IS NULL`, hostID, id)
 	b, err := scanBroadcast(row)
 	if noRows(err) {
 		return types.CRMBroadcast{}, store.ErrNotFound
@@ -668,7 +771,36 @@ func (s *Store) Broadcast(ctx context.Context, hostID, id string) (types.CRMBroa
 	if err != nil {
 		return types.CRMBroadcast{}, err
 	}
+	if b.Audience == types.AudienceContacts {
+		ids, err := s.broadcastContactIDs(ctx, b.ID)
+		if err != nil {
+			return types.CRMBroadcast{}, err
+		}
+		b.ContactIDs = ids
+	}
 	return b, nil
+}
+
+// broadcastContactIDs is the frozen list for a contacts audience, so a duplicate
+// can aim at the same people. The list endpoint leaves this off.
+func (s *Store) broadcastContactIDs(ctx context.Context, id string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT contact_id::text FROM notifications
+		 WHERE broadcast_id = $1::uuid AND contact_id IS NOT NULL
+		 ORDER BY created_at`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var contactID string
+		if err := rows.Scan(&contactID); err != nil {
+			return nil, err
+		}
+		out = append(out, contactID)
+	}
+	return out, rows.Err()
 }
 
 /* CancelBroadcast stops the messages that have not gone out yet.
@@ -715,6 +847,56 @@ func (s *Store) CancelBroadcast(ctx context.Context, hostID, id string) error {
 	if _, err := tx.Exec(ctx, `
 		UPDATE crm_broadcasts SET canceled_at = now(), updated_at = now()
 		 WHERE id = $1::uuid AND host_id = $2::uuid`, id, hostID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+/* DeleteBroadcast hides a broadcast from the host's list.
+ *
+ * Soft, on purpose. Sent notification rows and crm_messages stay, so a chat and
+ * a webinar's metrics still count what went out. Pending rows are retired the
+ * same way a cancel retires them — a scheduled delete is also a cancel — and
+ * canceled_at is set only when something was still waiting, so a finished
+ * broadcast does not change its story from sent to cancelled.
+ *
+ * Another host's id, and one already hidden, are store.ErrNotFound.
+ */
+func (s *Store) DeleteBroadcast(ctx context.Context, hostID, id string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var deleted *time.Time
+	err = tx.QueryRow(ctx, `
+		SELECT deleted_at FROM crm_broadcasts
+		 WHERE host_id = $1::uuid AND id = $2::uuid
+		 FOR UPDATE`, hostID, id).Scan(&deleted)
+	if noRows(err) {
+		return store.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if deleted != nil {
+		return store.ErrNotFound
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE notifications
+		   SET delivery = 'skipped', delivery_error = 'broadcast deleted', delivered_at = now()
+		 WHERE broadcast_id = $1::uuid AND delivery = 'pending'`, id)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE crm_broadcasts
+		   SET deleted_at = now(),
+		       updated_at = now(),
+		       canceled_at = CASE WHEN $3::bool AND canceled_at IS NULL THEN now() ELSE canceled_at END
+		 WHERE id = $1::uuid AND host_id = $2::uuid`, id, hostID, tag.RowsAffected() > 0); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

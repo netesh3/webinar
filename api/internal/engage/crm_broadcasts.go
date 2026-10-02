@@ -330,21 +330,49 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
+	in, to, ok := s.prepareBroadcast(w, r, user, body)
+	if !ok {
+		return
+	}
+	id, err := s.store.CreateBroadcast(r.Context(), user.ID, in, to)
+	if err != nil {
+		s.fail(w, r, "crm broadcast: create", err)
+		return
+	}
+
+	created, err := s.store.Broadcast(r.Context(), user.ID, id)
+	if err != nil {
+		s.fail(w, r, "crm broadcast: reload", err)
+		return
+	}
+	s.log.Info("whatsapp broadcast queued", "host", user.ID, "broadcast", id,
+		"template", in.TemplateName, "audience", in.Audience, "recipients", len(to),
+		"due", in.ScheduledAt.Format(time.RFC3339))
+	httpx.JSON(w, http.StatusCreated, created)
+}
+
+/* prepareBroadcast checks a create or edit body and resolves who it would reach.
+ *
+ * The refusal is written here. ok is false when the response is already done.
+ * Creating and editing share it so a scheduled broadcast can be rewritten with
+ * the same rules as a new one — the audience is frozen again, not guessed.
+ */
+func (s *Module) prepareBroadcast(w http.ResponseWriter, r *http.Request, user store.User, body types.CRMBroadcastRequest) (crmstore.BroadcastInput, []crmstore.BroadcastRecipient, bool) {
 	if s.whatsapp == nil || !s.whatsapp.Enabled() {
 		httpx.Error(w, http.StatusServiceUnavailable, "whatsapp_unset",
 			"WhatsApp is not set up on this instance.")
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 	if user.WhatsAppToken == "" || user.WhatsAppPhoneNumberID == "" {
 		httpx.Error(w, http.StatusUnprocessableEntity, "whatsapp_not_connected",
 			"Connect your WhatsApp Business account in Account settings before sending.")
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 
 	a := audienceFromRequest(body)
 	slug := a.WebinarSlug
 	if !s.audienceAllowed(w, r, user, a) {
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 
 	// The webinar, when there is one, is loaded once here and used for every
@@ -355,7 +383,7 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		loaded, err := s.store.WebinarBySlug(r.Context(), slug)
 		if err != nil {
 			s.fail(w, r, "crm broadcast: webinar", err)
-			return
+			return crmstore.BroadcastInput{}, nil, false
 		}
 		wb = loaded
 	}
@@ -363,11 +391,11 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 	tmpl, err := s.templateForSend(r.Context(), user, strings.TrimSpace(body.Template), body.Language)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_template", noTemplateMessage(body.Template))
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 	if err != nil {
 		s.fail(w, r, "crm broadcast: template", err)
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 	if !tmpl.Sendable {
 		msg := tmpl.Unsupported
@@ -375,15 +403,15 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 			msg = "Meta has not approved that template yet — it is " + strings.ToLower(tmpl.Status) + "."
 		}
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", msg)
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 	if len(body.Params) != tmpl.Variables {
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_params",
 			"That template needs exactly "+strconv.Itoa(tmpl.Variables)+" value(s) filling in.")
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 	if !s.paramsAllowed(w, body.Params, slug) {
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 
 	/* A schedule in the past is now, not an error.
@@ -398,7 +426,7 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_schedule",
 				"That send time could not be read.")
-			return
+			return crmstore.BroadcastInput{}, nil, false
 		}
 		if at.After(scheduled) {
 			scheduled = at
@@ -410,11 +438,11 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_audience_too_large",
 			"That audience is over "+strconv.Itoa(maxBroadcastRecipients)+
 				" people. Narrow it down — one webinar's registrants, for instance.")
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 	if err != nil {
 		s.fail(w, r, "crm broadcast: audience", err)
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 	if len(contacts) == 0 {
 		/* Refused rather than created empty, because the two readings of an empty
@@ -422,7 +450,7 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		 * The audience endpoint says which of the three reasons applies. */
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_audience_empty",
 			"Nobody in that audience has opted in to WhatsApp with a number yet.")
-		return
+		return crmstore.BroadcastInput{}, nil, false
 	}
 
 	// Minutes watched, for the `watched` merge field: only read when a value uses it.
@@ -431,7 +459,7 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		watched, err = s.store.ContactWatchMinutes(r.Context(), user.ID, slug)
 		if err != nil {
 			s.fail(w, r, "crm broadcast: watch time", err)
-			return
+			return crmstore.BroadcastInput{}, nil, false
 		}
 	}
 	to := make([]crmstore.BroadcastRecipient, 0, len(contacts))
@@ -448,7 +476,7 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		// type one still wants the broadcast in the list.
 		name = tmpl.Name
 	}
-	id, err := s.store.CreateBroadcast(r.Context(), user.ID, crmstore.BroadcastInput{
+	return crmstore.BroadcastInput{
 		Name:             name,
 		TemplateName:     tmpl.Name,
 		TemplateLanguage: tmpl.Language,
@@ -458,21 +486,7 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 		TagID:            a.TagID,
 		Segment:          segmentToStore(a),
 		ScheduledAt:      scheduled,
-	}, to)
-	if err != nil {
-		s.fail(w, r, "crm broadcast: create", err)
-		return
-	}
-
-	created, err := s.store.Broadcast(r.Context(), user.ID, id)
-	if err != nil {
-		s.fail(w, r, "crm broadcast: reload", err)
-		return
-	}
-	s.log.Info("whatsapp broadcast queued", "host", user.ID, "broadcast", id,
-		"template", tmpl.Name, "audience", a.Kind, "recipients", len(to),
-		"due", scheduled.Format(time.RFC3339))
-	httpx.JSON(w, http.StatusCreated, created)
+	}, to, true
 }
 
 /* paramsProblem checks what each {{n}} is filled with, and returns the refusal rather
@@ -623,4 +637,87 @@ func (s *Module) handleCancelCRMBroadcast(w http.ResponseWriter, r *http.Request
 	s.log.Info("whatsapp broadcast cancelled", "host", user.ID, "broadcast", id,
 		"sent", b.Stats.Sent, "skipped", b.Stats.Skipped)
 	httpx.JSON(w, http.StatusOK, b)
+}
+
+/* handleUpdateCRMBroadcast rewrites one that has not started sending.
+ *
+ * Same body as create. The audience is resolved again and the queued rows are
+ * replaced, so the count in the response is the new list. Once anything has gone
+ * out — or the broadcast was cancelled — it is refused: those messages are already
+ * somebody's chat, and editing must not pretend otherwise.
+ */
+func (s *Module) handleUpdateCRMBroadcast(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
+	id := chi.URLParam(r, "id")
+
+	// Before the body, so another host's id is a 404 even with an empty request.
+	existing, err := s.store.Broadcast(r.Context(), user.ID, id)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such broadcast.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "crm broadcast: update", err)
+		return
+	}
+	if existing.Status != "scheduled" {
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_broadcast_started",
+			"This broadcast can no longer be edited.")
+		return
+	}
+
+	var body types.CRMBroadcastRequest
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	in, to, ok := s.prepareBroadcast(w, r, user, body)
+	if !ok {
+		return
+	}
+	err = s.store.ReplaceScheduledBroadcast(r.Context(), user.ID, id, in, to)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such broadcast.")
+		return
+	case errors.Is(err, store.ErrConflict):
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_broadcast_started",
+			"This broadcast can no longer be edited.")
+		return
+	case err != nil:
+		s.fail(w, r, "crm broadcast: update", err)
+		return
+	}
+
+	updated, err := s.store.Broadcast(r.Context(), user.ID, id)
+	if err != nil {
+		s.fail(w, r, "crm broadcast: reload", err)
+		return
+	}
+	s.log.Info("whatsapp broadcast updated", "host", user.ID, "broadcast", id,
+		"template", in.TemplateName, "audience", in.Audience, "recipients", len(to))
+	httpx.JSON(w, http.StatusOK, updated)
+}
+
+/* handleDeleteCRMBroadcast hides one from the list.
+ *
+ * Scheduled and still-sending broadcasts also stop: pending rows are retired and
+ * nothing further goes out. Sent messages stay in the conversation, and the row
+ * stays in the database so metrics that count those messages keep counting them.
+ */
+func (s *Module) handleDeleteCRMBroadcast(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
+	id := chi.URLParam(r, "id")
+
+	err := s.store.DeleteBroadcast(r.Context(), user.ID, id)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such broadcast.")
+		return
+	case err != nil:
+		s.fail(w, r, "crm broadcast: delete", err)
+		return
+	}
+	s.log.Info("whatsapp broadcast deleted", "host", user.ID, "broadcast", id)
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
 }

@@ -6,10 +6,14 @@
  */
 
 import {
+  audienceDraft,
   audienceLabel,
+  broadcastMenuActions,
   broadcastTitle,
+  deleteBroadcastCopy,
   deliveryPercent,
   languageLabel,
+  peopleFilterForLabel,
   readPercent,
 } from "./broadcast-copy.ts";
 
@@ -63,6 +67,60 @@ eq(
   audienceLabel({ audience: "tag", tagName: "VIP" }),
   "Everybody tagged VIP",
   "tag audience",
+);
+
+eq(peopleFilterForLabel("Didn't come"), "never_attended", "people label maps back");
+eq(peopleFilterForLabel("No-shows"), "", "a custom name is not a people row");
+eq(
+  audienceDraft({ audience: "opted_in", name: "Everyone" }),
+  { kind: "opted_in", peopleFilter: "", webinarId: "", tagId: "" },
+  "opted-in draft",
+);
+eq(
+  audienceDraft({ audience: "contacts", name: "Came", webinarId: "slug" }),
+  { kind: "people", peopleFilter: "attended", webinarId: "slug", tagId: "" },
+  "a people-page name reopens that row",
+);
+eq(
+  audienceDraft({ audience: "segment", name: "No-shows", webinarId: "slug" }),
+  { kind: "locked", peopleFilter: "", webinarId: "slug", tagId: "" },
+  "a segment stays the same group",
+);
+eq(
+  broadcastMenuActions("scheduled").map((a) => a.id),
+  ["edit", "duplicate", "delete"],
+  "scheduled can be edited",
+);
+eq(
+  broadcastMenuActions("draft").map((a) => a.id),
+  ["edit", "duplicate", "delete"],
+  "a draft can be edited",
+);
+eq(
+  broadcastMenuActions("sending").map((a) => a.id),
+  ["delete"],
+  "sending can only be stopped by deleting",
+);
+eq(
+  broadcastMenuActions("sent").map((a) => a.id),
+  ["duplicate", "delete"],
+  "sent is copied or removed, not edited",
+);
+eq(
+  broadcastMenuActions("cancelled").map((a) => a.id),
+  ["duplicate", "delete"],
+  "cancelled is copied or removed",
+);
+eq(
+  broadcastMenuActions("failed").map((a) => a.id),
+  ["duplicate", "delete"],
+  "failed is copied or removed",
+);
+eq(deleteBroadcastCopy("scheduled").confirm, "Delete broadcast", "delete confirm");
+eq(
+  deleteBroadcastCopy("sent").body.includes("Chats"),
+  true,
+  "deleting a sent broadcast says the chat stays",
 );
 
 if (failures) {

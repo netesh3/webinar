@@ -149,7 +149,7 @@ func (s *Store) Summary(ctx context.Context, hostID string, days int) (types.CRM
 			UNION ALL
 			SELECT b.scheduled_at, b.name
 			  FROM crm_broadcasts b
-			 WHERE b.host_id = $1::uuid AND b.canceled_at IS NULL AND b.scheduled_at > now()
+			 WHERE b.host_id = $1::uuid AND b.canceled_at IS NULL AND b.deleted_at IS NULL AND b.scheduled_at > now()
 		) x ORDER BY at LIMIT 1`, hostID).Scan(&at, &label)
 	if err != nil && !noRows(err) {
 		return out, err

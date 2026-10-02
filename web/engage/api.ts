@@ -334,6 +334,17 @@ export const engageApi = {
   cancelCrmBroadcast: (id: string) =>
     post<CRMBroadcast>(`/api/host/crm/broadcasts/${seg(id)}/cancel`),
 
+  /** Rewrites a broadcast that has not started sending. Same body as create:
+   *  the audience is resolved again and the queued messages are replaced. 422
+   *  once anything has gone out. */
+  updateCrmBroadcast: (id: string, body: CRMBroadcastRequest) =>
+    patch<CRMBroadcast>(`/api/host/crm/broadcasts/${seg(id)}`, body),
+
+  /** Hides a broadcast from the list. A scheduled one is also cancelled.
+   *  Messages already in a chat stay there. */
+  deleteCrmBroadcast: (id: string) =>
+    del<StatusResponse>(`/api/host/crm/broadcasts/${seg(id)}`),
+
   /** Automatic replies that are not a recipe: the list, so the WhatsApp page can
    *  show them and turn one on or off. The sequences builder is not in the product. */
   crmDrips: () => request<CRMDripsResponse>("/api/host/crm/drips", fresh),

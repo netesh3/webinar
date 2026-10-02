@@ -1788,6 +1788,9 @@ type CRMBroadcast struct {
 	WebinarID string `json:"webinarId,omitempty"`
 	/** Its topic, so a list can name the webinar without a second request. */
 	WebinarTopic string `json:"webinarTopic,omitempty"`
+	/** Contact ids when Audience is `contacts`, and only on a single read, so a
+	 *  duplicate can aim at the same people. The list leaves this out. */
+	ContactIDs []string `json:"contactIds,omitempty"`
 	/** scheduled / sending / sent / cancelled. */
 	Status string `json:"status"`
 	/** RFC3339. In the past for a broadcast sent immediately. */

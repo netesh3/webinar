@@ -3477,6 +3477,11 @@ export interface CRMBroadcast {
    */
   webinarTopic?: string;
   /**
+   * * Contact ids when Audience is `contacts`, and only on a single read, so a
+   * 	 *  duplicate can aim at the same people. The list leaves this out.
+   */
+  contactIds?: string[];
+  /**
    * * scheduled / sending / sent / cancelled.
    */
   status: string;
@@ -4933,12 +4938,14 @@ export interface RegistrantRow {
   lastInboundAt?: string;
   /**
    *  ZoomNote is why this person has no Zoom link, when the session runs on
-   * 	 * Zoom. Empty otherwise. Never a join URL.
+   * 	 * Zoom. Empty otherwise. Never a join URL. A shared-link attendee has an
+   * 	 * empty note and ZoomShared set.
    */
   zoomNote?: string;
   /**
-   * True when this person uses the meeting's shared Zoom link because Zoom
-   * would not register them. They still have a link. Never a join URL.
+   *  ZoomShared is true when this person uses the meeting's shared Zoom link
+   * 	 * because Zoom would not register them. They still have a link. Never a
+   * 	 * join URL, and not set when they have a personal registrant link.
    */
   zoomShared?: boolean;
   /**
