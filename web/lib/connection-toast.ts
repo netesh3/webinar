@@ -12,13 +12,17 @@
  *    after a reconnect, or a panelist returned to the stage, never says it again; attendees
  *    are never greeted. (Before the first connect the room's "Connecting…" banner covers the
  *    wait.)
- *  - An outage is only mentioned once it has lasted SHOW_AFTER_MS. LiveKit resumes most drops
- *    in well under a second, and a toast that flashes up and away reads as something broken.
+ *  - "Reconnecting…" waits until room presence has been down for SHOW_AFTER_MS
+ *    (RECONNECT_INDICATOR_DELAY_MS, 6s). The SDK's own resume and the room's retry ladder
+ *    both start immediately; this delay is only the card. A signal-only resume is not an
+ *    outage at all — see linkForRoom. A blip that recovers sooner ends silently.
  *  - Once mentioned, it is closed: the same toast turns into "You're back online" and leaves
- *    after BACK_MS. An outage that was never shown ends silently.
+ *    after BACK_MS. An outage that was never shown ends silently. Recovery hides the card
+ *    on the same sample and cancels the pending show.
  *  - It escalates to "lost" — assertive, with a Rejoin action — once the outage has run for
  *    LOST_AFTER_MS or the retry ladder is on its final attempt. The ladder is still trying at
- *    that point; the escalation is for the person deciding whether to wait.
+ *    that point; the escalation is for the person deciding whether to wait. Lost still waits
+ *    out the same show delay, so a final attempt inside the first 6s does not flash early.
  *  - Dismissing it hides it for the rest of that outage, except the escalation to "lost",
  *    which is the one thing still worth interrupting for.
  *
@@ -26,7 +30,15 @@
  * runnable under plain Node.
  */
 
-export type LinkState = "connecting" | "connected" | "reconnecting" | "disconnected";
+import {
+  RECONNECT_INDICATOR_DELAY_MS,
+  ReconnectIndicator,
+  type RoomLink,
+} from "./reconnect-indicator.ts";
+
+export { linkForRoom, RECONNECT_INDICATOR_DELAY_MS } from "./reconnect-indicator.ts";
+
+export type LinkState = RoomLink;
 
 export type ConnectionSignal = {
   link: LinkState;
@@ -44,7 +56,7 @@ export type ConnectionToastView =
   | { phase: "back" }
   | { phase: "connected" };
 
-export const SHOW_AFTER_MS = 1_000;
+export const SHOW_AFTER_MS = RECONNECT_INDICATOR_DELAY_MS;
 export const BACK_MS = 2_500;
 export const LOST_AFTER_MS = 12_000;
 
@@ -80,9 +92,12 @@ export class ConnectionToastTracker {
   private greeted = false;
   private greetPending = false;
   private now = 0;
+  /** Owns the 6s show clock, so a recovery cannot leave time stacked for the next drop. */
+  private readonly indicator: ReconnectIndicator;
 
   constructor(timing: Partial<ConnectionToastTiming> = {}) {
     this.timing = { ...DEFAULT_TIMING, ...timing };
+    this.indicator = new ReconnectIndicator(this.timing.showAfterMs);
   }
 
   update(signal: ConnectionSignal, now: number): void {
@@ -109,15 +124,20 @@ export class ConnectionToastTracker {
         this.backUntil = wasVisible ? now + this.timing.backMs : null;
         this.settled = "back";
       }
+      // Clears a show that had not fired yet. The hook reads nextDeadline() after this
+      // and drops its timer.
+      this.indicator.update(false, now);
       return;
     }
 
     if (this.outageSince === null) {
       this.outageSince = now;
       this.dismissedPhase = null;
-      // A drop while "back online" is still up flips that toast straight back — leaving it
-      // saying "back" for another second would be false, and hiding it would flicker.
-      this.shown = this.backVisible(now);
+      this.indicator.update(false, now);
+      // Take down "You're connected" / "You're back online" — that sentence is no longer
+      // true — but do not replace it with "Reconnecting…" until the delay elapses. A blip
+      // during the green card used to flip the card immediately.
+      this.shown = false;
       this.backUntil = null;
     }
     this.advance(now);
@@ -186,7 +206,7 @@ export class ConnectionToastTracker {
   /** When the view next changes with no new signal, for the caller's timer. */
   nextDeadline(): number | null {
     if (this.outageSince !== null) {
-      if (!this.shown) return this.outageSince + this.timing.showAfterMs;
+      if (!this.shown) return this.indicator.showAt(this.now);
       const lostAt = this.outageSince + this.timing.lostAfterMs;
       return this.now < lostAt ? lostAt : null;
     }
@@ -194,7 +214,7 @@ export class ConnectionToastTracker {
   }
 
   private advance(now: number): void {
-    if (this.outageSince !== null && !this.shown && now - this.outageSince >= this.timing.showAfterMs) {
+    if (this.outageSince !== null && !this.shown && this.indicator.update(true, now)) {
       this.shown = true;
     }
   }

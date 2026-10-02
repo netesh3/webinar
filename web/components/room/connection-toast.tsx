@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import {
   ConnectionToastTracker,
   connectionToastText,
+  linkForRoom,
   type ConnectionToastView,
   type LinkState,
 } from "@/lib/connection-toast";
@@ -26,17 +27,9 @@ import { useToast } from "../providers";
 const KEY = "connection";
 
 function toLink(state: ConnectionState): LinkState {
-  switch (state) {
-    case ConnectionState.Connected:
-      return "connected";
-    case ConnectionState.Connecting:
-      return "connecting";
-    case ConnectionState.Reconnecting:
-    case ConnectionState.SignalReconnecting:
-      return "reconnecting";
-    default:
-      return "disconnected";
-  }
+  // signalReconnecting is a websocket resume with the peer connection still up.
+  // Counting it here is what showed "Reconnecting…" during a healthy webinar.
+  return linkForRoom(state);
 }
 
 const subscribeOnline = (cb: () => void) => {
