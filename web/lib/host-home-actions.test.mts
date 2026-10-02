@@ -1,4 +1,7 @@
-/* Host Webinars top: one full-width Schedule card, or Schedule beside Instant.
+/* Host Webinars top: Schedule in the left column, Instant beside it when on.
+ *
+ * Flag off still uses two columns, so Schedule stays the same width. Below
+ * sm the page stacks, and Schedule is full width either way.
  *
  * Run: node --experimental-strip-types --no-warnings lib/host-home-actions.test.mts
  */
@@ -13,13 +16,14 @@ import {
 assert.deepEqual(hostHomeCreateActions(undefined), ["schedule"]);
 assert.deepEqual(hostHomeCreateActions(null), ["schedule"]);
 assert.deepEqual(hostHomeCreateActions([]), ["schedule"]);
-assert.equal(hostHomeCreateColumns(hostHomeCreateActions([])), 1);
+assert.equal(hostHomeCreateColumns(hostHomeCreateActions([])), 2);
 
-// Another admin, or any host, without the switch. No second card.
+// Another admin, or any host, without the switch. No second card, and
+// Schedule stays in the left column rather than spanning the row.
 assert.deepEqual(hostHomeCreateActions(["zoom", "cloud_recording"]), ["schedule"]);
 assert.equal(
   hostHomeCreateColumns(hostHomeCreateActions(["zoom", "cloud_recording"])),
-  1,
+  2,
 );
 
 const on = hostHomeCreateActions(["zoom", FeatureInstantWebinar]);
