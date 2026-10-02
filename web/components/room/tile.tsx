@@ -14,6 +14,7 @@ import {
   ScreenShareIcon,
 } from "../icons";
 import { tileFit } from "@/lib/layout";
+import { CAMERA_OFF_LABEL } from "@/lib/stage-presence";
 import { isHighlighted } from "@/lib/speaker";
 import { useActiveSpeaker } from "./active-speaker";
 import { useRoomUI } from "./context";
@@ -147,6 +148,10 @@ export function ParticipantTile({
   const isOwnShare = isScreen && participant.isLocal && !fileShare.active;
   const hasVideo =
     !isOwnShare && !!publication && !publication.isMuted && !!publication.track;
+  /* No publication at all: the person is in the room and never started the
+   * camera. A muted publication already takes the initials path below; this
+   * label is the empty-stage copy, so it does not say the host hasn't started. */
+  const cameraOff = !isScreen && !publication;
 
   // Microphone state belongs to the person, so it is read from their audio
   // publication rather than from the video track this tile is showing.
@@ -223,7 +228,11 @@ export function ParticipantTile({
       ) : isOwnShare ? (
         <OwnShareNotice size={size} />
       ) : (
-        <AvatarFallback participant={participant} size={size} />
+        <AvatarFallback
+          participant={participant}
+          size={size}
+          caption={cameraOff ? CAMERA_OFF_LABEL : undefined}
+        />
       )}
 
       {/* Always on, for anyone identifiable enough to be worth naming — this used
@@ -237,6 +246,7 @@ export function ParticipantTile({
         {isScreen ? "’s screen" : ""}
         {role !== "attendee" ? `, ${roleLabel[role]}` : ""}
         {!isScreen && micMuted ? ", muted" : ""}
+        {cameraOff ? `, ${CAMERA_OFF_LABEL}` : ""}
       </span>
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end gap-1.5 bg-gradient-to-t from-black/45 to-transparent px-2 pt-5 pb-1.5"
@@ -626,9 +636,13 @@ function OwnShareNotice({ size }: { size: "sm" | "md" | "lg" }) {
 function AvatarFallback({
   participant,
   size,
+  caption,
 }: {
   participant: Participant;
   size: "sm" | "md" | "lg";
+  /** Set for a host or panelist who is in the room with the camera never
+   *  started. A muted camera keeps the initials alone. */
+  caption?: string;
 }) {
   const name = participant.name || participant.identity;
   const initials = useMemo(() => {
@@ -647,12 +661,17 @@ function AvatarFallback({
 
   return (
     <div className="grid size-full place-items-center">
-      <span
-        className={`grid place-items-center rounded-full bg-white/10 font-semibold text-white/85 ${box}`}
-        aria-hidden
-      >
-        {initials}
-      </span>
+      <div className="grid place-items-center gap-2">
+        <span
+          className={`grid place-items-center rounded-full bg-white/10 font-semibold text-white/85 ${box}`}
+          aria-hidden
+        >
+          {initials}
+        </span>
+        {caption && size !== "sm" && (
+          <span className="text-[13px] font-medium text-white/70">{caption}</span>
+        )}
+      </div>
     </div>
   );
 }
