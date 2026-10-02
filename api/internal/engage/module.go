@@ -162,6 +162,8 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Get("/crm/broadcasts", s.handleCRMBroadcasts)
 	host.Post("/crm/broadcasts", s.handleCreateCRMBroadcast)
 	host.Get("/crm/broadcasts/{id}", s.handleCRMBroadcast)
+	host.Patch("/crm/broadcasts/{id}", s.handleUpdateCRMBroadcast)
+	host.Delete("/crm/broadcasts/{id}", s.handleDeleteCRMBroadcast)
 	host.Post("/crm/broadcasts/{id}/cancel", s.handleCancelCRMBroadcast)
 	host.Get("/crm/drips", s.handleCRMDrips)
 	host.Post("/crm/drips", s.handleCreateCRMDrip)

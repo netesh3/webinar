@@ -627,6 +627,8 @@ func TestCRMBroadcastsAreHostScoped(t *testing.T) {
 	for _, tc := range []struct{ name, method, path string }{
 		{"read", http.MethodGet, "/api/host/crm/broadcasts/" + mine.ID},
 		{"cancel", http.MethodPost, "/api/host/crm/broadcasts/" + mine.ID + "/cancel"},
+		{"update", http.MethodPatch, "/api/host/crm/broadcasts/" + mine.ID},
+		{"delete", http.MethodDelete, "/api/host/crm/broadcasts/" + mine.ID},
 	} {
 		res, raw := h.do(tc.method, tc.path, nil)
 		if res.StatusCode != http.StatusNotFound {
@@ -642,5 +644,149 @@ func TestCRMBroadcastsAreHostScoped(t *testing.T) {
 	}
 	if sends := g.sent(); len(sends) != 0 {
 		t.Errorf("%d messages went out: %v", len(sends), sends)
+	}
+}
+
+/* Editing a broadcast that has not started replaces the queued messages.
+ *
+ * The audience was frozen when it was created. Changing the template has to
+ * change what those people will actually be sent, and once anything has gone
+ * out the same request is refused — the thread already holds the old words.
+ */
+func TestCRMBroadcastEditWhileScheduled(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+	wb := autoWebinar(t, h, "Rewrite")
+
+	thandi := registerWithPhone(t, h, wb.ID, "Thandi", "thandi@example.com", crmContactPhone, true)
+	registerWithPhone(t, h, wb.ID, "Ayanda", "ayanda@example.com", broadcastPhone2, true)
+
+	b := createBroadcast(t, h, types.CRMBroadcastRequest{
+		Name: "Next week", Template: testTemplateMarketing, Language: "en_US",
+		Audience:    types.AudienceOptedIn,
+		ScheduledAt: time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+	})
+	if b.Status != "scheduled" || b.Stats.Queued != 2 {
+		t.Fatalf("broadcast = %q %+v, want two messages still waiting", b.Status, b.Stats)
+	}
+
+	res, raw := h.do(http.MethodPatch, "/api/host/crm/broadcasts/"+b.ID, types.CRMBroadcastRequest{
+		Name: "Next week", Template: testTemplateUtility, Language: "en_US",
+		Params:      []types.CRMParam{{Text: "friend"}},
+		Audience:    types.AudienceOptedIn,
+		ScheduledAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("edit: status %d body %s", res.StatusCode, raw)
+	}
+	var edited types.CRMBroadcast
+	h.decode(raw, &edited)
+	if edited.ID != b.ID || edited.Template != testTemplateUtility || edited.Status != "scheduled" || edited.Stats.Queued != 2 {
+		t.Fatalf("after edit: id %s template %q status %q stats %+v", edited.ID, edited.Template, edited.Status, edited.Stats)
+	}
+	if len(edited.Params) != 1 || edited.Params[0].Text != "friend" {
+		t.Fatalf("params = %+v, want the new value kept unresolved", edited.Params)
+	}
+
+	drainWhatsAppOutbox(t, h, wb.ID)
+	if got := threadFor(t, h, thandi.ID); len(got.Messages) != 1 ||
+		got.Messages[0].Body != "Hi friend, your webinar starts in an hour." {
+		t.Fatalf("thread after the edited send = %+v", got.Messages)
+	}
+	if sends := g.sent(); len(sends) != 2 {
+		t.Fatalf("%d sends, want the replacement template once per person: %v", len(sends), sends)
+	}
+
+	res, raw = h.do(http.MethodPatch, "/api/host/crm/broadcasts/"+b.ID, types.CRMBroadcastRequest{
+		Name: "Too late", Template: testTemplateMarketing, Language: "en_US",
+		Audience: types.AudienceOptedIn,
+	})
+	if res.StatusCode != http.StatusUnprocessableEntity || errorCode(t, raw) != "crm_broadcast_started" {
+		t.Fatalf("edit after send: status %d code %q body %s", res.StatusCode, errorCode(t, raw), raw)
+	}
+	if got := threadFor(t, h, thandi.ID); len(got.Messages) != 1 ||
+		got.Messages[0].Body != "Hi friend, your webinar starts in an hour." {
+		t.Errorf("refused edit changed the thread: %+v", got.Messages)
+	}
+}
+
+/* Deleting hides the card and, when nothing has gone out, cancels the send.
+ *
+ * A sent broadcast stays in the conversation: the thread is the record of what
+ * the person received, and hiding the card must not delete it or the contact.
+ */
+func TestCRMBroadcastDeleteHidesAndKeepsChat(t *testing.T) {
+	g := newFakeGraph(t)
+	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	h.login("neeraj@acme.dev")
+	connectWhatsApp(t, h)
+	wb := autoWebinar(t, h, "Tidy")
+
+	thandi := registerWithPhone(t, h, wb.ID, "Thandi", "thandi@example.com", crmContactPhone, true)
+
+	waiting := createBroadcast(t, h, types.CRMBroadcastRequest{
+		Name: "Later", Template: testTemplateMarketing, Language: "en_US",
+		Audience:    types.AudienceOptedIn,
+		ScheduledAt: time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+	})
+	res, raw := h.do(http.MethodDelete, "/api/host/crm/broadcasts/"+waiting.ID, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("delete scheduled: status %d body %s", res.StatusCode, raw)
+	}
+	drainWhatsAppOutbox(t, h, wb.ID)
+	if sends := g.sent(); len(sends) != 0 {
+		t.Fatalf("deleted broadcast still sent: %v", sends)
+	}
+
+	sent := createBroadcast(t, h, types.CRMBroadcastRequest{
+		Name: "Gone out", Template: testTemplateMarketing, Language: "en_US",
+		Audience: types.AudienceOptedIn,
+	})
+	drainWhatsAppOutbox(t, h, wb.ID)
+	if got := threadFor(t, h, thandi.ID); len(got.Messages) != 1 {
+		t.Fatalf("thread before delete = %+v, want the sent message", got.Messages)
+	}
+
+	res, raw = h.do(http.MethodDelete, "/api/host/crm/broadcasts/"+sent.ID, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("delete sent: status %d body %s", res.StatusCode, raw)
+	}
+	var status types.StatusResponse
+	h.decode(raw, &status)
+	if status.Status != "deleted" {
+		t.Errorf("status = %q, want deleted", status.Status)
+	}
+
+	res, raw = h.do(http.MethodGet, "/api/host/crm/broadcasts", nil)
+	var list types.CRMBroadcastsResponse
+	h.decode(raw, &list)
+	if len(list.Broadcasts) != 0 {
+		t.Errorf("list after delete = %+v, want it empty", list.Broadcasts)
+	}
+	for _, id := range []string{waiting.ID, sent.ID} {
+		res, raw = h.do(http.MethodGet, "/api/host/crm/broadcasts/"+id, nil)
+		if res.StatusCode != http.StatusNotFound {
+			t.Errorf("read %s after delete: status %d body %s", id, res.StatusCode, raw)
+		}
+	}
+	res, raw = h.do(http.MethodDelete, "/api/host/crm/broadcasts/"+sent.ID, nil)
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("second delete: status %d body %s", res.StatusCode, raw)
+	}
+
+	if got := threadFor(t, h, thandi.ID); len(got.Messages) != 1 ||
+		got.Messages[0].Body != "New course, live next week." {
+		t.Errorf("thread after delete = %+v, want the sent message kept", got.Messages)
+	}
+	found := false
+	for _, c := range crmContacts(t, h).Contacts {
+		if c.ID == thandi.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("deleting the broadcast removed the contact")
 	}
 }

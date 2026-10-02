@@ -4,7 +4,7 @@ import { engageApi } from "../api";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
-import { Alert, ConfirmModal, Select, Spinner } from "@/components/controls";
+import { Alert, ConfirmModal, Menu, Select, Spinner, type MenuItem } from "@/components/controls";
 import { DateTimeField } from "@/components/date-picker";
 import {
   BlockedList,
@@ -42,11 +42,15 @@ import { formatRelative, instantToZoned, localTimeZone, zonedToInstant } from "@
 import { useNow } from "@/lib/clock";
 import { rupees, templateRate } from "./wa-kit";
 import {
+  audienceDraft,
   audienceLabel,
+  broadcastMenuActions,
   broadcastTitle,
+  deleteBroadcastCopy,
   deliveryPercent,
   formatBroadcastStamp,
   languageLabel,
+  peopleAudienceLabels,
   readPercent,
 } from "./broadcast-copy";
 
@@ -69,9 +73,10 @@ import {
  *   - consent is checked AGAIN as each message leaves, so somebody who opts out
  *     an hour after a broadcast is scheduled never receives it.
  *
- * None of that is enforced here. The server re-checks all of it. There is no
- * draft and no duplicate: a broadcast is created by sending it, and the only
- * way to stop one is Cancel while messages are still waiting.
+ * None of that is enforced here. The server re-checks all of it. A broadcast is
+ * created by sending it. Until it starts, Edit rewrites that send; Duplicate
+ * opens this same drawer filled in again; Delete takes the card off the list
+ * and, if anything is still waiting, cancels it. Cancel leaves the card up.
  */
 
 /** How often a broadcast in flight re-reads itself, while the tab is being looked
@@ -100,20 +105,30 @@ const PEOPLE_ROWS: {
   count: (c: CRMPeopleCounts) => number;
   always: boolean;
 }[] = [
-  { filter: PeopleAttended, label: "Came", count: (c) => c.attended, always: true },
+  {
+    filter: PeopleAttended,
+    label: peopleAudienceLabels[PeopleAttended],
+    count: (c) => c.attended,
+    always: true,
+  },
   {
     filter: PeopleNeverAttended,
-    label: "Didn't come",
+    label: peopleAudienceLabels[PeopleNeverAttended],
     count: (c) => c.neverAttended,
     always: true,
   },
   {
     filter: PeopleHighlyEngaged,
-    label: "Highly engaged",
+    label: peopleAudienceLabels[PeopleHighlyEngaged],
     count: (c) => c.highlyEngaged,
     always: false,
   },
-  { filter: PeopleHotLeads, label: "Hot leads", count: (c) => c.hotLeads, always: false },
+  {
+    filter: PeopleHotLeads,
+    label: peopleAudienceLabels[PeopleHotLeads],
+    count: (c) => c.hotLeads,
+    always: false,
+  },
 ];
 
 export type BroadcastPreset = "no-shows" | "past-attendees";
@@ -150,9 +165,14 @@ export function Broadcasts({
   const [broadcasts, setBroadcasts] = useState<CRMBroadcast[] | null>(null);
   const [fields, setFields] = useState<CRMMergeField[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [composer, setComposer] = useState<BroadcastPreset | null | false>(false);
+  const [composer, setComposer] = useState<{
+    preset: BroadcastPreset | null;
+    seed: CRMBroadcast | null;
+    editing: boolean;
+  } | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<CRMBroadcast | null>(null);
+  const [deleting, setDeleting] = useState<CRMBroadcast | null>(null);
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((n) => n + 1), []);
@@ -225,6 +245,46 @@ export function Broadcasts({
     }
   }
 
+  async function openSeeded(b: CRMBroadcast, editing: boolean) {
+    let seed = b;
+    if (
+      audienceDraft(b).kind === "locked" &&
+      b.audience === AudienceContacts &&
+      !(b.contactIds && b.contactIds.length > 0)
+    ) {
+      try {
+        seed = await engageApi.crmBroadcast(b.id);
+      } catch (e: unknown) {
+        notify(
+          e instanceof ApiError ? e.message : "Could not open that broadcast.",
+          "error",
+        );
+        return;
+      }
+    }
+    setComposer({ preset: null, seed, editing });
+  }
+
+  async function remove() {
+    if (!deleting) return;
+    const target = deleting;
+    setBusy(true);
+    try {
+      await engageApi.deleteCrmBroadcast(target.id);
+      setBroadcasts((prev) => (prev ?? []).filter((b) => b.id !== target.id));
+      setOpenId((id) => (id === target.id ? null : id));
+      setDeleting(null);
+      notify(`Deleted “${broadcastTitle(target)}”.`, "ok");
+    } catch (e: unknown) {
+      notify(
+        e instanceof ApiError ? e.message : "Could not delete that broadcast.",
+        "error",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (broadcasts === null) {
     return (
       <div className="grid place-items-center py-20">
@@ -233,7 +293,8 @@ export function Broadcasts({
     );
   }
 
-  const openNew = (preset: BroadcastPreset | null) => setComposer(preset);
+  const openNew = (preset: BroadcastPreset | null) =>
+    setComposer({ preset, seed: null, editing: false });
 
   return (
     <div className="grid gap-4">
@@ -260,15 +321,27 @@ export function Broadcasts({
                 open={openId === b.id}
                 onView={() => setOpenId((id) => (id === b.id ? null : b.id))}
                 onCancel={() => setCancelling(b)}
+                onEdit={() => void openSeeded(b, true)}
+                onDuplicate={() => void openSeeded(b, false)}
+                onDelete={() => setDeleting(b)}
               />
             ))}
           </div>
         </>
       )}
 
-      {composer !== false && (
+      {composer && (
         <Composer
-          preset={composer}
+          key={
+            composer.editing
+              ? `edit-${composer.seed?.id}`
+              : composer.seed
+                ? `dup-${composer.seed.id}`
+                : `new-${composer.preset ?? "blank"}`
+          }
+          preset={composer.preset}
+          seed={composer.seed}
+          editing={composer.editing}
           fields={fields}
           templates={templates}
           templatesError={templatesError}
@@ -276,10 +349,16 @@ export function Broadcasts({
           whatsappConnected={whatsappConnected}
           tags={tags}
           onRefreshTemplates={onRefreshTemplates}
-          onClose={() => setComposer(false)}
+          onClose={() => setComposer(null)}
           onCreated={(b) => {
-            setBroadcasts((prev) => [b, ...(prev ?? [])]);
-            setComposer(false);
+            setBroadcasts((prev) => {
+              const list = prev ?? [];
+              if (composer.editing) {
+                return list.map((item) => (item.id === b.id ? b : item));
+              }
+              return [b, ...list];
+            });
+            setComposer(null);
           }}
         />
       )}
@@ -292,6 +371,16 @@ export function Broadcasts({
         title="Cancel this broadcast?"
         body="Everything still waiting will not be sent, and this cannot be undone — a cancelled broadcast is not rescheduled. Messages that have already left cannot be recalled."
         confirmLabel="Cancel broadcast"
+      />
+
+      <ConfirmModal
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => void remove()}
+        busy={busy}
+        title={deleting ? deleteBroadcastCopy(deleting.status).title : "Delete this broadcast?"}
+        body={deleting ? deleteBroadcastCopy(deleting.status).body : ""}
+        confirmLabel={deleting ? deleteBroadcastCopy(deleting.status).confirm : "Delete broadcast"}
       />
     </div>
   );
@@ -339,11 +428,17 @@ function BroadcastCard({
   open,
   onView,
   onCancel,
+  onEdit,
+  onDuplicate,
+  onDelete,
 }: {
   broadcast: CRMBroadcast;
   open: boolean;
   onView: () => void;
   onCancel: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
 }) {
   const s = b.stats;
   /* Only while there is something left to stop. A sent broadcast has nothing to
@@ -351,9 +446,23 @@ function BroadcastCard({
   const stoppable = b.status === "scheduled" || b.status === "sending";
   const width = deliveryPercent(s.delivered, s.recipients);
   const read = readPercent(s.read, s.sent);
+  const menuItems: MenuItem[] = [];
+  for (const action of broadcastMenuActions(b.status)) {
+    if (action.id === "delete" && menuItems.length > 0) {
+      menuItems.push({ kind: "separator" });
+    }
+    menuItems.push({
+      kind: "action",
+      label:
+        action.id === "edit" ? "Edit" : action.id === "duplicate" ? "Duplicate" : "Delete",
+      danger: action.id === "delete",
+      onSelect:
+        action.id === "edit" ? onEdit : action.id === "duplicate" ? onDuplicate : onDelete,
+    });
+  }
 
   return (
-    <Card className="px-4 py-3.5">
+    <Card className="relative px-4 py-3.5 [&:has([aria-expanded=true])]:z-20">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -367,7 +476,7 @@ function BroadcastCard({
           </div>
           <p className="mt-2 text-[12.5px] text-ink-3">{whenLine(b)}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {stoppable && (
             <Button type="button" variant="danger" size="sm" onClick={onCancel}>
               Cancel
@@ -383,6 +492,15 @@ function BroadcastCard({
           >
             View
           </Button>
+          <Menu
+            label={`More for ${broadcastTitle(b)}`}
+            trigger={
+              <span className="grid size-8 place-items-center rounded-lg text-[17px] text-ink-2 hover:bg-surface-2">
+                ⋯
+              </span>
+            }
+            items={menuItems}
+          />
         </div>
       </div>
 
@@ -488,7 +606,18 @@ function whenLine(b: CRMBroadcast): string {
 // ----------------------------------------------------------------- composer
 
 type Timing = "now" | "later";
-type Kind = "opted_in" | "people" | "webinar" | "tag";
+type Kind = "opted_in" | "people" | "webinar" | "tag" | "locked";
+
+function futureSchedule(seed: CRMBroadcast | null): { timing: Timing; at: string } {
+  if (!seed?.scheduledAt) return { timing: "now", at: "" };
+  const at = new Date(seed.scheduledAt);
+  if (Number.isNaN(at.getTime()) || at.getTime() <= Date.now()) {
+    return { timing: "now", at: "" };
+  }
+  const zoned = instantToZoned(seed.scheduledAt, localTimeZone());
+  if (!zoned.date || !zoned.time) return { timing: "now", at: "" };
+  return { timing: "later", at: `${zoned.date}T${zoned.time}` };
+}
 
 /** One audience count, tagged with the audience it was asked about so a stale
  *  answer can be recognised and dropped rather than shown against a different
@@ -503,6 +632,8 @@ type Counted = {
 
 function Composer({
   preset,
+  seed,
+  editing,
   fields,
   templates,
   templatesError,
@@ -514,6 +645,9 @@ function Composer({
   onCreated,
 }: {
   preset: BroadcastPreset | null;
+  /** A broadcast to copy, or the one being edited. */
+  seed: CRMBroadcast | null;
+  editing: boolean;
   fields: CRMMergeField[];
   templates: CRMTemplate[] | null;
   templatesError: string | null;
@@ -527,15 +661,17 @@ function Composer({
 }) {
   const { notify } = useToast();
   const titleId = useId();
+  const draft = seed ? audienceDraft(seed) : null;
   const seeded = presetFilter(preset);
-  const [kind, setKind] = useState<Kind>(seeded ? "people" : "opted_in");
-  const [peopleFilter, setPeopleFilter] = useState(seeded);
-  const [webinarId, setWebinarId] = useState("");
-  const [tagId, setTagId] = useState("");
-  const [chosen, setChosen] = useState("");
-  const [params, setParams] = useState<CRMParam[]>([]);
-  const [timing, setTiming] = useState<Timing>("now");
-  const [when, setWhen] = useState({ at: "", past: false });
+  const openedAt = editing ? futureSchedule(seed) : { timing: "now" as Timing, at: "" };
+  const [kind, setKind] = useState<Kind>(draft?.kind ?? (seeded ? "people" : "opted_in"));
+  const [peopleFilter, setPeopleFilter] = useState(draft?.peopleFilter || seeded);
+  const [webinarId, setWebinarId] = useState(draft?.webinarId ?? "");
+  const [tagId, setTagId] = useState(draft?.tagId ?? "");
+  const [chosen, setChosen] = useState(seed ? `${seed.template}\u0000${seed.language}` : "");
+  const [params, setParams] = useState<CRMParam[]>(seed?.params ?? []);
+  const [timing, setTiming] = useState<Timing>(openedAt.timing);
+  const [when, setWhen] = useState({ at: openedAt.at, past: false });
   const now = useNow(30_000);
   const zone = localTimeZone();
   const [webinars, setWebinars] = useState<Webinar[] | null>(null);
@@ -605,13 +741,17 @@ function Composer({
   const needsWebinar = resolvedKind === "webinar";
   const needsTag = resolvedKind === "tag";
   const needsPeople = resolvedKind === "people";
+  const locked = resolvedKind === "locked";
   const askable =
-    resolvedKind !== "people" &&
+    !needsPeople &&
+    !locked &&
     (!needsWebinar || webinarId !== "") &&
     (!needsTag || tagId !== "");
   const audienceKey = needsPeople
     ? `people\u0000${resolvedFilter}`
-    : `${resolvedKind}\u0000${webinarId}\u0000${tagId}`;
+    : locked
+      ? `locked\u0000${seed?.id ?? ""}`
+      : `${resolvedKind}\u0000${webinarId}\u0000${tagId}`;
 
   useEffect(() => {
     if (!askable) return;
@@ -687,6 +827,39 @@ function Composer({
     };
   }, [needsPeople, resolvedFilter]);
 
+  useEffect(() => {
+    if (!locked || !seed) return;
+    let cancelled = false;
+    const key = `locked\u0000${seed.id}`;
+    engageApi
+      .crmAudienceFor({
+        name: "",
+        template: "",
+        language: "",
+        audience: seed.audience,
+        webinarId: seed.webinarId || undefined,
+        tagId: seed.tagId || undefined,
+        segment: seed.segment,
+        contactIds: seed.contactIds,
+      })
+      .then((res) => {
+        if (!cancelled) setCounted({ key, res, contactIds: seed.contactIds });
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setCounted({
+          key,
+          error:
+            e instanceof ApiError && e.code !== "network"
+              ? e.message
+              : "Could not count that audience.",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [locked, seed]);
+
   const current = counted?.key === audienceKey ? counted : null;
   const preview = current?.res ?? null;
   const previewError = current?.error ?? null;
@@ -722,6 +895,7 @@ function Composer({
   const usesWebinarField = params.some(
     (p) => p.field && WEBINAR_FIELDS.includes(p.field),
   );
+  const mergeWebinarId = locked ? (seed?.webinarId ?? "") : webinarId;
   const scheduledAt =
     timing === "later" && when.at
       ? zonedToInstant(...splitLocal(when.at))
@@ -739,7 +913,7 @@ function Composer({
           ? "Pick the tag you mean."
             : needsPeople && !resolvedFilter
             ? "Pick who should get this."
-            : usesWebinarField && !webinarId
+            : usesWebinarField && !mergeWebinarId
               ? "The webinar title and start time have to be read from a webinar, so pick one."
               : params.some((p) => !p.field && !(p.text ?? "").trim())
                 ? "Every placeholder needs something to fill it — WhatsApp rejects a message with a blank in it rather than sending the rest."
@@ -747,13 +921,14 @@ function Composer({
                   ? "Pick when to send it."
                   : timing === "later" && when.past
                     ? "That time has already passed."
-                    : previewError || (needsPeople && !preview)
+                    : previewError || ((needsPeople || locked) && !preview)
                       ? ""
                       : preview && preview.recipients === 0
                           ? "Nobody in this audience can be messaged: a broadcast only goes to contacts who opted in and have not opted out."
                           : null;
 
   function audienceName(): string {
+    if (locked && seed) return seed.name.trim() || audienceLabel(seed);
     if (resolvedKind === "people") return peopleLabel || "Selected people";
     if (resolvedKind === "webinar") {
       const topic = (webinars ?? []).find((w) => w.id === webinarId)?.topic;
@@ -769,37 +944,64 @@ function Composer({
   async function send() {
     if (!template || blocker !== null) return;
     if (needsPeople && !(current?.contactIds && current.contactIds.length > 0)) return;
+    if (
+      locked &&
+      seed?.audience === AudienceContacts &&
+      !(seed.contactIds && seed.contactIds.length > 0)
+    ) {
+      return;
+    }
     setSaving(true);
     try {
-      const created = await engageApi.createCrmBroadcast({
+      const body = {
         name: audienceName(),
         template: template.name,
         language: template.language,
         params,
-        audience: needsPeople
-          ? AudienceContacts
-          : needsTag
-            ? AudienceTag
-            : needsWebinar
-              ? AudienceWebinar
-              : AudienceOptedIn,
-        webinarId:
-          (needsWebinar || usesWebinarField) && webinarId ? webinarId : undefined,
-        tagId: needsTag ? tagId : undefined,
-        contactIds: needsPeople ? current?.contactIds : undefined,
+        audience: locked && seed
+          ? seed.audience
+          : needsPeople
+            ? AudienceContacts
+            : needsTag
+              ? AudienceTag
+              : needsWebinar
+                ? AudienceWebinar
+                : AudienceOptedIn,
+        webinarId: locked
+          ? seed?.webinarId || (usesWebinarField && webinarId ? webinarId : undefined)
+          : (needsWebinar || usesWebinarField) && webinarId
+            ? webinarId
+            : undefined,
+        tagId: locked ? seed?.tagId || undefined : needsTag ? tagId : undefined,
+        segment: locked ? seed?.segment : undefined,
+        contactIds: locked
+          ? seed?.contactIds
+          : needsPeople
+            ? current?.contactIds
+            : undefined,
         scheduledAt: scheduledAt ? scheduledAt.toISOString() : undefined,
-      });
+      };
+      const created =
+        editing && seed
+          ? await engageApi.updateCrmBroadcast(seed.id, body)
+          : await engageApi.createCrmBroadcast(body);
       setError(null);
       notify(
-        created.status === "scheduled" && created.stats.sent === 0
-          ? `Queued for ${countText(created.stats.recipients, "person", "people")}.`
-          : `Sending to ${countText(created.stats.recipients, "person", "people")}.`,
+        editing
+          ? "Saved. Anyone still waiting will get this version."
+          : created.status === "scheduled" && created.stats.sent === 0
+            ? `Queued for ${countText(created.stats.recipients, "person", "people")}.`
+            : `Sending to ${countText(created.stats.recipients, "person", "people")}.`,
         "ok",
       );
       onCreated(created);
     } catch (e: unknown) {
       const message =
-        e instanceof ApiError ? e.message : "Could not create that broadcast.";
+        e instanceof ApiError
+          ? e.message
+          : editing
+            ? "Could not save that broadcast."
+            : "Could not create that broadcast.";
       setError(message);
       notify(message, "error");
     } finally {
@@ -814,6 +1016,9 @@ function Composer({
   });
 
   function rowCount(rowKind: Kind, filter = ""): number | null {
+    if (rowKind === "locked") {
+      return resolvedKind === "locked" && preview ? preview.recipients : null;
+    }
     if (rowKind === "opted_in") return optedInCount;
     if (rowKind === "people") {
       if (resolvedKind === "people" && filter === resolvedFilter && preview) return preview.recipients;
@@ -849,7 +1054,7 @@ function Composer({
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <h2 id={titleId} className="text-[16px] font-semibold">
-            New broadcast
+            {editing ? "Edit broadcast" : "New broadcast"}
           </h2>
           <button
             type="button"
@@ -869,6 +1074,14 @@ function Composer({
           <section className="grid gap-2">
             <SectionHead n={1} title="Who" />
             <div className="grid gap-1" role="radiogroup" aria-label="Who gets it">
+              {draft?.kind === "locked" && seed && (
+                <WhoRow
+                  label={audienceLabel(seed)}
+                  count={rowCount("locked")}
+                  checked={resolvedKind === "locked"}
+                  onPick={() => pickKind("locked")}
+                />
+              )}
               <WhoRow
                 label="Everyone who opted in"
                 count={rowCount("opted_in")}
@@ -1147,7 +1360,11 @@ function Composer({
             </Button>
             <Button type="button" onClick={send} disabled={saving || blocker !== null}>
               {saving && <Spinner className="size-3.5" />}
-              {timing === "later" ? "Schedule broadcast" : "Send broadcast"}
+              {editing
+                ? "Save changes"
+                : timing === "later"
+                  ? "Schedule broadcast"
+                  : "Send broadcast"}
             </Button>
           </div>
         </div>

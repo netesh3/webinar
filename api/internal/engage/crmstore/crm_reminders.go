@@ -231,7 +231,7 @@ func (s *Store) PendingWhatsApp(ctx context.Context, limit int) ([]WhatsAppOutbo
 		       ))
 		   AND (n.broadcast_id IS NULL OR EXISTS (
 		         SELECT 1 FROM crm_broadcasts b
-		          WHERE b.id = n.broadcast_id AND b.canceled_at IS NULL
+		          WHERE b.id = n.broadcast_id AND b.canceled_at IS NULL AND b.deleted_at IS NULL
 		       ))
 		   AND (n.drip_enrollment_id IS NULL OR EXISTS (
 		         SELECT 1 FROM crm_drip_enrollments e
