@@ -248,36 +248,8 @@ export function HostPeopleTab({
           canMessage={canMessage}
         />
       )}
-      <div className="flex flex-col gap-3 min-[900px]:flex-row min-[900px]:items-center">
-      {/* The answer before the list: how big the audience is, and how much of it showed. */}
-      <p className="min-w-0 text-[13px] text-ink-2 min-[900px]:max-w-[42%]">
-        <span className="font-semibold text-ink tabular-nums">{c.everyone}</span>{" "}
-        {c.everyone === 1 ? "person" : "people"}{" "}
-        {webinarName ? (
-          <>
-            registered for <span className="font-medium text-ink">{webinarName}</span>
-          </>
-        ) : (
-          <>
-            from {data.webinarCount} {data.webinarCount === 1 ? "webinar" : "webinars"}
-          </>
-        )}
-        {c.everyone > 0 && (
-          <>
-            {" "}
-            · <span className="tabular-nums text-ok">{c.attended} came</span>
-            {c.neverAttended > 0 && (
-              <>
-                {" "}
-                · <span className="tabular-nums">{c.neverAttended} didn&apos;t</span>
-              </>
-            )}
-          </>
-        )}
-      </p>
-
-      <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-        <label className="relative min-w-0 flex-1 sm:max-w-72">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="relative min-w-0 w-72 max-w-full">
           <span className="sr-only">Search people</span>
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-3" />
           <input
@@ -289,48 +261,50 @@ export function HostPeopleTab({
           />
         </label>
 
-        <label className="relative min-w-0 sm:w-64">
-          <span className="sr-only">Webinar</span>
-          <select
-            className="field h-9 appearance-none pr-8 text-[13px]"
-            value={webinar}
-            onChange={(e) => narrow(() => setWebinar(e.target.value))}
-          >
-            <option value="">All webinars</option>
-            {data.webinars.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.topic}
-              </option>
-            ))}
-          </select>
-          <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-ink-3" />
-        </label>
+        {/* Dropdown and Message all stay together when the row wraps. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="relative min-w-0 w-64 max-w-full">
+            <span className="sr-only">Webinar</span>
+            <select
+              className="field h-9 appearance-none pr-8 text-[13px]"
+              value={webinar}
+              onChange={(e) => narrow(() => setWebinar(e.target.value))}
+            >
+              <option value="">All webinars</option>
+              {data.webinars.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.topic}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-ink-3" />
+          </label>
 
-        {canMessage && (
-          <div className="flex items-center gap-2 sm:ml-auto">
-            {ticked.size > 0 ? (
-              <>
-                <button
-                  type="button"
-                  className="text-[12.5px] text-ink-2 hover:text-ink"
-                  onClick={() => setTicked(new Set())}
-                >
-                  Clear
-                </button>
-                <Button size="sm" onClick={messageTicked}>
-                  <SendIcon className="size-3.5" />
-                  Message {ticked.size} picked
+          {canMessage && (
+            <div className="flex items-center gap-2">
+              {ticked.size > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    className="text-[12.5px] text-ink-2 hover:text-ink"
+                    onClick={() => setTicked(new Set())}
+                  >
+                    Clear
+                  </button>
+                  <Button size="sm" onClick={messageTicked}>
+                    <SendIcon className="size-3.5" />
+                    Message {ticked.size} picked
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" onClick={messageAll} disabled={data.total === 0 || opening}>
+                  {opening ? <Spinner className="size-3.5" /> : <SendIcon className="size-3.5" />}
+                  Message {data.total === 1 ? "1 person" : `all ${data.total}`}
                 </Button>
-              </>
-            ) : (
-              <Button size="sm" onClick={messageAll} disabled={data.total === 0 || opening}>
-                {opening ? <Spinner className="size-3.5" /> : <SendIcon className="size-3.5" />}
-                Message {data.total === 1 ? "1 person" : `all ${data.total}`}
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show">
