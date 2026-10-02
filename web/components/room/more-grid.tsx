@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { isHomeTool, isPinnable, moreOrder, type ToolId } from "@/lib/tools";
+import { isHomeTool, isPanelTool, isPinnable, moreOrder, type ToolId } from "@/lib/tools";
 import { closesMoreOn, moreTargetOf } from "@/lib/bar-popover";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { useCompact } from "@/lib/compact";
 import { badgeText } from "@/lib/mentions";
-import { MoreCircleIcon, PlusIcon } from "../icons";
+import { HandIcon, MoreCircleIcon, PlusIcon } from "../icons";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
+import { useRaisedHandsPanel } from "./raised-hands-panel";
 import { InviteMenu } from "./invite-panel";
 import { LayoutMenu } from "./layout-menu";
 import { ReactionPicker } from "./reactions";
@@ -54,6 +55,12 @@ export type ToolAction = {
   onClick: () => void;
 };
 
+type RaisedHandsAction = {
+  count: number;
+  active: boolean;
+  onClick: () => void;
+};
+
 type ShareAction = {
   label: string;
   icon: React.ReactNode;
@@ -75,6 +82,7 @@ const ON_WORD: Partial<Record<ToolId, string>> = {
 export function MoreGrid({
   items,
   panelItems,
+  raisedHandsAction,
   shareAction,
   toolActions = {},
   canCustomize,
@@ -92,6 +100,9 @@ export function MoreGrid({
   /** Standing-strip tools a phone has no room for. Shown in the same grid,
    *  but they do not move — they have a fixed place on a wider screen. */
   panelItems?: readonly ToolId[];
+  /** Raised-hands queue on a phone, where the standing bar has no room for
+   *  another button. Not a ToolId: it is not dragged or customised. */
+  raisedHandsAction?: RaisedHandsAction;
   /** Share, on the rare phone width where it does not fit the bar. Not a
    *  ToolId: it has its own dimmed/busy states and never moves. */
   shareAction?: ShareAction;
@@ -115,6 +126,7 @@ export function MoreGrid({
   onClose: () => void;
 }) {
   const { tools, unread, mentions, realtime, stage } = useRoomUI();
+  const raisedHands = useRaisedHandsPanel();
   const { notify } = useToast();
   const drag = useToolDrag();
   const dragging = drag.drag !== null;
@@ -159,6 +171,7 @@ export function MoreGrid({
         tools.used("layout");
         return;
       }
+      if (isPanelTool(id) && raisedHands.open) raisedHands.dismiss();
       if (id === "hand") {
         void realtime.toggleHand().catch((err) => {
           notify(
@@ -172,7 +185,7 @@ export function MoreGrid({
       tools.toggle(id);
       onClose();
     },
-    [toolActions, tools, realtime, notify, onClose],
+    [toolActions, tools, realtime, notify, onClose, raisedHands],
   );
 
   /* Dismiss on Escape and on a press outside.
@@ -249,11 +262,14 @@ export function MoreGrid({
   const draggingOut = drag.drag?.from === "grid";
 
   const movable = new Set(canCustomize ? (movableIds ?? items) : []);
-  const entries = moreOrder<string>([
-    ...(shareAction ? ["share"] : []),
-    ...(panelItems ?? []),
-    ...items,
-  ]);
+  const entries = [
+    ...(raisedHandsAction ? ["raised-hands"] : []),
+    ...moreOrder<string>([
+      ...(shareAction ? ["share"] : []),
+      ...(panelItems ?? []),
+      ...items,
+    ]),
+  ];
   const hasMovable = movable.size > 0;
 
   const hint = dropping
@@ -354,6 +370,25 @@ export function MoreGrid({
             }`}
           >
             {entries.map((key) => {
+              if (key === "raised-hands" && raisedHandsAction) {
+                return (
+                  <MoreCell
+                    key="raised-hands"
+                    cellId="raised-hands"
+                    icon={<HandIcon className="size-5" />}
+                    label="Raised hands"
+                    title={`Raised hands, ${raisedHandsAction.count}`}
+                    ariaLabel={`Raised hands, ${raisedHandsAction.count}`}
+                    badge={String(raisedHandsAction.count)}
+                    expanded={raisedHandsAction.active}
+                    onClick={() => {
+                      if (editing) return;
+                      raisedHandsAction.onClick();
+                      onClose();
+                    }}
+                  />
+                );
+              }
               if (key === "share" && shareAction) {
                 return (
                   <MoreCell
@@ -523,6 +558,7 @@ export function MoreGrid({
  *  per-cell control would not have to nest a button inside a button. */
 function MoreCell({
   id,
+  cellId,
   icon,
   label,
   title,
@@ -542,6 +578,8 @@ function MoreCell({
   onClick,
 }: {
   id?: ToolId;
+  /** data-more-cell when this is not a tool (Share, Raised hands). */
+  cellId?: string;
   icon: React.ReactNode;
   label: string;
   title: string;
@@ -570,7 +608,7 @@ function MoreCell({
     >
       <button
         type="button"
-        data-more-cell={id ?? "share"}
+        data-more-cell={id ?? cellId ?? "share"}
         data-tool-cell={id}
         title={title}
         aria-label={ariaLabel}

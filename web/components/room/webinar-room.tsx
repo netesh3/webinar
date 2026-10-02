@@ -72,6 +72,11 @@ import { FileShareBar } from "./file-share-bar";
 import { MeetingInfo } from "./meeting-info";
 import { ViewsMenu } from "./views-menu";
 import { Stage } from "./stage";
+import {
+  RaisedHandsProvider,
+  useRaisedHandsController,
+  useRaisedHandsPanel,
+} from "./raised-hands-panel";
 import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
@@ -960,13 +965,15 @@ function ConnectedRoom({
   // mid-session has to reach a bar that was laid out before they did.
   const availableTools = useAvailableTools({ isHost, controls });
   const tools = useToolLayout(availableTools);
+  const raisedHands = useRaisedHandsController(tools, realtime.hands.length);
   // Whether a docked panel (Chat, Participants, …) should be sharing the
   // screen with the video right now, rather than overlaying it — only true
-  // on a phone-shaped viewport with a panel actually open. A floating/popped-
+  // on a phone-shaped viewport with a panel actually open. The raised-hands
+  // queue uses that same drawer, so it has to count too. A floating/popped-
   // out window doesn't count: that already has its own space via
   // ToolWindows, so the stage stays full-bleed underneath it.
   const compact = useCompact();
-  const panelOpen = compact && Boolean(tools.panelTab);
+  const panelOpen = compact && (Boolean(tools.panelTab) || raisedHands.open);
 
   /* Playing a recorded video into the session as the presenter's screen share.
    *
@@ -1055,8 +1062,7 @@ function ConnectedRoom({
           ),
       // No watermark for the rest. A poll is not a stream of messages, and the
       // thing worth a badge is that one is OPEN right now — which the bar reads
-      // from the poll list. Participants carries the raised-hand queue instead,
-      // computed in the control bar where the host acts on it.
+      // from the poll list. Raised hands have their own toolbar button.
       polls: 0,
       participants: 0,
       invite: 0,
@@ -1112,7 +1118,7 @@ function ConnectedRoom({
     lowerHand: realtime.lowerHand,
     reloadRoster: roster.reload,
     openParticipants: useCallback(() => openTool("participants"), [openTool]),
-    panelVisible: tools.panelTab === "participants",
+    panelVisible: tools.panelTab === "participants" || raisedHands.open,
   });
   // "You're connected" on joining the stage, then "Reconnecting…" → "You're back online" /
   // "Connection lost", for everyone in this room.
@@ -1285,6 +1291,7 @@ function ConnectedRoom({
               in different subtrees: the More grid is inside the control bar and the
               bar's slots are its siblings, and a drop that starts in one has to be
               resolved against the other. */}
+          <RaisedHandsProvider value={raisedHands}>
           <ToolDragProvider onPin={tools.pin} onUnpin={tools.unpin}>
             {/* dvh, not vh: on mobile Safari a vh-tall column puts the control bar
                 underneath the browser's own toolbar.
@@ -1366,6 +1373,7 @@ function ConnectedRoom({
                 in its overflow-hidden subtree and clip a window being dragged. */}
             <ToolWindows />
           </ToolDragProvider>
+          </RaisedHandsProvider>
 
           {/* Renders every subscribed audio track. Without this you get video and
               silence, which is a genuinely confusing bug to chase. */}
@@ -1461,7 +1469,8 @@ function AutoStartAudio({ room }: { room: Room }) {
 
 export function RoomHeader() {
   const { controls, isHost, permissions, tools, cdnStage } = useRoomUI();
-  const panelOpen = Boolean(tools.panelTab);
+  const raisedHands = useRaisedHandsPanel();
+  const panelOpen = Boolean(tools.panelTab) || raisedHands.open;
 
   // From the live permissions, not from the role in the join response. An attendee
   // the host brought on stage is no longer "view only", and a badge still saying

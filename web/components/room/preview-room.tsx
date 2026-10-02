@@ -23,6 +23,7 @@ import { ControlBar } from "./control-bar";
 import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
 import { HostSurveyPill, HostSurveyProvider } from "./host-survey";
 import { MeetingInfo } from "./meeting-info";
+import { RaisedHandsProvider, useRaisedHandsController, useRaisedHandsPanel } from "./raised-hands-panel";
 import { SidePanel } from "./side-panel";
 import { ViewsMenu } from "./views-menu";
 import { ToolDragProvider } from "./tool-drag";
@@ -153,6 +154,7 @@ export function PreviewRoom() {
   const tools = useToolLayout(availableTools);
   const stage = useStageLayout();
   const realtime = useMemo(() => bypassRealtime(), []);
+  const raisedHands = useRaisedHandsController(tools, realtime.hands.length);
   const [prefs, setPrefs] = useState(DEFAULT_PREFERENCES);
   const [stageEl, setStageEl] = useState<HTMLDivElement | null>(null);
   // Mirrors the same compact-panel sizing ConnectedRoom uses in
@@ -160,7 +162,7 @@ export function PreviewRoom() {
   // module comment), so it doesn't inherit that logic automatically and has
   // to repeat it to preview the real behavior rather than the old one.
   const compact = useCompact();
-  const stagePanelOpen = compact && Boolean(tools.panelTab);
+  const stagePanelOpen = compact && (Boolean(tools.panelTab) || raisedHands.open);
 
   useEffect(() => {
     tools.setStage(stageEl);
@@ -220,6 +222,7 @@ export function PreviewRoom() {
     <RoomContext.Provider value={room}>
       <RoomUIProvider value={ui}>
         <HostSurveyProvider enabled={isHost} sample={surveySample}>
+        <RaisedHandsProvider value={raisedHands}>
         <ToolDragProvider onPin={tools.pin} onUnpin={tools.unpin}>
           <div data-room className="flex h-dvh flex-col overflow-hidden bg-stage">
             <div className="relative min-h-0 min-w-0 flex-1">
@@ -239,6 +242,7 @@ export function PreviewRoom() {
           </div>
           <ToolWindows />
         </ToolDragProvider>
+        </RaisedHandsProvider>
         </HostSurveyProvider>
       </RoomUIProvider>
     </RoomContext.Provider>
@@ -247,7 +251,8 @@ export function PreviewRoom() {
 
 function PreviewHeader() {
   const { tools } = useRoomUI();
-  const panelOpen = Boolean(tools.panelTab);
+  const raisedHands = useRaisedHandsPanel();
+  const panelOpen = Boolean(tools.panelTab) || raisedHands.open;
   return (
     <header
       className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start gap-2 bg-gradient-to-b from-black/70 to-transparent px-3 pt-2 pb-10 text-white ${
