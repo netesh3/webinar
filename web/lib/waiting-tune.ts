@@ -7,7 +7,8 @@ import { useCallback, useSyncExternalStore } from "react";
  * attendee sitting in "waiting for the host" is not receiving anything from the SFU —
  * there is no host audio yet to be early for — so there is nothing to stream and no
  * other attendee's copy to keep in sync. Every tab loops its own four notes on its
- * own clock, and stops the moment ITS OWN connection sees a published track.
+ * own clock, and stops when this screen unmounts: a host or panelist is in the
+ * room (camera off still counts), or somebody has published a track.
  *
  * Synthesised with oscillators rather than a loaded file, same reasoning as the chat
  * cue: no asset to fetch or decode, and nothing an autoplay policy can block that the

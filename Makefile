@@ -102,6 +102,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# paging, sorting, filtering and the subscription budget — which is where the
 	# 300-participant behaviour lives and the one place a browser cannot check it.
 	cd web && node --experimental-strip-types --no-warnings lib/layout.test.mts
+	# And whether an empty stage means the host hasn't started. It doesn't, once
+	# a host or panelist is in the room — camera off and mic muted still count.
+	cd web && node --experimental-strip-types --no-warnings lib/stage-presence.test.mts
 	# And the playout-delay readout, which reports a number to somebody who is
 	# troubleshooting — where a plausible wrong number is worse than none.
 	cd web && node --experimental-strip-types --no-warnings lib/network.test.mts

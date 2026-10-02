@@ -1,6 +1,6 @@
 "use client";
 
-import { useTracks } from "@livekit/components-react";
+import { useParticipants, useTracks } from "@livekit/components-react";
 import { Track, type LocalVideoTrack } from "livekit-client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -16,19 +16,30 @@ import {
 import { isHighlighted } from "@/lib/speaker";
 import { API_BASE } from "@/lib/api";
 import { useCompact } from "@/lib/compact";
+import {
+  stagePresence,
+  WAITING_FOR_HOST_LABEL,
+  type StageSeat,
+} from "@/lib/stage-presence";
 import { startWaitingTune, stopWaitingTune, useWaitingTune } from "@/lib/waiting-tune";
 import { ArrowLeftIcon, ChevronDownIcon, VolumeIcon, VolumeMuteIcon } from "../icons";
 import { useActiveSpeaker } from "./active-speaker";
 import { useRoomUI } from "./context";
+import { participantRole } from "./participants";
 import { ReactionOverlay } from "./reactions";
 import { ParticipantTile, type Tile, type TileSource } from "./tile";
 
-/* The stage: whoever is publishing, laid out.
+/* The stage: whoever is on it, laid out.
  *
  * The webinar shape decides the whole design. Attendees never publish, so they
  * never appear here — a placeholder tile per participant would mean 500 empty
  * boxes and a dead tab. The stage is the host, the panelists, and any attendee
  * the host has promoted.
+ *
+ * A host or panelist who is already in the room is on this stage even with the
+ * microphone muted and the camera off. "No camera and no screen share" is not
+ * "the host hasn't started" — that card is only for when nobody who can host
+ * is connected. See stagePresence.
  *
  * Three modes, chosen by the viewer and nobody else (see lib/layout.ts):
  *
@@ -52,7 +63,7 @@ export function Stage() {
     onlySubscribed: true,
   });
 
-  const tiles = useMemo<Tile[]>(
+  const published = useMemo<Tile[]>(
     () =>
       trackRefs.map((ref) => ({
         key: `${ref.participant.identity}:${ref.source}`,
@@ -62,6 +73,55 @@ export function Stage() {
       })),
     [trackRefs],
   );
+
+  const people = useParticipants();
+  /* A presenter is not waiting for anyone. join.canPublish comes first: the live
+   * permissions are unknown until the connection is up, and keying on them alone
+   * showed a host the attendee copy for the entire connecting phase. */
+  const canPresent =
+    join.canPublish || permissions.canShareCamera || permissions.canShareScreen;
+
+  const presence = useMemo(() => {
+    const seats: StageSeat[] = people.map((person) => ({
+      identity: person.identity,
+      role: participantRole(person, join),
+      hasCamera: published.some(
+        (tile) =>
+          tile.participant.identity === person.identity &&
+          tile.source === Track.Source.Camera,
+      ),
+      hasScreenShare: published.some(
+        (tile) =>
+          tile.participant.identity === person.identity &&
+          tile.source === Track.Source.ScreenShare,
+      ),
+    }));
+    return stagePresence({
+      seats,
+      viewerIdentity: join.identity,
+      viewerCanPresent: canPresent,
+    });
+  }, [people, published, join, canPresent]);
+
+  /* Camera-off placeholders only when the stage would otherwise be the waiting
+   * card. A real camera or screen share keeps the published list untouched, so
+   * starting with them on, or turning them on later, lays out as before. */
+  const tiles = useMemo<Tile[]>(() => {
+    if (presence.kind !== "camera-off") return published;
+    const byIdentity = new Map(people.map((person) => [person.identity, person]));
+    const placeholders: Tile[] = [];
+    for (const identity of presence.identities) {
+      const participant = byIdentity.get(identity);
+      if (!participant) continue;
+      placeholders.push({
+        key: `${identity}:${Track.Source.Camera}`,
+        participant,
+        source: Track.Source.Camera,
+        publication: undefined,
+      });
+    }
+    return placeholders.length > 0 ? placeholders : published;
+  }, [presence, people, published]);
 
   const screenShare = tiles.find((t) => t.source === Track.Source.ScreenShare);
   const mode: LayoutMode = stage.mode;
@@ -77,15 +137,21 @@ export function Stage() {
    * Speaker-mode is the one place the large tile follows the talker. Grid and
    * spotlight pass null, so a conversation cannot reshuffle a gallery or a deck.
    * Pin and a screen share still outrank the talker — see sortTiles. */
-  const ordered = useMemo(
-    () =>
-      sortTiles(
-        filterTiles(tiles, stage.preferences),
-        stage.pinnedParticipantId,
-        mode === "speaker" ? speaking : null,
-      ),
-    [tiles, stage.preferences, stage.pinnedParticipantId, mode, speaking],
-  );
+  const ordered = useMemo(() => {
+    const filtered = filterTiles(tiles, stage.preferences);
+    /* Hiding non-video would drop the only proof the host is here and leave a
+     * blank stage. The preference still applies once somebody is actually
+     * publishing — those tiles all have a publication. */
+    const kept =
+      filtered.length === 0 && tiles.some((tile) => tile.publication === undefined)
+        ? tiles
+        : filtered;
+    return sortTiles(
+      kept,
+      stage.pinnedParticipantId,
+      mode === "speaker" ? speaking : null,
+    );
+  }, [tiles, stage.preferences, stage.pinnedParticipantId, mode, speaking]);
 
   /* The mode is exactly what the viewer chose — with one deliberate exception below.
    *
@@ -200,9 +266,7 @@ export function Stage() {
         // a real slip: the live permissions are the SFU's answer and are unknown
         // until the connection is up, so keying on them alone showed a host the
         // attendee copy for the entire connecting phase.
-        canPresent={
-          join.canPublish || permissions.canShareCamera || permissions.canShareScreen
-        }
+        canPresent={canPresent}
       />
     );
   }
@@ -963,7 +1027,7 @@ function WaitingForStage({
               a person, and a spinner would suggest something is stuck. */}
           <span className="size-2.5 animate-pulse rounded-full bg-white/70" />
         </div>
-        <p className="text-[15px] font-medium text-white/90">Waiting for the host to start</p>
+        <p className="text-[15px] font-medium text-white/90">{WAITING_FOR_HOST_LABEL}</p>
         <p className="mt-1.5 text-[13px] leading-relaxed text-white/55">
           {locked
             ? "This webinar is locked to new attendees."
