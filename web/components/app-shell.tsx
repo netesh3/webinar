@@ -20,7 +20,7 @@ import {
 import { toggleSidebar } from "@/lib/sidebar";
 import { AccountAvatar } from "./account-avatar";
 import { HostAlerts } from "./host-alerts";
-import { CalendarIcon, MaterialIcon, MenuIcon, SettingsIcon, UsersIcon } from "./icons";
+import { CalendarIcon, MaterialIcon, MenuIcon, SettingsIcon, UsersIcon, WhatsAppIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
 import { useTheme } from "./theme";
 
@@ -165,14 +165,16 @@ type SidebarIntegration = {
  * A connected app with no host page lands there. A card with neither an icon
  * (mark or text) nor any destination is left out of the list. */
 function knownIcon(id: string): ReactNode | null {
-  if (id === "whatsapp") return <WhatsAppGlyph />;
+  if (id === "whatsapp") return <WhatsAppIcon />;
   if (id === "email") return <MailGlyph />;
+  if (id === "zoom") return <ZoomGlyph />;
+  if (id === "youtube") return <YouTubeGlyph />;
   return null;
 }
 
 function sidebarIntegration(card: IntegrationCard): SidebarIntegration | null {
   const known = HOST_INTEGRATION[card.id];
-  const icon = known ? knownIcon(card.id) : integrationIcon(card);
+  const icon = knownIcon(card.id) ?? integrationIcon(card);
   const href = known?.href ?? hostPage(card) ?? (icon ? "/settings#integrations" : null);
   if (!href || !icon) return null;
   return { id: card.id, href, label: known?.label ?? card.name, icon };
@@ -186,11 +188,26 @@ function hostPage(card: IntegrationCard): string | null {
   return null;
 }
 
+/* Brand color on the glyph, for a connected row that has no drawn logo. */
+const MARK_COLOR: Record<string, string> = {
+  wa: "text-[#25D366]",
+  yt: "text-[#FF0000]",
+  li: "text-[#0A66C2]",
+  tg: "text-[#2AA3DF]",
+  gc: "text-[#1A73E8]",
+  ig: "text-[#DD2A7B]",
+  mc: "text-[#C89600]",
+  zp: "text-[#FF4F00]",
+  zm: "text-[#2D8CFF]",
+  mail: "text-[#7B8CA0]",
+};
+
 function integrationIcon(card: IntegrationCard): ReactNode | null {
+  const color = MARK_COLOR[card.tone] ?? "text-ink-2";
   if (card.mark) {
-    return <MaterialIcon name={card.mark} fill className="size-[18px]" />;
+    return <MaterialIcon name={card.mark} fill className={`size-[18px] ${color}`} />;
   }
-  if (card.text) return <span className="sb-int-mark">{card.text}</span>;
+  if (card.text) return <span className={`sb-int-mark ${color}`}>{card.text}</span>;
   return null;
 }
 
@@ -606,36 +623,40 @@ function ChevronDown() {
   );
 }
 
-function MailGlyph() {
+/** Filled video camera on Zoom blue. A simple mark, not the Zoom artwork. */
+function ZoomGlyph() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
-      <path d="m4.5 7 7.5 6 7.5-6" />
+    <svg viewBox="0 0 24 24" aria-hidden focusable="false">
+      <rect width="24" height="24" rx="6" fill="#2D8CFF" />
+      <rect x="5" y="8.3" width="10" height="7.4" rx="1.4" fill="#fff" />
+      <path fill="#fff" d="M14.2 10.2 18.8 8.3v7.4l-4.6-1.9V10.2z" />
     </svg>
   );
 }
 
-/** Empty speech bubble from the sidebar mock — not the green WhatsApp mark. */
-function WhatsAppGlyph() {
+/** Filled envelope in a soft gray-blue, so the row stays a mail mark. */
+function MailGlyph() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M6 16.5 4.5 20.5V7.2A2.2 2.2 0 0 1 6.7 5h10.6A2.2 2.2 0 0 1 19.5 7.2v7.1a2.2 2.2 0 0 1-2.2 2.2H6z" />
+    <svg viewBox="0 0 24 24" aria-hidden focusable="false">
+      <rect x="2.8" y="5.6" width="18.4" height="12.8" rx="2.2" fill="#7B8CA0" />
+      <path
+        d="M4.2 7.6 12 13.1 19.8 7.6"
+        fill="none"
+        stroke="#F7F9FB"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Red tile and a white play. A simple mark, not the YouTube artwork. */
+function YouTubeGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden focusable="false">
+      <rect width="24" height="24" rx="6" fill="#FF0000" />
+      <path fill="#fff" d="M10 8v8l7-4-7-4z" />
     </svg>
   );
 }

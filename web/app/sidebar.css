@@ -154,18 +154,20 @@
   line-height: 1;
   letter-spacing: -0.03em;
 }
-/* Live dot sits on the icon corner. The unread badge stays at the right of
-   the row (and the top-right of the rail button), so the two do not overlap. */
+/* Connected dot sits just left of the logo. A filled mark covers the old
+   corner, so the dot stays in that slot with a small gap. The unread badge
+   stays at the right of the row (and the top-right of the rail button). */
 .sb-live {
   position: absolute;
-  right: -3px;
-  bottom: -3px;
+  top: 50%;
+  left: -12px;
   z-index: 1;
   width: 8px;
   height: 8px;
   border-radius: 99px;
   background: var(--color-ok);
   box-shadow: 0 0 0 2px var(--color-surface);
+  transform: translateY(-50%);
 }
 .sb-live::after {
   content: "";
