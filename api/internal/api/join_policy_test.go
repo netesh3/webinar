@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,6 +146,11 @@ func TestInstantWebinarIsRejectedUntilAnAdminAllowsIt(t *testing.T) {
 	if hasFeature(host.Features, types.FeatureInstantWebinar) {
 		t.Fatalf("new account features = %v, want instant webinar off", host.Features)
 	}
+	/* /api/auth/me is what the host page reads. Off must not advertise Instant. */
+	meOff := meAccount(t, h)
+	if hasFeature(meOff.Features, types.FeatureInstantWebinar) {
+		t.Fatalf("/api/auth/me features = %v, want instant webinar absent", meOff.Features)
+	}
 
 	var cfg types.AppConfig
 	_, raw := h.do(http.MethodGet, "/api/config", nil)
@@ -158,6 +164,9 @@ func TestInstantWebinarIsRejectedUntilAnAdminAllowsIt(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
 		t.Fatalf("instant create: status %d code %q, want 403 feature_off\n  body: %s",
 			res.StatusCode, errorCode(t, raw), raw)
+	}
+	if !strings.Contains(string(raw), "Instant webinar") || !strings.Contains(string(raw), "isn't switched on") {
+		t.Errorf("instant refusal is not clear: %s", raw)
 	}
 	if got := hostWebinarCount(t, h, host.ID); got != before {
 		t.Fatalf("webinars %d after a refused instant create, want %d", got, before)
@@ -212,6 +221,105 @@ func TestInstantWebinarIsRejectedUntilAnAdminAllowsIt(t *testing.T) {
 	res, raw = h.do(http.MethodPost, "/api/host/webinars", policyInput("Not any more", true, true))
 	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
 		t.Fatalf("instant create after disable: status %d code %q, want 403 feature_off\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+}
+
+/* The operator account keeps Instant webinar. Every other admin does not.
+ *
+ * The backfill is the migration, applied here because the test inserts the
+ * account after migrations have run. Turning it off afterwards stays off:
+ * the statement is not part of the request path.
+ */
+func TestWebinarLivAdminKeepsInstantWebinar(t *testing.T) {
+	h := newHarness(t)
+	op := h.signup("Webinar Liv", "webinarliv@gmail.com", true)
+	other := h.signup("Other Admin", "other-admin@test.dev", true)
+	h.signup("Webinar Liv", "not-the-operator@test.dev", true)
+	if hasFeature(op.Features, types.FeatureInstantWebinar) || hasFeature(other.Features, types.FeatureInstantWebinar) {
+		t.Fatalf("new accounts start with instant on: op %v other %v", op.Features, other.Features)
+	}
+
+	ctx := context.Background()
+	/* Not an admin yet: the address alone does not turn the switch on. */
+	if n, err := h.store.KeepOperatorInstantWebinar(ctx); err != nil || n != 0 {
+		t.Fatalf("backfill before promote: n=%d err=%v, want 0", n, err)
+	}
+
+	if _, _, err := h.store.PromoteAdmins(ctx, []string{
+		"webinarliv@gmail.com", "other-admin@test.dev", "not-the-operator@test.dev",
+	}); err != nil {
+		t.Fatalf("promote: %v", err)
+	}
+	/* Promote does not grant the switch. A second admin stays off. */
+	n, err := h.store.KeepOperatorInstantWebinar(ctx)
+	if err != nil {
+		t.Fatalf("backfill: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("backfill updated %d rows, want 1", n)
+	}
+	again, err := h.store.KeepOperatorInstantWebinar(ctx)
+	if err != nil {
+		t.Fatalf("backfill again: %v", err)
+	}
+	if again != 0 {
+		t.Fatalf("second backfill updated %d rows, want 0", again)
+	}
+
+	h.login("webinarliv@gmail.com")
+	me := meAccount(t, h)
+	if !hasFeature(me.Features, types.FeatureInstantWebinar) {
+		t.Fatalf("/api/auth/me features = %v, want instant webinar on for webinarliv", me.Features)
+	}
+	res, raw := h.do(http.MethodPost, "/api/host/webinars", policyInput("Operator live", true, true))
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("operator instant create: status %d body %s", res.StatusCode, raw)
+	}
+	res, raw = h.do(http.MethodPost, "/api/host/webinars", policyInput("Operator scheduled", true, false))
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("operator scheduled create: status %d body %s", res.StatusCode, raw)
+	}
+
+	h.login("other-admin@test.dev")
+	me = meAccount(t, h)
+	if !me.IsAdmin {
+		t.Fatal("other admin was not promoted")
+	}
+	if hasFeature(me.Features, types.FeatureInstantWebinar) {
+		t.Fatalf("other admin features = %v, want instant webinar off", me.Features)
+	}
+	res, raw = h.do(http.MethodPost, "/api/host/webinars", policyInput("Other admin live", true, true))
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
+		t.Fatalf("other admin instant: status %d code %q, want 403 feature_off\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+	res, raw = h.do(http.MethodPost, "/api/host/webinars", policyInput("Other admin scheduled", true, false))
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("other admin scheduled create: status %d body %s", res.StatusCode, raw)
+	}
+
+	h.login("not-the-operator@test.dev")
+	me = meAccount(t, h)
+	if hasFeature(me.Features, types.FeatureInstantWebinar) {
+		t.Fatalf("same display name without the webinarliv address got the switch: %v", me.Features)
+	}
+
+	/* An admin can turn the operator off, and the backfill does not run again
+	 * to undo that. */
+	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+op.ID+"/features",
+		types.FeatureGrant{Feature: types.FeatureInstantWebinar, Enabled: false})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("disable operator: status %d body %s", res.StatusCode, raw)
+	}
+	h.login("webinarliv@gmail.com")
+	me = meAccount(t, h)
+	if hasFeature(me.Features, types.FeatureInstantWebinar) {
+		t.Fatalf("operator still advertised after disable: %v", me.Features)
+	}
+	res, raw = h.do(http.MethodPost, "/api/host/webinars", policyInput("Operator after disable", true, true))
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
+		t.Fatalf("operator instant after disable: status %d code %q\n  body: %s",
 			res.StatusCode, errorCode(t, raw), raw)
 	}
 }
