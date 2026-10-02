@@ -380,12 +380,18 @@ export function HostWebinarBrowser({
 
   return (
     <>
-      {/* Tabs and filters share one rule: the tabs pick which sessions, the
-          controls to their right narrow them, and a second line between the two
-          would imply they were separate things. */}
-      <div className="mb-4 border-b border-line">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          <div className="min-w-0">
+      {/* The follow-up column sits beside this list from 900px up and under it
+          below that. The tab row is a cell of the list column, not of the page,
+          so Search and Filter end where the list ends and never cross into
+          Recent webinars. An empty week draws no second column, and the list
+          keeps the full width. */}
+      <div className="grid min-w-0 grid-cols-1 items-start gap-y-4 min-[900px]:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="min-w-0 border-b border-line min-[900px]:col-start-1 min-[900px]:row-start-1">
+        {/* Tabs and filters share one rule: the tabs pick which sessions, the
+            controls to their right narrow them, and a second line between the two
+            would imply they were separate things. */}
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
+          <div className="min-w-0 sm:flex-1">
             <Tabs
               bare
               tabs={viewTabs.includes(tab) ? viewTabs : [...viewTabs, tab]}
@@ -409,13 +415,13 @@ export function HostWebinarBrowser({
               arguments to the host's paged endpoint; leaving them up over a list
               they cannot narrow is a control that lies about what it does. */}
           {!ownList(tab) && (
-            <div className="flex flex-wrap items-center gap-2 pb-2.5 sm:pb-2">
-              <label className="relative">
+            <div className="flex min-w-0 items-center gap-2 pb-2.5 sm:max-w-[min(28rem,62%)] sm:shrink sm:pb-2">
+              <label className="relative min-w-0 grow shrink sm:max-w-56 sm:grow-0 sm:basis-56">
                 <span className="sr-only">Search webinars by name</span>
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
                 <input
                   type="search"
-                  className="field h-9 w-full pl-8 text-[13px] sm:w-56"
+                  className="field h-9 w-full min-w-0 pl-8 text-[13px]"
                   placeholder="Search by name…"
                   value={typed}
                   onChange={(e) => refilter(() => setTyped(e.target.value))}
@@ -429,6 +435,8 @@ export function HostWebinarBrowser({
                 from={from}
                 to={to}
                 size="sm"
+                emptyLabel="Filter"
+                className="shrink-0 [&_button]:max-w-44"
                 ariaLabel="Filter webinars by date"
                 onChange={(nextFrom, nextTo) =>
                   refilter(() => {
@@ -442,7 +450,7 @@ export function HostWebinarBrowser({
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="flex h-9 items-center gap-1 rounded-lg px-2 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                  className="flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
                 >
                   <CloseIcon className="size-3.5" />
                   Clear
@@ -453,11 +461,7 @@ export function HostWebinarBrowser({
         </div>
       </div>
 
-      {/* The follow-up column sits beside this list from 900px up and under it
-          below that. It draws nothing until a session ended inside the week, so
-          an empty week leaves the list the full width. */}
-      <div className="flex flex-col gap-4 min-[900px]:flex-row min-[900px]:items-start">
-      <div className="min-w-0 w-full min-[900px]:w-auto min-[900px]:flex-1">
+      <div className="min-w-0 w-full min-[900px]:col-start-1 min-[900px]:row-start-2">
       {error && !ownList(tab) && (
         <div className="mb-4">
           <Alert tone="error">{error}</Alert>
@@ -533,7 +537,9 @@ export function HostWebinarBrowser({
         </>
       )}
       </div>
-      {tab === "upcoming" && <EndedNudge />}
+      {tab === "upcoming" && (
+        <EndedNudge className="min-[900px]:col-start-2 min-[900px]:row-start-2 min-[900px]:ml-4" />
+      )}
       </div>
     </>
   );

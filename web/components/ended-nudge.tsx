@@ -13,7 +13,7 @@ import { formatRelative } from "@/lib/format";
  * the Completed tab is one click too far to remember it. Shown for a week
  * after the end. Three cards, then stop — a fourth is not drawn. */
 
-export function EndedNudge() {
+export function EndedNudge({ className = "" }: { className?: string }) {
   const titleId = useId();
   const [rows, setRows] = useState<Webinar[] | null>(null);
   useEffect(() => {
@@ -33,7 +33,7 @@ export function EndedNudge() {
   return (
     <aside
       aria-labelledby={titleId}
-      className="w-full min-[900px]:w-[17.5rem] min-[900px]:shrink-0"
+      className={`w-full min-[900px]:w-[17.5rem] min-[900px]:shrink-0 ${className}`}
     >
       <div className="mb-2.5">
         <h2
