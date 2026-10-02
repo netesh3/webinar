@@ -133,14 +133,54 @@ func TestWeeklyIntervalSkipsAWeek(t *testing.T) {
 	}
 }
 
-func TestWeeklyRequiresTheStartWeekday(t *testing.T) {
-	start := at(t, "UTC", "2026-10-05 11:15") // Monday
+func TestWeeklySaturdayCanBeOmitted(t *testing.T) {
+	// 2026-10-03 is a Saturday. Monday is the next selected day, and the
+	// by-date still stops the series before the Monday after that.
+	start := at(t, "Asia/Kolkata", "2026-10-03 01:00")
+	plan, err := PlanSchedule(start, "Asia/Kolkata", Input{
+		Pattern: "weekly", Interval: 1, Weekdays: []int{int(time.Monday)},
+		End: "by_date", EndDate: "2026-10-09",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := dates(t, "Asia/Kolkata", plan.Times)
+	want := []string{"2026-10-05 01:00"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("saturday omitted:\n got %v\nwant %v", got, want)
+	}
+	if plan.Summary != "Every week on Monday, until Oct 9, 2026, 1 occurrence(s)" {
+		t.Fatalf("summary %q", plan.Summary)
+	}
+}
+
+func TestWeeklyMondayOnly(t *testing.T) {
+	start := at(t, "UTC", "2026-10-05 11:15")
+	plan, err := PlanSchedule(start, "UTC", Input{
+		Pattern: "weekly", Interval: 1, Weekdays: []int{int(time.Monday)},
+		End: "after_count", EndCount: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := dates(t, "UTC", plan.Times)
+	want := []string{"2026-10-05 11:15", "2026-10-12 11:15", "2026-10-19 11:15"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("monday only:\n got %v\nwant %v", got, want)
+	}
+	if !strings.Contains(plan.Summary, "Monday") || strings.Contains(plan.Summary, "Wednesday") {
+		t.Fatalf("summary %q", plan.Summary)
+	}
+}
+
+func TestWeeklyEmptyWeekdaysRejected(t *testing.T) {
+	start := at(t, "UTC", "2026-10-03 01:00")
 	_, err := PlanSchedule(start, "UTC", Input{
-		Pattern: "weekly", Interval: 1, Weekdays: []int{int(time.Wednesday)},
+		Pattern: "weekly", Interval: 1,
 		End: "after_count", EndCount: 2,
 	})
-	if err == nil || !strings.Contains(err.Error(), "weekday") {
-		t.Fatalf("err %v, want the start weekday required", err)
+	if err == nil || !strings.Contains(err.Error(), "one day") {
+		t.Fatalf("err %v, want empty weekdays rejected", err)
 	}
 }
 

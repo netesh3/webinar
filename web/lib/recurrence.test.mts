@@ -73,6 +73,55 @@ const fortnight = planRecurrence("2026-10-05", {
 });
 is("every 2 weeks", fortnight.dates, ["2026-10-05", "2026-10-07", "2026-10-19", "2026-10-21"]);
 
+const mondayOnly = planRecurrence("2026-10-05", {
+  pattern: "weekly",
+  interval: 1,
+  weekdays: [1],
+  end: "after_count",
+  endDate: "",
+  endCount: 3,
+});
+is("Mon only", mondayOnly.dates, ["2026-10-05", "2026-10-12", "2026-10-19"]);
+is("Mon only summary", mondayOnly.summary, "Every week on Monday, 3 occurrence(s)");
+
+// 2026-10-03 is a Saturday. The series uses Monday only, and Oct 9 still ends it.
+const saturdayOmitted = planRecurrence("2026-10-03", {
+  pattern: "weekly",
+  interval: 1,
+  weekdays: [1],
+  end: "by_date",
+  endDate: "2026-10-09",
+  endCount: 1,
+});
+is("Saturday can be omitted", saturdayOmitted.dates, ["2026-10-05"]);
+is(
+  "omitted Saturday summary",
+  saturdayOmitted.summary,
+  "Every week on Monday, until Oct 9, 2026, 1 occurrence(s)",
+);
+is("omitted Saturday has no error", saturdayOmitted.error, null);
+
+const saturdayKept = planRecurrence("2026-10-03", {
+  pattern: "weekly",
+  interval: 1,
+  weekdays: [6],
+  end: "by_date",
+  endDate: "2026-10-09",
+  endCount: 1,
+});
+is("Saturday still runs when selected", saturdayKept.dates, ["2026-10-03"]);
+
+const emptyDays = planRecurrence("2026-10-03", {
+  pattern: "weekly",
+  interval: 1,
+  weekdays: [],
+  end: "by_date",
+  endDate: "2026-10-09",
+  endCount: 1,
+});
+is("empty weekdays rejected", emptyDays.error, "Select at least one day.");
+is("empty weekdays write no dates", emptyDays.dates, []);
+
 const monthly = planRecurrence("2026-01-31", {
   pattern: "monthly",
   interval: 1,
