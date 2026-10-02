@@ -77,7 +77,7 @@ func TestEmailInboxRoutingRenameAndIsolation(t *testing.T) {
 		t.Fatalf("identical names shared %s", inboxB.Local)
 	}
 	if !inboxB.CanRename {
-		t.Fatal("auto-assign consumed the one change")
+		t.Fatal("default address cannot be changed")
 	}
 
 	res, raw = h.do(http.MethodPut, "/api/host/email-inbox/address", map[string]string{"local": inboxA.Local})
@@ -96,19 +96,32 @@ func TestEmailInboxRoutingRenameAndIsolation(t *testing.T) {
 		t.Fatalf("rename: %d %s", res.StatusCode, raw)
 	}
 	h.decode(raw, &inboxB)
-	if inboxB.Local != next || inboxB.CanRename || inboxB.Alias == "" {
+	if inboxB.Local != next || !inboxB.CanRename || inboxB.Alias == "" {
 		t.Fatalf("after rename = %+v", inboxB)
 	}
-	old := inboxB.Alias
+	original := inboxB.Alias
 
 	res, raw = h.do(http.MethodPut, "/api/host/email-inbox/address", map[string]string{"local": "alex-other"})
-	if res.StatusCode != http.StatusConflict || !strings.Contains(string(raw), "support") {
+	if res.StatusCode != http.StatusOK {
 		t.Fatalf("second rename: %d %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &inboxB)
+	if inboxB.Local != "alex-other" || !inboxB.CanRename || inboxB.Alias != next {
+		t.Fatalf("after second rename = %+v", inboxB)
 	}
 	res, raw = h.do(http.MethodGet, "/api/host/email-inbox", nil)
 	h.decode(raw, &inboxB)
-	if inboxB.Local != next {
-		t.Fatalf("locked rename changed address to %s", inboxB.Local)
+	if inboxB.Local != "alex-other" || inboxB.Alias != next {
+		t.Fatalf("second rename did not stick: %+v", inboxB)
+	}
+	res, raw = h.do(http.MethodPut, "/api/host/email-inbox/address", map[string]string{"local": "ab"})
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("short rename: %d %s", res.StatusCode, raw)
+	}
+	res, raw = h.do(http.MethodGet, "/api/host/email-inbox", nil)
+	h.decode(raw, &inboxB)
+	if inboxB.Local != "alex-other" {
+		t.Fatalf("rejected rename changed address to %s", inboxB.Local)
 	}
 
 	post := func(local, from string) (int, string) {
@@ -130,11 +143,14 @@ func TestEmailInboxRoutingRenameAndIsolation(t *testing.T) {
 	if code, got := post("nobody-here", "x@example.com"); code != http.StatusOK || got != "dropped" {
 		t.Fatalf("unknown local: %d %s", code, got)
 	}
-	if code, got := post(next, "fan@example.com"); code != http.StatusOK || got != "stored" {
+	if code, got := post("alex-other", "fan@example.com"); code != http.StatusOK || got != "stored" {
 		t.Fatalf("current address: %d %s", code, got)
 	}
-	if code, got := post(old, "fan@example.com"); code != http.StatusOK || got != "stored" {
-		t.Fatalf("alias: %d %s", code, got)
+	if code, got := post(next, "fan@example.com"); code != http.StatusOK || got != "stored" {
+		t.Fatalf("previous address: %d %s", code, got)
+	}
+	if code, got := post(original, "fan@example.com"); code != http.StatusOK || got != "stored" {
+		t.Fatalf("original address: %d %s", code, got)
 	}
 	body, _ := json.Marshal(map[string]string{"to": next + "@webinarliv.com", "from": "x@example.com", "text": "nope"})
 	res, _ = h.doRaw(http.MethodPost, "/api/webhooks/email", "application/json", body, nil)
@@ -144,8 +160,8 @@ func TestEmailInboxRoutingRenameAndIsolation(t *testing.T) {
 
 	res, raw = h.do(http.MethodGet, "/api/host/email-inbox", nil)
 	h.decode(raw, &inboxB)
-	if len(inboxB.Messages) != 2 {
-		t.Fatalf("host B messages = %d, want 2 (current + alias)", len(inboxB.Messages))
+	if len(inboxB.Messages) != 3 {
+		t.Fatalf("host B messages = %d, want 3 (current + previous + original)", len(inboxB.Messages))
 	}
 	for _, m := range inboxB.Messages {
 		if m.From != "fan@example.com" {
@@ -172,10 +188,10 @@ func TestEmailInboxRoutingRenameAndIsolation(t *testing.T) {
 		t.Fatalf("sent %d", len(mail.msgs))
 	}
 	sent := mail.msgs[0]
-	if sent.ReplyTo != next+"@webinarliv.com" {
+	if sent.ReplyTo != "alex-other@webinarliv.com" {
 		t.Fatalf("Reply-To = %s", sent.ReplyTo)
 	}
-	if sent.InReplyTo != "<m-"+next+"@x>" && sent.InReplyTo != "<m-"+old+"@x>" {
+	if sent.InReplyTo != "<m-alex-other@x>" && sent.InReplyTo != "<m-"+next+"@x>" && sent.InReplyTo != "<m-"+original+"@x>" {
 		t.Fatalf("In-Reply-To = %s", sent.InReplyTo)
 	}
 	if sent.To != "fan@example.com" {

@@ -19,9 +19,7 @@ var (
 	// ErrInboxTaken means another host already has that local part, as their
 	// current address or as a previous alias.
 	ErrInboxTaken = errors.New("inbox address taken")
-	// ErrInboxLocked means the host already used their one self-service change.
-	ErrInboxLocked = errors.New("inbox address locked")
-	// ErrInboxInvalid means the local part is not letters, digits and hyphens.
+	// ErrInboxInvalid means the local part is not 3–30 letters, digits and hyphens.
 	ErrInboxInvalid = errors.New("inbox address invalid")
 )
 
@@ -50,8 +48,6 @@ type HostEmail struct {
 	// it is the oldest message in a reply chain, or this message when nothing links it.
 	ThreadID string
 }
-
-const inboxLocalPattern = `^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`
 
 // EnsureInbox assigns a unique default local part when the host does not have
 // one yet. That assignment does not set inbox_renamed_at.
@@ -89,11 +85,11 @@ func (s *Store) EnsureInbox(ctx context.Context, userID, name string) (Inbox, er
 	return Inbox{}, ErrInboxTaken
 }
 
-// RenameInbox changes the local part once. The previous value is kept as an
-// alias. A second change returns ErrInboxLocked and does not write.
+// RenameInbox changes the local part. The previous value is kept as an alias,
+// and earlier aliases stay, so mail to any old address still arrives.
 func (s *Store) RenameInbox(ctx context.Context, userID, name, next string) (Inbox, error) {
 	next = strings.ToLower(strings.TrimSpace(next))
-	if !inboxLocalOK(next) {
+	if !inboxRenameOK(next) {
 		return Inbox{}, ErrInboxInvalid
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -103,10 +99,9 @@ func (s *Store) RenameInbox(ctx context.Context, userID, name, next string) (Inb
 	defer tx.Rollback(ctx)
 
 	var current *string
-	var renamed *time.Time
 	err = tx.QueryRow(ctx,
-		`SELECT inbox_local, inbox_renamed_at FROM users WHERE id = $1 FOR UPDATE`,
-		userID).Scan(&current, &renamed)
+		`SELECT inbox_local FROM users WHERE id = $1 FOR UPDATE`,
+		userID).Scan(&current)
 	if err != nil {
 		return Inbox{}, err
 	}
@@ -129,9 +124,6 @@ func (s *Store) RenameInbox(ctx context.Context, userID, name, next string) (Inb
 		}
 		return s.readInbox(ctx, userID)
 	}
-	if renamed != nil {
-		return Inbox{}, ErrInboxLocked
-	}
 	var taken bool
 	if err := tx.QueryRow(ctx,
 		`SELECT EXISTS (
@@ -144,11 +136,15 @@ func (s *Store) RenameInbox(ctx context.Context, userID, name, next string) (Inb
 	if taken {
 		return Inbox{}, ErrInboxTaken
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM inbox_aliases WHERE user_id = $1`, userID); err != nil {
+	// Taking back an address this host already used: it stops being an alias
+	// and becomes the current one. Every other previous address stays.
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM inbox_aliases WHERE user_id = $1 AND local = $2`, userID, next); err != nil {
 		return Inbox{}, err
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO inbox_aliases (local, user_id) VALUES ($1, $2)`, cur, userID); err != nil {
+		`INSERT INTO inbox_aliases (local, user_id, created_at) VALUES ($1, $2, clock_timestamp())`,
+		cur, userID); err != nil {
 		if isUniqueViolation(err) {
 			return Inbox{}, ErrInboxTaken
 		}
@@ -531,9 +527,12 @@ func (s *Store) readInbox(ctx context.Context, userID string) (Inbox, error) {
 	var renamed *time.Time
 	var alias *string
 	err := s.pool.QueryRow(ctx,
-		`SELECT u.inbox_local, u.inbox_renamed_at, a.local
+		`SELECT u.inbox_local, u.inbox_renamed_at,
+		        (SELECT a.local FROM inbox_aliases a
+		          WHERE a.user_id = u.id
+		          ORDER BY a.created_at DESC, a.local DESC
+		          LIMIT 1)
 		   FROM users u
-		   LEFT JOIN inbox_aliases a ON a.user_id = u.id
 		  WHERE u.id = $1`, userID).Scan(&local, &renamed, &alias)
 	if err != nil {
 		return Inbox{}, err
@@ -549,17 +548,26 @@ func (s *Store) readInbox(ctx context.Context, userID string) (Inbox, error) {
 	return in, nil
 }
 
+// inboxLocalOK accepts a stored local part: 1–32 lowercase letters, digits
+// and hyphens. Automatic names can be shorter than a host is allowed to pick.
 func inboxLocalOK(local string) bool {
 	if local == "" || len(local) > 32 {
 		return false
 	}
-	for i, r := range local {
-		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || (r == '-' && i > 0 && i < len(local)-1)
-		if !ok {
+	for _, r := range local {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
 			return false
 		}
 	}
 	return true
+}
+
+// inboxRenameOK is what a host may choose: the same characters, 3–30 of them.
+func inboxRenameOK(local string) bool {
+	if len(local) < 3 || len(local) > 30 {
+		return false
+	}
+	return inboxLocalOK(local)
 }
 
 func inboxSlug(name string) string {

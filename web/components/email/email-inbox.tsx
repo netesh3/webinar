@@ -6,8 +6,8 @@ import { useSession } from "@/components/providers";
 import { Button } from "@/components/ui";
 import { textRuns } from "@/lib/chat-text";
 import { ApiError, fresh, put, request } from "@/lib/http";
-import { Alert } from "../controls";
-import { MaterialIcon } from "../icons";
+import { Alert, Modal } from "../controls";
+import { InfoIcon, MaterialIcon } from "../icons";
 import {
   INBOX_LIST_MIN,
   INBOX_MEASURE_DEBOUNCE_MS,
@@ -647,21 +647,21 @@ function EmailStatus({ status }: { status: string }) {
   );
 }
 
+const REPLY_LOCAL = /^[a-z0-9-]{3,30}$/;
+
 export function EmailIntegration({
   address,
-  note,
   status = "connected",
 }: {
   address: string;
-  note: string;
   status?: string;
 }) {
-  const [local, setLocal] = useState("");
-  const [canRename, setCanRename] = useState(true);
+  const [draft, setDraft] = useState("");
   const [alias, setAlias] = useState("");
   const [current, setCurrent] = useState(address);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     let gone = false;
@@ -669,27 +669,38 @@ export function EmailIntegration({
       .then((inbox) => {
         if (gone) return;
         setCurrent(inbox.address);
-        setLocal(inbox.local);
-        setCanRename(inbox.canRename);
         setAlias(inbox.alias ?? "");
       })
       .catch(() => {
-        if (!gone) setLocal(address.split("@")[0] ?? "");
+        // The card already shows the address Settings sent.
       });
     return () => {
       gone = true;
     };
   }, [address]);
 
+  function openDialog() {
+    setDraft((current || address).split("@")[0] ?? "");
+    setError(null);
+    setOpen(true);
+  }
+
+  function closeDialog() {
+    if (saving) return;
+    setOpen(false);
+    setError(null);
+  }
+
   async function save() {
+    if (!REPLY_LOCAL.test(draft) || saving) return;
     setSaving(true);
     setError(null);
     try {
-      const next = await put<EmailInbox>("/api/host/email-inbox/address", { local });
+      const next = await put<EmailInbox>("/api/host/email-inbox/address", { local: draft });
       setCurrent(next.address);
-      setLocal(next.local);
-      setCanRename(next.canRename);
       setAlias(next.alias ?? "");
+      setDraft(next.local);
+      setOpen(false);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save that address.");
     } finally {
@@ -698,6 +709,7 @@ export function EmailIntegration({
   }
 
   const reply = current || address;
+  const valid = REPLY_LOCAL.test(draft);
 
   return (
     <article
@@ -723,41 +735,76 @@ export function EmailIntegration({
         <div className="min-w-0 flex-1 text-[12px] leading-snug text-ink-2">
           {reply && <b className="font-medium break-all text-ink">{reply}</b>}
           <small className="block text-[11.5px] text-ink-3">Reply inbox</small>
-          <small className="block text-[11.5px] text-ink-3">
-            {canRename
-              ? note || "You can change this once."
-              : "Contact support to change this address."}
-          </small>
         </div>
-        {canRename && (
-          <div className="flex max-w-full flex-wrap items-center gap-2">
-            <label className="text-[12px] font-medium text-ink-2" htmlFor="inbox-local">
-              Address
-            </label>
-            <input
-              id="inbox-local"
-              value={local}
-              disabled={!canRename || saving}
-              onChange={(e) => setLocal(e.target.value.toLowerCase())}
-              className="w-40 max-w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px] disabled:bg-surface-2"
-            />
-            <span className="text-[13px] text-ink-3">@webinarliv.com</span>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void save()}
-              className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
-            >
-              Save
-            </button>
+        <Button type="button" size="sm" variant="secondary" onClick={openDialog}>
+          Change
+        </Button>
+      </div>
+      <Modal
+        open={open}
+        onClose={closeDialog}
+        title="Change reply address"
+        description="Replies to your webinars arrive here. Pick a name people will recognise."
+        size="md"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={closeDialog} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void save()} disabled={!valid || saving}>
+              {saving ? "Saving…" : "Save address"}
+            </Button>
+          </>
+        }
+      >
+        <label className="block text-[13px] font-medium text-ink" htmlFor="inbox-local">
+          Address
+        </label>
+        <div className="mt-1.5 flex max-w-full">
+          <input
+            id="inbox-local"
+            value={draft}
+            autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-invalid={draft.length > 0 && !valid}
+            onChange={(e) => {
+              setDraft(e.target.value.toLowerCase());
+              setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && valid && !saving) {
+                e.preventDefault();
+                void save();
+              }
+            }}
+            className="min-w-0 flex-1 rounded-l-lg border border-line bg-surface px-3 py-2 text-[14px] text-ink outline-none focus:border-brand focus-visible:ring-2 focus-visible:ring-brand/30"
+          />
+          <span className="inline-flex shrink-0 items-center rounded-r-lg border border-l-0 border-line bg-surface-2 px-3 text-[14px] text-ink-3">
+            @webinarliv.com
+          </span>
+        </div>
+        {draft.length > 0 && !valid && (
+          <p className="mt-2 text-[12.5px] text-live">
+            Use 3-30 lowercase letters, numbers, or hyphens.
+          </p>
+        )}
+        <p className="mt-3 text-[13.5px] text-ink-2">
+          New address: <b className="font-medium text-ink">{draft}@webinarliv.com</b>
+        </p>
+        {reply && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-surface-2 px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
+            <InfoIcon className="mt-0.5 size-4 shrink-0 text-ink-3" />
+            <span>Mail sent to {reply} will still reach you.</span>
           </div>
         )}
-      </div>
-      {error && (
-        <div className="px-4 pb-3">
-          <Alert tone="error">{error}</Alert>
-        </div>
-      )}
+        {error && (
+          <div className="mt-3">
+            <Alert tone="error">{error}</Alert>
+          </div>
+        )}
+      </Modal>
     </article>
   );
 }

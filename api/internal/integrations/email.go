@@ -30,7 +30,6 @@ func (p emailInbox) Status(ctx context.Context, user store.User) (types.Integrat
 	}
 	if p.store == nil || user.ID == "" {
 		c.Who = "Assigned when you open Settings"
-		c.WhoNote = "You can change it once"
 		return c, nil
 	}
 	inbox, err := p.store.EnsureInbox(ctx, user.ID, user.Name)
@@ -38,13 +37,8 @@ func (p emailInbox) Status(ctx context.Context, user store.User) (types.Integrat
 		return types.IntegrationCard{}, err
 	}
 	c.Who = inbox.Address
-	if inbox.Renamed {
-		c.WhoNote = "Contact support to change this address"
-		if inbox.Alias != "" {
-			c.Detail = "Mail to " + inbox.Alias + "@webinarliv.com still reaches you. Further changes need support."
-		}
-	} else {
-		c.WhoNote = "You can change this address once"
+	if inbox.Alias != "" {
+		c.Detail += " Mail to " + inbox.Alias + "@webinarliv.com still reaches you."
 	}
 	return c, nil
 }
