@@ -1,12 +1,11 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useRef, useState } from "react";
 import { Select } from "../controls";
 import {
   MAX_OCCURRENCES,
   planRecurrence,
   weekday,
-  withStartWeekday,
   type RecurrenceForm,
 } from "@/lib/recurrence";
 import type { FormState, SetForm } from "./form-state";
@@ -24,14 +23,17 @@ export function RecurrenceFields({
   error?: string;
 }) {
   const endName = useId();
-  const rule = withStartWeekday(form.recurrence, form.date);
+  const rule = form.recurrence;
   const plan = planRecurrence(form.date, rule);
   const editingSeries = form.seriesId !== "";
   const thisOnly = editingSeries && form.seriesScope === "this";
-  const startWeekday = weekday(form.date);
   const monthlyDay = Number(form.date.slice(8, 10));
+  const weeklySeeded = useRef(rule.pattern === "weekly");
+  const [dayHint, setDayHint] = useState<string | null>(null);
+  if (rule.pattern === "weekly") weeklySeeded.current = true;
 
   function patch(next: Partial<RecurrenceForm>) {
+    setDayHint(null);
     set("recurrence", { ...form.recurrence, ...next });
   }
 
@@ -101,9 +103,21 @@ export function RecurrenceFields({
             <Select
               label="Recurrence"
               value={rule.pattern}
-              onChange={(v) =>
-                patch({ pattern: v as RecurrenceForm["pattern"] })
-              }
+              onChange={(v) => {
+                const pattern = v as RecurrenceForm["pattern"];
+                // The start date's weekday is only the initial weekly default.
+                // After that, clearing it stays cleared.
+                if (pattern === "weekly" && !weeklySeeded.current) {
+                  weeklySeeded.current = true;
+                  const day = weekday(form.date);
+                  patch({
+                    pattern,
+                    weekdays: Number.isInteger(day) ? [day] : rule.weekdays,
+                  });
+                  return;
+                }
+                patch({ pattern });
+              }}
             >
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
@@ -139,15 +153,18 @@ export function RecurrenceFields({
               <div className="flex flex-wrap gap-1.5">
                 {WEEKDAYS.map((name, day) => {
                   const on = rule.weekdays.includes(day);
-                  const locked = day === startWeekday;
+                  const lastOn = on && rule.weekdays.length <= 1;
                   return (
                     <button
                       key={name}
                       type="button"
                       aria-pressed={on}
-                      disabled={locked}
-                      title={locked ? "The first session is on this day" : name}
+                      title={lastOn ? "Select at least one day." : name}
                       onClick={() => {
+                        if (lastOn) {
+                          setDayHint("Select at least one day.");
+                          return;
+                        }
                         const weekdays = on
                           ? rule.weekdays.filter((d) => d !== day)
                           : [...rule.weekdays, day].sort((a, b) => a - b);
@@ -157,7 +174,7 @@ export function RecurrenceFields({
                         on
                           ? "border-brand bg-brand-soft text-brand"
                           : "border-line bg-surface text-ink-2"
-                      } disabled:opacity-100`}
+                      }`}
                     >
                       {name}
                     </button>
@@ -221,8 +238,10 @@ export function RecurrenceFields({
         </>
       )}
 
-      {(error || (!thisOnly && plan.error)) && (
-        <p className="text-[12px] font-medium text-live">{error || plan.error}</p>
+      {(error || (!thisOnly && (plan.error || dayHint))) && (
+        <p className="text-[12px] font-medium text-live">
+          {error || plan.error || dayHint}
+        </p>
       )}
     </div>
   );

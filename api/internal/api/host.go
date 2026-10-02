@@ -18,6 +18,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/notify"
+	"github.com/netkumar/webcast/api/internal/series"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/yt"
 	"github.com/netkumar/webcast/api/internal/zoom"
@@ -771,12 +772,26 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 	 * has already passed — is the same refusal. An instant webinar is exempt:
 	 * there is no time to pick, and the create handler stamps the start to now.
 	 *
+	 * A new weekly series may omit the chosen start's weekday. The lead then
+	 * applies to the first selected weekday, which is the session that runs.
+	 *
 	 * Update: only when this save moves the start onto a time inside the lead.
 	 * A webinar about to begin, or one that already ran, can still be edited.
 	 *
 	 * fields["startsAt"] == "": skipped when the date was already rejected above
 	 * (empty or unparsable) so this does not overwrite that message. */
-	if fields["startsAt"] == "" && !in.Instant && startsAt.Before(time.Now().Add(minScheduleLead)) {
+	leadAt := startsAt
+	if isCreate && in.Recurrence != nil && series.Pattern(in.Recurrence.Pattern) == series.Weekly {
+		leadAt = series.LeadInstant(startsAt, in.TimeZone, series.Input{
+			Pattern:  in.Recurrence.Pattern,
+			Interval: in.Recurrence.Interval,
+			Weekdays: in.Recurrence.Weekdays,
+			End:      in.Recurrence.End,
+			EndDate:  in.Recurrence.EndDate,
+			EndCount: in.Recurrence.EndCount,
+		})
+	}
+	if fields["startsAt"] == "" && !in.Instant && leadAt.Before(time.Now().Add(minScheduleLead)) {
 		switch {
 		case isCreate && in.Status == types.StatusScheduled:
 			fields["startsAt"] = scheduleLeadError

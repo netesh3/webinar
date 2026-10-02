@@ -107,3 +107,36 @@ func TestScheduleLead(t *testing.T) {
 		t.Fatalf("moving a soon start out past the lead was rejected: %q", msg)
 	}
 }
+
+func TestScheduleLeadUsesFirstWeeklySession(t *testing.T) {
+	s := leadServer()
+	start := time.Now().UTC().Add(10 * time.Minute)
+	other := (int(start.Weekday()) + 1) % 7
+
+	daily := leadInput(start, types.StatusScheduled)
+	daily.Kind = types.KindRecurring
+	daily.Recurrence = &types.RecurrenceInput{
+		Pattern: "daily", Interval: 1, End: "after_count", EndCount: 2,
+	}
+	_, fields := s.normalizeWebinarInput(daily, true, "")
+	if fields["startsAt"] != scheduleLeadError {
+		t.Fatalf("daily series inside the lead: %q", fields["startsAt"])
+	}
+
+	weekly := leadInput(start, types.StatusScheduled)
+	weekly.Kind = types.KindRecurring
+	weekly.Recurrence = &types.RecurrenceInput{
+		Pattern: "weekly", Interval: 1, Weekdays: []int{other},
+		End: "after_count", EndCount: 2,
+	}
+	_, fields = s.normalizeWebinarInput(weekly, true, "")
+	if msg := fields["startsAt"]; msg != "" {
+		t.Fatalf("first weekly session is later but the anchor was rejected: %q", msg)
+	}
+
+	weekly.Recurrence.Weekdays = []int{int(start.Weekday())}
+	_, fields = s.normalizeWebinarInput(weekly, true, "")
+	if fields["startsAt"] != scheduleLeadError {
+		t.Fatalf("selected start weekday inside the lead: %q", fields["startsAt"])
+	}
+}

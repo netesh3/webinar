@@ -55,15 +55,8 @@ export function defaultRecurrence(date: string): RecurrenceForm {
   };
 }
 
-/** The start day's weekday stays selected. Weekly otherwise has no first session. */
-export function withStartWeekday(form: RecurrenceForm, date: string): RecurrenceForm {
-  const day = weekday(date);
-  if (form.weekdays.includes(day)) return form;
-  return { ...form, weekdays: [...form.weekdays, day].sort((a, b) => a - b) };
-}
-
 export function planRecurrence(date: string, form: RecurrenceForm): RecurrencePlan {
-  const rule = withStartWeekday(form, date);
+  const rule = form;
   const fail = (error: string): RecurrencePlan => ({
     dates: [],
     skipped: [],
@@ -77,7 +70,7 @@ export function planRecurrence(date: string, form: RecurrenceForm): RecurrencePl
     return fail("Repeat every 1 to 99.");
   }
   if (rule.pattern === "weekly" && rule.weekdays.length === 0) {
-    return fail("Include the weekday the first session falls on.");
+    return fail("Select at least one day.");
   }
   if (rule.end === "by_date") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(rule.endDate)) {
@@ -111,9 +104,20 @@ export function planRecurrence(date: string, form: RecurrenceForm): RecurrencePl
   } else if (rule.pattern === "weekly") {
     const week0 = startOfWeek(date);
     const days = [...rule.weekdays].sort((a, b) => a - b);
-    for (let w = 0; w < MAX_OCCURRENCES * 8; w++) {
-      const week = addDays(week0, w * rule.interval * 7);
-      if (rule.end === "by_date" && w > 0 && week > rule.endDate) break;
+    // Align to the first week that has a selected day on or after the start,
+    // so clearing the start date's weekday begins on the next chosen day
+    // instead of skipping a whole interval.
+    let anchor = 0;
+    for (let w = 0; w < 7; w++) {
+      const week = addDays(week0, w * 7);
+      if (days.some((wd) => addDays(week, wd) >= date)) {
+        anchor = w;
+        break;
+      }
+    }
+    for (let n = 0; n < MAX_OCCURRENCES * 8; n++) {
+      const week = addDays(week0, (anchor + n * rule.interval) * 7);
+      if (rule.end === "by_date" && n > 0 && week > rule.endDate) break;
       let stopped = false;
       for (const wd of days) {
         const day = addDays(week, wd);

@@ -28,7 +28,7 @@ import {
 import { useHydrated, useNow } from "@/lib/clock";
 import { zonedToInstant } from "@/lib/format";
 import { optionsProblem } from "@/lib/registration-questions";
-import { planRecurrence, withStartWeekday } from "@/lib/recurrence";
+import { planRecurrence } from "@/lib/recurrence";
 import {
   issuesFor,
   legacyAnchor,
@@ -417,8 +417,19 @@ function ScheduleFormBody({
     }
     /* Same lead as the API (minScheduleLead). A new scheduled webinar, and an
      * edit that moves the start, have to clear it. Leaving the start where it
-     * already is — a webinar about to begin, or one that already ran — does not. */
-    const tooSoon = startsAt.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS;
+     * already is — a webinar about to begin, or one that already ran — does not.
+     * A new weekly series whose days omit the chosen start is led by the first
+     * selected weekday, and that session is what has to clear the lead. */
+    let leadAt = startsAt;
+    if (!editing && form.kind === "recurring" && form.recurrence.pattern === "weekly") {
+      const preview = planRecurrence(form.date, form.recurrence);
+      const first = preview.dates[0];
+      if (!preview.error && first && first !== form.date) {
+        const shifted = zonedToInstant(first, form.time, form.timeZone);
+        if (shifted) leadAt = shifted;
+      }
+    }
+    const tooSoon = leadAt.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS;
     const movingStart =
       editing &&
       webinar != null &&
@@ -435,7 +446,7 @@ function ScheduleFormBody({
       (!seriesMember || form.seriesScope === "following");
     let recurrence: WebinarInput["recurrence"];
     if (sendingRule) {
-      const rule = withStartWeekday(form.recurrence, form.date);
+      const rule = form.recurrence;
       const plan = planRecurrence(form.date, rule);
       if (plan.error) {
         setFields({ recurrence: plan.error });

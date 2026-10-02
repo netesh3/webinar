@@ -120,10 +120,6 @@ func Generate(start time.Time, loc *time.Location, rule Rule) (Plan, error) {
 		if len(times) >= MaxOccurrences {
 			return invalid(TooManyMessage)
 		}
-		if len(times) == 0 {
-			times = append(times, start)
-			return nil
-		}
 		times = append(times, t)
 		return nil
 	}
@@ -142,12 +138,16 @@ func Generate(start time.Time, loc *time.Location, rule Rule) (Plan, error) {
 		}
 	case Weekly:
 		week0 := startOfWeek(local)
-		for w := 0; w < MaxOccurrences*8; w++ {
-			week := week0.AddDate(0, 0, w*rule.Interval*7)
+		// Align to the first week that has a selected day on or after the
+		// start, so omitting the start date's weekday begins on the next
+		// chosen day instead of skipping a whole interval.
+		anchor := firstWeeklyWeek(local, week0, rule.Weekdays)
+		for n := 0; n < MaxOccurrences*8; n++ {
+			week := week0.AddDate(0, 0, (anchor+n*rule.Interval)*7)
 			// A week that starts after the end date cannot hold another session.
 			// Count-based series have no end date; zero time would look "before"
 			// every real week and stop the loop after the first one.
-			if rule.End == EndByDate && w > 0 && dateAfter(week, rule.EndDate) {
+			if rule.End == EndByDate && n > 0 && dateAfter(week, rule.EndDate) {
 				break
 			}
 			added := 0
@@ -200,9 +200,12 @@ func Generate(start time.Time, loc *time.Location, rule Rule) (Plan, error) {
 	if len(times) == 0 {
 		return Plan{}, invalid("That schedule has no sessions. Move the end date or add another occurrence.")
 	}
-	// The first instant is the one the host picked, not a reconstructed one,
-	// so a daylight-saving ambiguity cannot move the session they just set.
-	times[0] = start
+	// When the first session falls on the day the host picked, keep that
+	// instant. Reconstructing it can move the clock across a daylight-saving
+	// ambiguity. A later weekday uses the same time of day on its own date.
+	if sameDate(times[0].In(loc), local) {
+		times[0] = start
+	}
 
 	plan := Plan{Rule: rule, Times: times, Skipped: skipped}
 	plan.Summary = Summary(rule, len(times), skipped)
@@ -286,8 +289,8 @@ func normalize(local time.Time, in Input, loc *time.Location) (Rule, error) {
 			}
 		}
 		sort.Slice(rule.Weekdays, func(i, j int) bool { return rule.Weekdays[i] < rule.Weekdays[j] })
-		if !seen[local.Weekday()] {
-			return Rule{}, invalid("Include the weekday the first session falls on.")
+		if len(rule.Weekdays) == 0 {
+			return Rule{}, invalid("Select at least one day.")
 		}
 	}
 	switch End(in.End) {
@@ -317,6 +320,40 @@ func normalize(local time.Time, in Input, loc *time.Location) (Rule, error) {
 		return Rule{}, invalid("End the series on a date, or after a number of sessions.")
 	}
 	return rule, nil
+}
+
+// LeadInstant is the time that has to clear the schedule lead.
+// A weekly series that omits the chosen start's weekday begins on the next
+// selected day, and that first session is what counts. Any other schedule,
+// or one that does not plan, uses start itself.
+func LeadInstant(start time.Time, zone string, in Input) time.Time {
+	if Pattern(in.Pattern) != Weekly {
+		return start
+	}
+	plan, err := PlanSchedule(start, zone, in)
+	if err != nil || len(plan.Times) == 0 {
+		return start
+	}
+	return plan.Times[0]
+}
+
+func firstWeeklyWeek(local, week0 time.Time, days []time.Weekday) int {
+	for w := 0; w < 7; w++ {
+		week := week0.AddDate(0, 0, w*7)
+		for _, wd := range days {
+			day := week.AddDate(0, 0, int(wd))
+			if !dateBefore(day, local) {
+				return w
+			}
+		}
+	}
+	return 0
+}
+
+func sameDate(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
 }
 
 func startOfWeek(t time.Time) time.Time {
