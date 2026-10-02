@@ -187,9 +187,12 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And where a recording goes: Cloud must read as "checking", not unavailable, while
 	# the config loads, and the compact menu's sublines must stay one short line.
 	cd web && node --experimental-strip-types --no-warnings lib/record-target.test.mts
-	# And the connection toast: a sub-second blip must stay silent, a shown drop must turn
-	# into "back online" in place, and a long one must escalate to "Connection lost".
+	# And the connection toast: a blip under six seconds must stay silent, a shown drop must
+	# turn into "back online" in place, and a long one must escalate to "Connection lost".
 	cd web && node --experimental-strip-types --no-warnings lib/connection-toast.test.mts
+	# And the clock that toast uses: signal-only resumes are not drops, a blip under 6s never
+	# shows, and a recovery cancels the wait so flaps cannot add up.
+	cd web && node --experimental-strip-types --no-warnings lib/reconnect-indicator.test.mts
 	# And the requester's own hand and stage toast: raised → lowered by the host must
 	# replace in place, an open invite must not be talked over or time out.
 	cd web && node --experimental-strip-types --no-warnings lib/self-hand-toasts.test.mts

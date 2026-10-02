@@ -10,6 +10,7 @@ import {
   LOST_AFTER_MS,
   SHOW_AFTER_MS,
   connectionToastText,
+  linkForRoom,
   type ConnectionSignal,
   type ConnectionToastView,
 } from "./connection-toast.ts";
@@ -96,14 +97,26 @@ function connected(): ConnectionToastTracker {
   ok(t.nextDeadline() === null, "dismissed greeting leaves nothing scheduled");
 }
 
-// ---- a drop while the greeting is up flips straight to reconnecting, then says back online
+// ---- a drop while the greeting is up takes the greeting down, and waits the full delay
 {
   const t = connected();
   t.greet(200);
   t.update(sdk, 1_000);
-  ok(phase(t.view()) === "reconnecting", "drop during greeting shows reconnecting at once");
-  t.update(up, 2_000);
-  ok(phase(t.view()) === "back", "and recovers to back online, not connected");
+  ok(phase(t.view()) === "none", "drop during greeting does not show reconnecting yet");
+  t.tick(1_000 + SHOW_AFTER_MS - 1);
+  ok(phase(t.view()) === "none", "still hidden just under the delay");
+  t.update(up, 1_000 + SHOW_AFTER_MS - 1);
+  ok(phase(t.view()) === "none", "blip during the greeting ends silently");
+}
+{
+  const t = connected();
+  t.greet(200);
+  t.update(sdk, 1_000);
+  t.tick(1_000 + SHOW_AFTER_MS);
+  ok(phase(t.view()) === "reconnecting", "a greeting-time drop that lasts shows reconnecting");
+  const backAt = 1_000 + SHOW_AFTER_MS + 100;
+  t.update(up, backAt);
+  ok(phase(t.view()) === "back", "and recovers to back online, not the greeting");
 }
 
 // ---- a greeting raised during an outage is spent silently; the outage flow is unchanged
@@ -113,7 +126,7 @@ function connected(): ConnectionToastTracker {
   ok(t.greet(1_200) === false, "greet during outage does not show");
   t.tick(1_000 + SHOW_AFTER_MS);
   ok(phase(t.view()) === "reconnecting", "outage still shown");
-  t.update(up, 3_000);
+  t.update(up, 1_000 + SHOW_AFTER_MS + 100);
   ok(phase(t.view()) === "back", "outage still ends in back online");
 }
 
@@ -124,7 +137,7 @@ function connected(): ConnectionToastTracker {
   t.tick(200 + BACK_MS);
   t.update(sdk, 5_000);
   t.tick(5_000 + SHOW_AFTER_MS);
-  t.update(up, 7_000);
+  t.update(up, 5_000 + SHOW_AFTER_MS + 100);
   ok(phase(t.view()) === "back", "reconnect after greeting says back online");
 }
 
@@ -137,6 +150,15 @@ function connected(): ConnectionToastTracker {
   ok(phase(t.view()) === "none", "ladder retrying a first connect shows no toast");
   t.update(up, 6_000);
   ok(phase(t.view()) === "none", "first connect after retries still silent");
+}
+
+// ---- a signal-only resume is not an outage, however long it lasts
+{
+  const t = connected();
+  t.update({ link: linkForRoom("signalReconnecting"), recovering: null, attempts: A }, 5_000);
+  t.tick(5_000 + SHOW_AFTER_MS + 10_000);
+  ok(phase(t.view()) === "none", "signal resume never opens the reconnecting toast");
+  ok(t.nextDeadline() === null, "signal resume schedules nothing");
 }
 
 // ---- a short blip never appears
@@ -160,12 +182,13 @@ function connected(): ConnectionToastTracker {
   const v = t.view();
   ok(phase(v) === "reconnecting", "reconnecting after threshold", phase(v));
   ok(v?.phase === "reconnecting" && v.attempt === null, "SDK reconnect has no attempt number");
-  t.update(up, 3_000);
+  const backAt = 1_000 + SHOW_AFTER_MS + 400;
+  t.update(up, backAt);
   ok(phase(t.view()) === "back", "turns into back online");
-  ok(t.nextDeadline() === 3_000 + BACK_MS, "back online auto-dismiss scheduled");
-  t.tick(3_000 + BACK_MS - 1);
+  ok(t.nextDeadline() === backAt + BACK_MS, "back online auto-dismiss scheduled");
+  t.tick(backAt + BACK_MS - 1);
   ok(phase(t.view()) === "back", "back online still up before deadline");
-  t.tick(3_000 + BACK_MS);
+  t.tick(backAt + BACK_MS);
   ok(phase(t.view()) === "none", "back online gone after BACK_MS");
 }
 
@@ -173,13 +196,13 @@ function connected(): ConnectionToastTracker {
 {
   const t = connected();
   t.update(sdk, 1_000);
-  t.tick(2_500);
-  t.update(ladder(2), 3_000);
+  t.tick(1_000 + SHOW_AFTER_MS);
+  t.update(ladder(2), 1_000 + SHOW_AFTER_MS + 100);
   const v = t.view();
   ok(v?.phase === "reconnecting" && v.attempt === 2, "ladder attempt carried into view");
   ok(connectionToastText(v!).detail.includes("attempt 2 of 5"), "copy names the attempt");
   // Between attempts the room is Connecting; still the same outage.
-  t.update({ link: "connecting", recovering: 3, attempts: A }, 3_500);
+  t.update({ link: "connecting", recovering: 3, attempts: A }, 1_000 + SHOW_AFTER_MS + 200);
   ok(phase(t.view()) === "reconnecting", "connecting mid-ladder stays reconnecting");
 }
 
@@ -187,11 +210,12 @@ function connected(): ConnectionToastTracker {
 {
   const t = connected();
   t.update(ladder(1), 1_000);
-  t.tick(2_000);
+  t.tick(1_000 + SHOW_AFTER_MS);
   ok(phase(t.view()) === "reconnecting", "ladder rung 1 is reconnecting");
-  t.update(ladder(A), 4_000);
+  const lostAt = 1_000 + SHOW_AFTER_MS + 100;
+  t.update(ladder(A), lostAt);
   ok(phase(t.view()) === "lost", "final attempt is lost");
-  t.update(up, 5_000);
+  t.update(up, lostAt + 100);
   ok(phase(t.view()) === "back", "recovering from lost still says back online");
 }
 
@@ -210,16 +234,16 @@ function connected(): ConnectionToastTracker {
 {
   const t = connected();
   t.update(sdk, 1_000);
-  t.tick(2_500);
+  t.tick(1_000 + SHOW_AFTER_MS);
   t.dismiss();
   ok(phase(t.view()) === "none", "dismissed reconnecting hides");
-  t.update(ladder(3), 4_000);
+  t.update(ladder(3), 1_000 + SHOW_AFTER_MS + 500);
   ok(phase(t.view()) === "none", "still hidden on a later rung");
-  t.update(ladder(A), 6_000);
+  t.update(ladder(A), 1_000 + SHOW_AFTER_MS + 800);
   ok(phase(t.view()) === "lost", "escalation to lost shows despite dismiss");
   t.dismiss();
   ok(phase(t.view()) === "none", "dismissed lost hides");
-  t.update(up, 7_000);
+  t.update(up, 1_000 + SHOW_AFTER_MS + 900);
   ok(phase(t.view()) === "none", "dismissed outage ends without back online");
 }
 
@@ -227,32 +251,40 @@ function connected(): ConnectionToastTracker {
 {
   const t = connected();
   t.update(sdk, 1_000);
-  t.tick(2_500);
-  t.update(up, 3_000);
+  t.tick(1_000 + SHOW_AFTER_MS);
+  const backAt = 1_000 + SHOW_AFTER_MS + 200;
+  t.update(up, backAt);
+  ok(phase(t.view()) === "back", "back online is up to dismiss");
   t.dismiss();
   ok(phase(t.view()) === "none", "back online can be clicked away");
   ok(t.nextDeadline() === null, "and leaves nothing scheduled");
 }
 
-// ---- a drop while back online is up flips straight back without waiting
+// ---- a new drop while back online is up waits the full delay; it does not resume the last outage
 {
   const t = connected();
   t.update(sdk, 1_000);
-  t.tick(2_500);
-  t.update(up, 3_000);
-  t.update(sdk, 3_500);
-  ok(phase(t.view()) === "reconnecting", "drop during back online shows reconnecting at once");
+  t.tick(1_000 + SHOW_AFTER_MS);
+  const backAt = 1_000 + SHOW_AFTER_MS + 200;
+  t.update(up, backAt);
+  const dropAt = backAt + 400;
+  t.update(sdk, dropAt);
+  ok(phase(t.view()) === "none", "new drop hides back online and starts a fresh wait");
+  t.tick(dropAt + SHOW_AFTER_MS - 1);
+  ok(phase(t.view()) === "none", "just under a fresh 6s stays hidden");
+  t.update(up, dropAt + SHOW_AFTER_MS - 1);
+  ok(phase(t.view()) === "none", "a flap during back online never shows reconnecting");
 }
 
 // ---- a fresh outage after a dismissed one is shown again
 {
   const t = connected();
   t.update(sdk, 1_000);
-  t.tick(2_500);
+  t.tick(1_000 + SHOW_AFTER_MS);
   t.dismiss();
-  t.update(up, 3_000);
-  t.update(sdk, 10_000);
-  t.tick(10_000 + SHOW_AFTER_MS);
+  t.update(up, 1_000 + SHOW_AFTER_MS + 100);
+  t.update(sdk, 20_000);
+  t.tick(20_000 + SHOW_AFTER_MS);
   ok(phase(t.view()) === "reconnecting", "new outage is not muted by an old dismiss");
 }
 
@@ -265,7 +297,7 @@ function connected(): ConnectionToastTracker {
 {
   const t = connected();
   t.update({ ...sdk, offline: true }, 1_000);
-  t.tick(2_500);
+  t.tick(1_000 + SHOW_AFTER_MS);
   const v = t.view()!;
   ok(connectionToastText(v).detail.startsWith("You're offline"), "offline copy when navigator is offline");
 }
