@@ -201,6 +201,36 @@ func (s *Store) SetFeature(ctx context.Context, userID, feature string, enabled 
 	return u, err
 }
 
+/* OperatorInstantWebinarSQL turns Instant webinar on for the existing operator
+ * admin, and for nobody else.
+ *
+ * The email local-part is how that account is recognised: webinarliv@…, admin,
+ * and not a second admin whose address is something else. is_admin is required
+ * so a host who happens to use the same local-part does not receive it.
+ *
+ * One shot. migrations/0087 runs this when the account already exists. Do not
+ * call it on every boot: an administrator who later turns the switch off must
+ * stay off. A store test checks this text still matches that migration.
+ */
+const OperatorInstantWebinarSQL = `UPDATE users
+   SET features = array_append(features, 'instant_webinar')
+ WHERE is_admin
+   AND NOT ('instant_webinar' = ANY (features))
+   AND lower(split_part(email, '@', 1)) = 'webinarliv'`
+
+/* KeepOperatorInstantWebinar applies OperatorInstantWebinarSQL.
+ *
+ * Tests insert the operator after migrations have already run, so they call
+ * this to apply the same statement. Production relies on the migration.
+ */
+func (s *Store) KeepOperatorInstantWebinar(ctx context.Context) (int, error) {
+	tag, err := s.pool.Exec(ctx, OperatorInstantWebinarSQL)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
 /* AdminUsers lists every account for the admin panel.
  *
  * Includes the count of webinars each account owns, because that is the fact an admin needs

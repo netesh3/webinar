@@ -222,6 +222,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the host-home follow-up column: a week after the end, and no wider,
 	# so a session from last month does not sit beside Upcoming.
 	cd web && node --experimental-strip-types --no-warnings lib/follow-up-nudge.test.mts
+	# And the host-home create cards: Schedule alone, or Schedule beside Instant
+	# when that account's switch is on. Admin does not add the second card.
+	cd web && node --experimental-strip-types --no-warnings lib/host-home-actions.test.mts
 	# And the guest journey: a first-time registrant's just-made registration has no key
 	# until the email is confirmed, and the emailed ?k= link is then the only way in.
 	cd web && node --experimental-strip-types --no-warnings lib/guest-registration.test.mts

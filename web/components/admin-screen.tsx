@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import type { AdminUser, Webinar } from "@/lib/api-types";
+import { FeatureInstantWebinar, type AdminUser, type Webinar } from "@/lib/api-types";
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { paginate } from "@/lib/paginate";
 import { useAppConfig, useSession, useToast } from "./providers";
@@ -189,6 +189,28 @@ function AdminAccounts() {
     }
   }
 
+  async function setInstantWebinar(u: AdminUser, enabled: boolean) {
+    setBusy(u.id);
+    try {
+      const updated = await api.setUserFeature(u.id, FeatureInstantWebinar, enabled);
+      setUsers((prev) =>
+        (prev ?? []).map((row) =>
+          row.id === u.id ? { ...row, features: updated.features } : row,
+        ),
+      );
+      notify(
+        enabled
+          ? `Instant webinar enabled for ${u.name || u.email}.`
+          : `Instant webinar disabled for ${u.name || u.email}.`,
+        "ok",
+      );
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function setCdnBroadcast(u: AdminUser, canCdnBroadcast: boolean) {
     setBusy(u.id);
     try {
@@ -338,6 +360,14 @@ function AdminAccounts() {
                         label="CDN Broadcast"
                       />
 
+                      {u.canHost && (
+                        <Toggle
+                          checked={(u.features ?? []).includes(FeatureInstantWebinar)}
+                          onChange={(next) => void setInstantWebinar(u, next)}
+                          label="Instant webinar"
+                        />
+                      )}
+
                       {/* Max meeting duration — only shown for hosts */}
                       {u.canHost && (
                         <select
@@ -439,6 +469,8 @@ function AdminAccounts() {
  * screens can then work at the same time without either of them overwriting a
  * decision about a switch they never touched, and a retried request cannot
  * toggle something back.
+ *
+ * Instant webinar is the toggle on the account row, not a second copy here.
  */
 function AccountFeatures({
   user,
@@ -454,9 +486,14 @@ function AccountFeatures({
    * the first is still in flight. */
   const [busy, setBusy] = useState<string | null>(null);
 
-  if (featureCatalogue.length === 0) return null;
+  /* Instant webinar has its own toggle on the row. Counting it here as well
+   * would show two switches for one flag. */
+  const switches = featureCatalogue.filter((f) => f.key !== FeatureInstantWebinar);
+  if (switches.length === 0) return null;
 
-  const on = new Set(user.features ?? []);
+  const on = new Set(
+    (user.features ?? []).filter((key) => switches.some((f) => f.key === key)),
+  );
 
   async function set(key: string, enabled: boolean) {
     setBusy(key);
@@ -474,10 +511,10 @@ function AccountFeatures({
 
   return (
     <Disclosure
-      summary={`Features · ${on.size} of ${featureCatalogue.length} on`}
+      summary={`Features · ${on.size} of ${switches.length} on`}
     >
       <div className="grid gap-2.5">
-        {featureCatalogue.map((f) => (
+        {switches.map((f) => (
           <Toggle
             key={f.key}
             checked={on.has(f.key)}

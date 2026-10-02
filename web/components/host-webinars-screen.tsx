@@ -24,11 +24,11 @@ import {
   hostListFilterKey,
   hostListPageKey,
 } from "@/lib/host-list-cache";
+import { type Webinar, type WebinarInput } from "@/lib/api-types";
 import {
-  FeatureInstantWebinar,
-  type Webinar,
-  type WebinarInput,
-} from "@/lib/api-types";
+  hostHomeCreateActions,
+  hostHomeCreateColumns,
+} from "@/lib/host-home-actions";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { localTimeZone } from "@/lib/format";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
@@ -141,8 +141,8 @@ function ActionCardBody({
 /** Host Webinar home: create, run upcoming sessions, review past attendance.
  *
  *  No top nav entry of its own any more — the logo is this page for a host,
- *  see homeHrefFor in top-nav.tsx. The page opens on two action cards, Instant
- *  webinar (go live now, no form) and Schedule a webinar (/host/new). */
+ *  see homeHrefFor in top-nav.tsx. The page opens on Schedule a webinar, and
+ *  on Instant webinar beside it when that account's switch is on. */
 /** The list tab this visit will paint, when the address names one. Anything else
  *  (an old Audience or Messages link, Attending) still opens on Upcoming until
  *  that link is redirected. */
@@ -167,9 +167,10 @@ export function HostWebinarsScreen() {
   const bypass = isDevAuthBypassActive();
 
   const canHost = account?.canHost ?? false;
-  const instantAllowed = (account?.features ?? []).includes(
-    FeatureInstantWebinar,
-  );
+  /* features on /api/auth/me, not isAdmin. An admin without the switch gets
+   * the single Schedule card. */
+  const createActions = hostHomeCreateActions(account?.features);
+  const twoColumns = hostHomeCreateColumns(createActions) === 2;
   /* Read during the prefetch's callback. The prefetch itself must not restart when
    * the session resolves, or it would drop the list it just fetched. */
   const statusRef = useRef(status);
@@ -381,12 +382,19 @@ export function HostWebinarsScreen() {
       <h1 className="sr-only">Your webinars</h1>
       <div
         className={
-          instantAllowed
-            ? "mb-6 grid gap-3 sm:grid-cols-2"
-            : "mb-6 grid gap-3"
+          twoColumns
+            ? "mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2"
+            : "mb-6 grid grid-cols-1"
         }
       >
-        {instantAllowed && (
+        <Link href="/host/new" className={actionCardClass}>
+          <ActionCardBody
+            icon={<CalendarIcon className="size-4" />}
+            title="Schedule a webinar"
+            subtitle="Pick a date and invite people"
+          />
+        </Link>
+        {createActions.includes("instant") && (
           <button
             type="button"
             onClick={startInstantWebinar}
@@ -407,13 +415,6 @@ export function HostWebinarsScreen() {
             />
           </button>
         )}
-        <Link href="/host/new" className={actionCardClass}>
-          <ActionCardBody
-            icon={<CalendarIcon className="size-4" />}
-            title="Schedule a webinar"
-            subtitle="Pick a date and invite people"
-          />
-        </Link>
       </div>
 
       <HostWebinarBrowser reloadToken={reloadToken} />
