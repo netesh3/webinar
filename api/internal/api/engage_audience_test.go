@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,5 +121,179 @@ func TestAudienceRollup(t *testing.T) {
 	h.decode(raw, &ids)
 	if res.StatusCode != http.StatusOK || len(ids.ContactIDs) != 1 || ids.ContactIDs[0] != sam.ID {
 		t.Errorf("slipping ids = %d %+v (%s), want Sam", res.StatusCode, ids, raw)
+	}
+}
+
+/* The host is not a member of their own audience.
+ *
+ * Registering for your own webinar files a contact under the account email, and that
+ * contact used to read as a no-show: "Missed all", counted in Everyone / Didn't come /
+ * Slipping away, and eligible for Message all. The registration stays — the Attendees
+ * tab still lists them — and a co-host who registered with their own email stays too.
+ */
+func TestHostIsExcludedFromOwnAudience(t *testing.T) {
+	h := newHarness(t)
+	const hostEmail = "neeraj@acme.dev"
+	h.login(hostEmail)
+
+	a := autoWebinar(t, h, "Test Upcoming Webinar")
+	b := autoWebinar(t, h, "Second session")
+	const hostPhone = "+27 83 000 1111"
+	hostContact := registerWithPhone(t, h, a.ID, "Webinar", hostEmail, hostPhone, true)
+	registerWithPhone(t, h, b.ID, "Webinar", hostEmail, hostPhone, true)
+	ada := registerWithPhone(t, h, a.ID, "Ada", "ada@example.com", "+27 83 000 3333", true)
+
+	co := h.signup("Co Host", "cohost@example.com", false)
+	h.login(hostEmail)
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+a.ID+"/panelists",
+		types.PanelistRequest{Email: co.Email}); res.StatusCode != http.StatusOK {
+		t.Fatalf("add panelist: status %d body %s", res.StatusCode, raw)
+	}
+	if res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+a.ID+"/panelists/"+co.ID+"/co-host",
+		types.CoHostPatch{CoHost: true}); res.StatusCode != http.StatusOK {
+		t.Fatalf("make co-host: status %d body %s", res.StatusCode, raw)
+	}
+	cohost := registerWithPhone(t, h, a.ID, "Co", co.Email, "+27 83 000 2222", true)
+
+	// Stored contact emails are lowercased on write. Put the host's back in mixed
+	// case, and set the account phone to the number they registered with, so the
+	// exclusion has to match email case-insensitively and by phone as well as by
+	// the registration's user id.
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if _, err := pool.Exec(ctx, `UPDATE crm_contacts SET email = 'Neeraj@Acme.dev' WHERE id = $1::uuid`, hostContact.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE users SET phone = $2 WHERE lower(email) = $1`, hostEmail, hostContact.Phone); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now().Add(-3 * time.Hour).UTC().Truncate(time.Minute)
+	pinSessionWindow(t, a.ID, start, start.Add(60*time.Minute))
+	seedWatch(t, h, a.ID, ada.Email, 40, start)
+	h.engage.OnScored(context.Background(), a.ID)
+	h.engage.OnScored(context.Background(), b.ID)
+
+	hostContactID := hostContact.ID
+
+	listed := false
+	for _, row := range registrants(t, h, a.ID) {
+		if strings.EqualFold(row.Email, hostEmail) {
+			listed = true
+		}
+	}
+	if !listed {
+		t.Fatal("host registration was dropped from the webinar roster; only the audience should hide it")
+	}
+
+	res, raw := h.do(http.MethodGet, "/api/host/crm/people", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("people: %d %s", res.StatusCode, raw)
+	}
+	var people types.CRMPeopleResponse
+	h.decode(raw, &people)
+	if people.Total != 2 || people.Counts.Everyone != 2 || people.Counts.Slipping != 0 ||
+		people.Counts.Attended != 1 || people.Counts.NeverAttended != 1 {
+		t.Fatalf("counts = %+v total %d, want 2 people, 1 came, 1 didn't, 0 slipping", people.Counts, people.Total)
+	}
+	sawAda, sawCo := false, false
+	for _, p := range people.People {
+		if strings.EqualFold(p.Contact.Email, hostEmail) || p.Contact.ID == hostContactID {
+			t.Fatalf("host is in the people list: %+v", p.Contact)
+		}
+		sawAda = sawAda || p.Contact.ID == ada.ID
+		sawCo = sawCo || p.Contact.ID == cohost.ID
+	}
+	if !sawAda || !sawCo {
+		t.Fatalf("people = %+v, want Ada and the co-host", people.People)
+	}
+
+	for _, filter := range []string{types.PeopleNeverAttended, types.PeopleSlipping, types.PeopleAttended, ""} {
+		res, raw = h.do(http.MethodGet, "/api/host/crm/people/ids?filter="+filter, nil)
+		var ids types.CRMContactIDsResponse
+		h.decode(raw, &ids)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("ids %s: %d %s", filter, res.StatusCode, raw)
+		}
+		for _, id := range ids.ContactIDs {
+			if id == hostContactID {
+				t.Errorf("filter %q message set includes the host", filter)
+			}
+		}
+	}
+	res, raw = h.do(http.MethodGet, "/api/host/crm/people/ids?filter="+types.PeopleSlipping, nil)
+	var slip types.CRMContactIDsResponse
+	h.decode(raw, &slip)
+	if len(slip.ContactIDs) != 0 {
+		t.Errorf("slipping recipients = %+v, want none (only the host registered twice and never came)", slip.ContactIDs)
+	}
+
+	sum := audienceSummary(t, h)
+	if sum.People != 2 || sum.SlippingCount != 0 || len(sum.Slipping) != 0 {
+		t.Fatalf("summary = %+v, want 2 people and no slipping", sum)
+	}
+	for _, p := range append(sum.Best, sum.Slipping...) {
+		if p.ContactID == hostContactID {
+			t.Errorf("summary list includes the host: %+v", p)
+		}
+	}
+
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+a.ID+"/end", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("end: %d %s", res.StatusCode, raw)
+	}
+	eng := h.engagementSummary(a.ID)
+	sum = audienceSummary(t, h)
+	var col *types.CRMAudienceWebinar
+	for i := range sum.Webinars {
+		if sum.Webinars[i].ID == a.ID {
+			col = &sum.Webinars[i]
+		}
+	}
+	if col == nil {
+		t.Fatal("ended webinar is missing from the audience chart")
+	}
+	if col.Registered != eng.KPIs.Registered-1 {
+		t.Errorf("chart registered %d, engagement registered %d; the difference should be the host's seat",
+			col.Registered, eng.KPIs.Registered)
+	}
+	if col.Attended != eng.KPIs.Attended {
+		t.Errorf("chart attended %d, engagement attended %d; the host did not join", col.Attended, eng.KPIs.Attended)
+	}
+	if col.Registered > 0 && sum.ShowUpPct != col.Attended*100/col.Registered {
+		t.Errorf("show-up %d, want %d from the chart after dropping the host", sum.ShowUpPct, col.Attended*100/col.Registered)
+	}
+
+	webinarAud := audiencePreview(t, h, "?audience="+types.AudienceWebinar+"&webinarId="+a.ID)
+	if webinarAud.Recipients != 2 || webinarAud.NoNumber != 0 {
+		t.Errorf("webinar broadcast audience = %+v, want 2 recipients and the host in none of the buckets", webinarAud)
+	}
+	opted := audiencePreview(t, h, "?audience="+types.AudienceOptedIn)
+	if opted.Recipients != 2 {
+		t.Errorf("opted-in broadcast audience = %+v, want 2", opted)
+	}
+	code, seg, raw := postAudience(t, h, types.CRMBroadcastRequest{
+		Audience: types.AudienceSegment, WebinarID: a.ID,
+		Segment: &types.CRMSegment{Attendance: types.SegmentNoShow},
+		Params:  []types.CRMParam{{Text: "hello"}},
+	})
+	if code != http.StatusOK || seg.Recipients != 1 {
+		t.Fatalf("no-show segment: %d %+v (%s), want the co-host only", code, seg, raw)
+	}
+	code, picked, raw := postAudience(t, h, types.CRMBroadcastRequest{
+		Audience:   types.AudienceContacts,
+		ContactIDs: []string{hostContactID, ada.ID, cohost.ID},
+		Params:     []types.CRMParam{{Text: "hello"}},
+	})
+	if code != http.StatusOK || picked.Recipients != 2 {
+		t.Fatalf("hand-picked broadcast: %d %+v (%s), want Ada and the co-host", code, picked, raw)
+	}
+	for _, sample := range append(seg.Samples, picked.Samples...) {
+		if sample.ContactID == hostContactID {
+			t.Errorf("broadcast sample is the host: %+v", sample)
+		}
 	}
 }

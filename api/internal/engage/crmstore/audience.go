@@ -3,6 +3,7 @@ package crmstore
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"time"
 
 	"github.com/netkumar/webcast/api/internal/store"
@@ -99,12 +100,13 @@ func (s *Store) Audience(ctx context.Context, hostID string, lastN int) (types.C
 	out := types.CRMAudienceSummary{Webinars: []types.CRMAudienceWebinar{},
 		Best: []types.CRMAudiencePerson{}, Slipping: []types.CRMAudiencePerson{}}
 	if err := s.pool.QueryRow(ctx, `
-		SELECT count(*) FILTER (WHERE registered > 0),
-		       count(*) FILTER (WHERE attended >= 2),
-		       count(*) FILTER (WHERE attended >= 2 AND avg_score >= 50),
-		       count(*) FILTER (WHERE registered >= 2 AND attended = 0),
-		       count(*) FILTER (WHERE last_attended_at >= now() - interval '30 days')
-		  FROM crm_contact_engagement WHERE host_id = $1::uuid`, hostID).
+		SELECT count(*) FILTER (WHERE ce.registered > 0),
+		       count(*) FILTER (WHERE ce.attended >= 2),
+		       count(*) FILTER (WHERE ce.attended >= 2 AND ce.avg_score >= 50),
+		       count(*) FILTER (WHERE ce.registered >= 2 AND ce.attended = 0),
+		       count(*) FILTER (WHERE ce.last_attended_at >= now() - interval '30 days')
+		  FROM crm_contact_engagement ce
+		 WHERE ce.host_id = $1::uuid`+excludeOwnAccountEngagement, hostID).
 		Scan(&out.People, &out.CameBack, &out.BestCount, &out.SlippingCount, &out.ActiveMonth); err != nil {
 		return out, err
 	}
@@ -119,7 +121,6 @@ func (s *Store) Audience(ctx context.Context, hostID string, lastN int) (types.C
 	if err != nil {
 		return out, err
 	}
-	var reg, came, indexSum int
 	for rows.Next() {
 		var (
 			wb      types.CRMAudienceWebinar
@@ -140,9 +141,6 @@ func (s *Store) Audience(ctx context.Context, hostID string, lastN int) (types.C
 		_ = json.Unmarshal(payload, &sum)
 		wb.StartsAt = at.Format(time.RFC3339)
 		wb.Registered, wb.Attended, wb.Index = sum.KPIs.Registered, sum.KPIs.Attended, sum.Index
-		reg += wb.Registered
-		came += wb.Attended
-		indexSum += wb.Index
 		out.Webinars = append(out.Webinars, wb)
 	}
 	rows.Close()
@@ -152,6 +150,19 @@ func (s *Store) Audience(ctx context.Context, hostID string, lastN int) (types.C
 	// Oldest first, as a chart reads.
 	for i, j := 0, len(out.Webinars)-1; i < j; i, j = i+1, j-1 {
 		out.Webinars[i], out.Webinars[j] = out.Webinars[j], out.Webinars[i]
+	}
+	seats, err := s.hostSeats(ctx, hostID)
+	if err != nil {
+		return out, err
+	}
+	var reg, came, indexSum int
+	for i := range out.Webinars {
+		if seat, ok := seats[out.Webinars[i].ID]; ok {
+			adjustAudienceWebinar(&out.Webinars[i], seat)
+		}
+		reg += out.Webinars[i].Registered
+		came += out.Webinars[i].Attended
+		indexSum += out.Webinars[i].Index
 	}
 	if reg > 0 {
 		out.ShowUpPct = came * 100 / reg
@@ -164,7 +175,7 @@ func (s *Store) Audience(ctx context.Context, hostID string, lastN int) (types.C
 		rs, err := s.pool.Query(ctx, `
 			SELECT c.id::text, c.name, ce.registered, ce.attended, ce.avg_score, ce.last_tier
 			  FROM crm_contact_engagement ce JOIN crm_contacts c ON c.id = ce.contact_id
-			 WHERE ce.host_id = $1::uuid AND `+where+`
+			 WHERE ce.host_id = $1::uuid AND `+where+excludeOwnAccount+`
 			 ORDER BY `+order+` LIMIT 5`, hostID)
 		if err != nil {
 			return nil, err
@@ -185,4 +196,85 @@ func (s *Store) Audience(ctx context.Context, hostID string, lastN int) (types.C
 	}
 	out.Slipping, err = list(`ce.registered >= 2 AND ce.attended = 0`, `ce.registered DESC, c.name`)
 	return out, err
+}
+
+/* hostSeat is the host's own registration on one webinar, read so the audience chart
+ * can drop that seat from the saved snapshot. The snapshot itself is the engagement
+ * record and is left as it was written. */
+type hostSeat struct {
+	attended bool
+	score    *int
+}
+
+/* hostSeats is the host's own non-declined registration on each of their webinars.
+ *
+ * Same three keys as ownAccountContactIDs, applied to the registration rather than
+ * the contact: user id when the registration is bound to the account, otherwise the
+ * account email, otherwise the account phone. A seat with no score did not join.
+ */
+func (s *Store) hostSeats(ctx context.Context, hostID string) (map[string]hostSeat, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT w.slug,
+		       bool_or(wt.rid IS NOT NULL OR es.score IS NOT NULL),
+		       max(es.score)
+		  FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		  JOIN users u ON u.id = w.host_id
+		  LEFT JOIN (`+store.WatchByRegistrationSQL(`w.host_id = $1::uuid`)+`) wt ON wt.rid = r.id
+		  LEFT JOIN engagement_scores es ON es.registration_id = r.id AND es.webinar_id = w.id
+		 WHERE w.host_id = $1::uuid AND r.state <> 'declined'
+		   AND (
+		        r.user_id = u.id
+		        OR (u.email <> '' AND lower(r.email) = lower(u.email))
+		        OR (u.phone <> '' AND r.phone <> ''
+		            AND regexp_replace(r.phone, '[^0-9]', '', 'g')
+		              = regexp_replace(u.phone, '[^0-9]', '', 'g'))
+		   )
+		 GROUP BY w.slug`, hostID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]hostSeat{}
+	for rows.Next() {
+		var (
+			slug     string
+			attended bool
+			score    *int
+		)
+		if err := rows.Scan(&slug, &attended, &score); err != nil {
+			return nil, err
+		}
+		out[slug] = hostSeat{attended: attended, score: score}
+	}
+	return out, rows.Err()
+}
+
+/* adjustAudienceWebinar drops the host's seat from one chart column.
+ *
+ * Registered and attended are headcounts, so the host is one seat. The session
+ * index is the average of the scores of people who joined; when the host joined
+ * and has a score, that average is rebuilt without them. A host who only registered
+ * never entered the average, and the stored snapshot is not rewritten.
+ */
+func adjustAudienceWebinar(wb *types.CRMAudienceWebinar, seat hostSeat) {
+	origAttended, origIndex := wb.Attended, wb.Index
+	if wb.Registered > 0 {
+		wb.Registered--
+	}
+	if seat.attended && wb.Attended > 0 {
+		wb.Attended--
+	}
+	if !seat.attended || seat.score == nil || origAttended <= 0 {
+		return
+	}
+	if wb.Attended == 0 {
+		wb.Index = 0
+		return
+	}
+	sum := origIndex*origAttended - *seat.score
+	wb.Index = int(math.Round(float64(sum) / float64(wb.Attended)))
+	if wb.Index < 0 {
+		wb.Index = 0
+	}
 }

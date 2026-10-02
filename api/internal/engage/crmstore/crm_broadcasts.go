@@ -146,15 +146,15 @@ func audienceFrom(hostID string, a Audience) (string, []any) {
 			SELECT 1 FROM crm_contact_tags ct
 			  JOIN crm_tags t ON t.id = ct.tag_id
 			 WHERE ct.contact_id = c.id AND t.id = $2::uuid AND t.host_id = c.host_id
-		)`, []any{hostID, a.TagID}
+		)` + excludeOwnAccount, []any{hostID, a.TagID}
 	case types.AudienceWebinar:
-		return base + ` AND ` + contactRegisteredFor(`$2`), []any{hostID, a.WebinarSlug}
+		return base + ` AND ` + contactRegisteredFor(`$2`) + excludeOwnAccount, []any{hostID, a.WebinarSlug}
 	case types.AudienceContacts:
 		ids := a.ContactIDs
 		if ids == nil {
 			ids = []string{}
 		}
-		return base + ` AND c.id = ANY($2::uuid[])`, []any{hostID, ids}
+		return base + ` AND c.id = ANY($2::uuid[])` + excludeOwnAccount, []any{hostID, ids}
 	case types.AudienceSegment:
 		/* Driven from the webinar's registrations, each filed under one contact the way
 		 * the roster files it, then narrowed by watch time. */
@@ -173,9 +173,9 @@ func audienceFrom(hostID string, a Audience) (string, []any) {
 			  CROSS JOIN LATERAL (` + pickContactForRegistration + `) pick
 			 WHERE w.slug = $2 AND w.host_id = $1::uuid AND r.state <> 'declined'` +
 			segmentPredicate(g) + `
-		)`, []any{hostID, a.WebinarSlug}
+		)` + excludeOwnAccount, []any{hostID, a.WebinarSlug}
 	}
-	return base, []any{hostID}
+	return base + excludeOwnAccount, []any{hostID}
 }
 
 /* contactRegisteredFor is "this contact `c` registered for the webinar named by that
@@ -282,6 +282,45 @@ const (
 		OR (` + matchByPhone + `)
 	)`
 )
+
+/* ownAccountContactIDs is the signed-in host's own CRM row, if they have one.
+ *
+ * crm_contacts has no user_id. The account link that does exist is the registration:
+ * registering while that email already has an account sets registrations.user_id to
+ * it (ensureAttendee), so a registration whose user_id is this host is the host,
+ * and the contact filed under it — the same pick the roster uses — is their row.
+ * That misses a contact created without that link, which is how a host who registered
+ * for their own webinar shows up: the contact is a copy of the registration, matched
+ * on email. The account email (case-insensitive) and, when the account has one, the
+ * account phone are the other two keys. Empty email and empty phone match nobody.
+ *
+ * Co-hosts and panelists are other accounts. Their registrations carry their user id,
+ * not the host's, so they stay in the audience.
+ *
+ * $1 is the host, which every caller of this fragment already binds.
+ */
+const ownAccountContactIDs = `
+	SELECT c2.id FROM crm_contacts c2
+	  JOIN users u ON u.id = $1::uuid
+	 WHERE c2.host_id = $1::uuid
+	   AND (
+	        (c2.email <> '' AND lower(c2.email) = lower(u.email))
+	        OR (u.phone <> '' AND c2.phone <> ''
+	            AND regexp_replace(c2.phone, '[^0-9]', '', 'g')
+	              = regexp_replace(u.phone, '[^0-9]', '', 'g'))
+	   )
+	UNION
+	SELECT pick.id FROM registrations r
+	  JOIN webinars w ON w.id = r.webinar_id
+	  CROSS JOIN LATERAL (` + pickContactForRegistration + `) pick
+	 WHERE w.host_id = $1::uuid AND r.user_id = $1::uuid AND r.state <> 'declined'
+`
+
+// excludeOwnAccount drops the host's contact from a query whose contact is `c`.
+const excludeOwnAccount = ` AND c.id NOT IN (` + ownAccountContactIDs + `)`
+
+// excludeOwnAccountEngagement is the same drop for a rollup row `ce`.
+const excludeOwnAccountEngagement = ` AND ce.contact_id NOT IN (` + ownAccountContactIDs + `)`
 
 /* Where a contact stands on WhatsApp: four predicates that partition every contact of
  * a host, whatever else is true about them.
