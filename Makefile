@@ -184,6 +184,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the raised-hand toasts: one per new hand, gone when anyone handles it, a burst
 	# folded into one summary, and the hands already up when a host arrives left alone.
 	cd web && node --experimental-strip-types --no-warnings lib/hand-toasts.test.mts
+	# And the raised-hands queue: Participants keeps the headcount, the new button
+	# is host/panelist only, and lower / invite go through the existing helpers.
+	cd web && node --experimental-strip-types --no-warnings lib/raised-hands.test.mts
 	# And where a recording goes: Cloud must read as "checking", not unavailable, while
 	# the config loads, and the compact menu's sublines must stay one short line.
 	cd web && node --experimental-strip-types --no-warnings lib/record-target.test.mts

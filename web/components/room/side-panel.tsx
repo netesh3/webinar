@@ -9,6 +9,7 @@ import { useRoomUI } from "./context";
 import { ParticipantsPanel } from "./participants";
 import { PollsPanel } from "./polls-panel";
 import { QAPanel } from "./qa-panel";
+import { RaisedHandsDrawer, useRaisedHandsPanel } from "./raised-hands-panel";
 import { tool } from "./tools";
 
 /* Engagement panel — Zoom's Chat / Q&A / Participants card.
@@ -41,6 +42,7 @@ function PanelBody({ id }: { id: ToolId }) {
 
 export function SidePanel() {
   const { tools, availableTools } = useRoomUI();
+  const raisedHands = useRaisedHandsPanel();
   const compact = useCompact();
   const tab = tools.panelTab;
 
@@ -67,6 +69,11 @@ export function SidePanel() {
     if (dockable.length === 0) tools.closePanel();
     else tools.open(dockable[0]);
   }, [tab, dockable, tools]);
+
+  // One right-hand drawer. Raised hands is not a tool id, so it cannot steal
+  // Participants. While it is open it takes this slot; close puts the previous
+  // tab back (see useRaisedHandsController).
+  if (raisedHands.open) return <RaisedHandsDrawer />;
 
   const active = tab && dockable.includes(tab) ? tab : null;
   if (!active) return null;

@@ -50,6 +50,7 @@ import { useAudienceSurvey } from "@/lib/use-audience-survey";
 import { CtaPopup } from "./cta-popup";
 import { CaptionOverlay } from "./caption-overlay";
 import { useSelfHandToasts, type SelfHandEvent } from "./self-hand-toasts";
+import { RaisedHandsProvider, useRaisedHandsController } from "./raised-hands-panel";
 import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
@@ -214,8 +215,9 @@ export function CdnAttendeeRoom({
   // Tools & layout
   const availableTools = useAvailableTools({ isHost: false, controls });
   const tools = useToolLayout(availableTools);
+  const raisedHands = useRaisedHandsController(tools, realtime.hands.length);
   const compact = useCompact();
-  const panelOpen = compact && Boolean(tools.panelTab);
+  const panelOpen = compact && (Boolean(tools.panelTab) || raisedHands.open);
 
   const fileShare = useFileShare(room);
   const stage = useStageLayout();
@@ -413,6 +415,7 @@ export function CdnAttendeeRoom({
       <RoomUIProvider value={ui}>
         <RecorderProvider>
           <ActiveSpeakerProvider>
+            <RaisedHandsProvider value={raisedHands}>
             <ToolDragProvider onPin={tools.pin} onUnpin={tools.unpin}>
               <div data-room className="flex h-dvh flex-col overflow-hidden bg-stage">
                 <div className="relative min-h-0 min-w-0 flex-1">
@@ -460,6 +463,7 @@ export function CdnAttendeeRoom({
 
               <ToolWindows />
             </ToolDragProvider>
+            </RaisedHandsProvider>
           </ActiveSpeakerProvider>
         </RecorderProvider>
       </RoomUIProvider>

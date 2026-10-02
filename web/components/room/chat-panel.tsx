@@ -30,8 +30,10 @@ import {
   HostChatPermission,
 } from "./chat-permission-control";
 import { useRoomUI } from "./context";
+import { chatFocusDraft } from "@/lib/raised-hands";
 import { MentionComposer } from "./mention-composer";
 import { useMentionPeople } from "./mention-people";
+import { useRaisedHandsPanel } from "./raised-hands-panel";
 
 /* Chat.
  *
@@ -55,6 +57,16 @@ const MAX_CHARS = 2000;
 export function ChatPanel() {
   const { slug, joinKey, realtime, controls, permissions, isHost, me } = useRoomUI();
   const [draft, setDraft] = useState<Draft>({ text: "", mentions: [] });
+  const chatMention = useRaisedHandsPanel().chatMention;
+  // "Message" on a raised hand. There is no direct-message thread, so the room
+  // chat opens with that person @mentioned — the composer, not a private channel.
+  // Applied while rendering, once per request: an effect would setState just to
+  // copy a prop into the draft, and a later keystroke must not be overwritten.
+  const [appliedMention, setAppliedMention] = useState(0);
+  if (chatMention && chatMention.nonce !== appliedMention) {
+    setAppliedMention(chatMention.nonce);
+    setDraft(chatFocusDraft(chatMention));
+  }
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Saved but not delivered, which is not an error. See send().

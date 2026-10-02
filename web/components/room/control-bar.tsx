@@ -8,11 +8,16 @@ import {
   useTracks,
 } from "@livekit/components-react";
 import { ConnectionState, Track } from "livekit-client";
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { enableCamera } from "@/lib/backgrounds";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
+import {
+  participantsButtonCount,
+  raisedHandsButtonCount,
+  raisedHandsPlacement,
+} from "@/lib/raised-hands";
 import {
   barSlots,
   centerBarTools,
@@ -20,6 +25,7 @@ import {
   gridItems,
   isCustomised,
   isHomeTool,
+  isPanelTool,
   morePanelTools,
   tuckedTools,
   usableTools,
@@ -41,6 +47,7 @@ import { Spinner } from "../controls";
 import {
   CameraIcon,
   CameraOffIcon,
+  HandIcon,
   LeaveIcon,
   MIC_CAPSULE_PATH,
   MicIcon,
@@ -73,6 +80,7 @@ import {
 import { EndWebinarDialog, SendSurveyButton } from "./host-survey";
 import { LeaveConfirm } from "./leave-confirm";
 import { PipStage } from "./pip-stage";
+import { useRaisedHandsPanel } from "./raised-hands-panel";
 import { useToolDrag, type DropHandler } from "./tool-drag";
 import { tool } from "./tools";
 
@@ -159,11 +167,13 @@ export function ControlBar() {
     mentions,
     fileShare,
     stage,
+    me,
     leave,
     previewChrome,
     prefs,
     updatePrefs,
   } = useRoomUI();
+  const raisedHands = useRaisedHandsPanel();
 
   const room = useRoomContext();
 
@@ -309,6 +319,17 @@ export function ControlBar() {
   // centred strip they've always had — isAttendee is false for both, by
   // construction above.
   const shiftToolsRight = compact && isAttendee && leftClusterCount > 0;
+
+  const raisedCount = raisedHandsButtonCount(
+    {
+      isHost,
+      role: me.role,
+      promoted: permissions.promoted,
+      canPublish: permissions.canPublish,
+    },
+    realtime.hands.length,
+  );
+  const raisedWhere = raisedHandsPlacement(compact, raisedCount);
 
   /* The bar reports itself as a drop zone through state and an effect.
    *
@@ -631,28 +652,17 @@ export function ControlBar() {
     [previewChrome, toggle, localParticipant, notify],
   );
 
-  /** Per-tool badge. Only two tools have a stream of things that arrive while you
-   *  are not looking; the raised-hand queue is the third and belongs on
-   *  Participants, because that is where the host acts on it.
-   *
-   *  Deliberately NOT where the headcount lives (see countFor below): this
-   *  feeds gridBadge's "something needs your attention" total on the More
-   *  button, and a passive headcount is not that — a room of twenty people
-   *  with nothing unread must not read as twenty unread things. */
-  const badgeFor = (id: ToolId): number | undefined => {
-    if (id === "participants") {
-      return isHost && realtime.hands.length > 0 ? realtime.hands.length : undefined;
-    }
-    return unread[id] || undefined;
-  };
+  /** Per-tool badge. Only the tools with a stream of things that arrive while
+   *  you are not looking. The raised-hand queue is not one of them any more —
+   *  it has its own button — and the headcount is not one either: this feeds
+   *  gridBadge's "something needs your attention" total on More, and a room of
+   *  twenty people with nothing unread must not read as twenty unread things. */
+  const badgeFor = (id: ToolId): number | undefined => unread[id] || undefined;
 
-  /** What the button itself shows, which is badgeFor's "needs attention"
-   *  count for everything except Participants — where, idle, it falls back
-   *  to the plain headcount (Zoom shows this next to the people icon).
-   *  Raised hands still win when there are any: that is the one that needs
-   *  a click, not just a look. */
+  /** What the button itself shows. Participants is always the headcount, even
+   *  while hands are up. Everything else is badgeFor's attention count. */
   const countFor = (id: ToolId): number | undefined =>
-    id === "participants" ? (badgeFor(id) ?? headcount) : badgeFor(id);
+    id === "participants" ? participantsButtonCount(headcount, realtime.hands.length) : badgeFor(id);
 
   const labelFor = (id: ToolId): string => {
     const t = tool(id);
@@ -687,6 +697,9 @@ export function ControlBar() {
   }, []);
 
   const activate = (id: ToolId) => {
+    // A panel tool takes the one drawer. Yield the queue without putting the
+    // tab it covered back on top of the tool just chosen.
+    if (isPanelTool(id) && raisedHands.open) raisedHands.dismiss();
     // The same click that runs this tool takes More out of the way; the press
     // itself could not, since it might have been a drag aimed at the panel.
     if (closesMoreOnToolActivate({ moreOpen, editing: editingNow, dragging: drag.drag !== null })) {
@@ -744,7 +757,8 @@ export function ControlBar() {
   // those badges would otherwise vanish along with the rail that used to show them.
   const gridBadge =
     grid.reduce((sum, id) => sum + (badgeFor(id) ?? 0), 0) +
-    (panelItems?.reduce((sum, id) => sum + (badgeFor(id) ?? 0), 0) ?? 0);
+    (panelItems?.reduce((sum, id) => sum + (badgeFor(id) ?? 0), 0) ?? 0) +
+    (raisedWhere === "overflow" && raisedCount ? raisedCount : 0);
 
   const dropIndex = drag.drag?.over === "bar" ? drag.drag.index : null;
 
@@ -927,24 +941,20 @@ export function ControlBar() {
 
         {centerTools.map((id) => {
           const Icon = tool(id).icon;
-          if (isHomeTool(id)) {
-            return (
-              <HomeToolSlot
-                key={id}
-                id={id}
-                label={labelFor(id)}
-                active={activeFor(id)}
-                movable={capacity > 0}
-                editing={editingNow}
-                landed={landed === id}
-                dragging={drag.drag?.tool === id}
-                onActivate={() => activate(id)}
-                onRemove={() => edit(() => tools.remove(id))}
-              />
-            );
-          }
-          return (
-            <div key={id} className="relative" data-tool-slot={id}>
+          const slot = isHomeTool(id) ? (
+            <HomeToolSlot
+              id={id}
+              label={labelFor(id)}
+              active={activeFor(id)}
+              movable={capacity > 0}
+              editing={editingNow}
+              landed={landed === id}
+              dragging={drag.drag?.tool === id}
+              onActivate={() => activate(id)}
+              onRemove={() => edit(() => tools.remove(id))}
+            />
+          ) : (
+            <div className="relative" data-tool-slot={id}>
               <BarButton
                 label={tool(id).label}
                 active={activeFor(id)}
@@ -965,7 +975,28 @@ export function ControlBar() {
               )}
             </div>
           );
+          return (
+            <Fragment key={id}>
+              {slot}
+              {raisedWhere === "bar" && id === "participants" && raisedCount != null && (
+                <RaisedHandsBarButton
+                  count={raisedCount}
+                  active={raisedHands.open}
+                  onClick={() => raisedHands.toggle()}
+                />
+              )}
+            </Fragment>
+          );
         })}
+        {raisedWhere === "bar" &&
+          raisedCount != null &&
+          !centerTools.includes("participants") && (
+            <RaisedHandsBarButton
+              count={raisedCount}
+              active={raisedHands.open}
+              onClick={() => raisedHands.toggle()}
+            />
+          )}
 
         {/* Customisable extras (Invite, Host tools, Captions, …) sit in the
             same strip they overflow from, not across the bar next to Leave.
@@ -1107,6 +1138,15 @@ export function ControlBar() {
             <MoreGrid
               items={grid}
               panelItems={panelItems}
+              raisedHandsAction={
+                raisedWhere === "overflow" && raisedCount != null
+                  ? {
+                      count: raisedCount,
+                      active: raisedHands.open,
+                      onClick: () => raisedHands.toggle(),
+                    }
+                  : undefined
+              }
               shareAction={
                 permissions.canShareScreen && !shareOnBar
                   ? {
@@ -1608,8 +1648,29 @@ function BarButtonShell({
     >
       {children}
       {/* The caption disappears below `sm`, where there is only room for glyphs. */}
-      <span className="hidden text-[9.5px] leading-none font-medium sm:block">{label}</span>
+      <span className="hidden text-[9.5px] leading-none font-medium whitespace-nowrap sm:block">{label}</span>
     </span>
+  );
+}
+
+function RaisedHandsBarButton({
+  count,
+  active,
+  onClick,
+}: {
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <BarButton
+      label="Raised hands"
+      ariaLabel={`Raised hands, ${count}`}
+      active={active}
+      badge={count}
+      onClick={onClick}
+      icon={<HandIcon className="size-5" />}
+    />
   );
 }
 
@@ -1624,6 +1685,7 @@ function BarButton({
   badge,
   mentions = 0,
   meterRef,
+  ariaLabel,
   className = "",
 }: {
   label: string;
@@ -1636,6 +1698,7 @@ function BarButton({
   badge?: number;
   /** Unseen @mentions, which turn the badge into "@". Chat only. */
   mentions?: number;
+  ariaLabel?: string;
   /** Attach a live audio meter to this button. The element's `--mic-level` is written every
    *  frame by useMicMeter; only the microphone passes this. */
   meterRef?: React.RefObject<SVGRectElement | null>;
@@ -1645,9 +1708,9 @@ function BarButton({
     <button
       type="button"
       onClick={onClick}
-      aria-label={label}
+      aria-label={ariaLabel ?? label}
       aria-pressed={active}
-      title={label}
+      title={ariaLabel ?? label}
       disabled={busy}
       className={`relative shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-white/50 rounded-lg ${className}`}
     >
