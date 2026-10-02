@@ -225,6 +225,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the host-home create cards: Schedule alone, or Schedule beside Instant
 	# when that account's switch is on. Admin does not add the second card.
 	cd web && node --experimental-strip-types --no-warnings lib/host-home-actions.test.mts
+	# And the admin Features list: catalogue order, with Instant webinar in its
+	# server slot, then CDN broadcast — which is not a feature key and stays
+	# available when the account cannot host.
+	cd web && node --experimental-strip-types --no-warnings lib/admin-account-features.test.mts
 	# And the guest journey: a first-time registrant's just-made registration has no key
 	# until the email is confirmed, and the emailed ?k= link is then the only way in.
 	cd web && node --experimental-strip-types --no-warnings lib/guest-registration.test.mts
