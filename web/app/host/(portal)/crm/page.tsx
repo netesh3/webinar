@@ -12,7 +12,7 @@ import { MESSAGES_HREF, audienceHref, WhatsAppScreen } from "@/engage";
  * filter carried over), and ?view=inbox on Messages. Everything else opens here: a
  * plain /host/crm is the WhatsApp page, ?view=setup is Number & billing (Account
  * settings links to it), ?view=templates opens the wording drawer on that page,
- * and ?view=broadcasts opens that builder. A retired or unknown ?view= — including
+ * and ?view=broadcasts opens the Broadcasts tab. A retired or unknown ?view= — including
  * the old sequences and bots builders — stays on this page.
  *
  * A static segment beside /host/[id], so it shadows a webinar whose slug is literally

@@ -1,31 +1,52 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useSession } from "@/components/providers";
+import { engageApi } from "../api";
 import { ENGAGE_HOME, MESSAGES_HREF } from "../hrefs";
 import { useReplies } from "./replies";
 
-/* The WhatsApp page chrome: title, the connected number, and the four tabs.
- * Each tab keeps the screen that already existed. This only places them. */
+/* The WhatsApp page chrome: title, the connected number, and the tabs.
+ * Each tab keeps the screen that already existed. This only places them.
+ * Broadcasts used to be a separate page behind a back link; it is a tab now,
+ * and ?view=broadcasts is that tab's address. */
 
-export type WhatsAppTab = "metrics" | "chats" | "templates" | "automations";
+export type WhatsAppTab =
+  | "metrics"
+  | "chats"
+  | "templates"
+  | "automations"
+  | "broadcasts";
 
 const TABS: { id: WhatsAppTab; label: string; href: string }[] = [
   { id: "metrics", label: "Metrics", href: ENGAGE_HOME },
   { id: "chats", label: "Chats", href: MESSAGES_HREF },
   { id: "templates", label: "Templates", href: `${ENGAGE_HOME}?view=templates` },
-  { id: "automations", label: "Automations", href: `${ENGAGE_HOME}?view=automations` },
+  {
+    id: "automations",
+    label: "Automations",
+    href: `${ENGAGE_HOME}?view=automations`,
+  },
+  {
+    id: "broadcasts",
+    label: "Broadcasts",
+    href: `${ENGAGE_HOME}?view=broadcasts`,
+  },
 ];
 
 export function WhatsAppFrame({
   tab,
   templateCount,
+  broadcastCount,
   actions,
   children,
 }: {
   tab: WhatsAppTab | null;
   templateCount?: number | null;
+  /** When the Broadcasts tab already has the list, its length wins over the
+   *  count this frame reads for the other tabs. */
+  broadcastCount?: number | null;
   actions?: ReactNode;
   children: ReactNode;
 }) {
@@ -34,6 +55,24 @@ export function WhatsAppFrame({
   const link = account?.whatsapp;
   const connected = Boolean(link?.connected);
   const chats = replies?.needsReply ?? 0;
+  const [fetchedBroadcasts, setFetchedBroadcasts] = useState<number | null>(null);
+
+  /* The badge has to be there on Metrics and on Chats too, which is a different
+   * route. One read of the list; a failure hides the badge rather than showing 0. */
+  useEffect(() => {
+    let cancelled = false;
+    engageApi
+      .crmBroadcasts()
+      .then((res) => {
+        if (!cancelled) setFetchedBroadcasts(res.broadcasts.length);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const broadcasts = broadcastCount ?? fetchedBroadcasts;
 
   return (
     <div className="grid gap-4">
@@ -80,7 +119,9 @@ export function WhatsAppFrame({
               ? chats
               : item.id === "templates" && templateCount != null
                 ? templateCount
-                : null;
+                : item.id === "broadcasts" && broadcasts != null && broadcasts > 0
+                  ? broadcasts
+                  : null;
           return (
             <Link
               key={item.id}
