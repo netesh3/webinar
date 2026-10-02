@@ -122,7 +122,7 @@ function WhenSection({
 }) {
   /* Only a new webinar. An existing one may already be in the past, and an
    * edit that does not move the start must not be blocked by it — the server
-   * applies the hour only when the start changes. */
+   * applies the lead only when the start changes. */
   const now = useNow(30_000);
   const minDate =
     !editing && now != null
@@ -134,7 +134,7 @@ function WhenSection({
   return (
     <FormSection
       title="When"
-      description="The webinar has to start at least an hour from now."
+      description="The webinar has to start at least 15 minutes from now."
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,1.4fr)]">
         <DateTimeField
@@ -146,7 +146,7 @@ function WhenSection({
           timeZone={form.timeZone}
           minDate={minDate}
           notBeforeMs={notBeforeMs}
-          rule="At least 1 hour from now"
+          rule="At least 15 minutes from now"
           invalid={Boolean(fields.startsAt)}
           onChange={(date, time) => {
             set("date", date);

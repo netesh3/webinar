@@ -25,7 +25,7 @@ import (
 
 /* soon is far enough ahead that the schedule API accepts it.
  *
- * A scheduled start has to be at least an hour out (minScheduleLead). Tests that
+ * A scheduled start has to be at least 15 minutes out (minScheduleLead). Tests that
  * then join — the approval gate — cannot use that time: the door stays shut until
  * 15 minutes before, and an approved registrant would be refused with `too_early`.
  * manualWebinar creates with this instant and then moves the row inside the door.

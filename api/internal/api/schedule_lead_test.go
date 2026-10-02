@@ -27,9 +27,9 @@ func leadInput(at time.Time, status types.WebinarStatus) types.WebinarInput {
 func TestScheduleLead(t *testing.T) {
 	s := leadServer()
 
-	_, fields := s.normalizeWebinarInput(leadInput(time.Now().Add(30*time.Minute), types.StatusScheduled), true, "")
+	_, fields := s.normalizeWebinarInput(leadInput(time.Now().Add(10*time.Minute), types.StatusScheduled), true, "")
 	if fields["startsAt"] != scheduleLeadError {
-		t.Fatalf("create 30m ahead: startsAt = %q, want %q (fields %v)", fields["startsAt"], scheduleLeadError, fields)
+		t.Fatalf("create 10m ahead: startsAt = %q, want %q (fields %v)", fields["startsAt"], scheduleLeadError, fields)
 	}
 
 	_, fields = s.normalizeWebinarInput(leadInput(time.Now().Add(-time.Minute), types.StatusScheduled), true, "")
@@ -37,12 +37,17 @@ func TestScheduleLead(t *testing.T) {
 		t.Fatalf("create in the past: startsAt = %q, want %q", fields["startsAt"], scheduleLeadError)
 	}
 
+	_, fields = s.normalizeWebinarInput(leadInput(time.Now().Add(20*time.Minute), types.StatusScheduled), true, "")
+	if msg := fields["startsAt"]; msg != "" {
+		t.Fatalf("create 20m ahead rejected: %q (fields %v)", msg, fields)
+	}
+
 	_, fields = s.normalizeWebinarInput(leadInput(time.Now().Add(2*time.Hour), types.StatusScheduled), true, "")
 	if msg := fields["startsAt"]; msg != "" {
 		t.Fatalf("create 2h ahead rejected: %q (fields %v)", msg, fields)
 	}
 
-	// Instant has no time to pick. The hour lead stays on the schedule form.
+	// Instant has no time to pick. The lead stays on the schedule form.
 	instant := leadInput(time.Now().Add(5*time.Minute), types.StatusScheduled)
 	instant.Instant = true
 	_, fields = s.normalizeWebinarInput(instant, true, "")
@@ -76,12 +81,21 @@ func TestScheduleLead(t *testing.T) {
 	}
 
 	_, fields = s.normalizeWebinarInput(
-		leadInput(time.Now().Add(15*time.Minute), types.StatusScheduled),
+		leadInput(time.Now().Add(20*time.Minute), types.StatusScheduled),
+		false,
+		time.Now().Add(3*time.Hour).UTC().Format(time.RFC3339),
+	)
+	if msg := fields["startsAt"]; msg != "" {
+		t.Fatalf("moving a start to 20m ahead was rejected: %q", msg)
+	}
+
+	_, fields = s.normalizeWebinarInput(
+		leadInput(time.Now().Add(10*time.Minute), types.StatusScheduled),
 		false,
 		time.Now().Add(3*time.Hour).UTC().Format(time.RFC3339),
 	)
 	if fields["startsAt"] != scheduleLeadError {
-		t.Fatalf("moving a start inside the hour: startsAt = %q, want %q", fields["startsAt"], scheduleLeadError)
+		t.Fatalf("moving a start inside the lead: startsAt = %q, want %q", fields["startsAt"], scheduleLeadError)
 	}
 
 	_, fields = s.normalizeWebinarInput(
@@ -90,6 +104,6 @@ func TestScheduleLead(t *testing.T) {
 		time.Now().Add(20*time.Minute).UTC().Format(time.RFC3339),
 	)
 	if msg := fields["startsAt"]; msg != "" {
-		t.Fatalf("moving a soon start out past the hour was rejected: %q", msg)
+		t.Fatalf("moving a soon start out past the lead was rejected: %q", msg)
 	}
 }

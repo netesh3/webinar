@@ -268,7 +268,7 @@ function ScheduleFormBody({
       const draft = readDraft(storageKey, base);
       if (!draft) return { form: serverForm, restored: null };
       const merged = mergeDraft(serverForm, draft.form);
-      // A new webinar's kept start can have slipped inside the hour while it
+      // A new webinar's kept start can have slipped inside the lead while it
       // waited; the server would refuse it, so offer the next legal slot.
       const at = zonedToInstant(merged.date, merged.time, merged.timeZone);
       const stale =
@@ -413,9 +413,9 @@ function ScheduleFormBody({
       focusTarget("date");
       return null;
     }
-    /* Same hour as the API. A new scheduled webinar, and an edit that moves
-     * the start, have to clear it. Leaving the start where it already is —
-     * a webinar about to begin, or one that already ran — does not. */
+    /* Same lead as the API (minScheduleLead). A new scheduled webinar, and an
+     * edit that moves the start, have to clear it. Leaving the start where it
+     * already is — a webinar about to begin, or one that already ran — does not. */
     const tooSoon = startsAt.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS;
     const movingStart =
       editing &&

@@ -19,22 +19,25 @@ import { DEFAULT_REMINDERS } from "../reminder-times";
 
 export const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 
-/** How far ahead a webinar must start. The API uses the same hour
+/** How far ahead a webinar must start. The API uses the same interval
  *  (minScheduleLead in host.go). */
-export const MIN_SCHEDULE_LEAD_MS = 60 * 60 * 1000;
+export const MIN_SCHEDULE_LEAD_MS = 15 * 60 * 1000;
 
-export const SCHEDULE_LEAD_ERROR = "Schedule it at least an hour from now.";
+export const SCHEDULE_LEAD_ERROR = "Schedule it at least 15 minutes from now.";
 
-/** Default start: the next five-minute mark at or after an hour from now,
+/** Default start: the next quarter-hour at or after 15 minutes from now,
  *  in the host's own zone. Opening the form on "now" would already be
- *  invalid — the server refuses anything sooner than an hour.
+ *  invalid — the server refuses anything sooner than the lead.
+ *
+ *  Quarter-hours, matching the date picker's slots, so the suggestion is a
+ *  time the picker can show without inventing an off-grid row.
  *
  *  Epoch-based rounding rather than manipulating a local Date's fields
  *  directly, so a spring-forward/fall-back transition can't produce an
  *  impossible or duplicated local time — every real-world UTC offset is a
- *  multiple of 5 minutes, so this always lands on a clean local mark too. */
+ *  multiple of 15 minutes, so this always lands on a clean local mark too. */
 export function defaultWhen(): { date: string; time: string } {
-  const STEP_MS = 5 * 60_000;
+  const STEP_MS = 15 * 60_000;
   const earliest = Date.now() + MIN_SCHEDULE_LEAD_MS;
   const rounded = new Date(Math.ceil(earliest / STEP_MS) * STEP_MS);
   const hh = String(rounded.getHours()).padStart(2, "0");
