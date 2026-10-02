@@ -257,6 +257,9 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const isDraft = webinar.status === "draft";
   const waiting = pending.length;
   const initialTab = search.get("tab");
+  const showGoLive = !isDraft && !isEnded && !(isLive && !isZoom);
+  const liveOpen = canGoLive(webinar.startsAt, now, webinar.durationMin);
+  const showWait = showGoLive && now != null && !liveOpen;
 
   return (
     <>
@@ -314,76 +317,84 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
           </p>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Menu
-            label="More actions"
-            trigger={
-              <span className="grid size-9 place-items-center rounded-lg text-[18px] text-ink-2 hover:bg-surface-2">
-                ⋯
-              </span>
-            }
-            items={[
-              ...(!isDraft && !isEnded
-                ? [
-                    {
-                      kind: "action" as const,
-                      label: "Edit webinar",
-                      onSelect: () => router.push(`/host/${slug}/edit`),
-                    },
-                    {
-                      kind: "action" as const,
-                      label: "Share link",
-                      onSelect: () =>
-                        void shareAttendeeLink({
-                          url: `${origin}/webinars/${slug}`,
-                          topic: webinar.topic,
-                          notify,
-                        }),
-                    },
-                  ]
-                : []),
-              ...(isLive && !isZoom
-                ? [
-                    {
-                      kind: "action" as const,
-                      label: "End for everyone",
-                      danger: true,
-                      onSelect: () => setConfirmEnd(true),
-                    },
-                  ]
-                : []),
-              /* A rule with nothing above it is a stray line. Drafts and
-                 completed webinars only have Delete in this menu. */
-              ...(!isDraft && !isEnded
-                ? [{ kind: "separator" as const }]
-                : []),
-              {
-                kind: "action" as const,
-                label: "Delete webinar",
-                danger: true,
-                onSelect: () => setConfirmDelete(true),
-              },
-            ]}
-          />
-          {isDraft ? (
-            <ButtonLink href={`/host/${slug}/edit`}>Finish setup</ButtonLink>
-          ) : isEnded ? null : isLive && !isZoom ? (
-            <ButtonLink
-              href={bypass ? "/preview/room" : `/host/${slug}/room`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Rejoin room
-            </ButtonLink>
-          ) : (
-            <GoLiveButton
-              busy={busy}
-              open={canGoLive(webinar.startsAt, now, webinar.durationMin)}
-              reason={goLiveWaitReason(webinar.startsAt, webinar.timeZone)}
-              reasonId={waitReasonId}
-              showReason={now != null && !canGoLive(webinar.startsAt, now, webinar.durationMin)}
-              onStart={() => void start()}
+        {/* Hint under the action row. Inside the row it widens Go live and
+            leaves a gap before the kebab. */}
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {isDraft ? (
+              <ButtonLink href={`/host/${slug}/edit`}>Finish setup</ButtonLink>
+            ) : isEnded ? null : isLive && !isZoom ? (
+              <ButtonLink
+                href={bypass ? "/preview/room" : `/host/${slug}/room`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Rejoin room
+              </ButtonLink>
+            ) : (
+              <Button
+                onClick={() => void start()}
+                disabled={busy || !liveOpen}
+                aria-describedby={showWait ? waitReasonId : undefined}
+              >
+                {busy && <Spinner className="size-4" />}▶ Go live
+              </Button>
+            )}
+            <Menu
+              label="More actions"
+              trigger={
+                <span className="grid size-9 place-items-center rounded-lg text-[18px] text-ink-2 hover:bg-surface-2">
+                  ⋯
+                </span>
+              }
+              items={[
+                ...(!isDraft && !isEnded
+                  ? [
+                      {
+                        kind: "action" as const,
+                        label: "Edit webinar",
+                        onSelect: () => router.push(`/host/${slug}/edit`),
+                      },
+                      {
+                        kind: "action" as const,
+                        label: "Share link",
+                        onSelect: () =>
+                          void shareAttendeeLink({
+                            url: `${origin}/webinars/${slug}`,
+                            topic: webinar.topic,
+                            notify,
+                          }),
+                      },
+                    ]
+                  : []),
+                ...(isLive && !isZoom
+                  ? [
+                      {
+                        kind: "action" as const,
+                        label: "End for everyone",
+                        danger: true,
+                        onSelect: () => setConfirmEnd(true),
+                      },
+                    ]
+                  : []),
+                /* A rule with nothing above it is a stray line. Drafts and
+                   completed webinars only have Delete in this menu. */
+                ...(!isDraft && !isEnded
+                  ? [{ kind: "separator" as const }]
+                  : []),
+                {
+                  kind: "action" as const,
+                  label: "Delete webinar",
+                  danger: true,
+                  onSelect: () => setConfirmDelete(true),
+                },
+              ]}
             />
+          </div>
+          {showWait && (
+            <p id={waitReasonId} className="max-w-56 text-right text-[12px] leading-snug text-ink-3">
+              {goLiveWaitReason(webinar.startsAt, webinar.timeZone)}
+            </p>
           )}
         </div>
       </div>
@@ -420,38 +431,5 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         confirmLabel="Delete this webinar"
       />
     </>
-  );
-}
-
-function GoLiveButton({
-  busy,
-  open,
-  reason,
-  reasonId,
-  showReason,
-  onStart,
-}: {
-  busy: boolean;
-  open: boolean;
-  reason: string;
-  reasonId: string;
-  showReason: boolean;
-  onStart: () => void;
-}) {
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        onClick={onStart}
-        disabled={busy || !open}
-        aria-describedby={showReason ? reasonId : undefined}
-      >
-        {busy && <Spinner className="size-4" />}▶ Go live
-      </Button>
-      {showReason && (
-        <p id={reasonId} className="max-w-56 text-right text-[12px] leading-snug text-ink-3">
-          {reason}
-        </p>
-      )}
-    </div>
   );
 }
