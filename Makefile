@@ -222,6 +222,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the host-home follow-up column: a week after the end, and no wider,
 	# so a session from last month does not sit beside Upcoming.
 	cd web && node --experimental-strip-types --no-warnings lib/follow-up-nudge.test.mts
+	# And the guest journey: a first-time registrant's just-made registration has no key
+	# until the email is confirmed, and the emailed ?k= link is then the only way in.
+	cd web && node --experimental-strip-types --no-warnings lib/guest-registration.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

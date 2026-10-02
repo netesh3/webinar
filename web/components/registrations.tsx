@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import { dropCache } from "@/lib/http";
 import type { Registration, Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
+import { heldRegistrations, joinKeyFromSearch } from "@/lib/guest-registration";
 import { useSession } from "./providers";
 
 /* Which webinars is this person signed up for?
@@ -137,6 +138,21 @@ export function useJoinKeyFor(slug: string): string | null {
     () => joinKeyFor(slug),
     () => null,
   );
+}
+
+/** The join key in this page's own address — /webinars/<slug>/room?k=<KEY>, the link
+ *  every registrant is sent. Null on the server, for the same hydration reason as
+ *  useJoinKeyFor. The address does not change under the page, so nothing to subscribe to. */
+export function useLinkJoinKey(): string | null {
+  return useSyncExternalStore(
+    subscribeNothing,
+    () => joinKeyFromSearch(window.location.search),
+    () => null,
+  );
+}
+
+function subscribeNothing(): () => void {
+  return () => {};
 }
 
 function rememberSlug(slug: string, joinKey: string): void {
@@ -312,7 +328,8 @@ export function useRegistrations() {
   const registrations = useMemo(() => {
     if (keys === null || status === "loading") return null; // hydrating
 
-    const held = keys.length === 0 ? [] : fetched;
+    // Keeps a just-made registration that has no key yet: see heldRegistrations.
+    const held = heldRegistrations(keys, fetched);
     // No account means the account list is empty, not unknown. With one, it is
     // unknown until a response tagged with THAT account arrives.
     const fromAccount = !account
