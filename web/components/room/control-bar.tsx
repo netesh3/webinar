@@ -15,6 +15,7 @@ import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import {
   participantsButtonCount,
+  raisedHandsBadgeCount,
   raisedHandsButtonCount,
   raisedHandsPlacement,
 } from "@/lib/raised-hands";
@@ -330,6 +331,7 @@ export function ControlBar() {
     realtime.hands.length,
   );
   const raisedWhere = raisedHandsPlacement(compact, raisedCount);
+  const raisedBadge = raisedHandsBadgeCount(raisedCount);
 
   /* The bar reports itself as a drop zone through state and an effect.
    *
@@ -758,7 +760,7 @@ export function ControlBar() {
   const gridBadge =
     grid.reduce((sum, id) => sum + (badgeFor(id) ?? 0), 0) +
     (panelItems?.reduce((sum, id) => sum + (badgeFor(id) ?? 0), 0) ?? 0) +
-    (raisedWhere === "overflow" && raisedCount ? raisedCount : 0);
+    (raisedWhere === "overflow" && raisedBadge ? raisedBadge : 0);
 
   const dropIndex = drag.drag?.over === "bar" ? drag.drag.index : null;
 
@@ -980,7 +982,7 @@ export function ControlBar() {
               {slot}
               {raisedWhere === "bar" && id === "participants" && raisedCount != null && (
                 <RaisedHandsBarButton
-                  count={raisedCount}
+                  count={raisedBadge}
                   active={raisedHands.open}
                   onClick={() => raisedHands.toggle()}
                 />
@@ -992,7 +994,7 @@ export function ControlBar() {
           raisedCount != null &&
           !centerTools.includes("participants") && (
             <RaisedHandsBarButton
-              count={raisedCount}
+              count={raisedBadge}
               active={raisedHands.open}
               onClick={() => raisedHands.toggle()}
             />
@@ -1141,7 +1143,7 @@ export function ControlBar() {
               raisedHandsAction={
                 raisedWhere === "overflow" && raisedCount != null
                   ? {
-                      count: raisedCount,
+                      count: raisedBadge,
                       active: raisedHands.open,
                       onClick: () => raisedHands.toggle(),
                     }
@@ -1658,16 +1660,18 @@ function RaisedHandsBarButton({
   active,
   onClick,
 }: {
-  count: number;
+  /** Null when the queue is empty — the button stays, without a "0" badge. */
+  count: number | null;
   active: boolean;
   onClick: () => void;
 }) {
+  const named = count != null && count > 0 ? `Raised hands, ${count}` : "Raised hands";
   return (
     <BarButton
       label="Raised hands"
-      ariaLabel={`Raised hands, ${count}`}
+      ariaLabel={named}
       active={active}
-      badge={count}
+      badge={count != null && count > 0 ? count : undefined}
       onClick={onClick}
       icon={<HandIcon className="size-5" />}
     />

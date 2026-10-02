@@ -154,7 +154,7 @@ export function PreviewRoom() {
   const tools = useToolLayout(availableTools);
   const stage = useStageLayout();
   const realtime = useMemo(() => bypassRealtime(), []);
-  const raisedHands = useRaisedHandsController(tools, realtime.hands.length);
+  const raisedHands = useRaisedHandsController(tools);
   const [prefs, setPrefs] = useState(DEFAULT_PREFERENCES);
   const [stageEl, setStageEl] = useState<HTMLDivElement | null>(null);
   // Mirrors the same compact-panel sizing ConnectedRoom uses in

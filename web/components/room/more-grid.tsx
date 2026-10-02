@@ -56,7 +56,8 @@ export type ToolAction = {
 };
 
 type RaisedHandsAction = {
-  count: number;
+  /** Null when nobody has a hand up. The cell still shows; it just has no badge. */
+  count: number | null;
   active: boolean;
   onClick: () => void;
 };
@@ -371,15 +372,22 @@ export function MoreGrid({
           >
             {entries.map((key) => {
               if (key === "raised-hands" && raisedHandsAction) {
+                const handsWaiting = raisedHandsAction.count;
+                const handsName =
+                  handsWaiting != null && handsWaiting > 0
+                    ? `Raised hands, ${handsWaiting}`
+                    : "Raised hands";
                 return (
                   <MoreCell
                     key="raised-hands"
                     cellId="raised-hands"
                     icon={<HandIcon className="size-5" />}
                     label="Raised hands"
-                    title={`Raised hands, ${raisedHandsAction.count}`}
-                    ariaLabel={`Raised hands, ${raisedHandsAction.count}`}
-                    badge={String(raisedHandsAction.count)}
+                    title={handsName}
+                    ariaLabel={handsName}
+                    badge={
+                      handsWaiting != null && handsWaiting > 0 ? String(handsWaiting) : null
+                    }
                     expanded={raisedHandsAction.active}
                     onClick={() => {
                       if (editing) return;

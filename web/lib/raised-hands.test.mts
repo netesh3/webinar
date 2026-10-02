@@ -17,6 +17,7 @@ import {
   orderedRaisedHands,
   participantsButtonCount,
   raisedAgoLabel,
+  raisedHandsBadgeCount,
   raisedHandsButtonCount,
   raisedHandsPlacement,
   type RaisedHandsViewer,
@@ -70,17 +71,23 @@ eq(
 
 console.log("\nraised-hands button");
 
-eq(raisedHandsButtonCount(host, 0), null, "hidden for the host when nobody has a hand up");
+eq(raisedHandsButtonCount(host, 0), 0, "visible for the host when nobody has a hand up");
 eq(raisedHandsButtonCount(host, 3), 3, "visible for the host with the hand count");
+eq(raisedHandsButtonCount(panelist, 0), 0, "visible for a panelist when nobody has a hand up");
 eq(raisedHandsButtonCount(panelist, 2), 2, "visible for a panelist with the hand count");
-eq(raisedHandsButtonCount(panelist, 0), null, "hidden for a panelist at zero");
+eq(raisedHandsButtonCount(attendee, 0), null, "hidden for an attendee when nobody has a hand up");
 eq(raisedHandsButtonCount(attendee, 4), null, "hidden for an attendee even when hands are up");
 eq(raisedHandsButtonCount(promoted, 4), null, "hidden for an attendee who was allowed to speak");
+eq(raisedHandsBadgeCount(0), null, "no badge when nobody has a hand up");
+eq(raisedHandsBadgeCount(3), 3, "badge shows the hand count");
+eq(raisedHandsBadgeCount(null), null, "an attendee has no badge because they have no button");
 
+eq(raisedHandsPlacement(false, 0), "bar", "desktop shows the button when the count is zero");
 eq(raisedHandsPlacement(false, 3), "bar", "desktop shows the button on the bar");
+eq(raisedHandsPlacement(true, 0), "overflow", "a narrow bar still offers it when nobody has a hand up");
 eq(raisedHandsPlacement(true, 3), "overflow", "a narrow bar puts it with the overflow tools");
-eq(raisedHandsPlacement(false, null), "hidden", "no count means no button");
-eq(raisedHandsPlacement(true, null), "hidden", "no count means no overflow entry either");
+eq(raisedHandsPlacement(false, null), "hidden", "an attendee gets no button");
+eq(raisedHandsPlacement(true, null), "hidden", "an attendee gets no overflow entry either");
 
 console.log("\nqueue order and time");
 

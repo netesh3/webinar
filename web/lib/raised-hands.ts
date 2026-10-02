@@ -4,7 +4,9 @@ import { insertMention, type Draft } from "./mentions.ts";
  *
  * Participants used to swap its headcount for the number of raised hands, which
  * hid how many people were in the room at the moment a host most needed both
- * numbers. The queue is its own button now, and only while someone is waiting.
+ * numbers. The queue is its own button now. Hosts and panelists always see it,
+ * so they can find the control before anyone has a hand up. The badge appears
+ * only while someone is waiting.
  *
  * Pure on purpose: the button, the order and the "lower / invite" calls are the
  * things a live room will not sit still for.
@@ -41,20 +43,29 @@ export function participantsButtonCount(
   return headcount;
 }
 
-/** Badge on the Raised hands button. Null means the button is not rendered. */
+/** Queue size on the Raised hands button.
+ *  Null means this person does not get the button (the audience).
+ *  Zero means the button is shown with no badge. */
 export function raisedHandsButtonCount(viewer: RaisedHandsViewer, handCount: number): number | null {
   if (!canSeeRaisedHandsQueue(viewer)) return null;
-  if (handCount <= 0) return null;
+  if (!Number.isFinite(handCount) || handCount <= 0) return 0;
   return handCount;
 }
 
+/** Corner badge. Zero is not an alert — the icon stays, without a "0". */
+export function raisedHandsBadgeCount(count: number | null): number | null {
+  if (count == null || count <= 0) return null;
+  return count;
+}
+
 /** Phone bar cannot take another standing button. Desktop shows it in the
- *  strip; a narrow bar puts it with the other overflow tools. */
+ *  strip; a narrow bar puts it with the other overflow tools. A count of
+ *  zero still shows. Only someone who is not the queue's audience is hidden. */
 export function raisedHandsPlacement(
   compact: boolean,
   count: number | null,
 ): "bar" | "overflow" | "hidden" {
-  if (count == null || count <= 0) return "hidden";
+  if (count == null) return "hidden";
   return compact ? "overflow" : "bar";
 }
 
