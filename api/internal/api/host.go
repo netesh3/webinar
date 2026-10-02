@@ -30,19 +30,20 @@ const maxDurationMin = 24 * 60
 
 /* minScheduleLead is how far ahead a host may set a webinar's start.
  *
- * One hour, the same interval the schedule form uses (MIN_SCHEDULE_LEAD_MS).
- * "Now" and the next five-minute mark are both too soon: the host is still
- * filling the form, and a room that opens immediately is not a scheduled webinar.
+ * Fifteen minutes, the same interval the schedule form uses
+ * (MIN_SCHEDULE_LEAD_MS). "Now" is too soon: the host is still filling the
+ * form, and a room that opens immediately is not a scheduled webinar.
  */
-const minScheduleLead = time.Hour
+const minScheduleLead = 15 * time.Minute
 
-const scheduleLeadError = "Schedule it at least an hour from now."
+const scheduleLeadError = "Schedule it at least 15 minutes from now."
 
 /* hostStartLead is how early Go live may open a scheduled webinar.
  *
  * Fifteen minutes, and only for a start the host picked. An instant webinar is
  * stamped at now, so this window is already open when that room is created.
- * The hour above is a different rule: it belongs to the schedule form.
+ * minScheduleLead above is a different rule (when a start may be chosen). The
+ * two are the same length today; changing one does not change the other.
  */
 const hostStartLead = 15 * time.Minute
 
@@ -167,9 +168,9 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := userFromContext(r.Context())
-	/* Before the hour-lead check. An instant create has no time picker, so a
+	/* Before the lead check. An instant create has no time picker, so a
 	 * soon start must come back as "this account cannot", not as "schedule it
-	 * at least an hour from now". */
+	 * at least 15 minutes from now". */
 	if in.Instant && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
 		return
 	}
@@ -601,12 +602,12 @@ func localTime(at time.Time, zone string) string { return notify.LocalTime(at, z
  * form over it teaches them nothing the clamped value doesn't.
  *
  * `isCreate` gates the lead check's create half. A brand new scheduled webinar
- * has to start at least an hour from now — a stale date, a timezone picked
+ * has to start at least 15 minutes from now — a stale date, a timezone picked
  * wrong, or "right now" are all the same mistake, and there is no cost to
  * refusing them before the webinar exists. An EXISTING webinar can legitimately
- * have a start inside that hour or in the past (it is about to begin, or it
+ * have a start inside that lead or in the past (it is about to begin, or it
  * already ran), and a host fixing an unrelated typo must not be blocked by a
- * time they did not touch. Changing that start to something inside the hour is
+ * time they did not touch. Changing that start to something inside the lead is
  * refused. Drafts are exempt on create: a draft is not a commitment to run at
  * that instant, and it is normal to sketch one out before picking a real time.
  *
@@ -690,7 +691,7 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 		fields["status"] = "A webinar can only be saved as scheduled or a draft."
 	}
 
-	/* At least an hour from now. See minScheduleLead.
+	/* At least 15 minutes from now. See minScheduleLead.
 	 *
 	 * Create, and only a scheduled webinar: a draft is not a commitment to run
 	 * at that instant. Anything sooner than the lead — including a time that

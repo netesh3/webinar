@@ -886,7 +886,7 @@ func (h *harness) newWebinar(topic string, mutate func(*types.WebinarInput)) typ
 		Topic: topic,
 		/* Five minutes out, inside the join window (see joinGrace in join.go).
 		 *
-		 * The API refuses a scheduled start sooner than an hour (minScheduleLead).
+		 * The API refuses a scheduled start sooner than 15 minutes (minScheduleLead).
 		 * This helper still asks for five minutes — that is what the join tests
 		 * need — and, when the API would refuse it, creates at two hours and then
 		 * moves the row. Tests that care about the window set their own time; see
@@ -915,8 +915,8 @@ func (h *harness) newWebinar(topic string, mutate func(*types.WebinarInput)) typ
 		if status == "" {
 			status = types.StatusScheduled
 		}
-		// Same hour as minScheduleLead. Drafts are allowed any start.
-		if status == types.StatusScheduled && at.Before(time.Now().Add(time.Hour)) {
+		// Same 15 minutes as minScheduleLead. Drafts are allowed any start.
+		if status == types.StatusScheduled && at.Before(time.Now().Add(15*time.Minute)) {
 			placeAt = at
 			place = true
 			in.StartsAt = time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
