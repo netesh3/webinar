@@ -149,7 +149,7 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		  FROM crm_contacts c
 		  LEFT JOIN per ON per.contact_id = c.id
 		  `+engagementJoin+`
-		 WHERE c.host_id = $1::uuid`+peopleScope, hostID, slug).Scan(
+		 WHERE c.host_id = $1::uuid`+peopleScope+excludeOwnAccount, hostID, slug).Scan(
 				&counts.Everyone, &counts.Attended, &counts.NeverAttended,
 				&counts.Replied, &counts.OptedIn, &counts.HotLeads,
 				&counts.HighlyEngaged, &counts.CameBack, &counts.Slipping)
@@ -158,7 +158,7 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 			return s.pool.QueryRow(ctx, with+`
 		SELECT count(*) FROM crm_contacts c LEFT JOIN per ON per.contact_id = c.id
 		  `+engagementJoin+`
-		 WHERE c.host_id = $1::uuid`+peopleScope+pred+search, hostID, slug, q).Scan(&total)
+		 WHERE c.host_id = $1::uuid`+peopleScope+pred+search+excludeOwnAccount, hostID, slug, q).Scan(&total)
 		},
 		func(ctx context.Context) error {
 			rows, err := s.pool.Query(ctx, with+`
@@ -177,7 +177,7 @@ func (s *Store) People(ctx context.Context, hostID string, f PeopleFilter) (type
 		         FROM crm_messages WHERE contact_id = c.id
 		        ORDER BY created_at DESC, id DESC LIMIT 1
 		  ) m ON true
-		 WHERE c.host_id = $1::uuid`+peopleScope+pred+search+`
+		 WHERE c.host_id = $1::uuid`+peopleScope+pred+search+excludeOwnAccount+`
 		 ORDER BY `+orderBy+`
 		 LIMIT $4 OFFSET $5`, hostID, slug, q, limit, offset)
 			if err != nil {
@@ -256,7 +256,7 @@ func (s *Store) PeopleContactIDs(ctx context.Context, hostID string, f PeopleFil
 		SELECT c.id::text FROM crm_contacts c
 		  LEFT JOIN per ON per.contact_id = c.id
 		  `+engagementJoin+`
-		 WHERE c.host_id = $1::uuid`+peopleScope+pred+reachable+`
+		 WHERE c.host_id = $1::uuid`+peopleScope+pred+reachable+excludeOwnAccount+`
 		   AND ($3 = '' OR c.name ILIKE '%' || $3 || '%'
 		        OR c.email ILIKE '%' || $3 || '%' OR c.phone ILIKE '%' || $3 || '%')
 		 ORDER BY c.created_at, c.id
