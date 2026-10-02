@@ -20,6 +20,7 @@ import {
   type TrackPublishOptions,
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ApiError, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { enableCamera } from "@/lib/backgrounds";
@@ -41,6 +42,7 @@ import { countSince } from "@/lib/room-history";
 import { useRoomHistory } from "@/lib/room-history-sync";
 import { prioritiseAudio, useNetworkHealth } from "@/lib/network";
 import { formatElapsed } from "@/lib/format";
+import { afterWebinarEnd } from "@/lib/host-results";
 import { Alert, Spinner } from "../controls";
 import { LockIcon, SignalIcon, SlidersIcon } from "../icons";
 import { useAppConfig, useToast } from "../providers";
@@ -1268,8 +1270,20 @@ function ConnectedRoom({
 
   // The server announces the end in room metadata before it closes the room, so everyone
   // lands on the ended screen straight away rather than watching the connection go.
+  // The host is the exception: Results is how the session went. Not while their own End
+  // request is still running — that request sends the on-end survey, and navigating
+  // away cancels it. EndWebinarDialog goes to Results once the response is back.
   const shownExit = exit ?? (status === "ended" ? "ended" : null);
-  if (shownExit) {
+  const endView = afterWebinarEnd({
+    role: liveRole,
+    ended: shownExit === "ended",
+    ownEndPending: endingHere,
+    slug,
+  });
+  if (endView.go === "results") {
+    return <HostResultsRedirect href={endView.href} />;
+  }
+  if (shownExit && !endingHere) {
     return <SessionOver reason={shownExit} onLeave={onLeave} slug={slug} joinKey={joinKey} />;
   }
 
@@ -1739,6 +1753,19 @@ const EXIT_COPY: Record<ExitReason, { title: string; body: string }> = {
     body: "The connection to the media server dropped and could not be recovered. Rejoining usually fixes it.",
   },
 };
+
+/** The host's way out of a session that ended without them pressing End here. */
+function HostResultsRedirect({ href }: { href: string }) {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace(href);
+  }, [router, href]);
+  return (
+    <main className="grid min-h-dvh place-items-center bg-stage">
+      <Spinner className="size-6 text-white/60" />
+    </main>
+  );
+}
 
 function SessionOver({
   reason,

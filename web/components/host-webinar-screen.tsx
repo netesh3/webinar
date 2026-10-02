@@ -29,6 +29,7 @@ import { useNow } from "@/lib/clock";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
+import { hostResultsPath } from "@/lib/host-results";
 import { beginWebinarWhatsAppMetrics } from "@/engage";
 
 const NONE: RegistrantRow[] = [];
@@ -180,6 +181,9 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
       await api.endWebinar(slug);
       notify("Webinar ended.", "ok");
       setConfirmEnd(false);
+      // Already on this webinar's page. Replace so the Results tab is selected
+      // and Back does not return to the live view of a session that just ended.
+      router.replace(hostResultsPath(slug));
       await load();
     } catch (e) {
       notify(

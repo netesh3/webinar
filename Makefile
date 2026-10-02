@@ -210,6 +210,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the Engagement tab that replaced Report: old ?tab=report links must still land on
 	# it, and the Export menu must keep offering the old attendance CSV people built on.
 	cd web && node --experimental-strip-types --no-warnings lib/host-tabs.test.mts
+	# And where the host goes when the webinar ends: Results, and not while their
+	# own End request is still the one sending the survey.
+	cd web && node --experimental-strip-types --no-warnings lib/host-results.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/engagement/tab.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/engagement/folds.test.mts
 	# And table header sorting: numbers and dates must not sort as text, empty

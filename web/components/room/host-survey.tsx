@@ -1,7 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { hostResultsPath } from "@/lib/host-results";
 import type { HostSurvey } from "@/lib/api-types";
 import { Modal, Spinner } from "../controls";
 import { ClipboardIcon } from "../icons";
@@ -184,6 +186,7 @@ export function SendSurveyButton({ disabled }: { disabled?: boolean }) {
  *   none / closed  the plain confirmation. */
 export function EndWebinarDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { slug, markEnding } = useRoomUI();
+  const router = useRouter();
   const { notify } = useToast();
   const s = useHostSurvey();
   const [ending, setEnding] = useState(false);
@@ -205,7 +208,11 @@ export function EndWebinarDialog({ open, onClose }: { open: boolean; onClose: ()
     // disconnect must read as the end rather than a drop to reconnect from.
     markEnding(true);
     try {
+      // The response is what means the on-end survey has been sent. Replacing
+      // before it returns would cancel the request and skip that send.
       await api.endWebinar(slug);
+      // Replace, not push: Back must not reopen a room that has been closed.
+      router.replace(hostResultsPath(slug));
       onClose();
     } catch (err) {
       markEnding(false);
