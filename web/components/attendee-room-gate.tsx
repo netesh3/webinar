@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useJoinKeyFor, useRegistrations } from "./registrations";
+import { useJoinKeyFor, useJoinKeys, useLinkJoinKey, useRegistrations } from "./registrations";
 import { WebinarRoom } from "./room/webinar-room";
 import { LeftSession } from "./survey/session-survey";
 import { Spinner } from "./controls";
@@ -11,6 +11,7 @@ import { useSession } from "./providers";
 import { Button, ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
+import { isAwaitingEmail, joinProvesKey } from "@/lib/guest-registration";
 
 /** Exchanges the caller's credential for a LiveKit token, then hands off to the
  *  room.
@@ -54,11 +55,22 @@ export function AttendeeRoomGate({
   const reg = registrationFor(slug);
   // The key this browser already holds for this webinar. Available before the
   // lookup returns, which is the whole point — see the effect below.
-  const directKey = useJoinKeyFor(slug);
+  const storedKey = useJoinKeyFor(slug);
+  // The key in the link that opened this page (?k=). It wins over a stored one: it is
+  // the credential the person just used, and since a registration only gets its key
+  // once the email is confirmed, it is the only key a guest on any device has.
+  const linkKey = useLinkJoinKey();
+  const directKey = linkKey ?? storedKey;
+  const { add: keepKey } = useJoinKeys();
+  // Registered but still waiting for the email: no key yet, and the server would refuse
+  // it anyway, so it is nothing to try. Trying it would sit on "Connecting…" forever.
+  const awaitingEmail = reg !== undefined && isAwaitingEmail(reg);
   // A signed-in account can join without holding a key at all — the server finds
   // the registration from the session.
   const canTry =
-    directKey !== null || reg !== undefined || (status === "signed-in" && account !== null);
+    directKey !== null ||
+    (reg !== undefined && !awaitingEmail) ||
+    (status === "signed-in" && account !== null);
 
   useEffect(() => {
     if (status === "loading") return;
@@ -94,10 +106,17 @@ export function AttendeeRoomGate({
     // response arrives instead means a re-render cannot throw away a good response,
     // while a genuinely different attempt still supersedes an older one.
     const current = () => requested.current === fingerprint;
+    // Keep a link's key in this browser once the server has shown it belongs to a real
+    // registration, so the webinar page, and a later visit without the link, still know
+    // this person. A refused key or a network failure proves nothing and is not kept.
+    const keepIfProven = (outcome: { joined: true } | { code: string }) => {
+      if (key && key === linkKey && joinProvesKey(outcome)) keepKey(key, slug);
+    };
     api
       .join(slug, key)
       .then((res) => {
         if (!current()) return;
+        keepIfProven({ joined: true });
         if (res.zoomJoinUrl) {
           setOpeningZoom(true);
           window.location.assign(res.zoomJoinUrl);
@@ -107,13 +126,14 @@ export function AttendeeRoomGate({
       })
       .catch((e: unknown) => {
         if (!current()) return;
+        if (e instanceof ApiError) keepIfProven({ code: e.code });
         setError(
           e instanceof ApiError
             ? { code: e.code, message: e.message }
             : { code: "unknown", message: "Could not join the webinar." },
         );
       });
-  }, [registrations, reg, directKey, slug, attempt, status, account]);
+  }, [registrations, reg, directKey, linkKey, keepKey, slug, attempt, status, account]);
 
   if (join && left) {
     return (
@@ -173,6 +193,17 @@ export function AttendeeRoomGate({
             <Spinner className="size-5 text-ink-3" />
             <p className="text-[13.5px] text-ink-2">Checking your registration…</p>
           </div>
+        ) : !canTry && awaitingEmail ? (
+          <>
+            <h1 className="text-[17px] font-semibold">Confirm your email first</h1>
+            <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
+              Open the link we sent to {reg?.email || "your inbox"}. Your join link arrives
+              as soon as you do.
+            </p>
+            <ButtonLink href={`/webinars/${slug}`} className="mt-5 w-full">
+              Back to the webinar
+            </ButtonLink>
+          </>
         ) : !canTry ? (
           <>
             <h1 className="text-[17px] font-semibold">You&apos;re not registered</h1>
@@ -193,7 +224,8 @@ export function AttendeeRoomGate({
             <div className="mt-5 grid gap-2">
               {error.code === "not_registered" ||
               error.code === "registration_required" ||
-              error.code === "no_join_key" ? (
+              error.code === "no_join_key" ||
+              error.code === "invalid_join_key" ? (
                 <ButtonLink href={`/webinars/${slug}`}>Register now</ButtonLink>
               ) : (
                 <Button
@@ -242,6 +274,8 @@ function errorTitle(code: string): string {
     case "registration_required":
     case "no_join_key":
       return "You're not registered yet";
+    case "invalid_join_key":
+      return "This join link isn't valid";
     default:
       return "Can't join yet";
   }
