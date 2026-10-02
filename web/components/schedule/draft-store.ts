@@ -115,6 +115,9 @@ export function mergeDraft(initial: FormState, stored: StoredForm): FormState {
     options: { ...initial.options, ...stored.options },
     controls: { ...initial.controls, ...stored.controls },
     streamKey: initial.streamKey,
+    recurrence: stored.recurrence ?? initial.recurrence,
+    seriesScope: stored.seriesScope ?? initial.seriesScope,
+    seriesId: stored.seriesId ?? initial.seriesId,
   };
 }
 

@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
-import { ConfirmModal, Menu } from "./controls";
+import { useId, useState, type ReactNode } from "react";
+import { ConfirmModal, Menu, Modal } from "./controls";
 import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, kindLabel } from "./ui";
 import { WebinarListCard } from "./webinar-list-card";
@@ -85,7 +85,7 @@ export function HostWebinarRows({
     }
   }
 
-  async function remove(w: Webinar) {
+  async function remove(w: Webinar, scope?: "this" | "following") {
     if (bypass) {
       notify("Delete is mocked in local preview.", "info");
       setConfirmDelete(null);
@@ -93,8 +93,13 @@ export function HostWebinarRows({
     }
     setBusy(w.id);
     try {
-      await api.deleteWebinar(w.id);
-      notify(`Deleted “${w.topic}”.`, "ok");
+      await api.deleteWebinar(w.id, w.seriesId ? scope ?? "this" : undefined);
+      notify(
+        scope === "following"
+          ? "Deleted this session and the later ones that had not started."
+          : `Deleted “${w.topic}”.`,
+        "ok",
+      );
       setConfirmDelete(null);
       router.refresh();
       location.reload();
@@ -105,28 +110,40 @@ export function HostWebinarRows({
     }
   }
 
+  function card(w: Webinar) {
+    return (w.status === "ended" || w.didntGoLive) && !readOnly ? (
+      <CompletedCard key={w.id} webinar={w} />
+    ) : (
+      <HostCard
+        key={w.id}
+        webinar={w}
+        readOnly={readOnly}
+        busy={busy === w.id}
+        now={now}
+        onStart={() => void start(w)}
+        onDelete={() => setConfirmDelete(w)}
+      />
+    );
+  }
+
   return (
     <>
       <div className="grid gap-3">
-        {webinars.map((w) =>
-          (w.status === "ended" || w.didntGoLive) && !readOnly ? (
-            <CompletedCard key={w.id} webinar={w} />
+        {groupHostRows(webinars).map((chunk) =>
+          chunk.kind === "one" ? (
+            card(chunk.webinar)
           ) : (
-            <HostCard
-              key={w.id}
-              webinar={w}
-              readOnly={readOnly}
-              busy={busy === w.id}
-              now={now}
-              onStart={() => void start(w)}
-              onDelete={() => setConfirmDelete(w)}
+            <SeriesGroup
+              key={`${chunk.id}-${chunk.webinars[0]?.id}`}
+              webinars={chunk.webinars}
+              card={card}
             />
           ),
         )}
       </div>
 
       <ConfirmModal
-        open={confirmDelete !== null}
+        open={confirmDelete !== null && !confirmDelete.seriesId}
         busy={busy !== null}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => confirmDelete && void remove(confirmDelete)}
@@ -134,6 +151,48 @@ export function HostWebinarRows({
         body={confirmDelete ? deleteWarning(confirmDelete) : ""}
         confirmLabel="Delete this webinar"
       />
+
+      <Modal
+        open={confirmDelete?.seriesId != null}
+        onClose={() => busy === null && setConfirmDelete(null)}
+        title="Delete sessions in this series?"
+        description="Past sessions, and any session that has gone live or has people in the room, stay."
+        size="sm"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() => setConfirmDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={busy !== null || confirmDelete === null}
+              onClick={() => confirmDelete && void remove(confirmDelete, "this")}
+            >
+              This session only
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={busy !== null || confirmDelete === null}
+              onClick={() => confirmDelete && void remove(confirmDelete, "following")}
+            >
+              This and following
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-[13.5px] leading-relaxed text-ink-2">
+          {confirmDelete
+            ? `“${confirmDelete.topic}” is one session in a series. Delete only that upcoming session, or that session and every later one that has not started.`
+            : ""}
+        </p>
+      </Modal>
     </>
   );
 }
@@ -145,6 +204,64 @@ export function HostWebinarRows({
  * happened yet — is already made by dropping the ended ones: there is nothing
  * to join in a session that is over.
  */
+type HostChunk =
+  | { kind: "one"; webinar: Webinar }
+  | { kind: "series"; id: string; webinars: Webinar[] };
+
+/** Consecutive sessions of the same series become one group, so a page of
+ *  ten is not ten unrelated copies of the same title. */
+function groupHostRows(webinars: Webinar[]): HostChunk[] {
+  const out: HostChunk[] = [];
+  for (const w of webinars) {
+    const last = out[out.length - 1];
+    if (w.seriesId && last?.kind === "series" && last.id === w.seriesId) {
+      last.webinars.push(w);
+      continue;
+    }
+    if (w.seriesId) out.push({ kind: "series", id: w.seriesId, webinars: [w] });
+    else out.push({ kind: "one", webinar: w });
+  }
+  return out;
+}
+
+function SeriesGroup({
+  webinars,
+  card,
+}: {
+  webinars: Webinar[];
+  card: (w: Webinar) => ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  const head = webinars[0];
+  const total = head?.series?.occurrenceCount ?? webinars.length;
+  const shown =
+    total > webinars.length
+      ? `${webinars.length} of ${total} sessions on this page`
+      : `${webinars.length} session${webinars.length === 1 ? "" : "s"}`;
+  return (
+    <div className="rounded-xl border border-line bg-surface">
+      <button
+        type="button"
+        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3 text-left"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Badge tone="brand">Series</Badge>
+        <span className="text-[14px] font-semibold text-ink">{head?.topic}</span>
+        <span className="text-[12.5px] text-ink-3">{head?.series?.summary}</span>
+        <span className="ml-auto text-[12px] text-ink-3">
+          {open ? "Hide" : "Show"} {shown}
+        </span>
+      </button>
+      {open && (
+        <div className="grid gap-3 border-t border-line p-3">
+          {webinars.map((w) => card(w))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function HostWebinarList({ webinars }: { webinars: Webinar[] }) {
   const rows = webinars.filter((w) => w.status !== "ended");
 
@@ -241,6 +358,14 @@ function HostCard({
             {needsAdmit && <Badge tone="warn">Admit required</Badge>}
             {w.priceUsd ? <Badge tone="brand">${w.priceUsd}</Badge> : null}
           </div>
+
+          {w.series && (
+            <p className="mb-1 text-[12px] text-ink-3">
+              {w.occurrenceIndex ? `Session ${w.occurrenceIndex}` : "Session"}
+              {w.series.occurrenceCount ? ` of ${w.series.occurrenceCount}` : ""}
+              {w.seriesException ? " · changed on its own" : ""}
+            </p>
+          )}
 
           <h3 className="text-[15px] font-semibold tracking-[-0.01em]">
             {/* Stretched over the card so anywhere on it opens the row. Buttons
@@ -405,7 +530,7 @@ function CompletedCard({ webinar: w }: { webinar: Webinar }) {
       badge={
         w.didntGoLive ? <Badge tone="neutral">Didn&apos;t go live</Badge> : undefined
       }
-      when={`${formatDayShort(w.startsAt, w.timeZone)} · ${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}`}
+      when={`${formatDayShort(w.startsAt, w.timeZone)} · ${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}${w.series ? ` · Session ${w.occurrenceIndex || ""} of a series` : ""}`}
       meta={
         <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
           <Figure

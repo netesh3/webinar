@@ -25,6 +25,7 @@ import {
 import { RegistrationSection } from "./registration";
 import { WhereSection } from "./where";
 import { RoomSection } from "./room";
+import { RecurrenceFields } from "./recurrence-fields";
 import { SurveySection } from "./survey-section";
 import { formatDuration } from "./summary";
 
@@ -134,7 +135,11 @@ function WhenSection({
   return (
     <FormSection
       title="When"
-      description="The webinar has to start at least 15 minutes from now."
+      description={
+        form.kind === "recurring" || form.seriesId
+          ? "The first session uses this start time. It has to be at least 15 minutes from now."
+          : "The webinar has to start at least 15 minutes from now."
+      }
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,1.4fr)]">
         <DateTimeField
@@ -216,6 +221,10 @@ function WhenSection({
             {form.timeZone !== localTimeZone() && ` (${localTimeZone()})`}.
           </span>
         </p>
+      )}
+
+      {(form.kind === "recurring" || form.seriesId !== "") && (
+        <RecurrenceFields form={form} set={set} error={fields.recurrence} />
       )}
     </FormSection>
   );

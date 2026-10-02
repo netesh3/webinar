@@ -214,8 +214,19 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "create webinar: zoom", err)
 		return
 	}
-	wb, err := s.store.CreateWebinar(r.Context(), user.ID, in, s.cfg.DefaultMaxMeetingMin)
-	if errors.Is(err, store.ErrInvalid) {
+	var wb types.Webinar
+	if seriesRequested(in) {
+		created, ok := s.createSeriesWebinar(w, r, user.ID, in)
+		if !ok {
+			return
+		}
+		wb = created
+	} else {
+		var cerr error
+		wb, cerr = s.store.CreateWebinar(r.Context(), user.ID, in, s.cfg.DefaultMaxMeetingMin)
+		err = cerr
+	}
+	if err != nil && errors.Is(err, store.ErrInvalid) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "invalid", err.Error())
 		return
 	}
@@ -315,7 +326,11 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	// A draft's start was never announced to anyone, so it does not count as a move.
 	prevStartsAt := ""
 	var hostID string
-	if prev, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+	var prev types.Webinar
+	var hasPrev bool
+	if loaded, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+		prev = loaded
+		hasPrev = true
 		hostID = prev.Host.ID
 		if prev.Status != types.StatusDraft {
 			prevStartsAt = prev.StartsAt
@@ -345,7 +360,37 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wb, err := s.store.UpdateWebinar(r.Context(), slug, in)
+	var wb types.Webinar
+	switch {
+	case hasPrev && prev.SeriesID != "" && in.SeriesScope == "following":
+		rule, fields := ruleFromRecurrence(in)
+		if len(fields) > 0 {
+			httpx.Fields(w, fields)
+			return
+		}
+		in.Kind = types.KindRecurring
+		wb, err = s.store.UpdateSeriesFollowing(r.Context(), slug, in, rule, s.cfg.DefaultMaxMeetingMin)
+	case hasPrev && prev.SeriesID != "":
+		in.Kind = types.KindRecurring
+		wb, err = s.store.UpdateWebinar(r.Context(), slug, in)
+		if err == nil {
+			if markErr := s.store.MarkSeriesException(r.Context(), slug); markErr != nil {
+				s.fail(w, r, "update webinar: exception", markErr)
+				return
+			}
+			wb, err = s.store.WebinarBySlug(r.Context(), slug)
+		}
+	case hasPrev && prev.SeriesID == "" && seriesRequested(in):
+		plan, fields := planRecurrence(in)
+		if len(fields) > 0 {
+			httpx.Fields(w, fields)
+			return
+		}
+		in.Kind = types.KindRecurring
+		wb, err = s.store.ConvertToSeries(r.Context(), slug, in, plan, s.cfg.DefaultMaxMeetingMin)
+	default:
+		wb, err = s.store.UpdateWebinar(r.Context(), slug, in)
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return
@@ -492,20 +537,48 @@ func (s *Server) handleDeleteWebinarImage(w http.ResponseWriter, r *http.Request
  */
 func (s *Server) handleDeleteWebinar(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
+	scope := r.URL.Query().Get("scope")
+	if scope == "" {
+		scope = "this"
+	}
+	if scope != "this" && scope != "following" {
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_scope",
+			"Delete this session, or this session and the ones after it.")
+		return
+	}
 
-	cancellations := s.panelistCancellations(r.Context(), slug)
-	deleted, err := s.deleteWebinarBySlug(r.Context(), slug)
+	slugs, inSeries, err := s.store.SeriesDeleteSlugs(r.Context(), slug, scope)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return
 	}
 	if err != nil {
-		s.fail(w, r, "delete webinar", err)
+		s.fail(w, r, "delete webinar: series", err)
 		return
 	}
-	s.sendPanelistCancellations(r.Context(), cancellations)
+	targets := []string{slug}
+	if inSeries {
+		if len(slugs) == 0 {
+			httpx.Error(w, http.StatusConflict, "kept",
+				"That session has already happened, so it stays in the series.")
+			return
+		}
+		targets = slugs
+	}
 
-	s.logWebinarDeleted(slug, deleted)
+	for _, target := range targets {
+		cancellations := s.panelistCancellations(r.Context(), target)
+		deleted, err := s.deleteWebinarBySlug(r.Context(), target)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			s.fail(w, r, "delete webinar", err)
+			return
+		}
+		s.sendPanelistCancellations(r.Context(), cancellations)
+		s.logWebinarDeleted(target, deleted)
+	}
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
 }
 

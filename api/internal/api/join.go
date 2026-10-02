@@ -361,9 +361,18 @@ func (s *Server) resolveRegistration(w http.ResponseWriter, r *http.Request, slu
 		return types.Registration{}, false
 	}
 	if reg.WebinarID != slug {
-		httpx.Error(w, http.StatusUnauthorized, "invalid_join_key",
-			"That join link isn't valid for this webinar.")
-		return types.Registration{}, false
+		same, err := s.store.SameSeries(r.Context(), reg.WebinarID, slug)
+		if err != nil {
+			s.fail(w, r, "join: series", err)
+			return types.Registration{}, false
+		}
+		// One registration covers every session in the series. The join key
+		// was issued for whichever session they signed up on.
+		if !same {
+			httpx.Error(w, http.StatusUnauthorized, "invalid_join_key",
+				"That join link isn't valid for this webinar.")
+			return types.Registration{}, false
+		}
 	}
 	return reg, true
 }

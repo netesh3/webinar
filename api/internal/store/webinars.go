@@ -34,7 +34,15 @@ const webinarColumns = `
 	coalesce(w.venue, 'app'), coalesce(w.zoom_id, ''),
 	h.id, h.name, h.title, h.org, h.initials, h.hue,
 	(SELECT count(*) FROM registrations r
-	  WHERE r.webinar_id = w.id AND r.state <> 'declined') AS registrant_count`
+	   JOIN webinars rw ON rw.id = r.webinar_id
+	  WHERE r.state <> 'declined'
+	    AND (
+	      (w.series_id IS NULL AND r.webinar_id = w.id)
+	      OR (w.series_id IS NOT NULL AND rw.series_id = w.series_id)
+	    )) AS registrant_count,
+	coalesce(w.series_id::text, ''),
+	coalesce(w.occurrence_index, 0),
+	w.series_exception`
 
 const webinarFrom = ` FROM webinars w JOIN users h ON h.id = w.host_id `
 
@@ -56,6 +64,9 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		streamWatch string
 		streamOn    bool
 		streamSaved bool
+		seriesID    string
+		occIndex    int
+		exception   bool
 	)
 	err := row.Scan(
 		&w.ID, &w.WebinarID, &w.Topic, &w.Summary, &w.Descript, &w.Track,
@@ -72,11 +83,15 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&w.Venue, &w.ZoomID,
 		&hostID, &w.Host.Name, &w.Host.Title, &w.Host.Org, &w.Host.Initials, &w.Host.Hue,
 		&w.RegistrantCount,
+		&seriesID, &occIndex, &exception,
 	)
 	if err != nil {
 		return types.Webinar{}, "", err
 	}
 	w.Host.ID = hostID
+	w.SeriesID = seriesID
+	w.OccurrenceIndex = occIndex
+	w.SeriesException = exception
 	if simuliveID != nil && *simuliveID != "" {
 		w.SimuliveRecordingID = *simuliveID
 	}
@@ -698,71 +713,12 @@ func (s *Store) CreateWebinar(ctx context.Context, hostID string, in types.Webin
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	slug, err := uniqueSlug(ctx, tx, in.Topic)
+	maxDuration, err := hostMaxDuration(ctx, tx, hostID, defaultMaxDurationMin)
 	if err != nil {
 		return types.Webinar{}, err
 	}
-	webinarID, err := uniqueWebinarID(ctx, tx)
+	slug, _, err := insertWebinar(ctx, tx, hostID, in, startsAt, "", 0, false, maxDuration)
 	if err != nil {
-		return types.Webinar{}, err
-	}
-
-	agenda, takeaways, options, err := marshalWebinarJSON(in)
-	if err != nil {
-		return types.Webinar{}, err
-	}
-
-	var userMax *int
-	_ = tx.QueryRow(ctx, `SELECT max_duration_min FROM users WHERE id = $1`, hostID).Scan(&userMax)
-	maxDuration := defaultMaxDurationMin
-	if maxDuration <= 0 {
-		maxDuration = 180
-	}
-	if userMax != nil && *userMax > 0 {
-		maxDuration = *userMax
-	}
-
-	var id string
-	err = tx.QueryRow(ctx, `
-		INSERT INTO webinars
-			(slug, webinar_id, topic, summary, description, track,
-			 starts_at, duration_min, time_zone, kind, status, host_id,
-			 registration_required, approval, attendee_limit, passcode,
-			 agenda, takeaways, options,
-			 hide_attendees, mute_on_entry, allow_unmute, chat_enabled,
-			 qa_enabled, raise_hand_enabled, reactions_enabled, locked,
-			 chat_destination, polls_enabled, captions_enabled,
-			 max_duration_min, simulive_recording_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
-		        $13,$14,$15,$16,$17,$18,$19,
-		        $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31, NULLIF($32,'')::uuid)
-		RETURNING id::text`,
-		slug, webinarID, strings.TrimSpace(in.Topic), strings.TrimSpace(in.Summary),
-		strings.TrimSpace(in.Descript), strings.TrimSpace(in.Track),
-		startsAt, in.Duration, in.TimeZone, string(in.Kind), string(in.Status), hostID,
-		in.RegistrationRequired, string(in.Approval), in.AttendeeLimit,
-		strings.TrimSpace(in.Passcode), agenda, takeaways, options,
-		in.Controls.HideAttendees, in.Controls.MuteOnEntry, in.Controls.AllowUnmute,
-		in.Controls.ChatEnabled, in.Controls.QAEnabled, in.Controls.RaiseHandEnabled,
-		in.Controls.ReactionsEnabled, in.Controls.Locked,
-		string(in.Controls.ChatDestination.OrDefault()), in.Controls.PollsEnabled,
-		// Ticking "Live captions" on the schedule form is a request for captions,
-		// so it starts the session with the control already on. It used to set a
-		// badge and nothing else.
-		in.Controls.CaptionsEnabled || in.Options.Captions,
-		maxDuration, strings.TrimSpace(in.SimuliveRecordingID),
-	).Scan(&id)
-	if isUniqueViolation(err) {
-		return types.Webinar{}, ErrConflict
-	}
-	if err != nil {
-		return types.Webinar{}, err
-	}
-
-	if err := replaceQuestions(ctx, tx, id, in.CustomQuestions); err != nil {
-		return types.Webinar{}, err
-	}
-	if err := replacePanelists(ctx, tx, id, hostID, in.PanelistEmails); err != nil {
 		return types.Webinar{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -993,8 +949,9 @@ func (s *Store) DeleteWebinar(ctx context.Context, slug string) (Deleted, error)
 	// row (see migrations/0016), so deleting the row below removes it with
 	// everything else — there is no external blob left behind to clean up.
 	var id string
-	err = tx.QueryRow(ctx, `SELECT id, status FROM webinars WHERE slug = $1`, slug).
-		Scan(&id, &out.Status)
+	var seriesID *string
+	err = tx.QueryRow(ctx, `SELECT id, status, series_id::text FROM webinars WHERE slug = $1`, slug).
+		Scan(&id, &out.Status, &seriesID)
 	if noRows(err) {
 		return out, ErrNotFound
 	}
@@ -1049,8 +1006,23 @@ func (s *Store) DeleteWebinar(ctx context.Context, slug string) (Deleted, error)
 		return out, err
 	}
 
+	// A series registration lives on one session and covers the rest. Move it
+	// onto a session that is staying before this row, and its join key, go away.
+	if seriesID != nil && *seriesID != "" {
+		if err := moveSeriesRegistrations(ctx, tx, id, *seriesID); err != nil {
+			return out, err
+		}
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM webinars WHERE id = $1`, id); err != nil {
 		return out, err
+	}
+	if seriesID != nil && *seriesID != "" {
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM webinar_series s
+			 WHERE s.id = $1::uuid
+			   AND NOT EXISTS (SELECT 1 FROM webinars w WHERE w.series_id = s.id)`, *seriesID); err != nil {
+			return out, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return out, err
@@ -1505,6 +1477,7 @@ func (s *Store) attachChildren(ctx context.Context, list []types.Webinar) ([]typ
 		questions map[string][]types.CustomQuestion
 		open      map[string]bool
 	)
+	var seriesInfo map[string]types.SeriesInfo
 	if err := RunParallel(ctx,
 		func(ctx context.Context) error {
 			var err error
@@ -1521,6 +1494,11 @@ func (s *Store) attachChildren(ctx context.Context, list []types.Webinar) ([]typ
 			open, err = s.openJoinFlags(ctx, list)
 			return err
 		},
+		func(ctx context.Context) error {
+			var err error
+			seriesInfo, err = s.seriesByID(ctx, list)
+			return err
+		},
 	); err != nil {
 		return nil, err
 	}
@@ -1532,6 +1510,10 @@ func (s *Store) attachChildren(ctx context.Context, list []types.Webinar) ([]typ
 			list[i].CustomQuestions = q
 		}
 		list[i].GuestJoinAllowed = types.GuestJoinAllowedFor(list[i], open[list[i].Host.ID])
+		if info, ok := seriesInfo[list[i].SeriesID]; ok && list[i].SeriesID != "" {
+			copied := info
+			list[i].Series = &copied
+		}
 	}
 	return list, nil
 }
