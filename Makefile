@@ -130,6 +130,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the create-webinar form's two steps: old ?step= links must still open the right
 	# one, and only a real problem on The webinar may hold back Next or Schedule.
 	cd web && node --experimental-strip-types --no-warnings lib/schedule-wizard.test.mts
+	# And the recurring-series calendar: a 31st must skip short months, and the
+	# 61st session must be refused before the host is told it was booked.
+	cd web && node --experimental-strip-types --no-warnings lib/recurrence.test.mts
 	# And the chat preview card: a burst of arrivals, a reconnect merging history, and
 	# your own echo coming back off the wire cannot be produced by hand in a live room.
 	cd web && node --experimental-strip-types --no-warnings lib/chat-notify.test.mts

@@ -57,13 +57,14 @@ func (s *Store) Register(ctx context.Context, slug string, req types.RegisterReq
 		approval      string
 		attendeeLimit int
 		status        string
+		seriesID      string
 	)
 	// FOR UPDATE so two concurrent registrations can't both pass the capacity
 	// check and push the webinar past its limit.
 	err = tx.QueryRow(ctx, `
-		SELECT id::text, approval, attendee_limit, status
+		SELECT id::text, approval, attendee_limit, status, coalesce(series_id::text, '')
 		  FROM webinars WHERE slug = $1 FOR UPDATE`, slug).
-		Scan(&webinarID, &approval, &attendeeLimit, &status)
+		Scan(&webinarID, &approval, &attendeeLimit, &status, &seriesID)
 	if noRows(err) {
 		return types.Registration{}, ErrNotFound
 	}
@@ -83,10 +84,26 @@ func (s *Store) Register(ctx context.Context, slug string, req types.RegisterReq
 		return types.Registration{}, err
 	}
 
-	_, err = registrationByEmail(ctx, tx, webinarID, email)
+	// One signup covers every session. A second form, on this session or a
+	// later one, returns the registration that already exists.
+	existingWebinar := webinarID
+	if seriesID != "" {
+		if err := tx.QueryRow(ctx, `SELECT id::text FROM webinar_series WHERE id = $1::uuid FOR UPDATE`, seriesID).Scan(&seriesID); err != nil {
+			return types.Registration{}, err
+		}
+		foundID, foundErr := seriesRegistrationWebinar(ctx, tx, seriesID, email)
+		switch {
+		case foundErr == nil:
+			existingWebinar = foundID
+		case foundErr == ErrNotFound:
+		default:
+			return types.Registration{}, foundErr
+		}
+	}
+	_, err = registrationByEmail(ctx, tx, existingWebinar, email)
 	switch {
 	case err == nil:
-		bound, berr := bindRegistration(ctx, tx, webinarID, email, attendee, req.WhatsAppOptIn)
+		bound, berr := bindRegistration(ctx, tx, existingWebinar, email, attendee, req.WhatsAppOptIn)
 		if berr != nil {
 			return types.Registration{}, berr
 		}
@@ -99,8 +116,13 @@ func (s *Store) Register(ctx context.Context, slug string, req types.RegisterReq
 
 	var count int
 	if err := tx.QueryRow(ctx, `
-		SELECT count(*) FROM registrations
-		 WHERE webinar_id = $1 AND state <> 'declined'`, webinarID).Scan(&count); err != nil {
+		SELECT count(*) FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		 WHERE r.state <> 'declined'
+		   AND (
+		     ($2 = '' AND r.webinar_id = $1::uuid)
+		     OR ($2 <> '' AND w.series_id = $2::uuid)
+		   )`, webinarID, seriesID).Scan(&count); err != nil {
 		return types.Registration{}, err
 	}
 	if count >= attendeeLimit {
@@ -186,11 +208,12 @@ func (s *Store) RegisterGuest(ctx context.Context, slug, name string) (types.Reg
 		approval      string
 		attendeeLimit int
 		status        string
+		seriesID      string
 	)
 	err = tx.QueryRow(ctx, `
-		SELECT id::text, approval, attendee_limit, status
+		SELECT id::text, approval, attendee_limit, status, coalesce(series_id::text, '')
 		  FROM webinars WHERE slug = $1 FOR UPDATE`, slug).
-		Scan(&webinarID, &approval, &attendeeLimit, &status)
+		Scan(&webinarID, &approval, &attendeeLimit, &status, &seriesID)
 	if noRows(err) {
 		return types.Registration{}, ErrNotFound
 	}
@@ -209,10 +232,20 @@ func (s *Store) RegisterGuest(ctx context.Context, slug, name string) (types.Reg
 		return types.Registration{}, ErrGuestNotAllowed
 	}
 
+	if seriesID != "" {
+		if err := tx.QueryRow(ctx, `SELECT id::text FROM webinar_series WHERE id = $1::uuid FOR UPDATE`, seriesID).Scan(&seriesID); err != nil {
+			return types.Registration{}, err
+		}
+	}
 	var count int
 	if err := tx.QueryRow(ctx, `
-		SELECT count(*) FROM registrations
-		 WHERE webinar_id = $1 AND state <> 'declined'`, webinarID).Scan(&count); err != nil {
+		SELECT count(*) FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		 WHERE r.state <> 'declined'
+		   AND (
+		     ($2 = '' AND r.webinar_id = $1::uuid)
+		     OR ($2 <> '' AND w.series_id = $2::uuid)
+		   )`, webinarID, seriesID).Scan(&count); err != nil {
 		return types.Registration{}, err
 	}
 	if count >= attendeeLimit {
@@ -354,6 +387,22 @@ func bindRegistration(ctx context.Context, tx pgx.Tx, webinarID, email string, u
 	return registrationByEmail(ctx, tx, webinarID, email)
 }
 
+// seriesRegistrationWebinar is the webinar id (uuid) of this email's signup
+// anywhere in the series, or ErrNotFound.
+func seriesRegistrationWebinar(ctx context.Context, tx pgx.Tx, seriesID, email string) (string, error) {
+	var id string
+	err := tx.QueryRow(ctx, `
+		SELECT r.webinar_id::text
+		  FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		 WHERE w.series_id = $1::uuid AND lower(r.email) = $2
+		 LIMIT 1`, seriesID, email).Scan(&id)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
+	return id, err
+}
+
 // registrationByEmail looks up one registration inside an open transaction.
 func registrationByEmail(ctx context.Context, tx pgx.Tx, webinarID, email string) (types.Registration, error) {
 	row := tx.QueryRow(ctx, `
@@ -444,6 +493,58 @@ func (s *Store) attachWebinars(ctx context.Context, regs []types.Registration) (
 		}
 		out = append(out, types.RegisteredWebinar{Webinar: w, Registration: reg})
 	}
+	return s.expandSeriesRegistrations(ctx, out)
+}
+
+/* expandSeriesRegistrations turns one series signup into a row per session.
+ *
+ * The registration is stored once. "My webinars" still lists every session the
+ * person can join, each carrying that same join key, so the existing room
+ * path does not need a second signup.
+ */
+func (s *Store) expandSeriesRegistrations(ctx context.Context, rows []types.RegisteredWebinar) ([]types.RegisteredWebinar, error) {
+	ids := []string{}
+	seen := map[string]bool{}
+	for _, row := range rows {
+		if row.Webinar.SeriesID != "" && !seen[row.Webinar.SeriesID] {
+			seen[row.Webinar.SeriesID] = true
+			ids = append(ids, row.Webinar.SeriesID)
+		}
+	}
+	if len(ids) == 0 {
+		return rows, nil
+	}
+	siblings, err := s.queryWebinars(ctx, `
+		 WHERE w.series_id = ANY($1::uuid[]) AND w.status <> 'draft'
+		 ORDER BY w.starts_at ASC`, ids)
+	if err != nil {
+		return nil, err
+	}
+	bySeries := map[string][]types.Webinar{}
+	for _, w := range siblings {
+		bySeries[w.SeriesID] = append(bySeries[w.SeriesID], w)
+	}
+	out := make([]types.RegisteredWebinar, 0, len(rows))
+	listed := map[string]bool{}
+	for _, row := range rows {
+		group := bySeries[row.Webinar.SeriesID]
+		if row.Webinar.SeriesID == "" || len(group) == 0 {
+			if !listed[row.Webinar.ID] {
+				listed[row.Webinar.ID] = true
+				out = append(out, row)
+			}
+			continue
+		}
+		for _, w := range group {
+			if listed[w.ID] {
+				continue
+			}
+			listed[w.ID] = true
+			reg := row.Registration
+			reg.WebinarID = w.ID
+			out = append(out, types.RegisteredWebinar{Webinar: w, Registration: reg})
+		}
+	}
 	return out, nil
 }
 
@@ -482,6 +583,27 @@ func (s *Store) RegistrationForUser(ctx context.Context, slug, userID string) (t
 		  FROM registrations r
 		  JOIN webinars w ON w.id = r.webinar_id
 		 WHERE w.slug = $1 AND r.user_id = $2`, slug, userID)
+	reg, err := scanRegistration(row)
+	if noRows(err) {
+		reg, err = s.registrationForSeriesUser(ctx, slug, userID)
+	}
+	if noRows(err) || err == ErrNotFound {
+		return types.Registration{}, ErrNotFound
+	}
+	return reg, err
+}
+
+// registrationForSeriesUser finds a signup on any session of the same series.
+func (s *Store) registrationForSeriesUser(ctx context.Context, slug, userID string) (types.Registration, error) {
+	row := s.pool.QueryRow(ctx, `
+		SELECT `+registrationColumns+`
+		  FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		  JOIN webinars target ON target.slug = $1
+		 WHERE r.user_id = $2
+		   AND target.series_id IS NOT NULL
+		   AND w.series_id = target.series_id
+		 LIMIT 1`, slug, userID)
 	reg, err := scanRegistration(row)
 	if noRows(err) {
 		return types.Registration{}, ErrNotFound

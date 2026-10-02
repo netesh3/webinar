@@ -118,7 +118,14 @@ export function BasicsSection({
                   ))}
                 </datalist>
               </div>
-              <KindControl value={form.kind} onChange={(v) => set("kind", v)} />
+              <KindControl
+                value={form.seriesId ? "recurring" : form.kind}
+                locked={Boolean(form.seriesId)}
+                onChange={(v) => {
+                  set("kind", v);
+                  if (v === "recurring" && form.venue !== "app") set("venue", "app");
+                }}
+              />
             </div>
           </div>
 
@@ -138,9 +145,12 @@ export function BasicsSection({
 function KindControl({
   value,
   onChange,
+  locked = false,
 }: {
   value: FormState["kind"];
   onChange: (next: FormState["kind"]) => void;
+  /** A session that already belongs to a series stays one. */
+  locked?: boolean;
 }) {
   const name = useId();
   const labelId = useId();
@@ -177,6 +187,7 @@ function KindControl({
                 name={name}
                 value={option}
                 checked={active}
+                disabled={locked}
                 onChange={() => onChange(option)}
                 className="sr-only"
               />

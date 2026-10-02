@@ -28,6 +28,7 @@ import {
 import { useHydrated, useNow } from "@/lib/clock";
 import { zonedToInstant } from "@/lib/format";
 import { optionsProblem } from "@/lib/registration-questions";
+import { planRecurrence, withStartWeekday } from "@/lib/recurrence";
 import {
   issuesFor,
   legacyAnchor,
@@ -87,6 +88,7 @@ function targetForFields(fields: Record<string, string>): string | null {
   if (keys.some((k) => ["startsAt", "timeZone", "durationMin"].includes(k))) {
     return "date";
   }
+  if (keys.includes("recurrence")) return "recurrence";
   if (
     keys.some((k) =>
       ["passcode", "approval", "customQuestions", "attendeeLimit"].includes(k),
@@ -427,6 +429,31 @@ function ScheduleFormBody({
       focusTarget("date");
       return null;
     }
+    const seriesMember = form.seriesId !== "";
+    const sendingRule =
+      (form.kind === "recurring" || seriesMember) &&
+      (!seriesMember || form.seriesScope === "following");
+    let recurrence: WebinarInput["recurrence"];
+    if (sendingRule) {
+      const rule = withStartWeekday(form.recurrence, form.date);
+      const plan = planRecurrence(form.date, rule);
+      if (plan.error) {
+        setFields({ recurrence: plan.error });
+        flushSync(() => go("webinar"));
+        focusTarget("recurrence");
+        return null;
+      }
+      recurrence = {
+        pattern: rule.pattern,
+        interval: rule.interval,
+        ...(rule.pattern === "weekly" ? { weekdays: rule.weekdays } : {}),
+        end: rule.end,
+        ...(rule.end === "by_date"
+          ? { endDate: rule.endDate }
+          : { endCount: rule.endCount }),
+      };
+    }
+    const asSeries = seriesMember || form.kind === "recurring";
     return {
       topic: form.topic,
       summary: form.summary,
@@ -435,8 +462,10 @@ function ScheduleFormBody({
       startsAt: startsAt.toISOString(),
       durationMin: form.durationMin,
       timeZone: form.timeZone,
-      kind: form.kind,
-      ...(form.kind === "simulive" && form.simuliveRecordingId
+      kind: asSeries ? "recurring" : form.kind,
+      ...(recurrence ? { recurrence } : {}),
+      ...(seriesMember ? { seriesScope: form.seriesScope } : {}),
+      ...(form.kind === "simulive" && !asSeries && form.simuliveRecordingId
         ? { simuliveRecordingId: form.simuliveRecordingId }
         : {}),
       status,
@@ -465,7 +494,12 @@ function ScheduleFormBody({
           : { autoRecord: false }),
       },
       controls: form.controls,
-      venue: (account?.features ?? []).includes(FeatureZoom) ? form.venue : "app",
+      venue:
+        asSeries
+          ? "app"
+          : (account?.features ?? []).includes(FeatureZoom)
+            ? form.venue
+            : "app",
     };
   }
 
@@ -574,12 +608,20 @@ function ScheduleFormBody({
         );
       }
 
+      const sessions = saved.series?.occurrenceCount;
+      const seriesMember = form.seriesId !== "";
       notify(
         editing
-          ? "Changes saved."
+          ? form.seriesScope === "following" && seriesMember
+            ? "Updated this session and the ones after it."
+            : seriesMember
+              ? "Saved this session."
+              : "Changes saved."
           : status === "draft"
             ? "Saved as a draft."
-            : "Webinar scheduled.",
+            : sessions && sessions > 1
+              ? `Scheduled ${sessions} sessions.`
+              : "Webinar scheduled.",
         "ok",
       );
       router.push(`/host/${saved.id}`);

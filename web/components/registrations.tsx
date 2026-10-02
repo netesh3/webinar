@@ -70,6 +70,7 @@ function loadOwned(accountId: string, gen: number): Promise<void> {
     .myRegistrations()
     .then((rows) => {
       if (ownedFlight?.promise !== promise) return;
+      rememberSeriesSlugs(rows);
       publishOwned({
         gen,
         accountId,
@@ -157,6 +158,22 @@ function subscribeNothing(): () => void {
 
 function rememberSlug(slug: string, joinKey: string): void {
   writeSlugIndex({ ...readSlugIndex(), [slug]: joinKey });
+}
+
+/** A series registration opens every session. Index each slug the lookup
+ *  returned so session 2's room finds the same key without another signup. */
+function rememberSeriesSlugs(
+  rows: { webinar: { id: string }; registration: { joinKey: string } }[],
+): void {
+  const index = { ...readSlugIndex() };
+  let changed = false;
+  for (const row of rows) {
+    if (!row.webinar?.id || !row.registration?.joinKey) continue;
+    if (index[row.webinar.id] === row.registration.joinKey) continue;
+    index[row.webinar.id] = row.registration.joinKey;
+    changed = true;
+  }
+  if (changed) writeSlugIndex(index);
 }
 
 let cache: string[] | null = null;
@@ -271,6 +288,7 @@ export function useRegistrations() {
       .lookup(keys)
       .then((rows) => {
         if (!active) return;
+        rememberSeriesSlugs(rows);
         setFetched(rows.map((r) => r.registration));
         setWebinars((prev) => ({
           ...prev,

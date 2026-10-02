@@ -64,14 +64,20 @@ export function WhereSection({
     };
   }, [zoomAllowed]);
 
-  const choices = zoomAllowed ? CHOICES : CHOICES.filter((c) => c.id === "app");
+  const series = form.kind === "recurring" || form.seriesId !== "";
+  const choices =
+    zoomAllowed && !series ? CHOICES : CHOICES.filter((c) => c.id === "app");
   const zoomOff = zoomAllowed && zoomConnected !== true;
 
   return (
     <FormGroup label="Where it runs">
       <FormSection
         title="Where people join"
-        description="WhatsApp and email still go out either way."
+        description={
+          series
+            ? "A recurring series runs in this app. WhatsApp and email still go out."
+            : "WhatsApp and email still go out either way."
+        }
         first
       >
         <div
@@ -79,7 +85,7 @@ export function WhereSection({
           className={`grid gap-2 ${choices.length > 1 ? "sm:grid-cols-3" : ""}`}
         >
           {choices.map((choice) => {
-            const selected = form.venue === choice.id;
+            const selected = series ? choice.id === "app" : form.venue === choice.id;
             const disabled = choice.id !== "app" && zoomOff;
             return (
               <button
@@ -104,7 +110,7 @@ export function WhereSection({
             );
           })}
         </div>
-        {zoomAllowed && form.venue !== "app" && (
+        {zoomAllowed && !series && form.venue !== "app" && (
           <p className="mt-3 text-[12.5px] leading-relaxed text-ink-2">
             People still get your WhatsApp and email. The join link is a
             personal Zoom link. Meetings need a paid Zoom license.

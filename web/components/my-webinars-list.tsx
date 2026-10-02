@@ -216,6 +216,11 @@ function RegisteredCard({
               Registered
             </Badge>
           )}
+          {w.series && (
+            <Badge>
+              {w.occurrenceIndex ? `Session ${w.occurrenceIndex}` : "Series"}
+            </Badge>
+          )}
           {w.track && <Badge>{w.track}</Badge>}
         </>
       }

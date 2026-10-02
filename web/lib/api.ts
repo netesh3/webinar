@@ -486,8 +486,9 @@ export const api = {
     return res;
   },
 
-  deleteWebinar: async (slug: string) => {
-    const res = await del<StatusResponse>(`/api/host/webinars/${seg(slug)}/`);
+  deleteWebinar: async (slug: string, scope?: "this" | "following") => {
+    const q = scope ? `?scope=${scope}` : "";
+    const res = await del<StatusResponse>(`/api/host/webinars/${seg(slug)}/${q}`);
     dropHostWebinarLists();
     return res;
   },

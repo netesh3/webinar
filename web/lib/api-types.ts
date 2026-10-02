@@ -2317,6 +2317,42 @@ export interface Webinar {
    */
   zoomNotice?: string;
   report?: WebinarReport;
+  /**
+   * SeriesID links this session to a recurring series. Empty on a one-off.
+   * OccurrenceIndex is the 1-based position when the series was created.
+   * SeriesException is a session edited on its own: a later "this and
+   * following" save does not overwrite it.
+   */
+  seriesId?: string;
+  occurrenceIndex?: number;
+  seriesException?: boolean;
+  series?: SeriesInfo;
+}
+
+/** The schedule shared by every session in a series. */
+export interface SeriesInfo {
+  id: string;
+  pattern: string;
+  interval: number;
+  weekdays?: number[];
+  monthlyDay?: number;
+  end: string;
+  endDate?: string;
+  endCount?: number;
+  timeZone: string;
+  occurrenceCount: number;
+  summary: string;
+  skippedMonths?: string[];
+}
+
+/** Sent when creating a series, or when a "this and following" edit changes it. */
+export interface RecurrenceInput {
+  pattern: string;
+  interval: number;
+  weekdays?: number[];
+  end: string;
+  endDate?: string;
+  endCount?: number;
 }
 /**
  *  HostWebinarPage is one screen of a host's own webinars.
@@ -2404,6 +2440,10 @@ export interface WebinarInput {
    *  Venue is app, zoom_meeting, or zoom_webinar. Empty means this app.
    */
   venue?: string;
+  /** Set when this save creates a series, or a following edit changes the schedule. */
+  recurrence?: RecurrenceInput;
+  /** "this" or "following" when editing a session that already belongs to a series. */
+  seriesScope?: "this" | "following";
 }
 /**
  * SetStreamRequest is the host's RTMP destination.

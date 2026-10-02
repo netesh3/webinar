@@ -239,12 +239,25 @@ export function RegisterForm({ webinar: w }: { webinar: Webinar }) {
   // Keyed by the account so the prefilled values come from props on mount rather
   // than being copied in by an effect — and signing in mid-visit refills them.
   return (
+    <>
+      {w.series && <SeriesCovers series={w.series} />}
     <EntryChoice
       key={account?.id ?? "guest"}
       webinar={w}
       account={account}
       onRegistered={remember}
     />
+    </>
+  );
+}
+
+function SeriesCovers({ series }: { series: { summary?: string } }) {
+  return (
+    <p className="mb-3 text-[13.5px] leading-relaxed text-ink-2">
+      One registration covers every session in this series
+      {series.summary ? ` — ${series.summary}` : ""}. You will not be asked to
+      sign up again for each one.
+    </p>
   );
 }
 
@@ -1059,6 +1072,9 @@ function Confirmed({
             {emailConfigured
               ? " A confirmation with this link and a calendar invite is on its way to your inbox."
               : " This site is not sending email yet, so save the link here (and add it to your calendar below)."}
+            {w.series
+              ? " This registration covers every session in the series. Each one is listed in My webinars."
+              : ""}
           </>
         )}
       </p>

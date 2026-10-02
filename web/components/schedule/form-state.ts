@@ -7,6 +7,11 @@ import type {
   WebinarOptions,
 } from "@/lib/api-types";
 import { instantToZoned, localTimeZone } from "@/lib/format";
+import {
+  defaultRecurrence,
+  weekday,
+  type RecurrenceForm,
+} from "@/lib/recurrence";
 import { DEFAULT_REMINDERS } from "../reminder-times";
 
 /* Schedule or edit a webinar.
@@ -79,6 +84,12 @@ export type FormState = {
   streamKey: string;
   streamWatchUrl: string;
   venue: "app" | "zoom_meeting" | "zoom_webinar";
+  recurrence: RecurrenceForm;
+  /** "this" edits one session. "following" edits it and later non-exception sessions. */
+  seriesScope: "this" | "following";
+  seriesId: string;
+  occurrenceIndex: number;
+  seriesSummary: string;
 };
 
 export type SetForm = <K extends keyof FormState>(
@@ -168,6 +179,7 @@ export function initialState(
         webinar.venue === "zoom_meeting" || webinar.venue === "zoom_webinar"
           ? webinar.venue
           : "app",
+      ...seriesFields(webinar, when.date),
     };
   }
 
@@ -240,5 +252,39 @@ export function initialState(
     streamKey: "",
     streamWatchUrl: "",
     venue: "app",
+    ...seriesFields(null, when.date),
+  };
+}
+
+function seriesFields(webinar: Webinar | null, date: string) {
+  const blank = {
+    recurrence: defaultRecurrence(date),
+    seriesScope: "this" as const,
+    seriesId: "",
+    occurrenceIndex: 0,
+    seriesSummary: "",
+  };
+  const series = webinar?.series;
+  if (!series) return blank;
+  const pattern: RecurrenceForm["pattern"] =
+    series.pattern === "weekly" || series.pattern === "monthly"
+      ? series.pattern
+      : "daily";
+  return {
+    recurrence: {
+      pattern,
+      interval: series.interval > 0 ? series.interval : 1,
+      weekdays: series.weekdays?.length ? [...series.weekdays] : [weekday(date)],
+      end: series.end === "after_count" ? ("after_count" as const) : ("by_date" as const),
+      endDate: series.endDate || blank.recurrence.endDate,
+      endCount:
+        series.endCount && series.endCount > 0
+          ? series.endCount
+          : Math.min(series.occurrenceCount || 7, 60),
+    },
+    seriesScope: "this" as const,
+    seriesId: webinar?.seriesId || series.id,
+    occurrenceIndex: webinar?.occurrenceIndex ?? 0,
+    seriesSummary: series.summary ?? "",
   };
 }

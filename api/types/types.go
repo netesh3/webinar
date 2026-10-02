@@ -820,6 +820,44 @@ type Webinar struct {
 	ZoomNotice string `json:"zoomNotice,omitempty"`
 
 	Report *WebinarReport `json:"report,omitempty"`
+
+	/* SeriesID links this session to a recurring series. Empty on a one-off.
+	 *
+	 * OccurrenceIndex is the 1-based position when the series was created.
+	 * SeriesException is a session edited on its own: a later "this and
+	 * following" save does not overwrite it. Series is the schedule, present
+	 * on host and attendee reads so a list can show the relationship. */
+	SeriesID        string      `json:"seriesId,omitempty"`
+	OccurrenceIndex int         `json:"occurrenceIndex,omitempty"`
+	SeriesException bool        `json:"seriesException,omitempty"`
+	Series          *SeriesInfo `json:"series,omitempty"`
+}
+
+// SeriesInfo is the schedule shared by every session in a series.
+type SeriesInfo struct {
+	ID              string   `json:"id"`
+	Pattern         string   `json:"pattern"` // daily, weekly, monthly
+	Interval        int      `json:"interval"`
+	Weekdays        []int    `json:"weekdays,omitempty"` // 0 = Sunday … 6 = Saturday
+	MonthlyDay      int      `json:"monthlyDay,omitempty"`
+	End             string   `json:"end"` // by_date or after_count
+	EndDate         string   `json:"endDate,omitempty"`
+	EndCount        int      `json:"endCount,omitempty"`
+	TimeZone        string   `json:"timeZone"`
+	OccurrenceCount int      `json:"occurrenceCount"`
+	Summary         string   `json:"summary"`
+	SkippedMonths   []string `json:"skippedMonths,omitempty"`
+}
+
+// RecurrenceInput is the schedule sent when creating a series, or when a
+// "this and following" edit changes how the rest of it repeats.
+type RecurrenceInput struct {
+	Pattern  string `json:"pattern"`
+	Interval int    `json:"interval"`
+	Weekdays []int  `json:"weekdays,omitempty"`
+	End      string `json:"end"`
+	EndDate  string `json:"endDate,omitempty"`
+	EndCount int    `json:"endCount,omitempty"`
 }
 
 /* HostWebinarPage is one screen of a host's own webinars.
@@ -897,6 +935,13 @@ type WebinarInput struct {
 
 	/* Venue is app, zoom_meeting, or zoom_webinar. Empty means this app. */
 	Venue string `json:"venue,omitempty"`
+
+	/* Recurrence is set when this save creates a series, or when a following
+	 * edit changes the schedule. SeriesScope is "this" or "following" on an
+	 * edit of a session that already belongs to a series. Omitted on a
+	 * one-off, and on a create. */
+	Recurrence  *RecurrenceInput `json:"recurrence,omitempty"`
+	SeriesScope string           `json:"seriesScope,omitempty"`
 }
 
 // SetStreamRequest is the host's RTMP destination.
