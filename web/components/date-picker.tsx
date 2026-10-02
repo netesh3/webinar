@@ -10,6 +10,7 @@ import {
 } from "react";
 import { CalendarIcon } from "./icons";
 import { Button } from "./ui";
+import { dateRangeButtonLabel } from "@/lib/date-range-label";
 import { instantToZoned, localTimeZone, tzLabel, zonedToInstant } from "@/lib/format";
 
 /* One popover for every absolute date a host picks.
@@ -776,7 +777,7 @@ export function DateRangeField({
     close();
   }
 
-  const labelText = from && to ? formatRange(from, to) : emptyLabel;
+  const labelText = dateRangeButtonLabel(from, to, emptyLabel, formatRange);
   const draftPreset = today ? matchingPresetId(draftFrom, draftTo, today, presets) : null;
   const clearSelected = presets.some((preset) => preset.id === draftPreset && preset.clear);
   const summary = draftFrom
@@ -795,13 +796,14 @@ export function DateRangeField({
         aria-label={ariaLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
+        title={labelText !== emptyLabel ? labelText : undefined}
         onClick={() => (open ? close() : openPanel())}
-        className={`flex ${height} w-full items-center gap-2 rounded-lg border bg-surface px-2.5 text-left text-ink outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/20 sm:w-auto ${
+        className={`flex ${height} w-full min-w-0 items-center gap-2 overflow-hidden rounded-lg border bg-surface px-2.5 text-left text-ink outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/20 sm:w-auto ${
           open ? "border-brand ring-2 ring-brand/20" : "border-line"
         }`}
       >
         <CalendarIcon className="size-3.5 shrink-0 text-ink-3" />
-        <span className="truncate">{labelText}</span>
+        <span className="min-w-0 truncate">{labelText}</span>
       </button>
       <AnchoredPopover
         open={open}

@@ -228,6 +228,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the host-home create cards: Schedule alone, or Schedule beside Instant
 	# when that account's switch is on. Admin does not add the second card.
 	cd web && node --experimental-strip-types --no-warnings lib/host-home-actions.test.mts
+	# And the host list's date button: "Filter" while every date is included, the
+	# range once both ends are set, and Filtered if only one end is filled in.
+	cd web && node --experimental-strip-types --no-warnings lib/date-range-label.test.mts
 	# And the admin Features list: catalogue order, with Instant webinar in its
 	# server slot, then CDN broadcast — which is not a feature key and stays
 	# available when the account cannot host.
