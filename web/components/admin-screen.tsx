@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import {
+  accountFeatureRows,
+  accountFeaturesOnCount,
+  CDN_BROADCAST_ROW_ID,
+  type AccountFeatureRow,
+} from "@/lib/admin-account-features";
 import { FeatureInstantWebinar, type AdminUser, type Webinar } from "@/lib/api-types";
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { paginate } from "@/lib/paginate";
@@ -189,50 +195,6 @@ function AdminAccounts() {
     }
   }
 
-  async function setInstantWebinar(u: AdminUser, enabled: boolean) {
-    setBusy(u.id);
-    try {
-      const updated = await api.setUserFeature(u.id, FeatureInstantWebinar, enabled);
-      setUsers((prev) =>
-        (prev ?? []).map((row) =>
-          row.id === u.id ? { ...row, features: updated.features } : row,
-        ),
-      );
-      notify(
-        enabled
-          ? `Instant webinar enabled for ${u.name || u.email}.`
-          : `Instant webinar disabled for ${u.name || u.email}.`,
-        "ok",
-      );
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "That didn't work.", "error");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function setCdnBroadcast(u: AdminUser, canCdnBroadcast: boolean) {
-    setBusy(u.id);
-    try {
-      await api.setCdnBroadcastCapability(u.id, canCdnBroadcast);
-      setUsers((prev) =>
-        (prev ?? []).map((row) =>
-          row.id === u.id ? { ...row, canCdnBroadcast } : row,
-        ),
-      );
-      notify(
-        canCdnBroadcast
-          ? `CDN broadcast mode enabled for ${u.name || u.email}.`
-          : `CDN broadcast mode disabled for ${u.name || u.email}.`,
-        "ok",
-      );
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "That didn't work.", "error");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   /* Refused server-side too — for the caller's own account, and for one that
    * still owns webinars — this only saves the round trip and gives the error
    * a place to land next to the button that caused it. */
@@ -354,20 +316,6 @@ function AdminAccounts() {
                         label="Can host"
                       />
 
-                      <Toggle
-                        checked={u.canCdnBroadcast}
-                        onChange={(next) => void setCdnBroadcast(u, next)}
-                        label="CDN Broadcast"
-                      />
-
-                      {u.canHost && (
-                        <Toggle
-                          checked={(u.features ?? []).includes(FeatureInstantWebinar)}
-                          onChange={(next) => void setInstantWebinar(u, next)}
-                          label="Instant webinar"
-                        />
-                      )}
-
                       {/* Max meeting duration — only shown for hosts */}
                       {u.canHost && (
                         <select
@@ -402,24 +350,29 @@ function AdminAccounts() {
                     Delete
                   </button>
 
-                  {/* Hosts only. Every feature in the catalogue is something a
-                      host does with their own audience, so the switches would be
-                      a row of decisions with no effect on an account that cannot
-                      create a webinar. */}
-                  {u.canHost && (
-                    <div className="w-full">
-                      <AccountFeatures
-                        user={u}
-                        onChange={(features) =>
-                          setUsers((prev) =>
-                            (prev ?? []).map((row) =>
-                              row.id === u.id ? { ...row, features } : row,
-                            ),
-                          )
-                        }
-                      />
-                    </div>
-                  )}
+                  {/* Catalogue switches stay host-only: they act on a webinar this
+                      account would create. CDN broadcast used to sit in the header
+                      for every account, and that patch is still accepted for a
+                      non-host, so the list is shown either way. */}
+                  <div className="w-full">
+                    <AccountFeatures
+                      user={u}
+                      onFeatures={(features) =>
+                        setUsers((prev) =>
+                          (prev ?? []).map((row) =>
+                            row.id === u.id ? { ...row, features } : row,
+                          ),
+                        )
+                      }
+                      onCdnBroadcast={(canCdnBroadcast) =>
+                        setUsers((prev) =>
+                          (prev ?? []).map((row) =>
+                            row.id === u.id ? { ...row, canCdnBroadcast } : row,
+                          ),
+                        )
+                      }
+                    />
+                  </div>
                 </div>
               );
             })}
@@ -470,14 +423,17 @@ function AdminAccounts() {
  * decision about a switch they never touched, and a retried request cannot
  * toggle something back.
  *
- * Instant webinar is the toggle on the account row, not a second copy here.
+ * Instant webinar is one of those catalogue switches, in the server's order.
+ * CDN broadcast is not: it is still canCdnBroadcast, on its own patch.
  */
 function AccountFeatures({
   user,
-  onChange,
+  onFeatures,
+  onCdnBroadcast,
 }: {
   user: AdminUser;
-  onChange: (features: string[]) => void;
+  onFeatures: (features: string[]) => void;
+  onCdnBroadcast: (canCdnBroadcast: boolean) => void;
 }) {
   const { featureCatalogue } = useAppConfig();
   const { notify } = useToast();
@@ -486,22 +442,48 @@ function AccountFeatures({
    * the first is still in flight. */
   const [busy, setBusy] = useState<string | null>(null);
 
-  /* Instant webinar has its own toggle on the row. Counting it here as well
-   * would show two switches for one flag. */
-  const switches = featureCatalogue.filter((f) => f.key !== FeatureInstantWebinar);
+  const switches = accountFeatureRows(user.canHost, featureCatalogue);
   if (switches.length === 0) return null;
 
-  const on = new Set(
-    (user.features ?? []).filter((key) => switches.some((f) => f.key === key)),
+  const onCount = accountFeaturesOnCount(
+    switches,
+    user.features,
+    user.canCdnBroadcast,
   );
 
-  async function set(key: string, enabled: boolean) {
+  async function setFeature(key: string, enabled: boolean) {
     setBusy(key);
     try {
       const updated = await api.setUserFeature(user.id, key, enabled);
       // The account as the server now describes it, rather than this screen's
       // guess at the new set — the two cannot then drift.
-      onChange(updated.features);
+      onFeatures(updated.features);
+      if (key === FeatureInstantWebinar) {
+        notify(
+          enabled
+            ? `Instant webinar enabled for ${user.name || user.email}.`
+            : `Instant webinar disabled for ${user.name || user.email}.`,
+          "ok",
+        );
+      }
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function setCdnBroadcast(enabled: boolean) {
+    setBusy(CDN_BROADCAST_ROW_ID);
+    try {
+      await api.setCdnBroadcastCapability(user.id, enabled);
+      onCdnBroadcast(enabled);
+      notify(
+        enabled
+          ? `CDN broadcast mode enabled for ${user.name || user.email}.`
+          : `CDN broadcast mode disabled for ${user.name || user.email}.`,
+        "ok",
+      );
     } catch (e) {
       notify(e instanceof Error ? e.message : "That didn't work.", "error");
     } finally {
@@ -510,22 +492,52 @@ function AccountFeatures({
   }
 
   return (
-    <Disclosure
-      summary={`Features · ${on.size} of ${switches.length} on`}
-    >
+    <Disclosure summary={`Features · ${onCount} of ${switches.length} on`}>
       <div className="grid gap-2.5">
-        {switches.map((f) => (
-          <Toggle
-            key={f.key}
-            checked={on.has(f.key)}
+        {switches.map((row) => (
+          <FeatureToggle
+            key={`${row.source}:${row.id}`}
+            row={row}
+            user={user}
             disabled={busy !== null}
-            onChange={(next) => void set(f.key, next)}
-            label={f.label}
-            description={f.description}
+            onFeature={setFeature}
+            onCdnBroadcast={setCdnBroadcast}
           />
         ))}
       </div>
     </Disclosure>
+  );
+}
+
+function FeatureToggle({
+  row,
+  user,
+  disabled,
+  onFeature,
+  onCdnBroadcast,
+}: {
+  row: AccountFeatureRow;
+  user: AdminUser;
+  disabled: boolean;
+  onFeature: (key: string, enabled: boolean) => Promise<void>;
+  onCdnBroadcast: (enabled: boolean) => Promise<void>;
+}) {
+  const checked =
+    row.source === "cdn_broadcast"
+      ? user.canCdnBroadcast
+      : (user.features ?? []).includes(row.id);
+  return (
+    <Toggle
+      checked={checked}
+      disabled={disabled}
+      onChange={(next) =>
+        void (row.source === "cdn_broadcast"
+          ? onCdnBroadcast(next)
+          : onFeature(row.id, next))
+      }
+      label={row.label}
+      description={row.description}
+    />
   );
 }
 
