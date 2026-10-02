@@ -274,8 +274,23 @@ type barrier struct {
  * store.RegisterGuest's transaction so two arriving together cannot both take the last one.
  */
 func (s *Server) audienceBarrier(wb types.Webinar) *barrier {
-	if wb.Status == types.StatusEnded || wb.Status == types.StatusDraft {
-		return &barrier{http.StatusConflict, "not_joinable", "This webinar isn't running."}
+	/* Ended and not-yet-started are different refusals.
+	 *
+	 * A finished session is over: status ended, including one markLapsed rewrote
+	 * on read because the scheduled end passed and it never went live. Retrying
+	 * will not open it, so the code is `ended` and the sentence is not "isn't
+	 * running". A draft has not started; that is `not_started`, not the same
+	 * answer. A scheduled session the host has not started is neither of these.
+	 * Too early stays `too_early`, and once the doors are open the attendee
+	 * comes in and waits.
+	 */
+	switch wb.Status {
+	case types.StatusEnded:
+		return &barrier{http.StatusConflict, "ended",
+			"Thanks for your interest. The host has ended this session."}
+	case types.StatusDraft:
+		return &barrier{http.StatusConflict, "not_started",
+			"The host hasn't started this session yet."}
 	}
 	if wb.Controls.Locked {
 		return &barrier{http.StatusConflict, "locked",

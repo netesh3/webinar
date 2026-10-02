@@ -415,8 +415,8 @@ func TestGuestJoinClearsTheSameGatesAsRegisteredEntry(t *testing.T) {
 		if res.StatusCode != http.StatusConflict {
 			t.Fatalf("status %d body %s, want 409", res.StatusCode, raw)
 		}
-		if code := errorCode(t, raw); code != "not_joinable" {
-			t.Errorf("code %q, want not_joinable", code)
+		if code := errorCode(t, raw); code != "ended" {
+			t.Errorf("code %q, want ended", code)
 		}
 	})
 
