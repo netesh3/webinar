@@ -40,11 +40,11 @@ const scheduleLeadError = "Schedule it at least an hour from now."
 
 /* hostStartLead is how early Go live may open a scheduled webinar.
  *
- * Five minutes, and only for a start the host picked. An instant webinar is
+ * Fifteen minutes, and only for a start the host picked. An instant webinar is
  * stamped at now, so this window is already open when that room is created.
  * The hour above is a different rule: it belongs to the schedule form.
  */
-const hostStartLead = 5 * time.Minute
+const hostStartLead = 15 * time.Minute
 
 /* handleHostWebinars is GET /api/host/webinars — one page of the sessions this
  * account owns, in the bucket the portal is showing.
@@ -842,7 +842,7 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	/* Already live is a rejoin, not a new start. Ended is left to SetStatus.
-	 * Scheduled and draft wait until five minutes before the start. */
+	 * Scheduled and draft wait until fifteen minutes before the start. */
 	if existing.Status == types.StatusScheduled || existing.Status == types.StatusDraft {
 		if msg, closed := goLiveClosed(existing); closed {
 			httpx.Error(w, http.StatusForbidden, "too_soon", msg)
@@ -897,7 +897,7 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 
 /* goLiveClosed reports whether Go live is still shut, and the sentence to show.
  *
- * Open from five minutes before the start, and any time after, until the
+ * Open from fifteen minutes before the start, and any time after, until the
  * webinar has ended (the caller does not ask once it is live or over). A start
  * that cannot be read is not a reason to trap the host, so that case opens.
  */
@@ -910,7 +910,9 @@ func goLiveClosed(wb types.Webinar) (string, bool) {
 	if !time.Now().Before(opens) {
 		return "", false
 	}
-	return "Go live opens 5 minutes before the start, at " + localTime(opens, wb.TimeZone) + ".", true
+	/* The minute count is hostStartLead, so the sentence and the check cannot drift. */
+	leadMin := int(hostStartLead / time.Minute)
+	return fmt.Sprintf("Go live opens %d minutes before the start, at %s.", leadMin, localTime(opens, wb.TimeZone)), true
 }
 
 // handleTransferHost hands a live session to another panelist already in the room.

@@ -74,7 +74,7 @@ func TestAttendeeCanJoinJustBeforeTheStart(t *testing.T) {
 	}
 }
 
-/* Go live stays shut until five minutes before the start.
+/* Go live stays shut until fifteen minutes before the start.
  *
  * Once a webinar IS live, the schedule stops mattering for the audience — that
  * is the `status != live` guard. A host can no longer reach that state a month
@@ -142,7 +142,7 @@ func TestGoLiveRefusesAfterTheScheduledEnd(t *testing.T) {
 	}
 }
 
-func TestGoLiveOpensFiveMinutesBefore(t *testing.T) {
+func TestGoLiveOpensFifteenMinutesBefore(t *testing.T) {
 	h := newHarness(t)
 	h.signup("Punctual Host", "punctual-host@test.dev", true)
 
@@ -152,11 +152,32 @@ func TestGoLiveOpensFiveMinutesBefore(t *testing.T) {
 		t.Fatalf("start two hours early: status %d code %q, want 403 too_soon\n  body: %s",
 			res.StatusCode, errorCode(t, raw), raw)
 	}
+	if !strings.Contains(string(raw), "15 minutes") {
+		t.Fatalf("the refusal must name the fifteen-minute window: %s", raw)
+	}
 
-	soon := scheduleAt(t, h, "Four Minutes Out", 4*time.Minute)
+	/* Twenty minutes is still shut. Ten minutes is inside the new window and
+	 * outside the old five-minute one, so this fails if the lead was left at 5. */
+	outside := scheduleAt(t, h, "Twenty Minutes Out", 20*time.Minute)
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+outside.ID+"/start", nil)
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "too_soon" {
+		t.Fatalf("start twenty minutes early: status %d code %q, want 403 too_soon\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+	loc, err := time.LoadLocation("UTC")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+	opens := quotedGoLiveTime(t, string(raw), loc)
+	gap := mustParse(t, outside.StartsAt).Sub(opens)
+	if gap < 14*time.Minute || gap > 16*time.Minute {
+		t.Errorf("Go live opens %v before the start, want 15 minutes: %s", gap, raw)
+	}
+
+	soon := scheduleAt(t, h, "Ten Minutes Out", 10*time.Minute)
 	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+soon.ID+"/start", nil)
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf("start four minutes out: status %d body %s", res.StatusCode, raw)
+		t.Fatalf("start ten minutes out: status %d body %s", res.StatusCode, raw)
 	}
 }
 
@@ -249,6 +270,31 @@ func quotedTime(t *testing.T, body string, loc *time.Location) time.Time {
 		t.Fatalf("no %q in the refusal: %s", "join from ", body)
 	}
 	rest := body[from+len("join from "):]
+	end := strings.IndexAny(rest, `."`)
+	if end < 0 {
+		t.Fatalf("the quoted time is not terminated: %s", body)
+	}
+	at, err := time.ParseInLocation(layout, rest[:end], loc)
+	if err != nil {
+		t.Fatalf("parsing %q as %q: %v", rest[:end], layout, err)
+	}
+	return at
+}
+
+/* quotedGoLiveTime pulls the clock out of "Go live opens N minutes before the start, at …".
+ *
+ * Same idea as quotedTime: read the sentence the host sees, then measure how far
+ * that clock sits before the start. Minute precision is all the sentence has, so
+ * the caller allows a minute of rounding. */
+func quotedGoLiveTime(t *testing.T, body string, loc *time.Location) time.Time {
+	t.Helper()
+	const layout = "15:04 on 2 January 2006 MST"
+	const marker = "before the start, at "
+	from := strings.Index(body, marker)
+	if from < 0 {
+		t.Fatalf("no %q in the refusal: %s", marker, body)
+	}
+	rest := body[from+len(marker):]
 	end := strings.IndexAny(rest, `."`)
 	if end < 0 {
 		t.Fatalf("the quoted time is not terminated: %s", body)
