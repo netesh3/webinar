@@ -167,7 +167,6 @@ export function IntegrationsSection({
                       <EmailIntegration
                         key={card.id}
                         address={card.who ?? ""}
-                        note={card.whoNote ?? ""}
                         status={card.status}
                       />
                     ) : (

@@ -98,12 +98,9 @@ func (s *Module) handleRenameEmailInbox(w http.ResponseWriter, r *http.Request) 
 		switch {
 		case err == store.ErrInboxTaken:
 			httpx.Error(w, http.StatusConflict, "address_taken", "That address is taken.")
-		case err == store.ErrInboxLocked:
-			httpx.Error(w, http.StatusConflict, "address_locked",
-				"You've already changed this address. Contact support to change it again.")
 		case err == store.ErrInboxInvalid:
 			httpx.Error(w, http.StatusUnprocessableEntity, "address_invalid",
-				"Use lowercase letters, digits and hyphens only.")
+				"Use 3-30 lowercase letters, numbers, or hyphens.")
 		default:
 			s.fail(w, r, "rename inbox", err)
 		}
@@ -266,7 +263,7 @@ func inboxJSON(inbox store.Inbox, page store.EmailPage) inboxView {
 	view := inboxView{
 		Address:   inbox.Address,
 		Local:     inbox.Local,
-		CanRename: !inbox.Renamed,
+		CanRename: true,
 		Alias:     inbox.Alias,
 		Items:     []inboxMessage{},
 		Total:     page.Total,
