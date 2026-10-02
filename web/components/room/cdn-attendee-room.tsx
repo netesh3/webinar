@@ -215,7 +215,7 @@ export function CdnAttendeeRoom({
   // Tools & layout
   const availableTools = useAvailableTools({ isHost: false, controls });
   const tools = useToolLayout(availableTools);
-  const raisedHands = useRaisedHandsController(tools, realtime.hands.length);
+  const raisedHands = useRaisedHandsController(tools);
   const compact = useCompact();
   const panelOpen = compact && (Boolean(tools.panelTab) || raisedHands.open);
 

@@ -79,14 +79,11 @@ export function useRaisedHandsPanel(): RaisedHandsApi {
   return useContext(RaisedHandsContext) ?? CLOSED;
 }
 
-export function useRaisedHandsController(
-  tools: {
-    panelTab: ToolId | null;
-    open: (tool: ToolId) => void;
-    closePanel: () => void;
-  },
-  handCount: number,
-): RaisedHandsApi {
+export function useRaisedHandsController(tools: {
+  panelTab: ToolId | null;
+  open: (tool: ToolId) => void;
+  closePanel: () => void;
+}): RaisedHandsApi {
   const [open, setOpenState] = useState(false);
   const openRef = useRef(false);
   const restoreRef = useRef<ToolId | null>(null);
@@ -137,13 +134,6 @@ export function useRaisedHandsController(
     },
     [setOpen],
   );
-
-  // The button is the only empty state. A queue that just hit zero should not
-  // leave the drawer up with nothing in it.
-  useEffect(() => {
-    if (handCount > 0 || !openRef.current) return;
-    close();
-  }, [handCount, close]);
 
   // A docked tool opened underneath this drawer replaces it. The null tab we
   // wrote ourselves on open does not.
@@ -248,75 +238,83 @@ export function RaisedHandsDrawer() {
           <CloseIcon className="size-4" />
         </button>
       </div>
-      <ol className="min-h-0 flex-1 overflow-y-auto">
-        {hands.map((hand, index) => {
-          const person = byIdentity.get(hand.identity);
-          const name = person?.name || hand.name || "Someone";
-          const ago = raisedAgoLabel(hand.at, now);
-          const onStage = handAlreadyOnStage(person);
-          const rowBusy = busy === hand.identity;
-          return (
-            <li key={hand.identity} className="border-b border-line px-3 py-3">
-              <div className="flex gap-2.5">
-                <span className="w-4 shrink-0 pt-2 text-center text-[13px] font-medium tabular-nums text-ink-3">
-                  {index + 1}
-                </span>
-                <SenderAvatar name={name} identity={hand.identity} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold text-ink">{name}</p>
-                  {ago && <p className="text-[12px] text-ink-3">{ago}</p>}
-                  <div className="mt-2 flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      disabled={busy !== null || onStage}
-                      title={onStage ? "Already on stage" : `Invite ${name} to speak`}
-                      onClick={() => {
-                        void run(hand.identity, async () => {
-                          const outcome = await inviteHandToSpeak(setStageSettlingHand, {
-                            slug,
-                            lowerHand: realtime.lowerHand,
-                            identity: hand.identity,
-                            alreadyOnStage: onStage,
-                          });
-                          if (outcome === "skipped") return;
-                          notify(`Waiting for ${name} to accept`, "ok");
-                          await roster.reload();
-                        });
-                      }}
-                      className="inline-flex h-8 min-w-0 flex-1 items-center justify-center rounded-lg bg-brand px-2.5 text-[12px] font-medium text-stage transition-colors hover:bg-brand-hover disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                    >
-                      {rowBusy ? <Spinner className="size-3.5" /> : "Invite to speak"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy !== null}
-                      onClick={() => {
-                        void run(hand.identity, async () => {
-                          await lowerOneHand(realtime.lowerHand, hand.identity);
-                          notify(`Dismissed ${name}'s request`, "ok");
-                        });
-                      }}
-                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-line-2 px-2.5 text-[12px] font-medium text-ink transition-colors hover:bg-surface-2 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                    >
-                      Lower hand
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy !== null}
-                      aria-label={`Message ${name}`}
-                      title={`Message ${name}`}
-                      onClick={() => raised.messagePerson(hand.identity, name)}
-                      className="grid size-8 shrink-0 place-items-center rounded-full border border-line-2 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                    >
-                      <ChatIcon className="size-3.5" />
-                    </button>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {hands.length === 0 ? (
+          <p className="py-8 text-center text-[12.5px] leading-relaxed text-ink-3">
+            No hands raised.
+          </p>
+        ) : (
+          <ol>
+            {hands.map((hand, index) => {
+              const person = byIdentity.get(hand.identity);
+              const name = person?.name || hand.name || "Someone";
+              const ago = raisedAgoLabel(hand.at, now);
+              const onStage = handAlreadyOnStage(person);
+              const rowBusy = busy === hand.identity;
+              return (
+                <li key={hand.identity} className="border-b border-line px-3 py-3">
+                  <div className="flex gap-2.5">
+                    <span className="w-4 shrink-0 pt-2 text-center text-[13px] font-medium tabular-nums text-ink-3">
+                      {index + 1}
+                    </span>
+                    <SenderAvatar name={name} identity={hand.identity} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold text-ink">{name}</p>
+                      {ago && <p className="text-[12px] text-ink-3">{ago}</p>}
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={busy !== null || onStage}
+                          title={onStage ? "Already on stage" : `Invite ${name} to speak`}
+                          onClick={() => {
+                            void run(hand.identity, async () => {
+                              const outcome = await inviteHandToSpeak(setStageSettlingHand, {
+                                slug,
+                                lowerHand: realtime.lowerHand,
+                                identity: hand.identity,
+                                alreadyOnStage: onStage,
+                              });
+                              if (outcome === "skipped") return;
+                              notify(`Waiting for ${name} to accept`, "ok");
+                              await roster.reload();
+                            });
+                          }}
+                          className="inline-flex h-8 min-w-0 flex-1 items-center justify-center rounded-lg bg-brand px-2.5 text-[12px] font-medium text-stage transition-colors hover:bg-brand-hover disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                        >
+                          {rowBusy ? <Spinner className="size-3.5" /> : "Invite to speak"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() => {
+                            void run(hand.identity, async () => {
+                              await lowerOneHand(realtime.lowerHand, hand.identity);
+                              notify(`Dismissed ${name}'s request`, "ok");
+                            });
+                          }}
+                          className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-line-2 px-2.5 text-[12px] font-medium text-ink transition-colors hover:bg-surface-2 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                        >
+                          Lower hand
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          aria-label={`Message ${name}`}
+                          title={`Message ${name}`}
+                          onClick={() => raised.messagePerson(hand.identity, name)}
+                          className="grid size-8 shrink-0 place-items-center rounded-full border border-line-2 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                        >
+                          <ChatIcon className="size-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
     </aside>
   );
 }

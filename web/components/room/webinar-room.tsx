@@ -965,7 +965,7 @@ function ConnectedRoom({
   // mid-session has to reach a bar that was laid out before they did.
   const availableTools = useAvailableTools({ isHost, controls });
   const tools = useToolLayout(availableTools);
-  const raisedHands = useRaisedHandsController(tools, realtime.hands.length);
+  const raisedHands = useRaisedHandsController(tools);
   // Whether a docked panel (Chat, Participants, …) should be sharing the
   // screen with the video right now, rather than overlaying it — only true
   // on a phone-shaped viewport with a panel actually open. The raised-hands
