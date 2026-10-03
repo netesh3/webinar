@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { isHomeTool, isPanelTool, isPinnable, moreOrder, type ToolId } from "@/lib/tools";
 import { closesMoreOn, moreTargetOf } from "@/lib/bar-popover";
 import { LAYOUT_LABEL } from "@/lib/layout";
-import { useCompact } from "@/lib/compact";
+import { useCompact, usePhoneBarMetrics } from "@/lib/compact";
 import { badgeText } from "@/lib/mentions";
 import { HandIcon, MoreCircleIcon, PlusIcon } from "../icons";
 import { useToast } from "../providers";
@@ -104,8 +104,9 @@ export function MoreGrid({
   /** Raised-hands queue on a phone, where the standing bar has no room for
    *  another button. Not a ToolId: it is not dragged or customised. */
   raisedHandsAction?: RaisedHandsAction;
-  /** Share, on the rare phone width where it does not fit the bar. Not a
-   *  ToolId: it has its own dimmed/busy states and never moves. */
+  /** Share, for a promoted attendee on a phone: it lives in More by design,
+   *  not because the row ran out of pixels. Not a ToolId: it has its own
+   *  dimmed/busy states and never moves. */
   shareAction?: ShareAction;
   /** State and click for the tools the control bar owns. */
   toolActions?: Partial<Record<ToolId, ToolAction>>;
@@ -713,6 +714,7 @@ export function MoreButton({
   onToggle: () => void;
 }) {
   const text = badgeText(count, mentions);
+  const phone = usePhoneBarMetrics();
   return (
     <button
       type="button"
@@ -728,8 +730,22 @@ export function MoreButton({
         className={`inline-flex h-10 min-w-10 flex-col items-center justify-center gap-0.5 rounded-lg px-2 transition-colors sm:min-w-14 ${
           open ? "bg-white/20 text-white" : "text-white/75 hover:bg-white/10 hover:text-white"
         }`}
+        style={
+          phone
+            ? {
+                width: phone.buttonPx,
+                minWidth: phone.buttonPx,
+                height: phone.buttonPx,
+                paddingLeft: 0,
+                paddingRight: 0,
+              }
+            : undefined
+        }
       >
-        <MoreCircleIcon className="size-5" />
+        <MoreCircleIcon
+          className="size-5"
+          style={phone ? { width: phone.iconPx, height: phone.iconPx } : undefined}
+        />
         <span className="hidden text-[9.5px] leading-none font-medium sm:block">More</span>
       </span>
       {text && (

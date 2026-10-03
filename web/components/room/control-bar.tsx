@@ -8,7 +8,20 @@ import {
   useTracks,
 } from "@livekit/components-react";
 import { ConnectionState, Track } from "livekit-client";
-import { Fragment, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import {
+  cloneElement,
+  Fragment,
+  isValidElement,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { enableCamera } from "@/lib/backgrounds";
 import type { Reaction } from "@/lib/realtime";
@@ -23,6 +36,7 @@ import {
   barSlots,
   centerBarTools,
   describeChange,
+  shareButtonOnBar,
   gridItems,
   isCustomised,
   isHomeTool,
@@ -37,9 +51,16 @@ import {
 } from "@/lib/tools";
 import { closesMoreOnToolActivate } from "@/lib/bar-popover";
 import {
-  MEDIA_TOGGLE_SMALL,
+  BAR_SLOT_CAPACITY,
+  leftClusterReserve,
+  mobileEngagementFit,
+  NARROW_SLOTS,
+  PHONE_BAR_BREAK,
+  PhoneBarMetricsProvider,
   useCompact,
   useMediaToggleSize,
+  usePhoneBarMetrics,
+  useViewportWidth,
 } from "@/lib/compact";
 import { isTypingTarget, mediaHotkey } from "@/lib/media-hotkeys";
 import { usePictureInPicture } from "@/lib/pip";
@@ -117,30 +138,13 @@ const readCanShareOnServer = () => false;
  * what produced that. Anything past the capacity is still reachable in the grid,
  * which is the point of having a grid.
  */
-const CAPACITY: readonly [query: string, slots: number][] = [
-  ["(min-width: 1280px)", 6],
-  ["(min-width: 1024px)", 5],
-  ["(min-width: 768px)", 4],
-  ["(min-width: 640px)", 3],
-];
-// 0, not a small positive number: a phone this narrow (<640px, i.e. every
-// real phone) has no room to spare even for CENTER_BAR_COMPACT's own two
-// fixed items (Chat, Raise hand) once mic+camera are both showing — see the
-// bar's own dynamic left-padding comment. A pinned or "recently used" tool
-// surfacing an extra slot here would silently reopen the exact overflow this
-// whole layout pass exists to close. Pinning still works below 640px — it's
-// just not auto-surfaced onto a bar that doesn't have room for it; the pin
-// takes effect the moment the viewport actually does (≥640px, this file's
-// own next CAPACITY tier).
-const NARROW_SLOTS = 0;
-
 function useSlotCapacity(): number {
   // Starts at the narrow figure: the server render cannot know the width, and
   // rendering six slots and then dropping to two is a visible jump on load.
   const [slots, setSlots] = useState(NARROW_SLOTS);
 
   useEffect(() => {
-    const queries = CAPACITY.map(([q, n]) => [window.matchMedia(q), n] as const);
+    const queries = BAR_SLOT_CAPACITY.map(([q, n]) => [window.matchMedia(q), n] as const);
     const sync = () => {
       const hit = queries.find(([mq]) => mq.matches);
       setSlots(hit ? hit[1] : NARROW_SLOTS);
@@ -251,6 +255,7 @@ export function ControlBar() {
   const youtubeHome = usable.includes("youtube") && !tucked.includes("youtube");
   const compact = useCompact();
   const toggleSize = useMediaToggleSize();
+  const viewport = useViewportWidth();
 
   // The centred strip's own left padding is what keeps it clear of mic+camera
   // below — they're out of flow so they don't push it, meaning this has to
@@ -262,9 +267,8 @@ export function ControlBar() {
   // all, and even a single MediaToggle is half of what two together need.
   // Reserving for two unconditionally was what left no room for the centre
   // strip's own content the one time both actually show — a full "Bring on
-  // stage" grant — since that's also exactly when Share and RecordButton
-  // newly appear there too. Desktop doesn't need this: MediaToggle is fixed
-  // wider there (min-w-14) but `sm:` has enough room to spare either way.
+  // stage" grant. Desktop doesn't need this: MediaToggle is fixed wider
+  // there (min-w-14) but `sm:` has enough room to spare either way.
   const micToggleShown =
     (permissions.canPublish || permissions.mutedByHost) &&
     (permissions.canSpeak || permissions.mutedByHost);
@@ -272,18 +276,7 @@ export function ControlBar() {
     (permissions.canPublish || permissions.mutedByHost) &&
     permissions.canShareCamera;
   const leftClusterCount = (micToggleShown ? 1 : 0) + (cameraToggleShown ? 1 : 0);
-  // left-2 offset (8px) + N toggles (main + border + chevron each, at
-  // today's live tier) + gaps between them.
-  const toggleWidth = toggleSize.mainPx + 1 + toggleSize.chevPx;
-  const leftReservePx =
-    leftClusterCount === 0
-      ? 0
-      : 8 + leftClusterCount * toggleWidth + (leftClusterCount - 1) * 4;
-  // The one case dynamic padding alone doesn't resolve: both toggles showing
-  // is also the only time Share can't fit next to Chat + Raise hand + More
-  // on a phone. Same condition, reused rather than re-derived, so this can
-  // never disagree with how much room was actually reserved above it.
-  const shareOnBar = !compact || !cameraToggleShown;
+  const leftReservePx = leftClusterReserve(leftClusterCount, toggleSize);
 
   /* Attendee, not host or a scheduled panelist. `promoted` is exactly this:
    * "lifted out of the audience" — a scheduled panelist has canPublish
@@ -291,26 +284,42 @@ export function ControlBar() {
    * treats a person differently from a panelist keys off this, not off
    * canPublish alone. */
   const isAttendee = !isHost && (!permissions.canPublish || permissions.promoted);
-  // Reactions stays on an attendee's compact bar at every tier the toggles
-  // measure out to fit at — which is every tier except the narrowest phones
-  // still sold (see MEDIA_TOGGLE_SMALL's own comment), and only once BOTH
-  // toggles are actually showing there. A not-yet-promoted attendee on the
-  // smallest phone still gets all four — there's nothing on the left eating
-  // the width yet.
-  const attendeeHasRoomForReactions = !(
-    toggleSize.mainPx === MEDIA_TOGGLE_SMALL.mainPx && leftClusterCount > 0
-  );
+  // Phone only, and only below `sm` (where the captions are already hidden).
+  // Buttons scale down with the width; if the row still cannot hold Chat,
+  // Q&A, Raise hand and Reactions, slots comes back short and those last
+  // two move into More. At `sm` and above the strip is the one it was:
+  // attendees keep Chat, Q&A and Raise hand, and nothing here changes a
+  // host or panelist.
+  const phone = compact && isAttendee && viewport > 0 && viewport < PHONE_BAR_BREAK;
+  const attendeeWanted = phone
+    ? centerBarTools(availableTools, true, true, tucked).length
+    : 0;
+  const phoneFit = phone
+    ? mobileEngagementFit(viewport, leftClusterCount, toggleSize, attendeeWanted)
+    : null;
+  // Promoted on a phone: Share is in More even when the scaled icons would
+  // have left room for it. Mic and camera stay the live toggles above.
+  const shareOnBar = shareButtonOnBar({
+    compact,
+    phone,
+    attendee: isAttendee,
+    mediaToggles: leftClusterCount,
+    cameraToggleShown,
+  });
+  const engagementSlots = phoneFit?.slots;
   const centerTools = centerBarTools(
     availableTools,
     compact,
-    isAttendee && attendeeHasRoomForReactions,
+    phone,
     tucked,
+    engagementSlots,
   );
   const panelItems = morePanelTools(
     availableTools,
     compact,
-    isAttendee && attendeeHasRoomForReactions,
+    phone,
     tucked,
+    engagementSlots,
   );
   // Once the host brings an attendee on stage, mic+camera claim the left —
   // and Chat / Raise hand / More move to hug the right edge instead of
@@ -800,6 +809,9 @@ export function ControlBar() {
   }, [previewChrome, canShare, sharing, stopSharing, startScreenShare, notify]);
 
   return (
+    <PhoneBarMetricsProvider
+      value={phoneFit ? { buttonPx: phoneFit.buttonPx, iconPx: phoneFit.iconPx } : null}
+    >
     <div
       ref={setBarEl}
       // pl-48 (192px) is the class-level fallback for the one render before
@@ -880,14 +892,11 @@ export function ControlBar() {
       ) : null}
 
       {/* Centre strip: Share / Record / standing tools / pins / More.
-          No horizontal scroll: CENTER_BAR_COMPACT keeps only Chat and Raise
-          hand always visible on a phone, and the bar's own left padding
-          (above) now reserves exactly mic+camera's real width instead of a
-          worst-case guess — between them, Share + Chat + Raise hand + More
-          fits without scrolling in every case except one: a full "Bring on
-          stage" grant, where mic AND camera both show, leaving no room for
-          Share too. shareOnBar below is that one condition — Share moves
-          into More instead of overflowing there, not shown twice. */}
+          No horizontal scroll. On a phone the buttons scale with the width
+          (phoneFit) and anything past that slot count goes to More. A
+          promoted attendee keeps Share in More on purpose — mic and camera
+          are the controls that joined the row — so it is not also drawn
+          here. */}
       <div className="flex min-w-0 items-center gap-1 sm:gap-2">
           {/* Preview chrome always offers Share (mocked). A live room still needs
               getDisplayMedia support — most mobile browsers do not expose it, and
@@ -1288,9 +1297,13 @@ export function ControlBar() {
             aria-haspopup={isHost ? "menu" : "dialog"}
             aria-expanded={isHost ? leaveMenuOpen : leaveConfirmOpen}
             title={connecting ? "Connecting…" : undefined}
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-live sm:px-4"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-live sm:px-4"
+            style={phoneBarBoxStyle(phoneFit)}
           >
-            <LeaveIcon className="size-4 sm:hidden" />
+            <LeaveIcon
+              className="size-4 sm:hidden"
+              style={phoneFit ? { width: phoneFit.iconPx, height: phoneFit.iconPx } : undefined}
+            />
             <span className="hidden sm:inline">Leave</span>
           </button>
           {isHost ? (
@@ -1366,6 +1379,7 @@ export function ControlBar() {
           opening it from either place — and More closing behind it — works. */}
       {youtube.dialog}
     </div>
+    </PhoneBarMetricsProvider>
   );
 }
 
@@ -1644,15 +1658,45 @@ function BarButtonShell({
         ? "bg-white/20 text-white"
         : "text-white/75 hover:bg-white/10 hover:text-white";
 
+  const phone = usePhoneBarMetrics();
   return (
     <span
       className={`inline-flex h-10 min-w-10 flex-col items-center justify-center gap-0.5 rounded-lg px-2 transition-colors sm:min-w-14 ${tone} ${className}`}
+      style={phoneBarBoxStyle(phone)}
     >
-      {children}
-      {/* The caption disappears below `sm`, where there is only room for glyphs. */}
+      {phone ? glyphAt(children, phone.iconPx) : children}
+      {/* The caption disappears below `sm`, where there is only room for glyphs.
+          Phone scaling runs below that same breakpoint, so this stays hidden
+          on the widths where the buttons shrink. */}
       <span className="hidden text-[9.5px] leading-none font-medium whitespace-nowrap sm:block">{label}</span>
     </span>
   );
+}
+
+/** Square tap target for the phone scaler. Inline min-width beats the
+ *  min-w-10 class; omitted entirely at `sm` and above so tablet/desktop
+ *  sizing stays on the classes. */
+function phoneBarBoxStyle(
+  phone: { buttonPx: number } | null,
+): CSSProperties | undefined {
+  if (!phone) return undefined;
+  return {
+    width: phone.buttonPx,
+    minWidth: phone.buttonPx,
+    height: phone.buttonPx,
+    paddingLeft: 0,
+    paddingRight: 0,
+  };
+}
+
+/** Inline width/height wins over the icon's size-5 class, which is how the
+ *  glyph tracks the button without a second set of Tailwind sizes. */
+function glyphAt(node: ReactNode, px: number): ReactNode {
+  if (!isValidElement<{ style?: CSSProperties }>(node)) return node;
+  const el = node as ReactElement<{ style?: CSSProperties }>;
+  return cloneElement(el, {
+    style: { ...el.props.style, width: px, height: px },
+  });
 }
 
 function RaisedHandsBarButton({

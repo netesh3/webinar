@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from "react";
 
 /** `md`, matching the Tailwind class the room's own layout switches at, so a
  *  sheet appears exactly when the stage stops having room beside it. Shared
@@ -73,15 +73,154 @@ export const MEDIA_TOGGLE_TIERS: readonly [
 ];
 
 /** Below 360px — the smallest phones still sold (the 2016 iPhone SE's 320px
- *  is the reference floor). At this size even Chat + Raise hand + Reactions
- *  + More next to two full-size toggles does not fit however far the
- *  toggles themselves shrink without becoming smaller than the icon they
- *  hold — see control-bar.tsx for the one place that still falls back to
- *  hiding Reactions, and only at this narrowest tier. */
+ *  is the reference floor). The toggles cannot shrink further without
+ *  becoming smaller than the icon they hold. The centre buttons scale down
+ *  instead (see mobileEngagementFit); whatever still does not fit moves
+ *  into More, Reactions included. */
 export const MEDIA_TOGGLE_SMALL: { mainPx: number; chevPx: number } = {
   mainPx: 28,
   chevPx: 24,
 };
+
+/** Pin-slot budgets for the customisable end of the bar. Unchanged: a phone
+ *  below 640px still has none (NARROW_SLOTS), and desktop/tablet keep the
+ *  same counts they had. Standing tools (Chat, Q&A, …) are not these slots. */
+export const BAR_SLOT_CAPACITY: readonly [query: string, slots: number][] = [
+  ["(min-width: 1280px)", 6],
+  ["(min-width: 1024px)", 5],
+  ["(min-width: 768px)", 4],
+  ["(min-width: 640px)", 3],
+];
+
+/** Below the last BAR_SLOT_CAPACITY tier. Zero on purpose: a pinned tool
+ *  must not open a slot the phone bar does not have room to show. */
+export const NARROW_SLOTS = 0;
+
+/** Tailwind `sm`. Labels under bar icons appear at this width and the
+ *  buttons go back to min-w-14. The phone scaler stays below it. */
+export const PHONE_BAR_BREAK = 640;
+
+/** Today's phone tap target (min-w-10) and glyph (size-5). The scaler never
+ *  grows past these, so a wide phone matches the bar it already had. */
+export const PHONE_BAR_MAX_PX = 40;
+export const PHONE_BAR_ICON_MAX_PX = 20;
+
+/** Narrowest phone tap target. Below this, tools move into More instead of
+ *  the buttons getting smaller than the glyph. */
+export const PHONE_BAR_MIN_PX = 24;
+
+/** pr-16, which keeps the centre strip clear of the absolute Leave button. */
+export const PHONE_BAR_RIGHT_RESERVE = 64;
+
+/** gap-1 on the centre strip, and the empty pin-zone's px-0.5. */
+const PHONE_BAR_GAP = 4;
+const PHONE_BAR_PIN_PAD = 4;
+
+/** A few pixels of slack so subpixel rounding cannot open a horizontal scroll. */
+const PHONE_BAR_SAFETY = 4;
+
+export function mediaToggleSizeForWidth(width: number): { mainPx: number; chevPx: number } {
+  for (const [query, mainPx, chevPx] of MEDIA_TOGGLE_TIERS) {
+    const min = Number(/\d+/.exec(query)?.[0] ?? "0");
+    if (width >= min) return { mainPx, chevPx };
+  }
+  return MEDIA_TOGGLE_SMALL;
+}
+
+/** Pixels the out-of-flow mic/camera cluster occupies, matching
+ *  control-bar.tsx: left-2, each toggle's main button + border + chevron,
+ *  and gap-1 between them. Zero when neither toggle is showing. */
+export function leftClusterReserve(
+  toggles: number,
+  toggle: { mainPx: number; chevPx: number },
+): number {
+  if (toggles <= 0) return 0;
+  const toggleWidth = toggle.mainPx + 1 + toggle.chevPx;
+  return 8 + toggles * toggleWidth + (toggles - 1) * 4;
+}
+
+/** Width of the centre strip: engagement buttons, the empty pin-zone, and
+ *  More. Leave is reserved separately and is not in this number. */
+export function phoneBarRowPx(engagement: number, buttonPx: number): number {
+  const buttons = engagement + 1;
+  return buttons * buttonPx + PHONE_BAR_PIN_PAD + (engagement + 1) * PHONE_BAR_GAP;
+}
+
+export function phoneBarIconPx(buttonPx: number): number {
+  if (buttonPx >= 36) return PHONE_BAR_ICON_MAX_PX;
+  if (buttonPx >= 30) return 18;
+  return 16;
+}
+
+export type PhoneBarFit = {
+  buttonPx: number;
+  iconPx: number;
+  /** How many engagement tools (not More, not Leave) fit on this row. */
+  slots: number;
+  available: number;
+};
+
+/** Largest centre-button size that keeps `wanted` engagement tools on one
+ *  phone row, shrinking toward PHONE_BAR_MIN_PX and then giving slots back
+ *  (caller sheds Q&A / Reactions into More) so the row never scrolls. */
+export function mobileEngagementFit(
+  width: number,
+  toggles: number,
+  toggle: { mainPx: number; chevPx: number },
+  wanted: number,
+): PhoneBarFit {
+  const available =
+    width -
+    leftClusterReserve(toggles, toggle) -
+    PHONE_BAR_RIGHT_RESERVE -
+    PHONE_BAR_SAFETY;
+  const rawButton = (engagement: number) => {
+    const n = engagement + 1;
+    return Math.floor((available - PHONE_BAR_PIN_PAD) / n) - PHONE_BAR_GAP;
+  };
+  let slots = Math.max(0, wanted);
+  while (slots > 0 && rawButton(slots) < PHONE_BAR_MIN_PX) slots -= 1;
+  const raw = rawButton(slots);
+  const buttonPx = Math.min(
+    PHONE_BAR_MAX_PX,
+    Math.max(PHONE_BAR_MIN_PX, raw),
+  );
+  return {
+    buttonPx,
+    iconPx: phoneBarIconPx(buttonPx),
+    slots,
+    available,
+  };
+}
+
+const PhoneBarMetricsContext = createContext<Pick<PhoneBarFit, "buttonPx" | "iconPx"> | null>(
+  null,
+);
+
+export function PhoneBarMetricsProvider({
+  value,
+  children,
+}: {
+  value: Pick<PhoneBarFit, "buttonPx" | "iconPx"> | null;
+  children: ReactNode;
+}) {
+  return createElement(PhoneBarMetricsContext.Provider, { value }, children);
+}
+
+export function usePhoneBarMetrics(): Pick<PhoneBarFit, "buttonPx" | "iconPx"> | null {
+  return useContext(PhoneBarMetricsContext);
+}
+
+export function useViewportWidth(): number {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const sync = () => setWidth(window.innerWidth);
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
+  }, []);
+  return width;
+}
 
 export function useMediaToggleSize(): { mainPx: number; chevPx: number } {
   const [size, setSize] = useState(MEDIA_TOGGLE_SMALL);
