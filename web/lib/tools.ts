@@ -109,62 +109,115 @@ export const CENTER_BAR_TOOLS: readonly ToolId[] = [
  *  chevron) — the arithmetic didn't work even with correct padding: six
  *  buttons want ~260px and a phone with mic+camera showing left ~119px. Two
  *  fit with room to spare there; five needed the centre strip to scroll.
- *  media-toggle.tsx's mobile sizing has since shrunk (min-w-8 + w-7,
- *  measured) specifically so a FOUR-item attendee bar fits instead — see
- *  CENTER_BAR_COMPACT_ATTENDEE — but this two-item host/panelist bar was
- *  never the one that needed the room, so it stays as-is. */
+ *  media-toggle.tsx's mobile sizing has since shrunk so an attendee row can
+ *  hold Chat, Q&A, Raise hand and Reactions — see
+ *  CENTER_BAR_COMPACT_ATTENDEE. On the narrowest promoted phone that row
+ *  still sheds into More (fitAttendeeCompactBar) rather than scrolling.
+ *  This host/panelist bar was never the one that needed the room, so it
+ *  stays as-is. */
 const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "qa", "hand"];
 
 /** Attendee-only (control-bar.tsx passes `attendee` as true only for a
- *  genuine attendee — not host, not a scheduled panelist — via
- *  permissions.promoted, AND only once useMediaToggleSize's tier has room
- *  for it — see attendeeHasRoomForReactions there). Reactions joins Chat +
- *  Raise hand on the bar itself instead of staying in More.
- *
- *  Measured, not guessed, including the case that matters most: a promoted
- *  attendee, with BOTH mic and camera toggles showing on the left, at each
- *  of MediaToggle's three mobile size tiers (lib/compact.ts's
- *  MEDIA_TOGGLE_TIERS). At the middle and large tiers (360px+ phones — most
- *  of them), this four-item bar measures out to fit next to two toggles
- *  with room to spare. Only the narrowest tier (MEDIA_TOGGLE_SMALL, the
- *  smallest phones still sold) still doesn't have room for a promoted
- *  attendee specifically — shrinking the toggles further there would make
- *  them smaller than the icon they hold, so control-bar.tsx falls back to
- *  CENTER_BAR_COMPACT for that one case instead. Every other combination —
- *  including a not-yet-promoted attendee on the smallest phone, where
- *  nothing is claiming the left yet — gets the full four. */
-const CENTER_BAR_COMPACT_ATTENDEE: readonly ToolId[] = ["chat", "qa", "hand"];
+ *  genuine attendee — not host, not a scheduled panelist). Reactions sits
+ *  with Chat, Q&A and Raise hand. On a phone that cannot fit the whole row
+ *  — a promoted attendee, mic and camera both showing, on a narrow width —
+ *  fitAttendeeCompactBar sheds Reactions first and Q&A second into More.
+ *  Neither is dropped: morePanelTools lists whatever left the strip.
+ *  Hosts and panelists stay on CENTER_BAR_COMPACT. */
+const CENTER_BAR_COMPACT_ATTENDEE: readonly ToolId[] = [
+  "chat",
+  "qa",
+  "hand",
+  "reactions",
+];
+
+/** Shed in this order when a phone attendee row is short a slot. Chat and
+ *  Raise hand stay until even those two cannot fit. */
+const COMPACT_ATTENDEE_SHED: readonly ToolId[] = ["reactions", "qa"];
+
+/** `slots` is how many of `tools` fit. Extra tools leave from
+ *  COMPACT_ATTENDEE_SHED, and the survivors keep CENTER_BAR_COMPACT_ATTENDEE's
+ *  order. */
+export function fitAttendeeCompactBar(
+  tools: readonly ToolId[],
+  slots: number,
+): ToolId[] {
+  if (slots >= tools.length) return [...tools];
+  const shed = new Set<ToolId>();
+  let over = tools.length - Math.max(0, slots);
+  for (const id of COMPACT_ATTENDEE_SHED) {
+    if (over <= 0) break;
+    if (tools.includes(id)) {
+      shed.add(id);
+      over -= 1;
+    }
+  }
+  const kept = tools.filter((id) => !shed.has(id));
+  return over > 0 ? kept.slice(0, Math.max(0, slots)) : kept;
+}
 
 /** `tucked` is the home tools (HOME_BAR_TOOLS) the person has moved into More
- *  — see tuckedTools. They leave the standing strip rather than showing twice. */
+ *  — see tuckedTools. They leave the standing strip rather than showing twice.
+ *
+ *  `slots`, only for a compact attendee, is how many engagement buttons the
+ *  phone row can hold (lib/compact.ts mobileEngagementFit). Omit it and the
+ *  full attendee strip is returned — desktop never passes it. */
 export function centerBarTools(
   available: readonly ToolId[],
   compact: boolean,
   attendee = false,
   tucked: readonly ToolId[] = [],
+  slots?: number,
 ): ToolId[] {
   const want = compact
     ? attendee
       ? CENTER_BAR_COMPACT_ATTENDEE
       : CENTER_BAR_COMPACT
     : CENTER_BAR_TOOLS;
-  return want.filter((id) => available.includes(id) && !tucked.includes(id));
+  const visible = want.filter((id) => available.includes(id) && !tucked.includes(id));
+  if (compact && attendee && slots !== undefined) {
+    return fitAttendeeCompactBar(visible, slots);
+  }
+  return visible;
 }
 
 /** Engagement tools that did not fit the compact bar, for More's extra row.
- *  A tucked home tool is already in the grid proper, so it is left out here. */
+ *  A tucked home tool is already in the grid proper, so it is left out here.
+ *  Pass the same `slots` centerBarTools got, or a tool shed for space would
+ *  be on neither surface. */
 export function morePanelTools(
   available: readonly ToolId[],
   compact: boolean,
   attendee = false,
   tucked: readonly ToolId[] = [],
+  slots?: number,
 ): ToolId[] | undefined {
   if (!compact) return undefined;
-  const onBar = new Set(centerBarTools(available, true, attendee));
+  const onBar = new Set(centerBarTools(available, true, attendee, tucked, slots));
   const rest = CENTER_BAR_TOOLS.filter(
     (id) => available.includes(id) && !onBar.has(id) && !tucked.includes(id),
   );
   return rest.length > 0 ? rest : undefined;
+}
+
+/** Screen share on the strip, or in More.
+ *
+ *  A promoted attendee on a phone (below `sm`, mic and/or camera already on
+ *  the left) always keeps Share in More, even when the scaled row would
+ *  have a gap. The strip gains those live toggles instead, and Share must
+ *  not climb back out of More just because the icons shrank. Hosts,
+ *  panelists and tablet keep the previous rule: off a compact bar only
+ *  when the camera toggle is already showing. */
+export function shareButtonOnBar(input: {
+  compact: boolean;
+  /** Below Tailwind `sm` — the phone scaler's range, not every compact width. */
+  phone: boolean;
+  attendee: boolean;
+  mediaToggles: number;
+  cameraToggleShown: boolean;
+}): boolean {
+  if (input.phone && input.attendee && input.mediaToggles > 0) return false;
+  return !input.compact || !input.cameraToggleShown;
 }
 
 /** Whether a panel tool is actually in front of the person: its docked tab is open, or it
