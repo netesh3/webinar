@@ -47,3 +47,32 @@ func TestClearCookieMatchesSameSite(t *testing.T) {
 		t.Fatalf("clear cookie must match Secure SameSite=None; got %q", setCookie)
 	}
 }
+
+func TestVerifyReturnsWhoAndWhen(t *testing.T) {
+	s := NewSessions("test-session-secret-at-least-32-bytes!!", time.Hour, false)
+	before := time.Now().Truncate(time.Second)
+	token, _, err := s.Issue("user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now()
+
+	got, err := s.Verify(token)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if got.UserID != "user-1" {
+		t.Errorf("user = %q, want user-1", got.UserID)
+	}
+	// Whole seconds: the issue time is the start of the second it was signed in.
+	if got.IssuedAt.Before(before) || got.IssuedAt.After(after) {
+		t.Errorf("issued at %v, want between %v and %v", got.IssuedAt, before, after)
+	}
+	if got.IssuedAt.Nanosecond() != 0 {
+		t.Errorf("issued at %v carries sub-second precision a JWT cannot", got.IssuedAt)
+	}
+
+	if _, err := s.Verify(token + "x"); err == nil {
+		t.Error("a tampered token verified")
+	}
+}

@@ -88,10 +88,25 @@ type User struct {
 	// HostRequestedAt is when this account asked to host. Nil means they have
 	// not asked. It does not grant CanHost. See migrations/0080.
 	HostRequestedAt *time.Time
+	// PasswordChangedAt is when a reset link last set the password. Sessions issued
+	// before it are refused. Nil means never reset. See migrations/0088.
+	PasswordChangedAt *time.Time
 }
 
 // EmailVerified reports whether this account may sign in.
 func (u User) EmailVerified() bool { return u.EmailVerifiedAt != nil }
+
+/* SessionStale reports whether a session issued at `issued` predates the last password
+ * reset, and so must be refused.
+ *
+ * Compared in whole seconds, because that is all a session token records. The session a
+ * reset signs in is issued a moment after the change, often in the same second, and it
+ * must stand. The price is that one issued a moment before the change, in that same
+ * second, stands too.
+ */
+func (u User) SessionStale(issued time.Time) bool {
+	return u.PasswordChangedAt != nil && issued.Before(u.PasswordChangedAt.Truncate(time.Second))
+}
 
 /* HasFeature reports whether a per-account switch is on.
  *
@@ -185,7 +200,7 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 	whatsapp_token_expires_at, whatsapp_connected_at, whatsapp_registered_at,
 	whatsapp_coexistence, whatsapp_token_rejected_at,
 	coalesce(google_picture,''), coalesce(avatar_key,''), coalesce(avatar_mime,''),
-	email_verified_at, host_requested_at`
+	email_verified_at, host_requested_at, password_changed_at`
 
 func scanUser(row scanner) (User, error) {
 	var u User
@@ -197,7 +212,7 @@ func scanUser(row scanner) (User, error) {
 		&u.WhatsAppVerifiedName, &u.WhatsAppTokenExpiresAt, &u.WhatsAppConnectedAt,
 		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence, &u.WhatsAppTokenRejectedAt,
 		&u.GooglePicture, &u.AvatarKey, &u.AvatarMime, &u.EmailVerifiedAt,
-		&u.HostRequestedAt)
+		&u.HostRequestedAt, &u.PasswordChangedAt)
 	return u, err
 }
 

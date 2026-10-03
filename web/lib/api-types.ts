@@ -1603,6 +1603,12 @@ export const NotifyWelcome: NotificationKind = "welcome";
  */
 export const NotifyEmailVerify: NotificationKind = "email_verify";
 /**
+ *  NotifyPasswordReset is the one-time link that sets a new password. Addressed by email,
+ * 	 * like the verification link, and for the same reason: whoever needs it cannot sign in.
+ * 	 * Asking again writes another row and retires the previous link (migration 0088).
+ */
+export const NotifyPasswordReset: NotificationKind = "password_reset";
+/**
  *  The panelist's side of a webinar: added to the stage (with the stage link and a
  * 	 * calendar file), the start moved, the session cancelled. Addressed by email and tied to
  * 	 * no registration — a panelist signs in rather than holding a join key, so the link in
@@ -4317,6 +4323,21 @@ export interface VerifyEmailRequest {
  */
 export interface ResendVerificationRequest {
   email: string;
+}
+/**
+ * ForgotPasswordRequest asks for a reset link. No session, for the same reason as
+ * resend: somebody who has forgotten their password cannot sign in to ask.
+ */
+export interface ForgotPasswordRequest {
+  email: string;
+}
+/**
+ * ResetPasswordRequest is the token from the link in the reset mail, and the password
+ * to set. A success answers with the Account, signed in.
+ */
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
 }
 /**
  * HostGrant is an admin's decision about one account's hosting capability —

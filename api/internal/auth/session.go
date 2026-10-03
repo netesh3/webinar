@@ -58,8 +58,19 @@ func (s *Sessions) Issue(userID string) (string, time.Time, error) {
 	return signed, exp, err
 }
 
-// Verify returns the user id carried by a session token.
-func (s *Sessions) Verify(token string) (string, error) {
+/* Session is what a valid token says: whose it is, and when it was issued.
+ *
+ * IssuedAt is whole seconds, the precision a JWT carries. It is here so a caller can
+ * refuse a session older than the account's last password change — a signature
+ * cannot say that, because a token signed last week is still a good signature.
+ */
+type Session struct {
+	UserID   string
+	IssuedAt time.Time
+}
+
+// Verify returns the session a token carries.
+func (s *Sessions) Verify(token string) (Session, error) {
 	parsed, err := jwt.ParseWithClaims(token, &claims{},
 		func(t *jwt.Token) (any, error) { return s.secret, nil },
 		// Pin the algorithm. Without this, a token with alg:none or a
@@ -69,13 +80,19 @@ func (s *Sessions) Verify(token string) (string, error) {
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
-		return "", errors.Join(ErrInvalidSession, err)
+		return Session{}, errors.Join(ErrInvalidSession, err)
 	}
 	c, ok := parsed.Claims.(*claims)
 	if !ok || c.Subject == "" {
-		return "", ErrInvalidSession
+		return Session{}, ErrInvalidSession
 	}
-	return c.Subject, nil
+	// Issue has always set iat. A token without one reads as older than anything,
+	// so it stands until the password changes rather than being refused today.
+	var issued time.Time
+	if c.IssuedAt != nil {
+		issued = c.IssuedAt.Time
+	}
+	return Session{UserID: c.Subject, IssuedAt: issued}, nil
 }
 
 func (s *Sessions) SetCookie(w http.ResponseWriter, token string, expires time.Time) {
