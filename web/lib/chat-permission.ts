@@ -81,3 +81,30 @@ export function chatPermissionStep(current: ChatPermission, key: string): ChatPe
       return null;
   }
 }
+
+/** localStorage value for whether the host's attendee-chat switcher is open. */
+export const CHAT_PERMISSION_OPEN_KEY = "room.chatPermission.open";
+
+/** Whether that switcher starts open.
+ *
+ * Nothing saved means open, so Everyone, Panelists, and Off are visible the
+ * first time a host opens Chat. A stored "0" is a collapse this browser already
+ * chose, and that stays closed.
+ */
+export function chatPermissionStartsOpen(stored: string | null): boolean {
+  return stored !== "0";
+}
+
+/** What to write when the host toggles the switcher.
+ *
+ * With no saved "0" or "1", return null so a collapse is not stored and the next
+ * webinar still starts open. An existing preference is updated, including a
+ * collapse the host already saved.
+ */
+export function chatPermissionOpenStored(
+  open: boolean,
+  stored: string | null,
+): "0" | "1" | null {
+  if (stored !== "0" && stored !== "1") return null;
+  return open ? "1" : "0";
+}

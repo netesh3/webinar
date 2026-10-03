@@ -8,7 +8,9 @@ import {
   CHAT_PERMISSIONS,
   chatPermissionCopy,
   chatPermissionOf,
+  chatPermissionOpenStored,
   chatPermissionPatch,
+  chatPermissionStartsOpen,
   chatPermissionStep,
 } from "./chat-permission.ts";
 
@@ -63,6 +65,22 @@ for (const p of CHAT_PERMISSIONS) {
   eq(c.effect.endsWith("."), true, `${p} effect is a sentence`);
 }
 eq(chatPermissionCopy("off").effect.includes("panelists can still chat"), true, "off says the stage still talks");
+
+console.log("chatPermissionStartsOpen");
+eq(chatPermissionStartsOpen(null), true, "no preference starts expanded");
+eq(chatPermissionStartsOpen(""), true, "an empty value is not a preference");
+eq(chatPermissionStartsOpen("1"), true, "a saved open stays open");
+eq(chatPermissionStartsOpen("0"), false, "a saved collapse stays collapsed");
+eq(chatPermissionStartsOpen("yes"), true, "anything else is not a saved collapse");
+
+console.log("chatPermissionOpenStored");
+eq(chatPermissionOpenStored(false, null), null, "collapsing with no preference is not saved");
+eq(chatPermissionOpenStored(true, null), null, "opening with no preference is not saved");
+eq(chatPermissionOpenStored(false, ""), null, "an empty value is not updated into a collapse");
+eq(chatPermissionOpenStored(false, "1"), "0", "an existing preference can be collapsed");
+eq(chatPermissionOpenStored(true, "0"), "1", "an existing collapse can be opened");
+eq(chatPermissionOpenStored(false, "0"), "0", "collapsing again keeps the saved choice");
+eq(chatPermissionOpenStored(true, "1"), "1", "opening again keeps the saved choice");
 
 console.log(`\n${checks - failures}/${checks} passed`);
 if (failures) process.exit(1);

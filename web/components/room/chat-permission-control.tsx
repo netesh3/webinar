@@ -1,12 +1,15 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
 import {
+  CHAT_PERMISSION_OPEN_KEY,
   CHAT_PERMISSIONS,
   chatPermissionCopy,
   chatPermissionOf,
+  chatPermissionOpenStored,
   chatPermissionPatch,
+  chatPermissionStartsOpen,
   chatPermissionStep,
   type ChatPermission,
 } from "@/lib/chat-permission";
@@ -17,11 +20,12 @@ import { useRoomUI } from "./context";
 
 /* The host's "who may attendees chat with" control, at the top of the Chat panel.
  *
- * Collapsed by default to one summary row — "Attendee chat: Everyone" — because it
- * sits above the conversation in a narrow panel and is changed a couple of times a
- * session at most. The row stays readable at a glance, and turns amber when chat is
- * off, so collapsing it never hides the one state a host must not forget about.
- * Whether it is open is remembered per browser.
+ * Open by default, so Everyone, Panelists, and Off are visible as soon as the host
+ * opens Chat. The chevron still collapses it, and that lasts for this webinar even
+ * if Chat is closed and opened again. A choice already saved in this browser is
+ * kept, including a collapse. With nothing saved, collapsing is not stored, so the
+ * next webinar starts open again. The row turns amber when chat is off, so a
+ * collapsed control still shows the one state a host must not forget about.
  */
 
 const ICONS: Record<ChatPermission, (p: { className?: string }) => React.ReactNode> = {
@@ -30,14 +34,50 @@ const ICONS: Record<ChatPermission, (p: { className?: string }) => React.ReactNo
   off: ChatOffIcon,
 };
 
-const OPEN_KEY = "room.chatPermission.open";
+/* Open or closed for the webinar currently on screen. Not written to storage when
+ * the browser has no saved preference, so a collapse here does not become the
+ * default next time. A saved "0" or "1" is still updated. */
+let session: { slug: string; open: boolean } | null = null;
+const openListeners = new Set<() => void>();
 
-function readOpen(): boolean {
+function subscribeOpen(onChange: () => void): () => void {
+  openListeners.add(onChange);
+  return () => openListeners.delete(onChange);
+}
+
+function storedOpenValue(): string | null {
   try {
-    return typeof window !== "undefined" && window.localStorage.getItem(OPEN_KEY) === "1";
+    return localStorage.getItem(CHAT_PERMISSION_OPEN_KEY);
   } catch {
-    return false;
+    return null;
   }
+}
+
+function openFor(slug: string): boolean {
+  if (session?.slug === slug) return session.open;
+  return chatPermissionStartsOpen(storedOpenValue());
+}
+
+function openOnServer(): boolean {
+  return true;
+}
+
+function rememberOpen(slug: string, open: boolean): void {
+  const next = chatPermissionOpenStored(open, storedOpenValue());
+  if (next !== null) {
+    try {
+      localStorage.setItem(CHAT_PERMISSION_OPEN_KEY, next);
+    } catch {
+      // Private mode: the in-memory copy still holds for this webinar.
+    }
+  }
+  session = { slug, open };
+  for (const listener of openListeners) listener();
+}
+
+function useAttendeeChatOpen(slug: string | null): boolean {
+  const read = useCallback(() => (slug === null ? true : openFor(slug)), [slug]);
+  return useSyncExternalStore(subscribeOpen, read, openOnServer);
 }
 
 /** Wired to the room: reads the live controls and writes the choice to the API. */
@@ -48,7 +88,13 @@ export function HostChatPermission() {
     api.updateControls(slug, chatPermissionPatch(p)),
   );
   return (
-    <ChatPermissionControl value={value} pending={pending} error={error} onChoose={choose} />
+    <ChatPermissionControl
+      slug={slug}
+      value={value}
+      pending={pending}
+      error={error}
+      onChoose={choose}
+    />
   );
 }
 
@@ -149,36 +195,40 @@ export function AttendeeAudience({ destination }: { destination: "everyone" | "p
 
 /** The control itself, with no room behind it — so it can be looked at on its own. */
 export function ChatPermissionControl({
+  slug,
   value,
   pending,
   error,
   onChoose,
   defaultOpen,
 }: {
+  /** This webinar. The chevron is remembered for it until the next one. */
+  slug?: string;
   /** What to show as selected: the pending choice while one is saving. */
   value: ChatPermission;
   pending: ChatPermission | null;
   error: string | null;
   onChoose: (p: ChatPermission) => void;
+  /** Pins the row open or closed for a control with no room behind it. */
   defaultOpen?: boolean;
 }) {
-  const [open, setOpenState] = useState(() => defaultOpen ?? readOpen());
-  const setOpen = (v: boolean) => {
-    setOpenState(v);
-    try {
-      window.localStorage.setItem(OPEN_KEY, v ? "1" : "0");
-    } catch {
-      // Private mode: it just won't be remembered.
-    }
-  };
+  const roomOpen = useAttendeeChatOpen(slug ?? null);
+  const live = slug !== undefined && defaultOpen === undefined;
+  const [fallbackOpen, setFallbackOpen] = useState(defaultOpen ?? true);
   // A failed write is shown where it was made, even if the host collapsed the row
   // while it was saving. Adjusted during render rather than in an effect.
   const [seenError, setSeenError] = useState(error);
+  const [errorOpen, setErrorOpen] = useState(false);
   if (error !== seenError) {
     setSeenError(error);
-    if (error) setOpenState(true);
+    if (error) setErrorOpen(true);
   }
-  const expanded = open;
+  const setOpen = (v: boolean) => {
+    if (!v) setErrorOpen(false);
+    if (live && slug !== undefined) rememberOpen(slug, v);
+    else setFallbackOpen(v);
+  };
+  const expanded = errorOpen || (live ? roomOpen : fallbackOpen);
 
   const bodyId = useId();
   const labelId = useId();
