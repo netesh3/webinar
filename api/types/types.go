@@ -131,6 +131,11 @@ const (
 	 * row; there is no unique index, unlike welcome. */
 	NotifyEmailVerify NotificationKind = "email_verify"
 
+	/* NotifyPasswordReset is the one-time link that sets a new password. Addressed by email,
+	 * like the verification link, and for the same reason: whoever needs it cannot sign in.
+	 * Asking again writes another row and retires the previous link (migration 0088). */
+	NotifyPasswordReset NotificationKind = "password_reset"
+
 	/* The panelist's side of a webinar: added to the stage (with the stage link and a
 	 * calendar file), the start moved, the session cancelled. Addressed by email and tied to
 	 * no registration — a panelist signs in rather than holding a join key, so the link in
@@ -2438,6 +2443,19 @@ type VerifyEmailRequest struct {
 // an unverified account cannot sign in, so the only place to ask is this form.
 type ResendVerificationRequest struct {
 	Email string `json:"email"`
+}
+
+// ForgotPasswordRequest asks for a reset link. No session, for the same reason as
+// resend: somebody who has forgotten their password cannot sign in to ask.
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+// ResetPasswordRequest is the token from the link in the reset mail, and the password
+// to set. A success answers with the Account, signed in.
+type ResetPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
 }
 
 // HostGrant is an admin's decision about one account's hosting capability —

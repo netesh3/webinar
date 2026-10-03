@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/types"
 )
@@ -127,6 +128,26 @@ func (s *Store) RedeemEmailVerification(ctx context.Context, raw string) (string
 		return "", nil, err
 	}
 
+	done, err := finishWaitingRegistrations(ctx, tx, userID)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", nil, err
+	}
+	return userID, done, nil
+}
+
+/* finishWaitingRegistrations moves this account's webinar registrations out of
+ * 'unverified', now that the address is confirmed: approved when the webinar lets people in
+ * automatically, pending when the host reviews them.
+ *
+ * Runs inside the caller's transaction, so the address and the registrations it was holding
+ * change together. Shared by the two links that prove somebody reads this inbox — the
+ * verification link and the password reset link — so they cannot disagree about what a
+ * confirmed address unlocks.
+ */
+func finishWaitingRegistrations(ctx context.Context, tx pgx.Tx, userID string) ([]CompletedRegistration, error) {
 	rows, err := tx.Query(ctx, `
 		UPDATE registrations r
 		   SET state = CASE WHEN w.approval = 'manual' THEN 'pending' ELSE 'approved' END
@@ -138,7 +159,7 @@ func (s *Store) RedeemEmailVerification(ctx context.Context, raw string) (string
 		          r.job_title, r.country, r.phone, r.answers, r.state, r.join_key,
 		          r.created_at, r.whatsapp_opt_in`, userID)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -156,11 +177,11 @@ func (s *Store) RedeemEmailVerification(ctx context.Context, raw string) (string
 			&answers, &item.Registration.State, &item.Registration.JoinKey, &created,
 			&item.WhatsAppOptIn,
 		); err != nil {
-			return "", nil, err
+			return nil, err
 		}
 		if len(answers) > 0 {
 			if err := json.Unmarshal(answers, &item.Registration.Answers); err != nil {
-				return "", nil, err
+				return nil, err
 			}
 		}
 		item.Registration.Answers = orEmptyMap(item.Registration.Answers)
@@ -168,12 +189,9 @@ func (s *Store) RedeemEmailVerification(ctx context.Context, raw string) (string
 		done = append(done, item)
 	}
 	if err := rows.Err(); err != nil {
-		return "", nil, err
+		return nil, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return "", nil, err
-	}
-	return userID, done, nil
+	return done, nil
 }
 
 // MarkEmailVerified stamps the account confirmed. A second call keeps the original time.

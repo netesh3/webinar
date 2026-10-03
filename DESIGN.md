@@ -188,6 +188,8 @@ through handlers. Every route's protection is visible from its position in the t
 │
 ├── auth
 │   ├── POST  /auth/signup, /auth/login            separate rate buckets
+│   ├── POST  /auth/password/forgot                one answer for every address; per address + per IP
+│   ├── POST  /auth/password/reset                 login bucket; signs out every older session
 │   └── requireUser:  GET/PATCH /auth/me
 │
 ├── /me            requireUser

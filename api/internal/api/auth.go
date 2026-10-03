@@ -88,21 +88,13 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (store.Use
 		httpx.Error(w, http.StatusUnauthorized, "unauthenticated", "Please sign in.")
 		return store.User{}, false
 	}
-	userID, err := s.sessions.Verify(cookie.Value)
+	user, err := s.sessionAccount(r.Context(), cookie.Value)
 	if err != nil {
-		s.sessions.ClearCookie(w) // stale or forged — get rid of it
+		// Expired, forged, signed before the last password reset, or a valid signature
+		// for an account that is gone — get rid of the cookie either way.
+		s.sessions.ClearCookie(w)
 		// A leftover cookie from a previous deployment would otherwise lock somebody
 		// out of a site that has no sign-in page to recover through.
-		if s.cfg.AuthBypass {
-			return s.bypassUser(w, r)
-		}
-		httpx.Error(w, http.StatusUnauthorized, "unauthenticated", "Please sign in again.")
-		return store.User{}, false
-	}
-	user, err := s.store.UserByID(r.Context(), userID)
-	if err != nil {
-		// Valid signature but the user is gone.
-		s.sessions.ClearCookie(w)
 		if s.cfg.AuthBypass {
 			return s.bypassUser(w, r)
 		}
@@ -125,16 +117,36 @@ func (s *Server) sessionUser(r *http.Request) (store.User, error) {
 	if err != nil {
 		return store.User{}, err
 	}
-	userID, err := s.sessions.Verify(cookie.Value)
-	if err != nil {
-		return store.User{}, err
-	}
-	user, err := s.store.UserByID(r.Context(), userID)
+	user, err := s.sessionAccount(r.Context(), cookie.Value)
 	if err != nil {
 		return store.User{}, err
 	}
 	if !user.EmailVerified() {
 		return store.User{}, errors.New("email not verified")
+	}
+	return user, nil
+}
+
+// errSessionStale is a session signed before the account's last password reset.
+var errSessionStale = errors.New("session predates the last password reset")
+
+/* sessionAccount is the account a session cookie belongs to, if the session still stands.
+ *
+ * Every reader of the cookie goes through here, so "a reset signs out every other browser"
+ * holds on every route at once. A check in authenticate alone would leave the public
+ * register path and the YouTube callback honouring the old session.
+ */
+func (s *Server) sessionAccount(ctx context.Context, token string) (store.User, error) {
+	sess, err := s.sessions.Verify(token)
+	if err != nil {
+		return store.User{}, err
+	}
+	user, err := s.store.UserByID(ctx, sess.UserID)
+	if err != nil {
+		return store.User{}, err
+	}
+	if user.SessionStale(sess.IssuedAt) {
+		return store.User{}, errSessionStale
 	}
 	return user, nil
 }
@@ -209,11 +221,7 @@ func (s *Server) optionalUser(r *http.Request) (store.User, bool) {
 	if err != nil {
 		return store.User{}, false
 	}
-	userID, err := s.sessions.Verify(cookie.Value)
-	if err != nil {
-		return store.User{}, false
-	}
-	user, err := s.store.UserByID(r.Context(), userID)
+	user, err := s.sessionAccount(r.Context(), cookie.Value)
 	if err != nil || !user.EmailVerified() {
 		return store.User{}, false
 	}
@@ -462,7 +470,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
  * AdminPassword (config.go), not this form. A real product with coaches and
  * students signing up should ask for one; this instance doesn't yet, and
  * asking is a one-line change (add minPassword back as a parameter and a
- * case in the switch below) rather than a redesign when it's wanted.
+ * case in passwordFieldError's switch) rather than a redesign when it's wanted.
  */
 func validateSignup(req types.SignupRequest) map[string]string {
 	fields := map[string]string{}
@@ -485,13 +493,8 @@ func validateSignup(req types.SignupRequest) map[string]string {
 		}
 	}
 
-	switch {
-	case req.Password == "":
-		fields["password"] = "Required."
-	case len(req.Password) > 1024:
-		// Not a strength rule — argon2id will happily hash a megabyte and burn
-		// a core doing it. This bound stays regardless of the length floor.
-		fields["password"] = "That password is too long."
+	if msg := passwordFieldError(req.Password); msg != "" {
+		fields["password"] = msg
 	}
 
 	if msg := phoneFieldError(req.Phone); msg != "" {
@@ -499,6 +502,23 @@ func validateSignup(req types.SignupRequest) map[string]string {
 	}
 
 	return fields
+}
+
+/* passwordFieldError is the rule a new password has to meet, wherever it is chosen:
+ * signing up, and setting a new one from a reset link. One function, so the two forms
+ * cannot quietly disagree — a reset that accepted what signup refuses, or the reverse,
+ * would be a password the other door turns away.
+ */
+func passwordFieldError(password string) string {
+	switch {
+	case password == "":
+		return "Required."
+	case len(password) > 1024:
+		// Not a strength rule — argon2id will happily hash a megabyte and burn
+		// a core doing it. This bound stays regardless of the length floor.
+		return "That password is too long."
+	}
+	return ""
 }
 
 /* phoneFieldError shape-checks an OPTIONAL mobile number — empty is fine,

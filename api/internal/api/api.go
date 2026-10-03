@@ -135,6 +135,9 @@ type Server struct {
 	sayLimit *httpx.RateLimiter
 	// emailResend caps verification-link requests per address and per IP.
 	emailResend *httpx.RateLimiter
+	// passwordReset caps reset-link requests the same way. Its own buckets, so asking for
+	// a verification link does not spend somebody's reset budget, or the reverse.
+	passwordReset *httpx.RateLimiter
 	/* How approval emails leave, if they leave at all.
 	 *
 	 * Derived from config inside NewServer rather than passed in, which keeps the
@@ -206,20 +209,21 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 	}
 
 	srv := &Server{
-		cfg:         cfg,
-		store:       st,
-		sfu:         sfu,
-		youtube:     youtube,
-		zoom:        zoomClient,
-		zoomKey:     zoomKey,
-		recordings:  rec,
-		sessions:    auth.NewSessions(cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure),
-		log:         log,
-		sayLimit:    httpx.NewRateLimiter(sayPerMin, time.Minute),
-		emailResend: httpx.NewRateLimiter(3, 15*time.Minute),
-		mail:        mail,
-		invites:     map[string]pendingStage{},
-		engage:      NoEngage{},
+		cfg:           cfg,
+		store:         st,
+		sfu:           sfu,
+		youtube:       youtube,
+		zoom:          zoomClient,
+		zoomKey:       zoomKey,
+		recordings:    rec,
+		sessions:      auth.NewSessions(cfg.SessionSecret, cfg.SessionTTL, cfg.CookieSecure),
+		log:           log,
+		sayLimit:      httpx.NewRateLimiter(sayPerMin, time.Minute),
+		emailResend:   httpx.NewRateLimiter(3, 15*time.Minute),
+		passwordReset: httpx.NewRateLimiter(3, 15*time.Minute),
+		mail:          mail,
+		invites:       map[string]pendingStage{},
+		engage:        NoEngage{},
 	}
 	srv.initEngagement()
 	return srv
@@ -393,6 +397,12 @@ func (s *Server) Routes() http.Handler {
 		// how an unverified account gets in.
 		r.Post("/auth/email/verify", s.handleVerifyEmail)
 		r.Post("/auth/email/resend", s.handleResendVerification)
+		// No session for either: forgetting the password is the one thing a signed-in page
+		// cannot fix. Asking for the link is budgeted per address and per IP inside the
+		// handler, like resend. Using it spends the login budget, because a reset token and
+		// a new password end with a session the same way an email and a password do.
+		r.Post("/auth/password/forgot", s.handleForgotPassword)
+		r.With(loginLimit.Middleware).Post("/auth/password/reset", s.handleResetPassword)
 		// Same budget as login: exchanging a Google token is a sign-in attempt.
 		r.With(loginLimit.Middleware).Post("/auth/supabase", s.handleSupabaseAuth)
 		r.Post("/auth/logout", s.handleLogout)

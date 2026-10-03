@@ -341,6 +341,16 @@ export const api = {
   resendVerification: (email: string) =>
     post<StatusResponse>("/api/auth/email/resend", { email }),
 
+  /** Mails a password reset link. The same answer whether or not the address has an
+   *  account, so the UI cannot say which it was. Rate-limited. No session. */
+  forgotPassword: (email: string) =>
+    post<StatusResponse>("/api/auth/password/forgot", { email }),
+
+  /** Sets a new password from the reset link, and signs in: the response carries the
+   *  session cookie. Every other session on the account is signed out. */
+  resetPassword: (token: string, password: string) =>
+    post<Account>("/api/auth/password/reset", { token, password }),
+
   /** Exchange a Supabase Auth access token for the webcast_session cookie. */
   supabaseAuth: (accessToken: string) =>
     post<Account>("/api/auth/supabase", { accessToken }),

@@ -6,8 +6,8 @@ import { useMemo, useState } from "react";
 import { Alert, Spinner } from "./controls";
 import { AuthDivider, GoogleContinueButton } from "./google-continue";
 import { ContinueAsPreviewHost } from "./continue-as-preview-host";
-import { useAppConfig, useSession } from "./providers";
-import { Button, Card } from "./ui";
+import { useAppConfig, useSession, useToast } from "./providers";
+import { Button, ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import { DIAL_CODES, dialOptions } from "@/lib/dial-codes";
 
@@ -96,6 +96,19 @@ export function LoginForm() {
           value={password}
           onChange={setPassword}
           required
+          aside={
+            /* Carries the address already typed, so it is not asked for twice. */
+            <Link
+              href={
+                email.trim()
+                  ? `/forgot-password?email=${encodeURIComponent(email.trim())}`
+                  : "/forgot-password"
+              }
+              className="text-[12.5px] font-medium text-brand hover:underline"
+            >
+              Forgot password?
+            </Link>
+          }
         />
 
         {error && <Alert tone="error">{error}</Alert>}
@@ -315,6 +328,229 @@ export function SignupForm() {
   );
 }
 
+/* Forgot password: asks for the link that sets a new one.
+ *
+ * The API answers the same whether or not an account uses the address, so this never
+ * says which it was — "sent" reads as "if there is one". Each new link replaces the last,
+ * which is why a second send says to use the newest mail. */
+export function ForgotPasswordForm() {
+  const params = useSearchParams();
+  const [email, setEmail] = useState(() => params.get("email") ?? "");
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [sends, setSends] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function send(address: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.forgotPassword(address);
+      setSentTo(address);
+      setSends((n) => n + 1);
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not send the link. Check your connection and try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sentTo !== null) {
+    return (
+      <Card className="mx-auto w-full max-w-sm p-6">
+        <h1 className="text-[18px] font-semibold">Check your email</h1>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
+          If an account uses <span className="font-medium text-ink">{sentTo}</span>, we
+          sent it a link to choose a new password. It works once and expires in 1 hour.
+        </p>
+        <p className="mt-3 text-[13px] leading-relaxed text-ink-2">
+          Nothing after a few minutes? Check your spam folder, or send another.
+        </p>
+        {sends > 1 && !error && (
+          <div className="mt-3">
+            <Alert tone="ok">Sent again. Use the newest email — it replaces the earlier link.</Alert>
+          </div>
+        )}
+        {error && (
+          <div className="mt-3">
+            <Alert tone="error">{error}</Alert>
+          </div>
+        )}
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={busy}
+          className="mt-4 w-full"
+          onClick={() => void send(sentTo)}
+        >
+          {busy && <Spinner className="size-4" />}
+          {busy ? "Sending…" : "Send another link"}
+        </Button>
+        <p className="mt-4 border-t border-line pt-3 text-center text-[12.5px] text-ink-2">
+          <Link href="/login" className="font-medium text-brand hover:underline">
+            Back to sign in
+          </Link>
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="mx-auto w-full max-w-sm p-6">
+      <h1 className="text-[18px] font-semibold">Reset your password</h1>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
+        Enter the email you sign in with, and we&apos;ll send you a link to choose a new
+        password.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void send(email.trim());
+        }}
+        className="mt-5 grid gap-3"
+      >
+        <Field
+          id="email"
+          label="Email"
+          type="email"
+          autoComplete="username"
+          value={email}
+          onChange={setEmail}
+          required
+        />
+        {error && <Alert tone="error">{error}</Alert>}
+        <Button type="submit" disabled={busy} size="lg" className="mt-1 w-full">
+          {busy && <Spinner className="size-4" />}
+          {busy ? "Sending…" : "Send reset link"}
+        </Button>
+      </form>
+      <p className="mt-4 border-t border-line pt-3 text-center text-[12.5px] text-ink-2">
+        Remembered it?{" "}
+        <Link href="/login" className="font-medium text-brand hover:underline">
+          Sign in
+        </Link>
+      </p>
+    </Card>
+  );
+}
+
+/* The link in the reset mail. Nothing happens until the form is sent, so a mail scanner
+ * that opens the link cannot spend it. Saving signs in here and signs out every other
+ * browser on the account. */
+export function ResetPasswordForm() {
+  const params = useSearchParams();
+  const token = params.get("token") ?? "";
+  const router = useRouter();
+  const { refresh } = useSession();
+  const { notify } = useToast();
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [deadLink, setDeadLink] = useState(token === "");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setFields({});
+    // Typed blind, so a slip here is a password nobody knows. Checked before the link
+    // is spent, rather than after.
+    if (password !== confirm) {
+      setFields({ confirm: "Those passwords don't match." });
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.resetPassword(token, password);
+      await refresh();
+      notify("Password changed. You're signed in.", "ok");
+      router.push("/");
+      router.refresh();
+    } catch (err) {
+      if (err instanceof ApiError && err.fields) {
+        setFields(err.fields);
+      } else if (err instanceof ApiError) {
+        setError(err.message);
+        setDeadLink(err.code === "invalid_token" || err.code === "expired_token");
+      } else {
+        setError("Could not save the new password. Check your connection and try again.");
+      }
+      setBusy(false);
+    }
+  }
+
+  if (deadLink) {
+    return (
+      <Card className="mx-auto w-full max-w-sm p-6">
+        <h1 className="text-[18px] font-semibold">Ask for a new link</h1>
+        <div className="mt-3">
+          <Alert tone="error">
+            {error ??
+              "That link is missing its token. Open the link from the email, or ask for a new one."}
+          </Alert>
+        </div>
+        <p className="mt-3 text-[13px] leading-relaxed text-ink-2">
+          Reset links work once and expire after an hour. Asking again sends a fresh one.
+        </p>
+        <ButtonLink href="/forgot-password" className="mt-4 w-full">
+          Send me a new link
+        </ButtonLink>
+        <p className="mt-4 border-t border-line pt-3 text-center text-[12.5px] text-ink-2">
+          <Link href="/login" className="font-medium text-brand hover:underline">
+            Back to sign in
+          </Link>
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="mx-auto w-full max-w-sm p-6">
+      <h1 className="text-[18px] font-semibold">Choose a new password</h1>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
+        You&apos;ll be signed in once it&apos;s saved, and signed out on every other device.
+      </p>
+      <form onSubmit={submit} className="mt-5 grid gap-3">
+        <Field
+          id="password"
+          label="New password"
+          type="password"
+          autoComplete="new-password"
+          value={password}
+          onChange={setPassword}
+          error={fields.password}
+          required
+        />
+        <Field
+          id="confirm"
+          label="Confirm new password"
+          type="password"
+          autoComplete="new-password"
+          value={confirm}
+          onChange={setConfirm}
+          error={fields.confirm}
+          required
+        />
+        {error && <Alert tone="error">{error}</Alert>}
+        <Button type="submit" disabled={busy} size="lg" className="mt-1 w-full">
+          {busy && <Spinner className="size-4" />}
+          {busy ? "Saving…" : "Save new password"}
+        </Button>
+      </form>
+      <p className="mt-4 border-t border-line pt-3 text-center text-[12.5px] text-ink-2">
+        <Link href="/login" className="font-medium text-brand hover:underline">
+          Back to sign in
+        </Link>
+      </p>
+    </Card>
+  );
+}
+
 function Field({
   id,
   label,
@@ -324,6 +560,7 @@ function Field({
   autoComplete,
   required,
   error,
+  aside,
 }: {
   id: string;
   label: string;
@@ -333,12 +570,23 @@ function Field({
   autoComplete?: string;
   required?: boolean;
   error?: string;
+  /** Beside the label, right-aligned — the "Forgot password?" link. */
+  aside?: React.ReactNode;
 }) {
   return (
     <div>
-      <label className="label" htmlFor={id}>
-        {label}
-      </label>
+      {aside ? (
+        <div className="flex items-baseline justify-between gap-3">
+          <label className="label" htmlFor={id}>
+            {label}
+          </label>
+          {aside}
+        </div>
+      ) : (
+        <label className="label" htmlFor={id}>
+          {label}
+        </label>
+      )}
       <input
         id={id}
         type={type}
