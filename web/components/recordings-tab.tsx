@@ -268,11 +268,18 @@ function ShareRecordingModal({
       open={open}
       onClose={onClose}
       title="Share Recording"
-      description={
+      // What the link does now, which is the saved setting rather than the switch
+      // below: a recording starts private, and until public viewing is switched on
+      // and saved, the link shows "Recording Unavailable" to whoever opens it.
+      description={`${
+        rec.isPublic
+          ? "Anyone with this link can watch or download the recording."
+          : "Private: nobody can open this link until you turn on public viewing and save."
+      }${
         recordingRetentionDays(rec) > 0
-          ? `Anyone with this link can watch or download. The cloud copy is deleted after ${recordingRetentionDays(rec)} days — download it to keep it on your computer.`
-          : "Anyone with this link can watch or download the recording."
-      }
+          ? ` The cloud copy is deleted after ${recordingRetentionDays(rec)} days — download it to keep it on your computer.`
+          : ""
+      }`}
       footer={
         <div className="flex w-full items-center justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={busy}>
@@ -516,6 +523,8 @@ function RecordingCard({
                   Ready
                 </span>
               </Badge>
+              {/* Who can open the share link, always said: a recording starts
+                  private, so no badge at all would leave "public" to be guessed. */}
               {!rec.isPublic ? (
                 <Badge tone="warn">Private</Badge>
               ) : rec.passcodeRequired ? (
@@ -525,7 +534,9 @@ function RecordingCard({
                     Passcode
                   </span>
                 </Badge>
-              ) : null}
+              ) : (
+                <Badge tone="brand">Public</Badge>
+              )}
             </>
           )}
           {failed && <Badge tone="warn">Failed</Badge>}
