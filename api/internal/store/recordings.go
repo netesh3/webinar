@@ -65,21 +65,26 @@ func (s *Store) StartRecording(
 		rec       types.Recording
 		createdAt time.Time
 	)
+	// Private until the host publishes it. Publishing hands the session to anyone
+	// holding the link and sends the replay to every registrant, so it is the host's
+	// decision, not something a coaching call or a paid class gets the moment its
+	// file lands. A later take follows its session instead: a part left private
+	// under a published session would be listed on the public page and refuse to play.
 	err = s.pool.QueryRow(ctx, `
 		INSERT INTO recordings (
 		         id, webinar_id, started_by, started_by_name, mime, storage_key,
 		         uploaded_to_s3, parent_id, is_public, passcode)
 		SELECT $2::uuid, w.id, $3::uuid, $4, $5, $6, false,
 		       NULLIF($7, '')::uuid,
-		       COALESCE(p.is_public, true),
+		       COALESCE(p.is_public, false),
 		       COALESCE(p.passcode, '')
 		  FROM webinars w
 		  LEFT JOIN recordings p ON p.id = NULLIF($7, '')::uuid
 		 WHERE (w.slug = $1 OR w.id::text = $1)
-		RETURNING id::text, status, mime, size_bytes, duration_ms, started_by_name, created_at, COALESCE(uploaded_to_s3, false)`,
+		RETURNING id::text, status, mime, size_bytes, duration_ms, started_by_name, created_at, COALESCE(uploaded_to_s3, false), is_public`,
 		slug, id, nullUUID(userID), userName, mime, storageKey, parentID,
 	).Scan(&rec.ID, &rec.Status, &rec.Mime, &rec.SizeBytes, &rec.DurationMs,
-		&rec.StartedBy, &createdAt, &rec.UploadedToS3)
+		&rec.StartedBy, &createdAt, &rec.UploadedToS3, &rec.IsPublic)
 
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
@@ -94,7 +99,6 @@ func (s *Store) StartRecording(
 	}
 	rec.Webinar = slug
 	rec.CreatedAt = createdAt.Format(time.RFC3339)
-	rec.IsPublic = true
 	return rec, nil
 }
 
@@ -148,7 +152,7 @@ func (s *Store) RecordingFor(ctx context.Context, slug, id string) (RecordingFil
 	err := s.pool.QueryRow(ctx, `
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
-		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(r.is_public, false), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
@@ -171,7 +175,7 @@ func (s *Store) RecordingFileByID(ctx context.Context, id string) (RecordingFile
 	err := s.pool.QueryRow(ctx, `
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
-		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(r.is_public, false), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
@@ -195,7 +199,7 @@ func (s *Store) ActiveRecordingFile(ctx context.Context, slug string) (Recording
 	err := s.pool.QueryRow(ctx, `
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
-		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(r.is_public, false), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
@@ -314,7 +318,7 @@ func (s *Store) RecordingByEgressID(ctx context.Context, egressID string) (Recor
 	err := s.pool.QueryRow(ctx, `
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
-		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(r.is_public, false), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
@@ -408,7 +412,7 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, w.slug, w.topic, r.status, r.mime, r.size_bytes,
 		       r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
-		       COALESCE(r.egress_id, ''), COALESCE(r.is_public, true),
+		       COALESCE(r.egress_id, ''), COALESCE(r.is_public, false),
 		       COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0),
 		       COALESCE(r.parent_id::text, '')
@@ -460,7 +464,7 @@ func (s *Store) HostReadyRecordings(ctx context.Context, hostID string) ([]types
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, w.slug, w.topic, r.status, r.mime, r.size_bytes,
 		       r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
-		       COALESCE(r.egress_id, ''), COALESCE(r.is_public, true),
+		       COALESCE(r.egress_id, ''), COALESCE(r.is_public, false),
 		       COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0),
 		       COALESCE(r.parent_id::text, '')
@@ -665,7 +669,7 @@ func (s *Store) SessionParts(ctx context.Context, slug, id string) ([]RecordingF
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
-		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(r.is_public, false), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0),
 		       COALESCE(r.parent_id::text, '')
 		  FROM recordings r
@@ -753,7 +757,7 @@ func (s *Store) ExpiredRecordings(ctx context.Context, age time.Duration, limit 
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
-		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(r.is_public, false), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
@@ -800,7 +804,7 @@ func (s *Store) UnaccountedEgressRecordings(ctx context.Context, limit int) ([]R
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
 		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
-		       COALESCE(r.is_public, true), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
+		       COALESCE(r.is_public, false), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
 		  FROM recordings r
 		  JOIN webinars w ON w.id = r.webinar_id
