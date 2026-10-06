@@ -20,9 +20,12 @@ const verifyEmailMessage = "Verify your email to continue."
 
 /* queueEmailVerification sends the one-time link through the same outbox as every other mail.
  *
- * Nothing here fails the signup. The row is written before the response; the send happens
- * after, and the sweep retries whatever is still owed. A second call retires the previous
- * unused token, which is what resend does.
+ * Nothing here fails the signup. The row is written first; the send then runs in this
+ * request, before the caller responds, the same way a registration confirmation does.
+ * A background send is frozen on Cloud Run once the response is written, and it also
+ * loses the outbox lease to the welcome mail. The sweep still retries whatever this
+ * flush leaves pending. A second call retires the previous unused token, which is
+ * what resend does.
  */
 func (s *Server) queueEmailVerification(ctx context.Context, user store.User) {
 	if user.EmailVerified() {
@@ -42,9 +45,9 @@ func (s *Server) queueEmailVerification(ctx context.Context, user store.User) {
 	link := strings.TrimRight(s.cfg.WebBaseURL, "/") + "/verify-email?token=" + url.QueryEscape(raw)
 	subject, body := notify.VerifyEmail(s.cfg.AppName, user.Name, link)
 
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	insertCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
+	if err := s.store.Notify(insertCtx, s.store.DB(), store.Notification{
 		Email:   email,
 		Kind:    types.NotifyEmailVerify,
 		Subject: subject,
@@ -53,7 +56,7 @@ func (s *Server) queueEmailVerification(ctx context.Context, user store.User) {
 		s.log.Error("verify email: could not queue", "user", user.ID, "err", err)
 		return
 	}
-	s.inBackground(func(ctx context.Context) { s.flushOutbox(ctx) })
+	s.flushOutbox(ctx)
 }
 
 /* deliverCompletedRegistrations sends the join link for registrations the
