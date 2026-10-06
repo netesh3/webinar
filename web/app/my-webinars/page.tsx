@@ -1,5 +1,5 @@
-import { MyWebinarsList } from "@/components/my-webinars-list";
-import { TopNav } from "@/components/top-nav";
+import { HostPortalFrame } from "@/components/host-portal-frame";
+import { WatchListScreen } from "@/components/watch-list-screen";
 
 /* No data fetched here on purpose.
  *
@@ -11,28 +11,14 @@ import { TopNav } from "@/components/top-nav";
  *
  * Both of those need the browser: one reads join keys out of localStorage, the other needs
  * the session cookie. So the page is a shell and the client does the asking.
+ *
+ * The shell is the side panel. A host is redirected to the Attending tab before this
+ * renders (lib/access.ts); what is left is an account that cannot host yet.
  */
 export default function MyWebinarsPage() {
   return (
-    <>
-      <TopNav />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-5 py-8">
-        <div className="mb-6">
-          {/* Same name as the WatchList tab on the host page, because it is the
-              same list — a person told "WatchList" by one door and "My Webinar"
-              by the other has to work out that they lead to one place. The path
-              keeps its old name: renaming a URL breaks the links already sent to
-              it, and nobody reads the path for the title. */}
-          <h1 className="text-[26px] font-semibold tracking-[-0.02em]">
-            WatchList
-          </h1>
-          <p className="mt-1.5 text-[14px] text-ink-2">
-            Everything you&apos;ve registered for, with your personal join key.
-          </p>
-        </div>
-
-        <MyWebinarsList />
-      </main>
-    </>
+    <HostPortalFrame>
+      <WatchListScreen />
+    </HostPortalFrame>
   );
 }

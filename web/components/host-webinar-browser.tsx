@@ -151,8 +151,12 @@ export function HostWebinarBrowser({
   /** Bumped by the parent after it creates or starts a webinar, to pull the
    *  list back in step with what just happened. */
   reloadToken = 0,
+  /** The one-time "hosting is on" note is up, so Attending is worth a mark
+   *  until they dismiss it. The tab itself only exists once there is a row. */
+  attendingHint = false,
 }: {
   reloadToken?: number;
+  attendingHint?: boolean;
 }) {
   const bypass = isDevAuthBypassActive();
 
@@ -404,6 +408,7 @@ export function HostWebinarBrowser({
               }
               labels={TAB_LABELS}
               icons={TAB_ICONS}
+              marks={attendingHint ? { [ATTENDING]: true } : undefined}
               counts={{
                 ...counts,
                 [ATTENDING]: attendingCount,

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { HomeLegalFooter } from "@/components/marketing/legal-page";
 import { useSession } from "@/components/providers";
+import { appHome } from "@/lib/access";
 
 /* Public marketing home for Webinar Liv.
  *
@@ -24,7 +25,7 @@ export function SignedInHomeRedirect() {
       const params = new URLSearchParams(window.location.search);
       if (params.get("marketing") === "1") return;
     }
-    router.replace(account.canHost ? "/host" : "/browse");
+    router.replace(appHome(account.canHost));
   }, [account, status, router]);
 
   return null;

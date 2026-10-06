@@ -13,7 +13,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { decideAccess, type Viewer } from "./access.ts";
+import { appHome, decideAccess, landingAfterSignIn, type Viewer } from "./access.ts";
 
 let failures = 0;
 let checks = 0;
@@ -80,9 +80,17 @@ console.log("\nSIGNED-IN — marketing home redirects into the app");
   redirectedTo(
     "/",
     participant,
-    "/browse",
-    "a participant opening / lands on Browse",
+    "/my-webinars",
+    "a participant opening / lands on WatchList",
   );
+  redirectedTo(
+    "/browse",
+    participant,
+    "/my-webinars",
+    "an old /browse link opens WatchList for someone who cannot host",
+  );
+  allowed("/browse", host, "a host can still open the catalogue");
+  allowed("/browse", anonymous, "and so can someone signed out");
 }
 
 console.log("\nPARTICIPANT — host URLs are refused");
@@ -170,8 +178,8 @@ console.log("\nHOST — signed out, and sent back where they were going");
   redirectedTo(
     "/host/login",
     participant,
-    "/host",
-    "a signed-in account opening /host/login is sent to the portal",
+    "/my-webinars",
+    "a signed-in attendee opening /host/login is sent to WatchList",
   );
   redirectedTo(
     "/host/login",
@@ -316,8 +324,8 @@ console.log("\nEDGE CASES");
   redirectedTo(
     "/login",
     participant,
-    "/host",
-    "a signed-in participant opening /login is sent home too",
+    "/my-webinars",
+    "a signed-in participant opening /login is sent to WatchList",
   );
   redirectedTo(
     "/login/",
@@ -374,6 +382,7 @@ console.log("\nEDGE CASES");
     ["/host", "the host portal"],
     ["/login", "sign-in, so a signed-in visitor is redirected before the form"],
     ["/my-webinars", "an attendee's own list"],
+    ["/browse", "old attendee links redirect to WatchList"],
     ["/account", "account settings"],
     ["/settings", "settings"],
     ["/admin", "the admin area"],
@@ -392,6 +401,32 @@ console.log("\nEDGE CASES");
       `${path} refuses an anonymous visitor`,
     );
   }
+}
+
+console.log("\nHOME — sign-in follows a deep link and sends the front door home");
+{
+  ok(appHome(true) === "/host", "a host's home is Webinars");
+  ok(appHome(false) === "/my-webinars", "an attendee's home is WatchList");
+  ok(
+    landingAfterSignIn(false, "/") === "/my-webinars",
+    "signing in from the marketing page opens WatchList",
+  );
+  ok(
+    landingAfterSignIn(false, "/browse") === "/my-webinars",
+    "…and so does an old browse destination",
+  );
+  ok(
+    landingAfterSignIn(true, "/browse") === "/host",
+    "a host signing in from the same door opens Webinars",
+  );
+  ok(
+    landingAfterSignIn(false, "/webinars/redis-cache") === "/webinars/redis-cache",
+    "a registration link is kept",
+  );
+  ok(
+    landingAfterSignIn(true, "/host/redis-cache/edit") === "/host/redis-cache/edit",
+    "a host deep link is kept",
+  );
 }
 
 console.log(

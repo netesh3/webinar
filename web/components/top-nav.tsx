@@ -29,9 +29,10 @@ import { EmailNavLink } from "./email/email-nav";
  * in. The link pointed at whatever page they were already reading — clicking it
  * could not have gone anywhere. The logo does that job now, see homeHrefFor.
  *
- * Both routes stay reachable. /browse still takes the links already sent out, and
- * /my-webinars is where registering sends somebody — a host lands on the
- * Attending tab from it (see lib/access.ts).
+ * Both routes stay reachable. /browse still takes the links already sent out —
+ * a host and a signed-out visitor open the catalogue, an attendee is sent to
+ * WatchList. /my-webinars is that WatchList, inside the side panel; a host
+ * lands on the Attending tab from it (see lib/access.ts).
  *
  * Contacts went too. Audience is a tab on Your webinars. Messages is its own
  * screen, opened from the chat icon. WhatsApp replies land on the bell. */
