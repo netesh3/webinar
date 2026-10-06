@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { useAppConfig, useSession } from "@/components/providers";
 import { api } from "@/lib/api";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
+import { landingAfterSignIn } from "@/lib/access";
 import { createSupabaseBrowser, safeAuthNext } from "@/lib/supabase";
 
 /**
@@ -207,12 +208,7 @@ export function GoogleOneTap({
               const account = await api.supabaseAuth(accessToken);
               await supabase.auth.signOut({ scope: "local" }).catch(() => {});
               await refresh();
-              router.replace(
-                account.canHost &&
-                  (destination === "/" || destination === "/browse")
-                  ? "/host"
-                  : destination,
-              );
+              router.replace(landingAfterSignIn(account.canHost, destination));
               router.refresh();
             } catch (err) {
               console.warn("Google One Tap sign-in failed", err);

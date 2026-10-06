@@ -185,6 +185,10 @@ export const config = {
     "/host",
     "/host/:path*",
     "/my-webinars",
+    /* An attendee's old home. decideAccess sends them to WatchList; a host and
+     * a signed-out visitor still open the catalogue, so the path has to reach
+     * the gate or the attendee rule never runs. */
+    "/browse",
     "/account",
     "/settings",
     /* /admin has to be listed or decideAccess is never consulted for it.

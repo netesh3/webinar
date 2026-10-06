@@ -35,6 +35,19 @@ export type Decision = { allow: true } | { allow: false; redirectTo: string };
 
 const ALLOW: Decision = { allow: true };
 
+/** Where a signed-in account lives. Hosts open Webinars; everyone else opens WatchList. */
+export function appHome(canHost: boolean): string {
+  return canHost ? "/host" : "/my-webinars";
+}
+
+/** A fresh sign-in follows a deep link. `/` and `/browse` are not deep links:
+ *  they are the public front door, so they resolve to that account's home. */
+export function landingAfterSignIn(canHost: boolean, next: string): string {
+  const path = next.split("?")[0] ?? next;
+  if (path === "" || path === "/" || path === "/browse") return appHome(canHost);
+  return next;
+}
+
 /* First segments under /host that are pages rather than webinar slugs.
  *
  * `/host/new` is the schedule form, `/host/login` is the way in, `/host/messages`
@@ -75,14 +88,11 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
   }
 
   /* Marketing home is for visitors only. Signed-in users skip the brand page and
-   * land in the app — hosts on Hosting, everyone else on Browse. Matches the
-   * post-OAuth default when `next` is `/`. */
+   * land in the app — hosts on Webinars, everyone else on WatchList. Matches
+   * landingAfterSignIn when `next` is `/` or `/browse`. */
   if (segments.length === 0) {
     if (viewer.kind === "account") {
-      return {
-        allow: false,
-        redirectTo: viewer.canHost ? "/host" : "/browse",
-      };
+      return { allow: false, redirectTo: appHome(viewer.canHost) };
     }
     return ALLOW;
   }
@@ -103,13 +113,19 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
      *
      * Leaving /login open for an account is how the form and the account chrome
      * ended up on the same screen: the page mounted the old top bar, the
-     * session resolved, and nothing had sent them on. /host is where a session
-     * already lives. */
+     * session resolved, and nothing had sent them on. Home is where a session
+     * already lives: Webinars for a host, WatchList for everyone else. */
     if (path === "/login") {
       if (viewer.kind === "account") {
-        return { allow: false, redirectTo: "/host" };
+        return { allow: false, redirectTo: appHome(viewer.canHost) };
       }
       return ALLOW;
+    }
+    /* Old attendee links. /browse used to be their home and still shows the
+     * catalogue to a host and to someone signed out. An account that cannot
+     * host has WatchList instead, so the link they were sent opens that. */
+    if (path === "/browse" && viewer.kind === "account" && !viewer.canHost) {
+      return { allow: false, redirectTo: appHome(false) };
     }
     if (path === "/my-webinars" || path === "/account" || path === "/settings") {
       if (viewer.kind === "anonymous") return redirect("/login", path);
@@ -135,7 +151,7 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
    * form. Send them to the portal before that layout runs. */
   if (second === "login") {
     if (viewer.kind === "account") {
-      return { allow: false, redirectTo: "/host" };
+      return { allow: false, redirectTo: appHome(viewer.canHost) };
     }
     return ALLOW;
   }
@@ -166,11 +182,10 @@ export function decideAccess(pathname: string, viewer: Viewer): Decision {
 
   /* A signed-in account without hosting — every new signup, until an admin turns it on.
    *
-   * Bare /host opens: it renders "Hosting isn't enabled for this account", plus any
-   * sessions they are a panelist on, and makes no host-only request. The host pages
-   * (schedule, WhatsApp) go there too, so they land on that explanation rather than a
-   * form the API would refuse. A webinar slug goes to its public page, which is what they
-   * can actually use.
+   * Bare /host opens. A panelist sees the sessions they present on. With none, the
+   * page sends them to WatchList, which is their home. The host pages (schedule,
+   * WhatsApp) go there too, so they land on that rather than a form the API would
+   * refuse. A webinar slug goes to its public page, which is what they can actually use.
    */
   if (!second) return ALLOW;
   if (HOST_PAGES.has(second)) return { allow: false, redirectTo: "/host" };

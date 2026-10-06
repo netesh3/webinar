@@ -17,11 +17,14 @@ import {
   IntegrationStatusConnected,
   type IntegrationCard,
 } from "@/lib/api-types";
+import { appHome } from "@/lib/access";
+import { noteAttendeeVisit } from "@/lib/host-welcome";
 import { toggleSidebar } from "@/lib/sidebar";
 import { AccountAvatar } from "./account-avatar";
 import { HostAlerts } from "./host-alerts";
-import { CalendarIcon, MaterialIcon, MenuIcon, SettingsIcon, UsersIcon, WhatsAppIcon } from "./icons";
+import { BookmarkIcon, CalendarIcon, MaterialIcon, MenuIcon, SettingsIcon, UsersIcon, WhatsAppIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
+import { useRegistrations } from "./registrations";
 import { useTheme } from "./theme";
 
 /* The host shell.
@@ -72,7 +75,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const chrome = useChrome();
   const pathname = usePathname();
   const name = appName || "Webinar Liv";
-  const home = account?.canHost ? "/host" : "/";
+  const home = account ? appHome(account.canHost) : "/";
+
+  useEffect(() => {
+    if (account && !account.canHost) noteAttendeeVisit();
+  }, [account]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -229,6 +236,45 @@ function connectedName(label: string, badge?: string): string {
 }
 
 function PrimaryNav() {
+  const { account, status } = useSession();
+  /* Loading paints neither set. The host items appearing for an attendee,
+   * even for one frame, is a door that does not open. */
+  if (status === "loading") return <nav className="sb-nav" aria-hidden="true" />;
+  if (account && !account.canHost) return <AttendeeNav />;
+  return <HostPrimaryNav />;
+}
+
+/** WatchList is the only place an attendee has. Audience and Integrations
+ *  are host tools; showing them leads to a page that says hosting is off. */
+function AttendeeNav() {
+  const pathname = usePathname();
+  const { account } = useSession();
+  const { registrations } = useRegistrations();
+  const count = registrations?.length ?? 0;
+
+  return (
+    <nav className="sb-nav" aria-label="Primary">
+      <Item
+        href="/my-webinars"
+        label="WatchList"
+        active={pathname === "/my-webinars"}
+        icon={<BookmarkIcon />}
+        badge={count > 0 ? String(count) : undefined}
+      />
+      {/* An admin need not be a host. The rest of the host nav stays hidden. */}
+      {account?.isAdmin && (
+        <Item
+          href="/admin"
+          label="Admin"
+          active={pathname === "/admin" || pathname.startsWith("/admin/")}
+          icon={<AdminGlyph className="" />}
+        />
+      )}
+    </nav>
+  );
+}
+
+function HostPrimaryNav() {
   const pathname = usePathname();
   const replies = useReplies();
   const { account, status } = useSession();

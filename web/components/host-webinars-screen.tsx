@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
-import { CalendarIcon, ChevronRightIcon, PlayIcon } from "./icons";
+import { dismissWelcome, useHostWelcome } from "./host-welcome";
+import { CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, PlayIcon } from "./icons";
 import { DEFAULT_ATTENDEE_LIMIT, SCHEDULE_LEAD_ERROR } from "./schedule/form-state";
 import {
   useAppConfig,
@@ -156,15 +157,18 @@ export function HostWebinarsScreen() {
   const { maxAttendees } = useAppConfig();
   const { notify } = useToast();
   const origin = useShareOrigin();
+  const router = useRouter();
   const search = useSearchParams();
   const listTab = listTabFromQuery(search.get("tab") ?? "");
+  const welcome = useHostWelcome();
+  const bypass = isDevAuthBypassActive();
   const [onStage, setOnStage] = useState<Webinar[]>([]);
+  const [stageKnown, setStageKnown] = useState(bypass);
   const [startingInstant, setStartingInstant] = useState(false);
   /* The host's own list is paged server-side, so this screen no longer holds
    * it: HostWebinarBrowser fetches it. Bumping reloadToken is how a webinar
    * created here gets into a list this component cannot reach into. */
   const [reloadToken, setReloadToken] = useState(0);
-  const bypass = isDevAuthBypassActive();
 
   const canHost = account?.canHost ?? false;
   /* features on /api/auth/me, not isAdmin. An admin without the switch gets
@@ -199,9 +203,13 @@ export function HostWebinarsScreen() {
       .then((rows) => {
         if (!live || statusRef.current === "anonymous") return;
         setOnStage(rows);
+        setStageKnown(true);
       })
       .catch(() => {
-        if (live && statusRef.current !== "anonymous") setOnStage([]);
+        if (live && statusRef.current !== "anonymous") {
+          setOnStage([]);
+          setStageKnown(true);
+        }
       });
     api.myRegistrations().catch(() => {
       dropCache("/api/me/registrations");
@@ -233,6 +241,14 @@ export function HostWebinarsScreen() {
     const clear = () => setOnStage([]);
     queueMicrotask(clear);
   }, [status, listTab]);
+
+  /* An account that cannot host, and is not on anyone's stage, has nothing
+   * on this page. WatchList is their home. A panelist stays: the stage list
+   * below is the reason /host still opens for them. */
+  useEffect(() => {
+    if (status !== "signed-in" || canHost || !stageKnown || onStage.length > 0) return;
+    router.replace("/my-webinars");
+  }, [status, canHost, stageKnown, onStage.length, router]);
 
   async function startInstantWebinar() {
     if (bypass) {
@@ -323,38 +339,27 @@ export function HostWebinarsScreen() {
   }
 
   if (!canHost) {
+    /* No stage invitations: WatchList is home, and this URL is only how a
+     * panelist reaches the sessions they present. Waiting for that answer
+     * avoids painting the old "hosting isn't enabled" card on the way. */
+    if (!stageKnown || onStage.length === 0) {
+      return (
+        <div className="grid place-items-center py-20">
+          <Spinner className="size-6 text-ink-3" />
+        </div>
+      );
+    }
     return (
-      <>
-        {onStage.length > 0 && (
-          <section className="mb-8">
-            <h1 className="mb-1.5 text-[24px] font-semibold tracking-[-0.02em]">
-              You&apos;re a panelist on
-            </h1>
-            <p className="mb-3 text-[13.5px] text-ink-2">
-              Join the stage when the host starts. Hosting your own sessions is
-              separate — ask an admin to enable it on your account.
-            </p>
-            <HostWebinarList webinars={onStage} />
-          </section>
-        )}
-        <Card className="p-8 text-center">
-          <h1 className="text-[18px] font-semibold">
-            Hosting isn&apos;t enabled for this account
-          </h1>
-          <p className="mx-auto mt-2 max-w-md text-[13.5px] leading-relaxed text-ink-2">
-            Only an administrator can turn it on. You can still register for and
-            attend any session you have a link to.
-          </p>
-          <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <ButtonLink href="/my-webinars" variant="secondary" size="sm">
-              WatchList
-            </ButtonLink>
-            <ButtonLink href="/settings#account" variant="ghost" size="sm">
-              Settings
-            </ButtonLink>
-          </div>
-        </Card>
-      </>
+      <section className="mb-8">
+        <h1 className="mb-1.5 text-[24px] font-semibold tracking-[-0.02em]">
+          You&apos;re a panelist on
+        </h1>
+        <p className="mb-3 text-[13.5px] text-ink-2">
+          Join the stage when the host starts. Sessions you registered for are
+          on <Link href="/my-webinars" className="font-medium text-brand hover:underline">WatchList</Link>.
+        </p>
+        <HostWebinarList webinars={onStage} />
+      </section>
     );
   }
 
@@ -380,6 +385,7 @@ export function HostWebinarsScreen() {
       {/* The visible heading gave way to the action cards; the page keeps its
        * h1 for screen readers and the document outline. */}
       <h1 className="sr-only">Your webinars</h1>
+      {welcome && <HostWelcomeBanner />}
       <div
         className={
           twoColumns
@@ -417,7 +423,7 @@ export function HostWebinarsScreen() {
         )}
       </div>
 
-      <HostWebinarBrowser reloadToken={reloadToken} />
+      <HostWebinarBrowser reloadToken={reloadToken} attendingHint={welcome} />
 
       {onStage.length > 0 && (
         <section className="mt-10">
@@ -431,5 +437,33 @@ export function HostWebinarsScreen() {
         </section>
       )}
     </>
+  );
+}
+
+function HostWelcomeBanner() {
+  return (
+    <div className="mb-6 flex items-start gap-3 rounded-xl border border-ok/30 bg-ok-soft/70 px-3.5 py-3">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-ok-soft text-ok">
+        <CheckIcon className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13.5px] font-semibold">Hosting is on for your account</p>
+        <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-2">
+          Schedule your first webinar below. Sessions you registered for are under{" "}
+          <Link href="/host?tab=attending" className="font-medium text-ink underline underline-offset-2">
+            Attending
+          </Link>
+          .
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={dismissWelcome}
+        aria-label="Dismiss"
+        className="grid size-7 shrink-0 place-items-center rounded-lg text-ink-3 hover:bg-surface hover:text-ink"
+      >
+        <CloseIcon className="size-3.5" />
+      </button>
+    </div>
   );
 }

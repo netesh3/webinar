@@ -8,7 +8,7 @@ import { TopNav } from "@/components/top-nav";
 
 /* Front door.
  *
- * Brand marketing homepage; signed-in users redirect to /host or /browse.
+ * Brand marketing homepage; signed-in users redirect to /host or /my-webinars.
  * Always-on marketing alias: /home (even when signed in).
  */
 

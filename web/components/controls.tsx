@@ -469,12 +469,15 @@ export function Tabs<T extends string>({
   counts,
   labels,
   icons,
+  marks,
   bare = false,
 }: {
   tabs: readonly T[];
   value: T;
   onChange: (next: T) => void;
   counts?: Partial<Record<T, number>>;
+  /** A dot on a tab that has something new, cleared by the caller. */
+  marks?: Partial<Record<T, boolean>>;
   /** Display text per tab, for when the tab id is not what a person should read
    *  — "qa" is an identifier, "Q&A" is a label. */
   labels?: Partial<Record<T, string>>;
@@ -511,6 +514,11 @@ export function Tabs<T extends string>({
           >
             {icons?.[tab]}
             {labels?.[tab] ?? tab}
+            {marks?.[tab] && (
+              <span className="size-1.5 shrink-0 rounded-full bg-brand" title="New">
+                <span className="sr-only">, new</span>
+              </span>
+            )}
             {count !== undefined && count > 0 && (
               <span
                 className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold ${

@@ -7,6 +7,7 @@ import { useAppConfig, useSession } from "@/components/providers";
 import { TopNav } from "@/components/top-nav";
 import { Card } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { landingAfterSignIn } from "@/lib/access";
 import { createSupabaseBrowser, safeAuthNext } from "@/lib/supabase";
 
 /**
@@ -98,7 +99,7 @@ function AuthCallbackInner() {
 
         if (cancelled) return;
         await refresh();
-        router.replace(account.canHost && next === "/" ? "/host" : next);
+        router.replace(landingAfterSignIn(account.canHost, next));
         router.refresh();
       } catch (err) {
         if (cancelled) return;

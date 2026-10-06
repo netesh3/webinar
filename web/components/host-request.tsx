@@ -4,9 +4,10 @@ import { useState, type FormEvent } from "react";
 import { ApiError } from "@/lib/api";
 import type { Account } from "@/lib/api-types";
 import { useSession } from "./providers";
+import { CameraIcon, CheckIcon } from "./icons";
 import { Button, Card } from "./ui";
 
-/* One request, two places: the signed-in home (/browse) and Settings.
+/* One request, two places: WatchList (an attendee's home) and Settings.
  *
  * The button is hidden for someone who already hosts. A phone is asked for
  * only when the account does not have one. After the request is recorded the
@@ -158,12 +159,44 @@ export function HostRequest({
 
   if (placement === "settings") return body;
 
+  const sentNow = sent || already;
+  const askingPhone = asking && !hasPhone;
+
   return (
-    <Card className="mb-6 p-5">
-      <h2 className="text-[16px] font-semibold tracking-[-0.01em]">
-        Request to host
-      </h2>
-      <div className="mt-2">{body}</div>
+    <Card className="mb-7 flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center">
+      <span
+        className={`grid size-8 shrink-0 place-items-center rounded-lg ${
+          sentNow ? "bg-ok-soft text-ok" : "bg-surface-2 text-ink-2"
+        }`}
+      >
+        {sentNow ? <CheckIcon className="size-4" /> : <CameraIcon className="size-4" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13.5px] font-semibold tracking-[-0.01em]">
+          {sentNow
+            ? already
+              ? "Your hosting request is already in"
+              : "Hosting request sent"
+            : "Hosting isn't enabled for this account"}
+        </p>
+        {askingPhone ? (
+          <div className="mt-2">{body}</div>
+        ) : (
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-2">
+            {sentNow
+              ? "An administrator still has to turn hosting on. You'll be able to schedule webinars once they do."
+              : "An administrator has to turn it on. You can still join anything you've registered for."}
+          </p>
+        )}
+        {!sentNow && !askingPhone && field && (
+          <p className="mt-1 text-[12px] font-medium text-live">{field}</p>
+        )}
+      </div>
+      {!sentNow && !askingPhone && (
+        <Button type="button" onClick={onAsk} disabled={busy} size="sm">
+          {busy ? "Sending…" : "Request to host"}
+        </Button>
+      )}
     </Card>
   );
 }
