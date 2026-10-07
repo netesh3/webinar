@@ -117,6 +117,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And route-level access control, where both failure directions are silent: a
 	# participant reading a registrant list, or a panelist locked out of their own stage.
 	cd web && node --experimental-strip-types --no-warnings lib/access.test.mts
+	# And the sign-in hop counter: the same next-target may be followed twice,
+	# and then the tab has to stay on the form. A third hop is how one background
+	# tab kept requesting /host, /host/login and /login.
+	cd web && node --experimental-strip-types --no-warnings lib/login-redirect.test.mts
 	# And the zone helpers. A time rendered in the wrong zone is not a visible bug — it is a
 	# plausible-looking hour that makes somebody miss the webinar — and the DST round trips
 	# are unreachable by hand.

@@ -19,6 +19,7 @@ import {
   isDevAuthBypassActive,
   setDevBypassOptedOut,
 } from "@/lib/dev-bypass-session";
+import { isSignOutNotice, publishSignOut } from "@/lib/login-redirect";
 import { ThemeProvider } from "./theme";
 
 /* App-wide client state: who is signed in, what the operator named this
@@ -114,6 +115,9 @@ type SessionValue = {
   updateProfile: (patch: ProfilePatch) => Promise<Account>;
   requestHost: (phone?: string) => Promise<Account>;
   refresh: () => Promise<void>;
+  /** Drop the in-memory account. Does not call the API and does not tell
+   *  other tabs — sign-out does both, after this. */
+  clearSession: () => void;
 };
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -282,6 +286,14 @@ export function AppProviders({
     };
   }, []);
 
+  const clearSession = useCallback(() => {
+    // The account is cached for the life of the page. Leaving it there is how
+    // the next read still says signed-in after the cookie is gone.
+    dropCache("/api/auth/me");
+    setAccount(null);
+    setStatus("anonymous");
+  }, []);
+
   const refresh = useCallback(async () => {
     if (isDevAuthBypass()) {
       if (isDevAuthBypassActive()) {
@@ -303,10 +315,9 @@ export function AppProviders({
       if (!(err instanceof ApiError)) {
         console.error("session lookup failed", err);
       }
-      setAccount(null);
-      setStatus("anonymous");
+      clearSession();
     }
-  }, []);
+  }, [clearSession]);
 
   // Local preview settles the session from sessionStorage, which the server
   // cannot read. That happens during the first render after hydration rather
@@ -321,6 +332,18 @@ export function AppProviders({
       setStatus("anonymous");
     }
   }
+
+  // Another tab signing out does not remount this one, so the account set
+  // above would otherwise keep sending the login page back to /host.
+  useEffect(() => {
+    if (isDevAuthBypass()) return;
+    const onStorage = (event: StorageEvent) => {
+      if (!isSignOutNotice(event)) return;
+      clearSession();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [clearSession]);
 
   // The promise chain is inline rather than a call to `refresh`, so every state
   // write happens in a callback instead of synchronously inside the effect.
@@ -392,10 +415,10 @@ export function AppProviders({
           await api.logout();
         } finally {
           // Drop local state even if the request failed: the cookie may already
-          // be gone, and leaving a stale avatar in the nav is worse.
-          dropCache("/api/auth/me");
-          setAccount(null);
-          setStatus("anonymous");
+          // be gone, and leaving a stale avatar in the nav is worse. The other
+          // tabs are still holding that avatar until they hear this.
+          clearSession();
+          publishSignOut();
         }
       },
       updateProfile: async (patch) => {
@@ -421,8 +444,9 @@ export function AppProviders({
         return me;
       },
       refresh,
+      clearSession,
     }),
-    [account, status, refresh],
+    [account, status, refresh, clearSession],
   );
 
   const toastValue = useMemo<ToastValue>(
