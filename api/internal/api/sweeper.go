@@ -23,7 +23,12 @@ const (
 	tickEvery = 30 * time.Second
 	// tickBudget bounds one pass; the lease outlives it so an overrun cannot start a twin.
 	tickBudget = 90 * time.Second
-	tickLease  = 2 * time.Minute
+	// mailFlushBudget is the slice of a pass that may wait on Gmail. The CRM
+	// jobs run after it, on the time that is left. One slow SMTP conversation
+	// used to consume the whole pass and every later query then failed with
+	// the same deadline.
+	mailFlushBudget = 25 * time.Second
+	tickLease       = 2 * time.Minute
 	// Recording retention deletes files, and once every five minutes is plenty; its lease
 	// is never released, which is what makes it run at most that often.
 	retentionEvery = 5 * time.Minute
@@ -71,7 +76,9 @@ func (s *Server) RunTick(ctx context.Context) bool {
 	s.sweepSimulive(ctx)
 	s.sweepDueSurveys(ctx)
 	s.reconcileEgressRecordings(ctx)
-	s.flushOutbox(ctx)
+	mailCtx, mailCancel := context.WithTimeout(ctx, mailFlushBudget)
+	s.flushOutbox(mailCtx)
+	mailCancel()
 	// The CRM's drips, bots and WhatsApp outbox. See Engage.Tick.
 	s.engage.Tick(ctx)
 

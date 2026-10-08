@@ -1609,6 +1609,12 @@ export const NotifyEmailVerify: NotificationKind = "email_verify";
  */
 export const NotifyPasswordReset: NotificationKind = "password_reset";
 /**
+ *  NotifyHostRequest is the note to the review inbox when an account asks to
+ * 	 * host. Addressed to that inbox, with Reply-To set to the account, and
+ * 	 * retried by the outbox like every other email.
+ */
+export const NotifyHostRequest: NotificationKind = "host_request";
+/**
  *  The panelist's side of a webinar: added to the stage (with the stage link and a
  * 	 * calendar file), the start moved, the session cancelled. Addressed by email and tied to
  * 	 * no registration — a panelist signs in rather than holding a join key, so the link in

@@ -456,11 +456,12 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	// even though it never changes the outcome.
 	s.log.Info("signup", "user", user.ID, "can_host", user.CanHost,
 		"requested_host", req.WantsHost, "email_domain", domainOf(user.Email))
-	// Verification goes first and is flushed before this returns. The welcome
-	// mail starts its own flush; doing that first would hold the outbox lease
-	// and leave the verification link unsent.
+	// The verification row is written first, then the welcome row. Both sends
+	// run after the response. The row order is what puts the link in the queue
+	// before a welcome flush reads it.
 	s.queueEmailVerification(r.Context(), user)
 	s.queueWelcome(r.Context(), user)
+	s.flushMailSoon()
 	httpx.JSON(w, http.StatusCreated, types.SignupResponse{
 		Status:  "verify_email",
 		Email:   user.Email,
@@ -696,6 +697,7 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 		if created {
 			s.queueWelcome(r.Context(), user)
 		}
+		s.flushMailSoon()
 		httpx.Error(w, http.StatusForbidden, "email_unverified", verifyEmailMessage)
 		return
 	}
@@ -716,6 +718,7 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 		// linking to an existing password account, was welcomed when that account was
 		// made (or predates the welcome email and is deliberately never sent one).
 		s.queueWelcome(r.Context(), user)
+		s.flushMailSoon()
 	}
 	httpx.JSON(w, status, user.Public())
 }

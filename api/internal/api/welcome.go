@@ -60,7 +60,16 @@ func (s *Server) queueWelcome(ctx context.Context, user store.User) {
 		s.log.Error("welcome email: could not queue", "user", user.ID, "err", err)
 		return
 	}
+}
 
+/* flushMailSoon sends whatever the outbox already has, after the response.
+ *
+ * One call per request, after every row for that request is inserted. Two
+ * flushes started a moment apart lose: the second finds the lease held and
+ * the first has already read the queue, so a welcome row written between
+ * them waits for the sweep.
+ */
+func (s *Server) flushMailSoon() {
 	s.inBackground(func(ctx context.Context) { s.flushOutbox(ctx) })
 }
 

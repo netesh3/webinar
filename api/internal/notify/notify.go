@@ -97,14 +97,39 @@ type SMTP struct {
 	Password string
 	From     string
 	Log      *slog.Logger
+	// Timeout bounds one SMTP conversation. Zero means SMTPTimeout.
+	// A caller context that ends sooner still wins, so shutdown stops a send.
+	Timeout time.Duration
 }
 
+// SMTPTimeout is how long one Gmail conversation may take. It is this
+// transport's own deadline: a sweep or a request that shares its context
+// with other work must not lend that whole deadline to a quiet mail server.
+const SMTPTimeout = 20 * time.Second
+
 func (s SMTP) Configured() bool { return s.Host != "" && s.From != "" }
+
+func (s SMTP) sendTimeout() time.Duration {
+	if s.Timeout > 0 {
+		return s.Timeout
+	}
+	return SMTPTimeout
+}
 
 func (s SMTP) Send(ctx context.Context, m Message) error {
 	if !s.Configured() {
 		return fmt.Errorf("smtp: not configured")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// Own deadline, capped by the caller when the caller ends first.
+	// smtp.SendMail has no context, so the wait is abandoned when this
+	// deadline fires. Callers must not hold a database connection across
+	// Send: the abandoned conversation can outlive the wait.
+	ctx, cancel := context.WithTimeout(ctx, s.sendTimeout())
+	defer cancel()
+
 	addr := net.JoinHostPort(s.Host, fmt.Sprint(s.Port))
 	msg := s.compose(m, time.Now())
 
@@ -113,10 +138,6 @@ func (s SMTP) Send(ctx context.Context, m Message) error {
 		auth = smtp.PlainAuth("", s.Username, s.Password, s.Host)
 	}
 
-	// smtp.SendMail does not take a context, so the deadline is enforced by running it in a
-	// goroutine and abandoning the result. The connection is closed by the runtime when the
-	// goroutine finishes; the point is that an unresponsive mail server cannot hold an
-	// approval request open indefinitely.
 	done := make(chan error, 1)
 	go func() {
 		done <- smtp.SendMail(addr, auth, s.envelopeFrom(), []string{m.To}, []byte(msg))

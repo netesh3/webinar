@@ -55,7 +55,7 @@ func TestAuthBypassProvisionsAHostPerBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h2 := &harness{t: t, srv: h.srv, rooms: h.rooms, client: &http.Client{Jar: jar}}
+	h2 := &harness{t: t, srv: h.srv, server: h.server, rooms: h.rooms, client: &http.Client{Jar: jar}}
 	_, raw = h2.do(http.MethodGet, "/api/auth/me", nil)
 	var other types.Account
 	if err := json.Unmarshal(raw, &other); err != nil {

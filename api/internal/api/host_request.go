@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/notify"
@@ -65,20 +67,9 @@ func (s *Server) handleHostRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subject, body := notify.HostRequestEmail(notify.HostRequestNotice{
-		Name:   updated.Name,
-		Email:  updated.Email,
-		Phone:  updated.Phone,
-		UserID: updated.ID,
-	})
-	if err := s.mail.Send(r.Context(), notify.Message{
-		To:      notify.HostRequestRecipient,
-		Subject: subject,
-		Body:    body,
-		ReplyTo: updated.Email,
-	}); err != nil {
+	if err := s.queueHostRequestMail(r.Context(), updated); err != nil {
 		if clearErr := s.store.ClearHostRequest(r.Context(), updated.ID); clearErr != nil {
-			s.log.Error("host request: could not clear after send failure",
+			s.log.Error("host request: could not clear after queue failure",
 				"user", updated.ID, "err", clearErr)
 		}
 		s.fail(w, r, "host request email", err)
@@ -86,4 +77,33 @@ func (s *Server) handleHostRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.JSON(w, http.StatusOK, updated.Public())
+}
+
+/* queueHostRequestMail writes the review note and lets the outbox send it.
+ *
+ * The row is the retry. A slow Gmail used to fail this request and clear the
+ * ask, which made the attendee wait on SMTP and then start over. A failed
+ * insert still clears the ask so they can try again. A failed send does not:
+ * the sweep retries the row.
+ */
+func (s *Server) queueHostRequestMail(ctx context.Context, user store.User) error {
+	subject, body := notify.HostRequestEmail(notify.HostRequestNotice{
+		Name:   user.Name,
+		Email:  user.Email,
+		Phone:  user.Phone,
+		UserID: user.ID,
+	})
+	insertCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := s.store.Notify(insertCtx, s.store.DB(), store.Notification{
+		Email:   notify.HostRequestRecipient,
+		Kind:    types.NotifyHostRequest,
+		Subject: subject,
+		Body:    body,
+		ReplyTo: user.Email,
+	}); err != nil {
+		return err
+	}
+	s.inBackground(func(ctx context.Context) { s.flushOutbox(ctx) })
+	return nil
 }

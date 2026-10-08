@@ -58,7 +58,7 @@ func (h *harness) browser() *harness {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	return &harness{t: h.t, srv: h.srv, store: h.store, client: &http.Client{Jar: jar}}
+	return &harness{t: h.t, srv: h.srv, server: h.server, store: h.store, client: &http.Client{Jar: jar}}
 }
 
 func (h *harness) forgot(email string) (*http.Response, []byte) {

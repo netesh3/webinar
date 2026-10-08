@@ -20,12 +20,11 @@ const verifyEmailMessage = "Verify your email to continue."
 
 /* queueEmailVerification sends the one-time link through the same outbox as every other mail.
  *
- * Nothing here fails the signup. The row is written first; the send then runs in this
- * request, before the caller responds, the same way a registration confirmation does.
- * A background send is frozen on Cloud Run once the response is written, and it also
- * loses the outbox lease to the welcome mail. The sweep still retries whatever this
- * flush leaves pending. A second call retires the previous unused token, which is
- * what resend does.
+ * Nothing here fails the signup. The token and the outbox row are written on this
+ * call, which is a database insert. The send itself runs after the response, and
+ * the sweep retries whatever that send leaves pending. Writing the row first is
+ * what keeps the link when Cloud Run freezes the process once the response is
+ * gone. A second call retires the previous unused token, which is what resend does.
  */
 func (s *Server) queueEmailVerification(ctx context.Context, user store.User) {
 	if user.EmailVerified() {
@@ -56,7 +55,6 @@ func (s *Server) queueEmailVerification(ctx context.Context, user store.User) {
 		s.log.Error("verify email: could not queue", "user", user.ID, "err", err)
 		return
 	}
-	s.flushOutbox(ctx)
 }
 
 /* deliverCompletedRegistrations sends the join link for registrations the
@@ -68,6 +66,7 @@ func (s *Server) queueEmailVerification(ctx context.Context, user store.User) {
  * wait for the host; the join link goes out when they approve, not here.
  */
 func (s *Server) deliverCompletedRegistrations(ctx context.Context, done []store.CompletedRegistration) {
+	mail := false
 	for _, item := range done {
 		wb, err := s.store.WebinarBySlug(ctx, item.Registration.WebinarID)
 		if err != nil {
@@ -78,8 +77,12 @@ func (s *Server) deliverCompletedRegistrations(ctx context.Context, done []store
 			s.alertHostOfPending(ctx, wb, item.Registration)
 		} else if strings.TrimSpace(item.Registration.Email) != "" {
 			s.notifyNewRegistration(ctx, wb, item.Registration, true)
+			mail = true
 		}
 		s.engage.OnRegistered(ctx, wb, item.Registration, item.WhatsAppOptIn)
+	}
+	if mail {
+		s.flushOutbox(ctx)
 	}
 }
 
@@ -95,8 +98,12 @@ func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		// The address is confirmed. Webinar registrations that were waiting on
 		// this link become real now, and the join link goes out in that mail.
-		// Nothing here signs the person in.
-		s.deliverCompletedRegistrations(r.Context(), done)
+		// Nothing here signs the person in. The mail and the CRM write follow
+		// the response so Gmail cannot hold this call open.
+		finished := done
+		s.inBackground(func(ctx context.Context) {
+			s.deliverCompletedRegistrations(ctx, finished)
+		})
 		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "verified"})
 	case errors.Is(err, store.ErrVerifyExpired):
 		httpx.Error(w, http.StatusBadRequest, "expired_token",
@@ -158,6 +165,7 @@ func (s *Server) handleResendVerification(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.queueEmailVerification(r.Context(), user)
+	s.flushMailSoon()
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: sent})
 }
 

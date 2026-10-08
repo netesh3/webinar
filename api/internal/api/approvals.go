@@ -197,22 +197,25 @@ func (s *Server) joinURLFor(ctx context.Context, slug, registrationID string) st
 	return base + "/webinars/" + slug + "/room?k=" + key
 }
 
-/* flushOutbox tries to deliver everything owed, once, synchronously.
+/* flushOutbox tries to deliver everything owed, once.
  *
- * Synchronous and bounded rather than a background worker, deliberately. A background sender
- * needs a lifecycle, a shutdown path and a way to not run twice on two processes; this
- * deployment is one process and one box, and an approval already blocks on a database write.
- * The outbox means a message survives this call failing, so the only cost of doing it here is
- * latency on the host's click — bounded by the transport's own context.
+ * The lease stops two instances sending the same row. It is a row in
+ * sweep_leases, released when this function returns, and it is not a database
+ * connection. Each send claims its row, returns that connection to the pool,
+ * and only then talks to Gmail. A quiet mail server cannot pin the pool, and
+ * a second flush that loses the claim leaves the row for the claim's delay.
  *
- * Errors are recorded per row and never returned: a decision that has been committed must not
- * be reported as failed.
+ * The caller's context bounds how many sends this pass starts. One message
+ * uses notify.SMTPTimeout, so a sweep that still has drips and bots to run
+ * can hand this function a short budget and keep the rest of the pass. A row
+ * this pass does not start stays pending for the next one. A send that fails
+ * is recorded on its own short context, so a cancelled caller still leaves a
+ * retry time instead of a row that looks due again immediately.
+ *
+ * Errors are recorded per row and never returned: a decision that has been
+ * committed must not be reported as failed.
  */
 func (s *Server) flushOutbox(ctx context.Context) {
-	/* One sender at a time. Called from the sweep and straight after an approval, on any
-	 * instance; without the lease two of them read the same pending row and both send it.
-	 * A caller that finds it held does nothing: the holder is sending, and anything it
-	 * missed is due on the next pass. */
 	release, ok, err := s.store.TryLease(ctx, "outbox:email", outboxLease)
 	if err != nil || !ok {
 		if err != nil {
@@ -228,41 +231,93 @@ func (s *Server) flushOutbox(ctx context.Context) {
 		return
 	}
 	for _, m := range owed {
+		if !canSendNow(ctx) {
+			return
+		}
+		claimed, err := s.store.ClaimDueDelivery(ctx, m.ID, outboxClaimFor)
+		if err != nil {
+			s.log.Error("outbox: could not claim", "err", err)
+			return
+		}
+		if !claimed {
+			continue
+		}
 		if !s.mail.Configured() {
 			// 'skipped', not 'failed': no transport is an operator's decision, and marking
 			// it as a failure would bury real delivery errors in routine noise.
-			_ = s.store.MarkDelivered(ctx, m.ID, "skipped", "no mail transport configured")
+			_ = s.markDelivery(m.ID, "skipped", "no mail transport configured")
 			continue
 		}
-		err := s.mail.Send(ctx, notify.Message{
+		replyTo := strings.TrimSpace(m.ReplyTo)
+		if replyTo == "" {
+			replyTo = notify.InboxAddress(m.InboxLocal)
+		}
+		sendCtx, cancel := context.WithTimeout(ctx, notify.SMTPTimeout)
+		err = s.mail.Send(sendCtx, notify.Message{
 			To: m.Email, Subject: m.Subject, Body: m.Body, HTML: m.HTML, ICS: m.ICS, ICSName: "webinar.ics",
-			ReplyTo: notify.InboxAddress(m.InboxLocal),
+			ReplyTo: replyTo,
 		})
+		cancel()
 		if err != nil {
 			s.log.Error("outbox: send failed", "to", m.Email, "err", err)
-			_ = s.store.MarkDelivered(ctx, m.ID, "failed", err.Error())
+			_ = s.markDelivery(m.ID, "failed", err.Error())
 			continue
 		}
 		if m.HostID != "" {
 			// The Email tab reads host_emails. From stays SMTP_FROM; this row
 			// only records that the message went out for this host.
-			if _, err := s.store.InsertHostEmail(ctx, store.HostEmail{
-				UserID:    m.HostID,
-				Direction: "out",
-				To:        m.Email,
-				Subject:   m.Subject,
-				Body:      m.Body,
-				MessageID: "outbox:" + m.ID,
-			}); err != nil {
+			if err := s.recordHostCopy(m); err != nil {
 				s.log.Error("outbox: inbox copy failed", "to", m.Email, "err", err)
 			}
 		}
-		_ = s.store.MarkDelivered(ctx, m.ID, "sent", "")
+		_ = s.markDelivery(m.ID, "sent", "")
 	}
 }
 
-// outboxLease outlives one flush of 100 messages with a slow SMTP server.
+// outboxLease outlives one flush. The claim, not the lease, is what covers a
+// single message while Gmail is on the line.
 const outboxLease = 2 * time.Minute
+
+// outboxClaimFor is how long a claimed row stays out of the queue when the
+// sender never comes back to mark it. Longer than one SMTP conversation, so
+// a live send is not picked up twice, and short enough that a dead sender
+// is retried by a later sweep.
+const outboxClaimFor = 3 * time.Minute
+
+// minSendAttempt is the shortest conversation worth starting. Less time than
+// this left on the caller is given back to whatever else shares that context.
+const minSendAttempt = 8 * time.Second
+
+func canSendNow(ctx context.Context) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return true
+	}
+	return time.Until(deadline) >= minSendAttempt
+}
+
+func (s *Server) markDelivery(id, delivery, reason string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return s.store.MarkDelivered(ctx, id, delivery, reason)
+}
+
+func (s *Server) recordHostCopy(m store.Outbound) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := s.store.InsertHostEmail(ctx, store.HostEmail{
+		UserID:    m.HostID,
+		Direction: "out",
+		To:        m.Email,
+		Subject:   m.Subject,
+		Body:      m.Body,
+		MessageID: "outbox:" + m.ID,
+	})
+	return err
+}
 
 // ------------------------------------------------------------- host alerts
 

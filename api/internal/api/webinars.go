@@ -217,6 +217,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if reg.State == types.RegUnverified {
 		if user, uerr := s.store.UserByEmail(r.Context(), reg.Email); uerr == nil {
 			s.queueEmailVerification(r.Context(), user)
+			s.flushMailSoon()
 		} else if !errors.Is(uerr, store.ErrNotFound) {
 			s.log.Error("register: verification mail", "webinar", slug, "err", uerr)
 		}
@@ -227,32 +228,47 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	/* Tell the host somebody is waiting.
-	 *
-	 * Only for a PENDING registration. On an automatic-approval webinar there is no decision
-	 * to make, and alerting a host once per attendee would make the bell useless on the one
-	 * shape of webinar where nothing needs their attention — which is how people learn to
-	 * ignore notifications.
-	 *
-	 * After the response is decided but before it is written: the registration is already
-	 * committed, so a failure here must not turn a successful registration into an error the
-	 * attendee sees. It is logged and the outbox row is what makes it recoverable.
+	/* Mail, Zoom and the CRM run after the response. The registration row is
+	 * already committed. Waiting here is what made signup take as long as Gmail,
+	 * and what left the CRM write to discover the request deadline was already
+	 * gone. The outbox and the sweep retry whatever this pass does not finish.
 	 */
-	if reg.State == types.RegPending {
-		s.alertHostOfPending(r.Context(), wb, reg)
-	} else if strings.TrimSpace(reg.Email) != "" {
-		s.pushZoomRegistrant(r.Context(), wb, reg.ID, reg.Email, reg.FirstName, reg.LastName)
-		s.notifyNewRegistration(r.Context(), wb, reg, true)
-	} else if reg.State == types.RegApproved {
-		s.pushZoomRegistrant(r.Context(), wb, reg.ID, "", reg.FirstName, reg.LastName)
-	}
-
-	/* The CRM's side of the same event: a contact, their WhatsApp confirmation, the
-	 * `registered` drip trigger. After the registration is committed, and unable to
-	 * fail it. See Engage.OnRegistered. */
-	s.engage.OnRegistered(r.Context(), wb, reg, req.WhatsAppOptIn)
+	optIn := req.WhatsAppOptIn
+	s.inBackground(func(ctx context.Context) {
+		s.finishCommittedRegistration(ctx, wb, reg, optIn)
+	})
 
 	httpx.JSON(w, http.StatusCreated, reg)
+}
+
+/* finishCommittedRegistration is the work that follows a committed registration.
+ *
+ * Database writes first (the host alert or the confirmation row, then the CRM
+ * contact), then Zoom and Gmail. A slow network call cannot eat the contact,
+ * and the confirmation row is already durable if the process stops before the
+ * send. Pending seats only alert the host; the join mail waits for approval.
+ */
+func (s *Server) finishCommittedRegistration(ctx context.Context, wb types.Webinar, reg types.Registration, optIn bool) {
+	mail := false
+	zoom := false
+	if reg.State == types.RegPending {
+		s.alertHostOfPending(ctx, wb, reg)
+	} else if strings.TrimSpace(reg.Email) != "" {
+		s.notifyNewRegistration(ctx, wb, reg, true)
+		mail = true
+		zoom = true
+	} else if reg.State == types.RegApproved {
+		zoom = true
+	}
+
+	s.engage.OnRegistered(ctx, wb, reg, optIn)
+
+	if zoom {
+		s.pushZoomRegistrant(ctx, wb, reg.ID, reg.Email, reg.FirstName, reg.LastName)
+	}
+	if mail {
+		s.flushOutbox(ctx)
+	}
 }
 
 /* alertHostOfPending queues the host's "somebody is waiting" notification.

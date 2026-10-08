@@ -221,7 +221,9 @@ func (s *Module) OnRegistered(ctx context.Context, wb types.Webinar, reg types.R
 	s.enqueueWhatsAppInvite(ctx, wb, contact, reg.ID)
 	// The `registered` drip trigger. Nothing is sent here; the next sweep queues step one.
 	s.enrollDripsOnRegistration(ctx, wb, contact)
-	// Sent now rather than on the next tick: a confirmation half a minute late reads as unsure.
+	// Sent on this call, which the HTTP handler starts after it has responded.
+	// A confirmation half a minute late reads as unsure, and waiting for it
+	// inside the signup is what made that signup take as long as Meta or Gmail.
 	s.flushWhatsAppOutbox(ctx)
 	s.sendReplyDigests(ctx)
 }

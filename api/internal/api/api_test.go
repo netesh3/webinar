@@ -741,7 +741,15 @@ func (h *harness) do(method, path string, body any) (*http.Response, []byte) {
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
-	return h.openedRegistration(method, path, res, raw)
+	res, raw = h.openedRegistration(method, path, res, raw)
+	// Side effects (confirmation mail, CRM, WhatsApp) run after the handler
+	// returns. Wait here so a test that reads them sees the finished work.
+	// A test of the response itself uses the client directly. A harness that
+	// only borrows the URL (a second browser) has no server of its own.
+	if h.server != nil {
+		h.server.WaitBackground()
+	}
+	return res, raw
 }
 
 /* openedRegistration finishes the email link for a registration the harness just made.
