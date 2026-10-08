@@ -78,8 +78,12 @@ type Notification struct {
 	Body        string
 	// HTML is an optional rich alternative to Body (migration 0058). Empty for every
 	// kind except the welcome email; Body is always the complete plain-text message.
-	HTML           string
-	ICS            string
+	HTML string
+	ICS  string
+	// ReplyTo is optional. Set for a hosting request, whose recipient is the
+	// review inbox and whose reply should reach the account that asked.
+	// Empty means the sender derives Reply-To from the host inbox, if any.
+	ReplyTo        string
 	RegistrationID string
 	DueAt          time.Time // zero means send as soon as the outbox is flushed
 	/* OffsetMin is how many minutes before the start a reminder is for, and is set on
@@ -117,16 +121,16 @@ func (s *Store) Notify(ctx context.Context, q Querier, n Notification) error {
 	_, err := q.Exec(ctx, `
 		INSERT INTO notifications (user_id, email, kind, webinar_id, subject, body, ics, registration_id, due_at,
 		                           channel, contact_id, template_name, template_language, template_params,
-		                           broadcast_id, drip_enrollment_id, offset_min, html, link_url)
+		                           broadcast_id, drip_enrollment_id, offset_min, html, link_url, reply_to)
 		VALUES (NULLIF($1,'')::uuid, $2, $3,
 		        (SELECT id FROM webinars WHERE slug = $4), $5, $6, $7, NULLIF($8,'')::uuid,
 		        COALESCE($9::timestamptz, now()),
 		        $10, NULLIF($11,'')::uuid, $12, $13, $14, NULLIF($15,'')::uuid,
-		        NULLIF($16,'')::uuid, NULLIF($17, 0), $18, $19)`,
+		        NULLIF($16,'')::uuid, NULLIF($17, 0), $18, $19, $20)`,
 		n.UserID, strings.ToLower(strings.TrimSpace(n.Email)), string(n.Kind),
 		n.WebinarSlug, n.Subject, n.Body, n.ICS, n.RegistrationID, due,
 		channel, n.ContactID, n.TemplateName, n.TemplateLanguage, params, n.BroadcastID,
-		n.DripEnrollmentID, n.OffsetMin, n.HTML, n.LinkURL)
+		n.DripEnrollmentID, n.OffsetMin, n.HTML, n.LinkURL, strings.TrimSpace(n.ReplyTo))
 	if isUniqueViolation(err) {
 		return nil
 	}
@@ -243,6 +247,8 @@ type Outbound struct {
 	// HostID is the webinar owner this message was sent for. Empty when the
 	// row is not tied to a webinar (a welcome mail, for example).
 	HostID string
+	// ReplyTo is notifications.reply_to. Empty when the row has none.
+	ReplyTo string
 }
 
 /* PendingDeliveries returns notifications with an address that are due now.
@@ -255,7 +261,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, email, subject, body, html, ics, attempts,
+		SELECT id::text, email, subject, body, html, ics, attempts, reply_to,
 		       COALESCE((
 		         SELECT u.inbox_local
 		           FROM webinars w
@@ -297,7 +303,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 	out := []Outbound{}
 	for rows.Next() {
 		var o Outbound
-		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.HTML, &o.ICS, &o.Attempts, &o.InboxLocal, &o.HostID); err != nil {
+		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.HTML, &o.ICS, &o.Attempts, &o.ReplyTo, &o.InboxLocal, &o.HostID); err != nil {
 			return nil, err
 		}
 		out = append(out, o)
@@ -333,6 +339,29 @@ func (s *Store) RecordSendAttempt(ctx context.Context, id, delivery, reason stri
 // rejected address without reading process logs that have since rotated away.
 func (s *Store) MarkDelivered(ctx context.Context, id, delivery, reason string) error {
 	return s.RecordSendAttempt(ctx, id, delivery, reason)
+}
+
+/* ClaimDueDelivery reserves one pending row so a second flush will not send it.
+ *
+ * It moves due_at forward and returns. The connection is back in the pool
+ * before the caller talks to Gmail. A caller that dies before marking the
+ * row leaves it pending again once the delay passes. False means another
+ * flush already took it, or it is no longer due.
+ */
+func (s *Store) ClaimDueDelivery(ctx context.Context, id string, delay time.Duration) (bool, error) {
+	if delay <= 0 {
+		delay = 3 * time.Minute
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE notifications
+		   SET due_at = now() + make_interval(secs => $2)
+		 WHERE id = $1::uuid
+		   AND delivery = 'pending'
+		   AND due_at <= now()`, id, delay.Seconds())
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 /* The three statements below retire or move unsent EMAIL reminders when a webinar decision

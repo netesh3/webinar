@@ -165,6 +165,10 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("password reset", "user", user.ID)
 
 	// Registrations that were waiting for this address to be confirmed get their join link.
-	s.deliverCompletedRegistrations(r.Context(), done)
+	// After the response: the same mail path as verification, so Gmail cannot hold the reset.
+	finished := done
+	s.inBackground(func(ctx context.Context) {
+		s.deliverCompletedRegistrations(ctx, finished)
+	})
 	httpx.JSON(w, http.StatusOK, user.Public())
 }

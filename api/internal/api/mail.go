@@ -206,11 +206,15 @@ func (s *Server) messageJoinURL(ctx context.Context, wb types.Webinar, registrat
 	return s.joinURLFor(ctx, wb.ID, registrationID)
 }
 
+/* notifyNewRegistration writes the confirmation and its reminders.
+ *
+ * It does not send them. The caller flushes, after the CRM write, so a slow
+ * Gmail conversation cannot run before that write or on the attendee's request.
+ */
 func (s *Server) notifyNewRegistration(ctx context.Context, wb types.Webinar, reg types.Registration, _ bool) {
 	joinURL := s.messageJoinURL(ctx, wb, reg.ID, reg.JoinKey)
 	name := strings.TrimSpace(reg.FirstName + " " + reg.LastName)
 	s.enqueueApprovedInvite(ctx, wb, reg.Email, name, reg.ID, joinURL, types.NotifyRegistrationConfirmed)
-	s.flushOutbox(ctx)
 }
 
 func (s *Server) joinURLFromKey(slug, key string) string {
