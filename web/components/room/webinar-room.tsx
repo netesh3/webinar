@@ -84,7 +84,7 @@ import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
 import { useAvailableTools } from "./tools";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
-import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
+import { stageFrame, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
 import { useTelemetry } from "@/lib/telemetry";
@@ -968,14 +968,14 @@ function ConnectedRoom({
   const availableTools = useAvailableTools({ isHost, controls });
   const tools = useToolLayout(availableTools);
   const raisedHands = useRaisedHandsController(tools);
-  // Whether a docked panel (Chat, Participants, …) should be sharing the
-  // screen with the video right now, rather than overlaying it — only true
-  // on a phone-shaped viewport with a panel actually open. The raised-hands
-  // queue uses that same drawer, so it has to count too. A floating/popped-
-  // out window doesn't count: that already has its own space via
-  // ToolWindows, so the stage stays full-bleed underneath it.
+  // Whether a docked panel (Chat, Participants, …) is open and should share
+  // the screen with the video rather than overlay it. On a phone the video
+  // keeps a strip at the top; on desktop it shrinks to the left of the panel
+  // (see stageFrame). The raised-hands queue uses that same drawer, so it has
+  // to count too. A floating/popped-out window doesn't count: it floats, and
+  // the stage stays full-bleed underneath it.
   const compact = useCompact();
-  const panelOpen = compact && (Boolean(tools.panelTab) || raisedHands.open);
+  const panelOpen = Boolean(tools.panelTab) || raisedHands.open;
 
   /* Playing a recorded video into the session as the presenter's screen share.
    *
@@ -1018,8 +1018,8 @@ function ConnectedRoom({
   const chatCount = realtime.chat.length;
   const questionCount = realtime.questions.length;
 
-  const chatVisible = isToolVisible(tools.layout, tools.panelTab, "chat");
-  const qaVisible = isToolVisible(tools.layout, tools.panelTab, "qa");
+  const chatVisible = isToolVisible(tools.layout, tools.panelTab, "chat", tools.poppedOut);
+  const qaVisible = isToolVisible(tools.layout, tools.panelTab, "qa", tools.poppedOut);
 
   const [seen, setSeen] = useState({ chat: 0, qa: 0 });
   /* When this page started listening. History read back on a reload or a new tab was
@@ -1120,7 +1120,11 @@ function ConnectedRoom({
     lowerHand: realtime.lowerHand,
     reloadRoster: roster.reload,
     openParticipants: useCallback(() => openTool("participants"), [openTool]),
-    panelVisible: tools.panelTab === "participants" || raisedHands.open,
+    panelVisible:
+      tools.panelTab === "participants" ||
+      tools.poppedOut.includes("participants") ||
+      raisedHands.open ||
+      raisedHands.poppedOut,
   });
   // "You're connected" on joining the stage, then "Reconnecting…" → "You're back online" /
   // "Connection lost", for everyone in this room.
@@ -1329,7 +1333,7 @@ function ConnectedRoom({
                   ref={setStageEl}
                   data-stage
                   className="absolute inset-x-0 top-0 flex flex-col"
-                  style={panelOpen ? { height: COMPACT_STAGE_HEIGHT } : { bottom: 0 }}
+                  style={stageFrame(compact, panelOpen)}
                 >
                   <Stage />
                   {/* Playback controls for a shared video file. Host-only by

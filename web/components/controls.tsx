@@ -55,11 +55,15 @@ function useDismiss(
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
 
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("pointerdown", onPointer);
+    // The element's own document, not the global one: a menu inside a panel
+    // that has been popped out into its own browser window lives in that
+    // window's document, and presses there never reach the room's.
+    const doc = ref.current?.ownerDocument ?? document;
+    doc.addEventListener("keydown", onKey);
+    doc.addEventListener("pointerdown", onPointer);
     return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("pointerdown", onPointer);
+      doc.removeEventListener("keydown", onKey);
+      doc.removeEventListener("pointerdown", onPointer);
     };
   }, [ref, open, onClose]);
 }
