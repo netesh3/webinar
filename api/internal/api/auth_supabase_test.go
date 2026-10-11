@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -253,6 +256,106 @@ func TestGooglePictureStoredAndUploadReplacesIt(t *testing.T) {
 	}
 	if _, _, err := h.store.UserAvatarMedia(context.Background(), acct.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("upload bytes after remove: %v", err)
+	}
+}
+
+func usePeopleAPI(t *testing.T, handler http.HandlerFunc) {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	prevURL, prevClient := auth.PeoplePhoneURL, auth.PeopleHTTP
+	auth.PeoplePhoneURL = srv.URL
+	auth.PeopleHTTP = srv.Client()
+	t.Cleanup(func() {
+		srv.Close()
+		auth.PeoplePhoneURL = prevURL
+		auth.PeopleHTTP = prevClient
+	})
+}
+
+/* Phone from Google is optional.
+ *
+ * A number in the People API response is stored on users.phone. No token, an
+ * empty list, a refusal, or a number that fails the shape check all still
+ * sign the person in, with no phone. A number already on the account is not
+ * replaced.
+ */
+func TestSupabaseAuthPhoneOptional(t *testing.T) {
+	h := newHarness(t, withSupabaseAuth)
+	const (
+		stored   = "+14155552671"
+		existing = "+919876543210"
+	)
+	usePeopleAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		switch token {
+		case "phone-good":
+			_, _ = io.WriteString(w, `{"phoneNumbers":[{"canonicalForm":"`+stored+`","metadata":{"primary":true}}]}`)
+		case "phone-empty":
+			_, _ = io.WriteString(w, `{"phoneNumbers":[]}`)
+		case "phone-short":
+			_, _ = io.WriteString(w, `{"phoneNumbers":[{"canonicalForm":"+123"}]}`)
+		case "phone-other":
+			_, _ = io.WriteString(w, `{"phoneNumbers":[{"canonicalForm":"+447911123456","metadata":{"primary":true}}]}`)
+		default:
+			w.WriteHeader(http.StatusForbidden)
+		}
+	})
+
+	exchange := func(email, name, googleToken string, want int) types.Account {
+		t.Helper()
+		res, raw := h.do(http.MethodPost, "/api/auth/supabase", types.SupabaseAuthRequest{
+			AccessToken:       signTestSupabaseToken(t, email, name),
+			GoogleAccessToken: googleToken,
+		})
+		if res.StatusCode != want {
+			t.Fatalf("%s: status %d body %s", email, res.StatusCode, raw)
+		}
+		var acct types.Account
+		h.decode(raw, &acct)
+		h.logout()
+		return acct
+	}
+
+	withPhone := exchange("phone-new@test.dev", "Phone New", "phone-good", http.StatusCreated)
+	if withPhone.Phone != stored {
+		t.Fatalf("stored phone %q", withPhone.Phone)
+	}
+
+	noToken := exchange("phone-none@test.dev", "Phone None", "", http.StatusCreated)
+	if noToken.Phone != "" {
+		t.Fatalf("missing token stored %q", noToken.Phone)
+	}
+
+	denied := exchange("phone-denied@test.dev", "Phone Denied", "phone-denied", http.StatusCreated)
+	if denied.Phone != "" {
+		t.Fatalf("denied scope stored %q", denied.Phone)
+	}
+
+	empty := exchange("phone-empty@test.dev", "Phone Empty", "phone-empty", http.StatusCreated)
+	if empty.Phone != "" {
+		t.Fatalf("empty people response stored %q", empty.Phone)
+	}
+
+	short := exchange("phone-short@test.dev", "Phone Short", "phone-short", http.StatusCreated)
+	if short.Phone != "" {
+		t.Fatalf("short number stored %q", short.Phone)
+	}
+
+	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{
+		Name: "Ada", Email: "ada-kept-phone@test.dev", Password: "webcast-dev", Phone: existing,
+	})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("signup: status %d body %s", res.StatusCode, raw)
+	}
+	kept := exchange("ada-kept-phone@test.dev", "Ada", "phone-other", http.StatusOK)
+	if kept.Phone != existing {
+		t.Fatalf("existing phone %q", kept.Phone)
+	}
+
+	// A later sign-in can fill a phone that was empty the first time.
+	again := exchange("phone-none@test.dev", "Phone None", "phone-good", http.StatusOK)
+	if again.Phone != stored {
+		t.Fatalf("filled later %q", again.Phone)
 	}
 }
 

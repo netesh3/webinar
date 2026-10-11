@@ -311,6 +311,29 @@ func (s *Store) CreateUser(ctx context.Context, email, hashedPassword, name, tit
 	return u, nil
 }
 
+/* SetPhoneIfEmpty stores a number only when the account does not have one.
+ *
+ * Google sign-in fills users.phone from the People API. A number the person
+ * already typed — at signup, on a registration, or on a previous visit — is
+ * left alone. An empty argument is a no-op. The number is not logged.
+ */
+func (s *Store) SetPhoneIfEmpty(ctx context.Context, id, phone string) (User, error) {
+	phone = NormalisePhone(phone)
+	if phone == "" {
+		return s.UserByID(ctx, id)
+	}
+	u, err := scanUser(s.pool.QueryRow(ctx, `
+		UPDATE users
+		   SET phone = $2
+		 WHERE id = $1
+		   AND phone = ''
+		RETURNING `+userColumns, id, phone))
+	if noRows(err) {
+		return s.UserByID(ctx, id)
+	}
+	return u, err
+}
+
 // UpdateProfile applies the fields that were actually sent. nil means "leave
 // alone", which is why these are pointers all the way from the JSON body.
 func (s *Store) UpdateProfile(ctx context.Context, id string, p types.ProfilePatch) (User, error) {

@@ -313,13 +313,17 @@ Configured under **Google Auth Platform → Audience / Branding** for project
 | Home / Privacy / Terms | `https://webinarliv.com`, `/privacy`, `/terms` |
 | User type | **External** |
 | Publishing status | **In production** (or Testing) |
-| Scopes used | Login: `openid` `email` `profile`. YouTube live: `https://www.googleapis.com/auth/youtube` (sensitive) |
+| Scopes used | Login: `openid` `email` `profile` and `https://www.googleapis.com/auth/user.phonenumbers.read` (People API phone; optional — sign-in still works if the user denies it or Google returns no number). YouTube live: `https://www.googleapis.com/auth/youtube` (sensitive) |
 
 - **Testing** mode: only allowlisted test users can complete sign-in; add each
   Gmail under Audience → Test users. Cap is usually 100 test users.
 - **In production** with only basic scopes: any Google account can sign in; you
   may still see Google’s “unverified app” interstitial until brand verification
-  if you later request sensitive/restricted scopes.
+  if you later request sensitive/restricted scopes. `user.phonenumbers.read` is
+  a sensitive People API scope: enable **People API** on this project and add
+  the scope on the consent screen (and on the Supabase Google provider, if that
+  screen has its own scope list). Sign-in still completes when the user denies
+  it or Google returns no number. Do not put the scope in a new env var.
 - Lifetime **OAuth user cap** (shown as e.g. `0 / 100`) applies when requesting
   *unapproved* sensitive/restricted scopes — not for the basic login scopes above.
 - **Domain ownership** for branding: verify `webinarliv.com` in

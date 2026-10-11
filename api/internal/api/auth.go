@@ -614,6 +614,29 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "signed out"})
 }
 
+/* optionalGooglePhone reads a number from the People API.
+ *
+ * Empty when the browser did not send a Google access token, when Google
+ * returns no number, or when the call fails. The failure is logged without
+ * the token or the number. Signup never depends on this.
+ */
+func (s *Server) optionalGooglePhone(ctx context.Context, accessToken string) string {
+	accessToken = strings.TrimSpace(accessToken)
+	if accessToken == "" {
+		return ""
+	}
+	got, err := auth.GooglePhoneNumber(ctx, accessToken)
+	if err != nil {
+		s.log.Warn("supabase auth: people phone", "error", err)
+		return ""
+	}
+	got = store.NormalisePhone(got)
+	if got == "" || phoneFieldError(got) != "" {
+		return ""
+	}
+	return got
+}
+
 /* handleSupabaseAuth is POST /api/auth/supabase.
  *
  * Verifies a Supabase Auth access token (Google OAuth via Supabase JS), then
@@ -644,9 +667,15 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.store.UserByEmail(r.Context(), identity.Email)
 	created := false
+	phone := ""
 	switch {
 	case err == nil:
 		// Existing password or prior OAuth account — link by email and sign in.
+		// A phone already on the account stays. Google fills one only when the
+		// row has none.
+		if user.Phone == "" {
+			phone = s.optionalGooglePhone(r.Context(), req.GoogleAccessToken)
+		}
 	case errors.Is(err, store.ErrNotFound):
 		if !s.cfg.SignupOpen {
 			httpx.Error(w, http.StatusForbidden, "signup_closed",
@@ -654,10 +683,12 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Same policy as handleSignup: no hosting until an admin grants it,
-		// whichever door they signed up through. No phone either way — Google
-		// sign-in doesn't collect one.
+		// whichever door they signed up through. Phone is stored only when the
+		// People API returns one; a missing number or a denied scope still
+		// creates the account.
+		phone = s.optionalGooglePhone(r.Context(), req.GoogleAccessToken)
 		user, err = s.store.CreateUser(r.Context(), identity.Email, "",
-			identity.Name, "", "", "", false)
+			identity.Name, "", "", phone, false)
 		if errors.Is(err, store.ErrConflict) {
 			// Race with a parallel signup: look up again.
 			user, err = s.store.UserByEmail(r.Context(), identity.Email)
@@ -670,6 +701,15 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.fail(w, r, "supabase auth: lookup", err)
 		return
+	}
+
+	if phone != "" && user.Phone == "" {
+		updated, uerr := s.store.SetPhoneIfEmpty(r.Context(), user.ID, phone)
+		if uerr != nil {
+			s.log.Warn("supabase auth: save phone", "user", user.ID, "error", uerr)
+		} else {
+			user = updated
+		}
 	}
 
 	if pic := identity.Picture; pic != "" && pic != user.GooglePicture {

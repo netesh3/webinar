@@ -351,9 +351,14 @@ export const api = {
   resetPassword: (token: string, password: string) =>
     post<Account>("/api/auth/password/reset", { token, password }),
 
-  /** Exchange a Supabase Auth access token for the webcast_session cookie. */
-  supabaseAuth: (accessToken: string) =>
-    post<Account>("/api/auth/supabase", { accessToken }),
+  /** Exchange a Supabase Auth access token for the webcast_session cookie.
+   *  googleAccessToken is the Google provider token, when the session has one,
+   *  so the API can read a phone number. Sign-in works without it. */
+  supabaseAuth: (accessToken: string, googleAccessToken?: string) =>
+    post<Account>("/api/auth/supabase", {
+      accessToken,
+      ...(googleAccessToken ? { googleAccessToken } : {}),
+    }),
 
   logout: () => post<StatusResponse>("/api/auth/logout"),
 

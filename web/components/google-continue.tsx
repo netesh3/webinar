@@ -4,7 +4,53 @@ import { useState } from "react";
 import { Alert, Spinner } from "./controls";
 import { useAppConfig } from "./providers";
 import { Button } from "./ui";
+import { api } from "@/lib/api";
 import { createSupabaseBrowser, safeAuthNext } from "@/lib/supabase";
+
+/* openid, email, and profile stay. The People phone scope is extra: Google may
+ * return no number, and sign-up still finishes when it does not. */
+export const GOOGLE_OAUTH_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/user.phonenumbers.read",
+].join(" ");
+
+/* Starts Supabase Google OAuth.
+ *
+ * `next` is a same-origin path. It is placed on the redirect URL, which
+ * Supabase round-trips in the OAuth state, so a webinar registration comes
+ * back to that webinar instead of the home page.
+ */
+export async function startGoogleOAuth(opts: {
+  supabaseUrl?: string | null;
+  supabaseAnonKey?: string | null;
+  next: string;
+}): Promise<void> {
+  let url = opts.supabaseUrl ?? "";
+  let anon = opts.supabaseAnonKey ?? "";
+  if (!url || !anon) {
+    const cfg = await api.config();
+    if (!cfg.googleAuth || !cfg.supabaseUrl || !cfg.supabaseAnonKey) {
+      throw new Error("Google sign-in is not configured on this instance.");
+    }
+    url = cfg.supabaseUrl;
+    anon = cfg.supabaseAnonKey;
+  }
+  const supabase = createSupabaseBrowser(url, anon);
+  const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeAuthNext(opts.next))}`;
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo,
+      scopes: GOOGLE_OAUTH_SCOPES,
+      queryParams: { prompt: "select_account" },
+    },
+  });
+  if (error) {
+    throw new Error(error.message || "Could not start Google sign-in.");
+  }
+}
 
 /** Starts Supabase Google OAuth; the callback page exchanges for webcast_session. */
 export function GoogleContinueButton({
@@ -26,22 +72,14 @@ export function GoogleContinueButton({
     setBusy(true);
     setError(null);
     try {
-      const supabase = createSupabaseBrowser(supabaseUrl!, supabaseAnonKey!);
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeAuthNext(next))}`;
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo,
-          queryParams: { prompt: "select_account" },
-        },
-      });
-      if (oauthError) {
-        setError(oauthError.message || "Could not start Google sign-in.");
-        setBusy(false);
-      }
+      await startGoogleOAuth({ supabaseUrl, supabaseAnonKey, next });
       // On success the browser navigates away to Google.
-    } catch {
-      setError("Could not start Google sign-in. Check your connection.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not start Google sign-in. Check your connection.",
+      );
       setBusy(false);
     }
   }
