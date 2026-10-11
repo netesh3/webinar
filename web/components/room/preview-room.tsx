@@ -25,7 +25,7 @@ import { HostSurveyPill, HostSurveyProvider } from "./host-survey";
 import { MeetingInfo } from "./meeting-info";
 import { RaisedHandsProvider, useRaisedHandsController, useRaisedHandsPanel } from "./raised-hands-panel";
 import { SidePanel } from "./side-panel";
-import { ViewsMenu } from "./views-menu";
+import { LayoutModeSwitch, ViewsMenu } from "./views-menu";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
 import { useAvailableTools } from "./tools";
@@ -270,7 +270,8 @@ function PreviewHeader() {
           Local UI only — no LiveKit connection
         </p>
       </div>
-      <div className="pointer-events-auto">
+      <div className="pointer-events-auto flex shrink-0 items-center gap-1">
+        <LayoutModeSwitch />
         <ViewsMenu />
       </div>
     </header>
