@@ -89,6 +89,7 @@ export function ParticipantTile({
   onTogglePin,
   fullBleed = false,
   zoomable = false,
+  wholeFrame = false,
 }: {
   tile: Tile;
   size?: "sm" | "md" | "lg";
@@ -100,6 +101,11 @@ export function ParticipantTile({
   /** Pan and zoom, for a shared screen on the main stage. Not offered on a
    *  thumbnail or a camera: there is nothing in a face to read more closely. */
   zoomable?: boolean;
+  /** Never crop the camera: show the whole frame, and fill whatever the box has
+   *  left over with a blurred copy of the same video. For the main-stage tile,
+   *  whose shape changes with the window and with a side panel opening — at any
+   *  of those shapes, cover would trim part of what the camera sends. */
+  wholeFrame?: boolean;
 }) {
   const { participant, source, publication } = tile;
   const { fileShare, join } = useRoomUI();
@@ -164,7 +170,19 @@ export function ParticipantTile({
 
   // Measured, because the right answer depends on the window's proportions. Screen shares skip
   // it entirely — they always contain, and cropping a slide loses the bottom line of a terminal.
-  const { setBox, fit } = useTileFit(isScreen ? undefined : publication);
+  // A whole-frame tile skips it too: it always contains, and the backdrop removes the margins.
+  const { setBox, fit } = useTileFit(isScreen || wholeFrame ? undefined : publication);
+  const contain = isScreen || wholeFrame || fit === "contain";
+  /* The blurred fill behind a whole-frame camera.
+   *
+   * Same trick the waiting-room cover image uses (WaitingForHost in stage.tsx): the
+   * foreground is object-contain, so nothing the camera sends is ever cut off at any box
+   * shape, and a second copy of the same track — cover, blurred, dimmed — fills the
+   * letterbox so the stage does not show dark bars either. Measured nothing and assumed no
+   * aspect ratio: it is correct for every window size and panel state by construction.
+   * Only on cameras: a shared screen keeps plain bars, where a blurred slide behind the
+   * slide would read as a rendering glitch. */
+  const backdrop = wholeFrame && !isScreen;
 
   return (
     <div
@@ -203,27 +221,46 @@ export function ParticipantTile({
             publication={publication!}
           />
         ) : (
-          <VideoTrack
-            trackRef={{
-              participant,
-              source,
-              publication: publication!,
-            }}
-            /* contain for a shared screen: cropping a slide to fill the box is how the
-               bottom line of a terminal disappears.
-               For a camera it is usually cover — letterboxing a face is worse than trimming
-               the edges — but not when the tile's shape makes "trimming" mean a third of the
-               picture. useTileFit measures and decides; see tileFit in lib/layout.ts. */
-            /* Literal class names, not `object-${fit}`. Tailwind scans the source for class
-               strings and never sees an interpolated one, so the utility would simply not be
-               generated and the tile would fall back to the browser default of `fill` —
-               stretching the picture, which is worse than either option here. */
-            /* absolute inset-0: out of flow so the replaced-element intrinsic size cannot
-               dictate the flex item. object-fit still covers/contains inside that box. */
-            className={`absolute inset-0 size-full ${
-              isScreen || fit === "contain" ? "object-contain" : "object-cover"
-            } ${mirrored ? "-scale-x-100" : ""}`}
-          />
+          <>
+            {backdrop && (
+              <VideoTrack
+                trackRef={{
+                  participant,
+                  source,
+                  publication: publication!,
+                }}
+                aria-hidden
+                // Decorative: no interaction, and under the real picture. Scaled
+                // past the tile so the blur's soft edge falls outside it, and
+                // mirrored with the foreground so the fill matches its edges.
+                className={`pointer-events-none absolute inset-0 size-full object-cover opacity-60 blur-2xl ${
+                  mirrored ? "-scale-x-110 scale-y-110" : "scale-110"
+                }`}
+              />
+            )}
+            <VideoTrack
+              trackRef={{
+                participant,
+                source,
+                publication: publication!,
+              }}
+              /* contain for a shared screen: cropping a slide to fill the box is how the
+                 bottom line of a terminal disappears.
+                 For a camera it is usually cover — letterboxing a face is worse than trimming
+                 the edges — but not when the tile's shape makes "trimming" mean a third of the
+                 picture. useTileFit measures and decides; see tileFit in lib/layout.ts.
+                 A whole-frame tile always contains (see `backdrop`). */
+              /* Literal class names, not `object-${fit}`. Tailwind scans the source for class
+                 strings and never sees an interpolated one, so the utility would simply not be
+                 generated and the tile would fall back to the browser default of `fill` —
+                 stretching the picture, which is worse than either option here. */
+              /* absolute inset-0: out of flow so the replaced-element intrinsic size cannot
+                 dictate the flex item. object-fit still covers/contains inside that box. */
+              className={`absolute inset-0 size-full ${
+                contain ? "object-contain" : "object-cover"
+              } ${mirrored ? "-scale-x-100" : ""}`}
+            />
+          </>
         )
       ) : isOwnShare ? (
         <OwnShareNotice size={size} />

@@ -326,10 +326,11 @@ export function Stage() {
  * The grid packs every tile at 16:9 and centers the result. With a single camera that
  * is the largest 16:9 rectangle that fits, so a laptop window — wider than 16:9 once
  * the control bar takes its strip — shows the feed floating between two dark margins.
- * Covering the whole column removes those margins. The camera still uses tileFit, so
- * a wildly tall window letterboxes instead of slicing the face off; a normal window
- * covers and meets both edges. A lone screen share stays contain inside this same
- * full-bleed box, so slides are not cropped to make the margins disappear.
+ * Filling the whole column removes those margins. The camera is `wholeFrame`: the
+ * picture is contained, so nothing is cropped when the column changes shape (a
+ * side panel opening, a resized window), and a blurred copy of the same video fills
+ * what is left so the margins do not come back as dark bars. A lone screen share
+ * stays contain inside this same full-bleed box with plain bars.
  */
 function SoloStage({
   tile,
@@ -350,6 +351,7 @@ function SoloStage({
         size="lg"
         fullBleed
         zoomable={sharing}
+        wholeFrame
         pinned={pinned === tile.key}
         onTogglePin={sharing ? undefined : () => onTogglePin(tile.key)}
       />
@@ -395,6 +397,7 @@ function SpeakerLayout({
           size="lg"
           fullBleed={sharing}
           zoomable={sharing}
+          wholeFrame
           pinned={pinned === focus.key}
           // No pin on a full-bleed share: it is already the focus, so the control
           // would do nothing, and at full bleed it lands under the layout switcher.
@@ -469,6 +472,7 @@ function SpotlightLayout({
           tile={focus}
           size="lg"
           zoomable={focus.source === Track.Source.ScreenShare}
+          wholeFrame
           pinned={pinned === focus.key}
           onTogglePin={() => onTogglePin(focus.key)}
         />
