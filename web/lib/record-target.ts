@@ -11,9 +11,8 @@
  * destination menu and one click there starts. `clearLegacyRememberedTarget`
  * removes what an older build may have stored so it can never resurface.
  *
- * Both destinations composite the stage in lib/recorder.ts. Cloud uploads the
- * file; this computer writes it through lib/local-recording.ts. Neither asks
- * the host to share their screen.
+ * The capture pipelines themselves live in lib/recorder.ts (cloud, composited)
+ * and lib/screen-recorder.ts + lib/local-recording.ts (this computer).
  */
 
 export type RecordTarget = "cloud" | "local";
@@ -40,11 +39,12 @@ export type RecordCapabilities = {
   cloudEnabled: CloudSetting;
   /** AppConfig.recordingMode === "egress": the server records, the browser does nothing. */
   isEgress: boolean;
-  /** lib/recorder.ts canRecord(): this browser can composite + encode the stage.
-   *  Local recording uses the same compositor, so it needs this too. */
+  /** lib/recorder.ts canRecord(): this browser can composite + encode the stage. */
   canComposite: boolean;
   /** lib/local-recording.ts canRecordLocally(): File System Access (showSaveFilePicker). */
   canSaveLocally: boolean;
+  /** lib/screen-recorder.ts canRecordScreen(): getDisplayMedia + MediaRecorder. */
+  canCaptureScreen: boolean;
 };
 
 export function recordAvailability(caps: RecordCapabilities): RecordAvailability {
@@ -64,22 +64,15 @@ export function recordAvailability(caps: RecordCapabilities): RecordAvailability
     cloud = { available: true, reason: null };
   }
 
-  // Saving straight to disk is Chrome/Edge on a desktop. Compositing is the
-  // same browser check Cloud uses in client mode: a local file is the webinar,
-  // not a screen capture, so getDisplayMedia is not required.
-  let local: TargetAvailability;
-  if (!caps.canSaveLocally) {
-    local = { available: false, reason: "Needs Chrome or Edge on a computer." };
-  } else if (!caps.canComposite) {
-    local = {
-      available: false,
-      reason: "This browser can't record the session. Try Chrome, Edge or Safari.",
-    };
-  } else {
-    local = { available: true, reason: null };
-  }
+  // Screen capture and saving straight to disk are both Chrome/Edge-on-desktop
+  // features in practice, so one short reason covers either missing.
+  const localReason =
+    caps.canCaptureScreen && caps.canSaveLocally ? null : "Needs Chrome or Edge on a computer.";
 
-  return { cloud, local };
+  return {
+    cloud,
+    local: { available: localReason === null, reason: localReason },
+  };
 }
 
 export function anyTargetAvailable(availability: RecordAvailability): boolean {
