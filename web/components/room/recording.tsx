@@ -23,7 +23,6 @@ import {
   type RecorderState,
   type RecordingTransport,
 } from "@/lib/recorder";
-import { canRecordScreen, ScreenRecorder } from "@/lib/screen-recorder";
 import {
   clearLegacyRememberedTarget,
   initialMenuIndex,
@@ -51,36 +50,23 @@ import { useRoomUI } from "./context";
  * so an attendee is told they are being recorded even though nothing in their
  * browser is doing the recording.
  *
- * Two DESTINATIONS as of this file, not one, and they no longer share a
- * capture pipeline either. "Cloud" (SessionRecorder, lib/recorder.ts) draws
- * every participant onto a canvas and uploads the encoded result — that
- * compositing is what makes a recording of "the webinar" rather than one
- * person's screen, and it costs CPU the live call is already spending. "This
- * device" (ScreenRecorder, lib/screen-recorder.ts) instead captures the
- * host's screen directly via getDisplayMedia — no canvas, no per-frame
- * compositing — and writes straight to a file the host picked
- * (lib/local-recording.ts), with nothing going over the network. It trades
- * the composited layout for materially less CPU contention with the live
- * call, which is the point for a host who found the composited version
- * laggy. It is deliberately NOT wired into the server-side "recording" indicator or the
- * Recordings list: there is no row for it to be, since nothing was told.
- * Attendees are not informed of a local recording by this app any more than
- * they would be if the host recorded their own screen with a separate tool —
- * that is the host's responsibility, same as it is for anyone using OBS.
+ * Two DESTINATIONS. Cloud uploads the composited webinar (SessionRecorder,
+ * lib/recorder.ts), or asks the server to record when this instance uses
+ * egress. "This computer" records that same webinar — cameras, anyone's
+ * screen share, and mixed audio — and writes it to a file the host picks
+ * (lib/local-recording.ts). It does not ask to share the screen. Nothing
+ * from a local recording is sent to the server, so attendees are not told
+ * and it does not appear in the recordings list.
  */
 
 const subscribeNothing = () => () => {};
 const readCanRecord = () => canRecord();
 const readCanRecordOnServer = () => false;
-// Local recording needs BOTH: somewhere to write the file (canRecordLocally)
-// and something to capture (canRecordScreen, since it records the screen
-// directly rather than compositing the room onto a canvas — see
-// lib/screen-recorder.ts).
-const readCanRecordLocally = () => canRecordLocally() && canRecordScreen();
+// Local recording needs a browser that can composite the webinar, and the
+// File System Access API to write the file. It does not capture the desktop.
+const readCanRecordLocally = () => canRecordLocally() && canRecord();
 const readCanRecordLocallyOnServer = () => false;
-// The two halves separately, so the chooser can say WHICH one is missing.
 const readCanSaveLocally = () => canRecordLocally();
-const readCanCaptureScreen = () => canRecordScreen();
 const IDLE_TITLE = "Record — choose where to save";
 
 /** A recording's suggested filename: the topic, filesystem-safe, plus the date
@@ -158,10 +144,7 @@ function useRecorder(): RecorderContextValue {
     if (!serverRecording) setStoppedRecently(false);
   }
 
-  // Local recording is a ScreenRecorder (lib/screen-recorder.ts), not a
-  // SessionRecorder — no canvas compositing, see recording.tsx's module
-  // comment for why that is the point.
-  const recorder = useRef<SessionRecorder | ScreenRecorder | null>(null);
+  const recorder = useRef<SessionRecorder | null>(null);
   /** What is in flight, readable from an event handler that cannot wait for a
    *  render. Null when nothing is being recorded. `local: true` means there is
    *  no server-side row for the pagehide handler below to close. */
@@ -233,7 +216,7 @@ function useRecorder(): RecorderContextValue {
           setBytes(0);
           notifyRef.current(
             local
-              ? "Recording started — saving your screen straight to the file you chose. Keep this tab open."
+              ? "Recording started — saving the webinar to the file you chose. Keep this tab open."
               : "Recording started. Everyone can see it — keep this tab open.",
             "ok",
           );
@@ -262,13 +245,10 @@ function useRecorder(): RecorderContextValue {
         onProgress: setBytes,
       };
 
-      // Local recording captures the host's screen directly (ScreenRecorder) —
-      // no canvas, no compositing, no per-frame CPU competing with the live
-      // call. Cloud recording keeps the full composited stage (SessionRecorder)
-      // so everyone watching it back sees the webinar the way the room did.
-      const instance = local
-        ? new ScreenRecorder(room, transport, callbacks)
-        : new SessionRecorder(room, topic, transport, callbacks);
+      // Local and cloud client recording both composite the webinar. They
+      // differ only in the transport above: a file on this computer, or an
+      // upload. Local never calls getDisplayMedia.
+      const instance = new SessionRecorder(room, topic, transport, callbacks);
 
       recorder.current = instance;
       try {
@@ -410,8 +390,8 @@ function useRecorder(): RecorderContextValue {
  *
  *  Idle, both halves open one compact destination menu above the button
  *  ("Record to the Cloud" / "Record on this Computer"); picking an item starts
- *  right there, from that click, so Local keeps the user activation its screen
- *  and save pickers need. While recording the main half only ever stops — no
+ *  right there, from that click, so Local keeps the user activation its save
+ *  picker needs. While recording the main half only ever stops — no
  *  menu between a host and Stop — and the chevron shows where it is going plus
  *  a Stop. The decisions are in lib/record-target.ts. */
 export function RecordButton() {
@@ -456,11 +436,6 @@ export function RecordButton() {
     readCanSaveLocally,
     readCanRecordLocallyOnServer,
   );
-  const canCaptureScreen = useSyncExternalStore(
-    subscribeNothing,
-    readCanCaptureScreen,
-    readCanRecordLocallyOnServer,
-  );
 
   // While the config is still loading, cloudRecordingEnabled is only
   // CONFIG_FALLBACK's "false" guess — Cloud shows as checking, not unavailable.
@@ -478,9 +453,8 @@ export function RecordButton() {
         isEgress,
         canComposite: supported,
         canSaveLocally,
-        canCaptureScreen,
       }),
-    [cloudSetting, isEgress, supported, canSaveLocally, canCaptureScreen],
+    [cloudSetting, isEgress, supported, canSaveLocally],
   );
 
   const close = useCallback((restoreFocus: boolean) => {
@@ -488,9 +462,9 @@ export function RecordButton() {
     if (restoreFocus) (opener.current ?? mainRef.current)?.focus({ preventScroll: true });
   }, []);
 
-  // Called synchronously from the menu item's click so local recording's
-  // getDisplayMedia/showSaveFilePicker keep their user activation — see
-  // lib/screen-recorder.ts.
+  // Called synchronously from the menu item's click so the local save dialog
+  // keeps its user activation — see lib/local-recording.ts. Recording starts
+  // as soon as the file is chosen. There is no screen-share prompt.
   const go = useCallback(
     (dest: RecordTarget) => {
       if (dest === "cloud" && !join.cloudRecording) return;
