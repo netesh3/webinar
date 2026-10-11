@@ -12,7 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { LiveParticipant } from "@/lib/api-types";
-import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
+import { COMPACT_PANEL_TOP, useCompact } from "@/lib/compact";
 import { openPopout, type PopoutHandle } from "@/lib/popout";
 import {
   beginRaisedHands,
@@ -304,7 +304,7 @@ export function RaisedHandsDrawer({ variant = "dock" }: { variant?: "dock" | "wi
             ? "absolute inset-x-0 bottom-0 z-40 shadow-2xl"
             : "absolute inset-y-0 right-0 z-40 w-[22.5rem] max-w-full overflow-hidden border-l border-line shadow-2xl"
       }`}
-      style={!inWindow && compact ? { top: COMPACT_STAGE_HEIGHT } : undefined}
+      style={!inWindow && compact ? { top: COMPACT_PANEL_TOP } : undefined}
       role="complementary"
       aria-label={`Raised hands (${hands.length})`}
     >
