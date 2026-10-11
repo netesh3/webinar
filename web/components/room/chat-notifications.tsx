@@ -293,8 +293,9 @@ export function ChatNotifications({
 
 /* The card's frame: where it sits, the open button, and dismiss.
  *
- * Desktop: just under the overlay header, on the right of the stage. Compact: below the
- * title pill so it cannot cover the (i) or Views control. The control bar is a sibling
+ * Desktop: at the top right of the stage, which already starts below the header.
+ * Compact: centred at the top of the stage, also below the header, so it cannot cover
+ * the (i) or Views control. The control bar is a sibling
  * of the stage, so a card inside the stage cannot land on Leave.
  *
  * A mention card carries a brand accent bar down its left edge — the same mark a
@@ -318,8 +319,8 @@ function Card({
     <div
       className={
         compact
-          ? "pointer-events-none absolute top-14 right-2 left-2 z-40 flex justify-center"
-          : "pointer-events-none absolute top-14 right-2 z-40 flex justify-end"
+          ? "pointer-events-none absolute top-2 right-2 left-2 z-40 flex justify-center"
+          : "pointer-events-none absolute top-2 right-2 z-40 flex justify-end"
       }
     >
       <div

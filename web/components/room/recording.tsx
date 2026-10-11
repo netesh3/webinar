@@ -864,7 +864,7 @@ export function RecordingBanner() {
 
   if (minimized) {
     return (
-      <div className="pointer-events-none absolute inset-x-0 top-12 z-30 flex justify-center px-3">
+      <div className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center px-3">
         <button
           type="button"
           onClick={() => setMinimized(false)}
@@ -886,7 +886,7 @@ export function RecordingBanner() {
   }
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-12 sm:top-14 z-30 flex justify-center px-3">
+    <div className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center px-3">
       <div className="pointer-events-auto flex items-center gap-2.5 sm:gap-3 rounded-full border border-white/20 bg-black/85 px-3.5 py-1.5 sm:px-4 sm:py-2 text-white shadow-2xl backdrop-blur-md transition-all">
         {/* Pulsing red REC indicator */}
         <div className="flex items-center gap-2 shrink-0">

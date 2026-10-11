@@ -1332,7 +1332,7 @@ function ConnectedRoom({
                 <div
                   ref={setStageEl}
                   data-stage
-                  className="absolute inset-x-0 top-0 flex flex-col"
+                  className="absolute inset-x-0 top-12 flex flex-col"
                   style={stageFrame(compact, panelOpen)}
                 >
                   <Stage />
@@ -1505,8 +1505,12 @@ export function RoomHeader() {
           : { label: "Attendee", tone: "neutral" as const };
 
   return (
+    // A fixed 3rem (ROOM_HEADER_HEIGHT): the stage starts at top-12 directly
+    // below this overlay, so the header must never grow taller than that. On a
+    // phone the (i) pill and Views button are 44px tap targets, hence py-0.5
+    // there (2 + 44 + 2); from sm up they are 32px and the padding is 8px.
     <header
-      className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start gap-2 bg-black px-3 pt-2 pb-2 text-white ${
+      className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex h-12 items-start gap-2 bg-black px-3 py-0.5 text-white sm:pt-2 sm:pb-2 ${
         panelOpen ? "md:pr-[24rem]" : ""
       }`}
     >
@@ -1517,16 +1521,16 @@ export function RoomHeader() {
           {/* Everyone sees this, including the audience — consent is not something
               to leave to the browser that pressed the button. */}
           <RecordingIndicator />
-        </div>
-        {/* Only exceptional room state — not the room ID on every frame. */}
-        {controls.locked && (
-          <div className="flex items-center gap-2 text-[11px] text-white/45">
-            <span className="inline-flex items-center gap-1 text-warn">
+          {/* Only exceptional room state — not the room ID on every frame. Inline
+              rather than on a second line, which made the header taller than
+              the 3rem the stage is offset by. */}
+          {controls.locked && (
+            <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-warn">
               <LockIcon className="size-3" />
               Locked
             </span>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="pointer-events-auto flex shrink-0 items-center gap-1">

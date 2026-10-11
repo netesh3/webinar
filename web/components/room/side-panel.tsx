@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import { PANEL_TOOL_IDS, type ToolId } from "@/lib/tools";
-import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
+import { COMPACT_PANEL_TOP, useCompact } from "@/lib/compact";
 import { CloseIcon, PipIcon, PopOutIcon } from "../icons";
 import { useToast } from "../providers";
 import { ChatPanel } from "./chat-panel";
@@ -18,7 +18,8 @@ import { tool } from "./tools";
  * Opened from the bottom bar, it docks on the right and the stage shrinks to
  * its left (stageFrame in lib/compact.ts), so the panel never covers the
  * speaker. On a phone-shaped viewport the video keeps a fixed strip at the
- * top instead (COMPACT_STAGE_HEIGHT) and this panel takes the space below it.
+ * top instead (COMPACT_STAGE_HEIGHT, under the header) and this panel takes
+ * the space below it (COMPACT_PANEL_TOP).
  * Pop out still undocks into a floating window on either size. There is no
  * rail — those buttons live in the control bar.
  */
@@ -94,7 +95,7 @@ export function SidePanel() {
             ? "absolute inset-x-0 bottom-0"
             : "absolute inset-y-0 right-0 w-[22.5rem] max-w-full overflow-hidden border-l border-line"
         }`}
-        style={compact ? { top: COMPACT_STAGE_HEIGHT } : undefined}
+        style={compact ? { top: COMPACT_PANEL_TOP } : undefined}
         role="complementary"
         aria-label={tool(active).title}
       >

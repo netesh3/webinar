@@ -35,6 +35,15 @@ export const COMPACT_QUERY = "(max-width: 767px)";
  *  the top and real room for the panel below it across phone sizes. */
 export const COMPACT_STAGE_HEIGHT = "clamp(180px, 38vh, 320px)";
 
+/** Height of the room header (RoomHeader in webinar-room.tsx). The header is
+ *  an absolute overlay, and the stage starts this far down (`top-12`) so the
+ *  header never covers the top of the video. Keep the two in step. */
+export const ROOM_HEADER_HEIGHT = "3rem";
+
+/** Where a docked panel starts on a phone: below the header and the video
+ *  strip under it. */
+export const COMPACT_PANEL_TOP = `calc(${ROOM_HEADER_HEIGHT} + ${COMPACT_STAGE_HEIGHT})`;
+
 /** Width of the docked right-hand panel on desktop (side-panel.tsx and the
  *  raised-hands drawer use `w-[22.5rem]`). The stage stops at its left edge
  *  so the video is resized next to the panel rather than covered by it. */

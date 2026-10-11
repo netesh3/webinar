@@ -422,7 +422,7 @@ export function CdnAttendeeRoom({
                   <div
                     ref={setStageEl}
                     data-stage
-                    className="absolute inset-x-0 top-0 flex flex-col"
+                    className="absolute inset-x-0 top-12 flex flex-col"
                     style={stageFrame(compact, panelOpen)}
                   >
                     {/* CDN Stream Player */}
