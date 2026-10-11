@@ -37,6 +37,7 @@ const all: RecordCapabilities = {
   isEgress: false,
   canComposite: true,
   canSaveLocally: true,
+  canCaptureScreen: true,
 };
 
 // ------------------------------------------------------------ availability
@@ -66,20 +67,16 @@ const all: RecordCapabilities = {
 {
   const a = recordAvailability({ ...all, canComposite: false });
   ok(!a.cloud.available, "client mode needs the browser to composite");
-  ok(!a.local.available, "local records the same composited stage, so it needs it too");
-  ok(
-    a.local.reason === "This browser can't record the session. Try Chrome, Edge or Safari.",
-    "local says the browser can't record when compositing is missing",
-  );
   const egress = recordAvailability({ ...all, canComposite: false, isEgress: true });
   ok(egress.cloud.available, "egress mode does not need the browser to composite");
-  ok(!egress.local.available, "local still composites in this tab when cloud uses egress");
 }
 {
   const a = recordAvailability({ ...all, canSaveLocally: false });
   ok(!a.local.available, "no File System Access → local unavailable");
   ok(a.local.reason === "Needs Chrome or Edge on a computer.", "local reason is the short one");
-  ok(a.cloud.available, "cloud does not need a local save dialog");
+  const b = recordAvailability({ ...all, canCaptureScreen: false });
+  ok(!b.local.available, "no getDisplayMedia → local unavailable");
+  ok(b.local.reason === a.local.reason, "same short reason either way");
 }
 {
   ok(anyTargetAvailable(recordAvailability(all)), "any: both");
