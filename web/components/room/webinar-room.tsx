@@ -536,9 +536,16 @@ function ConnectedRoom({
     () => ({
       identity: join.identity,
       name: join.displayName,
-      role: liveRole === "host" || liveRole === "panelist" ? liveRole : join.role,
+      /* The live role, never the join response's. useLiveRole already starts
+       * from join.role and only moves on live metadata, so it is the fresher of
+       * the two. Falling back to join.role when the live role said "attendee"
+       * kept a demoted attendee a "panelist": someone who joined while on stage
+       * (join.role "panelist") and was then moved back to the audience still
+       * got the host-only Raised hands queue next to Raise hand, and their
+       * chat messages kept a Panelist badge. */
+      role: liveRole,
     }),
-    [join.identity, join.displayName, join.role, liveRole],
+    [join.identity, join.displayName, liveRole],
   );
 
   const { controls, topic, recording, startedAt, endedAt, status, maxDurationMin } = useSessionControls(
