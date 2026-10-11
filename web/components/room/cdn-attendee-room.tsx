@@ -32,7 +32,7 @@ import { useHostRoster } from "./participants";
 import { useNetworkHealth } from "@/lib/network";
 import { useAvailableTools } from "./tools";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
-import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
+import { stageFrame, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
 import { useFullscreen } from "@/lib/fullscreen";
 import { useStageLayout } from "@/lib/layout";
@@ -217,7 +217,7 @@ export function CdnAttendeeRoom({
   const tools = useToolLayout(availableTools);
   const raisedHands = useRaisedHandsController(tools);
   const compact = useCompact();
-  const panelOpen = compact && (Boolean(tools.panelTab) || raisedHands.open);
+  const panelOpen = Boolean(tools.panelTab) || raisedHands.open;
 
   const fileShare = useFileShare(room);
   const stage = useStageLayout();
@@ -235,8 +235,8 @@ export function CdnAttendeeRoom({
   // counted — see the same watermark in webinar-room.tsx.
   const chatCount = realtime.chat.length;
   const questionCount = realtime.questions.length;
-  const chatVisible = isToolVisible(tools.layout, tools.panelTab, "chat");
-  const qaVisible = isToolVisible(tools.layout, tools.panelTab, "qa");
+  const chatVisible = isToolVisible(tools.layout, tools.panelTab, "chat", tools.poppedOut);
+  const qaVisible = isToolVisible(tools.layout, tools.panelTab, "qa", tools.poppedOut);
 
   const [seen, setSeen] = useState({ chat: 0, qa: 0 });
   const [mountedAt] = useState(() => Date.now());
@@ -423,7 +423,7 @@ export function CdnAttendeeRoom({
                     ref={setStageEl}
                     data-stage
                     className="absolute inset-x-0 top-0 flex flex-col"
-                    style={panelOpen ? { height: COMPACT_STAGE_HEIGHT } : { bottom: 0 }}
+                    style={stageFrame(compact, panelOpen)}
                   >
                     {/* CDN Stream Player */}
                     <div className="relative flex-1 flex items-center justify-center bg-black">

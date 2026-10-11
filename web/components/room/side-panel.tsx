@@ -3,7 +3,8 @@
 import { useEffect, useMemo } from "react";
 import { PANEL_TOOL_IDS, type ToolId } from "@/lib/tools";
 import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
-import { CloseIcon, PopOutIcon } from "../icons";
+import { CloseIcon, PipIcon, PopOutIcon } from "../icons";
+import { useToast } from "../providers";
 import { ChatPanel } from "./chat-panel";
 import { useRoomUI } from "./context";
 import { ParticipantsPanel } from "./participants";
@@ -14,15 +15,12 @@ import { tool } from "./tools";
 
 /* Engagement panel — Zoom's Chat / Q&A / Participants card.
  *
- * Opening a tool used to shrink the video and grow a permanent icon rail down
- * the right edge. Zoom does neither: on desktop the stage stays full-bleed
- * and this sits over it as a right-hand overlay, opened from the bottom bar.
- * On a phone-shaped viewport it docks instead of overlaying — the video
- * keeps a fixed strip at the top (see COMPACT_STAGE_HEIGHT / webinar-room.tsx)
- * and this panel takes the remaining space below it, because a full-screen
- * takeover on a screen that small reads as "the video is gone", not "there's
- * a panel over the video". Pop out still undocks into a floating window on
- * either size. There is no rail — those buttons live in the control bar.
+ * Opened from the bottom bar, it docks on the right and the stage shrinks to
+ * its left (stageFrame in lib/compact.ts), so the panel never covers the
+ * speaker. On a phone-shaped viewport the video keeps a fixed strip at the
+ * top instead (COMPACT_STAGE_HEIGHT) and this panel takes the space below it.
+ * Pop out still undocks into a floating window on either size. There is no
+ * rail — those buttons live in the control bar.
  */
 
 function PanelBody({ id }: { id: ToolId }) {
@@ -43,15 +41,19 @@ function PanelBody({ id }: { id: ToolId }) {
 export function SidePanel() {
   const { tools, availableTools } = useRoomUI();
   const raisedHands = useRaisedHandsPanel();
+  const { notify } = useToast();
   const compact = useCompact();
   const tab = tools.panelTab;
 
   const dockable = useMemo(
     () =>
       PANEL_TOOL_IDS.filter(
-        (id) => availableTools.includes(id) && !tools.layout.windows[id],
+        (id) =>
+          availableTools.includes(id) &&
+          !tools.layout.windows[id] &&
+          !tools.poppedOut.includes(id),
       ),
-    [availableTools, tools.layout.windows],
+    [availableTools, tools.layout.windows, tools.poppedOut],
   );
 
   useEffect(() => {
@@ -102,12 +104,30 @@ export function SidePanel() {
           </h2>
           <button
             type="button"
-            onClick={() => tools.undock(active)}
-            aria-label={`Pop out ${tool(active).title}`}
-            title="Pop out"
+            onClick={() => {
+              // Called straight from the click: window.open needs the gesture.
+              const ok = tools.popOut(active, { title: tool(active).title });
+              if (!ok) {
+                notify(
+                  "Your browser blocked the new window. Allow pop-ups for this site and try again.",
+                  "error",
+                );
+              }
+            }}
+            aria-label={`Open ${tool(active).title} in a new window`}
+            title="Open in a new window (move it to another screen)"
             className="hidden size-8 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:grid"
           >
             <PopOutIcon className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => tools.undock(active)}
+            aria-label={`Float ${tool(active).title} over the video`}
+            title="Float over the video"
+            className="hidden size-8 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:grid"
+          >
+            <PipIcon className="size-4" />
           </button>
           <button
             type="button"

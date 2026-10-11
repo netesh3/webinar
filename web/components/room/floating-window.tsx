@@ -89,6 +89,11 @@ export type WindowChromeProps = {
   onClose: () => void;
   /** Extra controls for the title bar, to the left of minimise. */
   actions?: ReactNode;
+  /** Called when a title-bar drag is released at or past the edge of the
+   *  browser window — "throw it onto my other screen". Return true if the
+   *  window was moved out (the drag is then not committed as a move). Absent
+   *  for windows that cannot leave the tab. */
+  onDragOut?: (rect: Rect) => boolean;
   /** Keep the content in the tree while minimised, hidden rather than unmounted.
    *  What it buys is a half-typed message surviving a minimise; what it costs is
    *  whatever the content does while nobody is looking, which is why it is the
@@ -114,6 +119,7 @@ export function FloatingWindow({
   onMaximize,
   onClose,
   actions,
+  onDragOut,
   keepMounted = false,
   children,
 }: WindowChromeProps) {
@@ -131,6 +137,10 @@ export function FloatingWindow({
    *  handler are separate tasks, so the release needs somewhere to read the final
    *  geometry from that is not a closure captured when it subscribed. */
   const latest = useRef<Rect | null>(null);
+  /** The pointer is at or past the edge of the browser window during a move,
+   *  so letting go would send this window out to its own OS window. */
+  const [tearing, setTearing] = useState(false);
+  const tearingRef = useRef(false);
   const rect = live ?? win.rect;
   const dragging = live !== null;
 
@@ -140,6 +150,13 @@ export function FloatingWindow({
       e.preventDefault();
       e.stopPropagation();
       onFocus();
+      // Keeps pointermove/pointerup coming while the cursor is outside the
+      // browser window, which is exactly where a drag-out is released.
+      try {
+        (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+      } catch {
+        // Not capturable (synthetic event); window listeners still work.
+      }
       gesture.current = { rect: win.rect, x: e.clientX, y: e.clientY, edge };
       setLive(win.rect);
     },
@@ -148,6 +165,12 @@ export function FloatingWindow({
 
   useEffect(() => {
     if (!gesture.current) return;
+
+    const setTear = (next: boolean) => {
+      if (tearingRef.current === next) return;
+      tearingRef.current = next;
+      setTearing(next);
+    };
 
     const onPointerMove = (e: PointerEvent) => {
       const g = gesture.current;
@@ -158,6 +181,15 @@ export function FloatingWindow({
       let next: Rect;
       if (!g.edge) {
         next = { ...g.rect, x: g.rect.x + dx, y: g.rect.y + dy };
+        if (onDragOut) {
+          const edgeGap = 2;
+          setTear(
+            e.clientX <= edgeGap ||
+              e.clientY <= edgeGap ||
+              e.clientX >= window.innerWidth - edgeGap ||
+              e.clientY >= window.innerHeight - edgeGap,
+          );
+        }
       } else {
         const edge = EDGES[g.edge];
         // Stop the origin before the size hits its floor. Clamping the size alone
@@ -184,7 +216,12 @@ export function FloatingWindow({
       gesture.current = null;
       const final = latest.current;
       latest.current = null;
+      const tore = tearingRef.current;
+      setTear(false);
       setLive(null);
+      // Released at the edge: open it as its own window, in this same task —
+      // window.open needs the gesture that is still live right now.
+      if (tore && final && onDragOut?.(final)) return;
       // Committed outside the state updater: an updater may run twice in
       // development, and this one would report the drag twice.
       if (final) onMove(final);
@@ -200,7 +237,7 @@ export function FloatingWindow({
     };
     // `dragging` is the subscribe trigger: the listeners exist for exactly as long
     // as a gesture does.
-  }, [dragging, onMove]);
+  }, [dragging, onMove, onDragOut]);
 
   // Escape closes, but only the focused window.
   useEffect(() => {
@@ -309,6 +346,13 @@ export function FloatingWindow({
     >
       {bar}
 
+      {tearing && (
+        <div className="pointer-events-none absolute inset-x-0 top-9 bottom-0 z-20 grid place-items-center bg-brand/15 p-4 backdrop-blur-[1px]">
+          <span className="rounded-lg bg-ink/90 px-3 py-2 text-center text-[12px] font-medium text-white shadow-lg">
+            Release to open in a new window
+          </span>
+        </div>
+      )}
       {/* min-h-0 so a flex child with its own scroll container actually scrolls
           rather than growing the window past its height.
           `hidden` while collapsed rather than absent: the content stays mounted so

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { openPopout, type PopoutHandle } from "./popout.ts";
 
 /* The tool layout: what is on the bar, what is in the More grid, and which
  * windows are open where.
@@ -230,9 +231,11 @@ export function isToolVisible(
   layout: ToolLayout,
   panelTab: ToolId | null,
   tool: ToolId,
+  /** Tools living in their own browser window (ToolApi.poppedOut). */
+  poppedOut: readonly ToolId[] = [],
 ): boolean {
   const win = layout.windows[tool];
-  return panelTab === tool || (!!win && !win.minimized);
+  return panelTab === tool || poppedOut.includes(tool) || (!!win && !win.minimized);
 }
 
 export function isToolId(value: unknown): value is ToolId {
@@ -1223,7 +1226,22 @@ export type ToolApi = {
   reset: () => void;
   /** The element windows are confined to. */
   setStage: (el: HTMLElement | null) => void;
+  /** Engagement tools living in their own browser window, in the order they
+   *  were popped out. Each carries the element its panel portals into. */
+  popouts: readonly PoppedOutTool[];
+  /** Just the ids of `popouts`, for isToolVisible and badges. */
+  poppedOut: readonly ToolId[];
+  /** Move an engagement tool into its own browser window — one the user can
+   *  drag to another monitor. MUST be called from a user gesture (a click, or
+   *  the pointerup that ends a drag) or the popup blocker stops it. `rect` is
+   *  where to put it, in the room's client coordinates. Returns false when the
+   *  browser blocked the window. */
+  popOut: (tool: ToolId, options?: { rect?: Rect; title?: string }) => boolean;
+  /** Bring a popped-out tool back into the docked side panel. */
+  popIn: (tool: ToolId) => void;
 };
+
+export type PoppedOutTool = { tool: ToolId; root: HTMLElement; win: Window };
 
 /**
  * Owns the layout: reconciliation, persistence and the viewport.
@@ -1303,11 +1321,66 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
   const bounds = useCallback(() => boundsFrom(stage), [stage]);
   const setLayout = setStored;
 
+  /* Engagement tools in their own browser window (lib/popout.ts).
+   *
+   * Session-only, like panelTab: a popup cannot survive a reload of the page
+   * that owns it, so persisting it would describe a window that is not there.
+   * The handles live in a ref so close/dock can reach the live window; the
+   * state copy is what renders. */
+  const handles = useRef(new Map<ToolId, PopoutHandle>());
+  const [popouts, setPopouts] = useState<PoppedOutTool[]>([]);
+
+  const forgetPopout = useCallback((tool: ToolId) => {
+    handles.current.delete(tool);
+    setPopouts((list) => list.filter((p) => p.tool !== tool));
+  }, []);
+
+  const closePopout = useCallback(
+    (tool: ToolId) => {
+      const handle = handles.current.get(tool);
+      if (!handle) return false;
+      handle.close();
+      forgetPopout(tool);
+      return true;
+    },
+    [forgetPopout],
+  );
+
+  // Leaving the room (or reloading) takes its popups with it — an orphaned
+  // chat window that can no longer send anything is worse than none.
+  useEffect(() => {
+    const map = handles.current;
+    const closeAll = () => {
+      for (const handle of map.values()) handle.close();
+      map.clear();
+    };
+    window.addEventListener("pagehide", closeAll);
+    return () => {
+      window.removeEventListener("pagehide", closeAll);
+      closeAll();
+    };
+  }, []);
+
+  // A tool that stops being available (host turned polls off) loses its popup.
+  useEffect(() => {
+    for (const tool of [...handles.current.keys()]) {
+      if (!available.includes(tool)) closePopout(tool);
+    }
+  }, [available, closePopout]);
+
+  const poppedOut = useMemo(() => popouts.map((p) => p.tool), [popouts]);
+
   return useMemo<ToolApi>(
     () => ({
       layout,
       panelTab,
       open: (tool) => {
+        // Already in its own window: bring that window forward.
+        const popped = handles.current.get(tool);
+        if (popped) {
+          popped.win.focus();
+          return;
+        }
         // Undocked engagement tools stay windows — opening Chat must not yank
         // a floating frame the host just positioned back into the rail.
         if (isPanelTool(tool) && !layout.windows[tool]) {
@@ -1317,6 +1390,7 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
         setLayout((c) => openWindow(c, tool, bounds()));
       },
       close: (tool) => {
+        closePopout(tool);
         if (isPanelTool(tool)) {
           setPanelTab((current) => (current === tool ? null : current));
           setLayout((c) => closeWindow(c, tool));
@@ -1326,6 +1400,10 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
       },
       closePanel: () => setPanelTab(null),
       toggle: (tool) => {
+        // The toolbar button that opened it closes it, wherever it lives —
+        // the button shows it as active, so a press that only focused a
+        // window on another monitor would look like it did nothing.
+        if (closePopout(tool)) return;
         if (isPanelTool(tool) && !layout.windows[tool]) {
           setPanelTab((current) => (current === tool ? null : tool));
           return;
@@ -1357,10 +1435,16 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
       },
       dock: (tool) => {
         if (!isPanelTool(tool)) return;
+        closePopout(tool);
         setLayout((c) => closeWindow(c, tool));
         setPanelTab(tool);
       },
       focus: (tool) => {
+        const popped = handles.current.get(tool);
+        if (popped) {
+          popped.win.focus();
+          return;
+        }
         if (isPanelTool(tool) && !layout.windows[tool]) {
           setPanelTab(tool);
           return;
@@ -1392,7 +1476,44 @@ export function useToolLayout(available: readonly ToolId[]): ToolApi {
       used: (tool) => setLayout((c) => noteUse(c, tool)),
       reset: () => setLayout((c) => resetToolbar(c)),
       setStage,
+      popouts,
+      poppedOut,
+      popOut: (tool, options) => {
+        if (!isPanelTool(tool) || !available.includes(tool)) return false;
+        const existing = handles.current.get(tool);
+        if (existing) {
+          existing.win.focus();
+          return true;
+        }
+        const handle = openPopout({
+          name: tool,
+          title: options?.title ?? tool,
+          rect: options?.rect ?? layout.windows[tool]?.rect,
+          // The OS close button puts it back in the dock, so closing the
+          // window never makes the tool look like it vanished.
+          onClosed: () => {
+            if (handles.current.get(tool) !== handle) return;
+            forgetPopout(tool);
+            setPanelTab(tool);
+          },
+        });
+        if (!handle) return false;
+        handles.current.set(tool, handle);
+        setPopouts((list) => [
+          ...list.filter((p) => p.tool !== tool),
+          { tool, root: handle.root, win: handle.win },
+        ]);
+        // It now lives elsewhere: out of the in-page windows, and out of the
+        // dock — which closes, giving the video its full width back.
+        setLayout((c) => closeWindow(c, tool));
+        setPanelTab((current) => (current === tool ? null : current));
+        return true;
+      },
+      popIn: (tool) => {
+        if (!closePopout(tool)) return;
+        setPanelTab(tool);
+      },
     }),
-    [layout, panelTab, bounds, setLayout, available],
+    [layout, panelTab, bounds, setLayout, available, popouts, poppedOut, closePopout, forgetPopout],
   );
 }

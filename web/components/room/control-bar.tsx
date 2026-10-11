@@ -697,6 +697,7 @@ export function ControlBar() {
     if (id === "sharefile") return fileShare.active;
     if (id === "youtube") return youtube.configured;
     if (tools.panelTab === id) return true;
+    if (tools.poppedOut.includes(id)) return true;
     const win = tools.layout.windows[id];
     return !!win && !win.minimized;
   };
@@ -992,7 +993,7 @@ export function ControlBar() {
               {raisedWhere === "bar" && id === "participants" && raisedCount != null && (
                 <RaisedHandsBarButton
                   count={raisedBadge}
-                  active={raisedHands.open}
+                  active={raisedHands.open || raisedHands.poppedOut}
                   onClick={() => raisedHands.toggle()}
                 />
               )}
@@ -1004,7 +1005,7 @@ export function ControlBar() {
           !centerTools.includes("participants") && (
             <RaisedHandsBarButton
               count={raisedBadge}
-              active={raisedHands.open}
+              active={raisedHands.open || raisedHands.poppedOut}
               onClick={() => raisedHands.toggle()}
             />
           )}
@@ -1153,7 +1154,7 @@ export function ControlBar() {
                 raisedWhere === "overflow" && raisedCount != null
                   ? {
                       count: raisedBadge,
-                      active: raisedHands.open,
+                      active: raisedHands.open || raisedHands.poppedOut,
                       onClick: () => raisedHands.toggle(),
                     }
                   : undefined

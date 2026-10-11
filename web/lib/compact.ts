@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 /** `md`, matching the Tailwind class the room's own layout switches at, so a
  *  sheet appears exactly when the stage stops having room beside it. Shared
@@ -26,6 +34,24 @@ export const COMPACT_QUERY = "(max-width: 767px)";
  *  small phone and needlessly tall on a big one — this keeps a real video at
  *  the top and real room for the panel below it across phone sizes. */
 export const COMPACT_STAGE_HEIGHT = "clamp(180px, 38vh, 320px)";
+
+/** Width of the docked right-hand panel on desktop (side-panel.tsx and the
+ *  raised-hands drawer use `w-[22.5rem]`). The stage stops at its left edge
+ *  so the video is resized next to the panel rather than covered by it. */
+export const DOCKED_PANEL_WIDTH = "22.5rem";
+
+/** Where the stage sits while a docked panel is (or isn't) open.
+ *
+ *  phone    the video keeps a fixed strip at the top, panel below it.
+ *  desktop  the video shrinks to the left of the panel — the same way the
+ *           header already moves aside — instead of the panel covering the
+ *           right third of the speaker. */
+export function stageFrame(compact: boolean, panelOpen: boolean): CSSProperties {
+  if (!panelOpen) return { bottom: 0 };
+  return compact
+    ? { height: COMPACT_STAGE_HEIGHT }
+    : { bottom: 0, right: DOCKED_PANEL_WIDTH };
+}
 
 export function useCompact(): boolean {
   const [compact, setCompact] = useState(false);

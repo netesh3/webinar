@@ -10,8 +10,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import type { LiveParticipant } from "@/lib/api-types";
 import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
+import { openPopout, type PopoutHandle } from "@/lib/popout";
 import {
   beginRaisedHands,
   dismissRaisedHands,
@@ -25,7 +27,7 @@ import {
 } from "@/lib/raised-hands";
 import type { ToolId } from "@/lib/tools";
 import { Spinner } from "../controls";
-import { ChatIcon, CloseIcon } from "../icons";
+import { ChatIcon, CloseIcon, DockIcon, PopOutIcon } from "../icons";
 import { useToast } from "../providers";
 import { SenderAvatar } from "../sender-avatar";
 import { useRoomUI } from "./context";
@@ -52,6 +54,15 @@ export type RaisedHandsApi = {
   dismiss: () => void;
   /** Open room chat addressed to this person. There is no direct-message thread. */
   messagePerson: (identity: string, name: string) => void;
+  /** The queue lives in its own browser window right now (lib/popout.ts). */
+  poppedOut: boolean;
+  /** Where that window's portal renders, or null. */
+  popoutRoot: HTMLElement | null;
+  /** Move the queue into its own browser window. Call from a click — the
+   *  popup blocker needs the gesture. False when the browser blocked it. */
+  popOut: () => boolean;
+  /** Bring it back into the docked drawer. */
+  popIn: () => void;
 };
 
 const CLOSED: RaisedHandsApi = {
@@ -61,6 +72,10 @@ const CLOSED: RaisedHandsApi = {
   close: () => undefined,
   dismiss: () => undefined,
   messagePerson: () => undefined,
+  poppedOut: false,
+  popoutRoot: null,
+  popOut: () => false,
+  popIn: () => undefined,
 };
 
 const RaisedHandsContext = createContext<RaisedHandsApi | null>(null);
@@ -92,6 +107,11 @@ export function useRaisedHandsController(tools: {
     toolsRef.current = tools;
   });
   const [chatMention, setChatMention] = useState<ChatMentionSeed | null>(null);
+  /* The queue in its own browser window. Same shape as ToolApi.popOut, kept
+   * here because the queue is not a ToolId. */
+  const popoutRef = useRef<PopoutHandle | null>(null);
+  const [popoutRoot, setPopoutRoot] = useState<HTMLElement | null>(null);
+
   const mentionNonce = useRef(0);
 
   const setOpen = useCallback((next: boolean) => {
@@ -113,6 +133,14 @@ export function useRaisedHandsController(tools: {
   }, [setOpen]);
 
   const toggle = useCallback(() => {
+    // In its own window: the bar button closes it, as it does for Chat.
+    if (popoutRef.current) {
+      const handle = popoutRef.current;
+      popoutRef.current = null;
+      setPopoutRoot(null);
+      handle.close();
+      return;
+    }
     if (openRef.current) {
       close();
       return;
@@ -122,6 +150,59 @@ export function useRaisedHandsController(tools: {
     if (begun.restore) toolsRef.current.closePanel();
     setOpen(true);
   }, [close, setOpen]);
+
+  const popOut = useCallback(() => {
+    if (popoutRef.current) {
+      popoutRef.current.win.focus();
+      return true;
+    }
+    const handle: PopoutHandle | null = openPopout({
+      name: "raised-hands",
+      title: "Raised hands",
+      // Closing the OS window puts the queue back in the drawer.
+      onClosed: () => {
+        if (popoutRef.current !== handle) return;
+        popoutRef.current = null;
+        setPopoutRoot(null);
+        const begun = beginRaisedHands(toolsRef.current.panelTab);
+        restoreRef.current = begun.restore as ToolId | null;
+        if (begun.restore) toolsRef.current.closePanel();
+        setOpen(true);
+      },
+    });
+    if (!handle) return false;
+    popoutRef.current = handle;
+    setPopoutRoot(handle.root);
+    // Out of the drawer, putting back whatever it covered (or nothing, which
+    // gives the video its full width).
+    if (openRef.current) close();
+    return true;
+  }, [close, setOpen]);
+
+  const popIn = useCallback(() => {
+    const handle = popoutRef.current;
+    if (!handle) return;
+    popoutRef.current = null;
+    setPopoutRoot(null);
+    handle.close();
+    const begun = beginRaisedHands(toolsRef.current.panelTab);
+    restoreRef.current = begun.restore as ToolId | null;
+    if (begun.restore) toolsRef.current.closePanel();
+    setOpen(true);
+  }, [setOpen]);
+
+  // Leaving the room (or reloading) closes the window with it.
+  useEffect(() => {
+    const closeIt = () => {
+      popoutRef.current?.close();
+      popoutRef.current = null;
+    };
+    window.addEventListener("pagehide", closeIt);
+    return () => {
+      window.removeEventListener("pagehide", closeIt);
+      closeIt();
+    };
+  }, []);
 
   const messagePerson = useCallback(
     (identity: string, name: string) => {
@@ -152,12 +233,24 @@ export function useRaisedHandsController(tools: {
       close,
       dismiss,
       messagePerson,
+      poppedOut: popoutRoot !== null,
+      popoutRoot,
+      popOut,
+      popIn,
     }),
-    [open, chatMention, toggle, close, dismiss, messagePerson],
+    [open, chatMention, toggle, close, dismiss, messagePerson, popoutRoot, popOut, popIn],
   );
 }
 
-export function RaisedHandsDrawer() {
+/** The queue in its own browser window. Renders nothing until popped out. */
+export function RaisedHandsPopout() {
+  const raised = useRaisedHandsPanel();
+  if (!raised.popoutRoot) return null;
+  return createPortal(<RaisedHandsDrawer variant="window" />, raised.popoutRoot);
+}
+
+export function RaisedHandsDrawer({ variant = "dock" }: { variant?: "dock" | "window" } = {}) {
+  const inWindow = variant === "window";
   const { slug, realtime, roster } = useRoomUI();
   const raised = useRaisedHandsPanel();
   const compact = useCompact();
@@ -179,12 +272,14 @@ export function RaisedHandsDrawer() {
 
   const close = raised.close;
   useEffect(() => {
+    // Escape belongs to the room window; the popup has its own close button.
+    if (inWindow) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [close]);
+  }, [close, inWindow]);
 
   const run = useCallback(
     async (key: string, work: () => Promise<void>) => {
@@ -202,12 +297,14 @@ export function RaisedHandsDrawer() {
 
   return (
     <aside
-      className={`room-dark z-40 flex flex-col bg-surface shadow-2xl ${
-        compact
-          ? "absolute inset-x-0 bottom-0"
-          : "absolute inset-y-0 right-0 w-[22.5rem] max-w-full overflow-hidden border-l border-line"
+      className={`room-dark flex flex-col bg-surface ${
+        inWindow
+          ? "h-full min-h-0"
+          : compact
+            ? "absolute inset-x-0 bottom-0 z-40 shadow-2xl"
+            : "absolute inset-y-0 right-0 z-40 w-[22.5rem] max-w-full overflow-hidden border-l border-line shadow-2xl"
       }`}
-      style={compact ? { top: COMPACT_STAGE_HEIGHT } : undefined}
+      style={!inWindow && compact ? { top: COMPACT_STAGE_HEIGHT } : undefined}
       role="complementary"
       aria-label={`Raised hands (${hands.length})`}
     >
@@ -229,14 +326,47 @@ export function RaisedHandsDrawer() {
         >
           {busy === "all" ? "Lowering…" : "Lower all"}
         </button>
-        <button
-          type="button"
-          onClick={() => raised.close()}
-          aria-label="Close panel"
-          className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-        >
-          <CloseIcon className="size-4" />
-        </button>
+        {inWindow ? (
+          <button
+            type="button"
+            onClick={() => raised.popIn()}
+            title="Back to the meeting window"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium text-ink-2 transition-colors outline-none hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
+          >
+            <DockIcon className="size-4" />
+            Back to meeting
+          </button>
+        ) : (
+          <>
+            {!compact && (
+              <button
+                type="button"
+                onClick={() => {
+                  // Straight from the click: window.open needs the gesture.
+                  if (!raised.popOut()) {
+                    notify(
+                      "Your browser blocked the new window. Allow pop-ups for this site and try again.",
+                      "error",
+                    );
+                  }
+                }}
+                aria-label="Open raised hands in a new window"
+                title="Open in a new window (move it to another screen)"
+                className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              >
+                <PopOutIcon className="size-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => raised.close()}
+              aria-label="Close panel"
+              className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              <CloseIcon className="size-4" />
+            </button>
+          </>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {hands.length === 0 ? (

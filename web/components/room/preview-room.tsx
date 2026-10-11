@@ -14,7 +14,7 @@ import {
 import { DEFAULT_PREFERENCES } from "@/lib/media";
 import { useStageLayout } from "@/lib/layout";
 import { useToolLayout, type ToolId } from "@/lib/tools";
-import { COMPACT_STAGE_HEIGHT, useCompact } from "@/lib/compact";
+import { stageFrame, useCompact } from "@/lib/compact";
 import type { MediaPermissions } from "@/lib/permissions";
 import type { FileShareApi } from "@/lib/file-share";
 import type { HostSurvey } from "@/lib/api-types";
@@ -162,7 +162,7 @@ export function PreviewRoom() {
   // module comment), so it doesn't inherit that logic automatically and has
   // to repeat it to preview the real behavior rather than the old one.
   const compact = useCompact();
-  const stagePanelOpen = compact && (Boolean(tools.panelTab) || raisedHands.open);
+  const stagePanelOpen = Boolean(tools.panelTab) || raisedHands.open;
 
   useEffect(() => {
     tools.setStage(stageEl);
@@ -230,7 +230,7 @@ export function PreviewRoom() {
                 ref={setStageEl}
                 data-stage
                 className="absolute inset-x-0 top-0 flex flex-col"
-                style={stagePanelOpen ? { height: COMPACT_STAGE_HEIGHT } : { bottom: 0 }}
+                style={stageFrame(compact, stagePanelOpen)}
               >
                 <PreviewStage />
               </div>
