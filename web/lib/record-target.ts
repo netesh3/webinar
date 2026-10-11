@@ -11,8 +11,9 @@
  * destination menu and one click there starts. `clearLegacyRememberedTarget`
  * removes what an older build may have stored so it can never resurface.
  *
- * The capture pipelines themselves live in lib/recorder.ts (cloud, composited)
- * and lib/screen-recorder.ts + lib/local-recording.ts (this computer).
+ * Cloud composites in lib/recorder.ts (or on the server, in egress mode).
+ * This computer records that same webinar and writes it through
+ * lib/local-recording.ts. Neither path asks the host to share their screen.
  */
 
 export type RecordTarget = "cloud" | "local";
@@ -39,12 +40,11 @@ export type RecordCapabilities = {
   cloudEnabled: CloudSetting;
   /** AppConfig.recordingMode === "egress": the server records, the browser does nothing. */
   isEgress: boolean;
-  /** lib/recorder.ts canRecord(): this browser can composite + encode the stage. */
+  /** lib/recorder.ts canRecord(): this browser can composite + encode the stage.
+   *  Local recording uses the same compositor, so it needs this too. */
   canComposite: boolean;
   /** lib/local-recording.ts canRecordLocally(): File System Access (showSaveFilePicker). */
   canSaveLocally: boolean;
-  /** lib/screen-recorder.ts canRecordScreen(): getDisplayMedia + MediaRecorder. */
-  canCaptureScreen: boolean;
 };
 
 export function recordAvailability(caps: RecordCapabilities): RecordAvailability {
@@ -64,15 +64,22 @@ export function recordAvailability(caps: RecordCapabilities): RecordAvailability
     cloud = { available: true, reason: null };
   }
 
-  // Screen capture and saving straight to disk are both Chrome/Edge-on-desktop
-  // features in practice, so one short reason covers either missing.
-  const localReason =
-    caps.canCaptureScreen && caps.canSaveLocally ? null : "Needs Chrome or Edge on a computer.";
+  // Saving straight to disk is Chrome/Edge on a desktop. The recording itself
+  // is the composited webinar, so a browser that cannot composite cannot
+  // record locally either. getDisplayMedia is not required.
+  let local: TargetAvailability;
+  if (!caps.canSaveLocally) {
+    local = { available: false, reason: "Needs Chrome or Edge on a computer." };
+  } else if (!caps.canComposite) {
+    local = {
+      available: false,
+      reason: "This browser can't record the session. Try Chrome, Edge or Safari.",
+    };
+  } else {
+    local = { available: true, reason: null };
+  }
 
-  return {
-    cloud,
-    local: { available: localReason === null, reason: localReason },
-  };
+  return { cloud, local };
 }
 
 export function anyTargetAvailable(availability: RecordAvailability): boolean {
