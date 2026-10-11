@@ -509,7 +509,7 @@ function ZoomableVideo({
         />
       </div>
 
-      {/* Top-left, clear of the pin button and the layout switcher on the right.
+      {/* Top-left, clear of the pin button.
           Revealed on hover or keyboard focus, like the pin — a permanent toolbar
           over somebody's slides is in the way of the thing you came to read.
           Also revealed by a tap for the devices hover does not reach — see

@@ -72,7 +72,7 @@ import { CtaPopup } from "./cta-popup";
 import { CaptionOverlay } from "./caption-overlay";
 import { FileShareBar } from "./file-share-bar";
 import { MeetingInfo } from "./meeting-info";
-import { ViewsMenu } from "./views-menu";
+import { LayoutModeSwitch, ViewsMenu } from "./views-menu";
 import { Stage } from "./stage";
 import {
   RaisedHandsProvider,
@@ -1543,6 +1543,7 @@ export function RoomHeader() {
       <div className="pointer-events-auto flex shrink-0 items-center gap-1">
         {/* Nothing to arrange when the stage is a single CDN video element —
             every option in here would leave the picture exactly as it was. */}
+        <LayoutModeSwitch />
         {!cdnStage && <ViewsMenu />}
 
         <span className="hidden sm:block">

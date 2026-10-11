@@ -157,7 +157,7 @@ export function Stage() {
    *
    * An earlier version quietly RENDERED a viewer sitting in the grid as spotlight
    * when a share started, without telling `stage.mode` about it. That had to go,
-   * because the toggle on the stage reads `stage.mode` directly: choosing Grid from
+   * because the header switch reads `stage.mode` directly: choosing Grid from
    * the footer menu during a share left the label reading "Layout · Grid" over a
    * stage rendering spotlight. Two controls for one setting must not be able to
    * disagree.
@@ -282,30 +282,6 @@ export function Stage() {
 
   return (
     <div className="relative flex size-full min-h-0 min-w-0 flex-col">
-      {/* A quick toggle over the stage, alongside the full Layout control in the
-          footer. Both write the same one piece of state and neither reinterprets it,
-          which is what keeps them honest — see the note on the mode above. One click
-          to flip views is worth keeping for a viewer doing it repeatedly while a
-          presenter switches between slides and faces. */}
-      {ordered.length > 1 && (
-        <div className="absolute top-2 right-2 z-20 flex items-center gap-1 rounded-lg bg-black/55 p-0.5 backdrop-blur">
-          {(["speaker", "grid", "spotlight"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={mode === option}
-              title={`${option[0].toUpperCase()}${option.slice(1)} view`}
-              onClick={() => stage.setMode(option)}
-              className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
-                mode === option ? "bg-white/25 text-white" : "text-white/70 hover:text-white"
-              }`}
-            >
-              {option === "speaker" ? "Speaker" : option === "grid" ? "Grid" : "Spotlight"}
-            </button>
-          ))}
-        </div>
-      )}
-
       {solo ? (
         <SoloStage tile={solo} pinned={pinned} onTogglePin={stage.togglePin} />
       ) : mode === "grid" ? (
@@ -397,7 +373,7 @@ function SpeakerLayout({
           zoomable={sharing}
           pinned={pinned === focus.key}
           // No pin on a full-bleed share: it is already the focus, so the control
-          // would do nothing, and at full bleed it lands under the layout switcher.
+          // would do nothing.
           onTogglePin={sharing ? undefined : () => onTogglePin(focus.key)}
         />
       </div>
@@ -529,12 +505,12 @@ function SpotlightLayout({
 
 type Corner = "tl" | "tr" | "bl" | "br";
 
-// top-12, not top-2, on the upper corners: the layout switcher sits at top-2 right-2
-// and the zoom controls at top-1.5 left-1.5, and an overlay is not an excuse to
-// cover a control.
+// top-12 on the left: the share's zoom controls sit at top-1.5 left-1.5, and an
+// overlay is not an excuse to cover them. The right is clear — the layout
+// switcher lives in the room header.
 const CORNER: Record<Corner, string> = {
   tl: "top-12 left-2",
-  tr: "top-12 right-2",
+  tr: "top-2 right-2",
   bl: "bottom-2 left-2",
   br: "bottom-2 right-2",
 };
