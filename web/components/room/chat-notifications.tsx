@@ -165,6 +165,13 @@ export function ChatNotifications({
   if (chatVisible && preview) setPreview(null);
   if (chatVisible && mention) setMention(null);
 
+  /* Nor while presenting a screen: the card would go out in the share, names and
+   * messages included. A shared video file captures nothing of the page, so it
+   * keeps them. The unread badge comes back once the share ends. */
+  const presenting = isScreenShareEnabled && !fileShare.active;
+  if (presenting && preview) setPreview(null);
+  if (presenting && mention) setMention(null);
+
   /* The withdrawal timer, keyed on the card itself.
    *
    * `coalesce` returns a new object for every arrival, so a run of messages keeps

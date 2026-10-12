@@ -340,7 +340,12 @@ export function ControlBar() {
     realtime.hands.length,
   );
   const raisedWhere = raisedHandsPlacement(compact, raisedCount);
-  const raisedBadge = raisedHandsBadgeCount(raisedCount);
+  /* Sharing the screen also shares this bar, if the presenter picked Entire screen
+   * or this window. The browser cannot leave our own window out of that capture, so
+   * the numbers are withheld instead: headcount, raised hands, unread chat and Q&A.
+   * A shared video file captures nothing of the page, so it keeps them. */
+  const presenting = previewChrome ? previewSharing : isScreenShareEnabled && !fileShare.active;
+  const raisedBadge = presenting ? null : raisedHandsBadgeCount(raisedCount);
 
   /* The bar reports itself as a drop zone through state and an effect.
    *
@@ -668,16 +673,23 @@ export function ControlBar() {
    *  it has its own button — and the headcount is not one either: this feeds
    *  gridBadge's "something needs your attention" total on More, and a room of
    *  twenty people with nothing unread must not read as twenty unread things. */
-  const badgeFor = (id: ToolId): number | undefined => unread[id] || undefined;
+  const badgeFor = (id: ToolId): number | undefined =>
+    presenting ? undefined : unread[id] || undefined;
 
   /** What the button itself shows. Participants is always the headcount, even
    *  while hands are up. Everything else is badgeFor's attention count. */
   const countFor = (id: ToolId): number | undefined =>
-    id === "participants" ? participantsButtonCount(headcount, realtime.hands.length) : badgeFor(id);
+    id === "participants"
+      ? presenting
+        ? undefined
+        : participantsButtonCount(headcount, realtime.hands.length)
+      : badgeFor(id);
+  const chatMentions = presenting ? 0 : mentions;
 
   const labelFor = (id: ToolId): string => {
     const t = tool(id);
-    if (id === "participants" && headcount !== undefined) return `Participants · ${headcount}`;
+    if (id === "participants" && headcount !== undefined && !presenting)
+      return `Participants · ${headcount}`;
     if (id === "hand") return realtime.myHandRaised ? "Lower hand" : "Raise hand";
     // Says which layout is in use, so the footer answers the question without
     // being opened.
@@ -971,7 +983,7 @@ export function ControlBar() {
                 label={tool(id).label}
                 active={activeFor(id)}
                 badge={countFor(id)}
-                mentions={id === "chat" ? mentions : 0}
+                mentions={id === "chat" ? chatMentions : 0}
                 onClick={() => activate(id)}
                 icon={<Icon className="size-5" />}
               />
@@ -1072,7 +1084,7 @@ export function ControlBar() {
                       label={labelFor(slot.tool)}
                       active={activeFor(slot.tool)}
                       badge={countFor(slot.tool)}
-                      mentions={slot.tool === "chat" ? mentions : 0}
+                      mentions={slot.tool === "chat" ? chatMentions : 0}
                       pinned={slot.pinned}
                       dragging={drag.drag?.tool === slot.tool}
                       onActivate={() => activate(slot.tool)}
@@ -1133,7 +1145,7 @@ export function ControlBar() {
             mentions={
               !gridVisible &&
               (grid.includes("chat") || (panelItems?.includes("chat") ?? false))
-                ? mentions
+                ? chatMentions
                 : 0
             }
             onToggle={() => {
