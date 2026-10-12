@@ -3,7 +3,7 @@
 import { useParticipants } from "@livekit/components-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useCompact } from "@/lib/compact";
-import { CopyIcon, InfoIcon } from "../icons";
+import { CheckIcon, CopyIcon, InfoIcon } from "../icons";
 import { useShareOrigin, useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { participantRole } from "./participants";
@@ -32,7 +32,11 @@ export function MeetingInfo() {
   const compact = useCompact();
   const participants = useParticipants();
   const [open, setOpen] = useState(false);
+  /** The copy button stays on screen after a successful copy, so the icon itself
+   *  has to confirm it. A toast alone is easy to miss under the stage. */
+  const [copied, setCopied] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const titleId = useId();
 
   const webinarId = join.room.replace(/^webinar_/, "");
@@ -46,7 +50,10 @@ export function MeetingInfo() {
       })();
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      clearTimeout(copiedTimer.current);
+      return;
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
@@ -69,7 +76,16 @@ export function MeetingInfo() {
       return;
     }
     notify("Invitation copied.", "ok");
+    setCopied(true);
+    clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), 1800);
   }, [url, notify]);
+
+  useEffect(() => () => clearTimeout(copiedTimer.current), []);
+
+  // Closing the card drops the confirmation. Done while rendering so reopening
+  // does not flash the check for a frame.
+  if (!open && copied) setCopied(false);
 
   return (
     <div ref={wrap} className="relative min-w-0">
@@ -107,10 +123,14 @@ export function MeetingInfo() {
                 <button
                   type="button"
                   onClick={() => void copyLink()}
-                  aria-label="Copy invite link"
+                  aria-label={copied ? "Copied" : "Copy invite link"}
                   className="grid size-11 shrink-0 place-items-center rounded-lg text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40 sm:size-8"
                 >
-                  <CopyIcon className="size-4" />
+                  {copied ? (
+                    <CheckIcon className="size-4 text-ok" />
+                  ) : (
+                    <CopyIcon className="size-4" />
+                  )}
                 </button>
               </span>
             </InfoRow>
