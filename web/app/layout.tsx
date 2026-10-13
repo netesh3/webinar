@@ -22,6 +22,7 @@ const geistSans = Geist({
 const homeDisplay = Fraunces({
   variable: "--font-home-display",
   subsets: ["latin"],
+  style: ["normal", "italic"],
 });
 
 const homeSans = Outfit({
