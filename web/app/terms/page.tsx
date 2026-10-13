@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   title: "Terms of Service — Webinar Liv",
   description:
     "Terms governing use of the Webinar Liv webinar hosting platform at webinarliv.com.",
+  alternates: { canonical: "/terms" },
 };
 
 const UPDATED = "September 11, 2026";

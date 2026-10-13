@@ -5,6 +5,10 @@ import {
   SignedInHomeRedirect,
 } from "@/components/marketing/home-page";
 import { TopNav } from "@/components/top-nav";
+import { homeJsonLd, homeMetadata } from "@/lib/home-seo";
+import { siteOrigin } from "@/lib/site-origin";
+
+export const metadata = homeMetadata;
 
 /* Front door.
  *
@@ -12,9 +16,14 @@ import { TopNav } from "@/components/top-nav";
  * Always-on marketing alias: /home (even when signed in).
  */
 
-export default function HomeRoute() {
+export default async function HomeRoute() {
+  const jsonLd = homeJsonLd(await siteOrigin());
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <SignedInHomeRedirect />
       <GoogleOneTap next="/browse" />
       <TopNav />

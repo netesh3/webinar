@@ -2,6 +2,9 @@ import { ContinueAsPreviewHost } from "@/components/continue-as-preview-host";
 import { GoogleOneTap } from "@/components/google-one-tap";
 import { HomePage } from "@/components/marketing/home-page";
 import { TopNav } from "@/components/top-nav";
+import { homeMetadata } from "@/lib/home-seo";
+
+export const metadata = homeMetadata;
 
 /* Always show marketing — even when auth bypass or signed-in would redirect `/`.
  * Belt-and-suspenders with /?marketing=1. */

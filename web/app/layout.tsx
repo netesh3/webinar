@@ -3,6 +3,7 @@ import { Fraunces, Geist, Outfit } from "next/font/google";
 import Script from "next/script";
 import { AppProviders } from "@/components/providers";
 import { api } from "@/lib/api";
+import { siteOrigin } from "@/lib/site-origin";
 import type { AppConfig } from "@/lib/api-types";
 import { SidebarBoot } from "@/components/sidebar-boot";
 import { sidebarBootScript } from "@/lib/sidebar";
@@ -39,6 +40,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const description =
     "Schedule and host webinars with chat, Q&A, polls, screen share, and admit controls. Self-hosted on open-source infrastructure.";
   return {
+    // Resolves each page's canonical URL, so www and apex are not indexed twice.
+    metadataBase: new URL(await siteOrigin()),
     title,
     description,
     applicationName: name,
