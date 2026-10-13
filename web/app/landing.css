@@ -616,6 +616,40 @@
 }
 
 @media (min-width: 1100px) {
+  .lp .hero .wrap {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.82fr) minmax(0, 1.18fr);
+    align-items: center;
+    gap: 28px 32px;
+    max-width: 1280px;
+  }
+
+  .lp .hero-copy {
+    justify-items: start;
+    max-width: none;
+    margin: 0;
+    text-align: left;
+    gap: 18px;
+  }
+
+  .lp .hero .h1 {
+    font-size: clamp(40px, 3.2vw, 54px);
+  }
+
+  .lp .hero-lede {
+    max-width: 34rem;
+  }
+
+  .lp .hero .cta-row,
+  .lp .hero .checks {
+    justify-content: flex-start;
+  }
+
+  .lp .hero-visual {
+    max-width: none;
+    margin: 0;
+  }
+
   .lp .hv-float {
     position: absolute;
     z-index: 2;
@@ -623,16 +657,18 @@
     box-shadow: var(--sh-4);
   }
 
+  /* Sit on the audience row, under the host's face. */
   .lp .hv-left {
-    left: -150px;
-    top: 26%;
-    transform: rotate(-2deg);
+    left: 12px;
+    top: auto;
+    bottom: 64px;
+    transform: none;
   }
 
   .lp .hv-right {
-    right: -150px;
-    bottom: 14%;
-    transform: rotate(2deg);
+    right: 12px;
+    bottom: 64px;
+    transform: none;
   }
 }
 
@@ -1849,6 +1885,159 @@
 
 .lp .checks.on-dark .ic {
   color: #4ade80;
+}
+
+.lp .pricing {
+  background: #fff;
+}
+
+.lp .billing {
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--mist);
+}
+
+.lp .billing button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.lp .billing button[aria-checked="true"] {
+  background: #fff;
+  box-shadow: var(--sh-2);
+  color: var(--ink);
+}
+
+.lp .save {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+  font-size: 12px;
+}
+
+.lp .plans {
+  display: grid;
+  gap: 20px;
+}
+
+.lp .plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 30px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: var(--sh-1);
+}
+
+.lp .plan h3 {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.lp .plan header p {
+  margin-top: 4px;
+  font-size: 15px;
+  color: var(--ink-3);
+}
+
+.lp .price {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  line-height: 1;
+}
+
+.lp .price .cur {
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.lp .price b {
+  font-size: 60px;
+  letter-spacing: -0.045em;
+}
+
+.lp .price .per {
+  align-self: flex-end;
+  margin: 0 0 9px 6px;
+  font-size: 15px;
+  color: var(--ink-3);
+}
+
+.lp .billed {
+  margin-top: -8px;
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+.lp .plan .ticks li {
+  font-size: 15px;
+}
+
+.lp .plan-pop {
+  border-color: transparent;
+  background: linear-gradient(180deg, #f4f7ff, #fff 42%);
+  box-shadow: 0 30px 60px -28px rgba(37, 99, 235, 0.5);
+}
+
+.lp .plan-pop::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  padding: 2px;
+  border-radius: 25px;
+  background: var(--grad);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.lp .plan-badge {
+  position: absolute;
+  top: -13px;
+  left: 30px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--grad-btn);
+  box-shadow: 0 8px 18px -8px rgba(37, 99, 235, 0.7);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.lp .pricing-foot {
+  margin-top: 28px;
+  font-size: 14px;
+  text-align: center;
+  color: var(--ink-3);
+}
+
+@media (min-width: 960px) {
+  .lp .plans {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .lp .plan-pop {
+    margin-top: -12px;
+  }
 }
 
 .lp.lp-js .reveal {

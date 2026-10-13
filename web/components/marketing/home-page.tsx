@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { HomeLegalFooter, SUPPORT_EMAIL } from "@/components/marketing/legal-page";
 import { useSession } from "@/components/providers";
 import { appHome } from "@/lib/access";
@@ -49,6 +49,7 @@ export function HomePage() {
         <Audience />
         <HowItWorks />
         <EngagementScore />
+        <Pricing />
         <Faq />
         <FinalCta />
       </div>
@@ -566,6 +567,113 @@ function ScorePoint({
         <p>{children}</p>
       </div>
     </li>
+  );
+}
+
+// ------------------------------------------------------------------ pricing
+
+const PLANS: {
+  name: string;
+  who: string;
+  monthly: number;
+  yearly: number;
+  yearlyTotal: string;
+  features: string[];
+  popular?: boolean;
+}[] = [
+  {
+    name: "Starter",
+    who: "For your first webinars",
+    monthly: 29,
+    yearly: 23,
+    yearlyTotal: "$276 billed yearly",
+    features: [
+      "Up to 100 attendees",
+      "Registration pages and email reminders",
+      "Polls, quizzes, Q&A and recording",
+      "Engagement Score",
+    ],
+  },
+  {
+    name: "Pro",
+    who: "For coaches selling programs",
+    monthly: 79,
+    yearly: 63,
+    yearlyTotal: "$756 billed yearly",
+    popular: true,
+    features: [
+      "Up to 500 attendees",
+      "WhatsApp reminders and broadcasts",
+      "Follow-up by engagement group",
+      "Drips, chatbot and shared inbox",
+    ],
+  },
+  {
+    name: "Academy",
+    who: "For academies and teams",
+    monthly: 199,
+    yearly: 159,
+    yearlyTotal: "$1,908 billed yearly",
+    features: [
+      "Up to 1,000 attendees",
+      "Everything in Pro",
+      "Priority support on WhatsApp",
+      "Personal onboarding session",
+    ],
+  },
+];
+
+function Pricing() {
+  const [yearly, setYearly] = useState(false);
+
+  return (
+    <section className="section pricing" id="pricing" aria-labelledby="pricing-title">
+      <div className="wrap">
+        <div className="section-head reveal">
+          <p className="eyebrow">Pricing</p>
+          <h2 id="pricing-title" className="h2">
+            Simple plans that <em>pay for themselves</em>
+          </h2>
+          <p className="lede">Try every Pro feature free for 14 days. No credit card, no setup fee.</p>
+          <div className="billing" role="radiogroup" aria-label="Billing period">
+            <button type="button" role="radio" aria-checked={!yearly} onClick={() => setYearly(false)}>
+              Monthly
+            </button>
+            <button type="button" role="radio" aria-checked={yearly} onClick={() => setYearly(true)}>
+              Yearly <span className="save">Save 20%</span>
+            </button>
+          </div>
+        </div>
+        <div className="plans">
+          {PLANS.map((plan) => (
+            <article key={plan.name} className={plan.popular ? "plan plan-pop reveal" : "plan reveal"}>
+              {plan.popular && <span className="plan-badge">Most popular</span>}
+              <header>
+                <h3>{plan.name}</h3>
+                <p>{plan.who}</p>
+              </header>
+              <p className="price">
+                <span className="cur">$</span>
+                <b>{yearly ? plan.yearly : plan.monthly}</b>
+                <span className="per">/month</span>
+              </p>
+              <p className="billed">{yearly ? plan.yearlyTotal : "Billed monthly"}</p>
+              <Link className={plan.popular ? "btn btn-primary btn-block" : "btn btn-ghost btn-block"} href="/signup">
+                {plan.popular ? "Start your 14-day free trial" : "Start free trial"}
+              </Link>
+              <ul className="ticks">
+                {plan.features.map((feature) => (
+                  <li key={feature}>{feature}</li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
+        <p className="pricing-foot">
+          Prices in USD. WhatsApp message fees are billed by Meta to your own WhatsApp Business account.
+        </p>
+      </div>
+    </section>
   );
 }
 
