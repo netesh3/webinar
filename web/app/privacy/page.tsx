@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   title: "Privacy Policy — Webinar Liv",
   description:
     "How Webinar Liv collects, uses, and shares personal data for webinar hosting and attendance.",
+  alternates: { canonical: "/privacy" },
 };
 
 const UPDATED = "September 21, 2026";
