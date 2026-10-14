@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useJoinKeys, useRegistrations } from "./registrations";
 import { Alert, CopyField, Spinner } from "./controls";
+import { startGoogleOAuth } from "./google-continue";
 import { ArrowLeftIcon, CalendarIcon, CheckIcon, UserPlusIcon } from "./icons";
 import { useSession, useShareOrigin, useAppConfig } from "./providers";
 import { Badge, Button, ButtonLink } from "./ui";
@@ -11,7 +12,13 @@ import { DIAL_CODES, dialOptions } from "@/lib/dial-codes";
 import { formatDay, formatTime, formatTimeRange, tzLabel } from "@/lib/format";
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import { ApiError, api } from "@/lib/api";
-import type { Account, Registration, Webinar } from "@/lib/api-types";
+import type { Account, RegisterRequest, Registration, Webinar } from "@/lib/api-types";
+import {
+  clearPendingWebinarRegister,
+  isGmailAddress,
+  readPendingWebinarRegister,
+  savePendingWebinarRegister,
+} from "@/lib/webinar-register";
 import { openRoomTab } from "@/lib/open-room";
 import { CHECKBOX_YES } from "@/lib/registration-questions";
 import { WhatsAppOptInCheckbox } from "@/engage";
@@ -198,6 +205,10 @@ export function RegisterForm({ webinar: w }: { webinar: Webinar }) {
   const { account, status } = useSession();
   const existing = registrationFor(w.id);
 
+  useEffect(() => {
+    if (existing) clearPendingWebinarRegister(w.id);
+  }, [existing, w.id]);
+
   // A lookup that failed leaves the answer unknown. Offering the form anyway is
   // the right fallback: registering again is idempotent and returns the same join
   // key, so the worst case is one wasted click rather than a dead page.
@@ -217,7 +228,7 @@ export function RegisterForm({ webinar: w }: { webinar: Webinar }) {
             join key back.
           </Alert>
         </div>
-        <EntryChoice
+        <RegisterEntry
           key={account?.id ?? "guest"}
           webinar={w}
           account={account}
@@ -241,7 +252,7 @@ export function RegisterForm({ webinar: w }: { webinar: Webinar }) {
   return (
     <>
       {w.series && <SeriesCovers series={w.series} />}
-    <EntryChoice
+    <RegisterEntry
       key={account?.id ?? "guest"}
       webinar={w}
       account={account}
@@ -258,6 +269,64 @@ function SeriesCovers({ series }: { series: { summary?: string } }) {
       {series.summary ? ` — ${series.summary}` : ""}. You will not be asked to
       sign up again for each one.
     </p>
+  );
+}
+
+/* The form, unless a Gmail visitor just came back from Google.
+ *
+ * The pending body was saved before the redirect and rides in sessionStorage,
+ * which survives that same-tab round trip. Checking it before the ordinary
+ * form means a required answer is not dropped by the signed-in shortcut, which
+ * registers from the account alone. The first paint is a placeholder on the
+ * server and the client alike — reading storage during render would not match.
+ */
+function RegisterEntry({
+  webinar,
+  account,
+  onRegistered,
+}: {
+  webinar: Webinar;
+  account: Account | null;
+  onRegistered: (reg: Registration) => void;
+}) {
+  const [phase, setPhase] = useState<"check" | "resume" | "form">("check");
+  const [draft, setDraft] = useState<RegisterRequest | null>(null);
+
+  useEffect(() => {
+    // sessionStorage is empty during SSR. Reading it while rendering would not
+    // match the server HTML, so the check waits until after mount.
+    /* eslint-disable react-hooks/set-state-in-effect -- external sessionStorage, read once after mount */
+    if (account) {
+      const pending = readPendingWebinarRegister(webinar.id);
+      if (pending) {
+        setDraft(pending);
+        setPhase("resume");
+        return;
+      }
+    }
+    setPhase("form");
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [account, webinar.id]);
+
+  if (phase === "check") {
+    return <div className="h-72 animate-pulse rounded-xl bg-surface-2" />;
+  }
+  if (phase === "resume" && draft && account) {
+    return (
+      <ResumePendingRegister
+        webinar={webinar}
+        account={account}
+        draft={draft}
+        onRegistered={onRegistered}
+      />
+    );
+  }
+  return (
+    <EntryChoice
+      webinar={webinar}
+      account={account}
+      onRegistered={onRegistered}
+    />
   );
 }
 
@@ -618,6 +687,69 @@ function KnownAttendeeRegister({
   );
 }
 
+/* After Google, post the form that was saved before the redirect.
+ *
+ * The email is the account Google just confirmed, not whatever was typed, so
+ * a different Google account still lands on a registration for that account.
+ * A failure drops onto the form; the person is signed in, so the next submit
+ * is the ordinary one.
+ */
+function ResumePendingRegister({
+  webinar: w,
+  account,
+  draft,
+  onRegistered,
+}: {
+  webinar: Webinar;
+  account: Account;
+  draft: RegisterRequest;
+  onRegistered: (reg: Registration) => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    const name = splitName(account.name);
+    api
+      .register(w.id, {
+        ...draft,
+        email: account.email,
+        firstName: draft.firstName.trim() || name.firstName,
+        lastName: draft.lastName.trim() || name.lastName,
+        phone: draft.phone || account.phone || "",
+      })
+      .then((reg) => {
+        clearPendingWebinarRegister(w.id);
+        onRegistered(reg);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not register.");
+      });
+  }, [account, draft, onRegistered, w.id]);
+
+  if (error) {
+    return (
+      <RegisterFields
+        webinar={w}
+        account={account}
+        onRegistered={onRegistered}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <WhenHeader webinar={w} title="Register & Join" />
+      <p className="text-[13px] leading-relaxed text-ink-2">
+        Registering {account.name} ({account.email}).
+      </p>
+      <div className="mt-3 h-24 animate-pulse rounded-xl bg-surface-2" />
+    </div>
+  );
+}
+
 function RegisterFields({
   webinar: w,
   account,
@@ -681,6 +813,23 @@ function RegisterFields({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const { googleAuth, supabaseUrl, supabaseAnonKey } = useAppConfig();
+
+  async function redirectGmail(body: RegisterRequest) {
+    savePendingWebinarRegister(w.id, body);
+    try {
+      await startGoogleOAuth({
+        supabaseUrl,
+        supabaseAnonKey,
+        next: `/webinars/${w.id}`,
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not start Google sign-in.",
+      );
+      setBusy(false);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -688,32 +837,52 @@ function RegisterFields({
     setError(null);
     setFieldErrors({});
 
+    const { fullName, ...rest } = form;
+    const body: RegisterRequest = {
+      ...rest,
+      ...splitName(fullName),
+      /* `+<dial><national>`, with anything the person typed for legibility stripped — and
+       * EMPTY when nothing was typed. The number is optional now, and sending a bare
+       * "+91" for somebody who left it blank would store a country code as a phone
+       * number: unusable, and indistinguishable in the export from a real one.
+       * The server normalises again — it has to, since a pasted number never comes
+       * through here. */
+      phone: phoneDigits
+        ? `+${DIAL_CODES[dialIso] ?? ""}${phoneDigits}`
+        : "",
+      answers,
+      consent,
+      /* Never sent without a number: the server ignores it too, but an opt-in
+       * that reaches the API unqualified would be a consent record pointing at
+       * nothing — somebody in a broadcast audience nobody can reach. */
+      whatsappOptIn: whatsappOptIn && phoneDigits !== "",
+      passcode,
+    };
+
+    /* Gmail on this public form signs in with Google instead of the password
+     * signup or the verification link. The saved body is posted when they come
+     * back, on this same webinar page. Anyone already signed in, and any other
+     * domain, keeps the ordinary register call — that is the email verification
+     * link, and it does not ask for a password. */
+    if (!account && googleAuth && isGmailAddress(body.email)) {
+      await redirectGmail(body);
+      return;
+    }
+
     try {
       // The server validates too and is the authority — this call is the only
       // thing that actually creates a registration or a join key.
-      const { fullName, ...rest } = form;
-      const reg = await api.register(w.id, {
-        ...rest,
-        ...splitName(fullName),
-        /* `+<dial><national>`, with anything the person typed for legibility stripped — and
-         * EMPTY when nothing was typed. The number is optional now, and sending a bare
-         * "+91" for somebody who left it blank would store a country code as a phone
-         * number: unusable, and indistinguishable in the export from a real one.
-         * The server normalises again — it has to, since a pasted number never comes
-         * through here. */
-        phone: phoneDigits
-          ? `+${DIAL_CODES[dialIso] ?? ""}${phoneDigits}`
-          : "",
-        answers,
-        consent,
-        /* Never sent without a number: the server ignores it too, but an opt-in
-         * that reaches the API unqualified would be a consent record pointing at
-         * nothing — somebody in a broadcast audience nobody can reach. */
-        whatsappOptIn: whatsappOptIn && phoneDigits !== "",
-        passcode,
-      });
+      const reg = await api.register(w.id, body);
       onRegistered(reg);
     } catch (err) {
+      if (
+        !account &&
+        err instanceof ApiError &&
+        err.code === "google_signin_required"
+      ) {
+        await redirectGmail(body);
+        return;
+      }
       if (err instanceof ApiError) {
         if (err.fields) setFieldErrors(err.fields);
         setError(err.fields ? "Some fields need attention." : err.message);

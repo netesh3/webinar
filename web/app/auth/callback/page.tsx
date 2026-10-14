@@ -73,6 +73,7 @@ function AuthCallbackInner() {
         const supabase = createSupabaseBrowser(url, anon);
         const code = params.get("code");
         let accessToken: string | undefined;
+        let googleAccessToken: string | undefined;
 
         if (code) {
           const { data, error: exchangeError } =
@@ -81,19 +82,21 @@ function AuthCallbackInner() {
             throw new Error(exchangeError.message);
           }
           accessToken = data.session?.access_token;
+          googleAccessToken = data.session?.provider_token || undefined;
         } else {
           const { data, error: sessionError } = await supabase.auth.getSession();
           if (sessionError) {
             throw new Error(sessionError.message);
           }
           accessToken = data.session?.access_token;
+          googleAccessToken = data.session?.provider_token || undefined;
         }
 
         if (!accessToken) {
           throw new Error("No session returned from Google. Try again.");
         }
 
-        const account = await api.supabaseAuth(accessToken);
+        const account = await api.supabaseAuth(accessToken, googleAccessToken);
         // Drop the short-lived Supabase session; the app cookie is authoritative.
         await supabase.auth.signOut({ scope: "local" }).catch(() => {});
 

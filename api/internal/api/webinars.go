@@ -191,6 +191,20 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	/* A Gmail address on the public form goes through Google, not this post.
+	 *
+	 * Signed-in callers — including the return from that OAuth round-trip —
+	 * register here as usual, so the webinar registration is not dropped.
+	 * Google sign-in has to be configured; otherwise the existing verification
+	 * link is the only door and blocking Gmail would turn the form into a dead
+	 * end. Nothing is written before the redirect: no account, no registration.
+	 */
+	if userID == "" && s.cfg.GoogleAuthEnabled() && gmailAddress(req.Email) {
+		httpx.Error(w, http.StatusConflict, "google_signin_required",
+			"Continue with Google to register this Gmail address.")
+		return
+	}
+
 	reg, err := s.store.Register(r.Context(), slug, req, userID)
 	switch {
 	case errors.Is(err, store.ErrFull):

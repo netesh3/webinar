@@ -4511,12 +4511,15 @@ export interface LoginRequest {
  *  SupabaseAuthRequest exchanges a verified Supabase Auth access token for this
  *  * app's webcast_session cookie.
  *  *
- *  * The browser completes Google (or other) OAuth with Supabase JS; this body is
- *  * what arrives after that redirect. The API never talks to Google directly —
- *  * it only verifies Supabase's JWT and links or creates a local users row.
+ *  * The browser completes Google OAuth with Supabase JS. AccessToken is
+ *  * Supabase's JWT. GoogleAccessToken is the Google access token from that
+ *  * same session, used once to read a phone number from the People API. It may
+ *  * be empty: sign-in still succeeds when Google returns no phone or the call
+ *  * is refused.
  */
 export interface SupabaseAuthRequest {
   accessToken: string;
+  googleAccessToken?: string;
 }
 /**
  *  HostRequest is POST /api/me/host-request.
