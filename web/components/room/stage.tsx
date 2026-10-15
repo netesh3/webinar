@@ -2,7 +2,14 @@
 
 import { useParticipants, useTracks } from "@livekit/components-react";
 import { Track, type LocalVideoTrack } from "livekit-client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   applyBudget,
   filterTiles,
@@ -486,47 +493,40 @@ function SpotlightLayout({
 
 /* The cameras, floating over a shared screen.
  *
- * Zoom-style video panel: while somebody is sharing, the faces sit in a small
- * overlay rather than a strip that steals height from the slides. Four controls:
+ * Compact Zoom-style overlay: faces only, thin border, no tall “Drag to move”
+ * bar and no dashed snap placeholders on the stage. Four controls:
  *
- *   collapse  Chevron hides the tiles; the count stays so people are obvious.
- *   move      Labeled "Drag to move" bar — snaps to the nearest stage corner.
- *   resize    Corner handle grows or shrinks every tile (persisted).
- *   snap hint Dashed corner targets appear while you drag, so the landing
- *             place is visible before you let go.
+ *   collapse  Small chevron on hover; count stays when collapsed.
+ *   move      Drag the frame — free place anywhere on the stage (clamped).
+ *   resize    All four corners; light L-brackets on hover, large hit targets.
+ *   remember  Tile size + position persist in this browser.
  *
  * Move and resize live on their own handles, never on a tile, so they cannot
  * fight the pin button.
  */
 
-type Corner = "tl" | "tr" | "bl" | "br";
+type ResizeCorner = "tl" | "tr" | "bl" | "br";
 
-// top-12 on the left: the share's zoom controls sit at top-1.5 left-1.5, and an
-// overlay is not an excuse to cover them. The right is clear — the layout
-// switcher lives in the room header.
-const CORNER: Record<Corner, string> = {
-  tl: "top-12 left-2",
-  tr: "top-2 right-2",
-  bl: "bottom-2 left-2",
-  br: "bottom-2 right-2",
-};
-
-/** Where the resize handle sits (toward the stage centre) and which way a
- *  drag grows the tiles. Handle on the left → drag left grows; etc. */
-const RESIZE: Record<
-  Corner,
-  { handle: string; cursor: string; sx: 1 | -1; sy: 1 | -1 }
+const RESIZE_CORNERS: Record<
+  ResizeCorner,
+  { cursor: string; sx: 1 | -1; sy: 1 | -1; fixRight: boolean; fixBottom: boolean }
 > = {
-  br: { handle: "left-0 top-0", cursor: "nwse-resize", sx: -1, sy: -1 },
-  bl: { handle: "right-0 top-0", cursor: "nesw-resize", sx: 1, sy: -1 },
-  tr: { handle: "left-0 bottom-0", cursor: "nesw-resize", sx: -1, sy: 1 },
-  tl: { handle: "right-0 bottom-0", cursor: "nwse-resize", sx: 1, sy: 1 },
+  // Growing from a corner keeps the opposite corner planted.
+  br: { cursor: "nwse-resize", sx: 1, sy: 1, fixRight: false, fixBottom: false },
+  bl: { cursor: "nesw-resize", sx: -1, sy: 1, fixRight: true, fixBottom: false },
+  tr: { cursor: "nesw-resize", sx: 1, sy: -1, fixRight: false, fixBottom: true },
+  tl: { cursor: "nwse-resize", sx: -1, sy: -1, fixRight: true, fixBottom: true },
 };
 
 const FLOAT_CAM_W_KEY = "wl-floating-cam-w";
+const FLOAT_CAM_POS_KEY = "wl-floating-cam-pos";
 const FLOAT_CAM_MIN = 96;
 const FLOAT_CAM_MAX = 280;
 const FLOAT_CAM_DEFAULT = 132;
+const FLOAT_MARGIN = 8;
+/** Gap between tiles + panel padding (p-0.5 = 2px each side → 4, gap-1.5 = 6). */
+const FLOAT_GAP = 6;
+const FLOAT_PAD = 4;
 
 function readFloatCamW(): number {
   if (typeof window === "undefined") return FLOAT_CAM_DEFAULT;
@@ -541,10 +541,92 @@ function readFloatCamW(): number {
   return FLOAT_CAM_DEFAULT;
 }
 
-function cornerOf(stage: DOMRect, x: number, y: number): Corner {
-  const right = x > stage.left + stage.width / 2;
-  const bottom = y > stage.top + stage.height / 2;
-  return `${bottom ? "b" : "t"}${right ? "r" : "l"}` as Corner;
+/** Position as fractions of the free space so a window resize keeps the feel. */
+type FloatPos = { fx: number; fy: number };
+
+function readFloatCamPos(): FloatPos | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(FLOAT_CAM_POS_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as FloatPos;
+    if (
+      typeof p?.fx === "number" &&
+      typeof p?.fy === "number" &&
+      Number.isFinite(p.fx) &&
+      Number.isFinite(p.fy)
+    ) {
+      return {
+        fx: Math.min(1, Math.max(0, p.fx)),
+        fy: Math.min(1, Math.max(0, p.fy)),
+      };
+    }
+  } catch {
+    /* private mode / bad JSON */
+  }
+  return null;
+}
+
+function panelSize(tileW: number, tileCount: number, showExtra: boolean) {
+  const extraW = showExtra ? 36 : 0;
+  const width =
+    FLOAT_PAD * 2 +
+    tileCount * tileW +
+    Math.max(0, tileCount - 1) * FLOAT_GAP +
+    (showExtra ? FLOAT_GAP + extraW : 0);
+  const height = FLOAT_PAD * 2 + (tileW * 9) / 16;
+  return { width, height };
+}
+
+function clampPos(
+  left: number,
+  top: number,
+  stageW: number,
+  stageH: number,
+  panelW: number,
+  panelH: number,
+) {
+  const maxL = Math.max(FLOAT_MARGIN, stageW - panelW - FLOAT_MARGIN);
+  const maxT = Math.max(FLOAT_MARGIN, stageH - panelH - FLOAT_MARGIN);
+  return {
+    left: Math.min(maxL, Math.max(FLOAT_MARGIN, left)),
+    top: Math.min(maxT, Math.max(FLOAT_MARGIN, top)),
+  };
+}
+
+function toFractions(
+  left: number,
+  top: number,
+  stageW: number,
+  stageH: number,
+  panelW: number,
+  panelH: number,
+): FloatPos {
+  const freeW = Math.max(1, stageW - panelW - FLOAT_MARGIN * 2);
+  const freeH = Math.max(1, stageH - panelH - FLOAT_MARGIN * 2);
+  return {
+    fx: (left - FLOAT_MARGIN) / freeW,
+    fy: (top - FLOAT_MARGIN) / freeH,
+  };
+}
+
+function fromFractions(
+  pos: FloatPos,
+  stageW: number,
+  stageH: number,
+  panelW: number,
+  panelH: number,
+) {
+  const freeW = Math.max(0, stageW - panelW - FLOAT_MARGIN * 2);
+  const freeH = Math.max(0, stageH - panelH - FLOAT_MARGIN * 2);
+  return clampPos(
+    FLOAT_MARGIN + pos.fx * freeW,
+    FLOAT_MARGIN + pos.fy * freeH,
+    stageW,
+    stageH,
+    panelW,
+    panelH,
+  );
 }
 
 function FloatingCameras({
@@ -558,24 +640,51 @@ function FloatingCameras({
   pinned: string | null;
   onTogglePin: (key: string) => void;
 }) {
-  const [corner, setCorner] = useState<Corner>("br");
   const [open, setOpen] = useState(true);
   const [tileW, setTileW] = useState(readFloatCamW);
-  // Visual drag offset (triggers paint). Pointer identity lives in refs so
-  // move/up still work on the first events before React re-renders.
-  const [drag, setDrag] = useState<{ dx: number; dy: number; hover: Corner } | null>(
+  const [pos, setPos] = useState<FloatPos | null>(readFloatCamPos);
+  const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
+  const [resizing, setResizing] = useState<ResizeCorner | null>(null);
+  const [hover, setHover] = useState(false);
+  const movePtr = useRef<number | null>(null);
+  const moveFrom = useRef<{ x: number; y: number; left: number; top: number } | null>(
     null,
   );
-  const [resizing, setResizing] = useState(false);
-  const movePtr = useRef<number | null>(null);
-  const moveFrom = useRef<{ x: number; y: number } | null>(null);
   const resizePtr = useRef<number | null>(null);
-  const resizeFrom = useRef<{ startW: number; x: number; y: number } | null>(null);
-  // The panel, so the snap can be computed against the stage. Read from the panel's
-  // offsetParent rather than the grip's: the grip sits INSIDE the positioned panel,
-  // so its own offsetParent is the panel and the halves would be measured against a
-  // 150-pixel box instead of the stage.
+  const resizeFrom = useRef<{
+    corner: ResizeCorner;
+    startW: number;
+    x: number;
+    y: number;
+    left: number;
+    top: number;
+    panelW: number;
+    panelH: number;
+  } | null>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState({ left: FLOAT_MARGIN, top: FLOAT_MARGIN });
+
+  const showExtra = hidden > 0;
+  const size = panelSize(tileW, tiles.length, showExtra);
+
+  // Resolve fractions → pixels against the live stage; default bottom-right.
+  useLayoutEffect(() => {
+    const stage = panel.current?.offsetParent as HTMLElement | null;
+    if (!stage) return;
+    const sw = stage.clientWidth;
+    const sh = stage.clientHeight;
+    const next = pos
+      ? fromFractions(pos, sw, sh, size.width, size.height)
+      : clampPos(
+          sw - size.width - FLOAT_MARGIN,
+          sh - size.height - FLOAT_MARGIN,
+          sw,
+          sh,
+          size.width,
+          size.height,
+        );
+    setLayout(next);
+  }, [pos, size.width, size.height, open, tiles.length, showExtra]);
 
   const persistTileW = (w: number) => {
     try {
@@ -585,186 +694,316 @@ function FloatingCameras({
     }
   };
 
-  const resizeAffordance = RESIZE[corner];
+  const persistPos = (p: FloatPos) => {
+    try {
+      window.localStorage.setItem(FLOAT_CAM_POS_KEY, JSON.stringify(p));
+    } catch {
+      /* private mode */
+    }
+  };
 
-  const endMove = (clientX: number, clientY: number) => {
-    if (movePtr.current === null) return;
-    const stage = panel.current?.offsetParent?.getBoundingClientRect();
-    if (stage) setCorner(cornerOf(stage, clientX, clientY));
-    movePtr.current = null;
-    moveFrom.current = null;
-    setDrag(null);
+  const placeAt = (left: number, top: number) => {
+    const stage = panel.current?.offsetParent as HTMLElement | null;
+    if (!stage) return;
+    const clamped = clampPos(
+      left,
+      top,
+      stage.clientWidth,
+      stage.clientHeight,
+      size.width,
+      size.height,
+    );
+    const frac = toFractions(
+      clamped.left,
+      clamped.top,
+      stage.clientWidth,
+      stage.clientHeight,
+      size.width,
+      size.height,
+    );
+    setPos(frac);
+    persistPos(frac);
+    setLayout(clamped);
   };
 
   const applyResize = (clientX: number, clientY: number, persist: boolean) => {
     const start = resizeFrom.current;
     if (!start) return;
-    const dx = (clientX - start.x) * resizeAffordance.sx;
-    const dy = (clientY - start.y) * resizeAffordance.sy;
-    const next = Math.min(
+    const aff = RESIZE_CORNERS[start.corner];
+    const dx = (clientX - start.x) * aff.sx;
+    const dy = (clientY - start.y) * aff.sy;
+    const nextW = Math.min(
       FLOAT_CAM_MAX,
       Math.max(FLOAT_CAM_MIN, Math.round(start.startW + (dx + dy) / 2)),
     );
-    setTileW(next);
-    if (persist) persistTileW(next);
+    const nextSize = panelSize(nextW, tiles.length, showExtra);
+    let left = start.left;
+    let top = start.top;
+    if (aff.fixRight) left = start.left + start.panelW - nextSize.width;
+    if (aff.fixBottom) top = start.top + start.panelH - nextSize.height;
+    setTileW(nextW);
+    const stage = panel.current?.offsetParent as HTMLElement | null;
+    if (stage) {
+      const clamped = clampPos(
+        left,
+        top,
+        stage.clientWidth,
+        stage.clientHeight,
+        nextSize.width,
+        nextSize.height,
+      );
+      const frac = toFractions(
+        clamped.left,
+        clamped.top,
+        stage.clientWidth,
+        stage.clientHeight,
+        nextSize.width,
+        nextSize.height,
+      );
+      setPos(frac);
+      setLayout(clamped);
+      if (persist) {
+        persistTileW(nextW);
+        persistPos(frac);
+      }
+    } else if (persist) {
+      persistTileW(nextW);
+    }
   };
 
-  const endResize = (clientX: number, clientY: number) => {
-    if (resizePtr.current === null) return;
-    applyResize(clientX, clientY, true);
-    resizePtr.current = null;
-    resizeFrom.current = null;
-    setResizing(false);
-  };
+  const showChrome = hover || drag !== null || resizing !== null;
+
+  const startResize = useCallback(
+    (
+      corner: ResizeCorner,
+      pointerId: number,
+      clientX: number,
+      clientY: number,
+      target: HTMLElement,
+    ) => {
+      resizePtr.current = pointerId;
+      resizeFrom.current = {
+        corner,
+        startW: tileW,
+        x: clientX,
+        y: clientY,
+        left: layout.left,
+        top: layout.top,
+        panelW: size.width,
+        panelH: size.height,
+      };
+      setResizing(corner);
+      target.setPointerCapture(pointerId);
+    },
+    [tileW, layout.left, layout.top, size.width, size.height],
+  );
 
   return (
-    <>
-      {/* Snap targets: only while moving, so the resting stage stays calm. */}
-      {drag &&
+    <div
+      ref={panel}
+      className={`group absolute z-20 rounded-[11px] border border-white/20 bg-black/40 p-0.5 shadow-2xl backdrop-blur-md ${
+        drag ? "cursor-grabbing" : "cursor-grab"
+      } ${showChrome ? "border-white/35" : ""}`}
+      style={{
+        left: layout.left + (drag?.dx ?? 0),
+        top: layout.top + (drag?.dy ?? 0),
+        transition: drag || resizing ? undefined : "left 120ms ease-out, top 120ms ease-out",
+      }}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
+      onPointerDown={(e) => {
+        // Drag the frame; corner hits and tile buttons stopPropagation.
+        if (e.button !== 0) return;
+        if ((e.target as HTMLElement).closest("[data-float-resize],[data-float-hide]")) {
+          return;
+        }
+        const stage = panel.current?.offsetParent as HTMLElement | null;
+        if (!stage) return;
+        movePtr.current = e.pointerId;
+        moveFrom.current = {
+          x: e.clientX,
+          y: e.clientY,
+          left: layout.left,
+          top: layout.top,
+        };
+        setDrag({ dx: 0, dy: 0 });
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        if (movePtr.current === e.pointerId && moveFrom.current) {
+          setDrag({
+            dx: e.clientX - moveFrom.current.x,
+            dy: e.clientY - moveFrom.current.y,
+          });
+          return;
+        }
+        if (resizePtr.current === e.pointerId) {
+          applyResize(e.clientX, e.clientY, false);
+        }
+      }}
+      onPointerUp={(e) => {
+        if (movePtr.current === e.pointerId && moveFrom.current) {
+          const left = moveFrom.current.left + (e.clientX - moveFrom.current.x);
+          const top = moveFrom.current.top + (e.clientY - moveFrom.current.y);
+          movePtr.current = null;
+          moveFrom.current = null;
+          setDrag(null);
+          placeAt(left, top);
+          return;
+        }
+        if (resizePtr.current === e.pointerId) {
+          applyResize(e.clientX, e.clientY, true);
+          resizePtr.current = null;
+          resizeFrom.current = null;
+          setResizing(null);
+        }
+      }}
+      onPointerCancel={(e) => {
+        if (movePtr.current === e.pointerId) {
+          movePtr.current = null;
+          moveFrom.current = null;
+          setDrag(null);
+        }
+        if (resizePtr.current === e.pointerId) {
+          resizePtr.current = null;
+          resizeFrom.current = null;
+          setResizing(null);
+        }
+      }}
+    >
+      {/* Overlay chrome — sits on the video, no dedicated header strip. */}
+      <div
+        className={`pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between p-1.5 transition-opacity ${
+          showChrome ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        <span
+          className="pointer-events-none inline-flex h-5 items-center gap-1 rounded-md bg-black/55 px-1.5 backdrop-blur"
+          aria-hidden
+        >
+          <span className="flex gap-[2.5px]">
+            <i className="block size-[3px] rounded-full bg-white/85" />
+            <i className="block size-[3px] rounded-full bg-white/85" />
+            <i className="block size-[3px] rounded-full bg-white/85" />
+          </span>
+        </span>
+        <button
+          type="button"
+          data-float-hide
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label={open ? "Hide the cameras" : `Show ${tiles.length + hidden} cameras`}
+          title={open ? "Hide cameras" : "Show cameras"}
+          className="pointer-events-auto inline-flex h-5 min-w-5 items-center justify-center gap-0.5 rounded-md bg-black/55 px-1 text-[10px] font-semibold text-white/90 outline-none backdrop-blur transition-colors hover:bg-black/75 focus-visible:ring-2 focus-visible:ring-white/50"
+        >
+          <ChevronDownIcon
+            className={`size-3 transition-transform ${open ? "" : "rotate-180"}`}
+          />
+          {!open && <span className="tabular-nums">{tiles.length + hidden}</span>}
+        </button>
+      </div>
+
+      {open ? (
+        <div className="relative flex items-stretch gap-1.5">
+          {tiles.map((tile) => (
+            <div
+              key={tile.key}
+              className="aspect-video shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-white/10"
+              style={{ width: tileW }}
+            >
+              <ParticipantTile
+                tile={tile}
+                size={tileW >= 168 ? "md" : "sm"}
+                pinned={pinned === tile.key}
+                onTogglePin={() => onTogglePin(tile.key)}
+              />
+            </div>
+          ))}
+          {hidden > 0 && (
+            <span className="grid w-9 shrink-0 place-items-center self-stretch rounded-md bg-black/50 text-[12px] font-semibold text-white/85">
+              +{hidden}
+            </span>
+          )}
+        </div>
+      ) : (
+        // Keep a small hit target when collapsed so the panel is still draggable.
+        <div className="h-7 w-16" aria-hidden />
+      )}
+
+      {/* Light L-brackets on hover; large hit targets on all four corners. */}
+      {open &&
         (["tl", "tr", "bl", "br"] as const).map((c) => (
-          <div
+          <FloatCornerHit
             key={c}
-            aria-hidden
-            className={`pointer-events-none absolute z-10 h-14 w-[4.5rem] rounded-lg border border-dashed transition-colors ${
-              CORNER[c]
-            } ${
-              drag.hover === c
-                ? "border-brand/80 bg-brand/15"
-                : "border-white/20 bg-white/5"
-            }`}
+            corner={c}
+            visible={showChrome || resizing === c}
+            active={resizing === c}
+            onStart={startResize}
           />
         ))}
+    </div>
+  );
+}
 
-      <div
-        ref={panel}
-        className={`absolute z-20 flex flex-col gap-1.5 rounded-xl border border-white/12 bg-black/55 p-1.5 shadow-2xl backdrop-blur-md ${
-          CORNER[corner]
+function FloatCornerHit({
+  corner,
+  visible,
+  active,
+  onStart,
+}: {
+  corner: ResizeCorner;
+  visible: boolean;
+  active: boolean;
+  onStart: (
+    corner: ResizeCorner,
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+    target: HTMLElement,
+  ) => void;
+}) {
+  const aff = RESIZE_CORNERS[corner];
+  const place =
+    corner === "tl"
+      ? "left-0 top-0"
+      : corner === "tr"
+        ? "right-0 top-0"
+        : corner === "bl"
+          ? "left-0 bottom-0"
+          : "right-0 bottom-0";
+  const mark =
+    corner === "tl"
+      ? "top-0.5 left-0.5 before:top-0 before:left-0 after:top-0 after:left-0"
+      : corner === "tr"
+        ? "top-0.5 right-0.5 before:top-0 before:right-0 after:top-0 after:right-0"
+        : corner === "bl"
+          ? "bottom-0.5 left-0.5 before:bottom-0 before:left-0 after:bottom-0 after:left-0"
+          : "bottom-0.5 right-0.5 before:bottom-0 before:right-0 after:bottom-0 after:right-0";
+
+  return (
+    <button
+      type="button"
+      data-float-resize
+      aria-label={`Resize from ${corner} corner`}
+      title="Drag to resize"
+      className={`absolute z-40 size-6 touch-none outline-none transition-opacity ${place} ${
+        visible ? "opacity-100" : "opacity-0"
+      }`}
+      style={{ cursor: aff.cursor }}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        e.preventDefault();
+        onStart(corner, e.pointerId, e.clientX, e.clientY, e.currentTarget);
+      }}
+    >
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute size-4 before:absolute before:h-[2.5px] before:w-[13px] before:rounded-[1px] before:bg-white before:shadow-[0_0_0_1px_rgba(0,0,0,0.45)] after:absolute after:h-[13px] after:w-[2.5px] after:rounded-[1px] after:bg-white after:shadow-[0_0_0_1px_rgba(0,0,0,0.45)] ${mark} ${
+          active ? "opacity-100" : "opacity-90"
         }`}
-        style={
-          drag
-            ? { transform: `translate3d(${drag.dx}px, ${drag.dy}px, 0)` }
-            : { transition: "transform 120ms ease-out" }
-        }
-      >
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="Move the camera panel"
-            title="Drag to move"
-            // touch-none so a drag on a tablet moves the panel instead of scrolling.
-            className={`inline-flex h-7 min-w-0 flex-1 touch-none items-center justify-center gap-1.5 rounded-md bg-white/8 px-2 text-[11px] font-semibold text-white/80 outline-none transition-colors hover:bg-white/14 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60 ${
-              drag ? "cursor-grabbing" : "cursor-grab"
-            }`}
-            onPointerDown={(e) => {
-              if (e.button !== 0) return;
-              movePtr.current = e.pointerId;
-              moveFrom.current = { x: e.clientX, y: e.clientY };
-              const stage = panel.current?.offsetParent?.getBoundingClientRect();
-              setDrag({
-                dx: 0,
-                dy: 0,
-                hover: stage ? cornerOf(stage, e.clientX, e.clientY) : corner,
-              });
-              e.currentTarget.setPointerCapture(e.pointerId);
-            }}
-            onPointerMove={(e) => {
-              if (movePtr.current !== e.pointerId || !moveFrom.current) return;
-              const stage = panel.current?.offsetParent?.getBoundingClientRect();
-              setDrag({
-                dx: e.clientX - moveFrom.current.x,
-                dy: e.clientY - moveFrom.current.y,
-                hover: stage ? cornerOf(stage, e.clientX, e.clientY) : corner,
-              });
-            }}
-            onPointerUp={(e) => {
-              if (movePtr.current !== e.pointerId) return;
-              endMove(e.clientX, e.clientY);
-            }}
-            onPointerCancel={(e) => {
-              if (movePtr.current !== e.pointerId) return;
-              movePtr.current = null;
-              moveFrom.current = null;
-              setDrag(null);
-            }}
-          >
-            <span aria-hidden className="tracking-widest text-white/50">
-              ⠿
-            </span>
-            <span className="truncate">Drag to move</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-            aria-label={open ? "Hide the cameras" : `Show ${tiles.length + hidden} cameras`}
-            title={open ? "Hide cameras" : "Show cameras"}
-            className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-white/8 px-1.5 text-[11px] font-medium text-white/85 outline-none transition-colors hover:bg-white/14 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60"
-          >
-            <ChevronDownIcon
-              className={`size-3.5 transition-transform ${open ? "" : "rotate-180"}`}
-            />
-            {!open && <span className="tabular-nums">{tiles.length + hidden}</span>}
-          </button>
-        </div>
-
-        {open && (
-          <div className="relative flex items-stretch gap-1.5">
-            {tiles.map((tile) => (
-              <div
-                key={tile.key}
-                className="aspect-video shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-white/10"
-                style={{ width: tileW }}
-              >
-                <ParticipantTile
-                  tile={tile}
-                  size={tileW >= 168 ? "md" : "sm"}
-                  pinned={pinned === tile.key}
-                  onTogglePin={() => onTogglePin(tile.key)}
-                />
-              </div>
-            ))}
-            {hidden > 0 && (
-              <span className="grid shrink-0 place-items-center self-stretch rounded-md bg-black/50 px-2 text-[12px] font-semibold text-white/85">
-                +{hidden}
-              </span>
-            )}
-
-            <button
-              type="button"
-              aria-label="Resize camera panel"
-              title="Drag to resize"
-              className={`absolute z-10 h-4 w-4 touch-none rounded-sm bg-white/25 outline-none ring-1 ring-white/40 transition-colors hover:bg-white/45 focus-visible:ring-2 focus-visible:ring-brand/70 ${
-                resizeAffordance.handle
-              } ${resizing ? "bg-brand/70" : ""}`}
-              style={{ cursor: resizeAffordance.cursor }}
-              onPointerDown={(e) => {
-                if (e.button !== 0) return;
-                e.stopPropagation();
-                resizePtr.current = e.pointerId;
-                resizeFrom.current = { startW: tileW, x: e.clientX, y: e.clientY };
-                setResizing(true);
-                e.currentTarget.setPointerCapture(e.pointerId);
-              }}
-              onPointerMove={(e) => {
-                if (resizePtr.current !== e.pointerId) return;
-                applyResize(e.clientX, e.clientY, false);
-              }}
-              onPointerUp={(e) => {
-                if (resizePtr.current !== e.pointerId) return;
-                endResize(e.clientX, e.clientY);
-              }}
-              onPointerCancel={(e) => {
-                if (resizePtr.current !== e.pointerId) return;
-                resizePtr.current = null;
-                resizeFrom.current = null;
-                setResizing(false);
-              }}
-            />
-          </div>
-        )}
-      </div>
-    </>
+      />
+    </button>
   );
 }
 
