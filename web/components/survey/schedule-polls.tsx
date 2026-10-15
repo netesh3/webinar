@@ -402,13 +402,10 @@ export function useSchedulePolls(webinar: Webinar | null): SchedulePolls {
             <div className="flex flex-wrap gap-2">
               <AddButton
                 label="Add poll"
-                onClick={() =>
-                  setComposing({ mode: "new", quiz: false })
-                }
+                onClick={() => setComposing({ mode: "new", quiz: false })}
               />
               <AddButton
                 label="Add quiz"
-                secondary
                 onClick={() => setComposing({ mode: "new", quiz: true })}
               />
             </div>
@@ -428,11 +425,9 @@ export function useSchedulePolls(webinar: Webinar | null): SchedulePolls {
 function AddButton({
   label,
   onClick,
-  secondary = false,
 }: {
   label: string;
   onClick: () => void;
-  secondary?: boolean;
 }) {
   const id = useId();
   return (
@@ -440,11 +435,7 @@ function AddButton({
       id={id}
       type="button"
       onClick={onClick}
-      className={
-        secondary
-          ? "inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-2 bg-surface px-3 text-[12.5px] font-semibold text-ink transition-colors hover:bg-surface-2 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-          : "inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[12.5px] font-semibold text-stage transition-colors hover:bg-brand-hover outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-      }
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-line-2 bg-surface px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:border-brand hover:text-brand outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
     >
       <PlusIcon className="size-3.5" />
       {label}
