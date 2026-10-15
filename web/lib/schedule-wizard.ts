@@ -72,6 +72,8 @@ export type IssueInput = {
   multistream: boolean;
   /** From the feedback survey's own validation, or null. */
   surveyProblem: string | null;
+  /** From live polls on the Feedback step, or null. */
+  pollsProblem?: string | null;
 };
 
 export function isAbsoluteUrl(value: string): boolean {
@@ -135,6 +137,14 @@ export function scheduleIssues(i: IssueInput): Issue[] {
       step: "webinar",
       message: i.surveyProblem,
       target: "survey",
+    });
+  }
+  if (i.pollsProblem) {
+    out.push({
+      id: "polls",
+      step: "webinar",
+      message: i.pollsProblem,
+      target: "live-polls",
     });
   }
   return out;

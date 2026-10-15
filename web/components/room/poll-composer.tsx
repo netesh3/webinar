@@ -29,6 +29,7 @@ export function Composer({
   liveQuestion,
   onSave,
   onCancel,
+  allowLaunch = true,
 }: {
   initial?: ComposerDraft;
   editing: boolean;
@@ -36,6 +37,8 @@ export function Composer({
   liveQuestion: string | null;
   onSave: (input: PollInput, launch: boolean) => Promise<void>;
   onCancel: () => void;
+  /** False on the schedule form — polls launch from the room only. */
+  allowLaunch?: boolean;
 }) {
   const [draft, setDraft] = useState<ComposerDraft>(
     () => initial ?? { question: "", options: ["", ""], quiz: false, correct: 0 },
@@ -61,12 +64,11 @@ export function Composer({
     }
   }
 
+  /* A div, not a <form>: the schedule Feedback step already wraps everything in
+   * one form, and nested forms break submit (and are invalid HTML). */
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save(false);
-      }}
+    <div
+      role="form"
       aria-label={editing ? "Edit poll" : "New poll"}
       className="space-y-3 rounded-xl border border-brand-line bg-surface p-3 shadow-[0_0_0_1px_var(--color-brand-line)]"
     >
@@ -222,30 +224,43 @@ export function Composer({
       {tried && !built.ok && !error && <p className="text-[11.5px] font-medium text-warn">{built.reason}</p>}
 
       <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-3">
+        {allowLaunch && (
+          <button
+            type="button"
+            onClick={() => void save(true)}
+            disabled={saving !== null}
+            title={liveQuestion ? `Launching closes “${liveQuestion}”` : undefined}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[12.5px] font-semibold text-stage transition-colors hover:bg-brand-hover disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+          >
+            {saving === "launch" ? <Spinner className="size-3.5" /> : <PlayIcon className="size-3.5" />}
+            {editing ? "Save & launch" : "Launch now"}
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => void save(true)}
+          onClick={() => void save(false)}
           disabled={saving !== null}
-          title={liveQuestion ? `Launching closes “${liveQuestion}”` : undefined}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[12.5px] font-semibold text-stage transition-colors hover:bg-brand-hover disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-        >
-          {saving === "launch" ? <Spinner className="size-3.5" /> : <PlayIcon className="size-3.5" />}
-          {editing ? "Save & launch" : "Launch now"}
-        </button>
-        <button
-          type="submit"
-          disabled={saving !== null}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-2 px-3 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+          className={
+            allowLaunch
+              ? "inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-2 px-3 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              : "inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[12.5px] font-semibold text-stage transition-colors hover:bg-brand-hover disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+          }
         >
           {saving === "draft" && <Spinner className="size-3.5" />}
-          {editing ? "Save draft" : "Save as draft"}
+          {allowLaunch
+            ? editing
+              ? "Save draft"
+              : "Save as draft"
+            : editing
+              ? "Save"
+              : "Add"}
         </button>
-        {liveQuestion && (
+        {allowLaunch && liveQuestion && (
           <p className="basis-full text-[10.5px] text-ink-3">
             Only one question is live at a time — launching this closes the current one.
           </p>
         )}
       </div>
-    </form>
+    </div>
   );
 }

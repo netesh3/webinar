@@ -40,6 +40,8 @@ export function WebinarTab({
   onImage,
   onImageRemove,
   survey,
+  polls,
+  feedbackPreviews,
 }: {
   form: FormState;
   set: SetForm;
@@ -51,6 +53,10 @@ export function WebinarTab({
   onImageRemove: () => void;
   /** The feedback survey builder, owned by the form so it can save it. */
   survey: ReactNode;
+  /** Live polls under the survey, owned by the form so it can save them. */
+  polls: ReactNode;
+  /** Sticky Feedback column: survey + one poll + one quiz preview. */
+  feedbackPreviews?: ReactNode;
 }) {
   const allZones = useMemo(() => timeZoneNames(), []);
   /* The zone the webinar HAS is always an option. Browsers disagree on the
@@ -99,7 +105,11 @@ export function WebinarTab({
         editing={editing}
         webinar={webinar}
       />
-      <SurveySection survey={survey} />
+      <SurveySection
+        survey={survey}
+        polls={polls}
+        previews={feedbackPreviews}
+      />
     </div>
   );
 }

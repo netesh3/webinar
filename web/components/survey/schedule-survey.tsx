@@ -29,6 +29,8 @@ type Load = "loading" | "ready" | "error";
 
 export interface ScheduleSurvey {
   node: ReactNode;
+  /** Live preview for the Feedback column; null when the survey is off. */
+  preview: ReactNode | null;
   /** Why the form should not submit yet, or null. */
   problem: () => string | null;
   /** Writes (or removes) the survey for a saved webinar. Resolves to a warning, or null. */
@@ -113,27 +115,26 @@ export function useScheduleSurvey(
     }
   }
 
-  const preview = (
-    <div className="xl:sticky xl:top-4">
-      <p className="label mb-1.5 flex h-4 items-center">
-        What attendees see
-      </p>
-      <div
-        className="room-dark rounded-xl border border-line-2 bg-surface p-2.5 shadow-[0_8px_24px_-16px_rgba(0,0,0,0.45)]"
-        style={{ zoom: 0.86 }}
-      >
-        <SurveyForm
-          key={JSON.stringify(cleanInput(draft))}
-          preview
-          survey={previewSurvey(draft)}
-          mine={{ submitted: false, linkClicked: false }}
-          slug={slug ?? "preview"}
-          onLater={() => undefined}
-          onDone={() => setDraft({ ...draft })}
-        />
+  const preview =
+    on && load === "ready" ? (
+      <div>
+        <p className="label mb-1.5 flex h-4 items-center">Survey preview</p>
+        <div
+          className="room-dark rounded-xl border border-line-2 bg-surface p-2.5 shadow-[0_8px_24px_-16px_rgba(0,0,0,0.45)]"
+          style={{ zoom: 0.86 }}
+        >
+          <SurveyForm
+            key={JSON.stringify(cleanInput(draft))}
+            preview
+            survey={previewSurvey(draft)}
+            mine={{ submitted: false, linkClicked: false }}
+            slug={slug ?? "preview"}
+            onLater={() => undefined}
+            onDone={() => setDraft({ ...draft })}
+          />
+        </div>
       </div>
-    </div>
-  );
+    ) : null;
 
   const node = (
     <div id="survey" className="grid scroll-mt-24 gap-3">
@@ -170,7 +171,6 @@ export function useScheduleSurvey(
               errors={errors}
               locked={locked}
               durationMin={durationMin}
-              aside={preview}
             />
           )}
         </>
@@ -178,5 +178,5 @@ export function useScheduleSurvey(
     </div>
   );
 
-  return { node, problem, persist, on };
+  return { node, preview, problem, persist, on };
 }
