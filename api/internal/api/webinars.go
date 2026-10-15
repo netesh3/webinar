@@ -356,27 +356,19 @@ func validateRegistration(req types.RegisterRequest, wb types.Webinar) map[strin
 		fields["consent"] = "We need this to send you the join link."
 	}
 
-	/* The mobile number: OPTIONAL, and shape-checked when it is there.
+	/* The mobile number is required on this door, then shape-checked.
 	 *
-	 * It used to be required, and that was the wrong trade for this door. The registration
-	 * form is the one that captures a lead, and a required number on it costs registrations
-	 * from people who will give a name and an email and no more — which is most of them.
-	 * The number is worth having when it is offered and is not worth the drop-off.
+	 * Sign-up still treats phone as optional (see phoneFieldError). Registration is
+	 * the lead form: hosts need a number they can actually dial, and WhatsApp
+	 * updates need something to send to.
 	 *
-	 * Validated on shape rather than by a phone-number library, and that is a deliberate
-	 * limit: knowing that +91 98765 43210 is a real Indian mobile and +91 12345 67890 is not
-	 * needs a per-country numbering plan that goes stale, and getting it wrong turns away a
-	 * real attendee. E.164 bounds are the part that is stable — a country code is 1 to 3
-	 * digits and the whole number is at most 15 — so that is what is checked. A wrong number
-	 * that passes is a wrong number the host can see and correct; a right number that fails
-	 * is an attendee who cannot register.
-	 *
-	 * A number that IS supplied and is malformed is still refused. Storing "9876543210" with
-	 * no country code gives the host something nobody can dial, which is worse than a blank.
-	 * The actual shape check is phoneFieldError (auth.go) — shared with signup's identical
-	 * field, extracted there so the two forms can't quietly disagree about what's valid.
+	 * Validated on shape rather than by a phone-number library. E.164 bounds are
+	 * the part that is stable — a country code is 1 to 3 digits and the whole
+	 * number is at most 15. The actual shape check is phoneFieldError (auth.go).
 	 */
-	if msg := phoneFieldError(req.Phone); msg != "" {
+	if strings.TrimSpace(req.Phone) == "" {
+		fields["phone"] = "Add a mobile number."
+	} else if msg := phoneFieldError(req.Phone); msg != "" {
 		fields["phone"] = msg
 	}
 	for _, q := range wb.CustomQuestions {

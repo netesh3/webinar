@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { AccountAvatar } from "../account-avatar";
+import { AccountPhoneForm } from "../account-phone-form";
 import { Alert, Spinner } from "../controls";
 import { useSession } from "../providers";
 import { Button, Card } from "../ui";
@@ -178,6 +179,13 @@ export function ProfileSection({ account }: { account: Account }) {
             </Button>
           </div>
         </form>
+        <div className="border-t border-line pt-4">
+          <AccountPhoneForm
+            initialPhone={account.phone}
+            googlePhone={account.googlePhone}
+            submitLabel="Save number"
+          />
+        </div>
       </Card>
     </section>
   );

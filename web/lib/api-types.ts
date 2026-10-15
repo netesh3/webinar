@@ -2510,10 +2510,16 @@ export interface Account {
   org: string;
   /**
    * Phone is E.164 shape (`+` then digits), same convention as
-   * Registration.Phone — the caller's own number, never shown to anyone
-   * else (not on Person, the type other attendees/panelists see).
+   * Registration.Phone — the number the caller typed (signup, profile,
+   * registration form). Never shown to anyone else (not on Person).
    */
   phone: string;
+  /**
+   * GooglePhone is the People API number from Continue with Google, when
+   * they granted that scope. Separate from Phone so a typed number and a
+   * Google number can both be kept. Omitempty: most accounts have none.
+   */
+  googlePhone?: string;
   initials: string;
   hue: string;
   /**
@@ -5121,9 +5127,9 @@ export interface AppConfig {
    */
   whatsappConnect?: boolean;
   /**
-   *  GoogleAuth is Continue with Google / One Tap via first-party OAuth on this
-   * 	 * origin. Public values only — the client secret stays on the API. When false
-   * 	 * the Continue with Google button is hidden.
+   *  GoogleAuth is Continue with Google via first-party OAuth on this origin.
+   * 	 * Public values only — the client secret stays on the API. When false the
+   * 	 * Continue with Google button is hidden.
    * 	 *
    * 	 * supabaseUrl / supabaseAnonKey remain for an unused legacy exchange path.
    */

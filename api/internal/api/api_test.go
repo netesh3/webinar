@@ -1020,6 +1020,29 @@ func (h *harness) postRegister(slug, email, first, last string, answers map[stri
 	return reg
 }
 
+/* registerEmailOnly is store-only: the public form now requires a phone. CRM
+ * tests still need a no-number contact for the no_number / crm_no_number cases. */
+func (h *harness) registerEmailOnly(slug, first, email string) types.Registration {
+	h.t.Helper()
+	reg, err := h.store.Register(context.Background(), slug, types.RegisterRequest{
+		FirstName: first, Email: email, Consent: true,
+	}, "")
+	if err != nil {
+		h.t.Fatalf("register email-only %s: %v", email, err)
+	}
+	if h.engage != nil {
+		wb, werr := h.store.WebinarBySlug(context.Background(), slug)
+		if werr != nil {
+			h.t.Fatalf("load webinar %s: %v", slug, werr)
+		}
+		h.engage.OnRegistered(context.Background(), wb, reg, false)
+	}
+	if h.server != nil {
+		h.server.WaitBackground()
+	}
+	return reg
+}
+
 /* finishRegistration opens the verification link when the form asked for one,
  * then reads the registration back. The second read is the database, not
  * another POST, so the confirmation mail is sent once.
@@ -1248,10 +1271,9 @@ func TestRegisterValidatesAndIsIdempotent(t *testing.T) {
 	}
 	var apiErr types.APIError
 	h.decode(raw, &apiErr)
-	// No lastName and no phone: the form asks for a full name in one field and treats the
-	// number as optional, so requiring either here would be requiring something the form
-	// does not ask for.
-	for _, field := range []string{"firstName", "email", "consent", "stack"} {
+	// No lastName: the form asks for a full name in one field. Phone is required
+	// on this door, same as the public registration form.
+	for _, field := range []string{"firstName", "email", "consent", "stack", "phone"} {
 		if _, ok := apiErr.Fields[field]; !ok {
 			t.Errorf("expected a validation message for %q, got %v", field, apiErr.Fields)
 		}

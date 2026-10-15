@@ -19,14 +19,18 @@ type User struct {
 	Name         string
 	Title        string
 	Org          string
-	// Phone is E.164 shape (see normalisePhone) — the account holder's own
-	// number. Deliberately NOT on Person: that's what other attendees and
-	// panelists see about someone, and Org is fine to show there in a way a
-	// phone number is not.
-	Phone    string
-	Initials string
-	Hue      string
-	CanHost  bool
+	// Phone is E.164 shape (see normalisePhone) — the number the person typed
+	// (signup, profile, host request, registration form). Deliberately NOT on
+	// Person: that's what other attendees and panelists see about someone, and
+	// Org is fine to show there in a way a phone number is not.
+	Phone string
+	// GooglePhone is the People API number from Continue with Google. Empty
+	// when they did not grant the scope or Google returned none. Never copied
+	// onto Phone, and Phone is never copied onto this. See migrations/0091.
+	GooglePhone string
+	Initials    string
+	Hue         string
+	CanHost     bool
 	// IsAdmin may grant CanHost to other accounts. Never settable in-band: see
 	// PromoteAdmins and migrations/0011.
 	IsAdmin bool
@@ -132,6 +136,7 @@ func (u User) Public() types.Account {
 		Title:           u.Title,
 		Org:             u.Org,
 		Phone:           u.Phone,
+		GooglePhone:     u.GooglePhone,
 		Initials:        u.Initials,
 		Hue:             u.Hue,
 		AvatarURL:       u.AvatarURL(),
@@ -191,6 +196,7 @@ func (u User) Person() types.Person {
 }
 
 const userColumns = `id::text, email, coalesce(password_hash,''), name, title, org, phone,
+	coalesce(google_phone,''),
 	initials, hue, can_host, is_admin, max_duration_min, can_cdn_broadcast, features,
 	coalesce(youtube_refresh,''), coalesce(youtube_channel_id,''),
 	coalesce(youtube_channel_title,''), coalesce(youtube_stream_id,''),
@@ -205,6 +211,7 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 func scanUser(row scanner) (User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Title, &u.Org, &u.Phone,
+		&u.GooglePhone,
 		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.MaxDurationMin, &u.CanCdnBroadcast,
 		&u.Features,
 		&u.YouTubeRefresh, &u.YouTubeChannelID, &u.YouTubeChannelTitle, &u.YouTubeStreamID,
@@ -311,11 +318,12 @@ func (s *Store) CreateUser(ctx context.Context, email, hashedPassword, name, tit
 	return u, nil
 }
 
-/* SetPhoneIfEmpty stores a number only when the account does not have one.
+/* SetPhoneIfEmpty stores a typed number only when the account does not have one.
  *
- * Google sign-in fills users.phone from the People API. A number the person
- * already typed — at signup, on a registration, or on a previous visit — is
- * left alone. An empty argument is a no-op. The number is not logged.
+ * Used when a registration form (or similar) supplies a number the person
+ * typed. A number already on phone — typed earlier, or left over from before
+ * google_phone existed — is left alone. Google numbers go to SetGooglePhone.
+ * An empty argument is a no-op. The number is not logged.
  */
 func (s *Store) SetPhoneIfEmpty(ctx context.Context, id, phone string) (User, error) {
 	phone = NormalisePhone(phone)
@@ -330,6 +338,28 @@ func (s *Store) SetPhoneIfEmpty(ctx context.Context, id, phone string) (User, er
 		RETURNING `+userColumns, id, phone))
 	if noRows(err) {
 		return s.UserByID(ctx, id)
+	}
+	return u, err
+}
+
+/* SetGooglePhone stores the People API number on google_phone.
+ *
+ * It never writes users.phone. A later Google login with a different People
+ * number updates this column only. Empty is a no-op so a declined scope does
+ * not wipe a number already saved.
+ */
+func (s *Store) SetGooglePhone(ctx context.Context, id, phone string) (User, error) {
+	phone = NormalisePhone(phone)
+	if phone == "" {
+		return s.UserByID(ctx, id)
+	}
+	u, err := scanUser(s.pool.QueryRow(ctx, `
+		UPDATE users
+		   SET google_phone = $2
+		 WHERE id = $1
+		RETURNING `+userColumns, id, phone))
+	if noRows(err) {
+		return User{}, ErrNotFound
 	}
 	return u, err
 }

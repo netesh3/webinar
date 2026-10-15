@@ -354,7 +354,19 @@ func ensureAttendee(ctx context.Context, tx pgx.Tx, email string, req types.Regi
 	if noRows(err) {
 		return User{}, ErrNotFound
 	}
-	return u, err
+	if err != nil {
+		return User{}, err
+	}
+	/* A typed registration number fills an empty account phone. It does not
+	 * overwrite one already there, and it never writes google_phone. */
+	if u.Phone == "" && phone != "" {
+		if _, err := tx.Exec(ctx, `
+			UPDATE users SET phone = $2 WHERE id = $1 AND phone = ''`, u.ID, phone); err != nil {
+			return User{}, err
+		}
+		u.Phone = phone
+	}
+	return u, nil
 }
 
 /* bindRegistration points an existing row at the address's account.

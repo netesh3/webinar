@@ -9,14 +9,10 @@ import { landingAfterSignIn } from "@/lib/access";
 import { safeAuthNext } from "@/lib/supabase";
 
 /**
- * Google One Tap / FedCM prompt for logged-out visitors on public pages.
+ * Unused in the product UI. Phone numbers are required, and One Tap cannot
+ * collect one. Continue with Google (authorization code) is the Google path.
  *
- * Uses Identity Services (accounts.google.com/gsi/client). On success the
- * credential JWT is posted to `/api/auth/google` on this origin — Cloud Run
- * verifies it against Google's JWKS and sets webcast_session. No supabase.co hop.
- *
- * No-ops when Google auth is off, the client ID is missing, GIS is blocked,
- * or the visitor is already signed in. Never mounts inside the room.
+ * POST /api/auth/google still accepts an ID token if a caller needs it.
  */
 
 declare global {

@@ -153,10 +153,11 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.googleFront(r, landingAfterSignIn(user.CanHost, next), "", ""), http.StatusFound)
 }
 
-/* handleGoogleAuth is POST /api/auth/google — One Tap / FedCM.
+/* handleGoogleAuth is POST /api/auth/google.
  *
- * The browser sends Google's ID token (and the nonce GIS was given). No
- * Supabase hop: we verify the JWT against Google's JWKS and set webcast_session.
+ * Kept for ID-token exchange. The product UI no longer shows One Tap, because
+ * that prompt cannot collect a phone number. Continue with Google uses
+ * /start and /callback instead.
  */
 func (s *Server) handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 	if !s.cfg.GoogleAuthEnabled() {
@@ -349,19 +350,14 @@ var (
 func (s *Server) provisionGoogleUser(ctx context.Context, identity auth.GoogleIdentity, googleAccessToken, logName string) (store.User, bool, error) {
 	user, err := s.store.UserByEmail(ctx, identity.Email)
 	created := false
-	phone := ""
 	switch {
 	case err == nil:
-		if user.Phone == "" {
-			phone = s.optionalGooglePhone(ctx, googleAccessToken)
-		}
 	case errors.Is(err, store.ErrNotFound):
 		if !s.cfg.SignupOpen {
 			return store.User{}, false, errOAuthSignupClosed
 		}
-		phone = s.optionalGooglePhone(ctx, googleAccessToken)
 		user, err = s.store.CreateUser(ctx, identity.Email, "",
-			identity.Name, "", "", phone, false)
+			identity.Name, "", "", "", false)
 		if errors.Is(err, store.ErrConflict) {
 			user, err = s.store.UserByEmail(ctx, identity.Email)
 		}
@@ -373,10 +369,10 @@ func (s *Server) provisionGoogleUser(ctx context.Context, identity auth.GoogleId
 		return store.User{}, false, err
 	}
 
-	if phone != "" && user.Phone == "" {
-		updated, uerr := s.store.SetPhoneIfEmpty(ctx, user.ID, phone)
+	if googlePhone := s.optionalGooglePhone(ctx, googleAccessToken); googlePhone != "" {
+		updated, uerr := s.store.SetGooglePhone(ctx, user.ID, googlePhone)
 		if uerr != nil {
-			s.log.Warn(logName+": save phone", "user", user.ID, "error", uerr)
+			s.log.Warn(logName+": save google phone", "user", user.ID, "error", uerr)
 		} else {
 			user = updated
 		}

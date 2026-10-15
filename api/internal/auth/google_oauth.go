@@ -22,7 +22,14 @@ var ErrGoogleOAuth = errors.New("google oauth")
 
 // GoogleAuthCodeURL is the consent page for first-party login. Unlike Connect
 // YouTube it does not ask for offline access: we only need an ID token and a
-// short-lived access token for the optional People phone read.
+// short-lived access token to read People phone numbers.
+//
+// prompt is select_account plus consent. Account-picker alone skips the
+// consent screen after a prior grant, so a user who left the People phone
+// box empty never sees it again. Consent every time re-asks for that scope.
+// Google still draws extra scopes as unchecked boxes; there is no authorize
+// query that pre-checks them. Do not set enable_granular_consent=false —
+// Google ignores it once granular permissions are on for the client.
 func GoogleAuthCodeURL(clientID, redirect, state, nonce string) string {
 	q := url.Values{
 		"client_id":     {clientID},
@@ -31,7 +38,7 @@ func GoogleAuthCodeURL(clientID, redirect, state, nonce string) string {
 		"scope":         {GoogleOAuthScopes},
 		"state":         {state},
 		"nonce":         {nonce},
-		"prompt":        {"select_account"},
+		"prompt":        {"select_account consent"},
 	}
 	return GoogleAuthURL + "?" + q.Encode()
 }

@@ -26,7 +26,7 @@ func TestRegistrantBecomesAccountAfterEmailVerification(t *testing.T) {
 	const email = "registrant@test.dev"
 	res, raw := h.do(http.MethodPost, "/api/webinars/simulive-playbook/register", types.RegisterRequest{
 		FirstName: "Rina", LastName: "Shah", Email: email, Consent: true,
-		Company: "Northwind", JobTitle: "Analyst",
+		Company: "Northwind", JobTitle: "Analyst", Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("register: status %d body %s", res.StatusCode, raw)
@@ -183,6 +183,7 @@ func TestRegistrantBecomesAccountAfterEmailVerification(t *testing.T) {
 	// An account that already existed keeps its hosting flag and is not duplicated.
 	res, raw = h.do(http.MethodPost, "/api/webinars/simulive-playbook/register", types.RegisterRequest{
 		FirstName: "Neeraj", LastName: "Kumar", Email: "neeraj@acme.dev", Consent: true,
+		Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("existing account register: status %d body %s", res.StatusCode, raw)

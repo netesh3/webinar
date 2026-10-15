@@ -88,12 +88,9 @@ func fourStates(t *testing.T, h *harness, host string) types.Webinar {
 	}
 
 	// No number at all: nothing to send to, and nobody to chase about it either.
-	res, raw = h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/register", types.RegisterRequest{
-		FirstName: "Dudu", LastName: "Lead", Email: "dudu@example.com", Consent: true,
-	})
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("register Dudu: status %d body %s", res.StatusCode, raw)
-	}
+	// The public form requires a phone; this is a store-only lead so the
+	// no_number CRM state still has a fixture.
+	h.registerEmailOnly(wb.ID, "Dudu", "dudu@example.com")
 	h.login(host)
 	return wb
 }

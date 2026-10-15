@@ -136,7 +136,8 @@ func TestPublishingARecordingTellsTheRegistrants(t *testing.T) {
 	 * replay mail goes to everyone who was approved, including the people who are not
 	 * WhatsApp contacts at all, and that is the majority of any real list. */
 	res, raw := h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/register", types.RegisterRequest{
-		FirstName: "Sipho", LastName: "Dlamini", Email: "sipho@example.com", Consent: true,
+		FirstName: "Sipho", LastName: "Dlamini", Email: "sipho@example.com",
+		Consent: true, Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("register email-only: status %d body %s", res.StatusCode, raw)

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -44,13 +45,29 @@ func TestExchangeGoogleCode(t *testing.T) {
 }
 
 func TestGoogleAuthCodeURL(t *testing.T) {
-	u := GoogleAuthCodeURL("cid", "http://localhost/cb", "state-1", "nonce-1")
-	for _, part := range []string{"client_id=cid", "state=state-1", "nonce=nonce-1", "prompt=select_account"} {
-		if !strings.Contains(u, part) {
-			t.Fatalf("missing %q in %s", part, u)
-		}
+	raw := GoogleAuthCodeURL("cid", "http://localhost/cb", "state-1", "nonce-1")
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(u, "access_type=offline") {
-		t.Fatalf("login URL must not request offline access: %s", u)
+	q := u.Query()
+	if q.Get("client_id") != "cid" || q.Get("state") != "state-1" || q.Get("nonce") != "nonce-1" {
+		t.Fatalf("query %s", raw)
+	}
+	if q.Get("prompt") != "select_account consent" {
+		t.Fatalf("prompt %q", q.Get("prompt"))
+	}
+	scope := q.Get("scope")
+	if !strings.Contains(scope, "openid") || !strings.Contains(scope, "user.phonenumbers.read") {
+		t.Fatalf("login must request People phone: %s", scope)
+	}
+	if strings.Contains(scope, "youtube") {
+		t.Fatalf("login must not request YouTube Connect: %s", scope)
+	}
+	if q.Get("access_type") == "offline" {
+		t.Fatalf("login URL must not request offline access: %s", raw)
+	}
+	if q.Has("enable_granular_consent") {
+		t.Fatalf("must not toggle granular consent: %s", raw)
 	}
 }

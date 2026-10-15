@@ -54,7 +54,8 @@ func drainWhatsAppOutbox(t *testing.T, h *harness, slug string) {
 	t.Helper()
 	n := drainSeq.Add(1)
 	res, raw := h.do(http.MethodPost, "/api/webinars/"+slug+"/register", types.RegisterRequest{
-		FirstName: "Sweeper", Email: fmt.Sprintf("sweeper-%d@example.com", n), Consent: true,
+		FirstName: "Sweeper", Email: fmt.Sprintf("sweeper-%d@example.com", n),
+		Phone: fmt.Sprintf("+2782%06d", n), Consent: true,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("drain: status %d body %s", res.StatusCode, raw)

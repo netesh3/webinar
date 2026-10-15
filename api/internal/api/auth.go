@@ -718,6 +718,12 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		httpx.Fields(w, map[string]string{"name": "Required."})
 		return
 	}
+	if p.Phone != nil {
+		if msg := phoneFieldError(*p.Phone); msg != "" {
+			httpx.Fields(w, map[string]string{"phone": msg})
+			return
+		}
+	}
 
 	user := userFromContext(r.Context())
 	updated, err := s.store.UpdateProfile(r.Context(), user.ID, p)

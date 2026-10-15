@@ -13,7 +13,7 @@ const gmailWebinar = "simulive-playbook"
 
 func registerBody(email string) types.RegisterRequest {
 	return types.RegisterRequest{
-		FirstName: "Rina", LastName: "Shah", Email: email, Consent: true,
+		FirstName: "Rina", LastName: "Shah", Email: email, Consent: true, Phone: testPhone,
 	}
 }
 

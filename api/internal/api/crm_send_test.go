@@ -206,12 +206,7 @@ func TestCRMSendRefusals(t *testing.T) {
 	connectWhatsApp(t, h)
 
 	// An email-only lead, and a contact who has asked not to be messaged.
-	res, raw = h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/register", types.RegisterRequest{
-		FirstName: "Sam", Email: "sam@example.com", Consent: true,
-	})
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("register email-only: status %d body %s", res.StatusCode, raw)
-	}
+	h.registerEmailOnly(wb.ID, "Sam", "sam@example.com")
 	emailOnly := contactWithPhone(t, crmContacts(t, h).Contacts, "")
 
 	res, raw = h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/register", types.RegisterRequest{

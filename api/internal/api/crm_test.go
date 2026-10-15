@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/netkumar/webcast/api/types"
@@ -181,9 +182,13 @@ func TestWhatsAppOptInNeedsANumber(t *testing.T) {
 	res, raw := h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/register", types.RegisterRequest{
 		FirstName: "Sam", Email: "sam@example.com", Consent: true, WhatsAppOptIn: true,
 	})
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("register: status %d body %s", res.StatusCode, raw)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("opt-in without a number: status %d body %s, want 422", res.StatusCode, raw)
 	}
+	if !strings.Contains(string(raw), "phone") {
+		t.Fatalf("missing number must name the phone field: %s", raw)
+	}
+	h.registerEmailOnly(wb.ID, "Sam", "sam@example.com")
 	list := crmContacts(t, h)
 	if len(list.Contacts) != 1 {
 		t.Fatalf("want the contact stored on email alone, got %d", len(list.Contacts))

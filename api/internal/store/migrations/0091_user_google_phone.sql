@@ -1,0 +1,13 @@
+-- Google People API number, separate from the number the person typed.
+--
+-- users.phone is the account holder's own number: signup, profile, host
+-- request, and the webinar registration form. google_phone is whatever
+-- Continue with Google received from People, when they granted that scope.
+-- The two must not overwrite each other — a Google number is not a substitute
+-- for the number they typed on a lead form, and typing one must not erase
+-- what Google already returned.
+--
+-- Existing rows keep phone as-is. A number already stored cannot be told
+-- apart from a typed one, so it stays the manual/account phone. Later Google
+-- logins fill google_phone without touching phone.
+ALTER TABLE users ADD COLUMN google_phone text NOT NULL DEFAULT '';

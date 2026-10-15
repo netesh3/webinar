@@ -278,12 +278,11 @@ func usePeopleAPI(t *testing.T, handler http.HandlerFunc) {
 	})
 }
 
-/* Phone from Google is optional.
+/* Phone from Google is optional and stored on google_phone, not phone.
  *
- * A number in the People API response is stored on users.phone. No token, an
- * empty list, a refusal, or a number that fails the shape check all still
- * sign the person in, with no phone. A number already on the account is not
- * replaced.
+ * No token, an empty list, a refusal, or a number that fails the shape
+ * check all still sign the person in. A typed number already on phone is
+ * not replaced; Google's number is kept beside it.
  */
 func TestSupabaseAuthPhoneOptional(t *testing.T) {
 	h := newHarness(t, withSupabaseAuth)
@@ -323,28 +322,28 @@ func TestSupabaseAuthPhoneOptional(t *testing.T) {
 	}
 
 	withPhone := exchange("phone-new@test.dev", "Phone New", "phone-good", http.StatusCreated)
-	if withPhone.Phone != stored {
-		t.Fatalf("stored phone %q", withPhone.Phone)
+	if withPhone.Phone != "" || withPhone.GooglePhone != stored {
+		t.Fatalf("google-only account phone %q google %q", withPhone.Phone, withPhone.GooglePhone)
 	}
 
 	noToken := exchange("phone-none@test.dev", "Phone None", "", http.StatusCreated)
-	if noToken.Phone != "" {
-		t.Fatalf("missing token stored %q", noToken.Phone)
+	if noToken.Phone != "" || noToken.GooglePhone != "" {
+		t.Fatalf("missing token stored phone %q google %q", noToken.Phone, noToken.GooglePhone)
 	}
 
 	denied := exchange("phone-denied@test.dev", "Phone Denied", "phone-denied", http.StatusCreated)
-	if denied.Phone != "" {
-		t.Fatalf("denied scope stored %q", denied.Phone)
+	if denied.Phone != "" || denied.GooglePhone != "" {
+		t.Fatalf("denied scope stored phone %q google %q", denied.Phone, denied.GooglePhone)
 	}
 
 	empty := exchange("phone-empty@test.dev", "Phone Empty", "phone-empty", http.StatusCreated)
-	if empty.Phone != "" {
-		t.Fatalf("empty people response stored %q", empty.Phone)
+	if empty.Phone != "" || empty.GooglePhone != "" {
+		t.Fatalf("empty people response stored phone %q google %q", empty.Phone, empty.GooglePhone)
 	}
 
 	short := exchange("phone-short@test.dev", "Phone Short", "phone-short", http.StatusCreated)
-	if short.Phone != "" {
-		t.Fatalf("short number stored %q", short.Phone)
+	if short.Phone != "" || short.GooglePhone != "" {
+		t.Fatalf("short number stored phone %q google %q", short.Phone, short.GooglePhone)
 	}
 
 	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{
@@ -357,11 +356,14 @@ func TestSupabaseAuthPhoneOptional(t *testing.T) {
 	if kept.Phone != existing {
 		t.Fatalf("existing phone %q", kept.Phone)
 	}
+	if kept.GooglePhone != "+447911123456" {
+		t.Fatalf("google phone beside typed %q", kept.GooglePhone)
+	}
 
-	// A later sign-in can fill a phone that was empty the first time.
+	// A later sign-in can fill google_phone that was empty the first time.
 	again := exchange("phone-none@test.dev", "Phone None", "phone-good", http.StatusOK)
-	if again.Phone != stored {
-		t.Fatalf("filled later %q", again.Phone)
+	if again.Phone != "" || again.GooglePhone != stored {
+		t.Fatalf("filled later phone %q google %q", again.Phone, again.GooglePhone)
 	}
 }
 

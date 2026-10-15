@@ -314,7 +314,7 @@ func TestPasswordResetConfirmsTheAddressAndFinishesWaitingRegistrations(t *testi
 
 	const email = "registrant-reset@test.dev"
 	res, raw := h.do(http.MethodPost, "/api/webinars/simulive-playbook/register", types.RegisterRequest{
-		FirstName: "Ira", LastName: "Mehta", Email: email, Consent: true,
+		FirstName: "Ira", LastName: "Mehta", Email: email, Consent: true, Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("register: status %d body %s", res.StatusCode, raw)

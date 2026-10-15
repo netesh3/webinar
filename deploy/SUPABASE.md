@@ -206,8 +206,8 @@ boot if anything is pending.
 
 ## Auth — Google (first-party)
 
-The app keeps its own `webcast_session` cookie. Continue with Google and One Tap
-talk to Google through webinarliv.com → Cloud Run. Postgres still lives on
+The app keeps its own `webcast_session` cookie. Continue with Google
+talks to Google through webinarliv.com → Cloud Run. Postgres still lives on
 Supabase; the browser does not load `*.supabase.co` for login.
 
 ### 1. Google Cloud OAuth client (dedicated Webinar Liv project)
@@ -241,7 +241,7 @@ Use dedicated project **`selfreminder-rnix`** (display name **Webinar Liv**):
    can stay; they are unused for sign-in.
 4. Copy the **Client ID** onto Cloud Run as `GOOGLE_CLIENT_ID` and the
    **Client secret** as `GOOGLE_CLIENT_SECRET` (never git). The same pair is
-   Continue with Google, One Tap, Drive Picker, and Connect YouTube.
+   Continue with Google, Drive Picker, and Connect YouTube.
    Console may hide existing secrets (“Viewing and downloading client secrets is
    no longer available”); rotate/add a secret on the client detail page if needed.
 
@@ -249,7 +249,7 @@ Enable **YouTube Data API v3** on the GCP project. The YouTube scope is
 sensitive; while the OAuth app is in Testing, add host Gmail addresses as test
 users. Hosts connect from Account settings — a different grant than login.
 
-Drive Picker / One Tap use the same Webinar Liv web client in
+Drive Picker uses the same Webinar Liv web client in
 `selfreminder-rnix`, not the shared `ai-project-490516` client.
 
 **gcloud limits:** classic Web OAuth clients cannot be created via public gcloud for
@@ -335,13 +335,13 @@ Set on Cloud Run (via `deploy/cloudrun.env`, GitHub secrets, or `gcloud`):
 | `SUPABASE_PROJECT_URL` | no | Optional JWT issuer / JWKS fallback for the unused `/api/auth/supabase` path |
 | `SUPABASE_ANON_KEY` | yes (via `/api/config`) | unused for browser login |
 | `SUPABASE_JWT_SECRET` | **no** | unused for first-party Google login |
-| `GOOGLE_CLIENT_ID` | yes (via `/api/config` as `googleClientId`) | Web OAuth client; **Continue with Google**, One Tap, Drive Picker, Connect YouTube |
+| `GOOGLE_CLIENT_ID` | yes (via `/api/config` as `googleClientId`) | Web OAuth client; **Continue with Google**, Drive Picker, Connect YouTube |
 | `GOOGLE_CLIENT_SECRET` | **no** | same Web client secret; required for Google login (code exchange) and Connect YouTube. Unset = paste stream keys only, no Google button |
 | `GOOGLE_API_KEY` | yes (via `/api/config`) | optional; Drive Picker only |
 
 When `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, `/api/config`
 returns `googleAuth: true` and the login / signup pages show **Continue with
-Google**. One Tap uses the same client id.
+Google**.
 
 ### Consent screen / verification (Google Cloud)
 
@@ -354,17 +354,36 @@ Configured under **Google Auth Platform → Audience / Branding** for project
 | Home / Privacy / Terms | `https://webinarliv.com`, `/privacy`, `/terms` |
 | User type | **External** |
 | Publishing status | **In production** (or Testing) |
-| Scopes used | Login: `openid` `email` `profile` and `https://www.googleapis.com/auth/user.phonenumbers.read` (People API phone; optional — sign-in still works if the user denies it or Google returns no number). YouTube live: `https://www.googleapis.com/auth/youtube` (sensitive) |
+| Scopes used | Login: `openid` `email` `profile` and `https://www.googleapis.com/auth/user.phonenumbers.read` (People API phone; always requested on Continue with Google). YouTube live: `https://www.googleapis.com/auth/youtube` (sensitive; a **separate** Connect grant — do not add it to login) |
 
 - **Testing** mode: only allowlisted test users can complete sign-in; add each
   Gmail under Audience → Test users. Cap is usually 100 test users.
 - **In production** with only basic scopes: any Google account can sign in; you
   may still see Google’s “unverified app” interstitial until brand verification
   if you later request sensitive/restricted scopes. `user.phonenumbers.read` is
-  a sensitive People API scope: enable **People API** on this project and add
-  the scope on the consent screen (and on the Supabase Google provider, if that
-  screen has its own scope list). Sign-in still completes when the user denies
-  it or Google returns no number. Do not put the scope in a new env var.
+  a sensitive People API scope. The login authorize URL always asks for it
+  (`prompt=select_account consent`). Google granular consent still shows that
+  extra scope as its **own unchecked box** — there is no query param that
+  pre-checks it, and `enable_granular_consent=false` is ignored once granular
+  permissions are on for the Web client. Sign-in still completes when the
+  user leaves the box empty or Google returns no number. One Tap is not
+  shown in the product (it cannot collect a phone). `POST /api/auth/google`
+  with an ID token still exists but is unused by the UI. Do not put the
+  scope in a new env var.
+
+  Declare the scope on this project (cannot be done from code):
+
+  1. Open [Google Auth Platform → Data Access](https://console.cloud.google.com/auth/scopes?project=selfreminder-rnix)
+     for **`selfreminder-rnix`** (not `ai-project-490516`).
+  2. **Add or remove scopes** → filter **People API** / `phonenumbers` → tick
+     `https://www.googleapis.com/auth/user.phonenumbers.read` → **Update** → **Save**.
+  3. Enable the API:
+     [People API](https://console.cloud.google.com/apis/library/people.googleapis.com?project=selfreminder-rnix)
+     → **Enable**.
+  4. There is **no** Console control that force-checks the user-facing box.
+     Listing the scope is what makes it appear on consent and what verification
+     expects. Sign-in scopes (`openid` `email` `profile`) stay required with
+     no checkboxes; People phone remains an extra sensitive scope.
 - Lifetime **OAuth user cap** (shown as e.g. `0 / 100`) applies when requesting
   *unapproved* sensitive/restricted scopes — not for the basic login scopes above.
 - **Domain ownership** for branding: verify `webinarliv.com` in
@@ -379,8 +398,9 @@ Configured under **Google Auth Platform → Audience / Branding** for project
    `redirect_uri=https://webinarliv.com/api/auth/google/callback`
 3. Google → `GET /api/auth/google/callback?code=&state=`
 4. API exchanges the code, verifies the ID token against Google JWKS,
-   creates/links `users`, sets `webcast_session`, redirects to the app
-5. One Tap skips 1–3: GIS credential → `POST /api/auth/google` with the ID token
+   creates/links `users`, stores a People phone on `users.google_phone`
+   when Google returns one (never overwriting a typed `users.phone`),
+   sets `webcast_session`, redirects to the app
 
 The browser never loads `*.supabase.co`. Password login remains available. New
 Google users respect `SIGNUP_OPEN`; existing email accounts are linked by address.

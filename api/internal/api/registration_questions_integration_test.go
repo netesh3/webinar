@@ -53,7 +53,7 @@ func TestRegistrationQuestionsEndToEnd(t *testing.T) {
 
 	register := func(answers map[string]string) (*http.Response, []byte) {
 		return h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/register", types.RegisterRequest{
-			FirstName: "Asha", Email: "asha@test.dev", Consent: true, Answers: answers,
+			FirstName: "Asha", Email: "asha@test.dev", Consent: true, Phone: testPhone, Answers: answers,
 		})
 	}
 

@@ -262,9 +262,10 @@ func TestRegistrationChecksTheShapeOfAnyNumberItIsGiven(t *testing.T) {
 			})
 	}
 
-	// No number at all is fine: the field is optional.
-	if res, raw := register("", "none@test.dev"); res.StatusCode != http.StatusCreated {
-		t.Errorf("registering with no number: status %d body %s, want 201", res.StatusCode, raw)
+	if res, raw := register("", "none@test.dev"); res.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("registering with no number: status %d body %s, want 422", res.StatusCode, raw)
+	} else if !strings.Contains(string(raw), "phone") {
+		t.Errorf("missing number must name the phone field: %s", raw)
 	}
 
 	// A malformed one still names the field, so the form can show the message against it.

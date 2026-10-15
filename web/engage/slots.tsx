@@ -34,24 +34,18 @@ export { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, audienceHref, messagesHref };
 
 /* The registration form's WhatsApp consent box.
  *
- * Shown when this deployment has WhatsApp at all — not whether THIS host has connected a
- * number, which is not a public page's business — so it can be offered to somebody whose
- * host has not finished connecting. The opt-in is still worth recording: it keeps.
- *
- * Only once there is a number to message: a box that asks for WhatsApp permission above an
- * empty phone field is a question with no answer, and ticking it would record a consent
- * that can never be acted on. The form sends `whatsappOptIn` only while this shows. */
+ * Shown when this deployment has WhatsApp at all — not whether THIS host has
+ * connected a number. The registration form requires a phone and starts this
+ * box ticked; it still only sends `whatsappOptIn` when digits are present. */
 export function WhatsAppOptInCheckbox({
-  hasPhone,
   checked,
   onChange,
 }: {
-  hasPhone: boolean;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
   const { whatsappConnect } = useAppConfig();
-  if (!whatsappConnect || !hasPhone) return null;
+  if (!whatsappConnect) return null;
   return (
     <label className="flex items-start gap-2.5 text-[12px] leading-relaxed text-ink-2">
       <input

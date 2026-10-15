@@ -351,8 +351,8 @@ export const api = {
   resetPassword: (token: string, password: string) =>
     post<Account>("/api/auth/password/reset", { token, password }),
 
-  /** Exchange a Google ID token (One Tap) for the webcast_session cookie.
-   *  nonce must match the value GIS was initialized with. */
+  /** Exchange a Google ID token for the webcast_session cookie.
+   *  Unused by the product UI (no One Tap). nonce must match GIS when used. */
   googleAuth: (idToken: string, nonce?: string) =>
     post<Account>("/api/auth/google", {
       idToken,

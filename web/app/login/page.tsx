@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { LoginForm } from "@/components/auth-form";
-import { LoginGoogleOneTap } from "@/components/login-google-one-tap";
 import { Card } from "@/components/ui";
 import { LoginSessionGate } from "./session-gate";
 
@@ -15,9 +14,6 @@ export default function LoginPage() {
   // in the browser after the first paint.
   return (
     <LoginSessionGate>
-      <Suspense fallback={null}>
-        <LoginGoogleOneTap />
-      </Suspense>
       <main className="mx-auto flex w-full max-w-6xl flex-1 items-start justify-center px-4 py-10 sm:px-5">
         <Suspense
           fallback={

@@ -11,7 +11,11 @@ import (
 )
 
 // GoogleOAuthScopes is what the browser asks Google for on Continue with Google.
-// openid, email, and profile stay; the People phone scope is extra and optional.
+// Sign-in scopes (openid, email, profile) have no checkboxes. People phone is
+// a sensitive scope we always request on this grant; Google's granular consent
+// still shows it as its own box unless the Cloud Console consent screen treats
+// it as required. YouTube Connect uses a different client grant and must not
+// be added here.
 const GoogleOAuthScopes = "openid email profile https://www.googleapis.com/auth/user.phonenumbers.read"
 
 // PeoplePhoneURL is the People API method that returns the signed-in person's

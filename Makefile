@@ -248,6 +248,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the guest journey: a first-time registrant's just-made registration has no key
 	# until the email is confirmed, and the emailed ?k= link is then the only way in.
 	cd web && node --experimental-strip-types --no-warnings lib/guest-registration.test.mts
+	# And whether a signed-in account still needs a typed phone (Google's
+	# People number does not count), plus the webinar-page sign-in link.
+	cd web && node --experimental-strip-types --no-warnings lib/account-phone.test.mts
 	# And the attendee join card: a finished webinar is not "isn't running"
 	# with a retry, and the body does not repeat the title.
 	cd web && node --experimental-strip-types --no-warnings lib/join-refusal.test.mts

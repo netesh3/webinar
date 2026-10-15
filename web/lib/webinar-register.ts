@@ -2,6 +2,11 @@ import type { RegisterRequest } from "./api-types";
 
 /* Gmail on the public webinar form goes to Google. Every other domain stays
  * on the email verification link. Same rule as api.gmailAddress. */
+/** Login that returns to this webinar page after password or Google sign-in. */
+export function webinarSignInHref(webinarId: string): string {
+  return `/login?next=${encodeURIComponent(`/webinars/${webinarId}`)}`;
+}
+
 export function isGmailAddress(email: string): boolean {
   const trimmed = email.trim().toLowerCase();
   const at = trimmed.lastIndexOf("@");

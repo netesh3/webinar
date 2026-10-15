@@ -8,7 +8,7 @@ import { startGoogleOAuth } from "./google-continue";
 import { ArrowLeftIcon, CalendarIcon, CheckIcon, UserPlusIcon } from "./icons";
 import { useSession, useShareOrigin, useAppConfig } from "./providers";
 import { Badge, Button, ButtonLink } from "./ui";
-import { DIAL_CODES, dialOptions } from "@/lib/dial-codes";
+import { DIAL_CODES, dialOptions, nationalPhoneDigits } from "@/lib/dial-codes";
 import { formatDay, formatTime, formatTimeRange, tzLabel } from "@/lib/format";
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import { ApiError, api } from "@/lib/api";
@@ -18,6 +18,7 @@ import {
   isGmailAddress,
   readPendingWebinarRegister,
   savePendingWebinarRegister,
+  webinarSignInHref,
 } from "@/lib/webinar-register";
 import { openRoomTab } from "@/lib/open-room";
 import { CHECKBOX_YES } from "@/lib/registration-questions";
@@ -451,6 +452,7 @@ function EntryChoice({
           </dd>
         </div>
       </dl>
+      <ExistingAccountSignIn webinarId={w.id} account={account} />
     </div>
   );
 }
@@ -606,12 +608,15 @@ function GuestJoinFields({
           </button>
           .
         </p>
+        <ExistingAccountSignIn webinarId={w.id} account={null} />
       </div>
     </form>
   );
 }
 
-/* A signed-in account with a name and email already answered the form.
+/* A signed-in account with a name, email, and a typed phone already answered
+ * the form. Google's People number does not count — registration still needs
+ * the number they entered.
  *
  * Extra questions and a passcode are still asked, because those are about
  * this webinar, not about who the person is. Otherwise registering again is
@@ -619,6 +624,7 @@ function GuestJoinFields({
  */
 function identityKnown(account: Account | null, w: Webinar): boolean {
   if (!account?.name.trim() || !account.email.trim()) return false;
+  if (!account.phone?.trim()) return false;
   if (w.passcodeRequired) return false;
   return !w.customQuestions.some((q) => q.required);
 }
@@ -656,6 +662,7 @@ function KnownAttendeeRegister({
         jobTitle: account.title,
         phone: account.phone ?? "",
         consent: true,
+        whatsappOptIn: Boolean(account.phone?.trim()),
         answers: {},
       })
       .then(onRegistered)
@@ -787,22 +794,18 @@ function RegisterFields({
    * as `country` above — still just a starting value, changeable from the
    * same 200-country list as everyone else. */
   const [dialIso, setDialIso] = useState("IN");
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState(() =>
+    nationalPhoneDigits(account?.phone ?? ""),
+  );
   const dials = useMemo(() => dialOptions(), []);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [consent, setConsent] = useState(true);
-  /* WhatsApp updates: a SEPARATE decision, and unticked.
+  /* WhatsApp updates start ticked. The person can still clear the box.
    *
-   * Separate because agreeing to be contacted about a webinar is not agreeing to
-   * be messaged on a personal phone, and the host's WhatsApp number is billed per
-   * conversation by Meta — an opt-in list padded with people who never chose it
-   * costs the host money and gets the number reported.
-   *
-   * Unticked while the consent above starts ticked, which is the one asymmetry
-   * worth having on this form: pre-ticked marketing consent is not consent
-   * anywhere that regulates it, and this is the box a broadcast will rely on.
+   * Separate from the host-contact consent above: this is specifically WhatsApp
+   * (confirmation, reminder, replay). It is only sent when a number is present.
    */
-  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
+  const [whatsappOptIn, setWhatsappOptIn] = useState(true);
   /* Digits only, so "83 111 2222" and "+27 83 111 2222" agree on whether a number
    * was typed at all. Shared by the submit body and the opt-in box, which only
    * appears once there is a number for it to apply to. */
@@ -835,19 +838,20 @@ function RegisterFields({
     setError(null);
     setFieldErrors({});
 
+    if (!phoneDigits) {
+      setFieldErrors({ phone: "Add a mobile number." });
+      setBusy(false);
+      return;
+    }
+
     const { fullName, ...rest } = form;
     const body: RegisterRequest = {
       ...rest,
       ...splitName(fullName),
-      /* `+<dial><national>`, with anything the person typed for legibility stripped — and
-       * EMPTY when nothing was typed. The number is optional now, and sending a bare
-       * "+91" for somebody who left it blank would store a country code as a phone
-       * number: unusable, and indistinguishable in the export from a real one.
-       * The server normalises again — it has to, since a pasted number never comes
-       * through here. */
-      phone: phoneDigits
-        ? `+${DIAL_CODES[dialIso] ?? ""}${phoneDigits}`
-        : "",
+      /* `+<dial><national>`, with anything the person typed for legibility stripped.
+       * Sending a bare "+91" for somebody who left it blank would store a country
+       * code as a phone number. The server normalises again. */
+      phone: `+${DIAL_CODES[dialIso] ?? ""}${phoneDigits}`,
       answers,
       consent,
       /* Never sent without a number: the server ignores it too, but an opt-in
@@ -984,7 +988,7 @@ function RegisterFields({
             viewer's own country, so for most people it is already correct. */}
         <div>
           <label className="label" htmlFor="phone">
-            Mobile number <span className="text-ink-3">(optional)</span>
+            Mobile number
           </label>
           <div className="flex gap-2">
             <select
@@ -1006,10 +1010,7 @@ function RegisterFields({
               inputMode="tel"
               autoComplete="tel-national"
               placeholder="98765 43210"
-              /* Not required, matching the server. It was, and a mandatory number on the one
-                 form that captures a lead costs more registrations than the numbers are
-                 worth. A number that IS typed is still shape-checked at the API: storing
-                 "9876543210" with no country code gives the host something nobody can dial. */
+              required
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               aria-invalid={Boolean(fieldErrors.phone)}
@@ -1130,7 +1131,6 @@ function RegisterFields({
         {fieldError("consent")}
 
         <WhatsAppOptInCheckbox
-          hasPhone={phoneDigits !== ""}
           checked={whatsappOptIn}
           onChange={setWhatsappOptIn}
         />
@@ -1157,8 +1157,30 @@ function RegisterFields({
               : "You'll get your join link straight away."
             : "We'll email you a link to confirm this address. Your join link arrives after that."}
         </p>
+        <ExistingAccountSignIn webinarId={w.id} account={account} />
       </div>
     </form>
+  );
+}
+
+function ExistingAccountSignIn({
+  webinarId,
+  account,
+}: {
+  webinarId: string;
+  account: Account | null;
+}) {
+  if (account) return null;
+  return (
+    <p className="text-center text-[12.5px] text-ink-2">
+      Already have an account?{" "}
+      <Link
+        href={webinarSignInHref(webinarId)}
+        className="font-medium text-brand hover:underline"
+      >
+        Sign in
+      </Link>
+    </p>
   );
 }
 

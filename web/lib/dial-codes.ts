@@ -44,6 +44,14 @@ export const DIAL_CODES: Record<string, string> = {
 
 export type DialOption = { iso: string; code: string; label: string };
 
+/** National digits for a tel field when an E.164 number is already stored.
+ *  The country picker still defaults to India; +91 numbers drop that prefix. */
+export function nationalPhoneDigits(stored: string): string {
+  const digits = stored.replace(/\D/g, "");
+  if (digits.startsWith("91") && digits.length >= 12) return digits.slice(2);
+  return digits;
+}
+
 /**
  * Every option, sorted by the country name as the viewer's browser writes it.
  *

@@ -991,11 +991,15 @@ type Account struct {
 	Title         string `json:"title"`
 	Org           string `json:"org"`
 	// Phone is E.164 shape (`+` then digits), same convention as
-	// Registration.Phone — the caller's own number, never shown to anyone
-	// else (not on Person, the type other attendees/panelists see).
-	Phone    string `json:"phone"`
-	Initials string `json:"initials"`
-	Hue      string `json:"hue"`
+	// Registration.Phone — the number the caller typed (signup, profile,
+	// registration form). Never shown to anyone else (not on Person).
+	Phone string `json:"phone"`
+	// GooglePhone is the People API number from Continue with Google, when
+	// they granted that scope. Separate from Phone so a typed number and a
+	// Google number can both be kept. Omitempty: most accounts have none.
+	GooglePhone string `json:"googlePhone,omitempty"`
+	Initials    string `json:"initials"`
+	Hue         string `json:"hue"`
 	/* AvatarURL is the photo to show for this account.
 	 * An uploaded picture wins over the Google profile photo. The upload is a
 	 * path on this API (bytes live in the users row, same as a webinar cover);
@@ -3160,9 +3164,9 @@ type AppConfig struct {
 	 * are handed out by GET /api/host/whatsapp/connect, to a signed-in host at the
 	 * moment they click, rather than to every anonymous visitor at boot. */
 	WhatsAppConnect bool `json:"whatsappConnect,omitempty"`
-	/* GoogleAuth is Continue with Google / One Tap via first-party OAuth on this
-	 * origin. Public values only — the client secret stays on the API. When false
-	 * the Continue with Google button is hidden.
+	/* GoogleAuth is Continue with Google via first-party OAuth on this origin.
+	 * Public values only — the client secret stays on the API. When false the
+	 * Continue with Google button is hidden.
 	 *
 	 * supabaseUrl / supabaseAnonKey remain for an unused legacy exchange path.
 	 */
