@@ -629,18 +629,18 @@ const OWN_SHARE_SCALE = {
     button: "",
   },
   md: {
-    badge: "mb-3 gap-2 px-3 py-1 text-[14px]",
-    dot: "size-2.5",
-    title: "text-[24px] font-bold",
-    sub: "mt-2 text-[17px]",
-    button: "mt-5 px-6 py-2.5 text-[16px] rounded-xl",
+    badge: "mb-2.5 gap-2 px-2.5 py-1 text-[12px]",
+    dot: "size-2",
+    title: "text-[20px] font-bold",
+    sub: "mt-1.5 text-[15px]",
+    button: "mt-4 px-5 py-2 text-[14px] rounded-xl",
   },
   lg: {
-    badge: "mb-6 gap-3 px-6 py-2.5 text-[22px]",
-    dot: "size-3.5",
-    title: "text-[38px] font-bold",
-    sub: "mt-3 text-[24px]",
-    button: "mt-7 px-9 py-4 text-[22px] rounded-[14px]",
+    badge: "mb-5 gap-2.5 px-5 py-2 text-[18px]",
+    dot: "size-3",
+    title: "text-[32px] font-bold",
+    sub: "mt-2.5 text-[20px]",
+    button: "mt-6 px-8 py-3.5 text-[19px] rounded-[13px]",
   },
 } as const;
 
