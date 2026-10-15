@@ -5,6 +5,7 @@ import { Alert, Spinner } from "./controls";
 import { useAppConfig } from "./providers";
 import { Button } from "./ui";
 import { safeAuthNext } from "@/lib/supabase";
+import { googleLoginHint } from "@/lib/webinar-register";
 
 /* Starts first-party Google OAuth on this origin.
  *
@@ -13,21 +14,29 @@ import { safeAuthNext } from "@/lib/supabase";
  * `*.supabase.co`. `next` is a same-origin path round-tripped in signed state
  * so a webinar registration comes back to that webinar.
  */
-export async function startGoogleOAuth(opts: { next: string }): Promise<void> {
-  const next = encodeURIComponent(safeAuthNext(opts.next));
+export async function startGoogleOAuth(opts: {
+  next: string;
+  loginHint?: string;
+}): Promise<void> {
+  const params = new URLSearchParams();
+  params.set("next", safeAuthNext(opts.next));
+  const hint = googleLoginHint(opts.loginHint ?? "");
+  if (hint) params.set("login_hint", hint);
   // Full navigation to the API proxy (Worker / Cloud Run), not a Next.js page.
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   window.location.assign(
-    `${window.location.origin}/api/auth/google/start?next=${next}`,
+    `${window.location.origin}/api/auth/google/start?${params.toString()}`,
   );
 }
 
 /** Starts first-party Google OAuth; Cloud Run sets webcast_session on callback. */
 export function GoogleContinueButton({
   next,
+  loginHint,
   label = "Continue with Google",
 }: {
   next: string;
+  loginHint?: string;
   label?: string;
 }) {
   const { googleAuth } = useAppConfig();
@@ -42,7 +51,7 @@ export function GoogleContinueButton({
     setBusy(true);
     setError(null);
     try {
-      await startGoogleOAuth({ next });
+      await startGoogleOAuth({ next, loginHint });
       // On success the browser navigates away to Google.
     } catch (err) {
       setError(

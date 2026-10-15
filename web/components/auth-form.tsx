@@ -88,7 +88,7 @@ export function LoginForm() {
 
       {googleAuth && (
         <div className="mt-5 grid gap-3">
-          <GoogleContinueButton next={next} />
+          <GoogleContinueButton next={next} loginHint={email} />
           <AuthDivider />
         </div>
       )}
@@ -241,7 +241,11 @@ export function SignupForm() {
 
       {googleAuth && (
         <div className="mt-5 grid gap-3">
-          <GoogleContinueButton next={next} label="Sign up with Google" />
+          <GoogleContinueButton
+            next={next}
+            loginHint={email}
+            label="Sign up with Google"
+          />
           <AuthDivider />
         </div>
       )}

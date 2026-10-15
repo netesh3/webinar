@@ -65,7 +65,11 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 	})
 
 	redirect := s.googleRedirectURI(r)
-	http.Redirect(w, r, auth.GoogleAuthCodeURL(s.cfg.GoogleClientID, redirect, signed, nonce), http.StatusFound)
+	hint := auth.GoogleLoginHint(r.URL.Query().Get("login_hint"))
+	if hint == "" {
+		hint = auth.GoogleLoginHint(r.URL.Query().Get("email"))
+	}
+	http.Redirect(w, r, auth.GoogleAuthCodeURL(s.cfg.GoogleClientID, redirect, signed, nonce, hint), http.StatusFound)
 }
 
 func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {

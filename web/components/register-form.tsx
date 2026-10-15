@@ -784,6 +784,24 @@ function RegisterFields({
     // is only where it starts.
     country: "India",
   }));
+  useEffect(() => {
+    if (account?.email) return;
+    const pending = readPendingWebinarRegister(w.id);
+    if (!pending?.email) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage after mount */
+    setForm((prev) => {
+      if (prev.email) return prev;
+      const pendingName = [pending.firstName, pending.lastName]
+        .map((s) => s?.trim())
+        .filter(Boolean)
+        .join(" ");
+      return {
+        ...prev,
+        email: pending.email,
+        fullName: prev.fullName || pendingName,
+      };
+    });
+  }, [account?.email, w.id]);
   /* The number is two fields in the form and one value on the wire.
    *
    * Split here because that is how a person enters it — pick the country, type the number —
@@ -823,6 +841,7 @@ function RegisterFields({
     try {
       await startGoogleOAuth({
         next: `/webinars/${w.id}`,
+        loginHint: body.email,
       });
     } catch (err) {
       setError(

@@ -54,6 +54,9 @@ func TestGoogleStartRedirectsToGoogle(t *testing.T) {
 	if q.Get("prompt") != "select_account consent" {
 		t.Fatalf("prompt %q", q.Get("prompt"))
 	}
+	if q.Get("login_hint") != "" {
+		t.Fatalf("empty start must omit login_hint: %s", loc)
+	}
 	if strings.Contains(loc, "access_type=offline") {
 		t.Fatalf("login must not request offline access: %s", loc)
 	}
@@ -69,6 +72,66 @@ func TestGoogleStartRedirectsToGoogle(t *testing.T) {
 	}
 	if strings.Contains(scope, "youtube") {
 		t.Fatalf("login must not request YouTube: %s", scope)
+	}
+}
+
+func TestGoogleStartLoginHint(t *testing.T) {
+	h := newHarness(t, withGoogleOAuth)
+	noFollow := &http.Client{
+		Jar: h.client.Jar,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	startQuery := func(rawQuery string) url.Values {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, h.srv.URL+"/api/auth/google/start?"+rawQuery, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := noFollow.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusFound {
+			t.Fatalf("start: status %d, want 302", res.StatusCode)
+		}
+		u, err := url.Parse(res.Header.Get("Location"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u.Query()
+	}
+
+	q := startQuery("next=/webinars/demo&login_hint=" + url.QueryEscape("user@gmail.com"))
+	if q.Get("login_hint") != "user@gmail.com" {
+		t.Fatalf("login_hint %q", q.Get("login_hint"))
+	}
+	if q.Get("prompt") != "consent" {
+		t.Fatalf("hinted prompt %q, want consent", q.Get("prompt"))
+	}
+
+	q = startQuery("next=/webinars/demo&email=" + url.QueryEscape("alt@gmail.com"))
+	if q.Get("login_hint") != "alt@gmail.com" {
+		t.Fatalf("email query login_hint %q", q.Get("login_hint"))
+	}
+
+	q = startQuery("next=/webinars/demo&login_hint=" + url.QueryEscape("https://evil.example"))
+	if q.Get("login_hint") != "" {
+		t.Fatalf("junk login_hint %q", q.Get("login_hint"))
+	}
+	if q.Get("prompt") != "select_account consent" {
+		t.Fatalf("junk prompt %q", q.Get("prompt"))
+	}
+
+	q = startQuery("next=/webinars/demo&login_hint=")
+	if q.Get("login_hint") != "" {
+		t.Fatalf("empty login_hint %q", q.Get("login_hint"))
+	}
+	if q.Get("prompt") != "select_account consent" {
+		t.Fatalf("empty prompt %q", q.Get("prompt"))
 	}
 }
 

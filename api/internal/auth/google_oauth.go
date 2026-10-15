@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strings"
 )
@@ -24,13 +25,19 @@ var ErrGoogleOAuth = errors.New("google oauth")
 // YouTube it does not ask for offline access: we only need an ID token and a
 // short-lived access token to read People phone numbers.
 //
-// prompt is select_account plus consent. Account-picker alone skips the
-// consent screen after a prior grant, so a user who left the People phone
-// box empty never sees it again. Consent every time re-asks for that scope.
+// prompt is consent every time so a user who left the People phone box empty
+// sees that scope again. Without a login_hint, select_account is added so the
+// chooser is explicit. With a login_hint, select_account is omitted: Google
+// otherwise shows a blank picker and ignores the address they already typed.
 // Google still draws extra scopes as unchecked boxes; there is no authorize
 // query that pre-checks them. Do not set enable_granular_consent=false —
 // Google ignores it once granular permissions are on for the client.
-func GoogleAuthCodeURL(clientID, redirect, state, nonce string) string {
+func GoogleAuthCodeURL(clientID, redirect, state, nonce, loginHint string) string {
+	hint := GoogleLoginHint(loginHint)
+	prompt := "select_account consent"
+	if hint != "" {
+		prompt = "consent"
+	}
 	q := url.Values{
 		"client_id":     {clientID},
 		"redirect_uri":  {redirect},
@@ -38,9 +45,41 @@ func GoogleAuthCodeURL(clientID, redirect, state, nonce string) string {
 		"scope":         {GoogleOAuthScopes},
 		"state":         {state},
 		"nonce":         {nonce},
-		"prompt":        {"select_account consent"},
+		"prompt":        {prompt},
+	}
+	if hint != "" {
+		q.Set("login_hint", hint)
 	}
 	return GoogleAuthURL + "?" + q.Encode()
+}
+
+// GoogleLoginHint is a typed email for Google's login_hint. Empty, a display
+// name, a URL, or anything that is not a single mailbox is dropped so the
+// authorize URL cannot carry open-redirect junk.
+func GoogleLoginHint(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > 254 {
+		return ""
+	}
+	if strings.ContainsAny(raw, "\r\n\x00<>\"'\\") {
+		return ""
+	}
+	addr, err := mail.ParseAddress(raw)
+	if err != nil {
+		return ""
+	}
+	email := strings.TrimSpace(addr.Address)
+	if email == "" || strings.ContainsAny(email, " \t") {
+		return ""
+	}
+	at := strings.LastIndex(email, "@")
+	if at <= 0 || at == len(email)-1 {
+		return ""
+	}
+	if strings.Contains(email[:at], "@") || !strings.Contains(email[at+1:], ".") {
+		return ""
+	}
+	return email
 }
 
 // GoogleTokenResponse is the token endpoint body we actually use.

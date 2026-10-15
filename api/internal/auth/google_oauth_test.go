@@ -45,7 +45,7 @@ func TestExchangeGoogleCode(t *testing.T) {
 }
 
 func TestGoogleAuthCodeURL(t *testing.T) {
-	raw := GoogleAuthCodeURL("cid", "http://localhost/cb", "state-1", "nonce-1")
+	raw := GoogleAuthCodeURL("cid", "http://localhost/cb", "state-1", "nonce-1", "")
 	u, err := url.Parse(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -56,6 +56,9 @@ func TestGoogleAuthCodeURL(t *testing.T) {
 	}
 	if q.Get("prompt") != "select_account consent" {
 		t.Fatalf("prompt %q", q.Get("prompt"))
+	}
+	if q.Get("login_hint") != "" {
+		t.Fatalf("empty hint must omit login_hint: %s", raw)
 	}
 	scope := q.Get("scope")
 	if !strings.Contains(scope, "openid") || !strings.Contains(scope, "user.phonenumbers.read") {
@@ -69,5 +72,50 @@ func TestGoogleAuthCodeURL(t *testing.T) {
 	}
 	if q.Has("enable_granular_consent") {
 		t.Fatalf("must not toggle granular consent: %s", raw)
+	}
+
+	hinted := GoogleAuthCodeURL("cid", "http://localhost/cb", "state-1", "nonce-1", "  user@gmail.com  ")
+	hq, err := url.Parse(hinted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q = hq.Query()
+	if q.Get("login_hint") != "user@gmail.com" {
+		t.Fatalf("login_hint %q", q.Get("login_hint"))
+	}
+	if q.Get("prompt") != "consent" {
+		t.Fatalf("hinted prompt %q, want consent without select_account", q.Get("prompt"))
+	}
+
+	junk := GoogleAuthCodeURL("cid", "http://localhost/cb", "state-1", "nonce-1", "https://evil.example/phish")
+	jq, err := url.Parse(junk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if jq.Query().Get("login_hint") != "" {
+		t.Fatalf("junk must not become login_hint: %s", junk)
+	}
+	if jq.Query().Get("prompt") != "select_account consent" {
+		t.Fatalf("junk prompt %q", jq.Query().Get("prompt"))
+	}
+}
+
+func TestGoogleLoginHint(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"", ""},
+		{"  user@gmail.com  ", "user@gmail.com"},
+		{"not-an-email", ""},
+		{"https://evil.example/phish", ""},
+		{"user@gmail.com\nLocation: https://evil.example", ""},
+		{"Name <user@gmail.com>", ""},
+		{"user@gmail.com", "user@gmail.com"},
+		{"a@" + strings.Repeat("x", 260) + ".com", ""},
+	}
+	for _, c := range cases {
+		if got := GoogleLoginHint(c.in); got != c.want {
+			t.Errorf("GoogleLoginHint(%q)=%q, want %q", c.in, got, c.want)
+		}
 	}
 }

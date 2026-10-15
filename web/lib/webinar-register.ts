@@ -14,6 +14,19 @@ export function isGmailAddress(email: string): boolean {
   return trimmed.slice(at + 1) === "gmail.com";
 }
 
+/** Typed address for Google's login_hint. Empty or junk is omitted. */
+export function googleLoginHint(email: string): string {
+  const trimmed = email.trim();
+  if (!trimmed || trimmed.length > 254) return "";
+  if (/[\s<>"'\\]/.test(trimmed)) return "";
+  const at = trimmed.indexOf("@");
+  if (at <= 0 || at !== trimmed.lastIndexOf("@") || at === trimmed.length - 1) {
+    return "";
+  }
+  if (!trimmed.slice(at + 1).includes(".")) return "";
+  return trimmed;
+}
+
 const PENDING_KEY = "webinar.pendingRegister";
 
 /* The form, held across the Google redirect.

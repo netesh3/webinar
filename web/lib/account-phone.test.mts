@@ -4,7 +4,7 @@
  */
 
 import { needsManualPhone } from "./account-phone.ts";
-import { webinarSignInHref } from "./webinar-register.ts";
+import { googleLoginHint, webinarSignInHref } from "./webinar-register.ts";
 
 let passed = 0;
 let failed = 0;
@@ -35,6 +35,10 @@ ok(
   "a slug is encoded, not concatenated raw",
   webinarSignInHref("a/b") === "/login?next=%2Fwebinars%2Fa%2Fb",
 );
+ok("typed gmail is a login hint", googleLoginHint("  user@gmail.com  ") === "user@gmail.com");
+ok("empty is not a login hint", googleLoginHint("") === "");
+ok("a URL is not a login hint", googleLoginHint("https://evil.example") === "");
+ok("a display-name address is not a login hint", googleLoginHint("Name <user@gmail.com>") === "");
 
 console.log(
   `\n${failed === 0 ? "PASS" : "FAIL"}  ${passed}/${passed + failed} checks passed`,
