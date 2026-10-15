@@ -17,6 +17,7 @@ import {
   PinIcon,
   PlusIcon,
   ScreenShareIcon,
+  StopIcon,
 } from "../icons";
 import { tileFit } from "@/lib/layout";
 import { CAMERA_OFF_LABEL } from "@/lib/stage-presence";
@@ -627,6 +628,7 @@ const OWN_SHARE_SCALE = {
     title: "text-[14px] font-semibold",
     sub: "",
     button: "",
+    icon: "",
   },
   md: {
     badge: "mb-2.5 gap-2 px-2.5 py-1 text-[12px]",
@@ -634,6 +636,7 @@ const OWN_SHARE_SCALE = {
     title: "text-[20px] font-bold",
     sub: "mt-1.5 text-[15px]",
     button: "mt-4 px-5 py-2 text-[14px] rounded-xl",
+    icon: "size-3.5",
   },
   lg: {
     badge: "mb-5 gap-2.5 px-5 py-2 text-[18px]",
@@ -641,6 +644,7 @@ const OWN_SHARE_SCALE = {
     title: "text-[32px] font-bold",
     sub: "mt-2.5 text-[20px]",
     button: "mt-6 px-8 py-3.5 text-[19px] rounded-[13px]",
+    icon: "size-4.5",
   },
 } as const;
 
@@ -681,8 +685,12 @@ function OwnShareNotice({
             <button
               type="button"
               onClick={onStop}
-              className={`inline-block bg-live font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${s.button}`}
+              /* Tailwind v4 resets a button's cursor to the default arrow, so the hand
+               * is put back explicitly — together with a lift on hover and a press on
+               * active, so this reads as something to click rather than a red label. */
+              className={`relative z-10 inline-flex cursor-pointer items-center gap-2 bg-live font-semibold text-white shadow-lg shadow-black/40 ring-1 ring-white/10 transition-[background-color,transform,box-shadow] duration-150 select-none hover:-translate-y-px hover:bg-[color-mix(in_srgb,var(--color-live)_85%,white)] hover:shadow-xl hover:shadow-live/30 active:translate-y-0 active:scale-[0.97] active:bg-[color-mix(in_srgb,var(--color-live)_85%,black)] outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${s.button}`}
             >
+              <StopIcon className={s.icon} aria-hidden />
               Stop sharing
             </button>
           </>
