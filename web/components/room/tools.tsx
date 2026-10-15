@@ -158,7 +158,8 @@ const TOOLS: Record<ToolId, Tool> = {
     // Opens the share picker's own dialog rather than a tool window.
     kind: "action",
     label: "Video file",
-    menuLabel: "Share a video file",
+    // Short in More so the Zoom-style grid stays one line per cell.
+    menuLabel: "Video file",
     title: "Share a video file",
     icon: PlayIcon,
     keepMounted: false,
