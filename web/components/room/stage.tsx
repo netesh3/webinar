@@ -17,7 +17,6 @@ import {
   qualityFor,
   sortTiles,
   useResponsiveGridCap,
-  withoutCapturedSelfCamera,
   VideoQuality,
   type LayoutMode,
 } from "@/lib/layout";
@@ -69,16 +68,7 @@ import { ParticipantTile, type Tile, type TileSource } from "./tile";
 export type ViewMode = LayoutMode;
 
 export function Stage() {
-  const {
-    topic,
-    controls,
-    permissions,
-    join,
-    stage,
-    entryVideo,
-    coverImageUrl,
-    fileShare,
-  } = useRoomUI();
+  const { topic, controls, permissions, join, stage, entryVideo, coverImageUrl } = useRoomUI();
 
   // onlySubscribed: a track we have not subscribed to has no stream to render,
   // and with adaptiveStream the subscription follows what is actually on screen.
@@ -169,22 +159,12 @@ export function Stage() {
       filtered.length === 0 && tiles.some((tile) => tile.publication === undefined)
         ? tiles
         : filtered;
-    return withoutCapturedSelfCamera(
-      sortTiles(
-        kept,
-        stage.pinnedParticipantId,
-        mode === "speaker" ? speaking : null,
-      ),
-      fileShare.active,
+    return sortTiles(
+      kept,
+      stage.pinnedParticipantId,
+      mode === "speaker" ? speaking : null,
     );
-  }, [
-    tiles,
-    stage.preferences,
-    stage.pinnedParticipantId,
-    mode,
-    speaking,
-    fileShare.active,
-  ]);
+  }, [tiles, stage.preferences, stage.pinnedParticipantId, mode, speaking]);
 
   /* The mode is exactly what the viewer chose — with one deliberate exception below.
    *
@@ -393,8 +373,6 @@ function SpeakerLayout({
   const sharing = focus.source === Track.Source.ScreenShare;
   // Three is what fits beside a shared screen without eating into it. The rest are
   // counted rather than dropped silently, and the grid shows everyone.
-  // Presenter's own camera is already stripped in Stage while they display-capture
-  // (withoutCapturedSelfCamera), so it is not floated into the share.
   const thumbnails = sharing ? rest.slice(0, 3) : rest;
   const hidden = rest.length - thumbnails.length;
 
@@ -473,7 +451,6 @@ function SpotlightLayout({
   // than a thumbnail: it hides people entirely. Scrolling is the same
   // affordance the strip already offered for the two it did show, just no
   // longer cut off before a third person.
-  // Presenter's own camera is stripped in Stage while they display-capture.
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-2 lg:flex-row">
       <div className="min-h-0 min-w-0 flex-1">

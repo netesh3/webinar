@@ -25,7 +25,6 @@ import {
   paginate,
   qualityFor,
   sortTiles,
-  withoutCapturedSelfCamera,
   VideoQuality,
   MAX_TILE_CROP,
   tileFit,
@@ -70,8 +69,6 @@ function tile(
     speaking?: boolean;
     local?: boolean;
     share?: boolean;
-    /** Defaults to `id`. Set when one person has both a camera and a share tile. */
-    identity?: string;
     /** Camera published but switched off — an avatar tile. */
     muted?: boolean;
     /** No publication at all, which is what a local track looks like here. */
@@ -94,7 +91,7 @@ function tile(
     key: id,
     source: opts.share ? Track.Source.ScreenShare : Track.Source.Camera,
     participant: {
-      identity: opts.identity ?? id,
+      identity: id,
       isSpeaking: opts.speaking ?? false,
       isLocal: opts.local ?? false,
       metadata: JSON.stringify({ role: opts.role ?? "panelist" }),
@@ -356,43 +353,6 @@ group("filterTiles", () => {
   ok(speakers.includes("deck"), "…and keeps a share whoever owns it");
 
   eq(filterTiles(tiles, PREFS).length, 6, "no filters means no filtering");
-});
-
-group("withoutCapturedSelfCamera", () => {
-  const meShare = tile("me:share", {
-    local: true,
-    share: true,
-    role: "host",
-    identity: "me",
-  });
-  const meCam = tile("me:cam", { local: true, role: "host", identity: "me" });
-  const otherCam = tile("other", { role: "panelist" });
-  const otherShare = tile("other:share", {
-    share: true,
-    role: "panelist",
-    identity: "other",
-  });
-
-  eq(
-    withoutCapturedSelfCamera([meShare, meCam, otherCam]).map((t) => t.key),
-    ["me:share", "other"],
-    "while you display-capture, your own camera is dropped so it is not baked into the share",
-  );
-  eq(
-    withoutCapturedSelfCamera([meShare, meCam, otherCam], true).map((t) => t.key),
-    ["me:share", "me:cam", "other"],
-    "a file share does not capture the page, so self-view stays",
-  );
-  eq(
-    withoutCapturedSelfCamera([otherShare, meCam]).map((t) => t.key),
-    ["other:share", "me:cam"],
-    "someone else's share leaves your camera alone",
-  );
-  eq(
-    withoutCapturedSelfCamera([meCam, otherCam]).map((t) => t.key),
-    ["me:cam", "other"],
-    "no local share means nothing is stripped",
-  );
 });
 
 // ------------------------------------------------------------------- budget
