@@ -2330,41 +2330,46 @@ export interface Webinar {
   zoomNotice?: string;
   report?: WebinarReport;
   /**
-   * SeriesID links this session to a recurring series. Empty on a one-off.
-   * OccurrenceIndex is the 1-based position when the series was created.
-   * SeriesException is a session edited on its own: a later "this and
-   * following" save does not overwrite it.
+   *  SeriesID links this session to a recurring series. Empty on a one-off.
+   * 	 *
+   * 	 * OccurrenceIndex is the 1-based position when the series was created.
+   * 	 * SeriesException is a session edited on its own: a later "this and
+   * 	 * following" save does not overwrite it. Series is the schedule, present
+   * 	 * on host and attendee reads so a list can show the relationship.
    */
   seriesId?: string;
-  occurrenceIndex?: number;
+  occurrenceIndex?: number /* int */;
   seriesException?: boolean;
   series?: SeriesInfo;
 }
-
-/** The schedule shared by every session in a series. */
+/**
+ * SeriesInfo is the schedule shared by every session in a series.
+ */
 export interface SeriesInfo {
   id: string;
-  pattern: string;
-  interval: number;
-  weekdays?: number[];
-  monthlyDay?: number;
-  end: string;
+  pattern: string; // daily, weekly, monthly
+  interval: number /* int */;
+  weekdays?: number /* int */[]; // 0 = Sunday … 6 = Saturday
+  monthlyDay?: number /* int */;
+  end: string; // by_date or after_count
   endDate?: string;
-  endCount?: number;
+  endCount?: number /* int */;
   timeZone: string;
-  occurrenceCount: number;
+  occurrenceCount: number /* int */;
   summary: string;
   skippedMonths?: string[];
 }
-
-/** Sent when creating a series, or when a "this and following" edit changes it. */
+/**
+ * RecurrenceInput is the schedule sent when creating a series, or when a
+ * "this and following" edit changes how the rest of it repeats.
+ */
 export interface RecurrenceInput {
   pattern: string;
-  interval: number;
-  weekdays?: number[];
+  interval: number /* int */;
+  weekdays?: number /* int */[];
   end: string;
   endDate?: string;
-  endCount?: number;
+  endCount?: number /* int */;
 }
 /**
  *  HostWebinarPage is one screen of a host's own webinars.
@@ -2452,10 +2457,14 @@ export interface WebinarInput {
    *  Venue is app, zoom_meeting, or zoom_webinar. Empty means this app.
    */
   venue?: string;
-  /** Set when this save creates a series, or a following edit changes the schedule. */
+  /**
+   *  Recurrence is set when this save creates a series, or when a following
+   * 	 * edit changes the schedule. SeriesScope is "this" or "following" on an
+   * 	 * edit of a session that already belongs to a series. Omitted on a
+   * 	 * one-off, and on a create.
+   */
   recurrence?: RecurrenceInput;
-  /** "this" or "following" when editing a session that already belongs to a series. */
-  seriesScope?: "this" | "following";
+  seriesScope?: string;
 }
 /**
  * SetStreamRequest is the host's RTMP destination.
@@ -4522,6 +4531,15 @@ export interface SupabaseAuthRequest {
   googleAccessToken?: string;
 }
 /**
+ *  GoogleAuthRequest exchanges a Google ID token (One Tap / FedCM) for this
+ *  * app's webcast_session cookie. Nonce is the value GIS was initialized with
+ *  * and must match the token's nonce claim when present.
+ */
+export interface GoogleAuthRequest {
+  idToken: string;
+  nonce?: string;
+}
+/**
  *  HostRequest is POST /api/me/host-request.
  *  *
  *  * Phone is required only when the account has none stored. When one is
@@ -5090,8 +5108,8 @@ export interface AppConfig {
   googleApiKey?: string;
   /**
    *  YouTubeOAuth is whether GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are both
-   * 	 * set, so Account settings can offer Connect YouTube. Distinct from GoogleAuth
-   * 	 * (Supabase sign-in) and from GoogleClientID used for Drive Picker.
+   * 	 * set, so Account settings can offer Connect YouTube. The same pair turns on
+   * 	 * GoogleAuth (Continue with Google). GoogleClientID is also Drive Picker.
    */
   youtubeOAuth?: boolean;
   /**
@@ -5103,10 +5121,11 @@ export interface AppConfig {
    */
   whatsappConnect?: boolean;
   /**
-   *  Supabase Auth (Google sign-in). Public values only — the JWT secret stays
-   * 	 * on the API. When googleAuth is false the Continue with Google button is hidden.
+   *  GoogleAuth is Continue with Google / One Tap via first-party OAuth on this
+   * 	 * origin. Public values only — the client secret stays on the API. When false
+   * 	 * the Continue with Google button is hidden.
    * 	 *
-   * 	 * Distinct from GoogleClientID above: that pair is Drive Picker, not login.
+   * 	 * supabaseUrl / supabaseAnonKey remain for an unused legacy exchange path.
    */
   supabaseUrl?: string;
   supabaseAnonKey?: string;

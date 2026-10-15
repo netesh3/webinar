@@ -644,7 +644,7 @@ func (s *Server) optionalGooglePhone(ctx context.Context, accessToken string) st
  * password login uses. Password accounts keep working; this is an alternate door.
  */
 func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.GoogleAuthEnabled() {
+	if !s.supabaseBrowserAuthEnabled() {
 		httpx.Error(w, http.StatusServiceUnavailable, "google_auth_unavailable",
 			"Google sign-in is not configured on this instance.")
 		return
@@ -657,7 +657,7 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, err := auth.VerifySupabaseAccessToken(
-		req.AccessToken, s.cfg.SupabaseJWTSecret, s.cfg.SupabaseURL)
+		req.AccessToken, s.cfg.SupabaseJWTSecret, s.cfg.SupabaseURL, s.cfg.SupabaseProjectURL)
 	if err != nil {
 		s.log.Warn("supabase auth rejected", "error", err, "ip", httpx.ClientIP(r))
 		httpx.Error(w, http.StatusUnauthorized, "invalid_token",
@@ -665,80 +665,24 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.store.UserByEmail(r.Context(), identity.Email)
-	created := false
-	phone := ""
-	switch {
-	case err == nil:
-		// Existing password or prior OAuth account — link by email and sign in.
-		// A phone already on the account stays. Google fills one only when the
-		// row has none.
-		if user.Phone == "" {
-			phone = s.optionalGooglePhone(r.Context(), req.GoogleAccessToken)
-		}
-	case errors.Is(err, store.ErrNotFound):
-		if !s.cfg.SignupOpen {
-			httpx.Error(w, http.StatusForbidden, "signup_closed",
-				"New accounts are closed on this instance.")
-			return
-		}
-		// Same policy as handleSignup: no hosting until an admin grants it,
-		// whichever door they signed up through. Phone is stored only when the
-		// People API returns one; a missing number or a denied scope still
-		// creates the account.
-		phone = s.optionalGooglePhone(r.Context(), req.GoogleAccessToken)
-		user, err = s.store.CreateUser(r.Context(), identity.Email, "",
-			identity.Name, "", "", phone, false)
-		if errors.Is(err, store.ErrConflict) {
-			// Race with a parallel signup: look up again.
-			user, err = s.store.UserByEmail(r.Context(), identity.Email)
-		}
-		if err != nil {
-			s.fail(w, r, "supabase auth: create user", err)
-			return
-		}
-		created = true
-	default:
-		s.fail(w, r, "supabase auth: lookup", err)
+	user, created, err := s.provisionGoogleUser(r.Context(), auth.GoogleIdentity{
+		Subject:       identity.Subject,
+		Email:         identity.Email,
+		Name:          identity.Name,
+		Picture:       identity.Picture,
+		EmailVerified: identity.EmailVerified,
+	}, req.GoogleAccessToken, "supabase auth")
+	if errors.Is(err, errOAuthSignupClosed) {
+		httpx.Error(w, http.StatusForbidden, "signup_closed",
+			"New accounts are closed on this instance.")
 		return
 	}
-
-	if phone != "" && user.Phone == "" {
-		updated, uerr := s.store.SetPhoneIfEmpty(r.Context(), user.ID, phone)
-		if uerr != nil {
-			s.log.Warn("supabase auth: save phone", "user", user.ID, "error", uerr)
-		} else {
-			user = updated
-		}
-	}
-
-	if pic := identity.Picture; pic != "" && pic != user.GooglePicture {
-		if err := s.store.SetGooglePicture(r.Context(), user.ID, pic); err != nil {
-			s.log.Warn("supabase auth: picture", "error", err, "user", user.ID)
-		} else {
-			user.GooglePicture = pic
-		}
-	}
-
-	/* Google has already confirmed the address, so this door never sends a verification
-	 * mail and never refuses sign-in for that reason. A token that explicitly says the
-	 * address is not verified is the exception: treat it like a password signup. */
-	if identity.EmailVerified {
-		if !user.EmailVerified() {
-			if err := s.store.MarkEmailVerified(r.Context(), user.ID); err != nil {
-				s.fail(w, r, "supabase auth: verify", err)
-				return
-			}
-			now := time.Now()
-			user.EmailVerifiedAt = &now
-		}
-	} else if !user.EmailVerified() {
-		s.queueEmailVerification(r.Context(), user)
-		if created {
-			s.queueWelcome(r.Context(), user)
-		}
-		s.flushMailSoon()
+	if errors.Is(err, errOAuthEmailUnverified) {
 		httpx.Error(w, http.StatusForbidden, "email_unverified", verifyEmailMessage)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "supabase auth: account", err)
 		return
 	}
 
@@ -754,9 +698,6 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusOK
 	if created {
 		status = http.StatusCreated
-		// Only on the request that created the account. A returning Google user, or one
-		// linking to an existing password account, was welcomed when that account was
-		// made (or predates the welcome email and is deliberately never sent one).
 		s.queueWelcome(r.Context(), user)
 		s.flushMailSoon()
 	}

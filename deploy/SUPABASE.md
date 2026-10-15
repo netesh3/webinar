@@ -201,14 +201,14 @@ boot if anything is pending.
 - [ ] `make migrate` succeeds against Supabase
 - [ ] `deploy/cloudrun.env` or GitHub secret `DATABASE_URL` set
 - [ ] Cloud Run deploy; API healthy; tables visible in Supabase Table Editor
-- [x] Google sign-in: OAuth client + Supabase Google provider + Auth URLs + Cloud Run
-      `SUPABASE_*` (incl. JWT secret); see **Auth — Google via Supabase** below
+- [x] Google sign-in: first-party OAuth (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`)
+      plus Google Cloud redirect URIs under `/api/auth/google/callback`
 
-## Auth — Google via Supabase
+## Auth — Google (first-party)
 
-The app keeps its own `webcast_session` cookie. Supabase Auth is only used for
-the Google OAuth dance; the API verifies the Supabase JWT and issues the same
-session password login uses.
+The app keeps its own `webcast_session` cookie. Continue with Google and One Tap
+talk to Google through webinarliv.com → Cloud Run. Postgres still lives on
+Supabase; the browser does not load `*.supabase.co` for login.
 
 ### 1. Google Cloud OAuth client (dedicated Webinar Liv project)
 
@@ -225,35 +225,32 @@ Use dedicated project **`selfreminder-rnix`** (display name **Webinar Liv**):
    `https://www.webinarliv.com`,
    `https://webinar-web.ganesh-s-p006.workers.dev`, plus
    `http://localhost:3000` for local Next.
-3. Authorized redirect URIs — **must** include Supabase’s callback:
+3. Authorized redirect URIs — **must** include first-party login (the browser
+   never hits `*.supabase.co`) plus Connect YouTube:
 
    ```text
-   https://odptebpbrrixhrzfqtqp.supabase.co/auth/v1/callback
+   https://webinarliv.com/api/auth/google/callback
+   https://www.webinarliv.com/api/auth/google/callback
+   https://webinar-web.ganesh-s-p006.workers.dev/api/auth/google/callback
+   http://localhost:3000/api/auth/google/callback
+   https://webinarliv.com/api/host/youtube/callback
+   http://localhost:3000/api/host/youtube/callback
    ```
 
-   (Replace the project ref if you use another Supabase project.)
-4. Copy the **Client ID** and **Client secret** into Supabase only (never git).
+   Legacy Supabase Auth callbacks (`https://<ref>.supabase.co/auth/v1/callback`)
+   can stay; they are unused for sign-in.
+4. Copy the **Client ID** onto Cloud Run as `GOOGLE_CLIENT_ID` and the
+   **Client secret** as `GOOGLE_CLIENT_SECRET` (never git). The same pair is
+   Continue with Google, One Tap, Drive Picker, and Connect YouTube.
    Console may hide existing secrets (“Viewing and downloading client secrets is
    no longer available”); rotate/add a secret on the client detail page if needed.
 
-**YouTube Live (Connect YouTube):** put that same Client ID on the API as
-`GOOGLE_CLIENT_ID` and the Client secret as `GOOGLE_CLIENT_SECRET`. Add
-Authorized redirect URIs:
-
-```text
-https://webinarliv.com/api/host/youtube/callback
-http://localhost:3000/api/host/youtube/callback
-```
-
 Enable **YouTube Data API v3** on the GCP project. The YouTube scope is
 sensitive; while the OAuth app is in Testing, add host Gmail addresses as test
-users. Hosts connect from Account settings — this is not the Supabase sign-in
-grant.
+users. Hosts connect from Account settings — a different grant than login.
 
-This is separate from `GOOGLE_CLIENT_ID` / `GOOGLE_API_KEY` used for Drive Picker /
-One Tap — if those are enabled, point them at the **same** Webinar Liv web client
-(or another client in `selfreminder-rnix`), not the shared `ai-project-490516`
-client.
+Drive Picker / One Tap use the same Webinar Liv web client in
+`selfreminder-rnix`, not the shared `ai-project-490516` client.
 
 **gcloud limits:** classic Web OAuth clients cannot be created via public gcloud for
 projects that are not in a Cloud Organization (IAP brand APIs require an org).
@@ -284,23 +281,67 @@ Project **webcast-in** (`odptebpbrrixhrzfqtqp`) → Authentication:
    (legacy symmetric secret used to verify access tokens). Management API:
    `GET /v1/projects/<ref>/postgrest` → `jwt_secret`.
 
+### Custom Auth domain (`auth.webinarliv.com`) — unused (paid add-on)
+
+Sign-in is **first-party** (`/api/auth/google/start` on webinarliv.com). That
+avoids `ERR_CONNECTION_RESET` on `*.supabase.co` without Supabase Custom
+Domains ($10/month). Leave this section only if you later turn Auth back on
+through Supabase.
+
+A custom hostname on `webinarliv.com` would keep a Supabase Auth hop on a
+domain visitors already loaded. It is a **paid add-on** (Pro and above). Apex
+cannot be used; it must be a subdomain. Do **not** attach
+`auth.webinarliv.com` as a Workers custom domain — the Worker would steal the
+hostname from Supabase.
+
+1. **Cloudflare DNS** (zone `webinarliv.com`), **DNS only** (grey cloud — not
+   proxied). Orange-cloud proxy breaks Supabase's ACME certificate.
+
+   | Type | Name | Target | Proxy |
+   |------|------|--------|-------|
+   | CNAME | `auth` | `<PROJECT_REF>.supabase.co` | DNS only |
+
+   Plus the `_acme-challenge.auth` **TXT** record Supabase shows when you
+   register the hostname (Dashboard → Project Settings → Custom Domains, or
+   `supabase domains create --project-ref <ref> --custom-hostname auth.webinarliv.com`).
+
+2. `supabase domains reverify` then `supabase domains activate` (or the
+   Dashboard equivalents). TLS can take up to ~30 minutes. The project's
+   `*.supabase.co` URL keeps working.
+
+3. Google Cloud OAuth client: add
+   `https://auth.webinarliv.com/auth/v1/callback` (see redirect URIs above).
+
+4. Cloud Run / GitHub secrets, then redeploy the API:
+
+   | Variable | Value |
+   |----------|--------|
+   | `SUPABASE_URL` | `https://auth.webinarliv.com` (what `/api/config` gives the browser) |
+   | `SUPABASE_PROJECT_URL` | `https://<PROJECT_REF>.supabase.co` (JWT `iss` / JWKS fallback) |
+
+   Anon key and JWT secret do not change.
+
+5. Confirm in an incognito window: **Continue with Google** navigates to
+   `https://auth.webinarliv.com/auth/v1/authorize?provider=google&…`, then
+   Google, then `https://webinarliv.com/auth/callback`.
+
 ### 3. API / Cloud Run env
 
 Set on Cloud Run (via `deploy/cloudrun.env`, GitHub secrets, or `gcloud`):
 
 | Variable | Public? | Purpose |
 |----------|---------|---------|
-| `SUPABASE_URL` | yes (via `/api/config`) | `https://<ref>.supabase.co` |
-| `SUPABASE_ANON_KEY` | yes (via `/api/config`) | anon/public key for browser OAuth |
-| `SUPABASE_JWT_SECRET` | **no** | optional legacy HS256 secret; modern projects use JWKS/ES256 |
-| `GOOGLE_CLIENT_ID` | yes (via `/api/config` as `googleClientId`) | same Web OAuth client as Supabase Google; required for **Google One Tap** / FedCM, Drive Picker, and Connect YouTube |
-| `GOOGLE_CLIENT_SECRET` | **no** | same Web client secret; required for Connect YouTube (YouTube Data API). Unset = paste stream keys only |
+| `SUPABASE_URL` | yes (via `/api/config`) | Unused for browser login; Postgres project URL if you still expose it |
+| `SUPABASE_PROJECT_URL` | no | Optional JWT issuer / JWKS fallback for the unused `/api/auth/supabase` path |
+| `SUPABASE_ANON_KEY` | yes (via `/api/config`) | unused for browser login |
+| `SUPABASE_JWT_SECRET` | **no** | unused for first-party Google login |
+| `GOOGLE_CLIENT_ID` | yes (via `/api/config` as `googleClientId`) | Web OAuth client; **Continue with Google**, One Tap, Drive Picker, Connect YouTube |
+| `GOOGLE_CLIENT_SECRET` | **no** | same Web client secret; required for Google login (code exchange) and Connect YouTube. Unset = paste stream keys only, no Google button |
 | `GOOGLE_API_KEY` | yes (via `/api/config`) | optional; Drive Picker only |
 
-When the Supabase trio is set, `/api/config` returns `googleAuth: true` and the
-login / signup pages show **Continue with Google**. Set `GOOGLE_CLIENT_ID` as
-well so logged-out `/`, `/home`, and `/login` can show the One Tap account
-picker (it no-ops when `googleClientId` is empty).
+When `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, `/api/config`
+returns `googleAuth: true` and the login / signup pages show **Continue with
+Google**. One Tap uses the same client id.
 
 ### Consent screen / verification (Google Cloud)
 
@@ -333,16 +374,13 @@ Configured under **Google Auth Platform → Audience / Branding** for project
 
 ### 4. Flow
 
-1. Browser → Supabase `signInWithOAuth({ provider: "google" })` via `@supabase/ssr`
-   (PKCE code verifier stored in **cookies**, not memory/localStorage)
-2. Google → Supabase → redirect to `/auth/callback?code=…`
-3. Frontend exchanges code with the same cookie storage → `POST /api/auth/supabase`
-   with `accessToken`
-4. API verifies JWT → creates/links `users` row → sets `webcast_session`
-5. Host / Admin / My webinars middleware sees the first-party cookie on Workers
+1. Browser → `GET /api/auth/google/start?next=…` (Worker proxies to Cloud Run)
+2. Cloud Run redirects to `accounts.google.com` (consent) with
+   `redirect_uri=https://webinarliv.com/api/auth/google/callback`
+3. Google → `GET /api/auth/google/callback?code=&state=`
+4. API exchanges the code, verifies the ID token against Google JWKS,
+   creates/links `users`, sets `webcast_session`, redirects to the app
+5. One Tap skips 1–3: GIS credential → `POST /api/auth/google` with the ID token
 
-Do **not** use a plain `@supabase/supabase-js` client with `persistSession: false`
-for this flow — the PKCE verifier will not survive the Google redirect.
-
-Password login remains available. New Google users respect `SIGNUP_OPEN`; existing
-email accounts are linked by address.
+The browser never loads `*.supabase.co`. Password login remains available. New
+Google users respect `SIGNUP_OPEN`; existing email accounts are linked by address.

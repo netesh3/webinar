@@ -22,7 +22,7 @@
 #   CORS_ORIGINS (comma-separated origins OK; script uses --env-vars-file),
 #   WEB_BASE_URL, LIVEKIT_HTTP_URL, LIVEKIT_PROJECTS
 #   ADMIN_EMAILS / ADMIN_PASSWORD — bootstrap production admin on fresh DB (≥10 chars)
-#   SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_JWT_SECRET — Google sign-in via Supabase Auth
+#   SUPABASE_URL / SUPABASE_PROJECT_URL / SUPABASE_ANON_KEY / SUPABASE_JWT_SECRET — Google sign-in via Supabase Auth
 #   GOOGLE_CLIENT_ID — Web OAuth client (selfreminder-rnix); exposed as googleClientId for One Tap
 #   GOOGLE_API_KEY — optional; Drive Picker only
 #   GOOGLE_CLIENT_SECRET — same Web client secret; Connect YouTube / YouTube Data API
@@ -102,6 +102,7 @@ jobs:
       ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
       ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}

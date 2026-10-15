@@ -31,6 +31,15 @@ export function LoginForm() {
   const { signIn } = useSession();
   const { appName, googleAuth } = useAppConfig();
   const next = safeNext(params.get("next"), "/");
+  const googleFail = params.get("google");
+  const googleFailMessage =
+    googleFail === "denied"
+      ? "Google sign-in was cancelled."
+      : googleFail === "signup"
+        ? "New accounts are closed on this instance."
+        : googleFail
+          ? "Could not finish Google sign-in. Try again."
+          : null;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -70,6 +79,12 @@ export function LoginForm() {
       <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
         Welcome back to {appName}.
       </p>
+
+      {googleFailMessage && (
+        <div className="mt-4">
+          <Alert tone="error">{googleFailMessage}</Alert>
+        </div>
+      )}
 
       {googleAuth && (
         <div className="mt-5 grid gap-3">

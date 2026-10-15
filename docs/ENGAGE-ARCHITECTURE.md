@@ -45,7 +45,7 @@ Production already looks like [`DEPLOYMENT-TOPOLOGY.md`](DEPLOYMENT-TOPOLOGY.md)
 | Engage / host portal | Next.js 16 on **Cloudflare Workers** (`webinarliv.com`) | UI only |
 | Product API | **Go** on **Cloud Run** `webcast-api` (`asia-south1`) | All CRM and WhatsApp logic, outbox sweeper |
 | Database | **Supabase Postgres** `webcast-in` (`ap-south-1`) | Durable CRM + webinar rows; `pgx` from Cloud Run |
-| Login | **Supabase Auth** | Google OAuth PKCE → `POST /api/auth/supabase` → `webcast_session` |
+| Login | **Google OAuth** | `GET /api/auth/google/start` → Google → `/api/auth/google/callback` → `webcast_session` |
 | WhatsApp | **Meta Cloud API** | Send + webhooks; host WABA token on `users` |
 
 ### 2.1 What “we have Go and Supabase” means

@@ -1,19 +1,17 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect } from "react";
 import { Alert, Spinner } from "@/components/controls";
-import { useAppConfig, useSession } from "@/components/providers";
 import { TopNav } from "@/components/top-nav";
 import { Card } from "@/components/ui";
-import { ApiError, api } from "@/lib/api";
-import { landingAfterSignIn } from "@/lib/access";
-import { createSupabaseBrowser, safeAuthNext } from "@/lib/supabase";
+import { safeAuthNext } from "@/lib/supabase";
 
 /**
- * OAuth return path. Supabase redirects here with a ?code=; we exchange it for
- * a Supabase session, then POST the access token to the API which sets
- * webcast_session (first-party via the Worker /api proxy).
+ * Legacy OAuth return path. Sign-in now finishes on
+ * `/api/auth/google/callback` (session cookie set, then redirect). This page
+ * only exists so an old bookmark or a leftover Google error query still has
+ * somewhere polite to land.
  */
 export default function AuthCallbackPage() {
   return (
@@ -38,104 +36,20 @@ export default function AuthCallbackPage() {
 function AuthCallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const { refresh } = useSession();
-  const { googleAuth, supabaseUrl, supabaseAnonKey } = useAppConfig();
   const next = safeAuthNext(params.get("next"), "/");
-  const [error, setError] = useState<string | null>(null);
+  const oauthError = params.get("error_description") || params.get("error");
 
   useEffect(() => {
-    let cancelled = false;
+    if (oauthError) return;
+    router.replace(`/login?next=${encodeURIComponent(next)}`);
+  }, [oauthError, next, router]);
 
-    async function finish() {
-      const oauthError = params.get("error_description") || params.get("error");
-      if (oauthError) {
-        setError(oauthError);
-        return;
-      }
-
-      try {
-        // Prefer live /api/config so a cold callback is not stuck on the fallback
-        // AppConfig (which has googleAuth off until the first fetch lands).
-        let url = supabaseUrl;
-        let anon = supabaseAnonKey;
-        let enabled = googleAuth;
-        if (!enabled || !url || !anon) {
-          const cfg = await api.config();
-          url = cfg.supabaseUrl;
-          anon = cfg.supabaseAnonKey;
-          enabled = cfg.googleAuth;
-        }
-        if (!enabled || !url || !anon) {
-          setError("Google sign-in is not configured on this instance.");
-          return;
-        }
-
-        const supabase = createSupabaseBrowser(url, anon);
-        const code = params.get("code");
-        let accessToken: string | undefined;
-        let googleAccessToken: string | undefined;
-
-        if (code) {
-          const { data, error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) {
-            throw new Error(exchangeError.message);
-          }
-          accessToken = data.session?.access_token;
-          googleAccessToken = data.session?.provider_token || undefined;
-        } else {
-          const { data, error: sessionError } = await supabase.auth.getSession();
-          if (sessionError) {
-            throw new Error(sessionError.message);
-          }
-          accessToken = data.session?.access_token;
-          googleAccessToken = data.session?.provider_token || undefined;
-        }
-
-        if (!accessToken) {
-          throw new Error("No session returned from Google. Try again.");
-        }
-
-        const account = await api.supabaseAuth(accessToken, googleAccessToken);
-        // Drop the short-lived Supabase session; the app cookie is authoritative.
-        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-
-        if (cancelled) return;
-        await refresh();
-        router.replace(landingAfterSignIn(account.canHost, next));
-        router.refresh();
-      } catch (err) {
-        if (cancelled) return;
-        setError(
-          err instanceof ApiError
-            ? err.message
-            : err instanceof Error
-              ? err.message
-              : "Could not finish Google sign-in.",
-        );
-      }
-    }
-
-    void finish();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    googleAuth,
-    supabaseUrl,
-    supabaseAnonKey,
-    params,
-    next,
-    refresh,
-    router,
-  ]);
-
-  if (error) {
+  if (oauthError) {
     return (
       <Card className="mx-auto w-full max-w-sm p-6">
         <h1 className="text-[18px] font-semibold">Sign-in failed</h1>
         <div className="mt-3">
-          <Alert tone="error">{error}</Alert>
+          <Alert tone="error">{oauthError}</Alert>
         </div>
         <a
           href={`/login?next=${encodeURIComponent(next)}`}

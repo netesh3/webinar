@@ -405,6 +405,9 @@ func (s *Server) Routes() http.Handler {
 		r.With(loginLimit.Middleware).Post("/auth/password/reset", s.handleResetPassword)
 		// Same budget as login: exchanging a Google token is a sign-in attempt.
 		r.With(loginLimit.Middleware).Post("/auth/supabase", s.handleSupabaseAuth)
+		r.Get("/auth/google/start", s.handleGoogleStart)
+		r.With(loginLimit.Middleware).Get("/auth/google/callback", s.handleGoogleCallback)
+		r.With(loginLimit.Middleware).Post("/auth/google", s.handleGoogleAuth)
 		r.Post("/auth/logout", s.handleLogout)
 		r.With(s.requireUser).Get("/auth/me", s.handleMe)
 		r.With(s.requireUser).Patch("/auth/me", s.handleUpdateProfile)

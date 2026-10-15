@@ -813,14 +813,12 @@ function RegisterFields({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const { googleAuth, supabaseUrl, supabaseAnonKey } = useAppConfig();
+  const { googleAuth } = useAppConfig();
 
   async function redirectGmail(body: RegisterRequest) {
     savePendingWebinarRegister(w.id, body);
     try {
       await startGoogleOAuth({
-        supabaseUrl,
-        supabaseAnonKey,
         next: `/webinars/${w.id}`,
       });
     } catch (err) {

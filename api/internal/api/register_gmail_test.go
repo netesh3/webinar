@@ -121,6 +121,8 @@ func TestRegisterGmailVersusOtherEmail(t *testing.T) {
 
 func TestRegisterGmailUsesEmailVerifyWhenGoogleAuthOff(t *testing.T) {
 	h := newHarness(t, func(cfg *config.Config) {
+		cfg.GoogleClientID = ""
+		cfg.GoogleClientSecret = ""
 		cfg.SupabaseURL = ""
 		cfg.SupabaseAnonKey = ""
 	})

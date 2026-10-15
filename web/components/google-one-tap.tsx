@@ -6,14 +6,14 @@ import { useAppConfig, useSession } from "@/components/providers";
 import { api } from "@/lib/api";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { landingAfterSignIn } from "@/lib/access";
-import { createSupabaseBrowser, safeAuthNext } from "@/lib/supabase";
+import { safeAuthNext } from "@/lib/supabase";
 
 /**
  * Google One Tap / FedCM prompt for logged-out visitors on public pages.
  *
  * Uses Identity Services (accounts.google.com/gsi/client). On success the
- * credential JWT goes through Supabase `signInWithIdToken`, then the same
- * `POST /api/auth/supabase` path as "Continue with Google".
+ * credential JWT is posted to `/api/auth/google` on this origin — Cloud Run
+ * verifies it against Google's JWKS and sets webcast_session. No supabase.co hop.
  *
  * No-ops when Google auth is off, the client ID is missing, GIS is blocked,
  * or the visitor is already signed in. Never mounts inside the room.
@@ -120,21 +120,20 @@ function resolveGoogleClientId(fromConfig?: string): string | undefined {
   return fromApi || undefined;
 }
 
-/** Nonce pair Google One Tap + Supabase `signInWithIdToken` both require.
+/** Nonce pair for Google One Tap.
  *
- *  GIS gets the SHA-256 hex; Supabase gets the raw value and checks it against
- *  the JWT. Skipping this is why One Tap often "works" (prompt shows) then
- *  fails at session creation with a nonce error. */
-async function googleIdNonce(): Promise<{ raw: string; hashed: string }> {
+ *  GIS is given the SHA-256 hex and puts that value in the ID token. The API
+ *  checks the same hex. Skipping this is why One Tap often "works" (prompt
+ *  shows) then fails at session creation with a nonce error. */
+async function googleIdNonce(): Promise<string> {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   let binary = "";
   for (const b of bytes) binary += String.fromCharCode(b);
   const raw = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
-  const hashed = Array.from(new Uint8Array(digest))
+  return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return { raw, hashed };
 }
 
 export function GoogleOneTap({
@@ -145,14 +144,13 @@ export function GoogleOneTap({
 }) {
   const router = useRouter();
   const { refresh, status } = useSession();
-  const { googleAuth, googleClientId, supabaseUrl, supabaseAnonKey } =
-    useAppConfig();
+  const { googleAuth, googleClientId } = useAppConfig();
   const busy = useRef(false);
 
   useEffect(() => {
     if (isDevAuthBypassActive()) return;
     if (status !== "anonymous") return;
-    if (!googleAuth || !supabaseUrl || !supabaseAnonKey) return;
+    if (!googleAuth) return;
 
     const clientId = resolveGoogleClientId(googleClientId);
     if (!clientId) return;
@@ -168,7 +166,7 @@ export function GoogleOneTap({
       if (cancelled || !window.google?.accounts?.id) return;
 
       const destination = safeAuthNext(next, "/browse");
-      const { raw: nonce, hashed: hashedNonce } = await googleIdNonce();
+      const hashedNonce = await googleIdNonce();
       if (cancelled) return;
 
       // Desktop One Tap renders top-right by default (Canva-style corner prompt).
@@ -191,22 +189,7 @@ export function GoogleOneTap({
           busy.current = true;
           void (async () => {
             try {
-              const supabase = createSupabaseBrowser(
-                supabaseUrl!,
-                supabaseAnonKey!,
-              );
-              const { data, error } = await supabase.auth.signInWithIdToken({
-                provider: "google",
-                token: credential,
-                nonce,
-              });
-              if (error) throw error;
-              const accessToken = data.session?.access_token;
-              if (!accessToken) {
-                throw new Error("No session from Google One Tap.");
-              }
-              const account = await api.supabaseAuth(accessToken);
-              await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+              const account = await api.googleAuth(credential, hashedNonce);
               await refresh();
               router.replace(landingAfterSignIn(account.canHost, destination));
               router.refresh();
@@ -246,8 +229,6 @@ export function GoogleOneTap({
     status,
     googleAuth,
     googleClientId,
-    supabaseUrl,
-    supabaseAnonKey,
     next,
     refresh,
     router,

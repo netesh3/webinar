@@ -351,9 +351,15 @@ export const api = {
   resetPassword: (token: string, password: string) =>
     post<Account>("/api/auth/password/reset", { token, password }),
 
-  /** Exchange a Supabase Auth access token for the webcast_session cookie.
-   *  googleAccessToken is the Google provider token, when the session has one,
-   *  so the API can read a phone number. Sign-in works without it. */
+  /** Exchange a Google ID token (One Tap) for the webcast_session cookie.
+   *  nonce must match the value GIS was initialized with. */
+  googleAuth: (idToken: string, nonce?: string) =>
+    post<Account>("/api/auth/google", {
+      idToken,
+      ...(nonce ? { nonce } : {}),
+    }),
+
+  /** Legacy: exchange a Supabase Auth access token for webcast_session. */
   supabaseAuth: (accessToken: string, googleAccessToken?: string) =>
     post<Account>("/api/auth/supabase", {
       accessToken,

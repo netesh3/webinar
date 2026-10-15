@@ -228,10 +228,10 @@ type Config struct {
 	 */
 	GoogleClientID string
 	GoogleAPIKey   string
-	/* GoogleClientSecret is the Web OAuth client's secret, used only for the
-	 * YouTube Live authorization-code grant (offline access). Never served to
-	 * the browser. Unset means Connect YouTube is hidden and viaYouTube 503s;
-	 * pasted stream keys still work. */
+	/* GoogleClientSecret is the Web OAuth client's secret. Used for first-party
+	 * Google sign-in (authorization-code grant) and for YouTube Live (offline
+	 * access). Never served to the browser. Unset means Continue with Google and
+	 * Connect YouTube are hidden; pasted stream keys still work. */
 	GoogleClientSecret string
 
 	/* YouTubeAPIURL / YouTubeTokenURL override Google's endpoints. Empty in
@@ -289,18 +289,16 @@ type Config struct {
 	 * (1_000_000 = ₹1): "IN:utility=130000,US=40000". Empty keeps the built-in card. */
 	WhatsAppRates string
 
-	/* Supabase Auth — Google sign-in / sign-up.
+	/* Supabase Auth — unused for browser login (first-party Google OAuth uses
+	 * GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET). Kept so POST /api/auth/supabase
+	 * still verifies tokens if an old client posts one.
 	 *
-	 * The Postgres DATABASE_URL may already point at the same Supabase project;
-	 * these three are specifically for Auth. URL + anon key are public (served
-	 * to the browser via /api/config). JWT secret verifies access tokens server-side
-	 * and must never leave Cloud Run.
-	 *
-	 * Unset means Continue with Google is off; password login still works.
+	 * The Postgres DATABASE_URL may already point at the same Supabase project.
 	 */
-	SupabaseURL       string
-	SupabaseAnonKey   string
-	SupabaseJWTSecret string
+	SupabaseURL        string
+	SupabaseProjectURL string
+	SupabaseAnonKey    string
+	SupabaseJWTSecret  string
 
 	// MinPasswordLength now governs AdminPassword only — regular signup no
 	// longer enforces a floor (see validateSignup). Kept for the bootstrap
@@ -416,6 +414,7 @@ func Load() (Config, error) {
 		WhatsAppGraphURL:        strings.TrimRight(env("WHATSAPP_GRAPH_URL", ""), "/"),
 		WhatsAppRates:           env("WHATSAPP_RATES", ""),
 		SupabaseURL:             strings.TrimRight(env("SUPABASE_URL", ""), "/"),
+		SupabaseProjectURL:      strings.TrimRight(env("SUPABASE_PROJECT_URL", ""), "/"),
 		SupabaseAnonKey:         env("SUPABASE_ANON_KEY", ""),
 		SupabaseJWTSecret:       env("SUPABASE_JWT_SECRET", ""),
 		RecordingsBackend:       strings.ToLower(env("RECORDINGS_BACKEND", "disk")),
@@ -486,10 +485,11 @@ func Load() (Config, error) {
 
 func (c Config) IsDev() bool { return c.Env == "development" }
 
-// GoogleAuthEnabled is true when Supabase Auth Google can be offered end-to-end.
-// Tokens are verified via JWKS (ES256) and/or the legacy HS256 JWT secret.
+// GoogleAuthEnabled is true when first-party Google sign-in can be offered.
+// The browser talks to Google through webinarliv.com / Cloud Run; it never
+// needs to reach *.supabase.co. Needs the Web client id AND secret.
 func (c Config) GoogleAuthEnabled() bool {
-	return c.SupabaseURL != "" && c.SupabaseAnonKey != ""
+	return strings.TrimSpace(c.GoogleClientID) != "" && strings.TrimSpace(c.GoogleClientSecret) != ""
 }
 
 // YouTubeOAuthEnabled is the Connect YouTube / create-a-live path. Needs the

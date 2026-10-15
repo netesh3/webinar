@@ -4,55 +4,25 @@ import { useState } from "react";
 import { Alert, Spinner } from "./controls";
 import { useAppConfig } from "./providers";
 import { Button } from "./ui";
-import { api } from "@/lib/api";
-import { createSupabaseBrowser, safeAuthNext } from "@/lib/supabase";
+import { safeAuthNext } from "@/lib/supabase";
 
-/* openid, email, and profile stay. The People phone scope is extra: Google may
- * return no number, and sign-up still finishes when it does not. */
-export const GOOGLE_OAUTH_SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/user.phonenumbers.read",
-].join(" ");
-
-/* Starts Supabase Google OAuth.
+/* Starts first-party Google OAuth on this origin.
  *
- * `next` is a same-origin path. It is placed on the redirect URL, which
- * Supabase round-trips in the OAuth state, so a webinar registration comes
- * back to that webinar instead of the home page.
+ * The browser goes to `/api/auth/google/start` (Worker/Next proxy → Cloud Run),
+ * then accounts.google.com, then `/api/auth/google/callback`. It never hits
+ * `*.supabase.co`. `next` is a same-origin path round-tripped in signed state
+ * so a webinar registration comes back to that webinar.
  */
-export async function startGoogleOAuth(opts: {
-  supabaseUrl?: string | null;
-  supabaseAnonKey?: string | null;
-  next: string;
-}): Promise<void> {
-  let url = opts.supabaseUrl ?? "";
-  let anon = opts.supabaseAnonKey ?? "";
-  if (!url || !anon) {
-    const cfg = await api.config();
-    if (!cfg.googleAuth || !cfg.supabaseUrl || !cfg.supabaseAnonKey) {
-      throw new Error("Google sign-in is not configured on this instance.");
-    }
-    url = cfg.supabaseUrl;
-    anon = cfg.supabaseAnonKey;
-  }
-  const supabase = createSupabaseBrowser(url, anon);
-  const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeAuthNext(opts.next))}`;
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo,
-      scopes: GOOGLE_OAUTH_SCOPES,
-      queryParams: { prompt: "select_account" },
-    },
-  });
-  if (error) {
-    throw new Error(error.message || "Could not start Google sign-in.");
-  }
+export async function startGoogleOAuth(opts: { next: string }): Promise<void> {
+  const next = encodeURIComponent(safeAuthNext(opts.next));
+  // Full navigation to the API proxy (Worker / Cloud Run), not a Next.js page.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+  window.location.assign(
+    `${window.location.origin}/api/auth/google/start?next=${next}`,
+  );
 }
 
-/** Starts Supabase Google OAuth; the callback page exchanges for webcast_session. */
+/** Starts first-party Google OAuth; Cloud Run sets webcast_session on callback. */
 export function GoogleContinueButton({
   next,
   label = "Continue with Google",
@@ -60,11 +30,11 @@ export function GoogleContinueButton({
   next: string;
   label?: string;
 }) {
-  const { googleAuth, supabaseUrl, supabaseAnonKey } = useAppConfig();
+  const { googleAuth } = useAppConfig();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!googleAuth || !supabaseUrl || !supabaseAnonKey) {
+  if (!googleAuth) {
     return null;
   }
 
@@ -72,7 +42,7 @@ export function GoogleContinueButton({
     setBusy(true);
     setError(null);
     try {
-      await startGoogleOAuth({ supabaseUrl, supabaseAnonKey, next });
+      await startGoogleOAuth({ next });
       // On success the browser navigates away to Google.
     } catch (err) {
       setError(

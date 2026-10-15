@@ -69,10 +69,16 @@ func signTestSupabaseTokenWithPicture(t *testing.T, email, name, picture string)
 	return s
 }
 
+func withGoogleOAuth(cfg *config.Config) {
+	cfg.GoogleClientID = testGoogleClientID
+	cfg.GoogleClientSecret = "test-google-client-secret"
+}
+
 func withSupabaseAuth(cfg *config.Config) {
 	cfg.SupabaseURL = testSupabaseURL
 	cfg.SupabaseAnonKey = "public-anon-key-for-tests"
 	cfg.SupabaseJWTSecret = testSupabaseJWT
+	withGoogleOAuth(cfg)
 }
 
 func TestSupabaseAuthCreatesAndSignsIn(t *testing.T) {
@@ -159,18 +165,18 @@ func TestSupabaseAuthUnavailableWhenUnconfigured(t *testing.T) {
 }
 
 func TestConfigExposesGoogleAuth(t *testing.T) {
-	h := newHarness(t, withSupabaseAuth)
+	h := newHarness(t, withGoogleOAuth)
 	res, raw := h.do(http.MethodGet, "/api/config", nil)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("config: %d %s", res.StatusCode, raw)
 	}
 	var cfg types.AppConfig
 	h.decode(raw, &cfg)
-	if !cfg.GoogleAuth || cfg.SupabaseURL != testSupabaseURL || cfg.SupabaseAnonKey == "" {
+	if !cfg.GoogleAuth || cfg.GoogleClientID != testGoogleClientID {
 		t.Fatalf("config google auth: %+v", cfg)
 	}
-	if strings.Contains(string(raw), testSupabaseJWT) {
-		t.Fatal("jwt secret leaked in /api/config")
+	if strings.Contains(string(raw), "test-google-client-secret") {
+		t.Fatal("google client secret leaked in /api/config")
 	}
 }
 

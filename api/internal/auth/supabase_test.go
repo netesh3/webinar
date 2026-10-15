@@ -87,6 +87,22 @@ func TestVerifySupabaseAccessToken(t *testing.T) {
 		}
 	})
 
+	t.Run("custom domain accepts project issuer", func(t *testing.T) {
+		id, err := VerifySupabaseAccessToken(sign(nil), secret, "https://auth.example.com", url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id.Email != "ada.lovelace@example.com" {
+			t.Fatalf("email %q", id.Email)
+		}
+	})
+
+	t.Run("custom domain alone rejects project issuer", func(t *testing.T) {
+		if _, err := VerifySupabaseAccessToken(sign(nil), secret, "https://auth.example.com"); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
 	t.Run("anon role rejected", func(t *testing.T) {
 		tok := sign(func(c *supabaseClaims) {
 			c.Role = "anon"

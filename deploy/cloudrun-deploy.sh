@@ -138,8 +138,10 @@ fi
 # Bootstrap admin on fresh DB (EnsureAdminAccount + PromoteAdmins at API boot).
 [[ -n "${ADMIN_EMAILS:-}" ]] && ENV_VARS+=("ADMIN_EMAILS=${ADMIN_EMAILS}")
 [[ -n "${ADMIN_PASSWORD:-}" ]] && ENV_VARS+=("ADMIN_PASSWORD=${ADMIN_PASSWORD}")
-# Supabase Auth (Google). All three required for Continue with Google.
+# Supabase Auth (Google). URL + anon key required for Continue with Google.
+# PROJECT_URL is the *.supabase.co origin when SUPABASE_URL is a custom domain.
 [[ -n "${SUPABASE_URL:-}" ]] && ENV_VARS+=("SUPABASE_URL=${SUPABASE_URL}")
+[[ -n "${SUPABASE_PROJECT_URL:-}" ]] && ENV_VARS+=("SUPABASE_PROJECT_URL=${SUPABASE_PROJECT_URL}")
 [[ -n "${SUPABASE_ANON_KEY:-}" ]] && ENV_VARS+=("SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}")
 [[ -n "${SUPABASE_JWT_SECRET:-}" ]] && ENV_VARS+=("SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}")
 # Public Web client ID → /api/config googleClientId (One Tap + Drive Picker).

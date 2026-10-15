@@ -87,17 +87,26 @@ VerifySupabaseAccessToken checks a Supabase Auth access token.
 *
 * We accept both: pick the verifier from the token's alg header. jwtSecret may
 * be empty when only asymmetric keys are in use.
+*
+* apiURLs is one or more Auth API origins: the public custom domain
+* (auth.webinarliv.com) and, optionally, the project's *.supabase.co host.
+* Tokens may carry either as `iss` after a custom-domain cutover; JWKS is
+* fetched from each until one succeeds (Cloud Run can always reach supabase.co
+* even when a visitor's ISP cannot).
 */
-func VerifySupabaseAccessToken(accessToken, jwtSecret, supabaseURL string) (SupabaseIdentity, error) {
+func VerifySupabaseAccessToken(accessToken, jwtSecret string, apiURLs ...string) (SupabaseIdentity, error) {
 	if strings.TrimSpace(accessToken) == "" {
 		return SupabaseIdentity{}, ErrInvalidSupabaseToken
 	}
-	supabaseURL = strings.TrimRight(strings.TrimSpace(supabaseURL), "/")
-	if supabaseURL == "" {
+	bases := uniqueAPIURLs(apiURLs...)
+	if len(bases) == 0 {
 		return SupabaseIdentity{}, fmt.Errorf("%w: supabase url not configured", ErrInvalidSupabaseToken)
 	}
 
-	issuer := supabaseURL + "/auth/v1"
+	issuers := make([]string, 0, len(bases))
+	for _, u := range bases {
+		issuers = append(issuers, u+"/auth/v1")
+	}
 
 	parsed, err := jwt.ParseWithClaims(accessToken, &supabaseClaims{},
 		func(t *jwt.Token) (any, error) {
@@ -109,7 +118,7 @@ func VerifySupabaseAccessToken(accessToken, jwtSecret, supabaseURL string) (Supa
 				return []byte(jwtSecret), nil
 			case jwt.SigningMethodES256.Alg():
 				kid, _ := t.Header["kid"].(string)
-				return lookupSupabaseECDSA(supabaseURL, kid)
+				return lookupSupabaseECDSA(bases, kid)
 			default:
 				return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
 			}
@@ -118,7 +127,6 @@ func VerifySupabaseAccessToken(accessToken, jwtSecret, supabaseURL string) (Supa
 			jwt.SigningMethodHS256.Alg(),
 			jwt.SigningMethodES256.Alg(),
 		}),
-		jwt.WithIssuer(issuer),
 		jwt.WithAudience("authenticated"),
 		jwt.WithExpirationRequired(),
 	)
@@ -129,6 +137,9 @@ func VerifySupabaseAccessToken(accessToken, jwtSecret, supabaseURL string) (Supa
 	c, ok := parsed.Claims.(*supabaseClaims)
 	if !ok || c.Subject == "" {
 		return SupabaseIdentity{}, ErrInvalidSupabaseToken
+	}
+	if !issuerAllowed(c.Issuer, issuers) {
+		return SupabaseIdentity{}, fmt.Errorf("%w: issuer %q", ErrInvalidSupabaseToken, c.Issuer)
 	}
 	if c.Role != "" && c.Role != "authenticated" {
 		return SupabaseIdentity{}, fmt.Errorf("%w: role %q", ErrInvalidSupabaseToken, c.Role)
@@ -202,11 +213,53 @@ func sanitizePictureURL(raw string) string {
 	return raw
 }
 
-func lookupSupabaseECDSA(supabaseURL, kid string) (*ecdsa.PublicKey, error) {
-	keys, err := supabaseJWKS(supabaseURL)
-	if err != nil {
-		return nil, err
+func issuerAllowed(got string, issuers []string) bool {
+	for _, want := range issuers {
+		if got == want {
+			return true
+		}
 	}
+	return false
+}
+
+func uniqueAPIURLs(urls ...string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, u := range urls {
+		u = strings.TrimRight(strings.TrimSpace(u), "/")
+		if u == "" {
+			continue
+		}
+		if _, ok := seen[u]; ok {
+			continue
+		}
+		seen[u] = struct{}{}
+		out = append(out, u)
+	}
+	return out
+}
+
+func lookupSupabaseECDSA(apiURLs []string, kid string) (*ecdsa.PublicKey, error) {
+	var last error
+	for _, supabaseURL := range apiURLs {
+		keys, err := supabaseJWKS(supabaseURL)
+		if err != nil {
+			last = err
+			continue
+		}
+		if k, err := pickJWKSKey(keys, kid); err == nil {
+			return k, nil
+		} else {
+			last = err
+		}
+	}
+	if last != nil {
+		return nil, last
+	}
+	return nil, fmt.Errorf("jwks: no supabase url")
+}
+
+func pickJWKSKey(keys map[string]*ecdsa.PublicKey, kid string) (*ecdsa.PublicKey, error) {
 	if kid != "" {
 		if k, ok := keys[kid]; ok {
 			return k, nil

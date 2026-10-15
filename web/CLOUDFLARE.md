@@ -29,7 +29,8 @@ which middleware on `*.workers.dev` never sees — users bounce back to login.
 
 Google sign-in does **not** need `NEXT_PUBLIC_SUPABASE_*` on the Worker: the API
 serves `supabaseUrl` / `supabaseAnonKey` / `googleAuth` from `/api/config` once
-`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_JWT_SECRET` are set on Cloud Run
+`SUPABASE_URL` (custom Auth domain once live), `SUPABASE_PROJECT_URL`,
+`SUPABASE_ANON_KEY`, and `SUPABASE_JWT_SECRET` are set on Cloud Run
 (see [`deploy/SUPABASE.md`](../deploy/SUPABASE.md)). The browser uses `@supabase/ssr`
 so the OAuth PKCE verifier is stored in first-party cookies on this Worker origin
 (path `/`, `SameSite=Lax`) — required for `/auth/callback` after Google redirects.
@@ -185,6 +186,14 @@ across apex/www). Prefer one canonical host (apex) and redirect `www` → apex i
 you want a single session.
 
 `NEXT_PUBLIC_API_BASE` stays **empty** at Worker build time.
+
+### Google login (first-party)
+
+Continue with Google uses `/api/auth/google/start` on this Worker origin (proxied
+to Cloud Run), then `accounts.google.com`, then `/api/auth/google/callback`. Add
+those callback URLs on the Google OAuth client. The browser does not load
+`*.supabase.co`. An unused `auth.webinarliv.com` CNAME (Supabase Custom Domains)
+is optional and not required for login.
 
 ### 5. Test URLs
 

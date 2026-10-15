@@ -2621,6 +2621,15 @@ type SupabaseAuthRequest struct {
 	GoogleAccessToken string `json:"googleAccessToken,omitempty"`
 }
 
+/* GoogleAuthRequest exchanges a Google ID token (One Tap / FedCM) for this
+ * app's webcast_session cookie. Nonce is the value GIS was initialized with
+ * and must match the token's nonce claim when present.
+ */
+type GoogleAuthRequest struct {
+	IDToken string `json:"idToken"`
+	Nonce   string `json:"nonce,omitempty"`
+}
+
 /* HostRequest is POST /api/me/host-request.
  *
  * Phone is required only when the account has none stored. When one is
@@ -3142,8 +3151,8 @@ type AppConfig struct {
 	GoogleClientID string `json:"googleClientId,omitempty"`
 	GoogleAPIKey   string `json:"googleApiKey,omitempty"`
 	/* YouTubeOAuth is whether GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are both
-	 * set, so Account settings can offer Connect YouTube. Distinct from GoogleAuth
-	 * (Supabase sign-in) and from GoogleClientID used for Drive Picker. */
+	 * set, so Account settings can offer Connect YouTube. The same pair turns on
+	 * GoogleAuth (Continue with Google). GoogleClientID is also Drive Picker. */
 	YouTubeOAuth bool `json:"youtubeOAuth,omitempty"`
 	/* WhatsAppConnect is whether META_APP_ID, META_APP_SECRET and
 	 * META_WHATSAPP_CONFIG_ID are all set, so Account settings can offer Connect
@@ -3151,10 +3160,11 @@ type AppConfig struct {
 	 * are handed out by GET /api/host/whatsapp/connect, to a signed-in host at the
 	 * moment they click, rather than to every anonymous visitor at boot. */
 	WhatsAppConnect bool `json:"whatsappConnect,omitempty"`
-	/* Supabase Auth (Google sign-in). Public values only — the JWT secret stays
-	 * on the API. When googleAuth is false the Continue with Google button is hidden.
+	/* GoogleAuth is Continue with Google / One Tap via first-party OAuth on this
+	 * origin. Public values only — the client secret stays on the API. When false
+	 * the Continue with Google button is hidden.
 	 *
-	 * Distinct from GoogleClientID above: that pair is Drive Picker, not login.
+	 * supabaseUrl / supabaseAnonKey remain for an unused legacy exchange path.
 	 */
 	SupabaseURL     string `json:"supabaseUrl,omitempty"`
 	SupabaseAnonKey string `json:"supabaseAnonKey,omitempty"`
