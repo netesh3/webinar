@@ -39,6 +39,7 @@ import {
   stepIndex,
 } from "@/lib/schedule-wizard";
 import type { PreparedWebinarImage } from "@/lib/webinar-image";
+import { useSchedulePolls } from "../survey/schedule-polls";
 import { useScheduleSurvey } from "../survey/schedule-survey";
 import {
   ActionBar,
@@ -324,6 +325,7 @@ function ScheduleFormBody({
     setForm((f) => ({ ...f, [key]: value }));
 
   const survey = useScheduleSurvey(webinar, form.durationMin);
+  const polls = useSchedulePolls(webinar);
 
   /* Autosave to this browser, and what the footer says about it.
    *
@@ -532,6 +534,14 @@ function ScheduleFormBody({
       setBusy(null);
       return;
     }
+    const pollsProblem = polls.problem();
+    if (pollsProblem) {
+      setError(pollsProblem);
+      flushSync(() => go("webinar"));
+      focusTarget("live-polls");
+      setBusy(null);
+      return;
+    }
 
     try {
       let saved = editing
@@ -607,6 +617,9 @@ function ScheduleFormBody({
 
       const surveyWarning = await survey.persist(saved.id);
       if (surveyWarning) notify(surveyWarning, "info");
+
+      const pollsWarning = await polls.persist(saved.id);
+      if (pollsWarning) notify(pollsWarning, "info");
 
       try {
         await messagesRef.current?.persistOverrides(saved.id);
@@ -687,6 +700,7 @@ function ScheduleFormBody({
     watchUrl: form.streamWatchUrl,
     multistream: Boolean(form.options.multistream),
     surveyProblem: survey.problem(),
+    pollsProblem: polls.problem(),
   });
 
   /* Inline errors for problems the host has been sent to fix. Derived from
@@ -880,6 +894,15 @@ function ScheduleFormBody({
                 setImageRemoved(Boolean(webinar?.imageUrl));
               }}
               survey={survey.node}
+              polls={polls.node}
+              feedbackPreviews={
+                survey.preview || polls.preview ? (
+                  <>
+                    {survey.preview}
+                    {polls.preview}
+                  </>
+                ) : undefined
+              }
             />
           </StepPanel>
           <StepPanel step="messages" current={step}>
