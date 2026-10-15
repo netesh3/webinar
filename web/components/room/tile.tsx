@@ -1,7 +1,12 @@
 "use client";
 
 import { VideoTrack } from "@livekit/components-react";
-import { Track, type Participant, type TrackPublication } from "livekit-client";
+import {
+  LocalParticipant,
+  Track,
+  type Participant,
+  type TrackPublication,
+} from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Role } from "@/lib/api-types";
 import {
@@ -146,6 +151,14 @@ export function ParticipantTile({
    * presenter what the room is seeing. Which they need — it is the only way to
    * know the share is working. */
   const isOwnShare = isScreen && participant.isLocal && !fileShare.active;
+  /* Only ever called for isOwnShare, so this is the local participant and a real
+   * screen capture — a shared file goes through fileShare.stop() instead and never
+   * shows this notice. Errors are swallowed like the control bar's stop: the browser
+   * may already have ended the capture, and stopping should never toast. */
+  const stopOwnShare = useCallback(() => {
+    if (!(participant instanceof LocalParticipant)) return;
+    participant.setScreenShareEnabled(false).catch(() => {});
+  }, [participant]);
   const hasVideo =
     !isOwnShare && !!publication && !publication.isMuted && !!publication.track;
   /* No publication at all: the person is in the room and never started the
@@ -226,7 +239,7 @@ export function ParticipantTile({
           />
         )
       ) : isOwnShare ? (
-        <OwnShareNotice size={size} />
+        <OwnShareNotice size={size} onStop={stopOwnShare} />
       ) : (
         <AvatarFallback
           participant={participant}
@@ -603,28 +616,76 @@ function ZoomButton({
   );
 }
 
+/* Type scale for OwnShareNotice, per tile size. The stage gets the big version —
+ * the presenter glances at it mid-talk and should be able to read it from across
+ * the desk — and the smaller tiles step down so the line never wraps or clips.
+ * Literal class strings so Tailwind can see them. */
+const OWN_SHARE_SCALE = {
+  sm: {
+    badge: "mb-1.5 gap-1.5 px-2 py-0.5 text-[10px]",
+    dot: "size-1.5",
+    title: "text-[14px] font-semibold",
+    sub: "",
+    button: "",
+  },
+  md: {
+    badge: "mb-3 gap-2 px-3 py-1 text-[14px]",
+    dot: "size-2.5",
+    title: "text-[24px] font-bold",
+    sub: "mt-2 text-[17px]",
+    button: "mt-5 px-6 py-2.5 text-[16px] rounded-xl",
+  },
+  lg: {
+    badge: "mb-6 gap-3 px-6 py-2.5 text-[22px]",
+    dot: "size-3.5",
+    title: "text-[38px] font-bold",
+    sub: "mt-3 text-[24px]",
+    button: "mt-7 px-9 py-4 text-[22px] rounded-[14px]",
+  },
+} as const;
+
 /**
  * What the presenter sees in place of their own screen share.
  *
  * They need to know it is live and that it is on the stage — but not to watch a
  * recording of the window they are looking at. The audience sees the real thing.
+ * A stop button sits right here too, where the presenter is already looking.
  */
-function OwnShareNotice({ size }: { size: "sm" | "md" | "lg" }) {
+function OwnShareNotice({
+  size,
+  onStop,
+}: {
+  size: "sm" | "md" | "lg";
+  onStop: () => void;
+}) {
+  const s = OWN_SHARE_SCALE[size];
   return (
     <div className="grid size-full place-items-center bg-black/40 p-4 text-center">
       <div>
-        <div className="mx-auto mb-2.5 grid size-10 place-items-center rounded-full bg-ok/20">
-          <ScreenShareIcon className="size-5 text-ok" />
-        </div>
-        <p className="text-[13px] font-medium text-white/90">
+        <span
+          className={`inline-flex items-center rounded-full bg-ok/15 font-semibold tracking-[0.06em] text-ok ${s.badge}`}
+        >
+          <span
+            aria-hidden
+            className={`animate-pulse rounded-full bg-ok shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-ok)_25%,transparent)] ${s.dot}`}
+          />
+          LIVE
+        </span>
+        <p className={`leading-tight tracking-[-0.01em] text-white/95 ${s.title}`}>
           You&apos;re sharing your screen
         </p>
-        {/* Not on a filmstrip thumbnail — there is no room for a sentence. */}
+        {/* Not on a filmstrip thumbnail — there is no room for more than the line. */}
         {size !== "sm" && (
-          <p className="mx-auto mt-1 max-w-[26ch] text-[11.5px] leading-relaxed text-white/50">
-            Everyone can see it. Your own preview is hidden, because showing it
-            here would put a mirror inside the share.
-          </p>
+          <>
+            <p className={`text-white/70 ${s.sub}`}>Everyone can see it</p>
+            <button
+              type="button"
+              onClick={onStop}
+              className={`inline-block bg-live font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${s.button}`}
+            >
+              Stop sharing
+            </button>
+          </>
         )}
       </div>
     </div>
