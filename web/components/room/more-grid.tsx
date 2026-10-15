@@ -274,6 +274,9 @@ export function MoreGrid({
   ];
   const hasMovable = movable.size > 0;
 
+  /* Resting state stays quiet like Zoom: title + tight grid. The long drag tip
+   * used to sit under the title and left a big empty band when only a few tools
+   * were tucked away. Show status copy only while dragging or customising. */
   const hint = dropping
     ? "Let go to move it to More"
     : inviting
@@ -281,10 +284,8 @@ export function MoreGrid({
       : draggingOut
         ? "Drop it on the toolbar below"
         : editing
-          ? "Tap + to add a tool to your toolbar. Tap − on the toolbar to move one back here."
-          : canCustomize && hasMovable
-            ? "Drag a tool onto the toolbar to keep it handy. Drag it back here to tuck it away."
-            : null;
+          ? "Tap + to add a tool. Tap − on the toolbar to move one back."
+          : null;
 
   return (
     <>
@@ -306,7 +307,13 @@ export function MoreGrid({
         tabIndex={-1}
         aria-modal={compact || undefined}
         aria-label="More tools"
-        aria-describedby={hint ? "more-hint" : undefined}
+        aria-describedby={
+          hint
+            ? "more-hint"
+            : canCustomize && !editing && hasMovable
+              ? "more-drag-tip"
+              : undefined
+        }
         className={`room-dark z-50 bg-surface shadow-2xl outline-none transition-[border-color,box-shadow,opacity,transform] ${
           // Dragging a tool OUT: the panel steps back so the toolbar below —
           // the actual target — is what reads as live. A phone sheet covers
@@ -319,8 +326,8 @@ export function MoreGrid({
             : ""
         } ${
           compact
-            ? "fixed inset-x-0 bottom-0 max-h-[72dvh] overflow-y-auto rounded-t-2xl border-t p-3"
-            : "absolute right-0 bottom-full mb-3 w-[340px] max-w-[calc(100vw-1rem)] rounded-2xl border p-3"
+            ? "fixed inset-x-0 bottom-0 max-h-[72dvh] overflow-y-auto rounded-t-2xl border-t p-2.5"
+            : "absolute right-0 bottom-full mb-2 w-[288px] max-w-[calc(100vw-1rem)] rounded-xl border p-2"
         } ${
           dropping
             ? "border-brand ring-4 ring-brand/30"
@@ -337,12 +344,12 @@ export function MoreGrid({
         }
       >
         {compact && (
-          <div className="-mt-1 mb-2 flex justify-center">
+          <div className="-mt-0.5 mb-1.5 flex justify-center">
             <span className="h-1 w-9 rounded-full bg-line-2" aria-hidden />
           </div>
         )}
 
-        <div className="mb-2 px-1">
+        <div className="mb-1.5 px-1">
           <h2 className="text-[13px] font-semibold text-ink">
             {editing ? "Customize toolbar" : "More"}
           </h2>
@@ -350,7 +357,7 @@ export function MoreGrid({
             <p
               id="more-hint"
               role="status"
-              className={`mt-0.5 text-[11.5px] leading-snug ${
+              className={`mt-0.5 text-[11px] leading-snug ${
                 dragging && !draggingOut ? "font-medium text-brand" : "text-ink-3"
               }`}
             >
@@ -360,14 +367,14 @@ export function MoreGrid({
         </div>
 
         {entries.length === 0 ? (
-          <p className="px-1.5 py-6 text-center text-[12.5px] text-ink-3">
+          <p className="px-1.5 py-4 text-center text-[12px] text-ink-3">
             Everything is on your toolbar. Drag a tool back here to tuck it away.
           </p>
         ) : (
           <div
             role="group"
             aria-label={editing ? "Tools you can add to the toolbar" : "Tools"}
-            className={`grid grid-cols-3 gap-1 rounded-xl ${
+            className={`grid grid-cols-3 gap-0.5 rounded-lg ${
               inviting || dropping ? "bg-brand/5" : ""
             }`}
           >
@@ -517,45 +524,53 @@ export function MoreGrid({
         )}
 
         {(canCustomize || onReset) && !dragging && (
-          <div className="mt-2 flex items-center justify-between gap-3 border-t border-line px-1 pt-2.5">
-            {!canCustomize ? (
-              <p className="text-[11px] leading-snug text-ink-3">
-                Your own toolbar buttons show on a wider screen.
+          <div className="mt-1.5 space-y-1 border-t border-line px-1 pt-1.5">
+            {/* Zoom-style one-liner tip; Customize stays as the keyboard-friendly path. */}
+            {canCustomize && !editing && hasMovable && (
+              <p id="more-drag-tip" className="text-[11px] leading-snug text-ink-3">
+                Drag to pin or remove from toolbar
               </p>
-            ) : editing ? (
-              <button
-                type="button"
-                onClick={() => onEditingChange(false)}
-                className="rounded-lg bg-brand px-3 py-1.5 text-[12px] font-semibold text-stage outline-none transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand/50"
-              >
-                Done
-              </button>
-            ) : (
-              <button
-                type="button"
-                aria-pressed={false}
-                onClick={() => {
-                  setShowReactions(false);
-                  setShowLayout(false);
-                  setShowInvite(false);
-                  onEditingChange(true);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[12px] font-medium text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
-              >
-                <PlusIcon className="size-3.5" />
-                Customize toolbar
-              </button>
             )}
-            {onReset && (
-              <button
-                type="button"
-                onClick={onReset}
-                title="Put the toolbar back the way it started. You can undo this."
-                className="shrink-0 rounded-md px-1 text-[12px] font-medium text-ink-3 underline-offset-2 outline-none transition-colors hover:text-ink hover:underline focus-visible:ring-2 focus-visible:ring-brand/40"
-              >
-                Reset
-              </button>
-            )}
+            <div className="flex items-center justify-between gap-2">
+              {!canCustomize ? (
+                <p className="text-[11px] leading-snug text-ink-3">
+                  Your own toolbar buttons show on a wider screen.
+                </p>
+              ) : editing ? (
+                <button
+                  type="button"
+                  onClick={() => onEditingChange(false)}
+                  className="rounded-md bg-brand px-2.5 py-1 text-[12px] font-semibold text-stage outline-none transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand/50"
+                >
+                  Done
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-pressed={false}
+                  onClick={() => {
+                    setShowReactions(false);
+                    setShowLayout(false);
+                    setShowInvite(false);
+                    onEditingChange(true);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[12px] font-medium text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
+                >
+                  <PlusIcon className="size-3.5" />
+                  Customize toolbar
+                </button>
+              )}
+              {onReset && (
+                <button
+                  type="button"
+                  onClick={onReset}
+                  title="Put the toolbar back the way it started. You can undo this."
+                  className="shrink-0 rounded-md px-1 text-[12px] font-medium text-brand outline-none transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-brand/40"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -627,7 +642,7 @@ function MoreCell({
         disabled={busy}
         {...dragProps}
         onClick={dragProps ? dragProps.onClick : onClick}
-        className={`relative flex h-[76px] w-full flex-col items-center justify-center gap-1.5 rounded-xl px-1 outline-none transition-[background-color,color,transform,opacity] duration-150 focus-visible:ring-2 focus-visible:ring-brand/60 disabled:opacity-50 ${
+        className={`relative flex h-[64px] w-full flex-col items-center justify-center gap-1 rounded-lg px-0.5 outline-none transition-[background-color,color,transform,opacity] duration-150 focus-visible:ring-2 focus-visible:ring-brand/60 disabled:opacity-50 ${
           dimmed
             ? "cursor-default text-ink-3 opacity-45"
             : editing
@@ -642,31 +657,31 @@ function MoreCell({
         } ${lifted ? "opacity-30" : ""}`}
       >
         <span
-          className={`grid size-8 place-items-center rounded-full transition-colors ${
+          className={`grid size-7 place-items-center rounded-full transition-colors ${
             on ? "bg-ok text-stage" : ""
           }`}
         >
           {icon}
         </span>
-        <span className="line-clamp-2 text-center text-[11px] leading-tight font-medium">
+        <span className="line-clamp-2 text-center text-[10.5px] leading-tight font-medium">
           {label}
         </span>
 
         {/* The drag affordance: grip dots, on hover and keyboard focus only,
             so a resting grid stays calm. */}
         {movable && !editing && (
-          <GripIcon className="absolute top-1.5 left-1.5 size-3 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" />
+          <GripIcon className="absolute top-1 left-1 size-3 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" />
         )}
 
         {on && !editing && (
-          <span className="absolute top-1 right-1 rounded-full bg-ok-soft px-1.5 py-px text-[9.5px] font-semibold tracking-wide text-ok uppercase">
+          <span className="absolute top-0.5 right-0.5 rounded-full bg-ok-soft px-1 py-px text-[9px] font-semibold tracking-wide text-ok uppercase">
             {onWord}
           </span>
         )}
 
         {!on && badge && (
           <span
-            className={`absolute top-1.5 right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-stage ${
+            className={`absolute top-1 right-1 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-stage ${
               mention ? "ring-2 ring-white/80" : ""
             }`}
           >
