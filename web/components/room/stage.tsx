@@ -496,9 +496,9 @@ function SpotlightLayout({
  * Compact Zoom-style overlay: faces only, thin border, no tall “Drag to move”
  * bar and no dashed snap placeholders on the stage. Four controls:
  *
- *   collapse  Small chevron on hover; count stays when collapsed.
+ *   collapse  Small chevron on hover (top-right); count stays when collapsed.
  *   move      Drag the frame — free place anywhere on the stage (clamped).
- *   resize    All four corners; light L-brackets on hover, large hit targets.
+ *   resize    Three corners (not top-right — that is hide); L-brackets on hover.
  *   remember  Tile size + position persist in this browser.
  *
  * Move and resize live on their own handles, never on a tile, so they cannot
@@ -871,22 +871,12 @@ function FloatingCameras({
         }
       }}
     >
-      {/* Overlay chrome — sits on the video, no dedicated header strip. */}
+      {/* Hide only — top-right. No grip dots; the whole frame is already draggable. */}
       <div
-        className={`pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between p-1.5 transition-opacity ${
-          showChrome ? "opacity-100" : "opacity-0"
+        className={`pointer-events-none absolute top-0 right-0 z-30 p-1.5 transition-opacity ${
+          showChrome || !open ? "opacity-100" : "opacity-0"
         }`}
       >
-        <span
-          className="pointer-events-none inline-flex h-5 items-center gap-1 rounded-md bg-black/55 px-1.5 backdrop-blur"
-          aria-hidden
-        >
-          <span className="flex gap-[2.5px]">
-            <i className="block size-[3px] rounded-full bg-white/85" />
-            <i className="block size-[3px] rounded-full bg-white/85" />
-            <i className="block size-[3px] rounded-full bg-white/85" />
-          </span>
-        </span>
         <button
           type="button"
           data-float-hide
@@ -930,9 +920,9 @@ function FloatingCameras({
         <div className="h-7 w-16" aria-hidden />
       )}
 
-      {/* Light L-brackets on hover; large hit targets on all four corners. */}
+      {/* Resize on three corners — top-right is reserved for hide. */}
       {open &&
-        (["tl", "tr", "bl", "br"] as const).map((c) => (
+        (["tl", "bl", "br"] as const).map((c) => (
           <FloatCornerHit
             key={c}
             corner={c}
