@@ -29,7 +29,13 @@ import {
   type StageSeat,
 } from "@/lib/stage-presence";
 import { startWaitingTune, stopWaitingTune, useWaitingTune } from "@/lib/waiting-tune";
-import { ArrowLeftIcon, ChevronDownIcon, VolumeIcon, VolumeMuteIcon } from "../icons";
+import {
+  ArrowLeftIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  VolumeIcon,
+  VolumeMuteIcon,
+} from "../icons";
 import { useActiveSpeaker } from "./active-speaker";
 import { useRoomUI } from "./context";
 import { participantRole } from "./participants";
@@ -496,7 +502,9 @@ function SpotlightLayout({
  * Compact Zoom-style overlay: faces only, thin border, no tall “Drag to move”
  * bar and no dashed snap placeholders on the stage. Four controls:
  *
- *   collapse  Small chevron on hover (top-right); count stays when collapsed.
+ *   collapse  Hide docks a tab to the nearer left/right stage edge (never top
+ *             or bottom). The tab shows the count and a clear “Show cameras”
+ *             affordance to expand again near that side.
  *   move      Drag the frame — free place anywhere on the stage (clamped).
  *   resize    Three corners (not top-right — that is hide); L-brackets on hover.
  *   remember  Tile size + position persist in this browser.
@@ -504,6 +512,8 @@ function SpotlightLayout({
  * Move and resize live on their own handles, never on a tile, so they cannot
  * fight the pin button.
  */
+
+type DockSide = "left" | "right";
 
 type ResizeCorner = "tl" | "tr" | "bl" | "br";
 
@@ -641,11 +651,13 @@ function FloatingCameras({
   onTogglePin: (key: string) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [dock, setDock] = useState<DockSide>("right");
   const [tileW, setTileW] = useState(readFloatCamW);
   const [pos, setPos] = useState<FloatPos | null>(readFloatCamPos);
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
   const [resizing, setResizing] = useState<ResizeCorner | null>(null);
   const [hover, setHover] = useState(false);
+  const camCount = tiles.length + hidden;
   const movePtr = useRef<number | null>(null);
   const moveFrom = useRef<{ x: number; y: number; left: number; top: number } | null>(
     null,
@@ -661,14 +673,16 @@ function FloatingCameras({
     panelW: number;
     panelH: number;
   } | null>(null);
-  const panel = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLElement | null>(null);
   const [layout, setLayout] = useState({ left: FLOAT_MARGIN, top: FLOAT_MARGIN });
 
   const showExtra = hidden > 0;
   const size = panelSize(tileW, tiles.length, showExtra);
 
   // Resolve fractions → pixels against the live stage; default bottom-right.
+  // Skip while collapsed — the edge tab is positioned by CSS, not layout.
   useLayoutEffect(() => {
+    if (!open) return;
     const stage = panel.current?.offsetParent as HTMLElement | null;
     if (!stage) return;
     const sw = stage.clientWidth;
@@ -798,9 +812,101 @@ function FloatingCameras({
     [tileW, layout.left, layout.top, size.width, size.height],
   );
 
+  const hideCameras = () => {
+    const stage = panel.current?.offsetParent as HTMLElement | null;
+    if (stage) {
+      const centerX = layout.left + size.width / 2;
+      setDock(centerX >= stage.clientWidth / 2 ? "right" : "left");
+    }
+    setOpen(false);
+    setHover(false);
+    setDrag(null);
+    setResizing(null);
+  };
+
+  const showCameras = () => {
+    const stage = panel.current?.offsetParent as HTMLElement | null;
+    if (stage) {
+      // Expand beside the docked edge, keeping the previous vertical feel.
+      const left =
+        dock === "right"
+          ? stage.clientWidth - size.width - FLOAT_MARGIN
+          : FLOAT_MARGIN;
+      const prev = pos
+        ? fromFractions(
+            pos,
+            stage.clientWidth,
+            stage.clientHeight,
+            size.width,
+            size.height,
+          )
+        : null;
+      const top = prev
+        ? prev.top
+        : Math.max(FLOAT_MARGIN, (stage.clientHeight - size.height) / 2);
+      const clamped = clampPos(
+        left,
+        top,
+        stage.clientWidth,
+        stage.clientHeight,
+        size.width,
+        size.height,
+      );
+      const frac = toFractions(
+        clamped.left,
+        clamped.top,
+        stage.clientWidth,
+        stage.clientHeight,
+        size.width,
+        size.height,
+      );
+      setPos(frac);
+      persistPos(frac);
+      setLayout(clamped);
+    }
+    setOpen(true);
+  };
+
+  // Collapsed: a clear edge tab on the nearer left/right side only.
+  if (!open) {
+    const onRight = dock === "right";
+    return (
+      <button
+        ref={(el) => {
+          panel.current = el;
+        }}
+        type="button"
+        aria-expanded={false}
+        aria-label={`Show ${camCount} cameras`}
+        title={`Show ${camCount} cameras`}
+        onClick={showCameras}
+        className={`group/dock absolute z-20 flex min-h-[72px] flex-col items-center justify-center gap-1.5 border border-white/20 bg-black/80 px-2 py-3 text-white shadow-2xl outline-none backdrop-blur-md transition-[background-color,border-color] hover:border-white/35 hover:bg-black/90 focus-visible:ring-2 focus-visible:ring-brand/60 ${
+          onRight
+            ? "right-0 rounded-l-xl border-r-0"
+            : "left-0 rounded-r-xl border-l-0"
+        }`}
+        style={{ top: "50%", transform: "translateY(-50%)" }}
+      >
+        <ChevronRightIcon
+          className={`size-4 text-white/80 transition-colors group-hover/dock:text-white ${
+            onRight ? "rotate-180" : ""
+          }`}
+        />
+        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1.5 text-[11px] font-bold text-stage tabular-nums">
+          {camCount}
+        </span>
+        <span className="max-w-[2.6rem] text-center text-[10px] leading-tight font-semibold tracking-wide text-white/70 group-hover/dock:text-white">
+          Show
+        </span>
+      </button>
+    );
+  }
+
   return (
     <div
-      ref={panel}
+      ref={(el) => {
+        panel.current = el;
+      }}
       className={`group absolute z-20 rounded-[11px] border border-white/20 bg-black/40 p-0.5 shadow-2xl backdrop-blur-md ${
         drag ? "cursor-grabbing" : "cursor-grab"
       } ${showChrome ? "border-white/35" : ""}`}
@@ -871,66 +977,57 @@ function FloatingCameras({
         }
       }}
     >
-      {/* Hide only — top-right. No grip dots; the whole frame is already draggable. */}
+      {/* Hide — top-right only. */}
       <div
         className={`pointer-events-none absolute top-0 right-0 z-30 p-1.5 transition-opacity ${
-          showChrome || !open ? "opacity-100" : "opacity-0"
+          showChrome ? "opacity-100" : "opacity-0"
         }`}
       >
         <button
           type="button"
           data-float-hide
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-label={open ? "Hide the cameras" : `Show ${tiles.length + hidden} cameras`}
-          title={open ? "Hide cameras" : "Show cameras"}
+          onClick={hideCameras}
+          aria-expanded={true}
+          aria-label="Hide the cameras"
+          title="Hide cameras"
           className="pointer-events-auto inline-flex h-5 min-w-5 items-center justify-center gap-0.5 rounded-md bg-black/55 px-1 text-[10px] font-semibold text-white/90 outline-none backdrop-blur transition-colors hover:bg-black/75 focus-visible:ring-2 focus-visible:ring-white/50"
         >
-          <ChevronDownIcon
-            className={`size-3 transition-transform ${open ? "" : "rotate-180"}`}
-          />
-          {!open && <span className="tabular-nums">{tiles.length + hidden}</span>}
+          <ChevronDownIcon className="size-3" />
         </button>
       </div>
 
-      {open ? (
-        <div className="relative flex items-stretch gap-1.5">
-          {tiles.map((tile) => (
-            <div
-              key={tile.key}
-              className="aspect-video shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-white/10"
-              style={{ width: tileW }}
-            >
-              <ParticipantTile
-                tile={tile}
-                size={tileW >= 168 ? "md" : "sm"}
-                pinned={pinned === tile.key}
-                onTogglePin={() => onTogglePin(tile.key)}
-              />
-            </div>
-          ))}
-          {hidden > 0 && (
-            <span className="grid w-9 shrink-0 place-items-center self-stretch rounded-md bg-black/50 text-[12px] font-semibold text-white/85">
-              +{hidden}
-            </span>
-          )}
-        </div>
-      ) : (
-        // Keep a small hit target when collapsed so the panel is still draggable.
-        <div className="h-7 w-16" aria-hidden />
-      )}
+      <div className="relative flex items-stretch gap-1.5">
+        {tiles.map((tile) => (
+          <div
+            key={tile.key}
+            className="aspect-video shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-white/10"
+            style={{ width: tileW }}
+          >
+            <ParticipantTile
+              tile={tile}
+              size={tileW >= 168 ? "md" : "sm"}
+              pinned={pinned === tile.key}
+              onTogglePin={() => onTogglePin(tile.key)}
+            />
+          </div>
+        ))}
+        {hidden > 0 && (
+          <span className="grid w-9 shrink-0 place-items-center self-stretch rounded-md bg-black/50 text-[12px] font-semibold text-white/85">
+            +{hidden}
+          </span>
+        )}
+      </div>
 
       {/* Resize on three corners — top-right is reserved for hide. */}
-      {open &&
-        (["tl", "bl", "br"] as const).map((c) => (
-          <FloatCornerHit
-            key={c}
-            corner={c}
-            visible={showChrome || resizing === c}
-            active={resizing === c}
-            onStart={startResize}
-          />
-        ))}
+      {(["tl", "bl", "br"] as const).map((c) => (
+        <FloatCornerHit
+          key={c}
+          corner={c}
+          visible={showChrome || resizing === c}
+          active={resizing === c}
+          onStart={startResize}
+        />
+      ))}
     </div>
   );
 }
