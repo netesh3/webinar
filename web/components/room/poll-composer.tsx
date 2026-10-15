@@ -243,7 +243,7 @@ export function Composer({
           className={
             allowLaunch
               ? "inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-2 px-3 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              : "inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[12.5px] font-semibold text-stage transition-colors hover:bg-brand-hover disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              : "inline-flex h-9 items-center gap-1.5 rounded-lg border border-brand-line bg-brand-soft px-3 text-[12.5px] font-semibold text-brand transition-colors hover:bg-brand-soft/80 disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
           }
         >
           {saving === "draft" && <Spinner className="size-3.5" />}

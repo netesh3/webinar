@@ -435,7 +435,7 @@ function AddButton({
       id={id}
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-line-2 bg-surface px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:border-brand hover:text-brand outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-brand-line bg-brand-soft/40 px-2.5 text-[12.5px] font-medium text-brand transition-colors hover:border-brand hover:bg-brand-soft outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
     >
       <PlusIcon className="size-3.5" />
       {label}
