@@ -252,29 +252,6 @@ export function sortTiles<T extends Sortable>(
  *  hideNonVideo never drops your own camera — a viewer hiding avatars should not
  *  lose the one tile that tells them they are on air. hideSelf is the explicit
  *  opposite, and still keeps a local screen share. */
-/** Drop the presenter's own camera while they are display-capturing.
- *
- *  getDisplayMedia of this window / the whole screen includes the stage UI. If
- *  the presenter's camera tile is still painted here, it is baked into the share
- *  and the audience sees that face twice — once inside the share, once as the
- *  real camera tile. File shares do not capture the page, so they keep self-view.
- *  Remote viewers are unchanged: the tile is only local for the presenter.
- */
-export function withoutCapturedSelfCamera<T extends Sortable>(
-  tiles: readonly T[],
-  fileShareActive = false,
-): T[] {
-  const sharingLocally = tiles.some(
-    (tile) =>
-      tile.source === Track.Source.ScreenShare && tile.participant.isLocal,
-  );
-  if (!sharingLocally || fileShareActive) return [...tiles];
-  return tiles.filter(
-    (tile) =>
-      !(tile.participant.isLocal && tile.source === Track.Source.Camera),
-  );
-}
-
 export function filterTiles<T extends Sortable>(
   tiles: readonly T[],
   preferences: LayoutPreferences,
