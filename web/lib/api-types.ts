@@ -2621,9 +2621,11 @@ export const FeatureZoom = "zoom";
  * 	 * a "Whiteboard" cell in the More menu for the host and panelists, and a
  * 	 * view-only board for the audience while one is open.
  * 	 *
- * 	 * Off — the default, including for accounts that already exist — means the
- * 	 * room has no whiteboard at all and nothing about it changes. The host's
- * 	 * switch decides for everyone in their session; see JoinResponse.Whiteboard.
+ * 	 * Off means the room has no whiteboard at all and nothing about it changes.
+ * 	 * ON by default — the one switch that is: every existing account was turned
+ * 	 * on once, and new accounts start on (migrations/0099). An administrator
+ * 	 * turning it off for an account keeps it off. The host's switch decides for
+ * 	 * everyone in their session; see JoinResponse.Whiteboard.
  */
 export const FeatureWhiteboard = "whiteboard";
 /**

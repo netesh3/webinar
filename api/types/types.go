@@ -1043,14 +1043,16 @@ type Account struct {
  * migration, a handler, a scan list and a toggle — and the admin screen renders
  * whatever this server declares rather than a list the browser keeps its own copy of.
  *
- * Absent means off. There is no feature that defaults to on. An administrator
+ * Absent means off. Every switch but one defaults to off: an administrator
  * turning one on for an account is the record that somebody decided to — for
  * WhatsApp CRM because it spends money or writes to other people's phones, for
  * cloud recording because storing a session is a decision per customer, for
  * join-without-registration and instant webinars because the default is the
  * restrictive one: everyone registers, and every webinar is scheduled, and for
  * Zoom because connecting a host's Zoom account and creating meetings there
- * is a decision per customer.
+ * is a decision per customer. The exception is the whiteboard, which starts on
+ * for every account (migrations/0099) because it spends nothing and writes
+ * nowhere outside the session; its switch exists to turn it off.
  */
 const (
 	/* FeatureWhatsAppCRM is the host CRM surface: contact tags and notes, sharing
@@ -1092,9 +1094,11 @@ const (
 	 * a "Whiteboard" cell in the More menu for the host and panelists, and a
 	 * view-only board for the audience while one is open.
 	 *
-	 * Off — the default, including for accounts that already exist — means the
-	 * room has no whiteboard at all and nothing about it changes. The host's
-	 * switch decides for everyone in their session; see JoinResponse.Whiteboard. */
+	 * Off means the room has no whiteboard at all and nothing about it changes.
+	 * ON by default — the one switch that is: every existing account was turned
+	 * on once, and new accounts start on (migrations/0099). An administrator
+	 * turning it off for an account keeps it off. The host's switch decides for
+	 * everyone in their session; see JoinResponse.Whiteboard. */
 	FeatureWhiteboard = "whiteboard"
 )
 
