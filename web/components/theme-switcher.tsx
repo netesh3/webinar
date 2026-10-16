@@ -6,20 +6,6 @@ export function ThemeSwitcher() {
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-    // Get saved theme or default to system
-    const saved = localStorage.getItem("theme") as "light" | "dark" | "system" | null;
-    if (saved) {
-      setTheme(saved);
-      applyTheme(saved);
-    } else {
-      // Default to system preference
-      const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      applyTheme(isDark ? "dark" : "light");
-    }
-  }, []);
-
   const applyTheme = (newTheme: "light" | "dark" | "system") => {
     const html = document.documentElement;
     let effectiveTheme = newTheme;
@@ -38,6 +24,22 @@ export function ThemeSwitcher() {
 
     localStorage.setItem("theme", newTheme);
   };
+
+  useEffect(() => {
+    setMounted(true);
+    // Get saved theme or default to system
+    const saved = localStorage.getItem("theme") as "light" | "dark" | "system" | null;
+    if (saved) {
+      setTheme(saved);
+      applyTheme(saved);
+    } else {
+      // Default to system preference
+      const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const initialTheme = isDark ? "dark" : "light";
+      setTheme(initialTheme);
+      applyTheme(initialTheme);
+    }
+  }, []);
 
   const toggleTheme = () => {
     let newTheme: "light" | "dark" | "system";
