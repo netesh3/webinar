@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"crypto/subtle"
 	"errors"
@@ -125,7 +124,7 @@ func (s *Server) handleWebinarImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, mime, err := s.store.WebinarImageMedia(r.Context(), slug)
+	data, mime, storageKey, err := s.store.WebinarImageMedia(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "This webinar has no image.")
 		return
@@ -142,7 +141,10 @@ func (s *Server) handleWebinarImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", "inline")
-	http.ServeContent(w, r, "", zeroTime, bytes.NewReader(data))
+	if !s.serveImage(w, r, data, storageKey) {
+		w.Header().Del("Cache-Control")
+		httpx.Error(w, http.StatusNotFound, "not_found", "This webinar's image is unavailable.")
+	}
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {

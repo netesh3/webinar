@@ -443,11 +443,10 @@ const maxWebinarImageBytes = 3 << 20
 
 /* handleUploadWebinarImage stores a webinar's cover image and points the row at it.
  *
- * Bytes go straight into Postgres (see store.SetWebinarImage), not into
- * s.recordings — this deployment runs the API on Cloud Run with recording
- * storage off, because Cloud Run's disk does not survive a cold start. A cover
- * image capped at a megabyte has no such problem living in the database this
- * deployment already depends on being up.
+ * The file goes into the media store when there is one, and the row keeps only
+ * its key (migrations/0098); with recording storage off the bytes go into the
+ * row as before (see store.SetWebinarImage). The replaced file is deleted once
+ * the row no longer points at it.
  *
  * The body is the raw, already-compressed image, same convention as chat images:
  * one part, so multipart buys nothing here.
@@ -479,7 +478,19 @@ func (s *Server) handleUploadWebinarImage(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := s.store.SetWebinarImage(r.Context(), slug, mime, body); err != nil {
+	data, key := body, ""
+	if s.recordings != nil {
+		key = coverKey(slug, mime)
+		if err := s.putImage(r.Context(), key, body); err != nil {
+			s.dropImage(r.Context(), key)
+			s.fail(w, r, "webinar image: write file", err)
+			return
+		}
+		data = nil
+	}
+	old, err := s.store.SetWebinarImage(r.Context(), slug, mime, data, key)
+	if err != nil {
+		s.dropImage(r.Context(), key)
 		if errors.Is(err, store.ErrNotFound) {
 			httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 			return
@@ -487,6 +498,7 @@ func (s *Server) handleUploadWebinarImage(w http.ResponseWriter, r *http.Request
 		s.fail(w, r, "webinar image: store", err)
 		return
 	}
+	s.dropImage(r.Context(), old)
 
 	wb, err := s.store.WebinarBySlug(r.Context(), slug)
 	if err != nil {
@@ -501,7 +513,8 @@ func (s *Server) handleUploadWebinarImage(w http.ResponseWriter, r *http.Request
 func (s *Server) handleDeleteWebinarImage(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
 
-	if err := s.store.ClearWebinarImage(r.Context(), slug); err != nil {
+	old, err := s.store.ClearWebinarImage(r.Context(), slug)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 			return
@@ -509,6 +522,7 @@ func (s *Server) handleDeleteWebinarImage(w http.ResponseWriter, r *http.Request
 		s.fail(w, r, "webinar image: clear", err)
 		return
 	}
+	s.dropImage(r.Context(), old)
 
 	wb, err := s.store.WebinarBySlug(r.Context(), slug)
 	if err != nil {

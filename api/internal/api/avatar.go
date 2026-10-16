@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -24,7 +23,7 @@ const maxAvatarBytes = 2 << 20
  */
 func (s *Server) handleAvatar(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	data, mime, err := s.store.UserAvatarMedia(r.Context(), user.ID)
+	data, mime, storageKey, err := s.store.UserAvatarMedia(r.Context(), user.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "No profile photo has been uploaded.")
 		return
@@ -40,7 +39,10 @@ func (s *Server) handleAvatar(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", "inline")
-	http.ServeContent(w, r, "", zeroTime, bytes.NewReader(data))
+	if !s.serveImage(w, r, data, storageKey) {
+		w.Header().Del("Cache-Control")
+		httpx.Error(w, http.StatusNotFound, "not_found", "This profile photo is unavailable.")
+	}
 }
 
 /* handleUploadAvatar stores a profile photo on the account.
@@ -71,11 +73,23 @@ func (s *Server) handleUploadAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.store.SetUserAvatar(r.Context(), user.ID, mime, body)
+	data, key := body, ""
+	if s.recordings != nil {
+		key = avatarKey(user.ID, mime)
+		if err := s.putImage(r.Context(), key, body); err != nil {
+			s.dropImage(r.Context(), key)
+			s.fail(w, r, "avatar: write file", err)
+			return
+		}
+		data = nil
+	}
+	updated, old, err := s.store.SetUserAvatar(r.Context(), user.ID, mime, data, key)
 	if err != nil {
+		s.dropImage(r.Context(), key)
 		s.fail(w, r, "avatar: store", err)
 		return
 	}
+	s.dropImage(r.Context(), old)
 	httpx.JSON(w, http.StatusOK, updated.Public())
 }
 
@@ -83,10 +97,11 @@ func (s *Server) handleUploadAvatar(w http.ResponseWriter, r *http.Request) {
 // photo when one was stored at sign-in, and to initials otherwise.
 func (s *Server) handleDeleteAvatar(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	updated, err := s.store.ClearUserAvatar(r.Context(), user.ID)
+	updated, old, err := s.store.ClearUserAvatar(r.Context(), user.ID)
 	if err != nil {
 		s.fail(w, r, "avatar: clear", err)
 		return
 	}
+	s.dropImage(r.Context(), old)
 	httpx.JSON(w, http.StatusOK, updated.Public())
 }
