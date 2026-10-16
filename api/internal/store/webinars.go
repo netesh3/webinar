@@ -894,8 +894,8 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
  * about seven tables and two kinds of file, and a delete that quietly missed one of them
  * returns nil just as cheerfully as one that worked.
  *
- * The cover image is neither of the two: it lives in image_data on the webinar row itself
- * (see migrations/0016), so the row's own DELETE removes it — nothing to collect here.
+ * A cover image in the object store (migrations/0098) is collected with them; one still in
+ * image_data goes with the row's own DELETE.
  */
 type Deleted struct {
 	Status        string
@@ -945,9 +945,6 @@ func (s *Store) DeleteWebinar(ctx context.Context, slug string) (Deleted, error)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// No image key to collect here: the cover image lives in image_data on this
-	// row (see migrations/0016), so deleting the row below removes it with
-	// everything else — there is no external blob left behind to clean up.
 	var id string
 	var seriesID *string
 	err = tx.QueryRow(ctx, `SELECT id, status, series_id::text FROM webinars WHERE slug = $1`, slug).
@@ -989,7 +986,10 @@ func (s *Store) DeleteWebinar(ctx context.Context, slug string) (Deleted, error)
 		 WHERE webinar_id = $1 AND media_key IS NOT NULL AND media_key <> ''
 		UNION ALL
 		SELECT storage_key FROM recordings
-		 WHERE webinar_id = $1 AND storage_key <> ''`, id)
+		 WHERE webinar_id = $1 AND storage_key <> ''
+		UNION ALL
+		SELECT image_storage_key FROM webinars
+		 WHERE id = $1 AND image_storage_key <> ''`, id)
 	if err != nil {
 		return out, err
 	}
@@ -1698,73 +1698,140 @@ func (s *Store) WebinarsOnSFUProject(ctx context.Context, projectID string) ([]s
 
 // ------------------------------------------------------------------- image
 
-/* SetWebinarImage stores a webinar's cover image — bytes, mime and a fresh opaque
- * version token — in the row itself, replacing whichever one was there before.
+/* SetWebinarImage replaces a webinar's cover image and mints a fresh opaque
+ * version token, returning the storage key of the image it replaced ("" if none)
+ * so the caller can delete that file.
  *
- * The bytes live in Postgres (image_data), not in the object store the rest of
- * media.Store deals in. See migrations/0016: this deployment runs the API on
- * Cloud Run with RECORDINGS_ENABLED=false, because Cloud Run's own disk is
- * per-instance and gone on the next cold start — recording video can live
- * without a persistent store, but a cover image feature that 503s on every
- * upload cannot. Postgres (Supabase here) already IS this deployment's durable
- * store, and a capped-at-1MB image is a trivial bytea.
+ * With an object store, storageKey names the uploaded file and data is nil; the
+ * row keeps only the key (migrations/0098). Without one (recording storage off),
+ * storageKey is "" and the bytes go into image_data as before (migrations/0016).
  */
-func (s *Store) SetWebinarImage(ctx context.Context, slug, mime string, data []byte) error {
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE webinars SET image_key = $2, image_mime = $3, image_data = $4, updated_at = now()
-		  WHERE slug = $1`,
-		slug, newImageVersion(), mime, data,
-	)
-	if err != nil {
-		return err
+func (s *Store) SetWebinarImage(ctx context.Context, slug, mime string, data []byte, storageKey string) (string, error) {
+	if data == nil {
+		data = []byte{}
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+	var old string
+	err := s.pool.QueryRow(ctx, `
+		WITH old AS (SELECT id, image_storage_key FROM webinars WHERE slug = $1 FOR UPDATE)
+		UPDATE webinars w
+		   SET image_key = $2, image_mime = $3, image_data = $4, image_storage_key = $5, updated_at = now()
+		  FROM old
+		 WHERE w.id = old.id
+		RETURNING old.image_storage_key`,
+		slug, newImageVersion(), mime, data, storageKey,
+	).Scan(&old)
+	if noRows(err) {
+		return "", ErrNotFound
 	}
-	return nil
+	return old, err
 }
 
-/* ClearWebinarImage removes a webinar's cover image.
+/* ClearWebinarImage removes a webinar's cover image, returning the storage key
+ * it pointed at ("" if none) for the caller to delete.
  *
- * Not SetWebinarImage(ctx, slug, "", nil): that would still mint a fresh,
+ * Not SetWebinarImage with empty values: that would still mint a fresh,
  * non-empty image_key, and "no image" has to mean image_key = '' specifically —
  * it is the sentinel both scanWebinar (for ImageURL) and WebinarImageMedia check
  * to tell "nothing uploaded" apart from "an image, empty by coincidence". */
-func (s *Store) ClearWebinarImage(ctx context.Context, slug string) error {
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE webinars SET image_key = '', image_mime = '', image_data = '', updated_at = now()
-		  WHERE slug = $1`, slug)
-	if err != nil {
-		return err
+func (s *Store) ClearWebinarImage(ctx context.Context, slug string) (string, error) {
+	var old string
+	err := s.pool.QueryRow(ctx, `
+		WITH old AS (SELECT id, image_storage_key FROM webinars WHERE slug = $1 FOR UPDATE)
+		UPDATE webinars w
+		   SET image_key = '', image_mime = '', image_data = '', image_storage_key = '', updated_at = now()
+		  FROM old
+		 WHERE w.id = old.id
+		RETURNING old.image_storage_key`, slug).Scan(&old)
+	if noRows(err) {
+		return "", ErrNotFound
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return old, err
 }
 
-/* WebinarImageMedia returns the bytes and mime for a webinar's cover image.
+/* WebinarImageMedia returns a webinar's cover image: the storage key when the
+ * file is in the object store, otherwise the bytes still held in the row (an
+ * upload from before 0098 the backfill has not moved yet, or a deployment with
+ * no object store).
  *
  * Public, deliberately: unlike a chat image, a cover image is meant to be seen by
  * anyone who can reach the registration or browse page, signed in or not — the
  * handler that calls this does not check who is asking, only that the webinar
  * (and the image) exist.
  */
-func (s *Store) WebinarImageMedia(ctx context.Context, slug string) (data []byte, mime string, err error) {
+func (s *Store) WebinarImageMedia(ctx context.Context, slug string) (data []byte, mime, storageKey string, err error) {
 	var key string
 	err = s.pool.QueryRow(ctx,
-		`SELECT image_key, image_mime, image_data FROM webinars WHERE slug = $1`, slug).
-		Scan(&key, &mime, &data)
+		`SELECT image_key, image_mime, image_data, image_storage_key FROM webinars WHERE slug = $1`, slug).
+		Scan(&key, &mime, &data, &storageKey)
 	if noRows(err) {
-		return nil, "", ErrNotFound
+		return nil, "", "", ErrNotFound
 	}
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	if key == "" {
-		return nil, "", ErrNotFound
+		return nil, "", "", ErrNotFound
 	}
-	return data, mime, nil
+	return data, mime, storageKey, nil
+}
+
+// ImageToMove is one image still held as bytes in its row, for the backfill.
+type ImageToMove struct {
+	ID      string
+	Version string
+	Mime    string
+	Data    []byte
+}
+
+// WebinarImagesToMove lists cover images still stored in image_data.
+func (s *Store) WebinarImagesToMove(ctx context.Context, limit int) ([]ImageToMove, error) {
+	return s.imagesToMove(ctx, `
+		SELECT id::text, image_key, image_mime, image_data FROM webinars
+		 WHERE image_key <> '' AND image_storage_key = '' AND octet_length(image_data) > 0
+		 LIMIT $1`, limit)
+}
+
+// UserAvatarsToMove lists profile photos still stored in avatar_data.
+func (s *Store) UserAvatarsToMove(ctx context.Context, limit int) ([]ImageToMove, error) {
+	return s.imagesToMove(ctx, `
+		SELECT id::text, avatar_key, avatar_mime, avatar_data FROM users
+		 WHERE avatar_key <> '' AND avatar_storage_key = '' AND octet_length(avatar_data) > 0
+		 LIMIT $1`, limit)
+}
+
+func (s *Store) imagesToMove(ctx context.Context, query string, limit int) ([]ImageToMove, error) {
+	rows, err := s.pool.Query(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ImageToMove
+	for rows.Next() {
+		var m ImageToMove
+		if err := rows.Scan(&m.ID, &m.Version, &m.Mime, &m.Data); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+/* MarkWebinarImageMoved points a row at its moved file and drops the bytes, only
+ * if the image is still the version that was read. False means it was replaced
+ * or removed meanwhile, and the caller deletes the file it just wrote. */
+func (s *Store) MarkWebinarImageMoved(ctx context.Context, id, version, storageKey string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE webinars SET image_storage_key = $3, image_data = ''
+		 WHERE id = $1::uuid AND image_key = $2 AND image_storage_key = ''`, id, version, storageKey)
+	return tag.RowsAffected() == 1, err
+}
+
+// MarkUserAvatarMoved is MarkWebinarImageMoved for a profile photo.
+func (s *Store) MarkUserAvatarMoved(ctx context.Context, id, version, storageKey string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE users SET avatar_storage_key = $3, avatar_data = ''
+		 WHERE id = $1::uuid AND avatar_key = $2 AND avatar_storage_key = ''`, id, version, storageKey)
+	return tag.RowsAffected() == 1, err
 }
 
 // newImageVersion is the opaque `?v=` cache-buster on a cover image's URL — see

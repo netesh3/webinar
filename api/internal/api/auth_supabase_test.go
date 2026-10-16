@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -228,12 +230,16 @@ func TestGooglePictureStoredAndUploadReplacesIt(t *testing.T) {
 		t.Fatalf("avatar after upload = %q", acct.AvatarURL)
 	}
 
-	stored, mime, err := h.store.UserAvatarMedia(context.Background(), acct.ID)
+	// The harness has a media store, so the photo is a file and the row holds its key.
+	stored, mime, key, err := h.store.UserAvatarMedia(context.Background(), acct.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mime != "image/png" || !bytes.Equal(stored, pngBytes) {
-		t.Fatalf("stored mime %q len %d, want the png bytes", mime, len(stored))
+	if mime != "image/png" || len(stored) != 0 || !strings.HasPrefix(key, "avatars/"+acct.ID+"/") {
+		t.Fatalf("stored mime %q bytes %d key %q, want a png file under avatars/", mime, len(stored), key)
+	}
+	if onDisk, err := os.ReadFile(filepath.Join(h.recordingsDir, key)); err != nil || !bytes.Equal(onDisk, pngBytes) {
+		t.Fatalf("avatar file: %v, %d bytes", err, len(onDisk))
 	}
 
 	res, raw = h.do(http.MethodGet, acct.AvatarURL, nil)
@@ -260,8 +266,11 @@ func TestGooglePictureStoredAndUploadReplacesIt(t *testing.T) {
 	if acct.AvatarURL != googlePicture {
 		t.Fatalf("avatar after remove = %q, want the google photo", acct.AvatarURL)
 	}
-	if _, _, err := h.store.UserAvatarMedia(context.Background(), acct.ID); !errors.Is(err, store.ErrNotFound) {
+	if _, _, _, err := h.store.UserAvatarMedia(context.Background(), acct.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("upload bytes after remove: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(h.recordingsDir, key)); !os.IsNotExist(err) {
+		t.Fatalf("avatar file after remove: %v, want it deleted", err)
 	}
 }
 

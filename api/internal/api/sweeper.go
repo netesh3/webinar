@@ -130,6 +130,10 @@ func (s *Server) RunTick(ctx context.Context) bool {
 	if _, due, err := s.store.TryLease(ctx, "engagement-retention", retentionEvery); err == nil && due {
 		s.sweepEngagementEvents(ctx)
 	}
+	// Moves pre-0098 cover images and profile photos out of Postgres; see images.go.
+	if _, due, err := s.store.TryLease(ctx, "image-backfill", retentionEvery); err == nil && due {
+		s.backfillImages(ctx)
+	}
 	if _, due, err := s.store.TryLease(ctx, "email-retention", emailRetentionEvery); err == nil && due {
 		s.sweepHostEmails(ctx)
 	}

@@ -602,54 +602,79 @@ func (s *Store) SetGooglePicture(ctx context.Context, id, picture string) error 
 	return nil
 }
 
-/* SetUserAvatar stores an uploaded profile photo in the row, replacing any
- * previous upload. The Google URL is left alone — removing the upload falls
- * back to it. newImageVersion is the same opaque cache-buster cover images use.
+/* SetUserAvatar replaces the uploaded profile photo, returning the storage key
+ * of the one it replaced ("" if none) for the caller to delete. As with cover
+ * images, storageKey names a file in the object store and data is nil, or there
+ * is no store and the bytes go in avatar_data. The Google URL is left alone —
+ * removing the upload falls back to it. newImageVersion is the same opaque
+ * cache-buster cover images use.
  */
-func (s *Store) SetUserAvatar(ctx context.Context, id, mime string, data []byte) (User, error) {
+func (s *Store) SetUserAvatar(ctx context.Context, id, mime string, data []byte, storageKey string) (User, string, error) {
+	if data == nil {
+		data = []byte{}
+	}
+	old, err := s.avatarStorageKey(ctx, id)
+	if err != nil {
+		return User{}, "", err
+	}
 	u, err := scanUser(s.pool.QueryRow(ctx, `
 		UPDATE users
-		   SET avatar_key = $2, avatar_mime = $3, avatar_data = $4
+		   SET avatar_key = $2, avatar_mime = $3, avatar_data = $4, avatar_storage_key = $5
 		 WHERE id = $1
 		RETURNING `+userColumns,
-		id, newImageVersion(), mime, data))
+		id, newImageVersion(), mime, data, storageKey))
 	if noRows(err) {
-		return User{}, ErrNotFound
+		return User{}, "", ErrNotFound
 	}
-	return u, err
+	return u, old, err
 }
 
-// ClearUserAvatar removes the upload. The Google photo, if any, stays.
-func (s *Store) ClearUserAvatar(ctx context.Context, id string) (User, error) {
+// ClearUserAvatar removes the upload, returning the storage key it pointed at.
+// The Google photo, if any, stays.
+func (s *Store) ClearUserAvatar(ctx context.Context, id string) (User, string, error) {
+	old, err := s.avatarStorageKey(ctx, id)
+	if err != nil {
+		return User{}, "", err
+	}
 	u, err := scanUser(s.pool.QueryRow(ctx, `
 		UPDATE users
-		   SET avatar_key = '', avatar_mime = '', avatar_data = ''
+		   SET avatar_key = '', avatar_mime = '', avatar_data = '', avatar_storage_key = ''
 		 WHERE id = $1
 		RETURNING `+userColumns, id))
 	if noRows(err) {
-		return User{}, ErrNotFound
+		return User{}, "", ErrNotFound
 	}
-	return u, err
+	return u, old, err
 }
 
-/* UserAvatarMedia returns the uploaded bytes. ErrNotFound when the account
- * has no upload — a Google URL is not bytes we hold.
+func (s *Store) avatarStorageKey(ctx context.Context, id string) (string, error) {
+	var key string
+	err := s.pool.QueryRow(ctx, `SELECT avatar_storage_key FROM users WHERE id = $1`, id).Scan(&key)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
+	return key, err
+}
+
+/* UserAvatarMedia returns the upload: its storage key when it is in the object
+ * store, otherwise the bytes still in the row. ErrNotFound when the account has
+ * no upload — a Google URL is not bytes we hold.
  */
-func (s *Store) UserAvatarMedia(ctx context.Context, id string) (data []byte, mime string, err error) {
+func (s *Store) UserAvatarMedia(ctx context.Context, id string) (data []byte, mime, storageKey string, err error) {
 	var key string
 	err = s.pool.QueryRow(ctx,
-		`SELECT avatar_key, avatar_mime, avatar_data FROM users WHERE id = $1`, id).
-		Scan(&key, &mime, &data)
+		`SELECT avatar_key, avatar_mime, avatar_data, avatar_storage_key FROM users WHERE id = $1`, id).
+		Scan(&key, &mime, &data, &storageKey)
 	if noRows(err) {
-		return nil, "", ErrNotFound
+		return nil, "", "", ErrNotFound
 	}
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	if key == "" {
-		return nil, "", ErrNotFound
+		return nil, "", "", ErrNotFound
 	}
-	return data, mime, nil
+	return data, mime, storageKey, nil
 }
 
 func (s *Store) SetUserYouTubeStreamID(ctx context.Context, userID, streamID string) error {
