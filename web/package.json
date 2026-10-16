@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "node scripts/trim-ort-wasm.mjs",
     "preview": "NEXT_PUBLIC_API_BASE= OPEN_NEXT=1 opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "NEXT_PUBLIC_API_BASE= OPEN_NEXT=1 opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"

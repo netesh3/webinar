@@ -1,5 +1,29 @@
 import type { NextConfig } from "next";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+
+const require = createRequire(import.meta.url);
+const root = path.dirname(fileURLToPath(import.meta.url));
+
+/* onnxruntime-web ships "bundle" builds that pull .wasm in via import.meta.url.
+ * Those asyncify/jsep files are >25 MiB and Cloudflare Workers rejects them.
+ * Force the "extern wasm" builds and load binaries from /onnxruntime instead. */
+const ortExtern = {
+  "onnxruntime-web": path.join(
+    root,
+    "node_modules/onnxruntime-web/dist/ort.min.mjs",
+  ),
+  "onnxruntime-web/webgpu": path.join(
+    root,
+    "node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs",
+  ),
+  "onnxruntime-web/wasm": path.join(
+    root,
+    "node_modules/onnxruntime-web/dist/ort.wasm.min.mjs",
+  ),
+} as const;
 
 /** Serve the whole app under a sub-path, e.g. "/platform/webcast".
  *
@@ -47,11 +71,40 @@ const nextConfig: NextConfig = {
       "./node_modules/@img/**",
     ],
   },
-  /* Empty, and load-bearing. Next 16 runs Turbopack by default and refuses to
-   * build when it finds a `webpack` config with no `turbopack` config beside
-   * it — which is what broke this build, since the webpack config it was
-   * complaining about could never have run. */
-  turbopack: {},
+  /* Turbopack needs a sibling config whenever webpack is set (Next 16). Alias
+   * onnxruntime to the extern-wasm entrypoints so oversized .wasm never lands
+   * in `_next/static/media/`. */
+  turbopack: {
+    resolveAlias: { ...ortExtern },
+  },
+  webpack: (config) => {
+    config.resolve = config.resolve ?? {};
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      ...ortExtern,
+    };
+    // Prefer package exports that omit embedded wasm (see onnxruntime-web package.json).
+    config.resolve.conditionNames = [
+      "onnxruntime-web-use-extern-wasm",
+      ...(config.resolve.conditionNames ?? [
+        "browser",
+        "module",
+        "import",
+        "require",
+        "default",
+      ]),
+    ];
+    // Belt-and-suspenders: never emit the Workers-illegal variants.
+    const webpack = require("webpack") as typeof import("webpack");
+    config.plugins = config.plugins ?? [];
+    config.plugins.push(
+      new webpack.IgnorePlugin({
+        resourceRegExp:
+          /ort-wasm-simd-threaded\.(asyncify|jsep|jspi)\.wasm$/,
+      }),
+    );
+    return config;
+  },
   // Local same-origin `/api` is handled by app/api/[...path]/route.ts (cookie
   // softening for http://localhost). Production Workers use worker.ts instead.
   async headers() {
