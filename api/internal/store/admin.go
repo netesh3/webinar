@@ -251,7 +251,8 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		       u.can_host, u.is_admin, u.created_at,
 		       (SELECT count(*) FROM webinars w WHERE w.host_id = u.id),
 		       u.max_duration_min, u.can_cdn_broadcast, u.features,
-		       (u.email_verified_at IS NOT NULL)
+		       (u.email_verified_at IS NOT NULL),
+		       coalesce((SELECT s.plan FROM subscriptions s WHERE s.user_id = u.id), '')
 		  FROM users u
 		 WHERE lower(u.email) LIKE $1 OR lower(u.name) LIKE $1
 		 ORDER BY u.is_admin DESC, u.can_host DESC, u.created_at DESC
@@ -269,7 +270,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		)
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Phone, &u.Initials,
 			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast,
-			&u.Features, &u.EmailVerified); err != nil {
+			&u.Features, &u.EmailVerified, &u.Plan); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
@@ -350,16 +351,17 @@ func (s *Store) AdminStats(ctx context.Context) (types.AdminStats, error) {
 	 *
 	 * A timestamptz cast to date uses the session TimeZone, which would slide
 	 * the window a day for a connection that isn't UTC and disagree with the
-	 * UTC bucketing of starts_at below. A date literal does not have that
-	 * problem, and AT TIME ZONE 'UTC' then means midnight UTC. */
+	 * UTC bucketing of starts_at below. The bounds go through timestamp first:
+	 * date AT TIME ZONE converts via the session zone, timestamp AT TIME ZONE
+	 * 'UTC' is midnight UTC whatever the session says. */
 	rows, err := s.pool.Query(ctx, `
 		SELECT to_char(gs::date, 'YYYY-MM-DD'), COALESCE(c.n, 0)::int
 		  FROM generate_series($1::date, $2::date, interval '1 day') AS gs
 		  LEFT JOIN (
 		    SELECT (w.starts_at AT TIME ZONE 'UTC')::date AS day, count(*)::int AS n
 		      FROM webinars w
-		     WHERE w.starts_at >= ($1::date AT TIME ZONE 'UTC')
-		       AND w.starts_at <  (($2::date + 1) AT TIME ZONE 'UTC')
+		     WHERE w.starts_at >= ($1::date::timestamp AT TIME ZONE 'UTC')
+		       AND w.starts_at <  (($2::date + 1)::timestamp AT TIME ZONE 'UTC')
 		     GROUP BY 1
 		  ) c ON c.day = gs::date
 		 ORDER BY gs`, start.Format("2006-01-02"), end.Format("2006-01-02"))
@@ -452,4 +454,37 @@ func (s *Store) adminGlances(ctx context.Context, where, order string) ([]types.
 		out = append(out, g)
 	}
 	return out, rows.Err()
+}
+
+/* SetUserPlan puts an account on a paid plan, or with an empty plan removes its
+ * subscription (back to the launch default). Admin-assigned, so status is active;
+ * checkout will own the other states. */
+func (s *Store) SetUserPlan(ctx context.Context, userID string, plan types.Plan) (User, error) {
+	var err error
+	if plan == "" {
+		_, err = s.pool.Exec(ctx, `DELETE FROM subscriptions WHERE user_id = $1::uuid`, userID)
+	} else {
+		_, err = s.pool.Exec(ctx, `
+			INSERT INTO subscriptions (user_id, plan) VALUES ($1::uuid, $2)
+			ON CONFLICT (user_id) DO UPDATE
+			   SET plan = EXCLUDED.plan, status = 'active', updated_at = now()`, userID, string(plan))
+	}
+	if isForeignKeyViolation(err) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, err
+	}
+	return s.UserByID(ctx, userID)
+}
+
+// PlanForUser is an account's plan, empty with no subscription.
+func (s *Store) PlanForUser(ctx context.Context, userID string) (types.Plan, error) {
+	var plan string
+	err := s.pool.QueryRow(ctx,
+		`SELECT plan FROM subscriptions WHERE user_id = $1::uuid`, userID).Scan(&plan)
+	if noRows(err) {
+		return "", nil
+	}
+	return types.Plan(plan), err
 }

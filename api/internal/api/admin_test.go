@@ -622,9 +622,12 @@ func TestAdminStats(t *testing.T) {
 	}
 
 	wb := h.newWebinar("Stats glance session", nil)
-	start, err := time.Parse(time.RFC3339, wb.StartsAt)
-	if err != nil {
-		t.Fatalf("parse startsAt: %v", err)
+	/* The series ends today (UTC) and scheduling needs notice, so a start two hours
+	 * out is tomorrow late in the UTC day. Moved to now, and the day read back. */
+	var start time.Time
+	if err := h.store.Pool().QueryRow(t.Context(),
+		`UPDATE webinars SET starts_at = now() WHERE slug = $1 RETURNING starts_at`, wb.ID).Scan(&start); err != nil {
+		t.Fatalf("move start: %v", err)
 	}
 	day := start.UTC().Format("2006-01-02")
 

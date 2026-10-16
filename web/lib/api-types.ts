@@ -2644,6 +2644,12 @@ export interface Account {
    */
   maxDurationMin?: number /* int */;
   /**
+   * Plan is the paid tier, empty for the launch default. AttendeeCap is the plan's
+   * attendee cap; the server's own ceiling (AppConfig.MaxAttendees) applies on top.
+   */
+  plan?: Plan;
+  attendeeCap: number /* int */;
+  /**
    * CanCdnBroadcast allows this host's webinars to broadcast to audience via CDN HLS.
    */
   canCdnBroadcast: boolean;
@@ -4533,6 +4539,10 @@ export interface AdminUser {
    */
   maxDurationMin?: number /* int */;
   /**
+   * Plan is the paid tier, empty for the launch default.
+   */
+  plan?: Plan;
+  /**
    * CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
    */
   canCdnBroadcast: boolean;
@@ -4883,6 +4893,25 @@ export interface JoinResponse {
 }
 export interface SetUserMaxDurationRequest {
   maxDurationMin?: number /* int */;
+}
+/**
+ *  Plan is a paid tier. Empty is the launch default: no subscription, and the
+ *  * attendee ceiling every beta host has. See PlanAttendeeCap.
+ */
+export type Plan = string;
+export const PlanProfessional: Plan = "professional";
+export const PlanBusiness: Plan = "business";
+export const PlanEnterprise: Plan = "enterprise";
+/**
+ * PlanLaunchAttendees is the ceiling with no plan: what one shared SFU carries reliably.
+ */
+export const PlanLaunchAttendees = 200;
+/**
+ * SetUserPlanRequest is PATCH /api/admin/users/{id}/plan. An empty plan removes
+ * the subscription, back to the launch default.
+ */
+export interface SetUserPlanRequest {
+  plan: Plan;
 }
 /**
  * RoomMeta is mirrored into LiveKit room metadata on every control change.

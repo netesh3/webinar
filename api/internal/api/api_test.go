@@ -1730,8 +1730,9 @@ func TestCreateWebinarPersistsAndValidates(t *testing.T) {
 	if wb.ID != "scaling-postgres-to-10k-writes" {
 		t.Errorf("slug = %q, want it derived from the topic", wb.ID)
 	}
-	if wb.AttendeeLimit != 500 {
-		t.Errorf("attendeeLimit = %d, want it clamped to MaxAttendees (500)", wb.AttendeeLimit)
+	// A host with no plan is held to the launch cap, which sits under MaxAttendees (500).
+	if wb.AttendeeLimit != types.PlanLaunchAttendees {
+		t.Errorf("attendeeLimit = %d, want it clamped to the launch cap (%d)", wb.AttendeeLimit, types.PlanLaunchAttendees)
 	}
 	if wb.WebinarID == "" {
 		t.Error("no human-readable webinar id was minted")
@@ -3118,7 +3119,12 @@ func TestCanRecordFollowsTheStageRosterNotPublishPermission(t *testing.T) {
  */
 func TestAttendeeLimitDefaultsAndClamps(t *testing.T) {
 	h := newHarness(t)
-	h.signup("Seat Host", "seats@test.dev", true)
+	seats := h.signup("Seat Host", "seats@test.dev", true)
+	// On the top plan, so the ceiling under test is the server's, not the plan's
+	// (that one is TestPlanSetsTheAttendeeCeiling).
+	if _, err := h.store.SetUserPlan(t.Context(), seats.ID, types.PlanEnterprise); err != nil {
+		t.Fatal(err)
+	}
 
 	// Omitted → the default, not MaxAttendees (500 in the test config).
 	res, raw := h.do(http.MethodPost, "/api/host/webinars", map[string]any{
