@@ -55,6 +55,9 @@ var (
 	 * somebody to connect for the first time, the other tells them a connection
 	 * they believe they have is gone. */
 	ErrTokenRejected = errors.New("Meta rejected this WhatsApp connection. Reconnect WhatsApp in Account settings")
+	// ErrMediaGone is Meta no longer holding an attachment: inbound media is only
+	// kept for a limited time, and Graph then answers code 100, subcode 33.
+	ErrMediaGone = errors.New("WhatsApp no longer has this attachment")
 )
 
 // Client is a Meta app that can complete Embedded Signup for a host's WABA.
@@ -432,6 +435,9 @@ func (c *Client) OpenMedia(ctx context.Context, token, mediaID string) (*MediaDo
 		if readErr != nil {
 			return nil, readErr
 		}
+		if res.StatusCode == http.StatusNotFound {
+			return nil, ErrMediaGone
+		}
 		return nil, graphError(raw, res.StatusCode)
 	}
 	return &MediaDownload{Body: res.Body, MimeType: strings.TrimSpace(meta.MimeType)}, nil
@@ -538,6 +544,9 @@ func graphError(raw []byte, status int) error {
 			ErrTokenRejected, strings.TrimSpace(parsed.Error.Message), parsed.Error.Sub, parsed.Error.Trace)
 	}
 	msg := strings.TrimSpace(parsed.Error.Message)
+	if parsed.Error.Code == 100 && parsed.Error.Sub == 33 {
+		return fmt.Errorf("%w (meta: %s; fbtrace %s)", ErrMediaGone, msg, parsed.Error.Trace)
+	}
 	if msg == "" {
 		return fmt.Errorf("meta graph HTTP %d", status)
 	}

@@ -700,6 +700,7 @@ func newHarnessWith(
 	var crm *engage.Module
 	if !bootWithoutEngage {
 		crm = engage.New(cfg, st, log)
+		crm.UseMediaStore(recordings)
 		server.UseEngage(crm)
 	}
 	handler := server.Routes()

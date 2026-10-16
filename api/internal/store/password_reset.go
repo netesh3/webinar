@@ -135,3 +135,30 @@ func (s *Store) RedeemPasswordReset(ctx context.Context, raw, passwordHash strin
 	}
 	return userID, done, nil
 }
+
+// TokenGrace is how long a password-reset or email-verification token is kept
+// after it expires, so an old link still says "expired" or "already used"
+// rather than "not found" for a while.
+const TokenGrace = 7 * 24 * time.Hour
+
+/* PruneExpiredTokens deletes password-reset and email-verification tokens that
+ * expired before the cutoff, used or not, in bounded batches. Only hashes are
+ * stored, but a table of every link ever sent is still nothing worth keeping. */
+func (s *Store) PruneExpiredTokens(ctx context.Context, before time.Time, batch int) (int64, error) {
+	var total int64
+	for _, table := range []string{"password_reset_tokens", "email_verification_tokens"} {
+		for {
+			tag, err := s.pool.Exec(ctx, `
+				DELETE FROM `+table+` WHERE id IN (
+				  SELECT id FROM `+table+` WHERE expires_at < $1 LIMIT $2)`, before, batch)
+			if err != nil {
+				return total, err
+			}
+			total += tag.RowsAffected()
+			if tag.RowsAffected() < int64(batch) || ctx.Err() != nil {
+				break
+			}
+		}
+	}
+	return total, nil
+}
