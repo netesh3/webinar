@@ -15,6 +15,7 @@ import (
 	lkauth "github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
 	"github.com/netkumar/webcast/api/internal/auth"
+	"github.com/netkumar/webcast/api/internal/billing"
 	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/internal/engagement/capture"
 	"github.com/netkumar/webcast/api/internal/engagement/service"
@@ -124,6 +125,8 @@ type Server struct {
 	// instead of sending the host to Zoom. zoomKey opens refresh tokens.
 	zoom    *zoom.Client
 	zoomKey []byte
+	// billing is nil when the Razorpay keys are not set; checkout then says so.
+	billing *billing.Client
 	// recordings is nil when recording is turned off for this instance, which the
 	// handlers check — an operator who disables it gets a clear 503 rather than a
 	// button that appears to work and drops the bytes.
@@ -208,7 +211,18 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		}
 	}
 
+	var billingClient *billing.Client
+	if cfg.BillingEnabled() {
+		billingClient = billing.New(cfg.RazorpayKeyID, cfg.RazorpayKeySecret)
+		if cfg.RazorpayAPIURL != "" {
+			billingClient.API = cfg.RazorpayAPIURL
+		}
+		log.Info("billing enabled", "razorpay_mode", razorpayMode(cfg.RazorpayKeyID),
+			"webhook", cfg.RazorpayWebhookSecret != "")
+	}
+
 	srv := &Server{
+		billing:       billingClient,
 		cfg:           cfg,
 		store:         st,
 		sfu:           sfu,
@@ -287,6 +301,14 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/config", s.handleConfig)
 		r.Post("/webhooks/livekit", s.handleLiveKitWebhook)
 		r.Post("/webhooks/zoom", s.handleZoomWebhook)
+		r.Post("/webhooks/razorpay", s.handleRazorpayWebhook)
+		// The price list. Public: the pricing page renders it for a visitor with no session.
+		r.Get("/billing/plans", s.handleBillingPlans)
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireUser)
+			r.Post("/billing/orders", s.handleCreateBillingOrder)
+			r.Post("/billing/verify", s.handleVerifyBillingPayment)
+		})
 		/* The background job, run on request, for a deployment that scales to zero. Not
 		 * mounted without a secret. See tick.go. */
 		if s.cfg.TickSecret != "" {
@@ -426,6 +448,7 @@ func (s *Server) Routes() http.Handler {
 			r.Use(s.requireUser)
 			r.Get("/registrations", s.handleMyRegistrations)
 			r.Post("/host-request", s.handleHostRequest)
+			r.Get("/billing", s.handleMyBilling)
 		})
 
 		// ---------------- host and stage ----------------

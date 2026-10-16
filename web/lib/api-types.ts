@@ -4,6 +4,99 @@
 // Regenerate with: make types
 
 //////////
+// source: billing.go
+
+/**
+ * BillingPrice is one plan's pre-tax price for a currency and period.
+ */
+export interface BillingPrice {
+  currency: string;
+  period: string;
+  amount: number /* int64 */;
+}
+export interface BillingPlan {
+  id: string;
+  name: string;
+  who: string;
+  attendees: number /* int */;
+  features: string[];
+  popular?: boolean;
+  prices: BillingPrice[];
+}
+/**
+ *  BillingCatalogue is GET /api/billing/plans, public.
+ *  *
+ *  * Enabled is false when Razorpay keys are not configured: the page still shows
+ *  * prices, and the buy button says checkout is unavailable rather than failing on
+ *  * click. GSTPercent is applied to INR only.
+ */
+export interface BillingCatalogue {
+  enabled: boolean;
+  gstPercent: number /* int */;
+  plans: BillingPlan[];
+}
+/**
+ * CreateBillingOrderRequest is POST /api/billing/orders. No amount: the server prices it.
+ */
+export interface CreateBillingOrderRequest {
+  plan: string;
+  period: string;
+  currency: string;
+  gstin?: string;
+}
+/**
+ *  BillingCheckout is what the browser opens Razorpay Checkout with.
+ *  *
+ *  * KeyID is the PUBLIC key id; the secret never leaves the server. Prefill is the
+ *  * signed-in account, so the buyer does not type their email twice.
+ */
+export interface BillingCheckout {
+  orderId: string;
+  keyId: string;
+  plan: string;
+  planName: string;
+  period: string;
+  currency: string;
+  subtotal: number /* int64 */;
+  tax: number /* int64 */;
+  amount: number /* int64 */;
+  description: string;
+  prefillName: string;
+  prefillEmail: string;
+  prefillPhone?: string;
+}
+/**
+ * VerifyBillingPaymentRequest is POST /api/billing/verify: Razorpay Checkout's handler response.
+ */
+export interface VerifyBillingPaymentRequest {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+/**
+ * BillingStatus is the account's current plan. Empty Plan means it has never paid.
+ */
+export interface BillingStatus {
+  plan?: string;
+  planName?: string;
+  period?: string;
+  attendees?: number /* int */;
+  /**
+   * PaidUntil is RFC3339: the end of the latest period paid for.
+   */
+  paidUntil?: string;
+  active: boolean;
+}
+/**
+ * VerifyBillingPaymentResponse is the upgraded account and the plan it now has.
+ */
+export interface VerifyBillingPaymentResponse {
+  account: Account;
+  billing: BillingStatus;
+  paymentId: string;
+}
+
+//////////
 // source: engage_v1.go
 
 /**

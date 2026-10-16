@@ -5,9 +5,13 @@ import { ApiError } from "@/lib/api";
 import type { Account } from "@/lib/api-types";
 import { useSession } from "./providers";
 import { CameraIcon, CheckIcon } from "./icons";
-import { Button, Card } from "./ui";
+import { Button, ButtonLink, Card } from "./ui";
 
 /* One request, two places: WatchList (an attendee's home) and Settings.
+ *
+ * Buying a plan on /pricing is offered first: it turns hosting on as soon as the
+ * payment clears. The request is still here for someone an administrator should
+ * enable without payment.
  *
  * The button is hidden for someone who already hosts. A phone is asked for
  * only when the account does not have one. After the request is recorded the
@@ -140,13 +144,17 @@ export function HostRequest({
           }
         >
           {placement === "home"
-            ? "Want to run your own webinars? Request hosting and we'll review your account."
-            : "Request hosting for this account. Hosting stays off until an administrator turns it on."}
+            ? "Want to run your own webinars? Buy a plan to start hosting right away, or request hosting and we'll review your account."
+            : "Buy a plan to turn hosting on straight away, or request it and an administrator will review your account."}
         </p>
         {field && <p className="text-[12px] font-medium text-live">{field}</p>}
-        <div>
+        <div className="flex flex-wrap gap-2">
+          <ButtonLink href="/pricing" size={placement === "settings" ? "sm" : "md"}>
+            Buy a plan
+          </ButtonLink>
           <Button
             type="button"
+            variant="ghost"
             onClick={onAsk}
             disabled={busy}
             size={placement === "settings" ? "sm" : "md"}
@@ -185,17 +193,24 @@ export function HostRequest({
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-2">
             {sentNow
               ? "An administrator still has to turn hosting on. You'll be able to schedule webinars once they do."
-              : "An administrator has to turn it on. You can still join anything you've registered for."}
+              : "Buy a plan to start hosting now, or ask an administrator to turn it on. You can still join anything you've registered for."}
           </p>
         )}
         {!sentNow && !askingPhone && field && (
           <p className="mt-1 text-[12px] font-medium text-live">{field}</p>
         )}
       </div>
-      {!sentNow && !askingPhone && (
-        <Button type="button" onClick={onAsk} disabled={busy} size="sm">
-          {busy ? "Sending…" : "Request to host"}
-        </Button>
+      {!askingPhone && (
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <ButtonLink href="/pricing" size="sm">
+            Buy a plan
+          </ButtonLink>
+          {!sentNow && (
+            <Button type="button" variant="ghost" onClick={onAsk} disabled={busy} size="sm">
+              {busy ? "Sending…" : "Request to host"}
+            </Button>
+          )}
+        </div>
       )}
     </Card>
   );
