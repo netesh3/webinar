@@ -276,3 +276,18 @@ func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
 }
+
+// Meta answers code 100, subcode 33 for an attachment it no longer holds.
+func TestOpenMediaReportsGoneMedia(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, map[string]any{"error": map[string]any{
+			"message": "Unsupported get request.", "code": 100, "error_subcode": 33,
+		}})
+	}))
+	defer srv.Close()
+	_, err := newTestClient(srv.URL).OpenMedia(context.Background(), "host-token", "1001")
+	if !errors.Is(err, ErrMediaGone) {
+		t.Fatalf("err = %v, want ErrMediaGone", err)
+	}
+}

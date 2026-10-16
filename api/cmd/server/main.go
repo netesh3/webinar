@@ -172,6 +172,11 @@ func run() error {
 	 * both packages; leave it out (or pass nil) and webinars run with no CRM at all. */
 	crm := engage.New(cfg, st, log)
 	crm.UseMail(apiServer.Mail())
+	// WhatsApp attachments are copied into the same store as recordings; with
+	// recording off this is nil and they keep streaming from Graph.
+	if recordings != nil {
+		crm.UseMediaStore(recordings)
+	}
 	apiServer.UseEngage(crm)
 	go apiServer.StartMeetingLimitSweeper(ctx)
 	go apiServer.StartRecordingRetentionSweeper(ctx)
