@@ -38,6 +38,9 @@ export const DEV_BYPASS_ACCOUNT: Account = {
   canHost: true,
   isAdmin: true,
   canCdnBroadcast: true,
+  // The top plan, for the same reason every feature is on below.
+  plan: "enterprise",
+  attendeeCap: 500,
   /* Every switch on, because this fixture exists to look at screens: a preview
    * account missing a feature is a preview of the screen without it, which is
    * the one thing this file cannot be used to check. Named through the constants

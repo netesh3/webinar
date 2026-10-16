@@ -37,6 +37,8 @@ type User struct {
 	// MaxDurationMin is an optional custom maximum meeting duration in minutes.
 	// NULL means use the system default.
 	MaxDurationMin *int
+	// Plan is the subscription's tier, empty with none (the launch default).
+	Plan types.Plan
 	// CanCdnBroadcast allows this host to run CDN HLS broadcast webinars.
 	CanCdnBroadcast bool
 	/* Features are the per-account switches an admin has turned on — the
@@ -143,6 +145,8 @@ func (u User) Public() types.Account {
 		CanHost:         u.CanHost,
 		IsAdmin:         u.IsAdmin,
 		MaxDurationMin:  u.MaxDurationMin,
+		Plan:            u.Plan,
+		AttendeeCap:     types.PlanAttendeeCap(u.Plan),
 		CanCdnBroadcast: u.CanCdnBroadcast,
 		// Never nil on the wire: a browser that has to guard a list guards it
 		// differently on every screen.
@@ -206,7 +210,8 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 	whatsapp_token_expires_at, whatsapp_connected_at, whatsapp_registered_at,
 	whatsapp_coexistence, whatsapp_token_rejected_at,
 	coalesce(google_picture,''), coalesce(avatar_key,''), coalesce(avatar_mime,''),
-	email_verified_at, host_requested_at, password_changed_at`
+	email_verified_at, host_requested_at, password_changed_at,
+	coalesce((SELECT s.plan FROM subscriptions s WHERE s.user_id = users.id), '')`
 
 func scanUser(row scanner) (User, error) {
 	var u User
@@ -219,7 +224,7 @@ func scanUser(row scanner) (User, error) {
 		&u.WhatsAppVerifiedName, &u.WhatsAppTokenExpiresAt, &u.WhatsAppConnectedAt,
 		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence, &u.WhatsAppTokenRejectedAt,
 		&u.GooglePicture, &u.AvatarKey, &u.AvatarMime, &u.EmailVerifiedAt,
-		&u.HostRequestedAt, &u.PasswordChangedAt)
+		&u.HostRequestedAt, &u.PasswordChangedAt, &u.Plan)
 	return u, err
 }
 
