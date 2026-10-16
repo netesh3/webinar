@@ -1789,10 +1789,12 @@ body {
 
 .pricing-headline {
   @apply text-4xl sm:text-5xl font-bold text-ink mb-4 leading-tight;
+  font-family: var(--font-home-display, var(--font-geist-sans));
 }
 
 .pricing-lede {
   @apply text-xl text-ink-2 mb-8;
+  font-family: var(--font-home-sans, var(--font-geist-sans));
 }
 
 .pricing-toggle-container {
@@ -1846,6 +1848,7 @@ body {
 
 .pricing-tier-name {
   @apply text-2xl font-bold text-ink mb-2;
+  font-family: var(--font-home-display, var(--font-geist-sans));
 }
 
 .pricing-tier-desc {
@@ -1928,6 +1931,7 @@ body {
 
 .pricing-faq-title {
   @apply text-3xl sm:text-4xl font-bold text-ink text-center mb-12;
+  font-family: var(--font-home-display, var(--font-geist-sans));
 }
 
 .pricing-faq-grid {
@@ -1957,6 +1961,7 @@ body {
 
 .pricing-cta-band h2 {
   @apply text-3xl sm:text-4xl font-bold mb-4;
+  font-family: var(--font-home-display, var(--font-geist-sans));
 }
 
 .pricing-cta-band p {
@@ -1969,4 +1974,50 @@ body {
 
 .pricing-cta-btn:hover {
   opacity: 0.9;
+}
+
+/* Theme Switcher */
+.theme-switcher {
+  @apply w-10 h-10 rounded-lg flex items-center justify-center;
+  @apply text-ink-2 hover:text-ink hover:bg-surface-2;
+  @apply transition-colors cursor-pointer;
+  @apply border border-transparent hover:border-line;
+}
+
+.theme-icon {
+  @apply w-5 h-5;
+}
+
+/* Dark Mode */
+html.dark {
+  @theme {
+    --color-page: #0d0d11;
+    --color-surface: #16161c;
+    --color-surface-2: #202028;
+
+    --color-ink: #f0f0f2;
+    --color-ink-2: #b8bcc4;
+    --color-ink-3: #8a919b;
+
+    --color-line: #33333d;
+    --color-line-2: #45454f;
+
+    --color-brand: #5a9eff;
+    --color-brand-hover: #7aafff;
+    --color-brand-soft: #0d2d5c;
+    --color-brand-line: #2d5a99;
+  }
+}
+
+html.dark .pricing-card {
+  @apply border-line hover:border-brand-line;
+}
+
+html.dark .pricing-card.highlighted {
+  border-color: rgba(90, 158, 255, 0.5);
+  box-shadow: 0 10px 25px -5px rgba(90, 158, 255, 0.15);
+}
+
+html.dark .pricing-btn.secondary {
+  @apply border-brand/40;
 }

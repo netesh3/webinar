@@ -10,6 +10,7 @@ import { useRegistrations } from "./registrations";
 import { Avatar, ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 import { MessagesNavButton } from "@/engage";
+import { ThemeSwitcher } from "./theme-switcher";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
@@ -119,6 +120,8 @@ export function TopNav() {
         </nav>
 
         <div className="flex-1" />
+
+        <ThemeSwitcher />
 
         {status === "loading" ? (
           <span className="size-7 animate-pulse rounded-full bg-surface-2" />
