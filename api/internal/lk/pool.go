@@ -116,4 +116,3 @@ func (p *Pool) GetSecret(key string) string {
 func (p *Pool) NumKeys() int {
 	return len(p.byID)
 }
-

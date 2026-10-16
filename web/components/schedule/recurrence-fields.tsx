@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Select } from "../controls";
 import {
   MAX_OCCURRENCES,
@@ -30,7 +30,9 @@ export function RecurrenceFields({
   const monthlyDay = Number(form.date.slice(8, 10));
   const weeklySeeded = useRef(rule.pattern === "weekly");
   const [dayHint, setDayHint] = useState<string | null>(null);
-  if (rule.pattern === "weekly") weeklySeeded.current = true;
+  useEffect(() => {
+    if (rule.pattern === "weekly") weeklySeeded.current = true;
+  }, [rule.pattern]);
 
   function patch(next: Partial<RecurrenceForm>) {
     setDayHint(null);
