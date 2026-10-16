@@ -50,11 +50,11 @@ func TestSignupStartsWithoutHosting(t *testing.T) {
 
 	// The capability is on the account even though sign-in is refused until the
 	// link is used. Confirm the address, then sign in, then use it.
-	if err := h.store.MarkEmailVerifiedByEmail(t.Context(), "newhost@test.dev"); err != nil {
+	if err := h.store.MarkEmailVerifiedByEmail(t.Context(), "newsignup@test.dev"); err != nil {
 		t.Fatalf("verify: %v", err)
 	}
 	res, raw = h.do(http.MethodPost, "/api/auth/login", map[string]string{
-		"email": "newhost@test.dev", "password": "a-long-enough-password",
+		"email": "newsignup@test.dev", "password": "a-long-enough-password",
 	})
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("login after verify: status %d body %s", res.StatusCode, raw)

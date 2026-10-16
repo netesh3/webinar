@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/netkumar/webcast/api/types"
 )
@@ -313,7 +314,10 @@ func TestCloudRecordingIsOffUntilAnAdminAllowsIt(t *testing.T) {
 		t.Fatalf("add panelist: status %d body %s", res.StatusCode, raw)
 	}
 
-	refused := cloudInput(wb.Topic, wb.StartsAt, true)
+	// Scheduling needs at least 15 minutes' notice, so the start is set well clear
+	// of that: the refusal under test is the feature, not the clock.
+	later := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Minute).Format(time.RFC3339)
+	refused := cloudInput(wb.Topic, later, true)
 	res, raw := h.do(http.MethodPost, "/api/host/webinars", refused)
 	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
 		t.Fatalf("create with auto-record: status %d code %q, want 403 feature_off\n  body: %s",

@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -124,13 +125,17 @@ export const ScheduleMessagesTab = forwardRef<
   const [forAll, setForAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const onEnabledCountRef = useRef(onEnabledCount);
-  onEnabledCountRef.current = onEnabledCount;
   const onSummaryRef = useRef(onSummary);
-  onSummaryRef.current = onSummary;
   const onLoadErrorRef = useRef(onLoadError);
-  onLoadErrorRef.current = onLoadError;
   const onPendingChangeRef = useRef(onPendingChange);
-  onPendingChangeRef.current = onPendingChange;
+  // Latest callbacks, for the effects and handlers below; layout effect so they
+  // are current before any of those run.
+  useLayoutEffect(() => {
+    onEnabledCountRef.current = onEnabledCount;
+    onSummaryRef.current = onSummary;
+    onLoadErrorRef.current = onLoadError;
+    onPendingChangeRef.current = onPendingChange;
+  });
   const [writing, setWriting] = useState(false);
   const [tick, setTick] = useState(0);
   const pending = useRef(
@@ -162,6 +167,7 @@ export const ScheduleMessagesTab = forwardRef<
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the last load's error before refetching
     setError(null);
     Promise.all([
       engageApi.messageDefaults(),

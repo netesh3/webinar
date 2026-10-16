@@ -190,7 +190,9 @@ func isUniqueViolation(err error) bool {
 // that does not exist.
 func isForeignKeyViolation(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+	return errors.As(err, &pgErr) &&
+		// 23001 is what Postgres 18 raises for ON DELETE RESTRICT; earlier versions use 23503.
+		(pgErr.Code == "23503" || pgErr.Code == "23001")
 }
 
 func noRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
