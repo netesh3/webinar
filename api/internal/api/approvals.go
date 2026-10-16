@@ -263,13 +263,6 @@ func (s *Server) flushOutbox(ctx context.Context) {
 			_ = s.markDelivery(m.ID, "failed", err.Error())
 			continue
 		}
-		if m.HostID != "" {
-			// The Email tab reads host_emails. From stays SMTP_FROM; this row
-			// only records that the message went out for this host.
-			if err := s.recordHostCopy(m); err != nil {
-				s.log.Error("outbox: inbox copy failed", "to", m.Email, "err", err)
-			}
-		}
 		_ = s.markDelivery(m.ID, "sent", "")
 	}
 }
@@ -303,20 +296,6 @@ func (s *Server) markDelivery(id, delivery, reason string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return s.store.MarkDelivered(ctx, id, delivery, reason)
-}
-
-func (s *Server) recordHostCopy(m store.Outbound) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, err := s.store.InsertHostEmail(ctx, store.HostEmail{
-		UserID:    m.HostID,
-		Direction: "out",
-		To:        m.Email,
-		Subject:   m.Subject,
-		Body:      m.Body,
-		MessageID: "outbox:" + m.ID,
-	})
-	return err
 }
 
 // ------------------------------------------------------------- host alerts

@@ -33,9 +33,22 @@ const (
 	// Recording retention deletes files, and once every five minutes is plenty; its lease
 	// is never released, which is what makes it run at most that often.
 	retentionEvery = 5 * time.Minute
+	// The inbox cutoff is in days, so once a day is enough.
+	emailRetentionEvery = 24 * time.Hour
 	// The outbox cutoff is in days, so once a day is enough.
 	notificationRetentionEvery = 24 * time.Hour
 )
+
+func (s *Server) sweepHostEmails(ctx context.Context) {
+	n, err := s.store.PruneHostEmails(ctx, time.Now().Add(-store.HostEmailRetention), 5000)
+	if err != nil {
+		s.log.Error("email retention: prune failed", "error", err)
+		return
+	}
+	if n > 0 {
+		s.log.Info("email retention: pruned inbox mail", "rows", n)
+	}
+}
 
 func (s *Server) sweepNotificationContent(ctx context.Context) {
 	n, err := s.store.PruneNotificationContent(ctx, time.Now().Add(-store.NotificationContentRetention), 5000)
@@ -103,6 +116,9 @@ func (s *Server) RunTick(ctx context.Context) bool {
 	}
 	if _, due, err := s.store.TryLease(ctx, "engagement-retention", retentionEvery); err == nil && due {
 		s.sweepEngagementEvents(ctx)
+	}
+	if _, due, err := s.store.TryLease(ctx, "email-retention", emailRetentionEvery); err == nil && due {
+		s.sweepHostEmails(ctx)
 	}
 	if _, due, err := s.store.TryLease(ctx, "notification-retention", notificationRetentionEvery); err == nil && due {
 		s.sweepNotificationContent(ctx)

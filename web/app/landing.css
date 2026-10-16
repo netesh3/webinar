@@ -2106,3 +2106,128 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ------------------------------------------------------------------ dark theme
+ *
+ * Follows the portal toggle (html[data-theme], see web/lib/theme.ts). Most of the
+ * page reads its colours from the tokens above, so re-pointing them flips it; the
+ * rules after the token block are the surfaces that hard-code white. The navy
+ * sections (.room, .score, .final) are dark in both themes and are left alone.
+ */
+html[data-theme="dark"] .lp {
+  --ink: #eef2f8;
+  --ink-2: #b4bfcf;
+  --ink-3: #97a4b8;
+  --ink-4: #77859c;
+  --line: #243049;
+  --line-2: #33405a;
+  --paper: #0b1120;
+  --mist: #101a2c;
+  --surface: #141d31;
+  --accent: #6ea2ff;
+  --accent-hover: #8db6ff;
+  --accent-soft: #16264a;
+  --accent-line: #2c4475;
+  --grad-text: linear-gradient(100deg, #5cb8ff 0%, #7c9bff 40%, #a78bfa 75%, #c084fc 100%);
+  --grad-h2: linear-gradient(100deg, #7cc4ff 0%, #a5b4ff 55%, #c9a2ff 100%);
+  --ok: #34d399;
+  --ok-ink: #4ade80;
+  --ok-soft: #12301f;
+  --ok-line: #1f5135;
+  --warn: #fbbf24;
+  --live-soft: #3a1917;
+  --t-high: #34d399;
+  --t-engaged: #6ea2ff;
+  --t-passive: #fbbf24;
+  --t-risk: #fb8078;
+  --wa-bg: #0b141a;
+  --wa-out: #144d37;
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sh-2: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 28px -12px rgba(0, 0, 0, 0.6);
+  --sh-3: 0 2px 6px rgba(0, 0, 0, 0.35), 0 26px 52px -20px rgba(0, 0, 0, 0.7);
+  --sh-4: 0 4px 12px rgba(0, 0, 0, 0.4), 0 44px 90px -28px rgba(0, 0, 0, 0.8);
+}
+
+html[data-theme="dark"] .lp .btn-ghost,
+html[data-theme="dark"] .lp .audience-list li,
+html[data-theme="dark"] .lp .steps,
+html[data-theme="dark"] .lp .sv-groups,
+html[data-theme="dark"] .lp .app-card,
+html[data-theme="dark"] .lp .ring::before,
+html[data-theme="dark"] .lp .faq-list details,
+html[data-theme="dark"] .lp .plan {
+  background: var(--surface);
+}
+
+html[data-theme="dark"] .lp .pricing {
+  background: var(--paper);
+}
+
+html[data-theme="dark"] .lp .billing button[aria-checked="true"] {
+  background: #1f2a42;
+}
+
+html[data-theme="dark"] .lp .plan-pop {
+  background: linear-gradient(180deg, #17254a, var(--surface) 42%);
+}
+
+html[data-theme="dark"] .lp .pill,
+html[data-theme="dark"] .lp .fcard {
+  background: rgba(20, 29, 49, 0.92);
+}
+
+html[data-theme="dark"] .lp .chip-hot {
+  background: #3a1917;
+  border-color: #5c2a26;
+}
+
+html[data-theme="dark"] .lp .step-vis,
+html[data-theme="dark"] .lp .sv-wa {
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] .lp .ring {
+  background: conic-gradient(var(--t-high) calc(var(--p) * 1%), #1f3a2b 0);
+}
+
+html[data-theme="dark"] .lp .meter {
+  background: var(--line);
+}
+
+html[data-theme="dark"] .lp .step-vis {
+  background:
+    radial-gradient(80% 70% at 85% 10%, rgba(130, 43, 252, 0.18), transparent 60%),
+    radial-gradient(70% 70% at 10% 100%, rgba(12, 159, 251, 0.16), transparent 60%),
+    linear-gradient(160deg, #121c33, #0f172b);
+}
+
+html[data-theme="dark"] .lp .step-vis::before {
+  background-image: radial-gradient(rgba(148, 178, 255, 0.1) 1px, transparent 1px);
+}
+
+html[data-theme="dark"] .lp .sv-wa {
+  color: #e9edef;
+}
+
+/* Stays white on the navy band, so its label keeps the light theme's ink. */
+html[data-theme="dark"] .lp .btn-white {
+  color: #0d1b2e;
+}
+
+html[data-theme="dark"] .lp .sv-link,
+html[data-theme="dark"] .lp .sv-stat {
+  background: var(--surface);
+}
+
+html[data-theme="dark"] .lp .hero-bg {
+  background:
+    radial-gradient(60% 46% at 50% 0%, rgba(59, 130, 246, 0.24), transparent 70%),
+    radial-gradient(34% 40% at 6% 28%, rgba(99, 102, 241, 0.16), transparent 70%),
+    radial-gradient(34% 40% at 94% 20%, rgba(12, 159, 251, 0.14), transparent 70%),
+    radial-gradient(40% 26% at 72% 62%, rgba(130, 43, 252, 0.12), transparent 70%),
+    linear-gradient(180deg, #0f1a33 0%, var(--paper) 64%);
+}
+
+html[data-theme="dark"] .lp .hero-bg::after {
+  background-image: radial-gradient(rgba(148, 178, 255, 0.1) 1px, transparent 1px);
+}

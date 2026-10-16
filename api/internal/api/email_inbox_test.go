@@ -200,10 +200,10 @@ func TestEmailInboxRoutingRenameAndIsolation(t *testing.T) {
 	_ = a
 }
 
-// A reminder the app sends for host A shows in A's inbox as sent, including a
-// row that was already marked sent, and never in host B's. An inbound reply
-// still shows as received, and only for the host it was addressed to.
-func TestSentMailShowsForThatHostOnly(t *testing.T) {
+// Automated mail the app sends for host A carries A's Reply-To but is not copied
+// into any inbox, including a row that was already marked sent. An inbound reply
+// to it shows as received, and only for the host it was addressed to.
+func TestAutomatedMailStaysOutOfInbox(t *testing.T) {
 	h := newHarness(t, func(c *config.Config) {
 		c.InboxWebhookSecret = inboxTestSecret
 		c.TickSecret = testTickSecret
@@ -223,8 +223,8 @@ func TestSentMailShowsForThatHostOnly(t *testing.T) {
 	ctx := context.Background()
 	if _, err := h.store.Pool().Exec(ctx, `
 		INSERT INTO notifications (email, kind, webinar_id, subject, body, delivery, delivered_at)
-		VALUES ('past@example.com', 'registration_confirmed', $1::uuid,
-		        'Earlier reminder', 'already sent', 'sent', now())`, wb.WebinarID); err != nil {
+		VALUES ('past@example.com', 'registration_confirmed', (SELECT id FROM webinars WHERE slug = $1),
+		        'Earlier reminder', 'already sent', 'sent', now())`, wb.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.store.Notify(ctx, h.store.DB(), store.Notification{
@@ -239,12 +239,16 @@ func TestSentMailShowsForThatHostOnly(t *testing.T) {
 	if code, body := tick(t, h, testTickSecret); code != http.StatusOK || !strings.Contains(body, `"ran"`) {
 		t.Fatalf("tick: %d %s", code, body)
 	}
-	if len(mail.msgs) != 1 {
-		t.Fatalf("smtp sends = %d", len(mail.msgs))
+	// Signup also sends the host a verification email; this test is about the guest's.
+	var guest *notify.Message
+	for i := range mail.msgs {
+		if mail.msgs[i].To == "guest@example.com" {
+			guest = &mail.msgs[i]
+		}
 	}
 	// Message has no From field. The transport keeps SMTP_FROM and only adds Reply-To.
-	if mail.msgs[0].ReplyTo != inboxA.Address || mail.msgs[0].To != "guest@example.com" {
-		t.Fatalf("sent message = %+v, want Reply-To %s", mail.msgs[0], inboxA.Address)
+	if guest == nil || guest.ReplyTo != inboxA.Address {
+		t.Fatalf("sent = %+v, want guest mail with Reply-To %s", mail.msgs, inboxA.Address)
 	}
 
 	payload, _ := json.Marshal(map[string]string{
@@ -262,12 +266,8 @@ func TestSentMailShowsForThatHostOnly(t *testing.T) {
 		t.Fatalf("inbox A after send: %d %s", res.StatusCode, raw)
 	}
 	h.decode(raw, &inboxA)
-	got := map[string]string{}
-	for _, m := range inboxA.Messages {
-		got[m.Subject] = m.Direction
-	}
-	if got["See you soon"] != "out" || got["Earlier reminder"] != "out" || got["Re: See you soon"] != "in" {
-		t.Fatalf("A messages = %+v", inboxA.Messages)
+	if len(inboxA.Messages) != 1 || inboxA.Messages[0].Subject != "Re: See you soon" || inboxA.Messages[0].Direction != "in" {
+		t.Fatalf("A messages = %+v, want only the inbound reply", inboxA.Messages)
 	}
 
 	h.logout()
@@ -297,7 +297,7 @@ func TestEmailInboxThreadsStaySeparate(t *testing.T) {
 
 	a := h.signup("Host A", "threads-a@example.com", true)
 	ctx := context.Background()
-	base := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
 	insert := func(subject, messageID string, at time.Time) store.HostEmail {
 		t.Helper()
 		row, err := h.store.InsertHostEmail(ctx, store.HostEmail{
@@ -390,7 +390,7 @@ func TestEmailInboxPagesAreHostScoped(t *testing.T) {
 	h := newHarness(t, func(c *config.Config) {})
 	a := h.signup("Host A", "pages-a@example.com", true)
 	ctx := context.Background()
-	base := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	base := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
 	for i := 0; i < 26; i++ {
 		if _, err := h.store.InsertHostEmail(ctx, store.HostEmail{
 			UserID:    a.ID,
@@ -515,5 +515,54 @@ func TestEmailInboxMalformedCursor(t *testing.T) {
 	res, raw = h.do(http.MethodGet, "/api/host/email-inbox", nil)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("first page: %d %s", res.StatusCode, raw)
+	}
+}
+
+// The retention sweep removes inbox mail past the window and keeps newer mail.
+// Old rows are also hidden from the list before the sweep gets to them.
+func TestHostEmailRetention(t *testing.T) {
+	h := newHarness(t, func(c *config.Config) { c.InboxWebhookSecret = inboxTestSecret })
+	h.signup("Host R", "retention@example.com", true)
+	res, raw := h.do(http.MethodGet, "/api/host/email-inbox", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("inbox: %d %s", res.StatusCode, raw)
+	}
+	var inbox inboxBody
+	h.decode(raw, &inbox)
+	userID, ok, err := h.store.HostForInboxLocal(context.Background(), inbox.Local)
+	if err != nil || !ok {
+		t.Fatalf("host for inbox: %v %v", ok, err)
+	}
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for _, m := range []store.HostEmail{
+		{UserID: userID, Direction: "in", From: "old@example.com", To: inbox.Address, Subject: "Old", CreatedAt: now.Add(-store.HostEmailRetention - time.Hour)},
+		{UserID: userID, Direction: "in", From: "new@example.com", To: inbox.Address, Subject: "New", CreatedAt: now.Add(-time.Hour)},
+	} {
+		if _, err := h.store.InsertHostEmail(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res, raw = h.do(http.MethodGet, "/api/host/email-inbox", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("inbox: %d %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &inbox)
+	if len(inbox.Messages) != 1 || inbox.Messages[0].Subject != "New" {
+		t.Fatalf("messages = %+v, want only New", inbox.Messages)
+	}
+
+	n, err := h.store.PruneHostEmails(ctx, now.Add(-store.HostEmailRetention), 1)
+	if err != nil || n != 1 {
+		t.Fatalf("pruned = %d, %v; want 1", n, err)
+	}
+	var left int
+	if err := h.store.Pool().QueryRow(ctx, `SELECT count(*) FROM host_emails WHERE user_id = $1`, userID).Scan(&left); err != nil {
+		t.Fatal(err)
+	}
+	if left != 1 {
+		t.Fatalf("rows left = %d, want 1", left)
 	}
 }

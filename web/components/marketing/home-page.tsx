@@ -11,8 +11,7 @@ import "@/app/landing.css";
 /* Public marketing home for Webinar Liv, aimed at coaches, teachers and course
  * creators.
  *
- * Every claim is a feature that ships today. Prices, results figures and a trial
- * offer are left out until there is billing behind them. Signed-in visitors are
+ * Every claim is a feature that ships today. Signed-in visitors are
  * redirected away (see middleware + SignedInHomeRedirect); this page is for
  * logged-out guests.
  *
@@ -111,10 +110,7 @@ function Hero() {
           </p>
           <div className="cta-row reveal">
             <Link className="btn btn-primary btn-lg" href="/signup">
-              Start free <Icon name="arrow-right" />
-            </Link>
-            <Link className="btn btn-ghost btn-lg" href="/browse">
-              Join a webinar
+              Start 7-day trial <Icon name="arrow-right" />
             </Link>
           </div>
           <ul className="checks reveal">
@@ -582,41 +578,41 @@ const PLANS: {
   popular?: boolean;
 }[] = [
   {
-    name: "Starter",
-    who: "For your first webinars",
-    monthly: 29,
-    yearly: 23,
-    yearlyTotal: "$276 billed yearly",
+    name: "Professional",
+    who: "For coaches and consultants",
+    monthly: 49,
+    yearly: 41,
+    yearlyTotal: "$490 billed yearly",
     features: [
-      "Up to 100 attendees",
+      "Up to 200 attendees",
       "Registration pages and email reminders",
       "Polls, quizzes, Q&A and recording",
       "Engagement Score",
     ],
   },
   {
-    name: "Pro",
+    name: "Business",
     who: "For coaches selling programs",
-    monthly: 79,
-    yearly: 63,
-    yearlyTotal: "$756 billed yearly",
+    monthly: 199,
+    yearly: 166,
+    yearlyTotal: "$1,990 billed yearly",
     popular: true,
     features: [
-      "Up to 500 attendees",
+      "Up to 300 attendees",
       "WhatsApp reminders and broadcasts",
       "Follow-up by engagement group",
       "Drips, chatbot and shared inbox",
     ],
   },
   {
-    name: "Academy",
+    name: "Enterprise",
     who: "For academies and teams",
-    monthly: 199,
-    yearly: 159,
-    yearlyTotal: "$1,908 billed yearly",
+    monthly: 499,
+    yearly: 416,
+    yearlyTotal: "$4,990 billed yearly",
     features: [
-      "Up to 1,000 attendees",
-      "Everything in Pro",
+      "Up to 500 attendees",
+      "Everything in Business",
       "Priority support on WhatsApp",
       "Personal onboarding session",
     ],
@@ -634,13 +630,13 @@ function Pricing() {
           <h2 id="pricing-title" className="h2">
             Simple plans that <em>pay for themselves</em>
           </h2>
-          <p className="lede">Try every Pro feature free for 14 days. No credit card, no setup fee.</p>
+          <p className="lede">Try any plan free for 7 days. Card required, cancel any time before day 8. No setup fee.</p>
           <div className="billing" role="radiogroup" aria-label="Billing period">
             <button type="button" role="radio" aria-checked={!yearly} onClick={() => setYearly(false)}>
               Monthly
             </button>
             <button type="button" role="radio" aria-checked={yearly} onClick={() => setYearly(true)}>
-              Yearly <span className="save">Save 20%</span>
+              Yearly <span className="save">2 months free</span>
             </button>
           </div>
         </div>
@@ -659,7 +655,7 @@ function Pricing() {
               </p>
               <p className="billed">{yearly ? plan.yearlyTotal : "Billed monthly"}</p>
               <Link className={plan.popular ? "btn btn-primary btn-block" : "btn btn-ghost btn-block"} href="/signup">
-                {plan.popular ? "Start your 14-day free trial" : "Start free trial"}
+                {plan.popular ? "Start your 7-day free trial" : "Start free trial"}
               </Link>
               <ul className="ticks">
                 {plan.features.map((feature) => (
@@ -747,7 +743,7 @@ function FinalCta() {
         </h2>
         <div className="cta-row">
           <Link className="btn btn-white btn-lg" href="/signup">
-            Start free <Icon name="arrow-right" />
+            Start 7-day trial <Icon name="arrow-right" />
           </Link>
           <Link className="btn btn-outline-light btn-lg" href="/browse">
             Browse webinars
