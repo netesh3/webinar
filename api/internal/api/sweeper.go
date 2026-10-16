@@ -35,7 +35,20 @@ const (
 	retentionEvery = 5 * time.Minute
 	// The inbox cutoff is in days, so once a day is enough.
 	emailRetentionEvery = 24 * time.Hour
+	// Token expiry is in hours and the grace in days, so once a day is enough.
+	tokenRetentionEvery = 24 * time.Hour
 )
+
+func (s *Server) sweepExpiredTokens(ctx context.Context) {
+	n, err := s.store.PruneExpiredTokens(ctx, time.Now().Add(-store.TokenGrace), 5000)
+	if err != nil {
+		s.log.Error("token retention: prune failed", "error", err)
+		return
+	}
+	if n > 0 {
+		s.log.Info("token retention: deleted expired tokens", "rows", n)
+	}
+}
 
 func (s *Server) sweepHostEmails(ctx context.Context) {
 	n, err := s.store.PruneHostEmails(ctx, time.Now().Add(-store.HostEmailRetention), 5000)
@@ -106,6 +119,9 @@ func (s *Server) RunTick(ctx context.Context) bool {
 	}
 	if _, due, err := s.store.TryLease(ctx, "email-retention", emailRetentionEvery); err == nil && due {
 		s.sweepHostEmails(ctx)
+	}
+	if _, due, err := s.store.TryLease(ctx, "token-retention", tokenRetentionEvery); err == nil && due {
+		s.sweepExpiredTokens(ctx)
 	}
 	return true
 }
