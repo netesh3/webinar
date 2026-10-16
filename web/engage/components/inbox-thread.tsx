@@ -361,7 +361,7 @@ function Chat({
         it.kind === "day" ? (
           <div
             key={it.key}
-            className="my-1.5 justify-self-center rounded-md bg-white/85 px-2.5 py-0.5 text-[11px] text-ink-2 shadow-sm"
+            className="my-1.5 justify-self-center rounded-md bg-surface/85 px-2.5 py-0.5 text-[11px] text-ink-2 shadow-sm"
           >
             {it.label}
           </div>
@@ -396,7 +396,7 @@ function AutoRun({ ms }: { ms: CRMMessage[] }) {
   }
   const read = ms.every((m) => m.status === "read");
   return (
-    <div className="my-0.5 flex items-center gap-2 justify-self-center rounded-lg border border-dashed border-line-2 bg-white/70 px-3 py-1.5 text-[11.5px] text-ink-2">
+    <div className="my-0.5 flex items-center gap-2 justify-self-center rounded-lg border border-dashed border-line-2 bg-surface/70 px-3 py-1.5 text-[11.5px] text-ink-2">
       <span>
         <b className="font-semibold text-ink">{ms.length} automatic messages</b>{" "}
         · {autoKinds(ms)}
@@ -470,7 +470,7 @@ function WindowPill({ until }: { until: string }) {
   const now = useNow();
   if (!until) {
     return (
-      <div className="mt-2 justify-self-center rounded-full bg-white/85 px-3 py-1 text-[11px] text-ink-2 shadow-sm">
+      <div className="mt-2 justify-self-center rounded-full bg-surface/85 px-3 py-1 text-[11px] text-ink-2 shadow-sm">
         Reply window closed · only an approved template can be sent
       </div>
     );

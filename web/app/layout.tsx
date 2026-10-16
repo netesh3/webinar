@@ -68,6 +68,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${homeDisplay.variable} ${homeSans.variable} h-full antialiased`}
     >
       <head>
+        {/* Applies the saved theme before first paint; see components/theme-switcher.tsx. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem("theme");if(t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("dark")}catch(e){}`,
+          }}
+        />
         {/* Google Material Symbols */}
         <link
           rel="stylesheet"

@@ -237,7 +237,7 @@ export function PhonePreview({
         )}
       </div>
       <PhoneFrame title={from} subtitle="Business account">
-        <span className="justify-self-center rounded-md bg-white/80 px-2 py-0.5 text-[10px] text-ink-2">
+        <span className="justify-self-center rounded-md bg-surface/80 px-2 py-0.5 text-[10px] text-ink-2">
           Today
         </span>
         <div className="max-w-[92%] overflow-hidden rounded-lg rounded-tl-none bg-white text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#111] shadow-sm">

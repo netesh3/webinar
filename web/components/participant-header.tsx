@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAppConfig } from "./providers";
+import { ThemeSwitcher } from "./theme-switcher";
 
 /* The participant experience's only chrome.
  *
@@ -35,6 +36,9 @@ export function ParticipantHeader() {
           <img src="/brand/mark.png" alt="" width={28} height={28} className="size-7 rounded-lg" />
           <span className="text-[14.5px] font-semibold tracking-[-0.01em]">{appName}</span>
         </Link>
+        <div className="ml-auto">
+          <ThemeSwitcher />
+        </div>
       </div>
     </header>
   );

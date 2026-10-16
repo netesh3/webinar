@@ -136,7 +136,7 @@ export function SlotEditor({
           </ul>
         )}
         {preview && (
-          <div className="rounded-lg rounded-bl-sm bg-[#eef6ea] px-2.5 py-2 text-[12.5px] leading-relaxed text-ink-2 italic">
+          <div className="rounded-lg rounded-bl-sm bg-ok-soft px-2.5 py-2 text-[12.5px] leading-relaxed text-ink-2 italic">
             “{preview}”
           </div>
         )}

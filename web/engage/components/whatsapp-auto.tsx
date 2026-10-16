@@ -101,7 +101,7 @@ function Snip({ text, empty }: { text: string; empty: string }) {
     );
   }
   return (
-    <p className="mt-2 flex-1 rounded-lg rounded-bl-sm bg-[#eef6ea] px-2 py-1.5 text-[11.5px] leading-snug text-ink-2 italic">
+    <p className="mt-2 flex-1 rounded-lg rounded-bl-sm bg-ok-soft px-2 py-1.5 text-[11.5px] leading-snug text-ink-2 italic">
       “{text}”
     </p>
   );

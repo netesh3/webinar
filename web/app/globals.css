@@ -1992,24 +1992,32 @@ body {
   @apply w-5 h-5;
 }
 
-/* Dark Mode */
+/* App-wide dark mode, toggled by ThemeSwitcher. Same tuned values as .room-dark
+ * except brand, which stays deep enough to carry white button labels. */
 html.dark {
   color-scheme: dark;
   --color-page: #0d0d11;
   --color-surface: #16161c;
   --color-surface-2: #202028;
 
-  --color-ink: #f0f0f2;
-  --color-ink-2: #b8bcc4;
-  --color-ink-3: #8a919b;
+  --color-ink: #f1f1f4;
+  --color-ink-2: #b0b0bd;
+  --color-ink-3: #8b8b99;
 
-  --color-line: #33333d;
-  --color-line-2: #45454f;
+  --color-line: #2b2b35;
+  --color-line-2: #3c3c48;
 
-  --color-brand: #5a9eff;
-  --color-brand-hover: #7aafff;
-  --color-brand-soft: #0d2d5c;
-  --color-brand-line: #2d5a99;
+  --color-brand: #4f8fff;
+  --color-brand-hover: #6ba1ff;
+  --color-brand-soft: #1c2740;
+  --color-brand-line: #33486f;
+
+  --color-ok: #4ade80;
+  --color-ok-soft: #15301f;
+  --color-warn: #fbbf24;
+  --color-warn-soft: #332810;
+  --color-live: #fb8078;
+  --color-live-soft: #3a1917;
 }
 
 html.dark .home {
@@ -2027,6 +2035,38 @@ html.dark .home {
 html.dark .home-section-alt,
 html.dark .home-legal-footer {
   background: var(--home-mist);
+}
+
+html.dark .home-hero-atmosphere {
+  background:
+    radial-gradient(ellipse 62% 48% at 50% -6%, rgba(59, 130, 246, 0.22) 0%, transparent 62%),
+    radial-gradient(ellipse 42% 42% at 6% 38%, rgba(99, 102, 241, 0.14) 0%, transparent 62%),
+    radial-gradient(ellipse 42% 42% at 94% 26%, rgba(56, 189, 248, 0.12) 0%, transparent 62%),
+    linear-gradient(180deg, #101a2c 0%, var(--home-paper) 58%);
+}
+
+html.dark .home-chip {
+  background: rgba(26, 35, 51, 0.88);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+html.dark .home-chip-blue { background: #14284a; color: #7fb2ff; }
+html.dark .home-chip-indigo { background: #22224a; color: #a5a7ff; }
+html.dark .home-chip-rose { background: #3a1917; color: #fb8078; }
+html.dark .home-chip-amber { background: #332810; color: #fbbf24; }
+
+html.dark .home-control-visual {
+  background: linear-gradient(145deg, #182235, #121a29);
+}
+
+html.dark .home-control-row {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+html.dark .home-cta-band {
+  background:
+    radial-gradient(ellipse 60% 80% at 80% 20%, rgba(59, 130, 246, 0.16) 0%, transparent 55%),
+    linear-gradient(180deg, #101a2c, var(--home-paper));
 }
 
 html.dark .pricing-card {
