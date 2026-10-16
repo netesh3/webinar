@@ -32,6 +32,10 @@ type Inbox struct {
 	UserID  string
 }
 
+// HostEmailRetention is how long inbox mail is kept. Automated sends never land
+// here (they stay in notifications), so this only bounds real conversations.
+const HostEmailRetention = 90 * 24 * time.Hour
+
 // HostEmail is one stored message, inbound or a reply we sent.
 type HostEmail struct {
 	ID        string
@@ -249,30 +253,14 @@ func (s *Store) ListHostEmailPage(ctx context.Context, userID string, limit int,
 }
 
 func (s *Store) listHostEmails(ctx context.Context, userID string) ([]HostEmail, error) {
+	// No row cap: the inbox pages conversations after they are grouped, and a cap
+	// here would make later pages wrong. The retention window is the bound.
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, user_id, direction, from_addr, to_addr, subject, body, message_id, in_reply_to, created_at
-		   FROM (
-		     SELECT id::text, user_id::text, direction, from_addr, to_addr, subject, body,
-		            message_id, in_reply_to, created_at
-		       FROM host_emails
-		      WHERE user_id = $1
-		     UNION ALL
-		     SELECT n.id::text, w.host_id::text, 'out', '', n.email, n.subject, n.body,
-		            '', '', COALESCE(n.delivered_at, n.created_at)
-		       FROM notifications n
-		       JOIN webinars w ON w.id = n.webinar_id
-		      WHERE w.host_id = $1
-		        AND n.delivery = 'sent'
-		        AND n.email <> ''
-		        AND NOT EXISTS (
-		          SELECT 1 FROM host_emails h
-		           WHERE h.user_id = w.host_id
-		             AND h.message_id = 'outbox:' || n.id::text
-		        )
-		   ) mail
-		  ORDER BY created_at ASC`, userID)
-	// No row cap: the inbox pages conversations after they are grouped. A cap
-	// here would drop mail before the page slice and make later pages wrong.
+		`SELECT id::text, user_id::text, direction, from_addr, to_addr, subject, body,
+		        message_id, in_reply_to, created_at
+		   FROM host_emails
+		  WHERE user_id = $1 AND created_at >= $2
+		  ORDER BY created_at ASC`, userID, time.Now().Add(-HostEmailRetention))
 	if err != nil {
 		return nil, err
 	}
@@ -507,19 +495,30 @@ func (s *Store) HostEmailForUser(ctx context.Context, userID, id string) (HostEm
 	var m HostEmail
 	err := s.pool.QueryRow(ctx,
 		`SELECT id::text, user_id::text, direction, from_addr, to_addr, subject, body, message_id, in_reply_to, created_at
-		   FROM host_emails WHERE id = $1 AND user_id = $2
-		 UNION ALL
-		 SELECT n.id::text, w.host_id::text, 'out', '', n.email, n.subject, n.body,
-		        '', '', COALESCE(n.delivered_at, n.created_at)
-		   FROM notifications n
-		   JOIN webinars w ON w.id = n.webinar_id
-		  WHERE n.id = $1 AND w.host_id = $2 AND n.delivery = 'sent' AND n.email <> ''
-		  LIMIT 1`, id, userID).
+		   FROM host_emails WHERE id = $1 AND user_id = $2`, id, userID).
 		Scan(&m.ID, &m.UserID, &m.Direction, &m.From, &m.To, &m.Subject, &m.Body, &m.MessageID, &m.InReplyTo, &m.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return HostEmail{}, ErrNotFound
 	}
 	return m, err
+}
+
+// PruneHostEmails deletes inbox mail older than the cutoff, in bounded batches so
+// one sweep never holds a long lock.
+func (s *Store) PruneHostEmails(ctx context.Context, before time.Time, batch int) (int64, error) {
+	var total int64
+	for {
+		tag, err := s.pool.Exec(ctx, `
+			DELETE FROM host_emails WHERE id IN (
+			  SELECT id FROM host_emails WHERE created_at < $1 LIMIT $2)`, before, batch)
+		if err != nil {
+			return total, err
+		}
+		total += tag.RowsAffected()
+		if tag.RowsAffected() < int64(batch) || ctx.Err() != nil {
+			return total, nil
+		}
+	}
 }
 
 func (s *Store) readInbox(ctx context.Context, userID string) (Inbox, error) {
