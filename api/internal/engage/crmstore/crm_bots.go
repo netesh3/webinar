@@ -138,11 +138,11 @@ const botSelect = `
 	         WHERE x.bot_id = b.id AND x.state = 'waiting'),
 	       (SELECT count(*) FROM crm_bot_sessions x
 	         WHERE x.bot_id = b.id AND x.state = 'sleeping'),
-	       (SELECT count(*) FROM crm_bot_sessions x
+	       b.pruned_done + (SELECT count(*) FROM crm_bot_sessions x
 	         WHERE x.bot_id = b.id AND x.state = 'done'),
-	       (SELECT count(*) FROM crm_bot_sessions x
+	       b.pruned_handoff + (SELECT count(*) FROM crm_bot_sessions x
 	         WHERE x.bot_id = b.id AND x.state = 'handoff'),
-	       (SELECT count(*) FROM crm_bot_sessions x
+	       b.pruned_stopped + (SELECT count(*) FROM crm_bot_sessions x
 	         WHERE x.bot_id = b.id AND x.state = 'stopped')
 	  FROM crm_bots b`
 
@@ -593,6 +593,47 @@ func stopBotsForContact(ctx context.Context, q store.Querier, contactID, reason 
 }
 
 // ----------------------------------------------------------------- sweeping
+
+// BotSessionRetention is how long a finished bot conversation is kept after it ended.
+const BotSessionRetention = 30 * 24 * time.Hour
+
+/* PruneFinishedBotSessions deletes done, handed-off and stopped conversations that ended
+ * before the cutoff, in bounded batches, and adds each to its bot's pruned_* counter in
+ * the same statement so the bot page's totals do not drop. See migrations/0097. */
+func (s *Store) PruneFinishedBotSessions(ctx context.Context, before time.Time, batch int) (int64, error) {
+	var total int64
+	for {
+		var n int64
+		err := s.pool.QueryRow(ctx, `
+			WITH gone AS (
+			  DELETE FROM crm_bot_sessions WHERE id IN (
+			    SELECT id FROM crm_bot_sessions
+			     WHERE state IN ('done', 'handoff', 'stopped') AND updated_at < $1
+			     LIMIT $2)
+			  RETURNING bot_id, state
+			), bumped AS (
+			  UPDATE crm_bots b
+			     SET pruned_done    = b.pruned_done    + g.done,
+			         pruned_handoff = b.pruned_handoff + g.handoff,
+			         pruned_stopped = b.pruned_stopped + g.stopped
+			    FROM (SELECT bot_id,
+			                 count(*) FILTER (WHERE state = 'done')    AS done,
+			                 count(*) FILTER (WHERE state = 'handoff') AS handoff,
+			                 count(*) FILTER (WHERE state = 'stopped') AS stopped
+			            FROM gone GROUP BY bot_id) g
+			   WHERE b.id = g.bot_id
+			  RETURNING 1
+			)
+			SELECT count(*) FROM gone`, before, batch).Scan(&n)
+		if err != nil {
+			return total, err
+		}
+		total += n
+		if n < int64(batch) || ctx.Err() != nil {
+			return total, nil
+		}
+	}
+}
 
 /* BotDue is a sleeping conversation whose wait is over.
  *
