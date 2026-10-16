@@ -70,8 +70,10 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 	}
 
 	target := h.signup("Switchable Host", "switchable@test.dev", true)
-	if len(target.Features) != 0 {
-		t.Fatalf("a new account starts with features %v, want none: every switch is off until somebody decides", target.Features)
+	// Every switch is off until somebody decides — except the whiteboard, which
+	// starts on (migrations/0099).
+	if len(target.Features) != 1 || !hasFeature(target.Features, types.FeatureWhiteboard) {
+		t.Fatalf("a new account starts with features %v, want only the whiteboard", target.Features)
 	}
 
 	// A host cannot grant themselves anything.
@@ -114,8 +116,8 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 	_, raw = h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",
 		types.FeatureGrant{Feature: types.FeatureWhatsAppCRM, Enabled: true})
 	h.decode(raw, &updated)
-	if len(updated.Features) != 2 {
-		t.Errorf("features = %v after re-granting WhatsApp CRM, want two", updated.Features)
+	if len(updated.Features) != 3 {
+		t.Errorf("features = %v after re-granting WhatsApp CRM, want three (with the default whiteboard)", updated.Features)
 	}
 
 	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",
