@@ -471,29 +471,25 @@ func (s *Store) AppendCaption(ctx context.Context, slug, identity, body string) 
 	return err
 }
 
+// CaptionTranscript is the webinar's caption transcript: built from the caption
+// rows while they exist (capped at maxTranscriptLines), and from the archived
+// copy once retention has deleted them.
 func (s *Store) CaptionTranscript(ctx context.Context, slug string) (string, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT to_char(c.at, 'HH24:MI:SS'), c.identity, c.body
-		  FROM session_captions c
-		  JOIN webinars w ON w.id = c.webinar_id
-		 WHERE w.slug = $1
-		 ORDER BY c.at`, slug)
+	var webinarID string
+	var archived *string
+	err := s.pool.QueryRow(ctx, `
+		SELECT w.id::text, t.body
+		  FROM webinars w LEFT JOIN webinar_transcripts t ON t.webinar_id = w.id
+		 WHERE w.slug = $1`, slug).Scan(&webinarID, &archived)
+	if noRows(err) {
+		return "", nil
+	}
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
-	var b strings.Builder
-	for rows.Next() {
-		var at, identity, body string
-		if err := rows.Scan(&at, &identity, &body); err != nil {
-			return "", err
-		}
-		b.WriteString(at)
-		b.WriteString(" ")
-		b.WriteString(identity)
-		b.WriteString(": ")
-		b.WriteString(body)
-		b.WriteByte('\n')
+	text, _, err := s.buildTranscript(ctx, webinarID)
+	if err != nil || text != "" || archived == nil {
+		return text, err
 	}
-	return b.String(), rows.Err()
+	return *archived, nil
 }
