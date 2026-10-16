@@ -174,7 +174,37 @@ const TOOLS: Record<ToolId, Tool> = {
     icon: YouTubeIcon,
     keepMounted: false,
   },
+  whiteboard: {
+    id: "whiteboard",
+    // Takes the stage for everyone (whiteboard/whiteboard-stage.tsx) rather
+    // than opening a window, the way a screen share does.
+    kind: "action",
+    label: "Whiteboard",
+    title: "Open a whiteboard everyone can see",
+    icon: WhiteboardIcon,
+    keepMounted: false,
+  },
 };
+
+/** A board on an easel, sized like the other 20px icons. */
+function WhiteboardIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M7 12.5l3-3.5 2.5 2.5L17 7.5" />
+      <path d="M12 16v4M8.5 20h7" />
+    </svg>
+  );
+}
 
 /** "CC" as a glyph, sized like the other 20px icons. */
 function CaptionsIcon({ className }: { className?: string }) {
@@ -211,6 +241,9 @@ export function availableTools(input: {
   pollsEnabled: boolean;
   reactionsEnabled: boolean;
   raiseHandEnabled: boolean;
+  /** JoinResponse.whiteboard: the host's switch is on and this person is on
+   *  the stage. Absent means off, so every existing caller is unchanged. */
+  whiteboard?: boolean;
 }): ToolId[] {
   /* Settings is unconditional, and was briefly not.
    *
@@ -254,6 +287,8 @@ export function availableTools(input: {
    * and the permission arrives after the join. Gating it here would reconcile a
    * panelist's pin away in the moment before their permission lands. */
   allowed.add("sharefile");
+  // Behind the host's account switch — see JoinResponse.whiteboard.
+  if (input.whiteboard) allowed.add("whiteboard");
 
   return TOOL_IDS.filter((id) => allowed.has(id));
 }
@@ -268,8 +303,9 @@ export function useAvailableTools(input: {
     reactionsEnabled: boolean;
     raiseHandEnabled: boolean;
   };
+  whiteboard?: boolean;
 }): ToolId[] {
-  const { isHost, controls } = input;
+  const { isHost, controls, whiteboard = false } = input;
   return useMemo(
     () =>
       availableTools({
@@ -277,12 +313,14 @@ export function useAvailableTools(input: {
         pollsEnabled: controls.pollsEnabled,
         reactionsEnabled: controls.reactionsEnabled,
         raiseHandEnabled: controls.raiseHandEnabled,
+        whiteboard,
       }),
     [
       isHost,
       controls.pollsEnabled,
       controls.reactionsEnabled,
       controls.raiseHandEnabled,
+      whiteboard,
     ],
   );
 }

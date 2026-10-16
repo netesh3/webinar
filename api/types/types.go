@@ -1088,6 +1088,14 @@ const (
 	 * for every account because absent means off; see migrations/0048.
 	 * Sessions stay in this app. */
 	FeatureZoom = "zoom"
+	/* FeatureWhiteboard is the shared whiteboard (Excalidraw) in the live room:
+	 * a "Whiteboard" cell in the More menu for the host and panelists, and a
+	 * view-only board for the audience while one is open.
+	 *
+	 * Off — the default, including for accounts that already exist — means the
+	 * room has no whiteboard at all and nothing about it changes. The host's
+	 * switch decides for everyone in their session; see JoinResponse.Whiteboard. */
+	FeatureWhiteboard = "whiteboard"
 )
 
 /* Feature is one switch as the admin screen renders it.
@@ -1131,6 +1139,11 @@ var Features = []Feature{
 		Key:         FeatureZoom,
 		Label:       "Zoom",
 		Description: "Let this host connect Zoom and schedule a session as a Zoom meeting or webinar. Off means sessions stay in this app.",
+	},
+	{
+		Key:         FeatureWhiteboard,
+		Label:       "Whiteboard",
+		Description: "Let this host and their panelists open a shared whiteboard from More in the live room. Attendees watch it. Off means no whiteboard.",
 	},
 }
 
@@ -2823,6 +2836,13 @@ type JoinResponse struct {
 	 * storage at all. This one is whether this host is allowed to use it. Off
 	 * hides "Record to the Cloud"; recording on this computer stays. */
 	CloudRecording bool `json:"cloudRecording"`
+	/* Whiteboard is whether this caller may open the shared whiteboard.
+	 *
+	 * The host's switch (FeatureWhiteboard), and only for the stage — the host
+	 * and panelists, who are the ones who can publish a board. The audience is
+	 * not asked: they only ever watch a board somebody on the stage opened, so
+	 * an attendee's join skips the lookup and this stays false for them. */
+	Whiteboard bool `json:"whiteboard"`
 	/* JoinKey is the caller's own registration key, echoed back.
 	 *
 	 * For the guest door it is the point of the response: a guest has no account and no
