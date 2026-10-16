@@ -1,0 +1,84 @@
+# Checks every pull request and every push to main.
+#
+# The deploy workflows also run on push to main and do not wait for this one;
+# make "api" and "web" required checks in branch protection so a red PR cannot
+# merge. Mirrors `make lint test types-check` so a local run means the same thing.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: webcast
+          POSTGRES_PASSWORD: webcast
+          POSTGRES_DB: webcast_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U webcast"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "Run gofmt on:"; echo "$unformatted"; exit 1; fi
+      - run: go vet ./...
+      - name: Tests (integration tests use the Postgres service)
+        env:
+          TEST_DATABASE_URL: postgres://webcast:webcast@localhost:5432/webcast_test?sslmode=disable
+        run: go test ./... -count=1
+      - name: Generated web types are up to date
+        run: |
+          go run github.com/gzuidhof/tygo@v0.2.21 generate
+          git diff --exit-code -- ../web/lib/api-types.ts \
+            || { echo "web/lib/api-types.ts is stale. Run 'make types' and commit."; exit 1; }
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      # PageProps / LayoutProps are generated into .next/types, which a clean
+      # checkout does not have.
+      - run: npx next typegen
+      - run: npx tsc --noEmit
+      - run: npx eslint .
+      - name: Unit tests
+        run: |
+          set -e
+          for f in $(find . -name '*.test.mts' -not -path './node_modules/*' -not -path './.next/*' | sort); do
+            echo "== $f"
+            node --experimental-strip-types --no-warnings "$f"
+          done

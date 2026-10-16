@@ -71,7 +71,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   // same moment that effect first ran, so the first paint still matches.
   const showPreview = useDevAuthBypassActive();
   const rawPreview = showPreview ? bypassWebinar(slug) : undefined;
-  const preview = rawPreview ? presentForHostList(rawPreview, Date.now()) : undefined;
+  const preview = rawPreview && now !== null ? presentForHostList(rawPreview, now) : undefined;
   const webinar = showPreview ? (preview ?? null) : fetchedWebinar;
   const previewRows =
     showPreview && preview && preview.status !== "draft"
@@ -281,7 +281,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
             <Badge tone={kind.tone} dot={isLive}>
               {kind.text}
             </Badge>
-            {webinar.didntGoLive && <Badge tone="neutral">Didn't go live</Badge>}
+            {webinar.didntGoLive && <Badge tone="neutral">Didn&apos;t go live</Badge>}
             {webinar.approval === "manual" && !isEnded && (
               <Badge tone="warn">
                 {waiting > 0 ? `${waiting} waiting to admit` : "Manual admit"}

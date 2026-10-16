@@ -141,7 +141,17 @@ func TestCRMAudienceCountsEveryReason(t *testing.T) {
 	registerWithPhone(t, h, wb.ID, "Thandi", "thandi@example.com", crmContactPhone, true)
 	registerWithPhone(t, h, wb.ID, "Sam", "sam@example.com", broadcastPhone2, false)
 	optedOut := registerWithPhone(t, h, wb.ID, "Ayanda", "ayanda@example.com", broadcastPhone3, true)
-	registerWithPhone(t, h, wb.ID, "Lerato", "lerato@example.com", "", false)
+	/* Registration now requires a phone, so a contact with no number is one that
+	 * registered before it did. Registered with a number, then made into that. */
+	lerato := registerWithPhone(t, h, wb.ID, "Lerato", "lerato@example.com", "+27 84 555 0004", false)
+	if _, err := h.store.Pool().Exec(t.Context(),
+		`UPDATE registrations SET phone = '' WHERE lower(email) = 'lerato@example.com'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.store.Pool().Exec(t.Context(),
+		`UPDATE crm_contacts SET phone = '' WHERE id = $1::uuid`, lerato.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	res, raw := h.do(http.MethodPost, "/api/host/crm/contacts/"+optedOut.ID+"/opt-out", nil)
 	if res.StatusCode != http.StatusOK {

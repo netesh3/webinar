@@ -1609,8 +1609,9 @@ func TestBodyLimitsAndUnknownFields(t *testing.T) {
 func TestSignupValidatesAndSignsIn(t *testing.T) {
 	h := newHarness(t)
 
-	// Everything missing, plus a password that is too short.
-	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{Password: "short"})
+	// Everything missing. There is no length floor on passwords any more (only
+	// empty and over-long are refused), so an empty one is what fails here.
+	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{})
 	if res.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("empty signup: status %d body %s, want 422", res.StatusCode, raw)
 	}
@@ -2654,11 +2655,14 @@ func TestRecordingLifecycle(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("complete: status %d body %s", res.StatusCode, raw)
 	}
+	// Complete answers "processing"; storage is finalized in the background and
+	// the row turns ready once that is done.
 	var done types.StatusResponse
 	h.decode(raw, &done)
-	if done.Status != string(types.RecordingReady) {
-		t.Errorf("status = %q, want ready", done.Status)
+	if done.Status != string(types.RecordingProcessing) && done.Status != string(types.RecordingReady) {
+		t.Errorf("status = %q, want processing or ready", done.Status)
 	}
+	waitRecordingReady(t, h, wb.ID, rec.ID)
 	if meta := h.rooms.roomMeta(t, lk.RoomName(wb.ID)); meta.Recording {
 		t.Error("the room still says it is being recorded after the recording finished")
 	}
@@ -2786,6 +2790,12 @@ func TestRecordingIsForTheStageOnly(t *testing.T) {
 		"application/octet-stream", []byte("panelist-bytes"), nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("panelist chunk: status %d body %s", res.StatusCode, raw)
 	}
+	// A file is downloadable once it is finished, not while it is still recording.
+	if res, raw := h.do(http.MethodPost,
+		"/api/host/webinars/"+wb.ID+"/recordings/"+rec.ID+"/complete?durationMs=1000", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("panelist complete: status %d body %s", res.StatusCode, raw)
+	}
+	waitRecordingReady(t, h, wb.ID, rec.ID)
 	if res, _ := h.doRaw(http.MethodGet,
 		"/api/host/webinars/"+wb.ID+"/recordings/"+rec.ID+"/file", "", nil, nil); res.StatusCode != http.StatusOK {
 		t.Errorf("panelist download: status %d, want 200", res.StatusCode)
@@ -2816,7 +2826,9 @@ func TestRecordingIsForTheStageOnly(t *testing.T) {
 // A recording that nobody stops must not be able to fill the disk, and the format
 // the browser claims must not be able to end up in a response header unchecked.
 func TestRecordingLimitsAndValidation(t *testing.T) {
-	h := newHarness(t)
+	// The browser's format is only validated for client-side recording; egress
+	// records MP4 whatever the browser says.
+	h := newHarness(t, func(c *config.Config) { c.RecordingsMode = "client" })
 	h.signup("Limit Host", "limits@test.dev", true)
 	grantCloudRecording(t, h)
 	wb := h.newWebinar("Bounded Recording", nil)
@@ -3149,5 +3161,25 @@ func TestAttendeeLimitDefaultsAndClamps(t *testing.T) {
 	h.decode(raw, &wb)
 	if wb.AttendeeLimit != 500 {
 		t.Errorf("5000 seats came back as %d, want the 500 ceiling", wb.AttendeeLimit)
+	}
+}
+
+// waitRecordingReady waits for the background finalize to mark a recording ready.
+func waitRecordingReady(t *testing.T, h *harness, slug, id string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, raw := h.do(http.MethodGet, "/api/host/webinars/"+slug+"/recordings", nil)
+		var list []types.Recording
+		h.decode(raw, &list)
+		for _, r := range list {
+			if r.ID == id && r.Status == types.RecordingReady {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("recording %s not ready after 5s: %s", id, raw)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
