@@ -7,6 +7,8 @@ export function ThemeSwitcher() {
   const [mounted, setMounted] = useState(false);
 
   const applyTheme = (newTheme: "light" | "dark" | "system") => {
+    if (typeof document === "undefined") return;
+
     const html = document.documentElement;
     let effectiveTheme = newTheme;
 
@@ -16,18 +18,25 @@ export function ThemeSwitcher() {
         : "light";
     }
 
+    console.log("[ThemeSwitcher] Applying theme:", newTheme, "effective:", effectiveTheme);
+
     if (effectiveTheme === "dark") {
       html.classList.add("dark");
+      console.log("[ThemeSwitcher] Added dark class, classList:", html.className);
     } else {
       html.classList.remove("dark");
+      console.log("[ThemeSwitcher] Removed dark class, classList:", html.className);
     }
 
     localStorage.setItem("theme", newTheme);
+    console.log("[ThemeSwitcher] Saved to localStorage:", newTheme);
   };
 
   useEffect(() => {
+    console.log("[ThemeSwitcher] Mounting");
     // Apply immediately on mount for saved theme
     const saved = localStorage.getItem("theme") as "light" | "dark" | "system" | null;
+    console.log("[ThemeSwitcher] Saved theme from localStorage:", saved);
     if (saved) {
       setTheme(saved);
       applyTheme(saved);
@@ -35,6 +44,7 @@ export function ThemeSwitcher() {
       // Default to system preference
       const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       const initialTheme = isDark ? "dark" : "light";
+      console.log("[ThemeSwitcher] Using system preference:", initialTheme);
       setTheme(initialTheme);
       applyTheme(initialTheme);
     }
@@ -42,6 +52,7 @@ export function ThemeSwitcher() {
   }, []);
 
   const toggleTheme = () => {
+    console.log("[ThemeSwitcher] Toggle clicked, current theme:", theme);
     let newTheme: "light" | "dark" | "system";
 
     if (theme === "light") {
@@ -52,22 +63,19 @@ export function ThemeSwitcher() {
       newTheme = "light";
     }
 
+    console.log("[ThemeSwitcher] New theme:", newTheme);
     setTheme(newTheme);
     applyTheme(newTheme);
   };
-
-  if (!mounted) {
-    return null;
-  }
 
   return (
     <button
       onClick={toggleTheme}
       className="theme-switcher"
       aria-label="Toggle theme"
-      title={`Theme: ${theme === "system" ? "System" : theme === "dark" ? "Dark" : "Light"}`}
+      title={`Theme: ${mounted ? (theme === "system" ? "System" : theme === "dark" ? "Dark" : "Light") : "Loading..."}`}
     >
-      {theme === "light" && (
+      {mounted && theme === "light" && (
         <svg
           className="theme-icon"
           viewBox="0 0 24 24"
@@ -86,7 +94,7 @@ export function ThemeSwitcher() {
           <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
         </svg>
       )}
-      {theme === "dark" && (
+      {mounted && theme === "dark" && (
         <svg
           className="theme-icon"
           viewBox="0 0 24 24"
@@ -97,7 +105,7 @@ export function ThemeSwitcher() {
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
         </svg>
       )}
-      {theme === "system" && (
+      {mounted && theme === "system" && (
         <svg
           className="theme-icon"
           viewBox="0 0 24 24"
@@ -108,6 +116,25 @@ export function ThemeSwitcher() {
           <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
           <line x1="8" y1="21" x2="16" y2="21" />
           <line x1="12" y1="17" x2="12" y2="21" />
+        </svg>
+      )}
+      {!mounted && (
+        <svg
+          className="theme-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <circle cx="12" cy="12" r="5" />
+          <line x1="12" y1="1" x2="12" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="23" />
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+          <line x1="1" y1="12" x2="3" y2="12" />
+          <line x1="21" y1="12" x2="23" y2="12" />
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
         </svg>
       )}
     </button>
