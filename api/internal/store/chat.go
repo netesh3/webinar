@@ -264,17 +264,23 @@ func (s *Store) ChatStats(ctx context.Context, slug string) (types.ChatStats, er
 //
 // Scoped deliberately: the key is looked up through the slug the caller asked about, so
 // a message id from one session cannot be used to read bytes through another's URL.
+//
+// ErrExpired means retention deleted the file; the message itself remains.
 func (s *Store) ChatMedia(ctx context.Context, slug, id string) (key, mime string, err error) {
+	var expired bool
 	err = s.pool.QueryRow(ctx, `
-		SELECT coalesce(m.media_key, ''), coalesce(m.media_mime, '')
+		SELECT coalesce(m.media_key, ''), coalesce(m.media_mime, ''), m.media_expired_at IS NOT NULL
 		  FROM chat_messages m JOIN webinars w ON w.id = m.webinar_id
 		 WHERE w.slug = $1 AND m.id = $2 AND m.message_type = 'image'`,
-		slug, id).Scan(&key, &mime)
+		slug, id).Scan(&key, &mime, &expired)
 	if noRows(err) {
 		return "", "", ErrNotFound
 	}
 	if err != nil {
 		return "", "", err
+	}
+	if expired {
+		return "", "", ErrExpired
 	}
 	if key == "" {
 		return "", "", ErrNotFound

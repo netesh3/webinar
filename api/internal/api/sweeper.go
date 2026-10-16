@@ -39,7 +39,63 @@ const (
 	notificationRetentionEvery = 24 * time.Hour
 	// Token expiry is in hours and the grace in days, so once a day is enough.
 	tokenRetentionEvery = 24 * time.Hour
+	// Chat image and caption cutoffs are in days, so once a day is enough.
+	sessionRetentionEvery = 24 * time.Hour
 )
+
+// sweepChatImages deletes chat image files RecordingsRetentionDays after their
+// webinar ends, the same window recordings get. The messages stay.
+func (s *Server) sweepChatImages(ctx context.Context) {
+	if s.cfg.RecordingsRetentionDays <= 0 || s.recordings == nil {
+		return
+	}
+	cutoff := time.Now().Add(-time.Duration(s.cfg.RecordingsRetentionDays) * 24 * time.Hour)
+	const batch = 500
+	for {
+		expired, err := s.store.ChatImagesEndedBefore(ctx, cutoff, batch)
+		if err != nil {
+			s.log.Error("chat image retention: query failed", "error", err)
+			return
+		}
+		for _, img := range expired {
+			if err := s.recordings.Delete(ctx, img.Key); err != nil {
+				s.log.Error("chat image retention: delete failed", "key", img.Key, "error", err)
+				return
+			}
+			if err := s.store.MarkChatImageExpired(ctx, img.ID); err != nil {
+				s.log.Error("chat image retention: could not record", "message", img.ID, "error", err)
+				return
+			}
+		}
+		if len(expired) > 0 {
+			s.log.Info("chat image retention: deleted images", "files", len(expired))
+		}
+		if len(expired) < batch || ctx.Err() != nil {
+			return
+		}
+	}
+}
+
+// sweepCaptions archives each finished webinar's transcript and deletes its
+// caption rows once the webinar is CaptionRetention old.
+func (s *Server) sweepCaptions(ctx context.Context) {
+	ids, err := s.store.WebinarsWithCaptionsEndedBefore(ctx, time.Now().Add(-store.CaptionRetention), 50)
+	if err != nil {
+		s.log.Error("caption retention: query failed", "error", err)
+		return
+	}
+	for _, id := range ids {
+		if ctx.Err() != nil {
+			return
+		}
+		n, err := s.store.ArchiveCaptions(ctx, id, 5000)
+		if err != nil {
+			s.log.Error("caption retention: archive failed", "webinar", id, "error", err)
+			continue
+		}
+		s.log.Info("caption retention: archived transcript", "webinar", id, "rows", n)
+	}
+}
 
 func (s *Server) sweepExpiredTokens(ctx context.Context) {
 	n, err := s.store.PruneExpiredTokens(ctx, time.Now().Add(-store.TokenGrace), 5000)
@@ -138,6 +194,12 @@ func (s *Server) RunTick(ctx context.Context) bool {
 	}
 	if _, due, err := s.store.TryLease(ctx, "token-retention", tokenRetentionEvery); err == nil && due {
 		s.sweepExpiredTokens(ctx)
+	}
+	if _, due, err := s.store.TryLease(ctx, "chat-image-retention", sessionRetentionEvery); err == nil && due {
+		s.sweepChatImages(ctx)
+	}
+	if _, due, err := s.store.TryLease(ctx, "caption-retention", sessionRetentionEvery); err == nil && due {
+		s.sweepCaptions(ctx)
 	}
 	return true
 }

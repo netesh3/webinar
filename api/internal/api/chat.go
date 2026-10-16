@@ -277,6 +277,10 @@ func (s *Server) handleChatMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key, mime, err := s.store.ChatMedia(r.Context(), slug, id)
+	if errors.Is(err, store.ErrExpired) {
+		httpx.Error(w, http.StatusGone, "media_expired", "This image has expired.")
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "No such image.")
 		return

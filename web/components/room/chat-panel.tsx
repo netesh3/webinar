@@ -618,6 +618,8 @@ function MessageBody({
   myIdentity: string;
 }) {
   const { joinKey } = useRoomUI();
+  // Retention deletes chat images some days after the session; the message stays.
+  const [imageGone, setImageGone] = useState(false);
   // handleChatMedia (api/internal/api/chat.go) needs the same credential as every
   // other room endpoint — a join key, for whoever registered without an account —
   // but message.media.url is the bare, credential-less path the server stores
@@ -633,7 +635,10 @@ function MessageBody({
     : undefined;
   return (
     <>
-      {message.media && mediaUrl && (
+      {message.media && mediaUrl && imageGone && (
+        <p className="mt-1 text-[12px] text-ink-3 italic">Image no longer available</p>
+      )}
+      {message.media && mediaUrl && !imageGone && (
         // Sized from the stored dimensions so the panel reserves the right space before
         // the bytes arrive. A chat log that reflows as each thumbnail loads is a chat log
         // that jumps under the cursor while you are reading it.
@@ -653,6 +658,7 @@ function MessageBody({
             loading="lazy"
             decoding="async"
             className="block h-auto max-h-64 w-auto max-w-full object-contain"
+            onError={() => setImageGone(true)}
           />
         </a>
       )}
