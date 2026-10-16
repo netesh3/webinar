@@ -24,13 +24,15 @@ jobs:
     services:
       postgres:
         image: postgres:18
+        # The migrations target Supabase, which runs as postgres and has the
+        # anon/authenticated roles that 0014 revokes from; see the step below.
         env:
-          POSTGRES_USER: webcast
-          POSTGRES_PASSWORD: webcast
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: webcast_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U webcast"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
@@ -46,9 +48,15 @@ jobs:
           unformatted=$(gofmt -l .)
           if [ -n "$unformatted" ]; then echo "Run gofmt on:"; echo "$unformatted"; exit 1; fi
       - run: go vet ./...
+      - name: Supabase roles the migrations expect
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d webcast_test -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN;"
       - name: Tests (integration tests use the Postgres service)
         env:
-          TEST_DATABASE_URL: postgres://webcast:webcast@localhost:5432/webcast_test?sslmode=disable
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/webcast_test?sslmode=disable
         run: go test ./... -count=1
       - name: Generated web types are up to date
         run: |
