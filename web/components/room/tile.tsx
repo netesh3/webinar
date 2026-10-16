@@ -7,7 +7,15 @@ import {
   type Participant,
   type TrackPublication,
 } from "livekit-client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { Role } from "@/lib/api-types";
 import {
   ExpandIcon,
@@ -25,6 +33,10 @@ import { isHighlighted } from "@/lib/speaker";
 import { useActiveSpeaker } from "./active-speaker";
 import { useRoomUI } from "./context";
 import { participantRole } from "./participants";
+
+/* True while this browser captures the whole screen into its own share. Provided by
+ * the Stage; every tile reads it, so the layouts do not each need to know. */
+export const WholeScreenCaptureContext = createContext(false);
 
 /* One video tile.
  *
@@ -152,6 +164,12 @@ export function ParticipantTile({
    * presenter what the room is seeing. Which they need — it is the only way to
    * know the share is working. */
   const isOwnShare = isScreen && participant.isLocal && !fileShare.active;
+  /* While this browser captures the whole screen, every other video painted here
+   * would go out a second time inside the share. The tile keeps its place, its
+   * name and its speaking outline — only the picture is swapped for initials, so
+   * nobody is captured. See capturesWholeScreen in lib/layout.ts. */
+  const capturingScreen = useContext(WholeScreenCaptureContext);
+  const pausedForCapture = capturingScreen && !isOwnShare;
   /* Only ever called for isOwnShare, so this is the local participant and a real
    * screen capture — a shared file goes through fileShare.stop() instead and never
    * shows this notice. Errors are swallowed like the control bar's stop: the browser
@@ -161,7 +179,11 @@ export function ParticipantTile({
     participant.setScreenShareEnabled(false).catch(() => {});
   }, [participant]);
   const hasVideo =
-    !isOwnShare && !!publication && !publication.isMuted && !!publication.track;
+    !isOwnShare &&
+    !pausedForCapture &&
+    !!publication &&
+    !publication.isMuted &&
+    !!publication.track;
   /* No publication at all: the person is in the room and never started the
    * camera. A muted publication already takes the initials path below; this
    * label is the empty-stage copy, so it does not say the host hasn't started. */
@@ -240,12 +262,24 @@ export function ParticipantTile({
           />
         )
       ) : isOwnShare ? (
-        <OwnShareNotice size={size} onStop={stopOwnShare} />
+        <OwnShareNotice
+          size={size}
+          onStop={stopOwnShare}
+          wholeScreen={capturingScreen}
+        />
       ) : (
         <AvatarFallback
           participant={participant}
           size={size}
-          caption={cameraOff ? CAMERA_OFF_LABEL : undefined}
+          caption={
+            pausedForCapture && isScreen
+              ? "Sharing their screen"
+              : pausedForCapture && publication && !publication.isMuted
+                ? "Camera on"
+                : cameraOff
+                  ? CAMERA_OFF_LABEL
+                  : undefined
+          }
         />
       )}
 
@@ -658,9 +692,12 @@ const OWN_SHARE_SCALE = {
 function OwnShareNotice({
   size,
   onStop,
+  wholeScreen = false,
 }: {
   size: "sm" | "md" | "lg";
   onStop: () => void;
+  /** Capturing the entire screen, so the other videos on this stage are paused. */
+  wholeScreen?: boolean;
 }) {
   const s = OWN_SHARE_SCALE[size];
   return (
@@ -676,12 +713,20 @@ function OwnShareNotice({
           LIVE
         </span>
         <p className={`leading-tight tracking-[-0.01em] text-white/95 ${s.title}`}>
-          You&apos;re sharing your screen
+          {wholeScreen
+            ? "You're sharing your entire screen"
+            : "You're sharing your screen"}
         </p>
         {/* Not on a filmstrip thumbnail — there is no room for more than the line. */}
         {size !== "sm" && (
           <>
             <p className={`text-white/70 ${s.sub}`}>Everyone can see it</p>
+            {wholeScreen && (
+              <p className="mx-auto mt-3 max-w-[46ch] text-[13px] leading-relaxed text-white/55">
+                Videos are paused on your screen so they are not captured into
+                your share. Your camera is still live for everyone.
+              </p>
+            )}
             <button
               type="button"
               onClick={onStop}

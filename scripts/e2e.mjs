@@ -580,7 +580,9 @@ async function main() {
   // capture is the infinite corridor, which the audience then also receives.
   const ownShare = await host.eval(`
     (() => ({
-      notice: document.body.innerText.includes("You're sharing your screen"),
+      // "your screen" or "your entire screen" — which one depends on what the
+      // headless capture reports as its displaySurface.
+      notice: /You're sharing your (entire )?screen/.test(document.body.innerText),
       selfPreview: [...document.querySelectorAll('video')]
         .filter((v) => v.className.includes('contain')).length,
     }))()

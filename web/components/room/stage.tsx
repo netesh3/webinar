@@ -12,6 +12,7 @@ import {
 } from "react";
 import {
   applyBudget,
+  capturesWholeScreen,
   filterTiles,
   paginate,
   qualityFor,
@@ -40,7 +41,7 @@ import { useActiveSpeaker } from "./active-speaker";
 import { useRoomUI } from "./context";
 import { participantRole } from "./participants";
 import { ReactionOverlay } from "./reactions";
-import { ParticipantTile, type Tile, type TileSource } from "./tile";
+import { ParticipantTile, WholeScreenCaptureContext, type Tile, type TileSource } from "./tile";
 
 /* The stage: whoever is on it, laid out.
  *
@@ -68,7 +69,8 @@ import { ParticipantTile, type Tile, type TileSource } from "./tile";
 export type ViewMode = LayoutMode;
 
 export function Stage() {
-  const { topic, controls, permissions, join, stage, entryVideo, coverImageUrl } = useRoomUI();
+  const { topic, controls, permissions, join, stage, entryVideo, coverImageUrl, fileShare } =
+    useRoomUI();
 
   // onlySubscribed: a track we have not subscribed to has no stream to render,
   // and with adaptiveStream the subscription follows what is actually on screen.
@@ -137,6 +139,9 @@ export function Stage() {
   }, [presence, people, published]);
 
   const screenShare = tiles.find((t) => t.source === Track.Source.ScreenShare);
+  /* Capturing the whole screen: every face painted here would be sent a second time
+   * inside the share. Tiles swap their video for initials while this lasts. */
+  const capturingScreen = capturesWholeScreen(tiles, fileShare.active);
   const mode: LayoutMode = stage.mode;
   const speaking = useActiveSpeaker();
 
@@ -219,6 +224,9 @@ export function Stage() {
     const map = new Map<string, VideoQuality>();
     const focusKey = page.items[0]?.key;
     for (const [i, tile] of page.items.entries()) {
+      // Nothing painted while the whole screen is captured, so nothing to download.
+      // Off the map is "switch it off" to applyBudget; a screen share it keeps anyway.
+      if (capturingScreen) continue;
       if (tile.source === Track.Source.ScreenShare) {
         // Always HIGH: MEDIUM/LOW land on the 720p/360p rungs, and even a sharp 720p
         // publisher looks soft if the subscriber asked for the wrong layer. Text is why
@@ -253,7 +261,7 @@ export function Stage() {
       }
     }
     return map;
-  }, [page.items, mode, speaking]);
+  }, [page.items, mode, speaking, capturingScreen]);
 
   // A signature rather than the map, so the effect fires on a real change and not
   // on every audio-level update that rebuilt the arrays.
@@ -294,6 +302,7 @@ export function Stage() {
   const solo = ordered.length === 1 ? ordered[0] : null;
 
   return (
+    <WholeScreenCaptureContext.Provider value={capturingScreen}>
     <div className="relative flex size-full min-h-0 min-w-0 flex-col">
       {solo ? (
         <SoloStage tile={solo} pinned={pinned} onTogglePin={stage.togglePin} />
@@ -307,6 +316,7 @@ export function Stage() {
 
       <ReactionOverlay />
     </div>
+    </WholeScreenCaptureContext.Provider>
   );
 }
 

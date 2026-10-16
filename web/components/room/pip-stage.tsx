@@ -3,8 +3,10 @@
 import { VideoTrack, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { useMemo } from "react";
+import { capturesWholeScreen } from "@/lib/layout";
 import { CameraIcon, CameraOffIcon, MicIcon, MicOffIcon } from "../icons";
 import { useActiveSpeaker } from "./active-speaker";
+import { useRoomUI } from "./context";
 
 /* What goes inside the popped-out window.
  *
@@ -51,6 +53,23 @@ export function PipStage({
     onlySubscribed: true,
   });
   const speaking = useActiveSpeaker();
+  const { fileShare } = useRoomUI();
+  /* This window floats over everything, so a whole-screen capture picks it up too.
+   * Showing a face here would send it twice; showing our own share here would put
+   * the capture inside itself. Text only while that lasts. */
+  const capturingScreen = useMemo(
+    () =>
+      capturesWholeScreen(
+        tracks.map((t) => ({
+          key: `${t.participant.identity}:${t.source}`,
+          participant: t.participant,
+          source: t.source,
+          publication: t.publication,
+        })),
+        fileShare.active,
+      ),
+    [tracks, fileShare.active],
+  );
 
   const shown = useMemo(() => {
     const share = tracks.find((t) => t.source === Track.Source.ScreenShare);
@@ -71,7 +90,14 @@ export function PipStage({
   return (
     <div className="flex h-dvh w-full flex-col bg-black">
       <div className="relative min-h-0 flex-1">
-        {shown ? (
+        {capturingScreen ? (
+          <div className="grid h-full w-full place-items-center px-4 text-center">
+            <p className="text-[12px] leading-relaxed text-white/70">
+              You&apos;re sharing your entire screen. Videos are paused here so they
+              are not captured into your share.
+            </p>
+          </div>
+        ) : shown ? (
           <VideoTrack
             trackRef={shown}
             /* object-contain, never cover. A shared screen cropped to fill a 16:9 window

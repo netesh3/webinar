@@ -247,6 +247,35 @@ export function sortTiles<T extends Sortable>(
   });
 }
 
+/** Whether this browser is capturing the whole screen into its own share.
+ *
+ *  When it is, anything this page paints gets captured too: every face on the
+ *  presenter's stage goes out a second time inside the share, next to the real
+ *  camera tiles. A browser cannot leave its own window out of a capture the way
+ *  Zoom and Teams can, so the only fix is to not paint video here while it lasts.
+ *
+ *  Only "monitor" counts. A window or tab share does not contain this page (the
+ *  current tab is excluded in the picker), and a shared file is a local element,
+ *  not a capture. A browser that does not report displaySurface is treated as
+ *  capturing the screen: hiding a few faces for one share is the cheaper mistake
+ *  than showing everyone twice. */
+export function capturesWholeScreen(
+  tiles: readonly Sortable[],
+  fileShareActive: boolean,
+): boolean {
+  if (fileShareActive) return false;
+  const own = tiles.find(
+    (tile) =>
+      tile.source === Track.Source.ScreenShare && tile.participant.isLocal,
+  );
+  const track = own?.publication?.track?.mediaStreamTrack;
+  if (!track) return false;
+  const surface = (
+    track.getSettings?.() as { displaySurface?: string } | undefined
+  )?.displaySurface;
+  return surface === undefined || surface === "monitor";
+}
+
 /** Applies the viewer's filters.
  *
  *  hideNonVideo never drops your own camera — a viewer hiding avatars should not

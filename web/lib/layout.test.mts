@@ -21,6 +21,7 @@
 
 import {
   applyBudget,
+  capturesWholeScreen,
   filterTiles,
   paginate,
   qualityFor,
@@ -521,6 +522,43 @@ console.log("\ntileFit");
     "just outside it letterboxes",
   );
 }
+
+// ------------------------------------------------- whole-screen capture
+
+/* A local share whose capture reports `surface` — undefined for a browser that
+ * does not say. Built by hand because the fake above has no mediaStreamTrack. */
+function ownShare(surface: string | undefined, local = true): Sortable {
+  return {
+    key: "me:share",
+    source: Track.Source.ScreenShare,
+    participant: { identity: "me", isLocal: local } as unknown as Sortable["participant"],
+    publication: {
+      track: {
+        mediaStreamTrack: {
+          getSettings: () => (surface ? { displaySurface: surface } : {}),
+        },
+      },
+    } as unknown as Sortable["publication"],
+  };
+}
+
+group("capturesWholeScreen", () => {
+  const cams = [tile("host", { local: true, remote: false }), tile("priya")];
+
+  ok(capturesWholeScreen([...cams, ownShare("monitor")], false),
+     "an entire-screen share pauses the stage's videos");
+  ok(!capturesWholeScreen([...cams, ownShare("window")], false),
+     "a window share does not — the meeting is not in it");
+  ok(!capturesWholeScreen([...cams, ownShare("browser")], false),
+     "a tab share does not");
+  ok(!capturesWholeScreen([...cams, ownShare("monitor")], true),
+     "a shared video file never does, whatever the track reports");
+  ok(capturesWholeScreen([...cams, ownShare(undefined)], false),
+     "a browser that does not report the surface is treated as a whole screen");
+  ok(!capturesWholeScreen([...cams, ownShare("monitor", false)], false),
+     "someone ELSE sharing their entire screen does not affect this viewer");
+  ok(!capturesWholeScreen(cams, false), "no share, nothing paused");
+});
 
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`,
