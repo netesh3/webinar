@@ -7,6 +7,7 @@ import (
 
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -32,7 +33,20 @@ const (
 	// Recording retention deletes files, and once every five minutes is plenty; its lease
 	// is never released, which is what makes it run at most that often.
 	retentionEvery = 5 * time.Minute
+	// The outbox cutoff is in days, so once a day is enough.
+	notificationRetentionEvery = 24 * time.Hour
 )
+
+func (s *Server) sweepNotificationContent(ctx context.Context) {
+	n, err := s.store.PruneNotificationContent(ctx, time.Now().Add(-store.NotificationContentRetention), 5000)
+	if err != nil {
+		s.log.Error("notification retention: prune failed", "error", err)
+		return
+	}
+	if n > 0 {
+		s.log.Info("notification retention: cleared sent email content", "rows", n)
+	}
+}
 
 // StartMeetingLimitSweeper runs RunTick every tickEvery until ctx is done.
 func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
@@ -89,6 +103,9 @@ func (s *Server) RunTick(ctx context.Context) bool {
 	}
 	if _, due, err := s.store.TryLease(ctx, "engagement-retention", retentionEvery); err == nil && due {
 		s.sweepEngagementEvents(ctx)
+	}
+	if _, due, err := s.store.TryLease(ctx, "notification-retention", notificationRetentionEvery); err == nil && due {
+		s.sweepNotificationContent(ctx)
 	}
 	return true
 }
