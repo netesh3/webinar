@@ -18,9 +18,11 @@
  *              into the background. The model's own cut, after the frame-to-frame step,
  *              is the edge. The filter is still in this file. See GUIDED_FILTER.
  *
- * Runtime: the onnxruntime-web build captions already ship (public/onnxruntime), on its
- * WebAssembly backend. WebAssembly runs everywhere, which is why this has no fallback: the
- * model is about 4 ms a frame on a laptop CPU, the whole step here about 10.
+ * Runtime: ONNX Runtime's plain WASM build (`onnxruntime-web/wasm`), with binaries from
+ * /onnxruntime (threaded SIMD ≈14 MiB). We must not import the default `onnxruntime-web`
+ * entry: that one wants the jsep WASM (~27 MiB), which Cloudflare Workers cannot host
+ * (25 MiB asset cap). WebAssembly runs everywhere, which is why this has no fallback:
+ * the model is about 4 ms a frame on a laptop CPU, the whole step here about 10.
  *
  * The presenter lock runs between run() and refine(), on the model's own mask, as it did
  * for the models before this one.
@@ -51,7 +53,10 @@ type Session = {
   run: (feeds: Record<string, Tensor>) => Promise<Record<string, Tensor>>;
 };
 type Ort = {
-  env: { wasm: { wasmPaths?: string; numThreads?: number }; logLevel?: string };
+  env: {
+    wasm: { wasmPaths?: string; numThreads?: number; proxy?: boolean };
+    logLevel?: string;
+  };
   Tensor: new (type: "float32", data: Float32Array, dims: number[]) => Tensor;
   InferenceSession: {
     create: (
@@ -66,9 +71,13 @@ export type Matte = { alpha: Float32Array; w: number; h: number };
 let ortModule: Promise<Ort> | null = null;
 function loadOrt(): Promise<Ort> {
   ortModule ??= (
-    import("onnxruntime-web") as Promise<unknown> as Promise<Ort>
+    /* `/wasm` → ort-wasm-simd-threaded.{mjs,wasm}. Default / webgpu entries need
+     * jsep / asyncify, which we do not ship under /onnxruntime. */
+    import("onnxruntime-web/wasm") as Promise<unknown> as Promise<Ort>
   ).then((ort) => {
     ort.env.wasm.wasmPaths = ORT_WASM_PATH;
+    ort.env.wasm.numThreads = 1;
+    ort.env.wasm.proxy = false;
     ort.env.logLevel = "error";
     return ort;
   });
