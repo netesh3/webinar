@@ -129,20 +129,6 @@ export function useSchedulePolls(webinar: Webinar | null): SchedulePolls {
     [entries],
   );
 
-  // Keep preview keys pointed at something that still exists.
-  useEffect(() => {
-    if (previewPollKey && !polls.some((e) => e.key === previewPollKey)) {
-      setPreviewPollKey(polls[0]?.key ?? null);
-    } else if (!previewPollKey && polls[0]) {
-      setPreviewPollKey(polls[0].key);
-    }
-    if (previewQuizKey && !quizzes.some((e) => e.key === previewQuizKey)) {
-      setPreviewQuizKey(quizzes[0]?.key ?? null);
-    } else if (!previewQuizKey && quizzes[0]) {
-      setPreviewQuizKey(quizzes[0].key);
-    }
-  }, [polls, quizzes, previewPollKey, previewQuizKey]);
-
   function problem(): string | null {
     if (load !== "ready") return null;
     if (composing) {

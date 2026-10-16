@@ -44,7 +44,9 @@ func isUniqueViolation(err error) bool {
 
 func isForeignKeyViolation(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+	return errors.As(err, &pgErr) &&
+		// 23001 is what Postgres 18 raises for ON DELETE RESTRICT; earlier versions use 23503.
+		(pgErr.Code == "23503" || pgErr.Code == "23001")
 }
 
 // normalisePhone is the registration form's normalisation, so a contact and a registrant match.

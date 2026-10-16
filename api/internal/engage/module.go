@@ -340,6 +340,7 @@ func (s *Module) Tick(ctx context.Context) {
 	s.flushWhatsAppOutbox(ctx)
 	s.sendReplyDigests(ctx)
 	s.checkWhatsAppTokens(ctx)
+	s.pruneFinishedBotSessions(ctx)
 	s.copyWhatsAppMedia(ctx)
 	s.expireWhatsAppMedia(ctx)
 }

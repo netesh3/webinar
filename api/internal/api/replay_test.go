@@ -48,6 +48,8 @@ func readyRecording(t *testing.T, h *harness, slug string) types.Recording {
 	if res, raw := h.do(http.MethodPost, path+"/complete?durationMs=8000", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("complete: status %d body %s", res.StatusCode, raw)
 	}
+	// Completion finalizes storage in the background; ready is what the name promises.
+	waitRecordingReady(t, h, slug, rec.ID)
 	return rec
 }
 

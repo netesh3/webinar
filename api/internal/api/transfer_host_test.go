@@ -14,6 +14,8 @@ func TestTransferHostAndEnd(t *testing.T) {
 
 	owner := h.signup("Owner", "transfer-owner@test.dev", true)
 	panelist := h.signup("Panelist", "transfer-panelist@test.dev", false)
+	// signup signs in as the account it made; the owner creates the webinar.
+	h.login("transfer-owner@test.dev")
 
 	wb := h.newWebinar("Transfer host", nil)
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/panelists",
@@ -79,6 +81,8 @@ func TestTransferHostRejectsAudienceAndMissingPanelist(t *testing.T) {
 
 	owner := h.signup("Owner", "transfer-reject-owner@test.dev", true)
 	_ = h.signup("Panelist", "transfer-reject-panelist@test.dev", false)
+	// signup signs in as the account it made; the owner creates the webinar.
+	h.login("transfer-reject-owner@test.dev")
 
 	wb := h.newWebinar("Transfer rejects", nil)
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/panelists",
@@ -113,6 +117,8 @@ func TestTransferHostAllowsMutedPanelist(t *testing.T) {
 
 	owner := h.signup("Owner", "transfer-muted-owner@test.dev", true)
 	panelist := h.signup("Panelist", "transfer-muted-panelist@test.dev", false)
+	// signup signs in as the account it made; the owner creates the webinar.
+	h.login("transfer-muted-owner@test.dev")
 
 	wb := h.newWebinar("Transfer muted", nil)
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/panelists",

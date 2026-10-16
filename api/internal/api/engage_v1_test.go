@@ -166,7 +166,9 @@ func TestEngageV1WatchTimeSegmentsAndPicked(t *testing.T) {
 	if len(wm.Broadcasts) != 1 || wm.Broadcasts[0].ID != b.ID {
 		t.Errorf("webinar broadcasts = %+v, want the follow-up", wm.Broadcasts)
 	}
-	if wm.Audience.Recipients != 3 || wm.Audience.NoOptIn != 1 {
+	// NoOptIn is Lerato plus drainWhatsAppOutbox's throwaway registrant, who now
+	// has to give a phone to register and never opted in.
+	if wm.Audience.Recipients != 3 || wm.Audience.NoOptIn != 2 {
 		t.Errorf("webinar audience = %+v", wm.Audience)
 	}
 

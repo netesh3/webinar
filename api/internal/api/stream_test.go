@@ -26,6 +26,9 @@ func TestSetStreamStoresWatchURLAndHidesTheKey(t *testing.T) {
 		t.Fatalf("set stream: status %d body %s", res.StatusCode, raw)
 	}
 	var got types.Webinar
+	// Fresh each time: false and empty stream fields are omitted, so decoding
+	// over the last response would keep its values.
+	got = types.Webinar{}
 	h.decode(raw, &got)
 	if !got.StreamConfigured {
 		t.Fatal("want streamConfigured after a key is saved")
@@ -63,6 +66,7 @@ func TestSetStreamStoresWatchURLAndHidesTheKey(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("clear stream: status %d body %s", res.StatusCode, raw)
 	}
+	got = types.Webinar{}
 	h.decode(raw, &got)
 	if got.StreamConfigured {
 		t.Errorf("after off: still configured")
@@ -83,6 +87,7 @@ func TestSetStreamStoresWatchURLAndHidesTheKey(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("restart stream: status %d body %s", res.StatusCode, raw)
 	}
+	got = types.Webinar{}
 	h.decode(raw, &got)
 	if !got.StreamConfigured {
 		t.Error("restart: want streamConfigured again without a pasted key")
@@ -102,6 +107,7 @@ func TestSetStreamStoresWatchURLAndHidesTheKey(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("drop watch: status %d body %s", res.StatusCode, raw)
 	}
+	got = types.Webinar{}
 	h.decode(raw, &got)
 	if got.StreamWatchURL != "" {
 		t.Errorf("after dropWatch: watch = %q", got.StreamWatchURL)

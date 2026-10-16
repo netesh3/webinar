@@ -410,9 +410,14 @@ func mergeValue(token string, contact types.CRMContact, wb types.Webinar, hostNa
  * queued and being due. A send that names it then fails and the cost is a message
  * nobody receives, so the row is skipped with the reason instead.
  */
-func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
+// FlushWhatsAppOutbox sends what is due now, unless another sender holds the
+// outbox. It reports whether this call was the sender. The tick does this every
+// pass; registrations start one after responding.
+func (s *Module) FlushWhatsAppOutbox(ctx context.Context) bool { return s.flushWhatsAppOutbox(ctx) }
+
+func (s *Module) flushWhatsAppOutbox(ctx context.Context) bool {
 	if s.whatsapp == nil || !s.whatsapp.Enabled() {
-		return
+		return true
 	}
 	/* One sender at a time, across instances and between the sweep and the flush a
 	 * registration or approval triggers. A held lease means another runner is sending;
@@ -423,14 +428,14 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 		if err != nil {
 			s.log.Error("whatsapp outbox: could not take lease", "error", err)
 		}
-		return
+		return false
 	}
 	defer release()
 
 	owed, err := s.store.PendingWhatsApp(ctx, 100)
 	if err != nil {
 		s.log.Error("whatsapp outbox: could not read", "error", err)
-		return
+		return true
 	}
 	// Webinars read once per flush, for the cover image and page link.
 	webinars := map[string]*types.Webinar{}
@@ -500,6 +505,7 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) {
 		s.log.Info("whatsapp message sent", "kind", m.Kind, "host", m.HostID,
 			"contact", m.ContactID, "template", tmpl.Name, "wamid", wamid)
 	}
+	return true
 }
 
 // skipWhatsApp retires a message that can no longer be sent, keeping the reason:

@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -59,6 +60,16 @@ func drainWhatsAppOutbox(t *testing.T, h *harness, slug string) {
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("drain: status %d body %s", res.StatusCode, raw)
+	}
+	/* The flush that registration starts runs after the response, and is skipped
+	 * while another flush holds the outbox lease — so on its own it does not mean
+	 * anything was sent yet. Send synchronously, once the lease is free. */
+	deadline := time.Now().Add(10 * time.Second)
+	for !h.engage.FlushWhatsAppOutbox(context.Background()) {
+		if time.Now().After(deadline) {
+			t.Fatal("drain: the WhatsApp outbox lease never came free")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -141,7 +152,17 @@ func TestCRMAudienceCountsEveryReason(t *testing.T) {
 	registerWithPhone(t, h, wb.ID, "Thandi", "thandi@example.com", crmContactPhone, true)
 	registerWithPhone(t, h, wb.ID, "Sam", "sam@example.com", broadcastPhone2, false)
 	optedOut := registerWithPhone(t, h, wb.ID, "Ayanda", "ayanda@example.com", broadcastPhone3, true)
-	registerWithPhone(t, h, wb.ID, "Lerato", "lerato@example.com", "", false)
+	/* Registration now requires a phone, so a contact with no number is one that
+	 * registered before it did. Registered with a number, then made into that. */
+	lerato := registerWithPhone(t, h, wb.ID, "Lerato", "lerato@example.com", "+27 84 555 0004", false)
+	if _, err := h.store.Pool().Exec(t.Context(),
+		`UPDATE registrations SET phone = '' WHERE lower(email) = 'lerato@example.com'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.store.Pool().Exec(t.Context(),
+		`UPDATE crm_contacts SET phone = '' WHERE id = $1::uuid`, lerato.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	res, raw := h.do(http.MethodPost, "/api/host/crm/contacts/"+optedOut.ID+"/opt-out", nil)
 	if res.StatusCode != http.StatusOK {
