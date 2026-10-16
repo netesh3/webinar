@@ -35,6 +35,8 @@ const (
 	retentionEvery = 5 * time.Minute
 	// The inbox cutoff is in days, so once a day is enough.
 	emailRetentionEvery = 24 * time.Hour
+	// The outbox cutoff is in days, so once a day is enough.
+	notificationRetentionEvery = 24 * time.Hour
 	// Token expiry is in hours and the grace in days, so once a day is enough.
 	tokenRetentionEvery = 24 * time.Hour
 )
@@ -58,6 +60,17 @@ func (s *Server) sweepHostEmails(ctx context.Context) {
 	}
 	if n > 0 {
 		s.log.Info("email retention: pruned inbox mail", "rows", n)
+	}
+}
+
+func (s *Server) sweepNotificationContent(ctx context.Context) {
+	n, err := s.store.PruneNotificationContent(ctx, time.Now().Add(-store.NotificationContentRetention), 5000)
+	if err != nil {
+		s.log.Error("notification retention: prune failed", "error", err)
+		return
+	}
+	if n > 0 {
+		s.log.Info("notification retention: cleared sent email content", "rows", n)
 	}
 }
 
@@ -119,6 +132,9 @@ func (s *Server) RunTick(ctx context.Context) bool {
 	}
 	if _, due, err := s.store.TryLease(ctx, "email-retention", emailRetentionEvery); err == nil && due {
 		s.sweepHostEmails(ctx)
+	}
+	if _, due, err := s.store.TryLease(ctx, "notification-retention", notificationRetentionEvery); err == nil && due {
+		s.sweepNotificationContent(ctx)
 	}
 	if _, due, err := s.store.TryLease(ctx, "token-retention", tokenRetentionEvery); err == nil && due {
 		s.sweepExpiredTokens(ctx)

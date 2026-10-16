@@ -528,3 +528,38 @@ func (s *Store) SkipRemindersForEndedWebinar(ctx context.Context, slug string) e
 		   AND n.due_at > now()`, slug)
 	return err
 }
+
+// NotificationContentRetention is how long after its webinar ends a sent email
+// keeps its body, HTML and calendar attachment.
+const NotificationContentRetention = 30 * 24 * time.Hour
+
+/* PruneNotificationContent clears the text of finished emails whose webinar ended
+ * before the cutoff (or, with no webinar, that were created before it), in bounded
+ * batches so one sweep never holds a long lock.
+ *
+ * Only finished outbound email: a pending row still has to be sent, in-app alerts
+ * (user_id, no address) are what the bell shows, and WhatsApp rows are left alone.
+ * Nothing moves a finished row back to pending, so a cleared row is never re-sent
+ * empty. A webinar that never went live ends at its scheduled start plus duration. */
+func (s *Store) PruneNotificationContent(ctx context.Context, before time.Time, batch int) (int64, error) {
+	var total int64
+	for {
+		tag, err := s.pool.Exec(ctx, `
+			UPDATE notifications SET body = '', html = '', ics = ''
+			 WHERE id IN (
+			   SELECT n.id FROM notifications n
+			     LEFT JOIN webinars w ON w.id = n.webinar_id
+			    WHERE n.channel = 'email' AND n.email <> '' AND n.delivery <> 'pending' AND n.body <> ''
+			      AND CASE WHEN w.id IS NULL THEN n.created_at
+			               ELSE COALESCE(w.ended_at, w.starts_at + make_interval(mins => COALESCE(w.duration_min, 0)))
+			          END < $1
+			    LIMIT $2)`, before, batch)
+		if err != nil {
+			return total, err
+		}
+		total += tag.RowsAffected()
+		if tag.RowsAffected() < int64(batch) || ctx.Err() != nil {
+			return total, nil
+		}
+	}
+}
