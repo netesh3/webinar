@@ -64,6 +64,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${homeDisplay.variable} ${homeSans.variable} h-full antialiased`}
     >
       <head>

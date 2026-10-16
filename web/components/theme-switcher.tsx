@@ -26,8 +26,7 @@ export function ThemeSwitcher() {
   };
 
   useEffect(() => {
-    setMounted(true);
-    // Get saved theme or default to system
+    // Apply immediately on mount for saved theme
     const saved = localStorage.getItem("theme") as "light" | "dark" | "system" | null;
     if (saved) {
       setTheme(saved);
@@ -39,6 +38,7 @@ export function ThemeSwitcher() {
       setTheme(initialTheme);
       applyTheme(initialTheme);
     }
+    setMounted(true);
   }, []);
 
   const toggleTheme = () => {
