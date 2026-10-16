@@ -6,6 +6,12 @@ import type {
   AlertsResponse,
   AppConfig,
   ApprovalsResponse,
+  BillingCatalogue,
+  BillingCheckout,
+  BillingStatus,
+  CreateBillingOrderRequest,
+  VerifyBillingPaymentRequest,
+  VerifyBillingPaymentResponse,
   ChatBacklog,
   RoomQuestions,
   ChatImageResponse,
@@ -371,6 +377,23 @@ export const api = {
   me: (force = false) => cachedGet<Account>(ME_KEY, { ttl: TTL_SESSION, force }),
 
   updateProfile: (body: ProfilePatch) => patch<Account>("/api/auth/me", body),
+
+  /** The price list. Public; the pricing page renders straight from it so the
+   *  page and what Razorpay charges cannot disagree. */
+  billingPlans: () => request<BillingCatalogue>("/api/billing/plans", fresh),
+
+  /** Prices a plan on the server and creates the Razorpay order Checkout opens. */
+  createBillingOrder: (body: CreateBillingOrderRequest) =>
+    post<BillingCheckout>("/api/billing/orders", body),
+
+  /** Checkout's signed success response. Turns hosting on; returns the account. */
+  verifyBillingPayment: async (body: VerifyBillingPaymentRequest) => {
+    const res = await post<VerifyBillingPaymentResponse>("/api/billing/verify", body);
+    dropCache(ME_KEY);
+    return res;
+  },
+
+  myBilling: () => request<BillingStatus>("/api/me/billing", fresh),
 
   /** Asks to host. Phone is sent only when the account does not already have one.
    *  Does not grant hosting. A second call is refused once a request is open. */

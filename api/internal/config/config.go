@@ -256,6 +256,25 @@ type Config struct {
 	ZoomAPIURL   string
 	ZoomOAuthURL string
 
+	/* Razorpay — self-serve plans. See internal/billing.
+	 *
+	 * The key id and secret together turn on checkout; one without the other is
+	 * refused at boot. The key id is public (Checkout needs it in the browser),
+	 * the secret signs every payment the browser reports and never leaves the API.
+	 * The webhook secret is the one set on the Razorpay dashboard's webhook; unset,
+	 * POST /api/webhooks/razorpay refuses every body and only the browser's own
+	 * callback fulfils orders. Use rzp_test_ keys until the flow is checked.
+	 *
+	 * BillingGSTPercent is added to INR prices at checkout (default 18). 0 means
+	 * prices are quoted without tax. RazorpayAPIURL overrides api.razorpay.com for
+	 * tests.
+	 */
+	RazorpayKeyID         string
+	RazorpayKeySecret     string
+	RazorpayWebhookSecret string
+	RazorpayAPIURL        string
+	BillingGSTPercent     int
+
 	/* Meta WhatsApp Cloud API — Connect WhatsApp, via Meta Embedded Signup.
 	 *
 	 * MetaAppID and MetaWhatsAppConfigID are public values by design, the same way
@@ -407,6 +426,11 @@ func Load() (Config, error) {
 		ZoomWebhookSecret:       strings.TrimSpace(env("ZOOM_WEBHOOK_SECRET", "")),
 		ZoomAPIURL:              strings.TrimRight(env("ZOOM_API_URL", ""), "/"),
 		ZoomOAuthURL:            strings.TrimRight(env("ZOOM_OAUTH_URL", ""), "/"),
+		RazorpayKeyID:           strings.TrimSpace(env("RAZORPAY_KEY_ID", "")),
+		RazorpayKeySecret:       strings.TrimSpace(env("RAZORPAY_KEY_SECRET", "")),
+		RazorpayWebhookSecret:   strings.TrimSpace(env("RAZORPAY_WEBHOOK_SECRET", "")),
+		RazorpayAPIURL:          strings.TrimRight(env("RAZORPAY_API_URL", ""), "/"),
+		BillingGSTPercent:       envInt("BILLING_GST_PERCENT", 18),
 		MetaAppID:               env("META_APP_ID", ""),
 		MetaAppSecret:           env("META_APP_SECRET", ""),
 		MetaWhatsAppConfigID:    env("META_WHATSAPP_CONFIG_ID", ""),
@@ -502,6 +526,11 @@ func (c Config) YouTubeOAuthEnabled() bool {
  * checked again at startup; a key that is not 32 bytes leaves this false. */
 func (c Config) ZoomEnabled() bool {
 	return c.ZoomClientID != "" && c.ZoomClientSecret != "" && c.ZoomRedirectURL != "" && c.ZoomTokenKey != ""
+}
+
+// BillingEnabled is self-serve checkout: both Razorpay keys are set.
+func (c Config) BillingEnabled() bool {
+	return c.RazorpayKeyID != "" && c.RazorpayKeySecret != ""
 }
 
 /* WhatsAppConnectEnabled is the Connect WhatsApp path: Embedded Signup, and the
@@ -640,6 +669,15 @@ func (c Config) validate() error {
 		errs = append(errs, fmt.Errorf(
 			"Connect WhatsApp is half-configured: %s missing. Set all three or none",
 			strings.Join(metaMissing, ", ")))
+	}
+
+	// Razorpay: both keys or neither. A key id alone would open Checkout, take the
+	// money, and then fail to verify the payment it just took.
+	if (c.RazorpayKeyID == "") != (c.RazorpayKeySecret == "") {
+		errs = append(errs, errors.New("RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set together"))
+	}
+	if c.BillingGSTPercent < 0 || c.BillingGSTPercent > 100 {
+		errs = append(errs, fmt.Errorf("BILLING_GST_PERCENT must be between 0 and 100: %d", c.BillingGSTPercent))
 	}
 
 	if (c.BroadcastRTMPBase == "") != (c.BroadcastHLSBase == "") {

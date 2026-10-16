@@ -36,6 +36,9 @@
 #     Connect Zoom. All four or the card stays "Zoom is not configured".
 #     ZOOM_WEBHOOK_SECRET signs POST /api/webhooks/zoom; unset, that route
 #     refuses the body. See docs/zoom-app-checklist.md.
+#   RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET — self-serve plans (Buy on /pricing).
+#     Both or neither. RAZORPAY_WEBHOOK_SECRET signs POST /api/webhooks/razorpay.
+#     BILLING_GST_PERCENT (repo Variable, default 18) is added to INR prices.
 #   TELEMETRY_ENABLED — hardcoded below (not a secret): "true" turns on
 #     POST /telemetry for a performance-test window. Flip to "false" and
 #     redeploy when the test is done.
@@ -148,6 +151,10 @@ jobs:
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
       INBOX_WEBHOOK_SECRET: ${{ secrets.INBOX_WEBHOOK_SECRET }}
+      RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
+      RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
+      RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
+      BILLING_GST_PERCENT: ${{ vars.BILLING_GST_PERCENT }}
       ZOOM_CLIENT_ID: ${{ secrets.ZOOM_CLIENT_ID }}
       ZOOM_CLIENT_SECRET: ${{ secrets.ZOOM_CLIENT_SECRET }}
       ZOOM_REDIRECT_URL: ${{ secrets.ZOOM_REDIRECT_URL }}

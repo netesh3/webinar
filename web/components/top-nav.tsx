@@ -46,7 +46,13 @@ function linksFor(signedIn: boolean, canHost: boolean) {
   // label as the tab, since it is the same list; the /my-webinars path stays as it
   // is, because renaming a URL breaks the links already sent out to it.
   if (canHost) return [];
-  return signedIn ? [{ href: "/my-webinars", label: "WatchList" }] : [];
+  // Pricing for everyone who cannot host yet: it is where hosting is bought.
+  return signedIn
+    ? [
+        { href: "/my-webinars", label: "WatchList" },
+        { href: "/pricing", label: "Pricing" },
+      ]
+    : [{ href: "/pricing", label: "Pricing" }];
 }
 
 /** Where the logo takes you. A host's real home base is /host — everything else

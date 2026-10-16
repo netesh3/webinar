@@ -13,9 +13,7 @@ export default function MarketingHomeAlias() {
     <>
       <TopNav />
       <main className="flex-1">
-        <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-5">
-          <ContinueAsPreviewHost />
-        </div>
+        <ContinueAsPreviewHost className="mx-auto max-w-6xl px-4 pt-4 sm:px-5" />
         <HomePage />
       </main>
     </>

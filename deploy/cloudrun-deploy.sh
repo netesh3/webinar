@@ -188,6 +188,13 @@ fi
 # Connect Zoom. The API offers Connect only when id, secret, redirect, and
 # token key are all set. The webhook secret is separate: unset, the webhook
 # route refuses the body and the rest of the API still boots.
+# Razorpay — self-serve plans. Key id and secret together or neither (config.go
+# refuses a partial set). The webhook secret is optional; without it only the
+# browser's own callback fulfils an order.
+[[ -n "${RAZORPAY_KEY_ID:-}" ]] && ENV_VARS+=("RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}")
+[[ -n "${RAZORPAY_KEY_SECRET:-}" ]] && ENV_VARS+=("RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}")
+[[ -n "${RAZORPAY_WEBHOOK_SECRET:-}" ]] && ENV_VARS+=("RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}")
+[[ -n "${BILLING_GST_PERCENT:-}" ]] && ENV_VARS+=("BILLING_GST_PERCENT=${BILLING_GST_PERCENT}")
 [[ -n "${ZOOM_CLIENT_ID:-}" ]] && ENV_VARS+=("ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID}")
 [[ -n "${ZOOM_CLIENT_SECRET:-}" ]] && ENV_VARS+=("ZOOM_CLIENT_SECRET=${ZOOM_CLIENT_SECRET}")
 [[ -n "${ZOOM_REDIRECT_URL:-}" ]] && ENV_VARS+=("ZOOM_REDIRECT_URL=${ZOOM_REDIRECT_URL}")

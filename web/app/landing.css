@@ -610,11 +610,6 @@
   margin: clamp(44px, 6vw, 68px) auto 0;
 }
 
-.lp .hv-float {
-  width: 250px;
-  margin: 14px auto 0;
-}
-
 @media (min-width: 1100px) {
   .lp .hero .wrap {
     display: grid;
@@ -649,125 +644,6 @@
     max-width: none;
     margin: 0;
   }
-
-  .lp .hv-float {
-    position: absolute;
-    z-index: 2;
-    margin: 0;
-    box-shadow: var(--sh-4);
-  }
-
-  /* Sit on the audience row, under the host's face. */
-  .lp .hv-left {
-    left: 12px;
-    top: auto;
-    bottom: 64px;
-    transform: none;
-  }
-
-  .lp .hv-right {
-    right: 12px;
-    bottom: 64px;
-    transform: none;
-  }
-}
-
-@media (max-width: 1099px) {
-  .lp .hv-left {
-    display: none;
-  }
-}
-
-.lp .fcard {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: var(--sh-2);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.lp .fcard-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.lp .stage-tag {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-.lp .fcard-time {
-  font-size: 11.5px;
-  color: var(--ink-3);
-}
-
-.lp .fcard-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.lp .fcard-row b {
-  display: block;
-  font-size: 14px;
-  letter-spacing: -0.01em;
-}
-
-.lp .fcard-row small {
-  display: block;
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-
-.lp .fcard-row .glyph {
-  width: 34px;
-  height: 34px;
-}
-
-.lp .fcard-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.lp .fcard-wa {
-  display: grid;
-  gap: 2px;
-  padding: 8px 10px 6px;
-  border-radius: 10px;
-  background: var(--wa-bg);
-  color: #1f2c34;
-  font-size: 12.5px;
-}
-
-.lp .fcard-wa-meta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  font-size: 10.5px;
-  color: #667781;
-}
-
-.lp .ticks-svg {
-  width: 16px;
-  height: 11px;
-  color: var(--wa-tick);
-}
-
-.lp .fcard-win {
-  border-color: var(--ok-line);
-  box-shadow: 0 0 0 4px rgba(11, 138, 75, 0.08), var(--sh-2);
 }
 
 .lp .room {
@@ -2171,8 +2047,7 @@ html[data-theme="dark"] .lp .plan-pop {
   background: linear-gradient(180deg, #17254a, var(--surface) 42%);
 }
 
-html[data-theme="dark"] .lp .pill,
-html[data-theme="dark"] .lp .fcard {
+html[data-theme="dark"] .lp .pill {
   background: rgba(20, 29, 49, 0.92);
 }
 
@@ -2230,4 +2105,480 @@ html[data-theme="dark"] .lp .hero-bg {
 
 html[data-theme="dark"] .lp .hero-bg::after {
   background-image: radial-gradient(rgba(148, 178, 255, 0.1) 1px, transparent 1px);
+}
+
+/* ------------------------------------------------------------------ dark hero
+ *
+ * The hero is a navy "studio" band in both themes: the live room is the product,
+ * and it reads best on the colour it is shown in. Selectors carry .hero.hero-dark
+ * so they outrank the dark theme's .hero-bg above. */
+
+.lp .hero.hero-dark {
+  padding-bottom: 0;
+  background: var(--navy);
+  color: #fff;
+}
+
+.lp .hero.hero-dark .hero-bg {
+  background:
+    radial-gradient(42% 52% at 80% 28%, rgba(91, 53, 245, 0.42), transparent 70%),
+    radial-gradient(38% 46% at 8% 6%, rgba(12, 159, 251, 0.26), transparent 70%),
+    var(--navy);
+}
+
+.lp .hero.hero-dark .hero-bg::after {
+  opacity: 0.55;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 78%);
+  mask-image: linear-gradient(180deg, #000 0%, transparent 78%);
+}
+
+.lp .hero-dark .h1 {
+  color: #fff;
+}
+
+.lp .hero-dark .h1 em {
+  background-image: linear-gradient(100deg, #7cc4ff 0%, #a5b4ff 45%, #d1a6ff 100%);
+}
+
+.lp .hero-dark .hero-lede {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.lp .hero-dark .pill {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: none;
+  color: rgba(255, 255, 255, 0.86);
+  padding-left: 6px;
+}
+
+.lp .pill-tag {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--live);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.lp .hero-dark .checks {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 14.5px;
+}
+
+.lp .hero-dark .checks .ic {
+  color: #4ade80;
+}
+
+.lp .hero-dark .room {
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 50px 100px -30px rgba(0, 0, 0, 0.7), 0 0 0 8px rgba(255, 255, 255, 0.03);
+}
+
+.lp .hero-stats {
+  margin-top: clamp(48px, 6vw, 72px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Not inside .wrap: the hero's own grid rule targets .hero .wrap. */
+.lp .hero-stats ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding-inline: 20px;
+  list-style: none;
+}
+
+.lp .hero-stats li {
+  display: grid;
+  gap: 2px;
+  padding: 22px 0 22px 20px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lp .hero-stats li:nth-child(odd) {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.lp .hero-stats b {
+  font-family: var(--serif);
+  font-size: clamp(26px, 2.6vw, 36px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.lp .hero-stats span {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+@media (min-width: 768px) {
+  .lp .hero-stats ul {
+    padding-inline: 32px;
+  }
+}
+
+@media (min-width: 900px) {
+  .lp .hero-stats ul {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .lp .hero-stats li:nth-child(odd) {
+    padding-left: 28px;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .lp .hero-stats li:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+/* Same measure as the hero grid above it, so the first stat lines up with the headline. */
+@media (min-width: 1100px) {
+  .lp .hero-stats ul {
+    max-width: 1280px;
+  }
+}
+
+/* ------------------------------------------------------------------ pricing: buy */
+
+.lp .toggles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.lp .plan button.btn:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.lp .price-skel {
+  display: block;
+  width: 60%;
+  height: 54px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--mist), var(--line), var(--mist));
+  background-size: 200% 100%;
+  animation: lp-skel 1.4s ease-in-out infinite;
+}
+
+@keyframes lp-skel {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.lp .price b {
+  font-size: clamp(40px, 4vw, 52px);
+}
+
+.lp .buy-steps {
+  display: grid;
+  margin-top: 48px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.lp .buy-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 20px 24px;
+  border-top: 1px solid var(--line);
+}
+
+.lp .buy-steps li:first-child {
+  border-top: 0;
+}
+
+.lp .buy-steps b {
+  display: block;
+  font-size: 16px;
+}
+
+.lp .buy-steps span {
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+.lp .bs-n {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--violet);
+  font-weight: 700;
+  font-size: 15px !important;
+}
+
+@media (min-width: 900px) {
+  .lp .buy-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .lp .buy-steps li {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .lp .buy-steps li:first-child {
+    border-left: 0;
+  }
+}
+
+.lp-pricing-page .pricing {
+  padding-top: clamp(40px, 5vw, 64px);
+}
+
+/* ------------------------------------------------------------------ checkout dialog */
+
+.lp .co-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(7, 15, 36, 0.55);
+  backdrop-filter: blur(4px);
+  animation: lp-fade 0.18s ease;
+}
+
+@keyframes lp-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.lp .co-modal {
+  width: min(460px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: 0 50px 100px -20px rgba(0, 0, 0, 0.5);
+  color: var(--ink);
+  outline: none;
+}
+
+.lp .co-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 22px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.lp .co-head h2 {
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+
+.lp .co-head small {
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+.lp .co-x {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--ink-3);
+}
+
+.lp .co-body {
+  display: grid;
+  gap: 16px;
+  padding: 22px 24px;
+}
+
+.lp .co-plan {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+}
+
+.lp .co-plan span {
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+.lp .co-sum div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.lp .co-sum .co-total {
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line-2);
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.lp .co-field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.lp .co-field input {
+  height: 44px;
+  padding: 0 13px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.lp .co-field input[aria-invalid="true"] {
+  border-color: var(--live);
+}
+
+.lp .co-field em,
+.lp .co-error {
+  font-style: normal;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--live);
+}
+
+.lp .co-error {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--live-soft);
+}
+
+.lp .co-foot {
+  display: grid;
+  gap: 8px;
+  padding: 0 24px 22px;
+}
+
+.lp .co-fine {
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--ink-3);
+}
+
+.lp .co-fine a {
+  text-decoration: underline;
+}
+
+.lp .co-done {
+  display: grid;
+  gap: 14px;
+  padding: 34px 28px 26px;
+  text-align: center;
+}
+
+.lp .co-ok {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 4px;
+  border-radius: 50%;
+  background: var(--ok-soft);
+  box-shadow: 0 0 0 10px rgba(11, 138, 75, 0.06);
+}
+
+.lp .co-ok svg {
+  width: 34px;
+  height: 34px;
+  fill: none;
+  stroke: var(--ok);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.lp .co-done h2 {
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.lp .co-done > p {
+  font-size: 15.5px;
+  color: var(--ink-2);
+}
+
+.lp .co-perms {
+  list-style: none;
+  padding: 4px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  text-align: left;
+}
+
+.lp .co-perms li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14.5px;
+}
+
+.lp .co-perms li:first-child {
+  border-top: 0;
+}
+
+.lp .co-perms b {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+  font-size: 12px;
+}
+
+.lp .co-perms b.plain {
+  background: none;
+  color: var(--ink-2);
+  font-size: 13.5px;
+}
+
+html[data-theme="dark"] .lp .co-perms b:not(.plain) {
+  background: #12301f;
+  color: #6ee7a0;
 }

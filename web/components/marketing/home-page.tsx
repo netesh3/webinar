@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { HomeLegalFooter, SUPPORT_EMAIL } from "@/components/marketing/legal-page";
+import { Pricing, buyIntentFromSearch } from "@/components/marketing/pricing";
 import { useSession } from "@/components/providers";
 import { appHome } from "@/lib/access";
 import "@/app/landing.css";
@@ -57,6 +58,24 @@ export function HomePage() {
   );
 }
 
+/* /pricing: the same plans, for somebody who is signed in (the home page sends
+ * them away) or coming back from sign-up with ?buy=… to finish a purchase. */
+export function PricingPage() {
+  const root = useReveal();
+  const params = useSearchParams();
+  const intent = buyIntentFromSearch(params.toString());
+
+  return (
+    <div className="home">
+      <div ref={root} className="lp lp-pricing-page">
+        <Pricing autoBuy={intent} />
+        <Faq />
+      </div>
+      <HomeLegalFooter />
+    </div>
+  );
+}
+
 /* Content fades in as it scrolls into view. Nothing is hidden until this runs —
  * `.lp-js` is what arms the hidden state — so the page reads in full without JS. */
 function useReveal() {
@@ -93,35 +112,37 @@ function useReveal() {
 
 function Hero() {
   return (
-    <section className="hero" aria-labelledby="hero-title">
+    <section className="hero hero-dark" aria-labelledby="hero-title">
       <div className="hero-bg" aria-hidden />
       <div className="wrap">
         <div className="hero-copy">
           <p className="pill reveal">
-            <Icon name="sparkles" /> Built for coaches, teachers &amp; course creators
+            <b className="pill-tag">NEW</b> Buy a plan and start hosting in under a minute
           </p>
           <h1 id="hero-title" className="h1 reveal">
-            Turn webinars into your
-            <br className="br-lg" /> <em className="grad-text">lead conversion engine</em>
+            Webinars that <em className="grad-text">fill&nbsp;the&nbsp;room</em> and close the sale.
           </h1>
           <p className="hero-lede reveal">
-            Reminders that fill the room, a score for every attendee, and follow‑up that goes
-            out minutes after you end.
+            Live video for coaches and teachers, with WhatsApp reminders before, an engagement
+            score for every attendee during, and follow‑up minutes after you end.
           </p>
           <div className="cta-row reveal">
-            <Link className="btn btn-primary btn-lg" href="/signup">
-              Start 7-day trial <Icon name="arrow-right" />
-            </Link>
+            <a className="btn btn-primary btn-lg" href="#pricing">
+              See plans &amp; buy <Icon name="arrow-right" />
+            </a>
+            <a className="btn btn-outline-light btn-lg" href="#how-it-works">
+              How it works
+            </a>
           </div>
-          <ul className="checks reveal">
+          <ul className="checks on-dark reveal">
             <li>
               <Icon name="check" /> No download for attendees
             </li>
             <li>
-              <Icon name="check" /> Set up in minutes
+              <Icon name="check" /> UPI, cards &amp; netbanking
             </li>
             <li>
-              <Icon name="check" /> Self-hosted and private
+              <Icon name="check" /> Host access unlocks instantly
             </li>
           </ul>
         </div>
@@ -129,50 +150,30 @@ function Hero() {
         <div
           className="hero-visual reveal"
           role="img"
-          aria-label="A live Webinar Liv room with 85 watching and a poll running. Beside it: a WhatsApp reminder delivered to 112 of 120 registrants, and Neha Verma scored 92 and asking how to join the program."
+          aria-label="A live Webinar Liv room with 85 watching and a poll running."
         >
           <LiveRoom />
-          <article className="fcard hv-float hv-left">
-            <header className="fcard-head">
-              <span className="stage-tag">Before</span>
-              <span className="fcard-time">1 hr to go</span>
-            </header>
-            <div className="fcard-row">
-              <WhatsAppGlyph />
-              <div>
-                <b>Reminder delivered</b>
-                <small>112 of 120 registrants</small>
-              </div>
-            </div>
-            <p className="fcard-wa">
-              “We go live in 1 hour — tap to join.”
-              <span className="fcard-wa-meta">
-                5:30 PM <ReadTicks />
-              </span>
-            </p>
-          </article>
-          <article className="fcard fcard-win hv-float hv-right">
-            <header className="fcard-head">
-              <span className="stage-tag">After</span>
-              <span className="fcard-time">+12 min</span>
-            </header>
-            <div className="fcard-row">
-              <span className="avatar av-1">NV</span>
-              <div>
-                <b>“How do I join?”</b>
-                <small>Neha Verma · score 92</small>
-              </div>
-            </div>
-            <div className="fcard-chips">
-              <span className="chip chip-hot">
-                <Icon name="flame" /> Hot lead
-              </span>
-              <span className="chip chip-ok">
-                <Icon name="check" /> Enrolled
-              </span>
-            </div>
-          </article>
         </div>
+      </div>
+      <div className="hero-stats">
+        <ul>
+          <li>
+            <b>0 apps</b>
+            <span>for attendees to install</span>
+          </li>
+          <li>
+            <b>0–100</b>
+            <span>engagement score per attendee</span>
+          </li>
+          <li>
+            <b>Minutes</b>
+            <span>from session end to follow‑up</span>
+          </li>
+          <li>
+            <b>&lt; 1 min</b>
+            <span>from payment to hosting</span>
+          </li>
+        </ul>
       </div>
     </section>
   );
@@ -568,111 +569,6 @@ function ScorePoint({
 
 // ------------------------------------------------------------------ pricing
 
-const PLANS: {
-  name: string;
-  who: string;
-  monthly: number;
-  yearly: number;
-  yearlyTotal: string;
-  features: string[];
-  popular?: boolean;
-}[] = [
-  {
-    name: "Professional",
-    who: "For coaches and consultants",
-    monthly: 49,
-    yearly: 41,
-    yearlyTotal: "$490 billed yearly",
-    features: [
-      "Up to 200 attendees",
-      "Registration pages and email reminders",
-      "Polls, quizzes, Q&A and recording",
-      "Engagement Score",
-    ],
-  },
-  {
-    name: "Business",
-    who: "For coaches selling programs",
-    monthly: 199,
-    yearly: 166,
-    yearlyTotal: "$1,990 billed yearly",
-    popular: true,
-    features: [
-      "Up to 300 attendees",
-      "WhatsApp reminders and broadcasts",
-      "Follow-up by engagement group",
-      "Drips, chatbot and shared inbox",
-    ],
-  },
-  {
-    name: "Enterprise",
-    who: "For academies and teams",
-    monthly: 499,
-    yearly: 416,
-    yearlyTotal: "$4,990 billed yearly",
-    features: [
-      "Up to 500 attendees",
-      "Everything in Business",
-      "Priority support on WhatsApp",
-      "Personal onboarding session",
-    ],
-  },
-];
-
-function Pricing() {
-  const [yearly, setYearly] = useState(false);
-
-  return (
-    <section className="section pricing" id="pricing" aria-labelledby="pricing-title">
-      <div className="wrap">
-        <div className="section-head reveal">
-          <p className="eyebrow">Pricing</p>
-          <h2 id="pricing-title" className="h2">
-            Simple plans that <em>pay for themselves</em>
-          </h2>
-          <p className="lede">Try any plan free for 7 days. Card required, cancel any time before day 8. No setup fee.</p>
-          <div className="billing" role="radiogroup" aria-label="Billing period">
-            <button type="button" role="radio" aria-checked={!yearly} onClick={() => setYearly(false)}>
-              Monthly
-            </button>
-            <button type="button" role="radio" aria-checked={yearly} onClick={() => setYearly(true)}>
-              Yearly <span className="save">2 months free</span>
-            </button>
-          </div>
-        </div>
-        <div className="plans">
-          {PLANS.map((plan) => (
-            <article key={plan.name} className={plan.popular ? "plan plan-pop reveal" : "plan reveal"}>
-              {plan.popular && <span className="plan-badge">Most popular</span>}
-              <header>
-                <h3>{plan.name}</h3>
-                <p>{plan.who}</p>
-              </header>
-              <p className="price">
-                <span className="cur">$</span>
-                <b>{yearly ? plan.yearly : plan.monthly}</b>
-                <span className="per">/month</span>
-              </p>
-              <p className="billed">{yearly ? plan.yearlyTotal : "Billed monthly"}</p>
-              <Link className={plan.popular ? "btn btn-primary btn-block" : "btn btn-ghost btn-block"} href="/signup">
-                {plan.popular ? "Start your 7-day free trial" : "Start free trial"}
-              </Link>
-              <ul className="ticks">
-                {plan.features.map((feature) => (
-                  <li key={feature}>{feature}</li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </div>
-        <p className="pricing-foot">
-          Prices in USD. WhatsApp message fees are billed by Meta to your own WhatsApp Business account.
-        </p>
-      </div>
-    </section>
-  );
-}
-
 // ------------------------------------------------------------------ faq
 
 function Faq() {
@@ -689,7 +585,15 @@ function Faq() {
           </p>
         </div>
         <div className="faq-list reveal">
-          <FaqItem open question="Do my attendees need to download anything?">
+          <FaqItem open question="When do I get host access after paying?">
+            Immediately. As soon as Razorpay confirms the payment your account is upgraded, and
+            you land on your host dashboard ready to schedule.
+          </FaqItem>
+          <FaqItem question="How can I pay?">
+            UPI, debit and credit cards, netbanking and wallets, through Razorpay. Add your GSTIN
+            at checkout if you need it on the invoice.
+          </FaqItem>
+          <FaqItem question="Do my attendees need to download anything?">
             No. They join from the browser on a phone or laptop — one tap on the reminder takes
             them straight into the room.
           </FaqItem>
@@ -742,9 +646,9 @@ function FinalCta() {
           Your next webinar could be <em>your best sales day</em>
         </h2>
         <div className="cta-row">
-          <Link className="btn btn-white btn-lg" href="/signup">
-            Start 7-day trial <Icon name="arrow-right" />
-          </Link>
+          <a className="btn btn-white btn-lg" href="#pricing">
+            See plans &amp; buy <Icon name="arrow-right" />
+          </a>
           <Link className="btn btn-outline-light btn-lg" href="/browse">
             Browse webinars
           </Link>
@@ -869,21 +773,6 @@ function WhatsAppGlyph() {
       <path
         fill="#fff"
         d="M17 14.3c-.3-.1-1.6-.8-1.9-.9s-.4-.1-.6.1-.7.9-.9 1.1-.3.2-.6.1a7.8 7.8 0 0 1-2.3-1.4 8.7 8.7 0 0 1-1.6-2c-.2-.3 0-.4.1-.6l.4-.5.3-.5a.5.5 0 0 0 0-.5L9 7.4c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.6 11.6 0 0 0 4.4 3.9c.6.3 1.1.4 1.5.6a3.6 3.6 0 0 0 1.6.1 2.7 2.7 0 0 0 1.8-1.3 2.2 2.2 0 0 0 .2-1.3c-.1-.1-.3-.2-.6-.3z"
-      />
-    </svg>
-  );
-}
-
-function ReadTicks() {
-  return (
-    <svg className="ticks-svg" viewBox="0 0 18 12" aria-hidden>
-      <path
-        d="M1 6.6 4.1 9.7 10.6 2.4M7.6 9.5l.3.3 6.4-7.4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   );
