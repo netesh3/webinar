@@ -74,7 +74,7 @@ tours: ## Record the narrated guided-tour videos (stack up + demo seed); make to
 
 .PHONY: types
 types: ## Regenerate web/lib/api-types.ts from the Go structs
-	cd api && go run github.com/gzuidhof/tygo@latest generate
+	cd api && go run github.com/gzuidhof/tygo@v0.2.21 generate
 	@echo "regenerated web/lib/api-types.ts"
 
 .PHONY: types-check
@@ -96,7 +96,7 @@ test-api: ## Go unit + integration tests
 
 .PHONY: test-web
 test-web: ## Typecheck, lint and unit-test the frontend
-	cd web && npx tsc --noEmit && npx eslint .
+	cd web && npx next typegen && npx tsc --noEmit && npx eslint .
 	# Node runs the TypeScript directly, so there is no test runner and no build
 	# step to keep in sync. The suite covers the stage layout's pure functions —
 	# paging, sorting, filtering and the subscription budget — which is where the
