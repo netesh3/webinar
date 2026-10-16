@@ -1876,7 +1876,11 @@ body {
 }
 
 .pricing-savings {
-  @apply w-full text-sm font-medium text-ok mt-2;
+  @apply w-full text-sm font-medium text-ok mt-2 flex items-center gap-2;
+}
+
+.pricing-save-pct {
+  @apply bg-ok/10 px-2 py-0.5 rounded text-xs font-bold text-ok;
 }
 
 .pricing-card-cta {

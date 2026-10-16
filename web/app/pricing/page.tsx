@@ -159,7 +159,10 @@ export default function PricingPage() {
                       <span className="pricing-billing">{billingText}</span>
                       {savings && (
                         <div className="pricing-savings">
-                          Save €{savings}
+                          <span>Save €{savings}</span>
+                          <span className="pricing-save-pct">
+                            {Math.round((savings / (billingCycle === "monthly" ? price * 12 : price)) * 100)}% off
+                          </span>
                         </div>
                       )}
                     </div>
