@@ -1,6 +1,8 @@
 import type {
   ChatMessage as ChatTranscriptMessage,
   Account,
+  Plan,
+  SetUserPlanRequest,
   AdminStats,
   AdminUser,
   AlertsResponse,
@@ -908,6 +910,12 @@ export const api = {
     patch<Account>(`/api/admin/users/${seg(userId)}/max-duration`, {
       maxDurationMin,
     }),
+
+  /** Put an account on a paid plan, or "" for none (the launch default). */
+  setUserPlan: (userId: string, plan: Plan | "") =>
+    patch<Account>(`/api/admin/users/${seg(userId)}/plan`, {
+      plan,
+    } satisfies SetUserPlanRequest),
 
   /** Configure whether an account's webinars stream to audience attendees via CDN HLS. */
   setCdnBroadcastCapability: (userId: string, canCdnBroadcast: boolean) =>

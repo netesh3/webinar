@@ -181,7 +181,7 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 	if in.Instant {
 		in.StartsAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	in, fields := s.normalizeWebinarInput(in, true, "")
+	in, fields := s.normalizeWebinarInput(in, true, "", s.attendeeCeiling(user.Plan))
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
@@ -274,10 +274,13 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	 * satisfy the one-hour lead. A missing webinar leaves this empty; the update
 	 * then 404s instead of failing the time check. */
 	prevLead := ""
+	// The owner's plan, not the editor's: a panelist editing does not change the cap.
+	ceiling := s.attendeeCeiling("")
 	if prev, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
 		prevLead = prev.StartsAt
+		ceiling = s.ceilingForHost(r.Context(), prev.Host.ID)
 	}
-	in, fields := s.normalizeWebinarInput(in, false, prevLead)
+	in, fields := s.normalizeWebinarInput(in, false, prevLead, ceiling)
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
@@ -702,7 +705,7 @@ func localTime(at time.Time, zone string) string { return notify.LocalTime(at, z
  * prevStartsAt is the start already stored, empty on create and when the
  * webinar could not be loaded.
  */
-func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, prevStartsAt string) (types.WebinarInput, map[string]string) {
+func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, prevStartsAt string, ceiling int) (types.WebinarInput, map[string]string) {
 	fields := map[string]string{}
 
 	in.Topic = strings.TrimSpace(in.Topic)
@@ -840,8 +843,9 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 		in.AttendeeLimit = 1
 	}
 	/* Still clamped, and a clamp rather than a 422 on purpose: the ceiling is the operator's
-	 * business, and a coach asking for 600 seats wants a webinar, not a validation error. */
-	in.AttendeeLimit = min(in.AttendeeLimit, s.cfg.MaxAttendees)
+	 * and the plan's business, and a coach asking for 600 seats wants a webinar, not a
+	 * validation error. See attendeeCeiling. */
+	in.AttendeeLimit = min(in.AttendeeLimit, ceiling)
 
 	if len(in.Passcode) > 32 {
 		fields["passcode"] = "Keep the passcode under 32 characters."

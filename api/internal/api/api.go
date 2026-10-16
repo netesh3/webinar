@@ -464,6 +464,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/users", s.handleAdminUsers)
 			r.Patch("/users/{id}/host", s.handleSetHostCapability)
 			r.Patch("/users/{id}/max-duration", s.handleSetUserMaxDuration)
+			r.Patch("/users/{id}/plan", s.handleSetUserPlan)
 			r.Patch("/users/{id}/cdn-broadcast", s.handleSetCdnBroadcastCapability)
 			r.Patch("/users/{id}/features", s.handleSetFeature)
 			r.Delete("/users/{id}", s.handleAdminDeleteUser)

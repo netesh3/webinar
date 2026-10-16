@@ -8,7 +8,23 @@ import {
   CDN_BROADCAST_ROW_ID,
   type AccountFeatureRow,
 } from "@/lib/admin-account-features";
-import { FeatureInstantWebinar, type AdminUser, type Webinar } from "@/lib/api-types";
+import {
+  FeatureInstantWebinar,
+  PlanBusiness,
+  PlanEnterprise,
+  PlanLaunchAttendees,
+  PlanProfessional,
+  type AdminUser,
+  type Plan,
+  type Webinar,
+} from "@/lib/api-types";
+
+// What the plan select offers, with each plan's attendee cap (types.PlanAttendeeCap).
+const PLAN_LABEL: Record<Plan, string> = {
+  [PlanProfessional]: "Professional · 200",
+  [PlanBusiness]: "Business · 300",
+  [PlanEnterprise]: "Enterprise · 500",
+};
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { paginate } from "@/lib/paginate";
 import { useAppConfig, useSession, useToast } from "./providers";
@@ -195,6 +211,26 @@ function AdminAccounts() {
     }
   }
 
+  async function setPlan(u: AdminUser, plan: Plan | "") {
+    setBusy(u.id);
+    try {
+      await api.setUserPlan(u.id, plan);
+      setUsers((prev) =>
+        (prev ?? []).map((row) => (row.id === u.id ? { ...row, plan: plan || undefined } : row)),
+      );
+      notify(
+        plan
+          ? `${u.name || u.email} is on the ${PLAN_LABEL[plan]} plan.`
+          : `${u.name || u.email} is back on the launch default.`,
+        "ok",
+      );
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   /* Refused server-side too — for the caller's own account, and for one that
    * still owns webinars — this only saves the round trip and gives the error
    * a place to land next to the button that caused it. */
@@ -335,6 +371,23 @@ function AdminAccounts() {
                           <option value="240">4 hours</option>
                           <option value="360">6 hours</option>
                           <option value="480">8 hours</option>
+                        </select>
+                      )}
+
+                      {u.canHost && (
+                        <select
+                          aria-label="Plan"
+                          title="Plan (sets the attendee cap)"
+                          value={u.plan ?? ""}
+                          onChange={(e) => void setPlan(u, e.target.value as Plan | "")}
+                          className="rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
+                        >
+                          <option value="">No plan ({PlanLaunchAttendees} attendees)</option>
+                          {(Object.keys(PLAN_LABEL) as Plan[]).map((p) => (
+                            <option key={p} value={p}>
+                              {PLAN_LABEL[p]}
+                            </option>
+                          ))}
                         </select>
                       )}
                     </div>

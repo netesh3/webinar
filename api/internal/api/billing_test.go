@@ -334,3 +334,52 @@ func TestBillingOffWithoutKeys(t *testing.T) {
 		t.Fatalf("webhook with no secret configured: %d, want 401", res.StatusCode)
 	}
 }
+
+/* Paying for a plan is paying for what the plan allows.
+ *
+ * The purchase writes the account's subscription, and that subscription is the
+ * attendee ceiling the rest of the API enforces (see attendeeCeiling). So a
+ * Business buyer schedules 300 seats where they had 200 before paying, and still
+ * not 301 — the pricing page's number and the enforced one are the same number.
+ */
+func TestBuyingAPlanSetsItsAttendeeCeiling(t *testing.T) {
+	h, _ := billingHarness(t)
+	h.signup("Growing Coach", "grow@example.com", true)
+	if a := h.me(); a.Plan != "" || a.AttendeeCap != types.PlanLaunchAttendees {
+		t.Fatalf("before paying: plan %q cap %d, want none and %d", a.Plan, a.AttendeeCap, types.PlanLaunchAttendees)
+	}
+	before := h.newWebinar("Before paying", func(in *types.WebinarInput) { in.AttendeeLimit = 300 })
+	if before.AttendeeLimit != types.PlanLaunchAttendees {
+		t.Fatalf("no plan: asked for 300, got %d, want the launch cap %d", before.AttendeeLimit, types.PlanLaunchAttendees)
+	}
+
+	co := h.buy("business", billing.Monthly, billing.INR)
+	res, raw := h.do(http.MethodPost, "/api/billing/verify", types.VerifyBillingPaymentRequest{
+		OrderID: co.OrderID, PaymentID: "pay_biz",
+		Signature: billing.Sign(rzpSecret, []byte(co.OrderID+"|pay_biz")),
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("verify: %d %s", res.StatusCode, raw)
+	}
+	var vr types.VerifyBillingPaymentResponse
+	h.decode(raw, &vr)
+	if vr.Account.Plan != types.PlanBusiness || vr.Account.AttendeeCap != 300 || vr.Billing.Attendees != 300 {
+		t.Fatalf("after paying: account plan %q cap %d, billing attendees %d", vr.Account.Plan, vr.Account.AttendeeCap, vr.Billing.Attendees)
+	}
+
+	after := h.newWebinar("After paying", func(in *types.WebinarInput) { in.AttendeeLimit = 400 })
+	if after.AttendeeLimit != 300 {
+		t.Fatalf("business: asked for 400, got %d, want 300", after.AttendeeLimit)
+	}
+
+	// The catalogue advertises exactly the enforced cap.
+	_, raw = h.do(http.MethodGet, "/api/billing/plans", nil)
+	var cat types.BillingCatalogue
+	h.decode(raw, &cat)
+	for _, p := range cat.Plans {
+		want := types.PlanAttendeeCap(types.Plan(p.ID))
+		if p.Attendees != want || p.Features[0] != fmt.Sprintf("Up to %d attendees", want) {
+			t.Fatalf("catalogue %s says %d / %q, enforced cap is %d", p.ID, p.Attendees, p.Features[0], want)
+		}
+	}
+}

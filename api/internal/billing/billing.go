@@ -25,6 +25,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/netkumar/webcast/api/types"
 )
 
 // Periods a plan can be bought for. A yearly price is ten months: two free.
@@ -42,18 +44,31 @@ const (
 
 /* Plan is one row of the price list.
  *
+ * The plan ids and what each plan allows are types.Plan and types.PlanAttendeeCap,
+ * which is what the API enforces (see api.attendeeCeiling). This table only adds
+ * what a plan costs and how the pricing page describes it, so the attendee number
+ * on the page is the enforced one by construction.
+ *
  * Prices are minor units (paise, cents) BEFORE tax. Tax is added at checkout
  * (see Quote) so a change of GST rate is a config change, not a price change.
  */
 type Plan struct {
-	ID        string
-	Name      string
-	Who       string
-	Attendees int
-	Features  []string
-	Popular   bool
+	ID   types.Plan
+	Name string
+	Who  string
+	// Features after the attendee line, which Attendees() supplies.
+	Features []string
+	Popular  bool
 	// Monthly price per currency, minor units. Yearly is ten times this.
 	Monthly map[string]int64
+}
+
+// Attendees is the plan's enforced attendee cap.
+func (p Plan) Attendees() int { return types.PlanAttendeeCap(p.ID) }
+
+// AllFeatures is the pricing page's list: the attendee cap first, then the rest.
+func (p Plan) AllFeatures() []string {
+	return append([]string{fmt.Sprintf("Up to %d attendees", p.Attendees())}, p.Features...)
 }
 
 /* Plans is the price list, in display order.
@@ -63,12 +78,10 @@ type Plan struct {
  */
 var Plans = []Plan{
 	{
-		ID:        "professional",
-		Name:      "Professional",
-		Who:       "For coaches and consultants",
-		Attendees: 200,
+		ID:   types.PlanProfessional,
+		Name: "Professional",
+		Who:  "For coaches and consultants",
 		Features: []string{
-			"Up to 200 attendees",
 			"Registration pages & email reminders",
 			"Polls, quizzes, Q&A and recording",
 			"Engagement Score",
@@ -76,13 +89,11 @@ var Plans = []Plan{
 		Monthly: map[string]int64{INR: 3_999_00, USD: 49_00},
 	},
 	{
-		ID:        "business",
-		Name:      "Business",
-		Who:       "For coaches selling programs",
-		Attendees: 300,
-		Popular:   true,
+		ID:      types.PlanBusiness,
+		Name:    "Business",
+		Who:     "For coaches selling programs",
+		Popular: true,
 		Features: []string{
-			"Up to 300 attendees",
 			"WhatsApp reminders & broadcasts",
 			"Follow-up by engagement group",
 			"Drips, chatbot & shared inbox",
@@ -90,12 +101,10 @@ var Plans = []Plan{
 		Monthly: map[string]int64{INR: 14_999_00, USD: 199_00},
 	},
 	{
-		ID:        "enterprise",
-		Name:      "Enterprise",
-		Who:       "For academies and teams",
-		Attendees: 500,
+		ID:   types.PlanEnterprise,
+		Name: "Enterprise",
+		Who:  "For academies and teams",
 		Features: []string{
-			"Up to 500 attendees",
 			"Everything in Business",
 			"Priority support on WhatsApp",
 			"Personal onboarding session",
@@ -107,7 +116,7 @@ var Plans = []Plan{
 // FindPlan returns the plan with this id.
 func FindPlan(id string) (Plan, bool) {
 	for _, p := range Plans {
-		if p.ID == id {
+		if string(p.ID) == id {
 			return p, true
 		}
 	}

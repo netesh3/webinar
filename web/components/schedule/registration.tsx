@@ -28,6 +28,10 @@ export function RegistrationSection({
 }) {
   const config = useAppConfig();
   const { account } = useSession();
+  // The plan's cap applies under the server's; the API clamps to the same number.
+  const planCap = account?.attendeeCap ?? 0;
+  const planCapped = planCap > 0 && (!config.maxAttendees || planCap < config.maxAttendees);
+  const seatCeiling = planCapped ? planCap : config.maxAttendees;
   /* Off for every account until an admin turns it on. Hiding the switch is
    * the courtesy; the server still refuses a save that turns registration off. */
   const openJoin = (account?.features ?? []).includes(
@@ -73,12 +77,14 @@ export function RegistrationSection({
               value={String(form.attendeeLimit)}
               onChange={(v) => set("attendeeLimit", Number(v))}
               hint={
-                config.maxAttendees
-                  ? `This server is sized for up to ${config.maxAttendees.toLocaleString()} concurrent attendees.`
+                seatCeiling
+                  ? planCapped
+                    ? `Your plan allows up to ${seatCeiling.toLocaleString()} concurrent attendees.`
+                    : `This server is sized for up to ${seatCeiling.toLocaleString()} concurrent attendees.`
                   : undefined
               }
             >
-              {limitOptions(config.maxAttendees, form.attendeeLimit).map(
+              {limitOptions(seatCeiling, form.attendeeLimit).map(
                 (n) => (
                   <option key={n} value={n}>
                     {n.toLocaleString()} attendees

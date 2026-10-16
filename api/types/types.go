@@ -1018,6 +1018,10 @@ type Account struct {
 	// MaxDurationMin is an optional custom maximum meeting duration in minutes for this user.
 	// NULL means use the system default (e.g. 180 min = 3 hours).
 	MaxDurationMin *int `json:"maxDurationMin,omitempty"`
+	// Plan is the paid tier, empty for the launch default. AttendeeCap is the plan's
+	// attendee cap; the server's own ceiling (AppConfig.MaxAttendees) applies on top.
+	Plan        Plan `json:"plan,omitempty"`
+	AttendeeCap int  `json:"attendeeCap"`
 	// CanCdnBroadcast allows this host's webinars to broadcast to audience via CDN HLS.
 	CanCdnBroadcast bool `json:"canCdnBroadcast"`
 	/* Features switched on for this account by an admin — the Feature constants, and
@@ -2538,6 +2542,8 @@ type AdminUser struct {
 	WebinarCount int `json:"webinarCount"`
 	// MaxDurationMin is an optional custom maximum meeting duration in minutes configured by an admin.
 	MaxDurationMin *int `json:"maxDurationMin,omitempty"`
+	// Plan is the paid tier, empty for the launch default.
+	Plan Plan `json:"plan,omitempty"`
 	// CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
 	CanCdnBroadcast bool `json:"canCdnBroadcast"`
 	// Features are the per-account switches that are on — see Features and
@@ -2874,6 +2880,43 @@ type JoinResponse struct {
 
 type SetUserMaxDurationRequest struct {
 	MaxDurationMin *int `json:"maxDurationMin"`
+}
+
+/* Plan is a paid tier. Empty is the launch default: no subscription, and the
+ * attendee ceiling every beta host has. See PlanAttendeeCap. */
+type Plan string
+
+const (
+	PlanProfessional Plan = "professional"
+	PlanBusiness     Plan = "business"
+	PlanEnterprise   Plan = "enterprise"
+)
+
+// PlanLaunchAttendees is the ceiling with no plan: what one shared SFU carries reliably.
+const PlanLaunchAttendees = 200
+
+// PlanAttendeeCap is the most concurrent attendees a plan's webinars admit, before
+// the server's own MAX_ATTENDEES ceiling. Matches the pricing page.
+func PlanAttendeeCap(p Plan) int {
+	switch p {
+	case PlanBusiness:
+		return 300
+	case PlanEnterprise:
+		return 500
+	default:
+		return PlanLaunchAttendees
+	}
+}
+
+// Valid is true for a paid plan.
+func (p Plan) Valid() bool {
+	return p == PlanProfessional || p == PlanBusiness || p == PlanEnterprise
+}
+
+// SetUserPlanRequest is PATCH /api/admin/users/{id}/plan. An empty plan removes
+// the subscription, back to the launch default.
+type SetUserPlanRequest struct {
+	Plan Plan `json:"plan"`
 }
 
 // RoomMeta is mirrored into LiveKit room metadata on every control change.

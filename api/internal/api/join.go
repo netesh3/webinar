@@ -106,7 +106,7 @@ func (s *Server) joinAsAttendee(
 	}
 
 	room := lk.RoomName(slug)
-	limit := min(wb.AttendeeLimit, s.cfg.MaxAttendees)
+	limit := min(wb.AttendeeLimit, s.ceilingForHost(r.Context(), wb.Host.ID))
 
 	// Room is created here rather than by auto_create so the participant
 	// ceiling is enforced by the SFU itself, not just by our own counting.
@@ -495,7 +495,7 @@ func (s *Server) ensureRoom(
 		return nil, 0, false, err
 	}
 
-	limit := min(wb.AttendeeLimit, s.cfg.MaxAttendees)
+	limit := min(wb.AttendeeLimit, s.ceilingForHost(ctx, wb.Host.ID))
 	meta, err := s.roomMetadata(ctx, wb)
 	if err != nil {
 		return nil, 0, false, err
