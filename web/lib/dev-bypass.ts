@@ -358,6 +358,7 @@ export const DEV_BYPASS_JOIN: JoinResponse = {
   hidden: false,
   canRecord: true,
   cloudRecording: true,
+  whiteboard: false,
   maxDurationMin: 180,
 };
 

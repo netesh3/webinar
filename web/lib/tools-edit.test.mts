@@ -398,6 +398,45 @@ console.log("\ndescribeChange");
   ok(describeChange({ kind: "moved", tool: "invite" }, label) === null, "a reorder needs no sentence");
 }
 
+/* The whiteboard lives in More and nowhere else, and with the feature off the
+ * toolbar is exactly what it was. */
+{
+  const HOST_WB = [...HOST, "whiteboard"] as ToolId[];
+
+  // Feature off: not available, so not in More, and nothing else moves.
+  const off = reconcile(layout(), HOST);
+  ok(!gridItems(off, barSlots(off, 3, HOST), HOST).includes("whiteboard"), "off: no Whiteboard in More");
+
+  // Feature on: a first-time host finds it in More, after Captions.
+  const on = reconcile(layout(), HOST_WB);
+  const grid = gridItems(on, barSlots(on, 3, HOST_WB), HOST_WB);
+  ok(grid.includes("whiteboard"), "on: Whiteboard is in More");
+  ok(grid.indexOf("whiteboard") === grid.indexOf("captions") + 1, "on: right after Captions");
+  ok(
+    JSON.stringify(barSlots(on, 3, HOST_WB)) === JSON.stringify(barSlots(off, 3, HOST)),
+    "on: the toolbar is the same as with the feature off",
+  );
+
+  // It cannot leave More: not pinnable, not placed, not surfaced from recent use.
+  ok(!isPinnable("whiteboard"), "Whiteboard is not pinnable");
+  ok(placeOnBar(on, "whiteboard", 3, HOST_WB).change === null, "Add to toolbar refuses it");
+  ok(noteUse(on, "whiteboard") === on, "using it is not recorded as recent");
+  const forged = { ...on, pinned: ["whiteboard"] as ToolId[], recent: ["whiteboard"] as ToolId[] };
+  ok(
+    !barSlots(forged, 3, HOST_WB).some((s) => s.tool === "whiteboard"),
+    "a stored pin or recent entry never puts it on the bar",
+  );
+
+  // Switching the feature off mid-session takes it out of More and nothing else.
+  const after = reconcile(on, HOST);
+  ok(!gridItems(after, barSlots(after, 3, HOST), HOST).includes("whiteboard"), "turned off: gone");
+  ok(
+    JSON.stringify(gridItems(after, barSlots(after, 3, HOST), HOST)) ===
+      JSON.stringify(gridItems(off, barSlots(off, 3, HOST), HOST)),
+    "turned off: More is what it was",
+  );
+}
+
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`,
 );

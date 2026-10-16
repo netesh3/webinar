@@ -83,6 +83,8 @@ import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
 import { useAvailableTools } from "./tools";
+import { WhiteboardProvider } from "./whiteboard/whiteboard-context";
+import { WhiteboardStage } from "./whiteboard/whiteboard-stage";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
 import { stageFrame, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
@@ -547,6 +549,11 @@ function ConnectedRoom({
     }),
     [join.identity, join.displayName, liveRole],
   );
+  /* The shared whiteboard, behind the host's `whiteboard` account switch
+   * (JoinResponse.whiteboard — false from a server that predates it). Off, or
+   * moved back to the audience mid-session, means no Whiteboard in More; an
+   * open board is still watched like everybody else watches it. */
+  const canWhiteboard = join.whiteboard === true && liveRole !== "attendee";
 
   const { controls, topic, recording, startedAt, endedAt, status, maxDurationMin } = useSessionControls(
     room,
@@ -972,7 +979,7 @@ function ConnectedRoom({
   // What this person may use. Passed into the layout so it can drop a tool that
   // has gone away and surface one that has appeared — a host turning polls on
   // mid-session has to reach a bar that was laid out before they did.
-  const availableTools = useAvailableTools({ isHost, controls });
+  const availableTools = useAvailableTools({ isHost, controls, whiteboard: canWhiteboard });
   const tools = useToolLayout(availableTools);
   const raisedHands = useRaisedHandsController(tools);
   // Whether a docked panel (Chat, Participants, …) is open and should share
@@ -1083,6 +1090,7 @@ function ConnectedRoom({
       captions: 0,
       sharefile: 0,
       youtube: 0,
+      whiteboard: 0,
     }),
     [chatVisible, qaVisible, chatCount, questionCount, seen, realtime.chat, realtime.questions, mountedAt, me.identity],
   );
@@ -1317,6 +1325,7 @@ function ConnectedRoom({
               bar's slots are its siblings, and a drop that starts in one has to be
               resolved against the other. */}
           <RaisedHandsProvider value={raisedHands}>
+          <WhiteboardProvider canDraw={canWhiteboard} me={me}>
           <ToolDragProvider onPin={tools.pin} onUnpin={tools.unpin}>
             {/* dvh, not vh: on mobile Safari a vh-tall column puts the control bar
                 underneath the browser's own toolbar.
@@ -1343,6 +1352,9 @@ function ConnectedRoom({
                   style={stageFrame(compact, panelOpen)}
                 >
                   <Stage />
+                  {/* The shared whiteboard, over the stage while one is open.
+                      Renders nothing otherwise — see whiteboard-stage.tsx. */}
+                  <WhiteboardStage />
                   {/* Playback controls for a shared video file. Host-only by
                       construction — it lives in the presenter's own shell, and what the
                       audience receives is captured from a hidden element elsewhere, so
@@ -1398,6 +1410,7 @@ function ConnectedRoom({
                 in its overflow-hidden subtree and clip a window being dragged. */}
             <ToolWindows />
           </ToolDragProvider>
+          </WhiteboardProvider>
           </RaisedHandsProvider>
 
           {/* Renders every subscribed audio track. Without this you get video and

@@ -89,6 +89,7 @@ import { MoreButton, MoreGrid } from "./more-grid";
 import { ReactionPicker } from "./reactions";
 import { RecordButton } from "./recording";
 import { useYouTubeStream } from "./stream-to-youtube";
+import { useWhiteboard } from "./whiteboard/whiteboard-context";
 import { CaptionsSession, useCaptionsMoreAction } from "./caption-overlay";
 import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
 import { describeMediaError, isScreenShareCancel } from "@/lib/media-errors";
@@ -234,6 +235,10 @@ export function ControlBar() {
   });
   const captionsAction = useCaptionsMoreAction();
   const youtube = useYouTubeStream();
+  /* The shared whiteboard. Null outside the live room (preview, CDN audience),
+   * and the tool itself is only available behind the host's switch, so with the
+   * feature off nothing below sees it. */
+  const whiteboard = useWhiteboard();
 
   const drag = useToolDrag();
   const capacity = useSlotCapacity();
@@ -246,6 +251,9 @@ export function ControlBar() {
   const usable = usableTools(availableTools, {
     sharefile: !previewChrome && canShare && permissions.canShareScreen && canShareFile(),
     captions: captionsAction !== undefined,
+    // Somebody else's board is open: only one at a time, and theirs to close.
+    whiteboard:
+      !!whiteboard?.canDraw && (!whiteboard.state || whiteboard.isOwner || isHost),
   });
   const slots = barSlots(tools.layout, capacity, usable);
   const grid = gridItems(tools.layout, slots, usable);
@@ -697,6 +705,7 @@ export function ControlBar() {
     if (id === "captions") return captionsAction?.active ? "Captions on" : "Captions off";
     if (id === "sharefile") return fileShare.active ? "Sharing a video file" : "Share a video file";
     if (id === "youtube") return youtube.configured ? "YouTube stream is on" : "Stream to YouTube";
+    if (id === "whiteboard") return whiteboard?.state ? "Stop whiteboard" : "Whiteboard";
     return t.label;
   };
 
@@ -708,6 +717,7 @@ export function ControlBar() {
     if (id === "captions") return captionsAction?.active ?? false;
     if (id === "sharefile") return fileShare.active;
     if (id === "youtube") return youtube.configured;
+    if (id === "whiteboard") return !!whiteboard?.state;
     if (tools.panelTab === id) return true;
     if (tools.poppedOut.includes(id)) return true;
     const win = tools.layout.windows[id];
@@ -771,6 +781,10 @@ export function ControlBar() {
     }
     if (id === "youtube") {
       youtube.open();
+      return;
+    }
+    if (id === "whiteboard") {
+      whiteboard?.toggle();
       return;
     }
     tools.toggle(id);
@@ -1217,6 +1231,18 @@ export function ControlBar() {
                     : "Stream to YouTube",
                   onClick: youtube.open,
                 },
+                ...(whiteboard?.canDraw
+                  ? {
+                      whiteboard: {
+                        active: !!whiteboard.state,
+                        busy: false,
+                        title: whiteboard.state
+                          ? "Close the whiteboard for everyone"
+                          : "Open a whiteboard everyone can see",
+                        onClick: whiteboard.toggle,
+                      },
+                    }
+                  : {}),
               }}
               // A tucked home tool can go back even on a screen with no pin
               // slots — it returns to its own place, not a slot. So a phone

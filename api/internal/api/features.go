@@ -91,6 +91,20 @@ func (s *Server) hostCloudRecording(ctx context.Context, hostID string) bool {
 	return host.HasFeature(types.FeatureCloudRecording)
 }
 
+// hostFeature is whether this webinar's host has a switch, for a response that has
+// to say yes or no rather than refuse. A lookup failure is off, as above.
+func (s *Server) hostFeature(ctx context.Context, hostID, key string) bool {
+	if hostID == "" {
+		return false
+	}
+	host, err := s.store.UserByID(ctx, hostID)
+	if err != nil {
+		s.log.Warn("feature: load host", "host", hostID, "feature", key, "error", err)
+		return false
+	}
+	return host.HasFeature(key)
+}
+
 /* requireHostFeature allows the request only when this host has the switch.
  *
  * The host, not whoever pressed the button, same as requireCloudRecording. Returns

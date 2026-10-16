@@ -2617,6 +2617,16 @@ export const FeatureInstantWebinar = "instant_webinar";
  */
 export const FeatureZoom = "zoom";
 /**
+ *  FeatureWhiteboard is the shared whiteboard (Excalidraw) in the live room:
+ * 	 * a "Whiteboard" cell in the More menu for the host and panelists, and a
+ * 	 * view-only board for the audience while one is open.
+ * 	 *
+ * 	 * Off — the default, including for accounts that already exist — means the
+ * 	 * room has no whiteboard at all and nothing about it changes. The host's
+ * 	 * switch decides for everyone in their session; see JoinResponse.Whiteboard.
+ */
+export const FeatureWhiteboard = "whiteboard";
+/**
  *  Feature is one switch as the admin screen renders it.
  *  *
  *  * Label and Description are here rather than in the browser so that the two cannot
@@ -4736,6 +4746,15 @@ export interface JoinResponse {
    * 	 * hides "Record to the Cloud"; recording on this computer stays.
    */
   cloudRecording: boolean;
+  /**
+   *  Whiteboard is whether this caller may open the shared whiteboard.
+   * 	 *
+   * 	 * The host's switch (FeatureWhiteboard), and only for the stage — the host
+   * 	 * and panelists, who are the ones who can publish a board. The audience is
+   * 	 * not asked: they only ever watch a board somebody on the stage opened, so
+   * 	 * an attendee's join skips the lookup and this stays false for them.
+   */
+  whiteboard: boolean;
   /**
    *  JoinKey is the caller's own registration key, echoed back.
    * 	 *

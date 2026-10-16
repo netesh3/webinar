@@ -281,6 +281,7 @@ export function CdnAttendeeRoom({
       captions: 0,
       sharefile: 0,
       youtube: 0,
+      whiteboard: 0,
     }),
     [chatVisible, qaVisible, chatCount, questionCount, seen, realtime.chat, realtime.questions, mountedAt, me.identity],
   );

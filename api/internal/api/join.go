@@ -682,6 +682,10 @@ func (s *Server) issueToken(
 		CanRecord:   canRecord,
 		// Only the stage is offered the record control, so attendees skip the lookup.
 		CloudRecording: canRecord && s.hostCloudRecording(r.Context(), wb.Host.ID),
+		// The stage only, and not an attendee promoted onto it: they watch the
+		// board like the rest of the audience. See JoinResponse.Whiteboard.
+		Whiteboard: lk.CanPublish(spec.Role) && !spec.Promoted &&
+			s.hostFeature(r.Context(), wb.Host.ID, types.FeatureWhiteboard),
 		JoinKey:        joinKeyFromIdentity(spec.Identity),
 		MaxDurationMin: wb.MaxDurationMin,
 		CdnBroadcast:   cdnBroadcast,
