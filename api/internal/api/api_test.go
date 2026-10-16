@@ -3172,9 +3172,15 @@ func waitRecordingReady(t *testing.T, h *harness, slug, id string) {
 		_, raw := h.do(http.MethodGet, "/api/host/webinars/"+slug+"/recordings", nil)
 		var list []types.Recording
 		h.decode(raw, &list)
+		// A later take on the same webinar is listed as a part of the first.
 		for _, r := range list {
 			if r.ID == id && r.Status == types.RecordingReady {
 				return
+			}
+			for _, p := range r.Parts {
+				if p.ID == id && p.Status == types.RecordingReady {
+					return
+				}
 			}
 		}
 		if time.Now().After(deadline) {
