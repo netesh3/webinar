@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -59,6 +60,16 @@ func drainWhatsAppOutbox(t *testing.T, h *harness, slug string) {
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("drain: status %d body %s", res.StatusCode, raw)
+	}
+	/* The flush that registration starts runs after the response, and is skipped
+	 * while another flush holds the outbox lease — so on its own it does not mean
+	 * anything was sent yet. Send synchronously, once the lease is free. */
+	deadline := time.Now().Add(10 * time.Second)
+	for !h.engage.FlushWhatsAppOutbox(context.Background()) {
+		if time.Now().After(deadline) {
+			t.Fatal("drain: the WhatsApp outbox lease never came free")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
