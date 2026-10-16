@@ -100,6 +100,14 @@ export function TopNav() {
         </Link>
 
         <nav className="hidden items-center gap-1 sm:flex">
+          {!account && (
+            <NavLink
+              href="/pricing"
+              label="Pricing"
+              active={isActive("/pricing")}
+              badge={0}
+            />
+          )}
           {links.map((l) => (
             <NavLink
               key={l.href}

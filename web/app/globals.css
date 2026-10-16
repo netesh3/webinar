@@ -1773,3 +1773,200 @@ body {
     @apply block text-[12.5px] font-medium text-ink-2 mb-1.5;
   }
 }
+
+/* Pricing Page */
+.pricing-page {
+  @apply w-full;
+}
+
+.pricing-hero {
+  @apply bg-gradient-to-b from-brand-soft to-surface py-16 sm:py-24;
+}
+
+.pricing-hero-inner {
+  @apply mx-auto max-w-4xl px-4 sm:px-5 text-center;
+}
+
+.pricing-headline {
+  @apply text-4xl sm:text-5xl font-bold text-ink mb-4 leading-tight;
+}
+
+.pricing-lede {
+  @apply text-xl text-ink-2 mb-8;
+}
+
+.pricing-toggle-container {
+  @apply flex justify-center mb-12;
+}
+
+.pricing-toggle {
+  @apply inline-flex rounded-lg border border-line bg-surface p-1 gap-1;
+}
+
+.pricing-toggle-btn {
+  @apply px-6 py-2.5 rounded-md text-sm font-medium transition-colors relative;
+  @apply text-ink-2 hover:text-ink;
+}
+
+.pricing-toggle-btn.active {
+  @apply bg-brand text-white shadow-sm;
+}
+
+.pricing-badge {
+  @apply absolute -top-2 -right-2 bg-live text-white text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap;
+}
+
+.pricing-tiers {
+  @apply py-16 sm:py-24 px-4 sm:px-5;
+}
+
+.pricing-grid {
+  @apply mx-auto max-w-7xl grid grid-cols-1 md:grid-cols-3 gap-8;
+}
+
+.pricing-card {
+  @apply flex flex-col rounded-2xl border border-line bg-surface p-8 relative;
+  @apply transition-all hover:shadow-lg hover:border-brand-line;
+}
+
+.pricing-card.highlighted {
+  @apply border-brand shadow-lg md:scale-105;
+  box-shadow: 0 10px 25px -5px rgba(11, 92, 255, 0.15);
+  border-color: rgba(11, 92, 255, 0.5);
+}
+
+.pricing-card-badge {
+  @apply absolute -top-4 left-1/2 -translate-x-1/2;
+  @apply bg-brand text-white text-xs font-bold px-4 py-1 rounded-full;
+}
+
+.pricing-card-header {
+  @apply mb-6 pb-6 border-b border-line;
+}
+
+.pricing-tier-name {
+  @apply text-2xl font-bold text-ink mb-2;
+}
+
+.pricing-tier-desc {
+  @apply text-sm text-ink-2 mb-2;
+}
+
+.pricing-capacity {
+  @apply text-sm font-medium text-brand;
+}
+
+.pricing-card-price {
+  @apply mb-6 pb-6 border-b border-line flex items-baseline gap-1 flex-wrap;
+}
+
+.pricing-currency {
+  @apply text-xl font-semibold text-ink;
+}
+
+.pricing-amount {
+  @apply text-5xl font-bold text-ink;
+}
+
+.pricing-billing {
+  @apply text-ink-2 text-sm ml-1;
+}
+
+.pricing-savings {
+  @apply w-full text-sm font-medium text-ok mt-2;
+}
+
+.pricing-card-cta {
+  @apply mb-8;
+}
+
+.pricing-btn {
+  @apply w-full px-6 py-3 rounded-lg font-medium transition-all text-center block;
+  @apply border border-transparent;
+}
+
+.pricing-btn.primary {
+  @apply bg-brand text-white hover:bg-brand-hover;
+}
+
+.pricing-btn.secondary {
+  @apply bg-brand-soft text-brand hover:bg-brand/10 border-brand/20;
+}
+
+.pricing-trial-info {
+  @apply text-xs text-ink-3 mt-2 text-center;
+}
+
+.pricing-card-features {
+  @apply pt-6;
+}
+
+.pricing-features-label {
+  @apply text-xs font-semibold text-ink-2 uppercase mb-4 tracking-wider;
+}
+
+.pricing-features-list {
+  @apply space-y-3;
+}
+
+.pricing-feature {
+  @apply flex items-start gap-3 text-sm text-ink-2;
+}
+
+.pricing-feature-icon {
+  @apply w-5 h-5 text-ok flex-shrink-0 mt-0.5;
+}
+
+/* FAQ Section */
+.pricing-faq {
+  @apply py-16 sm:py-24 bg-surface-2 px-4 sm:px-5;
+}
+
+.pricing-faq-inner {
+  @apply mx-auto max-w-4xl;
+}
+
+.pricing-faq-title {
+  @apply text-3xl sm:text-4xl font-bold text-ink text-center mb-12;
+}
+
+.pricing-faq-grid {
+  @apply grid grid-cols-1 md:grid-cols-2 gap-8;
+}
+
+.pricing-faq-item {
+  @apply bg-surface rounded-xl p-6;
+}
+
+.pricing-faq-q {
+  @apply text-lg font-semibold text-ink mb-3;
+}
+
+.pricing-faq-a {
+  @apply text-sm text-ink-2 leading-relaxed;
+}
+
+/* CTA Band */
+.pricing-cta-band {
+  @apply py-16 sm:py-24 bg-brand text-white px-4 sm:px-5;
+}
+
+.pricing-cta-inner {
+  @apply mx-auto max-w-2xl text-center;
+}
+
+.pricing-cta-band h2 {
+  @apply text-3xl sm:text-4xl font-bold mb-4;
+}
+
+.pricing-cta-band p {
+  @apply text-lg mb-8 opacity-90;
+}
+
+.pricing-cta-btn {
+  @apply inline-flex px-8 py-3 rounded-lg bg-white text-brand font-semibold transition-all;
+}
+
+.pricing-cta-btn:hover {
+  opacity: 0.9;
+}
