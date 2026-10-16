@@ -52,6 +52,9 @@ type Module struct {
 	whatsapp *wa.Client
 	// mail sends the coach's reply digest. Nil until UseMail; the digest is skipped.
 	mail notify.Transport
+	// blobs holds our copies of WhatsApp attachments. Nil until UseMediaStore (or
+	// with recording storage off); attachments then come from Graph each time.
+	blobs MediaBlobs
 }
 
 func New(cfg config.Config, st *store.Store, log *slog.Logger) *Module {
@@ -337,4 +340,6 @@ func (s *Module) Tick(ctx context.Context) {
 	s.flushWhatsAppOutbox(ctx)
 	s.sendReplyDigests(ctx)
 	s.checkWhatsAppTokens(ctx)
+	s.copyWhatsAppMedia(ctx)
+	s.expireWhatsAppMedia(ctx)
 }

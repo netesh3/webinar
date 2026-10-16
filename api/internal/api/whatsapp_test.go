@@ -88,6 +88,25 @@ type fakeGraph struct {
 
 	// created is every template submitted for approval; each is then listed as PENDING.
 	created []map[string]any
+
+	// media is what Graph still holds, by media id. An id not in it answers the way
+	// Meta does once an attachment is gone: code 100, subcode 33.
+	media      map[string][]byte
+	mediaCalls int
+}
+
+// holdMedia makes Graph serve bytes for a media id; nil forgets it.
+func (g *fakeGraph) holdMedia(id string, body []byte) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.media == nil {
+		g.media = map[string][]byte{}
+	}
+	if body == nil {
+		delete(g.media, id)
+		return
+	}
+	g.media[id] = body
 }
 
 // tokenHealth sets what Meta's /debug_token reports about the host's token.
@@ -112,6 +131,30 @@ func newFakeGraph(t *testing.T) *fakeGraph {
 				data = map[string]any{"is_valid": true, "expires_at": 0}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+		case strings.HasPrefix(r.URL.Path, "/media-"):
+			g.mediaCalls++
+			id := strings.TrimPrefix(r.URL.Path, "/media-")
+			body, ok := g.media[id]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "image/jpeg")
+			_, _ = w.Write(body)
+		case strings.HasPrefix(r.URL.Path, "/9") && r.Method == http.MethodGet:
+			g.mediaCalls++
+			id := strings.TrimPrefix(r.URL.Path, "/")
+			if _, ok := g.media[id]; !ok {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
+					"message": "Unsupported get request. Object with ID '" + id + "' does not exist",
+					"type":    "GraphMethodException", "code": 100, "error_subcode": 33,
+				}})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"url": "http://" + r.Host + "/media-" + id, "mime_type": "image/jpeg", "id": id,
+			})
 		case r.URL.Path == "/oauth/access_token":
 			g.exchanged = r.URL.Query().Get("code")
 			_, g.redirectURI = r.URL.Query()["redirect_uri"]

@@ -663,6 +663,10 @@ const maxWhatsAppMedia = 100 << 20
  * The browser asks for the message id, not Meta's media id, and never sees the
  * host's token. The row has to belong to the caller; another host's id is a 404,
  * the same answer as a missing message.
+ *
+ * Our own copy is served when there is one (see wa_media.go). A copy past retention,
+ * or an attachment Meta no longer has, is 410 media_expired. Otherwise the file is
+ * fetched from Graph, as it was before copies existed.
  */
 func (s *Module) handleCRMMessageMedia(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
@@ -674,6 +678,21 @@ func (s *Module) handleCRMMessageMedia(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, r, "crm message media", err)
 		return
+	}
+	if s.blobs != nil {
+		copied, err := s.store.MessageMediaCopy(r.Context(), user.ID, chi.URLParam(r, "id"))
+		switch {
+		case err == nil && copied.Key != "":
+			if s.serveMediaCopy(w, r, att, copied) {
+				return
+			}
+		case err == nil && copied.Expired:
+			mediaExpired(w)
+			return
+		case err != nil && !errors.Is(err, store.ErrNotFound):
+			s.fail(w, r, "crm message media copy", err)
+			return
+		}
 	}
 	if s.whatsapp == nil {
 		httpx.Error(w, http.StatusServiceUnavailable, "whatsapp_unset",
@@ -687,6 +706,10 @@ func (s *Module) handleCRMMessageMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	file, err := s.whatsapp.OpenMedia(r.Context(), user.WhatsAppToken, att.ID)
 	if err != nil {
+		if errors.Is(err, wa.ErrMediaGone) {
+			mediaExpired(w)
+			return
+		}
 		if whatsappAPIError(w, err) {
 			s.noteWhatsAppError(r.Context(), user.ID, user.WhatsAppToken, err)
 			return
@@ -711,6 +734,32 @@ func (s *Module) handleCRMMessageMedia(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, max-age=300")
 	w.Header().Set("Content-Disposition", contentDisposition(att.Filename, download))
 	_, _ = io.Copy(w, io.LimitReader(file.Body, maxWhatsAppMedia))
+}
+
+func mediaExpired(w http.ResponseWriter) {
+	httpx.Error(w, http.StatusGone, "media_expired", "This attachment has expired.")
+}
+
+// serveMediaCopy streams our stored copy. False means the file could not be
+// opened, and the caller falls back to Graph.
+func (s *Module) serveMediaCopy(w http.ResponseWriter, r *http.Request, att types.CRMAttachment, copied crmstore.MediaCopy) bool {
+	file, _, err := s.blobs.Open(r.Context(), copied.Key)
+	if err != nil {
+		s.log.Warn("whatsapp media copy missing", "error", err, "key", copied.Key)
+		return false
+	}
+	defer file.Close()
+	mime := copied.MimeType
+	if mime == "" {
+		mime = att.MimeType
+	}
+	ctype, download := safeMediaType(mime)
+	w.Header().Set("Content-Type", ctype)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("Content-Disposition", contentDisposition(att.Filename, download))
+	http.ServeContent(w, r, "", time.Time{}, file)
+	return true
 }
 
 func safeMediaType(mime string) (string, bool) {

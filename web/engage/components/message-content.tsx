@@ -87,6 +87,35 @@ export function MessageContent({ message }: { message: CRMMessage }) {
   }
 }
 
+/* Why an attachment did not load. An <img> error carries no status, so the
+ * endpoint is asked once more for its error code. */
+function useMediaFailure(messageId: string | undefined, noun: string) {
+  const [reason, setReason] = useState<string | null>(null);
+  const fail = () => {
+    setReason(`${noun} couldn't load`);
+    if (!messageId) return;
+    fetch(messageMediaURL(messageId), { credentials: "include" })
+      .then((res) => (res.ok ? null : res.json()))
+      .then((body: { error?: string } | null) => {
+        if (body?.error) setReason(mediaFailureText(body.error, noun));
+      })
+      .catch(() => {});
+  };
+  return { reason, fail };
+}
+
+export function mediaFailureText(code: string, noun: string): string {
+  switch (code) {
+    case "media_expired":
+      return `${noun} expired on WhatsApp`;
+    case "whatsapp_token_rejected":
+    case "whatsapp_not_connected":
+      return `Reconnect WhatsApp to see this ${noun.toLowerCase()}`;
+    default:
+      return `${noun} couldn't load`;
+  }
+}
+
 function Photo({
   messageId,
   caption,
@@ -94,10 +123,10 @@ function Photo({
   messageId?: string;
   caption?: string;
 }) {
-  const [broken, setBroken] = useState(false);
+  const { reason, fail } = useMediaFailure(messageId, "Photo");
   return (
     <span className="grid gap-1.5">
-      {messageId && !broken ? (
+      {messageId && !reason ? (
         // The bytes come from our API, authenticated by the session cookie.
         // next/image would proxy them without that cookie.
         // eslint-disable-next-line @next/next/no-img-element
@@ -105,10 +134,10 @@ function Photo({
           src={messageMediaURL(messageId)}
           alt="Photo"
           className="block max-h-64 max-w-full rounded-md object-contain"
-          onError={() => setBroken(true)}
+          onError={fail}
         />
       ) : (
-        <span className="font-medium">Photo</span>
+        <span className="font-medium">{reason ?? "Photo"}</span>
       )}
       {caption && <span className="whitespace-pre-wrap">{caption}</span>}
     </span>
@@ -116,15 +145,15 @@ function Photo({
 }
 
 function Sticker({ messageId }: { messageId?: string }) {
-  const [broken, setBroken] = useState(false);
-  if (!messageId || broken) return <span className="font-medium">Sticker</span>;
+  const { reason, fail } = useMediaFailure(messageId, "Sticker");
+  if (!messageId || reason) return <span className="font-medium">{reason ?? "Sticker"}</span>;
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={messageMediaURL(messageId)}
       alt="Sticker"
       className="block h-28 w-28 object-contain"
-      onError={() => setBroken(true)}
+      onError={fail}
     />
   );
 }
