@@ -1,29 +1,5 @@
 import type { NextConfig } from "next";
-import { createRequire } from "node:module";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
-
-const require = createRequire(import.meta.url);
-const root = path.dirname(fileURLToPath(import.meta.url));
-
-/* onnxruntime-web ships "bundle" builds that pull .wasm in via import.meta.url.
- * Those asyncify/jsep files are >25 MiB and Cloudflare Workers rejects them.
- * Force the "extern wasm" builds and load binaries from /onnxruntime instead. */
-const ortExtern = {
-  "onnxruntime-web": path.join(
-    root,
-    "node_modules/onnxruntime-web/dist/ort.min.mjs",
-  ),
-  "onnxruntime-web/webgpu": path.join(
-    root,
-    "node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs",
-  ),
-  "onnxruntime-web/wasm": path.join(
-    root,
-    "node_modules/onnxruntime-web/dist/ort.wasm.min.mjs",
-  ),
-} as const;
 
 /** Serve the whole app under a sub-path, e.g. "/platform/webcast".
  *
@@ -71,19 +47,15 @@ const nextConfig: NextConfig = {
       "./node_modules/@img/**",
     ],
   },
-  /* Turbopack needs a sibling config whenever webpack is set (Next 16). Alias
-   * onnxruntime to the extern-wasm entrypoints so oversized .wasm never lands
-   * in `_next/static/media/`. */
-  turbopack: {
-    resolveAlias: { ...ortExtern },
-  },
+  /* Sibling turbopack config required whenever webpack is set (Next 16).
+   * Production uses `next build --webpack` so the export condition below
+   * selects onnxruntime-web's extern-wasm builds (no embedded >25 MiB .wasm).
+   * Runtime still loads binaries from /onnxruntime/ (local-captions, humanseg). */
+  turbopack: {},
   webpack: (config) => {
     config.resolve = config.resolve ?? {};
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      ...ortExtern,
-    };
-    // Prefer package exports that omit embedded wasm (see onnxruntime-web package.json).
+    // Prefer package exports that omit embedded wasm (see onnxruntime-web
+    // package.json "onnxruntime-web-use-extern-wasm" conditions).
     config.resolve.conditionNames = [
       "onnxruntime-web-use-extern-wasm",
       ...(config.resolve.conditionNames ?? [
@@ -94,15 +66,6 @@ const nextConfig: NextConfig = {
         "default",
       ]),
     ];
-    // Belt-and-suspenders: never emit the Workers-illegal variants.
-    const webpack = require("webpack") as typeof import("webpack");
-    config.plugins = config.plugins ?? [];
-    config.plugins.push(
-      new webpack.IgnorePlugin({
-        resourceRegExp:
-          /ort-wasm-simd-threaded\.(asyncify|jsep|jspi)\.wasm$/,
-      }),
-    );
     return config;
   },
   // Local same-origin `/api` is handled by app/api/[...path]/route.ts (cookie
