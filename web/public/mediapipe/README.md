@@ -70,7 +70,7 @@ against one vendored `wasm/` — which surfaced as intermittent
 forces a single copy with:
 
 ```json
-"overrides": { "@mediapipe/tasks-vision": "1.0.1" }
+"overrides": { "@mediapipe/tasks-vision": "1.1.1" }
 ```
 
 Keep that override in lockstep with the top-level dependency when bumping.

@@ -66,10 +66,7 @@ export type Matte = { alpha: Float32Array; w: number; h: number };
 let ortModule: Promise<Ort> | null = null;
 function loadOrt(): Promise<Ort> {
   ortModule ??= (
-    import(
-      // @ts-expect-error -- no reachable types; see Ort above.
-      "onnxruntime-web"
-    ) as Promise<Ort>
+    import("onnxruntime-web") as Promise<unknown> as Promise<Ort>
   ).then((ort) => {
     ort.env.wasm.wasmPaths = ORT_WASM_PATH;
     ort.env.logLevel = "error";

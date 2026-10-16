@@ -8,8 +8,7 @@ Copied from `node_modules/onnxruntime-web/dist/` after installing
 `@huggingface/transformers`. Refresh after bumping that package:
 
 ```sh
-cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.{wasm,mjs} \
-   node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.{wasm,mjs} \
+cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded*.{wasm,mjs} \
    public/onnxruntime/
 ```
 
