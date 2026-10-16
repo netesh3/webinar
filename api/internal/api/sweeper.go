@@ -7,6 +7,7 @@ import (
 
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -32,7 +33,20 @@ const (
 	// Recording retention deletes files, and once every five minutes is plenty; its lease
 	// is never released, which is what makes it run at most that often.
 	retentionEvery = 5 * time.Minute
+	// The inbox cutoff is in days, so once a day is enough.
+	emailRetentionEvery = 24 * time.Hour
 )
+
+func (s *Server) sweepHostEmails(ctx context.Context) {
+	n, err := s.store.PruneHostEmails(ctx, time.Now().Add(-store.HostEmailRetention), 5000)
+	if err != nil {
+		s.log.Error("email retention: prune failed", "error", err)
+		return
+	}
+	if n > 0 {
+		s.log.Info("email retention: pruned inbox mail", "rows", n)
+	}
+}
 
 // StartMeetingLimitSweeper runs RunTick every tickEvery until ctx is done.
 func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
@@ -89,6 +103,9 @@ func (s *Server) RunTick(ctx context.Context) bool {
 	}
 	if _, due, err := s.store.TryLease(ctx, "engagement-retention", retentionEvery); err == nil && due {
 		s.sweepEngagementEvents(ctx)
+	}
+	if _, due, err := s.store.TryLease(ctx, "email-retention", emailRetentionEvery); err == nil && due {
+		s.sweepHostEmails(ctx)
 	}
 	return true
 }
