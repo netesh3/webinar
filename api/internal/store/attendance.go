@@ -12,13 +12,71 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
+// AttendanceTouch is one person to record as present.
+type AttendanceTouch struct {
+	Identity       string
+	RegistrationID string
+	Name           string
+}
+
 func (s *Store) TouchAttendance(ctx context.Context, slug, identity, registrationID, name string) error {
-	if identity == "" {
+	return s.touchAttendance(ctx, slug, []AttendanceTouch{{Identity: identity, RegistrationID: registrationID, Name: name}})
+}
+
+// TouchAttendanceMany records everyone the SFU roster currently shows. It takes
+// participants rather than bare identities so the name travels with them: these
+// rows have no registration to look a name up in later.
+func (s *Store) TouchAttendanceMany(ctx context.Context, slug string, seen []types.LiveParticipant) error {
+	touches := make([]AttendanceTouch, 0, len(seen))
+	for _, p := range seen {
+		touches = append(touches, AttendanceTouch{Identity: p.Identity, Name: p.Name})
+	}
+	return s.touchAttendance(ctx, slug, touches)
+}
+
+// attendanceTouchEvery is how stale last_seen_at may get before a touch rewrites
+// it. The host's roster poll touches every attendee every few seconds; nothing
+// reads last_seen_at that finely (watch time comes from attendance_visits), so
+// rewriting the row each time only produced dead tuples.
+const attendanceTouchEvery = time.Minute
+
+/* touchAttendance upserts a batch in one statement.
+ *
+ * Identities repeat within a batch only by accident, but ON CONFLICT refuses to touch a
+ * row twice in one statement, so they are merged first: the first non-empty name and
+ * registration win.
+ *
+ * An existing row is rewritten only when it gains something — a name or registration it
+ * lacked — or when last_seen_at is older than attendanceTouchEvery. Otherwise the
+ * conflict is a no-op and the row is not rewritten. */
+func (s *Store) touchAttendance(ctx context.Context, slug string, touches []AttendanceTouch) error {
+	var ids, regs, names []string
+	index := map[string]int{}
+	for _, t := range touches {
+		if t.Identity == "" {
+			continue
+		}
+		name := strings.TrimSpace(t.Name)
+		if i, ok := index[t.Identity]; ok {
+			if regs[i] == "" {
+				regs[i] = t.RegistrationID
+			}
+			if names[i] == "" {
+				names[i] = name
+			}
+			continue
+		}
+		index[t.Identity] = len(ids)
+		ids = append(ids, t.Identity)
+		regs = append(regs, t.RegistrationID)
+		names = append(names, name)
+	}
+	if len(ids) == 0 {
 		return nil
 	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO attendance (webinar_id, identity, registration_id, name)
-		SELECT w.id, $2,
+		SELECT w.id, p.identity,
 		       /* The registration, from the caller or from the identity itself.
 		        *
 		        * An attendee identity IS "att_" plus their join key (see attendeeIdentity in
@@ -33,34 +91,27 @@ func (s *Store) TouchAttendance(ctx context.Context, slug, identity, registratio
 		        * Resolving the link here means the row finds the registrant's real name AND
 		        * their email, which a display name never carried. */
 		       COALESCE(
-		         NULLIF($3,'')::uuid,
+		         NULLIF(p.registration_id,'')::uuid,
 		         (SELECT r.id FROM registrations r
 		           WHERE r.webinar_id = w.id
-		             AND starts_with($2, 'att_')
-		             AND r.join_key = substring($2 from 5))
+		             AND starts_with(p.identity, 'att_')
+		             AND r.join_key = substring(p.identity from 5))
 		       ),
-		       $4
-		  FROM webinars w WHERE w.slug = $1
+		       p.name
+		  FROM webinars w
+		 CROSS JOIN unnest($2::text[], $3::text[], $4::text[]) AS p(identity, registration_id, name)
+		 WHERE w.slug = $1
 		ON CONFLICT (webinar_id, identity) DO UPDATE
 		   SET last_seen_at = now(),
 		       -- A later touch usually knows less than the first one: a name can arrive empty.
 		       -- Fill in what is still blank, never overwrite what is already there.
 		       registration_id = COALESCE(attendance.registration_id, EXCLUDED.registration_id),
-		       name = CASE WHEN attendance.name = '' THEN EXCLUDED.name ELSE attendance.name END`,
-		slug, identity, registrationID, strings.TrimSpace(name))
+		       name = CASE WHEN attendance.name = '' THEN EXCLUDED.name ELSE attendance.name END
+		 WHERE attendance.last_seen_at < now() - $5::interval
+		    OR (attendance.registration_id IS NULL AND EXCLUDED.registration_id IS NOT NULL)
+		    OR (attendance.name = '' AND EXCLUDED.name <> '')`,
+		slug, ids, regs, names, attendanceTouchEvery)
 	return err
-}
-
-// TouchAttendanceMany records everyone the SFU roster currently shows. It takes
-// participants rather than bare identities so the name travels with them: these
-// rows have no registration to look a name up in later.
-func (s *Store) TouchAttendanceMany(ctx context.Context, slug string, seen []types.LiveParticipant) error {
-	for _, p := range seen {
-		if err := s.TouchAttendance(ctx, slug, p.Identity, "", p.Name); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 /* OpenVisit records an arrival, and is safe to call twice for the same one.
