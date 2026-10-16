@@ -28,9 +28,10 @@ import (
  * closed between paying and the callback. store.FulfilBillingOrder makes the two
  * one: whichever lands first grants, the other is a no-op.
  *
- * Granting is the whole of what fulfilment does to the account: can_host = true.
- * Nothing here ever sets it back to false — an admin's toggle is still the only
- * way hosting is taken away.
+ * Fulfilment does two things to the account: can_host = true, and the plan that
+ * was bought goes into subscriptions (see store.FulfilBillingOrder), which is what
+ * sets its attendee ceiling. Nothing here ever sets can_host back to false — an
+ * admin's toggle is still the only way hosting is taken away.
  */
 
 var gstinPattern = regexp.MustCompile(`^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$`)
@@ -39,8 +40,8 @@ func (s *Server) billingCatalogue() types.BillingCatalogue {
 	plans := make([]types.BillingPlan, 0, len(billing.Plans))
 	for _, p := range billing.Plans {
 		bp := types.BillingPlan{
-			ID: p.ID, Name: p.Name, Who: p.Who, Attendees: p.Attendees,
-			Features: p.Features, Popular: p.Popular,
+			ID: string(p.ID), Name: p.Name, Who: p.Who, Attendees: p.Attendees(),
+			Features: p.AllFeatures(), Popular: p.Popular,
 		}
 		for _, cur := range []string{billing.INR, billing.USD} {
 			for _, per := range []string{billing.Monthly, billing.Yearly} {
@@ -102,7 +103,7 @@ func (s *Server) handleCreateBillingOrder(w http.ResponseWriter, r *http.Request
 		Notes: map[string]string{
 			"user_id": user.ID,
 			"email":   user.Email,
-			"plan":    quote.Plan.ID,
+			"plan":    string(quote.Plan.ID),
 			"period":  quote.Period,
 		},
 	})
@@ -113,7 +114,7 @@ func (s *Server) handleCreateBillingOrder(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if _, err := s.store.CreateBillingOrder(r.Context(), store.BillingOrder{
-		UserID: user.ID, Plan: quote.Plan.ID, Period: quote.Period, Currency: quote.Currency,
+		UserID: user.ID, Plan: string(quote.Plan.ID), Period: quote.Period, Currency: quote.Currency,
 		Amount: quote.Total, Tax: quote.Tax, RazorpayOrderID: order.ID, GSTIN: gstin,
 	}); err != nil {
 		s.fail(w, r, "billing: record order", err)
@@ -127,7 +128,7 @@ func (s *Server) handleCreateBillingOrder(w http.ResponseWriter, r *http.Request
 	httpx.JSON(w, http.StatusCreated, types.BillingCheckout{
 		OrderID:      order.ID,
 		KeyID:        s.cfg.RazorpayKeyID,
-		Plan:         quote.Plan.ID,
+		Plan:         string(quote.Plan.ID),
 		PlanName:     quote.Plan.Name,
 		Period:       quote.Period,
 		Currency:     quote.Currency,
@@ -266,7 +267,7 @@ func billingStatus(o store.BillingOrder) types.BillingStatus {
 	st := types.BillingStatus{Plan: o.Plan, Period: o.Period}
 	if p, ok := billing.FindPlan(o.Plan); ok {
 		st.PlanName = p.Name
-		st.Attendees = p.Attendees
+		st.Attendees = p.Attendees()
 	}
 	if o.PaidUntil != nil {
 		st.PaidUntil = o.PaidUntil.UTC().Format(time.RFC3339)

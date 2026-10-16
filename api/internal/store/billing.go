@@ -8,6 +8,10 @@ import (
 
 /* Billing orders. See migrations/0100_billing.sql.
  *
+ * billing_orders is the payment ledger: every checkout, what it cost, and the
+ * Razorpay ids. subscriptions (migrations/0101) is the account's CURRENT plan,
+ * which is what the API enforces. Fulfilment writes both.
+ *
  * Fulfilment is the only path in the product, besides an admin's toggle and
  * PromoteAdmins, that sets can_host. It runs inside one transaction with the
  * order row locked, so the browser callback and the webhook arriving together
@@ -131,6 +135,22 @@ func (s *Store) FulfilBillingOrder(ctx context.Context, razorpayOrderID, payment
 		return BillingOrder{}, User{}, err
 	}
 
+	/* The plan bought becomes the account's plan, active until the end of the period
+	 * this payment covers. A purchase replaces whatever plan was there, including
+	 * one an admin assigned: what somebody paid for is what they get. */
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO subscriptions (user_id, plan, status, current_period_end, provider)
+		VALUES ($1::uuid, $2, 'active', $3, 'razorpay')
+		ON CONFLICT (user_id) DO UPDATE
+		   SET plan = EXCLUDED.plan,
+		       status = 'active',
+		       current_period_end = EXCLUDED.current_period_end,
+		       provider = 'razorpay',
+		       updated_at = now()`, o.UserID, o.Plan, o.PaidUntil); err != nil {
+		return BillingOrder{}, User{}, err
+	}
+
+	// RETURNING reads the subscription just written: same transaction, later statement.
 	u, err := scanUser(tx.QueryRow(ctx,
 		`UPDATE users SET can_host = true WHERE id = $1 RETURNING `+userColumns, o.UserID))
 	if err != nil {
