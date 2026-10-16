@@ -1994,23 +1994,39 @@ body {
 
 /* Dark Mode */
 html.dark {
-  @theme {
-    --color-page: #0d0d11;
-    --color-surface: #16161c;
-    --color-surface-2: #202028;
+  color-scheme: dark;
+  --color-page: #0d0d11;
+  --color-surface: #16161c;
+  --color-surface-2: #202028;
 
-    --color-ink: #f0f0f2;
-    --color-ink-2: #b8bcc4;
-    --color-ink-3: #8a919b;
+  --color-ink: #f0f0f2;
+  --color-ink-2: #b8bcc4;
+  --color-ink-3: #8a919b;
 
-    --color-line: #33333d;
-    --color-line-2: #45454f;
+  --color-line: #33333d;
+  --color-line-2: #45454f;
 
-    --color-brand: #5a9eff;
-    --color-brand-hover: #7aafff;
-    --color-brand-soft: #0d2d5c;
-    --color-brand-line: #2d5a99;
-  }
+  --color-brand: #5a9eff;
+  --color-brand-hover: #7aafff;
+  --color-brand-soft: #0d2d5c;
+  --color-brand-line: #2d5a99;
+}
+
+html.dark .home {
+  --home-ink: #eef2f8;
+  --home-ink-2: #b4bfcf;
+  --home-ink-3: #8592a6;
+  --home-mist: #1a2333;
+  --home-mist-2: #243047;
+  --home-paper: #0d1118;
+  --home-accent: #5a9eff;
+  --home-accent-hover: #7aafff;
+  --home-accent-soft: #14284a;
+}
+
+html.dark .home-section-alt,
+html.dark .home-legal-footer {
+  background: var(--home-mist);
 }
 
 html.dark .pricing-card {

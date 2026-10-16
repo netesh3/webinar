@@ -18,25 +18,19 @@ export function ThemeSwitcher() {
         : "light";
     }
 
-    console.log("[ThemeSwitcher] Applying theme:", newTheme, "effective:", effectiveTheme);
 
     if (effectiveTheme === "dark") {
       html.classList.add("dark");
-      console.log("[ThemeSwitcher] Added dark class, classList:", html.className);
     } else {
       html.classList.remove("dark");
-      console.log("[ThemeSwitcher] Removed dark class, classList:", html.className);
     }
 
     localStorage.setItem("theme", newTheme);
-    console.log("[ThemeSwitcher] Saved to localStorage:", newTheme);
   };
 
   useEffect(() => {
-    console.log("[ThemeSwitcher] Mounting");
     // Apply immediately on mount for saved theme
     const saved = localStorage.getItem("theme") as "light" | "dark" | "system" | null;
-    console.log("[ThemeSwitcher] Saved theme from localStorage:", saved);
     if (saved) {
       setTheme(saved);
       applyTheme(saved);
@@ -44,7 +38,6 @@ export function ThemeSwitcher() {
       // Default to system preference
       const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       const initialTheme = isDark ? "dark" : "light";
-      console.log("[ThemeSwitcher] Using system preference:", initialTheme);
       setTheme(initialTheme);
       applyTheme(initialTheme);
     }
@@ -52,7 +45,6 @@ export function ThemeSwitcher() {
   }, []);
 
   const toggleTheme = () => {
-    console.log("[ThemeSwitcher] Toggle clicked, current theme:", theme);
     let newTheme: "light" | "dark" | "system";
 
     if (theme === "light") {
@@ -63,7 +55,6 @@ export function ThemeSwitcher() {
       newTheme = "light";
     }
 
-    console.log("[ThemeSwitcher] New theme:", newTheme);
     setTheme(newTheme);
     applyTheme(newTheme);
   };
