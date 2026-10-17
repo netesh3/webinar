@@ -62,6 +62,8 @@ func (s *Module) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, ho
 		return
 	}
 
+	params := s.effectiveParams(ctx, host.ID, reminder.Template, reminder.Language,
+		tokenParams(reminder.Params), types.NotifyWhatsAppReplay)
 	var messages int
 	for _, p := range people {
 		if p.Phone == "" || !p.OptIn {
@@ -79,7 +81,7 @@ func (s *Module) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, ho
 			RegistrationID:   p.RegistrationID,
 			TemplateName:     reminder.Template,
 			TemplateLanguage: reminder.Language,
-			TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, url, 0, s.replayLinks(ctx, wb.ID, p.RegistrationID, reminder.Params)),
+			TemplateParams:   resolveParamValues(params, contact, wb, wb.Host.Name, url, 0, s.replayLinks(ctx, wb.ID, p.RegistrationID, paramFields(params))),
 			LinkURL:          url,
 			DueAt:            due,
 		}); err != nil {

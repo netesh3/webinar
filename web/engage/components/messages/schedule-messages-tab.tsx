@@ -422,6 +422,7 @@ export const ScheduleMessagesTab = forwardRef<
           <WriteWordingDialog
             connected={connected}
             templates={templates}
+            fields={fields}
             onClose={() => setWriting(false)}
           onCreated={() => setTick((n) => n + 1)}
           onUse={applyWording}

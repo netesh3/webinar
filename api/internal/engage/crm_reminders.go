@@ -208,7 +208,9 @@ func (s *Module) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", unusableMessage(tmpl))
 			return
 		}
-		if len(want.Params) != tmpl.Variables {
+		// No values means "follow the template's mapping", which templateDefaults keeps
+		// to fields this message has.
+		if len(want.Params) != 0 && len(want.Params) != tmpl.Variables {
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_params",
 				"That template needs exactly "+strconv.Itoa(tmpl.Variables)+" value(s) filling in.")
 			return
@@ -347,6 +349,7 @@ func (s *Module) queueWhatsApp(
 	if !ok {
 		return
 	}
+	params := s.effectiveParams(ctx, hostID, reminder.Template, reminder.Language, tokenParams(reminder.Params), kind)
 	join := s.joinLink(ctx, wb.ID, registrationID)
 	links := mergeLinks{Webinar: s.webinarPage(wb.ID), Join: join}
 	if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
@@ -357,7 +360,7 @@ func (s *Module) queueWhatsApp(
 		RegistrationID:   registrationID,
 		TemplateName:     reminder.Template,
 		TemplateLanguage: reminder.Language,
-		TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, "", offset, links),
+		TemplateParams:   resolveParamValues(params, contact, wb, wb.Host.Name, "", offset, links),
 		LinkURL:          join,
 		DueAt:            due,
 		OffsetMin:        offset,

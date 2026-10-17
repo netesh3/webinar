@@ -75,6 +75,8 @@ type wordingPlan struct {
 	coupon      string
 	cardFileIDs []string
 	cardAspect  string
+	// params is the field mapping saved with the template: one per blank, or none.
+	params []types.CRMParam
 }
 
 type wordingError struct{ code, msg string }
@@ -147,6 +149,12 @@ func planWording(req types.CRMWordingRequest, base string) (wordingPlan, error) 
 	examples, err := bodyExamples(body)
 	if err != nil {
 		return wordingPlan{}, wrong("invalid_body", "%s", err.Error())
+	}
+	plan.params = wordingParams(body, len(examples), req.Params)
+	for i, p := range plan.params {
+		if ex := paramExample(p); ex != "" {
+			examples[i] = ex
+		}
 	}
 	plan.tmpl.Body, plan.tmpl.Examples = body, examples
 

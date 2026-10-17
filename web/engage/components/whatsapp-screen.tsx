@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/api";
 import {
   FeatureWhatsAppCRM,
   type CRMSetup,
+  type CRMMergeField,
   type CRMTag,
   type CRMTemplate,
 } from "@/lib/api-types";
@@ -98,6 +99,7 @@ export function WhatsAppScreen() {
   const reloadSetup = useCallback(() => setSetupTick((n) => n + 1), []);
 
   const [templates, setTemplates] = useState<CRMTemplate[] | null>(null);
+  const [fields, setFields] = useState<CRMMergeField[]>([]);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [tags, setTags] = useState<CRMTag[] | null>(null);
@@ -147,6 +149,7 @@ export function WhatsAppScreen() {
       .then((res) => {
         if (cancelled) return;
         setTemplates(res.templates);
+        setFields(res.fields ?? []);
         setTemplatesError(null);
       })
       .catch((e: unknown) => {
@@ -166,6 +169,15 @@ export function WhatsAppScreen() {
       cancelled = true;
     };
   }, []);
+
+  // One template changed here (its field mapping): swapped in without asking Meta.
+  function templateSaved(saved: CRMTemplate) {
+    setTemplates((prev) =>
+      (prev ?? []).map((t) =>
+        t.name === saved.name && t.language === saved.language ? saved : t,
+      ),
+    );
+  }
 
   const refreshTemplates = useCallback(async () => {
     setSyncing(true);
@@ -230,7 +242,9 @@ export function WhatsAppScreen() {
       {tab === "templates" && (
         <WhatsAppTemplates
           templates={templates}
+          fields={fields}
           onCreated={() => void refreshTemplates()}
+          onTemplateSaved={templateSaved}
         />
       )}
 

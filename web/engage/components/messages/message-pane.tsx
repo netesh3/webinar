@@ -25,7 +25,8 @@ import {
 import { exampleFor, renderTemplate } from "../crm-templates";
 import { durationLabel, hourLabel } from "../message-timing";
 import { PersonAvatar, PhoneFrame } from "../wa-kit";
-import { guessParams } from "../wa-messages";
+import { effectiveTokens, templateTokens } from "../wa-messages";
+import { UseBlanks } from "../template-mapping";
 import {
   hasChannel,
   isFollowup,
@@ -202,7 +203,8 @@ export function MessagePane({
   const template = templates.find(
     (item) => item.name === slot.template && item.language === slot.language,
   );
-  const values = (slot.params ?? []).map((token) => exampleFor(fields, token));
+  const filled = effectiveTokens(slot.params, template, wordingKind(slot.kind), fields);
+  const values = filled.map((token) => exampleFor(fields, token));
   const rendered = template ? renderTemplate(template.body ?? "", values) : "";
   const mail = emailCopy(slot, topic, whenText, rendered);
   const [channel, setChannel] = useState<"whatsapp" | "email">(
@@ -263,12 +265,24 @@ export function MessagePane({
                 ...slot,
                 template: next.name,
                 language: next.language,
-                params: guessParams(next, wordingKind(slot.kind), fields),
+                // No values: the message follows the template's field mapping.
+                params: [],
                 enabled: isFollowup(slot.kind) ? true : slot.enabled,
               })
             }
             onWriteOwn={onWriteOwn}
           />
+          {template && template.variables > 0 && (
+            <UseBlanks
+              template={template}
+              kind={wordingKind(slot.kind)}
+              params={slot.params ?? []}
+              defaults={templateTokens(template, wordingKind(slot.kind), fields)}
+              fields={fields}
+              controlPrefix={`slot-${slot.kind}`}
+              onChange={(params) => onChange({ ...slot, params })}
+            />
+          )}
           <div className="[&_.min-h-64]:min-h-0 [&_.min-h-64]:py-2.5">
             <PhoneFrame title={coachName} subtitle="Business account">
               <div className="max-w-[92%] rounded-lg rounded-tl-none bg-white px-2.5 py-2 text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#111] shadow-sm">

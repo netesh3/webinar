@@ -344,6 +344,7 @@ func (s *Module) handleCRMTemplates(w http.ResponseWriter, r *http.Request) {
 	res := types.CRMTemplatesResponse{
 		Templates:         templates,
 		WhatsAppConnected: user.WhatsAppToken != "",
+		Fields:            s.fieldsFor(r.Context(), user.ID),
 	}
 	if !syncedAt.IsZero() {
 		res.SyncedAt = syncedAt.Format(time.RFC3339)

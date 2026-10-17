@@ -479,7 +479,8 @@ func (s *Module) checkSlotWording(w http.ResponseWriter, r *http.Request, user s
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", unusableMessage(tmpl))
 		return types.CRMTemplate{}, false
 	}
-	if len(params) != tmpl.Variables {
+	// No values means "follow the template's mapping".
+	if len(params) != 0 && len(params) != tmpl.Variables {
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_params",
 			"That template needs exactly "+strconv.Itoa(tmpl.Variables)+" value(s) filling in.")
 		return types.CRMTemplate{}, false

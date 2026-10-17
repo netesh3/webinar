@@ -1753,6 +1753,21 @@ type CRMTemplate struct {
 	CardAspect string `json:"cardAspect,omitempty"`
 	/** A carousel without a file for every card: not sendable until it has them. */
 	NeedsCardFiles bool `json:"needsCardFiles,omitempty"`
+	/** What fills each body `{{n}}` unless a use says otherwise, one entry per
+	 *  variable. The host's saved mapping when DefaultParamsSaved, otherwise a
+	 *  suggestion from the wording. Never sent to Meta. */
+	DefaultParams []CRMParam `json:"defaultParams"`
+	/** Whether DefaultParams is the host's own saved mapping rather than a guess. */
+	DefaultParamsSaved bool `json:"defaultParamsSaved,omitempty"`
+}
+
+/* CRMTemplateMappingRequest is PUT /api/host/crm/templates/mapping: one template's
+ * default field mapping, one entry per body `{{n}}`. Saving it does not resubmit the
+ * template to Meta. */
+type CRMTemplateMappingRequest struct {
+	Name     string     `json:"name"`
+	Language string     `json:"language"`
+	Params   []CRMParam `json:"params"`
 }
 
 /* CRMTemplateOffer is a limited-time offer's line above the body. With an expiry, each
@@ -1911,6 +1926,10 @@ type CRMWordingRequest struct {
 	Cards []CRMCardInput `json:"cards,omitempty"`
 	/** square or wide: the shape the card images were uploaded in. */
 	CardAspect string `json:"cardAspect,omitempty"`
+	/** The template's default field mapping, one entry per {{n}} in order. Saved with the
+	 *  template (not sent to Meta) and used for the examples Meta reviews. An entry with
+	 *  neither field nor text, or a missing one, is filled with the suggestion. */
+	Params []CRMParam `json:"params,omitempty"`
 }
 
 /* CRMButtonInput is one button of a template being written here.
@@ -1991,6 +2010,8 @@ type CRMTemplatesResponse struct {
 	/** False once WhatsApp is disconnected: the list is then whatever was last
 	 *  cached, and nothing can be sent from it. */
 	WhatsAppConnected bool `json:"whatsappConnected"`
+	/** The fields a template's blanks can be mapped to, for the field mapping. */
+	Fields []CRMMergeField `json:"fields"`
 }
 
 /* CRMSendRequest is one outbound message: either free-form text or a template,

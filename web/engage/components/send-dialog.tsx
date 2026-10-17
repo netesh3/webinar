@@ -22,6 +22,9 @@ import {
   type CRMSegment,
   type CRMTemplate,
 } from "@/lib/api-types";
+import { NotifyWhatsAppBroadcast } from "@/lib/api-types";
+import { mappingParams, sameAsDefaults } from "../template-mapping";
+import { DefaultsBadge } from "./template-mapping";
 import { instantToZoned, localTimeZone, zonedToInstant } from "@/lib/format";
 import { useNow } from "@/lib/clock";
 import { exampleFor, templateKey } from "./crm-templates";
@@ -202,9 +205,14 @@ function SendDialogBody({
           f.token === tok && (hasWebinar || !["topic", "when"].includes(tok)),
       ),
     );
-    return Array.from({ length: t.variables }, (_, i) =>
+    const fallback = Array.from({ length: t.variables }, (_, i) =>
       order[i] ? { field: order[i] } : { text: "" },
     );
+    // The template's field mapping, where its fields have a value on this send.
+    const here = available.filter(
+      (f) => hasWebinar || !["topic", "when", "webinar_link", "join_link", "watched"].includes(f.token),
+    );
+    return mappingParams(t, NotifyWhatsAppBroadcast, here, fallback);
   }
 
   // Templates and fields, once; the best template for this group is picked for them.
@@ -499,7 +507,13 @@ function SendDialogBody({
 
           {template && params.length > 0 && (
             <section className="grid gap-2">
-              <span className="label">Filled in with</span>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="label">Filled in with</span>
+                <DefaultsBadge
+                  inherits={sameAsDefaults(params, paramsFor(template, fields))}
+                  onReset={() => setParams(paramsFor(template, fields))}
+                />
+              </div>
               <TemplateTextBlock
                 body={template.body ?? ""}
                 header={template.header}

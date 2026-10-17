@@ -18,7 +18,8 @@ import {
 } from "@/lib/api-types";
 import { exampleFor, templateKey } from "./crm-templates";
 import { FilledText } from "./template-params";
-import { categoryWords, guessParams } from "./wa-messages";
+import { categoryWords, effectiveTokens, templateTokens } from "./wa-messages";
+import { UseBlanks } from "./template-mapping";
 import { timingForSave } from "./message-timing";
 
 function guessKind(kind: string): NotificationKind {
@@ -60,7 +61,8 @@ export function SlotEditor({
 
   function pick(t: CRMTemplate) {
     setChosen(templateKey(t));
-    setParams(guessParams(t, guessKind(slot.kind), fields));
+    // No values: follows the template's field mapping until a blank is changed below.
+    setParams([]);
   }
 
   function save() {
@@ -80,7 +82,9 @@ export function SlotEditor({
   }
 
   const preview = template?.body ?? "";
-  const previewValues = params.map((p) => exampleFor(fields, p));
+  const previewValues = effectiveTokens(params, template, guessKind(slot.kind), fields).map((p) =>
+    exampleFor(fields, p),
+  );
 
   return (
     <Modal
@@ -133,6 +137,18 @@ export function SlotEditor({
               );
             })}
           </ul>
+        )}
+        {template && template.variables > 0 && (
+          <UseBlanks
+            template={template}
+            kind={guessKind(slot.kind)}
+            params={params}
+            defaults={templateTokens(template, guessKind(slot.kind), fields)}
+            fields={fields}
+            controlPrefix={`default-${slot.kind}`}
+            onChange={setParams}
+            disabled={busy}
+          />
         )}
         {preview && (
           <div className="rounded-lg rounded-bl-sm bg-[#eef6ea] px-2.5 py-2 text-[12.5px] leading-relaxed text-ink-2 italic">

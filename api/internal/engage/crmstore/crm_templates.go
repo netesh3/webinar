@@ -127,7 +127,8 @@ const crmTemplateColumns = `
 	t.name, t.language, t.status, t.category, t.header, t.body, t.footer, t.variables,
 	t.unsupported, t.synced_at, t.header_format, t.buttons, t.layout,
 	f.id::text, f.host_id::text, f.storage_key, f.mime, f.filename, f.bytes, f.public_token,
-	coalesce(d.coupon_code, ''), coalesce(d.card_aspect, ''), coalesce(d.card_file_ids::text[], '{}')`
+	coalesce(d.coupon_code, ''), coalesce(d.card_aspect, ''), coalesce(d.card_file_ids::text[], '{}'),
+	d.params`
 
 const crmTemplateFrom = `
 	  FROM crm_templates t
@@ -156,15 +157,22 @@ func scanTemplate(row scanner) (TemplateWithFile, time.Time, error) {
 		bytes                              *int64
 		layout                             TemplateLayout
 		cardIDs                            []string
+		params                             []types.CRMParam
 	)
 	if err := row.Scan(&t.Name, &t.Language, &t.Status, &t.Category, &t.Header,
 		&t.Body, &t.Footer, &t.Variables, &t.Unsupported, &synced,
 		&t.HeaderFormat, &t.Buttons, &layout,
 		&fileID, &hostID, &key, &mime, &fn, &bytes, &tok,
-		&t.CouponCode, &t.CardAspect, &cardIDs); err != nil {
+		&t.CouponCode, &t.CardAspect, &cardIDs, &params); err != nil {
 		return TemplateWithFile{}, time.Time{}, err
 	}
 	t.Offer, t.Cards, t.Auth = layout.Offer, layout.Cards, layout.Auth
+	// A saved mapping only counts while it still fits: Meta can approve a new version
+	// of a template with a different number of variables. Engage fills a suggestion in
+	// otherwise (see engage.withDefaultParams).
+	if params != nil && len(params) == t.Variables {
+		t.DefaultParams, t.DefaultParamsSaved = params, true
+	}
 	if t.Buttons == nil {
 		t.Buttons = []types.CRMTemplateButton{}
 	}
@@ -244,6 +252,21 @@ func (s *Store) SetTemplateDefaults(ctx context.Context, hostID, name, language,
 		   SET coupon_code = EXCLUDED.coupon_code, card_aspect = EXCLUDED.card_aspect,
 		       card_file_ids = EXCLUDED.card_file_ids, updated_at = now()`,
 		hostID, strings.TrimSpace(name), strings.TrimSpace(language), strings.TrimSpace(coupon), aspect, cardFileIDs)
+	return err
+}
+
+/* SetTemplateParams stores a template's default field mapping, leaving its coupon and
+ * card pictures as they are. */
+func (s *Store) SetTemplateParams(ctx context.Context, hostID, name, language string, params []types.CRMParam) error {
+	if params == nil {
+		params = []types.CRMParam{}
+	}
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO crm_template_defaults (host_id, name, language, params)
+		VALUES ($1::uuid, $2, $3, $4)
+		ON CONFLICT (host_id, name, language) DO UPDATE
+		   SET params = EXCLUDED.params, updated_at = now()`,
+		hostID, strings.TrimSpace(name), strings.TrimSpace(language), params)
 	return err
 }
 

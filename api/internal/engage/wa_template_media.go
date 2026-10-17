@@ -438,7 +438,7 @@ func (s *Module) templateJSON(t crmstore.TemplateWithFile) types.CRMTemplate {
 		}
 		out.Cards = cards
 	}
-	return out
+	return withDefaultParams([]types.CRMTemplate{out})[0]
 }
 
 /* headerSample uploads a file to Meta as a template's header sample and returns the

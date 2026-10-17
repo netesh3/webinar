@@ -211,6 +211,11 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 			s.log.Error("crm wording: remember defaults", "host", user.ID, "error", err)
 		}
 	}
+	if len(plan.params) > 0 {
+		if err := s.store.SetTemplateParams(r.Context(), user.ID, name, nt.Language, plan.params); err != nil {
+			s.log.Error("crm wording: remember field mapping", "host", user.ID, "error", err)
+		}
+	}
 	if err := s.syncTemplates(r.Context(), user); err != nil {
 		s.log.Warn("crm wording: resync", "host", user.ID, "error", err)
 	}
