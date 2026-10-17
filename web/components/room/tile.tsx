@@ -23,6 +23,7 @@ import { isHighlighted } from "@/lib/speaker";
 import { useActiveSpeaker } from "./active-speaker";
 import { useRoomUI } from "./context";
 import { OwnShareView } from "./own-share-view";
+import { ShareOnlySwitch } from "./share-only";
 import { participantRole } from "./participants";
 
 /* One video tile.
@@ -662,6 +663,11 @@ function OwnShareNotice({ size }: { size: "sm" | "md" | "lg" }) {
         <p className={`leading-tight tracking-[-0.01em] text-white/95 ${s.title}`}>
           You&apos;re sharing your screen
         </p>
+        {size !== "sm" && (
+          <div className="mt-4">
+            <ShareOnlySwitch small={size === "md"} />
+          </div>
+        )}
       </div>
     </div>
   );

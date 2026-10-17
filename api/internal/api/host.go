@@ -1391,6 +1391,14 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Showing the audience only a played recording means they should hear only it
+	// too, unless the host says otherwise — so turning the view on without a word
+	// about the stage microphones mutes them; turning it off un-mutes them.
+	if p.AudienceShareOnly != nil && p.AudienceMuteStage == nil {
+		mute := *p.AudienceShareOnly
+		p.AudienceMuteStage = &mute
+	}
+
 	wb, err := s.store.UpdateControls(r.Context(), slug, p)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
@@ -1951,6 +1959,12 @@ func (s *Server) handleRemoveParticipant(w http.ResponseWriter, r *http.Request)
 	// by rejoining with the same key.
 	if err := s.store.RevokeStage(r.Context(), slug, identity); err != nil {
 		s.log.Warn("remove participant: could not revoke stage grant",
+			"slug", slug, "identity", identity, "error", err)
+	}
+	// And a refresh, or the link reopened, must not put them straight back in:
+	// the automatic rejoin path reads this (rejoin.go).
+	if err := s.store.RecordRemoval(r.Context(), slug, identity); err != nil {
+		s.log.Warn("remove participant: could not record removal",
 			"slug", slug, "identity", identity, "error", err)
 	}
 

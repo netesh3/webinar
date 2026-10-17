@@ -318,6 +318,14 @@ type SessionControls struct {
 	// change without polling. Messages still carry the destination they were sent
 	// with, so switching the setting never rewrites history.
 	ChatDestination ChatDestination `json:"chatDestination"`
+
+	/* AudienceShareOnly shows attendees only the active share — an older recording
+	 * played as if live, say — with no stage cameras, names or labels. With no share
+	 * active they see the normal stage. AudienceMuteStage also stops stage
+	 * microphones reaching them; the share's own audio still plays. Both are
+	 * live-only and cleared when the webinar ends (see migrations/0115). */
+	AudienceShareOnly bool `json:"audienceShareOnly"`
+	AudienceMuteStage bool `json:"audienceMuteStage"`
 }
 
 // ChatDestination is the audience for a chat message.
@@ -364,6 +372,10 @@ type ControlsPatch struct {
 	// A pointer for the same reason as the others: "not mentioned" and "set to
 	// everyone" are different requests.
 	ChatDestination *ChatDestination `json:"chatDestination,omitempty"`
+	// Turning AudienceShareOnly on without saying AudienceMuteStage mutes the stage
+	// for the audience too; see handleUpdateControls.
+	AudienceShareOnly *bool `json:"audienceShareOnly,omitempty"`
+	AudienceMuteStage *bool `json:"audienceMuteStage,omitempty"`
 }
 
 // ------------------------------------------------------------------- polls
@@ -3278,6 +3290,18 @@ type JoinRequest struct {
 	// JoinKey is optional for a signed-in account: the server finds the
 	// registration from the session instead.
 	JoinKey string `json:"joinKey,omitempty"`
+}
+
+/* RejoinCheckResponse answers whether a browser that was in the room a few minutes ago
+ * should go straight back in rather than see the webinar page.
+ *
+ * A no is never an error. Reason says why, for telemetry: ended, not_live, removed,
+ * not_approved, no_credential, or a join barrier code such as locked. */
+type RejoinCheckResponse struct {
+	Rejoin bool   `json:"rejoin"`
+	Reason string `json:"reason,omitempty"`
+	// Stage is set for the host or a panelist: their room is /host/<slug>/room.
+	Stage bool `json:"stage,omitempty"`
 }
 
 // JoinResponse is what the browser hands to the LiveKit client SDK.

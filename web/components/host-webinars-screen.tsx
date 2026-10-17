@@ -91,6 +91,8 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
       reactionsEnabled: true,
       captionsEnabled: false,
       locked: false,
+      audienceShareOnly: false,
+      audienceMuteStage: false,
     },
   };
 }

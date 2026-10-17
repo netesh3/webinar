@@ -248,6 +248,8 @@ export function initialState(
       // it on create, so the form does not have to keep the two in step itself.
       captionsEnabled: false,
       locked: false,
+      audienceShareOnly: false,
+      audienceMuteStage: false,
     },
     streamKey: "",
     streamWatchUrl: "",

@@ -63,3 +63,8 @@ const sameTitle = attendeeJoinRefusal("unknown", "Can't join yet.");
 assert.equal(sameTitle.title, "Can't join yet");
 assert.equal(sameTitle.body, "");
 assert.equal(sameTitle.action, "retry");
+
+// A refresh after the host removed you: said plainly, and no Try again that would only be refused.
+const removed = attendeeJoinRefusal("removed", "The host removed you from this session.");
+assert.equal(removed.title, "You were removed from this session");
+assert.equal(removed.action, "none");

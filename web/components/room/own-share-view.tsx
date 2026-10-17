@@ -17,6 +17,7 @@ import {
   type OwnShare,
 } from "@/lib/own-share";
 import { EyeIcon, EyeOffIcon, PopOutIcon, ScreenShareIcon } from "../icons";
+import { ShareOnlySwitch } from "./share-only";
 
 /* What a presenter sees of their own window or screen share.
  *
@@ -231,6 +232,10 @@ export function OwnShareView({
         {/* No Stop button here: the Share button in the control bar stops the share.
             requestPresenter("stop") and the bar's handler for it are still in place. */}
       </div>
+      {/* Host and co-hosts: what the audience sees around this share. */}
+      <div className="flex shrink-0 justify-center px-3 pb-2.5">
+        <ShareOnlySwitch small />
+      </div>
 
       {asking && (
         <LivePreviewQuestion
@@ -254,7 +259,7 @@ function LivePreviewQuestion({ onYes, onNo }: { onYes: () => void; onNo: () => v
       role="dialog"
       aria-modal="false"
       aria-labelledby="live-preview-q"
-      className="absolute bottom-16 left-1/2 z-10 w-[min(380px,92%)] -translate-x-1/2 rounded-xl border border-white/15 bg-[#1b1b1e] p-4 text-white shadow-2xl"
+      className="absolute bottom-28 left-1/2 z-10 w-[min(380px,92%)] -translate-x-1/2 rounded-xl border border-white/15 bg-[#1b1b1e] p-4 text-white shadow-2xl"
     >
       <p id="live-preview-q" className="text-[14px] font-semibold">
         Is this window on another screen?

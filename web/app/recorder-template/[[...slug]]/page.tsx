@@ -12,7 +12,9 @@ import {
   type TrackReference,
   type TrackReferenceOrPlaceholder,
 } from "@livekit/components-react";
-import { Track, RoomEvent, type Participant } from "livekit-client";
+import { Track, RoomEvent, type Participant, type Room } from "livekit-client";
+import { shareOnlyView, subscriptionPlan } from "@/lib/share-only";
+import { useSubscriptionPlan } from "@/lib/use-share-only";
 
 export default function RecorderTemplatePage() {
   return (
@@ -191,8 +193,26 @@ function ZoomRecordingStage() {
    * while RoomAudioRenderer carried on. That is the moment hosts reported the
    * recording breaking and the audio drifting out of step. One tree keyed by
    * identity means a share toggle relocates at most a single tile. */
+  /* "Show only the shared video to the audience". The recorder — and the
+   * broadcast, which is composited from this same page — is the audience, so while
+   * a share is on the stage it draws the share alone and drops the stage cameras
+   * (and, if the host chose, the stage microphones, which keeps them out of
+   * RoomAudioRenderer). The share's own VideoTrack keeps its place in the tree, so
+   * switching costs the filmstrip and nothing else. See lib/share-only.ts. */
+  const controls = useShareOnlyControls(room);
+  const shareOnlyInput = {
+    ...controls,
+    shareActive: trackRefs.some(
+      (ref) =>
+        ref.source === Track.Source.ScreenShare && !!ref.publication && !ref.publication.isMuted,
+    ),
+    viewer: "audience" as const,
+  };
+  useSubscriptionPlan(subscriptionPlan(shareOnlyInput));
+  const bare = shareOnlyView(shareOnlyInput);
+
   const primarySpeaker = screenShareRef ? undefined : cameraRefs[0];
-  const stripRefs = screenShareRef ? cameraRefs : cameraRefs.slice(1);
+  const stripRefs = bare ? [] : screenShareRef ? cameraRefs : cameraRefs.slice(1);
 
   if (!screenShareRef && !primarySpeaker) {
     return (
@@ -208,7 +228,7 @@ function ZoomRecordingStage() {
       <div
         className={
           screenShareRef
-            ? "relative flex-1 h-full min-w-0 flex items-center justify-center bg-black p-1 order-1"
+            ? `relative flex-1 h-full min-w-0 flex items-center justify-center bg-black order-1 ${bare ? "" : "p-1"}`
             : "flex-1 min-h-0 relative flex items-center justify-center p-3 bg-black order-2"
         }
       >
@@ -227,7 +247,7 @@ function ZoomRecordingStage() {
       </div>
 
       {/* Filmstrip: down the right while sharing, along the top otherwise. */}
-      {(screenShareRef || stripRefs.length > 0) && (
+      {!bare && (screenShareRef || stripRefs.length > 0) && (
         <div
           className={
             screenShareRef
@@ -261,6 +281,43 @@ function ZoomRecordingStage() {
       )}
     </div>
   );
+}
+
+/** The two share-only controls from the room metadata the API pushes (RoomMeta in
+ *  lib/realtime.ts). Read directly rather than through useSessionControls, which
+ *  needs a join response this page never has. Off until metadata says otherwise. */
+function useShareOnlyControls(room: Room | undefined): {
+  shareOnly: boolean;
+  muteStage: boolean;
+} {
+  const [state, setState] = useState({ shareOnly: false, muteStage: false });
+  useEffect(() => {
+    if (!room) return;
+    const read = () => {
+      try {
+        const meta = JSON.parse(room.metadata || "{}") as {
+          controls?: { audienceShareOnly?: boolean; audienceMuteStage?: boolean };
+        };
+        const shareOnly = meta.controls?.audienceShareOnly === true;
+        const muteStage = meta.controls?.audienceMuteStage === true;
+        setState((prev) =>
+          prev.shareOnly === shareOnly && prev.muteStage === muteStage
+            ? prev
+            : { shareOnly, muteStage },
+        );
+      } catch {
+        // Metadata we did not write, or a partial write: keep the last good one.
+      }
+    };
+    read();
+    room.on(RoomEvent.RoomMetadataChanged, read);
+    room.on(RoomEvent.Connected, read);
+    return () => {
+      room.off(RoomEvent.RoomMetadataChanged, read);
+      room.off(RoomEvent.Connected, read);
+    };
+  }, [room]);
+  return state;
 }
 
 function SpeakerTile({

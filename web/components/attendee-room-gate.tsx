@@ -7,10 +7,13 @@ import { useJoinKeyFor, useJoinKeys, useLinkJoinKey, useRegistrations } from "./
 import { WebinarRoom } from "./room/webinar-room";
 import { LeftSession } from "./survey/session-survey";
 import { Spinner } from "./controls";
-import { useSession } from "./providers";
+import { useAppConfig, useSession } from "./providers";
 import { Button, ButtonLink, Card } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
+import { useHydrated } from "@/lib/clock";
+import { detectArrival, hasRejoinIntent, type Arrival } from "@/lib/rejoin";
+import { trackEvent } from "@/lib/telemetry";
 import { isAwaitingEmail, joinProvesKey } from "@/lib/guest-registration";
 import { attendeeJoinRefusal } from "@/lib/join-refusal";
 
@@ -48,6 +51,15 @@ export function AttendeeRoomGate({
   // post-event survey when there is one to answer and otherwise goes straight on.
   const [left, setLeft] = useState(false);
   const goOn = useCallback(() => router.push(`/webinars/${slug}`), [router, slug]);
+  const { telemetryEnabled } = useAppConfig();
+
+  /* How this page was reached (lib/rejoin.ts). A refresh, or the landing page sending a
+   * recent visitor back, is "rejoin": the join is marked automatic, so the server refuses it
+   * for somebody the host removed. A refresh after pressing Leave is "left": they meant to go,
+   * so nothing joins until they say so. Read on the client only — the server has no storage
+   * — and not used until hydration, so both renders agree. */
+  const hydrated = useHydrated();
+  const [arrival, setArrival] = useState<Arrival>(() => detectArrival(slug));
 
   // A ref, not state: guards against the double-invoke of effects in dev
   // StrictMode without triggering a synchronous setState inside the effect.
@@ -74,7 +86,7 @@ export function AttendeeRoomGate({
     (status === "signed-in" && account !== null);
 
   useEffect(() => {
-    if (status === "loading") return;
+    if (status === "loading" || !hydrated || arrival === "left") return;
 
     // directKey is the key this browser stored when it registered. When it is
     // present — the normal case — the join request goes out now rather than after
@@ -87,7 +99,8 @@ export function AttendeeRoomGate({
     // render decides what to say once it has finished.
     if (!key && !bySession) return;
 
-    const fingerprint = `${key ?? account?.id ?? "?"}#${attempt}`;
+    const fingerprint = `${key ?? account?.id ?? "?"}#${attempt}#${arrival}`;
+    const rejoin = arrival === "rejoin";
     if (requested.current === fingerprint) return;
     requested.current = fingerprint;
 
@@ -114,10 +127,17 @@ export function AttendeeRoomGate({
       if (key && key === linkKey && joinProvesKey(outcome)) keepKey(key, slug);
     };
     api
-      .join(slug, key)
+      .join(slug, key, { rejoin })
       .then((res) => {
         if (!current()) return;
         keepIfProven({ joined: true });
+        if (rejoin && telemetryEnabled) {
+          trackEvent("rejoin", { userId: res.identity, roomName: slug }, {
+            door: "attendee",
+            via: hasRejoinIntent(slug, Date.now()) ? "link" : "refresh",
+            publisher: res.canPublish,
+          });
+        }
         if (res.zoomJoinUrl) {
           setOpeningZoom(true);
           window.location.assign(res.zoomJoinUrl);
@@ -134,7 +154,20 @@ export function AttendeeRoomGate({
             : { code: "unknown", message: "Could not join the webinar." },
         );
       });
-  }, [registrations, reg, directKey, linkKey, keepKey, slug, attempt, status, account]);
+  }, [
+    registrations,
+    reg,
+    directKey,
+    linkKey,
+    keepKey,
+    slug,
+    attempt,
+    status,
+    account,
+    hydrated,
+    arrival,
+    telemetryEnabled,
+  ]);
 
   if (join && left) {
     return (
@@ -160,7 +193,31 @@ export function AttendeeRoomGate({
         // accepts too.
         joinKey={directKey ?? reg?.joinKey}
         onLeave={() => setLeft(true)}
+        door="attendee"
+        rejoined={arrival === "rejoin"}
       />
+    );
+  }
+
+  if (hydrated && arrival === "left") {
+    return (
+      <main className="grid min-h-dvh place-items-center p-6">
+        <Card className="w-full max-w-md p-6 text-center">
+          <h1 className="text-[17px] font-semibold">You left this webinar</h1>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
+            It&apos;s still running. Join again whenever you&apos;re ready.
+          </p>
+          <div className="mt-5 grid gap-2">
+            <Button onClick={() => setArrival("normal")}>Join again</Button>
+            <Link
+              href={`/webinars/${slug}`}
+              className="text-[12.5px] text-brand hover:underline"
+            >
+              Back to the webinar
+            </Link>
+          </div>
+        </Card>
+      </main>
     );
   }
 

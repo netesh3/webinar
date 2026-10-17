@@ -42,7 +42,8 @@ export function attendeeJoinRefusal(code: string, message: string): JoinRefusal 
   return {
     title,
     body: bodyUnlessRepeat(title, message),
-    action: REGISTER_CODES.has(code) ? "register" : "retry",
+    // Removed is the host's decision; the same automatic rejoin would only be refused again.
+    action: REGISTER_CODES.has(code) ? "register" : code === "removed" ? "none" : "retry",
   };
 }
 
@@ -66,6 +67,8 @@ function joinRefusalTitle(code: string): string {
       return "You're not registered yet";
     case "invalid_join_key":
       return "This join link isn't valid";
+    case "removed":
+      return "You were removed from this session";
     default:
       return "Can't join yet";
   }

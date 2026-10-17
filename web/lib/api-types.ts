@@ -2112,6 +2112,15 @@ export interface SessionControls {
    * with, so switching the setting never rewrites history.
    */
   chatDestination: ChatDestination;
+  /**
+   *  AudienceShareOnly shows attendees only the active share — an older recording
+   * 	 * played as if live, say — with no stage cameras, names or labels. With no share
+   * 	 * active they see the normal stage. AudienceMuteStage also stops stage
+   * 	 * microphones reaching them; the share's own audio still plays. Both are
+   * 	 * live-only and cleared when the webinar ends (see migrations/0115).
+   */
+  audienceShareOnly: boolean;
+  audienceMuteStage: boolean;
 }
 /**
  * ChatDestination is the audience for a chat message.
@@ -2139,6 +2148,12 @@ export interface ControlsPatch {
    * everyone" are different requests.
    */
   chatDestination?: ChatDestination;
+  /**
+   * Turning AudienceShareOnly on without saying AudienceMuteStage mutes the stage
+   * for the audience too; see handleUpdateControls.
+   */
+  audienceShareOnly?: boolean;
+  audienceMuteStage?: boolean;
 }
 /**
  * PollKind separates a poll from a quiz.
@@ -5729,6 +5744,21 @@ export interface JoinRequest {
    * registration from the session instead.
    */
   joinKey?: string;
+}
+/**
+ *  RejoinCheckResponse answers whether a browser that was in the room a few minutes ago
+ *  * should go straight back in rather than see the webinar page.
+ *  *
+ *  * A no is never an error. Reason says why, for telemetry: ended, not_live, removed,
+ *  * not_approved, no_credential, or a join barrier code such as locked.
+ */
+export interface RejoinCheckResponse {
+  rejoin: boolean;
+  reason?: string;
+  /**
+   * Stage is set for the host or a panelist: their room is /host/<slug>/room.
+   */
+  stage?: boolean;
 }
 /**
  * JoinResponse is what the browser hands to the LiveKit client SDK.
