@@ -170,7 +170,11 @@ func (s *Store) FulfilBillingOrder(ctx context.Context, razorpayOrderID, payment
 
 	// RETURNING reads the subscription just written: same transaction, later statement.
 	u, err := scanUser(tx.QueryRow(ctx,
-		`UPDATE users SET can_host = true WHERE id = $1 RETURNING `+userColumns, o.UserID))
+		`UPDATE users
+		    SET can_host = true,
+		        account_kind = 'customer',
+		        account_kind_set_at = CASE WHEN account_kind = 'audience' THEN now() ELSE account_kind_set_at END
+		  WHERE id = $1 RETURNING `+userColumns, o.UserID))
 	if err != nil {
 		return BillingOrder{}, User{}, err
 	}

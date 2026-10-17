@@ -339,8 +339,8 @@ func ensureAttendee(ctx context.Context, tx pgx.Tx, email string, req types.Regi
 
 	var inserted string
 	err := tx.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, name, title, org, phone, initials, hue, can_host)
-		VALUES ($1, '', $2, $3, $4, $5, $6, $7, false)
+		INSERT INTO users (email, password_hash, name, title, org, phone, initials, hue, can_host, account_kind)
+		VALUES ($1, '', $2, $3, $4, $5, $6, $7, false, 'audience')
 		ON CONFLICT ((lower(email))) DO NOTHING
 		RETURNING id::text`,
 		email, name, title, org, phone, InitialsOf(name), HueFor(email),

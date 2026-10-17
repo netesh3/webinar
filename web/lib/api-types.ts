@@ -4899,6 +4899,17 @@ export interface AdminUser {
    */
   trialExemption?: boolean;
   /**
+   * AccountKind says whether this person signed up for Webinar Liv (customer) or
+   * only registered for somebody's webinar (audience). See AccountKind.
+   */
+  accountKind: AccountKind;
+  /**
+   * RegistrationCount is how many webinars this account has registered for, and
+   * LastWebinarTopic the most recent of them; the audience list shows both.
+   */
+  registrationCount: number /* int */;
+  lastWebinarTopic?: string;
+  /**
    * CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
    */
   canCdnBroadcast: boolean;
@@ -4925,6 +4936,12 @@ export interface AdminUser {
  */
 export interface AdminStats {
   accounts: number /* int */;
+  /**
+   * Customers and Audience split Accounts: signed up for the app vs made by a
+   * webinar registration (see AccountKind).
+   */
+  customers: number /* int */;
+  audience: number /* int */;
   hosts: number /* int */;
   admins: number /* int */;
   cdnBroadcast: number /* int */;
@@ -5082,6 +5099,11 @@ export interface SupabaseAuthRequest {
 export interface GoogleAuthRequest {
   idToken: string;
   nonce?: string;
+  /**
+   * From is "webinar" when One Tap ran on a webinar's registration page: a new
+   * account made there is audience, not a customer. See AccountKind.
+   */
+  from?: string;
 }
 /**
  *  HostRequest is POST /api/me/host-request.
@@ -5356,6 +5378,28 @@ export interface DeleteAccountRequest {
 }
 export interface SetUserPlanRequest {
   plan: Plan;
+}
+/**
+ *  AccountKind separates the people who signed up for Webinar Liv from the people
+ *  * a coach's webinar brought in. An audience account is created by registering for
+ *  * a webinar; it becomes a customer when it signs in from the app, pays, starts a
+ *  * trial, is given a plan or hosting, or an admin moves it.
+ */
+export type AccountKind = string;
+export const AccountCustomer: AccountKind = "customer";
+export const AccountAudience: AccountKind = "audience";
+/**
+ * SetAccountKindRequest is PATCH /api/admin/users/{id}/kind.
+ */
+export interface SetAccountKindRequest {
+  kind: AccountKind;
+}
+/**
+ * AdminAccountCounts is GET /api/admin/users/counts: the size of each list.
+ */
+export interface AdminAccountCounts {
+  customers: number /* int */;
+  audience: number /* int */;
 }
 /**
  * RoomMeta is mirrored into LiveKit room metadata on every control change.

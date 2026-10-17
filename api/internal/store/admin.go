@@ -142,7 +142,13 @@ func (s *Store) PromoteAdmins(ctx context.Context, emails []string) (promoted, d
  */
 func (s *Store) SetHostCapability(ctx context.Context, userID string, canHost bool) (User, error) {
 	u, err := scanUser(s.pool.QueryRow(ctx, `
-		UPDATE users SET can_host = $2 WHERE id = $1
+		UPDATE users
+		   SET can_host = $2,
+		       -- Somebody who can host is a customer (see PromoteToCustomer).
+		       account_kind = CASE WHEN $2 THEN 'customer' ELSE account_kind END,
+		       account_kind_set_at = CASE WHEN $2 AND account_kind = 'audience' THEN now()
+		                                  ELSE account_kind_set_at END
+		 WHERE id = $1
 		RETURNING `+userColumns, userID, canHost))
 	if noRows(err) {
 		return User{}, ErrNotFound
@@ -322,13 +328,14 @@ func (s *Store) KeepOperatorInstantWebinar(ctx context.Context) (int, error) {
  * than refusing — an operator removing a departed colleague genuinely does want that — but it
  * cannot warn about a number it was not given.
  */
-func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]types.AdminUser, error) {
+func (s *Store) AdminUsers(ctx context.Context, search string, kind types.AccountKind, limit int) ([]types.AdminUser, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
 	// Empty search matches everything: ILIKE '%%' rather than a second query.
 	like := "%" + strings.ToLower(strings.TrimSpace(search)) + "%"
 
+	// kind "" lists both; the admin screen always asks for one list or the other.
 	rows, err := s.pool.Query(ctx, `
 		SELECT u.id::text, u.email, u.name, u.title, u.org, u.phone, u.initials, u.hue,
 		       u.can_host, u.is_admin, u.created_at,
@@ -339,11 +346,16 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		       effective_plan(u.id), u.features, u.features_off,
 		       coalesce((SELECT f.reason FROM trial_flags f WHERE f.user_id = u.id
 		                  ORDER BY f.created_at DESC LIMIT 1), ''),
-		       EXISTS (SELECT 1 FROM trial_exemptions e WHERE e.user_id = u.id AND e.used_at IS NULL)
+		       EXISTS (SELECT 1 FROM trial_exemptions e WHERE e.user_id = u.id AND e.used_at IS NULL),
+		       u.account_kind,
+		       (SELECT count(*) FROM registrations r WHERE r.user_id = u.id),
+		       coalesce((SELECT w.topic FROM registrations r JOIN webinars w ON w.id = r.webinar_id
+		                  WHERE r.user_id = u.id ORDER BY r.created_at DESC LIMIT 1), '')
 		  FROM users u
-		 WHERE lower(u.email) LIKE $1 OR lower(u.name) LIKE $1
+		 WHERE (lower(u.email) LIKE $1 OR lower(u.name) LIKE $1)
+		   AND ($3 = '' OR u.account_kind = $3)
 		 ORDER BY u.is_admin DESC, u.can_host DESC, u.created_at DESC
-		 LIMIT $2`, like, limit)
+		 LIMIT $2`, like, limit, string(kind))
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +371,8 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Phone, &u.Initials,
 			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast,
 			&u.Features, &u.EmailVerified, &u.Plan, &forcedOn, &forcedOff,
-			&u.TrialFlag, &u.TrialExemption); err != nil {
+			&u.TrialFlag, &u.TrialExemption,
+			&u.AccountKind, &u.RegistrationCount, &u.LastWebinarTopic); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
@@ -438,6 +451,11 @@ func (s *Store) AdminStats(ctx context.Context) (types.AdminStats, error) {
 	if err != nil {
 		return types.AdminStats{}, err
 	}
+	kinds, err := s.AdminAccountCounts(ctx)
+	if err != nil {
+		return types.AdminStats{}, err
+	}
+	out.Customers, out.Audience = kinds.Customers, kinds.Audience
 
 	now := time.Now().UTC()
 	end := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -573,6 +591,11 @@ func (s *Store) SetUserPlan(ctx context.Context, userID string, plan types.Plan)
 	}
 	if err != nil {
 		return User{}, err
+	}
+	if plan != "" {
+		if err := s.PromoteToCustomer(ctx, userID); err != nil {
+			return User{}, err
+		}
 	}
 	return s.UserByID(ctx, userID)
 }
