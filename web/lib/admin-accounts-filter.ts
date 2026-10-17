@@ -48,10 +48,16 @@ export function countAccountRoles(
   return counts;
 }
 
-export function filterAccounts<T extends Account>(
+/** `pinned` keeps rows the admin just changed in view even if they no longer
+ *  fit the chip — flipping "Can host" off under the Hosts chip must not make
+ *  the row vanish from under the cursor. Search still applies to them. */
+export function filterAccounts<T extends Account & { id: string }>(
   users: readonly T[],
   query: string,
   role: AccountRoleFilter,
+  pinned: ReadonlySet<string> = new Set(),
 ): T[] {
-  return users.filter((u) => matchAccountRole(u, role) && matchAccountQuery(u, query));
+  return users.filter(
+    (u) => (pinned.has(u.id) || matchAccountRole(u, role)) && matchAccountQuery(u, query),
+  );
 }

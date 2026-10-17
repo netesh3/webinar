@@ -45,6 +45,16 @@ eq(ids(filterAccounts(users, "gmail", "hosts")), ["1", "2"], "search and chip co
 eq(ids(filterAccounts(users, "  SATISH ", "attendees")), ["4"], "search trims and ignores case");
 eq(ids(filterAccounts(users, "satish", "hosts")), [], "a search that misses the chip is empty");
 eq(ids(filterAccounts(users, "noname", "all")), ["5"], "a nameless account is found by email");
+eq(
+  ids(filterAccounts(users.map((u) => (u.id === "2" ? { ...u, canHost: false } : u)), "", "hosts", new Set(["2"]))),
+  ["1", "2"],
+  "a row just switched off hosting stays in Hosts while pinned",
+);
+eq(
+  ids(filterAccounts(users, "satish", "hosts", new Set(["2"]))),
+  [],
+  "a pinned row still has to match the search",
+);
 
 console.log("\ncountAccountRoles");
 eq(countAccountRoles(users, ""), { all: 5, hosts: 2, attendees: 3 }, "counts the whole list");

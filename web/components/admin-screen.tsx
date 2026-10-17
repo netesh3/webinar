@@ -149,6 +149,10 @@ function AdminAccounts() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<AccountRoleFilter>("all");
+  /* Rows whose hosting was flipped since the chip or search last changed. Kept
+   * in view so a toggle under "Hosts" or "Attendees" does not yank the row away
+   * mid-click; cleared whenever the admin changes what they are looking at. */
+  const [pinned, setPinned] = useState<ReadonlySet<string>>(() => new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
@@ -192,8 +196,8 @@ function AdminAccounts() {
    * server-side filter is there for when this grows, and switching to it is a one-line
    * change to the load call. */
   const shown = useMemo(
-    () => (users ? filterAccounts(users, query, roleFilter) : null),
-    [users, query, roleFilter],
+    () => (users ? filterAccounts(users, query, roleFilter, pinned) : null),
+    [users, query, roleFilter, pinned],
   );
 
   // Off the search only, not the chip, so each chip says what clicking it shows.
@@ -211,6 +215,7 @@ function AdminAccounts() {
     setBusy(u.id);
     try {
       await api.setHostCapability(u.id, canHost);
+      if (roleFilter !== "all") setPinned((prev) => new Set(prev).add(u.id));
       // Patched in place rather than refetching the list: a full reload would reorder the
       // table under the cursor, because the ordering puts hosts first.
       setUsers((prev) =>
@@ -345,6 +350,7 @@ function AdminAccounts() {
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
+              setPinned(new Set());
               setPageIndex(0);
             }}
             aria-label="Search accounts"
@@ -363,6 +369,7 @@ function AdminAccounts() {
                   onClick={() => {
                     if (r === roleFilter) return;
                     setRoleFilter(r);
+                    setPinned(new Set());
                     setPageIndex(0);
                   }}
                   aria-pressed={active}
