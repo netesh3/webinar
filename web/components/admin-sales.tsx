@@ -257,7 +257,7 @@ function Thread({ id, onChanged }: { id: string; onChanged: () => void }) {
           ) : (
             <div key={m.id} className={`flex max-w-[78%] flex-col gap-0.5 ${m.role === "visitor" ? "self-start" : "self-end items-end"}`}>
               <span className="text-[11.5px] text-ink-3">
-                {m.role === "visitor" ? who(conv) : m.role === "ai" ? "Liv (AI)" : m.authorName || "Team"} · {clock(m.createdAt)}
+                {m.role === "visitor" ? who(conv) : m.role === "ai" ? "AI Agent" : m.authorName || "Team"} · {clock(m.createdAt)}
                 {m.emailed ? " · sent by email" : ""}
               </span>
               <p

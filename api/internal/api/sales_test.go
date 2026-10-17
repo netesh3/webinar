@@ -371,3 +371,22 @@ func TestSalesChatIsKeyedByItsTokenAndAdminsOnly(t *testing.T) {
 		}
 	}
 }
+
+// "Talk to a person" before typing anything is still a lead, and lands in the inbox.
+func TestTalkToAPersonWithoutTypingReachesTheInbox(t *testing.T) {
+	h, _ := salesHarness(t, true)
+	if _, _, err := h.store.PromoteAdmins(t.Context(), []string{"neeraj@acme.dev"}); err != nil {
+		t.Fatal(err)
+	}
+	v := h.startSalesChat()
+	if code, chat := v.call(http.MethodPost, "/api/sales/chat/handoff", nil); code != http.StatusOK || chat.Status != types.SalesWaiting {
+		t.Fatalf("handoff: %d %+v", code, chat)
+	}
+	h.login("neeraj@acme.dev")
+	var inbox types.SalesInbox
+	_, raw := h.do(http.MethodGet, "/api/admin/sales?filter=needs", nil)
+	h.decode(raw, &inbox)
+	if inbox.NeedsYou != 1 || len(inbox.Conversations) != 1 {
+		t.Fatalf("a visitor who asked for a person without typing is missing: %+v", inbox)
+	}
+}

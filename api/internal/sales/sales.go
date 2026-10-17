@@ -24,7 +24,7 @@ import (
 
 // Greeting is the first message of every conversation. Not generated, so a
 // visitor sees it instantly and it costs nothing.
-const Greeting = "Hi 👋 I'm Liv, Webinar Liv's assistant. Planning webinars for your coaching or teaching business? Ask me anything — plans, WhatsApp reminders, how attendees join."
+const Greeting = "Hi 👋 I'm Webinar Liv's AI agent. Planning webinars for your coaching or teaching business? Ask me anything — plans, WhatsApp reminders, how attendees join."
 
 // HandoffReply is what the visitor reads when a person is brought in.
 const HandoffReply = "Good question for the team — I've asked a person to step in. They usually reply within a few minutes. In case they miss you here, leave your email and they'll reply there."
@@ -59,7 +59,7 @@ var Facts = []string{
 // SystemPrompt is the instruction the model gets with every turn.
 func SystemPrompt(gstPercent int) string {
 	var b strings.Builder
-	b.WriteString(`You are Liv, the sales assistant on webinarliv.com. You help visitors decide whether Webinar Liv fits them and which plan to buy.
+	b.WriteString(`You are the AI agent for sales on webinarliv.com (shown to visitors as "AI Agent"). You help visitors decide whether Webinar Liv fits them and which plan to buy.
 
 Rules:
 - Answer ONLY from the FACTS and PLANS below. If the answer is not there, do not guess.

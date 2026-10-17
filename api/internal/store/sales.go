@@ -223,11 +223,12 @@ func (s *Store) CloseSalesConversation(ctx context.Context, conversationID strin
 /* SalesInbox lists conversations for admins.
  *
  * filter: "needs" (waiting, or with an admin), "ai", "closed", or "" for all.
- * Conversations where the visitor never wrote anything are left out: an auto-opened
- * widget that nobody typed into is not a lead.
+ * Conversations where the visitor never wrote anything and never asked for a person
+ * are left out: an auto-opened widget nobody used is not a lead. One where they
+ * tapped "Talk to a person" without typing is, and must be in the inbox.
  */
 func (s *Store) SalesInbox(ctx context.Context, filter string, limit int) ([]SalesConversation, int, error) {
-	where := `EXISTS (SELECT 1 FROM sales_messages v WHERE v.conversation_id = c.id AND v.role = 'visitor')`
+	where := `(c.status <> 'ai' OR EXISTS (SELECT 1 FROM sales_messages v WHERE v.conversation_id = c.id AND v.role = 'visitor'))`
 	switch filter {
 	case "needs":
 		where += ` AND c.status IN ('waiting', 'human')`
