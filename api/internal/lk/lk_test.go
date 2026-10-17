@@ -3,6 +3,7 @@ package lk
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -702,6 +703,38 @@ func TestDescribe(t *testing.T) {
 	}
 	if describe(p).AudioMuted {
 		t.Error("an unmuted microphone must not read as muted")
+	}
+}
+
+// The one-share-at-a-time rule ranks shares by the SFU's publish stamp, so describe has
+// to carry it through — and to leave ScreenShare nil for somebody not sharing, which is
+// how the rule tells the two apart.
+func TestDescribeScreenShare(t *testing.T) {
+	p := &livekit.ParticipantInfo{Identity: "pan_A", Name: "Amlesh"}
+	if describe(p).ScreenShare != nil {
+		t.Error("nothing published must mean no screen share")
+	}
+	p.Tracks = []*livekit.TrackInfo{
+		{Sid: "TR_cam", Type: livekit.TrackType_VIDEO, Source: livekit.TrackSource_CAMERA},
+		{
+			Sid: "TR_share", Type: livekit.TrackType_VIDEO, Source: livekit.TrackSource_SCREEN_SHARE,
+			Muted: true, Version: &livekit.TimedVersion{UnixMicro: 1_760_000_000_000_123},
+		},
+	}
+	got := describe(p).ScreenShare
+	if got == nil {
+		t.Fatal("a published screen share must be described")
+	}
+	if got.StartedAtMicro != 1_760_000_000_000_123 || !got.Muted {
+		t.Errorf("screen share = %+v, want the stamp and the mute carried through", *got)
+	}
+	// And it is server-side only: the roster JSON the host's panel gets is unchanged.
+	raw, err := json.Marshal(describe(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "1760000000000123") || strings.Contains(string(raw), "StartedAt") {
+		t.Errorf("screen share leaked into the roster JSON: %s", raw)
 	}
 }
 

@@ -21,6 +21,7 @@ import {
   type LayoutMode,
 } from "@/lib/layout";
 import { isHighlighted } from "@/lib/speaker";
+import { isPrivileged, pickShare, shareStartedAt } from "@/lib/share-lock";
 import { API_BASE } from "@/lib/api";
 import { useCompact } from "@/lib/compact";
 import {
@@ -68,7 +69,8 @@ import { ParticipantTile, type Tile, type TileSource } from "./tile";
 export type ViewMode = LayoutMode;
 
 export function Stage() {
-  const { topic, controls, permissions, join, stage, entryVideo, coverImageUrl } = useRoomUI();
+  const { topic, controls, permissions, join, stage, entryVideo, coverImageUrl, isHost } =
+    useRoomUI();
 
   // onlySubscribed: a track we have not subscribed to has no stream to render,
   // and with adaptiveStream the subscription follows what is actually on screen.
@@ -136,7 +138,32 @@ export function Stage() {
     return placeholders.length > 0 ? placeholders : published;
   }, [presence, people, published]);
 
-  const screenShare = tiles.find((t) => t.source === Track.Source.ScreenShare);
+  /* One screen share on the stage, never two (lib/share-lock.ts).
+   *
+   * Only one person should be sharing, but for the second or so a takeover takes —
+   * the new share is up and the old one is still stopping — there are two. This picks
+   * the one the room agrees on, by the same rule the server and every other browser
+   * use, so nobody watches the outgoing share or the two flicker. The others stay in
+   * `tiles` so applyBudget still sees them; they are only left out of what is laid out. */
+  const shareKey = useMemo(() => {
+    const candidates = tiles
+      .filter((t) => t.source === Track.Source.ScreenShare)
+      .map((t) => ({
+        key: t.key,
+        identity: t.participant.identity,
+        privileged: t.participant.isLocal ? isHost : isPrivileged(t.participant),
+        // Our own publication never carries the SFU's stamp; ours is the newest.
+        startedAt: t.participant.isLocal ? null : shareStartedAt(t.publication),
+        muted: t.publication?.isMuted ?? false,
+      }));
+    return pickShare(candidates)?.key ?? null;
+  }, [tiles, isHost]);
+  const shown = useMemo(
+    () => tiles.filter((t) => t.source !== Track.Source.ScreenShare || t.key === shareKey),
+    [tiles, shareKey],
+  );
+
+  const screenShare = shown.find((t) => t.source === Track.Source.ScreenShare);
   const mode: LayoutMode = stage.mode;
   const speaking = useActiveSpeaker();
 
@@ -151,20 +178,20 @@ export function Stage() {
    * spotlight pass null, so a conversation cannot reshuffle a gallery or a deck.
    * Pin and a screen share still outrank the talker — see sortTiles. */
   const ordered = useMemo(() => {
-    const filtered = filterTiles(tiles, stage.preferences);
+    const filtered = filterTiles(shown, stage.preferences);
     /* Hiding non-video would drop the only proof the host is here and leave a
      * blank stage. The preference still applies once somebody is actually
      * publishing — those tiles all have a publication. */
     const kept =
-      filtered.length === 0 && tiles.some((tile) => tile.publication === undefined)
-        ? tiles
+      filtered.length === 0 && shown.some((tile) => tile.publication === undefined)
+        ? shown
         : filtered;
     return sortTiles(
       kept,
       stage.pinnedParticipantId,
       mode === "speaker" ? speaking : null,
     );
-  }, [tiles, stage.preferences, stage.pinnedParticipantId, mode, speaking]);
+  }, [shown, stage.preferences, stage.pinnedParticipantId, mode, speaking]);
 
   /* The mode is exactly what the viewer chose — with one deliberate exception below.
    *
@@ -285,7 +312,7 @@ export function Stage() {
   }
 
   const focus =
-    ordered.find((t) => t.key === stage.pinnedParticipantId) ?? screenShare ?? ordered[0] ?? tiles[0];
+    ordered.find((t) => t.key === stage.pinnedParticipantId) ?? screenShare ?? ordered[0] ?? shown[0] ?? tiles[0];
   const rest = ordered.filter((t) => t.key !== focus.key);
   const pinned = stage.pinnedParticipantId;
   // One publisher has nothing to grid. A 16:9 cell centered in a wider stage leaves
