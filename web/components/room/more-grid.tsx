@@ -31,9 +31,9 @@ import { tool } from "./tools";
  *
  *   drag      a cell onto the toolbar, or a toolbar button back into this
  *             panel (tool-drag.tsx — mouse moves 6px, a finger holds 350ms).
- *   Customize "Customize toolbar" in the footer: every movable cell gets a +,
- *             every toolbar button a −. The way in for keyboards, screen
- *             readers and anyone for whom a long-press drag is a guess.
+ *   Customize editing mode: every movable cell gets a +, every toolbar button
+ *             a −. No longer opened from this footer (the "Customize toolbar"
+ *             button was removed); the mode is kept for onEditingChange callers.
  *
  * Nothing that cannot move looks like it can: the standing strip's leftovers
  * on a phone, and Share, carry no grip and no +.
@@ -526,55 +526,43 @@ export function MoreGrid({
 
         {(canCustomize || onReset) && !dragging && (
           <div className="mt-1.5 space-y-1 border-t border-line px-1 pt-1.5">
-            {/* Zoom-style one-liner tip; Customize stays as the keyboard-friendly path. */}
+            {/* Zoom-style one-liner tip; dragging is the way to pin or remove. */}
             {canCustomize && !editing && hasMovable && (
               <p id="more-drag-tip" className="text-[11px] leading-snug text-ink-3">
                 Drag to pin or remove from toolbar
               </p>
             )}
-            <div className="flex items-center justify-between gap-2">
-              {!canCustomize ? (
-                <p className="text-[11px] leading-snug text-ink-3">
-                  Your own toolbar buttons show on a wider screen.
-                </p>
-              ) : editing ? (
-                <button
-                  type="button"
-                  onClick={() => onEditingChange(false)}
-                  className="rounded-md bg-brand px-2.5 py-1 text-[12px] font-semibold text-stage outline-none transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand/50"
-                >
-                  Done
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  aria-pressed={false}
-                  aria-label="Customize toolbar"
-                  title="Customize toolbar"
-                  onClick={() => {
-                    setShowReactions(false);
-                    setShowLayout(false);
-                    setShowInvite(false);
-                    onEditingChange(true);
-                  }}
-                  className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[12px] font-medium text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
-                >
-                  {/* Icon only: the drag tip above says what it is for; the label stays for
-                      screen readers and the tooltip. */}
-                  <PlusIcon className="size-3.5" />
-                </button>
-              )}
-              {onReset && (
-                <button
-                  type="button"
-                  onClick={onReset}
-                  title="Put the toolbar back the way it started. You can undo this."
-                  className="shrink-0 rounded-md px-1 text-[12px] font-medium text-brand outline-none transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-brand/40"
-                >
-                  Reset
-                </button>
-              )}
-            </div>
+            {(!canCustomize || editing || onReset) && (
+              <div className="flex items-center justify-between gap-2">
+                {!canCustomize ? (
+                  <p className="text-[11px] leading-snug text-ink-3">
+                    Your own toolbar buttons show on a wider screen.
+                  </p>
+                ) : editing ? (
+                  <button
+                    type="button"
+                    onClick={() => onEditingChange(false)}
+                    className="rounded-md bg-brand px-2.5 py-1 text-[12px] font-semibold text-stage outline-none transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand/50"
+                  >
+                    Done
+                  </button>
+                ) : (
+                  /* No footer entry into Customize: dragging is the way to pin or remove.
+                     Editing mode itself is kept for any other caller of onEditingChange. */
+                  <span />
+                )}
+                {onReset && (
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    title="Put the toolbar back the way it started. You can undo this."
+                    className="shrink-0 rounded-md px-1 text-[12px] font-medium text-brand outline-none transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-brand/40"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
