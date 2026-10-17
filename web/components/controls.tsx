@@ -86,6 +86,7 @@ export function Modal({
   size = "md",
   dark = false,
   dismissible = true,
+  trapFocus = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -100,6 +101,9 @@ export function Modal({
   /** False for a step that has to be completed: no close button, and Escape or a
    *  click outside does nothing. The content must offer its own way out. */
   dismissible?: boolean;
+  /** Keep Tab and Shift+Tab inside the dialog, for a long form a keyboard user should
+   *  not fall out of into the page behind it. */
+  trapFocus?: boolean;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -145,6 +149,7 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
+        onKeyDown={trapFocus ? (e) => keepFocusInside(e, panel.current) : undefined}
         className={`relative flex max-h-[92dvh] w-full flex-col rounded-t-2xl bg-surface shadow-2xl outline-none sm:rounded-2xl ${width} ${
           dark ? "room-dark" : ""
         }`}
@@ -182,6 +187,28 @@ export function Modal({
       </div>
     </div>
   );
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Wraps Tab at the ends of `panel`, so focus cycles within it. */
+function keepFocusInside(e: React.KeyboardEvent, panel: HTMLElement | null) {
+  if (e.key !== "Tab" || !panel) return;
+  const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) => el.offsetParent !== null || el === document.activeElement,
+  );
+  if (items.length === 0) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  const at = document.activeElement;
+  if (e.shiftKey && (at === first || at === panel)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && at === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 /** Confirmation for an action that cannot be undone. Separate from Modal so the

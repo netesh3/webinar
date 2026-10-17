@@ -28,6 +28,7 @@ import {
 import { previewLabel } from "../message-kind";
 import { MessageContent } from "./message-content";
 import { templateKey } from "./crm-templates";
+import { TemplateBlanks, paramView, slotControlId } from "./template-params";
 import { PersonAvatar, Ticks } from "./wa-kit";
 
 /* Messages: its own screen, opened from the chat icon, not a tab on Your webinars.
@@ -823,23 +824,30 @@ function ReplyBox({
             </div>
           )}
           {template && template.variables > 0 && (
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {filled.map((_, i) => (
-                <label key={i} className="grid gap-1 text-[11px] text-ink-3">
-                  {`Value for {{${i + 1}}}`}
-                  <input
-                    className="field h-9 text-[13px]"
-                    value={params[i] ?? ""}
-                    onChange={(e) =>
-                      setParams((prev) => {
-                        const next = [...prev];
-                        next[i] = e.target.value;
-                        return next;
-                      })
-                    }
-                  />
-                </label>
-              ))}
+            <div className="mt-2 grid gap-2">
+              <TemplateBlanks
+                body={template.body ?? ""}
+                header={template.header}
+                views={filled.map((v) => paramView({ text: v }, []))}
+                controlPrefix="inbox-param"
+                control={(i) => (
+                  <label className="grid gap-1 text-[11px] text-ink-3">
+                    {`Value for {{${i + 1}}}`}
+                    <input
+                      id={slotControlId("inbox-param", i + 1)}
+                      className="field h-9 text-[13px]"
+                      value={params[i] ?? ""}
+                      onChange={(e) =>
+                        setParams((prev) => {
+                          const next = [...prev];
+                          next[i] = e.target.value;
+                          return next;
+                        })
+                      }
+                    />
+                  </label>
+                )}
+              />
             </div>
           )}
           {needsOptIn && (

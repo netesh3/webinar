@@ -28,6 +28,7 @@ import {
   type TemplateKind,
 } from "../template-options";
 import { HeaderFileButton, HeaderMediaBlock, fileDetail, type HeaderDraft } from "./header-media";
+import { FilledText } from "./template-params";
 
 /* The template editor's options and the WhatsApp-style preview of every shape. Rules
  * are in ../template-options.ts; this is the form and the bubble. */
@@ -669,8 +670,20 @@ function Body({ text }: { text: string }) {
   );
 }
 
-/** The template as WhatsApp shows it on a phone. */
-export function WhatsAppPreview({ model, compact }: { model: PreviewModel; compact?: boolean }) {
+/** The template as WhatsApp shows it on a phone. With `fill`, the blanks show their
+ *  values tinted by blank (see template-params.tsx), the active one outlined. */
+export function WhatsAppPreview({
+  model,
+  compact,
+  fill,
+  cover,
+}: {
+  model: PreviewModel;
+  compact?: boolean;
+  fill?: { values: string[]; active: number | null };
+  /** The webinar's cover, for an image header with no file of its own. */
+  cover?: string;
+}) {
   const bubble = "overflow-hidden rounded-lg rounded-tl-sm bg-white text-[12.5px] leading-relaxed text-[#111] shadow-sm";
   // Compact sits inside a PhoneFrame, which already draws the chat background.
   const wrap = compact ? "" : "rounded-xl px-3 py-3";
@@ -700,7 +713,7 @@ export function WhatsAppPreview({ model, compact }: { model: PreviewModel; compa
   return (
     <div className={wrap} style={bg} aria-label="Preview">
       <div className={`${bubble} max-w-[92%]`}>
-        {head !== "TEXT" && <HeaderMediaBlock format={head} file={model.headerFile} />}
+        {head !== "TEXT" && <HeaderMediaBlock format={head} file={model.headerFile} cover={cover} />}
         {model.offer && (
           <div className="m-1 flex items-center gap-2 rounded-md bg-[#f0f2f5] px-2.5 py-2">
             <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#d9fdd3] text-[#1f7a3a]">
@@ -718,8 +731,16 @@ export function WhatsAppPreview({ model, compact }: { model: PreviewModel; compa
           </div>
         )}
         <div className="px-2.5 py-1.5">
-          {head === "TEXT" && model.headerText?.trim() && <p className="font-semibold">{model.headerText.trim()}</p>}
-          <Body text={model.body || "…"} />
+          {head === "TEXT" && model.headerText?.trim() && (
+            <p className="font-semibold">{model.headerText.trim()}</p>
+          )}
+          {fill ? (
+            <p className="whitespace-pre-wrap">
+              <FilledText text={model.body || "…"} values={fill.values} active={fill.active} />
+            </p>
+          ) : (
+            <Body text={model.body || "…"} />
+          )}
           {model.footer && <p className="mt-0.5 text-[11px] text-[#667781]">{model.footer}</p>}
         </div>
         <Buttons buttons={model.buttons} />

@@ -6,8 +6,9 @@ import type {
   CRMAudienceSample,
   CRMTemplate,
 } from "@/lib/api-types";
-import { renderTemplate, templateKey } from "./crm-templates";
+import { templateKey } from "./crm-templates";
 import { HeaderMediaBlock } from "./header-media";
+import { FilledText } from "./template-params";
 import {
   AvatarStack,
   CategoryPill,
@@ -186,6 +187,7 @@ export function PhonePreview({
   fallback,
   from,
   cover,
+  active = null,
 }: {
   template: CRMTemplate;
   samples: CRMAudienceSample[];
@@ -194,6 +196,8 @@ export function PhonePreview({
   from: string;
   /** The webinar's cover, for a template with an image header. */
   cover?: string;
+  /** The blank being worked on, outlined in the bubble (see template-params.tsx). */
+  active?: number | null;
 }) {
   const [i, setI] = useState(0);
   const at = Math.min(i, Math.max(0, samples.length - 1));
@@ -251,7 +255,7 @@ export function PhonePreview({
             {template.header && (
               <p className="font-semibold">{template.header}</p>
             )}
-            {renderTemplate(template.body ?? "", values)}
+            <FilledText text={template.body ?? ""} values={values} active={active} />
             {template.footer && (
               <p className="mt-1 text-[10.5px] text-[#667781]">
                 {template.footer}
