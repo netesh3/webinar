@@ -63,3 +63,33 @@ func TestWatchURL(t *testing.T) {
 		t.Errorf("short id err = %v, want ErrBadWatch", err)
 	}
 }
+
+func TestLinkedInIngest(t *testing.T) {
+	const base = "rtmps://1a2b3c.channel.media.azure.net:2935/live/abc123"
+	cases := []struct {
+		url, key, want string
+		err            error
+	}{
+		{base, "LIVEKEY99", base + "/LIVEKEY99", nil},
+		{base + "/", " LIVEKEY99 ", base + "/LIVEKEY99", nil},
+		{base, "", "", ErrLinkedInNeedKey},
+		{"rtmp://live.example.com/app", "k", "rtmp://live.example.com/app/k", nil},
+		{"", "k", "", ErrLinkedInNeedURL},
+		{"https://linkedin.com/live", "k", "", ErrLinkedInNeedURL},
+		{"rtmps://host.example", "", "", ErrLinkedInNeedKey},
+		{base, "has space", "", ErrLinkedInNeedKey},
+	}
+	for _, c := range cases {
+		got, err := LinkedInIngest(c.url, c.key)
+		if err != c.err || got != c.want {
+			t.Errorf("LinkedInIngest(%q, %q) = %q, %v; want %q, %v", c.url, c.key, got, err, c.want, c.err)
+		}
+	}
+}
+
+func TestHintHidesTheKey(t *testing.T) {
+	got := Hint("rtmps://1a2b3c.channel.media.azure.net:2935/live/abc123/SECRETKEY99")
+	if got != "1a2b3c.channel.media.azure.net · key ending EY99" {
+		t.Errorf("Hint = %q", got)
+	}
+}

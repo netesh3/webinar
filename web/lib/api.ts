@@ -1,4 +1,7 @@
 import type {
+  SaveStreamKeyRequest,
+  SetWebinarLinkedInRequest,
+  WebinarLinkedIn,
   AIStatus,
   SalesChat,
   SalesConversationDetail,
@@ -605,6 +608,18 @@ export const api = {
   /** "Notify me" for a coming-soon integration. Returns the card list. */
   integrationInterest: (id: string) =>
     post<IntegrationsResponse>(`/api/host/integrations/${seg(id)}/interest`),
+
+  /** Save a Stream URL and key from a card's stream_key form (LinkedIn Live). href is an /api path. */
+  saveStreamKey: async (href: string, body: SaveStreamKeyRequest) => {
+    const res = await put<IntegrationsResponse>(href, body);
+    dropCache(INTEGRATIONS_KEY);
+    return res;
+  },
+
+  /** LinkedIn Live as this room sees it: saved in Settings, paused here, streaming now. */
+  webinarLinkedIn: (slug: string) => request<WebinarLinkedIn>(`/api/host/webinars/${seg(slug)}/linkedin`, fresh),
+  setWebinarLinkedIn: (slug: string, paused: boolean) =>
+    patch<WebinarLinkedIn>(`/api/host/webinars/${seg(slug)}/linkedin`, { paused } satisfies SetWebinarLinkedInRequest),
 
   /** Follow a card action the registry described (disconnect). href is an /api path. */
   integrationCall: async (href: string, method: "DELETE" | "POST") => {

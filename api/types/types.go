@@ -3899,7 +3899,34 @@ const (
 	IntegrationActionInterest = "interest"
 	IntegrationActionInfo     = "info"
 	IntegrationActionSignup   = "signup"
+	// IntegrationActionStreamKey opens a form for a Stream URL and key, sent
+	// to Href with Method as SaveStreamKeyRequest. LinkedIn Live uses it.
+	IntegrationActionStreamKey = "stream_key"
 )
+
+// SaveStreamKeyRequest is a Stream URL and key pasted on an integration card.
+type SaveStreamKeyRequest struct {
+	StreamURL string `json:"streamUrl"`
+	StreamKey string `json:"streamKey"`
+}
+
+/* WebinarLinkedIn is LinkedIn Live as one room sees it.
+ *
+ * Configured: the host saved a stream key in Settings. Paused: the host paused
+ * it in this room. Streaming: the webinar is live, configured and not paused,
+ * so the mix is being pushed to LinkedIn. Hint names the destination without
+ * the key. */
+type WebinarLinkedIn struct {
+	Configured bool   `json:"configured"`
+	Paused     bool   `json:"paused"`
+	Streaming  bool   `json:"streaming"`
+	Hint       string `json:"hint,omitempty"`
+}
+
+// SetWebinarLinkedInRequest pauses or resumes LinkedIn Live for one webinar.
+type SetWebinarLinkedInRequest struct {
+	Paused bool `json:"paused"`
+}
 
 type IntegrationStep struct {
 	Title string `json:"title"`
