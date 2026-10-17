@@ -1,8 +1,9 @@
 "use client";
 
 import { formatPosition } from "@/lib/file-share";
-import { PlayIcon, StopIcon, VolumeIcon } from "../icons";
+import { EyeIcon, PlayIcon, StopIcon, VolumeIcon } from "../icons";
 import { useRoomUI } from "./context";
+import { SHARE_ONLY_LABEL, useShareOnlyControl } from "./share-only";
 
 /* Playback controls for a shared video file.
  *
@@ -19,6 +20,7 @@ import { useRoomUI } from "./context";
 
 export function FileShareBar() {
   const { fileShare } = useRoomUI();
+  const shareOnly = useShareOnlyControl();
   if (!fileShare.active) return null;
 
   const { position, duration, playing, monitor } = fileShare;
@@ -78,6 +80,24 @@ export function FileShareBar() {
         >
           <VolumeIcon className="size-4" />
         </button>
+
+        {/* Host and co-hosts: the audience sees this video and nothing else from the
+            stage. The same session switch as the Host panel and the banner. */}
+        {shareOnly.canControl && (
+          <button
+            type="button"
+            onClick={() => void shareOnly.setOn(!shareOnly.on)}
+            disabled={shareOnly.busy}
+            aria-pressed={shareOnly.on}
+            title={SHARE_ONLY_LABEL}
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-white/50 ${
+              shareOnly.on ? "bg-white/20 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            <EyeIcon className="size-4" />
+            <span className="hidden md:inline">Only this video</span>
+          </button>
+        )}
 
         <button
           type="button"

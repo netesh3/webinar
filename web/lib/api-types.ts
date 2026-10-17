@@ -2112,6 +2112,15 @@ export interface SessionControls {
    * with, so switching the setting never rewrites history.
    */
   chatDestination: ChatDestination;
+  /**
+   *  AudienceShareOnly shows attendees only the active share — an older recording
+   * 	 * played as if live, say — with no stage cameras, names or labels. With no share
+   * 	 * active they see the normal stage. AudienceMuteStage also stops stage
+   * 	 * microphones reaching them; the share's own audio still plays. Both are
+   * 	 * live-only and cleared when the webinar ends (see migrations/0115).
+   */
+  audienceShareOnly: boolean;
+  audienceMuteStage: boolean;
 }
 /**
  * ChatDestination is the audience for a chat message.
@@ -2139,6 +2148,12 @@ export interface ControlsPatch {
    * everyone" are different requests.
    */
   chatDestination?: ChatDestination;
+  /**
+   * Turning AudienceShareOnly on without saying AudienceMuteStage mutes the stage
+   * for the audience too; see handleUpdateControls.
+   */
+  audienceShareOnly?: boolean;
+  audienceMuteStage?: boolean;
 }
 /**
  * PollKind separates a poll from a quiz.
