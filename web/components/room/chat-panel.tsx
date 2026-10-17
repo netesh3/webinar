@@ -21,7 +21,7 @@ import {
 } from "@/lib/mentions";
 import { chatDestination, type ChatDestination, type ChatMessage } from "@/lib/realtime";
 import { Alert, ConfirmModal, Spinner } from "../controls";
-import { ArrowDownIcon, ImageIcon, SendIcon, TrashIcon } from "../icons";
+import { ArrowDownIcon, PaperclipIcon, SendIcon, TrashIcon } from "../icons";
 import { SenderAvatar } from "../sender-avatar";
 import { PanelistsOnlyBadge, RoleBadge } from "./chat-badges";
 import {
@@ -423,13 +423,6 @@ export function ChatPanel() {
               }}
               className="flex items-end gap-2"
             >
-              {/* "Posting as". Decorative — the composer's label already says what it is. */}
-              <SenderAvatar
-                name={me.name}
-                identity={me.identity}
-                size="sm"
-                className="mb-1.5"
-              />
               <MentionComposer
                 draft={draft}
                 onDraft={setDraft}
@@ -469,11 +462,11 @@ export function ChatPanel() {
                 type="button"
                 onClick={() => filePicker.current?.click()}
                 disabled={uploading}
-                aria-label="Send an image"
-                title="Send an image — or just paste a screenshot"
+                aria-label="Attach an image"
+                title="Attach an image — or just paste a screenshot"
                 className="grid size-9 shrink-0 place-items-center rounded-lg text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               >
-                {uploading ? <Spinner className="size-4" /> : <ImageIcon className="size-4" />}
+                {uploading ? <Spinner className="size-4" /> : <PaperclipIcon className="size-[18px]" />}
               </button>
 
               <button
@@ -665,8 +658,8 @@ function MessageBody({
 
       {message.text && (
         // wrap-anywhere so a pasted URL cannot widen the panel and push the layout
-        // sideways.
-        <p className="mt-0.5 leading-relaxed break-words wrap-anywhere text-ink-2">
+        // sideways; pre-wrap so a Shift+Enter line break arrives as one.
+        <p className="mt-0.5 leading-relaxed break-words whitespace-pre-wrap wrap-anywhere text-ink-2">
           {/* Tags first, then links within the plain runs between them: a name is
               never a URL, and a URL containing "@" is not a tag. */}
           {mentionSegments(message.text, message.mentions, nameFor).map((segment, s) =>

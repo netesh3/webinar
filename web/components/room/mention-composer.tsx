@@ -91,6 +91,17 @@ export function MentionComposer({
     setCaret(at);
   }, [draft]);
 
+  // Grows with what is typed, one line at a time, up to max-h-28 — then scrolls.
+  // Measured from scrollHeight after collapsing to "auto", or the box could never
+  // shrink back once text is deleted or the message is sent.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+    if (backdrop.current) backdrop.current.scrollTop = el.scrollTop;
+  }, [draft.text]);
+
   useEffect(() => {
     if (highlighted < 0) return;
     document
