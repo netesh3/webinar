@@ -46,7 +46,7 @@ export type ToolId =
   /** Stream to YouTube — a host-only dialog with a live indicator. */
   | "youtube"
   /** The shared whiteboard (Excalidraw) — host and panelists, behind the host's
-   *  `whiteboard` account switch. Starts in More and never on the bar. */
+   *  `whiteboard` account switch. Starts in More; on the bar only if dragged there. */
   | "whiteboard";
 
 export const TOOL_IDS: readonly ToolId[] = [
@@ -395,16 +395,16 @@ export function isHomeTool(id: ToolId): boolean {
   return HOME_BAR_TOOLS.includes(id);
 }
 
-/* Tools that live in More and nowhere else.
+/* Tools that only reach the bar when somebody puts them there.
  *
- * In `overflow` like any grid tool, so they show in More, but never pinned and
- * never surfaced into a vacant slot from recent use — so the toolbar a host has
- * today is exactly the toolbar they keep. Drag and Customize offer no way out of
- * More for them (isPinnable). */
-export const MORE_ONLY_TOOLS: readonly ToolId[] = ["whiteboard"];
+ * In `overflow` like any grid tool, so they start in More, and pinnable by drag
+ * like Captions — but never recorded as recent, so never surfaced into a vacant
+ * slot on their own. A host who turns the whiteboard on keeps exactly the
+ * toolbar they had until they choose to move it. */
+export const NEVER_SURFACED_TOOLS: readonly ToolId[] = ["whiteboard"];
 
-export function isMoreOnly(id: ToolId): boolean {
-  return MORE_ONLY_TOOLS.includes(id);
+export function isNeverSurfaced(id: ToolId): boolean {
+  return NEVER_SURFACED_TOOLS.includes(id);
 }
 
 /** Home tools this person has moved into More. */
@@ -455,7 +455,6 @@ export function pinTool(
 ): ToolLayout {
   // Centre-cluster tools already have a standing place on the bar.
   if (isBarExcluded(tool)) return layout;
-  if (isMoreOnly(tool)) return layout;
   if (isHomeTool(tool)) {
     if (!layout.overflow.includes(tool)) return layout;
     return { ...layout, overflow: layout.overflow.filter((id) => id !== tool) };
@@ -506,7 +505,7 @@ export function noteUse(layout: ToolLayout, tool: ToolId): ToolLayout {
     isPanelTool(tool) ||
     FIXED_BAR_TOOLS.includes(tool) ||
     isHomeTool(tool) ||
-    isMoreOnly(tool)
+    isNeverSurfaced(tool)
   ) {
     return layout;
   }
@@ -764,7 +763,7 @@ export function barSlots(
 ): BarSlot[] {
   const allowed = new Set(available);
   const slots: BarSlot[] = layout.pinned
-    .filter((id) => allowed.has(id) && isPinSlotTool(id) && !isMoreOnly(id))
+    .filter((id) => allowed.has(id) && isPinSlotTool(id))
     .slice(0, Math.max(0, capacity))
     .map((tool) => ({ tool, pinned: true }));
 
@@ -773,7 +772,7 @@ export function barSlots(
   const taken = new Set(slots.map((s) => s.tool));
   for (const tool of layout.recent) {
     if (slots.length >= capacity) break;
-    if (taken.has(tool) || !allowed.has(tool) || !isPinSlotTool(tool) || isMoreOnly(tool))
+    if (taken.has(tool) || !allowed.has(tool) || !isPinSlotTool(tool) || isNeverSurfaced(tool))
       continue;
     slots.push({ tool, pinned: false });
     taken.add(tool);
@@ -859,10 +858,9 @@ export function moreOrder<T extends string>(ids: readonly T[]): T[] {
 
 /** Whether a tool can be moved between the toolbar and More at all. The
  *  standing strip (Chat, Q&A, …) cannot: it already has a fixed place. Home
- *  tools (YouTube, Settings) can, though they return to their own place.
- *  More-only tools (Whiteboard) cannot leave More. */
+ *  tools (YouTube, Settings) can, though they return to their own place. */
 export function isPinnable(id: ToolId): boolean {
-  return !isBarExcluded(id) && !isMoreOnly(id);
+  return !isBarExcluded(id);
 }
 
 /** What a toolbar edit did, so the room can say it in words and offer undo. */
