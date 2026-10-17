@@ -21,6 +21,7 @@ import {
   FeatureCloudRecording,
   FeatureJoinWithoutRegistration,
   FeatureZoom,
+  type CRMMediaFile,
   type MessageSlot,
   type Webinar,
   type WebinarInput,
@@ -315,6 +316,9 @@ function ScheduleFormBody({
   const [pendingImage, setPendingImage] = useState<PreparedWebinarImage | null>(
     null,
   );
+  // Or an image chosen from the media library: copied into the cover on save, the
+  // same moment an upload would go (a new webinar has no slug before then).
+  const [pendingMedia, setPendingMedia] = useState<CRMMediaFile | null>(null);
   // True once the host removes a PERSISTED image with no replacement chosen —
   // the thing submit() actually has to tell the server about. Picking a new
   // image after removing one clears this; the upload itself is the replacement.
@@ -339,6 +343,7 @@ function ScheduleFormBody({
   const dirty =
     localPrint !== cleanPrint ||
     pendingImage !== null ||
+    pendingMedia !== null ||
     imageRemoved ||
     form.streamKey !== "";
   const [written, setWritten] = useState<{
@@ -387,7 +392,7 @@ function ScheduleFormBody({
     busy !== null
       ? { kind: "saving" }
       : localPrint === cleanPrint
-        ? pendingImage || imageRemoved
+        ? pendingImage || pendingMedia || imageRemoved
           ? { kind: "unsaved" }
           : { kind: "pristine" }
         : storageBroken
@@ -570,6 +575,15 @@ function ScheduleFormBody({
         } catch {
           notify(
             "Saved, but the cover image didn't upload. Edit the webinar to try again.",
+            "info",
+          );
+        }
+      } else if (pendingMedia) {
+        try {
+          saved = await api.setWebinarImageFromMedia(saved.id, pendingMedia.id);
+        } catch {
+          notify(
+            "Saved, but the cover image couldn't be set. Edit the webinar to try again.",
             "info",
           );
         }
@@ -882,11 +896,19 @@ function ScheduleFormBody({
               imagePreview={imagePreview}
               onImage={(prepared, preview) => {
                 setPendingImage(prepared);
+                setPendingMedia(null);
+                setImageRemoved(false);
+                setImagePreview(preview);
+              }}
+              onImageFromMedia={(file, preview) => {
+                setPendingMedia(file);
+                setPendingImage(null);
                 setImageRemoved(false);
                 setImagePreview(preview);
               }}
               onImageRemove={() => {
                 setPendingImage(null);
+                setPendingMedia(null);
                 setImagePreview(null);
                 // Only worth telling the server about if there was something
                 // persisted to remove — a pending, never-uploaded selection being

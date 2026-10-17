@@ -12,7 +12,9 @@ import type {
   Plan,
   PlanFeatures,
   PlanFeaturesBody,
+  SetUserMediaQuotaRequest,
   SetUserPlanRequest,
+  WebinarImageFromMediaRequest,
   SetUserSFURequest,
   SFUProjectsResponse,
   WhatsAppConsent,
@@ -619,6 +621,12 @@ export const api = {
       headers: { "Content-Type": mime },
     }),
 
+  /** Make the cover a copy of one of the host's media library images. */
+  setWebinarImageFromMedia: (slug: string, mediaId: string) =>
+    post<Webinar>(`/api/host/webinars/${seg(slug)}/image/from-media`, {
+      mediaId,
+    } satisfies WebinarImageFromMediaRequest),
+
   deleteWebinarImage: (slug: string) =>
     del<Webinar>(`/api/host/webinars/${seg(slug)}/image`),
 
@@ -1007,6 +1015,13 @@ export const api = {
     patch<Account>(`/api/admin/users/${seg(userId)}/max-duration`, {
       maxDurationMin,
     }),
+
+  /** Set an account's media library limit in bytes; null puts it back on the default. */
+  setUserMediaQuota: (userId: string, mediaQuotaBytes: number | null) =>
+    // An absent field is null to the server: back on the default.
+    patch<SetUserMediaQuotaRequest>(`/api/admin/users/${seg(userId)}/media-quota`, {
+      mediaQuotaBytes: mediaQuotaBytes ?? undefined,
+    } satisfies SetUserMediaQuotaRequest),
 
   /** Put an account on a paid plan, or "" for none (the launch default). */
   setUserPlan: (userId: string, plan: Plan | "") =>

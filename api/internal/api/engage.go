@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"io"
+
 	"github.com/netkumar/webcast/api/internal/notify"
 
 	"github.com/go-chi/chi/v5"
@@ -68,6 +70,11 @@ type Engage interface {
 
 	// WhatsAppUsage is the admin dashboard's per-host WhatsApp activity for the last days days.
 	WhatsAppUsage(ctx context.Context, days int) (types.AdminWhatsAppUsage, error)
+
+	/* OpenMediaForHost opens one of this host's media library files — its bytes and
+	 * stored type — for a webinar cover picked from the gallery. store.ErrNotFound when
+	 * the file is not this host's, or there is no CRM. The caller closes the reader. */
+	OpenMediaForHost(ctx context.Context, hostID, mediaID string) (io.ReadCloser, string, error)
 }
 
 // NoEngage is a deployment without the CRM: no routes, no messages, no columns.
@@ -93,6 +100,9 @@ func (NoEngage) MessageSlots(context.Context, string) ([]types.MessageSlot, bool
 }
 func (NoEngage) WhatsAppUsage(_ context.Context, days int) (types.AdminWhatsAppUsage, error) {
 	return types.AdminWhatsAppUsage{Days: days, Hosts: []types.AdminWhatsAppHostUsage{}}, nil
+}
+func (NoEngage) OpenMediaForHost(context.Context, string, string) (io.ReadCloser, string, error) {
+	return nil, "", store.ErrNotFound
 }
 
 /* UseEngage plugs the CRM in. Called once, by main (and the test harness), before Routes.

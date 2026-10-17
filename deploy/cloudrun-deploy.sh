@@ -178,6 +178,7 @@ fi
 [[ -n "${BROADCAST_RTMP_BASE:-}" ]] && ENV_VARS+=("BROADCAST_RTMP_BASE=${BROADCAST_RTMP_BASE}")
 [[ -n "${BROADCAST_HLS_BASE:-}" ]] && ENV_VARS+=("BROADCAST_HLS_BASE=${BROADCAST_HLS_BASE}")
 [[ -n "${RECORDINGS_RETENTION_DAYS:-}" ]] && ENV_VARS+=("RECORDINGS_RETENTION_DAYS=${RECORDINGS_RETENTION_DAYS}")
+[[ -n "${MEDIA_QUOTA_DEFAULT_MB:-}" ]] && ENV_VARS+=("MEDIA_QUOTA_DEFAULT_MB=${MEDIA_QUOTA_DEFAULT_MB}")
 [[ -n "${EMPTY_ROOM_CLOSE_MIN:-}" ]] && ENV_VARS+=("EMPTY_ROOM_CLOSE_MIN=${EMPTY_ROOM_CLOSE_MIN}")
 # Turns on POST /api/internal/tick, which Cloud Scheduler calls every minute so that
 # reminders, drips and meeting limits run while the service is scaled to zero. See

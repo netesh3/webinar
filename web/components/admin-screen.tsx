@@ -13,7 +13,9 @@ import {
   type OverrideState,
 } from "@/lib/admin-account-features";
 import {
+  DefaultMediaQuotaMB,
   FeatureInstantWebinar,
+  MaxMediaQuotaMB,
   PlanBusiness,
   PlanEnterprise,
   PlanLaunchAttendees,
@@ -269,6 +271,34 @@ function AdminAccounts() {
         maxDurationMin
           ? `Max meeting duration for ${u.name || u.email} set to ${maxDurationMin} minutes.`
           : `Max meeting duration for ${u.name || u.email} reset to system default.`,
+        "ok",
+      );
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function setMediaQuota(u: AdminUser, mb: number | null) {
+    setBusy(u.id);
+    try {
+      const saved = await api.setUserMediaQuota(u.id, mb === null ? null : Math.round(mb * MB));
+      setUsers((prev) =>
+        (prev ?? []).map((row) =>
+          row.id === u.id
+            ? {
+                ...row,
+                mediaQuotaBytes: saved.mediaQuotaBytes,
+                mediaLimitBytes: saved.mediaQuotaBytes ?? defaultMediaLimit(prev ?? []),
+              }
+            : row,
+        ),
+      );
+      notify(
+        mb === null
+          ? `Media storage for ${u.name || u.email} is back on the default.`
+          : `Media storage for ${u.name || u.email} set to ${mb} MB.`,
         "ok",
       );
     } catch (e) {
@@ -621,6 +651,16 @@ function AdminAccounts() {
                       )}
 
                       {u.canHost && (
+                        <MediaQuotaField
+                          key={`${u.id}:${u.mediaQuotaBytes ?? ""}`}
+                          user={u}
+                          defaultBytes={defaultMediaLimit(users ?? [])}
+                          disabled={busy === u.id}
+                          onSave={(mb) => void setMediaQuota(u, mb)}
+                        />
+                      )}
+
+                      {u.canHost && (
                         <select
                           aria-label="Plan"
                           title="Plan (sets the attendee cap)"
@@ -942,6 +982,80 @@ function FeatureToggle({
  * Edited as a grid and saved whole: the server replaces the matrix in one
  * transaction, so nobody reads half of a save. Attendee caps are not here — they
  * are part of the plan's price (types.PlanAttendeeCap). */
+const MB = 1 << 20;
+
+/** The deployment's default media limit, as the server reports it on any account
+ *  without its own (MEDIA_QUOTA_DEFAULT_MB), else the built-in default. */
+function defaultMediaLimit(rows: AdminUser[]): number {
+  const plain = rows.find((r) => r.mediaQuotaBytes === undefined && r.mediaLimitBytes > 0);
+  return plain?.mediaLimitBytes ?? DefaultMediaQuotaMB * MB;
+}
+
+function mbText(bytes: number): string {
+  return `${(bytes / MB).toFixed(1).replace(/\.0$/, "")} MB`;
+}
+
+/** "Media storage": what the account's media library holds, of its limit, with the
+ *  limit editable in MB. Blank is the default. Saved on blur or Enter. */
+function MediaQuotaField({
+  user: u,
+  defaultBytes,
+  disabled,
+  onSave,
+}: {
+  user: AdminUser;
+  defaultBytes: number;
+  disabled: boolean;
+  onSave: (mb: number | null) => void;
+}) {
+  const current = u.mediaQuotaBytes === undefined ? "" : String(Math.round((u.mediaQuotaBytes / MB) * 10) / 10);
+  // The row is keyed by the saved limit, so a save starts the draft over.
+  const [draft, setDraft] = useState(current);
+  const over = u.mediaUsedBytes > u.mediaLimitBytes;
+  const max = MaxMediaQuotaMB;
+
+  function commit() {
+    const v = draft.trim();
+    if (v === current) return;
+    if (v === "") return onSave(null);
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0 || n > max) {
+      setDraft(current);
+      return;
+    }
+    onSave(n);
+  }
+
+  return (
+    <label
+      className="flex items-center gap-1.5 text-[12px] text-ink-2"
+      title={`Media storage: ${mbText(u.mediaUsedBytes)} used of ${mbText(u.mediaLimitBytes)}. Blank uses the default (${mbText(defaultBytes)}); up to ${max / 1024} GB.`}
+    >
+      <span className={over ? "text-live" : ""}>
+        Media {mbText(u.mediaUsedBytes)} /
+      </span>
+      <input
+        type="number"
+        inputMode="decimal"
+        min={0.1}
+        max={max}
+        step="any"
+        aria-label="Media storage limit in MB"
+        placeholder={`${defaultBytes / MB} (default)`}
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        className="w-[92px] rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+      />
+      <span>MB</span>
+    </label>
+  );
+}
+
 function PlanMatrix() {
   const { featureCatalogue } = useAppConfig();
   const { notify } = useToast();

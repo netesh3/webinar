@@ -21,7 +21,7 @@ export const MEDIA_RULES: Record<
     // and saved as the JPEG or PNG under 5 MB that Meta takes.
     types: ["image/jpeg", "image/png", "image/webp", "image/gif"],
     limit: 25 * MB,
-    hint: "JPG, PNG, WebP or GIF — resized for WhatsApp",
+    hint: "JPG, PNG, WebP or GIF — resized automatically",
   },
   VIDEO: {
     kind: "video",

@@ -499,6 +499,7 @@ func (s *Server) Routes() http.Handler {
 			r.Patch("/users/{id}/kind", s.handleSetAccountKind)
 			r.Patch("/users/{id}/host", s.handleSetHostCapability)
 			r.Patch("/users/{id}/max-duration", s.handleSetUserMaxDuration)
+			r.Patch("/users/{id}/media-quota", s.handleSetUserMediaQuota)
 			r.Patch("/users/{id}/plan", s.handleSetUserPlan)
 			r.Patch("/users/{id}/sfu", s.handleSetUserSFU)
 			r.Get("/sfu-projects", s.handleAdminSFUProjects)
@@ -616,6 +617,7 @@ func (s *Server) Routes() http.Handler {
 					// see web/lib/webinar-image.ts — so this is a plain replace, not an
 					// edit-in-place: uploading again overwrites whatever was there.
 					r.Post("/image", s.handleUploadWebinarImage)
+					r.Post("/image/from-media", s.handleWebinarImageFromMedia)
 					r.Delete("/image", s.handleDeleteWebinarImage)
 
 					// ---- polls and quizzes ----

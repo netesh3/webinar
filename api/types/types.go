@@ -1789,11 +1789,99 @@ type CRMMediaFile struct {
 	Filename string `json:"filename,omitempty"`
 	Bytes    int64  `json:"bytes"`
 	URL      string `json:"url"`
-	/** For an image just uploaded: its size after processing, and the upload's size
-	 *  before. Absent on files read back later. */
+	/** An image's pixels, when known. OriginalBytes is the upload's size before
+	 *  processing, only on the upload's own response. */
 	Width         int   `json:"width,omitempty"`
 	Height        int   `json:"height,omitempty"`
 	OriginalBytes int64 `json:"originalBytes,omitempty"`
+	/** In the media library: a small preview for the grid (images only) and a link
+	 *  for the browser to show the file. Short-lived when the store signs links. */
+	ThumbURL  string `json:"thumbUrl,omitempty"`
+	ViewURL   string `json:"viewUrl,omitempty"`
+	CreatedAt string `json:"createdAt,omitempty"`
+	/** Where the file is still used; deleting it is refused while this is non-empty. */
+	InUse  bool            `json:"inUse,omitempty"`
+	Usages []CRMMediaUsage `json:"usages,omitempty"`
+}
+
+/* CRMMediaUsage is one place a library file is used: a template's default header,
+ * a carousel card of a template, or a broadcast that has not gone out yet. */
+type CRMMediaUsage struct {
+	/** template, carousel or broadcast. */
+	Kind     string `json:"kind"`
+	Name     string `json:"name"`
+	Language string `json:"language,omitempty"`
+	/** A broadcast's send time, RFC 3339. */
+	ScheduledAt string `json:"scheduledAt,omitempty"`
+}
+
+// CRMMediaLibrary is GET /crm/media: one page of the host's files, newest first.
+type CRMMediaLibrary struct {
+	Files      []CRMMediaFile `json:"files"`
+	NextCursor string         `json:"nextCursor,omitempty"`
+	// UsedBytes of LimitBytes: the library's space, all kinds together. A file
+	// bigger than what is left is refused (413 media_quota_exceeded).
+	UsedBytes  int64 `json:"usedBytes"`
+	LimitBytes int64 `json:"limitBytes"`
+}
+
+/* CRMMediaQuotaError is the 413 media_quota_exceeded body: the upload does not fit in
+ * what is left of the library's space. FileBytes is the upload's size (at least, for a
+ * stream cut off when it passed the limit). */
+type CRMMediaQuotaError struct {
+	Error      string `json:"error"`
+	Message    string `json:"message"`
+	UsedBytes  int64  `json:"usedBytes"`
+	LimitBytes int64  `json:"limitBytes"`
+	FileBytes  int64  `json:"fileBytes"`
+}
+
+/* DefaultMediaQuotaMB is the media library's space for an account with no limit of
+ * its own (MEDIA_QUOTA_DEFAULT_MB overrides it per deployment). MaxMediaQuotaMB is
+ * the most an admin can give one account. */
+const (
+	DefaultMediaQuotaMB = 10
+	MaxMediaQuotaMB     = 10 * 1024
+)
+
+// WebinarImageFromMediaRequest is POST /host/webinars/{slug}/image/from-media.
+type WebinarImageFromMediaRequest struct {
+	MediaID string `json:"mediaId"`
+}
+
+// SetUserMediaQuotaRequest is PATCH /api/admin/users/{id}/media-quota. Null is the default.
+type SetUserMediaQuotaRequest struct {
+	MediaQuotaBytes *int64 `json:"mediaQuotaBytes"`
+}
+
+// CRMMediaRenameRequest is PATCH /crm/media/{id}.
+type CRMMediaRenameRequest struct {
+	Filename string `json:"filename"`
+}
+
+// CRMMediaDeleteRequest is POST /crm/media/delete: several files at once.
+type CRMMediaDeleteRequest struct {
+	IDs []string `json:"ids"`
+}
+
+/* CRMMediaDeleteResult says what a delete did: the files removed, and the ones kept
+ * with why (still used — and where — or the storage refused). */
+type CRMMediaDeleteResult struct {
+	Deleted []string          `json:"deleted"`
+	Skipped []CRMMediaSkipped `json:"skipped"`
+	// The library's space after the delete: freed at once.
+	UsedBytes  int64 `json:"usedBytes"`
+	LimitBytes int64 `json:"limitBytes"`
+}
+
+// CRMMediaSkipped is one file a delete left in place.
+type CRMMediaSkipped struct {
+	ID       string `json:"id"`
+	Filename string `json:"filename,omitempty"`
+	/** in_use, not_found or storage. */
+	Reason  string          `json:"reason"`
+	Message string          `json:"message"`
+	Usages  []CRMMediaUsage `json:"usages,omitempty"`
 }
 
 /* CRMWordingRequest is wording the host typed, submitted to Meta for approval.
@@ -2869,6 +2957,12 @@ type AdminUser struct {
 	// FeatureOverrides are this account's own decisions: true forced on, false forced
 	// off. A feature absent here inherits from the plan.
 	FeatureOverrides map[string]bool `json:"featureOverrides"`
+	// MediaQuotaBytes is this account's own media library limit; absent is the default.
+	// MediaLimitBytes is the limit in effect (its own, or the deployment default), and
+	// MediaUsedBytes what its library holds now.
+	MediaQuotaBytes *int64 `json:"mediaQuotaBytes,omitempty"`
+	MediaLimitBytes int64  `json:"mediaLimitBytes"`
+	MediaUsedBytes  int64  `json:"mediaUsedBytes"`
 }
 
 /* AdminStats is the admin dashboard's first read.
