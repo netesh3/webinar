@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useState } from "react";
 import { HostWebinarTabs } from "./host-webinar-tabs";
+import { CopyWebinarDialog } from "./copy-webinar";
 import { ConfirmModal, Menu, Spinner } from "./controls";
 import { StepBar } from "./webinar-steps";
 import { ArrowLeftIcon } from "./icons";
@@ -63,6 +64,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const [busy, setBusy] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [copying, setCopying] = useState(false);
   const now = useNow(15_000);
   const waitReasonId = useId();
 
@@ -381,11 +383,12 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
                       },
                     ]
                   : []),
-                /* A rule with nothing above it is a stray line. Drafts and
-                   completed webinars only have Delete in this menu. */
-                ...(!isDraft && !isEnded
-                  ? [{ kind: "separator" as const }]
-                  : []),
+                {
+                  kind: "action" as const,
+                  label: "Copy webinar",
+                  onSelect: () => setCopying(true),
+                },
+                { kind: "separator" as const },
                 {
                   kind: "action" as const,
                   label: "Delete webinar",
@@ -413,6 +416,11 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         recordings={recordings}
         onChanged={load}
         initialTab={initialTab}
+      />
+
+      <CopyWebinarDialog
+        webinar={copying ? { id: slug, topic: webinar.topic } : null}
+        onClose={() => setCopying(false)}
       />
 
       <ConfirmModal

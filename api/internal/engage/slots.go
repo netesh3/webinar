@@ -725,3 +725,8 @@ func followupBlocked(slots []types.MessageSlot, recipe string) bool {
 	}
 	return !sl.Sends(types.ChannelWhatsApp)
 }
+
+// CopyWebinarMessages carries a webinar's message setup onto a copy of it.
+func (s *Module) CopyWebinarMessages(ctx context.Context, hostID, fromSlug, toSlug string) error {
+	return s.store.CopyWebinarMessages(ctx, hostID, fromSlug, toSlug)
+}

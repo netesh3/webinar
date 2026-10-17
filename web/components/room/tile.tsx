@@ -22,6 +22,7 @@ import { CAMERA_OFF_LABEL } from "@/lib/stage-presence";
 import { isHighlighted } from "@/lib/speaker";
 import { useActiveSpeaker } from "./active-speaker";
 import { useRoomUI } from "./context";
+import { OwnShareView } from "./own-share-view";
 import { participantRole } from "./participants";
 
 /* One video tile.
@@ -230,7 +231,12 @@ export function ParticipantTile({
           />
         )
       ) : isOwnShare ? (
-        <OwnShareNotice size={size} />
+        <OwnShareView
+          participant={participant}
+          publication={publication}
+          size={size}
+          fallback={<OwnShareNotice size={size} />}
+        />
       ) : (
         <AvatarFallback
           participant={participant}

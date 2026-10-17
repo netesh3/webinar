@@ -7,6 +7,7 @@ import { ConfirmModal, Menu, Modal } from "./controls";
 import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, kindLabel } from "./ui";
 import { WebinarListCard } from "./webinar-list-card";
+import { CopyWebinarDialog } from "./copy-webinar";
 import {
   formatCount,
   formatDayShort,
@@ -46,6 +47,7 @@ export function HostWebinarRows({
   const now = useNow(15_000);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Webinar | null>(null);
+  const [copying, setCopying] = useState<Webinar | null>(null);
   const bypass = isDevAuthBypassActive();
 
   async function start(w: Webinar) {
@@ -122,6 +124,7 @@ export function HostWebinarRows({
         now={now}
         onStart={() => void start(w)}
         onDelete={() => setConfirmDelete(w)}
+        onCopy={() => setCopying(w)}
       />
     );
   }
@@ -141,6 +144,11 @@ export function HostWebinarRows({
           ),
         )}
       </div>
+
+      <CopyWebinarDialog
+        webinar={copying ? { id: copying.id, topic: copying.topic } : null}
+        onClose={() => setCopying(null)}
+      />
 
       <ConfirmModal
         open={confirmDelete !== null && !confirmDelete.seriesId}
@@ -276,6 +284,7 @@ function HostCard({
   now,
   onStart,
   onDelete,
+  onCopy,
 }: {
   webinar: Webinar;
   readOnly: boolean;
@@ -283,6 +292,7 @@ function HostCard({
   now: number | null;
   onStart: () => void;
   onDelete: () => void;
+  onCopy: () => void;
 }) {
   const kind = kindLabel(w);
   const isDraft = w.status === "draft";
@@ -486,9 +496,10 @@ function HostCard({
                           ? [{ kind: "action" as const, label: "Admit people", onSelect: () => router.push(`/host/${w.id}?tab=people`) }]
                           : []),
                         { kind: "action" as const, label: "Edit", onSelect: () => router.push(`/host/${w.id}/edit`) },
-                        { kind: "separator" as const },
                       ]
                     : []),
+                  { kind: "action" as const, label: "Copy webinar", onSelect: onCopy },
+                  { kind: "separator" as const },
                   { kind: "action" as const, label: "Delete", danger: true, onSelect: onDelete },
                 ]}
               />

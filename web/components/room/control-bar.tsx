@@ -64,6 +64,12 @@ import {
 } from "@/lib/compact";
 import { isTypingTarget, mediaHotkey } from "@/lib/media-hotkeys";
 import { usePictureInPicture } from "@/lib/pip";
+import {
+  onPresenterRequest,
+  useOwnShare,
+  wantsPresenterView,
+  type ShareSurface,
+} from "@/lib/own-share";
 import { canShareFile } from "@/lib/file-share";
 import { useShareLock } from "@/lib/use-share-lock";
 import { ConfirmModal, Spinner } from "../controls";
@@ -105,6 +111,7 @@ import {
 import { EndWebinarDialog, SendSurveyButton } from "./host-survey";
 import { LeaveConfirm } from "./leave-confirm";
 import { PipStage } from "./pip-stage";
+import { PresenterPip } from "./own-share-view";
 import { useRaisedHandsPanel } from "./raised-hands-panel";
 import { useToolDrag, type DropHandler } from "./tool-drag";
 import { tool } from "./tools";
@@ -133,6 +140,14 @@ const readCanShare = () =>
   typeof navigator !== "undefined" &&
   typeof navigator.mediaDevices?.getDisplayMedia === "function";
 const readCanShareOnServer = () => false;
+
+/** The presenter's floating window, per surface: room for a live picture of a window; a
+ *  short bar for the entire screen, which has no picture (see own-share-view.tsx). */
+const PRESENTER_PIP_SIZE: Record<ShareSurface, { width: number; height: number }> = {
+  window: { width: 400, height: 260 },
+  monitor: { width: 420, height: 110 },
+  browser: { width: 400, height: 260 },
+};
 
 /* How many customisable slots the bar has, by width.
  *
@@ -231,9 +246,22 @@ export function ControlBar() {
    * whoever is sharing, and a dismiss has to stick for a viewer of Amlesh's share the same way
    * it sticks for Amlesh. */
   const screenShares = useTracks([Track.Source.ScreenShare], { onlySubscribed: true });
+  /* Our own window or entire-screen share, for the presenter view (lib/own-share.ts).
+   * A tab is left to Chrome, and a shared video file has no surface to show. */
+  const ownShare = useOwnShare(previewChrome ? undefined : localParticipant, (surface) => {
+    notify(
+      surface === "window"
+        ? "Sharing stopped. The window you shared was closed, or sharing was stopped from the browser's bar."
+        : "Sharing stopped from the browser's bar.",
+      "info",
+    );
+  });
+  const presentingSurface =
+    !fileShare.active && wantsPresenterView(ownShare.surface) ? ownShare.surface : null;
   const pip = usePictureInPicture({
     enabled: !connecting,
     shareActive: screenShares.length > 0,
+    keepOpen: presentingSurface !== null,
   });
   const captionsAction = useCaptionsMoreAction();
   const youtube = useYouTubeStream();
@@ -714,6 +742,71 @@ export function ControlBar() {
     },
     [previewChrome, toggle, localParticipant, notify],
   );
+
+  /* "Share something else": pick first, swap second.
+   *
+   * The browser's picker opens while the current share keeps running, so somebody who
+   * cancels it loses nothing. Only once they have chosen does the old share come down and
+   * the new one go up — a moment's gap for the audience, rather than the whole time the
+   * picker was open. A tab never gets here: Chrome's own bar has "Share this tab instead". */
+  const switchShare = useCallback(async () => {
+    let tracks: Awaited<ReturnType<typeof localParticipant.createScreenTracks>>;
+    try {
+      tracks = await localParticipant.createScreenTracks(displayMediaOptions("window", "sharp"));
+    } catch (err) {
+      if (!isScreenShareCancel(err)) notify(describeMediaError(err, "screen"), "error");
+      return;
+    }
+    setPending("share");
+    try {
+      await localParticipant.setScreenShareEnabled(false);
+      // createScreenTracks already marked them ScreenShare / ScreenShareAudio.
+      for (const track of tracks) {
+        await localParticipant.publishTrack(track, sharePublishOptions("sharp"));
+      }
+    } catch (err) {
+      for (const track of tracks) track.stop();
+      notify(describeMediaError(err, "screen"), "error");
+    } finally {
+      setPending(null);
+    }
+  }, [localParticipant, notify]);
+
+  /* The floating window while presenting a window or the entire screen.
+   *
+   * Opened as the share starts, like Zoom's floating bar. Chrome only allows that with a
+   * click still fresh — the Share click usually is, but a long stay in the picker uses it
+   * up — so when it is refused, "Floating controls" on the stage opens it with a click of
+   * its own. Closed again when the share ends, if we opened it. */
+  const { open: openPip } = pip;
+  const openPresenterPip = useCallback(() => {
+    if (presentingSurface) openPip(PRESENTER_PIP_SIZE[presentingSurface]);
+  }, [presentingSurface, openPip]);
+  const openedForShare = useRef<number | null>(null);
+  const { close: closePip } = pip;
+  useEffect(() => {
+    if (presentingSurface && ownShare.startedAt !== null) {
+      if (openedForShare.current === ownShare.startedAt) return;
+      openedForShare.current = ownShare.startedAt;
+      openPresenterPip();
+      return;
+    }
+    if (openedForShare.current !== null) {
+      openedForShare.current = null;
+      closePip();
+    }
+  }, [presentingSurface, ownShare.startedAt, openPresenterPip, closePip]);
+
+  /* The stage's buttons (components/room/own-share-view.tsx) ask for these by event. */
+  const presenterActions = useRef({ stop: () => {}, switch: () => {}, float: () => {} });
+  useEffect(() => {
+    presenterActions.current = {
+      stop: () => void stopSharing(),
+      switch: () => void switchShare(),
+      float: openPresenterPip,
+    };
+  }, [stopSharing, switchShare, openPresenterPip]);
+  useEffect(() => onPresenterRequest((action) => presenterActions.current[action]()), []);
 
   /** Per-tool badge. Only the tools with a stream of things that arrive while
    *  you are not looking. The raised-hand queue is not one of them any more —
@@ -1429,6 +1522,15 @@ export function ControlBar() {
           which is what lets the buttons in there call the same handlers as the bar's. */}
       {pip.container &&
         createPortal(
+          presentingSurface ? (
+            <PresenterPip
+              share={ownShare}
+              participant={localParticipant}
+              publication={localParticipant.getTrackPublication(Track.Source.ScreenShare)}
+              onStop={() => void stopSharing()}
+              onBack={() => window.focus()}
+            />
+          ) : (
           <PipStage
             micEnabled={isMicrophoneEnabled}
             cameraEnabled={isCameraEnabled}
@@ -1443,7 +1545,8 @@ export function ControlBar() {
               window.focus();
               pip.close();
             }}
-          />,
+          />
+          ),
           pip.container,
         )}
 
