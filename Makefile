@@ -118,6 +118,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# when your own share stops. The API runs the same rule (share_lock.go), so a
 	# disagreement here is two people each told they won.
 	cd web && node --experimental-strip-types --no-warnings lib/share-lock.test.mts
+	# And the presenter's own-share view: which surface a capture is, and that the entire
+	# screen is never played back to itself (the audience would get the mirror too).
+	cd web && node --experimental-strip-types --no-warnings lib/own-share.test.mts
 	# And route-level access control, where both failure directions are silent: a
 	# participant reading a registrant list, or a panelist locked out of their own stage.
 	cd web && node --experimental-strip-types --no-warnings lib/access.test.mts
