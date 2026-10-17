@@ -1751,8 +1751,8 @@ function ToolSlotButton({
  *
  *  Draggable into More and, in Customize, carries the same − as a pin. Not a
  *  `data-tool-pin`: the drag layer counts those to place the insertion marker,
- *  and a home tool is not in that run of slots. `live` is YouTube's red
- *  "On YT" look, kept from the button it replaces. On a screen with no pin
+ *  and a home tool is not in that run of slots. `live` is the tinted
+ *  look YouTube and LinkedIn take while streaming; the caption keeps the name. On a screen with no pin
  *  slots it is a plain button, because a tool tucked there could only come
  *  back on a wider screen. */
 function HomeToolSlot({
@@ -1781,7 +1781,9 @@ function HomeToolSlot({
   const t = tool(id);
   const Icon = t.icon;
   const drag = useToolDrag();
-  const caption = live && id === "youtube" ? "On YT" : live && id === "linkedin" ? "On LI" : t.label;
+  /* The name never changes — "YouTube", "LinkedIn". Live is shown by the
+   * tinted button (BarButtonShell's live look) and said in the title. */
+  const caption = t.label;
   const title = live ? `${label} — click to change` : label;
 
   return (
