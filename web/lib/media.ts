@@ -108,8 +108,9 @@ export const SIMULCAST_LAYERS: VideoPreset[] = CAMERA_LAYERS;
  * `contentHint` is the important part, and it depends on the share's mode (lib/share-mode.ts).
  * Encoded as motion, captured screen content is protected for frame rate under any bitrate
  * pressure by blurring — so the text on a slide goes soft exactly when somebody is trying to
- * read it. The default "sharp" mode asks for "detail": hold the pixels, drop frames. Only a
- * presenter who chose "Optimize for video" gets "motion", and with it smoother playback.
+ * read it. Every share starts "sharp", which asks for "detail": hold the pixels, drop frames.
+ * It is switched to "motion" (smoother playback) only while the share is detected playing a
+ * video — lib/auto-share-mode.ts — and back once it settles.
  *
  * Resolution: up to 2560x1440 as an ideal (SHARE_CAPTURE_MAX), so a high-DPI screen is not
  * scaled to 1080p before it is encoded; Safari is left unconstrained; phones get the floor.
@@ -136,7 +137,7 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
       autoGainControl: false,
     },
     contentHint: shareContentHint(mode),
-    resolution: shareCaptureResolution(mode, {
+    resolution: shareCaptureResolution({
       safari: isSafari(),
       mobile: isMobilePublisher(),
       mobileFloor: SHARE_FLOOR_MOBILE,
@@ -194,7 +195,7 @@ export function sharePublishOptions(mode: ShareMode): TrackPublishOptions {
  * frames; degradationPreference goes through the sender (livekit's
  * setDegradationPreference wraps RTCRtpSender.setParameters); the per-layer fps cap is
  * set on the same sender. Browsers that refuse a part of it keep the old value for that
- * part — the next share starts in the new mode regardless, since the choice is stored. */
+ * part; useAutoShareMode re-applies on the next change, and the ladder reapplies the fps. */
 export async function applyShareMode(track: LocalVideoTrack, mode: ShareMode): Promise<void> {
   const media = track.mediaStreamTrack;
   if (media) media.contentHint = shareContentHint(mode);

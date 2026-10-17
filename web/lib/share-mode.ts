@@ -17,16 +17,17 @@
  *
  * Shares used to go out as "motion" + "maintain-framerate" unconditionally (to make
  * played videos smooth), which is why slides went soft whenever the uplink or the
- * CPU was squeezed: the browser dropped resolution to hold 30 fps. The choice is now
- * the presenter's, defaulting to sharp; file shares (lib/file-share.ts) are always
- * video.
+ * CPU was squeezed: the browser dropped resolution to hold 30 fps. Every share now
+ * starts sharp and is switched automatically while it runs — lib/auto-share-mode.ts
+ * watches the share for sustained motion or audio (lib/share-motion.ts) and applies
+ * video, then sharp again once it settles. It used to be a presenter checkbox,
+ * "Optimize for video", which nobody knew when to tick. File shares
+ * (lib/file-share.ts) are always video.
  *
- * Pure: no React, no DOM beyond a guarded localStorage, so it runs under node tests.
+ * Pure: no React, no DOM, so it runs under node tests.
  */
 
 export type ShareMode = "sharp" | "video";
-
-export const SHARE_MODE_KEY = "webinar.shareMode";
 
 /** The fps ceiling each mode publishes at. */
 export const SHARE_MODE_FPS: Record<ShareMode, number> = { sharp: 15, video: 30 };
@@ -51,6 +52,10 @@ export function shareModeOfHint(hint: string | undefined): ShareMode {
 
 /* What resolution to ask getDisplayMedia for.
  *
+ * Always captured at video's frame rate (30), whatever the share starts in: the mode
+ * can switch mid-share without a new capture, and sharp's 15 fps ceiling is applied
+ * by the encoder (the layers' maxFramerate), not by the capture.
+ *
  * Desktop: up to 2560x1440 as an IDEAL (livekit-client turns `resolution` into
  * ideal constraints outside Safari), so a 1080p screen captures at 1080p and a
  * high-DPI one at 1440p rather than being scaled down before encoding.
@@ -58,32 +63,12 @@ export function shareModeOfHint(hint: string | undefined): ShareMode {
  * tiny one; see isSafari in media.ts.
  * Mobile: the 360p floor, phones rarely share. */
 export function shareCaptureResolution(
-  mode: ShareMode,
   platform: { safari: boolean; mobile: boolean; mobileFloor: { width: number; height: number } },
 ): { width: number; height: number; frameRate: number } | undefined {
   if (platform.safari) return undefined;
-  const frameRate = SHARE_MODE_FPS[mode];
+  const frameRate = SHARE_MODE_FPS.video;
   if (platform.mobile) {
     return { width: platform.mobileFloor.width, height: platform.mobileFloor.height, frameRate };
   }
   return { ...SHARE_CAPTURE_MAX, frameRate };
-}
-
-export function readShareMode(): ShareMode {
-  try {
-    return typeof localStorage !== "undefined" &&
-      localStorage.getItem(SHARE_MODE_KEY) === "video"
-      ? "video"
-      : "sharp";
-  } catch {
-    return "sharp";
-  }
-}
-
-export function writeShareMode(mode: ShareMode): void {
-  try {
-    if (typeof localStorage !== "undefined") localStorage.setItem(SHARE_MODE_KEY, mode);
-  } catch {
-    // Private mode or a full store: the choice still applies to this share.
-  }
 }

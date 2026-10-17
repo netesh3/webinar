@@ -306,8 +306,8 @@ export function useFileShare(room: Room | null): FileShareApi {
 
         /* Motion, not text: this is a video file, not a slide.
          *
-         * A desktop share is "sharp" (detail) by default and only gets this hint when the
-         * presenter picks "Optimize for video" (lib/share-mode.ts). A file is always video:
+         * A desktop share is "sharp" (detail) by default and only gets this hint while it is
+         * detected playing a video (lib/auto-share-mode.ts). A file is always video:
          * under bitrate pressure the encoder should drop pixels to hold the frame rate,
          * because a clip at eight frames a second reads as a broken connection in a way a
          * static slide never does. */

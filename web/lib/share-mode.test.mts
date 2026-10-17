@@ -32,12 +32,12 @@ assert.equal(shareModeOfHint("detail"), "sharp");
 assert.equal(shareModeOfHint(""), "sharp");
 assert.equal(shareModeOfHint(undefined), "sharp");
 
-// Capture: desktop up to 1440p at the mode's fps; Safari unconstrained; phones at the floor.
+// Capture: desktop up to 1440p, always at 30 fps (the mode can switch mid-share; sharp's
+// 15 fps is the encoder's cap); Safari unconstrained; phones at the floor.
 const desktop = { safari: false, mobile: false, mobileFloor: SHARE_FLOOR_MOBILE };
-assert.deepEqual(shareCaptureResolution("sharp", desktop), { width: 2560, height: 1440, frameRate: 15 });
-assert.deepEqual(shareCaptureResolution("video", desktop), { width: 2560, height: 1440, frameRate: 30 });
-assert.equal(shareCaptureResolution("sharp", { ...desktop, safari: true }), undefined);
-assert.deepEqual(shareCaptureResolution("video", { ...desktop, mobile: true }), {
+assert.deepEqual(shareCaptureResolution(desktop), { width: 2560, height: 1440, frameRate: 30 });
+assert.equal(shareCaptureResolution({ ...desktop, safari: true }), undefined);
+assert.deepEqual(shareCaptureResolution({ ...desktop, mobile: true }), {
   width: SHARE_FLOOR_MOBILE.width,
   height: SHARE_FLOOR_MOBILE.height,
   frameRate: 30,

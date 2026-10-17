@@ -3,14 +3,12 @@
 import { VideoTrack } from "@livekit/components-react";
 import {
   Track,
-  type LocalVideoTrack,
   type Participant,
   type TrackPublication,
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Role } from "@/lib/api-types";
-import { applyShareMode } from "@/lib/media";
-import { shareModeOfHint, writeShareMode } from "@/lib/share-mode";
+import { useLiveShareMode } from "@/lib/auto-share-mode";
 import {
   ExpandIcon,
   FitIcon,
@@ -233,10 +231,7 @@ export function ParticipantTile({
           />
         )
       ) : isOwnShare ? (
-        <OwnShareNotice
-          size={size}
-          track={publication?.track as LocalVideoTrack | undefined}
-        />
+        <OwnShareNotice size={size} />
       ) : (
         <AvatarFallback
           participant={participant}
@@ -642,26 +637,12 @@ const OWN_SHARE_SCALE = {
  * recording of the window they are looking at. The audience sees the real thing.
  * Stopping is the Share button in the control bar, so this stays a quiet label.
  */
-function OwnShareNotice({
-  size,
-  track,
-}: {
-  size: "sm" | "md" | "lg";
-  /** The live share, for switching sharp/video in place. */
-  track?: LocalVideoTrack;
-}) {
+function OwnShareNotice({ size }: { size: "sm" | "md" | "lg" }) {
   const s = OWN_SHARE_SCALE[size];
-  /* Sharp (slides, code) by default; "Optimize for video" trades text sharpness for
-   * smooth motion. Applied to the live share and remembered for the next one. */
-  const [videoMode, setVideoMode] = useState(
-    () => shareModeOfHint(track?.mediaStreamTrack?.contentHint) === "video",
-  );
-  const onModeChange = (next: boolean) => {
-    setVideoMode(next);
-    const mode = next ? "video" : "sharp";
-    writeShareMode(mode);
-    if (track) void applyShareMode(track, mode).catch(() => {});
-  };
+  /* Sharp (slides, code) unless the share is playing a video, which is detected and
+   * switched automatically (lib/auto-share-mode.ts). Shown, not chosen: there used to be
+   * an "Optimize for video" checkbox here, and presenters did not know when to tick it. */
+  const mode = useLiveShareMode();
   return (
     <div className="grid size-full place-items-center bg-black/40 p-4 text-center">
       <div>
@@ -679,20 +660,12 @@ function OwnShareNotice({
         </p>
         {/* Not on a filmstrip thumbnail — there is no room for more than the line. */}
         {size !== "sm" && (
-          <label
-            className={`relative z-10 mt-3 flex cursor-pointer items-center justify-center gap-2 text-white/80 select-none ${
-              size === "lg" ? "text-[14px]" : "text-[12px]"
-            }`}
-            title="Smoother motion for a playing video; text on slides gets softer"
+          <p
+            className={`mt-3 text-white/60 ${size === "lg" ? "text-[14px]" : "text-[12px]"}`}
+            title="Text stays sharp; a playing video is detected and sent smoothly instead"
           >
-            <input
-              type="checkbox"
-              checked={videoMode}
-              onChange={(e) => onModeChange(e.target.checked)}
-              className="size-4 cursor-pointer accent-[var(--color-brand)]"
-            />
-            Optimize for video
-          </label>
+            {mode === "video" ? "Smooth video · auto" : "Sharp text · auto"}
+          </p>
         )}
       </div>
     </div>
