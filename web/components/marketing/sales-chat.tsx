@@ -19,13 +19,15 @@ import "./sales-chat.css";
  * - Realtime is polling, fast only while a person is involved.
  */
 
-const AUTO_OPEN_MS = 8000;
+// Opens a second after the page loads: soon enough to greet, late enough not to
+// flash before the page has painted.
+const AUTO_OPEN_MS = 1000;
 const TOKEN_KEY = "webcast.salesChat.token";
 const DISMISSED_KEY = "webcast.salesChat.dismissed";
 
 // Mirrors sales.Greeting on the API; the server's copy replaces it once the chat starts.
 const GREETING =
-  "Hi 👋 I'm Liv, Webinar Liv's assistant. Planning webinars for your coaching or teaching business? Ask me anything — plans, WhatsApp reminders, how attendees join.";
+  "Hi 👋 I'm Webinar Liv's AI agent. Planning webinars for your coaching or teaching business? Ask me anything — plans, WhatsApp reminders, how attendees join.";
 
 const STARTERS: { label: string; text: string }[] = [
   { label: "See plans & prices", text: "What plans do you have, and what do they cost?" },
@@ -215,7 +217,8 @@ export function SalesChatWidget() {
   const visitorWrote = messages.some((m) => m.role === "visitor");
   const human = status === "waiting" || status === "human";
 
-  const title = status === "human" && agent ? `${agent} · Webinar Liv` : "Liv · Webinar Liv";
+  // "AI Agent" until a person joins, then that person: "Neeraj · Agent".
+  const title = status === "human" && agent ? `${agent} · Agent` : "AI Agent";
   const sub =
     status === "human"
       ? "Team member · here now"
@@ -223,7 +226,7 @@ export function SalesChatWidget() {
         ? teamOnline
           ? "Getting a person · usually a few minutes"
           : "The team is away · we'll reply by email"
-        : "AI assistant · replies instantly";
+        : "Online · replies instantly";
 
   if (!open) {
     return (
@@ -240,7 +243,7 @@ export function SalesChatWidget() {
     <section className="sc-panel" role="dialog" aria-label="Chat with Webinar Liv">
       <header className="sc-head">
         <span className={status === "human" ? "sc-av sc-av-person" : "sc-av"} aria-hidden>
-          {status === "human" && agent ? agent.slice(0, 1).toUpperCase() : "L"}
+          {status === "human" && agent ? agent.slice(0, 1).toUpperCase() : "AI"}
         </span>
         <div className="sc-title">
           <b>{title}</b>
@@ -269,14 +272,14 @@ export function SalesChatWidget() {
         )}
         {thinking && (
           <div className="sc-row sc-ai">
-            <p className="sc-msg sc-typing" aria-label="Liv is typing">
+            <p className="sc-msg sc-typing" aria-label="AI Agent is typing">
               <i />
               <i />
               <i />
             </p>
           </div>
         )}
-        {!visitorWrote && !thinking && (
+        {!visitorWrote && !thinking && status === "ai" && (
           <div className="sc-chips">
             {STARTERS.map((s) => (
               <button key={s.label} type="button" onClick={() => void send(s.text)}>

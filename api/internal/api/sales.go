@@ -243,7 +243,7 @@ func (s *Server) salesAssistantTurn(ctx context.Context, conv store.SalesConvers
 		}
 		return s.salesHandoff(ctx, conv, reason, sales.HandoffReply, latest)
 	}
-	_, err = s.store.AddSalesMessage(ctx, conv.ID, store.SalesMessage{Role: types.SalesFromAI, AuthorName: "Liv", Body: text})
+	_, err = s.store.AddSalesMessage(ctx, conv.ID, store.SalesMessage{Role: types.SalesFromAI, AuthorName: "AI Agent", Body: text})
 	return err
 }
 
@@ -258,7 +258,7 @@ func (s *Server) salesHandoff(ctx context.Context, conv store.SalesConversation,
 	if !changed {
 		return nil
 	}
-	if _, err := s.store.AddSalesMessage(ctx, conv.ID, store.SalesMessage{Role: types.SalesFromAI, AuthorName: "Liv", Body: reply}); err != nil {
+	if _, err := s.store.AddSalesMessage(ctx, conv.ID, store.SalesMessage{Role: types.SalesFromAI, AuthorName: "AI Agent", Body: reply}); err != nil {
 		return err
 	}
 	s.log.Info("sales: handoff", "conversation", conv.ID, "reason", reason)

@@ -122,8 +122,9 @@
   height: 38px;
   border-radius: 12px;
   background: var(--sc-grad);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .sc-av-person {
