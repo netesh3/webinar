@@ -30,6 +30,13 @@ import {
   TemplateCards,
   bestTemplate,
 } from "./send-parts";
+import {
+  ParamRow,
+  TemplateTextBlock,
+  paramView,
+  slotControlId,
+  useActiveSlot,
+} from "./template-params";
 import { WA_SEND, estimateCost, rupees } from "./wa-kit";
 
 /* The one send dialog: "Message these N" from the Attendees tab, the People tab, and a
@@ -153,6 +160,7 @@ function SendDialogBody({
 }) {
   const { notify } = useToast();
   const { account } = useSession();
+  const { active: activeSlot, rowProps } = useActiveSlot();
   const [templates, setTemplates] = useState<CRMTemplate[] | null>(null);
   const [fields, setFields] = useState<CRMMergeField[]>([]);
   const [audience, setAudience] = useState<CRMAudienceResponse | null>(null);
@@ -487,11 +495,25 @@ function SendDialogBody({
           {template && params.length > 0 && (
             <section className="grid gap-2">
               <span className="label">Filled in with</span>
+              <TemplateTextBlock
+                body={template.body ?? ""}
+                header={template.header}
+                views={params.map((p) => paramView(p, offered))}
+                active={activeSlot}
+                controlPrefix="send-param"
+              />
               <div className="grid gap-2 sm:grid-cols-2">
                 {params.map((p, i) => (
-                  <div key={i} className="grid gap-1.5">
+                  <ParamRow
+                    key={i}
+                    slot={i + 1}
+                    text={template.body ?? ""}
+                    active={activeSlot === i + 1}
+                    rowProps={rowProps(i + 1)}
+                  >
                     <Select
                       label={`Blank ${i + 1}`}
+                      id={slotControlId("send-param", i + 1)}
                       value={p.field || LITERAL}
                       onChange={(next) =>
                         setParams((prev) =>
@@ -526,7 +548,7 @@ function SendDialogBody({
                         }
                       />
                     )}
-                  </div>
+                  </ParamRow>
                 ))}
               </div>
             </section>
@@ -661,6 +683,7 @@ function SendDialogBody({
                 samples={samples}
                 fallback={fallback}
                 from={from}
+                active={activeSlot}
                 cover={
                   target.webinarId
                     ? `${API_BASE}/api/webinars/${encodeURIComponent(target.webinarId)}/image`

@@ -15,7 +15,8 @@ import {
   type MessageSlot,
   type NotificationKind,
 } from "@/lib/api-types";
-import { exampleFor, renderTemplate, templateKey } from "./crm-templates";
+import { exampleFor, templateKey } from "./crm-templates";
+import { FilledText } from "./template-params";
 import { categoryWords, guessParams } from "./wa-messages";
 import { timingForSave } from "./message-timing";
 
@@ -77,12 +78,8 @@ export function SlotEditor({
     });
   }
 
-  const preview = template
-    ? renderTemplate(
-        template.body ?? "",
-        params.map((p) => exampleFor(fields, p)),
-      )
-    : "";
+  const preview = template?.body ?? "";
+  const previewValues = params.map((p) => exampleFor(fields, p));
 
   return (
     <Modal
@@ -137,7 +134,7 @@ export function SlotEditor({
         )}
         {preview && (
           <div className="rounded-lg rounded-bl-sm bg-[#eef6ea] px-2.5 py-2 text-[12.5px] leading-relaxed text-ink-2 italic">
-            “{preview}”
+            “<FilledText text={preview} values={previewValues} />”
           </div>
         )}
         <button

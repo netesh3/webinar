@@ -1942,3 +1942,28 @@ html[data-theme="dark"] .legal {
     @apply block text-[12.5px] font-medium text-ink-2 mb-1.5;
   }
 }
+
+/* Template placeholder chips (engage/components/template-params.tsx).
+ *
+ * Six tones, cycled by slot number, so {{1}} is the same colour in the template text,
+ * in its row and in the preview. Colour is never the only cue: every chip carries its
+ * number. `.tp-chip-*` follow the app theme; `.tp-mark-*` sit in the WhatsApp bubble,
+ * which is white in both themes, so they stay light. */
+.tp-chip-0 { --tp-bg: #e0ecff; --tp-fg: #1849a9; --tp-ring: #528bff; }
+.tp-chip-1 { --tp-bg: #fdead7; --tp-fg: #932f19; --tp-ring: #ef6820; }
+.tp-chip-2 { --tp-bg: #dcfae6; --tp-fg: #085d3a; --tp-ring: #17b26a; }
+.tp-chip-3 { --tp-bg: #f4ebff; --tp-fg: #6941c6; --tp-ring: #9e77ed; }
+.tp-chip-4 { --tp-bg: #fce7f6; --tp-fg: #9e165f; --tp-ring: #ee46bc; }
+.tp-chip-5 { --tp-bg: #cff9fe; --tp-fg: #155b75; --tp-ring: #06aed4; }
+html[data-theme="dark"] .tp-chip-0 { --tp-bg: rgba(82, 139, 255, 0.22); --tp-fg: #b2ccff; }
+html[data-theme="dark"] .tp-chip-1 { --tp-bg: rgba(239, 104, 32, 0.22); --tp-fg: #f9c39b; }
+html[data-theme="dark"] .tp-chip-2 { --tp-bg: rgba(23, 178, 106, 0.22); --tp-fg: #a6efc6; }
+html[data-theme="dark"] .tp-chip-3 { --tp-bg: rgba(158, 119, 237, 0.24); --tp-fg: #d9c8fe; }
+html[data-theme="dark"] .tp-chip-4 { --tp-bg: rgba(238, 70, 188, 0.22); --tp-fg: #fbb9e4; }
+html[data-theme="dark"] .tp-chip-5 { --tp-bg: rgba(6, 174, 212, 0.22); --tp-fg: #a5f0fc; }
+.tp-mark-0 { --tp-bg: #e0ecff; --tp-ring: #528bff; }
+.tp-mark-1 { --tp-bg: #fdead7; --tp-ring: #ef6820; }
+.tp-mark-2 { --tp-bg: #dcfae6; --tp-ring: #17b26a; }
+.tp-mark-3 { --tp-bg: #f4ebff; --tp-ring: #9e77ed; }
+.tp-mark-4 { --tp-bg: #fce7f6; --tp-ring: #ee46bc; }
+.tp-mark-5 { --tp-bg: #cff9fe; --tp-ring: #06aed4; }

@@ -25,9 +25,15 @@ import {
   RefreshTemplates,
   defaultTokens,
   exampleFor,
-  renderTemplate,
   templateKey,
 } from "./crm-templates";
+import {
+  FilledText,
+  TemplateBlanks,
+  paramView,
+  slotControlId,
+  tokenView,
+} from "./template-params";
 import {
   ArrowLeftIcon,
   SearchIcon,
@@ -1125,52 +1131,55 @@ export function RemindersSettings({
 
             {template && (
               <>
-                {tokens.length > 0 && (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {tokens.map((token, i) => (
-                      <Select
-                        key={i}
-                        label={`Fill {{${i + 1}}} with`}
-                        id={`reminder-${kind}-${i}`}
-                        value={token}
-                        onChange={(next) =>
-                          update(kind, {
-                            params: tokens.map((v, j) => (j === i ? next : v)),
-                          })
-                        }
-                      >
-                        {token === "" && <option value="">Choose…</option>}
-                        {usableFields.map((f) => (
-                          <option key={f.token} value={f.token}>
-                            {f.label}
-                          </option>
-                        ))}
-                      </Select>
-                    ))}
-                  </div>
-                )}
-
-                {/* The message as one registrant will read it, with the example
-                    values. A host approving "Hi {{1}}" has not read what they
-                    are about to send to a thousand people. */}
-                <div className="rounded-xl border border-line bg-surface-2 px-3 py-2">
-                  {template.header && (
-                    <p className="text-[12.5px] font-semibold">
-                      {template.header}
-                    </p>
+                <TemplateBlanks
+                  body={template.body ?? ""}
+                  header={template.header}
+                  views={tokens.map((t) => tokenView(t, usableFields))}
+                  controlPrefix={`reminder-${kind}`}
+                  control={(i) => (
+                    <Select
+                      label={`Fill {{${i + 1}}} with`}
+                      id={slotControlId(`reminder-${kind}`, i + 1)}
+                      value={tokens[i]}
+                      onChange={(next) =>
+                        update(kind, {
+                          params: tokens.map((v, j) => (j === i ? next : v)),
+                        })
+                      }
+                    >
+                      {tokens[i] === "" && <option value="">Choose…</option>}
+                      {usableFields.map((f) => (
+                        <option key={f.token} value={f.token}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </Select>
                   )}
-                  <p className="mt-0.5 text-[13px] leading-relaxed whitespace-pre-wrap">
-                    {renderTemplate(
-                      template.body ?? "",
-                      tokens.map((t) => exampleFor(fields, t)),
-                    )}
-                  </p>
-                  {template.footer && (
-                    <p className="mt-1 text-[11px] text-ink-3">
-                      {template.footer}
-                    </p>
+                  preview={(active) => (
+                    /* The message as one registrant will read it, with the example
+                       values. A host approving "Hi {{1}}" has not read what they
+                       are about to send to a thousand people. */
+                    <div className="rounded-xl border border-line bg-surface-2 px-3 py-2">
+                      {template.header && (
+                        <p className="text-[12.5px] font-semibold">
+                          {template.header}
+                        </p>
+                      )}
+                      <p className="mt-0.5 text-[13px] leading-relaxed whitespace-pre-wrap">
+                        <FilledText
+                          text={template.body ?? ""}
+                          values={tokens.map((t) => (t ? exampleFor(fields, t) : ""))}
+                          active={active}
+                        />
+                      </p>
+                      {template.footer && (
+                        <p className="mt-1 text-[11px] text-ink-3">
+                          {template.footer}
+                        </p>
+                      )}
+                    </div>
                   )}
-                </div>
+                />
 
                 {template.category === "MARKETING" && (
                   <p className="text-[11.5px] leading-relaxed text-ink-3">
@@ -1905,48 +1914,51 @@ export function Compose({
 
           {template && (
             <>
-              {template.variables > 0 && (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {filled.map((_, i) => (
-                    <div key={i}>
-                      <label className="label" htmlFor={`crm-param-${i}`}>
-                        {`Value for {{${i + 1}}}`}
-                      </label>
-                      <input
-                        id={`crm-param-${i}`}
-                        className="field"
-                        value={params[i] ?? ""}
-                        onChange={(e) =>
-                          setParams((prev) => {
-                            const next = [...prev];
-                            next[i] = e.target.value;
-                            return next;
-                          })
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* The message as the contact will read it, placeholders filled.
-                  A host approving "Hi {{1}}" has not read what they are
-                  sending. */}
-              <div className="rounded-xl border border-line bg-surface px-3 py-2">
-                {template.header && (
-                  <p className="text-[12.5px] font-semibold">
-                    {template.header}
-                  </p>
+              <TemplateBlanks
+                body={template.body ?? ""}
+                header={template.header}
+                views={filled.map((v) => paramView({ text: v }, []))}
+                controlPrefix="crm-param"
+                control={(i) => (
+                  <div>
+                    <label className="label" htmlFor={slotControlId("crm-param", i + 1)}>
+                      {`Value for {{${i + 1}}}`}
+                    </label>
+                    <input
+                      id={slotControlId("crm-param", i + 1)}
+                      className="field"
+                      value={params[i] ?? ""}
+                      onChange={(e) =>
+                        setParams((prev) => {
+                          const next = [...prev];
+                          next[i] = e.target.value;
+                          return next;
+                        })
+                      }
+                    />
+                  </div>
                 )}
-                <p className="mt-0.5 text-[13px] leading-relaxed whitespace-pre-wrap">
-                  {renderTemplate(template.body ?? "", filled)}
-                </p>
-                {template.footer && (
-                  <p className="mt-1 text-[11px] text-ink-3">
-                    {template.footer}
-                  </p>
+                preview={(active) => (
+                  /* The message as the contact will read it, placeholders filled.
+                     A host approving "Hi {{1}}" has not read what they are
+                     sending. */
+                  <div className="rounded-xl border border-line bg-surface px-3 py-2">
+                    {template.header && (
+                      <p className="text-[12.5px] font-semibold">
+                        {template.header}
+                      </p>
+                    )}
+                    <p className="mt-0.5 text-[13px] leading-relaxed whitespace-pre-wrap">
+                      <FilledText text={template.body ?? ""} values={filled} active={active} />
+                    </p>
+                    {template.footer && (
+                      <p className="mt-1 text-[11px] text-ink-3">
+                        {template.footer}
+                      </p>
+                    )}
+                  </div>
                 )}
-              </div>
+              />
 
               {needsOptIn && (
                 <Alert tone="warn">
