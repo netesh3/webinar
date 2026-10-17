@@ -13,7 +13,7 @@ import {
   wantsPresenterView,
   type OwnShare,
 } from "@/lib/own-share";
-import { EyeIcon, EyeOffIcon, PopOutIcon, ScreenShareIcon, StopIcon } from "../icons";
+import { EyeIcon, EyeOffIcon, PopOutIcon, ScreenShareIcon } from "../icons";
 
 /* What a presenter sees of their own window or screen share.
  *
@@ -167,9 +167,8 @@ export function OwnShareView({
             Floating controls
           </StageButton>
         )}
-        <StageButton danger onClick={() => requestPresenter("stop")} icon={<StopIcon className="size-4" />}>
-          Stop sharing
-        </StageButton>
+        {/* No Stop button here: the Share button in the control bar stops the share.
+            requestPresenter("stop") and the bar's handler for it are still in place. */}
       </div>
     </div>
   );
@@ -180,12 +179,12 @@ export function PresenterPip({
   share,
   participant,
   publication,
-  onStop,
   onBack,
 }: {
   share: OwnShare;
   participant: Participant;
   publication: TrackPublication | undefined;
+  /** Kept for the caller; the window shows no Stop button (see the stage's note). */
   onStop: () => void;
   onBack: () => void;
 }) {
@@ -224,13 +223,6 @@ export function PresenterPip({
           className="h-7 rounded-md px-2 text-[12px] font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white outline-none focus-visible:ring-2 focus-visible:ring-white/40"
         >
           Back to webinar
-        </button>
-        <button
-          type="button"
-          onClick={onStop}
-          className="h-7 rounded-md bg-live px-2.5 text-[12px] font-semibold text-on-live transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-        >
-          Stop
         </button>
       </div>
     </div>
