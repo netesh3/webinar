@@ -106,7 +106,7 @@ func (s *Server) setRejoinCookie(w http.ResponseWriter, wb types.Webinar, reg ty
 		s.log.Warn("rejoin: could not sign token", "slug", wb.ID, "error", err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 		Name:     rejoinCookieName,
 		Value:    token,
 		Path:     rejoinCookiePath(wb.ID),
@@ -118,7 +118,7 @@ func (s *Server) setRejoinCookie(w http.ResponseWriter, wb types.Webinar, reg ty
 }
 
 func (s *Server) clearRejoinCookie(w http.ResponseWriter, slug string) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 		Name:     rejoinCookieName,
 		Value:    "",
 		Path:     rejoinCookiePath(slug),

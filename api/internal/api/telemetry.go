@@ -89,7 +89,7 @@ func logTelemetryEvent(ev types.TelemetryEvent) {
 	}
 	// Direct to stdout, not s.log: see the file comment for why this needs its
 	// own "severity" field rather than slog's "level".
-	os.Stdout.Write(append(raw, '\n'))
+	os.Stdout.Write(append(raw, '\n')) // #nosec G104 -- close/write error on a read-side handle or stdout; nothing to recover
 }
 
 /* severityFor decides WARNING/ERROR the same way regardless of which client

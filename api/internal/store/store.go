@@ -87,8 +87,8 @@ func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
 	 * the burst without trouble. DB_MAX_CONNS / DB_MIN_CONNS override it for a
 	 * database with a different ceiling — a dedicated Postgres, or Supabase's
 	 * transaction pooler, where the old 20 would be fine again. */
-	cfg.MaxConns = int32(envInt("DB_MAX_CONNS", 4))
-	cfg.MinConns = int32(envInt("DB_MIN_CONNS", 1))
+	cfg.MaxConns = int32(envInt("DB_MAX_CONNS", 4)) // #nosec G115 -- operator-set pool size, a small positive int
+	cfg.MinConns = int32(envInt("DB_MIN_CONNS", 1)) // #nosec G115 -- operator-set pool size, a small positive int
 	cfg.MaxConnLifetime = time.Hour
 	cfg.MaxConnIdleTime = 10 * time.Minute
 	cfg.HealthCheckPeriod = 30 * time.Second

@@ -20,7 +20,7 @@ type SyntheticSpec struct {
  * late arrivals, drop-offs and rejoins, chat and Q&A bursts, polls with votes, and raw
  * reactions grouped per minute the way the store groups them. Deterministic for a seed. */
 func Synthetic(spec SyntheticSpec) Input {
-	rng := rand.New(rand.NewPCG(spec.Seed, spec.Seed^0x9e3779b97f4a7c15))
+	rng := rand.New(rand.NewPCG(spec.Seed, spec.Seed^0x9e3779b97f4a7c15)) // #nosec G404 -- seeded on purpose so synthetic demo data is reproducible; not used for security
 	start := time.Date(2026, 9, 22, 13, 0, 0, 0, time.UTC)
 	end := start.Add(time.Duration(spec.SessionMin) * time.Minute)
 	minAt := func(m float64) time.Time { return start.Add(time.Duration(m * float64(time.Minute))) }

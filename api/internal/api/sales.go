@@ -47,7 +47,7 @@ import (
  */
 
 const (
-	salesTokenHeader = "X-Chat-Token"
+	salesTokenHeader = "X-Chat-Token" // #nosec G101 -- a header name, not a credential
 	// salesMaxBody is the longest message accepted, in characters.
 	salesMaxBody = 1000
 	// salesMaxAIReplies is when the assistant hands a long conversation to a person,

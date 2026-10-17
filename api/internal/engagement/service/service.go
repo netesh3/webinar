@@ -117,7 +117,7 @@ func (s *Service) Compute(ctx context.Context, w store.EngagementWebinar) ([]byt
 	if !ok {
 		c = &call{done: make(chan struct{})}
 		s.inflight[w.ID] = c
-		go s.run(w, c)
+		go s.run(w, c) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 	}
 	s.mu.Unlock()
 

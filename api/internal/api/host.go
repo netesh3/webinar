@@ -516,7 +516,7 @@ func (s *Server) handleWebinarImageFromMedia(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(rc, maxLibraryCoverBytes+1))
-	rc.Close()
+	rc.Close() // #nosec G104 -- close/write error on a read-side handle or stdout; nothing to recover
 	if err != nil {
 		s.fail(w, r, "webinar image from media: read", err)
 		return
@@ -1055,7 +1055,7 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		go s.startBroadcastIfEnabled(context.Background(), wb, sfu)
+		go s.startBroadcastIfEnabled(context.Background(), wb, sfu) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 	}
 
 	s.log.Info("webinar started", "slug", slug, "room", room)

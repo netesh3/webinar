@@ -16,7 +16,7 @@ import (
 var GoogleAuthURL = "https://accounts.google.com/o/oauth2/v2/auth"
 
 // GoogleTokenURL exchanges an authorization code for tokens.
-var GoogleTokenURL = "https://oauth2.googleapis.com/token"
+var GoogleTokenURL = "https://oauth2.googleapis.com/token" // #nosec G101 -- a public endpoint URL, not a credential
 
 // ErrGoogleOAuth is a failed code exchange (bad code, redirect mismatch, Google down).
 var ErrGoogleOAuth = errors.New("google oauth")

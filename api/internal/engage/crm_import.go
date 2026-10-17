@@ -44,7 +44,7 @@ func (s *Module) handleCRMImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, types.CRMImportMaxBytes+64<<10)
-	if err := r.ParseMultipartForm(1 << 20); err != nil {
+	if err := r.ParseMultipartForm(1 << 20); err != nil { // #nosec G120 -- body already capped by http.MaxBytesReader above
 		httpx.Error(w, http.StatusRequestEntityTooLarge, "import_too_large",
 			"That file is over 5 MB. Split it into smaller files.")
 		return

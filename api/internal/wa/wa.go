@@ -436,7 +436,7 @@ func (c *Client) OpenMedia(ctx context.Context, token, mediaID string) (*MediaDo
 	}
 	if res.StatusCode >= 300 {
 		raw, readErr := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-		res.Body.Close()
+		res.Body.Close() // #nosec G104 -- close/write error on a read-side handle or stdout; nothing to recover
 		if readErr != nil {
 			return nil, readErr
 		}

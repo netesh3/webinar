@@ -438,7 +438,7 @@ func insertSeries(ctx context.Context, tx pgx.Tx, hostID string, plan series.Pla
 	}
 	days := make([]int32, len(rule.Weekdays))
 	for i, d := range rule.Weekdays {
-		days[i] = int32(d)
+		days[i] = int32(d) // #nosec G115 -- weekday 0-6
 	}
 	skipped := plan.Skipped
 	if skipped == nil {
@@ -475,7 +475,7 @@ func updateSeriesRow(ctx context.Context, tx pgx.Tx, seriesID string, plan serie
 	}
 	days := make([]int32, len(rule.Weekdays))
 	for i, d := range rule.Weekdays {
-		days[i] = int32(d)
+		days[i] = int32(d) // #nosec G115 -- weekday 0-6
 	}
 	skipped := plan.Skipped
 	if skipped == nil {

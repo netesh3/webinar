@@ -98,7 +98,7 @@ func (s *Server) handleZoomConnect(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "zoom connect: sign state", err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 		Name:     zoomStateCookie,
 		Value:    signed,
 		Path:     "/",
@@ -113,7 +113,7 @@ func (s *Server) handleZoomConnect(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleZoomCallback(w http.ResponseWriter, r *http.Request) {
 	ret := "/settings"
 	fail := func(result string) {
-		http.SetCookie(w, &http.Cookie{
+		http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 			Name: zoomStateCookie, Value: "", Path: "/", MaxAge: -1,
 			HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.youtubeSameSite(),
 		})
@@ -173,7 +173,7 @@ func (s *Server) handleZoomCallback(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "zoom oauth: save", err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 		Name: zoomStateCookie, Value: "", Path: "/", MaxAge: -1,
 		HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.youtubeSameSite(),
 	})

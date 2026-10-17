@@ -298,7 +298,7 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 				 * inline: the cores the stopped compositor is holding have to
 				 * come back before LiveKit will admit another. */
 				stopped := rec.EgressID
-				go func() {
+				go func() { // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 					time.Sleep(broadcastRestartDelay)
 					s.restoreBroadcastAfterRecording(context.Background(), wb, sfu, stopped)
 				}()
@@ -315,7 +315,7 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 		// click. The requested end state, so not an error — but still the moment
 		// to finalize storage if nothing has yet: the size-cap path in
 		// handleRecordingChunk closes the row without doing that itself.
-		go s.finalizeRecording(r, slug, id, lookupErr, rec)
+		go s.finalizeRecording(r, slug, id, lookupErr, rec) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 		if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
 			if sfu, err := s.sfuFor(r.Context(), wb); err == nil {
 				s.pushRoomMetadata(r, sfu, wb)
@@ -328,7 +328,7 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 		s.fail(w, r, "complete recording", err)
 		return
 	}
-	go s.finalizeRecording(r, slug, id, lookupErr, rec)
+	go s.finalizeRecording(r, slug, id, lookupErr, rec) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 
 	if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
 		// Clears the room's recording indicator. Best-effort: the row is closed either way.
@@ -385,7 +385,7 @@ func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 	// Cloud Run scales to zero, so the background sweepers may not have run for
 	// hours. Opening the tab that shows recordings is as good a trigger as a
 	// ticker, and it is the moment a stuck row is about to be noticed anyway.
-	go func() {
+	go func() { // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		s.sweepExpiredRecordings(ctx)
@@ -983,11 +983,11 @@ func (s *Server) serveRecordingZip(w http.ResponseWriter, r *http.Request, parts
 		}
 		fw, err := zw.CreateHeader(hdr)
 		if err != nil {
-			file.Close()
+			file.Close() // #nosec G104 -- close/write error on a read-side handle or stdout; nothing to recover
 			return
 		}
 		_, _ = io.Copy(fw, file)
-		file.Close()
+		file.Close() // #nosec G104 -- close/write error on a read-side handle or stdout; nothing to recover
 	}
 }
 
@@ -1071,7 +1071,7 @@ func (s *Server) redirectRecordingObject(w http.ResponseWriter, r *http.Request,
 
 	if ps, ok := s.recordings.(media.Presigner); ok {
 		if signedURL, err := ps.PresignedGetURL(r.Context(), key, name, mime, inline, 6*time.Hour); err == nil && signedURL != "" {
-			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect)
+			http.Redirect(w, r, signedURL, http.StatusTemporaryRedirect) // #nosec G710 -- a presigned URL to our own storage bucket
 			return true
 		}
 	}

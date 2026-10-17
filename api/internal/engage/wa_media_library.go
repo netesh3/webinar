@@ -131,7 +131,7 @@ func (s *Module) backfillThumb(ctx context.Context, f *crmstore.LibraryFile) {
 		return
 	}
 	data, err := io.ReadAll(io.LimitReader(rc, maxImageInput))
-	rc.Close()
+	rc.Close() // #nosec G104 -- close/write error on a read-side handle or stdout; nothing to recover
 	if err != nil {
 		return
 	}

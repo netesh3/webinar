@@ -96,7 +96,7 @@ func (s *Sessions) Verify(token string) (Session, error) {
 }
 
 func (s *Sessions) SetCookie(w http.ResponseWriter, token string, expires time.Time) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 		Name:     CookieName,
 		Value:    token,
 		Path:     "/",
@@ -108,7 +108,7 @@ func (s *Sessions) SetCookie(w http.ResponseWriter, token string, expires time.T
 }
 
 func (s *Sessions) ClearCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 		Name:     CookieName,
 		Value:    "",
 		Path:     "/",
