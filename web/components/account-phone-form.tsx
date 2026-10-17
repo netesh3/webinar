@@ -50,6 +50,7 @@ export function AccountPhoneForm({
     setBusy(true);
     try {
       const phone = digits ? `+${DIAL_CODES[dialIso] ?? ""}${digits}` : "";
+      // The one place the account phone is saved. A WhatsApp OTP check goes here.
       await updateProfile({ phone });
       setSaved(true);
     } catch (err) {

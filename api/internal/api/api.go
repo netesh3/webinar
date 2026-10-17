@@ -346,6 +346,7 @@ func (s *Server) Routes() http.Handler {
 
 		r.With(registerLimit.Middleware).
 			Post("/webinars/{slug}/register", s.handleRegister)
+		r.Get("/webinars/{slug}/whatsapp-consent", s.handleWhatsAppConsent)
 
 		r.Group(func(r chi.Router) {
 			r.Use(joinLimit.Middleware)

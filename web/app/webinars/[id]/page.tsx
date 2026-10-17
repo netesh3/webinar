@@ -56,7 +56,7 @@ export default async function WebinarDetailPage({
    * edges of the padding. */
   return (
     <div className="flex min-h-full flex-1 flex-col bg-page [--color-brand:#2563EB] [--color-brand-hover:#1D4ED8] dark:[--color-brand:#93C5FD] dark:[--color-brand-hover:#BFDBFE]">
-      <ParticipantHeader wide />
+      <ParticipantHeader wide signIn />
       <main className="w-full flex-1 px-4 py-6 sm:px-6">
         <div className="grid items-start gap-5 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
           {/* ---------------- main column ---------------- */}

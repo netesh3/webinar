@@ -2916,6 +2916,16 @@ func (p Plan) Valid() bool {
 	return p == PlanProfessional || p == PlanBusiness || p == PlanEnterprise
 }
 
+/* WhatsAppConsent is GET /api/webinars/{slug}/whatsapp-consent: what the register
+ * page needs to decide whether to ask a signed-in person for their phone and for
+ * WhatsApp consent with this webinar's host. */
+type WhatsAppConsent struct {
+	// Phone prefills the prompt: the account's typed number, else Google's.
+	Phone string `json:"phone"`
+	// OptedIn is true when this host may already message them on WhatsApp.
+	OptedIn bool `json:"optedIn"`
+}
+
 // SetUserPlanRequest is PATCH /api/admin/users/{id}/plan. An empty plan removes
 // the subscription, back to the launch default.
 /* DeleteAccountRequest is DELETE /api/auth/account. Password for an account

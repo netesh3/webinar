@@ -71,6 +71,7 @@ func TestSignupSendsExactlyOneWelcomeEmail(t *testing.T) {
 
 	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{
 		Name: "Priya <b>Sharma</b>", Email: "Priya.New@Test.dev", Password: "any-password",
+		Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("signup: status %d body %s", res.StatusCode, raw)
@@ -111,6 +112,7 @@ func TestSignupSendsExactlyOneWelcomeEmail(t *testing.T) {
 	}
 	res, _ = h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{
 		Name: "Priya", Email: "priya.new@test.dev", Password: "another",
+		Phone: testPhone,
 	})
 	if res.StatusCode == http.StatusCreated {
 		t.Fatal("a second signup with the same address was accepted")
@@ -177,6 +179,7 @@ func TestWelcomeMailFailureDoesNotFailSignup(t *testing.T) {
 
 	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{
 		Name: "Asha", Email: "asha-fail@test.dev", Password: "pw",
+		Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("signup with a failing mailer: status %d body %s", res.StatusCode, raw)
@@ -201,6 +204,7 @@ func TestWelcomeEmailCanBeSwitchedOff(t *testing.T) {
 
 	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{
 		Name: "Off", Email: "off@test.dev", Password: "pw",
+		Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("signup: status %d body %s", res.StatusCode, raw)

@@ -4912,6 +4912,21 @@ export const PlanEnterprise: Plan = "enterprise";
  */
 export const PlanLaunchAttendees = 200;
 /**
+ *  WhatsAppConsent is GET /api/webinars/{slug}/whatsapp-consent: what the register
+ *  * page needs to decide whether to ask a signed-in person for their phone and for
+ *  * WhatsApp consent with this webinar's host.
+ */
+export interface WhatsAppConsent {
+  /**
+   * Phone prefills the prompt: the account's typed number, else Google's.
+   */
+  phone: string;
+  /**
+   * OptedIn is true when this host may already message them on WhatsApp.
+   */
+  optedIn: boolean;
+}
+/**
  * SetUserPlanRequest is PATCH /api/admin/users/{id}/plan. An empty plan removes
  * the subscription, back to the launch default.
  *  DeleteAccountRequest is DELETE /api/auth/account. Password for an account

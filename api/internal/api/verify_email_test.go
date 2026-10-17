@@ -54,6 +54,7 @@ func TestUnverifiedAccountCannotSignIn(t *testing.T) {
 
 	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{
 		Name: "Una Verified", Email: "unverified@test.dev", Password: "webcast-dev",
+		Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("signup: status %d body %s", res.StatusCode, raw)
@@ -176,6 +177,7 @@ func TestVerificationResendIsRateLimited(t *testing.T) {
 	h := newHarness(t)
 	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{
 		Name: "Rate Limited", Email: "resend-limit@test.dev", Password: "webcast-dev",
+		Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("signup: status %d body %s", res.StatusCode, raw)

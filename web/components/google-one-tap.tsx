@@ -9,10 +9,9 @@ import { landingAfterSignIn } from "@/lib/access";
 import { safeAuthNext } from "@/lib/supabase";
 
 /**
- * Unused in the product UI. Phone numbers are required, and One Tap cannot
- * collect one. Continue with Google (authorization code) is the Google path.
- *
- * POST /api/auth/google still accepts an ID token if a caller needs it.
+ * Google One Tap: sign in or sign up from Google's corner prompt, through
+ * POST /api/auth/google. One Tap never yields a phone number; the app asks for
+ * it straight after (PhonePrompt, or the register page's own popup).
  */
 
 declare global {
@@ -134,9 +133,12 @@ async function googleIdNonce(): Promise<string> {
 
 export function GoogleOneTap({
   next = "/browse",
+  stay = false,
 }: {
   /** Where to land after a successful One Tap sign-in (hosts may still go to /host). */
   next?: string;
+  /** Stay on this page and only refresh the session (the webinar register page). */
+  stay?: boolean;
 }) {
   const router = useRouter();
   const { refresh, status } = useSession();
@@ -187,7 +189,9 @@ export function GoogleOneTap({
             try {
               const account = await api.googleAuth(credential, hashedNonce);
               await refresh();
-              router.replace(landingAfterSignIn(account.canHost, destination));
+              if (!stay) {
+                router.replace(landingAfterSignIn(account.canHost, destination));
+              }
               router.refresh();
             } catch (err) {
               console.warn("Google One Tap sign-in failed", err);
@@ -226,6 +230,7 @@ export function GoogleOneTap({
     googleAuth,
     googleClientId,
     next,
+    stay,
     refresh,
     router,
   ]);

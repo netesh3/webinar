@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useJoinKeys, useRegistrations } from "./registrations";
-import { Alert, CopyField, Spinner } from "./controls";
+import { Alert, CopyField, Modal, Spinner } from "./controls";
 import { startGoogleOAuth } from "./google-continue";
 import { ArrowLeftIcon, CalendarIcon, CheckIcon, UserPlusIcon } from "./icons";
 import { useSession, useShareOrigin, useAppConfig } from "./providers";
@@ -12,6 +12,7 @@ import { DIAL_CODES, dialOptions, nationalPhoneDigits } from "@/lib/dial-codes";
 import { formatDay, formatTime, formatTimeRange, tzLabel } from "@/lib/format";
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import { ApiError, api } from "@/lib/api";
+import { needsConsentPrompt } from "@/lib/whatsapp-consent";
 import type { Account, RegisterRequest, Registration, Webinar } from "@/lib/api-types";
 import {
   clearPendingWebinarRegister,
@@ -624,16 +625,16 @@ function GuestJoinFields({
  */
 function identityKnown(account: Account | null, w: Webinar): boolean {
   if (!account?.name.trim() || !account.email.trim()) return false;
-  if (!account.phone?.trim()) return false;
+  // No phone is fine: ConsentRegister asks for it, with WhatsApp for this coach.
   if (w.passcodeRequired) return false;
   return !w.customQuestions.some((q) => q.required);
 }
 
 /* Signed in, and we already know the name and email.
  *
- * The request is the same one the form posts. Consent is included because
- * opening this door is the person asking to be registered; the server still
- * checks it. A failure drops them onto the form rather than a dead card.
+ * Consent to be registered is included because opening this door is the person
+ * asking for it; the server still checks it. WhatsApp is not assumed: it is asked
+ * for this coach unless they already opted in (ConsentRegister).
  */
 function KnownAttendeeRegister({
   webinar: w,
@@ -646,39 +647,136 @@ function KnownAttendeeRegister({
   onRegistered: (reg: Registration) => void;
   onBack?: () => void;
 }) {
+  const base = useMemo<RegisterRequest>(() => {
+    const { firstName, lastName } = splitName(account.name);
+    return {
+      firstName,
+      lastName,
+      email: account.email,
+      company: account.org,
+      jobTitle: account.title,
+      phone: account.phone ?? "",
+      consent: true,
+      whatsappOptIn: false,
+      answers: {},
+    };
+  }, [account]);
+  return (
+    <ConsentRegister
+      webinar={w}
+      account={account}
+      base={base}
+      onRegistered={onRegistered}
+      onBack={onBack}
+    />
+  );
+}
+
+/* Register a signed-in person, asking first when this coach needs it.
+ *
+ * If they are already opted in with this webinar's coach and the account has a
+ * phone, it is one click, as before. Otherwise a popup asks for the phone, which
+ * registration requires and which cannot be skipped, and offers WhatsApp updates
+ * from this coach, unticked. A phone saved here also becomes the account's if it
+ * had none, so the app-wide phone prompt does not follow them. Any other failure
+ * drops onto the full form.
+ */
+function ConsentRegister({
+  webinar: w,
+  account,
+  base,
+  onRegistered,
+  onBack,
+  onDone,
+}: {
+  webinar: Webinar;
+  account: Account;
+  base: RegisterRequest;
+  onRegistered: (reg: Registration) => void;
+  onBack?: () => void;
+  onDone?: () => void;
+}) {
+  const { refresh } = useSession();
+  const [stage, setStage] = useState<"checking" | "ask" | "registering" | "failed">("checking");
   const [error, setError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [dialIso, setDialIso] = useState("IN");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [optIn, setOptIn] = useState(false);
+  const dials = useMemo(() => dialOptions(), []);
   const started = useRef(false);
+  const coach = w.host.name;
+
+  const register = useCallback(
+    async (phone: string, whatsappOptIn: boolean) => {
+      setStage("registering");
+      try {
+        const reg = await api.register(w.id, {
+          ...base,
+          email: account.email,
+          phone,
+          consent: true,
+          whatsappOptIn,
+        });
+        onDone?.();
+        onRegistered(reg);
+        // The account may have just gained this phone.
+        void refresh();
+      } catch (err) {
+        if (err instanceof ApiError && err.fields?.phone) {
+          setPhoneError(err.fields.phone);
+          setStage("ask");
+          return;
+        }
+        setError(err instanceof ApiError ? err.message : "Could not register.");
+        setStage("failed");
+      }
+    },
+    [account.email, base, onDone, onRegistered, refresh, w.id],
+  );
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    const { firstName, lastName } = splitName(account.name);
-    api
-      .register(w.id, {
-        firstName,
-        lastName,
-        email: account.email,
-        company: account.org,
-        jobTitle: account.title,
-        phone: account.phone ?? "",
-        consent: true,
-        whatsappOptIn: Boolean(account.phone?.trim()),
-        answers: {},
-      })
-      .then(onRegistered)
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : "Could not register.");
+    void api
+      .whatsappConsent(w.id)
+      .catch(() => null)
+      .then((consent) => {
+        if (!needsConsentPrompt(consent, account.phone)) {
+          void register(account.phone!.trim(), true);
+          return;
+        }
+        setPhoneNumber(nationalPhoneDigits(base.phone || consent?.phone || account.phone || ""));
+        setStage("ask");
       });
-  }, [account, onRegistered, w.id]);
+  }, [account.phone, base.phone, register, w.id]);
 
-  if (error) {
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setPhoneError(null);
+    const digits = phoneNumber.replace(/\D/g, "");
+    if (!digits) {
+      setPhoneError("Add a mobile number.");
+      return;
+    }
+    if (digits.length < 8) {
+      setPhoneError("That number looks too short — include the country code.");
+      return;
+    }
+    void register(`+${DIAL_CODES[dialIso] ?? ""}${digits}`, optIn);
+  }
+
+  if (stage === "failed") {
     return (
-      <RegisterFields
-        webinar={w}
-        account={account}
-        onRegistered={onRegistered}
-        onBack={onBack}
-      />
+      <div className="grid gap-3">
+        {error && <Alert tone="error">{error}</Alert>}
+        <RegisterFields
+          webinar={w}
+          account={account}
+          onRegistered={onRegistered}
+          onBack={onBack}
+        />
+      </div>
     );
   }
 
@@ -690,6 +788,55 @@ function KnownAttendeeRegister({
         Registering {account.name} ({account.email}).
       </p>
       <div className="mt-3 h-24 animate-pulse rounded-xl bg-surface-2" />
+
+      <Modal
+        open={stage === "ask"}
+        dismissible={false}
+        onClose={() => {}}
+        size="sm"
+        title={`Share your mobile number with ${coach}`}
+        description={`${coach} uses it for this webinar's join link and reminders.`}
+      >
+        <form onSubmit={submit} className="grid gap-3">
+          <div className="grid gap-1.5">
+            <label className="label" htmlFor="consent-phone">
+              Mobile number
+            </label>
+            <div className="flex gap-2">
+              <select
+                aria-label="Country calling code"
+                className="field w-32 shrink-0"
+                value={dialIso}
+                onChange={(e) => setDialIso(e.target.value)}
+              >
+                {dials.map((d) => (
+                  <option key={d.iso} value={d.iso}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                id="consent-phone"
+                className={`field min-w-0 flex-1 ${phoneError ? "border-live" : ""}`}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel-national"
+                placeholder="98765 43210"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 15))}
+                aria-invalid={Boolean(phoneError)}
+              />
+            </div>
+            {phoneError && (
+              <p className="text-[12px] font-medium text-live">{phoneError}</p>
+            )}
+          </div>
+          <WhatsAppOptInCheckbox checked={optIn} onChange={setOptIn} coach={coach} />
+          <Button type="submit" size="lg" className="w-full">
+            Register &amp; Join
+          </Button>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -714,9 +861,22 @@ function ResumePendingRegister({
 }) {
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
+  // The form was filled before Google: a typed phone and the WhatsApp box are the
+  // person's own choice. Without a phone, ask for it (with WhatsApp) first.
+  const draftHasPhone = Boolean(draft.phone?.trim());
+  const base = useMemo<RegisterRequest>(() => {
+    const name = splitName(account.name);
+    return {
+      ...draft,
+      email: account.email,
+      firstName: draft.firstName.trim() || name.firstName,
+      lastName: draft.lastName.trim() || name.lastName,
+    };
+  }, [account, draft]);
+  const clearDraft = useCallback(() => clearPendingWebinarRegister(w.id), [w.id]);
 
   useEffect(() => {
-    if (started.current) return;
+    if (!draftHasPhone || started.current) return;
     started.current = true;
     const name = splitName(account.name);
     api
@@ -734,7 +894,19 @@ function ResumePendingRegister({
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not register.");
       });
-  }, [account, draft, onRegistered, w.id]);
+  }, [account, draft, draftHasPhone, onRegistered, w.id]);
+
+  if (!draftHasPhone) {
+    return (
+      <ConsentRegister
+        webinar={w}
+        account={account}
+        base={base}
+        onRegistered={onRegistered}
+        onDone={clearDraft}
+      />
+    );
+  }
 
   if (error) {
     return (

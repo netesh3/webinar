@@ -126,7 +126,7 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, created, err := s.provisionGoogleUser(r.Context(), identity, tok.AccessToken, "google auth")
+	user, created, err := s.provisionGoogleUser(r.Context(), identity, "google auth")
 	if errors.Is(err, errOAuthSignupClosed) {
 		fail("signup")
 		return
@@ -184,7 +184,7 @@ func (s *Server) handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, created, err := s.provisionGoogleUser(r.Context(), identity, "", "google auth")
+	user, created, err := s.provisionGoogleUser(r.Context(), identity, "google auth")
 	if errors.Is(err, errOAuthSignupClosed) {
 		httpx.Error(w, http.StatusForbidden, "signup_closed",
 			"New accounts are closed on this instance.")
@@ -351,7 +351,7 @@ var (
 	errOAuthEmailUnverified = errors.New("oauth email unverified")
 )
 
-func (s *Server) provisionGoogleUser(ctx context.Context, identity auth.GoogleIdentity, googleAccessToken, logName string) (store.User, bool, error) {
+func (s *Server) provisionGoogleUser(ctx context.Context, identity auth.GoogleIdentity, logName string) (store.User, bool, error) {
 	user, err := s.store.UserByEmail(ctx, identity.Email)
 	created := false
 	switch {
@@ -371,15 +371,6 @@ func (s *Server) provisionGoogleUser(ctx context.Context, identity auth.GoogleId
 		created = true
 	default:
 		return store.User{}, false, err
-	}
-
-	if googlePhone := s.optionalGooglePhone(ctx, googleAccessToken); googlePhone != "" {
-		updated, uerr := s.store.SetGooglePhone(ctx, user.ID, googlePhone)
-		if uerr != nil {
-			s.log.Warn(logName+": save google phone", "user", user.ID, "error", uerr)
-		} else {
-			user = updated
-		}
 	}
 
 	if pic := identity.Picture; pic != "" && pic != user.GooglePicture {
