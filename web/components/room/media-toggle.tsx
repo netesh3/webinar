@@ -14,6 +14,7 @@ import { CheckIcon, ChevronDownIcon } from "../icons";
 import { Spinner } from "../controls";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
+import { VirtualBackgroundPanel, VirtualBackgroundRow } from "./background-menu";
 import { lowLightToggled } from "./low-light";
 
 /* Mic / camera on the control bar.
@@ -69,8 +70,11 @@ export function MediaToggle({
   onSelectDevice?: (deviceId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // The virtual-background panel beside the camera menu. Only while the menu is open.
+  const [bgPanel, setBgPanel] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  const bgPanelId = useId();
   const { devices } = useDevices(open);
   const { prefs, updatePrefs, tools } = useRoomUI();
   const room = useRoomContext();
@@ -85,13 +89,17 @@ export function MediaToggle({
   const canBackground = useBackgroundsAvailable();
 
   const isAudio = deviceKind === "audioinput";
+  const showBgPanel = open && bgPanel && !isAudio && canBackground;
   const inputs = isAudio ? devices.audioInput : devices.videoInput;
   const kindLabel = isAudio ? "microphone" : "camera";
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape") return;
+      // Escape backs out one level: the panel first, then the menu.
+      if (bgPanel) setBgPanel(false);
+      else setOpen(false);
     };
     const onPointer = (e: PointerEvent) => {
       if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
@@ -102,7 +110,7 @@ export function MediaToggle({
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onPointer);
     };
-  }, [open]);
+  }, [open, bgPanel]);
 
   const tone = dimmed
     ? "text-white/35"
@@ -147,7 +155,11 @@ export function MediaToggle({
           aria-haspopup="menu"
           aria-expanded={open}
           aria-controls={open ? menuId : undefined}
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            // A fresh menu always opens at its top level, never straight onto the panel.
+            setBgPanel(false);
+            setOpen((v) => !v);
+          }}
           style={compact ? { width: chevPx } : undefined}
           className="grid shrink-0 place-items-center border-l border-white/15 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50 sm:w-7"
         >
@@ -162,7 +174,7 @@ export function MediaToggle({
           aria-label={isAudio ? "Audio devices" : "Video devices"}
           className={`room-dark absolute bottom-full left-0 z-50 mb-2 w-[18.5rem] max-w-[calc(100vw-1rem)] max-h-[min(24rem,calc(100dvh-6rem))] overflow-y-auto rounded-xl border border-line bg-surface shadow-xl ${
             isAudio ? "pb-1" : "py-1"
-          }`}
+          } ${showBgPanel ? "hidden sm:block" : ""}`}
         >
           {/* Noise suppression heads the mic menu and stays pinned while a long
               device list scrolls under it. The sticky header owns the top padding
@@ -212,22 +224,21 @@ export function MediaToggle({
           {!isAudio && canBackground && (
             <>
               <div className="my-1 h-px bg-line" />
+              {/* Blur and a still are one choice (prefs.background), so the switch is
+                  on for blur only: turning it on replaces a still, picking a still
+                  turns it off. */}
               <MenuToggle
-                checked={prefs.background.mode !== "none"}
+                checked={prefs.background.mode === "blur"}
                 onChange={(on) =>
-                  updatePrefs({
-                    background: on
-                      ? prefs.background.mode === "none"
-                        ? { mode: "blur" }
-                        : prefs.background
-                      : { mode: "none" },
-                  })
+                  updatePrefs({ background: on ? { mode: "blur" } : { mode: "none" } })
                 }
-                label={
-                  prefs.background.mode === "image"
-                    ? "Virtual background"
-                    : "Blur my background"
-                }
+                label="Blur my background"
+              />
+              <VirtualBackgroundRow
+                choice={prefs.background}
+                expanded={showBgPanel}
+                controls={bgPanelId}
+                onOpen={() => setBgPanel((v) => !v)}
               />
               {/* The switch only, with no amount beside it.
                   A slider in a menu that closes when you click away is a control you
@@ -262,6 +273,18 @@ export function MediaToggle({
             {isAudio ? "Audio settings" : "Video settings"}
           </button>
         </div>
+      )}
+
+      {/* A sibling of the menu, not a child: the menu scrolls, and would clip it.
+          Beside the menu where there is room; in its place on a phone. */}
+      {showBgPanel && (
+        <VirtualBackgroundPanel
+          id={bgPanelId}
+          choice={prefs.background}
+          onSelect={(next) => updatePrefs({ background: next })}
+          onClose={() => setBgPanel(false)}
+          className="absolute bottom-full left-0 z-50 mb-2 sm:left-[calc(18.5rem+0.5rem)]"
+        />
       )}
     </div>
   );
