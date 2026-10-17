@@ -12,7 +12,8 @@ import {
   type FileSource,
 } from "@/lib/file-share";
 import { formatBytes } from "@/lib/format";
-import { isSafari, SCREEN_SHARE_OPTIONS, SHARE_AUDIO_SURFACES } from "@/lib/media";
+import { isSafari, shareCaptureOptions, SHARE_AUDIO_SURFACES } from "@/lib/media";
+import type { ShareMode } from "@/lib/share-mode";
 import type { ScreenShareCaptureOptions } from "livekit-client";
 import { Alert, Modal, Spinner } from "../controls";
 import { ImageIcon, PlayIcon, RecordIcon, ScreenShareIcon } from "../icons";
@@ -542,7 +543,10 @@ function PreviewStep({
  *  outright on Safari — rather than substituting "monitor" or "window" — is what
  *  lets Safari's own native picker (which does list both) come up normally,
  *  which omitting `displaySurface` altogether is documented to do. */
-export function displayMediaOptions(surface: Surface): ScreenShareCaptureOptions {
+export function displayMediaOptions(
+  surface: Surface,
+  mode: ShareMode,
+): ScreenShareCaptureOptions {
   const video = surface === "browser" && isSafari() ? true : { displaySurface: surface };
-  return { ...SCREEN_SHARE_OPTIONS, video };
+  return { ...shareCaptureOptions(mode), video };
 }

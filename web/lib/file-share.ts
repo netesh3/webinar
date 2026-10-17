@@ -2,7 +2,7 @@
 
 import { RoomEvent, Track, type Room } from "livekit-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SCREEN_SHARE_PUBLISH } from "./media";
+import { sharePublishOptions } from "./media";
 
 /* Sharing a recorded video into a live session.
  *
@@ -306,10 +306,11 @@ export function useFileShare(room: Room | null): FileShareApi {
 
         /* Motion, not text: this is a video file, not a slide.
          *
-         * SCREEN_SHARE_OPTIONS sets the same hint on a desktop capture, and the reasoning
-         * there applies more strongly here — under bitrate pressure the encoder should drop
-         * pixels to hold the frame rate, because a clip at eight frames a second reads as a
-         * broken connection in a way a static slide never does. */
+         * A desktop share is "sharp" (detail) by default and only gets this hint when the
+         * presenter picks "Optimize for video" (lib/share-mode.ts). A file is always video:
+         * under bitrate pressure the encoder should drop pixels to hold the frame rate,
+         * because a clip at eight frames a second reads as a broken connection in a way a
+         * static slide never does. */
         videoTrack.contentHint = "motion";
 
         /* Published as ScreenShare, which is what makes it indistinguishable.
@@ -318,8 +319,8 @@ export function useFileShare(room: Room | null): FileShareApi {
          * "<name>'s screen". Nothing downstream needs to know or care that the
          * frames came from a file, and nothing downstream is told.
          *
-         * SCREEN_SHARE_PUBLISH rather than options restated here, and that IS the fix for
-         * "the audience hears the file but never sees it".
+         * sharePublishOptions("video") rather than options restated here, and that IS the
+         * fix for "the audience hears the file but never sees it".
          *
          * This used to declare `videoCodec: "vp8"` with no backup. Chrome does not promise to
          * encode in the codec we name: on macOS it reaches for the hardware H264 encoder for
@@ -330,16 +331,15 @@ export function useFileShare(room: Room | null): FileShareApi {
          * from the local MediaStreamTrack and never goes near the SFU. The audio is untouched
          * by any of it, which is exactly the half that kept working.
          *
-         * That is not a new diagnosis: it is the same failure SCREEN_SHARE_PUBLISH was written
+         * That is not a new diagnosis: it is the same failure sharePublishOptions was written
          * to fix for desktop shares — see its comment in lib/media.ts. H264 primary matches
          * what the browser actually sends, VP8 stays as the backup publication for subscribers
-         * that need it, and sharing the constant means the two paths cannot drift apart again.
+         * that need it, and sharing the function means the two paths cannot drift apart again.
          *
-         * Nothing about simulcast or the layer ladder is restated here either. Those come from
-         * publishDefaults via the merge (screenShareSimulcastLayers = SHARE_LAYERS), which is
-         * what lib/media.ts asks callers not to duplicate. */
+         * Nothing about simulcast or the layer ladder is restated here either: the "video"
+         * mode's layers come with the options (shareLayers / shareTop in network.ts). */
         await room.localParticipant.publishTrack(videoTrack, {
-          ...SCREEN_SHARE_PUBLISH,
+          ...sharePublishOptions("video"),
           source: Track.Source.ScreenShare,
           name: "screen",
         });

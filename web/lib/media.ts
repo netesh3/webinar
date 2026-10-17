@@ -2,12 +2,18 @@
 
 import {
   AudioPresets,
-  ScreenSharePresets,
+  type LocalVideoTrack,
   type RoomOptions,
   type ScreenShareCaptureOptions,
   type TrackPublishOptions,
   type VideoPreset,
 } from "livekit-client";
+import {
+  shareCaptureResolution,
+  shareContentHint,
+  shareDegradation,
+  type ShareMode,
+} from "./share-mode";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   asBackgroundChoice,
@@ -26,6 +32,8 @@ import {
   SHARE_LAYERS,
   SHARE_TOP,
   cameraCapturePreset,
+  shareLayers,
+  shareTop,
 } from "./network";
 
 export { canCaptureCamera1080, cameraCapturePreset } from "./network";
@@ -97,11 +105,14 @@ export const SIMULCAST_LAYERS: VideoPreset[] = CAMERA_LAYERS;
 /**
  * How a screen share is captured.
  *
- * `contentHint: "text"` is the important one. Without it the browser encodes
- * captured screen content as if it were motion video, and under any bitrate
- * pressure it protects the frame rate by blurring — so the text on a slide goes
- * soft exactly when somebody is trying to read it. "text" tells the encoder to
- * do the opposite: hold the pixels, drop frames (stronger than "detail" for decks).
+ * `contentHint` is the important part, and it depends on the share's mode (lib/share-mode.ts).
+ * Encoded as motion, captured screen content is protected for frame rate under any bitrate
+ * pressure by blurring — so the text on a slide goes soft exactly when somebody is trying to
+ * read it. The default "sharp" mode asks for "detail": hold the pixels, drop frames. Only a
+ * presenter who chose "Optimize for video" gets "motion", and with it smoother playback.
+ *
+ * Resolution: up to 2560x1440 as an ideal (SHARE_CAPTURE_MAX), so a high-DPI screen is not
+ * scaled to 1080p before it is encoded; Safari is left unconstrained; phones get the floor.
  *
  * Audio IS captured, and it did not used to be. `audio: false` was defended here on the
  * grounds that presenters share slides and terminals more often than video — true, and
@@ -117,32 +128,27 @@ export const SIMULCAST_LAYERS: VideoPreset[] = CAMERA_LAYERS;
  *
  * What this does NOT fix is a platform limit: see SHARE_AUDIO_SURFACES.
  */
-export const SCREEN_SHARE_OPTIONS: ScreenShareCaptureOptions = {
-  audio: {
-    echoCancellation: false,
-    noiseSuppression: false,
-    autoGainControl: false,
-  },
-  contentHint: "motion",
-
-  /* Capture floors: desktop 1080p@30fps for smooth video playback & sharp presentations. */
-  resolution: isSafari()
-    ? undefined
-    : isMobilePublisher()
-      ? {
-          width: SHARE_FLOOR_MOBILE.width,
-          height: SHARE_FLOOR_MOBILE.height,
-          frameRate: 30,
-        }
-      : ScreenSharePresets.h1080fps30.resolution,
-
-  // Offer a control to swap the shared window mid-share instead of stopping and
-  // starting again — which, in a webinar, means a gap the audience sees.
-  surfaceSwitching: "include",
-  // The current tab is almost never what a presenter means to share, and picking
-  // it produces the infinite-mirror effect.
-  selfBrowserSurface: "exclude",
-};
+export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions {
+  return {
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    },
+    contentHint: shareContentHint(mode),
+    resolution: shareCaptureResolution(mode, {
+      safari: isSafari(),
+      mobile: isMobilePublisher(),
+      mobileFloor: SHARE_FLOOR_MOBILE,
+    }),
+    // Offer a control to swap the shared window mid-share instead of stopping and
+    // starting again — which, in a webinar, means a gap the audience sees.
+    surfaceSwitching: "include",
+    // The current tab is almost never what a presenter means to share, and picking
+    // it produces the infinite-mirror effect.
+    selfBrowserSurface: "exclude",
+  };
+}
 
 /* How a screen share is published, which is not how a camera is published.
  *
@@ -158,21 +164,56 @@ export const SCREEN_SHARE_OPTIONS: ScreenShareCaptureOptions = {
  * as VP8 explicitly; desktop share has to match what the browser actually sends.
  *
  * Primary H264 matches the wire. VP8 stays as backup for subscribers that need it.
- * screenShareEncoding / simulcast layers still come from publishDefaults via the merge —
- * do not restate them here or a drift with SHARE_LADDER is easy to miss.
  *
- * maintain-resolution: slides and terminals must not blur to hold a frame rate; contentHint
- * "text" asks the same of the encoder, and this matches it on the sender. The network
- * ladder for share (judgeShare) prefers cutting fps / turning off 1080p over dropping below
- * SHARE_FLOOR_DESKTOP.
+ * Encodings: the mode's layers and top preset (shareLayers / shareTop in network.ts — the
+ * same functions the share ladder reads, so the two cannot drift). The top encoding is the
+ * capture itself, up to 1440p; its bitrate for a >1080p capture is set on the live sender by
+ * the ladder (shareTopBitrate), since the capture size is not known until after publish.
+ *
+ * Degradation: "sharp" is maintain-resolution — slides and terminals must not blur to hold a
+ * frame rate, and contentHint "detail" asks the same of the encoder. "video" is
+ * maintain-framerate, for a smooth clip (and a smooth recording of one). Either way the
+ * network ladder (judgeShare) prefers cutting fps / turning off the top layer over dropping
+ * below SHARE_FLOOR_DESKTOP.
  */
-export const SCREEN_SHARE_PUBLISH: TrackPublishOptions = {
-  audioPreset: AudioPresets.musicStereo,
-  dtx: false,
-  videoCodec: "h264",
-  backupCodec: { codec: "vp8" },
-  degradationPreference: "maintain-framerate",
-};
+export function sharePublishOptions(mode: ShareMode): TrackPublishOptions {
+  return {
+    audioPreset: AudioPresets.musicStereo,
+    dtx: false,
+    videoCodec: "h264",
+    backupCodec: { codec: "vp8" },
+    degradationPreference: shareDegradation(mode),
+    screenShareEncoding: shareTop(mode).encoding,
+    screenShareSimulcastLayers: shareLayers(mode),
+  };
+}
+
+/* Switch a live share between sharp and video without republishing.
+ *
+ * contentHint is writable on a live MediaStreamTrack and takes effect on the next
+ * frames; degradationPreference goes through the sender (livekit's
+ * setDegradationPreference wraps RTCRtpSender.setParameters); the per-layer fps cap is
+ * set on the same sender. Browsers that refuse a part of it keep the old value for that
+ * part — the next share starts in the new mode regardless, since the choice is stored. */
+export async function applyShareMode(track: LocalVideoTrack, mode: ShareMode): Promise<void> {
+  const media = track.mediaStreamTrack;
+  if (media) media.contentHint = shareContentHint(mode);
+  await track.setDegradationPreference(shareDegradation(mode));
+  const sender = track.sender;
+  if (!sender) return;
+  try {
+    const params = sender.getParameters();
+    const layers = shareLayers(mode);
+    const top = shareTop(mode);
+    params.encodings?.forEach((encoding, i) => {
+      if (encoding.active === false) return;
+      encoding.maxFramerate = (i < layers.length ? layers[i] : top).encoding.maxFramerate;
+    });
+    await sender.setParameters(params);
+  } catch {
+    // Left as it was; the network ladder's next pass reapplies the mode's fps.
+  }
+}
 
 /* Which shared surfaces can actually carry sound.
  *
@@ -298,7 +339,18 @@ export function roomOptions(
 ): RoomOptions {
   const capture = cameraCapturePreset();
   return {
-    adaptiveStream: true,
+    /* Measured in DEVICE pixels, not CSS pixels.
+     *
+     * livekit-client's default counts a retina laptop (devicePixelRatio 2) as 1, so a
+     * shared screen shown 1200 CSS pixels wide asked the SFU for 1200x675 and got the 720p
+     * layer — upscaled twice on the display, which is what soft text on a Mac was. And with
+     * adaptiveStream on, the smaller of these dimensions and the layer the stage asks for
+     * (setVideoQuality, applyBudget in layout.ts) is what is sent, so "Always HIGH" for a
+     * share was being overruled. "screen" uses the real ratio. Cameras stay bounded by the
+     * stage's own per-tile caps (qualityFor, LOW for strips), so this does not turn every
+     * grid tile on a retina screen into a 1080p download.
+     */
+    adaptiveStream: { pixelDensity: "screen" },
     dynacast: true,
 
     videoCaptureDefaults: {
@@ -334,8 +386,9 @@ export function roomOptions(
        * connection and is unpleasant to watch. The browser's default is
        * "balanced", which splits the difference and gets neither.
        *
-       * A screen share wants the opposite and gets it from contentHint: "text" —
-       * there, dropping frames to hold the pixels is what keeps a terminal legible.
+       * A screen share wants the opposite by default and gets it from its own publish
+       * options (sharePublishOptions): "sharp" is contentHint "detail" + maintain-resolution,
+       * where dropping frames to hold the pixels is what keeps a terminal legible.
        */
       degradationPreference: "maintain-framerate",
 

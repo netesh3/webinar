@@ -4,11 +4,14 @@ import { VideoTrack } from "@livekit/components-react";
 import {
   LocalParticipant,
   Track,
+  type LocalVideoTrack,
   type Participant,
   type TrackPublication,
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Role } from "@/lib/api-types";
+import { applyShareMode } from "@/lib/media";
+import { shareModeOfHint, writeShareMode } from "@/lib/share-mode";
 import {
   ExpandIcon,
   FitIcon,
@@ -240,7 +243,11 @@ export function ParticipantTile({
           />
         )
       ) : isOwnShare ? (
-        <OwnShareNotice size={size} onStop={stopOwnShare} />
+        <OwnShareNotice
+          size={size}
+          onStop={stopOwnShare}
+          track={publication?.track as LocalVideoTrack | undefined}
+        />
       ) : (
         <AvatarFallback
           participant={participant}
@@ -658,11 +665,25 @@ const OWN_SHARE_SCALE = {
 function OwnShareNotice({
   size,
   onStop,
+  track,
 }: {
   size: "sm" | "md" | "lg";
   onStop: () => void;
+  /** The live share, for switching sharp/video in place. */
+  track?: LocalVideoTrack;
 }) {
   const s = OWN_SHARE_SCALE[size];
+  /* Sharp (slides, code) by default; "Optimize for video" trades text sharpness for
+   * smooth motion. Applied to the live share and remembered for the next one. */
+  const [videoMode, setVideoMode] = useState(
+    () => shareModeOfHint(track?.mediaStreamTrack?.contentHint) === "video",
+  );
+  const onModeChange = (next: boolean) => {
+    setVideoMode(next);
+    const mode = next ? "video" : "sharp";
+    writeShareMode(mode);
+    if (track) void applyShareMode(track, mode).catch(() => {});
+  };
   return (
     <div className="grid size-full place-items-center bg-black/40 p-4 text-center">
       <div>
@@ -693,6 +714,18 @@ function OwnShareNotice({
               <StopIcon className={s.icon} aria-hidden />
               Stop sharing
             </button>
+            <label
+              className={`relative z-10 mt-3 flex cursor-pointer items-center justify-center gap-2 text-white/80 select-none ${s.sub}`}
+              title="Smoother motion for a playing video; text on slides gets softer"
+            >
+              <input
+                type="checkbox"
+                checked={videoMode}
+                onChange={(e) => onModeChange(e.target.checked)}
+                className="size-4 cursor-pointer accent-[var(--color-brand)]"
+              />
+              Optimize for video
+            </label>
           </>
         )}
       </div>
