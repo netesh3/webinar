@@ -677,9 +677,9 @@ function KnownAttendeeRegister({
  * If they are already opted in with this webinar's coach and the account has a
  * phone, it is one click, as before. Otherwise a popup asks for the phone, which
  * registration requires and which cannot be skipped, and offers WhatsApp updates
- * from this coach, unticked. A phone saved here also becomes the account's if it
- * had none, so the app-wide phone prompt does not follow them. Any other failure
- * drops onto the full form.
+ * from this coach, ticked like the form's box but optional. A phone saved here
+ * also becomes the account's if it had none, so the app-wide phone prompt does not
+ * follow them. Any other failure drops onto the full form.
  */
 function ConsentRegister({
   webinar: w,
@@ -702,7 +702,7 @@ function ConsentRegister({
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [dialIso, setDialIso] = useState("IN");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [optIn, setOptIn] = useState(false);
+  const [optIn, setOptIn] = useState(true);
   const dials = useMemo(() => dialOptions(), []);
   const started = useRef(false);
   const coach = w.host.name;
