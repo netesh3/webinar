@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/cors"
 	lkauth "github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
+	"github.com/netkumar/webcast/api/internal/ai"
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/billing"
 	"github.com/netkumar/webcast/api/internal/config"
@@ -165,6 +166,16 @@ type Server struct {
 	engagement *service.Service
 	// maintenanceHook runs first in the maintenance lane. Tests only (export_test.go).
 	maintenanceHook func(context.Context)
+
+	/* ai answers the AI features through the configured providers, falling to the next
+	 * one when a free allowance runs out. Never nil; with no providers configured it is
+	 * a chain that answers nothing, and ai.Enabled says so. */
+	ai *ai.Chain
+
+	// salesStartLimit caps new sales chats per IP; salesMsgLimit caps messages per
+	// conversation and per IP. Both protect the free AI allowances as much as the server.
+	salesStartLimit *httpx.RateLimiter
+	salesMsgLimit   *httpx.RateLimiter
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {
@@ -240,6 +251,11 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		mail:          mail,
 		invites:       map[string]pendingStage{},
 		engage:        NoEngage{},
+		ai:            newAIChain(cfg, log),
+		// Ten new chats a minute per IP covers an office behind one address; twelve
+		// messages a minute per conversation is faster than anyone types.
+		salesStartLimit: httpx.NewRateLimiter(10, time.Minute),
+		salesMsgLimit:   httpx.NewRateLimiter(12, time.Minute),
 	}
 	srv.initEngagement()
 	return srv
@@ -262,7 +278,8 @@ func (s *Server) Routes() http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: s.cfg.CORSOrigins,
 		AllowedMethods: []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Content-Type", "Accept", "Range"},
+		// X-Chat-Token: the sales chat's visitor token (sales.go).
+		AllowedHeaders: []string{"Content-Type", "Accept", "Range", "X-Chat-Token"},
 		// Without this, JavaScript on the frontend origin cannot read either header
 		// on a recording download — the browser hides everything but a handful of
 		// simple ones — so a client saving the file has no name to give it.
@@ -304,6 +321,13 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/webhooks/livekit", s.handleLiveKitWebhook)
 		r.Post("/webhooks/zoom", s.handleZoomWebhook)
 		r.Post("/webhooks/razorpay", s.handleRazorpayWebhook)
+		// The home page's sales chat. Public: a visitor has no account. Each request after
+		// the first carries the chat's own token (X-Chat-Token); see sales.go.
+		r.Post("/sales/chat", s.handleStartSalesChat)
+		r.Get("/sales/chat", s.handleSalesChat)
+		r.Post("/sales/chat/messages", s.handleSalesVisitorMessage)
+		r.Post("/sales/chat/handoff", s.handleSalesHandoff)
+		r.Post("/sales/chat/contact", s.handleSalesContact)
 		// The price list. Public: the pricing page renders it for a visitor with no session.
 		r.Get("/billing/plans", s.handleBillingPlans)
 		r.Group(func(r chi.Router) {
@@ -478,6 +502,14 @@ func (s *Server) Routes() http.Handler {
 
 			r.Get("/webinars", s.handleAdminWebinars)
 			r.Delete("/webinars/{slug}", s.handleAdminDeleteWebinar)
+
+			r.Get("/ai", s.handleAdminAIStatus)
+
+			r.Get("/sales", s.handleAdminSalesInbox)
+			r.Get("/sales/{id}", s.handleAdminSalesConversation)
+			r.Post("/sales/{id}/join", s.handleAdminSalesJoin)
+			r.Post("/sales/{id}/messages", s.handleAdminSalesMessage)
+			r.Post("/sales/{id}/close", s.handleAdminSalesClose)
 		})
 
 		r.Get("/host/youtube/callback", s.handleYouTubeCallback)
