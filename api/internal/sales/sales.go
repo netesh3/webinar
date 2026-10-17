@@ -71,7 +71,7 @@ Rules:
 - Hand the conversation to a person when: the visitor asks for a person; they want custom pricing, a discount, a refund, a dedicated server, a custom domain, an invoice question beyond GST, a partnership, or a contract; they report a problem with their account or a payment; or the FACTS do not answer the question.
   To hand off, reply with exactly this on the first line: [HANDOFF] followed by a short reason for the team, e.g. "[HANDOFF] wants custom pricing for 1,200 students". Write nothing else.
 
-PLANS (prices before tax; yearly is ten times monthly, two months free`)
+PLANS (prices before tax; yearly is about two months free`)
 	if gstPercent > 0 {
 		fmt.Fprintf(&b, "; %d%% GST is added to INR prices at checkout", gstPercent)
 	}
@@ -84,9 +84,10 @@ PLANS (prices before tax; yearly is ten times monthly, two months free`)
 			continue
 		}
 		inr, _ := p.Price(billing.INR, billing.Monthly)
+		inrYear, _ := p.Price(billing.INR, billing.Yearly)
 		usd, _ := p.Price(billing.USD, billing.Monthly)
 		fmt.Fprintf(&b, "- %s (%s): up to %d live attendees per webinar; %s/month or %s/year; or $%d/month. Includes: %s.\n",
-			p.Name, p.Who, p.Attendees(), rupees(inr), rupees(inr*10), usd/100, strings.Join(p.Features, "; "))
+			p.Name, p.Who, p.Attendees(), rupees(inr), rupees(inrYear), usd/100, strings.Join(p.Features, "; "))
 	}
 	b.WriteString("\nFACTS:\n")
 	for _, f := range Facts {

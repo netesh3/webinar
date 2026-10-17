@@ -372,7 +372,7 @@ func TestCatalogueAndRefusals(t *testing.T) {
 		"professional/INR/monthly": 9_999_00, "professional/USD/monthly": 99_00,
 		"business/INR/monthly": 24_999_00, "business/USD/monthly": 399_00,
 		"professional/USD/yearly": 990_00, "business/USD/yearly": 3_990_00,
-		"professional/INR/yearly": 99_990_00, "business/INR/yearly": 249_990_00,
+		"professional/INR/yearly": 99_948_00, "business/INR/yearly": 249_948_00,
 	} {
 		if list[key] != want {
 			t.Errorf("list price %s = %d, want %d", key, list[key], want)
