@@ -17,7 +17,6 @@ import {
   type OwnShare,
 } from "@/lib/own-share";
 import { EyeIcon, EyeOffIcon, PopOutIcon, ScreenShareIcon } from "../icons";
-import { ShareOnlySwitch } from "./share-only";
 
 /* What a presenter sees of their own window or screen share.
  *
@@ -232,11 +231,6 @@ export function OwnShareView({
         {/* No Stop button here: the Share button in the control bar stops the share.
             requestPresenter("stop") and the bar's handler for it are still in place. */}
       </div>
-      {/* Host and co-hosts: what the audience sees around this share. */}
-      <div className="flex shrink-0 justify-center px-3 pb-2.5">
-        <ShareOnlySwitch small />
-      </div>
-
       {asking && (
         <LivePreviewQuestion
           onYes={() => {

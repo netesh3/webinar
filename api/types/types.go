@@ -318,14 +318,6 @@ type SessionControls struct {
 	// change without polling. Messages still carry the destination they were sent
 	// with, so switching the setting never rewrites history.
 	ChatDestination ChatDestination `json:"chatDestination"`
-
-	/* AudienceShareOnly shows attendees only the active share — an older recording
-	 * played as if live, say — with no stage cameras, names or labels. With no share
-	 * active they see the normal stage. AudienceMuteStage also stops stage
-	 * microphones reaching them; the share's own audio still plays. Both are
-	 * live-only and cleared when the webinar ends (see migrations/0115). */
-	AudienceShareOnly bool `json:"audienceShareOnly"`
-	AudienceMuteStage bool `json:"audienceMuteStage"`
 }
 
 // ChatDestination is the audience for a chat message.
@@ -372,10 +364,6 @@ type ControlsPatch struct {
 	// A pointer for the same reason as the others: "not mentioned" and "set to
 	// everyone" are different requests.
 	ChatDestination *ChatDestination `json:"chatDestination,omitempty"`
-	// Turning AudienceShareOnly on without saying AudienceMuteStage mutes the stage
-	// for the audience too; see handleUpdateControls.
-	AudienceShareOnly *bool `json:"audienceShareOnly,omitempty"`
-	AudienceMuteStage *bool `json:"audienceMuteStage,omitempty"`
 }
 
 // ------------------------------------------------------------------- polls

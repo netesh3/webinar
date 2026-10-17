@@ -9,7 +9,6 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   ChevronDownIcon,
-  EyeIcon,
   EyeOffIcon,
   LockIcon,
   MicIcon,
@@ -18,7 +17,6 @@ import {
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { EndWebinarDialog } from "./host-survey";
-import { SHARE_ONLY_LABEL, SHARE_ONLY_MUTE_LABEL } from "./share-only";
 
 /* The host's in-session control panel.
  *
@@ -207,51 +205,6 @@ export function HostControls() {
                 }
                 description="Nobody new can join. People already here stay."
               />
-            </div>
-
-            {/* For a recording played as if live: the audience sees the share and
-                nothing else. Only while something is shared — otherwise they see the
-                stage as usual — and the stage's own view never changes. */}
-            <div className="rounded-lg border border-line-2 p-1.5">
-              <Toggle
-                checked={controls.audienceShareOnly === true}
-                disabled={busy !== null}
-                onChange={(v) =>
-                  void set(
-                    "audienceShareOnly",
-                    v,
-                    v
-                      ? "The audience now sees only the shared video."
-                      : "The audience sees the stage again.",
-                  )
-                }
-                label={
-                  <span className="flex items-center gap-1.5">
-                    <EyeIcon className="size-3.5 text-ink-3" />
-                    {SHARE_ONLY_LABEL}
-                  </span>
-                }
-                description="While something is shared: no cameras, names or labels from the stage. With nothing shared they see the stage."
-              />
-              {controls.audienceShareOnly === true && (
-                <div className="pl-6">
-                  <Toggle
-                    checked={controls.audienceMuteStage === true}
-                    disabled={busy !== null}
-                    onChange={(v) =>
-                      void set(
-                        "audienceMuteStage",
-                        v,
-                        v
-                          ? "Stage microphones are muted for the audience."
-                          : "The audience can hear the stage again.",
-                      )
-                    }
-                    label={SHARE_ONLY_MUTE_LABEL}
-                    description="The shared video's own sound still plays."
-                  />
-                </div>
-              )}
             </div>
           </section>
 
