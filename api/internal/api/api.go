@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/cors"
 	lkauth "github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
+	"github.com/netkumar/webcast/api/internal/ai"
 	"github.com/netkumar/webcast/api/internal/auth"
 	"github.com/netkumar/webcast/api/internal/billing"
 	"github.com/netkumar/webcast/api/internal/config"
@@ -165,6 +166,11 @@ type Server struct {
 	engagement *service.Service
 	// maintenanceHook runs first in the maintenance lane. Tests only (export_test.go).
 	maintenanceHook func(context.Context)
+
+	/* ai answers the AI features through the configured providers, falling to the next
+	 * one when a free allowance runs out. Never nil; with no providers configured it is
+	 * a chain that answers nothing, and ai.Enabled says so. */
+	ai *ai.Chain
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {
@@ -240,6 +246,7 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		mail:          mail,
 		invites:       map[string]pendingStage{},
 		engage:        NoEngage{},
+		ai:            newAIChain(cfg, log),
 	}
 	srv.initEngagement()
 	return srv
@@ -475,6 +482,8 @@ func (s *Server) Routes() http.Handler {
 
 			r.Get("/webinars", s.handleAdminWebinars)
 			r.Delete("/webinars/{slug}", s.handleAdminDeleteWebinar)
+
+			r.Get("/ai", s.handleAdminAIStatus)
 		})
 
 		r.Get("/host/youtube/callback", s.handleYouTubeCallback)

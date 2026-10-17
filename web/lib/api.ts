@@ -1,4 +1,5 @@
 import type {
+  AIStatus,
   ChatMessage as ChatTranscriptMessage,
   Account,
   DeleteAccountRequest,
@@ -962,6 +963,10 @@ export const api = {
    *  row and file removed), just reachable without owning it. */
   adminDeleteWebinar: (slug: string) =>
     del<StatusResponse>(`/api/admin/webinars/${seg(slug)}`),
+
+  /** The AI model chain: which provider is answering, and which are paused
+   *  (out of free quota, rate limited, or misconfigured) and until when. */
+  adminAI: () => request<AIStatus>("/api/admin/ai", fresh),
 
   // ---------------------------------------------------------- host alerts
 

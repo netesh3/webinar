@@ -4,6 +4,39 @@
 // Regenerate with: make types
 
 //////////
+// source: ai.go
+
+/**
+ * AIProviderStatus is one provider in the chain, in the order it is tried.
+ */
+export interface AIProviderStatus {
+  id: string;
+  model: string;
+  /**
+   * Available is false while the provider is benched after a failure.
+   */
+  available: boolean;
+  /**
+   * BenchedUntil is when it will be tried again (RFC 3339); empty when available.
+   */
+  benchedUntil?: string;
+  /**
+   * Reason is why it was benched, e.g. "daily quota used up".
+   */
+  reason?: string;
+}
+/**
+ * AIStatus is GET /api/admin/ai.
+ */
+export interface AIStatus {
+  /**
+   * Enabled is false when no provider is configured at all.
+   */
+  enabled: boolean;
+  providers: AIProviderStatus[];
+}
+
+//////////
 // source: billing.go
 
 /**
