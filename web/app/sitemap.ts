@@ -11,6 +11,7 @@ const PAGES: { path: string; changeFrequency: "weekly" | "monthly" | "yearly"; p
   { path: "/signup", changeFrequency: "monthly", priority: 0.8 },
   { path: "/privacy", changeFrequency: "yearly", priority: 0.3 },
   { path: "/terms", changeFrequency: "yearly", priority: 0.3 },
+  { path: "/integrations/zoom", changeFrequency: "yearly", priority: 0.3 },
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
