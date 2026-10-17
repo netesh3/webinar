@@ -86,7 +86,7 @@ func (s *Server) resolveSFU(
 	 * it to. That happens a moment later in ensureRoom, which can fail over precisely
 	 * because this returned `fresh`.
 	 */
-	pinned, fresh, err := s.store.ClaimSFUProject(ctx, wb.ID, candidates[0])
+	pinned, fresh, err := s.store.ClaimSFUProject(ctx, wb.ID, s.firstChoice(ctx, wb, candidates))
 	if err != nil {
 		return "", nil, false, fmt.Errorf("claim sfu project for %s: %w", wb.ID, err)
 	}
@@ -127,13 +127,14 @@ func (s *Server) repin(
 	if len(candidates) == 0 {
 		return "", nil, lk.ErrNoProject
 	}
-	if err := s.store.RepinSFUProject(ctx, wb.ID, candidates[0]); err != nil {
+	to := s.firstChoice(ctx, wb, candidates)
+	if err := s.store.RepinSFUProject(ctx, wb.ID, to); err != nil {
 		return "", nil, fmt.Errorf("repin %s: %w", wb.ID, err)
 	}
 	s.log.Warn("moved a webinar off a livekit project that is no longer configured",
-		"slug", wb.ID, "from", wb.SFUProject, "to", candidates[0])
-	room, err := s.sfu.Get(candidates[0])
-	return candidates[0], room, err
+		"slug", wb.ID, "from", wb.SFUProject, "to", to)
+	room, err := s.sfu.Get(to)
+	return to, room, err
 }
 
 /* failSFU turns a resolution failure into a response.
@@ -174,4 +175,30 @@ func (s *Server) sfuForSlug(ctx context.Context, slug string) (RoomManager, erro
 		return nil, err
 	}
 	return s.sfuFor(ctx, wb)
+}
+
+/* firstChoice is where a webinar's room is first placed: the host's assigned project when
+ * an admin set one and it is still configured and enabled, otherwise the first candidate.
+ *
+ * Only ever consulted before a pin exists (or to replace one whose project is gone), so an
+ * assignment changes where a host's NEXT webinars go and never moves a room anybody is in.
+ * A lookup failure is the default order rather than an error: a join must not fail because
+ * a preference could not be read. */
+func (s *Server) firstChoice(ctx context.Context, wb types.Webinar, candidates []string) string {
+	assigned, err := s.store.HostSFUProject(ctx, wb.Host.ID)
+	if err != nil {
+		s.log.Warn("sfu: could not read the host's assigned project", "host", wb.Host.ID, "error", err)
+		return candidates[0]
+	}
+	if assigned == "" {
+		return candidates[0]
+	}
+	for _, c := range candidates {
+		if c == assigned {
+			return c
+		}
+	}
+	s.log.Info("host's assigned livekit project is not taking new rooms; using the default order",
+		"host", wb.Host.ID, "assigned", assigned, "candidates", candidates)
+	return candidates[0]
 }

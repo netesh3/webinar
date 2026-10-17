@@ -822,6 +822,29 @@ func (c Config) BroadcastHLSURL(slug string) string {
 	return c.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/whep"
 }
 
+/* BroadcastHLSURLFor is BroadcastHLSURL for a room on one LiveKit project: that project's
+ * own origin when it declares one (see LiveKitProject.BroadcastHLSBase), the global one
+ * otherwise. A project can only override the address; with no BROADCAST_RTMP_BASE the CDN
+ * broadcast is off everywhere and this is empty. */
+func (c Config) BroadcastHLSURLFor(projectID, slug string) string {
+	if c.BroadcastRTMPBase == "" || strings.TrimSpace(slug) == "" {
+		return ""
+	}
+	if p, ok := c.liveKitProject(projectID); ok && p.BroadcastHLSBase != "" {
+		return p.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/whep"
+	}
+	return c.BroadcastHLSURL(slug)
+}
+
+func (c Config) liveKitProject(id string) (LiveKitProject, bool) {
+	for _, p := range c.LiveKitProjects {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return LiveKitProject{}, false
+}
+
 func (c Config) String() string {
 	// Never log secrets.
 	recordings := "off"

@@ -182,7 +182,7 @@ func (s *Server) joinAsAttendee(
 		 *
 		 * Hand out the WHEP URL even to someone currently on stage — demote
 		 * remounts the mix player from this join. */
-		live := s.cfg.BroadcastHLSURL(wb.ID)
+		live := s.broadcastWHEPURL(r.Context(), wb)
 		if live == "" {
 			cdnBroadcast = false
 			isCdnAttendee = false
@@ -728,4 +728,24 @@ func joinKeyFromIdentity(identity string) string {
 		return ""
 	}
 	return strings.TrimPrefix(identity, attendeePrefix)
+}
+
+/* broadcastWHEPURL is where an attendee of this webinar plays its CDN broadcast.
+ *
+ * Per project, because the stream lives on the MediaMTX beside the SFU the room is on (see
+ * config.LiveKitProject.BroadcastHLSBase). Read from the store rather than from wb because
+ * ensureRoom may have just pinned — or failed over — the room after wb was loaded. */
+func (s *Server) broadcastWHEPURL(ctx context.Context, wb types.Webinar) string {
+	return s.cfg.BroadcastHLSURLFor(s.pinnedProject(ctx, wb), wb.ID)
+}
+
+// pinnedProject is the project the webinar's room is on now, falling back to wb's copy
+// when the store cannot be read.
+func (s *Server) pinnedProject(ctx context.Context, wb types.Webinar) string {
+	project, err := s.store.SFUProjectOf(ctx, wb.ID)
+	if err != nil {
+		s.log.Warn("sfu: could not read the webinar's project", "slug", wb.ID, "error", err)
+		return wb.SFUProject
+	}
+	return project
 }

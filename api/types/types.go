@@ -2741,6 +2741,9 @@ type AdminUser struct {
 	// AccountKind says whether this person signed up for Webinar Liv (customer) or
 	// only registered for somebody's webinar (audience). See AccountKind.
 	AccountKind AccountKind `json:"accountKind"`
+	// SFUProject is the LiveKit project this host's new webinars go to; empty is the
+	// default order. See SFUProjectOption.
+	SFUProject string `json:"sfuProject,omitempty"`
 	// RegistrationCount is how many webinars this account has registered for, and
 	// LastWebinarTopic the most recent of them; the audience list shows both.
 	RegistrationCount int    `json:"registrationCount"`
@@ -3196,6 +3199,27 @@ type DeleteAccountRequest struct {
 
 type SetUserPlanRequest struct {
 	Plan Plan `json:"plan"`
+}
+
+/* SFUProjectOption is one configured LiveKit project, for the admin "Video server" select.
+ * Ids and labels only — never a URL, key or secret. */
+type SFUProjectOption struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	// Enabled projects take new webinars; a disabled one only serves those pinned to it,
+	// so it cannot be assigned.
+	Enabled bool `json:"enabled"`
+}
+
+// SFUProjectsResponse is GET /api/admin/sfu-projects.
+type SFUProjectsResponse struct {
+	Projects []SFUProjectOption `json:"projects"`
+}
+
+// SetUserSFURequest is PATCH /api/admin/users/{id}/sfu. An empty project restores the
+// default order.
+type SetUserSFURequest struct {
+	Project string `json:"project"`
 }
 
 /* AccountKind separates the people who signed up for Webinar Liv from the people

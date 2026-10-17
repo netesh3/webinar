@@ -500,6 +500,8 @@ func (s *Server) Routes() http.Handler {
 			r.Patch("/users/{id}/host", s.handleSetHostCapability)
 			r.Patch("/users/{id}/max-duration", s.handleSetUserMaxDuration)
 			r.Patch("/users/{id}/plan", s.handleSetUserPlan)
+			r.Patch("/users/{id}/sfu", s.handleSetUserSFU)
+			r.Get("/sfu-projects", s.handleAdminSFUProjects)
 			r.Post("/users/{id}/trial-exemption", s.handleGrantTrialExemption)
 			r.Delete("/users/{id}/trial-flags", s.handleClearTrialFlags)
 			r.Get("/plan-features", s.handlePlanFeatures)

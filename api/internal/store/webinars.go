@@ -1715,6 +1715,16 @@ func (s *Store) RepinSFUProject(ctx context.Context, slug, projectID string) err
 	return nil
 }
 
+// SFUProjectOf is the project a webinar's room is pinned to, empty when it has none yet.
+func (s *Store) SFUProjectOf(ctx context.Context, slug string) (string, error) {
+	var project string
+	err := s.pool.QueryRow(ctx, `SELECT sfu_project FROM webinars WHERE slug = $1`, slug).Scan(&project)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
+	return project, err
+}
+
 /* WebinarsOnSFUProject answers "what is still running on the project I am about to retire".
  *
  * Live and scheduled only. An ended webinar keeps its pin as a record of where it happened, and
