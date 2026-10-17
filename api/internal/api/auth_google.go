@@ -126,7 +126,7 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, created, err := s.provisionGoogleUser(r.Context(), identity, "google auth")
+	user, created, err := s.provisionGoogleUser(r.Context(), identity, "google auth", kindForGoogle(next, false))
 	if errors.Is(err, errOAuthSignupClosed) {
 		fail("signup")
 		return
@@ -184,7 +184,8 @@ func (s *Server) handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, created, err := s.provisionGoogleUser(r.Context(), identity, "google auth")
+	user, created, err := s.provisionGoogleUser(r.Context(), identity, "google auth",
+		kindForGoogle("", strings.TrimSpace(req.From) == "webinar"))
 	if errors.Is(err, errOAuthSignupClosed) {
 		httpx.Error(w, http.StatusForbidden, "signup_closed",
 			"New accounts are closed on this instance.")
@@ -351,11 +352,29 @@ var (
 	errOAuthEmailUnverified = errors.New("oauth email unverified")
 )
 
-func (s *Server) provisionGoogleUser(ctx context.Context, identity auth.GoogleIdentity, logName string) (store.User, bool, error) {
+/* kindForGoogle is the account kind a Google sign-in stands for. From a webinar's
+ * page (the registration form's Google path, or One Tap there) it is audience;
+ * from anywhere else in the app it is a customer. */
+func kindForGoogle(next string, fromWebinar bool) types.AccountKind {
+	if fromWebinar || strings.HasPrefix(next, "/webinars/") || strings.HasPrefix(next, "/w/") {
+		return types.AccountAudience
+	}
+	return types.AccountCustomer
+}
+
+func (s *Server) provisionGoogleUser(ctx context.Context, identity auth.GoogleIdentity, logName string, kind types.AccountKind) (store.User, bool, error) {
 	user, err := s.store.UserByEmail(ctx, identity.Email)
 	created := false
 	switch {
 	case err == nil:
+		// Back in the app itself: an audience account becomes a customer.
+		if kind == types.AccountCustomer && user.AccountKind == types.AccountAudience {
+			if err := s.store.PromoteToCustomer(ctx, user.ID); err != nil {
+				s.log.Warn(logName+": promote to customer", "error", err, "user", user.ID)
+			} else {
+				user.AccountKind = types.AccountCustomer
+			}
+		}
 	case errors.Is(err, store.ErrNotFound):
 		if !s.cfg.SignupOpen {
 			return store.User{}, false, errOAuthSignupClosed
@@ -364,6 +383,10 @@ func (s *Server) provisionGoogleUser(ctx context.Context, identity auth.GoogleId
 			identity.Name, "", "", "", false)
 		if errors.Is(err, store.ErrConflict) {
 			user, err = s.store.UserByEmail(ctx, identity.Email)
+		} else if err == nil && kind == types.AccountAudience {
+			if err = s.store.MarkAudience(ctx, user.ID); err == nil {
+				user.AccountKind = types.AccountAudience
+			}
 		}
 		if err != nil {
 			return store.User{}, false, err

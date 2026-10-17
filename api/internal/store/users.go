@@ -39,6 +39,9 @@ type User struct {
 	MaxDurationMin *int
 	// Plan is the subscription's tier, empty with none (the launch default).
 	Plan types.Plan
+	// AccountKind is customer (signed up for the app) or audience (made by a
+	// webinar registration). See types.AccountKind.
+	AccountKind types.AccountKind
 	// CanCdnBroadcast allows this host to run CDN HLS broadcast webinars.
 	CanCdnBroadcast bool
 	/* Features are the per-account switches an admin has turned on — the
@@ -213,7 +216,7 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 	whatsapp_coexistence, whatsapp_token_rejected_at,
 	coalesce(google_picture,''), coalesce(avatar_key,''), coalesce(avatar_mime,''),
 	email_verified_at, host_requested_at, password_changed_at,
-	effective_plan(users.id)`
+	effective_plan(users.id), account_kind`
 
 func scanUser(row scanner) (User, error) {
 	var u User
@@ -226,7 +229,7 @@ func scanUser(row scanner) (User, error) {
 		&u.WhatsAppVerifiedName, &u.WhatsAppTokenExpiresAt, &u.WhatsAppConnectedAt,
 		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence, &u.WhatsAppTokenRejectedAt,
 		&u.GooglePicture, &u.AvatarKey, &u.AvatarMime, &u.EmailVerifiedAt,
-		&u.HostRequestedAt, &u.PasswordChangedAt, &u.Plan)
+		&u.HostRequestedAt, &u.PasswordChangedAt, &u.Plan, &u.AccountKind)
 	return u, err
 }
 
