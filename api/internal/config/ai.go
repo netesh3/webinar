@@ -33,7 +33,7 @@ import (
  *
  *   AI_PROVIDERS=[
  *     {"id":"cloudflare","baseUrl":"https://api.cloudflare.com/client/v4/accounts/ACCOUNT/ai/v1",
- *      "apiKey":"…","model":"@cf/meta/llama-3.1-8b-instruct"},
+ *      "apiKey":"…","model":"@cf/meta/llama-3.1-8b-instruct-fp8-fast"},
  *     {"id":"groq","baseUrl":"https://api.groq.com/openai/v1","apiKey":"gsk_…","model":"openai/gpt-oss-20b"}
  *   ]
  *
@@ -60,8 +60,12 @@ type AIProvider struct {
  * shows up as "model or endpoint not found" in the log and on /api/admin/ai, and the chain
  * moves on to the next provider rather than failing the visitor.
  */
+/* Cloudflare's default is the fp8-fast build of Llama 3.1 8B: the same model, quantised,
+ * at about a fifth of the Neurons per reply (a sales turn is ~2,000 prompt tokens, which
+ * fp8-fast prices at 4,119/M against 25,608/M). On the free 10,000 Neurons a day that is
+ * roughly 800 replies instead of 160. */
 const (
-	defaultCloudflareModel = "@cf/meta/llama-3.1-8b-instruct"
+	defaultCloudflareModel = "@cf/meta/llama-3.1-8b-instruct-fp8-fast"
 	defaultGroqModel       = "openai/gpt-oss-20b"
 	defaultOllamaModel     = "qwen2.5:7b"
 )
