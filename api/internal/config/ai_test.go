@@ -39,10 +39,19 @@ func TestNoAIProvidersIsValid(t *testing.T) {
 	}
 }
 
+func TestOpenRouterDefaultsToTheFreeRouter(t *testing.T) {
+	c := load(t, map[string]string{"GROQ_API_KEY": "gsk_test", "OPENROUTER_API_KEY": "sk-or"})
+	if len(c.AIProviders) != 2 || c.AIProviders[1].ID != "openrouter" {
+		t.Fatalf("providers = %+v", c.AIProviders)
+	}
+	if got := c.AIProviders[1].Model; got != "openrouter/free" {
+		t.Fatalf("model = %q, want openrouter/free", got)
+	}
+}
+
 func TestAIProvidersRefusesHalfAConfig(t *testing.T) {
 	cases := map[string]map[string]string{
 		"cloudflare token without account": {"CLOUDFLARE_AI_TOKEN": "x"},
-		"openrouter without a model":       {"OPENROUTER_API_KEY": "sk-or"},
 		"bad json":                         {"AI_PROVIDERS": `[{"id":"x",}]`},
 		"unknown field":                    {"AI_PROVIDERS": `[{"id":"x","baseUrl":"https://a.b/v1","apiKey":"k","model":"m","key":"typo"}]`},
 	}
