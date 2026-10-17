@@ -151,11 +151,15 @@ export function usePictureInPicture({
    *  Zoom's floating bar, so coming back to the tab must not close it. It closes when the
    *  share ends instead (the caller does that). */
   keepOpen = false,
+  /** False while the floating window must not appear on its own — sharing the entire screen,
+   *  where the window would be on the shared screen and everyone would see it. */
+  autoEnter = true,
 }: {
   fallbackVideo?: () => HTMLVideoElement | null;
   enabled?: boolean;
   shareActive?: boolean;
   keepOpen?: boolean;
+  autoEnter?: boolean;
 } = {}): PipApi {
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const composed = useSyncExternalStore(subscribeNothing, documentPipSupported, notOnServer);
@@ -172,6 +176,11 @@ export function usePictureInPicture({
    * or open() is called from the Pop out button. A ref, not state: nothing renders from it. */
   const dismissed = useRef(false);
   const shareActiveRef = useRef(shareActive);
+  // Read by the MediaSession handler, which is registered once and must see the latest value.
+  const autoEnterRef = useRef(autoEnter);
+  useEffect(() => {
+    autoEnterRef.current = autoEnter;
+  }, [autoEnter]);
 
   // Keep the ref in sync for pagehide/close (which are not render), and clear a dismiss when
   // the share ends so the next one may auto-open again.
@@ -305,7 +314,7 @@ export function usePictureInPicture({
       navigator.mediaSession.setActionHandler(
         "enterpictureinpicture" as MediaSessionAction,
         () => {
-          if (dismissed.current) return;
+          if (dismissed.current || !autoEnterRef.current) return;
           open();
         },
       );
