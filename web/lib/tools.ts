@@ -45,6 +45,9 @@ export type ToolId =
   | "sharefile"
   /** Stream to YouTube — a host-only dialog with a live indicator. */
   | "youtube"
+  /** Stream to LinkedIn Live — a host-only dialog with the Stream URL and key,
+   *  and a live indicator. Sits beside YouTube. */
+  | "linkedin"
   /** The shared whiteboard (Excalidraw) — host and panelists, behind the host's
    *  `whiteboard` account switch. Starts in More; on the bar only if dragged there. */
   | "whiteboard";
@@ -63,6 +66,7 @@ export const TOOL_IDS: readonly ToolId[] = [
   "captions",
   "sharefile",
   "youtube",
+  "linkedin",
   "whiteboard",
 ];
 
@@ -306,6 +310,7 @@ const DEFAULT_SIZE: Record<ToolId, { w: number; h: number }> = {
   captions: { w: 320, h: 200 },
   sharefile: { w: 320, h: 200 },
   youtube: { w: 320, h: 200 },
+  linkedin: { w: 320, h: 200 },
   // Takes the stage, never a window.
   whiteboard: { w: 320, h: 200 },
 };
@@ -389,7 +394,7 @@ export const FIXED_BAR_TOOLS: readonly ToolId[] = [];
  * could move (no home tool in `overflow`, because Settings was stripped from
  * it and YouTube was not a tool) loads with both on the bar, exactly as a
  * first-time user gets them, and no storage version bump is needed. */
-export const HOME_BAR_TOOLS: readonly ToolId[] = ["youtube", "settings"];
+export const HOME_BAR_TOOLS: readonly ToolId[] = ["youtube", "linkedin", "settings"];
 
 export function isHomeTool(id: ToolId): boolean {
   return HOME_BAR_TOOLS.includes(id);
@@ -831,6 +836,7 @@ export const MORE_ORDER: readonly string[] = [
   "captions",
   "whiteboard",
   "youtube",
+  "linkedin",
   "chat",
   "qa",
   "polls",

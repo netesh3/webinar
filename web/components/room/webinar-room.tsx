@@ -1216,6 +1216,7 @@ function ConnectedRoom({
       captions: 0,
       sharefile: 0,
       youtube: 0,
+      linkedin: 0,
       whiteboard: 0,
     }),
     [chatVisible, qaVisible, chatCount, questionCount, seen, realtime.chat, realtime.questions, mountedAt, me.identity],

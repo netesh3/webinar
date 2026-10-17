@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
-import type { SetStreamRequest, Webinar, WebinarLinkedIn } from "@/lib/api-types";
+import type { SetStreamRequest, Webinar } from "@/lib/api-types";
 import { CopyField, Modal, Spinner } from "../controls";
 import { useAppConfig, useSession, useToast } from "../providers";
 import { Button } from "../ui";
@@ -21,15 +21,8 @@ import { useRoomUI } from "./context";
  * button is, and the dialog survives More closing behind it. */
 
 export type YouTubeStream = {
-  /** Whether a YouTube stream is configured. */
+  /** Whether a stream is configured — what the live indicator shows. */
   configured: boolean;
-  /** Anything going out: YouTube, or LinkedIn Live saved in Settings and not
-   *  paused here — what the live indicator shows. */
-  live: boolean;
-  /** The toolbar word while live: "On YT", or "Live" when only LinkedIn is on. */
-  liveCaption: string;
-  /** The toolbar label while live. */
-  liveLabel: string;
   open: () => void;
   /** The dialog, to render once wherever the hook is used. */
   dialog: ReactNode;
@@ -47,8 +40,6 @@ export function useYouTubeStream(): YouTubeStream {
   const [privacy, setPrivacy] = useState<"unlisted" | "private" | "public">("unlisted");
   const [paste, setPaste] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [li, setLi] = useState<WebinarLinkedIn | null>(null);
-  const [liBusy, setLiBusy] = useState(false);
 
   const connected = Boolean(account?.youtube?.connected);
   const channel = account?.youtube?.channelTitle;
@@ -69,45 +60,7 @@ export function useYouTubeStream(): YouTubeStream {
       });
   }, [isHost, slug]);
 
-  /* LinkedIn Live, saved once in Settings. Re-read every 30s: "streaming"
-   * flips on by itself when the webinar goes live, and nothing else here
-   * would notice. */
-  useEffect(() => {
-    if (!isHost) return;
-    let stop = false;
-    const load = () =>
-      api
-        .webinarLinkedIn(slug)
-        .then((next) => {
-          if (!stop) setLi(next);
-        })
-        .catch(() => {
-          // Older API or no access: the dialog simply leaves LinkedIn out.
-        });
-    void load();
-    const id = window.setInterval(load, 30_000);
-    return () => {
-      stop = true;
-      window.clearInterval(id);
-    };
-  }, [isHost, slug]);
-
-  async function toggleLinkedIn() {
-    if (!li) return;
-    setLiBusy(true);
-    try {
-      const next = await api.setWebinarLinkedIn(slug, !li.paused);
-      setLi(next);
-      notify(next.paused ? "LinkedIn paused for this webinar." : "Streaming to LinkedIn again.", "ok");
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "Could not change LinkedIn.", "error");
-    } finally {
-      setLiBusy(false);
-    }
-  }
-
   const configured = Boolean(wb?.streamConfigured);
-  const liStreaming = Boolean(li?.streaming);
   // A key from an earlier take in this session is still on file, so going live
   // again does not need one — the placeholder should not imply otherwise.
   const keySaved = Boolean(wb?.streamKeySaved);
@@ -167,7 +120,7 @@ export function useYouTubeStream(): YouTubeStream {
     <Modal
       open={open}
       onClose={() => !busy && setOpen(false)}
-      title={li?.configured ? "Live streaming" : "Stream to YouTube"}
+      title="Stream to YouTube"
       description={
         connected
           ? `We'll create the live on ${channel || "your connected channel"} and push the same mix attendees already see.`
@@ -196,36 +149,6 @@ export function useYouTubeStream(): YouTubeStream {
       }
     >
       <div className="space-y-3 py-1">
-        {li?.configured ? (
-          <div className="flex items-center gap-3 rounded-lg border border-line bg-surface-2 p-3">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#0a66c2] text-[13px] font-bold text-white" aria-hidden>
-              in
-            </span>
-            <div className="min-w-0 flex-1">
-              <b className="block text-[13px] font-semibold text-ink">LinkedIn Live</b>
-              <span className="block text-[12px] text-ink-3">
-                {li.paused
-                  ? "Paused for this webinar"
-                  : li.streaming
-                    ? "Streaming now · can take a minute to appear on LinkedIn"
-                    : "Starts automatically when you go live"}
-              </span>
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => void toggleLinkedIn()} disabled={liBusy}>
-              {liBusy ? <Spinner className="size-3.5" /> : li.paused ? "Resume" : "Pause"}
-            </Button>
-          </div>
-        ) : li ? (
-          <p className="text-[12px] text-ink-3">
-            Want LinkedIn Live too?{" "}
-            <a href="/settings#integrations" target="_blank" rel="noreferrer" className="font-medium text-brand underline-offset-2 hover:underline">
-              Add your LinkedIn stream key in Settings
-            </a>{" "}
-            and it goes live with you every time.
-          </p>
-        ) : null}
-
-        {li?.configured && <b className="block pt-1 text-[12.5px] font-semibold text-ink">YouTube</b>}
         {/* The link the audience needs. Only on the connected path — the
           * paste path already renders it as an editable field below. */}
         {watch && connected && !paste && (
@@ -314,16 +237,5 @@ export function useYouTubeStream(): YouTubeStream {
     </Modal>
   );
 
-  const live = configured || liStreaming;
-  const liveCaption = configured ? "On YT" : "Live";
-  const liveLabel =
-    configured && liStreaming
-      ? "Live on YouTube and LinkedIn"
-      : configured
-        ? "YouTube stream is on"
-        : liStreaming
-          ? "LinkedIn Live is on"
-          : "Stream to YouTube";
-
-  return { configured, live, liveCaption, liveLabel, open: () => setOpen(true), dialog };
+  return { configured, open: () => setOpen(true), dialog };
 }

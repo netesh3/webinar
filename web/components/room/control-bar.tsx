@@ -96,6 +96,7 @@ import { MoreButton, MoreGrid } from "./more-grid";
 import { ReactionPicker } from "./reactions";
 import { RecordButton } from "./recording";
 import { useYouTubeStream } from "./stream-to-youtube";
+import { useLinkedInStream } from "./stream-to-linkedin";
 import { useWhiteboard } from "./whiteboard/whiteboard-context";
 import { CaptionsSession, useCaptionsMoreAction } from "./caption-overlay";
 import { sharePublishOptions } from "@/lib/media";
@@ -267,6 +268,7 @@ export function ControlBar() {
   });
   const captionsAction = useCaptionsMoreAction();
   const youtube = useYouTubeStream();
+  const linkedin = useLinkedInStream();
   /* The shared whiteboard. Null outside the live room (preview, CDN audience),
    * and the tool itself is only available behind the host's switch, so with the
    * feature off nothing below sees it. */
@@ -293,6 +295,7 @@ export function ControlBar() {
    * More (lib/tools.ts HOME_BAR_TOOLS). */
   const tucked = tuckedTools(tools.layout);
   const youtubeHome = usable.includes("youtube") && !tucked.includes("youtube");
+  const linkedinHome = usable.includes("linkedin") && !tucked.includes("linkedin");
   const compact = useCompact();
   const toggleSize = useMediaToggleSize();
   const viewport = useViewportWidth();
@@ -838,7 +841,8 @@ export function ControlBar() {
     if (id === "layout") return `Layout · ${LAYOUT_LABEL[stage.mode]}`;
     if (id === "captions") return captionsAction?.active ? "Captions on" : "Captions off";
     if (id === "sharefile") return fileShare.active ? "Sharing a video file" : "Share a video file";
-    if (id === "youtube") return youtube.liveLabel;
+    if (id === "youtube") return youtube.configured ? "YouTube stream is on" : "Stream to YouTube";
+    if (id === "linkedin") return linkedin.live ? "LinkedIn Live is on" : "Stream to LinkedIn Live";
     if (id === "whiteboard") return whiteboard?.state ? "Stop whiteboard" : "Whiteboard";
     return t.label;
   };
@@ -850,7 +854,8 @@ export function ControlBar() {
     if (id === "layout") return layoutOpen;
     if (id === "captions") return captionsAction?.active ?? false;
     if (id === "sharefile") return fileShare.active;
-    if (id === "youtube") return youtube.live;
+    if (id === "youtube") return youtube.configured;
+    if (id === "linkedin") return linkedin.live;
     if (id === "whiteboard") return !!whiteboard?.state;
     if (tools.panelTab === id) return true;
     if (tools.poppedOut.includes(id)) return true;
@@ -916,6 +921,10 @@ export function ControlBar() {
     }
     if (id === "youtube") {
       youtube.open();
+      return;
+    }
+    if (id === "linkedin") {
+      linkedin.open();
       return;
     }
     if (id === "whiteboard") {
@@ -1124,14 +1133,27 @@ export function ControlBar() {
               id="youtube"
               label={labelFor("youtube")}
               active={activeFor("youtube")}
-              live={youtube.live}
-              liveCaption={youtube.liveCaption}
+              live={youtube.configured}
               movable={capacity > 0}
               editing={editingNow}
               landed={landed === "youtube"}
               dragging={drag.drag?.tool === "youtube"}
               onActivate={() => activate("youtube")}
               onRemove={() => edit(() => tools.remove("youtube"))}
+            />
+          )}
+          {linkedinHome && (
+            <HomeToolSlot
+              id="linkedin"
+              label={labelFor("linkedin")}
+              active={activeFor("linkedin")}
+              live={linkedin.live}
+              movable={capacity > 0}
+              editing={editingNow}
+              landed={landed === "linkedin"}
+              dragging={drag.drag?.tool === "linkedin"}
+              onActivate={() => activate("linkedin")}
+              onRemove={() => edit(() => tools.remove("linkedin"))}
             />
           )}
           {/* Captions recognition stays mounted for publishers; the host
@@ -1387,10 +1409,18 @@ export function ControlBar() {
                       },
                     }
                   : {}),
-                youtube: {
-                  active: youtube.live,
+                linkedin: {
+                  active: linkedin.live,
                   busy: false,
-                  title: youtube.live ? `${youtube.liveLabel} — click to change` : "Stream to YouTube",
+                  title: linkedin.live ? "LinkedIn Live is on — click to change" : "Stream to LinkedIn Live",
+                  onClick: linkedin.open,
+                },
+                youtube: {
+                  active: youtube.configured,
+                  busy: false,
+                  title: youtube.configured
+                    ? "YouTube stream is on — click to change"
+                    : "Stream to YouTube",
                   onClick: youtube.open,
                 },
                 ...(whiteboard?.canDraw
@@ -1605,6 +1635,7 @@ export function ControlBar() {
       {/* Mounted here whether YouTube's button is on the bar or in More, so
           opening it from either place — and More closing behind it — works. */}
       {youtube.dialog}
+      {linkedin.dialog}
     </div>
     </PhoneBarMetricsProvider>
   );
@@ -1729,7 +1760,6 @@ function HomeToolSlot({
   label,
   active,
   live = false,
-  liveCaption = "On YT",
   movable,
   editing,
   landed,
@@ -1741,7 +1771,6 @@ function HomeToolSlot({
   label: string;
   active: boolean;
   live?: boolean;
-  liveCaption?: string;
   movable: boolean;
   editing: boolean;
   landed: boolean;
@@ -1752,7 +1781,7 @@ function HomeToolSlot({
   const t = tool(id);
   const Icon = t.icon;
   const drag = useToolDrag();
-  const caption = id === "youtube" && live ? liveCaption : t.label;
+  const caption = live && id === "youtube" ? "On YT" : live && id === "linkedin" ? "On LI" : t.label;
   const title = live ? `${label} — click to change` : label;
 
   return (

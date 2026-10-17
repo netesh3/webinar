@@ -16,6 +16,7 @@ import {
   UserPlusIcon,
   UsersIcon,
   YouTubeIcon,
+  LinkedInIcon,
 } from "../icons";
 
 /* The registry: one entry per tool, and the only place that knows what a tool is.
@@ -174,6 +175,16 @@ const TOOLS: Record<ToolId, Tool> = {
     icon: YouTubeIcon,
     keepMounted: false,
   },
+  linkedin: {
+    id: "linkedin",
+    // Opens its own dialog (stream-to-linkedin.tsx) rather than a tool window.
+    kind: "action",
+    label: "LinkedIn",
+    menuLabel: "Stream to LinkedIn",
+    title: "Stream to LinkedIn Live",
+    icon: LinkedInIcon,
+    keepMounted: false,
+  },
   whiteboard: {
     id: "whiteboard",
     // Takes the stage for everyone (whiteboard/whiteboard-stage.tsx) rather
@@ -281,6 +292,7 @@ export function availableTools(input: {
   if (input.isHost) allowed.add("captions");
   // Streaming to YouTube is the host's — the same gate the bar button always had.
   if (input.isHost) allowed.add("youtube");
+  if (input.isHost) allowed.add("linkedin");
   /* Share a video file is offered to everyone here and narrowed in the control
    * bar (usableTools), because what it needs — the share permission, a browser
    * that can capture a video element, a real room — is not known at this level,
