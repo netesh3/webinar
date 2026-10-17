@@ -114,6 +114,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And what that ladder puts back once it reconnects, for the same reason plus a worse
 	# one: getting it wrong in the generous direction republishes somebody's screen.
 	cd web && node --experimental-strip-types --no-warnings lib/republish.test.mts
+	# And one screen share at a time: who keeps the stage, who may take it over, and
+	# when your own share stops. The API runs the same rule (share_lock.go), so a
+	# disagreement here is two people each told they won.
+	cd web && node --experimental-strip-types --no-warnings lib/share-lock.test.mts
 	# And route-level access control, where both failure directions are silent: a
 	# participant reading a registrant list, or a panelist locked out of their own stage.
 	cd web && node --experimental-strip-types --no-warnings lib/access.test.mts
