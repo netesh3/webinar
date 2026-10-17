@@ -302,7 +302,6 @@ export function ControlBar() {
    * More (lib/tools.ts HOME_BAR_TOOLS). */
   const tucked = tuckedTools(tools.layout);
   const youtubeHome = usable.includes("youtube") && !tucked.includes("youtube");
-  const linkedinHome = usable.includes("linkedin") && !tucked.includes("linkedin");
   const compact = useCompact();
   const toggleSize = useMediaToggleSize();
   const viewport = useViewportWidth();
@@ -1150,20 +1149,6 @@ export function ControlBar() {
               dragging={drag.drag?.tool === "youtube"}
               onActivate={() => activate("youtube")}
               onRemove={() => edit(() => tools.remove("youtube"))}
-            />
-          )}
-          {linkedinHome && (
-            <HomeToolSlot
-              id="linkedin"
-              label={labelFor("linkedin")}
-              active={activeFor("linkedin")}
-              live={linkedin.live}
-              movable={capacity > 0}
-              editing={editingNow}
-              landed={landed === "linkedin"}
-              dragging={drag.drag?.tool === "linkedin"}
-              onActivate={() => activate("linkedin")}
-              onRemove={() => edit(() => tools.remove("linkedin"))}
             />
           )}
           {/* Captions recognition stays mounted for publishers; the host
