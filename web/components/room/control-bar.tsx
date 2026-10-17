@@ -91,7 +91,8 @@ import { RecordButton } from "./recording";
 import { useYouTubeStream } from "./stream-to-youtube";
 import { useWhiteboard } from "./whiteboard/whiteboard-context";
 import { CaptionsSession, useCaptionsMoreAction } from "./caption-overlay";
-import { SCREEN_SHARE_PUBLISH } from "@/lib/media";
+import { sharePublishOptions } from "@/lib/media";
+import { readShareMode } from "@/lib/share-mode";
 import { describeMediaError, isScreenShareCancel } from "@/lib/media-errors";
 import { badgeText } from "@/lib/mentions";
 import { MediaToggle } from "./media-toggle";
@@ -663,13 +664,17 @@ export function ControlBar() {
         notify("Share screen (preview — not publishing)", "info");
         return;
       }
+      // The presenter's last choice of sharp vs video (lib/share-mode.ts), sharp by default.
+      // The capture and the publish options both follow it: contentHint, fps, layers and
+      // degradation preference. Switched live from the share's own notice (tile.tsx).
+      const mode = readShareMode();
       void toggle("share", "Screen share", () =>
-        // Third argument: publish options for the share's audio, so a shared video is not
-        // encoded with the settings tuned for a voice. See SCREEN_SHARE_PUBLISH.
+        // Third argument: publish options for the share's audio and video, so a share is
+        // not encoded with the settings tuned for a voice or a face. See sharePublishOptions.
         localParticipant.setScreenShareEnabled(
           true,
-          displayMediaOptions(surface),
-          SCREEN_SHARE_PUBLISH,
+          displayMediaOptions(surface, mode),
+          sharePublishOptions(mode),
         ),
       );
     },

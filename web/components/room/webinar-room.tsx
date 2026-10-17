@@ -24,7 +24,8 @@ import { useRouter } from "next/navigation";
 import { ApiError, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { enableCamera } from "@/lib/backgrounds";
-import { roomOptions, SCREEN_SHARE_PUBLISH, useMediaPreferences } from "@/lib/media";
+import { roomOptions, sharePublishOptions, useMediaPreferences } from "@/lib/media";
+import { shareModeOfHint } from "@/lib/share-mode";
 import { publishLedger } from "@/lib/republish";
 import {
   useMediaPermissions,
@@ -780,7 +781,7 @@ function ConnectedRoom({
         // no imports, and its source constants are Track.Source's own values.
         await room.localParticipant.publishTrack(
           track,
-          publishOptionsFor(source as Track.Source),
+          publishOptionsFor(source as Track.Source, track),
         );
       } catch {
         /* One track that will not go back up must not take the others with it. A presenter
@@ -1702,16 +1703,20 @@ function isCapturing(track: LocalTrack): boolean {
  * to match what the browser actually sends, or the SFU finds no receiver for the video and
  * the audience gets the audio of a shared clip with no picture. Both paths that START a
  * share already say so — the control bar for a desktop share, lib/file-share.ts for a
- * played file, both with SCREEN_SHARE_PUBLISH — so the path that puts one BACK has to say
+ * played file, both with sharePublishOptions — so the path that puts one BACK has to say
  * the same thing, or a reconnection would quietly downgrade a working share to the camera
- * settings and reintroduce a bug that has already been fixed once.
+ * settings and reintroduce a bug that has already been fixed once. In the same mode, too:
+ * read back off the track's contentHint, so a share switched to "video" stays smooth.
  *
  * The source is restated in the options because publishTrack is being called directly here
  * rather than through setScreenShareEnabled, which is what would otherwise set it.
  */
-function publishOptionsFor(source: Track.Source): TrackPublishOptions | undefined {
+function publishOptionsFor(source: Track.Source, track: LocalTrack): TrackPublishOptions | undefined {
   if (source === Track.Source.ScreenShare || source === Track.Source.ScreenShareAudio) {
-    return { ...SCREEN_SHARE_PUBLISH, source };
+    return {
+      ...sharePublishOptions(shareModeOfHint(track.mediaStreamTrack?.contentHint)),
+      source,
+    };
   }
   return undefined;
 }

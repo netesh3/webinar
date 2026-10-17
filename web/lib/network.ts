@@ -10,6 +10,7 @@ import {
   type Room,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SHARE_MODE_FPS, shareModeOfHint, type ShareMode } from "./share-mode.ts";
 
 /* Watching the connection, and doing something about it.
  *
@@ -283,8 +284,10 @@ export const LADDER: Record<
 /* The same three tiers, for a SCREEN SHARE — and a different policy from the camera.
  *
  * Camera under pressure: maintain-framerate, drop layers, accept blur.
- * Share under pressure: maintain-resolution / contentHint "text", hold pixels, drop frames.
- * Reading the slide IS the content; a sharp 720p at 8fps beats a soft 360p at 30.
+ * Share under pressure, in the default "sharp" mode (lib/share-mode.ts): maintain-resolution
+ * and contentHint "detail" — hold pixels, drop frames. Reading the slide IS the content; a
+ * sharp 720p at 8fps beats a soft 360p at 30. A presenter playing a video can switch the
+ * share to "video" mode (motion + maintain-framerate, 30 fps) and accept softer text.
  *
  * Encode floors (publisher):
  *   desktop  never scale share content below 1280×720
@@ -331,21 +334,46 @@ export const SHARE_720_MIN_BITRATE = 3_000_000;
 const SHARE_LOW_BITRATE = 700_000;
 
 /** Sharp 1080p ceiling for fullscreen desktop viewers (Zoom-like content bitrate). */
-const SHARE_1080_BITRATE = 5_000_000;
+export const SHARE_1080_BITRATE = 5_000_000;
 
-export const SHARE_LAYERS = [
-  // Subscriber convenience for small phone tiles — not a desktop content floor.
-  new VideoPreset(640, 360, SHARE_LOW_BITRATE, 5),
-  // 720p@30fps for smooth motion & presentation clarity.
-  new VideoPreset(
-    SHARE_FLOOR_DESKTOP.width,
-    SHARE_FLOOR_DESKTOP.height,
-    SHARE_720_MIN_BITRATE,
-    30,
-  ),
-];
+/** Top-layer ceiling when the screen is captured above 1080p (a 1440p or retina display). */
+export const SHARE_1440_BITRATE = 7_500_000;
 
-export const SHARE_TOP = new VideoPreset(1920, 1080, SHARE_1080_BITRATE, 30);
+/* Three encodings, not four.
+ *
+ * livekit-client publishes at most [low, mid, original] (computeVideoEncodings), and the SFU
+ * has three qualities to map them to. So the TOP encoding is the capture itself — 1080p on a
+ * 1080p screen, up to 1440p on a bigger one (SHARE_CAPTURE_MAX) — and the two below are
+ * fixed: 360p for phone tiles and the 720p desktop floor. A 1440p capture gets the bigger
+ * bitrate via shareTopBitrate, applied on the live sender, and like any top layer it is the
+ * first thing the ladder turns off under pressure (reduced/minimal).
+ */
+export function shareLayers(mode: ShareMode): VideoPreset[] {
+  return [
+    // Subscriber convenience for small phone tiles — not a desktop content floor.
+    new VideoPreset(640, 360, SHARE_LOW_BITRATE, 5),
+    // The desktop floor: 720p at a text-readable bitrate, at the mode's fps.
+    new VideoPreset(
+      SHARE_FLOOR_DESKTOP.width,
+      SHARE_FLOOR_DESKTOP.height,
+      SHARE_720_MIN_BITRATE,
+      SHARE_MODE_FPS[mode],
+    ),
+  ];
+}
+
+export function shareTop(mode: ShareMode): VideoPreset {
+  return new VideoPreset(1920, 1080, SHARE_1080_BITRATE, SHARE_MODE_FPS[mode]);
+}
+
+/** The top layer's ceiling for a capture of this height. */
+export function shareTopBitrate(sourceHeight: number): number {
+  return sourceHeight > 1100 ? SHARE_1440_BITRATE : SHARE_1080_BITRATE;
+}
+
+/** The publish defaults (roomOptions): the sharp mode. */
+export const SHARE_LAYERS = shareLayers("sharp");
+export const SHARE_TOP = shareTop("sharp");
 
 /** One share-ladder rung: bitrate, optional fps cap, never a resolution drop below the floor. */
 export type ShareRung = {
@@ -607,9 +635,13 @@ export function useNetworkHealth(
         const params = sender.getParameters();
         if (!params.encodings?.length) return;
         const wanted = SHARE_LADDER[next];
-        /* Capture is typically 1080p; mid (720p) and high (1080p) layers must not keep a
-         * congestion-era scaleResolutionDownBy that left text soft. Low (360p) may stay
-         * scaled for tiny subscriber tiles. */
+        // Read back off the track, so a mid-share mode switch is honoured here too.
+        const mode = shareModeOfHint(track.mediaStreamTrack?.contentHint);
+        const layers = shareLayers(mode);
+        const top = shareTop(mode);
+        /* Capture is 1080p or more (up to 1440p); mid (720p) and the top layer must not keep
+         * a congestion-era scaleResolutionDownBy that left text soft. Low (360p) may stay
+         * scaled for tiny subscriber tiles. The top layer IS the capture: designed scale 1. */
         const sourceH =
           track.mediaStreamTrack?.getSettings?.().height ||
           SHARE_TOP.height;
@@ -617,20 +649,17 @@ export function useNetworkHealth(
           const rung = wanted[i] ?? wanted[wanted.length - 1];
           encoding.active = rung.maxBitrate > 0;
           if (rung.maxBitrate > 0) {
-            encoding.maxBitrate = rung.maxBitrate;
+            const isTop = i >= layers.length;
+            encoding.maxBitrate = isTop ? shareTopBitrate(sourceH) : rung.maxBitrate;
             if (rung.maxFramerate != null) {
               encoding.maxFramerate = rung.maxFramerate;
-            } else if (encoding.maxFramerate != null) {
-              // Restore the published default when climbing off a fps-capped rung.
-              const layer =
-                i < SHARE_LAYERS.length ? SHARE_LAYERS[i] : SHARE_TOP;
+            } else {
+              // The mode's fps: restores a fps-capped rung, and follows a mode switch.
+              const layer = isTop ? top : layers[i];
               encoding.maxFramerate = layer.encoding.maxFramerate;
             }
             if (i >= 1) {
-              const targetH =
-                i < SHARE_LAYERS.length
-                  ? SHARE_LAYERS[i].height
-                  : SHARE_TOP.height;
+              const targetH = isTop ? sourceH : layers[i].height;
               const designed = Math.max(1, sourceH / targetH);
               const current = encoding.scaleResolutionDownBy ?? designed;
               // Clamp upscales-of-downscale only — never soft-blur past the designed rung.
@@ -672,7 +701,9 @@ export function useNetworkHealth(
       if (camera && tier.current !== "full") {
         await applyCameraTier(tier.current, camera);
       }
-      if (share && shareTier.current !== "full") {
+      // Always, not only below full: the top layer's bitrate depends on the capture size
+      // (shareTopBitrate) and the fps on the share's mode, neither known at publish time.
+      if (share) {
         await applyShareTier(shareTier.current, share);
       }
     },
