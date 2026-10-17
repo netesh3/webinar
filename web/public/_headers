@@ -49,5 +49,10 @@
 /backgrounds/*
   Cache-Control: public,max-age=2592000
 
+# Static files skip next.config.ts's headers() entirely, so the browser hardening set there
+# (HSTS, nosniff) has to be repeated here or every asset is served without it. Frame and CSP
+# headers only matter on documents, which next.config already covers.
 /*
   Permissions-Policy: identity-credentials-get=(self "https://accounts.google.com")
+  Strict-Transport-Security: max-age=31536000
+  X-Content-Type-Options: nosniff
