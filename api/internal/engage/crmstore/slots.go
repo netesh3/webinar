@@ -265,3 +265,25 @@ func nonNil(in []string) []string {
 	}
 	return in
 }
+
+/* CopyWebinarMessages copies one webinar's message overrides onto another of the
+ * same host's webinars, row for row. Only settings: nothing is queued here, the
+ * reminders follow when the copy is scheduled, the same as any new webinar. */
+func (s *Store) CopyWebinarMessages(ctx context.Context, hostID, fromSlug, toSlug string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO webinar_message_settings
+		    (webinar_id, kind, channels, timing, template, language, params, enabled, updated_at)
+		SELECT t.id, m.kind, m.channels, m.timing, m.template, m.language, m.params, m.enabled, now()
+		  FROM webinar_message_settings m
+		  JOIN webinars f ON f.id = m.webinar_id AND f.slug = $2 AND f.host_id = $1::uuid
+		  JOIN webinars t ON t.slug = $3 AND t.host_id = $1::uuid
+		ON CONFLICT (webinar_id, kind) DO UPDATE SET
+		    channels = EXCLUDED.channels,
+		    timing = EXCLUDED.timing,
+		    template = EXCLUDED.template,
+		    language = EXCLUDED.language,
+		    params = EXCLUDED.params,
+		    enabled = EXCLUDED.enabled,
+		    updated_at = now()`, hostID, fromSlug, toSlug)
+	return err
+}

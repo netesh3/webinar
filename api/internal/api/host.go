@@ -168,12 +168,23 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
-	user := userFromContext(r.Context())
+	wb, ok := s.createWebinar(w, r, userFromContext(r.Context()), in)
+	if !ok {
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, wb)
+}
+
+/* createWebinar validates and saves a new webinar for user, the whole create path
+ * the schedule form takes. False means it has already answered with the error.
+ * Shared with handleCopyWebinar so a copy passes exactly the checks a new webinar
+ * does: the plan's attendee ceiling, the feature switches, the Zoom venue. */
+func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user store.User, in types.WebinarInput) (types.Webinar, bool) {
 	/* Before the lead check. An instant create has no time picker, so a
 	 * soon start must come back as "this account cannot", not as "schedule it
 	 * at least 15 minutes from now". */
 	if in.Instant && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
-		return
+		return types.Webinar{}, false
 	}
 	/* Go live now. The server's clock, not the browser's: a client clock a
 	 * few minutes fast would otherwise land outside the five-minute start
@@ -184,7 +195,7 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 	in, fields := s.normalizeWebinarInput(in, true, "", s.attendeeCeiling(user.Plan))
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
-		return
+		return types.Webinar{}, false
 	}
 	/* Registration off is the name-only door. Without the switch it is not saved:
 	 * an omitted field and an explicit false both become required, so a client that
@@ -195,31 +206,31 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 		in.RegistrationRequired = true
 	}
 	if in.Options.AutoRecord && !s.requireCloudRecording(w, r, user.ID) {
-		return
+		return types.Webinar{}, false
 	}
 	savedZoom, venueFields, err := s.resolveZoom(r.Context(), user.ID, "", &in)
 	if len(venueFields) > 0 {
 		httpx.Fields(w, venueFields)
-		return
+		return types.Webinar{}, false
 	}
 	if errors.Is(err, errZoomFeatureOff) {
 		httpx.Error(w, http.StatusForbidden, "feature_off",
 			featureLabel(types.FeatureZoom)+" isn't switched on for this account.")
-		return
+		return types.Webinar{}, false
 	}
 	if err != nil {
 		if zoomWriteErr(w, err) {
 			s.log.Warn("zoom create", "host", user.ID, "status", zoomStatus(err))
-			return
+			return types.Webinar{}, false
 		}
 		s.fail(w, r, "create webinar: zoom", err)
-		return
+		return types.Webinar{}, false
 	}
 	var wb types.Webinar
 	if seriesRequested(in) {
 		created, ok := s.createSeriesWebinar(w, r, user.ID, in)
 		if !ok {
-			return
+			return types.Webinar{}, false
 		}
 		wb = created
 	} else {
@@ -229,27 +240,27 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil && errors.Is(err, store.ErrInvalid) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "invalid", err.Error())
-		return
+		return types.Webinar{}, false
 	}
 	if err != nil {
 		s.fail(w, r, "create webinar", err)
-		return
+		return types.Webinar{}, false
 	}
 	if err := s.persistZoom(r.Context(), wb.ID, savedZoom); err != nil {
 		s.fail(w, r, "create webinar: zoom save", err)
-		return
+		return types.Webinar{}, false
 	}
 	if savedZoom.ZoomID != "" || savedZoom.Notice != "" {
 		wb, err = s.store.WebinarBySlug(r.Context(), wb.ID)
 		if err != nil {
 			s.fail(w, r, "create webinar: reload", err)
-			return
+			return types.Webinar{}, false
 		}
 	}
 	wb.ZoomNotice = savedZoom.Notice
 	s.log.Info("webinar created", "slug", wb.ID, "host", user.ID, "status", wb.Status, "venue", wb.Venue)
 	s.syncPanelistMail(r.Context(), wb, "")
-	httpx.JSON(w, http.StatusCreated, wb)
+	return wb, true
 }
 
 func (s *Server) handleHostRecordingLibrary(w http.ResponseWriter, r *http.Request) {

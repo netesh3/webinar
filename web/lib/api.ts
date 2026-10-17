@@ -607,6 +607,13 @@ export const api = {
     return res;
   },
 
+  /** Copies a webinar into a new draft owned by the same host; returns the draft. */
+  copyWebinar: async (slug: string) => {
+    const res = await post<Webinar>(`/api/host/webinars/${seg(slug)}/copy`);
+    dropHostWebinarLists();
+    return res;
+  },
+
   /** Replaces the webinar's cover image. The body is the raw, already-compressed
    *  image — see lib/webinar-image.ts, which crops to 16:9 and re-encodes to at
    *  most 1MB in the browser before this is ever called. Returns the updated

@@ -65,6 +65,9 @@ type Engage interface {
 	 * ok is false when they cannot be read; the caller keeps reading WebinarOptions.
 	 * Old rows with no settings row are already folded in by ResolveSlots. */
 	MessageSlots(ctx context.Context, webinarID string) ([]types.MessageSlot, bool, error)
+	// CopyWebinarMessages carries one webinar's message setup onto a copy of it, both
+	// owned by hostID. Settings only: nothing is queued until the copy is scheduled.
+	CopyWebinarMessages(ctx context.Context, hostID, fromSlug, toSlug string) error
 
 	// WhatsAppUsage is the admin dashboard's per-host WhatsApp activity for the last days days.
 	WhatsAppUsage(ctx context.Context, days int) (types.AdminWhatsAppUsage, error)
@@ -91,6 +94,7 @@ func (NoEngage) Maintain(context.Context) {}
 func (NoEngage) MessageSlots(context.Context, string) ([]types.MessageSlot, bool, error) {
 	return nil, false, nil
 }
+func (NoEngage) CopyWebinarMessages(context.Context, string, string, string) error { return nil }
 func (NoEngage) WhatsAppUsage(_ context.Context, days int) (types.AdminWhatsAppUsage, error) {
 	return types.AdminWhatsAppUsage{Days: days, Hosts: []types.AdminWhatsAppHostUsage{}}, nil
 }
