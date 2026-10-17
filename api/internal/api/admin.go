@@ -182,7 +182,11 @@ func (s *Server) handleSetFeature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.store.SetFeature(r.Context(), targetID, body.Feature, body.Enabled)
+	var state *bool
+	if !body.Inherit {
+		state = &body.Enabled
+	}
+	updated, err := s.store.SetFeatureOverride(r.Context(), targetID, body.Feature, state)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "No such account.")
 		return
@@ -193,9 +197,61 @@ func (s *Server) handleSetFeature(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("account feature changed",
-		"admin", admin.ID, "target", updated.ID, "feature", body.Feature, "enabled", body.Enabled)
+		"admin", admin.ID, "target", updated.ID, "feature", body.Feature,
+		"enabled", body.Enabled, "inherit", body.Inherit)
 
 	httpx.JSON(w, http.StatusOK, updated.Public())
+}
+
+/* handlePlanFeatures is GET /api/admin/plan-features: which features each plan
+ * includes, for the admin screen's matrix. */
+func (s *Server) handlePlanFeatures(w http.ResponseWriter, r *http.Request) {
+	tiers, err := s.store.PlanFeatures(r.Context())
+	if err != nil {
+		s.fail(w, r, "plan features", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, types.PlanFeaturesBody{Tiers: tiers})
+}
+
+/* handleSetPlanFeatures is PUT /api/admin/plan-features: the whole matrix, replaced.
+ *
+ * Whole rather than one cell, because the admin edits a grid and saves it; a partial
+ * write is the one state they never looked at. Every plan and feature key is checked,
+ * the same refusal handleSetFeature gives, so a typo cannot quietly switch a tier off.
+ * A plan left out of the body includes nothing. */
+func (s *Server) handleSetPlanFeatures(w http.ResponseWriter, r *http.Request) {
+	admin := userFromContext(r.Context())
+	var body types.PlanFeaturesBody
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	for _, t := range body.Tiers {
+		if t.Plan != "" && !t.Plan.Valid() {
+			httpx.Error(w, http.StatusUnprocessableEntity, "invalid_plan",
+				"Plan is professional, business, enterprise, or empty for none.")
+			return
+		}
+		for _, f := range t.Features {
+			if !types.KnownFeature(f) {
+				httpx.Error(w, http.StatusUnprocessableEntity, "unknown_feature",
+					"That isn't a feature this server knows about.")
+				return
+			}
+		}
+	}
+	if err := s.store.SetPlanFeatures(r.Context(), body.Tiers); err != nil {
+		s.fail(w, r, "set plan features", err)
+		return
+	}
+	tiers, err := s.store.PlanFeatures(r.Context())
+	if err != nil {
+		s.fail(w, r, "plan features", err)
+		return
+	}
+	s.log.Info("plan features changed", "admin", admin.ID)
+	httpx.JSON(w, http.StatusOK, types.PlanFeaturesBody{Tiers: tiers})
 }
 
 /* handleAdminWebinars is GET /api/admin/webinars?status=&from=&to=&q=.

@@ -6,7 +6,11 @@ import {
   accountFeatureRows,
   accountFeaturesOnCount,
   CDN_BROADCAST_ROW_ID,
+  overrideState,
+  planIncludes,
+  withOverride,
   type AccountFeatureRow,
+  type OverrideState,
 } from "@/lib/admin-account-features";
 import {
   FeatureInstantWebinar,
@@ -16,8 +20,17 @@ import {
   PlanProfessional,
   type AdminUser,
   type Plan,
+  type PlanFeatures,
   type Webinar,
 } from "@/lib/api-types";
+
+// The tier matrix's columns, in order; "" is no plan.
+const TIER_COLUMNS: { plan: Plan | ""; label: string }[] = [
+  { plan: "", label: "No plan" },
+  { plan: PlanProfessional, label: "Professional" },
+  { plan: PlanBusiness, label: "Business" },
+  { plan: PlanEnterprise, label: "Enterprise" },
+];
 
 // What the plan select offers, with each plan's attendee cap (types.PlanAttendeeCap).
 const PLAN_LABEL: Record<Plan, string> = {
@@ -56,7 +69,7 @@ import { ArrowLeftIcon } from "./icons";
  * server, which needs access to the machine to change.
  */
 
-const ADMIN_TABS = ["dashboard", "accounts", "webinars"] as const;
+const ADMIN_TABS = ["dashboard", "accounts", "plans", "webinars"] as const;
 type AdminTab = (typeof ADMIN_TABS)[number];
 
 const PAGE_SIZE = 10;
@@ -92,6 +105,7 @@ export function AdminScreen() {
         labels={{
           dashboard: "Dashboard",
           accounts: "Accounts",
+          plans: "Plans",
           webinars: "Webinars",
         }}
       />
@@ -100,6 +114,7 @@ export function AdminScreen() {
           <AdminDashboard onAccounts={() => setTab("accounts")} onWebinars={openWebinars} />
         )}
         {tab === "accounts" && <AdminAccounts />}
+        {tab === "plans" && <PlanMatrix />}
         {tab === "webinars" && (
           <AdminWebinars key={webinarView.n} initialStatus={webinarView.status} />
         )}
@@ -128,6 +143,9 @@ function AdminAccounts() {
    * react-hooks/set-state-in-effect rejects an async function called from an effect body —
    * it cannot see that everything after the first await is a later tick. Same shape as
    * useDevices in lib/media.ts. */
+  // The tier matrix, so each feature's Inherit can say what the plan gives.
+  const [tiers, setTiers] = useState<PlanFeatures[] | null>(null);
+
   const load = useCallback(() => {
     api
       .adminUsers()
@@ -138,6 +156,10 @@ function AdminAccounts() {
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : "Could not load accounts.");
       });
+    api
+      .planFeatures()
+      .then((body) => setTiers(body.tiers))
+      .catch(() => setTiers(null));
   }, []);
 
   useEffect(load, [load]);
@@ -214,9 +236,12 @@ function AdminAccounts() {
   async function setPlan(u: AdminUser, plan: Plan | "") {
     setBusy(u.id);
     try {
-      await api.setUserPlan(u.id, plan);
+      const updated = await api.setUserPlan(u.id, plan);
+      // A plan change changes what the account inherits, so take the server's features.
       setUsers((prev) =>
-        (prev ?? []).map((row) => (row.id === u.id ? { ...row, plan: plan || undefined } : row)),
+        (prev ?? []).map((row) =>
+          row.id === u.id ? { ...row, plan: plan || undefined, features: updated.features } : row,
+        ),
       );
       notify(
         plan
@@ -410,10 +435,11 @@ function AdminAccounts() {
                   <div className="w-full">
                     <AccountFeatures
                       user={u}
-                      onFeatures={(features) =>
+                      tiers={tiers}
+                      onFeatures={(features, featureOverrides) =>
                         setUsers((prev) =>
                           (prev ?? []).map((row) =>
-                            row.id === u.id ? { ...row, features } : row,
+                            row.id === u.id ? { ...row, features, featureOverrides } : row,
                           ),
                         )
                       }
@@ -481,11 +507,13 @@ function AdminAccounts() {
  */
 function AccountFeatures({
   user,
+  tiers,
   onFeatures,
   onCdnBroadcast,
 }: {
   user: AdminUser;
-  onFeatures: (features: string[]) => void;
+  tiers: PlanFeatures[] | null;
+  onFeatures: (features: string[], overrides: Record<string, boolean>) => void;
   onCdnBroadcast: (canCdnBroadcast: boolean) => void;
 }) {
   const { featureCatalogue } = useAppConfig();
@@ -504,16 +532,21 @@ function AccountFeatures({
     user.canCdnBroadcast,
   );
 
-  async function setFeature(key: string, enabled: boolean) {
+  async function setFeature(key: string, state: OverrideState) {
     setBusy(key);
     try {
-      const updated = await api.setUserFeature(user.id, key, enabled);
-      // The account as the server now describes it, rather than this screen's
+      const updated = await api.setUserFeatureOverride(
+        user.id,
+        key,
+        state === "inherit" ? null : state === "on",
+      );
+      // The features as the server now describes them, rather than this screen's
       // guess at the new set — the two cannot then drift.
-      onFeatures(updated.features);
+      onFeatures(updated.features, withOverride(user.featureOverrides, key, state));
       if (key === FeatureInstantWebinar) {
+        const on = updated.features.includes(key);
         notify(
-          enabled
+          on
             ? `Instant webinar enabled for ${user.name || user.email}.`
             : `Instant webinar disabled for ${user.name || user.email}.`,
           "ok",
@@ -552,6 +585,7 @@ function AccountFeatures({
             key={`${row.source}:${row.id}`}
             row={row}
             user={user}
+            tiers={tiers}
             disabled={busy !== null}
             onFeature={setFeature}
             onCdnBroadcast={setCdnBroadcast}
@@ -565,32 +599,191 @@ function AccountFeatures({
 function FeatureToggle({
   row,
   user,
+  tiers,
   disabled,
   onFeature,
   onCdnBroadcast,
 }: {
   row: AccountFeatureRow;
   user: AdminUser;
+  tiers: PlanFeatures[] | null;
   disabled: boolean;
-  onFeature: (key: string, enabled: boolean) => Promise<void>;
+  onFeature: (key: string, state: OverrideState) => Promise<void>;
   onCdnBroadcast: (enabled: boolean) => Promise<void>;
 }) {
-  const checked =
-    row.source === "cdn_broadcast"
-      ? user.canCdnBroadcast
-      : (user.features ?? []).includes(row.id);
+  if (row.source === "cdn_broadcast") {
+    return (
+      <Toggle
+        checked={user.canCdnBroadcast}
+        disabled={disabled}
+        onChange={(next) => void onCdnBroadcast(next)}
+        label={row.label}
+        description={row.description}
+      />
+    );
+  }
+  /* Plan, then this account's override: Inherit says what the plan gives, so an
+   * admin can see whether forcing it on or off changes anything. */
+  const state = overrideState(user.featureOverrides, row.id);
+  const inherited = planIncludes(tiers, user.plan, row.id);
+  const inheritLabel =
+    inherited === null ? "Plan default" : `Plan default (${inherited ? "on" : "off"})`;
+  const effective = (user.features ?? []).includes(row.id);
   return (
-    <Toggle
-      checked={checked}
-      disabled={disabled}
-      onChange={(next) =>
-        void (row.source === "cdn_broadcast"
-          ? onCdnBroadcast(next)
-          : onFeature(row.id, next))
-      }
-      label={row.label}
-      description={row.description}
-    />
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="text-[13px] font-medium text-ink-1">
+          {row.label}{" "}
+          <span className={`text-[11px] font-normal ${effective ? "text-ok" : "text-ink-3"}`}>
+            · {effective ? "on" : "off"}
+          </span>
+        </div>
+        <p className="mt-0.5 text-[12px] leading-relaxed text-ink-2">{row.description}</p>
+      </div>
+      <select
+        aria-label={`${row.label} for this account`}
+        value={state}
+        disabled={disabled}
+        onChange={(e) => void onFeature(row.id, e.target.value as OverrideState)}
+        className="shrink-0 rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <option value="inherit">{inheritLabel}</option>
+        <option value="on">Always on</option>
+        <option value="off">Always off</option>
+      </select>
+    </div>
+  );
+}
+
+/* Which features each plan includes, for every account on it without an override.
+ *
+ * Edited as a grid and saved whole: the server replaces the matrix in one
+ * transaction, so nobody reads half of a save. Attendee caps are not here — they
+ * are part of the plan's price (types.PlanAttendeeCap). */
+function PlanMatrix() {
+  const { featureCatalogue } = useAppConfig();
+  const { notify } = useToast();
+  const [saved, setSaved] = useState<PlanFeatures[] | null>(null);
+  const [draft, setDraft] = useState<Record<string, Set<string>>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const adopt = useCallback((tiers: PlanFeatures[]) => {
+    setSaved(tiers);
+    setDraft(Object.fromEntries(tiers.map((t) => [t.plan, new Set(t.features)])));
+  }, []);
+
+  useEffect(() => {
+    api
+      .planFeatures()
+      .then((body) => {
+        adopt(body.tiers);
+        setError(null);
+      })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Could not load plans."));
+  }, [adopt]);
+
+  const dirty =
+    saved !== null &&
+    saved.some((t) => {
+      const d = draft[t.plan] ?? new Set<string>();
+      return d.size !== t.features.length || t.features.some((f) => !d.has(f));
+    });
+
+  function toggle(plan: string, key: string, on: boolean) {
+    setDraft((prev) => {
+      const next = new Set(prev[plan] ?? []);
+      if (on) next.add(key);
+      else next.delete(key);
+      return { ...prev, [plan]: next };
+    });
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const body = await api.setPlanFeatures(
+        TIER_COLUMNS.map((c) => ({ plan: c.plan, features: [...(draft[c.plan] ?? [])] })),
+      );
+      adopt(body.tiers);
+      notify("Plans saved. Accounts without an override follow them now.", "ok");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Could not save plans.", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div>
+        <SectionTitle>Plans</SectionTitle>
+        <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
+          What each plan includes. An account follows its plan unless it has its own
+          override under Accounts → Features.
+        </p>
+      </div>
+      {error && <Alert tone="error">{error}</Alert>}
+      <Card className="overflow-x-auto p-0">
+        {saved === null ? (
+          <div className="grid place-items-center p-8">
+            <Spinner className="size-5" />
+          </div>
+        ) : (
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="border-b border-line text-[12px] text-ink-2">
+                <th className="px-4 py-2.5 font-medium">Feature</th>
+                {TIER_COLUMNS.map((c) => (
+                  <th key={c.plan || "none"} className="px-3 py-2.5 text-center font-medium">
+                    {c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {featureCatalogue.map((f) => (
+                <tr key={f.key} className="border-b border-line last:border-0">
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-ink-1">{f.label}</div>
+                    <div className="text-[12px] text-ink-3">{f.description}</div>
+                  </td>
+                  {TIER_COLUMNS.map((c) => (
+                    <td key={c.plan || "none"} className="px-3 py-2.5 text-center">
+                      <input
+                        type="checkbox"
+                        aria-label={`${f.label} in ${c.label}`}
+                        checked={draft[c.plan]?.has(f.key) ?? false}
+                        onChange={(e) => toggle(c.plan, f.key, e.target.checked)}
+                        className="size-4 cursor-pointer accent-brand"
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          disabled={!dirty || saving}
+          onClick={() => saved && adopt(saved)}
+          className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-40"
+        >
+          Reset
+        </button>
+        <button
+          type="button"
+          disabled={!dirty || saving}
+          onClick={() => void save()}
+          className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-hover disabled:opacity-40"
+        >
+          {saving ? "Saving…" : "Save plans"}
+        </button>
+      </div>
+    </div>
   );
 }
 
