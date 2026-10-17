@@ -2623,6 +2623,57 @@ type AdminStats struct {
 	Recent   []AdminWebinarGlance `json:"recent"`
 }
 
+/* AdminWhatsAppUsage is GET /api/admin/stats/whatsapp: which parts of the WhatsApp
+ * CRM each host actually used over the last Days days.
+ *
+ * It answers one pricing question: do hosts on WhatsApp use the CRM, or only the
+ * automatic reminders? Hosts are those with WhatsApp connected or on a plan that
+ * includes it (business, enterprise), newest activity first, capped at 200. */
+type AdminWhatsAppUsage struct {
+	Days    int                       `json:"days"`
+	Since   string                    `json:"since"`
+	Hosts   []AdminWhatsAppHostUsage  `json:"hosts"`
+	Summary AdminWhatsAppUsageSummary `json:"summary"`
+}
+
+// AdminWhatsAppHostUsage is one host's WhatsApp activity in the window.
+type AdminWhatsAppHostUsage struct {
+	UserID    string `json:"userId"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Plan      Plan   `json:"plan,omitempty"`
+	Connected bool   `json:"connected"`
+	// Reminders is automatic webinar messages sent: confirmation, reminders, replay.
+	Reminders  int `json:"reminders"`
+	Broadcasts int `json:"broadcasts"`
+	Drips      int `json:"drips"`
+	// BotSessions is chatbot conversations started; BotMessages what the bot sent.
+	BotSessions int `json:"botSessions"`
+	BotMessages int `json:"botMessages"`
+	// ManualReplies is what the host typed in the inbox; InboundReplies is what
+	// contacts wrote, which arrives whether or not the host uses the inbox.
+	ManualReplies  int `json:"manualReplies"`
+	InboundReplies int `json:"inboundReplies"`
+	// LastActiveAt is the newest WhatsApp message in the window, empty with none.
+	LastActiveAt string `json:"lastActiveAt,omitempty"`
+}
+
+/* AdminWhatsAppUsageSummary counts hosts, not messages.
+ *
+ * UsedCRM is any broadcast, drip, chatbot session or manual inbox reply.
+ * RemindersOnly sent reminders and nothing else; Inactive sent nothing at all.
+ * The per-feature counts are hosts that used that feature at least once. */
+type AdminWhatsAppUsageSummary struct {
+	Hosts         int `json:"hosts"`
+	RemindersOnly int `json:"remindersOnly"`
+	UsedCRM       int `json:"usedCrm"`
+	Inactive      int `json:"inactive"`
+	Broadcasts    int `json:"broadcasts"`
+	Drips         int `json:"drips"`
+	Chatbot       int `json:"chatbot"`
+	Inbox         int `json:"inbox"`
+}
+
 /* AdminDayCount is one bar of the dashboard's start-day chart.
  *
  * Day is YYYY-MM-DD in UTC. Webinars carry their own zone for the wall clock

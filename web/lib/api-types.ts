@@ -4,6 +4,39 @@
 // Regenerate with: make types
 
 //////////
+// source: ai.go
+
+/**
+ * AIProviderStatus is one provider in the chain, in the order it is tried.
+ */
+export interface AIProviderStatus {
+  id: string;
+  model: string;
+  /**
+   * Available is false while the provider is benched after a failure.
+   */
+  available: boolean;
+  /**
+   * BenchedUntil is when it will be tried again (RFC 3339); empty when available.
+   */
+  benchedUntil?: string;
+  /**
+   * Reason is why it was benched, e.g. "daily quota used up".
+   */
+  reason?: string;
+}
+/**
+ * AIStatus is GET /api/admin/ai.
+ */
+export interface AIStatus {
+  /**
+   * Enabled is false when no provider is configured at all.
+   */
+  enabled: boolean;
+  providers: AIProviderStatus[];
+}
+
+//////////
 // source: billing.go
 
 /**
@@ -1245,6 +1278,132 @@ export interface CRMMetricsByKind {
   replay: number /* int */;
   followUps: number /* int */;
 }
+
+//////////
+// source: sales.go
+
+/**
+ * SalesStatus is where a conversation stands.
+ */
+export type SalesStatus = string;
+export const SalesAI: SalesStatus = "ai"; // the assistant is answering
+export const SalesWaiting: SalesStatus = "waiting"; // a person was asked for; admins were emailed
+export const SalesHuman: SalesStatus = "human"; // an admin joined
+export const SalesClosed: SalesStatus = "closed";
+/**
+ * SalesRole is who wrote a message.
+ */
+export type SalesRole = string;
+export const SalesFromVisitor: SalesRole = "visitor";
+export const SalesFromAI: SalesRole = "ai";
+export const SalesFromAdmin: SalesRole = "admin";
+export const SalesFromSystem: SalesRole = "system";
+export interface SalesMessage {
+  /**
+   * ID increases within a conversation; a poll asks for messages after the last one it has.
+   */
+  id: number /* int64 */;
+  role: SalesRole;
+  authorName?: string;
+  body: string;
+  /**
+   * Emailed is set on an admin reply that went to the visitor's inbox.
+   */
+  emailed?: boolean;
+  createdAt: string;
+}
+/**
+ *  SalesChat is the visitor's view of their conversation.
+ *  *
+ *  * Token is returned once, when the conversation is created, and is what the browser
+ *  * sends back as X-Chat-Token. TeamOnline is whether an admin has the sales inbox open
+ *  * right now, so the widget can say "usually replies in minutes" or "we'll email you".
+ */
+export interface SalesChat {
+  token?: string;
+  status: SalesStatus;
+  name?: string;
+  email?: string;
+  agentName?: string;
+  teamOnline: boolean;
+  aiEnabled: boolean;
+  messages: SalesMessage[];
+}
+/**
+ * StartSalesChatRequest is POST /api/sales/chat.
+ */
+export interface StartSalesChatRequest {
+  /**
+   * Page is where the visitor opened the chat, for the admin's context.
+   */
+  page?: string;
+}
+/**
+ * SalesMessageRequest is a visitor's or an admin's message.
+ */
+export interface SalesMessageRequest {
+  body: string;
+  /**
+   * Via, admin only: "chat" or "email". Empty picks email when the visitor has left.
+   */
+  via?: string;
+}
+/**
+ * SalesContactRequest is POST /api/sales/chat/contact: where to reply if the team misses them.
+ */
+export interface SalesContactRequest {
+  name?: string;
+  email: string;
+}
+/**
+ * SalesHandoffRequest is POST /api/sales/chat/handoff.
+ */
+export interface SalesHandoffRequest {
+  reason?: string;
+}
+/**
+ * SalesConversation is one row of the admin inbox, and the header of its detail.
+ */
+export interface SalesConversation {
+  id: string;
+  status: SalesStatus;
+  name?: string;
+  email?: string;
+  accountEmail?: string;
+  handoffReason?: string;
+  handoffAt?: string;
+  assignedTo?: string;
+  page?: string;
+  /**
+   * VisitorOnline is whether the chat is open in the visitor's browser right now.
+   */
+  visitorOnline: boolean;
+  lastMessage: string;
+  lastMessageAt: string;
+  createdAt: string;
+}
+/**
+ * SalesInbox is GET /api/admin/sales.
+ */
+export interface SalesInbox {
+  needsYou: number /* int */;
+  conversations: SalesConversation[];
+}
+/**
+ * SalesConversationDetail is GET /api/admin/sales/{id}.
+ */
+export interface SalesConversationDetail {
+  conversation: SalesConversation;
+  messages: SalesMessage[];
+}
+/**
+ * NotifySalesHandoff tells admins a visitor needs a person.
+ */
+export const NotifySalesHandoff: NotificationKind = "sales_handoff";
+/**
+ * NotifySalesReply is an admin's reply mailed to a visitor who left the chat.
+ */
+export const NotifySalesReply: NotificationKind = "sales_reply";
 
 //////////
 // source: slots.go
@@ -4717,6 +4876,68 @@ export interface AdminStats {
   liveNow: AdminWebinarGlance[];
   upcoming: AdminWebinarGlance[];
   recent: AdminWebinarGlance[];
+}
+/**
+ *  AdminWhatsAppUsage is GET /api/admin/stats/whatsapp: which parts of the WhatsApp
+ *  * CRM each host actually used over the last Days days.
+ *  *
+ *  * It answers one pricing question: do hosts on WhatsApp use the CRM, or only the
+ *  * automatic reminders? Hosts are those with WhatsApp connected or on a plan that
+ *  * includes it (business, enterprise), newest activity first, capped at 200.
+ */
+export interface AdminWhatsAppUsage {
+  days: number /* int */;
+  since: string;
+  hosts: AdminWhatsAppHostUsage[];
+  summary: AdminWhatsAppUsageSummary;
+}
+/**
+ * AdminWhatsAppHostUsage is one host's WhatsApp activity in the window.
+ */
+export interface AdminWhatsAppHostUsage {
+  userId: string;
+  name: string;
+  email: string;
+  plan?: Plan;
+  connected: boolean;
+  /**
+   * Reminders is automatic webinar messages sent: confirmation, reminders, replay.
+   */
+  reminders: number /* int */;
+  broadcasts: number /* int */;
+  drips: number /* int */;
+  /**
+   * BotSessions is chatbot conversations started; BotMessages what the bot sent.
+   */
+  botSessions: number /* int */;
+  botMessages: number /* int */;
+  /**
+   * ManualReplies is what the host typed in the inbox; InboundReplies is what
+   * contacts wrote, which arrives whether or not the host uses the inbox.
+   */
+  manualReplies: number /* int */;
+  inboundReplies: number /* int */;
+  /**
+   * LastActiveAt is the newest WhatsApp message in the window, empty with none.
+   */
+  lastActiveAt?: string;
+}
+/**
+ *  AdminWhatsAppUsageSummary counts hosts, not messages.
+ *  *
+ *  * UsedCRM is any broadcast, drip, chatbot session or manual inbox reply.
+ *  * RemindersOnly sent reminders and nothing else; Inactive sent nothing at all.
+ *  * The per-feature counts are hosts that used that feature at least once.
+ */
+export interface AdminWhatsAppUsageSummary {
+  hosts: number /* int */;
+  remindersOnly: number /* int */;
+  usedCrm: number /* int */;
+  inactive: number /* int */;
+  broadcasts: number /* int */;
+  drips: number /* int */;
+  chatbot: number /* int */;
+  inbox: number /* int */;
 }
 /**
  *  AdminDayCount is one bar of the dashboard's start-day chart.

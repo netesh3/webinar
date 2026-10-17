@@ -52,6 +52,7 @@ import {
 import { DateRangeField } from "./date-picker";
 import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
+import { AdminSales } from "./admin-sales";
 import { ArrowLeftIcon } from "./icons";
 
 /* The admin panel: a dashboard first, then the two lists.
@@ -69,13 +70,22 @@ import { ArrowLeftIcon } from "./icons";
  * server, which needs access to the machine to change.
  */
 
-const ADMIN_TABS = ["dashboard", "accounts", "plans", "webinars"] as const;
-type AdminTab = (typeof ADMIN_TABS)[number];
+const ADMIN_TABS = ["dashboard", "accounts","plans","webinars", "sales"] as const;
+export type AdminTab = (typeof ADMIN_TABS)[number];
+
 
 const PAGE_SIZE = 10;
 
-export function AdminScreen() {
-  const [tab, setTab] = useState<AdminTab>("dashboard");
+export function AdminScreen({
+  initialTab = "dashboard",
+  salesConversation = null,
+}: {
+  initialTab?: AdminTab;
+  /** Opens this sales chat: the link in the handoff email is /admin/sales?c=<id>. */
+  salesConversation?: string | null;
+} = {}) {
+  const [tab, setTab] = useState<AdminTab>(initialTab);
+  const [salesWaiting, setSalesWaiting] = useState(0);
   /* n remounts the webinar list. A drill-down from the dashboard ("upcoming")
    * and a click on the Webinars tab are not the same arrival: the first
    * should open already filtered, the second should open on every webinar,
@@ -107,7 +117,9 @@ export function AdminScreen() {
           accounts: "Accounts",
           plans: "Plans",
           webinars: "Webinars",
+          sales: "Sales chats",
         }}
+        counts={salesWaiting ? { sales: salesWaiting } : undefined}
       />
       <div className="mt-5">
         {tab === "dashboard" && (
@@ -118,6 +130,7 @@ export function AdminScreen() {
         {tab === "webinars" && (
           <AdminWebinars key={webinarView.n} initialStatus={webinarView.status} />
         )}
+        {tab === "sales" && <AdminSales initialId={salesConversation} onCount={setSalesWaiting} />}
       </div>
     </div>
   );

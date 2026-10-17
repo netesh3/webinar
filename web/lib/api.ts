@@ -1,4 +1,8 @@
 import type {
+  AIStatus,
+  SalesChat,
+  SalesConversationDetail,
+  SalesInbox,
   ChatMessage as ChatTranscriptMessage,
   Account,
   DeleteAccountRequest,
@@ -9,6 +13,7 @@ import type {
   WhatsAppConsent,
   AdminStats,
   AdminUser,
+  AdminWhatsAppUsage,
   AlertsResponse,
   AppConfig,
   ApprovalsResponse,
@@ -180,6 +185,28 @@ function hostWebinarsPath(params: HostWebinarQuery): string {
 }
 
 // ------------------------------------------------------------------- public
+
+/* The home page's sales chat, visitor side. The visitor has no account: the chat's
+ * own token (returned by start) goes in X-Chat-Token on every later call. */
+function salesCall<T>(method: "GET" | "POST", path: string, token: string, after: number, body?: unknown) {
+  return request<T>(`${path}?after=${after}`, {
+    method,
+    cache: "no-store",
+    headers: { "X-Chat-Token": token, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
+export const salesChat = {
+  start: (page: string) => post<SalesChat>("/api/sales/chat", { page }),
+  poll: (token: string, after: number) => salesCall<SalesChat>("GET", "/api/sales/chat", token, after),
+  say: (token: string, after: number, body: string) =>
+    salesCall<SalesChat>("POST", "/api/sales/chat/messages", token, after, { body }),
+  handoff: (token: string, after: number) =>
+    salesCall<SalesChat>("POST", "/api/sales/chat/handoff", token, after, {}),
+  contact: (token: string, after: number, email: string, name?: string) =>
+    salesCall<SalesChat>("POST", "/api/sales/chat/contact", token, after, { email, name }),
+};
 
 export const api = {
   /** Branding, public URLs and limits an operator sets. Read once at boot so no
@@ -915,6 +942,9 @@ export const api = {
    *  capped, and the webinar list is every full record — both the wrong read
    *  for "how many are live". */
   adminStats: () => request<AdminStats>("/api/admin/stats", fresh),
+  /** Which WhatsApp CRM features hosts used over the last 7, 30 or 90 days. */
+  adminWhatsAppUsage: (days: 7 | 30 | 90) =>
+    request<AdminWhatsAppUsage>(`/api/admin/stats/whatsapp?days=${days}`, fresh),
 
   /** Every account, for the admin panel. Admin-only server side; `q` filters by
    *  email or name. */
@@ -1016,6 +1046,25 @@ export const api = {
    *  row and file removed), just reachable without owning it. */
   adminDeleteWebinar: (slug: string) =>
     del<StatusResponse>(`/api/admin/webinars/${seg(slug)}`),
+
+  // ---------------------------------------------------------- sales chat (admin)
+
+  /** The sales inbox. Opening it is also what tells visitors the team is online. */
+  adminSalesInbox: (filter: "needs" | "ai" | "closed" | "") =>
+    request<SalesInbox>(`/api/admin/sales?filter=${filter}`, fresh),
+  adminSalesConversation: (id: string, after = 0) =>
+    request<SalesConversationDetail>(`/api/admin/sales/${seg(id)}?after=${after}`, fresh),
+  adminSalesJoin: (id: string, after = 0) =>
+    post<SalesConversationDetail>(`/api/admin/sales/${seg(id)}/join?after=${after}`),
+  /** via "" sends to the chat while the visitor is there, and by email once they have left. */
+  adminSalesReply: (id: string, body: string, via: "" | "chat" | "email", after = 0) =>
+    post<SalesConversationDetail>(`/api/admin/sales/${seg(id)}/messages?after=${after}`, { body, via }),
+  adminSalesClose: (id: string, after = 0) =>
+    post<SalesConversationDetail>(`/api/admin/sales/${seg(id)}/close?after=${after}`),
+
+  /** The AI model chain: which provider is answering, and which are paused
+   *  (out of free quota, rate limited, or misconfigured) and until when. */
+  adminAI: () => request<AIStatus>("/api/admin/ai", fresh),
 
   // ---------------------------------------------------------- host alerts
 

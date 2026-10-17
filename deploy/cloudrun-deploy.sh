@@ -188,6 +188,17 @@ fi
 # Connect Zoom. The API offers Connect only when id, secret, redirect, and
 # token key are all set. The webhook secret is separate: unset, the webhook
 # route refuses the body and the rest of the API still boots.
+# AI for the home page's sales chat (api/internal/config/ai.go). All optional; unset
+# means the chat hands every visitor to a person. Tried in order, falling to the next
+# when a free allowance runs out.
+[[ -n "${AI_PROVIDERS:-}" ]] && ENV_VARS+=("AI_PROVIDERS=${AI_PROVIDERS}")
+[[ -n "${CLOUDFLARE_AI_ACCOUNT_ID:-}" ]] && ENV_VARS+=("CLOUDFLARE_AI_ACCOUNT_ID=${CLOUDFLARE_AI_ACCOUNT_ID}")
+[[ -n "${CLOUDFLARE_AI_TOKEN:-}" ]] && ENV_VARS+=("CLOUDFLARE_AI_TOKEN=${CLOUDFLARE_AI_TOKEN}")
+[[ -n "${CLOUDFLARE_AI_MODEL:-}" ]] && ENV_VARS+=("CLOUDFLARE_AI_MODEL=${CLOUDFLARE_AI_MODEL}")
+[[ -n "${GROQ_API_KEY:-}" ]] && ENV_VARS+=("GROQ_API_KEY=${GROQ_API_KEY}")
+[[ -n "${GROQ_MODEL:-}" ]] && ENV_VARS+=("GROQ_MODEL=${GROQ_MODEL}")
+[[ -n "${OPENROUTER_API_KEY:-}" ]] && ENV_VARS+=("OPENROUTER_API_KEY=${OPENROUTER_API_KEY}")
+[[ -n "${OPENROUTER_MODEL:-}" ]] && ENV_VARS+=("OPENROUTER_MODEL=${OPENROUTER_MODEL}")
 # Razorpay — self-serve plans. Key id and secret together or neither (config.go
 # refuses a partial set). The webhook secret is optional; without it only the
 # browser's own callback fulfils an order.

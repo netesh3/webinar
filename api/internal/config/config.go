@@ -369,6 +369,10 @@ type Config struct {
 	 * AppConfig — one switch turns the whole path on or off, front and back.
 	 */
 	TelemetryEnabled bool
+
+	/* AIProviders is the model chain for the AI features, in the order tried. Empty means
+	 * the AI features are off. See ai.go in this package for the two ways to set it. */
+	AIProviders []AIProvider
 }
 
 // httpFromWS converts the browser-facing ws(s) URL into the http(s) form the
@@ -497,6 +501,13 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	c.LiveKitProjects = normaliseLiveKitProjects(projects)
+
+	// The AI providers, parsed here for the same reason: a malformed list is a boot error.
+	aiProviders, err := loadAIProviders()
+	if err != nil {
+		return Config{}, err
+	}
+	c.AIProviders = aiProviders
 
 	// Default the public URL to the first allowed origin. That is already the
 	// frontend's address in every correct deployment, so share links are right
@@ -727,6 +738,7 @@ func (c Config) validate() error {
 	// Checked in every environment, because half of these are wrong in development too —
 	// an empty secret or a duplicate id is not a production-only mistake.
 	errs = append(errs, validateLiveKitProjects(c.LiveKitProjects, c.IsDev()))
+	errs = append(errs, validateAIProviders(c.AIProviders, c.IsDev()))
 
 	return errors.Join(errs...)
 }
@@ -827,7 +839,7 @@ func (c Config) String() string {
 	// whatsAppConnect is here for the same reason googleAuth is: it is a whole
 	// surface that silently does not exist when its credentials are unset, and the
 	// boot line is the cheapest place to find that out.
-	return fmt.Sprintf("env=%s addr=%s livekit=[%s] maxAttendees=%d recordings=%s emptyRoomClose=%s seed=%v authBypass=%v telemetryEnabled=%v googleAuth=%v whatsAppConnect=%v cors=%v",
-		c.Env, c.Addr, describeLiveKitProjects(c.LiveKitProjects), c.MaxAttendees, recordings, emptyRoom,
+	return fmt.Sprintf("env=%s addr=%s livekit=[%s] ai=[%s] maxAttendees=%d recordings=%s emptyRoomClose=%s seed=%v authBypass=%v telemetryEnabled=%v googleAuth=%v whatsAppConnect=%v cors=%v",
+		c.Env, c.Addr, describeLiveKitProjects(c.LiveKitProjects), describeAIProviders(c.AIProviders), c.MaxAttendees, recordings, emptyRoom,
 		c.SeedDev, c.AuthBypass, c.TelemetryEnabled, c.GoogleAuthEnabled(), c.WhatsAppConnectEnabled(), c.CORSOrigins)
 }
