@@ -40,6 +40,13 @@ const PLAN_LABEL: Record<Plan, string> = {
 };
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { paginate } from "@/lib/paginate";
+import {
+  ACCOUNT_ROLE_FILTERS,
+  ACCOUNT_ROLE_LABEL,
+  countAccountRoles,
+  filterAccounts,
+  type AccountRoleFilter,
+} from "@/lib/admin-accounts-filter";
 import { useAppConfig, useSession, useToast } from "./providers";
 import {
   Alert,
@@ -141,6 +148,11 @@ function AdminAccounts() {
   const { notify } = useToast();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [query, setQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<AccountRoleFilter>("all");
+  /* Rows whose hosting was flipped since the chip or search last changed. Kept
+   * in view so a toggle under "Hosts" or "Attendees" does not yank the row away
+   * mid-click; cleared whenever the admin changes what they are looking at. */
+  const [pinned, setPinned] = useState<ReadonlySet<string>>(() => new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
@@ -183,15 +195,16 @@ function AdminAccounts() {
    * keystroke to filter a list that fits on one screen is a round trip for nothing; the
    * server-side filter is there for when this grows, and switching to it is a one-line
    * change to the load call. */
-  const shown = useMemo(() => {
-    if (!users) return null;
-    const q = query.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
-      (u) =>
-        u.email.toLowerCase().includes(q) || u.name.toLowerCase().includes(q),
-    );
-  }, [users, query]);
+  const shown = useMemo(
+    () => (users ? filterAccounts(users, query, roleFilter, pinned) : null),
+    [users, query, roleFilter, pinned],
+  );
+
+  // Off the search only, not the chip, so each chip says what clicking it shows.
+  const roleCounts = useMemo(
+    () => countAccountRoles(users ?? [], query),
+    [users, query],
+  );
 
   const view = useMemo(
     () => paginate(shown ?? [], PAGE_SIZE, pageIndex),
@@ -202,6 +215,7 @@ function AdminAccounts() {
     setBusy(u.id);
     try {
       await api.setHostCapability(u.id, canHost);
+      if (roleFilter !== "all") setPinned((prev) => new Set(prev).add(u.id));
       // Patched in place rather than refetching the list: a full reload would reorder the
       // table under the cursor, because the ordering puts hosts first.
       setUsers((prev) =>
@@ -336,11 +350,46 @@ function AdminAccounts() {
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
+              setPinned(new Set());
               setPageIndex(0);
             }}
             aria-label="Search accounts"
           />
-          <span className="text-[12.5px] text-ink-3">
+          <div
+            role="group"
+            aria-label="Filter accounts by role"
+            className="flex flex-wrap gap-1.5"
+          >
+            {ACCOUNT_ROLE_FILTERS.map((r) => {
+              const active = roleFilter === r;
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => {
+                    if (r === roleFilter) return;
+                    setRoleFilter(r);
+                    setPinned(new Set());
+                    setPageIndex(0);
+                  }}
+                  aria-pressed={active}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                    active ? "bg-brand-soft text-brand" : "text-ink-2 hover:bg-surface-2"
+                  }`}
+                >
+                  {ACCOUNT_ROLE_LABEL[r]}
+                  <span
+                    className={`rounded-full px-1.5 text-[11px] leading-4 tabular-nums ${
+                      active ? "bg-brand text-stage" : "bg-surface-2 text-ink-2"
+                    }`}
+                  >
+                    {users ? roleCounts[r] : "–"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <span className="ml-auto text-[12.5px] text-ink-3">
             {hosts} of {users?.length ?? 0} can host
           </span>
         </div>
@@ -353,7 +402,11 @@ function AdminAccounts() {
         ) : shown.length === 0 ? (
           <Empty
             title="No accounts match"
-            hint="Try a different name or email."
+            hint={
+              roleFilter === "all"
+                ? "Try a different name or email."
+                : `No ${ACCOUNT_ROLE_LABEL[roleFilter].toLowerCase()} match. Try All, or a different name or email.`
+            }
           />
         ) : (
           <div className="grid gap-2">
