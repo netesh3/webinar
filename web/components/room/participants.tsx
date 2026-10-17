@@ -6,7 +6,7 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { LiveParticipant, LiveRoom, Role } from "@/lib/api-types";
 import type { Realtime } from "@/lib/realtime";
@@ -23,6 +23,7 @@ import { IconButton, Menu, Spinner } from "../controls";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  CloseIcon,
   EyeOffIcon,
   HandIcon,
   MicIcon,
@@ -228,6 +229,10 @@ function HostRoster() {
   // polls of the same endpoint is one too many.
   const { live, error, reload } = roster;
   const [query, setQuery] = useState("");
+  // Filtering a few hundred rows on every keystroke is cheap, but re-rendering
+  // them all is not — deferring keeps the field responsive in a big room while
+  // the list catches up a frame later.
+  const deferredQuery = useDeferredValue(query);
   const [busy, setBusy] = useState<string | null>(null);
 
   const handIdentities = useMemo(
@@ -270,8 +275,8 @@ function HostRoster() {
       name: join.displayName,
       role: join.role,
     });
-    return rows.filter((p) => matchRosterQuery(p, query));
-  }, [live, query, join.identity, join.displayName, join.role]);
+    return rows.filter((p) => matchRosterQuery(p, deferredQuery));
+  }, [live, deferredQuery, join.identity, join.displayName, join.role]);
 
   // Faces for the header, off the whole roster rather than `matching`, so typing
   // in the search box does not change who the summary says is on stage.
@@ -293,7 +298,7 @@ function HostRoster() {
     [matching, realtime.hands],
   );
 
-  const showSearch = shouldShowRosterSearch(live?.participants.length ?? 0, query);
+  const searching = deferredQuery.trim().length > 0;
 
   const empty =
     sections.raised.length + sections.panelists.length + sections.attendees.length === 0;
@@ -467,23 +472,17 @@ function HostRoster() {
           </div>
         )}
 
-        {showSearch && (
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
-            {/* text-base on a phone so iOS does not zoom the field to 16px and
-                cover the list with the on-screen keyboard's chrome. */}
-            <input
-              className="field h-11 pl-8 text-base md:h-8 md:text-[12.5px]"
-              placeholder="Search participants"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search participants"
-              enterKeyHint="search"
-              autoComplete="off"
-              autoCorrect="off"
-            />
-          </div>
-        )}
+        {/* Always there for the host, however short the room: they are the one
+            looking for a particular attendee to unmute, bring up or remove, and
+            the box appearing only past eight people read as a missing feature. */}
+        <RosterSearch
+          value={query}
+          onChange={setQuery}
+          placeholder="Search by name"
+          // Panelists + attendees only: a raised hand is the same person again,
+          // and counting them twice would announce more matches than rows.
+          resultCount={sections.panelists.length + sections.attendees.length}
+        />
 
         {error && (
           <p className="text-[11.5px] text-live">
@@ -498,9 +497,25 @@ function HostRoster() {
             <Spinner className="size-5 text-ink-3" />
           </div>
         ) : empty ? (
-          <p className="px-3 py-8 text-center text-[12.5px] text-ink-3">
-            {query ? "Nobody matches that." : "Nobody has joined yet."}
-          </p>
+          <div className="px-3 py-8 text-center text-[12.5px] text-ink-3">
+            {searching ? (
+              <>
+                <p>
+                  Nobody matches{" "}
+                  <span className="font-medium text-ink-2">&ldquo;{deferredQuery.trim()}&rdquo;</span>.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  className="mt-2 rounded-md px-2 py-1 text-[12px] font-medium text-brand hover:underline outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                >
+                  Clear search
+                </button>
+              </>
+            ) : (
+              <p>Nobody has joined yet.</p>
+            )}
+          </div>
         ) : (
           <>
             {sections.raised.length > 0 && (
@@ -511,7 +526,7 @@ function HostRoster() {
             <Group title="Panelists" count={sections.panelists.length}>
               {sections.panelists.length === 0 ? (
                 <li className="px-3 py-4 text-[12.5px] text-ink-3">
-                  Nobody on the stage.
+                  {searching ? "No panelists match that." : "Nobody on the stage."}
                 </li>
               ) : (
                 sections.panelists.map(row)
@@ -520,7 +535,7 @@ function HostRoster() {
             <Group title="Attendees" count={sections.attendees.length}>
               {sections.attendees.length === 0 ? (
                 <li className="px-3 py-4 text-[12.5px] text-ink-3">
-                  {query ? "No attendees match that." : "No attendees yet."}
+                  {searching ? "No attendees match that." : "No attendees yet."}
                 </li>
               ) : (
                 sections.attendees.map(row)
@@ -907,19 +922,7 @@ function AudienceRoster() {
     <div className="flex min-h-0 flex-1 flex-col">
       {showSearch && (
         <div className="shrink-0 border-b border-line px-3 py-2.5">
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
-            <input
-              className="field h-11 pl-8 text-base md:h-8 md:text-[12.5px]"
-              placeholder="Search participants"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search participants"
-              enterKeyHint="search"
-              autoComplete="off"
-              autoCorrect="off"
-            />
-          </div>
+          <RosterSearch value={query} onChange={setQuery} />
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -1025,6 +1028,80 @@ function RosterStats({
           <span className="font-semibold text-ink tabular-nums">{attending}</span> attending
         </span>
       </span>
+    </div>
+  );
+}
+
+/** The search field over a roster. One component for the host's and the
+ *  audience's lists so the two cannot drift in how they look or behave.
+ *
+ *  Escape clears rather than closing the panel, the × is there for touch where
+ *  there is no Escape, and the match count is announced politely so a screen
+ *  reader user hears the list narrow without having to go looking. */
+function RosterSearch({
+  value,
+  onChange,
+  resultCount,
+  placeholder = "Search participants",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  /** How many people the current query leaves. Only announced while searching. */
+  resultCount?: number;
+  placeholder?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const searching = value.trim().length > 0;
+
+  return (
+    <div className="relative" role="search">
+      <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
+      {/* text-base on a phone so iOS does not zoom the field to 16px and
+          cover the list with the on-screen keyboard's chrome. */}
+      <input
+        ref={inputRef}
+        className={`field h-11 pl-8 text-base md:h-8 md:text-[12.5px] ${value ? "pr-10 md:pr-8" : ""}`}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && value) {
+            // Only swallow Escape when there is something to clear, so an
+            // empty field still lets Escape reach whatever closes the panel.
+            e.preventDefault();
+            e.stopPropagation();
+            onChange("");
+          }
+        }}
+        aria-label={placeholder}
+        enterKeyHint="search"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        maxLength={100}
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => {
+            onChange("");
+            inputRef.current?.focus();
+          }}
+          aria-label="Clear search"
+          title="Clear search"
+          className="absolute top-1/2 right-0.5 grid size-10 -translate-y-1/2 place-items-center rounded-md text-ink-3 transition-colors hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:size-7"
+        >
+          <CloseIcon className="size-3.5" />
+        </button>
+      )}
+      {resultCount !== undefined && (
+        <span className="sr-only" aria-live="polite" aria-atomic="true">
+          {searching
+            ? `${resultCount} ${resultCount === 1 ? "person matches" : "people match"}`
+            : ""}
+        </span>
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import type { RaisedHand } from "./realtime.ts";
 import {
   handWaitLabel,
   matchRosterQuery,
+  normalizeRosterText,
   partitionHostRoster,
   rosterBadge,
   withLocalOnRoster,
@@ -80,6 +81,24 @@ console.log("\nmatchRosterQuery");
   ok(matchRosterQuery(ana, "pérez"), "name is matched, case-insensitively");
   ok(matchRosterQuery(ana, "ATT_1"), "identity is matched too — names collide");
   ok(!matchRosterQuery(ana, "bo"), "a miss is a miss");
+  ok(matchRosterQuery(ana, "perez"), "accents are ignored — 'perez' finds 'Pérez'");
+  ok(matchRosterQuery(ana, "PEREZ"), "…in any case");
+  ok(matchRosterQuery(ana, "  ana   pérez "), "extra whitespace does not turn a hit into a miss");
+  ok(matchRosterQuery(ana, "pérez ana"), "words match in any order");
+  ok(matchRosterQuery(ana, "ana p"), "a first name plus an initial narrows");
+  ok(!matchRosterQuery(ana, "ana bo"), "every word has to match, not just one");
+  ok(matchRosterQuery(ana, "   "), "a blank query matches everyone");
+  ok(
+    matchRosterQuery({ name: "", identity: "att_9" }, "att_9"),
+    "a nameless participant is still found by identity",
+  );
+}
+
+console.log("\nnormalizeRosterText");
+
+{
+  eq(normalizeRosterText("  José  Müller "), "jose muller", "strips accents, case and padding");
+  eq(normalizeRosterText(undefined), "", "tolerates a missing name");
 }
 
 console.log("\npartitionHostRoster");
