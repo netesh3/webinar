@@ -163,6 +163,8 @@ type Server struct {
 	// capture buffers realtime interactions for the Engagement page; engagement serves it.
 	capture    *capture.Recorder
 	engagement *service.Service
+	// maintenanceHook runs first in the maintenance lane. Tests only (export_test.go).
+	maintenanceHook func(context.Context)
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {

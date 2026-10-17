@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/netkumar/webcast/api/internal/lk"
@@ -17,8 +18,9 @@ import (
  * dedicated server, or Cloud Run with min-instances) it is the only one. On Cloud Run
  * scaled to zero there is no process and no CPU between requests, so Cloud Scheduler calls
  * POST /api/internal/tick once a minute and the pass runs inside that request (see
- * handleInternalTick and deploy/cloud-scheduler-tick.sh). Both run RunTick, which takes the
- * `sweep` lease, so they never overlap — within an instance or across them.
+ * handleInternalTick and deploy/cloud-scheduler-tick.sh). Both run RunTick, whose lanes take
+ * the `sweep` and `maintenance` leases, so neither lane overlaps itself — within an
+ * instance or across them.
  */
 const (
 	tickEvery = 30 * time.Second
@@ -30,6 +32,10 @@ const (
 	// the same deadline.
 	mailFlushBudget = 25 * time.Second
 	tickLease       = 2 * time.Minute
+	// maintenanceBudget bounds the maintenance lane, which runs beside the realtime one;
+	// maintenanceJobBudget bounds each of its jobs.
+	maintenanceBudget    = 80 * time.Second
+	maintenanceJobBudget = 20 * time.Second
 	// Recording retention deletes files, and once every five minutes is plenty; its lease
 	// is never released, which is what makes it run at most that often.
 	retentionEvery = 5 * time.Minute
@@ -145,14 +151,38 @@ func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
 	}
 }
 
-/* RunTick is one pass of every job that runs on a clock: meeting limits, empty rooms,
- * broadcasts, simulive, lost recordings, the email outbox, and the CRM's drips, bots and
- * WhatsApp outbox. Reports false when another runner held the lease and nothing was done.
+/* RunTick is one pass of every job that runs on a clock, in two lanes run side by side:
+ *
+ *   realtime    — meeting limits, empty rooms, broadcasts, simulive, surveys, the email
+ *                 outbox and the CRM's drips, bots and WhatsApp outbox (Engage.Tick).
+ *                 Things somebody is waiting on. Lease "sweep", tickBudget.
+ *   maintenance — lost-recording reconcile, retention and cleanup, the image backfill and
+ *                 the CRM's media copies and token checks (Engage.Maintain). Nobody is
+ *                 waiting on these. Lease "maintenance", maintenanceBudget, and each job
+ *                 cut off at maintenanceJobBudget so one cannot eat the lane.
+ *
+ * Side by side rather than one after the other so a slow file sweep or media download can
+ * never hold a reminder back, and inside the same call because on Cloud Run the request is
+ * what holds the CPU (see handleInternalTick): this returns when both lanes have stopped.
+ *
+ * Reports whether the realtime lane ran; false means another runner held "sweep".
  *
  * Everything is due-time driven — a row with due_at <= now() — so a late pass catches up
  * rather than losing anything: the pass after a gap sends what came due during it.
  */
 func (s *Server) RunTick(ctx context.Context) bool {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.runMaintenance(ctx)
+	}()
+	ran := s.runRealtime(ctx)
+	wg.Wait()
+	return ran
+}
+
+func (s *Server) runRealtime(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, tickBudget)
 	defer cancel()
 
@@ -171,41 +201,71 @@ func (s *Server) RunTick(ctx context.Context) bool {
 	s.sweepBroadcasts(ctx)
 	s.sweepSimulive(ctx)
 	s.sweepDueSurveys(ctx)
-	s.reconcileEgressRecordings(ctx)
 	mailCtx, mailCancel := context.WithTimeout(ctx, mailFlushBudget)
 	s.flushOutbox(mailCtx)
 	mailCancel()
 	// The CRM's drips, bots and WhatsApp outbox. See Engage.Tick.
 	s.engage.Tick(ctx)
+	return true
+}
+
+func (s *Server) runMaintenance(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, maintenanceBudget)
+	defer cancel()
+
+	release, ok, err := s.store.TryLease(ctx, "maintenance", tickLease)
+	if err != nil {
+		s.log.Error("maintenance: could not take lease", "error", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	defer release()
+
+	if s.maintenanceHook != nil {
+		s.maintenanceJob(ctx, "test hook", s.maintenanceHook)
+	}
+	s.maintenanceJob(ctx, "egress reconcile", s.reconcileEgressRecordings)
+	// The CRM's media copies, token checks and cleanup. See Engage.Maintain.
+	s.maintenanceJob(ctx, "crm maintenance", s.engage.Maintain)
 
 	if s.cfg.RecordingsRetentionDays > 0 {
-		if _, due, err := s.store.TryLease(ctx, "recording-retention", retentionEvery); err == nil && due {
-			s.sweepExpiredRecordings(ctx)
-		}
+		s.leasedJob(ctx, "recording-retention", retentionEvery, s.sweepExpiredRecordings)
 	}
-	if _, due, err := s.store.TryLease(ctx, "engagement-retention", retentionEvery); err == nil && due {
-		s.sweepEngagementEvents(ctx)
-	}
+	s.leasedJob(ctx, "engagement-retention", retentionEvery, s.sweepEngagementEvents)
 	// Moves pre-0098 cover images and profile photos out of Postgres; see images.go.
-	if _, due, err := s.store.TryLease(ctx, "image-backfill", retentionEvery); err == nil && due {
-		s.backfillImages(ctx)
+	s.leasedJob(ctx, "image-backfill", retentionEvery, s.backfillImages)
+	s.leasedJob(ctx, "email-retention", emailRetentionEvery, s.sweepHostEmails)
+	s.leasedJob(ctx, "notification-retention", notificationRetentionEvery, s.sweepNotificationContent)
+	s.leasedJob(ctx, "token-retention", tokenRetentionEvery, s.sweepExpiredTokens)
+	s.leasedJob(ctx, "chat-image-retention", sessionRetentionEvery, s.sweepChatImages)
+	s.leasedJob(ctx, "caption-retention", sessionRetentionEvery, s.sweepCaptions)
+}
+
+// leasedJob runs a job at most once per every, across instances: its lease is never
+// released, which is what spaces the runs out.
+func (s *Server) leasedJob(ctx context.Context, name string, every time.Duration, job func(context.Context)) {
+	if ctx.Err() != nil {
+		return
 	}
-	if _, due, err := s.store.TryLease(ctx, "email-retention", emailRetentionEvery); err == nil && due {
-		s.sweepHostEmails(ctx)
+	if _, due, err := s.store.TryLease(ctx, name, every); err == nil && due {
+		s.maintenanceJob(ctx, name, job)
 	}
-	if _, due, err := s.store.TryLease(ctx, "notification-retention", notificationRetentionEvery); err == nil && due {
-		s.sweepNotificationContent(ctx)
+}
+
+// maintenanceJob runs one job with its own deadline. A job that hits it stops where it
+// is; every job here is batched and resumes on its next run.
+func (s *Server) maintenanceJob(ctx context.Context, name string, job func(context.Context)) {
+	if ctx.Err() != nil {
+		return
 	}
-	if _, due, err := s.store.TryLease(ctx, "token-retention", tokenRetentionEvery); err == nil && due {
-		s.sweepExpiredTokens(ctx)
+	jobCtx, cancel := context.WithTimeout(ctx, maintenanceJobBudget)
+	defer cancel()
+	job(jobCtx)
+	if errors.Is(jobCtx.Err(), context.DeadlineExceeded) {
+		s.log.Warn("maintenance: job ran out of time; it resumes next pass", "job", name)
 	}
-	if _, due, err := s.store.TryLease(ctx, "chat-image-retention", sessionRetentionEvery); err == nil && due {
-		s.sweepChatImages(ctx)
-	}
-	if _, due, err := s.store.TryLease(ctx, "caption-retention", sessionRetentionEvery); err == nil && due {
-		s.sweepCaptions(ctx)
-	}
-	return true
 }
 
 func (s *Server) sweepExpiredWebinars(ctx context.Context) {

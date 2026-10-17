@@ -52,8 +52,12 @@ type Engage interface {
 	// DecorateRegistrants fills the CRM columns (WhatsApp status, last reply) on a roster.
 	DecorateRegistrants(ctx context.Context, host store.User, slug string, rows []types.RegistrantRow)
 
-	// Tick is the CRM's share of the 30-second sweeper: drips, bots, the WhatsApp outbox.
+	// Tick is the CRM's share of the sweeper's realtime lane: drips, bots, the WhatsApp
+	// outbox, reply digests. Work somebody is waiting on.
 	Tick(ctx context.Context)
+	// Maintain is the CRM's share of the maintenance lane: token checks, media copies and
+	// cleanup. Runs beside Tick, so nothing here can hold a send back.
+	Maintain(ctx context.Context)
 
 	/* MessageSlots is the resolved attendee messages for one webinar.
 	 * ok is false when they cannot be read; the caller keeps reading WebinarOptions.
@@ -76,7 +80,8 @@ func (NoEngage) OnPollAnswer(context.Context, string, string, string, string)   
 func (NoEngage) OnRecordingPublished(context.Context, types.Webinar, store.User, string) {}
 func (NoEngage) DecorateRegistrants(context.Context, store.User, string, []types.RegistrantRow) {
 }
-func (NoEngage) Tick(context.Context) {}
+func (NoEngage) Tick(context.Context)     {}
+func (NoEngage) Maintain(context.Context) {}
 func (NoEngage) MessageSlots(context.Context, string) ([]types.MessageSlot, bool, error) {
 	return nil, false, nil
 }
