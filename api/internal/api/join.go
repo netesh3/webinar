@@ -736,10 +736,16 @@ func joinKeyFromIdentity(identity string) string {
  * config.LiveKitProject.BroadcastHLSBase). Read from the store rather than from wb because
  * ensureRoom may have just pinned — or failed over — the room after wb was loaded. */
 func (s *Server) broadcastWHEPURL(ctx context.Context, wb types.Webinar) string {
+	return s.cfg.BroadcastHLSURLFor(s.pinnedProject(ctx, wb), wb.ID)
+}
+
+// pinnedProject is the project the webinar's room is on now, falling back to wb's copy
+// when the store cannot be read.
+func (s *Server) pinnedProject(ctx context.Context, wb types.Webinar) string {
 	project, err := s.store.SFUProjectOf(ctx, wb.ID)
 	if err != nil {
-		s.log.Warn("cdn broadcast: could not read the webinar's project", "slug", wb.ID, "error", err)
-		project = wb.SFUProject
+		s.log.Warn("sfu: could not read the webinar's project", "slug", wb.ID, "error", err)
+		return wb.SFUProject
 	}
-	return s.cfg.BroadcastHLSURLFor(project, wb.ID)
+	return project
 }

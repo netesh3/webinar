@@ -92,6 +92,17 @@ type LiveKitProject struct {
 	 * first box's origin would ask for a stream that is not there. Empty uses the global
 	 * BROADCAST_HLS_BASE, which is right while there is one SFU. */
 	BroadcastHLSBase string `json:"broadcastHlsBase,omitempty"`
+
+	// Label is the human name shown in the admin "Video server" select. Defaults to the id.
+	Label string `json:"label,omitempty"`
+}
+
+// DisplayLabel is Label, or the id when no label was given.
+func (p LiveKitProject) DisplayLabel() string {
+	if p.Label != "" {
+		return p.Label
+	}
+	return p.ID
 }
 
 func (p LiveKitProject) Enabled() bool { return !p.Disabled }
@@ -157,6 +168,7 @@ func normaliseLiveKitProjects(list []LiveKitProject) []LiveKitProject {
 		p.Secret = strings.TrimSpace(p.Secret)
 		p.HTTPURL = strings.TrimSpace(p.HTTPURL)
 		p.BroadcastHLSBase = strings.TrimRight(strings.TrimSpace(p.BroadcastHLSBase), "/")
+		p.Label = strings.TrimSpace(p.Label)
 		if p.HTTPURL == "" {
 			p.HTTPURL = httpFromWS(p.URL)
 		}

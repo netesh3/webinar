@@ -65,13 +65,6 @@ if [[ -f livekit.yaml ]]; then
   PRESERVE_USE_EXTERNAL_IP="$(awk '/^[[:space:]]*use_external_ip:/{print $2; exit}' livekit.yaml || true)"
 fi
 
-# An explicit NODE_IP (install.sh writes it for a host with a real domain, e.g. the
-# Bangalore SFU) is the address to advertise.
-if [[ -z "$PRESERVE_NODE_IP" && -n "${NODE_IP:-}" ]]; then
-  PRESERVE_NODE_IP="$NODE_IP"
-  PRESERVE_USE_EXTERNAL_IP="${PRESERVE_USE_EXTERNAL_IP:-false}"
-fi
-
 # Hetzner / sslip.io: pin advertised IP (STUN alone is flaky on some clouds).
 if [[ -z "$PRESERVE_NODE_IP" && "$DOMAIN" =~ ^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\.sslip\.io$ ]]; then
   PRESERVE_NODE_IP="${BASH_REMATCH[1]}"

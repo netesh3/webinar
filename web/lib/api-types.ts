@@ -4904,6 +4904,11 @@ export interface AdminUser {
    */
   accountKind: AccountKind;
   /**
+   * SFUProject is the LiveKit project this host's new webinars go to; empty is the
+   * default order. See SFUProjectOption.
+   */
+  sfuProject?: string;
+  /**
    * RegistrationCount is how many webinars this account has registered for, and
    * LastWebinarTopic the most recent of them; the audience list shows both.
    */
@@ -5378,6 +5383,32 @@ export interface DeleteAccountRequest {
 }
 export interface SetUserPlanRequest {
   plan: Plan;
+}
+/**
+ *  SFUProjectOption is one configured LiveKit project, for the admin "Video server" select.
+ *  * Ids and labels only — never a URL, key or secret.
+ */
+export interface SFUProjectOption {
+  id: string;
+  label: string;
+  /**
+   * Enabled projects take new webinars; a disabled one only serves those pinned to it,
+   * so it cannot be assigned.
+   */
+  enabled: boolean;
+}
+/**
+ * SFUProjectsResponse is GET /api/admin/sfu-projects.
+ */
+export interface SFUProjectsResponse {
+  projects: SFUProjectOption[];
+}
+/**
+ * SetUserSFURequest is PATCH /api/admin/users/{id}/sfu. An empty project restores the
+ * default order.
+ */
+export interface SetUserSFURequest {
+  project: string;
 }
 /**
  *  AccountKind separates the people who signed up for Webinar Liv from the people

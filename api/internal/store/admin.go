@@ -347,7 +347,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 		       coalesce((SELECT f.reason FROM trial_flags f WHERE f.user_id = u.id
 		                  ORDER BY f.created_at DESC LIMIT 1), ''),
 		       EXISTS (SELECT 1 FROM trial_exemptions e WHERE e.user_id = u.id AND e.used_at IS NULL),
-		       u.account_kind,
+		       u.account_kind, coalesce(u.sfu_project, ''),
 		       (SELECT count(*) FROM registrations r WHERE r.user_id = u.id),
 		       coalesce((SELECT w.topic FROM registrations r JOIN webinars w ON w.id = r.webinar_id
 		                  WHERE r.user_id = u.id ORDER BY r.created_at DESC LIMIT 1), '')
@@ -372,7 +372,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast,
 			&u.Features, &u.EmailVerified, &u.Plan, &forcedOn, &forcedOff,
 			&u.TrialFlag, &u.TrialExemption,
-			&u.AccountKind, &u.RegistrationCount, &u.LastWebinarTopic); err != nil {
+			&u.AccountKind, &u.SFUProject, &u.RegistrationCount, &u.LastWebinarTopic); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
@@ -605,4 +605,33 @@ func (s *Store) PlanForUser(ctx context.Context, userID string) (types.Plan, err
 	var plan string
 	err := s.pool.QueryRow(ctx, `SELECT effective_plan($1::uuid)`, userID).Scan(&plan)
 	return types.Plan(plan), err
+}
+
+// HostSFUProject is the LiveKit project an admin assigned to this host, empty for the
+// default order.
+func (s *Store) HostSFUProject(ctx context.Context, userID string) (string, error) {
+	if userID == "" {
+		return "", nil
+	}
+	var project string
+	err := s.pool.QueryRow(ctx,
+		`SELECT coalesce(sfu_project, '') FROM users WHERE id = $1::uuid`, userID).Scan(&project)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
+	return project, err
+}
+
+// SetUserSFUProject assigns a host's new webinars to a LiveKit project; "" restores the
+// default order.
+func (s *Store) SetUserSFUProject(ctx context.Context, userID, project string) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE users SET sfu_project = NULLIF($2, '') WHERE id = $1::uuid`, userID, project)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

@@ -23,6 +23,7 @@ import {
   type AdminUser,
   type Plan,
   type PlanFeatures,
+  type SFUProjectOption,
   type Webinar,
 } from "@/lib/api-types";
 
@@ -177,6 +178,8 @@ function AdminAccounts() {
    * useDevices in lib/media.ts. */
   // The tier matrix, so each feature's Inherit can say what the plan gives.
   const [tiers, setTiers] = useState<PlanFeatures[] | null>(null);
+  // Video servers; the per-host select only appears when there is more than one.
+  const [sfuProjects, setSfuProjects] = useState<SFUProjectOption[]>([]);
 
   const load = useCallback(() => {
     api
@@ -196,6 +199,10 @@ function AdminAccounts() {
       .planFeatures()
       .then((body) => setTiers(body.tiers))
       .catch(() => setTiers(null));
+    api
+      .sfuProjects()
+      .then((body) => setSfuProjects(body.projects))
+      .catch(() => setSfuProjects([]));
   }, [kind]);
 
   useEffect(load, [load]);
@@ -285,6 +292,29 @@ function AdminAccounts() {
         plan
           ? `${u.name || u.email} is on the ${PLAN_LABEL[plan]} plan.`
           : `${u.name || u.email} is back on the launch default.`,
+        "ok",
+      );
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function setVideoServer(u: AdminUser, project: string) {
+    setBusy(u.id);
+    try {
+      await api.setUserSFU(u.id, project);
+      setUsers((prev) =>
+        (prev ?? []).map((row) =>
+          row.id === u.id ? { ...row, sfuProject: project || undefined } : row,
+        ),
+      );
+      const label = sfuProjects.find((p) => p.id === project)?.label;
+      notify(
+        project
+          ? `${u.name || u.email}'s new webinars will use ${label ?? project}.`
+          : `${u.name || u.email}'s new webinars will use the default video server.`,
         "ok",
       );
     } catch (e) {
@@ -602,6 +632,30 @@ function AdminAccounts() {
                           {(Object.keys(PLAN_LABEL) as Plan[]).map((p) => (
                             <option key={p} value={p}>
                               {PLAN_LABEL[p]}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {/* Only with a second video server configured; webinars already
+                       * pinned to a server never move, so this only steers new ones. */}
+                      {u.canHost && sfuProjects.length > 1 && (
+                        <select
+                          aria-label="Video server"
+                          title="Video server for this host's new webinars"
+                          value={u.sfuProject ?? ""}
+                          onChange={(e) => void setVideoServer(u, e.target.value)}
+                          className="rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
+                        >
+                          <option value="">Default video server</option>
+                          {sfuProjects.map((p) => (
+                            <option
+                              key={p.id}
+                              value={p.id}
+                              disabled={!p.enabled && p.id !== u.sfuProject}
+                            >
+                              {p.label}
+                              {p.enabled ? "" : " (not taking new webinars)"}
                             </option>
                           ))}
                         </select>

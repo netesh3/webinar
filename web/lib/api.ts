@@ -13,6 +13,8 @@ import type {
   PlanFeatures,
   PlanFeaturesBody,
   SetUserPlanRequest,
+  SetUserSFURequest,
+  SFUProjectsResponse,
   WhatsAppConsent,
   AdminStats,
   AdminUser,
@@ -1011,6 +1013,15 @@ export const api = {
     patch<Account>(`/api/admin/users/${seg(userId)}/plan`, {
       plan,
     } satisfies SetUserPlanRequest),
+
+  /** The configured video servers (LiveKit projects): ids and labels, never secrets. */
+  sfuProjects: () => request<SFUProjectsResponse>("/api/admin/sfu-projects", fresh),
+
+  /** Send a host's NEW webinars to a video server, or "" for the default order. */
+  setUserSFU: (userId: string, project: string) =>
+    patch<SetUserSFURequest>(`/api/admin/users/${seg(userId)}/sfu`, {
+      project,
+    } satisfies SetUserSFURequest),
 
   /** Lets an account take one more free trial past the once-per-person check. */
   allowAnotherTrial: (userId: string) =>

@@ -830,12 +830,19 @@ func (c Config) BroadcastHLSURLFor(projectID, slug string) string {
 	if c.BroadcastRTMPBase == "" || strings.TrimSpace(slug) == "" {
 		return ""
 	}
-	for _, p := range c.LiveKitProjects {
-		if p.ID == projectID && p.BroadcastHLSBase != "" {
-			return p.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/whep"
-		}
+	if p, ok := c.liveKitProject(projectID); ok && p.BroadcastHLSBase != "" {
+		return p.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/whep"
 	}
 	return c.BroadcastHLSURL(slug)
+}
+
+func (c Config) liveKitProject(id string) (LiveKitProject, bool) {
+	for _, p := range c.LiveKitProjects {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return LiveKitProject{}, false
 }
 
 func (c Config) String() string {
