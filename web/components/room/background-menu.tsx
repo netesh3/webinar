@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import {
   useBackgroundStatus,
   VIRTUAL_BACKGROUNDS,
   type BackgroundChoice,
+  type VirtualBackgroundId,
 } from "@/lib/backgrounds";
 import { Spinner } from "../controls";
 import { ArrowLeftIcon, ChevronRightIcon, CloseIcon } from "../icons";
@@ -17,7 +19,8 @@ import { Tile } from "./background-picker";
  * can never disagree.
  *
  * The panel stays open after a pick: the point of having it beside the video is to
- * try a few and watch the change. It closes with the menu, its × or Escape.
+ * try a few and watch the change. A switch in its header turns the still off and back
+ * on. It closes with the menu, its × or Escape.
  */
 
 /** The menu row: "Virtual background" with the active still's thumbnail, or "Off". */
@@ -82,6 +85,15 @@ export function VirtualBackgroundPanel({
   const status = useBackgroundStatus();
   const isImage = choice.mode === "image";
   const applying = isImage && status.phase === "preparing";
+  // The still the header switch brings back. Kept in state, seeded from the current
+  // choice; the panel remounts each time it opens, so it re-seeds from the choice then.
+  const [lastStill, setLastStill] = useState<VirtualBackgroundId>(
+    isImage ? choice.id : VIRTUAL_BACKGROUNDS[0].id,
+  );
+  const pick = (bgId: VirtualBackgroundId) => {
+    setLastStill(bgId);
+    onSelect({ mode: "image", id: bgId });
+  };
 
   return (
     <div
@@ -101,20 +113,39 @@ export function VirtualBackgroundPanel({
           <ArrowLeftIcon className="size-3.5" />
         </button>
         <h3 className="min-w-0 flex-1 text-[13px] font-semibold text-ink">Virtual background</h3>
-        {applying ? (
-          <span role="status" className="flex items-center gap-1.5 text-[11px] text-ink-3">
+        {applying && (
+          <span role="status" aria-label="Applying" className="grid place-items-center text-ink-3">
             <Spinner className="size-3" />
-            Applying…
           </span>
-        ) : isImage ? (
-          <button
-            type="button"
-            onClick={() => onSelect({ mode: "none" })}
-            className="rounded px-1 text-[12px] font-medium text-brand hover:underline"
-          >
-            Turn off
-          </button>
-        ) : null}
+        )}
+        {/* On/off for the panel as a whole. Off clears the still; on brings back the
+            last one picked this session, or the first if none was. */}
+        <label className="relative inline-flex shrink-0 cursor-pointer">
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="Use a virtual background"
+            className="peer size-0 opacity-0"
+            checked={isImage}
+            onChange={(e) =>
+              onSelect(
+                e.target.checked ? { mode: "image", id: lastStill } : { mode: "none" },
+              )
+            }
+          />
+          <span
+            aria-hidden
+            className={`block h-[18px] w-[32px] rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand/40 ${
+              isImage ? "bg-brand" : "bg-line-2"
+            }`}
+          />
+          <span
+            aria-hidden
+            className={`pointer-events-none absolute top-[2px] left-[2px] size-[14px] rounded-full bg-white transition-transform ${
+              isImage ? "translate-x-[14px]" : ""
+            }`}
+          />
+        </label>
         <button
           type="button"
           onClick={onClose}
@@ -135,7 +166,7 @@ export function VirtualBackgroundPanel({
               active={active}
               busy={applying}
               disabled={false}
-              onClick={() => onSelect({ mode: "image", id: bg.id })}
+              onClick={() => pick(bg.id)}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -152,11 +183,6 @@ export function VirtualBackgroundPanel({
           );
         })}
       </div>
-
-      <p className="mt-2.5 text-[11px] leading-relaxed text-ink-3">
-        Segmentation runs on your own device — the video is never sent anywhere to be
-        processed.
-      </p>
     </div>
   );
 }

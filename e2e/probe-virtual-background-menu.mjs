@@ -7,7 +7,8 @@
  *   1. "Virtual background" sits directly under "Blur my background", and says Off
  *   2. clicking it opens the panel with every built-in still, beside the menu
  *   3. picking a still selects it, turns the blur switch off, and leaves the panel open
- *   4. the row now shows that still's thumbnail
+ *   4. the row now shows that still's thumbnail; the header switch turns it off and
+ *      back on to the same still
  *   5. turning blur back on clears the still — one choice, not two
  *   6. Escape closes the panel first, then the menu
  *   7. on a phone the panel takes the menu's place, and its back button returns
@@ -171,6 +172,17 @@ check(await evaluate(visible(PANEL)), "panel stays open after a pick");
 // 4. Row reflects the choice.
 check((await evaluate(`${ROW}?.querySelector('img')?.getAttribute('alt')`)) === "Office", "row shows the Office thumbnail");
 await shot("2-office-picked");
+
+// 4b. The header switch: off clears the still, on brings the same one back.
+const SWITCH = `${PANEL}?.querySelector('input[role=switch]')`;
+check((await evaluate(`${SWITCH}?.checked`)) === true, "header switch is on while a still is chosen");
+check(!(await evaluate(`/segmentation/i.test(${PANEL}?.innerText ?? '')`)), "no segmentation footnote in the panel");
+await evaluate(`${SWITCH}.click()`);
+await sleep(400);
+check((await evaluate(`${SWITCH}?.checked`)) === false && (await evaluate(`${ROW}?.innerText`))?.includes("Off"), "switch off clears the still");
+await evaluate(`${SWITCH}.click()`);
+await sleep(400);
+check((await evaluate(`${tile("Office")}?.getAttribute('aria-pressed')`)) === "true", "switch on brings Office back");
 
 // 5. Blur clears the still.
 await evaluate(`${BLUR}.click()`);
