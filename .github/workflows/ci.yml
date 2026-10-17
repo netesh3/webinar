@@ -8,6 +8,13 @@
 # runs as four parallel shards, each on its own runner with its own Postgres. The
 # `api` job at the bottom is only a summary of the api-* jobs, so the required-check
 # name does not change.
+#
+# Only what a change touches runs: a web-only PR skips the Go jobs and a server-only PR
+# skips the web job (see `changes`). The `api` and `web` jobs stay as summaries that pass
+# when their part passed or was skipped, so required checks keep working. Pushes to main
+# skip the internal/api shards (they passed on the PR) and run the rest only to keep the
+# Go, node_modules and ESLint caches warm: pull requests can restore caches made on main
+# but not each other's.
 name: CI
 
 on:
@@ -21,6 +28,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   # The migrations target Supabase, which runs as postgres and has the
@@ -28,8 +36,32 @@ env:
   TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/webcast_test?sslmode=disable
 
 jobs:
+  # Which halves of the repo this change touches.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            api:
+              - 'api/**'
+              - 'web/lib/api-types.ts'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+            web:
+              - 'web/**'
+              - '.github/workflows/ci.yml'
+
   # Formatting, vet, generated types, and every package except internal/api.
   api-checks:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -76,6 +108,9 @@ jobs:
   # checks that the tests it ran are exactly the ones it was given.
   api-tests:
     name: api-tests (${{ matrix.shard }}/4)
+    needs: changes
+    # Pull requests only: a push to main already passed these on its PR.
+    if: github.event_name == 'pull_request' && needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -152,20 +187,24 @@ jobs:
           fi
           echo "ran $(wc -l < "$RUNNER_TEMP/ran.txt") tests"
 
-  # The required check. Passes only when every api-* job passed.
+  # The required check. Passes when every api-* job passed, or all were skipped because
+  # nothing under api/ changed. A failed filter job fails it too.
   api:
     runs-on: ubuntu-latest
-    needs: [api-checks, api-tests]
+    needs: [changes, api-checks, api-tests]
     if: always()
     steps:
-      - name: All api jobs passed
+      - name: All api jobs passed or were skipped
         run: |
-          if [ "${{ needs.api-checks.result }}" != "success" ] || [ "${{ needs.api-tests.result }}" != "success" ]; then
-            echo "api-checks: ${{ needs.api-checks.result }}, api-tests: ${{ needs.api-tests.result }}"
+          ok() { [ "$1" = "success" ] || [ "$1" = "skipped" ]; }
+          if [ "${{ needs.changes.result }}" != "success" ] || ! ok "${{ needs.api-checks.result }}" || ! ok "${{ needs.api-tests.result }}"; then
+            echo "changes: ${{ needs.changes.result }}, api-checks: ${{ needs.api-checks.result }}, api-tests: ${{ needs.api-tests.result }}"
             exit 1
           fi
 
-  web:
+  web-checks:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -206,3 +245,18 @@ jobs:
             echo "== $f"
             node --experimental-strip-types --no-warnings "$f"
           done
+
+  # The required check. Passes when web-checks passed, or was skipped because nothing
+  # under web/ changed.
+  web:
+    runs-on: ubuntu-latest
+    needs: [changes, web-checks]
+    if: always()
+    steps:
+      - name: Web checks passed or were skipped
+        run: |
+          r="${{ needs.web-checks.result }}"
+          if [ "${{ needs.changes.result }}" != "success" ] || { [ "$r" != "success" ] && [ "$r" != "skipped" ]; }; then
+            echo "changes: ${{ needs.changes.result }}, web-checks: $r"
+            exit 1
+          fi
