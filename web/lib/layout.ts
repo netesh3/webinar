@@ -190,12 +190,20 @@ function hasLiveVideo(tile: Sortable): boolean {
  * is the one place Zoom puts the talker on the large tile, so that mode opts in
  * through `speakingIdentity`. Pin still wins. A share still wins over a camera.
  * The green outline (lib/speaker.ts) still marks the talker in every mode.
+ *
+ * Not while a screen share is on the stage. The share is the large tile then, so the
+ * talker cannot go there; chasing them only reshuffles the small cameras floating over
+ * the share — every handover swapped faces in the corner, which is distracting to watch
+ * and, with only three slots, could swap somebody out of view. During a share the
+ * cameras keep the plain order (role, camera on, identity) and only the outline moves.
  */
 export function sortTiles<T extends Sortable>(
   tiles: readonly T[],
   pinnedKey: string | null,
   speakingIdentity: string | null = null,
 ): T[] {
+  const sharing = tiles.some((t) => t.source === Track.Source.ScreenShare);
+  const followTalker = sharing ? null : speakingIdentity;
   return [...tiles].sort((a, b) => {
     const pin = Number(b.key === pinnedKey) - Number(a.key === pinnedKey);
     if (pin !== 0) return pin;
@@ -205,15 +213,15 @@ export function sortTiles<T extends Sortable>(
       Number(a.source === Track.Source.ScreenShare);
     if (share !== 0) return share;
 
-    if (speakingIdentity) {
+    if (followTalker) {
       const speak =
         Number(
           b.source !== Track.Source.ScreenShare &&
-            b.participant.identity === speakingIdentity,
+            b.participant.identity === followTalker,
         ) -
         Number(
           a.source !== Track.Source.ScreenShare &&
-            a.participant.identity === speakingIdentity,
+            a.participant.identity === followTalker,
         );
       if (speak !== 0) return speak;
     }

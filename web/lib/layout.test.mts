@@ -236,12 +236,25 @@ group("sortTiles", () => {
     "a screen share still outranks the talker",
   );
   eq(
-    sortTiles(tiles, null, "cat")[1].key,
+    sortTiles(tiles, null, "cat").map((t) => t.key),
+    sortTiles(tiles, null).map((t) => t.key),
+    "during a share the cameras do not move with the talker",
+  );
+  for (const who of ["amy", "bob", "cat", "eve", "zoe"]) {
+    eq(
+      sortTiles(tiles, null, who).map((t) => t.key),
+      baseline,
+      `…whoever is talking (${who})`,
+    );
+  }
+  const noShare = tiles.filter((t) => t.key !== "dan");
+  eq(
+    sortTiles(noShare, null, "cat")[0].key,
     "cat",
-    "unpinned speaker-mode puts the talker on the large tile, ahead of the host",
+    "without a share, speaker-mode puts the talker on the large tile, ahead of the host",
   );
   eq(
-    sortTiles(tiles, "bob", "cat")[0].key,
+    sortTiles(noShare, "bob", "cat")[0].key,
     "bob",
     "a pin outranks the talker",
   );
