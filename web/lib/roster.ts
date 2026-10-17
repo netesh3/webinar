@@ -18,16 +18,33 @@ export function shouldShowRosterSearch(count: number, query: string): boolean {
   return query.trim().length > 0 || count >= ROSTER_SEARCH_AFTER;
 }
 
+/** Search typing is free-form and names are not ASCII: "perez" should find
+ *  "Pérez", "ANA" should find "ana", and a stray double space must not turn a
+ *  hit into a miss. NFD splits an accented letter into base + combining mark,
+ *  and the marks are then dropped. */
+export function normalizeRosterText(text: string | null | undefined): string {
+  return (text ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Whether somebody matches what the host typed.
+ *
+ *  Every word of the query has to appear somewhere in the name or identity, in
+ *  any order — so "perez ana" finds "Ana Pérez", and a first-name-plus-initial
+ *  like "ana p" narrows rather than misses. The identity is searched too because
+ *  display names collide; it is the one thing that tells two "Ana"s apart. */
 export function matchRosterQuery(
   person: Pick<LiveParticipant, "name" | "identity">,
   query: string,
 ): boolean {
-  const needle = query.trim().toLowerCase();
+  const needle = normalizeRosterText(query);
   if (!needle) return true;
-  return (
-    person.name.toLowerCase().includes(needle) ||
-    person.identity.toLowerCase().includes(needle)
-  );
+  const haystack = `${normalizeRosterText(person.name)} ${normalizeRosterText(person.identity)}`;
+  return needle.split(" ").every((word) => haystack.includes(word));
 }
 
 export type HostRosterSections = {
